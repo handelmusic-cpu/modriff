@@ -410,6 +410,16 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .chord-out:active { transform:scale(.96); }
 .chord-out .cname { font-size:clamp(.62rem,1.4vw,.78rem); }
 
+/* Borrowed/Modal & Secondary-Dominant buttons share the .chord-split markup
+   (sev strip + triad) but sit in a wrapping flex row instead of the 7-col
+   diatonic grid — give them a smaller fixed footprint so they read as
+   "smaller siblings" of the diatonic buttons instead of stretching skinny/tall. */
+.chords-row .chord-split { flex:0 0 auto; width:64px; }
+.chords-row .btn-sev { padding:4px 3px 3px; }
+.chords-row .btn-sev .sl-name { font-size:clamp(.46rem,.8vw,.56rem); }
+.chords-row .btn-tri { min-height:38px; padding:7px 3px 6px; }
+.chords-row .cname { font-size:clamp(.58rem,1.2vw,.7rem); }
+
 
 
 /* ═══════════════════════════════════════
@@ -682,6 +692,11 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 }
 .sc-btn.danger { color:var(--dom); }
 .sc-btn.danger:hover { border-color:var(--dom); background:#1a0000; }
+.sc-btn.queued { animation:sc-queued-pulse 1s ease-in-out infinite; }
+@keyframes sc-queued-pulse {
+ 0%,100% { box-shadow:0 0 0 0 hsla(var(--kh),var(--ks),var(--kl),.6); }
+ 50% { box-shadow:0 0 0 5px hsla(var(--kh),var(--ks),var(--kl),0); }
+}
 
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
@@ -2381,7 +2396,8 @@ body {
  <div class="slb-meta" id="slb-meta">Load a song from Build mode</div>
  </div>
  <div class="slb-controls">
- <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
+ <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (← key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
+ <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (→ key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
  <button class="sc-btn" onclick="updateSongPerfSettings()" title="Save current tempo/arp/rhythm to this song"> Save Settings</button>
  <div class="tg">
  <button class="tb" id="slb-key-dn" onclick="transposeSong(-1)"></button>
@@ -2865,18 +2881,23 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  ss.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.1);r.push(o);});
 
  } else if(wv==='piano'){
- // Sine fundamental + bright FM-style attack transient that decays fast
- // Gives piano-like "thump" on attack then pure sustain
- const osc=ctx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
+ // Triangle fundamental (richer harmonics than sine) run through a lowpass
+ // that sweeps down — mimics a struck string's brightness decaying/damping
+ // over time — plus a tamer inharmonic FM "hammer" transient on attack.
+ const osc=ctx.createOscillator(); osc.type='triangle'; osc.frequency.value=f;
  osc.detune.value=(Math.random()-.5)*3;
- // Attack modulator — inharmonic FM that fades quickly
- const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*3.5;
+ const filt=ctx.createBiquadFilter(); filt.type='lowpass';
+ filt.frequency.setValueAtTime(f*8,t0);
+ filt.frequency.exponentialRampToValueAtTime(Math.max(f*1.5,200),t0+dur*0.6);
+ filt.Q.value=0.7;
+ // Hammer-strike modulator — inharmonic FM that fades quickly
+ const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*2.76;
  const modG=ctx.createGain();
- modG.gain.setValueAtTime(f*0.8,t0);
- modG.gain.exponentialRampToValueAtTime(0.001,t0+0.06);
+ modG.gain.setValueAtTime(f*0.35,t0);
+ modG.gain.exponentialRampToValueAtTime(0.001,t0+0.045);
  mod.connect(modG); modG.connect(osc.frequency);
- osc.connect(gainNode);
- mod.start(t0); mod.stop(t0+0.1);
+ osc.connect(filt); filt.connect(gainNode);
+ mod.start(t0); mod.stop(t0+0.06);
  osc.start(t0); osc.stop(t0+dur+.05);
  r.push(osc,mod);
 
@@ -4348,7 +4369,7 @@ function renderChartSeq(){
  const row3=document.createElement('div'); row3.className='slot-controls-row3';
  const up=document.createElement('div'); up.className='slot-arr'; up.textContent='←';
  const dn=document.createElement('div'); dn.className='slot-arr'; dn.textContent='→';
- const del=document.createElement('div'); del.className='slot-del'; del.textContent='';
+ const del=document.createElement('div'); del.className='slot-del'; del.textContent='✕'; del.title='Delete slot';
  up.addEventListener('click',()=>{ if(i>0){[slots[i],slots[i-1]]=[slots[i-1],slots[i]]; renderChartSeq();} });
  dn.addEventListener('click',()=>{ if(i<slots.length-1){[slots[i],slots[i+1]]=[slots[i+1],slots[i]]; renderChartSeq();} });
  del.addEventListener('click',()=>{ slots.splice(i,1); if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1; renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); });
@@ -4802,15 +4823,29 @@ document.addEventListener('keydown', e => {
  return;
  }
 
- // Chord keys 1-7
- const idx = KEY_MAP[e.key]; if(idx===undefined) return;
+ // Chord keys 1-7 (Shift+number = 7th-chord extension instead of plain triad)
+ const digitMatch = e.code.match(/^Digit([1-7])$/);
+ const idx = digitMatch ? KEY_MAP[digitMatch[1]] : undefined;
+ if(idx===undefined) return;
  const steps=mode==='major'?MAJOR_STEPS:MINOR_STEPS;
  const tq=mode==='major'?MAJOR_TRIAD_Q:MINOR_TRIAD_Q;
  const t7=mode==='major'?MAJOR_7TH_T:MINOR_7TH_T;
  const f=mode==='major'?MAJOR_FUNC:MINOR_FUNC;
  const crm=rootMidi()+steps[idx];
+ const el=document.getElementById('cs-'+idx);
+ if(e.shiftKey){
+ // Same behavior as clicking the 7th strip on top of the chord button
+ autoStartIfNeeded(); stopSongLoopIfActive();
+ lastTriggeredDegree=idx; applyLogicHighlights(idx);
+ const intvs7=getIntvs(tq[idx],t7[idx],'7th');
+ setArpChord(crm,intvs7,f[idx]);
+ if(!arpOn||wetDry<.99){ stopAll(); playChord(crm,intvs7,false,0); }
+ if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
+ const sev=el?.querySelector('.btn-sev'); if(sev){ sev.classList.add('flash'); setTimeout(()=>sev.classList.remove('flash'),150); }
+ } else {
  triggerChordWithVariant(crm,tq[idx],t7[idx],f[idx],0);
- const el=document.getElementById('cs-'+idx); if(el){ el.classList.add('kb-active'); setTimeout(()=>el.classList.remove('kb-active'),200); }
+ }
+ if(el){ el.classList.add('kb-active'); setTimeout(()=>el.classList.remove('kb-active'),200); }
 });
 
 document.addEventListener('keyup', e => {
@@ -5247,6 +5282,7 @@ let songLoopSection = 0; // which section we're looping
 let songLoopSlot = 0; // current slot index within section
 let songLoopBarsLeft = 0; // bars remaining on current slot
 let songLoopTimer = null;
+let songPendingSectionDelta = 0; // queued nav: +1 next, -1 prev, 0 = none (stay on current section)
 
 // The actual immediate chord trigger (no snap logic)
 function _triggerChordImmediate(rootM, triadQ, type7, func, pressure) {
@@ -5308,8 +5344,10 @@ function startSongLoop(){
 function stopSongLoop(){
  songLoopActive = false;
  songWaitingForBar = false;
+ songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
+ _updateSectionNavUI();
 }
 
 let songWaitingForBar = false;
@@ -5366,26 +5404,33 @@ function tickSongLoop(){
  }
 }
 
+// Move songLoopSection by delta (±1), wrapping around the song and skipping empty sections
+function _moveToSection(delta){
+ if(!sections.length) return;
+ const n = sections.length;
+ let idx = ((songLoopSection + delta) % n + n) % n;
+ let guard = 0;
+ while((!sections[idx] || !sections[idx].slots.length) && guard < n){
+ idx = ((idx + delta) % n + n) % n;
+ guard++;
+ }
+ songLoopSection = idx;
+}
+
 function _advanceLoopSlot(){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
  songLoopSlot++;
  if(songLoopSlot >= (sec?.slots.length||0)){
- // End of this section — advance to next section
+ // Finished a full pass through this section's chords.
  songLoopSlot = 0;
- let nextSec = songLoopSection + 1;
- // Skip empty sections
- while(nextSec < sections.length && (!sections[nextSec] || !sections[nextSec].slots.length)){
-   nextSec++;
+ if(songPendingSectionDelta !== 0){
+ // A Next/Prev request was queued — apply it now that the section is done
+ _moveToSection(songPendingSectionDelta);
+ songPendingSectionDelta = 0;
+ _updateSectionNavUI();
  }
- if(nextSec >= sections.length){
-   // End of song — loop back to section 0 (or first non-empty)
-   nextSec = 0;
-   while(nextSec < sections.length - 1 && (!sections[nextSec] || !sections[nextSec].slots.length)){
-     nextSec++;
-   }
- }
- songLoopSection = nextSec;
+ // else: no transition queued — loop this section again indefinitely
  }
  _playLoopSlot();
 }
@@ -5407,17 +5452,29 @@ function _highlightLoopSlot(si, ci){
  if(secEl) secEl.textContent = (sections[si]?.name || '') + (ci !== undefined ? ' · '+(ci+1)+'/'+(sections[si]?.slots.length||0) : '');
 }
 
-function songNextSection(){
- const nextSec = songLoopSection + 1;
- if(nextSec >= sections.length){
- // End of song — loop back to section 0
- songLoopSection = 0;
+// Request a section change. While the loop is actively playing, this is
+// QUEUED — the current section keeps looping until it finishes its
+// current pass through its chords, then the transition happens.
+function songGotoSection(delta){
+ if(!sections.length) return;
+ if(songLoopActive){
+ songPendingSectionDelta = delta;
+ _updateSectionNavUI();
  } else {
- songLoopSection = nextSec;
- }
+ // Not auto-looping (e.g. Auto is off) — nothing to finish, jump now
+ _moveToSection(delta);
  songLoopSlot = 0;
- clearTimeout(songLoopTimer);
- _playLoopSlot();
+ songChartTap(songLoopSection, 0);
+ }
+}
+function songNextSection(){ songGotoSection(1); }
+function songPrevSection(){ songGotoSection(-1); }
+
+function _updateSectionNavUI(){
+ const nextBtn = document.getElementById('next-section-btn');
+ const prevBtn = document.getElementById('prev-section-btn');
+ if(nextBtn) nextBtn.classList.toggle('queued', songPendingSectionDelta === 1);
+ if(prevBtn) prevBtn.classList.toggle('queued', songPendingSectionDelta === -1);
 }
 
 // Override toggleSongAutoAdvance to connect to loop engine
@@ -5458,14 +5515,49 @@ function stopSongLoopIfActive(){
 
 
 // ═══════════════════════════════════════
-// SPACEBAR — start/stop rhythm + arp
+// SPACEBAR — global start/stop (panic stop)
 // ═══════════════════════════════════════
+function isAnythingPlaying(){
+ return rhythmOn || arpOn || songLoopActive ||
+ (typeof window._sqPlaying==='function' && window._sqPlaying()) ||
+ (typeof window._blPlaying==='function' && window._blPlaying());
+}
+
+// Halts every sound-producing engine at once: rhythm, arp, sequencer,
+// bassline, song loop, and any held melody notes.
+function stopEverything(){
+ stopSongLoopIfActive();
+ if(rhythmOn) toggleRhythm();
+ if(arpOn) toggleArp();
+ if(typeof window._sqPlaying==='function' && window._sqPlaying()){
+ document.dispatchEvent(new CustomEvent('sq-stop-request'));
+ }
+ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function'){
+ window.blPlay(); // toggles off since it's currently playing
+ }
+ Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
+ stopAll();
+ syncFixedTransport();
+}
+
 document.addEventListener('keydown', e => {
  if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
  e.preventDefault();
- // Toggle rhythm; arp follows its own state
- toggleRhythm();
+ if(isAnythingPlaying()) stopEverything();
+ else toggleRhythm();
  }
+});
+
+// ═══════════════════════════════════════
+// ARROW KEYS — song section navigation (queued until current pass ends)
+// ═══════════════════════════════════════
+document.addEventListener('keydown', e => {
+ if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
+ if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(e.code!=='ArrowLeft' && e.code!=='ArrowRight') return;
+ if(!sections.length) return;
+ e.preventDefault();
+ if(e.code==='ArrowRight') songNextSection(); else songPrevSection();
 });
 
 // ═══════════════════════════════════════
