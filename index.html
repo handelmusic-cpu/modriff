@@ -3590,6 +3590,40 @@ const RHYTHMS=[
 ];
 function rhythmStepDuration(r){ return beatSec()/r.stepDiv; }
 
+// Returns the number of 16th-note steps that make up one bar in the current
+// time signature.  All three engines (rhythm, sequencer, bassline) must agree
+// on this number or their bar boundaries will drift apart.
+//   4/4  stepDiv=4  pat.length=16  → 16 × (4/4) = 16
+//   3/4  stepDiv=4  pat.length=12  → 12 × (4/4) = 12
+//   6/8  stepDiv=3  pat.length=12  → 12 × (4/3) = 16  (same wall-clock as 4/4)
+//  12/8  stepDiv=3  pat.length=12  → 16
+function stepsPerBar(){
+  var r = RHYTHMS[rhythmSel];
+  if(!r) return 16;
+  return Math.round(r.pat.length * (4 / r.stepDiv));
+}
+
+// Called whenever the time signature changes.  Syncs sqSteps and blSteps to
+// the bar length of the selected rhythm — but only when the engine is stopped,
+// to avoid tearing a running pattern mid-bar.
+function applyTimeSig(){
+  var spb = stepsPerBar();
+  var sqStopped = (typeof sqPlaying === 'undefined' || !sqPlaying);
+  var blStopped = (typeof blPlaying === 'undefined' || !blPlaying);
+  if(sqStopped){
+    sqSteps = spb;
+    var sd = document.getElementById('sq-stepsDisp'); if(sd) sd.textContent = sqSteps;
+    if(typeof sqEnsureGrid === 'function') sqEnsureGrid();
+    if(typeof sqRenderGrid === 'function') sqRenderGrid();
+  }
+  if(blStopped){
+    blSteps = spb;
+    var bd = document.getElementById('bl-stepsdisp'); if(bd) bd.textContent = blSteps;
+    if(typeof blEnsureGrid === 'function') blEnsureGrid();
+    if(typeof blRenderGrid === 'function') blRenderGrid();
+  }
+}
+
 function buildRhythmGrid(){
  // Build into both the hidden state grid and the visible prism strip grid
  ['rhythm-grid','rhythm-grid-p'].forEach(gid=>{
@@ -3598,7 +3632,7 @@ function buildRhythmGrid(){
  const b=document.createElement('button');
  b.className='rhythm-btn'+(i===rhythmSel?' active':'');
  b.innerHTML=`<b>${r.sig}</b><br>${r.name}`;
- b.onclick=()=>{ rhythmSel=i; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[i]); buildRhythmGrid(); buildBeatDots(); if(rhythmOn) restartIfRunning(); };
+ b.onclick=()=>{ rhythmSel=i; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[i]); buildRhythmGrid(); buildBeatDots(); if(rhythmOn) restartIfRunning(); applyTimeSig(); };
  g.appendChild(b);
  });
  });
@@ -7122,12 +7156,13 @@ function blPlay(){
     blPlaying = true; blDispStep = -1;
     var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
     var _blStepSec = 60 / bpmNow / 4;
-    // Align to sequencer's step grid if it's running — prevents phase drift
+    // Align to sequencer's next bar boundary so bassline always comes in on beat 1.
+    // sqSeqStep is the NEXT step the scheduler will fire; sqNextT is when it fires.
+    // Steps remaining until bar end = sqSteps - sqSeqStep (0 means we're already at bar start).
     if (typeof sqPlaying !== 'undefined' && sqPlaying && sqNextT > ctx.currentTime) {
-      var _sqEpoch = sqNextT - sqSeqStep * _blStepSec;
-      var _stepsIn = Math.ceil((ctx.currentTime + 0.02 - _sqEpoch) / _blStepSec);
-      blNextT = _sqEpoch + _stepsIn * _blStepSec;
-      blSeqStep = _stepsIn % blSteps;
+      var stepsUntilBar = (sqSeqStep === 0) ? 0 : (sqSteps - sqSeqStep);
+      blNextT = sqNextT + stepsUntilBar * _blStepSec;
+      blSeqStep = 0;
     } else {
       blNextT = ctx.currentTime + 0.05;
       blSeqStep = 0;
@@ -7501,7 +7536,7 @@ buildRhythmGrid = function(){
     var b = document.createElement('button');
     b.className = 'rhythm-btn' + (i===rhythmSel?' active':'');
     b.innerHTML = '<b>'+r.sig+'</b><br>'+r.name;
-    b.onclick = function(){ rhythmSel=i; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[i]); buildRhythmGrid(); buildBeatDots(); if(rhythmOn) restartIfRunning(); };
+    b.onclick = function(){ rhythmSel=i; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[i]); buildRhythmGrid(); buildBeatDots(); if(rhythmOn) restartIfRunning(); applyTimeSig(); };
     g.appendChild(b);
   });
 };
