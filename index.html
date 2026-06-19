@@ -540,6 +540,7 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  SONG BUILDER
 ═══════════════════════════════════════ */
 .song-meta { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center; }
+.song-key-strip { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .song-title-input {
  flex:1; min-width:150px; background:var(--bg); border:1px solid var(--border2);
  border-radius:var(--r-md); color:var(--text); font-family:'Orbitron',sans-serif;
@@ -2235,7 +2236,15 @@ body.light-mode .vmt-btn.active { color:#fff; }
 
  <div class="song-meta">
  <input class="song-title-input" id="chart-title" type="text" placeholder="Song title…">
- <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()">Key: C Maj ↻</div>
+ <div class="song-key-strip">
+  <button class="btn-xp" onclick="transposeBy(-1)">−</button>
+  <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
+  <button class="btn-xp" onclick="transposeBy(+1)">+</button>
+  <div class="tg" style="gap:3px">
+   <button class="tb active blue" id="songs-bm-major" onclick="setMode('major')">Maj</button>
+   <button class="tb purple" id="songs-bm-minor" onclick="setMode('minor')">Min</button>
+  </div>
+ </div>
  </div>
 
  <!-- Sections -->
@@ -3343,11 +3352,8 @@ function scheduleRhythm(){
  arpRestartPending=false; arpIdx=0; arpDir=1; arpGateIdx=0;
  }
  }
- // ── Song loop tick: beats for beat-snap, bar-1 for bar-snap ──
- if(typeof tickSongLoop==='function'){
- if(snapMode==='beat' && isBeat) tickSongLoop();
- else if(snapMode==='bar' && isBeat) tickSongLoop(); // tickSongLoop counts beats internally
- }
+ // ── Song loop tick: fire exactly once per bar boundary from all clock sources ──
+ if(typeof tickSongLoop==='function' && isBar) tickSongLoop();
  },delay);
  rhythmNextBeat+=rhythmStepSec; rhythmIdx++;
  }
@@ -3887,7 +3893,8 @@ function renderChords(){
  // Update key display
  document.getElementById('key-name').textContent=nn(root);
  document.getElementById('key-mode').textContent=mode==='major'?'Major':'Minor';
- document.getElementById('chart-key-badge').textContent=`Key: ${nn(root)} ${mode==='major'?'Maj':'Min'} ↻`;
+ const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mode==='major'?'Maj':'Min'}`;
+ ['major','minor'].forEach(x=>{ const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode); });
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -3923,7 +3930,10 @@ function renderChords(){
 // ═══════════════════════════════════════
 function setMode(m){
  mode=m;
- ['major','minor'].forEach(x=>{ const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m); });
+ ['major','minor'].forEach(x=>{
+  const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
+  const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
+ });
  renderChords();
 }
 function setCOFMode(m){ setMode(m); ['major','minor'].forEach(x=>{ const e=document.getElementById('cof-'+x+'-btn'); if(e) e.classList.toggle('active',x===m); }); }
@@ -4287,13 +4297,13 @@ function loadProgPreset(pp){
  if(di>=0){
  const s=steps[di], noteN=nn((root+s)%12), q=tqs[di];
  const triadName=noteN+(q===1?'m':q===2?'°':'');
- sections[curSection].slots.push({label:triadName,numeral:nums[di],rootM:rm+s,triadQ:q,type7:t7s[di],func:funcs[di],ext:'triad',bassNote:null,bars:4});
+ sections[curSection].slots.push({label:triadName,numeral:nums[di],rootM:rm+s,triadQ:q,type7:t7s[di],func:funcs[di],ext:'triad',bassNote:null,bars:1});
  } else {
  // Try borrowed
  const borrow=getAllBorrowed(mode).find(b=>b.label===stepStr||b.label===stepStr.replace('b',''));
  if(borrow){
  const crm=rm+borrow.semis, noteN=nn((root+borrow.semis)%12);
- sections[curSection].slots.push({label:noteN,numeral:borrow.label,rootM:crm,triadQ:0,type7:borrow.type7,func:borrow.func,ext:'triad',bassNote:null,bars:4});
+ sections[curSection].slots.push({label:noteN,numeral:borrow.label,rootM:crm,triadQ:0,type7:borrow.type7,func:borrow.func,ext:'triad',bassNote:null,bars:1});
  }
  }
  });
@@ -4302,7 +4312,7 @@ function loadProgPreset(pp){
 
 function addToSection(slot){
  if(!sections[curSection]) sections[curSection]={name:'Verse',slots:[]};
- sections[curSection].slots.push({...slot,bars:4,bassNote:null});
+ sections[curSection].slots.push({...slot,bars:1,bassNote:null});
  renderChartSeq();
  buildSectionTabs();
  // Logic mode: highlight likely next chord after adding
@@ -4365,18 +4375,12 @@ function renderChartSeq(){
  updateBass();
  });
 
- const BEAT_OPTS=[4,8,12,16,1,2,3];
- const beatLabel=(n)=>{
- if(n===4) return '1 bar';
- if(n===8) return '2 bars';
- if(n===12) return '3 bars';
- if(n===16) return '4 bars';
- return n+' beat'+(n===1?'':'s');
- };
+ const BEAT_OPTS=[1,2,4,8];
+ const beatLabel=(n)=>n+' bar'+(n===1?'':'s');
  const dur=document.createElement('div'); dur.className='slot-dur';
- dur.textContent=beatLabel(slot.bars||4);
+ dur.textContent=beatLabel(slot.bars||1);
  dur.addEventListener('click',()=>{
- const cur=slot.bars||4;
+ const cur=slot.bars||1;
  const idx=BEAT_OPTS.indexOf(cur);
  slot.bars=BEAT_OPTS[(idx+1)%BEAT_OPTS.length];
  dur.textContent=beatLabel(slot.bars);
@@ -4426,7 +4430,7 @@ function renderPerfChartRow(){
  });
 }
 
-function snapChartKey(){ buildChartPicker(); document.getElementById('chart-key-badge').textContent=`Key: ${nn(root)} ${mode==='major'?'Maj':'Min'} ↻`; }
+function snapChartKey(){ buildChartPicker(); const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mode==='major'?'Maj':'Min'}`; }
 
 function clearChart(){ sections=[{name:'Verse',slots:[]}]; curSection=0; chartSeqIdx=-1; buildSectionTabs(); renderChartSeq(); renderPerfChartRow(); document.getElementById('chart-title').value=''; }
 
@@ -5085,25 +5089,29 @@ function renderSetlistPerform(){
 function playChartSlot2(si, ci){
  const slots = sections[si]?.slots; if(!slots||!slots[ci]) return;
  const slot = slots[ci];
+ // Live capo: shift all notes by (current key − key at loop start), non-destructive
+ const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
+ const playRoot = slot.rootM + capo;
+ const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
  const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
  // When there's a bass note, include it in arpNotes as the lowest note
- if(slot.bassNote !== null){
- const bassIntv = slot.bassNote - slot.rootM; // interval relative to rootM
- const arIntvs = [bassIntv, ...intvs]; // prepend bass below chord tones
- setArpChord(slot.rootM, arIntvs, slot.func);
+ if(playBass !== null){
+ const bassIntv = playBass - playRoot;
+ const arIntvs = [bassIntv, ...intvs];
+ setArpChord(playRoot, arIntvs, slot.func);
  } else {
- setArpChord(slot.rootM, intvs, slot.func);
+ setArpChord(playRoot, intvs, slot.func);
  }
  if(wetDry < .99){
  stopAll();
- if(slot.bassNote !== null){
- playSlashChord(slot.rootM, intvs, slot.bassNote-12, 0);
+ if(playBass !== null){
+ playSlashChord(playRoot, intvs, playBass-12, 0);
  } else {
- playChord(slot.rootM, intvs, false, 0);
+ playChord(playRoot, intvs, false, 0);
  }
- } else if(slot.bassNote !== null){
+ } else if(playBass !== null){
  // arpOn + wetDry≈1: still play the bass pedal note as a sustained tone
- try{ playSlashChord(slot.rootM, intvs, slot.bassNote-12, 0); }catch(e){}
+ try{ playSlashChord(playRoot, intvs, playBass-12, 0); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
  // Logic mode — highlight likely next chords on Groove tab
@@ -5347,6 +5355,7 @@ function startSongLoop(){
  // Always stop any existing loop first
  stopSongLoop();
  if(!setlistData[curSetlistIdx] || !sections.length) return;
+ _songBaseRoot = root; // capture key at loop start for live capo
  songLoopActive = true;
  songLoopSection = (songCurrentSection >= 0 && songCurrentSection < sections.length) ? songCurrentSection : 0;
  songLoopSlot = 0;
@@ -5362,6 +5371,7 @@ function startSongLoop(){
 
 function stopSongLoop(){
  songLoopActive = false;
+ _songBaseRoot = -1; // clear capo
  songWaitingForBar = false;
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
@@ -5370,6 +5380,9 @@ function stopSongLoop(){
 }
 
 let songWaitingForBar = false;
+// Non-destructive live capo: offset between the key when the song loop started
+// and the current root.  Applied in playChartSlot2 without modifying stored data.
+let _songBaseRoot = -1;
 let songBarCounter = 0; // counts bars elapsed since slot started
 let songBarsForSlot = 1; // bars allocated to current slot
 
@@ -5380,35 +5393,33 @@ function _playLoopSlot(){
  if(songLoopSlot >= sec.slots.length) songLoopSlot = 0;
 
  const slot = sec.slots[songLoopSlot];
- songBarsForSlot = slot.bars || 4; // 4 beats = 1 bar default
- songBarCounter = 0;
+ songBarsForSlot = slot.bars || 1; // bars per slot (pattern cycles)
  songBeatCounter = 0;
 
  // Play the chord
  playChartSlot2(songLoopSection, songLoopSlot);
  _highlightLoopSlot(songLoopSection, songLoopSlot);
 
- // Calculate duration: slot.bars is now in beats
- // Beat duration depends on time signature
- function beatDurMs(){
+ // Duration = barDurMs × barsForSlot.  One "bar" = one full pattern cycle
+ // so odd meters (13 steps, 7/8, etc.) stay locked to the actual pattern length.
+ function barDurMs(){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
- const sig = RHYTHMS[rhythmSel]?.sig || '4/4';
- // 6/8 and 12/8 have dotted quarter beat = 1.5 quarter notes
- const beatFactor = (sig==='6/8'||sig==='12/8') ? 1.5 : 1.0;
- return (60000 / bpm) * beatFactor;
+ const r = RHYTHMS[rhythmSel];
+ if(!r) return (60000/bpm) * 4; // fallback: 4/4
+ return (60000/bpm / r.stepDiv) * r.pat.length;
  }
  if(snapMode === 'off' || !rhythmOn){
- // Free mode or no clock: use a simple timer
+ // Free mode or no clock: use a pattern-length timer
  clearTimeout(songLoopTimer);
- songLoopTimer = setTimeout(_advanceLoopSlot, beatDurMs() * (songBarsForSlot||4));
+ songLoopTimer = setTimeout(_advanceLoopSlot, barDurMs() * (songBarsForSlot||1));
  }
- // beat/bar snap with rhythm running: rhythm clock calls tickSongLoop which counts beats
+ // Snap with clock: tickSongLoop is called once per bar boundary from rhythm/sequencer
 }
 
-// Beat counter for snap mode
+// Bar counter — incremented once per pattern cycle from rhythm (isBar) or sequencer (wrap)
 let songBeatCounter = 0;
 
-// Called by rhythm engine on each beat boundary (not just bar)
+// Called once per bar boundary from all clock sources
 function tickSongLoop(){
  if(!songLoopActive) return;
  if(songWaitingForBar){
@@ -5417,8 +5428,8 @@ function tickSongLoop(){
  return;
  }
  songBeatCounter++;
- const beatsNeeded = songBarsForSlot || 4;
- if(songBeatCounter >= beatsNeeded){
+ const barsNeeded = songBarsForSlot || 1;
+ if(songBeatCounter >= barsNeeded){
  _advanceLoopSlot();
  }
 }
@@ -5753,7 +5764,7 @@ function updateFtSongBtn(){
 // We just need to update the song key badge in Songs tab
 function syncSongKeyBadge(){
  const badge = document.getElementById('chart-key-badge');
- if(badge) badge.textContent = 'Key: '+nn(root)+' '+(mode==='major'?'Maj':'Min')+' ↻';
+ if(badge) badge.textContent = nn(root)+' '+(mode==='major'?'Maj':'Min');
  const slbKey = document.getElementById('slb-key');
  if(slbKey) slbKey.textContent = nn(root)+' '+(mode==='major'?'Maj':'Min');
  updatePrismSongBanner();
