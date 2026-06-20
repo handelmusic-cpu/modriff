@@ -1862,9 +1862,15 @@ body.light-mode .vmt-btn.active { color:#fff; }
  </div>
  <button class="btn-xp" onclick="transposeBy(+1)">+</button>
  </div></div><button class="tips-btn" onclick="showTip('key',this)">?</button>
- <div class="tg">
+ <div class="tg" style="flex-wrap:wrap;gap:2px;max-width:100%">
  <button class="tb active blue" id="bm-major" onclick="setMode('major')">Maj</button>
+ <button class="tb purple" id="bm-dorian" onclick="setMode('dorian')">Dorian</button>
+ <button class="tb purple" id="bm-phrygian" onclick="setMode('phrygian')">Phrygian</button>
+ <button class="tb purple" id="bm-lydian" onclick="setMode('lydian')">Lydian</button>
+ <button class="tb purple" id="bm-mixolydian" onclick="setMode('mixolydian')">Mixo</button>
  <button class="tb purple" id="bm-minor" onclick="setMode('minor')">Min</button>
+ <button class="tb purple" id="bm-locrian" onclick="setMode('locrian')">Locrian</button>
+ <button class="tb purple" id="bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
  </div>
  <button class="nash-pill" id="nash-pill" onclick="toggleNash()" title="Toggle Nashville Numbers">Numbers</button>
  <button class="tune-btn" id="tune-cycle-btn" onclick="cycleMasterTune()" title="A4 reference pitch">A=440</button>
@@ -2017,6 +2023,7 @@ body.light-mode .vmt-btn.active { color:#fff; }
  </div>
  </div>
  <button class="play-btn start" id="rhy-play" onclick="toggleRhythm()">▶ Rhythm</button>
+ <button class="tb" id="metro-btn" onclick="toggleMetronome()">Metro OFF</button>
  <button class="tb" id="arp-toggle-p" onclick="toggleArp()">Arp OFF</button>
  <div class="sg">
  <div class="sl">Tempo</div>
@@ -2237,13 +2244,20 @@ body.light-mode .vmt-btn.active { color:#fff; }
 
  <div class="song-meta">
  <input class="song-title-input" id="chart-title" type="text" placeholder="Song title…">
+ <button class="tb" onclick="shareProgression()" title="Copy share URL to clipboard" style="font-size:.44rem;padding:4px 8px">Share</button>
  <div class="song-key-strip">
   <button class="btn-xp" onclick="transposeBy(-1)">−</button>
   <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
   <button class="btn-xp" onclick="transposeBy(+1)">+</button>
-  <div class="tg" style="gap:3px">
+  <div class="tg" style="flex-wrap:wrap;gap:2px">
    <button class="tb active blue" id="songs-bm-major" onclick="setMode('major')">Maj</button>
+   <button class="tb purple" id="songs-bm-dorian" onclick="setMode('dorian')">Dor</button>
+   <button class="tb purple" id="songs-bm-phrygian" onclick="setMode('phrygian')">Phr</button>
+   <button class="tb purple" id="songs-bm-lydian" onclick="setMode('lydian')">Lyd</button>
+   <button class="tb purple" id="songs-bm-mixolydian" onclick="setMode('mixolydian')">Mix</button>
    <button class="tb purple" id="songs-bm-minor" onclick="setMode('minor')">Min</button>
+   <button class="tb purple" id="songs-bm-locrian" onclick="setMode('locrian')">Loc</button>
+   <button class="tb purple" id="songs-bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
   </div>
  </div>
  </div>
@@ -2590,10 +2604,70 @@ const MINOR_NUMS = ['i','ii°','♭III','iv','v','♭VI','♭VII'];
 const MAJOR_FUNC = ['tonic','subdom','tonic','subdom','dom','tonic','dom'];
 const MINOR_FUNC = ['tonic','dom','modal','subdom','dom','modal','modal'];
 
-const TRIAD = { 0:[0,4,7], 1:[0,3,7], 2:[0,3,6] };
+// ── Church modes & extended scale lookup ──
+const MODES = {
+ major: {
+ steps:[0,2,4,5,7,9,11], triadQ:[0,1,1,0,0,1,2],
+ seventh:['maj7','min7','min7','maj7','dom7','min7','halfdim'],
+ nums:['I','ii','iii','IV','V','vi','vii°'],
+ func:['tonic','subdom','tonic','subdom','dom','tonic','dom'],
+ label:'Major'
+ },
+ dorian: {
+ steps:[0,2,3,5,7,9,10], triadQ:[1,1,0,0,1,2,0],
+ seventh:['min7','min7','maj7','dom7','min7','halfdim','maj7'],
+ nums:['i','ii','♭III','IV','v','vi°','♭VII'],
+ func:['tonic','subdom','modal','subdom','dom','modal','modal'],
+ label:'Dorian'
+ },
+ phrygian: {
+ steps:[0,1,3,5,7,8,10], triadQ:[1,0,0,1,2,0,1],
+ seventh:['min7','maj7','dom7','min7','halfdim','maj7','min7'],
+ nums:['i','♭II','♭III','iv','v°','♭VI','♭VII'],
+ func:['tonic','dom','modal','subdom','dom','modal','modal'],
+ label:'Phrygian'
+ },
+ lydian: {
+ steps:[0,2,4,6,7,9,11], triadQ:[0,0,1,2,0,1,1],
+ seventh:['maj7','dom7','min7','halfdim','maj7','min7','min7'],
+ nums:['I','II','iii','#iv°','V','vi','vii'],
+ func:['tonic','dom','tonic','dom','dom','tonic','subdom'],
+ label:'Lydian'
+ },
+ mixolydian: {
+ steps:[0,2,4,5,7,9,10], triadQ:[0,1,2,0,1,1,0],
+ seventh:['dom7','min7','halfdim','maj7','min7','min7','maj7'],
+ nums:['I','ii','iii°','IV','v','vi','♭VII'],
+ func:['tonic','subdom','dom','subdom','tonic','tonic','modal'],
+ label:'Mixolydian'
+ },
+ minor: {
+ steps:[0,2,3,5,7,8,10], triadQ:[1,2,0,1,1,0,0],
+ seventh:['minMaj7','halfdim','maj7','min7','min7','maj7','dom7'],
+ nums:['i','ii°','♭III','iv','v','♭VI','♭VII'],
+ func:['tonic','dom','modal','subdom','dom','modal','modal'],
+ label:'Minor'
+ },
+ locrian: {
+ steps:[0,1,3,5,6,8,10], triadQ:[2,0,1,1,0,0,1],
+ seventh:['halfdim','maj7','min7','min7','maj7','dom7','min7'],
+ nums:['i°','♭II','♭iii','iv','♭V','♭VI','♭vii'],
+ func:['tonic','dom','tonic','subdom','modal','modal','modal'],
+ label:'Locrian'
+ },
+ harmonic_minor: {
+ steps:[0,2,3,5,7,8,11], triadQ:[1,2,3,1,0,0,2],
+ seventh:['minMaj7','halfdim','augMaj7','min7','dom7','maj7','dim7'],
+ nums:['i','ii°','♭III+','iv','V','♭VI','vii°'],
+ func:['tonic','dom','modal','subdom','dom','modal','dom'],
+ label:'Harm. Min.'
+ },
+};
+
+const TRIAD = { 0:[0,4,7], 1:[0,3,7], 2:[0,3,6], 3:[0,4,8] }; // 3=augmented
 const SEVENTH = {
  maj7:[0,4,7,11], min7:[0,3,7,10], dom7:[0,4,7,10],
- halfdim:[0,3,6,10], dim7:[0,3,6,9], minMaj7:[0,3,7,11]
+ halfdim:[0,3,6,10], dim7:[0,3,6,9], minMaj7:[0,3,7,11], augMaj7:[0,4,8,11]
 };
 // Extensions beyond 7th
 const EXTS = {
@@ -2604,8 +2678,8 @@ const EXTS = {
  sus4: ()=>[0,5,7],
  add9: (q)=>[...(TRIAD[q]||[0,4,7]),14],
 };
-const SUFFIX7 = {maj7:'maj7',min7:'m7',dom7:'7',halfdim:'ø7',dim7:'°7',minMaj7:'mM7'};
-const QLABEL = {0:'maj',1:'min',2:'dim',maj7:'maj7',min7:'min7',dom7:'dom7',halfdim:'ø7',dim7:'dim7',minMaj7:'mMaj7'};
+const SUFFIX7 = {maj7:'maj7',min7:'m7',dom7:'7',halfdim:'ø7',dim7:'°7',minMaj7:'mM7',augMaj7:'+M7'};
+const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'dom7',halfdim:'ø7',dim7:'dim7',minMaj7:'mMaj7',augMaj7:'augMaj7'};
 // Voice gain compensation (perceived loudness equalization)
 const WAVE_GAIN = {
  sine:.85,
@@ -2621,6 +2695,7 @@ const WAVE_GAIN = {
 // ── Borrowed chord definitions ──
 // Returns { label, semis, type7, func } relative to root
 function getAllBorrowed(m) {
+ if (m !== 'major' && m !== 'minor') return []; // modal scales — no borrowed chord panel for now
  if (m === 'major') return [
  // Tonic function borrowings
  {label:'i', semis:0, type7:'minMaj7', func:'tonic', bass:null},
@@ -2650,15 +2725,14 @@ function getAllBorrowed(m) {
 
 // Secondary dominants
 function getSecDoms(m) {
- const steps = m==='major'?MAJOR_STEPS:MINOR_STEPS;
- const nums = m==='major'?MAJOR_NUMS:MINOR_NUMS;
- const skip = m==='major'?new Set([0,6]):new Set([0,1]);
+ const md=MODES[m]||MODES.major;
+ const steps=md.steps, nums=md.nums;
+ const skip = m==='major'?new Set([0,6]):(m==='minor'?new Set([0,1]):new Set([0]));
  return steps.flatMap((s,i)=>{
  if(skip.has(i)) return [];
- // Normalise so sec dom root lands in same octave range as tonic chords
  let semis = s + 7;
- if(semis > 11) semis -= 12; // bring down into same octave
- return [{label:'V/'+nums[i].replace('°',''), semis, type7:'dom7', func:'dom'}];
+ if(semis > 11) semis -= 12;
+ return [{label:'V/'+nums[i].replace('°','').replace('+',''), semis, type7:'dom7', func:'dom'}];
  });
 }
 
@@ -3381,13 +3455,45 @@ function scheduleArp(){
  }
 }
 
+let metronomeOn=false;
+let _metroNextBeat=-1;
+function toggleMetronome(){
+ metronomeOn=!metronomeOn;
+ const b=document.getElementById('metro-btn'); if(b) b.textContent=metronomeOn?'Metro ON':'Metro OFF';
+ if(metronomeOn&&!rhythmOn&&!arpOn) startClock();
+}
+function scheduleMetronome(){
+ if(!metronomeOn) return;
+ const ctx=getCtx(); if(!ctx) return;
+ const bSec=beatSec();
+ if(_metroNextBeat<CLOCK_EPOCH) _metroNextBeat=CLOCK_EPOCH;
+ let beatCount=0;
+ while(_metroNextBeat<ctx.currentTime+LOOK_AHEAD){
+ const isDownbeat=(Math.round((_metroNextBeat-CLOCK_EPOCH)/bSec)%4===0);
+ const freq=isDownbeat?1760:880;
+ const vol=isDownbeat?0.35:0.18;
+ const g=ctx.createGain();
+ g.gain.setValueAtTime(vol,_metroNextBeat);
+ g.gain.exponentialRampToValueAtTime(0.001,_metroNextBeat+0.04);
+ g.connect(ctx.destination);
+ const osc=ctx.createOscillator();
+ osc.type='sine'; osc.frequency.value=freq;
+ osc.connect(g);
+ osc.start(_metroNextBeat); osc.stop(_metroNextBeat+0.04);
+ _metroNextBeat+=bSec;
+ beatCount++;
+ if(beatCount>32) break;
+ }
+}
+
 function tickClock(){
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
  var blRunning=(typeof window._blPlaying==='function'&&window._blPlaying());
- if(!rhythmOn&&!arpOn&&!sqRunning&&!blRunning) return;
+ if(!rhythmOn&&!arpOn&&!sqRunning&&!blRunning&&!metronomeOn) return;
  // Only run Vibe rhythm when sequencer is NOT playing (one or the other)
  if(!sqRunning) scheduleRhythm();
  scheduleArp();
+ scheduleMetronome();
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  clockTimer=setTimeout(tickClock,SCHED_INT);
@@ -3398,6 +3504,7 @@ function startClock(){
  const t=CLOCK_EPOCH;
  if(rhythmOn){ rhythmNextBeat=t; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); }
  if(arpOn){ arpNextBeat=t; arpIdx=0; arpDir=1; arpGateIdx=0; }
+ if(metronomeOn){ _metroNextBeat=t; }
  clearTimeout(clockTimer); tickClock();
 }
 function restartIfRunning(){ if(rhythmOn||arpOn) startClock(); }
@@ -3895,18 +4002,16 @@ function makeOutBtn(label,noteN,type7,crm,func){
 // RENDER CHORDS
 // ═══════════════════════════════════════
 function renderChords(){
- const steps=mode==='major'?MAJOR_STEPS:MINOR_STEPS;
- const triadQs=mode==='major'?MAJOR_TRIAD_Q:MINOR_TRIAD_Q;
- const types7=mode==='major'?MAJOR_7TH_T:MINOR_7TH_T;
- const nums=mode==='major'?MAJOR_NUMS:MINOR_NUMS;
- const funcs=mode==='major'?MAJOR_FUNC:MINOR_FUNC;
+ const md=MODES[mode]||MODES.major;
+ const steps=md.steps, triadQs=md.triadQ, types7=md.seventh, nums=md.nums, funcs=md.func;
  const rm=rootMidi();
 
  // Update key display
  document.getElementById('key-name').textContent=nn(root);
- document.getElementById('key-mode').textContent=mode==='major'?'Major':'Minor';
- const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mode==='major'?'Maj':'Min'}`;
- ['major','minor'].forEach(x=>{ const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode); });
+ const mdLabel=(MODES[mode]||MODES.major).label;
+ document.getElementById('key-mode').textContent=mdLabel;
+ const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mdLabel}`;
+ Object.keys(MODES).forEach(x=>{ const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode); });
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -3942,13 +4047,13 @@ function renderChords(){
 // ═══════════════════════════════════════
 function setMode(m){
  mode=m;
- ['major','minor'].forEach(x=>{
+ Object.keys(MODES).forEach(x=>{
   const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
   const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
  });
  renderChords();
 }
-function setCOFMode(m){ setMode(m); ['major','minor'].forEach(x=>{ const e=document.getElementById('cof-'+x+'-btn'); if(e) e.classList.toggle('active',x===m); }); }
+function setCOFMode(m){ setMode(m); Object.keys(MODES).forEach(x=>{ const e=document.getElementById('cof-'+x+'-btn'); if(e) e.classList.toggle('active',x===m); }); }
 function toggleNash(){
  nashMode=!nashMode;
  const p=document.getElementById('nash-pill'); if(p) p.classList.toggle('active',nashMode);
@@ -4111,7 +4216,7 @@ function updateStrumLabel(){ updateSV('strum-spread','strum-val',v=>(v*1000).toF
 
 // Voice modal
 const MOODS={happy:{root:0,mode:'major'},sad:{root:9,mode:'minor'},tense:{root:4,mode:'minor'},dreamy:{root:5,mode:'major'},epic:{root:7,mode:'minor'}};
-function setMood(m){ const p=MOODS[m]; root=p.root; mode=p.mode; document.getElementById('bm-major').classList.toggle('active',mode==='major'); document.getElementById('bm-minor').classList.toggle('active',mode==='minor'); renderChords(); }
+function setMood(m){ const p=MOODS[m]; root=p.root; mode=p.mode; Object.keys(MODES).forEach(x=>{ const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===mode); }); renderChords(); }
 function openVoiceModal(){ const m=document.getElementById('voice-modal'); if(m) m.classList.add('visible'); }
 function closeVoiceModal(){ const m=document.getElementById('voice-modal'); if(m) m.classList.remove('visible'); }
 function buildVoiceGrid(){
@@ -4189,6 +4294,35 @@ function setBuildExt(e){
  document.querySelectorAll('#ext-toggle .tb').forEach((b,i)=>{
  b.classList.toggle('active',['triad','7th','9th','sus2','sus4','add9'][i]===e);
  });
+}
+
+function showToast(msg){
+ let t=document.getElementById('_toast');
+ if(!t){ t=document.createElement('div'); t.id='_toast'; t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#222;color:#fff;border-radius:8px;padding:8px 16px;font-size:.6rem;z-index:9999;transition:opacity .3s;pointer-events:none'; document.body.appendChild(t); }
+ t.textContent=msg; t.style.opacity='1';
+ clearTimeout(t._to); t._to=setTimeout(()=>t.style.opacity='0',2000);
+}
+function shareProgression(){
+ try{
+ const data={sections,title:document.getElementById('chart-title')?.value||'',root,mode};
+ const hash=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+ const url=location.href.split('#')[0]+'#prog='+hash;
+ navigator.clipboard?.writeText(url).then(()=>showToast('Link copied!')).catch(()=>prompt('Copy link:',url));
+ }catch(e){ console.warn('share error',e); }
+}
+function loadProgressionFromHash(){
+ try{
+ const h=location.hash;
+ if(!h.startsWith('#prog=')) return;
+ const raw=h.slice(6);
+ const data=JSON.parse(decodeURIComponent(escape(atob(raw))));
+ if(data.sections) sections=data.sections;
+ if(data.title){ const t=document.getElementById('chart-title'); if(t) t.value=data.title; }
+ if(data.root!==undefined) root=data.root;
+ if(data.mode) setMode(data.mode);
+ buildSectionTabs();
+ renderChords();
+ }catch(e){ /* ignore invalid hash */ }
 }
 
 function buildSectionTabs(){
@@ -5989,6 +6123,7 @@ buildSectionTabs();
 buildProgPresets();
 buildChartPicker();
 renderChords();
+loadProgressionFromHash();
 updateOct();
 buildMelodyStrip();
 initBendStrip();
