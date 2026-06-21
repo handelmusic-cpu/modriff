@@ -1348,6 +1348,14 @@ body.light-mode .prism-sub { color:#8090c0; }
 .bl-gen-style { display:flex; gap:4px; flex-wrap:wrap; }
 .bl-gen-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:6px; background:none; color:var(--muted); font-family:'Outfit',sans-serif; font-size:.5rem; cursor:pointer; touch-action:manipulation; transition:all .12s; }
 .bl-gen-btn.active { border-color:var(--pg); color:var(--pg); background:rgba(45,240,154,.08); }
+/* Bass simple-view (basic mode only) */
+.bl-simple-view { display:flex; gap:3px; flex-wrap:nowrap; align-items:center; padding:10px 2px 6px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.bl-sdot { width:18px; height:18px; border-radius:50%; border:1.5px solid var(--border2); background:transparent; display:flex; align-items:center; justify-content:center; font-size:.3rem; color:var(--muted); flex-shrink:0; transition:background .07s,border-color .07s; cursor:pointer; font-family:'Orbitron',sans-serif; touch-action:manipulation; }
+.bl-sdot.on { background:rgba(45,240,154,.15); border-color:var(--pg); color:var(--pg); }
+.bl-sdot.accent { background:rgba(45,240,154,.3); border-color:#fff; color:#fff; }
+.bl-sdot.head { background:var(--pg)!important; border-color:var(--pg)!important; color:#07080f!important; }
+.bl-sdot.b4 { margin-left:4px; }
+.bl-sdot.b4:first-child { margin-left:0; }
 
 .tune-btn.nonstandard { border-color:var(--py); color:var(--py); }
 
@@ -1760,6 +1768,7 @@ body {
 .vmt-btn { font-size:.44rem; padding:3px 10px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
 .vmt-btn.active { background:var(--accent); color:#07080f; }
 body.mode-basic .advanced-only { display:none !important; }
+body:not(.mode-basic) .basic-only { display:none !important; }
 body.light-mode .vmt-btn.active { color:#fff; }
 
 /* 22 ── Bass tab page wrapper */
@@ -2474,15 +2483,16 @@ body.light-mode .vmt-btn.active { color:#fff; }
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-bass">
  <div class="bl-page-wrap">
+  <!-- Transport: play always visible; Steps/Oct/Vol only in advanced -->
   <div class="bl-transport">
    <button class="bl-playbtn" id="bl-playbtn" onclick="blPlay()">▶ Bass</button>
-   <div class="bl-pb">
+   <div class="bl-pb advanced-only">
      <span class="bl-pl">Steps</span>
      <button class="bl-pico" onclick="blSetSteps(-1)">−</button>
      <span class="bl-stepsdisp" id="bl-stepsdisp">16</span>
      <button class="bl-pico" onclick="blSetSteps(1)">+</button>
    </div>
-   <div class="bl-pb">
+   <div class="bl-pb advanced-only">
      <span class="bl-pl">Oct</span>
      <button class="bl-pico" onclick="blShiftOct(-1)">−</button>
      <span class="bl-stepsdisp" id="bl-octdisp">3</span>
@@ -2493,7 +2503,7 @@ body.light-mode .vmt-btn.active { color:#fff; }
      <input type="range" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" id="bl-vol" min="0" max="1" step=".05" value=".4">
    </div>
   </div>
-  <!-- Auto-generate style row -->
+  <!-- Style + generate: always visible -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Style:</span>
    <div class="bl-gen-style" id="bl-gen-style">
@@ -2503,11 +2513,14 @@ body.light-mode .vmt-btn.active { color:#fff; }
      <button class="bl-gen-btn" data-blstyle="arp">Arp</button>
      <button class="bl-gen-btn" data-blstyle="offbeat">Off-Beat</button>
    </div>
-   <button class="bl-genbtn" onclick="blGenerate()">✦ Auto-Generate</button>
-   <button class="bl-genbtn" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
+   <button class="bl-genbtn" onclick="blGenerate()">✦ Generate</button>
+   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
-  <div class="bl-grid" id="bl-grid"><div class="bl-inner" id="bl-inner"></div></div>
-  <div class="bl-phbar"><div class="bl-phcur" id="bl-phcur"></div></div>
+  <!-- Basic mode: single-line step dots -->
+  <div class="bl-simple-view basic-only" id="bl-simple-view"></div>
+  <!-- Advanced mode: full 303 piano roll -->
+  <div class="bl-grid advanced-only" id="bl-grid"><div class="bl-inner" id="bl-inner"></div></div>
+  <div class="bl-phbar advanced-only"><div class="bl-phcur" id="bl-phcur"></div></div>
  </div>
  <!-- Bassline step popup (position:fixed, works from any tab) -->
  <div class="bl-smenu" id="bl-smenu" style="display:none">
@@ -6218,6 +6231,10 @@ function sqSetKit(kit){
 }
 function sqLoadGroove(idx){
   document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:RHYTHMS[idx],steps:RHYTHMS[idx].pat.length}}));
+  // Auto-generate a bass line to match the loaded groove
+  setTimeout(function(){
+    if(typeof window.blGenerate==='function') window.blGenerate();
+  }, 80);
 }
 
 
@@ -7314,12 +7331,17 @@ function blDraw(){
   var elapsed = ctx.currentTime - blNextT + 0.12;
   var ds = ((blSeqStep - Math.round(elapsed / stepSec)) % blSteps + blSteps) % blSteps;
   if(ds !== blDispStep){
+    // Advanced: highlight piano-roll step
     var cells = document.querySelectorAll('.bl-step');
     cells.forEach(function(c){ c.classList.remove('head'); });
     if(cells[ds]) cells[ds].classList.add('head');
     var ph = document.getElementById('bl-phcur');
     var gi = document.getElementById('bl-grid');
     if(ph && gi) ph.style.left = Math.max(0, ds * 36 - gi.scrollLeft) + 'px';
+    // Basic: highlight simple-view dot
+    document.querySelectorAll('.bl-sdot').forEach(function(d){ d.classList.remove('head'); });
+    var sd = document.getElementById('bls-' + ds);
+    if(sd) sd.classList.add('head');
     blDispStep = ds;
   }
   blRafID = requestAnimationFrame(blDraw);
@@ -7357,6 +7379,7 @@ function blStop(){
   blPlaying = false;
   cancelAnimationFrame(blRafID); blRafID = null;
   document.querySelectorAll('.bl-step').forEach(function(c){ c.classList.remove('head'); });
+  document.querySelectorAll('.bl-sdot').forEach(function(d){ d.classList.remove('head'); });
   var ph = document.getElementById('bl-phcur'); if(ph) ph.style.left = '0';
   var btn = document.getElementById('bl-playbtn');
   if(btn){ btn.textContent = '▶ Bass'; btn.classList.remove('active'); }
@@ -7427,6 +7450,30 @@ function blRenderGrid(){
       });
       el.addEventListener('pointercancel', function(){ if(holdT){clearTimeout(holdT);holdT=null;} });
       inner.appendChild(el);
+    })(s);
+  }
+  blRenderSimpleView();
+}
+
+// ── simple-view (basic mode): single row of step dots ──
+function blRenderSimpleView(){
+  var sv = document.getElementById('bl-simple-view'); if(!sv) return;
+  sv.innerHTML = '';
+  blEnsureGrid();
+  for(var s=0; s<blSteps; s++){
+    (function(si){
+      var cell = blGrid[si];
+      var dot = document.createElement('div');
+      dot.className = 'bl-sdot' + (si%4===0?' b4':'');
+      if(cell.v) dot.className += cell.accent ? ' accent' : ' on';
+      dot.id = 'bls-' + si;
+      dot.textContent = cell.v ? (typeof BL_NOTES!=='undefined'?BL_NOTES[cell.note]:cell.note) : '';
+      // tap to toggle
+      dot.addEventListener('click', function(){
+        cell.v = cell.v ? 0 : 1;
+        blRenderSimpleView();
+      });
+      sv.appendChild(dot);
     })(s);
   }
 }
@@ -7507,8 +7554,9 @@ window.blShiftOct = function(d){
 // Scale degrees in semitones (major and minor)
 window.blGenerate = function(){
   blEnsureGrid();
-  // Build scale from current key
-  var scale = mode === 'minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
+  // Build scale from current key/mode — supports all church modes
+  var _md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
+  var scale = _md ? _md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   var rn = root;
   var scaleNotes = scale.map(function(d){ return (rn+d)%12; });
   // Chord tones from last played chord — the most important contextual info
