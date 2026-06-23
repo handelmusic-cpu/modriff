@@ -2526,9 +2526,9 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Filter:</span>
    <span class="bl-pl">Cutoff</span>
-   <input type="range" id="bl-cutoff" min="80" max="4000" step="10" value="600" style="-webkit-appearance:none;width:80px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="blCutoff=+this.value">
+   <input type="range" id="bl-cutoff" min="80" max="4000" step="10" value="600" style="-webkit-appearance:none;width:80px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetCutoff&&window.blSetCutoff(this.value)">
    <span class="bl-pl" style="margin-left:4px">Reso</span>
-   <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="blResonance=+this.value">
+   <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetResonance&&window.blSetResonance(this.value)">
   </div>
   <!-- Style + generate: always visible -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
@@ -7641,6 +7641,9 @@ var blResonance = 2;
 var blOpen = true;
 var blVol = 0.7;
 
+window.blSetCutoff = function(v){ blCutoff = +v; };
+window.blSetResonance = function(v){ blResonance = +v; };
+
 function blMkCell(){ return {note:0, oct:blOct, len:1, slide:false, accent:false, v:0}; }
 
 function blEnsureGrid(){
@@ -8050,13 +8053,34 @@ window.blGenerate = function(){
     for(var i=0;i<opts.length;i++){ r-=opts[i][1]; if(r<=0) return opts[i][0]; }
     return opts[opts.length-1][0];
   }
-  function stepToward(from, to){
-    var diff = ((to - from + 12) % 12);
-    if(diff === 0) return from;
-    return diff <= 6 ? (from + 1) % 12 : (from + 11) % 12;
+  // Snap any pitch class to the nearest scale note
+  function snapToScale(n){
+    n = ((n % 12) + 12) % 12;
+    if(scaleNotes.indexOf(n) >= 0) return n;
+    var best = scaleNotes[0], bd = 12;
+    scaleNotes.forEach(function(sn){
+      var d = Math.min((n-sn+12)%12, (sn-n+12)%12);
+      if(d < bd){ bd=d; best=sn; }
+    });
+    return best;
   }
+  // Step from 'from' toward 'to' using scale degrees (never chromatic)
+  function scaleStep(from, to){
+    var diff = ((to - from + 12) % 12);
+    if(diff === 0) return pick(scaleNotes);
+    var sorted = scaleNotes.slice().sort(function(a,b){return a-b;});
+    var fromIdx = sorted.indexOf(from);
+    if(fromIdx < 0){
+      // from isn't in scale; snap then step
+      var snapped = snapToScale(from);
+      fromIdx = sorted.indexOf(snapped);
+    }
+    var goUp = diff <= 6;
+    var nextIdx = goUp ? (fromIdx+1) % sorted.length : (fromIdx-1+sorted.length) % sorted.length;
+    return sorted[nextIdx];
+  }
+  // Chromatic half-step approach (jazz only — intentionally outside scale)
   function chromApproach(target){
-    // one chromatic step below or above the target
     return Math.random() > 0.5 ? (target + 11) % 12 : (target + 1) % 12;
   }
 
@@ -8081,7 +8105,7 @@ window.blGenerate = function(){
         }
       } else if(beat === 3 && Math.random() > 0.5){
         blGrid[s].v=1;
-        blGrid[s].note = weighted([[chordRoot,3],[fifth,2],[(chordRoot+5)%12,1]]);
+        blGrid[s].note = weighted([[chordRoot,3],[fifth,2],[snapToScale((chordRoot+5)%12),1]]);
         blGrid[s].oct=blOct; blGrid[s].len=1;
       }
     }
@@ -8109,7 +8133,7 @@ window.blGenerate = function(){
         // Passing / scale tones walking toward next landing
         var nextLanding = walkTargets[beat===1?2:0] || chordRoot;
         blGrid[s].v=1;
-        blGrid[s].note = Math.random() > 0.4 ? stepToward(lastNote, nextLanding) : pick(scaleNotes);
+        blGrid[s].note = Math.random() > 0.4 ? scaleStep(lastNote, nextLanding) : pick(scaleNotes);
         blGrid[s].oct=blOct;
       }
       lastNote = blGrid[s].note;
@@ -8117,15 +8141,19 @@ window.blGenerate = function(){
 
   } else if(blGenStyle === 'motown'){
     // Root-third-fifth-octave melodic fills, 8th-note feel, very singable
-    var mt = [chordRoot, third, fifth, (chordRoot+10)%12, (chordRoot+9)%12];
+    // All intervals snapped to scale to stay in key
+    var m7 = snapToScale((chordRoot+10)%12); // nearest in-scale tone to minor 7th
+    var m6 = snapToScale((chordRoot+9)%12);  // nearest in-scale tone to 6th
+    var m2 = snapToScale((chordRoot+2)%12);  // nearest in-scale tone to 2nd
+    var m4 = snapToScale((chordRoot+5)%12);  // 4th (usually in scale)
     var patterns = [
       [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,0,1],
       [1,0,1,0, 0,1,0,0, 1,0,1,0, 0,1,0,0],
       [1,1,0,1, 0,1,1,0, 1,1,0,1, 0,0,1,0]
     ];
     var pat = patterns[Math.floor(Math.random()*patterns.length)];
-    var noteSeq = [chordRoot, fifth, third, chordRoot, (chordRoot+10)%12, fifth, third, (chordRoot+5)%12,
-                   chordRoot, fifth, third, chordRoot, fifth, third, (chordRoot+2)%12, chordRoot];
+    var noteSeq = [chordRoot, fifth, third, chordRoot, m7, fifth, third, m4,
+                   chordRoot, fifth, third, chordRoot, fifth, third, m2, chordRoot];
     for(var s=0;s<blSteps;s++){
       if(pat[s]){
         blGrid[s].v=1;
@@ -8170,7 +8198,7 @@ window.blGenerate = function(){
           blGrid[s].note=chordRoot; blGrid[s].accent=true;
         } else {
           blGrid[s].note = weighted([
-            [chordRoot,3],[fifth,2],[third,2],[stepToward(lastNote,chordRoot),2],[pick(scaleNotes),1]
+            [chordRoot,3],[fifth,2],[third,2],[scaleStep(lastNote,chordRoot),2],[pick(scaleNotes),1]
           ]);
           blGrid[s].accent=(Math.random()>0.78);
         }
