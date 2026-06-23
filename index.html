@@ -2512,11 +2512,21 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    </div>
    <div class="bl-pb" style="margin-left:auto">
      <span class="bl-pl">Sound</span>
-     <button class="bl-mopt active" id="blw-saw" onclick="setBlWave('sawtooth')">Saw</button>
+     <button class="bl-mopt" id="blw-saw" onclick="setBlWave('sawtooth')">Acid</button>
      <button class="bl-mopt" id="blw-sqr" onclick="setBlWave('square')">Sqr</button>
      <button class="bl-mopt" id="blw-tri" onclick="setBlWave('triangle')">Tri</button>
      <button class="bl-mopt" id="blw-sin" onclick="setBlWave('sine')">Sub</button>
+     <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
+     <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
    </div>
+  </div>
+  <!-- Filter controls row -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+   <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Filter:</span>
+   <span class="bl-pl">Cutoff</span>
+   <input type="range" id="bl-cutoff" min="80" max="4000" step="10" value="600" style="-webkit-appearance:none;width:80px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="blCutoff=+this.value">
+   <span class="bl-pl" style="margin-left:4px">Reso</span>
+   <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="blResonance=+this.value">
   </div>
   <!-- Style + generate: always visible -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
@@ -5779,7 +5789,7 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
 function startSongLoop(){
  // Always stop any existing loop first
  stopSongLoop();
- if(!setlistData[curSetlistIdx] || !sections.length) return;
+ if(!sections.length || !sections.some(s=>s.slots&&s.slots.length)) return;
  _songBaseRoot = root; // capture key at loop start for live capo
  songLoopActive = true;
  songLoopSection = (songCurrentSection >= 0 && songCurrentSection < sections.length) ? songCurrentSection : 0;
@@ -5999,9 +6009,16 @@ document.addEventListener('keydown', e => {
  if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
  e.preventDefault();
  if(isAnythingPlaying()) stopEverything();
- else toggleRhythm();
+ else startEverything();
  }
 });
+
+function startEverything(){
+ if(!rhythmOn) toggleRhythm();
+ if(!arpOn) toggleArp();
+ if(typeof window.blPlay==='function' && typeof window._blPlaying==='function' && !window._blPlaying()) window.blPlay();
+ syncFixedTransport();
+}
 
 // ═══════════════════════════════════════
 // ARROW KEYS — song section navigation (queued until current pass ends)
@@ -7595,7 +7612,9 @@ var blPlaying = false;
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 var blMenuStep = -1;
 var blGenStyle = 'rock';
-var blWave = 'sawtooth';
+var blWave = 'electric';
+var blCutoff = 600;
+var blResonance = 2;
 var blOpen = true;
 var blVol = 0.7;
 
@@ -7615,35 +7634,115 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var ctx = blCtx(); if(!ctx) return;
   var mg = blMG(); if(!mg) return;
   var freq = blFreq(note, oct);
-  var o = ctx.createOscillator();
-  var filter = ctx.createBiquadFilter();
+
+  // Master gain + amplitude envelope (shared by all modes)
   var g = ctx.createGain();
-  var dw = ctx.createWaveShaper();
-  o.type = blWave || 'sawtooth';
-  // Proper 303 slide: portamento FROM previous note if previous had slide flag
-  if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-    o.frequency.setValueAtTime(_blPrevFreq, t);
-    o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur * 0.45, 0.06));
-  } else {
-    o.frequency.setValueAtTime(freq, t);
-  }
-  // Higher resonance for authentic acid sound; accent opens filter wide
-  var cutoff = accent ? 2800 : 480;
-  var peakCut = accent ? 5200 : 900;
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(peakCut, t);
-  filter.frequency.exponentialRampToValueAtTime(cutoff * 0.04, t + Math.min(dur * 0.85, 0.4));
-  filter.Q.value = accent ? 22 : 16;
-  // Soft saturation waveshaper
-  var cv = new Float32Array(256);
-  for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*3.5)*0.88;}
-  dw.curve = cv;
-  var v = vol * (accent ? 1.35 : 0.82);
+  var v = vol * (accent ? 1.3 : 0.85);
   g.gain.setValueAtTime(v, t);
-  g.gain.setValueAtTime(v * 0.88, t + dur * 0.55);
+  g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + (slide ? 0.12 : 0.025));
-  o.connect(filter); filter.connect(dw); dw.connect(g); g.connect(mg);
-  o.start(t); o.stop(t + dur + (slide ? 0.15 : 0.05));
+  g.connect(mg);
+
+  var stopT = t + dur + (slide ? 0.15 : 0.06);
+
+  if(blWave === 'sawtooth'){
+    // Acid 303 — resonant filter sweep + soft saturation
+    var o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
+      o.frequency.setValueAtTime(_blPrevFreq, t);
+      o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
+    } else { o.frequency.setValueAtTime(freq, t); }
+    var f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    var pk = accent ? Math.min(blCutoff*5,5200) : blCutoff*4;
+    f.frequency.setValueAtTime(pk, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(blCutoff*0.05,60), t+Math.min(dur*0.85,0.4));
+    f.Q.value = blResonance;
+    var dw = ctx.createWaveShaper();
+    var cv = new Float32Array(256);
+    for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*3.5)*0.88;}
+    dw.curve = cv;
+    o.connect(f); f.connect(dw); dw.connect(g);
+    o.start(t); o.stop(stopT);
+
+  } else if(blWave === 'square' || blWave === 'triangle'){
+    // Clean filtered oscillator — user-controlled cutoff & resonance
+    var o = ctx.createOscillator();
+    o.type = blWave;
+    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
+      o.frequency.setValueAtTime(_blPrevFreq, t);
+      o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
+    } else { o.frequency.setValueAtTime(freq, t); }
+    var f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = blCutoff;
+    f.Q.value = blResonance;
+    o.connect(f); f.connect(g);
+    o.start(t); o.stop(stopT);
+
+  } else if(blWave === 'sine'){
+    // Sub bass — clean sine, no filter needed
+    var o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    o.connect(g);
+    o.start(t); o.stop(stopT);
+
+  } else if(blWave === 'electric'){
+    // Electric bass — triangle fundamental + 2nd harmonic, punchy attack filter
+    var o1 = ctx.createOscillator(); o1.type = 'triangle';
+    var o2 = ctx.createOscillator(); o2.type = 'sine';
+    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
+      o1.frequency.setValueAtTime(_blPrevFreq, t);
+      o1.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
+      o2.frequency.setValueAtTime(_blPrevFreq*2, t);
+      o2.frequency.exponentialRampToValueAtTime(freq*2, t + Math.min(dur*0.45, 0.06));
+    } else {
+      o1.frequency.setValueAtTime(freq, t);
+      o2.frequency.setValueAtTime(freq*2, t);
+    }
+    var mg1 = ctx.createGain(); mg1.gain.value = 0.72;
+    var mg2 = ctx.createGain(); mg2.gain.value = 0.28;
+    var f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    var pk2 = accent ? 3000 : 2200;
+    f.frequency.setValueAtTime(pk2, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(blCutoff, 200), t + 0.09);
+    f.Q.value = Math.min(blResonance, 5);
+    o1.connect(mg1); o2.connect(mg2);
+    mg1.connect(f); mg2.connect(f); f.connect(g);
+    o1.start(t); o2.start(t);
+    o1.stop(stopT); o2.stop(stopT);
+
+  } else if(blWave === 'upright'){
+    // Upright/double bass — sine fundamental + detuned harmonic + click transient
+    var o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    // Subtle 2nd harmonic with very short decay (wood body resonance)
+    var o2 = ctx.createOscillator(); o2.type = 'triangle';
+    o2.frequency.setValueAtTime(freq*2.02, t);
+    var hG = ctx.createGain();
+    hG.gain.setValueAtTime(0.18, t);
+    hG.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    // Pluck click — short inharmonic transient
+    var ck = ctx.createOscillator(); ck.type = 'sawtooth';
+    ck.frequency.setValueAtTime(freq*3.3, t);
+    var ckG = ctx.createGain();
+    ckG.gain.setValueAtTime(0.45, t);
+    ckG.gain.exponentialRampToValueAtTime(0.001, t + 0.018);
+    var ckF = ctx.createBiquadFilter(); ckF.type='bandpass';
+    ckF.frequency.value = freq*3; ckF.Q.value = 4;
+    // Body low-pass
+    var f = ctx.createBiquadFilter(); f.type = 'lowpass';
+    f.frequency.value = Math.min(blCutoff*1.4, 1000);
+    f.Q.value = 1;
+    o.connect(f); o2.connect(hG); hG.connect(f); f.connect(g);
+    ck.connect(ckF); ckF.connect(ckG); ckG.connect(g);
+    o.start(t); o2.start(t); ck.start(t);
+    o.stop(stopT); o2.stop(t+0.5); ck.stop(t+0.05);
+  }
+
   // Update slide state for next note
   _blPrevFreq = freq;
   _blPrevSlide = slide;
@@ -8083,7 +8182,7 @@ window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); bl
 // ── bass waveform selector ──
 window.setBlWave = function(w){
   blWave = w;
-  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin'};
+  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
 };
