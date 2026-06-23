@@ -1801,6 +1801,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn snap-on" id="ft-snap-btn" onclick="toggleSnapMode()" title="Snap: controls arp restart + song advance timing — chords always play freely">Snap: Beat</button>
  <button class="ft-btn" id="ft-theme-btn" onclick="toggleTheme()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Toggle dark/light mode">Light</button>
+ <button class="ft-btn" id="ft-help-btn" onclick="showTour()" title="App tour / help" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">?</button>
  <button class="ft-btn" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none">Song: OFF</button>
  <div class="beat-dots" id="ft-beat-dots" style="max-width:120px"></div>
 </div>
@@ -1883,7 +1884,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb purple advanced-only church-mode-btn" id="bm-mixolydian" onclick="setMode('mixolydian')">Mixo</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-locrian" onclick="setMode('locrian')">Locrian</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
- <button class="church-modes-toggle advanced-only" id="church-modes-toggle" onclick="toggleChurchModes()" title="Show/hide church modes">Modes ▾</button>
+ <button class="church-modes-toggle advanced-only" id="church-modes-toggle" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
  </div>
  <button class="nash-pill advanced-only" id="nash-pill" onclick="toggleNash()" title="Toggle Nashville Numbers">Numbers</button>
  <button class="tune-btn advanced-only" id="tune-cycle-btn" onclick="cycleMasterTune()" title="A4 reference pitch">A=440</button>
@@ -2044,7 +2045,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  </div>
  <button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
  <button class="tb" id="rec-btn" onclick="toggleRecording()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
- <button class="tb advanced-only" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass: Free</button>
+ <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass: Sync</button>
  <button class="tb advanced-only" id="auto-inv-btn" onclick="toggleAutoInv()" title="Auto-inversion: keeps chord voices in comfortable range with minimal movement" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">VoiceLead: OFF</button>
  <button class="tb advanced-only" id="auto-start-btn" onclick="toggleAutoStart()">Auto-start: OFF</button>
  </div>
@@ -2276,6 +2277,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-mixolydian" onclick="setMode('mixolydian')">Mix</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-locrian" onclick="setMode('locrian')">Loc</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
+   <button class="church-modes-toggle advanced-only" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
   </div>
  </div>
  </div>
@@ -4236,7 +4238,10 @@ function setMode(m){
 function setCOFMode(m){ setMode(m); Object.keys(MODES).forEach(x=>{ const e=document.getElementById('cof-'+x+'-btn'); if(e) e.classList.toggle('active',x===m); }); }
 function toggleChurchModes(){
   const hidden=document.body.classList.toggle('hide-church-modes');
-  const t=document.getElementById('church-modes-toggle'); if(t){ t.textContent=hidden?'Modes ▸':'Modes ▾'; t.classList.toggle('active',hidden); }
+  document.querySelectorAll('.church-modes-toggle').forEach(function(t){
+    t.textContent=hidden?'+ Modes':'− Modes';
+    t.classList.toggle('active',!hidden);
+  });
   try{localStorage.setItem('hide-church-modes',hidden?'1':'');}catch(e){}
 }
 function toggleNash(){
@@ -4549,6 +4554,12 @@ function playOnboardingDemo(){
   }
 
   render();
+}
+function showTour(){
+  try{localStorage.removeItem('modo-demo-played');}catch(e){}
+  var existing=document.getElementById('_onboard-wrap');
+  if(existing){existing.remove();var s=document.getElementById('_onboard-spot');if(s)s.remove();}
+  playOnboardingDemo();
 }
 function exportMidi(){
   try{
@@ -6000,6 +6011,7 @@ function stopEverything(){
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function'){
  window.blPlay(); // toggles off since it's currently playing
  }
+ if(_isRecording) _stopRecording(); // auto-save recording when everything stops
  Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
  stopAll();
  syncFixedTransport();
@@ -6340,37 +6352,47 @@ function toggleRecording(){
 }
 function _startRecording(){
   var ctx=getCtx();if(!ctx)return;
+  // Ensure audio context is running (needed for stream capture)
+  if(ctx.state==='suspended') ctx.resume();
   buildReverb();
   if(!window._masterLimiter){showToast('Start audio first');return;}
   _recDest=ctx.createMediaStreamDestination();
+  // Connect the master bus AND any active mix gains directly to the rec destination
   window._masterLimiter.connect(_recDest);
   _recChunks=[];
-  var mimeType=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
-  _mediaRec=new MediaRecorder(_recDest.stream,{mimeType:mimeType});
-  _mediaRec.ondataavailable=function(e){if(e.data.size>0)_recChunks.push(e.data);};
+  // Prefer WAV-like lossless; fall back to opus, then plain webm
+  var mimeType='audio/webm';
+  if(MediaRecorder.isTypeSupported('audio/webm;codecs=pcm')) mimeType='audio/webm;codecs=pcm';
+  else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType='audio/webm;codecs=opus';
+  _mediaRec=new MediaRecorder(_recDest.stream,{mimeType:mimeType,audioBitsPerSecond:192000});
+  _mediaRec.ondataavailable=function(e){if(e.data&&e.data.size>0)_recChunks.push(e.data);};
   _mediaRec.onstop=function(){
-    var blob=new Blob(_recChunks,{type:'audio/webm'});
+    if(!_recChunks.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
+    var blob=new Blob(_recChunks,{type:mimeType});
     var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');a.href=url;a.download=(document.getElementById('chart-title')?.value||'modo-session')+'.webm';
+    var a=document.createElement('a');a.href=url;
+    a.download=(document.getElementById('chart-title')?.value||'modo-session')+'.webm';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
-    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+    setTimeout(function(){URL.revokeObjectURL(url);},3000);
     _isRecording=false;_updateRecBtn();
-    showToast('Recording saved!');
+    showToast('Recording saved! ('+_recChunks.length+' chunks)');
   };
-  _mediaRec.start(200);
+  _mediaRec.start(100); // 100ms chunks for lower latency / fewer missing frames
   _isRecording=true;_updateRecBtn();
   showToast('Recording…');
 }
 function _stopRecording(){
-  if(_mediaRec&&_mediaRec.state!=='inactive')_mediaRec.stop();
-  if(_recDest&&window._masterLimiter){try{window._masterLimiter.disconnect(_recDest);}catch(e){}}
+  if(_mediaRec&&_mediaRec.state!=='inactive') _mediaRec.stop();
+  // Disconnect after a short delay so the final buffer flushes before disconnecting
+  var dest=_recDest, lim=window._masterLimiter;
   _recDest=null;
+  setTimeout(function(){ if(dest&&lim){ try{lim.disconnect(dest);}catch(e){} } },300);
 }
 function _updateRecBtn(){
   var b=document.getElementById('rec-btn');
   if(b){b.textContent=_isRecording?'■ STOP':'⬤ REC';b.style.color=_isRecording?'#ff4444':'var(--pr)';}
 }
-var _bassAutoSync=false;
+var _bassAutoSync=true;
 function toggleBassSync(){
   _bassAutoSync=!_bassAutoSync;
   var b=document.getElementById('bass-sync-btn');
@@ -6940,6 +6962,7 @@ var SQM={
 // ── state ──
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
 var sqSwing=0, sqMach='808', sqSteps=16;
+window._sqSwingVal = function(){ return sqSwing; };
 var sqGrid={}, sqVols={}, sqPitches={}, sqMachGrids={};
 var SQ_NUM_P=8, sqPats=[], sqCurPat=0;
 for(var _pi=0;_pi<SQ_NUM_P;_pi++) sqPats.push(null);
@@ -7754,16 +7777,18 @@ window._blScheduler = function(){
   var ctx = blCtx(); var mg=blMG(); if(!ctx || !blPlaying || !mg) return;
   var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
   var stepSec = 60 / bpmNow / 4;
-  // Use sequencer step count if sequencer is playing, else use own steps
+  var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = blSteps;
   while(blNextT < ctx.currentTime + (typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)){
     var cell = blGrid[blSeqStep % stepCount];
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
       var dur = stepSec * len * 0.92;
-      blPlayNote(blNextT, cell.note, cell.oct, dur, 1.0, cell.accent, cell.slide);
+      // Apply same swing offset as the rhythm sequencer (delay odd 16th steps)
+      var swOff = (blSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0;
+      blPlayNote(blNextT + swOff, cell.note, cell.oct, dur, 1.0, cell.accent, cell.slide);
     } else {
-      _blPrevSlide = false; // rest breaks slide chain
+      _blPrevSlide = false;
     }
     blNextT += stepSec;
     blSeqStep++;
@@ -8504,7 +8529,9 @@ function setViewMode(mode){
   try{
     if(localStorage.getItem('hide-church-modes')==='1'){
       document.body.classList.add('hide-church-modes');
-      var t=document.getElementById('church-modes-toggle'); if(t){t.textContent='Modes ▸';t.classList.add('active');}
+      document.querySelectorAll('.church-modes-toggle').forEach(function(t){t.textContent='+ Modes';t.classList.remove('active');});
+    } else {
+      document.querySelectorAll('.church-modes-toggle').forEach(function(t){t.textContent='− Modes';t.classList.add('active');});
     }
   }catch(e){}
 })();
