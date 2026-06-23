@@ -2045,6 +2045,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
  <button class="tb" id="rec-btn" onclick="toggleRecording()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
  <button class="tb advanced-only" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass: Free</button>
+ <button class="tb advanced-only" id="auto-inv-btn" onclick="toggleAutoInv()" title="Auto-inversion: keeps chord voices in comfortable range with minimal movement" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">VoiceLead: OFF</button>
  <button class="tb advanced-only" id="auto-start-btn" onclick="toggleAutoStart()">Auto-start: OFF</button>
  </div>
  <div class="row" style="margin-top:4px">
@@ -3136,6 +3137,69 @@ function voiceIntervals(relIntvs){
  return relIntvs.map((s,i)=>i>0&&i%2===1?s+12:s);
 }
 
+// ── Smart auto-inversion ──────────────────────────────────────────
+let autoInvOn = false;
+let _prevVoices = []; // absolute MIDI positions of last chord's upper voices
+
+// Cartesian product helper
+function _cartesian(pools){
+ return pools.reduce((acc,pool)=>acc.flatMap(c=>pool.map(v=>[...c,v])),[[]]);
+}
+
+// Returns modified relIntvs that keep voices in a comfortable range and
+// minimise total movement from the previous chord.  Bass (rootM-12) is
+// handled separately inside playChord so we only deal with upper voices.
+function smartVoiceLead(rootM, relIntvs){
+ const LO=48, HI=84; // C3–C6
+ const CENTER=64;    // E4 — gravitational center
+ const n=relIntvs.length;
+
+ // Build per-voice candidate pools (all in-range octaves for each interval)
+ const pools=relIntvs.map(s=>{
+  const abs=rootM+s;
+  const out=[];
+  for(let k=-3;k<=3;k++){ const v=abs+k*12; if(v>=LO&&v<=HI) out.push(v); }
+  return out.length ? out : [abs]; // always keep at least one option
+ });
+
+ // If no previous chord, center around E4-B4
+ if(_prevVoices.length===0){
+  const chosen=pools.map((pool,i)=>{
+   const target=CENTER+(relIntvs[i]||0);
+   return pool.reduce((b,v)=>Math.abs(v-target)<Math.abs(b-target)?v:b,pool[0]);
+  });
+  _prevVoices=chosen.slice().sort((a,b)=>a-b);
+  return chosen.map(abs=>abs-rootM);
+ }
+
+ const prevSorted=[..._prevVoices].sort((a,b)=>a-b);
+
+ // Enumerate all inversion candidates
+ const combos=_cartesian(pools);
+ let bestScore=Infinity, bestCombo=null;
+ combos.forEach(combo=>{
+  const sorted=[...combo].sort((a,b)=>a-b);
+  // Reject: duplicate pitches or span > 2 octaves (too spread)
+  if(new Set(sorted).size<n||sorted[n-1]-sorted[0]>24) return;
+  // Score = sum of voice movements, matched in sorted order
+  const score=prevSorted.reduce((sum,p,i)=>sum+Math.abs((sorted[i]||sorted[sorted.length-1])-p),0);
+  if(score<bestScore){ bestScore=score; bestCombo=combo; }
+ });
+
+ if(!bestCombo) return relIntvs; // no valid combo — keep as-is
+
+ _prevVoices=bestCombo.slice().sort((a,b)=>a-b);
+ return bestCombo.map(abs=>abs-rootM);
+}
+
+// Toggle called from UI
+function toggleAutoInv(){
+ autoInvOn=!autoInvOn;
+ _prevVoices=[]; // reset on toggle so next chord re-centers
+ const b=document.getElementById('auto-inv-btn');
+ if(b){ b.textContent=autoInvOn?'VoiceLead: ON':'VoiceLead: OFF'; b.classList.toggle('active',autoInvOn); }
+}
+
 // Strum offsets
 function strumOffsets(n){
  const sp=parseFloat(document.getElementById('strum-spread').value)||0;
@@ -4195,6 +4259,7 @@ function updateOct(){
 }
 function transposeBy(s){
  root=((root+s)%12+12)%12;
+ _prevVoices=[]; // key change — re-center voice leading
  renderChords();
 }
 function setMelMode(m){
@@ -5444,6 +5509,7 @@ function playChartSlot2(si, ci){
  const playRoot = slot.rootM + capo;
  const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
  const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
+ const voicedIntvs = autoInvOn ? smartVoiceLead(playRoot, intvs) : intvs;
  // When there's a bass note, include it in arpNotes as the lowest note
  if(playBass !== null){
  const bassIntv = playBass - playRoot;
@@ -5455,13 +5521,13 @@ function playChartSlot2(si, ci){
  if(wetDry < .99){
  stopAll();
  if(playBass !== null){
- playSlashChord(playRoot, intvs, playBass-12, 0);
+ playSlashChord(playRoot, voicedIntvs, playBass-12, 0);
  } else {
- playChord(playRoot, intvs, false, 0);
+ playChord(playRoot, voicedIntvs, false, 0);
  }
  } else if(playBass !== null){
  // arpOn + wetDry≈1: still play the bass pedal note as a sustained tone
- try{ playSlashChord(playRoot, intvs, playBass-12, 0); }catch(e){}
+ try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
  // Logic mode — highlight likely next chords on Groove tab
@@ -5679,16 +5745,17 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
 
  const intvs = getIntvs(triadQ, type7, ext);
 
+ const voicedIntvs = autoInvOn ? smartVoiceLead(rootM, intvs) : intvs;
  if(bassOverride !== null) {
  // Include bass note as the lowest note in the arp pool
  const bassIntvFromRoot = bassOverride - rootM;
  setArpChord(rootM, [bassIntvFromRoot, ...intvs], func);
  // Slash chord always plays — both bass pedal and upper chord voices
- playSlashChord(rootM, intvs, bassOverride, pressure);
+ playSlashChord(rootM, voicedIntvs, bassOverride, pressure);
  } else {
  setArpChord(rootM, intvs, func);
  stopAll();
- playChord(rootM, intvs, false, pressure);
+ playChord(rootM, voicedIntvs, false, pressure);
  }
 
  if(arpOn){
@@ -8014,12 +8081,12 @@ window.blGenerate = function(){
 window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); blRenderGrid(); };
 
 // ── bass waveform selector ──
-function setBlWave(w){
+window.setBlWave = function(w){
   blWave = w;
   var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
-}
+};
 
 // ── gen style buttons ──
 document.querySelectorAll('[data-blstyle]').forEach(function(b){
