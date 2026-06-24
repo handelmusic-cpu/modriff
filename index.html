@@ -659,12 +659,24 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 }
 .slot-bass:hover { border-color:var(--modal); background:#100820; }
 .slot-bass.active { border-color:var(--modal); color:var(--modal); background:#100820; }
-.slot-dur {
- font-size:.52rem; color:var(--muted); cursor:pointer; padding:4px 6px;
- border:1px solid var(--border2); border-radius:var(--r-sm); transition:all .1s;
- touch-action:manipulation; white-space:nowrap; text-align:center; background:var(--bg); flex:1;
+.slot-dur { display:flex; gap:2px; align-items:stretch; flex:1; }
+.slot-dur-tri { display:flex; gap:2px; align-items:center; flex:1; }
+.slot-dur-part {
+ display:flex; flex-direction:column; align-items:center; cursor:pointer;
+ padding:3px 3px 2px; border:1px solid var(--border2); border-radius:var(--r-sm);
+ background:var(--bg); touch-action:manipulation; flex:1; text-align:center; min-width:24px;
+ transition:border-color .1s;
 }
-.slot-dur:hover { border-color:var(--accent); color:var(--accent); }
+.slot-dur-val { font-family:'Orbitron',sans-serif; font-size:.55rem; color:var(--text); font-weight:700; line-height:1.1; }
+.slot-dur-lbl { font-size:.32rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; line-height:1; margin-top:1px; }
+.slot-dur-part:hover { border-color:var(--accent); }
+.slot-dur-part:hover .slot-dur-lbl { color:var(--accent); }
+.slot-rest-btn {
+ font-size:.42rem; cursor:pointer; padding:2px 5px; border:1px solid var(--border2);
+ border-radius:var(--r-sm); background:var(--bg); color:var(--muted); touch-action:manipulation;
+ white-space:nowrap; align-self:center; transition:all .1s; flex-shrink:0;
+}
+.slot-rest-btn.active { background:#1a0005; border-color:var(--dom); color:var(--dom); font-weight:600; }
 /* Row 3: delete + reorder */
 .slot-controls-row3 { display:flex; gap:4px; align-items:center; }
 .slot-del {
@@ -2317,9 +2329,10 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <!-- Chart sequence — shown above picker so you can see what you've built -->
  <div class="chart-lbl" style="margin-top:4px">Your progression:</div>
  <div class="chart-seq empty" id="chart-sequence"></div>
- <div style="display:flex;gap:6px;margin-bottom:8px">
+ <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
  <button class="sc-btn danger" onclick="clearChart()" style="font-size:.44rem;padding:4px 10px"> Clear</button>
  <button class="sc-btn" onclick="printChart()" style="font-size:.44rem;padding:4px 10px">⎙ PDF</button>
+ <button class="tb advanced-only" id="song-swing-btn" onclick="toggleSongSwing()" title="Swing 8th notes for jazz feel (uses Rhythm tab swing amount)" style="font-size:.44rem;padding:4px 10px;margin-left:4px">Swing: OFF</button>
  </div>
 
  <!-- Extension toggle -->
@@ -4777,14 +4790,14 @@ function loadProgPreset(pp){
  pp.degrees.forEach(di=>{
  const s=steps[di], noteN=nn((root+s)%12), q=tqs[di];
  const triadName=noteN+(q===1?'m':q===2?'°':q===3?'+':'');
- sections[curSection].slots.push({label:triadName,numeral:nums[di],rootM:rm+s,triadQ:q,type7:t7s[di],func:funcs[di],ext:'triad',bassNote:null,bars:1});
+ sections[curSection].slots.push({label:triadName,numeral:nums[di],rootM:rm+s,triadQ:q,type7:t7s[di],func:funcs[di],ext:'triad',bassNote:null,bars:1,beats:0,eighths:0,isRest:false});
  });
  buildSectionTabs(); renderChartSeq();
 }
 
 function addToSection(slot){
  if(!sections[curSection]) sections[curSection]={name:'Verse',slots:[]};
- sections[curSection].slots.push({...slot,bars:1,bassNote:null});
+ sections[curSection].slots.push({...slot,bars:1,beats:0,eighths:0,isRest:false,bassNote:null});
  renderChartSeq();
  buildSectionTabs();
  // Logic mode: highlight likely next chord after adding
@@ -4807,10 +4820,15 @@ function renderChartSeq(){
  const wrap=document.createElement('div'); wrap.className='chart-slot';
  const btn=document.createElement('div'); btn.className='chart-chord-btn'+(i===chartSeqIdx?' seq-active':'');
  btn.style.borderTop='2px solid var(--'+(slot.func==='tonic'?'tonic':slot.func==='subdom'?'subdom':slot.func==='dom'?'dom':'modal')+')';
- const displayName=slot.bassNote!==null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
- btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
- if(slot.ext&&slot.ext!=='triad') btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${slot.ext}</span>`;
- btn.addEventListener('click',()=>{ chartSeqIdx=i; playChartSlot(i); renderChartSeq(); });
+ if(slot.isRest) btn.style.opacity='.45';
+ if(slot.isRest){
+  btn.innerHTML='<span class="slot-cnum" style="color:var(--muted)">—</span><span style="color:var(--muted);font-size:.6rem">REST</span>';
+ } else {
+  const displayName=slot.bassNote!==null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
+  btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
+  if(slot.ext&&slot.ext!=='triad') btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${slot.ext}</span>`;
+ }
+ btn.addEventListener('click',()=>{ chartSeqIdx=i; if(!slot.isRest) playChartSlot(i); renderChartSeq(); });
 
  // ── Row 1: Extension type ──────────────────
  const ext=document.createElement('div'); ext.className='slot-ext';
@@ -4830,7 +4848,6 @@ function renderChartSeq(){
  const updateBass=()=>{
  if(slot.bassNote===null){ bass.textContent='△ Bass'; bass.classList.remove('active'); }
  else {
- const chordTones=[0,3,4,7,10,11].map(s=>(slot.rootM+s)%12);
  const bassPC=((slot.bassNote%12)+12)%12;
  bass.textContent='/'+nn(bassPC);
  bass.classList.add('active');
@@ -4847,18 +4864,47 @@ function renderChartSeq(){
  updateBass();
  });
 
- const BEAT_OPTS=[1,2,4,8];
- const beatLabel=(n)=>n+' bar'+(n===1?'':'s');
+ // Duration tri-component: bars / beats / 8ths
  const dur=document.createElement('div'); dur.className='slot-dur';
- dur.textContent=beatLabel(slot.bars||1);
- dur.addEventListener('click',()=>{
- const cur=slot.bars||1;
- const idx=BEAT_OPTS.indexOf(cur);
- slot.bars=BEAT_OPTS[(idx+1)%BEAT_OPTS.length];
- dur.textContent=beatLabel(slot.bars);
+ const durTri=document.createElement('div'); durTri.className='slot-dur-tri';
+
+ const makeDurPart=(label, getVal, setVal)=>{
+  const part=document.createElement('div'); part.className='slot-dur-part';
+  const valEl=document.createElement('div'); valEl.className='slot-dur-val';
+  const lblEl=document.createElement('div'); lblEl.className='slot-dur-lbl';
+  valEl.textContent=getVal(); lblEl.textContent=label;
+  part.appendChild(valEl); part.appendChild(lblEl);
+  part.addEventListener('click',()=>{
+   const next=(getVal()+1)%9;
+   const nb=label==='bars'?next:(slot.bars||0);
+   const nbt=label==='beats'?next:(slot.beats||0);
+   const ne=label==='8ths'?next:(slot.eighths||0);
+   if(nb===0&&nbt===0&&ne===0){ showZeroDurationModal(slot,()=>renderChartSeq()); return; }
+   setVal(next); valEl.textContent=next;
+  });
+  return part;
+ };
+
+ if(!slot.isRest){
+  slot.bars = slot.bars != null ? slot.bars : 1;
+  slot.beats = slot.beats || 0;
+  slot.eighths = slot.eighths || 0;
+ }
+ durTri.appendChild(makeDurPart('bars',()=>slot.bars||0,v=>{slot.bars=v;}));
+ durTri.appendChild(makeDurPart('beats',()=>slot.beats||0,v=>{slot.beats=v;}));
+ durTri.appendChild(makeDurPart('8ths',()=>slot.eighths||0,v=>{slot.eighths=v;}));
+ dur.appendChild(durTri);
+
+ // Rest toggle
+ const restBtn=document.createElement('div'); restBtn.className='slot-rest-btn'+(slot.isRest?' active':'');
+ restBtn.textContent=slot.isRest?'REST':'Chord';
+ restBtn.title='Toggle rest (drums/bass continue, chord stops)';
+ restBtn.addEventListener('click',()=>{
+  slot.isRest=!slot.isRest;
+  renderChartSeq();
  });
 
- row2.appendChild(bass); row2.appendChild(dur);
+ row2.appendChild(bass); row2.appendChild(dur); row2.appendChild(restBtn);
 
  // ── Row 3: Reorder + Delete ────────────────
  const row3=document.createElement('div'); row3.className='slot-controls-row3';
@@ -4949,7 +4995,7 @@ function loadSong(song,idx){
  if(ab){ ab.textContent='Auto ▶ OFF'; ab.classList.remove('on'); }
 
  curSetlistIdx=idx; root=song.root; mode=song.mode;
- sections=song.sections?song.sections.map(s=>({name:s.name,slots:s.slots.map(sl=>({...sl}))})): [{name:'Verse',slots:[]}];
+ sections=song.sections?song.sections.map(s=>({name:s.name,slots:s.slots.map(sl=>({beats:0,eighths:0,isRest:false,...sl}))})): [{name:'Verse',slots:[]}];
  curSection=0; chartSeqIdx=-1; songCurrentSection=0; songCurrentSlot=-1;
 
  document.getElementById('chart-title').value=song.title;
@@ -5532,11 +5578,16 @@ function renderSongsPerformView(){
  const btn = document.createElement('div');
  btn.className = 'songs-chord-btn';
  btn.style.borderTop = '2px solid var(--'+(slot.func==='tonic'?'tonic':slot.func==='subdom'?'subdom':slot.func==='dom'?'dom':'modal')+')';
- // Show all alterations: extension, bass, numeral
- const extLabel = (slot.ext && slot.ext!=='triad') ? '<sup style="font-size:.5em;opacity:.7">'+slot.ext+'</sup>' : '';
- const bassLabel = slot.bassNote!==null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
- const beatsLabel = (slot.bars&&slot.bars!==4) ? '<div style="font-size:.32rem;color:var(--muted);margin-top:1px">'+(slot.bars<=3?slot.bars+'b':'2bars')+'</div>' : '';
- btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+slot.label+extLabel+bassLabel+beatsLabel;
+ // Show all alterations: extension, bass, numeral, duration, rest
+ if(slot.isRest){
+  btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">—</div><span style="color:var(--muted);font-size:.7rem">REST</span><div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
+  btn.style.opacity = '.55';
+ } else {
+  const extLabel = (slot.ext && slot.ext!=='triad') ? '<sup style="font-size:.5em;opacity:.7">'+slot.ext+'</sup>' : '';
+  const bassLabel = slot.bassNote!==null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
+  const durLabel = '<div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
+  btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+slot.label+extLabel+bassLabel+durLabel;
+ }
  btn.addEventListener('click', ()=>{ songChartTap(si, ci); });
  row.appendChild(btn);
  });
@@ -5563,6 +5614,13 @@ function renderSetlistPerform(){
 function playChartSlot2(si, ci){
  const slots = sections[si]?.slots; if(!slots||!slots[ci]) return;
  const slot = slots[ci];
+ // REST: silence chord/arp but let drums/bass continue
+ if(slot.isRest){
+  stopAll();
+  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
+  if(logicModeOn) applyLogicHighlights(-1);
+  return;
+ }
  // Live capo: shift all notes by (current key − key at loop start), non-destructive
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
@@ -5869,6 +5927,52 @@ let songWaitingForBar = false;
 let _songBaseRoot = -1;
 let songBarCounter = 0; // counts bars elapsed since slot started
 let songBarsForSlot = 1; // bars allocated to current slot
+let _songSlotNeedsTimeout = false; // true when sub-bar timing is needed
+let songSwingOn = false;
+
+function toggleSongSwing(){
+ songSwingOn = !songSwingOn;
+ const btn = document.getElementById('song-swing-btn');
+ if(btn){ btn.textContent = 'Swing: '+(songSwingOn?'ON':'OFF'); btn.classList.toggle('active', songSwingOn); }
+}
+
+function slotTotalMs(slot){
+ const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
+ const r = RHYTHMS[rhythmSel];
+ const barMs = r ? (60000/bpm / r.stepDiv) * r.pat.length : (60000/bpm)*4;
+ const beatMs = 60000/bpm;
+ const swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
+ const eighthMs = songSwingOn ? beatMs*(0.5 + (swingAmt/70)*0.167) : beatMs*0.5;
+ const bars = slot.bars || 0;
+ const beats = slot.beats || 0;
+ const eighths = slot.eighths || 0;
+ const total = bars * barMs + beats * beatMs + eighths * eighthMs;
+ return total > 0 ? total : barMs;
+}
+
+function _slotDurLabel(slot){
+ const b=slot.bars||0, bt=slot.beats||0, e=slot.eighths||0;
+ const parts=[];
+ if(b) parts.push(b+(b===1?'bar':'bars'));
+ if(bt) parts.push(bt+(bt===1?'beat':'beats'));
+ if(e) parts.push(e+'♪');
+ return parts.length ? parts.join('+') : '1bar';
+}
+
+function showZeroDurationModal(slot, onOk){
+ const overlay = document.createElement('div');
+ overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box = document.createElement('div');
+ box.style.cssText = 'background:var(--surf);border:2px solid var(--dom);border-radius:16px;padding:22px 24px;max-width:300px;text-align:center;';
+ box.innerHTML = '<div style="font-size:.72rem;font-weight:700;color:var(--dom);margin-bottom:10px">Zero duration not possible</div><div style="font-size:.54rem;color:var(--muted);line-height:1.7;margin-bottom:16px">Each chord needs at least 1 bar, 1 beat, or 1 eighth note.<br>Resetting to 1 bar.<br><br>To remove a chord entirely, use the <strong style="color:var(--text)">×</strong> button.</div><button id="zdm-ok" style="padding:7px 22px;border:none;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font-size:.6rem;font-weight:600;width:100%">OK</button>';
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ box.querySelector('#zdm-ok').addEventListener('click', ()=>{
+  slot.bars = 1; slot.beats = 0; slot.eighths = 0;
+  overlay.remove();
+  if(onOk) onOk();
+ });
+}
 
 function _playLoopSlot(){
  if(!songLoopActive) return;
@@ -5877,27 +5981,22 @@ function _playLoopSlot(){
  if(songLoopSlot >= sec.slots.length) songLoopSlot = 0;
 
  const slot = sec.slots[songLoopSlot];
- songBarsForSlot = slot.bars || 1; // bars per slot (pattern cycles)
+ songBarsForSlot = slot.bars || 0;
  songBeatCounter = 0;
 
- // Play the chord
+ // Sub-bar timing: if slot has beats or eighths, always use setTimeout
+ const hasSubBar = (slot.beats||0) > 0 || (slot.eighths||0) > 0 || songBarsForSlot === 0;
+ _songSlotNeedsTimeout = hasSubBar;
+
+ // Play the chord (or rest)
  playChartSlot2(songLoopSection, songLoopSlot);
  _highlightLoopSlot(songLoopSection, songLoopSlot);
 
- // Duration = barDurMs × barsForSlot.  One "bar" = one full pattern cycle
- // so odd meters (13 steps, 7/8, etc.) stay locked to the actual pattern length.
- function barDurMs(){
- const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
- const r = RHYTHMS[rhythmSel];
- if(!r) return (60000/bpm) * 4; // fallback: 4/4
- return (60000/bpm / r.stepDiv) * r.pat.length;
- }
- if(snapMode === 'off' || !rhythmOn){
- // Free mode or no clock: use a pattern-length timer
+ if(snapMode === 'off' || !rhythmOn || _songSlotNeedsTimeout){
  clearTimeout(songLoopTimer);
- songLoopTimer = setTimeout(_advanceLoopSlot, barDurMs() * (songBarsForSlot||1));
+ songLoopTimer = setTimeout(_advanceLoopSlot, slotTotalMs(slot));
  }
- // Snap with clock: tickSongLoop is called once per bar boundary from rhythm/sequencer
+ // Snap with whole-bar clock: tickSongLoop handles advancement when !_songSlotNeedsTimeout
 }
 
 // Bar counter — incremented once per pattern cycle from rhythm (isBar) or sequencer (wrap)
@@ -5906,6 +6005,7 @@ let songBeatCounter = 0;
 // Called once per bar boundary from all clock sources
 function tickSongLoop(){
  if(!songLoopActive) return;
+ if(_songSlotNeedsTimeout) return; // setTimeout is handling this slot
  if(songWaitingForBar){
  songWaitingForBar = false;
  _playLoopSlot();
