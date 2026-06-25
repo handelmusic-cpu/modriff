@@ -2783,10 +2783,10 @@ const WAVE_GAIN = {
  sawtooth:.72,
  square:.62,
  supersaw:.68,
- piano:.80,
+ piano:.58, // additive partials (multiple harmonics sum louder)
  organ:.26, // additive harmonics (drawbar)
  rhodes:.34, // tine-like FM transient
- pad:.44, // slow attack supersaw
+ pad:.46,   // filtered saws + triangle layer + slow attack
 };
 
 // ── Borrowed chord definitions ──
@@ -3129,32 +3129,68 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  const f=masterTune*Math.pow(2,(midi-69)/12);
  const r=[];
 
- if(wv==='supersaw'||wv==='pad'){
- // 7 detuned saws — pad has slower modulation
- const ss=buildSuperSaw(ctx,f,wv==='pad'?45:28);
+ if(wv==='supersaw'){
+ // 7 detuned saws — bright and immediate
+ const ss=buildSuperSaw(ctx,f,28);
  ss.out.connect(gainNode);
  ss.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.1);r.push(o);});
 
+ } else if(wv==='pad'){
+ // Warm pad: detuned saws + triangle warmth layer + lowpass + slow inner attack
+ const ss=buildSuperSaw(ctx,f,32);
+ const tOsc=ctx.createOscillator(); tOsc.type='triangle'; tOsc.frequency.value=f; tOsc.detune.value=9;
+ const tG=ctx.createGain(); tG.gain.value=0.38; tOsc.connect(tG); tG.connect(ss.out);
+ const padFilt=ctx.createBiquadFilter(); padFilt.type='lowpass';
+ padFilt.frequency.value=Math.min(f*3.5,3200); padFilt.Q.value=0.7;
+ // Inner gain creates slow attack regardless of outer envelope
+ const innerG=ctx.createGain();
+ innerG.gain.setValueAtTime(0,t0); innerG.gain.linearRampToValueAtTime(1,t0+0.32);
+ ss.out.connect(padFilt); padFilt.connect(innerG); innerG.connect(gainNode);
+ ss.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.5);r.push(o);});
+ tOsc.start(t0); tOsc.stop(t0+dur+.5); r.push(tOsc);
+
  } else if(wv==='piano'){
- // Triangle fundamental (richer harmonics than sine) run through a lowpass
- // that sweeps down — mimics a struck string's brightness decaying/damping
- // over time — plus a tamer inharmonic FM "hammer" transient on attack.
- const osc=ctx.createOscillator(); osc.type='triangle'; osc.frequency.value=f;
- osc.detune.value=(Math.random()-.5)*3;
+ // Additive piano: sine fundamental + inharmonic stretched partials, each with a different decay rate
+ const inh=1+f*0.000014; // inharmonicity grows with frequency (real piano strings stretch)
+ // Fundamental through bright→warm filter sweep
+ const o1=ctx.createOscillator(); o1.type='sine'; o1.frequency.value=f;
+ o1.detune.value=(Math.random()-.5)*2.5;
  const filt=ctx.createBiquadFilter(); filt.type='lowpass';
- filt.frequency.setValueAtTime(f*8,t0);
- filt.frequency.exponentialRampToValueAtTime(Math.max(f*1.5,200),t0+dur*0.6);
- filt.Q.value=0.7;
- // Hammer-strike modulator — inharmonic FM that fades quickly
+ filt.frequency.setValueAtTime(Math.min(f*7,6500),t0);
+ filt.frequency.exponentialRampToValueAtTime(Math.max(f*1.4,160),t0+dur*0.65);
+ filt.Q.value=0.6;
+ // 2nd partial — slightly stretched, fades over half the note
+ const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=f*2*inh;
+ const g2=ctx.createGain();
+ g2.gain.setValueAtTime(0.22,t0);
+ g2.gain.exponentialRampToValueAtTime(0.001,t0+Math.max(dur*0.5,0.18));
+ // 3rd partial — decays faster
+ const o3=ctx.createOscillator(); o3.type='sine'; o3.frequency.value=f*3*inh*inh;
+ const g3=ctx.createGain();
+ g3.gain.setValueAtTime(0.13,t0);
+ g3.gain.exponentialRampToValueAtTime(0.001,t0+Math.max(dur*0.28,0.09));
+ // 4th partial — brief brightness burst at attack
+ const o4=ctx.createOscillator(); o4.type='sine'; o4.frequency.value=f*4*inh*inh*inh;
+ const g4=ctx.createGain();
+ g4.gain.setValueAtTime(0.07,t0);
+ g4.gain.exponentialRampToValueAtTime(0.001,t0+0.08);
+ // Hammer strike — FM clamped so high notes don't detune wildly
  const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*2.76;
  const modG=ctx.createGain();
- modG.gain.setValueAtTime(f*0.35,t0);
- modG.gain.exponentialRampToValueAtTime(0.001,t0+0.045);
- mod.connect(modG); modG.connect(osc.frequency);
- osc.connect(filt); filt.connect(gainNode);
- mod.start(t0); mod.stop(t0+0.06);
- osc.start(t0); osc.stop(t0+dur+.05);
- r.push(osc,mod);
+ modG.gain.setValueAtTime(Math.min(f*0.09,48),t0);
+ modG.gain.exponentialRampToValueAtTime(0.001,t0+0.038);
+ mod.connect(modG); modG.connect(o1.frequency);
+ o1.connect(filt); filt.connect(gainNode);
+ o2.connect(g2); g2.connect(gainNode);
+ o3.connect(g3); g3.connect(gainNode);
+ o4.connect(g4); g4.connect(gainNode);
+ mod.start(t0); mod.stop(t0+0.055);
+ o1.start(t0); o2.start(t0); o3.start(t0); o4.start(t0);
+ o1.stop(t0+dur+0.05);
+ o2.stop(t0+Math.max(dur*0.55,0.25));
+ o3.stop(t0+Math.max(dur*0.35,0.12));
+ o4.stop(t0+0.12);
+ r.push(o1,o2,o3,o4,mod);
 
  } else if(wv==='organ'){
  // Hammond-style additive: fundamental + 2nd + 3rd + 4th harmonics
