@@ -2303,6 +2303,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <div class="song-meta">
  <input class="song-title-input" id="chart-title" type="text" placeholder="Song title…">
  <button class="sc-btn primary" onclick="saveToSetlist()" title="Save song to setlist" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Save</button>
+ <button class="sc-btn danger" onclick="clearChart()" title="Clear all chords and sections" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Clear</button>
  <button class="tb advanced-only" id="save-rhythm-btn" onclick="toggleSaveRhythm()" title="Also save current drum pattern and bassline with this song" style="font-size:.42rem;padding:4px 8px;flex-shrink:0">+Rhythm: OFF</button>
  <button class="tb" onclick="shareProgression()" title="Copy share URL to clipboard" style="font-size:.44rem;padding:4px 8px">Share</button>
  <button class="tb" onclick="exportMidi()" title="Export MIDI file" style="font-size:.44rem;padding:4px 8px">MIDI</button>
@@ -2331,7 +2332,6 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <div class="chart-lbl" style="margin-top:4px">Your progression:</div>
  <div class="chart-seq empty" id="chart-sequence"></div>
  <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
- <button class="sc-btn danger" onclick="clearChart()" style="font-size:.44rem;padding:4px 10px"> Clear</button>
  <button class="sc-btn" onclick="printChart()" style="font-size:.44rem;padding:4px 10px">⎙ PDF</button>
  <button class="tb advanced-only" id="song-swing-btn" onclick="toggleSongSwing()" title="Swing 8th notes for jazz feel (uses Rhythm tab swing amount)" style="font-size:.44rem;padding:4px 10px;margin-left:4px">Swing: OFF</button>
  </div>
@@ -5018,7 +5018,30 @@ function renderPerfChartRow(){
 
 function snapChartKey(){ buildChartPicker(); const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mode==='major'?'Maj':'Min'}`; }
 
-function clearChart(){ sections=[{name:'Verse',slots:[]}]; curSection=0; chartSeqIdx=-1; buildSectionTabs(); renderChartSeq(); renderPerfChartRow(); document.getElementById('chart-title').value=''; }
+function clearChart(){
+ const hasContent = sections.some(s=>s.slots.length) || sections.length > 1 || document.getElementById('chart-title').value.trim();
+ if(hasContent){
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--surf);border:2px solid var(--dom);border-radius:16px;padding:22px 24px;max-width:300px;text-align:center;';
+  box.innerHTML='<div style="font-size:.8rem;font-weight:700;color:var(--dom);margin-bottom:8px">Clear song?</div><div style="font-size:.62rem;color:var(--muted);margin-bottom:18px">This will remove all chords and sections. Use Save first if you want to keep this song.</div><div style="display:flex;gap:10px;justify-content:center"><button id="clr-cancel" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:.6rem;cursor:pointer">Cancel</button><button id="clr-ok" style="padding:8px 18px;border-radius:8px;border:none;background:var(--dom);color:#fff;font-size:.6rem;font-weight:700;cursor:pointer">Clear</button></div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  box.querySelector('#clr-cancel').addEventListener('click',()=>overlay.remove());
+  box.querySelector('#clr-ok').addEventListener('click',()=>{
+   overlay.remove();
+   _doClearChart();
+  });
+ } else {
+  _doClearChart();
+ }
+}
+function _doClearChart(){
+ sections=[{name:'Verse',slots:[]}]; curSection=0; chartSeqIdx=-1;
+ buildSectionTabs(); renderChartSeq(); renderPerfChartRow();
+ document.getElementById('chart-title').value='';
+}
 
 let songSaveRhythm = false;
 function toggleSaveRhythm(){
