@@ -1478,16 +1478,15 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .sq-tlbl small { display:block; font-size:.3rem; color:#222; margin-top:1px; }
 .sq-nlbl { font-size:.38rem; width:28px; text-align:right; flex-shrink:0; line-height:1; padding-right:2px; }
 /* step cell */
-.sq-step { width:var(--sq-sz); height:var(--sq-sz); border-radius:5px; background:var(--sq-sur); border:1px solid var(--sq-bdr); cursor:pointer; flex-shrink:0; position:relative; overflow:hidden; touch-action:pan-x; user-select:none; -webkit-user-select:none; }
-.sq-step.b4 { border-left:2px solid rgba(255,255,255,.12); scroll-snap-align:start; }
+.sq-step { width:var(--sq-sz); height:var(--sq-sz); border-radius:5px; background:var(--sq-sur); border:1px solid var(--sq-bdr); cursor:pointer; flex-shrink:0; position:relative; overflow:hidden; touch-action:pan-x; user-select:none; -webkit-user-select:none; outline:none; }
+.sq-step.b4 { border-left:2px solid rgba(168,85,247,.18); scroll-snap-align:start; }
 .sq-step .vb { position:absolute; bottom:0; left:0; right:0; pointer-events:none; opacity:.25; }
 .sq-step .fi { position:absolute; inset:3px; border-radius:3px; background:transparent; pointer-events:none; }
 .sq-step.on .fi { background:var(--sq-tc,#888); }
 .sq-step.on { border-color:var(--sq-tc,#888); }
 .sq-step.accent .fi { background:var(--sq-tc,#888); }
-.sq-step.accent { border-color:#fff; }
-.sq-step.accent::before { content:''; position:absolute; inset:-2px; border-radius:6px; border:2px solid var(--sq-tc,#888); opacity:.55; pointer-events:none; }
-.sq-step.head { border-color:rgba(255,255,255,.75)!important; border-width:2px!important; }
+.sq-step.accent { border-color:var(--sq-tc,#888); }
+.sq-step.head { border-color:rgba(255,255,255,.55)!important; border-width:2px!important; }
 .sq-step .rd { position:absolute; bottom:2px; right:2px; display:flex; gap:1px; pointer-events:none; }
 .sq-step .rd i { display:block; width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.8); font-style:normal; }
 .sq-step .ob { position:absolute; top:1px; left:2px; font-size:.3rem; color:rgba(255,220,80,.9); font-weight:700; pointer-events:none; line-height:1; }
@@ -1555,7 +1554,7 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
   opacity:.65;
 }
 .sq-landscape-hint svg { flex-shrink:0; }
-/* Beat pagination dots — portrait only */
+/* Beat pagination dots + scroll arrows — portrait only */
 .sq-page-dots {
   display:none;
   justify-content:center;
@@ -1579,6 +1578,15 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
   transform:scale(1.1);
   opacity:.7;
 }
+.sq-parrow {
+  font-size:.65rem;
+  color:var(--sq-acc);
+  flex-shrink:0;
+  line-height:1;
+  transition:opacity .15s;
+  user-select:none;
+}
+.sq-parrow.hidden { opacity:0; pointer-events:none; }
 
 /* ── Hue transition animations ── */
 .chord-split, .chord-out, .key-btn, .play-btn,
@@ -1871,7 +1879,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  FIXED TRANSPORT BAR (always visible)
 ══════════════════════════════════════ -->
 <div class="fixed-transport" id="fixed-transport">
- <button class="ft-btn rhy off" id="ft-rhy-btn" onclick="ftRhyClick()">▶ Rhythm</button>
+ <button class="ft-btn rhy off" id="ft-rhy-btn" onclick="ftRhyClick()">▶ Play</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="toggleArp()">Arp OFF</button>
  <button class="ft-btn bas off" id="ft-bas-btn" onclick="ftBassClick()">Bass OFF</button>
  <div class="ft-bpm">
@@ -3048,6 +3056,7 @@ let masterTune=440; // A4 reference pitch — change for 432Hz etc.
 let nashMode=false, showRelMinors=true;
 let melWave='sine', melOctShift=12, melMode='keys', holdMode=false;
 let arpOn=false, arpPat='up', arpOcts=1, arpGatePat=0, humanizeOn=false;
+var blEnabled=false; // bass is enabled for next Play press (separate from blPlaying)
 let arpWave='supersaw';
 let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=7;
 let _arpBounceVel=1.0;
@@ -4179,7 +4188,7 @@ function toggleRhythm(){
  rhythmOn=!rhythmOn;
  ['rhy-play','rhy-play2'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=rhythmOn?'■ Stop':'▶ Rhythm'; b.className=rhythmOn?'play-btn stop':'play-btn start'; } });
  if(rhythmOn){ rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); const ctx=getCtx(); if(ctx){rhythmNextBeat=clockAlignTo(ctx,rhythmStepSec);rhythmIdx=0;} clearTimeout(clockTimer);tickClock(); }
- else{ clearTimeout(clockTimer); resetBeatDots(); if(arpOn){ const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,clockStepSec());} clearTimeout(clockTimer);tickClock(); } }
+ else{ clearTimeout(clockTimer); resetBeatDots(); }
  syncFixedTransport();
 }
 
@@ -4213,8 +4222,17 @@ function setArpOcts(n){
 function toggleArp(){
  arpOn=!arpOn;
  ['arp-toggle','arp-toggle-p'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=arpOn?'Arp ON':'Arp OFF'; b.classList.toggle('active',arpOn); }});
- if(arpOn){ if(!arpNotes.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc); const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,clockStepSec());} arpIdx=0;arpDir=1;arpGateIdx=0; clearTimeout(clockTimer);tickClock(); }
- else{ if(!rhythmOn) clearTimeout(clockTimer); }
+ if(arpOn){
+  if(!arpNotes.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc);
+  var masterRunning=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
+  if(masterRunning){
+   const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,clockStepSec());}
+   arpIdx=0;arpDir=1;arpGateIdx=0;
+   clearTimeout(clockTimer);tickClock();
+  }
+ } else {
+  if(!rhythmOn&&!(typeof window._sqPlaying==='function'&&window._sqPlaying())&&!(typeof window._blPlaying==='function'&&window._blPlaying())) clearTimeout(clockTimer);
+ }
  syncFixedTransport();
 }
 function onArpRateSlider(v){
@@ -4523,7 +4541,7 @@ function setMelMode(m){
  if(m==='kalimba') buildKalimba();
 }
 function shiftMelOct(d){
- const n=melOctShift+d*12; if(n<-12||n>24) return;
+ const n=melOctShift+d*12; if(n<-24||n>48) return;
  melOctShift=n; updateMelOctDisp(); buildMelodyStrip();
 }
 function updateMelOctDisp(){
@@ -4590,18 +4608,21 @@ function buildKalimba(){
 // ─── FIXED TRANSPORT ───────────────────────────────────────────────────────
 function syncFixedTransport(){
  const rb=document.getElementById('ft-rhy-btn');
- if(rb){rb.textContent=rhythmOn?'■ Rhythm':'▶ Rhythm';rb.classList.toggle('off',!rhythmOn);}
+ if(rb){
+  const playing=isAnythingPlaying();
+  rb.textContent=playing?'■ Stop':'▶ Play';
+  rb.classList.toggle('off',!playing);
+ }
  const ab=document.getElementById('ft-arp-btn');
  if(ab){ab.textContent=arpOn?'Arp ON':'Arp OFF';ab.classList.toggle('off',!arpOn);}
  const bb=document.getElementById('ft-bas-btn');
- if(bb){ const bp=typeof window._blPlaying==='function'&&window._blPlaying(); bb.textContent=bp?'■ Bass':'Bass OFF'; bb.classList.toggle('off',!bp); }
- // Sync snap button
+ if(bb){ bb.textContent=blEnabled?'Bass ON':'Bass OFF'; bb.classList.toggle('off',!blEnabled); }
  const sb=document.getElementById('ft-snap-btn');
  if(sb){
- const on=snapMode==='bar';
- sb.textContent=on?'Q: ON':'Q: OFF';
- sb.classList.toggle('snap-on',on);
- sb.classList.toggle('snap-off',!on);
+  const on=snapMode==='bar';
+  sb.textContent=on?'Q: ON':'Q: OFF';
+  sb.classList.toggle('snap-on',on);
+  sb.classList.toggle('snap-off',!on);
  }
  updateFtRateDisp();
  updateFtSongBtn();
@@ -5279,6 +5300,7 @@ function loadSong(song,idx){
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
+ if(typeof syncFixedTransport==='function') syncFixedTransport();
 }
 
 // Setlist nav in Perform
@@ -5958,18 +5980,7 @@ function switchTab(t){
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
  if(t==='songs') renderSetlistPerform();
- // Sync fixed transport button: on rhythm tab it controls the sequencer
- const ftRhy = document.getElementById('ft-rhy-btn');
- if(ftRhy){
-   if(t==='rhythm'){
-     const sqOn = typeof window._sqPlaying === 'function' && window._sqPlaying();
-     ftRhy.textContent = sqOn ? '■ Seq' : '▶ Seq';
-     ftRhy.classList.toggle('off', !sqOn);
-   } else {
-     ftRhy.textContent = rhythmOn ? '■ Stop' : '▶ Rhythm';
-     ftRhy.classList.toggle('off', !rhythmOn);
-   }
- }
+ syncFixedTransport();
 }
 
 // ═══════════════════════════════════════
@@ -6604,24 +6615,34 @@ function stopSongLoopIfActive(){
 // SPACEBAR — global start/stop (panic stop)
 // ═══════════════════════════════════════
 function isAnythingPlaying(){
- return rhythmOn || arpOn || songLoopActive ||
+ return rhythmOn || songLoopActive ||
  (typeof window._sqPlaying==='function' && window._sqPlaying()) ||
  (typeof window._blPlaying==='function' && window._blPlaying());
 }
 
 // Halts every sound-producing engine at once: rhythm, arp, sequencer,
 // bassline, song loop, and any held melody notes.
+// arpOn and blEnabled flags are preserved so next Play restores them.
 function stopEverything(){
  stopSongLoopIfActive();
- if(rhythmOn) toggleRhythm();
- if(arpOn) toggleArp();
+ // Stop rhythm directly without restarting arp clock
+ if(rhythmOn){
+  rhythmOn=false;
+  clearTimeout(clockTimer);
+  resetBeatDots();
+  ['rhy-play','rhy-play2'].forEach(function(id){ var b=document.getElementById(id); if(b){ b.textContent='▶ Rhythm'; b.className='play-btn start'; }});
+ }
+ // Stop sequencer
  if(typeof window._sqPlaying==='function' && window._sqPlaying()){
- document.dispatchEvent(new CustomEvent('sq-stop-request'));
+  document.dispatchEvent(new CustomEvent('sq-stop-request'));
  }
- if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function'){
- window.blPlay(); // toggles off since it's currently playing
+ // Stop bass (blEnabled flag stays so next Play restarts it)
+ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blPlayImpl==='function'){
+  window._blPlayImpl();
  }
- if(_isRecording) _stopRecording(); // auto-save recording when everything stops
+ // Clear clock — arp stops naturally since clock no longer ticks; arpOn stays
+ clearTimeout(clockTimer);
+ if(_isRecording) _stopRecording();
  Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
  stopAll();
  syncFixedTransport();
@@ -6636,12 +6657,24 @@ document.addEventListener('keydown', e => {
 });
 
 function startEverything(){
- // Start beat only — arp and bass are user-toggled from transport
- if(!rhythmOn) toggleRhythm();
+ var pg=document.getElementById('page-rhythm');
+ var onRhythm=pg&&pg.classList.contains('active');
+ if(onRhythm){
+  // On rhythm tab: start sequencer
+  if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
+   document.dispatchEvent(new CustomEvent('sq-start-request'));
+  }
+ } else {
+  // On other tabs: start simple rhythm engine
+  if(!rhythmOn) toggleRhythm();
+ }
+ // Start bass if enabled (clock is now running from rhythm/seq)
+ if(blEnabled&&!(typeof window._blPlaying==='function'&&window._blPlaying())){
+  if(typeof window._blPlayImpl==='function') window._blPlayImpl();
+ }
  syncFixedTransport();
- // If a song is loaded with chords, start the song loop
- if(curSetlistIdx >= 0 && sections.length > 0 && sections.some(s=>s.slots&&s.slots.length)){
-  if(!songLoopActive && typeof startSongLoop === 'function') startSongLoop();
+ if(curSetlistIdx>=0&&sections.length>0&&sections.some(s=>s.slots&&s.slots.length)){
+  if(!songLoopActive&&typeof startSongLoop==='function') startSongLoop();
  }
 }
 
@@ -7163,19 +7196,21 @@ var _origRenderSongChords = typeof renderSongBuilderChords==='function' ? render
 // These ensure onclick="blToggle()" etc. work even if IIFEs haven't run yet
 function blToggle(){ if(window._blToggleImpl) window._blToggleImpl(); }
 function blPlay(){ if(window._blPlayImpl) window._blPlayImpl(); }
-function ftBassClick(){ blPlay(); }
+function ftBassClick(){
+  blEnabled=!blEnabled;
+  var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
+  if(blEnabled&&masterPlaying){
+    if(!(typeof window._blPlaying==='function'&&window._blPlaying())&&typeof window._blPlayImpl==='function') window._blPlayImpl();
+  } else if(!blEnabled&&typeof window._blPlaying==='function'&&window._blPlaying()&&typeof window._blPlayImpl==='function'){
+    window._blPlayImpl();
+  }
+  syncFixedTransport();
+}
 function toggleUniversalMixer(){ if(window._mixerToggleImpl) window._mixerToggleImpl(); }
 function ftToggleAudition(){ document.dispatchEvent(new CustomEvent('sq-toggle-audition')); }
 function ftRhyClick(){
-  var pg=document.getElementById('page-rhythm');
-  var onRhythm=pg&&pg.classList.contains('active');
-  if(onRhythm){
-    if(typeof window._sqPlaying==='function'&&window._sqPlaying()){
-      document.dispatchEvent(new CustomEvent('sq-stop-request'));
-    } else {
-      document.dispatchEvent(new CustomEvent('sq-start-request'));
-    }
-  } else { toggleRhythm(); }
+  if(isAnythingPlaying()) stopEverything();
+  else startEverything();
 }
 function sqSetKit(kit){
   // Map legacy kit names to SQM machine keys
@@ -7783,8 +7818,8 @@ function sqStart(){
     if(arpOn) arpNextBeat=clockAlignTo(c, clockStepSec(), 0.10);
     if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), 0.10); rhythmIdx=0; }
     sqApplyFX();
-    // Kick Vibe's clock if not already running (arp may be off too)
-    if(!rhythmOn&&!arpOn){clearTimeout(clockTimer);tickClock();}
+    // Always kick clock so arp/bass scheduling runs alongside sequencer
+    clearTimeout(clockTimer);tickClock();
     cancelAnimationFrame(sqRafID);sqRafID=requestAnimationFrame(sqDraw);
     var pb=document.getElementById('sq-playBtn');
     if(pb){pb.textContent='■ Stop';pb.classList.add('active');}
@@ -7887,11 +7922,17 @@ function sqRenderPageDots(){
   var pages=Math.ceil(sqSteps/4);
   if(pages<=1){ container.style.visibility='hidden'; return; }
   container.style.visibility='';
+  var leftArrow=document.createElement('span');
+  leftArrow.className='sq-parrow hidden';leftArrow.id='sq-parr-l';leftArrow.textContent='◂';
+  container.appendChild(leftArrow);
   for(var i=0;i<pages;i++){
     var dot=document.createElement('span');
     dot.className='sq-pdot'+(i===0?' active':'');
     container.appendChild(dot);
   }
+  var rightArrow=document.createElement('span');
+  rightArrow.className='sq-parrow'+(pages>1?'':' hidden');rightArrow.id='sq-parr-r';rightArrow.textContent='▸';
+  container.appendChild(rightArrow);
 }
 
 function sqUpdatePageDots(){
@@ -7900,13 +7941,17 @@ function sqUpdatePageDots(){
   if(!sc||!container) return;
   var dots=container.querySelectorAll('.sq-pdot');
   if(!dots.length) return;
-  // Each step: 34px wide + 2px gap = 36px; one beat = 4 steps = 144px
   var stepW=36, beatW=4*stepW;
+  var pages=dots.length;
   var page=Math.round(sc.scrollLeft/beatW);
   dots.forEach(function(d,i){
     d.classList.toggle('active', i===page);
     d.classList.toggle('near', !d.classList.contains('active') && Math.abs(i-page)===1);
   });
+  var la=document.getElementById('sq-parr-l');
+  var ra=document.getElementById('sq-parr-r');
+  if(la) la.classList.toggle('hidden', page===0);
+  if(ra) ra.classList.toggle('hidden', page>=pages-1);
 }
 
 function sqMakeStepEl(cell,color,s){
@@ -8032,12 +8077,9 @@ function sqUpdateStatus(){
   var sn=document.getElementById('sq-sNext');if(sn)sn.textContent=nxt;
 }
 
-// ── fixed transport bar: show/hide sequencer play indicator ──
-// When on rhythm tab, update the ft-rhy-btn to reflect sequencer state
+// ── fixed transport bar: update play/stop button ──
 function sqSyncFTBtn(){
-  var btn=document.getElementById('ft-rhy-btn');if(!btn)return;
-  if(sqPlaying){btn.textContent='■ Seq';btn.classList.remove('off');}
-  else{btn.textContent='▶ Rhythm';btn.classList.add('off');}
+  if(typeof syncFixedTransport==='function') syncFixedTransport();
 }
 
 // ── event wiring ──
@@ -8506,8 +8548,6 @@ function blPlay(){
     // Always kick clock — tickClock will keep running as long as blPlaying is true
     clearTimeout(clockTimer); tickClock();
     cancelAnimationFrame(blRafID); blRafID = requestAnimationFrame(blDraw);
-    var btn = document.getElementById('ft-bas-btn');
-    if(btn){ btn.textContent = '■ Bass'; btn.classList.remove('off'); }
   };
   ctx.state === 'suspended' ? ctx.resume().then(go) : go();
 }
@@ -8518,8 +8558,6 @@ function blStop(){
   document.querySelectorAll('.bl-step').forEach(function(c){ c.classList.remove('head'); });
   document.querySelectorAll('.bl-sdot').forEach(function(d){ d.classList.remove('head'); });
   var ph = document.getElementById('bl-phcur'); if(ph) ph.style.left = '0';
-  var btn = document.getElementById('ft-bas-btn');
-  if(btn){ btn.textContent = 'Bass OFF'; btn.classList.add('off'); }
   blDispStep = -1;
   var sqStillOn = typeof window._sqPlaying==='function' && window._sqPlaying();
   if(!rhythmOn && !arpOn && !sqStillOn) clearTimeout(clockTimer);
@@ -8955,6 +8993,7 @@ function setRhyMode(m){
   if(m==='simple' && typeof window._sqPlaying === 'function' && window._sqPlaying()){
     document.dispatchEvent(new CustomEvent('sq-stop-request'));
   }
+  if(typeof syncFixedTransport==='function') syncFixedTransport();
 }
 
 function importGrooveToSeq(){
@@ -9130,7 +9169,7 @@ function ftToggleAudition(){
   });
 })();
 
-// ─── switchTab: show/hide Aud button, update ft-rhy-btn label ───
+// ─── switchTab: show/hide Aud button ───
 var _origSwitchTab = switchTab;
 switchTab = function(t){
   _origSwitchTab(t);
@@ -9143,17 +9182,7 @@ switchTab = function(t){
   if(t==='bass'){
     if(typeof blRenderGrid==='function') blRenderGrid();
   }
-  var ftRhy = document.getElementById('ft-rhy-btn');
-  if(ftRhy){
-    if(t==='rhythm'){
-      var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
-      ftRhy.textContent = sqOn ? '■ Seq' : '▶ Seq';
-      ftRhy.classList.toggle('off', !sqOn);
-    } else {
-      ftRhy.textContent = rhythmOn ? '■ Stop' : '▶ Rhythm';
-      ftRhy.classList.toggle('off', !rhythmOn);
-    }
-  }
+  // ft-rhy-btn is now a master Play/Stop — syncFixedTransport handles it
 };
 
 // ─── Groove presets: populate sq-groove-presets ───
