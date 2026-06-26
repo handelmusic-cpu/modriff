@@ -1554,6 +1554,37 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
   opacity:.65;
 }
 .sq-landscape-hint svg { flex-shrink:0; }
+/* Landscape rotation popup — portrait only */
+.seq-rotate-popup {
+  position:fixed;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(1);
+  background:rgba(15,17,32,.92);
+  border:1px solid rgba(168,85,247,.35);
+  border-radius:14px;
+  padding:14px 22px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  z-index:8000;
+  pointer-events:none;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  transition:opacity .4s ease, transform .4s ease;
+}
+.seq-rotate-popup.hide {
+  opacity:0;
+  transform:translate(-50%,-50%) scale(.92);
+}
+.seq-rotate-popup span {
+  font-family:'Outfit',sans-serif;
+  font-size:.62rem;
+  color:#c4b5fd;
+  letter-spacing:.04em;
+}
+@media (orientation:landscape){ .seq-rotate-popup { display:none !important; } }
+
 /* Beat pagination dots + scroll arrows — portrait only */
 .sq-page-dots {
   display:none;
@@ -5282,6 +5313,9 @@ function loadSong(song,idx){
    if(typeof sqRenderGrid==='function') sqRenderGrid();
    // Reset step counter so new song's groove starts from bar 1
    if(typeof window._sqResetStep==='function') window._sqResetStep();
+   // Always sync bass step count to sequencer (bar length must match)
+   blSteps = sqSteps;
+   var _bd=document.getElementById('bl-stepsdisp'); if(_bd) _bd.textContent=blSteps;
   }catch(e){}
  }
  // Restore saved bassline if present
@@ -5289,7 +5323,9 @@ function loadSong(song,idx){
   try{
    const sb=song.savedBass;
    if(sb.wave){ blWave=sb.wave; const ws=document.getElementById('bl-wave-sel'); if(ws) ws.value=sb.wave; }
+   // bass steps from saved data, but must match sequencer — enforce sqSteps
    if(sb.steps) blSteps=sb.steps;
+   blSteps = sqSteps; // override: bass bar length always equals sequencer bar length
    if(sb.grid) blGrid=JSON.parse(JSON.stringify(sb.grid));
    if(sb.cutoff!==undefined) blCutoff=sb.cutoff;
    if(sb.resonance!==undefined) blResonance=sb.resonance;
@@ -6221,8 +6257,9 @@ function toggleSongSwing(){
 
 function slotTotalMs(slot){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
- const r = RHYTHMS[rhythmSel];
- const barMs = r ? (60000/bpm / r.stepDiv) * r.pat.length : (60000/bpm)*4;
+ // Bar length = sqSteps sixteenth notes at current BPM, so songs follow the sequencer pattern length
+ const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const barMs = steps * (60000 / bpm / 4);
  const beatMs = 60000/bpm;
  const swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
  const eighthMs = songSwingOn ? beatMs*(0.5 + (swingAmt/70)*0.167) : beatMs*0.5;
@@ -6475,7 +6512,8 @@ function _playLoopSlot(){
  playChartSlot2(songLoopSection, songLoopSlot);
  _highlightLoopSlot(songLoopSection, songLoopSlot);
 
- if(snapMode === 'off' || !rhythmOn || _songSlotNeedsTimeout){
+ var _sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
+ if(snapMode === 'off' || (!rhythmOn && !_sqOn) || _songSlotNeedsTimeout){
  clearTimeout(songLoopTimer);
  songLoopTimer = setTimeout(_advanceLoopSlot, slotTotalMs(slot));
  }
@@ -6657,18 +6695,12 @@ document.addEventListener('keydown', e => {
 });
 
 function startEverything(){
- var pg=document.getElementById('page-rhythm');
- var onRhythm=pg&&pg.classList.contains('active');
- if(onRhythm){
-  // On rhythm tab: start sequencer
-  if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
-   document.dispatchEvent(new CustomEvent('sq-start-request'));
-  }
- } else {
-  // On other tabs: start simple rhythm engine
-  if(!rhythmOn) toggleRhythm();
+ // Always use the sequencer — songs are stored as sequencer patterns;
+ // simple rhythm engine is never auto-started (no percussion unless programmed).
+ if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
+  document.dispatchEvent(new CustomEvent('sq-start-request'));
  }
- // Start bass if enabled (clock is now running from rhythm/seq)
+ // Start bass if enabled (clock is now running from sequencer)
  if(blEnabled&&!(typeof window._blPlaying==='function'&&window._blPlaying())){
   if(typeof window._blPlayImpl==='function') window._blPlayImpl();
  }
@@ -8097,10 +8129,16 @@ function sqWire(){
 
   var suSl=document.getElementById('sq-swingSl');
   if(suSl)suSl.addEventListener('input',function(){sqSwing=parseInt(this.value);var sd=document.getElementById('sq-swingDisp');if(sd)sd.textContent=sqSwing+'%';});
+  function _syncBlSteps(){
+    blSteps=sqSteps;
+    var bd=document.getElementById('bl-stepsdisp');if(bd)bd.textContent=blSteps;
+    if(typeof blEnsureGrid==='function')blEnsureGrid();
+    if(typeof blRenderGrid==='function')blRenderGrid();
+  }
   var stUp=document.getElementById('sq-stepsUp');
-  if(stUp)stUp.addEventListener('click',function(){sqSteps=Math.min(32,sqSteps+1);var d=document.getElementById('sq-stepsDisp');if(d)d.textContent=sqSteps;sqEnsureGrid();sqRenderGrid();});
+  if(stUp)stUp.addEventListener('click',function(){sqSteps=Math.min(32,sqSteps+1);var d=document.getElementById('sq-stepsDisp');if(d)d.textContent=sqSteps;sqEnsureGrid();sqRenderGrid();_syncBlSteps();});
   var stDn=document.getElementById('sq-stepsDn');
-  if(stDn)stDn.addEventListener('click',function(){sqSteps=Math.max(1,sqSteps-1);var d=document.getElementById('sq-stepsDisp');if(d)d.textContent=sqSteps;sqEnsureGrid();sqRenderGrid();});
+  if(stDn)stDn.addEventListener('click',function(){sqSteps=Math.max(1,sqSteps-1);var d=document.getElementById('sq-stepsDisp');if(d)d.textContent=sqSteps;sqEnsureGrid();sqRenderGrid();_syncBlSteps();});
 
   var sav=document.getElementById('sq-saveBtn');
   if(sav)sav.addEventListener('click',function(){sqSavePat(sqCurPat);sqRenderPSlots();});
@@ -8530,6 +8568,9 @@ function blPlay(){
   var ctx = blCtx(); if(!ctx) return;
   var go = function(){
     if(blPlaying){ blStop(); return; }
+    // Sync bass step count to sequencer so bars always match
+    if(typeof sqSteps !== 'undefined' && sqSteps > 0) blSteps = sqSteps;
+    blEnsureGrid();
     blMG(); // ensure BL_MG gain node exists before scheduling
     blPlaying = true; blDispStep = -1;
     var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
@@ -9169,6 +9210,24 @@ function ftToggleAudition(){
   });
 })();
 
+// ─── Landscape rotation popup ───
+var _seqRotateTimer = null;
+function showSeqRotatePopup(){
+  // Only in portrait orientation
+  if(window.innerHeight < window.innerWidth) return;
+  var existing = document.getElementById('seq-rotate-popup');
+  if(existing) { existing.remove(); clearTimeout(_seqRotateTimer); }
+  var el = document.createElement('div');
+  el.className = 'seq-rotate-popup';
+  el.id = 'seq-rotate-popup';
+  el.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="9" height="14" rx="2"/><rect x="11" y="8" width="14" height="9" rx="2" opacity=".45"/><path d="M19 8.5 A4 4 0 0 1 22.5 12" stroke-dasharray="2 1.5"/></svg><span>Rotate to landscape for all beats</span>';
+  document.body.appendChild(el);
+  _seqRotateTimer = setTimeout(function(){
+    el.classList.add('hide');
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 450);
+  }, 1200);
+}
+
 // ─── switchTab: show/hide Aud button ───
 var _origSwitchTab = switchTab;
 switchTab = function(t){
@@ -9178,6 +9237,7 @@ switchTab = function(t){
   if(t==='rhythm'){
     if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
     sqRenderMixer();
+    showSeqRotatePopup();
   }
   if(t==='bass'){
     if(typeof blRenderGrid==='function') blRenderGrid();
