@@ -888,6 +888,8 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .ft-btn.rhy.off { background:rgba(168,85,247,.08); border-color:rgba(168,85,247,.3); color:var(--modal); box-shadow:none; }
 .ft-btn.arp { background:var(--pg); color:#07080f; border-color:var(--pg); box-shadow:0 0 10px rgba(80,200,120,.2); }
 .ft-btn.arp.off { background:rgba(80,200,120,.06); border-color:rgba(80,200,120,.25); color:var(--pg); box-shadow:none; }
+.ft-btn.bas { background:#f59e0b; color:#07080f; border-color:#f59e0b; box-shadow:0 0 10px rgba(245,158,11,.25); }
+.ft-btn.bas.off { background:rgba(245,158,11,.07); border-color:rgba(245,158,11,.35); color:#f59e0b; box-shadow:none; }
 .ft-btn.snap-on { background:var(--accent); color:#07080f; border-color:var(--accent); box-shadow:0 0 10px hsla(var(--kh), var(--ks), var(--kl), .25); }
 .ft-btn.snap-off { background:rgba(255,255,255,.04); border-color:var(--border2); color:var(--muted); }
 .ft-btn.song-on { background:var(--pg); color:#07080f; border-color:var(--pg); }
@@ -1051,6 +1053,8 @@ body.light-mode .ft-btn.rhy        { background:#8030d0 !important; color:#fff !
 body.light-mode .ft-btn.rhy.off    { background:#d8daf0 !important; color:#8030d0 !important; border-color:#8030d0 !important; }
 body.light-mode .ft-btn.arp        { background:#148060 !important; color:#fff !important; border-color:#148060 !important; }
 body.light-mode .ft-btn.arp.off    { background:#d8daf0 !important; color:#148060 !important; border-color:#148060 !important; }
+body.light-mode .ft-btn.bas        { background:#d97706 !important; color:#fff !important; border-color:#d97706 !important; }
+body.light-mode .ft-btn.bas.off    { background:#d8daf0 !important; color:#d97706 !important; border-color:#d97706 !important; }
 body.light-mode .ft-btn.snap-on    { background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important; }
 body.light-mode .ft-btn.snap-off   { background:rgba(0,0,0,.05) !important; color:var(--muted) !important; border-color:var(--border2) !important; }
 body.light-mode .ft-btn.mix.active { background:rgba(0,0,0,.06) !important; border-color:var(--modal) !important; color:var(--modal) !important; }
@@ -1869,6 +1873,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 <div class="fixed-transport" id="fixed-transport">
  <button class="ft-btn rhy off" id="ft-rhy-btn" onclick="ftRhyClick()">▶ Rhythm</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="toggleArp()">Arp OFF</button>
+ <button class="ft-btn bas off" id="ft-bas-btn" onclick="ftBassClick()">Bass OFF</button>
  <div class="ft-bpm">
  <span style="font-size:.55rem;color:var(--muted)">=</span>
  <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
@@ -2617,9 +2622,8 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-bass">
  <div class="bl-page-wrap">
-  <!-- Transport: play always visible; Steps/Oct/Vol only in advanced -->
+  <!-- Transport: Steps/Oct/Vol/Sound — play is in header transport -->
   <div class="bl-transport">
-   <button class="bl-playbtn" id="bl-playbtn" onclick="blPlay()">▶ Bass</button>
    <div class="bl-pb advanced-only">
      <span class="bl-pl">Steps</span>
      <button class="bl-pico" onclick="blSetSteps(-1)">−</button>
@@ -4589,6 +4593,8 @@ function syncFixedTransport(){
  if(rb){rb.textContent=rhythmOn?'■ Rhythm':'▶ Rhythm';rb.classList.toggle('off',!rhythmOn);}
  const ab=document.getElementById('ft-arp-btn');
  if(ab){ab.textContent=arpOn?'Arp ON':'Arp OFF';ab.classList.toggle('off',!arpOn);}
+ const bb=document.getElementById('ft-bas-btn');
+ if(bb){ const bp=typeof window._blPlaying==='function'&&window._blPlaying(); bb.textContent=bp?'■ Bass':'Bass OFF'; bb.classList.toggle('off',!bp); }
  // Sync snap button
  const sb=document.getElementById('ft-snap-btn');
  if(sb){
@@ -5221,8 +5227,9 @@ function renderSetlist(){
 }
 
 function loadSong(song,idx){
- // Stop any active loop first
+ // Stop any active loop and bass (bass has a song-specific grid; user restarts from transport)
  stopSongLoop();
+ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function') window.blPlay();
  songAutoAdvance = false;
  const ab=document.getElementById('slb-auto-btn');
  if(ab){ ab.textContent='Auto ▶ OFF'; ab.classList.remove('on'); }
@@ -5252,6 +5259,8 @@ function loadSong(song,idx){
    if(typeof sqEnsureGrid==='function') sqEnsureGrid();
    if(typeof sqSyncUI==='function') sqSyncUI();
    if(typeof sqRenderGrid==='function') sqRenderGrid();
+   // Reset step counter so new song's groove starts from bar 1
+   if(typeof window._sqResetStep==='function') window._sqResetStep();
   }catch(e){}
  }
  // Restore saved bassline if present
@@ -6627,11 +6636,10 @@ document.addEventListener('keydown', e => {
 });
 
 function startEverything(){
+ // Start beat only — arp and bass are user-toggled from transport
  if(!rhythmOn) toggleRhythm();
- if(!arpOn) toggleArp();
- if(typeof window.blPlay==='function' && typeof window._blPlaying==='function' && !window._blPlaying()) window.blPlay();
  syncFixedTransport();
- // If a song is loaded with chords, start the song loop (auto-triggers and advances chords)
+ // If a song is loaded with chords, start the song loop
  if(curSetlistIdx >= 0 && sections.length > 0 && sections.some(s=>s.slots&&s.slots.length)){
   if(!songLoopActive && typeof startSongLoop === 'function') startSongLoop();
  }
@@ -7155,6 +7163,7 @@ var _origRenderSongChords = typeof renderSongBuilderChords==='function' ? render
 // These ensure onclick="blToggle()" etc. work even if IIFEs haven't run yet
 function blToggle(){ if(window._blToggleImpl) window._blToggleImpl(); }
 function blPlay(){ if(window._blPlayImpl) window._blPlayImpl(); }
+function ftBassClick(){ blPlay(); }
 function toggleUniversalMixer(){ if(window._mixerToggleImpl) window._mixerToggleImpl(); }
 function ftToggleAudition(){ document.dispatchEvent(new CustomEvent('sq-toggle-audition')); }
 function ftRhyClick(){
@@ -8237,6 +8246,10 @@ sqHitTrack = function(track,t,vol,ac,ps){
 // (blScheduler already reads bl-vol input, multiply by mix gain)
 
 sqRenderMixer();
+
+// Expose step reset so loadSong can restart the groove from bar 1
+window._sqResetStep = function(){ sqSeqStep = 0; };
+
 })(); // end IIFE
 
 
@@ -8493,8 +8506,8 @@ function blPlay(){
     // Always kick clock — tickClock will keep running as long as blPlaying is true
     clearTimeout(clockTimer); tickClock();
     cancelAnimationFrame(blRafID); blRafID = requestAnimationFrame(blDraw);
-    var btn = document.getElementById('bl-playbtn');
-    if(btn){ btn.textContent = '■ Stop'; btn.classList.add('active'); }
+    var btn = document.getElementById('ft-bas-btn');
+    if(btn){ btn.textContent = '■ Bass'; btn.classList.remove('off'); }
   };
   ctx.state === 'suspended' ? ctx.resume().then(go) : go();
 }
@@ -8505,8 +8518,8 @@ function blStop(){
   document.querySelectorAll('.bl-step').forEach(function(c){ c.classList.remove('head'); });
   document.querySelectorAll('.bl-sdot').forEach(function(d){ d.classList.remove('head'); });
   var ph = document.getElementById('bl-phcur'); if(ph) ph.style.left = '0';
-  var btn = document.getElementById('bl-playbtn');
-  if(btn){ btn.textContent = '▶ Bass'; btn.classList.remove('active'); }
+  var btn = document.getElementById('ft-bas-btn');
+  if(btn){ btn.textContent = 'Bass OFF'; btn.classList.add('off'); }
   blDispStep = -1;
   var sqStillOn = typeof window._sqPlaying==='function' && window._sqPlaying();
   if(!rhythmOn && !arpOn && !sqStillOn) clearTimeout(clockTimer);
