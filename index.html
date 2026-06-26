@@ -1533,8 +1533,12 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
     mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
   }
   .sq-landscape-hint { display:flex !important; }
+  .sq-page-dots { display:flex !important; }
 }
-@media (orientation:landscape){ .sq-landscape-hint { display:none !important; } }
+@media (orientation:landscape){
+  .sq-landscape-hint { display:none !important; }
+  .sq-page-dots { display:none !important; }
+}
 .sq-landscape-hint {
   display:none;
   align-items:center;
@@ -1547,6 +1551,30 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
   opacity:.65;
 }
 .sq-landscape-hint svg { flex-shrink:0; }
+/* Beat pagination dots — portrait only */
+.sq-page-dots {
+  display:none;
+  justify-content:center;
+  align-items:center;
+  gap:7px;
+  padding:6px 0 2px;
+}
+.sq-pdot {
+  width:7px; height:7px;
+  border-radius:50%;
+  background:var(--sq-bdr2);
+  transition:background .15s, transform .15s;
+  flex-shrink:0;
+}
+.sq-pdot.active {
+  background:var(--sq-acc);
+  transform:scale(1.35);
+}
+.sq-pdot.near {
+  background:var(--sq-bdr2);
+  transform:scale(1.1);
+  opacity:.7;
+}
 
 /* ── Hue transition animations ── */
 .chord-split, .chord-out, .key-btn, .play-btn,
@@ -2520,6 +2548,9 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
   <div class="sq-gright" id="sq-gRight"></div>
 </div>
 <div class="sq-phbar"><div class="sq-phcur" id="sq-phcur"></div></div>
+
+<!-- Beat pagination dots (portrait-only, hidden in landscape via CSS) -->
+<div class="sq-page-dots" id="sq-page-dots"></div>
 
 <!-- Controls row: steps + swing + FX -->
 <div class="sq-trow" style="flex-wrap:wrap;gap:6px">
@@ -7837,6 +7868,36 @@ function sqRenderGrid(){
     sqAttachKnob(pCvs, pVal, pInit, -24, 24, 'pitch', function(v){ sqSp(sqMach,ti,v); sqDrawKnob(pCvs,v,-24,24,'#2df09a'); pVal.textContent=(v>=0?'+':'')+v; });
     rr.appendChild(pw);gRight.appendChild(rr);
   });
+  sqRenderPageDots();
+}
+
+function sqRenderPageDots(){
+  var container=document.getElementById('sq-page-dots');
+  if(!container) return;
+  container.innerHTML='';
+  var pages=Math.ceil(sqSteps/4);
+  if(pages<=1){ container.style.visibility='hidden'; return; }
+  container.style.visibility='';
+  for(var i=0;i<pages;i++){
+    var dot=document.createElement('span');
+    dot.className='sq-pdot'+(i===0?' active':'');
+    container.appendChild(dot);
+  }
+}
+
+function sqUpdatePageDots(){
+  var sc=document.getElementById('sq-gScroll');
+  var container=document.getElementById('sq-page-dots');
+  if(!sc||!container) return;
+  var dots=container.querySelectorAll('.sq-pdot');
+  if(!dots.length) return;
+  // Each step: 34px wide + 2px gap = 36px; one beat = 4 steps = 144px
+  var stepW=36, beatW=4*stepW;
+  var page=Math.round(sc.scrollLeft/beatW);
+  dots.forEach(function(d,i){
+    d.classList.toggle('active', i===page);
+    d.classList.toggle('near', !d.classList.contains('active') && Math.abs(i-page)===1);
+  });
 }
 
 function sqMakeStepEl(cell,color,s){
@@ -8006,6 +8067,10 @@ function sqWire(){
     var m=document.getElementById('sq-smenu');
     if(m&&m.style.display!=='none'&&!m.contains(e.target)&&!e.target.classList.contains('sq-step'))sqCloseMenu();
   });
+
+  // Beat pagination dots: update active dot as user scrolls
+  var gsc=document.getElementById('sq-gScroll');
+  if(gsc) gsc.addEventListener('scroll',sqUpdatePageDots,{passive:true});
 
   // ratchet / ornament buttons in menu
   document.querySelectorAll('[data-sq-r]').forEach(function(b){
