@@ -6212,15 +6212,39 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
   }
 }
 
-function startSongLoop(){
+function startSongLoop(alignedStart){
  // Always stop any existing loop first
  stopSongLoop();
  if(!sections.length || !sections.some(s=>s.slots&&s.slots.length)) return;
  _songBaseRoot = root; // capture key at loop start for live capo
  songLoopActive = true;
- songLoopSection = (songCurrentSection >= 0 && songCurrentSection < sections.length) ? songCurrentSection : 0;
+ // Pick starting section: keep current if valid & non-empty, otherwise the
+ // first non-empty section (top of the song).
+ if(songCurrentSection >= 0 && songCurrentSection < sections.length &&
+    sections[songCurrentSection] && sections[songCurrentSection].slots.length){
+ songLoopSection = songCurrentSection;
+ } else {
+ songLoopSection = sections.findIndex(s=>s.slots&&s.slots.length);
+ if(songLoopSection < 0) songLoopSection = 0;
+ }
  songLoopSlot = 0;
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
+ if(alignedStart){
+ // Fresh launch: fire the first chord on the downbeat, in sync with the
+ // sequencer's step 0, instead of waiting a full bar.
+ var ctx = getCtx();
+ var delayMs = 0;
+ if(ctx && typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > ctx.currentTime){
+ delayMs = (CLOCK_EPOCH - ctx.currentTime) * 1000;
+ }
+ if(delayMs > 5){
+ clearTimeout(songLoopTimer);
+ songLoopTimer = setTimeout(function(){ if(songLoopActive) _playLoopSlot(); }, delayMs);
+ } else {
+ _playLoopSlot();
+ }
+ return;
+ }
  // In bar/beat snap with rhythm running: wait for the next bar/beat boundary
  if((snapMode === 'bar' || snapMode === 'beat') && (rhythmOn || sqOn)){
  songWaitingForBar = true; // tickSongLoop will clear this and call _playLoopSlot
@@ -6695,19 +6719,37 @@ document.addEventListener('keydown', e => {
 });
 
 function startEverything(){
+ // Fresh downbeat every launch: reset the master clock epoch so the
+ // sequencer, bass and song loop all align to the same beat-1. Without
+ // this, a stale epoch from a previous run makes engines start on an
+ // arbitrary 16th-note offset — the "not aligned" problem.
+ var _ctx=getCtx();
+ if(_ctx){
+  // Lead the epoch by more than the largest engine look-ahead (0.10s) so the
+  // sequencer, bass and song all resolve clockAlignTo() to this exact beat-1
+  // instead of one engine rounding up to the next 16th.
+  CLOCK_EPOCH = _ctx.currentTime + 0.15;
+  CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
+ }
+
+ // Any song with programmed chords counts — not just setlist-loaded ones.
+ var _hasSong=sections.length>0&&sections.some(s=>s.slots&&s.slots.length);
+
  // Always use the sequencer — songs are stored as sequencer patterns;
  // simple rhythm engine is never auto-started (no percussion unless programmed).
  if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
   document.dispatchEvent(new CustomEvent('sq-start-request'));
  }
- // Start bass if enabled (clock is now running from sequencer)
+ // Start bass if enabled (aligns to the same downbeat via CLOCK_EPOCH)
  if(blEnabled&&!(typeof window._blPlaying==='function'&&window._blPlaying())){
   if(typeof window._blPlayImpl==='function') window._blPlayImpl();
  }
- syncFixedTransport();
- if(curSetlistIdx>=0&&sections.length>0&&sections.some(s=>s.slots&&s.slots.length)){
-  if(!songLoopActive&&typeof startSongLoop==='function') startSongLoop();
+ // Start the song loop from the top, first chord landing on the downbeat
+ if(_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
+  songCurrentSection=-1; // force startSongLoop to pick the first non-empty section
+  startSongLoop(true);   // aligned launch — no full-bar wait
  }
+ syncFixedTransport();
 }
 
 // ═══════════════════════════════════════
@@ -8575,12 +8617,17 @@ function blPlay(){
     blPlaying = true; blDispStep = -1;
     var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
     var _blStepSec = 60 / bpmNow / 4;
-    // Align to sequencer's next bar boundary so bassline always comes in on beat 1.
-    // sqSeqStep is the NEXT step the scheduler will fire; sqNextT is when it fires.
-    // Steps remaining until bar end = sqSteps - sqSeqStep (0 means we're already at bar start).
-    if (typeof sqPlaying !== 'undefined' && sqPlaying && sqNextT > ctx.currentTime) {
-      var stepsUntilBar = (sqSeqStep === 0) ? 0 : (sqSteps - sqSeqStep);
-      blNextT = sqNextT + stepsUntilBar * _blStepSec;
+    // Align to the next BAR boundary measured from the shared CLOCK_EPOCH so the
+    // bassline always comes in on beat 1. Using the epoch (rather than the live
+    // sqSeqStep, which the sequencer's look-ahead has usually already advanced
+    // past 0) keeps the bass locked to the sequencer at launch AND mid-stream.
+    if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
+      var _firstStep = clockAlignTo(ctx, _blStepSec, 0.05); // next 16th aligned to epoch
+      var _barSteps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+      var _fromEpoch = Math.round((_firstStep - CLOCK_EPOCH) / _blStepSec);
+      var _intoBar = ((_fromEpoch % _barSteps) + _barSteps) % _barSteps;
+      var _toBar = _intoBar === 0 ? 0 : (_barSteps - _intoBar);
+      blNextT = _firstStep + _toBar * _blStepSec;
       blSeqStep = 0;
     } else {
       blNextT = ctx.currentTime + 0.05;
