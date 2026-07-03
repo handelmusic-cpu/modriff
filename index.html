@@ -660,17 +660,45 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .slot-bass:hover { border-color:var(--modal); background:#100820; }
 .slot-bass.active { border-color:var(--modal); color:var(--modal); background:#100820; }
 .slot-dur { display:flex; gap:2px; align-items:stretch; flex:1; }
-.slot-dur-tri { display:flex; gap:2px; align-items:center; flex:1; }
-.slot-dur-part {
- display:flex; flex-direction:column; align-items:center; cursor:pointer;
- padding:3px 3px 2px; border:1px solid var(--border2); border-radius:var(--r-sm);
- background:var(--bg); touch-action:manipulation; flex:1; text-align:center; min-width:24px;
- transition:border-color .1s;
+.slot-dur-btn {
+ font-size:.5rem; color:var(--text); cursor:pointer; padding:4px 6px;
+ border:1px solid var(--border2); border-radius:var(--r-sm); background:var(--bg);
+ touch-action:manipulation; white-space:nowrap; flex:1; text-align:center;
+ font-family:'Orbitron',sans-serif; font-weight:700; transition:border-color .1s;
 }
-.slot-dur-val { font-family:'Orbitron',sans-serif; font-size:.55rem; color:var(--text); font-weight:700; line-height:1.1; }
-.slot-dur-lbl { font-size:.32rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; line-height:1; margin-top:1px; }
-.slot-dur-part:hover { border-color:var(--accent); }
-.slot-dur-part:hover .slot-dur-lbl { color:var(--accent); }
+.slot-dur-btn:hover { border-color:var(--accent); }
+
+/* Duration picker popover — jazz-friendly presets, single tap to set */
+.dur-picker-box { background:var(--surf); border:2px solid var(--accent); border-radius:16px; padding:20px; max-width:320px; width:100%; }
+.dur-picker-title { font-size:.7rem; font-weight:700; color:var(--accent); margin-bottom:4px; text-align:center; }
+.dur-picker-sub { font-size:.48rem; color:var(--muted); text-align:center; margin-bottom:14px; }
+.dur-preset-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.dur-preset-chip {
+ padding:12px 4px; border-radius:10px; border:1px solid var(--border2); background:var(--bg);
+ color:var(--text); text-align:center; cursor:pointer; touch-action:manipulation; transition:all .1s;
+}
+.dur-preset-chip .dp-val { font-family:'Orbitron',sans-serif; font-size:.85rem; font-weight:700; display:block; }
+.dur-preset-chip .dp-lbl { font-size:.4rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; display:block; margin-top:2px; }
+.dur-preset-chip:hover { border-color:var(--accent); }
+.dur-preset-chip.active { border-color:var(--accent); background:rgba(139,92,246,.15); }
+.dur-preset-chip.active .dp-lbl { color:var(--accent); }
+.dur-finetune-toggle { font-size:.46rem; color:var(--muted); text-align:center; cursor:pointer; padding:10px 4px 2px; text-decoration:underline; touch-action:manipulation; }
+.dur-finetune-row { display:none; gap:6px; margin-top:8px; padding-top:10px; border-top:1px solid var(--border2); }
+.dur-finetune-row.open { display:flex; }
+.dur-ft-part { flex:1; text-align:center; }
+.dur-ft-lbl { font-size:.4rem; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+.dur-ft-ctrl { display:flex; align-items:center; justify-content:center; gap:6px; }
+.dur-ft-btn {
+ width:22px; height:22px; border-radius:6px; border:1px solid var(--border2); background:var(--bg);
+ color:var(--text); cursor:pointer; font-size:.6rem; display:flex; align-items:center; justify-content:center;
+ touch-action:manipulation; user-select:none;
+}
+.dur-ft-btn:active { background:var(--accent); color:#fff; }
+.dur-ft-val { font-family:'Orbitron',sans-serif; font-size:.6rem; font-weight:700; min-width:16px; }
+.dur-picker-done {
+ margin-top:14px; padding:9px; border:none; border-radius:8px; background:var(--accent);
+ color:#fff; font-size:.6rem; font-weight:700; cursor:pointer; width:100%; touch-action:manipulation;
+}
 .slot-rest-btn {
  font-size:.42rem; cursor:pointer; padding:2px 5px; border:1px solid var(--border2);
  border-radius:var(--r-sm); background:var(--bg); color:var(--muted); touch-action:manipulation;
@@ -5114,36 +5142,20 @@ function renderChartSeq(){
  updateBass();
  });
 
- // Duration tri-component: bars / beats / 8ths
+ // Duration: single button opens a preset picker (1 tap for common jazz phrase lengths,
+ // instead of cycling three separate bars/beats/8ths counters up to 8 clicks each)
  const dur=document.createElement('div'); dur.className='slot-dur';
- const durTri=document.createElement('div'); durTri.className='slot-dur-tri';
-
- const makeDurPart=(label, getVal, setVal)=>{
-  const part=document.createElement('div'); part.className='slot-dur-part';
-  const valEl=document.createElement('div'); valEl.className='slot-dur-val';
-  const lblEl=document.createElement('div'); lblEl.className='slot-dur-lbl';
-  valEl.textContent=getVal(); lblEl.textContent=label;
-  part.appendChild(valEl); part.appendChild(lblEl);
-  part.addEventListener('click',()=>{
-   const next=(getVal()+1)%9;
-   const nb=label==='bars'?next:(slot.bars||0);
-   const nbt=label==='beats'?next:(slot.beats||0);
-   const ne=label==='8ths'?next:(slot.eighths||0);
-   if(nb===0&&nbt===0&&ne===0){ showZeroDurationModal(slot,()=>renderChartSeq()); return; }
-   setVal(next); valEl.textContent=next;
-  });
-  return part;
- };
-
  if(!slot.isRest){
   slot.bars = slot.bars != null ? slot.bars : 1;
   slot.beats = slot.beats || 0;
   slot.eighths = slot.eighths || 0;
  }
- durTri.appendChild(makeDurPart('bars',()=>slot.bars||0,v=>{slot.bars=v;}));
- durTri.appendChild(makeDurPart('beats',()=>slot.beats||0,v=>{slot.beats=v;}));
- durTri.appendChild(makeDurPart('8ths',()=>slot.eighths||0,v=>{slot.eighths=v;}));
- dur.appendChild(durTri);
+ const durBtn=document.createElement('div'); durBtn.className='slot-dur-btn';
+ durBtn.textContent=_slotDurLabel(slot);
+ durBtn.addEventListener('click',()=>{
+  showDurationPicker(slot,()=>{ durBtn.textContent=_slotDurLabel(slot); });
+ });
+ dur.appendChild(durBtn);
 
  // Rest toggle
  const restBtn=document.createElement('div'); restBtn.className='slot-rest-btn'+(slot.isRest?' active':'');
@@ -6303,19 +6315,98 @@ function _slotDurLabel(slot){
  return parts.length ? parts.join('+') : '1bar';
 }
 
-function showZeroDurationModal(slot, onOk){
- const overlay = document.createElement('div');
- overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
- const box = document.createElement('div');
- box.style.cssText = 'background:var(--surf);border:2px solid var(--dom);border-radius:16px;padding:22px 24px;max-width:300px;text-align:center;';
- box.innerHTML = '<div style="font-size:.72rem;font-weight:700;color:var(--dom);margin-bottom:10px">Zero duration not possible</div><div style="font-size:.54rem;color:var(--muted);line-height:1.7;margin-bottom:16px">Each chord needs at least 1 bar, 1 beat, or 1 eighth note.<br>Resetting to 1 bar.<br><br>To remove a chord entirely, use the <strong style="color:var(--text)">×</strong> button.</div><button id="zdm-ok" style="padding:7px 22px;border:none;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font-size:.6rem;font-weight:600;width:100%">OK</button>';
+// Jazz-friendly duration presets — cover the phrase lengths that show up in
+// real charts (quick change, 1-bar, 2-bar, 4-bar, 8-bar) so picking a duration
+// is a single tap instead of clicking a counter up to 8 times.
+const DUR_PRESETS=[
+ {val:'2',lbl:'beats',bars:0,beats:2,eighths:0},
+ {val:'1',lbl:'bar',bars:1,beats:0,eighths:0},
+ {val:'2',lbl:'bars',bars:2,beats:0,eighths:0},
+ {val:'4',lbl:'bars',bars:4,beats:0,eighths:0},
+ {val:'8',lbl:'bars',bars:8,beats:0,eighths:0},
+];
+
+function _durMatchesPreset(slot,p){
+ return (slot.bars||0)===p.bars && (slot.beats||0)===p.beats && (slot.eighths||0)===p.eighths;
+}
+
+// Press-and-hold auto-repeat for the fine-tune +/- buttons
+function _attachRepeatPress(el, fn){
+ let interval=null, delay=null;
+ const start=(e)=>{
+  e.preventDefault(); fn();
+  clearTimeout(delay);
+  delay=setTimeout(()=>{ interval=setInterval(fn,90); },420);
+ };
+ const stop=()=>{ clearTimeout(delay); clearInterval(interval); interval=null; };
+ el.addEventListener('pointerdown',start);
+ el.addEventListener('pointerup',stop);
+ el.addEventListener('pointerleave',stop);
+ el.addEventListener('pointercancel',stop);
+}
+
+function showDurationPicker(slot, onChange){
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div'); box.className='dur-picker-box';
+ box.innerHTML='<div class="dur-picker-title">Chord Duration</div><div class="dur-picker-sub">How long does this chord last?</div>';
+
+ const grid=document.createElement('div'); grid.className='dur-preset-grid';
+ const chips=[];
+ DUR_PRESETS.forEach(p=>{
+  const chip=document.createElement('div'); chip.className='dur-preset-chip'+(_durMatchesPreset(slot,p)?' active':'');
+  chip.innerHTML='<span class="dp-val">'+p.val+'</span><span class="dp-lbl">'+p.lbl+'</span>';
+  chip.addEventListener('click',()=>{
+   slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths;
+   overlay.remove();
+   if(onChange) onChange();
+  });
+  chips.push(chip);
+  grid.appendChild(chip);
+ });
+ box.appendChild(grid);
+
+ // Fine-tune: rare cases the presets don't cover (odd bar counts, 8th-note pushes)
+ const isCustom=!DUR_PRESETS.some(p=>_durMatchesPreset(slot,p));
+ const ftToggle=document.createElement('div'); ftToggle.className='dur-finetune-toggle';
+ ftToggle.textContent=isCustom?('Custom: '+_slotDurLabel(slot)+' — tap to adjust'):'Need something else? Fine-tune ▾';
+ box.appendChild(ftToggle);
+
+ const ftRow=document.createElement('div'); ftRow.className='dur-finetune-row'+(isCustom?' open':'');
+ const mkFt=(label, getVal, setVal)=>{
+  const part=document.createElement('div'); part.className='dur-ft-part';
+  const lbl=document.createElement('div'); lbl.className='dur-ft-lbl'; lbl.textContent=label;
+  const ctrl=document.createElement('div'); ctrl.className='dur-ft-ctrl';
+  const minus=document.createElement('div'); minus.className='dur-ft-btn'; minus.textContent='−';
+  const val=document.createElement('div'); val.className='dur-ft-val'; val.textContent=getVal();
+  const plus=document.createElement('div'); plus.className='dur-ft-btn'; plus.textContent='+';
+  const apply=(n)=>{
+   n=Math.max(0,Math.min(32,n)); setVal(n); val.textContent=n;
+   chips.forEach((c,i)=>c.classList.toggle('active',_durMatchesPreset(slot,DUR_PRESETS[i])));
+  };
+  _attachRepeatPress(minus,()=>apply(getVal()-1));
+  _attachRepeatPress(plus,()=>apply(getVal()+1));
+  ctrl.appendChild(minus); ctrl.appendChild(val); ctrl.appendChild(plus);
+  part.appendChild(lbl); part.appendChild(ctrl);
+  return part;
+ };
+ ftRow.appendChild(mkFt('Bars',()=>slot.bars||0,v=>{slot.bars=v;}));
+ ftRow.appendChild(mkFt('Beats',()=>slot.beats||0,v=>{slot.beats=v;}));
+ ftRow.appendChild(mkFt('8ths',()=>slot.eighths||0,v=>{slot.eighths=v;}));
+ box.appendChild(ftRow);
+ ftToggle.addEventListener('click',()=>ftRow.classList.toggle('open'));
+
+ const done=document.createElement('button'); done.className='dur-picker-done'; done.textContent='Done';
+ done.addEventListener('click',()=>{
+  if((slot.bars||0)===0 && (slot.beats||0)===0 && (slot.eighths||0)===0) slot.bars=1;
+  overlay.remove();
+  if(onChange) onChange();
+ });
+ box.appendChild(done);
+
  overlay.appendChild(box);
  document.body.appendChild(overlay);
- box.querySelector('#zdm-ok').addEventListener('click', ()=>{
-  slot.bars = 1; slot.beats = 0; slot.eighths = 0;
-  overlay.remove();
-  if(onOk) onOk();
- });
+ overlay.addEventListener('click',(e)=>{ if(e.target===overlay) done.click(); });
 }
 
 // ═══════════════════════════════════════
