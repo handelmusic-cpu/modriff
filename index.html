@@ -5283,6 +5283,53 @@ function saveToSetlist(){
 function loadSLData(){ try{ return JSON.parse(localStorage.getItem('prism-sl')||'[]'); }catch(e){ return []; } }
 function saveSLData(d){ try{ localStorage.setItem('prism-sl',JSON.stringify(d)); }catch(e){} }
 
+// ── Preloaded demo song (Song Builder) ──
+// A short, self-contained ii–V–I turnaround in C so a first-time visitor can
+// tap one song, hit Play, and immediately hear chords + drums + a bass line
+// locked together — rather than an empty setlist and a text-only tour step.
+function buildDemoSong(){
+ var steps=16;
+ var grid={};
+ for(var ti=0; ti<8; ti++){ grid[ti]=[]; for(var s=0; s<steps; s++) grid[ti].push({v:0,r:1,orn:0,vel:100}); }
+ var r=RHYTHMS[10]; // Bossa Nova — tasteful, unobtrusive groove for a jazz turnaround
+ for(var s2=0; s2<steps; s2++){
+  if(r.kick[s2])  grid[0][s2].v=1; // Kick
+  if(r.snare[s2]) grid[1][s2].v=1; // Snare
+  if(r.pat[s2])   grid[4][s2].v=1; // Closed hat
+ }
+ var mk=function(label,numeral,rootM,triadQ,type7,func,bars,beats,eighths){
+  return {label:label,numeral:numeral,rootM:rootM,triadQ:triadQ,type7:type7,func:func,ext:'7th',bassNote:null,isRest:false,bars:bars,beats:beats,eighths:eighths};
+ };
+ var phrase=[
+  mk('Dm','ii',62,1,'min7','subdom', 0,2,0), // 2 beats — quick change
+  mk('G','V',67,0,'dom7','dom',      0,2,0), // 2 beats — quick change
+  mk('C','I',60,0,'maj7','tonic',    1,0,0), // 1 bar
+  mk('Am','vi',69,1,'min7','tonic',  1,0,0), // 1 bar — resolves back into the next ii
+ ];
+ var slots=phrase.concat(phrase.map(function(sl){ return Object.assign({},sl); }));
+ return {
+  id:Date.now(),
+  title:'Demo: ii–V–I Turnaround',
+  root:0, mode:'major',
+  sections:[{name:'Head', slots:slots}],
+  savedAt:new Date().toLocaleDateString(),
+  perfSettings:{bpm:100},
+  savedRhythm:{mach:'808', steps:steps, swing:0, grid:grid, vols:{}, pitches:{}},
+  isDemo:true
+ };
+}
+// Seed the demo song once, the first time the app is ever opened on a device.
+// Never re-added after that, so deleting it sticks.
+function seedDemoSongIfNeeded(){
+ try{
+  if(localStorage.getItem('modo-demo-song-seeded')) return;
+  localStorage.setItem('modo-demo-song-seeded','1');
+  var sl=loadSLData();
+  sl.unshift(buildDemoSong());
+  saveSLData(sl);
+ }catch(e){}
+}
+
 function renderSetlist(){
  setlistData=loadSLData();
  const el=document.getElementById('setlist-items'); if(!el) return;
@@ -5290,7 +5337,7 @@ function renderSetlist(){
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
  const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
- item.innerHTML=`<div class="sl-name">${song.title}</div><div class="sl-meta">${nn(song.root)} ${song.mode==='major'?'Maj':'Min'} · ${song.sections?.reduce((a,s)=>a+s.slots.length,0)||0} chords</div><div class="sl-del" title="Delete song"></div>`;
+ item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div><div class="sl-meta">${nn(song.root)} ${song.mode==='major'?'Maj':'Min'} · ${song.sections?.reduce((a,s)=>a+s.slots.length,0)||0} chords</div><div class="sl-del" title="Delete song"></div>`;
  item.querySelector('.sl-del').addEventListener('click',e=>{
  e.stopPropagation();
  if(typeof confirm!=='undefined' && !confirm('Delete "'+song.title+'"?')) return;
@@ -5362,6 +5409,9 @@ function loadSong(song,idx){
    if(typeof blRenderGrid==='function') blRenderGrid();
   }catch(e){}
  }
+
+ // Demo song: prime bass to play too, so a first-time Play press is a full arrangement
+ if(song.isDemo) blEnabled=true;
 
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
@@ -7323,6 +7373,7 @@ buildMelodyStrip();
 initBendStrip();
 onArpRateSlider(7);
 rhythmStepSec=rhythmStepDuration(RHYTHMS[0]);
+seedDemoSongIfNeeded();
 setlistData=loadSLData();
 renderSetlist();
 initMidi();
