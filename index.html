@@ -2095,6 +2095,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb" id="sb-organ" onclick="setWave('organ')">Organ</button>
  <button class="tb" id="sb-rhodes" onclick="setWave('rhodes')">Rhodes</button>
  <button class="tb" id="sb-pad" onclick="setWave('pad')">Pad</button>
+ <button class="tb" id="sb-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  </div>
 
@@ -2143,6 +2144,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb" id="mv-saw" onclick="setMelWave('sawtooth')">Saw</button>
  <button class="tb" id="mv-square" onclick="setMelWave('square')">Sqr</button>
  <button class="tb" id="mv-supersaw" onclick="setMelWave('supersaw')">S·Saw</button>
+ <button class="tb" id="mv-pianoreal" onclick="setMelWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  <div class="sg">
  <div class="sl">Vol</div>
@@ -2191,6 +2193,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb" id="wv-organ" onclick="setWave('organ')">Organ</button>
  <button class="tb" id="wv-rhodes" onclick="setWave('rhodes')">Rhodes</button>
  <button class="tb" id="wv-pad" onclick="setWave('pad')">Pad</button>
+ <button class="tb" id="wv-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  </div>
  <div class="row" style="margin:4px 0">
@@ -2233,6 +2236,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    <button class="tb" id="aw-sawtooth-p" onclick="setArpWave('sawtooth')">Saw</button>
    <button class="tb" id="aw-square-p" onclick="setArpWave('square')">Sqr</button>
    <button class="tb active" id="aw-supersaw-p" onclick="setArpWave('supersaw')">S·Saw</button>
+   <button class="tb" id="aw-pianoreal-p" onclick="setArpWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
   </div>
   </div>
   <div class="row" style="margin-top:6px">
@@ -2339,6 +2343,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb" id="ms-sawtooth" onclick="setMelWave('sawtooth')">Saw</button>
  <button class="tb" id="ms-square" onclick="setMelWave('square')">Square</button>
  <button class="tb" id="ms-supersaw" onclick="setMelWave('supersaw')">S.Saw</button>
+ <button class="tb" id="ms-pianoreal" onclick="setMelWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  </div>
  <div class="row">
@@ -2722,6 +2727,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
      <button class="bl-mopt" id="blw-sin" onclick="setBlWave('sine')">Sub</button>
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
+     <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
    </div>
   </div>
   <!-- Filter controls row -->
@@ -2955,7 +2961,71 @@ const WAVE_GAIN = {
  organ:.26,
  rhodes:.34,
  pad:.46,
+ piano_real:.62,
 };
+
+// ═══════════════════════════════════════
+// SAMPLE ENGINE — real instrument samples (progressive enhancement)
+// Piano / Upright Bass are recorded notes (CC-BY, see samples/CREDITS.md),
+// pitch-shifted at playback to cover notes between the recorded anchors.
+// If the samples can't be fetched (offline, blocked, etc.) every call site
+// falls back to the matching synthesized voice — never a dropped note.
+// ═══════════════════════════════════════
+const SAMPLE_LIBS = {
+ piano: {dir:'samples/piano', notes:['C2','C3','C4','C5','C6'], fallbackWave:'piano'},
+ bass:  {dir:'samples/bass',  notes:['C2','C3','C4'],           fallbackWave:'upright'},
+};
+const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
+const SAMPLE_STATE = {};   // {piano:'idle'|'loading'|'ready'|'error', ...}
+
+function _sampleNoteToMidi(name){
+ const m = name.match(/^([A-G])(s?)(-?\d+)$/);
+ if(!m) return null;
+ const base = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]];
+ return base + (m[2]==='s'?1:0) + (parseInt(m[3],10)+1)*12;
+}
+
+function preloadSampleInstrument(key){
+ const lib=SAMPLE_LIBS[key]; if(!lib) return;
+ if(SAMPLE_STATE[key]==='ready'||SAMPLE_STATE[key]==='loading') return;
+ const ctx=getCtx(); if(!ctx) return;
+ SAMPLE_STATE[key]='loading';
+ SAMPLE_BUFFERS[key]=SAMPLE_BUFFERS[key]||{};
+ const loads=lib.notes.map(n=>fetch(lib.dir+'/'+n+'.mp3')
+  .then(r=>{ if(!r.ok) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
+  .then(buf=>ctx.decodeAudioData(buf))
+  .then(audioBuf=>{ SAMPLE_BUFFERS[key][n]=audioBuf; })
+  .catch(()=>{})); // one missing/blocked note shouldn't sink the whole instrument
+ Promise.all(loads).then(()=>{
+  SAMPLE_STATE[key] = Object.keys(SAMPLE_BUFFERS[key]).length ? 'ready' : 'error';
+ });
+}
+
+// Nearest loaded sample to a target MIDI note, for pitch-shifting
+function _nearestSample(key, midi){
+ const lib=SAMPLE_LIBS[key], bufs=SAMPLE_BUFFERS[key];
+ if(!lib||!bufs) return null;
+ let best=null, bestDist=Infinity;
+ lib.notes.forEach(n=>{
+  if(!bufs[n]) return;
+  const nm=_sampleNoteToMidi(n), d=Math.abs(nm-midi);
+  if(d<bestDist){ bestDist=d; best={midi:nm, buffer:bufs[n]}; }
+ });
+ return best;
+}
+
+// Same envelope contract as makeVoice() — plays into an already-configured gain
+// node over [t0, t0+dur] so every caller (chord/arp/melody/bass) works unchanged.
+function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
+ const s=_nearestSample(key, midi); if(!s) return null;
+ const src=ctx.createBufferSource();
+ src.buffer=s.buffer;
+ src.playbackRate.value=Math.max(0.25, Math.min(4, Math.pow(2,(midi-s.midi)/12)));
+ src.connect(gainNode);
+ src.start(t0);
+ src.stop(t0+dur+0.05);
+ return src;
+}
 
 // ── Borrowed chord definitions ──
 // Returns { label, semis, type7, func } relative to root
@@ -3391,6 +3461,16 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  lfo.start(t0); lfo.stop(t0+dur+.05);
  osc.start(t0); osc.stop(t0+dur+.05);
  r.push(osc,mod,lfo);
+
+ } else if(wv==='piano_real'){
+ // Sampled grand piano — falls back to the synthesized 'piano' voice until loaded
+ if(SAMPLE_STATE.piano!=='ready'){
+ preloadSampleInstrument('piano');
+ return makeVoice(ctx,midi,gainNode,t0,dur,'piano');
+ }
+ const src=playSampleVoice(ctx,'piano',midi,gainNode,t0,dur);
+ if(src) r.push(src);
+ else return makeVoice(ctx,midi,gainNode,t0,dur,'piano');
 
  } else {
  const safeWv=['sine','sawtooth','square','triangle'].includes(wv)?wv:'sine';
@@ -4324,6 +4404,8 @@ function setArpWave(w){
  document.getElementById('aw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('aw-'+x+'-p')?.classList.toggle('active',x===w);
  });
+ document.getElementById('aw-pianoreal-p')?.classList.toggle('active',w==='piano_real');
+ if(w==='piano_real') preloadSampleInstrument('piano');
 }
 function setArpGatePat(i){
  arpGatePat=i; arpGateIdx=0;
@@ -4577,13 +4659,14 @@ function toggleNash(){
 function setWave(w){
  wave=w;
  // Map wave values to the actual button IDs used in HTML
- const wvIdMap={sine:'sine',sawtooth:'saw',square:'sqr',supersaw:'ssaw',piano:'piano',organ:'organ',rhodes:'rhodes',pad:'pad'};
- ['sine','sawtooth','square','supersaw','piano','organ','rhodes','pad'].forEach(x=>{
+ const wvIdMap={sine:'sine',sawtooth:'saw',square:'sqr',supersaw:'ssaw',piano:'piano',organ:'organ',rhodes:'rhodes',pad:'pad',piano_real:'pianoreal'};
+ ['sine','sawtooth','square','supersaw','piano','organ','rhodes','pad','piano_real'].forEach(x=>{
  document.getElementById('bw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('pw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('wv-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
+ if(w==='piano_real') preloadSampleInstrument('piano');
 }
 function setVoicing(v){
  voicing=v;
@@ -7203,11 +7286,14 @@ function setMelWave(w){
  ['sine','sawtooth','square','supersaw'].forEach(x=>{
  document.getElementById('ms-'+x)?.classList.toggle('active',x===w);
  });
+ document.getElementById('ms-pianoreal')?.classList.toggle('active',w==='piano_real');
  // Sync groove tab buttons
  document.getElementById('mv-sine')?.classList.toggle('active',w==='sine');
  document.getElementById('mv-saw')?.classList.toggle('active',w==='sawtooth');
  document.getElementById('mv-square')?.classList.toggle('active',w==='square');
  document.getElementById('mv-supersaw')?.classList.toggle('active',w==='supersaw');
+ document.getElementById('mv-pianoreal')?.classList.toggle('active',w==='piano_real');
+ if(w==='piano_real') preloadSampleInstrument('piano');
 }
 
 // ═══════════════════════════════════════
@@ -8706,6 +8792,17 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     ck.connect(ckF); ckF.connect(ckG); ckG.connect(g);
     o.start(t); o2.start(t); o3.start(t); ck.start(t);
     o.stop(stopT); o2.stop(stopT); o3.stop(t+0.3); ck.stop(t+0.05);
+
+  } else if(blWave === 'upright_real'){
+    // Sampled upright bass — falls back to the synthesized 'upright' voice until loaded
+    var _bmidi = note + (oct+1)*12;
+    var src = (SAMPLE_STATE.bass === 'ready') ? playSampleVoice(ctx, 'bass', _bmidi, g, t, dur) : null;
+    if(!src){
+      if(SAMPLE_STATE.bass !== 'ready') preloadSampleInstrument('bass');
+      var _sw = blWave;
+      try{ blWave = 'upright'; blPlayNote(t, note, oct, dur, vol, accent, slide); }
+      finally{ blWave = _sw; }
+    }
   }
 
   // Update slide state for next note
@@ -9180,9 +9277,10 @@ window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); bl
 // ── bass waveform selector ──
 window.setBlWave = function(w){
   blWave = w;
-  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up'};
+  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
+  if(w==='upright_real') preloadSampleInstrument('bass');
 };
 
 // ── gen style buttons ──
