@@ -2572,10 +2572,10 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (← key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
  <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (→ key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
  <button class="sc-btn" onclick="updateSongPerfSettings()" title="Save current tempo/arp/rhythm to this song"> Save Settings</button>
- <div class="tg">
- <button class="tb" id="slb-key-dn" onclick="transposeSong(-1)"></button>
+ <div class="tg" style="align-items:center;gap:4px">
+ <button class="btn-xp" id="slb-key-dn" onclick="transposeSong(-1)" title="Transpose song down a semitone" style="width:22px;height:22px;font-size:.75rem">−</button>
  <span class="slb-key" id="slb-key">C Maj</span>
- <button class="tb" id="slb-key-up" onclick="transposeSong(+1)"></button>
+ <button class="btn-xp" id="slb-key-up" onclick="transposeSong(+1)" title="Transpose song up a semitone" style="width:22px;height:22px;font-size:.75rem">+</button>
  </div>
  <button class="tb" id="slb-auto-btn" onclick="toggleSongAutoAdvance()">Auto: OFF</button>
  </div>
@@ -3357,9 +3357,14 @@ function buildSuperSaw(ctx,f,spread){
 // Active voices: array of {oscs:[], gain:GainNode}
 // Fades gain to 0 over FADE_OUT then stops oscs — no clicks.
 const FADE_OUT = 0.022;
+// Bumped every time voices are cut off (new chord, stopAll, etc.) so a
+// pointerup arriving after a held chord was already superseded is a no-op
+// instead of releasing whatever chord happens to be playing now.
+let _sustainId = 0;
 function stopAll(){
  const ctx = getCtx();
  const t = ctx ? ctx.currentTime : 0;
+ _sustainId++;
  activeOscs.forEach(v => {
  try {
  v.gain.gain.cancelScheduledValues(t);
@@ -3372,6 +3377,28 @@ function stopAll(){
  }
  });
  activeOscs = [];
+}
+
+// Releases a chord that was played with sustain (held-note) semantics —
+// natural decay-curve release instead of stopAll()'s instant fade, and only
+// if nothing has interrupted it since (myId still matches the live one).
+function releaseSustainedChord(myId){
+ if(myId !== _sustainId) return;
+ const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
+ const t=ctx.currentTime;
+ const dec=parseFloat(document.getElementById('decay').value)||2.0;
+ activeOscs.forEach(v=>{
+ try{
+ v.gain.gain.cancelScheduledValues(t);
+ v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+ v.gain.gain.exponentialRampToValueAtTime(.0001, t+dec);
+ v.oscs.forEach(o=>{ try{ o.stop(t+dec+.05); }catch(e){} });
+ }catch(e){
+ if(v.oscs) v.oscs.forEach(o=>{ try{o.stop();}catch(ex){} });
+ }
+ });
+ activeOscs=[];
+ _sustainId++;
 }
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv){
@@ -3596,13 +3623,18 @@ function velScale(pressure){
  return 1.0;
 }
 
-function playChord(rootM,relIntvs,skipStop,pressure){
+// How long a sustained (held) voice is scheduled for before its natural
+// synth decay would kick in — release always cuts it short via
+// releaseSustainedChord(), this is just a safety ceiling on a stuck finger.
+const SUSTAIN_DUR = 30;
+
+function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const ctx=getCtx(); if(!ctx) return;
  const vol=parseFloat(document.getElementById('vol').value); // wetDry only affects reverb send, not direct vol
  if(vol<.001) return;
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
- const dec=chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw;
+ const dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw);
  const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
@@ -3616,7 +3648,11 @@ function playChord(rootM,relIntvs,skipStop,pressure){
  // Bass — sine always
  const bg=ctx.createGain();
  bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh,now+atk);
+ if(sustain){
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01); // hold at peak until released
+ } else {
  bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
+ }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(rootM-12-69)/12);
  bo.connect(bg); bg.connect(window._masterDest||ctx.destination); feedRev(bg,revMix);
@@ -3630,7 +3666,11 @@ function playChord(rootM,relIntvs,skipStop,pressure){
  const vl=i===0?1.0:i===intvs.length-1?.62:.78;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk);
+ if(sustain){
+ g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); // hold at peak until released
+ } else {
  g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
+ }
  const dest=window._masterDest||ctx.destination; g.connect(dest); feedRev(g,revMix);
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
  activeOscs.push({oscs, gain:g});
@@ -3638,13 +3678,13 @@ function playChord(rootM,relIntvs,skipStop,pressure){
 }
 
 // Slash chord — plays chord with different bass
-function playSlashChord(rootM,relIntvs,bassNote,pressure){
+function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  stopAll();
  const ctx=getCtx(); if(!ctx) return;
  const vol=parseFloat(document.getElementById('vol').value);
  const atk=parseFloat(document.getElementById('attack').value);
  const decRaw2=parseFloat(document.getElementById('decay').value);
- const dec=chordBeats>0?Math.min(decRaw2,chordBeats*beatSec()):decRaw2;
+ const dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw2,chordBeats*beatSec()):decRaw2);
  const revMix=parseFloat(document.getElementById('rev-mix').value);
  const _mxCh=_cmx('chord');
  const wg=WAVE_GAIN[wave]||1;
@@ -3653,7 +3693,11 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure){
 
  const bg=ctx.createGain();
  bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.42*vsc*_mxCh,now+atk);
+ if(sustain){
+ bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01); // hold at peak until released
+ } else {
  bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
+ }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
  bo.connect(bg); bg.connect(window._masterDest||ctx.destination); feedRev(bg,revMix);
@@ -3665,7 +3709,11 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure){
  const vl=i===0?1.0:i===relIntvs.length-1?.62:.78;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk);
+ if(sustain){
+ g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); // hold at peak until released
+ } else {
  g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
+ }
  const dest=window._masterDest||ctx.destination; g.connect(dest); feedRev(g,revMix);
  activeOscs.push({oscs:makeVoice(ctx,rootM+s,g,t0,atk+dec,wave), gain:g});
  });
@@ -4518,6 +4566,25 @@ function triggerChord(rootM,triadQ,type7,func,ext,pressure){
 
 
 // ─── Split button factory ───
+// Press-and-hold chord playback: pointerdown starts a sustained voice,
+// release (pointerup/cancel/leave) triggers its natural decay — mirrors the
+// melody strip's press/release so holding a chord sustains it until you let go.
+function _wireChordHold(el, trigger){
+ let token=null;
+ el.addEventListener('pointerdown', e=>{
+ e.preventDefault(); e.stopPropagation();
+ el.classList.add('flash');
+ token = trigger();
+ });
+ const release=()=>{
+ el.classList.remove('flash');
+ if(token!==null){ releaseSustainedChord(token); token=null; }
+ };
+ el.addEventListener('pointerup', release);
+ el.addEventListener('pointercancel', release);
+ el.addEventListener('pointerleave', release);
+}
+
 function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  const cssCls=FUNC_CSS[func]||'';
  const wrap=document.createElement('div');
@@ -4531,12 +4598,11 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  sevDiv.className='btn-sev';
  const sev7Name=noteN+(SUFFIX7[type7]||'');
  sevDiv.innerHTML=`<span class="sl-name">${sev7Name}</span><span class="sl-qual">${QLABEL[type7]||''}</span>`;
- sevDiv.addEventListener('click',e=>{
- e.stopPropagation(); sevDiv.classList.add('flash'); setTimeout(()=>sevDiv.classList.remove('flash'),150);
+ _wireChordHold(sevDiv, ()=>{
  lastTriggeredDegree=kbNum; applyLogicHighlights(kbNum);
  autoStartIfNeeded(); stopSongLoopIfActive();
- _triggerChordImmediate(crm, triadQ, type7, func, 0, '7th');
-});
+ return _triggerChordImmediate(crm, triadQ, type7, func, 0, '7th', true);
+ });
 
  // Triad area
  const trDiv=document.createElement('div');
@@ -4544,7 +4610,12 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  const tName=nashMode?numeral:noteN+(triadQ===1?'m':triadQ===2?'°':'');
  const tQual=QLABEL[triadQ]||'';
  trDiv.innerHTML=`<span class="cnum">${numeral}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${tQual}</span>`;
- trDiv.addEventListener('click',e=>{ e.stopPropagation(); trDiv.classList.add('flash'); setTimeout(()=>trDiv.classList.remove('flash'),150); lastTriggeredDegree=kbNum; triggerChordWithVariant(crm,triadQ,type7,func,0); applyLogicHighlights(kbNum); });
+ _wireChordHold(trDiv, ()=>{
+ lastTriggeredDegree=kbNum;
+ const tok=triggerChordWithVariant(crm,triadQ,type7,func,0,undefined,true);
+ applyLogicHighlights(kbNum);
+ return tok;
+ });
 
  wrap.appendChild(sevDiv); wrap.appendChild(trDiv);
  return wrap;
@@ -4568,12 +4639,11 @@ function makeOutBtn(label,noteN,type7,crm,func){
  sevDiv.className='btn-sev';
  const ext7Name = nashMode ? label+(SUFFIX7[type7]||'') : noteN+(SUFFIX7[type7]||'');
  sevDiv.innerHTML=`<span class="sl-name">${ext7Name}</span><span class="sl-qual">${QLABEL[type7]||''}</span>`;
- sevDiv.addEventListener('click',e=>{
- e.stopPropagation();
- sevDiv.classList.add('flash'); setTimeout(()=>sevDiv.classList.remove('flash'),150);
+ _wireChordHold(sevDiv, ()=>{
  autoStartIfNeeded(); stopSongLoopIfActive();
- _triggerChordImmediate(crm, triadQ, type7, func, 0, '7th');
+ const tok=_triggerChordImmediate(crm, triadQ, type7, func, 0, '7th', true);
  applyLogicHighlights(-1,label);
+ return tok;
  });
 
  // ── Bottom: triad ──
@@ -4581,11 +4651,10 @@ function makeOutBtn(label,noteN,type7,crm,func){
  trDiv.className='btn-tri';
  const tName = nashMode ? label : noteN+(triadQ===1?'m':triadQ===2?'°':'');
  trDiv.innerHTML=`<span class="cnum">${label}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${QLABEL[triadQ]||''}</span>`;
- trDiv.addEventListener('click',e=>{
- e.stopPropagation();
- trDiv.classList.add('flash'); setTimeout(()=>trDiv.classList.remove('flash'),150);
- triggerChordWithVariant(crm,triadQ,type7,func,0);
+ _wireChordHold(trDiv, ()=>{
+ const tok=triggerChordWithVariant(crm,triadQ,type7,func,0,undefined,true);
  applyLogicHighlights(-1,label);
+ return tok;
  });
 
  wrap.appendChild(sevDiv); wrap.appendChild(trDiv);
@@ -4919,14 +4988,27 @@ function showToast(msg){
 function playOnboardingDemo(){
   if(typeof localStorage!=='undefined'&&localStorage.getItem('modo-demo-played')) return;
   if(document.getElementById('_onboard-wrap')) return;
+
+  // The tour needs Advanced-only areas (melody strip, secondary dominants,
+  // extra voices) visible, so it switches to Advanced for its duration and
+  // restores whatever the user actually had set once it's done.
+  var _originalViewMode='basic';
+  try{ _originalViewMode=localStorage.getItem('modo-view-mode')||'basic'; }catch(e){}
+  if(typeof setViewMode==='function') setViewMode('advanced');
+
   var steps=[
-    {title:'Welcome to Modo Pro!',text:'A harmonic composition tool built for players of all levels. Let\'s take a quick tour of each section.',icon:'✦',target:null,tab:null},
-    {title:'Vibe — Play Chords',text:'This is your main performance page. Tap any chord button to hear it instantly. The <b>key strip at the top</b> sets your root note and scale — try switching between Major, Minor, Dorian, or Lydian for different sounds. Keys 1–7 on your keyboard also trigger chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
-    {title:'Vibe — Melody Strip',text:'Scroll down on the Vibe page to find the <b>Melody / Solo</b> section. Slide across the keys to play single notes over your chords. Use keyboard keys A S D F G H J (Do Re Mi…) to play melodies. Z and X shift the octave up/down.',icon:'🎵',target:'melody-keys',tab:'perform'},
-    {title:'Rhythm — Set Your Groove',text:'The <b>Rhythm tab</b> lets you program a drum machine. Choose a groove preset, adjust the number of steps, and hit Play. Swing adds a jazz or funk feel. The rhythm always stays in sync with your chords.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
-    {title:'Bass — Auto Bassline',text:'The <b>Bass tab</b> generates a bassline that follows your chords. Pick a style (Jazz, Funk, Motown…), hit <b>Generate</b>, then Play. The bassline automatically updates when you change chords if Bass Sync is on.',icon:'🎸',target:null,tab:'bass'},
-    {title:'Songs — Build Progressions',text:'The <b>Songs tab</b> is your composition workspace. Pick chords from the picker, set chord quality (Triad, 7th, 9th…), then save to your Setlist. Load a saved song to perform it live — spacebar starts the groove and triggers the first chord.',icon:'🎼',target:'chart-chord-picker',tab:'songs'},
-    {title:'Settings — Fine-Tune Your Sound',text:'The <b>Settings tab</b> has detailed controls: chord waveform, attack/release, reverb, melody voice, display theme, and master tuning. Use Basic/Advanced mode on the Vibe page to show or hide the more powerful tools.',icon:'⚙',target:null,tab:'build'},
+    {title:'Welcome to Modo Hue!',text:'A harmonic performance &amp; composition tool for players of every level — from chord-chart pros to total beginners. This quick tour covers every tab; it takes about a minute.',icon:'✦',target:null,tab:null},
+    {title:'Basic vs Advanced',text:'We just switched you into <b>Advanced</b> view for this tour — it unlocks extra chords, the melody strip, church modes, and more instrument voices. <b>Basic</b> keeps things simple for quick playing. Toggle between them here, any time.',icon:'🔀',target:'vmt-adv',tab:'perform'},
+    {title:'Set Your Key',text:'Use <b>− / +</b> to change key, and pick Major, Minor, or (in Advanced) a church mode like Dorian or Lydian. Every chord on this page follows whatever key you set here.',icon:'🔑',target:'key-name',tab:'perform'},
+    {title:'Play Chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain a chord until you let go — a quick tap plays a short stab instead. Keys 1–7 on your computer keyboard trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
+    {title:'Melody / Solo Strip',text:'Scroll down on Vibe to find this strip. Slide or tap to play single notes over your chords. Keyboard keys A S D F G H J (Do Re Mi…) play melodies — Z and X shift the octave up/down.',icon:'🎵',target:'melody-keys',tab:'perform'},
+    {title:'One Play Button',text:'<b>Play</b> starts everything that\'s switched on — sequencer, bass, and a loaded song — together, in sync. <b>Arp</b> and <b>Bass</b> are just on/off switches for what Play will start next; they don\'t play anything by themselves.',icon:'▶',target:'ft-rhy-btn',tab:'perform'},
+    {title:'Rhythm — Program a Groove',text:'Pick a groove preset or build your own step pattern, choose a drum kit, and dial in swing. This is what Play uses when no song is loaded.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
+    {title:'Bass — Auto or Real',text:'Pick a style — Jazz, Funk, Motown, and more — and hit <b>Generate</b> for a bassline that follows your chords automatically. Try <b>Real</b> for a sampled upright bass instead of a synth.',icon:'🎸',target:'blw-upreal',tab:'bass'},
+    {title:'Songs — Build a Chart',text:'Tap chords from the picker to build a progression. Tap a chord\'s duration (like <b>1 bar</b>) for one-tap presets sized for real jazz phrase lengths, then save it to your Setlist.',icon:'🎼',target:'chart-chord-picker',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('build'); }},
+    {title:'Songs — Perform Mode',text:'Load a song and switch to Perform to play it live. <b>− / +</b> transposes the whole song by semitones on the fly, and <b>← Prev / Next →</b> move between sections. There\'s a built-in demo song in your Setlist — try it!',icon:'▶',target:'slb-key-dn',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('perform'); }},
+    {title:'Settings — Fine-Tune Your Sound',text:'Chord waveform, attack/decay, reverb, melody voice, theme, and tuning all live here — including <b>Real Piano</b>, sampled from actual recordings instead of a synth.',icon:'⚙',target:'ms-pianoreal',tab:'build'},
+    {title:'Have fun!',text:'That\'s the whole tour. Come back to Vibe, pick a key, and start playing — replay this any time with the <b>?</b> button in the transport bar.',icon:'✦',target:null,tab:'perform'},
   ];
   var step=0;
   var wrap=document.createElement('div');
@@ -4944,17 +5026,22 @@ function playOnboardingDemo(){
   document.body.appendChild(wrap);
 
   function spotTarget(tid){
-    if(!tid){spotlight.style.cssText+='display:none;'; return;}
+    if(!tid){spotlight.style.display='none'; return;}
     var el=document.getElementById(tid);
     if(!el){spotlight.style.display='none'; return;}
-    var r=el.getBoundingClientRect();
-    var pad=8;
-    spotlight.style.cssText='position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    var doSpot=function(){
+      var r=el.getBoundingClientRect();
+      var pad=8;
+      spotlight.style.cssText='position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
+    };
+    setTimeout(doSpot,260); // wait for scrollIntoView to settle before measuring
   }
 
   function render(){
     var s=steps[step];
     if(s.tab && typeof switchTab==='function') switchTab(s.tab);
+    if(s.before) s.before();
     spotTarget(s.target);
     card.innerHTML='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'+
       '<span style="font-size:1.4rem;line-height:1">'+s.icon+'</span>'+
@@ -4975,6 +5062,8 @@ function playOnboardingDemo(){
 
   function dismiss(){
     spotlight.remove(); wrap.remove();
+    if(typeof setViewMode==='function') setViewMode(_originalViewMode);
+    if(typeof switchTab==='function') switchTab('perform');
     try{localStorage.setItem('modo-demo-played','1');}catch(e){}
   }
 
@@ -5352,8 +5441,17 @@ function toggleSaveRhythm(){
 }
 
 function saveToSetlist(){
- const title=document.getElementById('chart-title').value.trim()||'Untitled';
+ const titleInput=document.getElementById('chart-title');
+ const title=titleInput.value.trim()||'Untitled';
  if(!sections.some(s=>s.slots.length)){ if(typeof alert!=='undefined') alert('Add some chords first!'); return; }
+ setlistData=loadSLData();
+ // Block saving under a name another song already has — re-saving the song
+ // that's currently loaded (same slot) is fine, that's an update, not a dupe.
+ const dupIdx=setlistData.findIndex((s,i)=>i!==curSetlistIdx && (s.title||'').trim().toLowerCase()===title.toLowerCase());
+ if(dupIdx>=0){
+  showDuplicateNameModal(title);
+  return;
+ }
  const song={id:Date.now(),title,root,mode,sections:sections.map(s=>({name:s.name,slots:s.slots.map(sl=>({...sl}))})),savedAt:new Date().toLocaleDateString(),perfSettings:getSongPerformSettings()};
  if(songSaveRhythm){
   // Snapshot current drum pattern
@@ -5365,10 +5463,44 @@ function saveToSetlist(){
    song.savedBass={wave:blWave,steps:blSteps,grid:JSON.parse(JSON.stringify(blGrid)),cutoff:blCutoff,resonance:blResonance};
   }catch(e){}
  }
- setlistData=loadSLData(); setlistData.push(song); saveSLData(setlistData);
+ if(curSetlistIdx>=0 && setlistData[curSetlistIdx]){
+  // Currently-loaded song — update it in place instead of adding a duplicate entry
+  song.id=setlistData[curSetlistIdx].id;
+  setlistData[curSetlistIdx]=song;
+ } else {
+  setlistData.push(song);
+  curSetlistIdx=setlistData.length-1;
+ }
+ saveSLData(setlistData);
  renderSetlist(); renderSetlistNav();
  showToast(songSaveRhythm ? 'Saved with rhythm & bass' : 'Saved to setlist');
  track('song_saved', {withRhythm:songSaveRhythm});
+}
+
+// Forces a rename when the entered title collides with a different saved song
+function showDuplicateNameModal(title){
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.style.cssText='background:var(--surf);border:2px solid var(--dom);border-radius:16px;padding:22px 24px;max-width:300px;width:100%;text-align:center;';
+ box.innerHTML='<div style="font-size:.72rem;font-weight:700;color:var(--dom);margin-bottom:10px">Name already used</div>'
+  +'<div style="font-size:.54rem;color:var(--muted);line-height:1.7;margin-bottom:14px">Another song in your setlist is already called <strong style="color:var(--text)">"'+title.replace(/</g,'&lt;')+'"</strong>. Pick a different name to tell them apart.</div>'
+  +'<input id="dnm-input" type="text" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:.62rem;margin-bottom:14px;text-align:center" />'
+  +'<button id="dnm-ok" style="padding:7px 22px;border:none;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font-size:.6rem;font-weight:600;width:100%">Save with this name</button>';
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ const input=box.querySelector('#dnm-input');
+ input.value=title+' (2)';
+ input.focus(); input.select();
+ const tryOk=()=>{
+  const v=input.value.trim();
+  if(!v) return;
+  document.getElementById('chart-title').value=v;
+  overlay.remove();
+  saveToSetlist();
+ };
+ box.querySelector('#dnm-ok').addEventListener('click',tryOk);
+ input.addEventListener('keydown',e=>{ if(e.key==='Enter') tryOk(); });
 }
 
 function loadSLData(){ try{ return JSON.parse(localStorage.getItem('prism-sl')||'[]'); }catch(e){ return []; } }
@@ -5689,11 +5821,11 @@ function armVariant(v){
 }
 
 // Modified triggerChord to consume armed variant
-function triggerChordWithVariant(rootM, triadQ, type7, func, pressure){
+function triggerChordWithVariant(rootM, triadQ, type7, func, pressure, baseExt, sustain){
  autoStartIfNeeded();
  stopSongLoopIfActive();
  // Chords ALWAYS play immediately — snap only controls arp restart timing
- _triggerChordImmediate(rootM, triadQ, type7, func, pressure);
+ return _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, sustain);
 }
 
 // ═══════════════════════════════════════
@@ -6166,13 +6298,16 @@ function playChartSlot2(si, ci){
 }
 
 function transposeSong(semis){
- const oldRoot = root;
  root = ((root+semis)%12+12)%12;
  // Shift all slot rootM values by the same semitone amount
  sections.forEach(sec => sec.slots.forEach(slot => {
  slot.rootM = slot.rootM + semis;
  if(slot.bassNote !== null) slot.bassNote = slot.bassNote + semis;
  }));
+ // The chord data itself now reflects the new key — if the song loop is
+ // playing, resync the live-capo baseline so playChartSlot2 doesn't ALSO
+ // apply a (root - _songBaseRoot) shift on top of the data we just moved.
+ if(songLoopActive) _songBaseRoot = root;
  renderChords();
  renderSongsPerformView();
  syncSongKeyBadge();
@@ -6340,7 +6475,7 @@ let songLoopTimer = null;
 let songPendingSectionDelta = 0; // queued nav: +1 next, -1 prev, 0 = none (stay on current section)
 
 // The actual immediate chord trigger (no snap logic)
-function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
+function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, sustain) {
  const v = armedVariant;
  let ext = baseExt || 'triad', bassOverride = null;
  if(v==='sus2') ext='sus2'; else if(v==='sus4') ext='sus4';
@@ -6359,11 +6494,11 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
  const bassIntvFromRoot = bassOverride - rootM;
  setArpChord(rootM, [bassIntvFromRoot, ...intvs], func);
  // Slash chord always plays — both bass pedal and upper chord voices
- playSlashChord(rootM, voicedIntvs, bassOverride, pressure);
+ playSlashChord(rootM, voicedIntvs, bassOverride, pressure, sustain);
  } else {
  setArpChord(rootM, intvs, func);
  stopAll();
- playChord(rootM, voicedIntvs, false, pressure);
+ playChord(rootM, voicedIntvs, false, pressure, sustain);
  }
 
  if(arpOn){
@@ -6382,6 +6517,8 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt) {
   if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync&&typeof window.blGenerate==='function'){
     setTimeout(window.blGenerate,10);
   }
+  // Token for releaseSustainedChord() — identifies "this" trigger's generation
+  return _sustainId;
 }
 
 function startSongLoop(alignedStart){
