@@ -3069,7 +3069,6 @@ function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
 // ── Borrowed chord definitions ──
 // Returns { label, semis, type7, func } relative to root
 function getAllBorrowed(m) {
- if (m !== 'major' && m !== 'minor') return []; // modal scales — no borrowed chord panel for now
  if (m === 'major') return [
  // Tonic function borrowings
  {label:'i', semis:0, type7:'minMaj7', func:'tonic', bass:null},
@@ -3085,7 +3084,7 @@ function getAllBorrowed(m) {
  // Neapolitan (II — very colour)
  {label:'♭II', semis:1, type7:'maj7', func:'modal', bass:null},
  ];
- else return [
+ if (m === 'minor') return [
  // Tonic from parallel major
  {label:'I', semis:MAJOR_STEPS[0], type7:'maj7', func:'tonic', bass:null},
  {label:'III', semis:MAJOR_STEPS[2], type7:'maj7', func:'tonic', bass:null},
@@ -3095,6 +3094,23 @@ function getAllBorrowed(m) {
  // Dominant from parallel major
  {label:'V', semis:MAJOR_STEPS[4], type7:'dom7', func:'dom', bass:null},
  ];
+ // Church / extended modes: borrow the chromatic colour chords from the
+ // parallel major and parallel minor — the diatonic seventh chords of those
+ // two scales whose root pitch-class isn't already a degree of this mode.
+ const md = MODES[m]; if(!md) return [];
+ const inMode = new Set(md.steps.map(s=>((s%12)+12)%12));
+ const out=[], seen=new Set();
+ const addFrom=(steps,nums,sevenths,funcs)=>{
+  steps.forEach((s,i)=>{
+   const pc=((s%12)+12)%12;
+   if(inMode.has(pc)||seen.has(pc)) return; // already diatonic, or root already covered
+   seen.add(pc);
+   out.push({label:nums[i], semis:s, type7:sevenths[i], func:funcs[i], bass:null});
+  });
+ };
+ addFrom(MAJOR_STEPS, MAJOR_NUMS, MAJOR_7TH_T, MAJOR_FUNC);
+ addFrom(MINOR_STEPS, MINOR_NUMS, MINOR_7TH_T, MINOR_FUNC);
+ return out;
 }
 
 // Secondary dominants
