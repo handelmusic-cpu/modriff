@@ -4540,8 +4540,9 @@ function buildChromaGrid(){
  grid.innerHTML='';
  const rm=rootMidi();
  const qd=CHROMA_QUALITIES[chromaQ]||CHROMA_QUALITIES['maj'];
- const cSteps=mode==='major'?MAJOR_STEPS:MINOR_STEPS;
- const cFuncs=mode==='major'?MAJOR_FUNC:MINOR_FUNC;
+ const cMd=MODES[mode]||MODES.major;
+ const cSteps=cMd.steps;
+ const cFuncs=cMd.func;
  // All 12 chromatic notes
  for(let i=0;i<12;i++){
  const noteN=nn((root+i)%12);
@@ -5192,16 +5193,17 @@ function buildSectionTabs(){
 function buildChartPicker(){
  buildChromaGrid();
  const picker=document.getElementById('chart-chord-picker'); if(!picker) return; picker.innerHTML='';
- const steps=mode==='major'?MAJOR_STEPS:MINOR_STEPS;
- const tqs=mode==='major'?MAJOR_TRIAD_Q:MINOR_TRIAD_Q;
- const t7s=mode==='major'?MAJOR_7TH_T:MINOR_7TH_T;
- const nums=mode==='major'?MAJOR_NUMS:MINOR_NUMS;
- const funcs=mode==='major'?MAJOR_FUNC:MINOR_FUNC;
+ const pickMd=MODES[mode]||MODES.major;
+ const steps=pickMd.steps;
+ const tqs=pickMd.triadQ;
+ const t7s=pickMd.seventh;
+ const nums=pickMd.nums;
+ const funcs=pickMd.func;
  const rm=rootMidi();
 
  steps.forEach((s,i)=>{
  const crm=rm+s, noteN=nn((root+s)%12), q=tqs[i], func=funcs[i];
- const triadName=nashMode?nums[i]:noteN+(q===1?'m':q===2?'°':'');
+ const triadName=nashMode?nums[i]:noteN+(q===1?'m':q===2?'°':q===3?'+':'');
  const ext7Name=nashMode?nums[i]+(SUFFIX7[t7s[i]]||''):(noteN+(SUFFIX7[t7s[i]]||'')); 
  const borderColor='var(--'+(func==='tonic'?'tonic':func==='subdom'?'subdom':func==='dom'?'dom':'modal')+')';
 
@@ -5437,7 +5439,7 @@ function renderPerfChartRow(){
  });
 }
 
-function snapChartKey(){ buildChartPicker(); const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mode==='major'?'Maj':'Min'}`; }
+function snapChartKey(){ buildChartPicker(); const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${(MODES[mode]||MODES.major).label}`; }
 
 function clearChart(){
  const hasContent = sections.some(s=>s.slots.length) || sections.length > 1 || document.getElementById('chart-title').value.trim();
@@ -5591,7 +5593,7 @@ function renderSetlist(){
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
  const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
- item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div><div class="sl-meta">${nn(song.root)} ${song.mode==='major'?'Maj':'Min'} · ${song.sections?.reduce((a,s)=>a+s.slots.length,0)||0} chords</div><div class="sl-del" title="Delete song"></div>`;
+ item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div><div class="sl-meta">${nn(song.root)} ${(MODES[song.mode]||MODES.major).label} · ${song.sections?.reduce((a,s)=>a+s.slots.length,0)||0} chords</div><div class="sl-del" title="Delete song"></div>`;
  item.querySelector('.sl-del').addEventListener('click',e=>{
  e.stopPropagation();
  if(typeof confirm!=='undefined' && !confirm('Delete "'+song.title+'"?')) return;
@@ -5700,7 +5702,7 @@ function importSetlist(e){
 function printChart(){
  const title=document.getElementById('chart-title').value||'Untitled';
  const win=window.open('','_blank');
- let html=`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}.sec{margin-bottom:20px;}.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}.chords{display:flex;flex-wrap:wrap;gap:8px;}.chord{padding:8px 14px;border:1px solid #ccc;border-radius:6px;font-size:18px;font-weight:bold;}</style></head><body><h1>${title}</h1><h3>${nn(root)} ${mode==='major'?'Major':'Minor'}</h3>`;
+ let html=`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}.sec{margin-bottom:20px;}.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}.chords{display:flex;flex-wrap:wrap;gap:8px;}.chord{padding:8px 14px;border:1px solid #ccc;border-radius:6px;font-size:18px;font-weight:bold;}</style></head><body><h1>${title}</h1><h3>${nn(root)} ${(MODES[mode]||MODES.major).label}</h3>`;
  sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${slot.ext&&slot.ext!=='triad'?'<sup>'+slot.ext+'</sup>':''}${slot.bassNote!==null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
  html+='</body></html>';
  win.document.write(html); win.document.close(); win.print();
@@ -5807,6 +5809,17 @@ function setTheme(t){
 let solfegeOn = false;
 const SOLFEGE_MAJ = ['Do','Re','Mi','Fa','Sol','La','Ti','Do'];
 const SOLFEGE_MIN = ['Do','Re','Me','Fa','Sol','Le','Te','Do'];
+// Movable-do syllables per church mode, index-aligned with MODES[mode].steps
+const SOLFEGE_BY_MODE = {
+ major:          ['Do','Re','Mi','Fa','Sol','La','Ti'],
+ dorian:         ['Do','Re','Me','Fa','Sol','La','Te'],
+ phrygian:       ['Do','Ra','Me','Fa','Sol','Le','Te'],
+ lydian:         ['Do','Re','Mi','Fi','Sol','La','Ti'],
+ mixolydian:     ['Do','Re','Mi','Fa','Sol','La','Te'],
+ minor:          ['Do','Re','Me','Fa','Sol','Le','Te'],
+ locrian:        ['Do','Ra','Me','Fa','Se','Le','Te'],
+ harmonic_minor: ['Do','Re','Me','Fa','Sol','Le','Ti'],
+};
 function toggleSolfege(){
  solfegeOn = !solfegeOn;
  const btn = document.getElementById('solfeige-btn');
@@ -5816,8 +5829,8 @@ function toggleSolfege(){
  if(document.getElementById('kalimba-wrap')?.classList.contains('visible')) buildKalimba();
 }
 function solfegeLabel(semisFromRoot){
- const steps = mode==='major'?MAJOR_STEPS:MINOR_STEPS;
- const sol = mode==='major'?SOLFEGE_MAJ:SOLFEGE_MIN;
+ const steps = (MODES[mode]||MODES.major).steps;
+ const sol = SOLFEGE_BY_MODE[mode]||SOLFEGE_MAJ;
  const idx = steps.indexOf(((semisFromRoot%12)+12)%12);
  return idx >= 0 ? sol[idx] : null;
 }
@@ -6118,10 +6131,11 @@ function setMidiKeyMap(k){
 // Given a pitch class (0-11) relative to root in 'movable' mode,
 // returns the best borrowed/modal chord
 function midiPCToChord(pc, inSteps){
- const steps = mode==='major'?MAJOR_STEPS:MINOR_STEPS;
- const tqs = mode==='major'?MAJOR_TRIAD_Q:MINOR_TRIAD_Q;
- const t7s = mode==='major'?MAJOR_7TH_T:MINOR_7TH_T;
- const funcs = mode==='major'?MAJOR_FUNC:MINOR_FUNC;
+ const midiMd = MODES[mode]||MODES.major;
+ const steps = midiMd.steps;
+ const tqs = midiMd.triadQ;
+ const t7s = midiMd.seventh;
+ const funcs = midiMd.func;
  const rm = rootMidi();
 
  // In-key?
@@ -6175,7 +6189,7 @@ function onMidiMsg(e){
  playMelNote(midi + melOctShift, pressure);
  } else {
  // Chord mode: map pc to chord
- const steps = mode==='major'?MAJOR_STEPS:MINOR_STEPS;
+ const steps = (MODES[mode]||MODES.major).steps;
  const chord = midiPCToChord(pc, steps);
  triggerChordWithVariant(chord.rootM, chord.triadQ, chord.type7, chord.func, pressure);
  }
@@ -6217,8 +6231,8 @@ function renderSongsPerformView(){
  const keyEl = document.getElementById('slb-key');
  if(song){
  if(titleEl) titleEl.textContent = song.title;
- if(metaEl) metaEl.textContent = nn(root)+' '+(mode==='major'?'Major':'Minor')+' · '+sections.reduce((a,s)=>a+s.slots.length,0)+' chords';
- if(keyEl) keyEl.textContent = nn(root)+' '+(mode==='major'?'Maj':'Min');
+ if(metaEl) metaEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+sections.reduce((a,s)=>a+s.slots.length,0)+' chords';
+ if(keyEl) keyEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label;
  } else {
  if(titleEl) titleEl.textContent = 'No song loaded';
  if(metaEl) metaEl.textContent = 'Load a song from Build mode';
@@ -6269,7 +6283,7 @@ function renderSetlistPerform(){
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
  const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
- item.innerHTML='<div class="sl-name">'+song.title+'</div><div class="sl-meta">'+nn(song.root)+' '+(song.mode==='major'?'Maj':'Min')+'</div>';
+ item.innerHTML='<div class="sl-name">'+song.title+'</div><div class="sl-meta">'+nn(song.root)+' '+(MODES[song.mode]||MODES.major).label+'</div>';
  item.addEventListener('click',()=>{ loadSong(song,i); renderSongsPerformView(); });
  el.appendChild(item);
  });
@@ -6332,7 +6346,17 @@ function transposeSong(semis){
  root = ((root+semis)%12+12)%12;
  // Shift all slot rootM values by the same semitone amount
  sections.forEach(sec => sec.slots.forEach(slot => {
- slot.rootM = slot.rootM + semis;
+ const newRootM = slot.rootM + semis;
+ // slot.label bakes in an absolute note name at add-time (e.g. "C#m7");
+ // swap just the leading note-name letter so displayed chords keep
+ // matching what's actually being played after the shift. Nashville-
+ // number labels (nashMode, e.g. "iv°") never start with A-G so this
+ // correctly leaves them untouched — they're transposition-invariant.
+ if(slot.label){
+ const m = slot.label.match(/^[A-G][♯♭]?/);
+ if(m) slot.label = nn(newRootM) + slot.label.slice(m[0].length);
+ }
+ slot.rootM = newRootM;
  if(slot.bassNote !== null) slot.bassNote = slot.bassNote + semis;
  }));
  // The chord data itself now reflects the new key — if the song loop is
@@ -6934,7 +6958,7 @@ function loadJazzStd(idx){
  if(typeof buildChartPicker==='function') buildChartPicker();
  if(typeof buildProgPresets==='function') buildProgPresets();
  document.getElementById('jazz-std-sel').value='-1';
- showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(mode==='major'?'Major':'Minor')+')');
+ showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
 }
 
 function _playLoopSlot(){
@@ -7356,10 +7380,11 @@ function updateFtSongBtn(){
 // transposeSong already updates root/mode/renderChords
 // We just need to update the song key badge in Songs tab
 function syncSongKeyBadge(){
+ const _md = (MODES[mode]||MODES.major).label;
  const badge = document.getElementById('chart-key-badge');
- if(badge) badge.textContent = nn(root)+' '+(mode==='major'?'Maj':'Min');
+ if(badge) badge.textContent = nn(root)+' '+_md;
  const slbKey = document.getElementById('slb-key');
- if(slbKey) slbKey.textContent = nn(root)+' '+(mode==='major'?'Maj':'Min');
+ if(slbKey) slbKey.textContent = nn(root)+' '+_md;
  updatePrismSongBanner();
 }
 
