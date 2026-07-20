@@ -2231,7 +2231,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  </div>
  </div>
 <button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
- <button class="tb" id="rec-btn" onclick="toggleRecording()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
+ <button class="tb" id="rec-btn" onclick="toggleRecording()" title="Records a .wav of the audio plus a .mid of exactly what you played" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
  <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass: Sync</button>
  </div>
  <div class="row" style="margin-top:4px">
@@ -2888,6 +2888,19 @@ function track(name, props){
  try{ if(typeof posthog!=='undefined') posthog.capture(name, props||{}); }catch(e){}
 }
 track('app_opened');
+
+// ═══════════════════════════════════════
+// SEQUENCER/BASSLINE AUTOSAVE — parsed early so it's ready by the time the
+// Rhythm and Bass tabs initialize further down. Protects programmed beats
+// against accidental navigation away from the page (e.g. a mouse
+// back-button click) — see _seqAutosave() near the end of this script for
+// the save side.
+// ═══════════════════════════════════════
+var _seqAutosaveData = null;
+try{
+ var _seqAutosaveRaw = localStorage.getItem('modo-seq-autosave');
+ if(_seqAutosaveRaw) _seqAutosaveData = JSON.parse(_seqAutosaveRaw);
+}catch(e){ _seqAutosaveData = null; }
 
 // ═══════════════════════════════════════
 // MUSIC DATA
@@ -7618,53 +7631,214 @@ function onBpmInput(v){
 }
 
 // ── Audio Recording ──
-var _recDest=null, _mediaRec=null, _recChunks=[], _isRecording=false;
+// Captures raw PCM via a silently-tapped ScriptProcessorNode and writes a
+// real .wav file by hand, rather than MediaRecorder (which only offers
+// compressed webm/opus containers in Chrome — not something most DAWs or
+// simple media players open cleanly).
+var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false;
 function toggleRecording(){
   if(_isRecording) _stopRecording();
   else _startRecording();
 }
 function _startRecording(){
   var ctx=getCtx();if(!ctx)return;
-  // Ensure audio context is running (needed for stream capture)
   if(ctx.state==='suspended') ctx.resume();
   buildReverb();
   if(!window._masterLimiter){showToast('Start audio first');return;}
-  _recDest=ctx.createMediaStreamDestination();
-  // Connect the master bus AND any active mix gains directly to the rec destination
-  window._masterLimiter.connect(_recDest);
-  _recChunks=[];
-  // Prefer WAV-like lossless; fall back to opus, then plain webm
-  var mimeType='audio/webm';
-  if(MediaRecorder.isTypeSupported('audio/webm;codecs=pcm')) mimeType='audio/webm;codecs=pcm';
-  else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType='audio/webm;codecs=opus';
-  _mediaRec=new MediaRecorder(_recDest.stream,{mimeType:mimeType,audioBitsPerSecond:192000});
-  _mediaRec.ondataavailable=function(e){if(e.data&&e.data.size>0)_recChunks.push(e.data);};
-  _mediaRec.onstop=function(){
-    if(!_recChunks.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
-    var blob=new Blob(_recChunks,{type:mimeType});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');a.href=url;
-    a.download=(document.getElementById('chart-title')?.value||'modo-session')+'.webm';
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    setTimeout(function(){URL.revokeObjectURL(url);},3000);
-    _isRecording=false;_updateRecBtn();
-    showToast('Recording saved! ('+_recChunks.length+' chunks)');
+  _startMidiRecording();
+  _recChunksL=[];_recChunksR=[];
+  var bufSize=4096;
+  _recProcessor=ctx.createScriptProcessor(bufSize,2,2);
+  _recProcessor.onaudioprocess=function(e){
+    var inBuf=e.inputBuffer;
+    _recChunksL.push(new Float32Array(inBuf.getChannelData(0)));
+    _recChunksR.push(new Float32Array(inBuf.numberOfChannels>1?inBuf.getChannelData(1):inBuf.getChannelData(0)));
   };
-  _mediaRec.start(100); // 100ms chunks for lower latency / fewer missing frames
+  // ScriptProcessorNode only fires onaudioprocess while part of a "pulled"
+  // graph reaching the destination — route through a zero-gain node so the
+  // tap doesn't also double the audible output.
+  _recSilentGain=ctx.createGain();_recSilentGain.gain.value=0;
+  window._masterLimiter.connect(_recProcessor);
+  _recProcessor.connect(_recSilentGain);
+  _recSilentGain.connect(ctx.destination);
   _isRecording=true;_updateRecBtn();
   showToast('Recording…');
 }
+function _floatsToWavBlob(left,right,sampleRate){
+  var numFrames=left.length,numChannels=2,bytesPerSample=2;
+  var blockAlign=numChannels*bytesPerSample,dataSize=numFrames*blockAlign;
+  var buf=new ArrayBuffer(44+dataSize),view=new DataView(buf);
+  function ws(off,s){for(var i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i));}
+  ws(0,'RIFF');view.setUint32(4,36+dataSize,true);ws(8,'WAVE');
+  ws(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);
+  view.setUint16(22,numChannels,true);view.setUint32(24,sampleRate,true);
+  view.setUint32(28,sampleRate*blockAlign,true);view.setUint16(32,blockAlign,true);
+  view.setUint16(34,16,true);
+  ws(36,'data');view.setUint32(40,dataSize,true);
+  var off=44;
+  for(var i=0;i<numFrames;i++){
+    var l=Math.max(-1,Math.min(1,left[i])),r=Math.max(-1,Math.min(1,right[i]));
+    view.setInt16(off,l<0?l*0x8000:l*0x7FFF,true);off+=2;
+    view.setInt16(off,r<0?r*0x8000:r*0x7FFF,true);off+=2;
+  }
+  return new Blob([view],{type:'audio/wav'});
+}
 function _stopRecording(){
-  if(_mediaRec&&_mediaRec.state!=='inactive') _mediaRec.stop();
-  // Disconnect after a short delay so the final buffer flushes before disconnecting
-  var dest=_recDest, lim=window._masterLimiter;
-  _recDest=null;
-  setTimeout(function(){ if(dest&&lim){ try{lim.disconnect(dest);}catch(e){} } },300);
+  _stopMidiRecording();
+  var proc=_recProcessor,sg=_recSilentGain,lim=window._masterLimiter;
+  _recProcessor=null;_recSilentGain=null;
+  // Let the final buffer flush before tearing the tap down
+  setTimeout(function(){
+    if(proc){ try{lim.disconnect(proc);}catch(e){} try{proc.disconnect();}catch(e){} proc.onaudioprocess=null; }
+    if(sg){ try{sg.disconnect();}catch(e){} }
+    if(!_recChunksL.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
+    var totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
+    var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
+    for(var i=0;i<_recChunksL.length;i++){fullL.set(_recChunksL[i],pos);fullR.set(_recChunksR[i],pos);pos+=_recChunksL[i].length;}
+    _recChunksL=[];_recChunksR=[];
+    var blob=_floatsToWavBlob(fullL,fullR,getCtx().sampleRate);
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;
+    a.download=(document.getElementById('chart-title')?.value||'modo-session')+'.wav';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},3000);
+    _isRecording=false;_updateRecBtn();
+    showToast('Recording saved as WAV!');
+  },150);
 }
 function _updateRecBtn(){
   var b=document.getElementById('rec-btn');
   if(b){b.textContent=_isRecording?'■ STOP':'⬤ REC';b.style.color=_isRecording?'#ff4444':'var(--pr)';}
 }
+
+// ── Live MIDI recording — runs alongside audio REC so a single button
+// captures both a .wav of the sound and a .mid of exactly which notes you
+// played and when, ready to drop into any DAW or send to real MIDI gear.
+// Chord/melody trigger functions are wrapped (not rewritten) below so this
+// never touches actual playback.
+var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0;
+var _midiRecActiveChords={}, _midiRecActiveMel={};
+function _midiNow(){ return performance.now()-_midiRecStart; }
+function _startMidiRecording(){
+  _midiRecNotes=[]; _midiRecActiveChords={}; _midiRecActiveMel={};
+  _midiRecStart=performance.now();
+  _midiRecOn=true;
+}
+function _stopMidiRecording(){
+  if(!_midiRecOn) return;
+  _midiRecOn=false;
+  var now=_midiNow();
+  Object.keys(_midiRecActiveChords).forEach(function(tok){
+    var c=_midiRecActiveChords[tok];
+    c.notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:c.vel,tOn:c.tOn,tOff:Math.max(c.tOn+20,now)}); });
+  });
+  Object.keys(_midiRecActiveMel).forEach(function(k){
+    var e=_midiRecActiveMel[k];
+    _midiRecNotes.push({note:parseInt(k),vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,now)});
+  });
+  _midiRecActiveChords={}; _midiRecActiveMel={};
+  if(_midiRecNotes.length) _downloadMidiRecording();
+}
+function _downloadMidiRecording(){
+  try{
+    var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
+    var tpq=480;
+    var msPerTick=(60000/bpm)/tpq;
+    function varLen(n){if(n<128)return[n];var b=[];var v=n;while(v>0){b.unshift(v&0x7f);v>>=7;}for(var j=0;j<b.length-1;j++)b[j]|=0x80;return b;}
+    function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
+    function u16(n){return[(n>>8)&0xff,n&0xff];}
+    function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
+    var evs=[];
+    _midiRecNotes.forEach(function(n){
+      var onTick=Math.max(0,Math.round(n.tOn/msPerTick));
+      var offTick=Math.max(onTick+1,Math.round(n.tOff/msPerTick));
+      evs.push({tick:onTick,type:0x90,note:n.note,vel:n.vel});
+      evs.push({tick:offTick,type:0x80,note:n.note,vel:0});
+    });
+    evs.sort(function(a,b){ return a.tick-b.tick || (a.type-b.type); }); // offs before ons at the same tick
+    var track=[];
+    var tempo=Math.round(60000000/bpm);
+    track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
+    track.push(0,0xff,0x58,0x04,0x04,0x02,0x18,0x08);
+    track.push(0,0xc0,0x00);
+    var lastTick=0;
+    evs.forEach(function(e){
+      var delta=Math.max(0,e.tick-lastTick);
+      track.push.apply(track,varLen(delta));
+      track.push(e.type,e.note,e.vel);
+      lastTick=e.tick;
+    });
+    track.push(0,0xff,0x2f,0x00);
+    var hdr=str('MThd').concat(u32(6),u16(0),u16(1),u16(tpq));
+    var trk=str('MTrk').concat(u32(track.length),track);
+    var bytes=new Uint8Array(hdr.concat(trk));
+    var blob=new Blob([bytes],{type:'audio/midi'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;
+    a.download=(document.getElementById('chart-title')?.value||'modo-performance')+'-live.mid';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},2000);
+    showToast('Live MIDI saved! ('+_midiRecNotes.length+' notes)');
+  }catch(e){ console.error('MIDI recording export error',e); }
+}
+// Wrap chord/melody triggers to log note on/off events while recording —
+// wrapping (not editing the originals) keeps this from ever risking a
+// change to actual playback behavior.
+(function(){
+  function chordNotes(rootM,triadQ,type7,baseExt){
+    var ext=baseExt||'triad';
+    var intvs=(typeof EXTS!=='undefined'&&EXTS[ext])?EXTS[ext](triadQ,type7):[0,4,7];
+    return intvs.map(function(iv){ return Math.max(0,Math.min(127,rootM+iv)); });
+  }
+  function logChordTrigger(tok,rootM,triadQ,type7,baseExt,pressure,sustain){
+    if(!_midiRecOn) return;
+    try{
+      var notes=chordNotes(rootM,triadQ,type7,baseExt);
+      var vel=Math.round((pressure||0.8)*100)+20;
+      var tOn=_midiNow();
+      if(sustain && tok!==undefined && tok!==null){
+        _midiRecActiveChords[tok]={notes:notes,vel:vel,tOn:tOn};
+      } else {
+        var tapDur=((parseFloat(document.getElementById('decay')?.value)||1.2)*1000)*0.5;
+        notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:vel,tOn:tOn,tOff:tOn+Math.max(150,tapDur)}); });
+      }
+    }catch(e){}
+  }
+  // Only _triggerChordImmediate is wrapped, not triggerChordWithVariant —
+  // the latter just calls the former internally, so wrapping both would
+  // log every chord twice.
+  var _origTCI=_triggerChordImmediate;
+  _triggerChordImmediate=function(rootM,triadQ,type7,func,pressure,baseExt,sustain){
+    var tok=_origTCI.apply(this,arguments);
+    logChordTrigger(tok,rootM,triadQ,type7,baseExt,pressure,sustain);
+    return tok;
+  };
+  var _origRSC=releaseSustainedChord;
+  releaseSustainedChord=function(myId){
+    if(_midiRecOn && _midiRecActiveChords[myId]){
+      var c=_midiRecActiveChords[myId];
+      var tOff=_midiNow();
+      c.notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:c.vel,tOn:c.tOn,tOff:Math.max(c.tOn+20,tOff)}); });
+      delete _midiRecActiveChords[myId];
+    }
+    return _origRSC.apply(this,arguments);
+  };
+  var _origPMN=playMelNote;
+  playMelNote=function(midi,pressure){
+    if(_midiRecOn){ _midiRecActiveMel[midi]={vel:Math.round((pressure||0.8)*100)+20,tOn:_midiNow()}; }
+    return _origPMN.apply(this,arguments);
+  };
+  var _origRMN=releaseMelNote;
+  releaseMelNote=function(midi){
+    if(_midiRecOn && _midiRecActiveMel[midi]){
+      var e=_midiRecActiveMel[midi];
+      _midiRecNotes.push({note:midi,vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,_midiNow())});
+      delete _midiRecActiveMel[midi];
+    }
+    return _origRMN.apply(this,arguments);
+  };
+})();
+
 var _bassAutoSync=true;
 function toggleBassSync(){
   _bassAutoSync=!_bassAutoSync;
@@ -8877,6 +9051,20 @@ function sqWire(){
   }
 }
 
+// ── restore autosaved rhythm state, if any (see _seqAutosaveData near top of script) ──
+if(_seqAutosaveData && _seqAutosaveData.rhythm){
+ (function(){
+  var _rs = _seqAutosaveData.rhythm;
+  if(_rs.steps) sqSteps = _rs.steps;
+  if(typeof _rs.swing === 'number') sqSwing = _rs.swing;
+  if(_rs.mach) sqMach = _rs.mach;
+  if(_rs.grid) sqGrid = _rs.grid;
+  if(_rs.machGrids) Object.assign(sqMachGrids, _rs.machGrids);
+  if(_rs.vols) sqVols[sqMach] = _rs.vols;
+  if(_rs.pitches) sqPitches[sqMach] = _rs.pitches;
+ })();
+}
+
 // ── init ──
 sqEnsureGrid();
 sqSyncUI();
@@ -8927,6 +9115,19 @@ sqRenderMixer();
 
 // Expose step reset so loadSong can restart the groove from bar 1
 window._sqResetStep = function(){ sqSeqStep = 0; };
+
+// Expose a state snapshot for the top-level autosave (sqGrid etc. are local
+// to this IIFE, not global, so the save/restore code outside it can't touch
+// them directly)
+window._sqCaptureState = function(){
+ return {
+  steps: sqSteps, swing: sqSwing, mach: sqMach,
+  grid: sqGrid,
+  vols: sqVols[sqMach] || {},
+  pitches: sqPitches[sqMach] || {},
+  machGrids: sqMachGrids
+ };
+};
 
 })(); // end IIFE
 
@@ -9630,6 +9831,25 @@ if(blVolEl){
 
 // SQMG_REF is set directly in sqInitFX via window.SQMG_REF = SQMG
 
+// ── restore autosaved bassline state, if any (see _seqAutosaveData near top of script) ──
+if(_seqAutosaveData && _seqAutosaveData.bass){
+  var _bs = _seqAutosaveData.bass;
+  if(_bs.steps) blSteps = _bs.steps;
+  if(_bs.oct) blOct = _bs.oct;
+  if(_bs.genStyle) blGenStyle = _bs.genStyle;
+  if(typeof _bs.cutoff === 'number') blCutoff = _bs.cutoff;
+  if(typeof _bs.resonance === 'number') blResonance = _bs.resonance;
+  if(typeof _bs.vol === 'number') blVol = _bs.vol;
+  if(_bs.grid) blGrid = _bs.grid;
+  if(_bs.wave && typeof setBlWave === 'function') setBlWave(_bs.wave);
+  var _stepsDisp = document.getElementById('bl-stepsdisp'); if(_stepsDisp) _stepsDisp.textContent = blSteps;
+  var _octDisp = document.getElementById('bl-octdisp'); if(_octDisp) _octDisp.textContent = blOct;
+  var _volEl = document.getElementById('bl-vol'); if(_volEl) _volEl.value = blVol;
+  var _cutoffEl = document.getElementById('bl-cutoff'); if(_cutoffEl) _cutoffEl.value = blCutoff;
+  var _resoEl = document.getElementById('bl-reso'); if(_resoEl) _resoEl.value = blResonance;
+  document.querySelectorAll('[data-blstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.blstyle === blGenStyle); });
+}
+
 // ── init ──
 blEnsureGrid();
 // Open by default
@@ -9640,6 +9860,17 @@ blEnsureGrid();
   if(arrow) arrow.style.transform = 'rotate(90deg)';
   blRenderGrid();
 })();
+
+// Expose a state snapshot for the top-level autosave (blGrid etc. are local
+// to this IIFE, not global, so the save/restore code outside it can't touch
+// them directly)
+window._blCaptureState = function(){
+ return {
+  steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle,
+  cutoff: blCutoff, resonance: blResonance, vol: blVol,
+  grid: blGrid
+ };
+};
 
 })(); // end bassline IIFE
 
@@ -9956,6 +10187,25 @@ function _ftMoreOutsideClick(e){
     window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); });
   }
 })();
+
+// ── Sequencer/bassline autosave (save side) — restore logic lives near the
+// top of this script, applied just before each engine's own init runs.
+// Periodic + save-on-hide covers accidental navigation (e.g. a mouse
+// back-button click firing mid-edit) without hooking every single grid
+// mutation call site individually. ──
+function _seqAutosave(){
+  try{
+    var state = {
+      v: 1,
+      rhythm: (typeof window._sqCaptureState === 'function') ? window._sqCaptureState() : null,
+      bass: (typeof window._blCaptureState === 'function') ? window._blCaptureState() : null
+    };
+    localStorage.setItem('modo-seq-autosave', JSON.stringify(state));
+  }catch(e){ /* localStorage unavailable/full — autosave is best-effort */ }
+}
+setInterval(_seqAutosave, 4000);
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'hidden') _seqAutosave(); });
+window.addEventListener('pagehide', _seqAutosave);
 
 </script>
 
