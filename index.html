@@ -2521,11 +2521,17 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  </div>
  </div>
 
- <!-- Jazz Standards + Progression dropdowns -->
+ <!-- Jazz Standards + Real Book + Progression dropdowns -->
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
   <div style="flex:1;min-width:140px">
-   <div class="chart-lbl" style="margin-bottom:3px">Jazz Standards:</div>
+   <div class="chart-lbl" style="margin-bottom:3px">Jazz Standards <span style="opacity:.6">(public domain)</span>:</div>
    <select id="jazz-std-sel" onchange="loadJazzStd(parseInt(this.value))" style="width:100%;font-size:.52rem;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surf);color:var(--text);cursor:pointer">
+    <option value="-1">— Choose a standard —</option>
+   </select>
+  </div>
+  <div style="flex:1;min-width:140px">
+   <div class="chart-lbl" style="margin-bottom:3px">Real Book <span style="opacity:.6">(jazz combo)</span>:</div>
+   <select id="real-book-sel" onchange="loadRealBookStd(parseInt(this.value))" style="width:100%;font-size:.52rem;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surf);color:var(--text);cursor:pointer">
     <option value="-1">— Choose a standard —</option>
    </select>
   </div>
@@ -2890,7 +2896,13 @@ const NOTE_FLAT = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B
 const NOTE_SHARP = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 const SHARP_ROOTS = new Set([7,2,9,4,11]);
 const FLAT_ROOTS = new Set([5,10,3,8,1,6]);
-function useFlats(){ return FLAT_ROOTS.has(root) || !SHARP_ROOTS.has(root); }
+function useFlats(){
+ // Minor keys follow their relative major's key signature (e.g. G minor →
+ // Bb major, 2 flats), not the sharp/flat convention of the same-letter
+ // major key — otherwise e.g. G minor renders as A#/D# instead of Bb/Eb.
+ const kr = (mode==='minor') ? ((root+3)%12) : root;
+ return FLAT_ROOTS.has(kr) || !SHARP_ROOTS.has(kr);
+}
 function nn(i){ const x=((i%12)+12)%12; return useFlats()?NOTE_FLAT[x]:NOTE_SHARP[x]; }
 
 const MAJOR_STEPS = [0,2,4,5,7,9,11];
@@ -4750,6 +4762,7 @@ function renderChords(){
  buildChartPicker();
  buildProgPresets();
  if(typeof buildJazzStdMenu==='function') buildJazzStdMenu();
+ if(typeof buildRealBookMenu==='function') buildRealBookMenu();
  renderPerfChartRow();
  updateOct();
  buildMelodyStrip();
@@ -6977,6 +6990,83 @@ function loadJazzStd(idx){
  showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
 }
 
+// ── The Real Book — canonical jazz-combo standards (chord changes only;
+// no melody/lyrics are stored, same legal footing as any chord-chart app) ──
+const REAL_BOOK_STDS=[
+ {title:"All the Things You Are",key:8,mode:"major",sections:[
+  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[6,"hd",1],[11,"7",1],[4,"M7",1]]},{name:"A2",chords:[[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",1],[0,"M7",1],[1,"hd",1],[6,"7",1],[11,"M7",1]]},{name:"B",chords:[[11,"m7",1],[4,"m7",1],[9,"7",1],[2,"M7",1],[7,"M7",1],[7,"m7",1],[0,"7",1],[5,"M7",1]]},{name:"C",chords:[[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
+ ]},
+ {title:"Autumn Leaves",key:7,mode:"minor",sections:[
+  {name:"A",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"A2",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2]]},{name:"C",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
+ ]},
+ {title:"Blue Bossa",key:0,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m7",1],[5,"m7",1],[2,"hd",1],[7,"7",1],[0,"m7",2],[3,"m7",1],[8,"7",1]]},{name:"B",chords:[[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1]]}
+ ]},
+ {title:"Fly Me to the Moon",key:0,mode:"major",sections:[
+  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[11,"hd",1],[4,"7",1],[9,"m7",1]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
+ ]},
+ {title:"Green Dolphin Street",key:0,mode:"major",sections:[
+  {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]},{name:"C",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",1],[2,"hd",1]]}
+ ]},
+ {title:"Satin Doll",key:0,mode:"major",sections:[
+  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[4,"m7",1],[9,"7",1],[4,"m7",1],[9,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[8,"M7",1],[1,"7",1],[0,"M7",4]]}
+ ]},
+ {title:"Someday My Prince Will Come",key:10,mode:"major",sections:[
+  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]},{name:"C",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
+ ]},
+ {title:"Summertime",key:9,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]},{name:"A2",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]}
+ ]},
+ {title:"Take Five",key:3,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]},{name:"B",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]}
+ ]},
+ {title:"The Girl from Ipanema",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"B",chords:[[1,"M7",2],[6,"7",2],[9,"M7",2],[9,"7",2],[2,"m7",2],[10,"m7",1],[3,"7",1]]},{name:"C",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
+ ]},
+ {title:"There Will Never Be Another You",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1]]}
+ ]},
+ {title:"Watermelon Man",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2]]},{name:"B",chords:[[2,"m7",2],[7,"7",2],[0,"7",2],[7,"7",2]]}
+ ]},
+];
+
+function buildRealBookMenu(){
+ const sel=document.getElementById('real-book-sel'); if(!sel) return;
+ while(sel.options.length>1) sel.remove(1);
+ REAL_BOOK_STDS.forEach((s,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=s.title; sel.appendChild(o); });
+ sel.value='-1';
+}
+
+function loadRealBookStd(idx){
+ if(idx<0||idx>=REAL_BOOK_STDS.length) return;
+ const std=REAL_BOOK_STDS[idx];
+ stopSongLoop();
+ root=std.key; mode=std.mode||'major';
+ const stdMidi=60+(std.key<=5?std.key:std.key-12);
+ sections=std.sections.map(sec=>({
+  name:sec.name,
+  slots:sec.chords.map(([semi,q,bars])=>{
+   const {triadQ,type7,ext}=_jscQ(q);
+   const rootM=stdMidi+semi;
+   const pc=((std.key+semi)%12+12)%12;
+   const sfx=(q==='m'||q==='m7'||q==='mM7')?'m':(q==='d'||q==='hd'||q==='d7')?'°':(q==='a')?'+':'';
+   const label=nn(pc)+sfx;
+   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:bars||1,beats:0,eighths:0,isRest:false,bassNote:null};
+  })
+ }));
+ curSection=0; chartSeqIdx=-1; curSetlistIdx=-1;
+ document.getElementById('chart-title').value=std.title;
+ ['bm-major','songs-bm-major'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='major'));
+ ['bm-minor','songs-bm-minor'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='minor'));
+ renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
+ if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
+ if(typeof buildChartPicker==='function') buildChartPicker();
+ if(typeof buildProgPresets==='function') buildProgPresets();
+ document.getElementById('real-book-sel').value='-1';
+ showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
+}
+
 function _playLoopSlot(){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
@@ -7668,6 +7758,7 @@ buildVoiceGridInline();
 buildSectionTabs();
 buildProgPresets();
 buildJazzStdMenu();
+buildRealBookMenu();
 buildChartPicker();
 renderChords();
 loadProgressionFromHash();
