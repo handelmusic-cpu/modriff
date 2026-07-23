@@ -2091,6 +2091,17 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 
  <!-- Key mapping moved to Settings tab -->
 
+ <!-- MIDI input mode — whether an external MIDI keyboard plays chords or melody -->
+ <div class="midi-panel" id="midi-panel">
+  <div class="midi-panel-row">
+   <span class="midi-panel-lbl">MIDI input plays:</span>
+   <div class="tg">
+    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
+    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
+   </div>
+  </div>
+ </div>
+
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
@@ -5016,6 +5027,14 @@ function buildMelodyStrip(){
  wrap.appendChild(btn); wrap.appendChild(lbl); container.appendChild(wrap);
  });
  updateMelOctDisp();
+ updateKeysTypingHint();
+}
+
+function updateKeysTypingHint(){
+ const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
+ const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
+ const parts = MEL_WHITE_KEYS.map((k,i)=> k.toUpperCase()+'='+sol[i]);
+ hint.textContent = parts.join(' ')+' · K/L/;=oct+ · Z=Oct− X=Oct+';
 }
 
 // ═══════════════════════════════════════
@@ -6032,12 +6051,31 @@ function buildVoiceGridInline(){ // voice type removed
 // ═══════════════════════════════════════
 // MUSICAL TYPING (Ableton-style)
 // ═══════════════════════════════════════
-// Layout: A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do(oct+)
-// Z=octave down X=octave up
-const MUSICAL_KEYS_MAP = {
- 'a':0,'w':1,'s':2,'e':3,'d':4,'f':5,'t':6,'g':7,'y':8,'h':9,'u':10,'j':11,
- 'k':12,'o':13,'l':14,'p':15,';':16
-};
+// A S D F G H J always play the CURRENT mode's 7 scale degrees in order —
+// for every mode, not just major. (The old layout hard-coded major-scale
+// piano positions to these keys and "snapped" whatever mode was active to
+// the nearest scale tone, which for modes whose step pattern differs from
+// major's could land a scale tone on a "black" key instead, or leave two
+// white keys pointing at the same note.) K L ; continue degrees 1-3 an
+// octave up. W E R T Y U I fill in a true chromatic passing tone between
+// each pair of white keys where the mode actually has one (i.e. the two
+// scale degrees are a whole step apart); where they're only a half step
+// apart there's no room for one, so that black key just mirrors the lower
+// of the two — same as a real piano has no black key between E-F/B-C.
+const MEL_WHITE_KEYS = ['a','s','d','f','g','h','j'];
+const MEL_BLACK_KEYS = ['w','e','r','t','y','u','i'];
+const MEL_OCT_KEYS   = ['k','l',';'];
+function _buildMusicalKeysMap(){
+ const steps = (MODES[mode]||MODES.major).steps;
+ const map = {};
+ MEL_WHITE_KEYS.forEach((k,i)=>{ map[k]=steps[i]; });
+ for(let i=0;i<7;i++){
+  const lo=steps[i], hi=(i<6?steps[i+1]:steps[0]+12);
+  map[MEL_BLACK_KEYS[i]] = (hi-lo>=2) ? lo+1 : lo;
+ }
+ MEL_OCT_KEYS.forEach((k,i)=>{ map[k]=steps[i]+12; });
+ return map;
+}
 let musicalTypingOn = true;
 
 function toggleMusicalTyping(){
@@ -6046,23 +6084,6 @@ function toggleMusicalTyping(){
  if(hint) hint.classList.toggle('visible', musicalTypingOn);
  const btn = document.getElementById('typing-btn');
  if(btn){ btn.textContent = '⌨ Keys '+(musicalTypingOn?'ON':'OFF'); btn.classList.toggle('active',musicalTypingOn); }
-}
-
-// Map piano-key offset to scale degree (snaps to nearest scale note)
-function snapToScale(semisFromRoot){
- const steps = (MODES[mode]||MODES.major).steps;
- const pc = ((semisFromRoot%12)+12)%12;
- let best = steps[0], bestDist = 12;
- steps.forEach(s => {
-  const dist = Math.min(Math.abs(pc-s), 12-Math.abs(pc-s));
-  if(dist < bestDist){ bestDist=dist; best=s; }
-  else if(dist === bestDist){
-   const newNW = Math.abs(pc-s), curNW = Math.abs(pc-best);
-   if(newNW < curNW){ best=s; }            // primary: prefer non-wrapping closer
-   else if(newNW === curNW && s > best){ best=s; } // secondary: prefer higher note (fixes F key in Lydian)
-  }
- });
- return best + (semisFromRoot - pc); // preserve octave offset
 }
 
 const musicalTypingHeld = {};
@@ -6074,16 +6095,17 @@ document.addEventListener('keydown', e => {
  if(e.key==='z'){ shiftMelOct(-1); return; }
  if(e.key==='x'){ shiftMelOct(+1); return; }
 
- if(musicalTypingOn && MUSICAL_KEYS_MAP[e.key] !== undefined){
- const offset = MUSICAL_KEYS_MAP[e.key];
- const snapped = snapToScale(offset);
+ if(musicalTypingOn){
+ const offset = _buildMusicalKeysMap()[e.key];
+ if(offset !== undefined){
  const baseM = 60 + (root<=5?root:root-12) + melOctShift;
- const midi = baseM + snapped;
+ const midi = baseM + offset;
  if(!musicalTypingHeld[e.key]){
  musicalTypingHeld[e.key] = midi;
  playMelNote(midi, 0);
  }
  return;
+ }
  }
 
  // Chord keys 1-7 (Shift+number = 7th-chord extension instead of plain triad)
@@ -7713,30 +7735,46 @@ function _updateRecBtn(){
 
 // ── Live MIDI recording — runs alongside audio REC so a single button
 // captures both a .wav of the sound and a .mid of exactly which notes you
-// played and when, ready to drop into any DAW or send to real MIDI gear.
-// Chord/melody trigger functions are wrapped (not rewritten) below so this
-// never touches actual playback.
-var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0;
-var _midiRecActiveChords={}, _midiRecActiveMel={};
+// played and when, across every source (chords, melody, bassline,
+// percussion, arpeggio), each on its own track/lane so a DAW shows them as
+// separate pieces. Playback functions are wrapped (not rewritten) so this
+// never risks changing actual audio behavior. Sources living inside their
+// own IIFEs (bass, drums) can't be wrapped from out here, so they instead
+// call a small window._midiRecLog* hook — see blPlayNote/sqHitTrack.
+var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0, _midiRecCtxEpoch=0;
+var _midiRecPendingChord=null, _midiRecActiveMel={};
+var GM_DRUM_MAP={
+  'Kick':36,'Snare':38,'Rimshot':37,'Clap':39,
+  'Cl Hat':42,'HH':42,'Op Hat':46,
+  'Lo Tom':45,'Hi Tom':50,'Tom':47,'Tom 1':47,'Tom 2':48,
+  'Cymbal':49,'Ride':51,'Cowbell':56,'Conga':63,
+  'Perc':61,'Metal':56,'Glitch':70,'Zapp':70,'LIN':42
+};
 function _midiNow(){ return performance.now()-_midiRecStart; }
+function _midiCtxNow(t){ return (t-_midiRecCtxEpoch)*1000; } // AudioContext time -> ms since rec start
 function _startMidiRecording(){
-  _midiRecNotes=[]; _midiRecActiveChords={}; _midiRecActiveMel={};
+  _midiRecNotes=[]; _midiRecPendingChord=null; _midiRecActiveMel={};
   _midiRecStart=performance.now();
+  var ctx=getCtx();
+  _midiRecCtxEpoch=ctx?ctx.currentTime:0;
   _midiRecOn=true;
+}
+function _closePendingChord(now){
+  if(!_midiRecPendingChord) return;
+  var c=_midiRecPendingChord;
+  c.notes.forEach(function(n){ _midiRecNotes.push({lane:'chord',note:n,vel:c.vel,tOn:c.tOn,tOff:Math.max(c.tOn+20,now)}); });
+  _midiRecPendingChord=null;
 }
 function _stopMidiRecording(){
   if(!_midiRecOn) return;
   _midiRecOn=false;
   var now=_midiNow();
-  Object.keys(_midiRecActiveChords).forEach(function(tok){
-    var c=_midiRecActiveChords[tok];
-    c.notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:c.vel,tOn:c.tOn,tOff:Math.max(c.tOn+20,now)}); });
-  });
+  _closePendingChord(now);
   Object.keys(_midiRecActiveMel).forEach(function(k){
     var e=_midiRecActiveMel[k];
-    _midiRecNotes.push({note:parseInt(k),vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,now)});
+    _midiRecNotes.push({lane:'melody',note:parseInt(k),vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,now)});
   });
-  _midiRecActiveChords={}; _midiRecActiveMel={};
+  _midiRecActiveMel={};
   if(_midiRecNotes.length) _downloadMidiRecording();
 }
 function _downloadMidiRecording(){
@@ -7748,79 +7786,123 @@ function _downloadMidiRecording(){
     function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
     function u16(n){return[(n>>8)&0xff,n&0xff];}
     function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
-    var evs=[];
-    _midiRecNotes.forEach(function(n){
-      var onTick=Math.max(0,Math.round(n.tOn/msPerTick));
-      var offTick=Math.max(onTick+1,Math.round(n.tOff/msPerTick));
-      evs.push({tick:onTick,type:0x90,note:n.note,vel:n.vel});
-      evs.push({tick:offTick,type:0x80,note:n.note,vel:0});
-    });
-    evs.sort(function(a,b){ return a.tick-b.tick || (a.type-b.type); }); // offs before ons at the same tick
-    var track=[];
+    var LANES=[
+      {key:'melody',name:'Melody',   ch:0},
+      {key:'chord', name:'Chords',   ch:1},
+      {key:'bass',  name:'Bassline', ch:2},
+      {key:'arp',   name:'Arpeggio', ch:3},
+      {key:'drum',  name:'Percussion',ch:9}
+    ];
+    var byLane={};
+    _midiRecNotes.forEach(function(n){ (byLane[n.lane]=byLane[n.lane]||[]).push(n); });
+    function buildTrack(notes,ch,name){
+      var evs=[];
+      notes.forEach(function(n){
+        var onTick=Math.max(0,Math.round(n.tOn/msPerTick));
+        var offTick=Math.max(onTick+1,Math.round(n.tOff/msPerTick));
+        evs.push({tick:onTick,type:0x90|ch,note:n.note,vel:Math.max(1,Math.min(127,n.vel))});
+        evs.push({tick:offTick,type:0x80|ch,note:n.note,vel:0});
+      });
+      evs.sort(function(a,b){ return a.tick-b.tick || ((a.type&0xf0)-(b.type&0xf0)); }); // offs before ons at the same tick
+      var t=[];
+      t.push(0,0xff,0x03,name.length);t.push.apply(t,str(name));
+      if(ch!==9){ t.push(0,0xc0|ch,0); } // program change: acoustic grand (0) — fine as a generic default per lane
+      var lastTick=0;
+      evs.forEach(function(e){
+        var delta=Math.max(0,e.tick-lastTick);
+        t.push.apply(t,varLen(delta));
+        t.push(e.type,e.note,e.vel);
+        lastTick=e.tick;
+      });
+      t.push(0,0xff,0x2f,0x00);
+      return str('MTrk').concat(u32(t.length),t);
+    }
+    var conductor=[];
     var tempo=Math.round(60000000/bpm);
-    track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
-    track.push(0,0xff,0x58,0x04,0x04,0x02,0x18,0x08);
-    track.push(0,0xc0,0x00);
-    var lastTick=0;
-    evs.forEach(function(e){
-      var delta=Math.max(0,e.tick-lastTick);
-      track.push.apply(track,varLen(delta));
-      track.push(e.type,e.note,e.vel);
-      lastTick=e.tick;
+    conductor.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
+    conductor.push(0,0xff,0x58,0x04,0x04,0x02,0x18,0x08);
+    conductor.push(0,0xff,0x2f,0x00);
+    var conductorTrk=str('MTrk').concat(u32(conductor.length),conductor);
+    var allTrks=conductorTrk;
+    var numTracks=1;
+    LANES.forEach(function(lane){
+      var notes=byLane[lane.key];
+      if(!notes||!notes.length) return;
+      allTrks=allTrks.concat(buildTrack(notes,lane.ch,lane.name));
+      numTracks++;
     });
-    track.push(0,0xff,0x2f,0x00);
-    var hdr=str('MThd').concat(u32(6),u16(0),u16(1),u16(tpq));
-    var trk=str('MTrk').concat(u32(track.length),track);
-    var bytes=new Uint8Array(hdr.concat(trk));
+    var hdr=str('MThd').concat(u32(6),u16(1),u16(numTracks),u16(tpq));
+    var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');a.href=url;
     a.download=(document.getElementById('chart-title')?.value||'modo-performance')+'-live.mid';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},2000);
-    showToast('Live MIDI saved! ('+_midiRecNotes.length+' notes)');
+    showToast('Live MIDI saved! ('+_midiRecNotes.length+' notes, '+(numTracks-1)+' lanes)');
   }catch(e){ console.error('MIDI recording export error',e); }
 }
-// Wrap chord/melody triggers to log note on/off events while recording —
-// wrapping (not editing the originals) keeps this from ever risking a
-// change to actual playback behavior.
+// Global hooks called from inside the bass/drum IIFEs (their state isn't
+// reachable from out here) — see blPlayNote() and sqHitTrack().
+window._midiRecLogBass=function(note,oct,t,dur,vol,accent){
+  if(!_midiRecOn) return;
+  try{
+    var midi=Math.max(0,Math.min(127,Math.round(note+(oct+1)*12)));
+    var tOn=_midiCtxNow(t);
+    var vel=Math.round((vol||0.6)*100)+(accent?15:0);
+    _midiRecNotes.push({lane:'bass',note:midi,vel:Math.max(1,Math.min(127,vel)),tOn:tOn,tOff:tOn+Math.max(30,(dur||0.3)*1000*0.92)});
+  }catch(e){}
+};
+window._midiRecLogDrum=function(trackName,t,vol,accent){
+  if(!_midiRecOn) return;
+  try{
+    var note=GM_DRUM_MAP[trackName]||39;
+    var tOn=_midiCtxNow(t);
+    var vel=Math.round((vol||0.6)*100)+(accent?15:0);
+    _midiRecNotes.push({lane:'drum',note:note,vel:Math.max(1,Math.min(127,vel)),tOn:tOn,tOff:tOn+60});
+  }catch(e){}
+};
+// Wrap chord/melody/arp playback to log note on/off events while recording.
 (function(){
-  function chordNotes(rootM,triadQ,type7,baseExt){
-    var ext=baseExt||'triad';
-    var intvs=(typeof EXTS!=='undefined'&&EXTS[ext])?EXTS[ext](triadQ,type7):[0,4,7];
-    return intvs.map(function(iv){ return Math.max(0,Math.min(127,rootM+iv)); });
+  function chordEventNotes(rootM,relIntvs,bassMidi){
+    var notes=voiceIntervals(relIntvs).map(function(s){ return rootM+s; });
+    notes.unshift(bassMidi);
+    return notes.map(function(n){ return Math.max(0,Math.min(127,Math.round(n))); });
   }
-  function logChordTrigger(tok,rootM,triadQ,type7,baseExt,pressure,sustain){
+  function logChordPlay(notes,pressure,sustain){
     if(!_midiRecOn) return;
     try{
-      var notes=chordNotes(rootM,triadQ,type7,baseExt);
       var vel=Math.round((pressure||0.8)*100)+20;
       var tOn=_midiNow();
-      if(sustain && tok!==undefined && tok!==null){
-        _midiRecActiveChords[tok]={notes:notes,vel:vel,tOn:tOn};
+      _closePendingChord(tOn); // a new chord always cuts off whatever was sustaining before it
+      if(sustain){
+        _midiRecPendingChord={notes:notes,vel:vel,tOn:tOn};
       } else {
-        var tapDur=((parseFloat(document.getElementById('decay')?.value)||1.2)*1000)*0.5;
-        notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:vel,tOn:tOn,tOff:tOn+Math.max(150,tapDur)}); });
+        var dur=(parseFloat(document.getElementById('decay')?.value)||1.2)*1000;
+        notes.forEach(function(n){ _midiRecNotes.push({lane:'chord',note:n,vel:vel,tOn:tOn,tOff:tOn+Math.max(150,dur)}); });
       }
     }catch(e){}
   }
-  // Only _triggerChordImmediate is wrapped, not triggerChordWithVariant —
-  // the latter just calls the former internally, so wrapping both would
-  // log every chord twice.
-  var _origTCI=_triggerChordImmediate;
-  _triggerChordImmediate=function(rootM,triadQ,type7,func,pressure,baseExt,sustain){
-    var tok=_origTCI.apply(this,arguments);
-    logChordTrigger(tok,rootM,triadQ,type7,baseExt,pressure,sustain);
-    return tok;
+  var _origPlayChord=playChord;
+  playChord=function(rootM,relIntvs,skipStop,pressure,sustain){
+    var r=_origPlayChord.apply(this,arguments);
+    logChordPlay(chordEventNotes(rootM,relIntvs,rootM-12),pressure,sustain);
+    return r;
+  };
+  var _origPlaySlashChord=playSlashChord;
+  playSlashChord=function(rootM,relIntvs,bassNote,pressure,sustain){
+    var r=_origPlaySlashChord.apply(this,arguments);
+    logChordPlay(chordEventNotes(rootM,relIntvs,bassNote),pressure,sustain);
+    return r;
+  };
+  var _origStopAll=stopAll;
+  stopAll=function(){
+    if(_midiRecOn) _closePendingChord(_midiNow());
+    return _origStopAll.apply(this,arguments);
   };
   var _origRSC=releaseSustainedChord;
   releaseSustainedChord=function(myId){
-    if(_midiRecOn && _midiRecActiveChords[myId]){
-      var c=_midiRecActiveChords[myId];
-      var tOff=_midiNow();
-      c.notes.forEach(function(n){ _midiRecNotes.push({note:n,vel:c.vel,tOn:c.tOn,tOff:Math.max(c.tOn+20,tOff)}); });
-      delete _midiRecActiveChords[myId];
-    }
+    if(_midiRecOn) _closePendingChord(_midiNow());
     return _origRSC.apply(this,arguments);
   };
   var _origPMN=playMelNote;
@@ -7832,10 +7914,33 @@ function _downloadMidiRecording(){
   releaseMelNote=function(midi){
     if(_midiRecOn && _midiRecActiveMel[midi]){
       var e=_midiRecActiveMel[midi];
-      _midiRecNotes.push({note:midi,vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,_midiNow())});
+      _midiRecNotes.push({lane:'melody',note:midi,vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,_midiNow())});
       delete _midiRecActiveMel[midi];
     }
     return _origRMN.apply(this,arguments);
+  };
+  var _origSAN=scheduleArpNote;
+  scheduleArpNote=function(midi,t,dur){
+    if(_midiRecOn && midi!==null && midi!==undefined){
+      try{
+        var tOn=_midiCtxNow(t);
+        _midiRecNotes.push({lane:'arp',note:Math.max(0,Math.min(127,Math.round(midi))),vel:90,tOn:tOn,tOff:tOn+Math.max(30,dur*1000*0.9)});
+      }catch(e){}
+    }
+    return _origSAN.apply(this,arguments);
+  };
+  var _origSAB=scheduleArpBlock;
+  scheduleArpBlock=function(t,dur){
+    if(_midiRecOn && typeof arpNotes!=='undefined' && arpNotes.length){
+      try{
+        var tOn=_midiCtxNow(t);
+        arpNotes.forEach(function(midi,idx){
+          var t2=tOn+idx*12;
+          _midiRecNotes.push({lane:'arp',note:Math.max(0,Math.min(127,Math.round(midi))),vel:85,tOn:t2,tOff:t2+Math.max(30,dur*1000*0.85)});
+        });
+      }catch(e){}
+    }
+    return _origSAB.apply(this,arguments);
   };
 })();
 
@@ -8518,6 +8623,7 @@ function sqSd(){return 60/sqBpm()/4;}
 
 function sqHitTrack(track,t,vol,ac,ps){
   if(!sqCtx()||!SQMG||!track||!track.play)return;
+  if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
 }
 function sqPlayCell(track,cell,t,vol,ps){
@@ -9185,6 +9291,7 @@ var _blPrevFreq=0, _blPrevSlide=false;
 function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var ctx = blCtx(); if(!ctx) return;
   var mg = blMG(); if(!mg) return;
+  if(typeof window._midiRecLogBass==='function') window._midiRecLogBass(note,oct,t,dur,vol,accent);
   var freq = blFreq(note, oct);
   var _mxBs = typeof _cmx === 'function' ? _cmx('bass') : 1;
 
