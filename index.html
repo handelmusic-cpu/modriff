@@ -2025,7 +2025,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 ══════════════════════════════════════ -->
 <nav class="tab-bar">
  <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')">
- Vibe
+ Perform
  </button>
  <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')">
  Songs
@@ -5094,14 +5094,14 @@ function playOnboardingDemo(){
     {title:'Basic vs Advanced',text:'We just switched you into <b>Advanced</b> view for this tour — it unlocks extra chords, the melody strip, church modes, and more instrument voices. <b>Basic</b> keeps things simple for quick playing. Toggle between them here, any time.',icon:'🔀',target:'vmt-adv',tab:'perform'},
     {title:'Set Your Key',text:'Use <b>− / +</b> to change key, and pick Major, Minor, or (in Advanced) a church mode like Dorian or Lydian. Every chord on this page follows whatever key you set here.',icon:'🔑',target:'key-name',tab:'perform'},
     {title:'Play Chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain a chord until you let go — a quick tap plays a short stab instead. Keys 1–7 on your computer keyboard trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
-    {title:'Melody / Solo Strip',text:'Scroll down on Vibe to find this strip. Slide or tap to play single notes over your chords. Keyboard keys A S D F G H J (Do Re Mi…) play melodies — Z and X shift the octave up/down.',icon:'🎵',target:'melody-keys',tab:'perform'},
+    {title:'Melody / Solo Strip',text:'Scroll down on Perform to find this strip. Slide or tap to play single notes over your chords. Keyboard keys A S D F G H J (Do Re Mi…) play melodies — Z and X shift the octave up/down.',icon:'🎵',target:'melody-keys',tab:'perform'},
     {title:'One Play Button',text:'<b>Play</b> starts everything that\'s switched on — sequencer, bass, and a loaded song — together, in sync. <b>Arp</b> and <b>Bass</b> are just on/off switches for what Play will start next; they don\'t play anything by themselves.',icon:'▶',target:'ft-rhy-btn',tab:'perform'},
     {title:'Rhythm — Program a Groove',text:'Pick a groove preset or build your own step pattern, choose a drum kit, and dial in swing. This is what Play uses when no song is loaded.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
     {title:'Bass — Auto or Real',text:'Pick a style — Jazz, Funk, Motown, and more — and hit <b>Generate</b> for a bassline that follows your chords automatically. Try <b>Real</b> for a sampled upright bass instead of a synth.',icon:'🎸',target:'blw-upreal',tab:'bass'},
     {title:'Songs — Build a Chart',text:'Tap chords from the picker to build a progression. Tap a chord\'s duration (like <b>1 bar</b>) for one-tap presets sized for real jazz phrase lengths, then save it to your Setlist.',icon:'🎼',target:'chart-chord-picker',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('build'); }},
     {title:'Songs — Perform Mode',text:'Load a song and switch to Perform to play it live. <b>− / +</b> transposes the whole song by semitones on the fly, and <b>← Prev / Next →</b> move between sections. There\'s a built-in demo song in your Setlist — try it!',icon:'▶',target:'slb-key-dn',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('perform'); }},
     {title:'Settings — Fine-Tune Your Sound',text:'Chord waveform, attack/decay, reverb, melody voice, theme, and tuning all live here — including <b>Real Piano</b>, sampled from actual recordings instead of a synth.',icon:'⚙',target:'ms-pianoreal',tab:'build'},
-    {title:'Have fun!',text:'That\'s the whole tour. Come back to Vibe, pick a key, and start playing — replay this any time with the <b>?</b> button in the transport bar.',icon:'✦',target:null,tab:'perform'},
+    {title:'Have fun!',text:'That\'s the whole tour. Come back to Perform, pick a key, and start playing — replay this any time with the <b>?</b> button in the transport bar.',icon:'✦',target:null,tab:'perform'},
   ];
   var step=0;
   var wrap=document.createElement('div');
@@ -6109,7 +6109,8 @@ document.addEventListener('keydown', e => {
  }
 
  // Chord keys 1-7 (Shift+number = 7th-chord extension instead of plain triad)
- const digitMatch = e.code.match(/^Digit([1-7])$/);
+ // — the main number row and the numpad both work.
+ const digitMatch = e.code.match(/^(?:Digit|Numpad)([1-7])$/);
  const idx = digitMatch ? KEY_MAP[digitMatch[1]] : undefined;
  if(idx===undefined) return;
  const _md=MODES[mode]||MODES.major;
@@ -6205,7 +6206,7 @@ function midiPCToChord(pc, inSteps){
  // In-key?
  const di = steps.indexOf(pc);
  if(di >= 0){
- return { rootM: rm+steps[di], triadQ: tqs[di], type7: t7s[di], func: funcs[di] };
+ return { rootM: rm+steps[di], triadQ: tqs[di], type7: t7s[di], func: funcs[di], deg: di, modalLabel: null };
  }
 
  // Out-of-key → find nearest borrowed chord
@@ -6213,16 +6214,16 @@ function midiPCToChord(pc, inSteps){
  // Find borrowed chord whose semis === pc
  const exact = borrowed.find(b => ((b.semis%12)+12)%12 === pc);
  if(exact){
- return { rootM: rm+exact.semis, triadQ: 0, type7: exact.type7, func: exact.func };
+ return { rootM: rm+exact.semis, triadQ: 0, type7: exact.type7, func: exact.func, deg: -1, modalLabel: exact.label };
  }
  // Fallback: secondary dominant at that pc
  const secs = getSecDoms(mode);
  const secEx = secs.find(s => ((s.semis%12)+12)%12 === pc);
  if(secEx){
- return { rootM: rm+secEx.semis, triadQ: 0, type7: 'dom7', func: 'dom' };
+ return { rootM: rm+secEx.semis, triadQ: 0, type7: 'dom7', func: 'dom', deg: -1, modalLabel: secEx.label };
  }
  // Last resort: play as dominant 7 chord
- return { rootM: rm+pc, triadQ: 0, type7: 'dom7', func: 'dom' };
+ return { rootM: rm+pc, triadQ: 0, type7: 'dom7', func: 'dom', deg: -1, modalLabel: null };
 }
 
 // Override onMidiMsg with full routing logic
@@ -6256,6 +6257,19 @@ function onMidiMsg(e){
  const steps = (MODES[mode]||MODES.major).steps;
  const chord = midiPCToChord(pc, steps);
  triggerChordWithVariant(chord.rootM, chord.triadQ, chord.type7, chord.func, pressure);
+ // Light up the triggered chord and suggest what to play next — same
+ // feedback the computer-keyboard 1-7 keys already give, just missing
+ // for MIDI input until now.
+ lastTriggeredDegree = chord.deg;
+ applyLogicHighlights(chord.deg, chord.modalLabel);
+ if(chord.deg >= 0){
+ const el = document.getElementById('cs-'+chord.deg);
+ if(el){ el.classList.add('kb-active'); setTimeout(()=>el.classList.remove('kb-active'),200); }
+ } else if(chord.modalLabel){
+ document.querySelectorAll('[data-modal-label="'+chord.modalLabel+'"]').forEach(el=>{
+ el.classList.add('kb-active'); setTimeout(()=>el.classList.remove('kb-active'),200);
+ });
+ }
  }
  } else if(type === 0x80 || (type === 0x90 && vel === 0)){
  // Note off — only relevant for melody mode
@@ -7343,15 +7357,98 @@ function startEverything(){
 }
 
 // ═══════════════════════════════════════
-// ARROW KEYS — song section navigation (queued until current pass ends)
+// N / B — song section navigation (queued until current pass ends)
 // ═══════════════════════════════════════
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
  if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
- if(e.code!=='ArrowLeft' && e.code!=='ArrowRight') return;
+ if(e.key!=='n' && e.key!=='b') return;
  if(!sections.length) return;
  e.preventDefault();
- if(e.code==='ArrowRight') songNextSection(); else songPrevSection();
+ if(e.key==='n') songNextSection(); else songPrevSection();
+});
+
+// ═══════════════════════════════════════
+// ARROW KEYS (Perform tab only) — Up/Down transpose the key by a
+// semitone, Left/Right cycle through modes in the on-screen button order.
+// ═══════════════════════════════════════
+const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor'];
+document.addEventListener('keydown', e => {
+ if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
+ if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) return;
+ const perfTab = document.getElementById('page-perform');
+ if(!perfTab || !perfTab.classList.contains('active')) return;
+ e.preventDefault();
+ if(e.code==='ArrowUp'){ transposeBy(1); return; }
+ if(e.code==='ArrowDown'){ transposeBy(-1); return; }
+ const curIdx = MODE_CYCLE_ORDER.indexOf(mode);
+ const dir = e.code==='ArrowRight' ? 1 : -1;
+ const nextIdx = ((curIdx<0?0:curIdx)+dir+MODE_CYCLE_ORDER.length)%MODE_CYCLE_ORDER.length;
+ setMode(MODE_CYCLE_ORDER[nextIdx]);
+});
+
+// ═══════════════════════════════════════
+// PERFORMANCE MODIFIERS — Control accents whatever melody note is
+// currently sounding; Option/Alt rolls it (rapid retrigger) at a
+// 16th-note-triplet rate. Both are momentary — active only while the
+// physical key is held — and only do anything if a melody note is
+// actually sounding at that moment, per spec.
+// ═══════════════════════════════════════
+const ACCENT_BOOST = 1.4;
+let _accentOn = false, _rollOn = false, _rollTimer = null;
+
+function _activeMelMidiList(){ return Object.keys(activeMelOscs).map(Number); }
+
+function _setMelodyAccent(on){
+ const ctx = getCtx(); if(!ctx) return;
+ const now = ctx.currentTime;
+ _activeMelMidiList().forEach(midi=>{
+ const v = activeMelOscs[midi]; if(!v||!v.g) return;
+ try{
+ const cur = v.g.gain.value;
+ const target = on ? cur*ACCENT_BOOST : cur/ACCENT_BOOST;
+ v.g.gain.cancelScheduledValues(now);
+ v.g.gain.setValueAtTime(cur, now);
+ v.g.gain.linearRampToValueAtTime(Math.max(0,target), now+0.015);
+ }catch(e){}
+ });
+}
+
+function _rollTick(){
+ if(!_rollOn) return;
+ const notes = _activeMelMidiList();
+ if(!notes.length){ _stopRoll(); return; }
+ notes.forEach(midi=>{ playMelNote(midi, 0.9); });
+ if(_accentOn) _setMelodyAccent(true);
+ const stepSec = beatSec()/6; // 16th-note triplet = 6 hits per beat
+ _rollTimer = setTimeout(_rollTick, Math.max(30, stepSec*1000));
+}
+function _startRoll(){
+ if(_rollOn || !_activeMelMidiList().length) return;
+ _rollOn = true;
+ _rollTick();
+}
+function _stopRoll(){
+ _rollOn = false;
+ clearTimeout(_rollTimer); _rollTimer = null;
+}
+
+document.addEventListener('keydown', e=>{
+ if(e.repeat) return;
+ if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(e.key==='Control'){
+ if(_activeMelMidiList().length){ e.preventDefault(); _accentOn=true; _setMelodyAccent(true); }
+ } else if(e.key==='Alt'){
+ if(_activeMelMidiList().length){ e.preventDefault(); _startRoll(); }
+ }
+});
+document.addEventListener('keyup', e=>{
+ if(e.key==='Control'){
+ if(_accentOn){ _accentOn=false; _setMelodyAccent(false); }
+ } else if(e.key==='Alt'){
+ _stopRoll();
+ }
 });
 
 // ═══════════════════════════════════════
