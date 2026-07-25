@@ -2575,6 +2575,19 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="tb advanced-only" id="song-swing-btn" onclick="toggleSongSwing()" title="Swing 8th notes for jazz feel (uses Rhythm tab swing amount)" style="font-size:.44rem;padding:4px 10px;margin-left:4px">Swing: OFF</button>
  </div>
 
+ <!-- Comping style — how a multi-bar chord re-strikes instead of holding one flat sustain -->
+ <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap" class="advanced-only">
+  <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Comp:</span>
+  <div class="bl-gen-style" id="song-comp-style">
+    <button class="bl-gen-btn" data-compstyle="sustain" title="Old behavior: one attack, held flat for the whole slot">Sustain</button>
+    <button class="bl-gen-btn active" data-compstyle="bars" title="Re-strike once per bar">Bar Hits</button>
+    <button class="bl-gen-btn" data-compstyle="backbeat" title="Re-strike on beats 1 and 3">Backbeat</button>
+    <button class="bl-gen-btn" data-compstyle="charleston" title="Jazz Charleston comp: beat 1 and the &amp;-of-2">Charleston</button>
+    <button class="bl-gen-btn" data-compstyle="strum" title="Steady quarter-note strum">Strum</button>
+    <button class="bl-gen-btn" data-compstyle="bossa" title="Syncopated bossa-style comp">Bossa</button>
+  </div>
+ </div>
+
  <!-- Extension toggle -->
  <div class="chart-lbl">Chord quality for next add:</div>
  <div class="row" style="margin-bottom:6px">
@@ -6902,6 +6915,7 @@ function stopSongLoop(){
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
+ if(typeof _clearCompTimers==='function') _clearCompTimers();
  _updateSectionNavUI();
 }
 
@@ -6918,6 +6932,76 @@ function toggleSongSwing(){
  songSwingOn = !songSwingOn;
  const btn = document.getElementById('song-swing-btn');
  if(btn){ btn.textContent = 'Swing: '+(songSwingOn?'ON':'OFF'); btn.classList.toggle('active', songSwingOn); }
+}
+
+// ═══════════════════════════════════════
+// CHORD COMPING — re-strikes a held chord slot instead of one flat sustain
+// ═══════════════════════════════════════
+// Hit positions are eighth-note units within a bar (0-7, 8 eighths per 4/4 bar).
+// null = old behavior: a single attack held flat for the whole slot.
+let songCompStyle = 'bars';
+const COMP_PATTERNS = {
+ sustain:    {label:'Sustain',    hits:null},
+ bars:       {label:'Bar Hits',   hits:[0]},
+ backbeat:   {label:'Backbeat',   hits:[0,4]},
+ charleston: {label:'Charleston', hits:[0,3]},
+ strum:      {label:'Strum',      hits:[0,2,4,6]},
+ bossa:      {label:'Bossa',      hits:[0,3,4,7]}
+};
+function setSongCompStyle(s){
+ if(!COMP_PATTERNS[s]) return;
+ songCompStyle = s;
+ document.querySelectorAll('[data-compstyle]').forEach(b=>b.classList.toggle('active', b.dataset.compstyle===s));
+}
+document.querySelectorAll('[data-compstyle]').forEach(function(b){
+ b.addEventListener('click', function(){ setSongCompStyle(b.dataset.compstyle); });
+});
+
+// Re-strikes the currently-held chord slot without the side effects that
+// belong only to a genuine chord change (arp phase reset, logic-mode
+// highlight, bass auto-regen) — those already happened on the first attack.
+function _compRestrike(slot){
+ if(!songLoopActive || !slot || slot.isRest) return;
+ const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
+ const playRoot = slot.rootM + capo;
+ const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
+ const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
+ const voicedIntvs = autoInvOn ? smartVoiceLead(playRoot, intvs) : intvs;
+ if(wetDry < .99){
+  stopAll();
+  if(playBass !== null){
+   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true);
+  } else {
+   playChord(playRoot, voicedIntvs, false, 0, true);
+  }
+ }
+}
+
+let songCompTimers = [];
+function _clearCompTimers(){
+ songCompTimers.forEach(id=>clearTimeout(id));
+ songCompTimers = [];
+}
+// Schedules the comp re-strikes for the remainder of a slot's duration,
+// beyond the initial attack playChartSlot2() already fired.
+function _scheduleCompHits(slot){
+ _clearCompTimers();
+ if(!slot || slot.isRest) return;
+ const pat = COMP_PATTERNS[songCompStyle];
+ if(!pat || !pat.hits) return; // 'sustain' style — no retriggering, old behavior
+ const bars = slot.bars || 0;
+ if(bars < 1) return; // sub-bar slots are too short to comp
+ const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
+ const beatMs = 60000/bpm;
+ const eighthMs = beatMs*0.5;
+ const barMs = eighthMs*8;
+ for(let b=0; b<bars; b++){
+  pat.hits.forEach(function(eighthIdx){
+   if(b===0 && eighthIdx===0) return; // that's the initial attack, already fired
+   const atMs = b*barMs + eighthIdx*eighthMs;
+   songCompTimers.push(setTimeout(function(){ _compRestrike(slot); }, atMs));
+  });
+ }
 }
 
 function slotTotalMs(slot){
@@ -7332,6 +7416,7 @@ function _playLoopSlot(){
  // Play the chord (or rest)
  playChartSlot2(songLoopSection, songLoopSlot);
  _highlightLoopSlot(songLoopSection, songLoopSlot);
+ if(typeof _scheduleCompHits==='function') _scheduleCompHits(slot);
 
  var _sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(snapMode === 'off' || (!rhythmOn && !_sqOn) || _songSlotNeedsTimeout){
