@@ -6642,21 +6642,24 @@ function playChartSlot2(si, ci){
  } else {
  setArpChord(playRoot, intvs, slot.func);
  }
- // Sustain the chord for its own length instead of the global decay/
- // chordBeats setting — playChord/playSlashChord hold at peak volume when
- // sustain=true, and get cleanly faded out (see stopAll's FADE_OUT) the
- // instant the next chord (or a rest/stop) fires, so a chord's audible
- // length always matches however many bars it's set to in the chart,
- // rather than cutting off early on a long slot or a slow tempo.
+ // Only the 'sustain' comp style holds a chord flat for its whole slot
+ // length (playChord/playSlashChord hold at peak volume when sustain=true).
+ // Every other comp style re-strikes the chord on its own schedule (see
+ // _scheduleCompHits), so those hits should decay naturally per the
+ // Settings decay knob instead of drone-holding between hits — that's
+ // what makes comping sound like playing instead of a static pad.
+ const _holdFlat = songCompStyle === 'sustain';
  if(wetDry < .99){
  stopAll();
  if(playBass !== null){
- playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true);
+ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, _holdFlat);
  } else {
- playChord(playRoot, voicedIntvs, false, 0, true);
+ playChord(playRoot, voicedIntvs, false, 0, _holdFlat);
  }
  } else if(playBass !== null){
  // arpOn + wetDry≈1: still play the bass pedal note as a sustained tone
+ // under the arp — a held pedal point is the correct articulation here
+ // regardless of comp style, since the arp is what's providing the rhythm.
  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
@@ -7014,15 +7017,18 @@ function _compRestrike(slot){
  const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
  const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
  const voicedIntvs = autoInvOn ? smartVoiceLead(playRoot, intvs) : intvs;
+ // _compRestrike is only ever scheduled for comp styles with hits (never
+ // 'sustain' — see _scheduleCompHits), so a re-strike always decays
+ // naturally per the Settings decay knob rather than holding flat.
  if(wetDry < .99){
   stopAll();
   if(playBass !== null){
-   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true);
+   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, false);
   } else {
-   playChord(playRoot, voicedIntvs, false, 0, true);
+   playChord(playRoot, voicedIntvs, false, 0, false);
   }
  } else if(playBass !== null){
-  // arpOn + wetDry≈1: still re-strike the sustained bass pedal note, same as playChartSlot2
+  // arpOn + wetDry≈1: still re-strike the sustained bass pedal note under the arp
   try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true); }catch(e){}
  }
 }
