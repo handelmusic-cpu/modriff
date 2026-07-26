@@ -3173,14 +3173,14 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // sample fetch isn't available in every environment); its value is an
 // estimate based on it being reported quieter than the synth piano.
 const WAVE_GAIN = {
- sine:.70,
- sawtooth:.71,
- square:.71,
- supersaw:.79,
- piano:.58,
- organ:1.65,
- rhodes:.67,
- pad:1.06,
+ sine:.701,
+ sawtooth:.629,
+ square:.627,
+ supersaw:.744,
+ piano:.642,
+ organ:2.135,
+ rhodes:.648,
+ pad:1.619,
  piano_real:1.3,
 };
 
@@ -4002,10 +4002,12 @@ function playMelNote(midi,pressure){
  g.connect(window._masterDest||ctx.destination); feedRev(g,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,holdMode?10:atk+dec,melWave);
  activeMelOscs[midi]={oscs,g};
+ markMelKeyOn(midi);
  return{oscs,g};
 }
 
 function releaseMelNote(midi){
+ markMelKeyOff(midi);
  if(!activeMelOscs[midi]) return;
  const {g,oscs}=activeMelOscs[midi];
  const ctx=getCtx(); if(!ctx){ delete activeMelOscs[midi]; return; }
@@ -4019,16 +4021,36 @@ function releaseMelNote(midi){
  delete activeMelOscs[midi];
 }
 
+// Visual feedback on the melody strip for any input source (on-screen touch,
+// computer-keyboard typing, or an external MIDI keyboard) — not just pointer
+// events on the strip's own buttons, since MIDI/keyboard notes may not land
+// on a strip key at all (e.g. chromatic passing tones, out-of-range octaves).
+function markMelKeyOn(midi){
+ const el=document.getElementById('mel-'+midi);
+ if(el) el.classList.add('held');
+}
+function markMelKeyOff(midi){
+ const el=document.getElementById('mel-'+midi);
+ if(el) el.classList.remove('held');
+}
+
 // ─── PITCH BEND STRIP ───
 let bendCurrentMidi=null;
 let bendContOsc=null, bendContGain=null, bendContActive=false;
 let bendMode='locked'; // 'locked' | 'continuous'
+// Continuous mode starts every gesture snapped to the nearest in-tune note
+// (so a tap sounds like a tap, not a random microtone) and only switches to
+// a true continuous glide once the gesture has actually moved like a
+// glissando. These track that per-gesture state.
+let bendGestureStartX=null, bendIsGliding=false, bendTapMidi=null;
 
 function setBendMode(m){
  bendMode=m;
  // stop any active bend sound on mode switch
  bendStopContinuous();
  if(bendCurrentMidi!==null){ releaseMelNote(bendCurrentMidi); bendCurrentMidi=null; }
+ if(bendTapMidi!==null){ releaseMelNote(bendTapMidi); bendTapMidi=null; }
+ bendGestureStartX=null; bendIsGliding=false;
  const bl=document.getElementById('bend-locked-btn');
  const bc=document.getElementById('bend-cont-btn');
  if(bl) bl.classList.toggle('active', m==='locked');
@@ -4086,28 +4108,14 @@ function initBendStrip(){
  return nn(midi % 12) + (Math.floor(midi / 12) - 1);
  };
 
- const handleStart=(e)=>{
- e.preventDefault();
- const touch=e.touches?e.touches[0]:e;
- const rect=strip.getBoundingClientRect();
- const x=Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
- const notes=getSteps();
+ // Fraction of the strip's width that separates two adjacent notes — used
+ // as the movement threshold that distinguishes a tap (finger wobble) from
+ // an intentional glissando.
+ const noteSpacing=(notes)=>1/Math.max(1,notes.length-1);
 
- indicator.style.left=(x*100)+'%';
- indicator.style.opacity='1';
- label.textContent=xToName(x, notes);
-
- if(bendMode==='locked'){
- // Note-locked: snap to nearest scale degree
- const idx=Math.floor(x * notes.length);
- const midi=notes[Math.min(idx, notes.length-1)];
- if(midi!==bendCurrentMidi){
- if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
- bendCurrentMidi=midi;
- playMelNote(midi, touch.force||0);
- }
- } else {
- // Continuous: start or retrigger a persistent oscillator
+ // Begin a true continuous glide starting at the given x, taking over from
+ // whatever snapped tap note was sounding.
+ const startGlide=(x, notes, touch)=>{
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
@@ -4118,7 +4126,6 @@ function initBendStrip(){
  const now=ctx.currentTime;
  const f=xToFreq(x, notes);
 
- if(!bendContActive){
  bendStopContinuous();
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
@@ -4146,12 +4153,37 @@ function initBendStrip(){
  bendContOsc=o;
  }
  bendContActive=true;
+ };
+
+ const handleStart=(e)=>{
+ e.preventDefault();
+ const touch=e.touches?e.touches[0]:e;
+ const rect=strip.getBoundingClientRect();
+ const x=Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+ const notes=getSteps();
+
+ indicator.style.left=(x*100)+'%';
+ indicator.style.opacity='1';
+ label.textContent=xToName(x, notes);
+
+ if(bendMode==='locked'){
+ // Note-locked: always snap to nearest scale degree, no continuous glide ever
+ const idx=Math.floor(x * notes.length);
+ const midi=notes[Math.min(idx, notes.length-1)];
+ if(midi!==bendCurrentMidi){
+ if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
+ bendCurrentMidi=midi;
+ playMelNote(midi, touch.force||0);
+ }
  } else {
- // Already playing — glide frequency smoothly
- if(bendContOsc && bendContOsc.frequency){
- bendContOsc.frequency.setValueAtTime(f, ctx.currentTime);
- }
- }
+ // Continuous mode: every gesture *starts* snapped in-tune, like a tap.
+ // It only becomes a true continuous glide if the gesture moves far
+ // enough during handleMove to read as a glissando.
+ bendGestureStartX=x; bendIsGliding=false;
+ const idx=Math.floor(x * notes.length);
+ const midi=notes[Math.min(idx, notes.length-1)];
+ bendTapMidi=midi;
+ playMelNote(midi, touch.force||0);
  }
  };
 
@@ -4173,13 +4205,29 @@ function initBendStrip(){
  bendCurrentMidi=midi;
  playMelNote(midi, touch.force||0);
  }
- } else {
- // Continuous glide
- if(!bendContActive){ handleStart(e); return; }
+ } else if(bendIsGliding){
+ // Already gliding — true continuous pitch, no snapping
  const ctx=getCtx(); if(!ctx) return;
  const f=xToFreq(x, notes);
  if(bendContOsc && bendContOsc.frequency){
  bendContOsc.frequency.setValueAtTime(f, ctx.currentTime);
+ }
+ } else {
+ // Still within tap tolerance — behave like locked mode until the
+ // gesture actually moves like a glissando.
+ const moved = bendGestureStartX===null ? 0 : Math.abs(x - bendGestureStartX);
+ if(moved > noteSpacing(notes)*0.6){
+ bendIsGliding=true;
+ if(bendTapMidi!==null){ releaseMelNote(bendTapMidi); bendTapMidi=null; }
+ startGlide(x, notes, touch);
+ } else {
+ const idx=Math.floor(x * notes.length);
+ const midi=notes[Math.min(idx, notes.length-1)];
+ if(midi!==bendTapMidi){
+ if(bendTapMidi!==null) releaseMelNote(bendTapMidi);
+ bendTapMidi=midi;
+ playMelNote(midi, touch.force||0);
+ }
  }
  }
  };
@@ -4189,7 +4237,12 @@ function initBendStrip(){
  if(bendMode==='locked'){
  if(bendCurrentMidi!==null){ if(!holdMode) releaseMelNote(bendCurrentMidi); bendCurrentMidi=null; }
  } else {
+ if(bendIsGliding){
  if(!holdMode) bendStopContinuous();
+ } else if(bendTapMidi!==null){
+ if(!holdMode) releaseMelNote(bendTapMidi);
+ }
+ bendTapMidi=null; bendGestureStartX=null; bendIsGliding=false;
  }
  };
 
@@ -8962,7 +9015,7 @@ function sqInitMixer(){
 }
 
 // Mixer gains live at window level so unlockAudio can init them
-window.sqMixGainsW = { drum:1, chord:1, arp:1, mel:1, bass:1 };
+window.sqMixGainsW = { drum:.55, chord:.75, arp:.7, mel:.75, bass:.7 };
 (function(){
 'use strict';
 
