@@ -2294,7 +2294,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  </div>
 <button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
  <button class="tb" id="rec-btn" onclick="toggleRecording()" title="Records a .wav of the audio plus a .mid of exactly what you played" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
- <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass: Sync</button>
+ <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass+Mel: Sync</button>
  </div>
  <div class="beat-dots" id="beat-dots" style="margin-top:6px"></div>
  </div>
@@ -2589,17 +2589,11 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  </div>
  </div>
 
- <!-- Jazz Standards + Real Book + Progression dropdowns -->
+ <!-- Standards (Jazz Standards + Real Book, merged) + Progression dropdowns -->
  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
   <div style="flex:1;min-width:140px">
-   <div class="chart-lbl" style="margin-bottom:3px">Jazz Standards <span style="opacity:.6">(public domain)</span>:</div>
-   <select id="jazz-std-sel" onchange="loadJazzStd(parseInt(this.value))" style="width:100%;font-size:.52rem;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surf);color:var(--text);cursor:pointer">
-    <option value="-1">— Choose a standard —</option>
-   </select>
-  </div>
-  <div style="flex:1;min-width:140px">
-   <div class="chart-lbl" style="margin-bottom:3px">Real Book <span style="opacity:.6">(jazz combo)</span>:</div>
-   <select id="real-book-sel" onchange="loadRealBookStd(parseInt(this.value))" style="width:100%;font-size:.52rem;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surf);color:var(--text);cursor:pointer">
+   <div class="chart-lbl" style="margin-bottom:3px">Standards <span style="opacity:.6">(jazz &amp; public domain)</span>:</div>
+   <select id="standards-sel" onchange="loadStandard(parseInt(this.value))" style="width:100%;font-size:.52rem;padding:4px 6px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--surf);color:var(--text);cursor:pointer">
     <option value="-1">— Choose a standard —</option>
    </select>
   </div>
@@ -4946,8 +4940,7 @@ function renderChords(){
  // Also update chart picker and mode-aware progression presets
  buildChartPicker();
  buildProgPresets();
- if(typeof buildJazzStdMenu==='function') buildJazzStdMenu();
- if(typeof buildRealBookMenu==='function') buildRealBookMenu();
+ if(typeof buildStandardsMenu==='function') buildStandardsMenu();
  renderPerfChartRow();
  updateOct();
  buildMelodyStrip();
@@ -6610,9 +6603,10 @@ function playChartSlot2(si, ci){
  applyLogicHighlights(deg);
  }
  }
- // Auto-regenerate bass line when song loop advances to a new chord (if sync is enabled)
- if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync&&typeof window.blGenerate==='function'){
- setTimeout(window.blGenerate, 10);
+ // Auto-regenerate bass line and melody when song loop advances to a new chord (if sync is enabled)
+ if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync){
+ if(typeof window.blGenerate==='function') setTimeout(window.blGenerate, 10);
+ if(typeof window.mlGenerate==='function') setTimeout(window.mlGenerate, 10);
  }
 }
 
@@ -6842,9 +6836,10 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  }
  }
  if(v !== null){ armedVariant=null; armVariant(null); }
-  // Auto-regenerate bass line when a chord fires (if sync is enabled)
-  if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync&&typeof window.blGenerate==='function'){
-    setTimeout(window.blGenerate,10);
+  // Auto-regenerate bass line and melody when a chord fires (if sync is enabled)
+  if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync){
+    if(typeof window.blGenerate==='function') setTimeout(window.blGenerate,10);
+    if(typeof window.mlGenerate==='function') setTimeout(window.mlGenerate,10);
   }
   // Token for releaseSustainedChord() — identifies "this" trigger's generation
   return _sustainId;
@@ -7109,154 +7104,6 @@ function showDurationPicker(slot, onChange){
  overlay.addEventListener('click',(e)=>{ if(e.target===overlay) done.click(); });
 }
 
-// ═══════════════════════════════════════
-// JAZZ STANDARDS LIBRARY
-// ═══════════════════════════════════════
-// Compact format: [semitones_from_key_root, quality, bars]
-// Quality: 'M'=major,'m'=minor,'d'=dim,'a'=aug,'M7'=maj7,'7'=dom7,'m7'=min7,'hd'=halfdim,'d7'=dim7
-const JAZZ_STDS=[
- {title:"April Showers",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2],[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',2]]},
-  {name:'B',chords:[[9,'7',2],[2,'m',2],[7,'7',2],[0,'M',2]]}
- ]},
- {title:"Baby Won't You Please Come Home",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'7',2],[5,'M',1],[6,'d',1],[0,'M',2],[9,'7',2],[2,'7',1],[7,'7',1],[0,'M',4]]}
- ]},
- {title:"Body and Soul",key:1,mode:'major',sections:[
-  {name:'A',chords:[[2,'m7',1],[7,'7',1],[2,'m7',1],[7,'7',1],[0,'M7',1],[9,'m7',1],[2,'m7',1],[7,'7',1],[0,'M7',2]]},
-  {name:'Bridge',chords:[[1,'M7',2],[6,'7',2],[1,'M7',2],[7,'7',2]]}
- ]},
- {title:"But Not for Me",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[4,'m7',1],[9,'m7',1],[2,'7',1],[7,'M7',2],[7,'7',2],[0,'M',1],[4,'m7',1],[9,'m7',1],[2,'7',1],[0,'M7',2]]},
-  {name:'Bridge',chords:[[5,'M7',2],[10,'7',2],[0,'M7',1],[0,'7',1],[5,'M7',1],[5,'m',1],[10,'7',1],[0,'M',1],[9,'m7',1],[2,'m7',1],[7,'7',1],[0,'M7',2]]}
- ]},
- {title:"By The Light Of The Silvery Moon",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[0,'M',1],[0,'7',1],[5,'M',2],[9,'7',2],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Carolina in the Morning",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[7,'7',2],[0,'M',1],[0,'7',1],[5,'M',1],[6,'d',1],[0,'M',2]]},
-  {name:'B',chords:[[9,'7',2],[2,'m',2],[7,'7',2],[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Chicago",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'7',1],[5,'M',1],[6,'d',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Confessin'",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[4,'7',2],[9,'m',2],[2,'7',2],[7,'7',2],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',1],[4,'7',1],[5,'M',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"A Cup of Coffee, a Sandwich and You",key:0,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Dream a Little Dream of Me",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[9,'7',2],[2,'m',2],[7,'7',2],[0,'M',2],[3,'7',2],[8,'M',2],[7,'7',2]]},
-  {name:'Bridge',chords:[[0,'M',2],[9,'7',2],[2,'m',2],[7,'7',2],[0,'M',1],[3,'7',1],[8,'M',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Embraceable You",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M',1],[9,'7',1],[2,'m7',1],[7,'7',1],[4,'m',1],[3,'d',1],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'Bridge',chords:[[2,'m7',1],[7,'7',1],[2,'m7',1],[7,'7',1],[2,'7',2],[7,'7',2]]}
- ]},
- {title:"Exactly Like You",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[4,'7',1],[9,'m',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M',1],[7,'7',1],[0,'M',1],[4,'7',1],[9,'m',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M7',2]]},
-  {name:'Bridge',chords:[[5,'M',2],[5,'M',2],[0,'M',2],[7,'7',2],[0,'M',2]]}
- ]},
- {title:"Five Foot Two, Eyes of Blue",key:0,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'7',1],[2,'7',1],[7,'7',2],[0,'M',2]]},
-  {name:'B',chords:[[0,'d',1],[7,'7',1],[0,'M',1],[4,'7',1],[9,'7',2],[2,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Georgia On My Mind",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'m',1],[7,'7',1],[0,'M',2],[4,'7',2],[9,'m',2],[2,'m',1],[7,'7',1],[0,'M',2]]},
-  {name:'Bridge',chords:[[4,'7',2],[9,'m',2],[2,'m',2],[7,'7',2],[0,'M',2]]}
- ]},
- {title:"Hello! Ma Baby",key:0,mode:'major',sections:[
-  {name:'A',chords:[[7,'7',2],[0,'M',2],[9,'7',2],[2,'m',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"How 'Ya Gonna Keep 'Em Down on the Farm",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[7,'7',2],[0,'M',2],[5,'M',1],[6,'d',1],[0,'M',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"I Got Rhythm",key:10,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[9,'m',1],[2,'m',1],[7,'7',1],[0,'M',1],[9,'m',1],[2,'m',1],[7,'7',1],[0,'7',2],[5,'M',1],[5,'m',1],[0,'M',1],[7,'7',1],[0,'M',2]]},
-  {name:'Bridge',chords:[[4,'7',2],[9,'7',2],[2,'7',2],[7,'7',2]]}
- ]},
- {title:"I Wonder Who's Kissing Her Now",key:2,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"I'm Forever Blowing Bubbles",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[9,'7',2],[2,'m',2],[7,'7',1],[0,'M',1],[1,'d',1],[7,'7',1],[5,'M',2]]},
-  {name:'B',chords:[[5,'m',1],[0,'M',1],[9,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"I'm Just Wild About Harry",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[2,'m7',1],[7,'7',1],[0,'M',1],[4,'7',1],[9,'m',2],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[0,'7',1],[5,'M',1],[2,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"It Had to Be You",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'a',1],[9,'7',2],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[4,'7',2],[9,'m',2],[2,'m7',1],[7,'7',1],[0,'M',2],[4,'7',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Love for Sale",key:0,mode:'minor',sections:[
-  {name:'A',chords:[[0,'m',2],[5,'m',2],[0,'m',1],[7,'7',1],[0,'m',2]]},
-  {name:'B',chords:[[3,'M',2],[10,'7',2],[3,'M',1],[5,'7',1],[10,'7',2]]},
-  {name:'C',chords:[[0,'m',1],[2,'hd',1],[7,'7',1],[0,'m',2],[8,'M',2],[7,'7',2],[0,'m',2]]}
- ]},
- {title:"Manhattan",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[9,'m',2],[2,'m7',2],[7,'7',2],[0,'M',2]]},
-  {name:'B',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[5,'M',1],[7,'7',1],[0,'M',2],[9,'m',2],[2,'m7',2],[7,'7',2],[0,'M',2]]}
- ]},
- {title:"Memories of You",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'7',2],[5,'M',2],[5,'m',2],[0,'M',1],[9,'m',1],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'Bridge',chords:[[7,'m',1],[7,'7',1],[0,'M',2],[3,'7',2],[2,'7',1],[7,'7',1]]}
- ]},
- {title:"Mood Indigo",key:10,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[5,'7',2],[0,'7',2],[5,'M',2],[0,'M',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'Bridge',chords:[[9,'7',2],[2,'m7',2],[7,'7',2],[0,'M',2]]}
- ]},
- {title:"Moonlight Bay",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"My Melancholy Baby",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"On the Sunny Side of the Street",key:0,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[9,'m7',1],[2,'m7',1],[7,'7',1],[0,'M',1],[9,'m7',1],[2,'m7',1],[7,'7',1],[4,'7',2],[9,'m',2],[2,'7',2],[7,'7',2],[0,'M',1],[9,'m7',1],[2,'m7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"A Pretty Girl is Like a Melody",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'d',1],[2,'m',1],[7,'7',1],[0,'M',2],[0,'a',1],[4,'7',1],[9,'m',2],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Rock-a-Bye Your Baby",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',2],[4,'7',2],[9,'m',1],[2,'7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Shine On Harvest Moon",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[4,'7',2],[9,'m',2],[2,'7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[5,'M',1],[6,'d',1],[0,'M',1],[7,'7',1],[0,'M',1],[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Somebody Loves Me",key:10,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[2,'m7',1],[7,'7',1],[0,'M',1],[1,'d',1],[2,'m7',1],[7,'7',1],[0,'M',2]]},
-  {name:'B',chords:[[9,'7',2],[2,'m',2],[7,'7',2],[0,'M',2],[5,'M',1],[0,'d',1],[0,'M',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Someone to Watch Over Me",key:3,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',1],[4,'d',1],[2,'m7',1],[7,'7',1],[0,'M7',2],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M7',2]]},
-  {name:'Bridge',chords:[[5,'M',2],[5,'m',2],[0,'M',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M7',2]]}
- ]},
- {title:"Stardust",key:0,mode:'major',sections:[
-  {name:'Verse',chords:[[0,'M',1],[4,'7',1],[9,'m',1],[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[7,'7',1]]},
-  {name:'Chorus',chords:[[0,'M7',1],[3,'d',1],[2,'m7',1],[7,'7',1],[0,'M7',2],[9,'m7',1],[2,'7',1],[7,'M7',1],[10,'d',1],[9,'m7',1],[2,'7',1],[7,'M7',2],[2,'m7',2],[7,'7',2],[0,'M7',1],[4,'m7',1],[9,'7',1],[2,'m7',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"Tico Tico no Fuba",key:9,mode:'minor',sections:[
-  {name:'A',chords:[[0,'m',2],[7,'7',2],[0,'m',2],[7,'7',2],[0,'m',2],[5,'m',1],[0,'m',1],[7,'7',2],[0,'m',2]]},
-  {name:'B',chords:[[3,'M',2],[10,'7',2],[3,'M',2],[7,'7',2],[0,'m',2]]}
- ]},
- {title:"Toot Toot Tootsie, Goo'bye",key:5,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[2,'7',1],[7,'7',1],[0,'M',2],[5,'M',1],[6,'d',1],[0,'M',1],[7,'7',1],[0,'M',2]]}
- ]},
- {title:"You Made Me Love You",key:7,mode:'major',sections:[
-  {name:'A',chords:[[0,'M',2],[0,'a',1],[9,'7',1],[2,'m',2],[7,'7',2],[0,'M',2]]},
-  {name:'B',chords:[[0,'7',1],[5,'M',1],[5,'m',1],[0,'M',1],[9,'7',1],[2,'m',1],[7,'7',1],[0,'M',2]]}
- ]}
-];
-
 function _jscQ(q){
  switch(q){
   case 'M': return {triadQ:0,type7:'none',ext:'triad'};
@@ -7273,45 +7120,17 @@ function _jscQ(q){
  }
 }
 
-function buildJazzStdMenu(){
- const sel=document.getElementById('jazz-std-sel'); if(!sel) return;
- while(sel.options.length>1) sel.remove(1);
- JAZZ_STDS.forEach((s,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=s.title; sel.appendChild(o); });
- sel.value='-1';
-}
-
-function loadJazzStd(idx){
- if(idx<0||idx>=JAZZ_STDS.length) return;
- const std=JAZZ_STDS[idx];
- stopSongLoop();
- root=std.key; mode=std.mode||'major';
- const stdMidi=60+(std.key<=5?std.key:std.key-12);
- sections=std.sections.map(sec=>({
-  name:sec.name,
-  slots:sec.chords.map(([semi,q,bars])=>{
-   const {triadQ,type7,ext}=_jscQ(q);
-   const rootM=stdMidi+semi;
-   const pc=((std.key+semi)%12+12)%12;
-   const sfx=(q==='m'||q==='m7'||q==='mM7')?'m':(q==='d'||q==='hd'||q==='d7')?'°':(q==='a')?'+':'';
-   const label=nn(pc)+sfx;
-   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:bars||1,beats:0,eighths:0,isRest:false,bassNote:null};
-  })
- }));
- curSection=0; chartSeqIdx=-1; curSetlistIdx=-1;
- document.getElementById('chart-title').value=std.title;
- ['bm-major','songs-bm-major'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='major'));
- ['bm-minor','songs-bm-minor'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='minor'));
- renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
- if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
- if(typeof buildChartPicker==='function') buildChartPicker();
- if(typeof buildProgPresets==='function') buildProgPresets();
- document.getElementById('jazz-std-sel').value='-1';
- showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
-}
-
-// ── The Real Book — canonical jazz-combo standards (chord changes only;
-// no melody/lyrics are stored, same legal footing as any chord-chart app) ──
-const REAL_BOOK_STDS=[
+// ── Standards — jazz standards & real-book changes, merged into one list.
+// Chord changes only (no melody/lyrics stored) — same legal footing as any
+// chord-chart app; several of these are still under copyright but bare
+// chord progressions aren't independently protected expression.
+const STANDARDS=[
+ {title:"A Cup of Coffee, a Sandwich and You",key:0,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
+ ]},
+ {title:"A Pretty Girl is Like a Melody",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"d",1],[2,"m",1],[7,"7",1],[0,"M",2],[0,"a",1],[4,"7",1],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Ain't Misbehavin'",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[5,"7",2],[6,"d",1],[0,"M7",1],[9,"m7",1],[2,"7",1],[7,"7",2]]}
  ]},
@@ -7339,11 +7158,17 @@ const REAL_BOOK_STDS=[
  {title:"Anthropology",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
  ]},
+ {title:"April Showers",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
+ ]},
  {title:"Autumn Leaves",key:7,mode:"minor",sections:[
   {name:"A",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"A2",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2]]},{name:"C",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
  ]},
  {title:"Autumn in New York",key:7,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[11,"hd",1],[4,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
+ ]},
+ {title:"Baby Won't You Please Come Home",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",1],[6,"d",1],[0,"M",2],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",4]]}
  ]},
  {title:"Bags' Groove",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
@@ -7375,6 +7200,15 @@ const REAL_BOOK_STDS=[
  {title:"Bluesette",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",1],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
  ]},
+ {title:"Body and Soul",key:1,mode:"major",sections:[
+  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[1,"M7",2],[6,"7",2],[1,"M7",2],[7,"7",2]]}
+ ]},
+ {title:"But Not for Me",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"7",2],[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M7",2],[10,"7",2],[0,"M7",1],[0,"7",1],[5,"M7",1],[5,"m",1],[10,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
+ ]},
+ {title:"By The Light Of The Silvery Moon",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"M",1],[0,"7",1],[5,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Bye Bye Blackbird",key:5,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[3,"d7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
  ]},
@@ -7387,8 +7221,17 @@ const REAL_BOOK_STDS=[
  {title:"Caravan",key:5,mode:"minor",sections:[
   {name:"A",chords:[[0,"m",4],[0,"m",4]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",4]]}
  ]},
+ {title:"Carolina in the Morning",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",1],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Cherokee",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2],[10,"m7",1],[3,"7",1]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[10,"hd",1],[3,"7",1]]}
+ ]},
+ {title:"Chicago",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
+ {title:"Confessin'",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[4,"7",1],[5,"M",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"Confirmation",key:5,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",1],[2,"hd",1],[7,"7",1],[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"M7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1]]}
@@ -7408,11 +7251,23 @@ const REAL_BOOK_STDS=[
  {title:"Doxy",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"7",2],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
  ]},
+ {title:"Dream a Little Dream of Me",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[3,"7",2],[8,"M",2],[7,"7",2]]},{name:"Bridge",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",1],[3,"7",1],[8,"M",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Easy Living",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M7",2]]}
  ]},
+ {title:"Embraceable You",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[4,"m",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[2,"7",2],[7,"7",2]]}
+ ]},
+ {title:"Exactly Like You",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
+ ]},
  {title:"Falling in Love with Love",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
+ ]},
+ {title:"Five Foot Two, Eyes of Blue",key:0,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",1],[2,"7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"d",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"Fly Me to the Moon",key:0,mode:"major",sections:[
   {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[11,"hd",1],[4,"7",1],[9,"m7",1]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
@@ -7426,14 +7281,23 @@ const REAL_BOOK_STDS=[
  {title:"Freddie Freeloader",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[8,"7",2],[5,"7",2]]}
  ]},
+ {title:"Georgia On My Mind",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"m",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
+ ]},
  {title:"Green Dolphin Street",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]},{name:"C",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",1],[2,"hd",1]]}
  ]},
  {title:"Have You Met Miss Jones",key:5,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[1,"M7",2],[9,"m7",1],[2,"m7",1],[7,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
  ]},
+ {title:"Hello! Ma Baby",key:0,mode:"major",sections:[
+  {name:"A",chords:[[7,"7",2],[0,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Here's That Rainy Day",key:7,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[8,"7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
+ ]},
+ {title:"How 'Ya Gonna Keep 'Em Down on the Farm",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"How High the Moon",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[0,"m7",2],[5,"m7",2],[10,"7",2],[3,"M7",2],[3,"m7",2],[8,"m7",2],[1,"7",2]]},{name:"B",chords:[[6,"M7",2],[6,"m7",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]}
@@ -7443,6 +7307,9 @@ const REAL_BOOK_STDS=[
  ]},
  {title:"I Could Write a Book",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
+ ]},
+ {title:"I Got Rhythm",key:10,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
  ]},
  {title:"I Hear a Rhapsody",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[1,"M7",2]]}
@@ -7456,8 +7323,17 @@ const REAL_BOOK_STDS=[
  {title:"I Remember You",key:5,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[4,"m7",2],[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
  ]},
+ {title:"I Wonder Who's Kissing Her Now",key:2,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"I'll Remember April",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[0,"m7",2],[5,"m7",2],[10,"7",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[0,"M",2]]}
+ ]},
+ {title:"I'm Forever Blowing Bubbles",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",1],[0,"M",1],[1,"d",1],[7,"7",1],[5,"M",2]]},{name:"B",chords:[[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
+ ]},
+ {title:"I'm Just Wild About Harry",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"I've Got You Under My Skin",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"7",2]]}
@@ -7492,6 +7368,9 @@ const REAL_BOOK_STDS=[
  {title:"It Don't Mean a Thing",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
  ]},
+ {title:"It Had to Be You",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2],[4,"7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Jeepers Creepers",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[5,"M",2],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"M",2]]}
  ]},
@@ -7507,11 +7386,20 @@ const REAL_BOOK_STDS=[
  {title:"Like Someone in Love",key:0,mode:"major",sections:[
   {name:"A",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]}
  ]},
+ {title:"Love for Sale",key:0,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m",2],[5,"m",2],[0,"m",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",1],[5,"7",1],[10,"7",2]]},{name:"C",chords:[[0,"m",1],[2,"hd",1],[7,"7",1],[0,"m",2],[8,"M",2],[7,"7",2],[0,"m",2]]}
+ ]},
  {title:"Lullaby of Birdland",key:5,mode:"major",sections:[
   {name:"A",chords:[[0,"M",1],[8,"hd",1],[1,"7",1],[0,"M",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
  ]},
  {title:"Maiden Voyage",key:2,mode:"major",sections:[
   {name:"A",chords:[[0,"m7",4],[5,"m7",4]]},{name:"B",chords:[[10,"m7",4],[7,"m7",4]]}
+ ]},
+ {title:"Manhattan",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[5,"M",1],[7,"7",1],[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
+ ]},
+ {title:"Memories of You",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",2],[5,"m",2],[0,"M",1],[9,"m",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[7,"m",1],[7,"7",1],[0,"M",2],[3,"7",2],[2,"7",1],[7,"7",1]]}
  ]},
  {title:"Milestones",key:7,mode:"major",sections:[
   {name:"A",chords:[[0,"m7",4],[0,"m7",4]]},{name:"B",chords:[[5,"m7",4],[0,"m7",4]]}
@@ -7522,6 +7410,12 @@ const REAL_BOOK_STDS=[
  {title:"Moanin'",key:5,mode:"minor",sections:[
   {name:"A",chords:[[0,"m7",2],[10,"7",2],[0,"m7",2],[3,"7",2]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[9,"7",2]]}
  ]},
+ {title:"Mood Indigo",key:10,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[5,"7",2],[0,"7",2],[5,"M",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
+ ]},
+ {title:"Moonlight Bay",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"My Favorite Things",key:4,mode:"minor",sections:[
   {name:"A",chords:[[0,"m",4],[7,"M",4]]},{name:"B",chords:[[0,"m",4],[7,"M",4]]}
  ]},
@@ -7530,6 +7424,9 @@ const REAL_BOOK_STDS=[
  ]},
  {title:"My Funny Valentine",key:0,mode:"minor",sections:[
   {name:"A",chords:[[0,"m",1],[0,"mM7",1],[0,"m7",1],[0,"m6",1],[8,"M7",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[2,"hd",1],[7,"7",1],[0,"m",2]]}
+ ]},
+ {title:"My Melancholy Baby",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"My One and Only Love",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
@@ -7558,6 +7455,9 @@ const REAL_BOOK_STDS=[
  {title:"Oleo",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
  ]},
+ {title:"On the Sunny Side of the Street",key:0,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Out of Nowhere",key:7,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
  ]},
@@ -7573,11 +7473,17 @@ const REAL_BOOK_STDS=[
  {title:"Rhythm-a-ning",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
  ]},
+ {title:"Rock-a-Bye Your Baby",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2],[4,"7",2],[9,"m",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Satin Doll",key:0,mode:"major",sections:[
   {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[4,"m7",1],[9,"7",1],[4,"m7",1],[9,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[8,"M7",1],[1,"7",1],[0,"M7",4]]}
  ]},
  {title:"Scrapple from the Apple",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1]]}
+ ]},
+ {title:"Shine On Harvest Moon",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"Shiny Stockings",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
@@ -7594,8 +7500,14 @@ const REAL_BOOK_STDS=[
  {title:"Solar",key:0,mode:"minor",sections:[
   {name:"A",chords:[[0,"m7",2],[8,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[6,"hd",1],[11,"7",1]]}
  ]},
+ {title:"Somebody Loves Me",key:10,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[1,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[5,"M",1],[0,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"Someday My Prince Will Come",key:10,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]},{name:"C",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
+ ]},
+ {title:"Someone to Watch Over Me",key:3,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",1],[4,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"m",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
  {title:"Song for My Father",key:5,mode:"minor",sections:[
   {name:"A",chords:[[0,"m7",4],[10,"7",2],[3,"7",2]]},{name:"B",chords:[[8,"7",2],[10,"7",2],[0,"m7",4]]}
@@ -7608,6 +7520,9 @@ const REAL_BOOK_STDS=[
  ]},
  {title:"St. Thomas",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[7,"7",2]]},{name:"B",chords:[[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
+ ]},
+ {title:"Stardust",key:0,mode:"major",sections:[
+  {name:"Verse",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1]]},{name:"Chorus",chords:[[0,"M7",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",1],[10,"d",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",2],[7,"7",2],[0,"M7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"Stella by Starlight",key:10,mode:"major",sections:[
   {name:"A",chords:[[5,"hd",1],[10,"7",1],[0,"m7",1],[5,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
@@ -7645,8 +7560,14 @@ const REAL_BOOK_STDS=[
  {title:"There Will Never Be Another You",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1]]}
  ]},
+ {title:"Tico Tico no Fuba",key:9,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m",2],[7,"7",2],[0,"m",2],[7,"7",2],[0,"m",2],[5,"m",1],[0,"m",1],[7,"7",2],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",2]]}
+ ]},
  {title:"Time After Time",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
+ ]},
+ {title:"Toot Toot Tootsie, Goo'bye",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[2,"7",1],[7,"7",1],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"Tune Up",key:3,mode:"major",sections:[
   {name:"A",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
@@ -7675,6 +7596,9 @@ const REAL_BOOK_STDS=[
  {title:"You Don't Know What Love Is",key:0,mode:"minor",sections:[
   {name:"A",chords:[[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[8,"M7",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
  ]},
+ {title:"You Made Me Love You",key:7,mode:"major",sections:[
+  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",1],[2,"m",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
+ ]},
  {title:"You Stepped Out of a Dream",key:3,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
  ]},
@@ -7683,16 +7607,16 @@ const REAL_BOOK_STDS=[
  ]},
 ];
 
-function buildRealBookMenu(){
- const sel=document.getElementById('real-book-sel'); if(!sel) return;
+function buildStandardsMenu(){
+ const sel=document.getElementById('standards-sel'); if(!sel) return;
  while(sel.options.length>1) sel.remove(1);
- REAL_BOOK_STDS.forEach((s,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=s.title; sel.appendChild(o); });
+ STANDARDS.forEach((s,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=s.title; sel.appendChild(o); });
  sel.value='-1';
 }
 
-function loadRealBookStd(idx){
- if(idx<0||idx>=REAL_BOOK_STDS.length) return;
- const std=REAL_BOOK_STDS[idx];
+function loadStandard(idx){
+ if(idx<0||idx>=STANDARDS.length) return;
+ const std=STANDARDS[idx];
  stopSongLoop();
  root=std.key; mode=std.mode||'major';
  const stdMidi=60+(std.key<=5?std.key:std.key-12);
@@ -7715,7 +7639,7 @@ function loadRealBookStd(idx){
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof buildChartPicker==='function') buildChartPicker();
  if(typeof buildProgPresets==='function') buildProgPresets();
- document.getElementById('real-book-sel').value='-1';
+ document.getElementById('standards-sel').value='-1';
  showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
 }
 
@@ -8647,7 +8571,7 @@ var _bassAutoSync=true;
 function toggleBassSync(){
   _bassAutoSync=!_bassAutoSync;
   var b=document.getElementById('bass-sync-btn');
-  if(b){b.textContent=_bassAutoSync?'Bass: Sync':'Bass: Free';b.classList.toggle('active',_bassAutoSync);}
+  if(b){b.textContent=_bassAutoSync?'Bass+Mel: Sync':'Bass+Mel: Free';b.classList.toggle('active',_bassAutoSync);}
 }
 
 let _tapTimes=[];
@@ -8735,8 +8659,7 @@ buildArpPatterns();
 buildVoiceGridInline();
 buildSectionTabs();
 buildProgPresets();
-buildJazzStdMenu();
-buildRealBookMenu();
+buildStandardsMenu();
 buildChartPicker();
 renderChords();
 loadProgressionFromHash();
