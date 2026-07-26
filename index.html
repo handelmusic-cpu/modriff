@@ -2394,11 +2394,12 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <div class="row">
  <div class="sg"><div class="sl">Reverb Mix</div><input type="range" id="rev-mix" min="0" max="1" step=".01" value=".35" oninput="updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%')"><div class="sv" id="revmix-val">35%</div></div>
  <div class="sg"><div class="sl">Reverb Size</div><input type="range" id="rev-size" min=".1" max="4" step=".05" value="1.8" oninput="updateSV('rev-size','revsize-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="revsize-val">1.8s</div></div>
- <div class="sg"><div class="sl">Spread</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".06" oninput="updateStrumLabel()"><div class="sv" id="strum-val">60ms</div></div>
+ <div class="sg"><div class="sl">Strum</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
  <div class="sg"><div class="sl">Velocity</div><input type="range" id="vel-sense" min="0" max="1" step=".05" value=".5"><div class="sl" style="margin-top:2px">Sensitivity</div></div>
  </div>
  <div class="row">
  <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="Play the sustained chord underneath the arp, not just the arp notes. Relative volume between Chord and Arp is set in the Mixer.">Chord Layer: ON</button>
+ <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Gives chords a plucked, strummed character (quicker decay, settles after the initial hit) instead of a sustained pad">Strum: ON</button>
  </div>
  <span class="midi-badge off" id="midi-badge2" style="display:block;text-align:center;margin-top:6px">MIDI</span>
  </div>
@@ -3451,6 +3452,12 @@ let _arpBounceVel=1.0;
 let arpVelShape='flat';
 let chordBeats=0;
 let wetDry=.5;
+let strumMode=true; // plucked/strummed chord character — quicker decay, settles after the hit — vs a sustained pad
+function toggleStrumMode(){
+ strumMode=!strumMode;
+ const b=document.getElementById('strum-mode-btn');
+ if(b){ b.textContent=strumMode?'Strum: ON':'Strum: OFF'; b.classList.toggle('active',strumMode); }
+}
 let rhythmOn=false, rhythmIdx=0, rhythmSel=0;
 let lastChordRoot=60, lastChordIntvs=[0,4,7], lastChordFunc='tonic';
 let audioCtx=null, activeOscs=[], activeMelOscs={}, reverbNode=null;
@@ -3869,7 +3876,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
- const dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw);
+ let dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw);
+ if(strumMode && !sustain) dec=Math.min(dec,0.7); // plucked/strummed: snappier decay than a held pad
  const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
@@ -3884,7 +3892,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const bg=ctx.createGain();
  bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh,now+atk);
  if(sustain){
- bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01); // hold at peak until released
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01);
+ if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.38*vsc*_mxCh*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
@@ -3902,7 +3911,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk);
  if(sustain){
- g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); // hold at peak until released
+ g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01);
+ if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
@@ -3919,7 +3929,8 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
  const atk=parseFloat(document.getElementById('attack').value);
  const decRaw2=parseFloat(document.getElementById('decay').value);
- const dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw2,chordBeats*beatSec()):decRaw2);
+ let dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw2,chordBeats*beatSec()):decRaw2);
+ if(strumMode && !sustain) dec=Math.min(dec,0.7); // plucked/strummed: snappier decay than a held pad
  const revMix=parseFloat(document.getElementById('rev-mix').value);
  const _mxCh=_cmx('chord');
  const wg=WAVE_GAIN[wave]||1;
@@ -3929,7 +3940,8 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const bg=ctx.createGain();
  bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.42*vsc*_mxCh,now+atk);
  if(sustain){
- bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01); // hold at peak until released
+ bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01);
+ if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.42*vsc*_mxCh*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
@@ -3939,13 +3951,16 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg});
 
- voiceIntervals(relIntvs).forEach((s,i)=>{
- const t0=now+i*.02;
- const vl=i===0?1.0:i===relIntvs.length-1?.62:.78;
+ const slashIntvs=voiceIntervals(relIntvs);
+ const offsets=strumOffsets(slashIntvs.length);
+ slashIntvs.forEach((s,i)=>{
+ const t0=now+offsets[i];
+ const vl=i===0?1.0:i===slashIntvs.length-1?.62:.78;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk);
  if(sustain){
- g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); // hold at peak until released
+ g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01);
+ if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
