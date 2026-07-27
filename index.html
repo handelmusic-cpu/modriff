@@ -2206,6 +2206,13 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
    </div>
   </div>
+  <div class="midi-panel-row" style="margin-top:6px">
+   <span class="midi-panel-lbl">Ports:</span>
+   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
+  </div>
+  <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
+   More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — duplicates within 22ms are now ignored, but you can also disable the extra port in your OS MIDI setup.
+  </div>
  </div>
 
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
@@ -5893,8 +5900,15 @@ function initMidi(){
  }).catch(()=>{});
 }
 function updateMidiBadge(){
- const cnt=midiAccess?[...midiAccess.inputs.values()].length:0;
+ const ins=midiAccess?[...midiAccess.inputs.values()]:[];
+ const cnt=ins.length;
  ['midi-badge','midi-badge2'].forEach(id=>{ const b=document.getElementById(id); if(!b) return; b.textContent=cnt>0?`MIDI: ${cnt}`:'MIDI'; b.classList.toggle('off',cnt===0); });
+ // Name the ports so a controller the OS has enumerated twice is visible
+ // rather than something you can only infer from the sound.
+ const list=document.getElementById('midi-port-list');
+ if(list) list.textContent = cnt ? ins.map(i=>i.name||'Unnamed').join(' · ') : 'none connected';
+ const warn=document.getElementById('midi-dupe-warn');
+ if(warn) warn.style.display = cnt>1 ? '' : 'none';
 }
 // onMidiMsg now defined in MIDI ROUTING section
 
@@ -6932,6 +6946,9 @@ function toggleMusicalTyping(){
 }
 
 const musicalTypingHeld = {};
+// Sustain tokens for chords held down on the number keys, keyed by e.code so
+// the release matches the physical key regardless of modifiers.
+const heldChordKeys = {};
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey) return;
  if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
@@ -6962,20 +6979,20 @@ document.addEventListener('keydown', e => {
  const steps=_md.steps, tq=_md.triadQ, t7=_md.seventh, f=_md.func;
  const crm=rootMidi()+steps[idx];
  const el=document.getElementById('cs-'+idx);
+ // Hold-to-sustain, exactly like a mouse press on the same chord button.
+ // The pointer path has always passed sustain=true and released on pointerup;
+ // the number keys used to fire without it, so a typed chord got the short
+ // decay (clamped to 0.7s by Strum mode) and sounded staccato next to an
+ // identical mouse click. Same gesture, same sound now.
  if(e.shiftKey){
- // Same behavior as clicking the 7th strip on top of the chord button
- autoStartIfNeeded(); stopSongLoopIfActive();
  lastTriggeredDegree=idx; applyLogicHighlights(idx);
- const intvs7=getIntvs(tq[idx],t7[idx],'7th');
- setArpChord(crm,intvs7,f[idx]);
- if(!arpOn||wetDry<.99){ stopAll(); playChord(crm,intvs7,false,0); }
- if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
+ heldChordKeys[e.code]=_triggerChordImmediate(crm,tq[idx],t7[idx],f[idx],0,'7th',true);
  const sev=el?.querySelector('.btn-sev'); if(sev){ sev.classList.add('flash'); setTimeout(()=>sev.classList.remove('flash'),150); }
  } else {
  lastTriggeredDegree=idx; applyLogicHighlights(idx);
- triggerChordWithVariant(crm,tq[idx],t7[idx],f[idx],0);
+ heldChordKeys[e.code]=triggerChordWithVariant(crm,tq[idx],t7[idx],f[idx],0,undefined,true);
  }
- if(el){ el.classList.add('kb-active'); setTimeout(()=>el.classList.remove('kb-active'),200); }
+ if(el) el.classList.add('kb-active');
 });
 
 document.addEventListener('keyup', e => {
@@ -6983,6 +7000,18 @@ document.addEventListener('keyup', e => {
  if(!holdMode) releaseMelNote(musicalTypingHeld[e.key]);
  delete musicalTypingHeld[e.key];
  }
+ if(heldChordKeys[e.code]!==undefined){
+ if(!holdMode) releaseSustainedChord(heldChordKeys[e.code]);
+ delete heldChordKeys[e.code];
+ const m=e.code.match(/^(?:Digit|Numpad)([1-7])$/);
+ if(m){ const el=document.getElementById('cs-'+KEY_MAP[m[1]]); if(el) el.classList.remove('kb-active'); }
+ }
+});
+// Losing focus mid-hold would otherwise strand a chord ringing for its full
+// 30s sustain, since the keyup never arrives.
+window.addEventListener('blur', ()=>{
+ Object.keys(heldChordKeys).forEach(k=>{ if(!holdMode) releaseSustainedChord(heldChordKeys[k]); delete heldChordKeys[k]; });
+ document.querySelectorAll('.kb-active').forEach(el=>el.classList.remove('kb-active'));
 });
 
 // ═══════════════════════════════════════
@@ -7063,10 +7092,24 @@ function midiPCToChord(pc, inSteps){
  return { rootM: rm+pc, triadQ: 0, type7: 'dom7', func: 'dom', deg: -1, modalLabel: null };
 }
 
+// Sustain tokens for chords currently held on the MIDI keyboard, keyed by note.
+const midiChordTokens = {};
+// Last note-on time per note, used to reject duplicates (see below).
+const _midiLastOn = {};
+// Some controllers are enumerated by the OS as two or more input ports, and a
+// few also echo their own output back in. Every port gets this same handler,
+// so one physical key press arrives two or three times and the note is
+// triggered repeatedly. Collapse anything for the same note inside this window
+// down to a single event — no human retriggers a key this fast.
+const MIDI_DEDUPE_MS = 22;
+
 // Override onMidiMsg with full routing logic
 function onMidiMsg(e){
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
+ const now = (typeof performance!=='undefined'?performance.now():Date.now());
+ if(_midiLastOn[note]!=null && now-_midiLastOn[note] < MIDI_DEDUPE_MS){ _midiLastOn[note]=now; return; }
+ _midiLastOn[note] = now;
  const pressure = vel / 127;
 
  // Determine pitch class relative to current key
@@ -7093,7 +7136,10 @@ function onMidiMsg(e){
  // Chord mode: map pc to chord
  const steps = (MODES[mode]||MODES.major).steps;
  const chord = midiPCToChord(pc, steps);
- triggerChordWithVariant(chord.rootM, chord.triadQ, chord.type7, chord.func, pressure);
+ // Sustain while the key is down and release on note-off — matching a mouse
+ // press exactly. Without sustain=true a MIDI chord got the short decay and
+ // sounded staccato compared to clicking the same chord on screen.
+ midiChordTokens[note] = triggerChordWithVariant(chord.rootM, chord.triadQ, chord.type7, chord.func, pressure, undefined, true);
  // Light up the triggered chord and suggest what to play next — same
  // feedback the computer-keyboard 1-7 keys already give, just missing
  // for MIDI input until now.
@@ -7109,11 +7155,17 @@ function onMidiMsg(e){
  }
  }
  } else if(type === 0x80 || (type === 0x90 && vel === 0)){
- // Note off — only relevant for melody mode
+ const n = e.data[1];
  if(midiMode === 'melody'){
- let midi = midiKeyMap==='movable' ? e.data[1] : e.data[1]+(root<=5?root:root-12);
+ let midi = midiKeyMap==='movable' ? n : n+(root<=5?root:root-12);
  releaseMelNote(midi + melOctShift);
+ } else if(midiChordTokens[n]!==undefined){
+ // Chord mode used to ignore note-off entirely. Now that note-on sustains,
+ // releasing here is what stops a chord ringing for its full 30s hold.
+ if(!holdMode) releaseSustainedChord(midiChordTokens[n]);
+ delete midiChordTokens[n];
  }
+ delete _midiLastOn[n];
  } else if(type === 0xb0){
  if(e.data[1]===1){ document.getElementById('decay').value=(.1+(vel/127)*7.9).toFixed(2); }
  if(e.data[1]===11){
