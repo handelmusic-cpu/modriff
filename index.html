@@ -3675,6 +3675,13 @@ function buildReverb(){
 // no filter, no stereo image, no saturation, which is the main reason the
 // engine read as "web synth" rather than "instrument".
 let fxCutoff=.88, fxReso=.12, fxEnv=.25, fxDrive=.18, fxWidth=.4, fxDrift=.3;
+// Per-patch loudness trim. A pad with a slow attack and a dark filter is
+// inherently quieter than a piano stab, so without this a dice roll changes
+// how LOUD things are as well as how they sound. Measured per archetype and
+// applied to the tonal voices only — drums are not part of a patch, and the
+// Mixer stays the user's alone. 1 = no trim, so hand-dialled sounds are
+// unaffected; only a roll ever sets it.
+let fxTrim=1;
 
 // Cutoff slider is perceptual, not linear — ear hears pitch logarithmically,
 // so a linear Hz sweep spends most of its travel in the inaudible top end.
@@ -3684,19 +3691,41 @@ function _fxHz(n){ return 90*Math.pow(200,Math.max(0,Math.min(1,n))); } // 90Hz.
 // stage is bit-transparent and costs nothing perceptually when unused.
 function _driveCurve(amount){
  const n=1024, curve=new Float32Array(n);
- const k=amount*amount*60; // squared so the low end of the knob stays gentle
+ const k=amount*amount*45; // squared so the low end of the knob stays gentle
  for(let i=0;i<n;i++){
   const x=(i*2)/n-1;
   curve[i]= k<0.01 ? x : (1+k)*x/(1+k*Math.abs(x)); // classic soft saturator
  }
  return curve;
 }
+// Typical operating level of a chord at the drive input, as peak amplitude.
+// The makeup gain is calibrated here rather than at full scale because that's
+// where the music actually sits — a saturator's gain is wildly level-dependent.
+const DRIVE_PROBE_AMP = 0.2;
+// Measures what the curve actually does to a signal's RMS, by running a probe
+// sine through it. Deriving makeup this way instead of guessing a formula is
+// what keeps loudness constant as the curve shape changes.
+function _curveRmsGain(curve, amp){
+ const N=1024; let inSum=0, outSum=0;
+ for(let i=0;i<N;i++){
+  const x=amp*Math.sin(2*Math.PI*i/N);
+  const idx=Math.max(0,Math.min(curve.length-1,Math.round((x+1)/2*(curve.length-1))));
+  const y=curve[idx];
+  inSum+=x*x; outSum+=y*y;
+ }
+ return inSum>0 ? Math.sqrt(outSum/inSum) : 1;
+}
 function applyDrive(){
  if(!window._driveShaper) return;
- window._driveShaper.curve=_driveCurve(fxDrive);
- // Saturation raises average level; trim it back so turning Drive up changes
- // the character rather than just making everything louder.
- if(window._driveOut) window._driveOut.gain.value = 1/(1+fxDrive*0.9);
+ const curve=_driveCurve(fxDrive);
+ window._driveShaper.curve=curve;
+ // Saturation adds a lot of gain — up to ~16dB at the top of the knob. Cancel
+ // exactly that much so Drive changes character and not loudness: the dice
+ // must never come out louder or quieter, only different.
+ if(window._driveOut){
+  const g=_curveRmsGain(curve,DRIVE_PROBE_AMP);
+  window._driveOut.gain.value = g>0.001 ? 1/g : 1;
+ }
 }
 
 // Builds the per-voice post-chain (lowpass + stereo placement) and returns
@@ -4085,12 +4114,13 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
 
  // Bass — sine always
  const bg=ctx.createGain();
- bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh,now+atk);
+ const _tr=fxTrim;
+ bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk);
  if(sustain){
- bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01);
- if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.38*vsc*_mxCh*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk+.01);
+ if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.38*vsc*_mxCh*_tr*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
- bg.gain.setValueAtTime(vol*.38*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(rootM-12-69)/12);
@@ -4104,12 +4134,12 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const t0=now+offsets[i];
  const vl=i===0?1.0:i===intvs.length-1?.62:.78;
  const g=ctx.createGain();
- g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk);
+ g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk);
  if(sustain){
- g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01);
- if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
+ g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk+.01);
+ if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
- g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
+ g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
  // Spread the chord tones across the stereo image, low note left through
  // high note right, so a chord occupies a space instead of a single point.
@@ -4138,12 +4168,13 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const now=ctx.currentTime + FADE_OUT;
 
  const bg=ctx.createGain();
- bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.42*vsc*_mxCh,now+atk);
+ const _tr=fxTrim;
+ bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.42*vsc*_mxCh*_tr,now+atk);
  if(sustain){
- bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01);
- if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.42*vsc*_mxCh*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
+ bg.gain.setValueAtTime(vol*.42*vsc*_mxCh*_tr,now+atk+.01);
+ if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.42*vsc*_mxCh*_tr*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
- bg.gain.setValueAtTime(vol*.42*vsc*_mxCh,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
+ bg.gain.setValueAtTime(vol*.42*vsc*_mxCh*_tr,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
@@ -4157,12 +4188,12 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const t0=now+offsets[i];
  const vl=i===0?1.0:i===slashIntvs.length-1?.62:.78;
  const g=ctx.createGain();
- g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk);
+ g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk);
  if(sustain){
- g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01);
- if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
+ g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk+.01);
+ if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
- g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
+ g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
  const pan = slashIntvs.length>1 ? (i/(slashIntvs.length-1))*2-1 : 0;
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
@@ -4198,9 +4229,9 @@ function playMelNote(midi,pressure){
  const startT = now + FADE_OUT; // start after any fade-out
  const _mxMel=_cmx('mel');
  const g=ctx.createGain();
- g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel,startT+atk);
- g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel,startT+atk+.01);
- if(holdMode){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel,startT+atk+.02); }
+ g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
+ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
+ if(holdMode){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
  else { g.gain.exponentialRampToValueAtTime(.0001,startT+atk+dec); }
  // Lead sits near the centre — a little off-axis by pitch so it doesn't
  // fight the chord's middle, but not swung out wide like the chord tones.
@@ -4669,7 +4700,7 @@ function scheduleArpNote(midi,t,dur){
 
  const bounceV=(arpPat==='ud'||arpPat==='bounce')?_arpBounceVel:1.0;
  const _mxArp=_cmx('arp');
- const _pk=vol*.55*wg*velMult*humanVel*bounceV*velShapeMult*_mxArp;
+ const _pk=vol*.55*wg*velMult*humanVel*bounceV*velShapeMult*_mxArp*fxTrim;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
  g.gain.setValueAtTime(_pk,tAdj+atk+.005); g.gain.exponentialRampToValueAtTime(.0001,tAdj+dur);
@@ -5468,7 +5499,7 @@ const RND_COMP_STYLES = ['sustain','bars','backbeat','charleston','strum','bossa
 // Fields are [min,max] ranges or pools to pick from; anything omitted keeps
 // the generic pool.
 const PATCH_ARCHETYPES = [
- { name:'Warm Keys',
+ { name:'Warm Keys', trim:0.911,
    waves:['piano','rhodes'], arpWaves:['sine','triangle'], melWaves:['sine'], bassWaves:['upright','electric','sine'],
    cut:[.55,.75], reso:[0,.15], env:[.1,.3], drive:[.12,.3], width:[.25,.45], drift:[.25,.5],
    atk:[.008,.03], dec:[1.6,3.4], rev:[.2,.4], strum:[.06,.16],
@@ -5476,7 +5507,7 @@ const PATCH_ARCHETYPES = [
    rate:[3,6], gate:[.4,.7], pats:['up','walk','pedal'], octs:[1,2], vels:['flat','hill'],
    comps:['bars','charleston','backbeat'], voicings:['close','open'], bpm:[76,116] },
 
- { name:'Glass',
+ { name:'Glass', trim:0.996,
    waves:['rhodes','sine','organ'], arpWaves:['sine'], melWaves:['sine','triangle'], bassWaves:['sine','electric'],
    cut:[.8,1], reso:[0,.12], env:[.05,.25], drive:[0,.12], width:[.55,.85], drift:[.1,.3],
    atk:[.02,.09], dec:[2.2,4.5], rev:[.45,.75], strum:[.1,.24],
@@ -5484,7 +5515,7 @@ const PATCH_ARCHETYPES = [
    rate:[4,7], gate:[.5,.85], pats:['up','ud','weighted'], octs:[2,3], vels:['flat','cresc','hill'],
    comps:['sustain','bars'], voicings:['open'], bpm:[70,104] },
 
- { name:'Analog Pad',
+ { name:'Analog Pad', trim:1.331,
    waves:['pad','supersaw'], arpWaves:['sawtooth','supersaw'], melWaves:['supersaw','sawtooth'], bassWaves:['sawtooth','sine'],
    cut:[.32,.55], reso:[.1,.35], env:[.35,.75], drive:[.2,.42], width:[.6,.9], drift:[.5,.85],
    atk:[.12,.4], dec:[3,6], rev:[.4,.7], strum:[.12,.3],
@@ -5492,7 +5523,7 @@ const PATCH_ARCHETYPES = [
    rate:[2,5], gate:[.55,.9], pats:['up','ud','pedal'], octs:[1,2], vels:['cresc','hill','flat'],
    comps:['sustain'], voicings:['open'], bpm:[70,100] },
 
- { name:'Plucked',
+ { name:'Plucked', trim:0.989,
    waves:['square','sawtooth','piano'], arpWaves:['square','sawtooth'], melWaves:['square','sawtooth'], bassWaves:['electric','square','upright'],
    cut:[.45,.7], reso:[.2,.5], env:[.5,.9], drive:[.15,.35], width:[.3,.55], drift:[.15,.4],
    atk:[.005,.012], dec:[.6,1.4], rev:[.1,.3], strum:[.02,.1],
@@ -5500,7 +5531,7 @@ const PATCH_ARCHETYPES = [
    rate:[5,8], gate:[.18,.42], pats:['up','down','rand','walk'], octs:[1,2,3], vels:['flat','decrsc'],
    comps:['strum','backbeat','bossa'], voicings:['close'], bpm:[96,150] },
 
- { name:'Lo-Fi',
+ { name:'Lo-Fi', trim:1.000,
    waves:['piano','rhodes','organ'], arpWaves:['sine','triangle'], melWaves:['sine'], bassWaves:['upright','sine','triangle'],
    cut:[.24,.42], reso:[.05,.3], env:[.1,.35], drive:[.45,.8], width:[.15,.35], drift:[.55,1],
    atk:[.01,.05], dec:[1.2,2.6], rev:[.25,.5], strum:[.08,.22],
@@ -5508,7 +5539,7 @@ const PATCH_ARCHETYPES = [
    rate:[3,6], gate:[.35,.65], pats:['up','walk','pedal'], octs:[1,2], vels:['flat','decrsc'],
    comps:['bars','charleston','bossa'], voicings:['close','open'], bpm:[70,92] },
 
- { name:'Cathedral',
+ { name:'Cathedral', trim:1.224,
    waves:['organ','pad'], arpWaves:['sine','sawtooth'], melWaves:['sine','supersaw'], bassWaves:['sine','upright'],
    cut:[.5,.8], reso:[0,.15], env:[.05,.3], drive:[.08,.25], width:[.7,1], drift:[.2,.45],
    atk:[.05,.22], dec:[4,7], rev:[.6,.9], strum:[.14,.32],
@@ -5516,7 +5547,7 @@ const PATCH_ARCHETYPES = [
    rate:[2,5], gate:[.6,.95], pats:['up','ud','pedal'], octs:[1,2,3], vels:['cresc','flat'],
    comps:['sustain','bars'], voicings:['open'], bpm:[70,96] },
 
- { name:'Neon',
+ { name:'Neon', trim:1.217,
    waves:['supersaw','sawtooth'], arpWaves:['supersaw','sawtooth','square'], melWaves:['supersaw','square'], bassWaves:['sawtooth','square','electric'],
    cut:[.6,.9], reso:[.15,.45], env:[.4,.8], drive:[.3,.55], width:[.5,.8], drift:[.3,.6],
    atk:[.005,.03], dec:[.9,2.2], rev:[.25,.5], strum:[.04,.16],
@@ -5598,7 +5629,7 @@ function _capSettings(){
   // melody envelope + FX
   mAtk:_sv('mel-attack'), mDec:_sv('mel-decay'), mRev:_sv('mel-rev'),
   // character macros
-  fxCutoff, fxReso, fxEnv, fxDrive, fxWidth, fxDrift,
+  fxCutoff, fxReso, fxEnv, fxDrive, fxWidth, fxDrift, fxTrim,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
@@ -5644,6 +5675,7 @@ function _applySettings(s){
 
  // Character macros — write the state, mirror it onto the sliders, then let
  // onFxInput() read back so labels and the drive curve refresh from one place.
+ if(typeof s.fxTrim==='number') fxTrim=s.fxTrim;
  if(typeof s.fxCutoff==='number'){
   const put=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
   put('fx-cutoff',s.fxCutoff); put('fx-reso',s.fxReso); put('fx-env',s.fxEnv);
@@ -5713,6 +5745,7 @@ function randomizeSettings(){
  s.fxDrive  = _rndBand(A.drive||[0,.5],2);
  s.fxWidth  = _rndBand(A.width||[.2,.8],2);
  s.fxDrift  = _rndBand(A.drift||[.1,.7],2);
+ s.fxTrim   = A.trim||1; // measured level match so the roll changes tone, not loudness
 
  s.voicing   = _rndPick(A.voicings||['close','open']);
  s.compStyle = _rndPick(A.comps||RND_COMP_STYLES);
