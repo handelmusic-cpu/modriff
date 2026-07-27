@@ -1974,6 +1974,9 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 .ft-btn.dice svg { display:block; }
 .ft-btn.dice.rolling svg { animation:diceRoll .5s ease-in-out; }
 .rnd-die { display:inline-block; vertical-align:-3px; margin-right:5px; }
+.ft-btn.ur { background:var(--surf2); border:1px solid var(--border2); color:var(--muted); font-size:.95rem; line-height:1; padding:4px 9px; }
+.ft-btn.ur:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.ft-btn.ur.off, .ft-btn.ur:disabled { opacity:.32; cursor:default; }
 @keyframes diceRoll { 0%{transform:rotate(0) scale(1);} 50%{transform:rotate(180deg) scale(1.25);} 100%{transform:rotate(360deg) scale(1);} }
 .rnd-body { font-size:.58rem; color:var(--muted); line-height:1.75; text-align:center; margin-bottom:6px; }
 .rnd-list { font-size:.54rem; color:var(--muted); line-height:1.7; background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-md); padding:10px 12px; margin:12px 0; }
@@ -2017,6 +2020,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()">8th</div>
  </div>
  <button class="ft-btn" id="ft-mixer-btn" onclick="toggleUniversalMixer()" title="Open mixer">⚌ Mix</button>
+ <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
+ <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
  <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn" id="ft-help-btn" onclick="showTour()" title="App tour / help" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">?</button>
@@ -5328,55 +5333,180 @@ function confirmRandomize(){
  if(b){ b.classList.remove('rolling'); void b.offsetWidth; b.classList.add('rolling'); setTimeout(()=>b.classList.remove('rolling'),520); }
 }
 
-function randomizeSettings(){
- // ── Voices ──
- setWave(_rndPick(RND_CHORD_WAVES));
- setArpWave(_rndPick(RND_ARP_WAVES));
- setMelWave(_rndPick(RND_MEL_WAVES));
- if(typeof setBlWave==='function') setBlWave(_rndPick(RND_BASS_WAVES));
+// ── Shared settings snapshot ────────────────────────────────────────────
+// _capSettings / _applySettings are the single read + write path for every
+// sound setting. Randomize and undo/redo both go through them, so the two
+// features can never drift apart on which controls they cover.
+function _sv(id){ const e=document.getElementById(id); return e?parseFloat(e.value):null; }
+function _setSlider(id,val,labelFn){
+ const e=document.getElementById(id); if(e==null||val==null) return;
+ e.value = val;
+ if(labelFn) labelFn();
+}
+function _capSettings(){
+ return {
+  // voices
+  wave, arpWave, melWave,
+  blWave: (typeof window._blCaptureState==='function') ? window._blCaptureState().wave : null,
+  // arp behaviour
+  arpPat, arpOcts, arpVelShape, arpGatePat, arpRateIdx,
+  gate: _sv('arp-gate'),
+  // chord envelope + FX
+  atk:_sv('attack'), dec:_sv('decay'), rev:_sv('rev-mix'), strum:_sv('strum-spread'),
+  // melody envelope + FX
+  mAtk:_sv('mel-attack'), mDec:_sv('mel-decay'), mRev:_sv('mel-rev'),
+  // musical context + character toggles
+  root, mode, voicing, bpm:_sv('bpm'),
+  compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
+  strumMode, wetDry, autoInvOn
+ };
+}
+function _applySettings(s){
+ if(!s) return;
+ // Voices
+ if(s.wave) setWave(s.wave);
+ if(s.arpWave) setArpWave(s.arpWave);
+ if(s.melWave) setMelWave(s.melWave);
+ if(s.blWave && typeof setBlWave==='function') setBlWave(s.blWave);
 
- // ── Arp behaviour ──
- setArpPat(_rndPick(RND_ARP_PATS));
- setArpOcts(1+Math.floor(Math.random()*3));
- setArpVelShape(_rndPick(RND_ARP_VELS));
- setArpGatePat(Math.floor(Math.random()*ARP_GATE_PATTERNS.length));
+ // Arp behaviour
+ if(s.arpPat) setArpPat(s.arpPat);
+ if(s.arpOcts) setArpOcts(s.arpOcts);
+ if(s.arpVelShape) setArpVelShape(s.arpVelShape);
+ if(typeof s.arpGatePat==='number') setArpGatePat(s.arpGatePat);
+ if(typeof s.arpRateIdx==='number'){
+  onArpRateSlider(s.arpRateIdx);
+  const _rs=document.getElementById('arp-rate-sl'); if(_rs) _rs.value=arpRateIdx;
+  ftRateCycleIdx = arpRateIdx; // so the transport's rate tap resumes from here
+ }
+ if(s.gate!=null){
+  // syncArpGate drives the hidden #arp-gate that the scheduler reads, but it
+  // never moves #arp-gate-p — the visible slider that normally calls it — so
+  // set that here too or the thumb would sit at its old position.
+  const _gp=document.getElementById('arp-gate-p'); if(_gp) _gp.value=s.gate;
+  syncArpGate(s.gate);
+ }
+
+ // Chord envelope + FX
+ _setSlider('attack',s.atk,()=>updateSV('attack','atk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
+ _setSlider('decay',s.dec,()=>updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s'));
+ _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
+ _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
+
+ // Melody envelope + FX
+ _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
+ _setSlider('mel-decay',s.mDec,()=>updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s'));
+ _setSlider('mel-rev',s.mRev,()=>updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%'));
+
+ // Character toggles — these are plain flags with their own button label
+ // sync, so flip them through their togglers only when they actually differ.
+ if(typeof s.strumMode==='boolean' && s.strumMode!==strumMode) toggleStrumMode();
+ if(typeof s.autoInvOn==='boolean' && s.autoInvOn!==autoInvOn) toggleAutoInv();
+ if(typeof s.wetDry==='number' && s.wetDry!==wetDry) updateWetDry(s.wetDry);
+
+ // Voicing + comping
+ if(s.voicing) setVoicing(s.voicing);
+ if(s.compStyle && typeof setSongCompStyle==='function') setSongCompStyle(s.compStyle);
+ // Only push tempo when it actually moved — onBpmInput restarts the running
+ // clock, which would put a small hiccup in playback on every undo/redo.
+ if(s.bpm!=null && s.bpm!==_sv('bpm') && typeof onBpmInput==='function') onBpmInput(s.bpm);
+
+ // Key/mode last — setMode() re-renders the whole chord grid (and the melody
+ // strip with it), so let it be the one repaint rather than doing two.
+ const rootChanged = (typeof s.root==='number' && s.root!==root);
+ if(rootChanged){ root=s.root; if(typeof _prevVoices!=='undefined') _prevVoices=[]; }
+ if(s.mode && s.mode!==mode) setMode(s.mode);
+ else if(rootChanged) renderChords();
+}
+
+function randomizeSettings(){
+ // Start from the live settings and overwrite only the fields the dice
+ // owns — so key, mode, tempo and everything else provably stay put.
+ const s = _capSettings();
+ s.wave    = _rndPick(RND_CHORD_WAVES);
+ s.arpWave = _rndPick(RND_ARP_WAVES);
+ s.melWave = _rndPick(RND_MEL_WAVES);
+ s.blWave  = _rndPick(RND_BASS_WAVES);
+
+ s.arpPat      = _rndPick(RND_ARP_PATS);
+ s.arpOcts     = 1+Math.floor(Math.random()*3);
+ s.arpVelShape = _rndPick(RND_ARP_VELS);
+ s.arpGatePat  = Math.floor(Math.random()*ARP_GATE_PATTERNS.length);
  // Rate range starts at Quarter — Whole/Half tick over so slowly they don't
  // read as an arpeggio at all, which just looks like the button did nothing.
- const rateIdx = 2+Math.floor(Math.random()*(ARP_RATES.length-2));
- onArpRateSlider(rateIdx);
- const _rs=document.getElementById('arp-rate-sl'); if(_rs) _rs.value=arpRateIdx;
- ftRateCycleIdx = arpRateIdx; // so the transport's rate tap resumes from here
- // syncArpGate drives the hidden #arp-gate that the scheduler reads, but it
- // never moves #arp-gate-p — the visible slider that normally calls it — so
- // set that here too or the thumb would sit at its old position.
- const gateV = _rndVal(.15,.95,.05).toFixed(2);
- const _gp=document.getElementById('arp-gate-p'); if(_gp) _gp.value=gateV;
- syncArpGate(gateV);
+ s.arpRateIdx  = 2+Math.floor(Math.random()*(ARP_RATES.length-2));
+ s.gate        = +_rndVal(.15,.95,.05).toFixed(2);
 
- // ── Chord envelope + FX ──
- _rndSlider('attack',.005,.30,.005);
- updateSV('attack','atk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s');
- _rndSlider('decay',.6,5,.1);
- updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s');
- _rndSlider('rev-mix',0,.8,.01);
- updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%');
- _rndSlider('strum-spread',0,.30,.01);
- if(typeof updateStrumLabel==='function') updateStrumLabel();
+ s.atk   = +_rndVal(.005,.30,.005).toFixed(3);
+ s.dec   = +_rndVal(.6,5,.1).toFixed(2);
+ s.rev   = +_rndVal(0,.8,.01).toFixed(2);
+ s.strum = +_rndVal(0,.30,.01).toFixed(2);
+ s.mAtk  = +_rndVal(.005,.20,.005).toFixed(3);
+ s.mDec  = +_rndVal(.2,2.5,.05).toFixed(2);
+ s.mRev  = +_rndVal(0,.7,.01).toFixed(2);
 
- // ── Melody envelope + FX ──
- _rndSlider('mel-attack',.005,.20,.005);
- updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s');
- _rndSlider('mel-decay',.2,2.5,.05);
- updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s');
- _rndSlider('mel-rev',0,.7,.01);
- updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%');
+ s.voicing   = Math.random()<.5?'close':'open';
+ s.compStyle = _rndPick(RND_COMP_STYLES);
 
- // ── Voicing + comping ──
- setVoicing(Math.random()<.5?'close':'open');
- if(typeof setSongCompStyle==='function') setSongCompStyle(_rndPick(RND_COMP_STYLES));
-
+ _applySettings(s);
  if(typeof track==='function') track('settings_randomized');
  showToast('New sound rolled');
+}
+
+// ═══════════════════════════════════════
+// UNDO / REDO (sound settings)
+// ═══════════════════════════════════════
+// Rather than wrapping every setter, this watches the settings snapshot and
+// commits an entry once a change has *settled* — held steady across one full
+// poll. That way a slider drag or a rapid burst of taps collapses into a
+// single undo step, and any change is captured no matter how it was made
+// (button, slider, MIDI CC, or the dice).
+const UNDO_MAX = 60;
+let _undoStack=[], _redoStack=[];
+let _undoCommitted=null, _undoPending=null, _undoBusy=false;
+
+function _undoInit(){ _undoCommitted = JSON.stringify(_capSettings()); _updateUndoUI(); }
+function _undoTick(){
+ if(_undoBusy || _undoCommitted===null) return;
+ const cur = JSON.stringify(_capSettings());
+ if(cur === _undoCommitted){ _undoPending=null; return; }
+ if(_undoPending === cur){
+  // Steady for a full tick — the edit is finished, so bank the state it replaced.
+  _undoStack.push(_undoCommitted);
+  if(_undoStack.length > UNDO_MAX) _undoStack.shift();
+  _redoStack.length = 0; // a fresh edit invalidates the redo branch
+  _undoCommitted = cur;
+  _undoPending = null;
+  _updateUndoUI();
+ } else {
+  _undoPending = cur;
+ }
+}
+function _undoApply(json){
+ _undoBusy = true;
+ try{ _applySettings(JSON.parse(json)); }catch(e){}
+ _undoCommitted = json;
+ _undoPending = null;
+ _undoBusy = false;
+ _updateUndoUI();
+}
+function undoSettings(){
+ if(!_undoStack.length){ showToast('Nothing to undo'); return; }
+ _redoStack.push(_undoCommitted);
+ _undoApply(_undoStack.pop());
+ showToast('Undo — sound settings');
+}
+function redoSettings(){
+ if(!_redoStack.length){ showToast('Nothing to redo'); return; }
+ _undoStack.push(_undoCommitted);
+ _undoApply(_redoStack.pop());
+ showToast('Redo — sound settings');
+}
+function _updateUndoUI(){
+ const u=document.getElementById('ft-undo-btn');
+ if(u){ u.disabled = !_undoStack.length; u.classList.toggle('off', !_undoStack.length); }
+ const r=document.getElementById('ft-redo-btn');
+ if(r){ r.disabled = !_redoStack.length; r.classList.toggle('off', !_redoStack.length); }
 }
 function buildVoiceGrid(){
  const g=document.getElementById('voice-grid'); if(!g) return;
@@ -11787,6 +11917,27 @@ function _seqAutosave(){
   }catch(e){ /* localStorage unavailable/full — autosave is best-effort */ }
 }
 setInterval(_seqAutosave, 4000);
+
+// ── Undo/redo baseline ──
+// Deliberately last: the bass and melody IIFEs restore their autosaved wave
+// choices further up this file, so taking the baseline any earlier would bank
+// those restores as if the user had just made them.
+if(typeof _undoInit==='function'){
+ _undoInit();
+ setInterval(_undoTick, 350);
+ document.addEventListener('keydown', function(e){
+  if(!(e.ctrlKey||e.metaKey) || e.altKey) return;
+  if(String(e.key).toLowerCase()!=='z') return;
+  // Yield to the browser's own text undo in real text fields only — a focused
+  // slider or button is still a fine place to hit undo from.
+  const ae = document.activeElement, tag = ae && ae.tagName;
+  const NON_TEXT = ['range','checkbox','radio','button','submit','reset','color','file'];
+  if(tag==='TEXTAREA' || (ae && ae.isContentEditable) ||
+     (tag==='INPUT' && NON_TEXT.indexOf((ae.type||'text').toLowerCase())===-1)) return;
+  e.preventDefault();
+  e.shiftKey ? redoSettings() : undoSettings();
+ });
+}
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'hidden') _seqAutosave(); });
 window.addEventListener('pagehide', _seqAutosave);
 
