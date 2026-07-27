@@ -1966,17 +1966,12 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 /* 22 ── Bass tab page wrapper */
 .bl-page-wrap { width:100%; max-width:700px; }
 
-/* 23 ── Perform → Song recorder */
-.song-rec-row { display:flex; align-items:center; gap:8px; width:100%; max-width:700px; margin-bottom:8px; }
-.song-rec-btn {
- display:flex; align-items:center; gap:7px; padding:8px 14px; border-radius:var(--r-md);
- border:1px solid var(--border2); background:var(--surf2); color:var(--text);
- font-family:'Outfit',sans-serif; font-size:.6rem; font-weight:600; text-transform:uppercase;
- letter-spacing:.05em; cursor:pointer; touch-action:manipulation; transition:all .15s;
-}
-.song-rec-btn.active { background:var(--dom); color:#fff; border-color:var(--dom); }
-.song-rec-dot { width:7px; height:7px; border-radius:50%; background:#fff; animation:pulse .8s ease-in-out infinite alternate; }
-.song-rec-status { font-size:.44rem; color:var(--muted); }
+/* 23 ── Transport → Song recorder */
+.ft-btn.rec { background:#e5384f; color:#fff; border-color:#e5384f; box-shadow:0 0 10px rgba(229,56,79,.3); animation:recBlink 1s ease-in-out infinite; }
+.ft-btn.rec.off { background:rgba(229,56,79,.07); border-color:rgba(229,56,79,.3); color:#e5384f; box-shadow:none; animation:none; }
+@keyframes recBlink { 0%,100%{opacity:1;} 50%{opacity:.55;} }
+body.light-mode .ft-btn.rec     { background:#c81e3a !important; color:#fff !important; border-color:#c81e3a !important; }
+body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !important; border-color:#c81e3a !important; }
 
 </style>
 </head>
@@ -1990,6 +1985,7 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="toggleArp()">Arp OFF</button>
  <button class="ft-btn bas off" id="ft-bas-btn" onclick="ftBassClick()">Bass OFF</button>
  <button class="ft-btn bas off" id="ft-mel-btn" onclick="ftMelClick()">Melody OFF</button>
+ <button class="ft-btn rec off" id="ft-rec-btn" onclick="toggleSongRecord()" title="Record the chords you trigger live (click, keyboard, or MIDI) into a new Song section">⏺ Rec</button>
  <div class="ft-bpm">
  <span style="font-size:.55rem;color:var(--muted)">=</span>
  <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
@@ -2155,13 +2151,6 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
    <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
   </div>
- </div>
-
- <!-- Record live performance into a Song -->
- <div class="song-rec-row">
-  <button class="song-rec-btn" id="song-rec-btn" onclick="toggleSongRecord()" title="Record the chords you trigger live (click, keyboard, or MIDI) into a new Song section">⏺ Record to Song</button>
-  <span class="song-rec-dot" id="song-rec-indicator" style="display:none"></span>
-  <span class="song-rec-status" id="song-rec-status"></span>
  </div>
 
  <!-- Key mapping moved to Settings tab -->
@@ -3561,6 +3550,19 @@ function getCtx(){
  if(audioCtx.state==='suspended') audioCtx.resume();
  return audioCtx.state==='closed'?null:audioCtx;
 }
+
+// iOS Safari aggressively suspends the AudioContext on almost any
+// interruption — screen lock, backgrounding, notifications, Control
+// Center, even brief app switches — and unlike getCtx()'s lazy resume(),
+// that suspension can outlast the async resume() call triggered by the
+// very next note, silently dropping it. Proactively resume the instant
+// the page/tab becomes active again instead of waiting for a note to ask.
+function _resumeAudioIfNeeded(){
+ if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+}
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') _resumeAudioIfNeeded(); });
+window.addEventListener('pageshow', _resumeAudioIfNeeded);
+window.addEventListener('focus', _resumeAudioIfNeeded);
 
 // ═══════════════════════════════════════
 // REVERB
@@ -5182,10 +5184,9 @@ function syncFixedTransport(){
  if(mb){ mb.textContent=mlEnabled?'Melody ON':'Melody OFF'; mb.classList.toggle('off',!mlEnabled); }
  const sb=document.getElementById('ft-snap-btn');
  if(sb){
-  const on=snapMode==='bar';
-  sb.textContent=on?'Q: ON':'Q: OFF';
-  sb.classList.toggle('snap-on',on);
-  sb.classList.toggle('snap-off',!on);
+  sb.textContent=_snapLabel(snapMode);
+  sb.classList.toggle('snap-on',snapMode==='bar');
+  sb.classList.toggle('snap-off',snapMode==='off');
  }
  updateFtRateDisp();
  updateFtSongBtn();
@@ -7017,8 +7018,8 @@ function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
  bassNote: bassOverride!==null ? bassOverride+12 : null,
  startT: now
  };
- const st=document.getElementById('song-rec-status');
- if(st){ const sec=sections[songRecSectionIdx]; st.textContent=(sec?sec.slots.length+1:1)+' chord(s)…'; }
+ const btn=document.getElementById('ft-rec-btn');
+ if(btn){ const sec=sections[songRecSectionIdx]; btn.textContent='⏹ Stop ('+(sec?sec.slots.length+1:1)+')'; }
 }
 
 function _songRecFinalizePending(nowCtxTime){
@@ -7046,12 +7047,8 @@ function _songRecFinalizePending(nowCtxTime){
 }
 
 function _updateSongRecUI(){
- const btn=document.getElementById('song-rec-btn');
- if(btn){ btn.classList.toggle('active',songRecActive); btn.innerHTML = songRecActive?'⏹ Stop Recording':'⏺ Record to Song'; }
- const dot=document.getElementById('song-rec-indicator');
- if(dot) dot.style.display = songRecActive?'':'none';
- const st=document.getElementById('song-rec-status');
- if(st && !songRecActive) st.textContent='';
+ const btn=document.getElementById('ft-rec-btn');
+ if(btn){ btn.classList.toggle('off',!songRecActive); btn.textContent = songRecActive?'⏹ Stop':'⏺ Rec'; }
 }
 
 function startSongLoop(alignedStart){
@@ -8333,6 +8330,11 @@ function updatePrismSongBanner(){
  if(secEl) secEl.textContent = sections[songLoopSection]?.name || '';
 }
 
+// Button previously collapsed all three snapMode values down to a cryptic
+// "Q: ON"/"Q: OFF" (and even that toggle had a dead 'free' comparison that
+// could never match, since snapMode is 'off'/'beat'/'bar') — spell out
+// which of the three modes is active instead of an unexplained "Q".
+function _snapLabel(m){ return m==='bar'?'Snap: Bar':m==='beat'?'Snap: Beat':'Snap: Off'; }
 function toggleSnapMode(){
  const cycle = {off:'beat', beat:'bar', bar:'off'};
  const newMode = cycle[snapMode] || 'beat';
@@ -8340,9 +8342,9 @@ function toggleSnapMode(){
  // Update transport button
  const btn = document.getElementById('ft-snap-btn');
  if(btn){
- btn.textContent = newMode === 'bar' ? 'Q: ON' : 'Q: OFF';
+ btn.textContent = _snapLabel(newMode);
  btn.classList.toggle('snap-on', newMode === 'bar');
- btn.classList.toggle('snap-off', newMode === 'free');
+ btn.classList.toggle('snap-off', newMode === 'off');
  }
 }
 
