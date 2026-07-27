@@ -1966,6 +1966,18 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 /* 22 ── Bass tab page wrapper */
 .bl-page-wrap { width:100%; max-width:700px; }
 
+/* 23 ── Perform → Song recorder */
+.song-rec-row { display:flex; align-items:center; gap:8px; width:100%; max-width:700px; margin-bottom:8px; }
+.song-rec-btn {
+ display:flex; align-items:center; gap:7px; padding:8px 14px; border-radius:var(--r-md);
+ border:1px solid var(--border2); background:var(--surf2); color:var(--text);
+ font-family:'Outfit',sans-serif; font-size:.6rem; font-weight:600; text-transform:uppercase;
+ letter-spacing:.05em; cursor:pointer; touch-action:manipulation; transition:all .15s;
+}
+.song-rec-btn.active { background:var(--dom); color:#fff; border-color:var(--dom); }
+.song-rec-dot { width:7px; height:7px; border-radius:50%; background:#fff; animation:pulse .8s ease-in-out infinite alternate; }
+.song-rec-status { font-size:.44rem; color:var(--muted); }
+
 </style>
 </head>
 <body>
@@ -2143,6 +2155,13 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
    <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
   </div>
+ </div>
+
+ <!-- Record live performance into a Song -->
+ <div class="song-rec-row">
+  <button class="song-rec-btn" id="song-rec-btn" onclick="toggleSongRecord()" title="Record the chords you trigger live (click, keyboard, or MIDI) into a new Song section">⏺ Record to Song</button>
+  <span class="song-rec-dot" id="song-rec-indicator" style="display:none"></span>
+  <span class="song-rec-status" id="song-rec-status"></span>
  </div>
 
  <!-- Key mapping moved to Settings tab -->
@@ -6880,6 +6899,8 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  else if(v==='/b7') bassOverride=rootM-12+10;
  else if(v==='/7') bassOverride=rootM-12+11;
 
+ if(songRecActive) _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride);
+
  const intvs = getIntvs(triadQ, type7, ext);
 
  const voicedIntvs = autoInvOn ? smartVoiceLead(rootM, intvs) : intvs;
@@ -6914,6 +6935,123 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
   }
   // Token for releaseSustainedChord() — identifies "this" trigger's generation
   return _sustainId;
+}
+
+// ═══════════════════════════════════════
+// PERFORM → SONG RECORDER
+// Captures live chord triggers (click, computer keyboard, or MIDI — anything
+// that flows through _triggerChordImmediate) into a new Song section, so a
+// live performance can be looped back and edited like any other chart.
+// ═══════════════════════════════════════
+let songRecActive = false;
+let songRecSectionIdx = -1;
+let songRecPending = null; // {label,numeral,rootM,triadQ,type7,func,ext,bassNote,startT}
+
+function _chordLabelFromData(rootM, triadQ, type7, ext, bassOverride){
+ const noteN = nn(((rootM%12)+12)%12);
+ let sfx = triadQ===1?'m':triadQ===2?'°':triadQ===3?'+':'';
+ if(ext==='sus2') sfx='sus2';
+ else if(ext==='sus4') sfx='sus4';
+ else if(ext==='add9') sfx=sfx+'add9';
+ else if(ext==='7th'){
+ if(type7==='maj7') sfx=(triadQ===1?'m':'')+'maj7';
+ else if(type7==='min7') sfx='m7';
+ else if(type7==='dom7') sfx='7';
+ else if(type7==='halfdim') sfx='m7♭5';
+ else if(type7==='dim7') sfx='°7';
+ else if(type7==='minMaj7') sfx='m(maj7)';
+ else sfx=sfx+'7';
+ }
+ let label = noteN+sfx;
+ if(bassOverride!==null) label += '/'+nn(((bassOverride%12)+12)%12);
+ return label;
+}
+
+function toggleSongRecord(){
+ if(songRecActive) stopSongRecord(); else startSongRecord();
+}
+
+function startSongRecord(){
+ if(songRecActive) return;
+ stopSongLoopIfActive();
+ const base='Recording';
+ let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
+ sections.push({name:base+' '+n, slots:[]});
+ songRecSectionIdx = sections.length-1;
+ curSection = songRecSectionIdx;
+ songRecActive = true;
+ songRecPending = null;
+ buildSectionTabs(); renderChartSeq();
+ _updateSongRecUI();
+ showToast('Recording to "'+base+' '+n+'" — play some chords');
+}
+
+function stopSongRecord(){
+ if(!songRecActive) return;
+ const ctx=getCtx();
+ if(ctx) _songRecFinalizePending(ctx.currentTime);
+ songRecActive = false;
+ const sec = sections[songRecSectionIdx];
+ const count = sec ? sec.slots.length : 0;
+ songRecSectionIdx = -1;
+ _updateSongRecUI();
+ renderChartSeq(); buildSectionTabs();
+ if(typeof renderSetlist==='function') renderSetlist();
+ showToast('Recorded '+count+' chord'+(count===1?'':'s')+' into "'+(sec?sec.name:'')+'"');
+}
+
+function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
+ const ctx=getCtx(); if(!ctx) return;
+ const now = ctx.currentTime;
+ _songRecFinalizePending(now);
+ const md = MODES[mode]||MODES.major;
+ const pc = ((rootM - rootMidi())%12+12)%12;
+ const di = md.steps.indexOf(pc);
+ songRecPending = {
+ label: _chordLabelFromData(rootM,triadQ,type7,ext,bassOverride),
+ numeral: di>=0 ? md.nums[di] : '',
+ rootM, triadQ, type7, func, ext,
+ // Slot bassNote is stored the way playChartSlot2 expects it (it subtracts
+ // 12 before playback), whereas bassOverride here is already the absolute
+ // note that should sound — so store it one octave up to compensate.
+ bassNote: bassOverride!==null ? bassOverride+12 : null,
+ startT: now
+ };
+ const st=document.getElementById('song-rec-status');
+ if(st){ const sec=sections[songRecSectionIdx]; st.textContent=(sec?sec.slots.length+1:1)+' chord(s)…'; }
+}
+
+function _songRecFinalizePending(nowCtxTime){
+ if(!songRecPending || songRecSectionIdx<0 || !sections[songRecSectionIdx]) { songRecPending=null; return; }
+ const bpm = parseFloat(document.getElementById('bpm')?.value||100);
+ const steps = (typeof sqSteps!=='undefined'&&sqSteps>0) ? sqSteps : 16;
+ const eighthsPerBar = steps/2;
+ const eighthSec = (60/bpm)*0.5;
+ const elapsedSec = Math.max(0, nowCtxTime - songRecPending.startT);
+ let totalEighths = Math.round(elapsedSec/eighthSec);
+ if(totalEighths < 1) totalEighths = 1; // never record a zero-length slot
+ const bars = Math.floor(totalEighths/eighthsPerBar);
+ const rem = totalEighths%eighthsPerBar;
+ const beats = Math.floor(rem/2);
+ const eighths = rem%2;
+ sections[songRecSectionIdx].slots.push({
+ label:songRecPending.label, numeral:songRecPending.numeral,
+ rootM:songRecPending.rootM, triadQ:songRecPending.triadQ, type7:songRecPending.type7,
+ func:songRecPending.func, ext:songRecPending.ext, bassNote:songRecPending.bassNote,
+ bars, beats, eighths, isRest:false
+ });
+ songRecPending = null;
+ if(curSection===songRecSectionIdx) renderChartSeq();
+ buildSectionTabs();
+}
+
+function _updateSongRecUI(){
+ const btn=document.getElementById('song-rec-btn');
+ if(btn){ btn.classList.toggle('active',songRecActive); btn.innerHTML = songRecActive?'⏹ Stop Recording':'⏺ Record to Song'; }
+ const dot=document.getElementById('song-rec-indicator');
+ if(dot) dot.style.display = songRecActive?'':'none';
+ const st=document.getElementById('song-rec-status');
+ if(st && !songRecActive) st.textContent='';
 }
 
 function startSongLoop(alignedStart){
