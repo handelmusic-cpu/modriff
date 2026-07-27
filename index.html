@@ -2022,7 +2022,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="ft-btn" id="ft-mixer-btn" onclick="toggleUniversalMixer()" title="Open mixer">⚌ Mix</button>
  <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
  <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
- <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
+ <button class="ft-btn dice" id="ft-dice-btn" onclick="handleDiceClick()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn" id="ft-help-btn" onclick="showTour()" title="App tour / help" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">?</button>
  <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">⌨</button>
@@ -5606,11 +5606,27 @@ function openRandomizeConfirm(){
  const m=document.getElementById('randomize-modal'); if(m) m.classList.add('visible');
 }
 function closeRandomizeConfirm(){ const m=document.getElementById('randomize-modal'); if(m) m.classList.remove('visible'); }
-function confirmRandomize(){
- closeRandomizeConfirm();
+// The confirm sheet explains what the dice does and doesn't touch — worth
+// seeing once, not worth re-reading on every roll. After the first confirm we
+// remember that and skip straight to rolling; the actual safety behavior
+// (full reroll only while nothing is playing) lives in randomizeSettings()
+// itself via _rndIsFullRoll(), so skipping the sheet never skips that check.
+const RND_WARNED_KEY = 'modo-randomize-warned';
+function handleDiceClick(){
+ let seen=false;
+ try{ seen = localStorage.getItem(RND_WARNED_KEY)==='1'; }catch(e){}
+ if(seen){ _doRandomizeRoll(); return; }
+ openRandomizeConfirm();
+}
+function _doRandomizeRoll(){
  randomizeSettings();
  const b=document.getElementById('ft-dice-btn');
  if(b){ b.classList.remove('rolling'); void b.offsetWidth; b.classList.add('rolling'); setTimeout(()=>b.classList.remove('rolling'),520); }
+}
+function confirmRandomize(){
+ try{ localStorage.setItem(RND_WARNED_KEY,'1'); }catch(e){}
+ closeRandomizeConfirm();
+ _doRandomizeRoll();
 }
 
 // ── Shared settings snapshot ────────────────────────────────────────────
