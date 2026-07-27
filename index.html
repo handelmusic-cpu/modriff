@@ -2054,6 +2054,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="fixed-transport" id="fixed-transport">
  <button class="ft-btn transport tp-play" id="ft-play-btn" onclick="ftPlay()" title="Play" aria-label="Play">▶</button>
  <button class="ft-btn transport tp-stop" id="ft-stop-btn" onclick="ftStop()" title="Stop" aria-label="Stop">■</button>
+ <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
@@ -2068,7 +2069,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <span>Arp</span>
  <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()">8th</div>
  </div>
- <button class="ft-btn" id="ft-mixer-btn" onclick="toggleUniversalMixer()" title="Open mixer">⚌ Mix</button>
  <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
  <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
  <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
@@ -3617,6 +3617,15 @@ function toggleStrumMode(){
  if(b){ b.textContent=strumMode?'Strum: ON':'Strum: OFF'; b.classList.toggle('active',strumMode); }
 }
 let rhythmOn=false, rhythmIdx=0, rhythmSel=0;
+// Drums get a transport toggle like Arp/Bass/Mel — but it mutes rather than
+// stops, because the drum sequencer is the master clock the other engines
+// align to. The playhead keeps running; you just stop hearing it.
+let drumsEnabled = true;
+function ftDrumClick(){
+ drumsEnabled=!drumsEnabled;
+ syncFixedTransport();
+ if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
+}
 let lastChordRoot=60, lastChordIntvs=[0,4,7], lastChordFunc='tonic';
 let audioCtx=null, activeOscs=[], activeMelOscs={}, reverbNode=null;
 let midiAccess=null;
@@ -3786,6 +3795,11 @@ function applyDrive(){
  if(!window._driveShaper) return;
  const curve=_driveCurve(fxDrive);
  window._driveShaper.curve=curve;
+ // 2x oversampling exists to stop saturation aliasing, and it doubles the
+ // work done on the entire mix. Below a barely-audible drive the curve is
+ // near-linear and generates nothing to alias, so pay for it only when the
+ // knob is actually doing something.
+ try{ window._driveShaper.oversample = fxDrive>0.05 ? '2x' : 'none'; }catch(e){}
  // Saturation adds a lot of gain — up to ~16dB at the top of the knob. Cancel
  // exactly that much so Drive changes character and not loudness: the dice
  // must never come out louder or quieter, only different.
@@ -3973,10 +3987,44 @@ function syncMasterUI(){
 function rebuildReverb(){ reverbNode=null; if(audioCtx) buildReverb(); }
 document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 
+// Returns the send gain so the caller can reap it — otherwise every note
+// leaves one more node wired into the reverb for the rest of the session.
 function feedRev(node,mix){
- if(!reverbNode||mix<.01) return;
+ if(!reverbNode||mix<.01) return null;
  const g=audioCtx.createGain(); g.gain.value=mix;
  node.connect(g); g.connect(reverbNode);
+ return g;
+}
+
+// ═══════════════════════════════════════
+// VOICE REAPER
+// ═══════════════════════════════════════
+// Every note builds a little chain — gain, filter, panner, reverb send — and
+// nothing ever took them back out of the graph. Web Audio keeps processing a
+// connected node whether or not anything is still feeding it, so the per-block
+// cost climbed with every note played until the audio thread missed its
+// deadline: the pops. Measured at 22 orphaned nodes per chord.
+//
+// Disconnecting on the oscillators' 'ended' event ties cleanup to the note
+// actually finishing. The timeout is a backstop for the cases where 'ended'
+// never arrives (an oscillator that was never started, or one stopped during
+// a context interruption), because a missed reap is a permanent leak.
+function reapVoice(oscs, nodes, endSec){
+ const live = (nodes||[]).filter(Boolean);
+ if(!live.length) return;
+ let done=false;
+ const cut=()=>{ if(done) return; done=true;
+  for(const n of live){ try{ n.disconnect(); }catch(e){} } };
+ const list = (oscs||[]).filter(o=>o&&typeof o.addEventListener==='function');
+ let pending = list.length;
+ if(pending){
+  for(const o of list){
+   try{ o.addEventListener('ended', ()=>{ if(--pending<=0) cut(); }, {once:true}); }
+   catch(e){ pending--; }
+  }
+ }
+ const ms = Math.max(200, ((endSec||1)+0.6)*1000);
+ setTimeout(cut, Math.min(ms, 45000));
 }
 
 // ═══════════════════════════════════════
@@ -4300,9 +4348,11 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(rootM-12-69)/12);
- bo.connect(bg); bg.connect(window._masterDest||ctx.destination); feedRev(bg,revMix);
+ bo.connect(bg); bg.connect(window._masterDest||ctx.destination);
+ const _bgRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg});
+ reapVoice([bo],[bg,_bgRev],atk+dec);
 
  // Chord tones
  const offsets=strumOffsets(intvs.length);
@@ -4322,9 +4372,10 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const pan = intvs.length>1 ? (i/(intvs.length-1))*2-1 : 0;
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
  g.connect(fx.head);
- feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
+ const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
  activeOscs.push({oscs, gain:g});
+ reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
  });
 }
 
@@ -4354,9 +4405,11 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
- bo.connect(bg); bg.connect(window._masterDest||ctx.destination); feedRev(bg,revMix);
+ bo.connect(bg); bg.connect(window._masterDest||ctx.destination);
+ const _sbRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg});
+ reapVoice([bo],[bg,_sbRev],atk+dec);
 
  const slashIntvs=voiceIntervals(relIntvs);
  const offsets=strumOffsets(slashIntvs.length);
@@ -4374,8 +4427,10 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const pan = slashIntvs.length>1 ? (i/(slashIntvs.length-1))*2-1 : 0;
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
  g.connect(fx.head);
- feedRev(fx.plain?g:fx.tail,revMix);
- activeOscs.push({oscs:makeVoice(ctx,rootM+s,g,t0,atk+dec,wave), gain:g});
+ const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
+ const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
+ activeOscs.push({oscs:_os2, gain:g});
+ reapVoice(_os2,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv2],atk+dec);
  });
 }
 
@@ -4412,11 +4467,13 @@ function playMelNote(midi,pressure){
  // Lead sits near the centre — a little off-axis by pitch so it doesn't
  // fight the chord's middle, but not swung out wide like the chord tones.
  const melPan = Math.max(-.5,Math.min(.5,((midi-72)/24)))*0.5;
- const fx = voiceFx(ctx,startT,holdMode?10:atk+dec,vsc,melPan);
+ const _mdur=holdMode?10:atk+dec;
+ const fx = voiceFx(ctx,startT,_mdur,vsc,melPan);
  g.connect(fx.head);
- feedRev(fx.plain?g:fx.tail,revMix*.6);
- const oscs=makeVoice(ctx,midi,g,startT,holdMode?10:atk+dec,melWave);
+ const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
+ const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave);
  activeMelOscs[midi]={oscs,g};
+ reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv],_mdur);
  markMelKeyOn(midi);
  return{oscs,g};
 }
@@ -4953,8 +5010,9 @@ function scheduleArpNote(midi,t,dur){
  const arpPan = (arpGateIdx%2 ? 1 : -1) * 0.75;
  const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan);
  g.connect(fx.head);
- feedRev(fx.plain?g:fx.tail,revMix*.5);
- makeVoice(ctx,midi,g,tAdj,dur,arpWave);
+ const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
+ const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave);
+ reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],dur);
 
  const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
  setTimeout(()=>{
@@ -5008,6 +5066,7 @@ function nextArpNote(){
 let drumKit = 'classic'; // 'classic' | '808' | '909' | 'brush'
 
 function scheduleDrum(type,t){
+ if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
  const ctx=getCtx(); if(!ctx) return;
  const dest=window._masterDest||ctx.destination;
  const rv=_cmx('drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
@@ -5021,32 +5080,32 @@ function scheduleDrum(type,t){
  o.frequency.exponentialRampToValueAtTime(28,t+.25);
  g.gain.setValueAtTime(rv*1.4,t);
  g.gain.exponentialRampToValueAtTime(.001,t+.55);
- o.connect(g); g.connect(dest); o.start(t); o.stop(t+.6);
+ o.connect(g); g.connect(dest); o.start(t); o.stop(t+.6); reapVoice([o],[g],.6);
  } else if(kit==='909'){
  // 909: punchy click attack + pitched body
  o.frequency.setValueAtTime(280,t);
  o.frequency.exponentialRampToValueAtTime(50,t+.08);
  g.gain.setValueAtTime(rv*1.2,t);
  g.gain.exponentialRampToValueAtTime(.001,t+.28);
- o.connect(g); g.connect(dest); o.start(t); o.stop(t+.3);
+ o.connect(g); g.connect(dest); o.start(t); o.stop(t+.3); reapVoice([o],[g],.3);
  // click layer
  const nb=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.008),ctx.sampleRate);
  const nd=nb.getChannelData(0); for(let j=0;j<nd.length;j++) nd[j]=Math.random()*2-1;
  const ns=ctx.createBufferSource(); ns.buffer=nb;
  const ng=ctx.createGain(); ng.gain.setValueAtTime(rv*.8,t); ng.gain.exponentialRampToValueAtTime(.001,t+.008);
- ns.connect(ng); ng.connect(dest); ns.start(t);
+ ns.connect(ng); ng.connect(dest); ns.start(t); reapVoice([ns],[ng],.05);
  } else if(kit==='brush'){
  // Brush: soft thud, no real kick — use floor tom sound
  o.frequency.setValueAtTime(90,t);
  o.frequency.exponentialRampToValueAtTime(55,t+.06);
  g.gain.setValueAtTime(rv*.7,t);
  g.gain.exponentialRampToValueAtTime(.001,t+.18);
- o.connect(g); g.connect(dest); o.start(t); o.stop(t+.2);
+ o.connect(g); g.connect(dest); o.start(t); o.stop(t+.2); reapVoice([o],[g],.2);
  } else {
  // Classic: original
  o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(40,t+.12);
  g.gain.setValueAtTime(rv*1.1,t); g.gain.exponentialRampToValueAtTime(.001,t+.34);
- o.connect(g); g.connect(dest); o.start(t); o.stop(t+.35);
+ o.connect(g); g.connect(dest); o.start(t); o.stop(t+.35); reapVoice([o],[g],.35);
  }
 
  } else if(type==='snare'){
@@ -5065,7 +5124,7 @@ function scheduleDrum(type,t){
  // Tone layer
  const to=ctx.createOscillator(), tg=ctx.createGain();
  to.frequency.value=180; tg.gain.setValueAtTime(rv*.3,t); tg.gain.exponentialRampToValueAtTime(.001,t+.05);
- to.connect(tg); tg.connect(dest); to.start(t); to.stop(t+.06);
+ to.connect(tg); tg.connect(dest); to.start(t); to.stop(t+.06); reapVoice([to],[tg],.06);
  } else if(kit==='909'){
  f.type='bandpass'; f.frequency.value=4000; f.Q.value=.8;
  g.gain.setValueAtTime(rv*.75,t); g.gain.exponentialRampToValueAtTime(.001,t+.1);
@@ -5074,12 +5133,12 @@ function scheduleDrum(type,t){
  const cd=cb.getChannelData(0); for(let j=0;j<cd.length;j++) cd[j]=Math.random()*2-1;
  const cs=ctx.createBufferSource(); cs.buffer=cb;
  const cg=ctx.createGain(); cg.gain.setValueAtTime(rv*.9,t); cg.gain.exponentialRampToValueAtTime(.001,t+.01);
- cs.connect(cg); cg.connect(dest); cs.start(t);
+ cs.connect(cg); cg.connect(dest); cs.start(t); reapVoice([cs],[cg],.4);
  } else {
  f.type='bandpass'; f.frequency.value=3200; f.Q.value=.7;
  g.gain.setValueAtTime(rv*.65,t); g.gain.exponentialRampToValueAtTime(.001,t+.14);
  }
- src.connect(f); f.connect(g); g.connect(dest); src.start(t);
+ src.connect(f); f.connect(g); g.connect(dest); src.start(t); reapVoice([src],[g,f],.6);
 
  } else {
  // Hihat / cymbal
@@ -5104,7 +5163,7 @@ function scheduleDrum(type,t){
  f.type='highpass'; f.frequency.value=8000;
  g.gain.setValueAtTime(rv*.48,t); g.gain.exponentialRampToValueAtTime(.001,t+.055);
  }
- src.connect(f); f.connect(g); g.connect(dest); src.start(t);
+ src.connect(f); f.connect(g); g.connect(dest); src.start(t); reapVoice([src],[g,f],.6);
  }
 }
 
@@ -5652,6 +5711,8 @@ function syncFixedTransport(){
   const playing=isAnythingPlaying();
   rb.classList.toggle('lit',playing);
  }
+ const db=document.getElementById('ft-drum-btn');
+ if(db){ db.classList.toggle('off',!drumsEnabled); }
  const ab=document.getElementById('ft-arp-btn');
  if(ab){ab.classList.toggle('off',!arpOn);}
  const bb=document.getElementById('ft-bas-btn');
@@ -10347,6 +10408,7 @@ function sqSyncUI(){
 function sqSd(){return 60/sqBpm()/4*(typeof sqRateMul!=='undefined'?sqRateMul:1);}
 
 function sqHitTrack(track,t,vol,ac,ps){
+  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
@@ -11043,6 +11105,10 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   g.connect(mg);
 
   var stopT = t + dur + (slide ? 0.15 : 0.06);
+  // Detaching g pulls the whole upstream chain (osc, filter, shaper) out of
+  // the graph in one move — nothing feeding a disconnected node keeps getting
+  // processed. At 16 steps a bar this is the fastest-accumulating leak.
+  reapVoice(null,[g], Math.max(0, stopT - ctx.currentTime));
 
   if(blWave === 'sawtooth'){
     // Acid 303 — resonant filter sweep + soft saturation
@@ -11774,6 +11840,7 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   g.gain.setValueAtTime(v * 0.9, t + Math.max(dur*0.6, 0.03));
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
   g.connect(mg);
+  reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
   if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave);
 }
 
