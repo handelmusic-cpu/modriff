@@ -2058,10 +2058,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="modal-overlay" id="randomize-modal">
  <div class="modal-sheet" style="max-width:440px">
  <div class="modal-title"><svg class="rnd-die" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg>Randomize Settings?</div>
- <div class="rnd-body">This rolls a whole new sound. Your current sound settings will be replaced and can't be undone.</div>
+ <div class="rnd-body" id="rnd-scope-hint"></div>
  <div class="rnd-list">
-  <b>Randomizes:</b> chord / arp / melody / bass voices · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style<br><br>
-  <b class="rnd-keep">Leaves alone:</b> your key &amp; mode, tempo, mixer levels, songs, chord charts, recordings and sequencer patterns
+  <b>Randomizes:</b> <span id="rnd-does"></span><br><br>
+  <b class="rnd-keep">Leaves alone:</b> <span id="rnd-keeps"></span>
  </div>
  <div class="rnd-actions">
   <button class="rnd-btn cancel" onclick="closeRandomizeConfirm()">Cancel</button>
@@ -5324,7 +5324,32 @@ function _rndSlider(id,min,max,step){
  return parseFloat(el.value);
 }
 
-function openRandomizeConfirm(){ const m=document.getElementById('randomize-modal'); if(m) m.classList.add('visible'); }
+// A full reroll — key, mode and tempo included — is only safe while nothing
+// is playing. Mid-performance those three would yank the floor out from under
+// whatever you're doing, so they're held and only the sound is rolled.
+function _rndIsFullRoll(){ return typeof isAnythingPlaying!=='function' || !isAnythingPlaying(); }
+// Church modes are hidden in Basic view and by the "− Modes" toggle; don't
+// roll into a mode whose button the user can't even see to get back from.
+function _rndModePool(){
+ const b=document.body;
+ const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
+ return churchHidden ? ['major','minor'] : Object.keys(MODES);
+}
+const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style';
+function openRandomizeConfirm(){
+ const full = _rndIsFullRoll();
+ const hint=document.getElementById('rnd-scope-hint');
+ if(hint) hint.textContent = full
+  ? "Nothing is playing — this is a full reroll, key, mode and tempo included. Can't be undone from here, but ↶ Undo will bring it back."
+  : "Playback is running, so key, mode and tempo are held steady. ↶ Undo will bring your sound back.";
+ const does=document.getElementById('rnd-does');
+ if(does) does.innerHTML = full ? _RND_SOUND_TXT+' · <b>key, mode &amp; tempo</b>' : _RND_SOUND_TXT;
+ const keeps=document.getElementById('rnd-keeps');
+ if(keeps) keeps.innerHTML = full
+  ? 'songs, chord charts, recordings, sequencer patterns and mixer levels'
+  : '<b>key, mode and tempo</b> (playback is running) · songs, chord charts, recordings, sequencer patterns and mixer levels';
+ const m=document.getElementById('randomize-modal'); if(m) m.classList.add('visible');
+}
 function closeRandomizeConfirm(){ const m=document.getElementById('randomize-modal'); if(m) m.classList.remove('visible'); }
 function confirmRandomize(){
  closeRandomizeConfirm();
@@ -5448,9 +5473,22 @@ function randomizeSettings(){
  s.voicing   = Math.random()<.5?'close':'open';
  s.compStyle = _rndPick(RND_COMP_STYLES);
 
+ // Stopped means you're exploring, so roll the musical context too.
+ const full = _rndIsFullRoll();
+ if(full){
+  s.root = Math.floor(Math.random()*12);
+  s.mode = _rndPick(_rndModePool());
+  // Deliberately not the slider's full 40–220: most of that range rolls
+  // unusable, and a randomizer is only worth having if its output is.
+  // 70–150 covers ballad through uptempo.
+  s.bpm  = 70+Math.floor(Math.random()*81);
+ }
+
  _applySettings(s);
- if(typeof track==='function') track('settings_randomized');
- showToast('New sound rolled');
+ if(typeof track==='function') track('settings_randomized', {full:full});
+ showToast(full
+  ? 'Rolled everything — '+nn(root)+' '+((MODES[mode]||MODES.major).label)+' at '+s.bpm
+  : 'New sound rolled');
 }
 
 // ═══════════════════════════════════════
