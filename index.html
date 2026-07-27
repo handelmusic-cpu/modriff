@@ -2402,7 +2402,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 <button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
- <button class="tb" id="rec-btn" onclick="toggleRecording()" title="Records a .wav of the audio plus a .mid of exactly what you played" style="flex-shrink:0;font-size:.5rem;padding:4px 8px;color:var(--pr)">⬤ REC</button>
  <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass+Mel: Sync</button>
  </div>
  <div class="beat-dots" id="beat-dots" style="margin-top:6px"></div>
@@ -3154,6 +3153,20 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <div style="font-size:.42rem;color:var(--muted);line-height:1.7;margin-top:8px">
    Glue compression rides the whole mix so the parts sit together instead of stacking up. Bus reverb is one shared room on top of each instrument's own send. A brick-wall limiter always sits last — Master Vol stays live even with the bus bypassed.
+  </div>
+ </div>
+
+ <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
+  <div class="panel-title"><span class="pt-icon"></span> Export
+   <span class="mb-led" id="exp-led" title="Recording"></span>
+  </div>
+  <div class="row" style="margin-bottom:8px">
+   <button class="tb" id="rec-btn" onclick="toggleRecording()" style="color:var(--pr);font-weight:700">⬤ Record Audio + MIDI</button>
+  </div>
+  <div style="font-size:.42rem;color:var(--muted);line-height:1.7">
+   Captures a <b>.wav</b> of everything you hear — post master bus, including Master Vol — plus a <b>.mid</b> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.
+   <br><br>
+   <b class="rnd-keep">Not the same as ⏺ Rec in the transport</b>, which captures the chords you play into an editable Song section that stays inside the app. Use that one to build a chart; use this one to get files out.
   </div>
  </div>
 </div>
@@ -9429,7 +9442,7 @@ function onBpmInput(v){
 // real .wav file by hand, rather than MediaRecorder (which only offers
 // compressed webm/opus containers in Chrome — not something most DAWs or
 // simple media players open cleanly).
-var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false;
+var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false, _recTapNode=null;
 function toggleRecording(){
   if(_isRecording) _stopRecording();
   else _startRecording();
@@ -9452,7 +9465,10 @@ function _startRecording(){
   // graph reaching the destination — route through a zero-gain node so the
   // tap doesn't also double the audible output.
   _recSilentGain=ctx.createGain();_recSilentGain.gain.value=0;
-  window._masterLimiter.connect(_recProcessor);
+  // Tap the final node, after Master Vol — tapping the limiter would bounce a
+  // file that doesn't match what you just heard.
+  _recTapNode = window._masterOut || window._masterLimiter;
+  _recTapNode.connect(_recProcessor);
   _recProcessor.connect(_recSilentGain);
   _recSilentGain.connect(ctx.destination);
   _isRecording=true;_updateRecBtn();
@@ -9479,8 +9495,8 @@ function _floatsToWavBlob(left,right,sampleRate){
 }
 function _stopRecording(){
   _stopMidiRecording();
-  var proc=_recProcessor,sg=_recSilentGain,lim=window._masterLimiter;
-  _recProcessor=null;_recSilentGain=null;
+  var proc=_recProcessor,sg=_recSilentGain,lim=_recTapNode||window._masterLimiter;
+  _recProcessor=null;_recSilentGain=null;_recTapNode=null;
   // Let the final buffer flush before tearing the tap down
   setTimeout(function(){
     if(proc){ try{lim.disconnect(proc);}catch(e){} try{proc.disconnect();}catch(e){} proc.onaudioprocess=null; }
@@ -9502,7 +9518,13 @@ function _stopRecording(){
 }
 function _updateRecBtn(){
   var b=document.getElementById('rec-btn');
-  if(b){b.textContent=_isRecording?'■ STOP':'⬤ REC';b.style.color=_isRecording?'#ff4444':'var(--pr)';}
+  if(b){
+    b.textContent=_isRecording?'■ Stop & Save Files':'⬤ Record Audio + MIDI';
+    b.style.color=_isRecording?'#ff4444':'var(--pr)';
+    b.classList.toggle('active',_isRecording);
+  }
+  var led=document.getElementById('exp-led');
+  if(led) led.classList.toggle('lit',_isRecording);
 }
 
 // ── Live MIDI recording — runs alongside audio REC so a single button
