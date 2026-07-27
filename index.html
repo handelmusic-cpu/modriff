@@ -2391,6 +2391,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="sg"><div class="sl">Strum</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
  <div class="sg"><div class="sl">Velocity</div><input type="range" id="vel-sense" min="0" max="1" step=".05" value=".5"><div class="sl" style="margin-top:2px">Sensitivity</div></div>
  </div>
+ <div class="row" style="margin-top:2px">
+ <div class="sg"><div class="sl">Tone</div><input type="range" id="fx-cutoff" min=".08" max="1" step=".01" value=".88" oninput="onFxInput()"><div class="sv" id="fxcut-val">—</div></div>
+ <div class="sg"><div class="sl">Reso</div><input type="range" id="fx-reso" min="0" max="1" step=".01" value=".12" oninput="onFxInput()"><div class="sv" id="fxreso-val">12%</div></div>
+ <div class="sg"><div class="sl">Sweep</div><input type="range" id="fx-env" min="0" max="1" step=".01" value=".25" oninput="onFxInput()"><div class="sv" id="fxenv-val">25%</div></div>
+ </div>
+ <div class="row">
+ <div class="sg"><div class="sl">Drive</div><input type="range" id="fx-drive" min="0" max="1" step=".01" value=".18" oninput="onFxInput()"><div class="sv" id="fxdrive-val">18%</div></div>
+ <div class="sg"><div class="sl">Width</div><input type="range" id="fx-width" min="0" max="1" step=".01" value=".4" oninput="onFxInput()"><div class="sv" id="fxwidth-val">40%</div></div>
+ <div class="sg"><div class="sl">Drift</div><input type="range" id="fx-drift" min="0" max="1" step=".01" value=".3" oninput="onFxInput()"><div class="sv" id="fxdrift-val">30%</div></div>
+ </div>
  <div class="row">
  <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="Play the sustained chord underneath the arp, not just the arp notes. Relative volume between Chord and Arp is set in the Mixer.">Chord Layer: ON</button>
  <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Gives chords a plucked, strummed character (quicker decay, settles after the initial hit) instead of a sustained pad">Strum: ON</button>
@@ -3225,15 +3235,20 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // piano_real is a sample and couldn't be measured the same way (network
 // sample fetch isn't available in every environment); its value is an
 // estimate based on it being reported quieter than the synth piano.
+// Recalibrated against the character/FX chain (per-voice lowpass + stereo
+// spread). Both remove energy — and the filter takes more from bright voices
+// than dark ones — so the pre-FX numbers no longer balanced. Measured at the
+// default macro positions, which is what most playing actually sits at;
+// extreme filter settings shift the balance, exactly as on a real synth.
 const WAVE_GAIN = {
- sine:.701,
- sawtooth:.629,
- square:.627,
- supersaw:.744,
- piano:.642,
- organ:2.135,
- rhodes:.648,
- pad:1.619,
+ sine:.838,
+ sawtooth:.890,
+ square:.775,
+ supersaw:.952,
+ piano:1.081,
+ organ:2.813,
+ rhodes:1.102,
+ pad:1.977,
  piano_real:1.3,
 };
 
@@ -3625,8 +3640,21 @@ function buildReverb(){
   lim.release.value=0.1;    // 100ms release
   lim.connect(c.destination);
   window._masterLimiter=lim;
-  // Redirect all audio through limiter
-  window._masterDest=lim;
+
+  // ── Master saturation ──
+  // A limiter only controls peaks; it adds no harmonic content, which is why
+  // the mix never sounded "glued". This soft-clip stage sits in front of it.
+  // Crucially, _masterDest is repointed at the drive INPUT, so every existing
+  // `connect(window._masterDest)` in the file routes through saturation with
+  // no call-site changes at all.
+  const drvIn=c.createGain();
+  const shaper=c.createWaveShaper();
+  shaper.oversample='2x';   // avoids aliasing from the added harmonics
+  const drvOut=c.createGain();
+  drvIn.connect(shaper); shaper.connect(drvOut); drvOut.connect(lim);
+  window._driveIn=drvIn; window._driveShaper=shaper; window._driveOut=drvOut;
+  window._masterDest=drvIn;
+  applyDrive();
  }
  const size=parseFloat(document.getElementById('rev-size').value)||1.8;
  const len=Math.floor(audioCtx.sampleRate*size);
@@ -3639,6 +3667,104 @@ function buildReverb(){
  reverbNode.buffer=buf;
  reverbNode.connect(window._masterDest||audioCtx.destination);
 }
+// ═══════════════════════════════════════
+// CHARACTER / FX ENGINE
+// ═══════════════════════════════════════
+// Six macros that sit between the oscillators and the master bus. Before
+// these, most voices went straight from oscillator to gain to limiter —
+// no filter, no stereo image, no saturation, which is the main reason the
+// engine read as "web synth" rather than "instrument".
+let fxCutoff=.88, fxReso=.12, fxEnv=.25, fxDrive=.18, fxWidth=.4, fxDrift=.3;
+
+// Cutoff slider is perceptual, not linear — ear hears pitch logarithmically,
+// so a linear Hz sweep spends most of its travel in the inaudible top end.
+function _fxHz(n){ return 90*Math.pow(200,Math.max(0,Math.min(1,n))); } // 90Hz..18kHz
+
+// Soft-clip transfer curve. At drive 0 the curve is a straight line, so the
+// stage is bit-transparent and costs nothing perceptually when unused.
+function _driveCurve(amount){
+ const n=1024, curve=new Float32Array(n);
+ const k=amount*amount*60; // squared so the low end of the knob stays gentle
+ for(let i=0;i<n;i++){
+  const x=(i*2)/n-1;
+  curve[i]= k<0.01 ? x : (1+k)*x/(1+k*Math.abs(x)); // classic soft saturator
+ }
+ return curve;
+}
+function applyDrive(){
+ if(!window._driveShaper) return;
+ window._driveShaper.curve=_driveCurve(fxDrive);
+ // Saturation raises average level; trim it back so turning Drive up changes
+ // the character rather than just making everything louder.
+ if(window._driveOut) window._driveOut.gain.value = 1/(1+fxDrive*0.9);
+}
+
+// Builds the per-voice post-chain (lowpass + stereo placement) and returns
+// the node the voice's gain should feed. When both macros are neutral it
+// returns the destination itself, so the cheap path stays exactly as cheap
+// as before — this matters on phones, where extra nodes per chord tone are
+// the difference between clean playback and dropouts.
+function voiceFx(ctx,t0,dur,vel,panPos){
+ const dest=window._masterDest||ctx.destination;
+ const wantFilt = fxCutoff<0.985 || fxEnv>0.01;
+ const wantPan  = fxWidth>0.01 && panPos!=null && ctx.createStereoPanner;
+ if(!wantFilt && !wantPan) return {head:dest, tail:dest, plain:true};
+
+ let head=null, tail=null;
+ if(wantFilt){
+  const f=ctx.createBiquadFilter();
+  f.type='lowpass';
+  f.Q.value=0.7+fxReso*11;
+  // Harder playing opens the filter — on a real instrument more force means
+  // more brightness, not just more volume.
+  const base=Math.min(_fxHz(fxCutoff)*(0.62+0.55*(vel==null?0.6:vel)),18000);
+  if(fxEnv>0.01){
+   const peak=Math.min(base*(1+fxEnv*7),18000);
+   f.frequency.setValueAtTime(peak,t0);
+   f.frequency.exponentialRampToValueAtTime(Math.max(base*0.55,70),t0+Math.min(Math.max(dur*0.6,0.08),1.4));
+  } else {
+   f.frequency.value=base;
+  }
+  head=tail=f;
+ }
+ if(wantPan){
+  const p=ctx.createStereoPanner();
+  p.pan.value=Math.max(-1,Math.min(1,panPos*fxWidth));
+  if(tail) tail.connect(p); else head=p;
+  tail=p;
+ }
+ tail.connect(dest);
+ return {head, tail, plain:false};
+}
+
+// Per-note pitch jitter. Real analog oscillators are never exactly in tune
+// with each other; mathematically perfect pitch is what makes a synth sound
+// sterile. Returns a multiplier to apply to the note's frequency.
+function driftMul(){
+ return fxDrift<=0 ? 1 : Math.pow(2,((Math.random()-.5)*fxDrift*13)/1200);
+}
+
+function onFxInput(){
+ fxCutoff=parseFloat(document.getElementById('fx-cutoff').value);
+ fxReso  =parseFloat(document.getElementById('fx-reso').value);
+ fxEnv   =parseFloat(document.getElementById('fx-env').value);
+ fxDrive =parseFloat(document.getElementById('fx-drive').value);
+ fxWidth =parseFloat(document.getElementById('fx-width').value);
+ fxDrift =parseFloat(document.getElementById('fx-drift').value);
+ applyDrive();
+ syncFxLabels();
+}
+function syncFxLabels(){
+ const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+ const hz=_fxHz(fxCutoff);
+ set('fxcut-val', hz>=1000?(hz/1000).toFixed(1)+'k':Math.round(hz)+'Hz');
+ set('fxreso-val',Math.round(fxReso*100)+'%');
+ set('fxenv-val', Math.round(fxEnv*100)+'%');
+ set('fxdrive-val',Math.round(fxDrive*100)+'%');
+ set('fxwidth-val',Math.round(fxWidth*100)+'%');
+ set('fxdrift-val',Math.round(fxDrift*100)+'%');
+}
+
 function rebuildReverb(){ reverbNode=null; if(audioCtx) buildReverb(); }
 document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 
@@ -3711,7 +3837,10 @@ function releaseSustainedChord(myId){
 }
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv){
- const f=masterTune*Math.pow(2,(midi-69)/12);
+ // driftMul() detunes each note by a few cents at random — every voice type
+ // below derives its frequencies from f, so this one line gives the whole
+ // engine analog-style pitch imperfection.
+ const f=masterTune*Math.pow(2,(midi-69)/12)*driftMul();
  const r=[];
 
  if(wv==='supersaw'){
@@ -3982,7 +4111,12 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  } else {
  g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
- const dest=window._masterDest||ctx.destination; g.connect(dest); feedRev(g,revMix);
+ // Spread the chord tones across the stereo image, low note left through
+ // high note right, so a chord occupies a space instead of a single point.
+ const pan = intvs.length>1 ? (i/(intvs.length-1))*2-1 : 0;
+ const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
+ g.connect(fx.head);
+ feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
  activeOscs.push({oscs, gain:g});
  });
@@ -4030,7 +4164,10 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  } else {
  g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
- const dest=window._masterDest||ctx.destination; g.connect(dest); feedRev(g,revMix);
+ const pan = slashIntvs.length>1 ? (i/(slashIntvs.length-1))*2-1 : 0;
+ const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
+ g.connect(fx.head);
+ feedRev(fx.plain?g:fx.tail,revMix);
  activeOscs.push({oscs:makeVoice(ctx,rootM+s,g,t0,atk+dec,wave), gain:g});
  });
 }
@@ -4065,7 +4202,12 @@ function playMelNote(midi,pressure){
  g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel,startT+atk+.01);
  if(holdMode){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel,startT+atk+.02); }
  else { g.gain.exponentialRampToValueAtTime(.0001,startT+atk+dec); }
- g.connect(window._masterDest||ctx.destination); feedRev(g,revMix*.6);
+ // Lead sits near the centre — a little off-axis by pitch so it doesn't
+ // fight the chord's middle, but not swung out wide like the chord tones.
+ const melPan = Math.max(-.5,Math.min(.5,((midi-72)/24)))*0.5;
+ const fx = voiceFx(ctx,startT,holdMode?10:atk+dec,vsc,melPan);
+ g.connect(fx.head);
+ feedRev(fx.plain?g:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,holdMode?10:atk+dec,melWave);
  activeMelOscs[midi]={oscs,g};
  markMelKeyOn(midi);
@@ -4531,7 +4673,13 @@ function scheduleArpNote(midi,t,dur){
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
  g.gain.setValueAtTime(_pk,tAdj+atk+.005); g.gain.exponentialRampToValueAtTime(.0001,tAdj+dur);
- g.connect(window._masterDest||ctx.destination); feedRev(g,revMix*.5);
+ // Alternate successive arp notes left/right — a ping-pong image that makes
+ // a fast arp feel like it's moving through the field rather than drilling
+ // one spot. Uses the gate index so the pattern is stable, not random.
+ const arpPan = (arpGateIdx%2 ? 1 : -1) * 0.75;
+ const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan);
+ g.connect(fx.head);
+ feedRev(fx.plain?g:fx.tail,revMix*.5);
  makeVoice(ctx,midi,g,tAdj,dur,arpWave);
 
  const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
@@ -5311,7 +5459,76 @@ const RND_ARP_PATS    = ['up','down','ud','rand','weighted','pedal','walk','bloc
 const RND_ARP_VELS    = ['flat','cresc','decrsc','hill','valley'];
 const RND_COMP_STYLES = ['sustain','bars','backbeat','charleston','strum','bossa'];
 
+// ── Patch archetypes ───────────────────────────────────────────────────
+// Rolling every parameter independently across its full range produces
+// something unusable the large majority of the time — the knobs aren't
+// independent musically. Each archetype is a coherent character with its
+// own ranges, so the dice picks a character first and then rolls inside it.
+// Every roll lands somewhere you'd plausibly have dialled in by hand.
+// Fields are [min,max] ranges or pools to pick from; anything omitted keeps
+// the generic pool.
+const PATCH_ARCHETYPES = [
+ { name:'Warm Keys',
+   waves:['piano','rhodes'], arpWaves:['sine','triangle'], melWaves:['sine'], bassWaves:['upright','electric','sine'],
+   cut:[.55,.75], reso:[0,.15], env:[.1,.3], drive:[.12,.3], width:[.25,.45], drift:[.25,.5],
+   atk:[.008,.03], dec:[1.6,3.4], rev:[.2,.4], strum:[.06,.16],
+   mAtk:[.01,.04], mDec:[.5,1.2], mRev:[.15,.35],
+   rate:[3,6], gate:[.4,.7], pats:['up','walk','pedal'], octs:[1,2], vels:['flat','hill'],
+   comps:['bars','charleston','backbeat'], voicings:['close','open'], bpm:[76,116] },
+
+ { name:'Glass',
+   waves:['rhodes','sine','organ'], arpWaves:['sine'], melWaves:['sine','triangle'], bassWaves:['sine','electric'],
+   cut:[.8,1], reso:[0,.12], env:[.05,.25], drive:[0,.12], width:[.55,.85], drift:[.1,.3],
+   atk:[.02,.09], dec:[2.2,4.5], rev:[.45,.75], strum:[.1,.24],
+   mAtk:[.02,.08], mDec:[1,2.2], mRev:[.4,.65],
+   rate:[4,7], gate:[.5,.85], pats:['up','ud','weighted'], octs:[2,3], vels:['flat','cresc','hill'],
+   comps:['sustain','bars'], voicings:['open'], bpm:[70,104] },
+
+ { name:'Analog Pad',
+   waves:['pad','supersaw'], arpWaves:['sawtooth','supersaw'], melWaves:['supersaw','sawtooth'], bassWaves:['sawtooth','sine'],
+   cut:[.32,.55], reso:[.1,.35], env:[.35,.75], drive:[.2,.42], width:[.6,.9], drift:[.5,.85],
+   atk:[.12,.4], dec:[3,6], rev:[.4,.7], strum:[.12,.3],
+   mAtk:[.06,.18], mDec:[1.4,2.6], mRev:[.35,.6],
+   rate:[2,5], gate:[.55,.9], pats:['up','ud','pedal'], octs:[1,2], vels:['cresc','hill','flat'],
+   comps:['sustain'], voicings:['open'], bpm:[70,100] },
+
+ { name:'Plucked',
+   waves:['square','sawtooth','piano'], arpWaves:['square','sawtooth'], melWaves:['square','sawtooth'], bassWaves:['electric','square','upright'],
+   cut:[.45,.7], reso:[.2,.5], env:[.5,.9], drive:[.15,.35], width:[.3,.55], drift:[.15,.4],
+   atk:[.005,.012], dec:[.6,1.4], rev:[.1,.3], strum:[.02,.1],
+   mAtk:[.005,.02], mDec:[.2,.6], mRev:[.1,.3],
+   rate:[5,8], gate:[.18,.42], pats:['up','down','rand','walk'], octs:[1,2,3], vels:['flat','decrsc'],
+   comps:['strum','backbeat','bossa'], voicings:['close'], bpm:[96,150] },
+
+ { name:'Lo-Fi',
+   waves:['piano','rhodes','organ'], arpWaves:['sine','triangle'], melWaves:['sine'], bassWaves:['upright','sine','triangle'],
+   cut:[.24,.42], reso:[.05,.3], env:[.1,.35], drive:[.45,.8], width:[.15,.35], drift:[.55,1],
+   atk:[.01,.05], dec:[1.2,2.6], rev:[.25,.5], strum:[.08,.22],
+   mAtk:[.015,.05], mDec:[.5,1.3], mRev:[.2,.45],
+   rate:[3,6], gate:[.35,.65], pats:['up','walk','pedal'], octs:[1,2], vels:['flat','decrsc'],
+   comps:['bars','charleston','bossa'], voicings:['close','open'], bpm:[70,92] },
+
+ { name:'Cathedral',
+   waves:['organ','pad'], arpWaves:['sine','sawtooth'], melWaves:['sine','supersaw'], bassWaves:['sine','upright'],
+   cut:[.5,.8], reso:[0,.15], env:[.05,.3], drive:[.08,.25], width:[.7,1], drift:[.2,.45],
+   atk:[.05,.22], dec:[4,7], rev:[.6,.9], strum:[.14,.32],
+   mAtk:[.03,.12], mDec:[1.6,3.2], mRev:[.55,.8],
+   rate:[2,5], gate:[.6,.95], pats:['up','ud','pedal'], octs:[1,2,3], vels:['cresc','flat'],
+   comps:['sustain','bars'], voicings:['open'], bpm:[70,96] },
+
+ { name:'Neon',
+   waves:['supersaw','sawtooth'], arpWaves:['supersaw','sawtooth','square'], melWaves:['supersaw','square'], bassWaves:['sawtooth','square','electric'],
+   cut:[.6,.9], reso:[.15,.45], env:[.4,.8], drive:[.3,.55], width:[.5,.8], drift:[.3,.6],
+   atk:[.005,.03], dec:[.9,2.2], rev:[.25,.5], strum:[.04,.16],
+   mAtk:[.005,.03], mDec:[.35,1], mRev:[.2,.45],
+   rate:[6,9], gate:[.25,.55], pats:['up','ud','rand','weighted'], octs:[2,3], vels:['flat','cresc','valley'],
+   comps:['strum','backbeat'], voicings:['close','open'], bpm:[110,150] },
+];
+let lastArchetype = null;
+
 function _rndPick(a){ return a[Math.floor(Math.random()*a.length)]; }
+// Continuous roll inside an archetype's [min,max] band.
+function _rndBand(b,dp){ const v=b[0]+Math.random()*(b[1]-b[0]); return +v.toFixed(dp==null?3:dp); }
 function _rndVal(min,max,step){
  const n = Math.floor((max-min)/step);
  return min + Math.floor(Math.random()*(n+1))*step;
@@ -5335,13 +5552,13 @@ function _rndModePool(){
  const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
  return churchHidden ? ['major','minor'] : Object.keys(MODES);
 }
-const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style';
+const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · tone, reso, sweep, drive, width &amp; drift · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style';
 function openRandomizeConfirm(){
  const full = _rndIsFullRoll();
  const hint=document.getElementById('rnd-scope-hint');
  if(hint) hint.textContent = full
-  ? "Nothing is playing — this is a full reroll, key, mode and tempo included. Can't be undone from here, but ↶ Undo will bring it back."
-  : "Playback is running, so key, mode and tempo are held steady. ↶ Undo will bring your sound back.";
+  ? 'Nothing is playing — full reroll, key, mode and tempo included. Rolls a whole patch character, not loose knobs. ↶ Undo brings it back.'
+  : 'Playback is running, so key, mode and tempo are held steady. Rolls a whole patch character, not loose knobs. ↶ Undo brings your sound back.';
  const does=document.getElementById('rnd-does');
  if(does) does.innerHTML = full ? _RND_SOUND_TXT+' · <b>key, mode &amp; tempo</b>' : _RND_SOUND_TXT;
  const keeps=document.getElementById('rnd-keeps');
@@ -5380,6 +5597,8 @@ function _capSettings(){
   atk:_sv('attack'), dec:_sv('decay'), rev:_sv('rev-mix'), strum:_sv('strum-spread'),
   // melody envelope + FX
   mAtk:_sv('mel-attack'), mDec:_sv('mel-decay'), mRev:_sv('mel-rev'),
+  // character macros
+  fxCutoff, fxReso, fxEnv, fxDrive, fxWidth, fxDrift,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
@@ -5423,6 +5642,16 @@ function _applySettings(s){
  _setSlider('mel-decay',s.mDec,()=>updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s'));
  _setSlider('mel-rev',s.mRev,()=>updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%'));
 
+ // Character macros — write the state, mirror it onto the sliders, then let
+ // onFxInput() read back so labels and the drive curve refresh from one place.
+ if(typeof s.fxCutoff==='number'){
+  const put=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
+  put('fx-cutoff',s.fxCutoff); put('fx-reso',s.fxReso); put('fx-env',s.fxEnv);
+  put('fx-drive',s.fxDrive);   put('fx-width',s.fxWidth); put('fx-drift',s.fxDrift);
+  if(document.getElementById('fx-cutoff')) onFxInput();
+  else { fxCutoff=s.fxCutoff; fxReso=s.fxReso; fxEnv=s.fxEnv; fxDrive=s.fxDrive; fxWidth=s.fxWidth; fxDrift=s.fxDrift; applyDrive(); }
+ }
+
  // Character toggles — these are plain flags with their own button label
  // sync, so flip them through their togglers only when they actually differ.
  if(typeof s.strumMode==='boolean' && s.strumMode!==strumMode) toggleStrumMode();
@@ -5448,47 +5677,61 @@ function randomizeSettings(){
  // Start from the live settings and overwrite only the fields the dice
  // owns — so key, mode, tempo and everything else provably stay put.
  const s = _capSettings();
- s.wave    = _rndPick(RND_CHORD_WAVES);
- s.arpWave = _rndPick(RND_ARP_WAVES);
- s.melWave = _rndPick(RND_MEL_WAVES);
- s.blWave  = _rndPick(RND_BASS_WAVES);
+ // Pick a character first, then roll inside it. Avoid repeating the archetype
+ // back-to-back so consecutive rolls actually feel like they went somewhere.
+ let pool = PATCH_ARCHETYPES;
+ if(lastArchetype && PATCH_ARCHETYPES.length>1) pool = PATCH_ARCHETYPES.filter(a=>a.name!==lastArchetype);
+ const A = _rndPick(pool);
+ lastArchetype = A.name;
 
- s.arpPat      = _rndPick(RND_ARP_PATS);
- s.arpOcts     = 1+Math.floor(Math.random()*3);
- s.arpVelShape = _rndPick(RND_ARP_VELS);
+ s.wave    = _rndPick(A.waves||RND_CHORD_WAVES);
+ s.arpWave = _rndPick(A.arpWaves||RND_ARP_WAVES);
+ s.melWave = _rndPick(A.melWaves||RND_MEL_WAVES);
+ s.blWave  = _rndPick(A.bassWaves||RND_BASS_WAVES);
+
+ s.arpPat      = _rndPick(A.pats||RND_ARP_PATS);
+ s.arpOcts     = _rndPick(A.octs||[1,2,3]);
+ s.arpVelShape = _rndPick(A.vels||RND_ARP_VELS);
  s.arpGatePat  = Math.floor(Math.random()*ARP_GATE_PATTERNS.length);
- // Rate range starts at Quarter — Whole/Half tick over so slowly they don't
+ // Rate band never reaches Whole/Half — they tick over so slowly they don't
  // read as an arpeggio at all, which just looks like the button did nothing.
- s.arpRateIdx  = 2+Math.floor(Math.random()*(ARP_RATES.length-2));
- s.gate        = +_rndVal(.15,.95,.05).toFixed(2);
+ s.arpRateIdx  = Math.round(_rndBand(A.rate||[2,9],0));
+ s.gate        = _rndBand(A.gate||[.15,.95],2);
 
- s.atk   = +_rndVal(.005,.30,.005).toFixed(3);
- s.dec   = +_rndVal(.6,5,.1).toFixed(2);
- s.rev   = +_rndVal(0,.8,.01).toFixed(2);
- s.strum = +_rndVal(0,.30,.01).toFixed(2);
- s.mAtk  = +_rndVal(.005,.20,.005).toFixed(3);
- s.mDec  = +_rndVal(.2,2.5,.05).toFixed(2);
- s.mRev  = +_rndVal(0,.7,.01).toFixed(2);
+ s.atk   = _rndBand(A.atk||[.005,.3],3);
+ s.dec   = _rndBand(A.dec||[.6,5],2);
+ s.rev   = _rndBand(A.rev||[0,.8],2);
+ s.strum = _rndBand(A.strum||[0,.3],2);
+ s.mAtk  = _rndBand(A.mAtk||[.005,.2],3);
+ s.mDec  = _rndBand(A.mDec||[.2,2.5],2);
+ s.mRev  = _rndBand(A.mRev||[0,.7],2);
 
- s.voicing   = Math.random()<.5?'close':'open';
- s.compStyle = _rndPick(RND_COMP_STYLES);
+ // Character macros — the layer that actually separates the archetypes
+ s.fxCutoff = _rndBand(A.cut||[.3,1],2);
+ s.fxReso   = _rndBand(A.reso||[0,.4],2);
+ s.fxEnv    = _rndBand(A.env||[0,.7],2);
+ s.fxDrive  = _rndBand(A.drive||[0,.5],2);
+ s.fxWidth  = _rndBand(A.width||[.2,.8],2);
+ s.fxDrift  = _rndBand(A.drift||[.1,.7],2);
+
+ s.voicing   = _rndPick(A.voicings||['close','open']);
+ s.compStyle = _rndPick(A.comps||RND_COMP_STYLES);
 
  // Stopped means you're exploring, so roll the musical context too.
  const full = _rndIsFullRoll();
  if(full){
   s.root = Math.floor(Math.random()*12);
   s.mode = _rndPick(_rndModePool());
-  // Deliberately not the slider's full 40–220: most of that range rolls
-  // unusable, and a randomizer is only worth having if its output is.
-  // 70–150 covers ballad through uptempo.
-  s.bpm  = 70+Math.floor(Math.random()*81);
+  // Tempo comes from the archetype too — a Cathedral patch at 148bpm isn't
+  // a cathedral. Never the slider's full 40–220; most of that rolls unusable.
+  s.bpm  = Math.round(_rndBand(A.bpm||[70,150],0));
  }
 
  _applySettings(s);
- if(typeof track==='function') track('settings_randomized', {full:full});
+ if(typeof track==='function') track('settings_randomized', {full:full, patch:A.name});
  showToast(full
-  ? 'Rolled everything — '+nn(root)+' '+((MODES[mode]||MODES.major).label)+' at '+s.bpm
-  : 'New sound rolled');
+  ? A.name+' — '+nn(root)+' '+((MODES[mode]||MODES.major).label)+' at '+s.bpm
+  : A.name+' — new sound rolled');
 }
 
 // ═══════════════════════════════════════
@@ -9187,6 +9430,7 @@ updateOct();
 buildMelodyStrip();
 initBendStrip();
 onArpRateSlider(7);
+if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 rhythmStepSec=rhythmStepDuration(RHYTHMS[0]);
 seedDemoSongIfNeeded();
 setlistData=loadSLData();
