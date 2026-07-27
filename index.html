@@ -2349,7 +2349,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 
- <div class="keys-typing-hint" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+</div>
+ <div class="keys-typing-hint" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
  <div class="mel-keys-wrap">
  <div class="mel-keys" id="melody-keys"></div>
  </div>
@@ -4485,6 +4485,12 @@ function playMelNote(midi,pressure){
  g.connect(fx.head);
  const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave);
+ // A note struck while C/V is already held should start pre-bent, same as
+ // hitting a key while a real synth's pitch wheel is off-centre — not ramp
+ // in from zero, since the wheel was already there.
+ if(typeof melBendCents!=='undefined' && melBendCents!==0){
+  oscs.forEach(o=>{ try{ o.detune.setValueAtTime(melBendCents,startT); }catch(e){} });
+ }
  activeMelOscs[midi]={oscs,g};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv],_mdur);
  markMelKeyOn(midi);
@@ -5787,7 +5793,7 @@ function openKbShortcuts(){
  const live = document.getElementById('kb-sc-live-keys');
  if(live){
   const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
-  live.textContent = MEL_WHITE_KEYS.map((k,i)=>k.toUpperCase()+'='+sol[i]).join(' ')+'  ·  '+MEL_BLACK_KEYS.map(k=>k.toUpperCase()).join(' ')+' = passing tones between them  ·  K/L/; = octave-up Do/Re/Mi';
+  live.textContent = MEL_WHITE_KEYS.map((k,i)=>k.toUpperCase()+'='+sol[i]).join(' ')+'  ·  '+MEL_BLACK_KEYS.map(k=>k.toUpperCase()).join(' ')+' = passing tones between them  ·  K/L/; = octave-up Do/Re/Mi  ·  Z/X = octave down/up  ·  hold C/V = bend down/up a whole step';
  }
  const m=document.getElementById('kb-shortcuts-modal'); if(m) m.classList.add('visible');
 }
@@ -6196,7 +6202,7 @@ function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
  const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
  const parts = MEL_WHITE_KEYS.map((k,i)=> k.toUpperCase()+'='+sol[i]);
- hint.textContent = parts.join(' ')+' · K/L/;=oct+ · Z=Oct− X=Oct+';
+ hint.textContent = parts.join(' ')+' · K/L/;=oct+ · Z=Oct− X=Oct+ · C=Bend− V=Bend+';
 }
 
 // ═══════════════════════════════════════
@@ -7256,6 +7262,41 @@ function _buildMusicalKeysMap(){
 }
 let musicalTypingOn = true;
 
+// ═══════════════════════════════════════
+// LIVE MELODY PITCH BEND — C = down, V = up
+// ═══════════════════════════════════════
+// Applied via oscillator .detune rather than recomputing frequency, so it
+// reaches notes that are already sounding without needing to know their base
+// pitch — the same trick a hardware synth's pitch wheel relies on. A whole
+// step (200 cents) is the common default range on a real pitch wheel: wide
+// enough to be expressive, narrow enough that a slip doesn't sound wrong.
+const MEL_BEND_RANGE_CENTS = 200;
+const MEL_BEND_RAMP = 0.09;
+let melBendDownHeld=false, melBendUpHeld=false, melBendCents=0;
+
+function _melBendTargetCents(){
+ // Both held cancels out, like a wheel pushed both ways at once.
+ return melBendDownHeld===melBendUpHeld ? 0 : (melBendDownHeld ? -MEL_BEND_RANGE_CENTS : MEL_BEND_RANGE_CENTS);
+}
+function _melBendApply(){
+ const ctx=getCtx(); if(!ctx) return;
+ melBendCents=_melBendTargetCents();
+ const now=ctx.currentTime;
+ Object.values(activeMelOscs).forEach(v=>{
+  (v.oscs||[]).forEach(o=>{
+   try{
+    o.detune.cancelScheduledValues(now);
+    o.detune.setValueAtTime(o.detune.value, now);
+    o.detune.linearRampToValueAtTime(melBendCents, now+MEL_BEND_RAMP);
+   }catch(e){}
+  });
+ });
+}
+function melBendKey(dir,down){
+ if(dir==='down') melBendDownHeld=down; else melBendUpHeld=down;
+ _melBendApply();
+}
+
 function toggleMusicalTyping(){
  musicalTypingOn = !musicalTypingOn;
  const hint = document.getElementById('keys-typing-hint');
@@ -7275,6 +7316,10 @@ document.addEventListener('keydown', e => {
  // Z/X octave shift for melody
  if(e.key==='z'){ shiftMelOct(-1); return; }
  if(e.key==='x'){ shiftMelOct(+1); return; }
+ // C/V pitch bend — held, not toggled, like a wheel: bends whatever melody
+ // notes are already sounding and anything newly played while still held.
+ if(e.key==='c'){ melBendKey('down',true); return; }
+ if(e.key==='v'){ melBendKey('up',true); return; }
 
  if(musicalTypingOn){
  const offset = _buildMusicalKeysMap()[e.key];
@@ -7325,12 +7370,17 @@ document.addEventListener('keyup', e => {
  const m=e.code.match(/^(?:Digit|Numpad)([1-7])$/);
  if(m){ const el=document.getElementById('cs-'+KEY_MAP[m[1]]); if(el) el.classList.remove('kb-active'); }
  }
+ if(e.key==='c') melBendKey('down',false);
+ if(e.key==='v') melBendKey('up',false);
 });
 // Losing focus mid-hold would otherwise strand a chord ringing for its full
-// 30s sustain, since the keyup never arrives.
+// 30s sustain, since the keyup never arrives — same reasoning applies to a
+// bend key: without this, alt-tabbing away mid-bend leaves every melody note
+// stuck sharp or flat with no keyup ever coming to release it.
 window.addEventListener('blur', ()=>{
  Object.keys(heldChordKeys).forEach(k=>{ if(!holdMode) releaseSustainedChord(heldChordKeys[k]); delete heldChordKeys[k]; });
  document.querySelectorAll('.kb-active').forEach(el=>el.classList.remove('kb-active'));
+ if(melBendDownHeld||melBendUpHeld){ melBendDownHeld=false; melBendUpHeld=false; _melBendApply(); }
 });
 
 // ═══════════════════════════════════════
