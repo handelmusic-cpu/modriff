@@ -10415,27 +10415,16 @@ function sqSwitchMach(key){
   sqDoSwap(key);
 }
 function sqDoSwap(key){
-  // Save current grid keyed by current machine
-  sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid));
-  var prevGrid=JSON.parse(JSON.stringify(sqGrid)); // copy before switch
+  // sqGrid is ONE shared pattern across every kit — switching machines only changes
+  // which synth plays each track, never the programmed steps. Track index ti keeps
+  // its identity (0=kick, 1=snare, ...) across kits; sqEnsureGrid pads/truncates the
+  // grid to the new machine's visible track count and current sqSteps, but never
+  // deletes data beyond that count, so hidden tracks reappear intact if you switch
+  // back to a kit with more tracks. sqSteps/sqSwing are never touched here, so step
+  // count and duration always stay exactly as they were before the swap.
   sqMach=key;
-  var n=sqTc(),ng={};
-  var hasSaved=sqMachGrids[key]&&Object.keys(sqMachGrids[key]).length>0;
-  var src=hasSaved?sqMachGrids[key]:prevGrid; // inherit pattern if no saved grid for this kit
-  var srcSteps=0;
-  // Find how many steps the source has
-  Object.values(src).forEach(function(row){if(row&&row.length>srcSteps)srcSteps=row.length;});
-  if(!srcSteps||srcSteps<1)srcSteps=sqSteps;
-  for(var ti=0;ti<n;ti++){
-    var og=src[ti];
-    ng[ti]=[];
-    for(var s=0;s<sqSteps;s++){
-      var si2=s<srcSteps?s:s%srcSteps; // wrap if source is shorter
-      if(og&&og[si2]&&typeof og[si2]==='object')ng[ti].push({v:og[si2].v||0,r:og[si2].r||1,orn:og[si2].orn||0,vel:og[si2].vel||100});
-      else ng[ti].push(sqMkCell());
-    }
-  }
-  sqGrid=ng;sqMachGrids[key]=JSON.parse(JSON.stringify(ng));sqPendMach=null;sqRender();
+  sqEnsureGrid();
+  sqPendMach=null;sqRender();
 }
 
 // ── pattern save/load ──
