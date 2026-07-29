@@ -494,6 +494,37 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 /* MōdUlar's onscreen keyboard reuses the melody-strip key styling with its own accent */
 #modular-keys { --mel-c: #7dd3fc; }
 
+/* ═══════════════════════════════════════
+ MŌDULAR PATCH BAY
+═══════════════════════════════════════ */
+#md-rack {
+ position:relative; display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+ gap:10px; padding-top:4px;
+}
+#md-cable-svg { position:absolute; top:0; left:0; pointer-events:none; overflow:visible; z-index:1; }
+#md-cable-svg path { pointer-events:stroke; cursor:pointer; }
+#md-cable-svg path:hover { filter:brightness(1.5); }
+.md-module {
+ position:relative; z-index:2;
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-md);
+ padding:8px; display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+.md-mod-title {
+ font-family:'Orbitron',sans-serif; font-size:.56rem; font-weight:700;
+ color:var(--accent); text-transform:uppercase; letter-spacing:.08em;
+}
+.md-jack-row { display:flex; gap:10px; justify-content:center; margin-top:2px; padding-top:6px; border-top:1px dashed var(--border2); width:100%; }
+.md-jack { display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; user-select:none; -webkit-user-select:none; }
+.md-jack-dot {
+ width:13px; height:13px; border-radius:50%; border:2px solid var(--muted);
+ background:var(--bg); transition:all .12s; box-sizing:border-box;
+}
+.md-jack-lbl { font-size:.4rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.md-jack.patched .md-jack-dot { background:var(--accent); border-color:var(--accent); box-shadow:0 0 6px var(--accent); }
+.md-jack.armed .md-jack-dot { border-color:#7dd3fc; box-shadow:0 0 10px #7dd3fc; transform:scale(1.25); }
+.md-jack.cv .md-jack-dot { border-radius:3px; } /* square = CV, round = audio — same convention as real patch bays */
+
 /* Pitch bend strip */
 .bend-strip-wrap {
  width:100%; max-width:700px; margin-top:4px; display:none;
@@ -2399,6 +2430,15 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb" id="wv-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
  </div>
  </div>
+ <div class="row" style="margin:2px 0 8px;flex-wrap:wrap;justify-content:flex-start;gap:10px 14px;border-top:1px solid var(--border2);padding-top:8px">
+ <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;width:100%">MōdSynth params <span style="text-transform:none;letter-spacing:0;opacity:.7">— live, affects the next note played</span></span>
+ <div class="sg"><div class="sl">Unison</div><input type="range" id="mds-unison" min="0" max="40" step="1" value="18" oninput="mdsSetUnison(this.value)"><div class="sv" id="mds-unison-v">18¢</div></div>
+ <div class="sg"><div class="sl">Sub</div><input type="range" id="mds-sub" min="0" max="100" step="1" value="55" oninput="mdsSetSub(this.value)"><div class="sv" id="mds-sub-v">55%</div></div>
+ <div class="sg"><div class="sl">Transient</div><input type="range" id="mds-transient" min="0" max="100" step="1" value="50" oninput="mdsSetTransient(this.value)"><div class="sv" id="mds-transient-v">50%</div></div>
+ <div class="sg"><div class="sl">Filt Sweep</div><input type="range" id="mds-sweep" min="50" max="200" step="1" value="100" oninput="mdsSetSweep(this.value)"><div class="sv" id="mds-sweep-v">100%</div></div>
+ <div class="sg"><div class="sl">Reso</div><input type="range" id="mds-reso" min="0.1" max="20" step="0.1" value="6" oninput="mdsSetReso(this.value)"><div class="sv" id="mds-reso-v">6.0</div></div>
+ <div class="sg"><div class="sl">Drive</div><input type="range" id="mds-drive" min="0.2" max="6" step="0.1" value="1.8" oninput="mdsSetDrive(this.value)"><div class="sv" id="mds-drive-v">1.8</div></div>
+ </div>
  <div class="row" style="margin:4px 0">
  <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;align-self:center">Length:</span>
  <div class="tg">
@@ -3179,98 +3219,130 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 </div>
 
 <!-- ══════════════════════════════════════
- MŌDULAR TAB — semi-modular synth: real oscillator/filter/envelope/LFO
- stages with genuine patch points (LFO destination, filter env amount)
- that reconfigure the live Web Audio graph, played from an onscreen
- chromatic keyboard.
+ MŌDULAR TAB — a real semi-modular synth. Every module below has jacks;
+ nothing is connected to anything else until YOU patch it, via the SVG
+ cable bay rendered over #md-rack. Click a jack, then click another
+ compatible jack to connect them; click a cable to unplug it.
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-modular">
 
  <div class="panel p-perform" style="width:100%;max-width:700px">
-  <div class="panel-title"><span class="pt-icon">◈</span> Oscillators</div>
-  <div class="row">
-   <div class="sg" style="min-width:130px">
-    <div class="sl">VCO 1</div>
+  <div class="panel-title"><span class="pt-icon">🔌</span> Patch Bay
+   <span style="font-size:.42rem;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— click a jack, then another to patch. Click a cable to unplug.</span>
+  </div>
+  <button class="tb" id="md-reset-btn" onclick="mdResetPatch()" style="margin-bottom:8px;font-size:.5rem">↺ Factory Patch</button>
+
+  <div id="md-rack">
+   <svg id="md-cable-svg"></svg>
+
+   <div class="md-module" id="md-mod-vco1">
+    <div class="md-mod-title">VCO 1</div>
     <div class="tg">
      <button class="tb active" id="md-o1w-sawtooth" onclick="mdSetOscWave(1,'sawtooth')">Saw</button>
      <button class="tb" id="md-o1w-square" onclick="mdSetOscWave(1,'square')">Sqr</button>
      <button class="tb" id="md-o1w-triangle" onclick="mdSetOscWave(1,'triangle')">Tri</button>
      <button class="tb" id="md-o1w-sine" onclick="mdSetOscWave(1,'sine')">Sin</button>
     </div>
+    <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o1-oct" min="-2" max="2" step="1" value="0" oninput="mdSetOscOct(1,this.value)"><div class="sv" id="md-o1-oct-v">0</div></div>
+    <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o1-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(1,this.value)"><div class="sv" id="md-o1-fine-v">0</div></div>
+    <div class="sg"><div class="sl">Level</div><input type="range" id="md-o1-lvl" min="0" max="100" step="1" value="80" oninput="mdSetOscLvl(1,this.value)"><div class="sv" id="md-o1-lvl-v">80%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack cv" id="md-jack-vco1-cv" onclick="mdJackClick('vco1-cv')"><span class="md-jack-dot"></span><span class="md-jack-lbl">CV</span></div>
+     <div class="md-jack" id="md-jack-vco1-out" onclick="mdJackClick('vco1-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
    </div>
-   <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o1-oct" min="-2" max="2" step="1" value="0" oninput="mdSetOscOct(1,this.value)"><div class="sv" id="md-o1-oct-v">0</div></div>
-   <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o1-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(1,this.value)"><div class="sv" id="md-o1-fine-v">0</div></div>
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-o1-lvl" min="0" max="100" step="1" value="80" oninput="mdSetOscLvl(1,this.value)"><div class="sv" id="md-o1-lvl-v">80%</div></div>
-  </div>
-  <div class="row">
-   <div class="sg" style="min-width:130px">
-    <div class="sl">VCO 2</div>
+
+   <div class="md-module" id="md-mod-vco2">
+    <div class="md-mod-title">VCO 2</div>
     <div class="tg">
      <button class="tb" id="md-o2w-sawtooth" onclick="mdSetOscWave(2,'sawtooth')">Saw</button>
      <button class="tb active" id="md-o2w-square" onclick="mdSetOscWave(2,'square')">Sqr</button>
      <button class="tb" id="md-o2w-triangle" onclick="mdSetOscWave(2,'triangle')">Tri</button>
      <button class="tb" id="md-o2w-sine" onclick="mdSetOscWave(2,'sine')">Sin</button>
     </div>
+    <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o2-oct" min="-2" max="2" step="1" value="-1" oninput="mdSetOscOct(2,this.value)"><div class="sv" id="md-o2-oct-v">-1</div></div>
+    <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o2-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(2,this.value)"><div class="sv" id="md-o2-fine-v">0</div></div>
+    <div class="sg"><div class="sl">Level</div><input type="range" id="md-o2-lvl" min="0" max="100" step="1" value="45" oninput="mdSetOscLvl(2,this.value)"><div class="sv" id="md-o2-lvl-v">45%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack cv" id="md-jack-vco2-cv" onclick="mdJackClick('vco2-cv')"><span class="md-jack-dot"></span><span class="md-jack-lbl">CV</span></div>
+     <div class="md-jack" id="md-jack-vco2-out" onclick="mdJackClick('vco2-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
    </div>
-   <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o2-oct" min="-2" max="2" step="1" value="-1" oninput="mdSetOscOct(2,this.value)"><div class="sv" id="md-o2-oct-v">-1</div></div>
-   <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o2-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(2,this.value)"><div class="sv" id="md-o2-fine-v">0</div></div>
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-o2-lvl" min="0" max="100" step="1" value="45" oninput="mdSetOscLvl(2,this.value)"><div class="sv" id="md-o2-lvl-v">45%</div></div>
-  </div>
-  <div class="row">
-   <div class="sg"><div class="sl">Noise</div><input type="range" id="md-noise-lvl" min="0" max="100" step="1" value="0" oninput="mdSetNoiseLvl(this.value)"><div class="sv" id="md-noise-lvl-v">0%</div></div>
-  </div>
- </div>
 
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">◐</span> Filter</div>
-  <div class="row">
-   <div class="tg">
-    <button class="tb active" id="md-filt-lowpass" onclick="mdSetFiltType('lowpass')">LP</button>
-    <button class="tb" id="md-filt-highpass" onclick="mdSetFiltType('highpass')">HP</button>
-    <button class="tb" id="md-filt-bandpass" onclick="mdSetFiltType('bandpass')">BP</button>
+   <div class="md-module" id="md-mod-noise">
+    <div class="md-mod-title">Noise</div>
+    <div class="sg"><div class="sl">Level</div><input type="range" id="md-noise-lvl" min="0" max="100" step="1" value="35" oninput="mdSetNoiseLvl(this.value)"><div class="sv" id="md-noise-lvl-v">35%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack" id="md-jack-noise-out" onclick="mdJackClick('noise-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
    </div>
-   <div class="sg"><div class="sl">Cutoff</div><input type="range" id="md-filt-cutoff" min="80" max="8000" step="10" value="1800" oninput="mdSetFiltCutoff(this.value)"><div class="sv" id="md-filt-cutoff-v">1800Hz</div></div>
-   <div class="sg"><div class="sl">Reso</div><input type="range" id="md-filt-reso" min="0.1" max="20" step="0.1" value="4" oninput="mdSetFiltReso(this.value)"><div class="sv" id="md-filt-reso-v">4</div></div>
-   <div class="sg"><div class="sl">Env Amt</div><input type="range" id="md-filt-env" min="-100" max="100" step="1" value="50" oninput="mdSetFiltEnvAmt(this.value)"><div class="sv" id="md-filt-env-v">+50%</div></div>
-  </div>
- </div>
 
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">⏢</span> Envelope <span style="font-size:.42rem;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— drives Amp always, drives Filter by Env Amt above</span></div>
-  <div class="row">
-   <div class="sg"><div class="sl">Attack</div><input type="range" id="md-env-a" min="0" max="2" step="0.01" value="0.01" oninput="mdSetEnv('a',this.value)"><div class="sv" id="md-env-a-v">10ms</div></div>
-   <div class="sg"><div class="sl">Decay</div><input type="range" id="md-env-d" min="0" max="2" step="0.01" value="0.25" oninput="mdSetEnv('d',this.value)"><div class="sv" id="md-env-d-v">250ms</div></div>
-   <div class="sg"><div class="sl">Sustain</div><input type="range" id="md-env-s" min="0" max="100" step="1" value="65" oninput="mdSetEnv('s',this.value)"><div class="sv" id="md-env-s-v">65%</div></div>
-   <div class="sg"><div class="sl">Release</div><input type="range" id="md-env-r" min="0" max="3" step="0.01" value="0.4" oninput="mdSetEnv('r',this.value)"><div class="sv" id="md-env-r-v">400ms</div></div>
-  </div>
- </div>
-
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">∿</span> LFO <span style="font-size:.42rem;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— patch point: pick where it's plugged in</span></div>
-  <div class="row">
-   <div class="sg"><div class="sl">Rate</div><input type="range" id="md-lfo-rate" min="0.1" max="20" step="0.1" value="5" oninput="mdSetLfoRate(this.value)"><div class="sv" id="md-lfo-rate-v">5.0Hz</div></div>
-   <div class="tg">
-    <button class="tb active" id="md-lw-sine" onclick="mdSetLfoWave('sine')">Sin</button>
-    <button class="tb" id="md-lw-triangle" onclick="mdSetLfoWave('triangle')">Tri</button>
-    <button class="tb" id="md-lw-square" onclick="mdSetLfoWave('square')">Sqr</button>
+   <div class="md-module" id="md-mod-filter">
+    <div class="md-mod-title">Filter</div>
+    <div class="tg">
+     <button class="tb active" id="md-filt-lowpass" onclick="mdSetFiltType('lowpass')">LP</button>
+     <button class="tb" id="md-filt-highpass" onclick="mdSetFiltType('highpass')">HP</button>
+     <button class="tb" id="md-filt-bandpass" onclick="mdSetFiltType('bandpass')">BP</button>
+    </div>
+    <div class="sg"><div class="sl">Cutoff</div><input type="range" id="md-filt-cutoff" min="80" max="8000" step="10" value="1800" oninput="mdSetFiltCutoff(this.value)"><div class="sv" id="md-filt-cutoff-v">1800Hz</div></div>
+    <div class="sg"><div class="sl">Reso</div><input type="range" id="md-filt-reso" min="0.1" max="20" step="0.1" value="4" oninput="mdSetFiltReso(this.value)"><div class="sv" id="md-filt-reso-v">4</div></div>
+    <div class="sg"><div class="sl">CV Amt</div><input type="range" id="md-filt-env" min="-100" max="100" step="1" value="50" oninput="mdSetFiltEnvAmt(this.value)"><div class="sv" id="md-filt-env-v">+50%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack" id="md-jack-filter-in" onclick="mdJackClick('filter-in')"><span class="md-jack-dot"></span><span class="md-jack-lbl">IN</span></div>
+     <div class="md-jack cv" id="md-jack-filter-cv" onclick="mdJackClick('filter-cv')"><span class="md-jack-dot"></span><span class="md-jack-lbl">CV</span></div>
+     <div class="md-jack" id="md-jack-filter-out" onclick="mdJackClick('filter-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
    </div>
-   <div class="sg"><div class="sl">Depth</div><input type="range" id="md-lfo-depth" min="0" max="100" step="1" value="30" oninput="mdSetLfoDepth(this.value)"><div class="sv" id="md-lfo-depth-v">30%</div></div>
-  </div>
-  <div class="row">
-   <span style="font-size:.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Patch to:</span>
-   <div class="tg">
-    <button class="tb active" id="md-ld-off" onclick="mdSetLfoDest('off')">Off</button>
-    <button class="tb" id="md-ld-pitch" onclick="mdSetLfoDest('pitch')">Pitch</button>
-    <button class="tb" id="md-ld-filter" onclick="mdSetLfoDest('filter')">Filter</button>
-    <button class="tb" id="md-ld-amp" onclick="mdSetLfoDest('amp')">Amp</button>
-   </div>
-  </div>
- </div>
 
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">▶</span> Output</div>
-  <div class="row">
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-out-lvl" min="0" max="100" step="1" value="75" oninput="mdSetOutLvl(this.value)"><div class="sv" id="md-out-lvl-v">75%</div></div>
+   <div class="md-module" id="md-mod-env">
+    <div class="md-mod-title">Envelope</div>
+    <div class="sg"><div class="sl">Attack</div><input type="range" id="md-env-a" min="0" max="2" step="0.01" value="0.01" oninput="mdSetEnv('a',this.value)"><div class="sv" id="md-env-a-v">10ms</div></div>
+    <div class="sg"><div class="sl">Decay</div><input type="range" id="md-env-d" min="0" max="2" step="0.01" value="0.25" oninput="mdSetEnv('d',this.value)"><div class="sv" id="md-env-d-v">250ms</div></div>
+    <div class="sg"><div class="sl">Sustain</div><input type="range" id="md-env-s" min="0" max="100" step="1" value="65" oninput="mdSetEnv('s',this.value)"><div class="sv" id="md-env-s-v">65%</div></div>
+    <div class="sg"><div class="sl">Release</div><input type="range" id="md-env-r" min="0" max="3" step="0.01" value="0.4" oninput="mdSetEnv('r',this.value)"><div class="sv" id="md-env-r-v">400ms</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack cv" id="md-jack-env-out" onclick="mdJackClick('env-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
+   </div>
+
+   <div class="md-module" id="md-mod-lfo1">
+    <div class="md-mod-title">LFO 1</div>
+    <div class="sg"><div class="sl">Rate</div><input type="range" id="md-lfo1-rate" min="0.1" max="20" step="0.1" value="5" oninput="mdSetLfoRate(1,this.value)"><div class="sv" id="md-lfo1-rate-v">5.0Hz</div></div>
+    <div class="tg">
+     <button class="tb active" id="md-l1w-sine" onclick="mdSetLfoWave(1,'sine')">Sin</button>
+     <button class="tb" id="md-l1w-triangle" onclick="mdSetLfoWave(1,'triangle')">Tri</button>
+     <button class="tb" id="md-l1w-square" onclick="mdSetLfoWave(1,'square')">Sqr</button>
+    </div>
+    <div class="sg"><div class="sl">Depth</div><input type="range" id="md-lfo1-depth" min="0" max="100" step="1" value="30" oninput="mdSetLfoDepth(1,this.value)"><div class="sv" id="md-lfo1-depth-v">30%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack cv" id="md-jack-lfo1-out" onclick="mdJackClick('lfo1-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
+   </div>
+
+   <div class="md-module" id="md-mod-lfo2">
+    <div class="md-mod-title">LFO 2</div>
+    <div class="sg"><div class="sl">Rate</div><input type="range" id="md-lfo2-rate" min="0.1" max="20" step="0.1" value="0.6" oninput="mdSetLfoRate(2,this.value)"><div class="sv" id="md-lfo2-rate-v">0.6Hz</div></div>
+    <div class="tg">
+     <button class="tb active" id="md-l2w-triangle" onclick="mdSetLfoWave(2,'triangle')">Tri</button>
+     <button class="tb" id="md-l2w-sine" onclick="mdSetLfoWave(2,'sine')">Sin</button>
+     <button class="tb" id="md-l2w-square" onclick="mdSetLfoWave(2,'square')">Sqr</button>
+    </div>
+    <div class="sg"><div class="sl">Depth</div><input type="range" id="md-lfo2-depth" min="0" max="100" step="1" value="30" oninput="mdSetLfoDepth(2,this.value)"><div class="sv" id="md-lfo2-depth-v">30%</div></div>
+    <div class="md-jack-row">
+     <div class="md-jack cv" id="md-jack-lfo2-out" onclick="mdJackClick('lfo2-out')"><span class="md-jack-dot"></span><span class="md-jack-lbl">OUT</span></div>
+    </div>
+   </div>
+
+   <div class="md-module" id="md-mod-amp">
+    <div class="md-mod-title">Amp / Out</div>
+    <div class="sg"><div class="sl">Level</div><input type="range" id="md-out-lvl" min="0" max="100" step="1" value="75" oninput="mdSetOutLvl(this.value)"><div class="sv" id="md-out-lvl-v">75%</div></div>
+    <div style="font-size:.4rem;color:var(--muted);line-height:1.5;padding:2px 0">No signal into IN = silence. No CV into CV = the VCA never opens — patch Envelope OUT here to actually hear notes.</div>
+    <div class="md-jack-row">
+     <div class="md-jack" id="md-jack-amp-in" onclick="mdJackClick('amp-in')"><span class="md-jack-dot"></span><span class="md-jack-lbl">IN</span></div>
+     <div class="md-jack cv" id="md-jack-amp-cv" onclick="mdJackClick('amp-cv')"><span class="md-jack-dot"></span><span class="md-jack-lbl">CV</span></div>
+    </div>
+   </div>
+
   </div>
  </div>
 
@@ -3466,6 +3538,21 @@ const WAVE_GAIN = {
  piano_real:1.3,
  modsynth:.95,
 };
+
+// ═══════════════════════════════════════
+// MŌDSYNTH — live-tweakable parameters for the 'modsynth' voice above.
+// Values are read fresh by makeVoice() on every note-on, so these knobs
+// affect the very next note played, not just future presets.
+// ═══════════════════════════════════════
+var mdsUnison=18, mdsSub=.55, mdsTransient=.5, mdsSweep=1, mdsReso=6, mdsDrive=1.8;
+function mdsSetUnison(v){ mdsUnison=parseFloat(v); _mdTxt('mds-unison-v',Math.round(v)+'¢'); }
+function mdsSetSub(v){ mdsSub=v/100; _mdTxt('mds-sub-v',v+'%'); }
+function mdsSetTransient(v){ mdsTransient=v/100; _mdTxt('mds-transient-v',v+'%'); }
+function mdsSetSweep(v){ mdsSweep=v/100; _mdTxt('mds-sweep-v',v+'%'); }
+function mdsSetReso(v){ mdsReso=parseFloat(v); _mdTxt('mds-reso-v',(+v).toFixed(1)); }
+function mdsSetDrive(v){ mdsDrive=parseFloat(v); _mdTxt('mds-drive-v',(+v).toFixed(1)); }
+// _mdTxt is defined later alongside the MōdUlar engine; both are plain
+// top-level function declarations, so hoisting makes it available here too.
 
 // ═══════════════════════════════════════
 // SAMPLE ENGINE — real instrument samples (progressive enhancement)
@@ -4327,33 +4414,35 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
 
  } else if(wv==='modsynth'){
  // MōdSynth — Massive/Serum-style mega voice, built from several stages
- // layered together rather than one oscillator:
- //  1. a tight 7-voice unison saw stack (the wide, modern "wall" sound)
- //  2. a sub-octave triangle underneath for low-end weight
- //  3. a brief filtered-noise transient at the attack for definition/click
- //  4. a dedicated resonant filter with its own fast-open/slow-close sweep
- //     (independent of the shared fxCutoff/fxEnv character macros applied
- //     downstream by voiceFx — this is the voice's own built-in movement)
- //  5. a soft internal saturation stage for harmonic bite
- const unison=buildSuperSaw(ctx,f,18);
+ // layered together rather than one oscillator. Every stage below reads a
+ // module-level mds* parameter that the MōdSynth settings panel (Settings
+ // tab) controls live, rather than a fixed recipe:
+ //  1. a 7-voice unison saw stack, width set by mdsUnison (cents)
+ //  2. a sub-octave triangle underneath, level set by mdsSub
+ //  3. a brief filtered-noise transient at the attack, level set by mdsTransient
+ //  4. a dedicated resonant filter (mdsReso) with its own fast-open/slow-close
+ //     sweep, range set by mdsSweep — independent of the shared fxCutoff/fxEnv
+ //     character macros applied downstream by voiceFx
+ //  5. a soft internal saturation stage, amount set by mdsDrive
+ const unison=buildSuperSaw(ctx,f,mdsUnison);
  const sub=ctx.createOscillator(); sub.type='triangle'; sub.frequency.value=f/2;
- const subG=ctx.createGain(); subG.gain.value=0.55;
+ const subG=ctx.createGain(); subG.gain.value=mdsSub;
  sub.connect(subG);
- const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=6;
+ const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=mdsReso;
  const cutBase=Math.min(f*2.2,900);
- const cutPeak=Math.min(f*9,9000);
+ const cutPeak=Math.min(f*9*mdsSweep,9000);
  filt.frequency.setValueAtTime(cutBase,t0);
  filt.frequency.linearRampToValueAtTime(cutPeak,t0+0.018);
  filt.frequency.exponentialRampToValueAtTime(Math.max(cutBase*1.4,240),t0+Math.min(Math.max(dur*0.55,0.12),1.1));
  const drive=ctx.createWaveShaper();
- const cv=new Float32Array(256); for(let i=0;i<256;i++){ const x=i*2/256-1; cv[i]=Math.tanh(x*1.8); }
+ const cv=new Float32Array(256); for(let i=0;i<256;i++){ const x=i*2/256-1; cv[i]=Math.tanh(x*mdsDrive); }
  drive.curve=cv;
  unison.out.connect(filt); subG.connect(filt);
  filt.connect(drive); drive.connect(gainNode);
  const ns=ctx.createBufferSource(); ns.buffer=_modSynthNoise(ctx);
  const nsF=ctx.createBiquadFilter(); nsF.type='bandpass'; nsF.frequency.value=Math.min(f*3,4000); nsF.Q.value=1.1;
  const nsG=ctx.createGain();
- nsG.gain.setValueAtTime(0.5,t0); nsG.gain.exponentialRampToValueAtTime(0.001,t0+0.03);
+ nsG.gain.setValueAtTime(mdsTransient,t0); nsG.gain.exponentialRampToValueAtTime(0.001,t0+0.03);
  ns.connect(nsF); nsF.connect(nsG); nsG.connect(gainNode);
  ns.start(t0); ns.stop(t0+0.04); r.push(ns);
  unison.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.1);r.push(o);});
@@ -7884,6 +7973,8 @@ function switchTab(t){
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
  if(t!=='modular' && typeof mdStopAll==='function') mdStopAll(); // no stuck notes when navigating away
+ // cables are drawn from live jack positions, which only resolve once the tab is actually visible
+ if(t==='modular' && typeof mdRenderPatchUI==='function') setTimeout(mdRenderPatchUI,0);
  if(t==='songs') renderSetlistPerform();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
@@ -10045,7 +10136,7 @@ renderChords();
 loadProgressionFromHash();
 updateOct();
 buildMelodyStrip();
-buildModularKeys();
+buildModularKeys(); // patch-bay init (mdRenderPatchUI/resize listener) happens after MD_JACKS is defined, further below
 initBendStrip();
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
@@ -12568,23 +12659,49 @@ window._mlRestoreState = function(s){
 
 
 // ═══════════════════════════════════════
-// MŌDULAR — semi-modular synth
-// A real oscillator → filter → VCA signal path plus one LFO, all with
-// genuine patch points: the LFO's destination (Off/Pitch/Filter/Amp) and
-// the filter's envelope amount actually change which nodes get connected
-// to what, not just cosmetic labels.
+// MŌDULAR — a real semi-modular synth. Nothing is wired together except
+// through mdPatches, the same connections drawn as cables in the Patch
+// Bay UI. Every note-on walks that list and builds the live Web Audio
+// graph from it, so unplugging a cable really does remove that signal
+// path — it isn't a cosmetic label over a fixed circuit.
 // ═══════════════════════════════════════
 var mdOsc={
  1:{wave:'sawtooth',oct:0,fine:0,lvl:.8},
  2:{wave:'square',oct:-1,fine:0,lvl:.45}
 };
-var mdNoiseLvl=0;
+var mdNoiseLvl=.12;
 var mdFiltType='lowpass', mdFiltCutoff=1800, mdFiltReso=4, mdFiltEnvAmt=.5;
 var mdEnvA=.01, mdEnvD=.25, mdEnvS=.65, mdEnvR=.4;
-var mdLfoRate=5, mdLfoWave='sine', mdLfoDest='off', mdLfoDepth=.3;
+var mdLfo={
+ 1:{rate:5,  wave:'sine',     depth:.3},
+ 2:{rate:.6, wave:'triangle', depth:.3}
+};
 var mdOutLvl=.75;
-var activeMd={}; // midi -> {oscs:[...], filt, amp, out}
+var activeMd={}; // midi -> {oscs:[...], amp, filt, envSrc}
 var _mdNoiseBuf=null;
+
+// jack registry: name -> 'audio-out' | 'audio-in' | 'cv-out' | 'cv-in'
+var MD_JACKS={
+ 'vco1-out':'audio-out', 'vco1-cv':'cv-in',
+ 'vco2-out':'audio-out', 'vco2-cv':'cv-in',
+ 'noise-out':'audio-out',
+ 'filter-in':'audio-in', 'filter-cv':'cv-in', 'filter-out':'audio-out',
+ 'amp-in':'audio-in', 'amp-cv':'cv-in',
+ 'env-out':'cv-out',
+ 'lfo1-out':'cv-out', 'lfo2-out':'cv-out'
+};
+// factory patch: 2 oscs + noise -> filter -> amp, envelope drives both amp and filter.
+// Fully rewireable — Factory Patch button restores this, nothing else is special about it.
+var MD_FACTORY_PATCH=[
+ {from:'vco1-out',to:'filter-in'},
+ {from:'vco2-out',to:'filter-in'},
+ {from:'noise-out',to:'filter-in'},
+ {from:'filter-out',to:'amp-in'},
+ {from:'env-out',to:'amp-cv'},
+ {from:'env-out',to:'filter-cv'}
+];
+var mdPatches=MD_FACTORY_PATCH.map(function(p){ return {from:p.from,to:p.to}; });
+var mdArmedJack=null;
 
 function _mdTxt(id,txt){ var e=document.getElementById(id); if(e) e.textContent=txt; }
 
@@ -12612,17 +12729,76 @@ function mdSetEnv(stage,v){
  else if(stage==='s'){ mdEnvS=v/100; _mdTxt('md-env-s-v',Math.round(v)+'%'); }
  else if(stage==='r'){ mdEnvR=v; _mdTxt('md-env-r-v',Math.round(v*1000)+'ms'); }
 }
-function mdSetLfoRate(v){ mdLfoRate=parseFloat(v); _mdTxt('md-lfo-rate-v',(+v).toFixed(1)+'Hz'); }
-function mdSetLfoWave(w){
- mdLfoWave=w;
- ['sine','triangle','square'].forEach(function(x){ var b=document.getElementById('md-lw-'+x); if(b) b.classList.toggle('active',x===w); });
+function mdSetLfoRate(n,v){ mdLfo[n].rate=parseFloat(v); _mdTxt('md-lfo'+n+'-rate-v',(+v).toFixed(1)+'Hz'); }
+function mdSetLfoWave(n,w){
+ mdLfo[n].wave=w;
+ ['sine','triangle','square'].forEach(function(x){ var b=document.getElementById('md-l'+n+'w-'+x); if(b) b.classList.toggle('active',x===w); });
 }
-function mdSetLfoDepth(v){ mdLfoDepth=v/100; _mdTxt('md-lfo-depth-v',v+'%'); }
-function mdSetLfoDest(dest){
- mdLfoDest=dest;
- ['off','pitch','filter','amp'].forEach(function(x){ var b=document.getElementById('md-ld-'+x); if(b) b.classList.toggle('active',x===dest); });
-}
+function mdSetLfoDepth(n,v){ mdLfo[n].depth=v/100; _mdTxt('md-lfo'+n+'-depth-v',v+'%'); }
 function mdSetOutLvl(v){ mdOutLvl=v/100; _mdTxt('md-out-lvl-v',v+'%'); }
+
+// ── patch bay: click a jack, then a compatible jack, to cable them together ──
+function mdJackKind(name){ return MD_JACKS[name]; }
+function mdIsOut(kind){ return kind==='audio-out'||kind==='cv-out'; }
+function mdIsIn(kind){ return kind==='audio-in'||kind==='cv-in'; }
+function mdIsCv(kind){ return kind==='cv-out'||kind==='cv-in'; }
+function mdHasPatch(from,to){ return mdPatches.some(function(p){ return p.from===from&&p.to===to; }); }
+
+function mdJackClick(name){
+ if(mdArmedJack===null){ mdArmedJack=name; mdRenderPatchUI(); return; }
+ if(mdArmedJack===name){ mdArmedJack=null; mdRenderPatchUI(); return; } // same jack twice: cancel
+ var a=mdArmedJack, b=name, ka=mdJackKind(a), kb=mdJackKind(b);
+ mdArmedJack=null;
+ if(!ka||!kb){ mdRenderPatchUI(); return; }
+ var out,inp;
+ if(mdIsOut(ka)&&mdIsIn(kb)){ out=a; inp=b; }
+ else if(mdIsOut(kb)&&mdIsIn(ka)){ out=b; inp=a; }
+ else{ mdRenderPatchUI(); return; } // two outputs, two inputs, or the same jack twice — invalid, cancel
+ if(mdIsCv(mdJackKind(out))!==mdIsCv(mdJackKind(inp))){ mdRenderPatchUI(); return; } // audio can't feed a CV input or vice versa
+ if(!mdHasPatch(out,inp)) mdPatches.push({from:out,to:inp});
+ mdRenderPatchUI();
+}
+function mdRemovePatch(from,to){
+ mdPatches=mdPatches.filter(function(p){ return !(p.from===from&&p.to===to); });
+ mdRenderPatchUI();
+}
+function mdResetPatch(){
+ mdPatches=MD_FACTORY_PATCH.map(function(p){ return {from:p.from,to:p.to}; });
+ mdArmedJack=null;
+ mdRenderPatchUI();
+}
+function mdRenderPatchUI(){
+ Object.keys(MD_JACKS).forEach(function(name){
+  var el=document.getElementById('md-jack-'+name); if(!el) return;
+  el.classList.toggle('patched', mdPatches.some(function(p){ return p.from===name||p.to===name; }));
+  el.classList.toggle('armed', mdArmedJack===name);
+ });
+ mdRenderCables();
+}
+function mdRenderCables(){
+ var svg=document.getElementById('md-cable-svg'), rack=document.getElementById('md-rack');
+ if(!svg||!rack) return;
+ var rr=rack.getBoundingClientRect();
+ svg.setAttribute('width',rr.width); svg.setAttribute('height',rr.height);
+ svg.innerHTML='';
+ mdPatches.forEach(function(p){
+  var a=document.getElementById('md-jack-'+p.from), b=document.getElementById('md-jack-'+p.to);
+  if(!a||!b) return;
+  var ar=a.querySelector('.md-jack-dot').getBoundingClientRect(), br=b.querySelector('.md-jack-dot').getBoundingClientRect();
+  var x1=ar.left+ar.width/2-rr.left, y1=ar.top+ar.height/2-rr.top;
+  var x2=br.left+br.width/2-rr.left, y2=br.top+br.height/2-rr.top;
+  var midY=(y1+y2)/2;
+  var path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d','M'+x1+','+y1+' C'+x1+','+midY+' '+x2+','+midY+' '+x2+','+y2);
+  path.setAttribute('fill','none');
+  path.setAttribute('stroke', mdIsCv(mdJackKind(p.from)) ? '#c084fc' : '#7dd3fc');
+  path.setAttribute('stroke-width','2.5');
+  path.setAttribute('opacity','0.85');
+  path.dataset.from=p.from; path.dataset.to=p.to;
+  path.addEventListener('click',function(){ mdRemovePatch(p.from,p.to); });
+  svg.appendChild(path);
+ });
+}
 
 function _mdEnsureNoise(ctx){
  if(_mdNoiseBuf) return _mdNoiseBuf;
@@ -12641,6 +12817,16 @@ function _mdHardStop(midi){
  delete activeMd[midi];
 }
 
+// how much a CV source contributes to a destination, in that destination's
+// physical units (Hz for filter cutoff, cents for pitch, linear gain for amp)
+function _mdCvScale(srcName,dstName,vel,filtBase){
+ var lfoN = srcName==='lfo1-out' ? 1 : srcName==='lfo2-out' ? 2 : null;
+ if(dstName==='amp-cv') return srcName==='env-out' ? vel : mdLfo[lfoN].depth*.5;
+ if(dstName==='filter-cv') return srcName==='env-out' ? mdFiltEnvAmt*filtBase*3 : mdLfo[lfoN].depth*filtBase*.9;
+ if(dstName==='vco1-cv'||dstName==='vco2-cv') return srcName==='env-out' ? 700 : mdLfo[lfoN].depth*35;
+ return 1;
+}
+
 function mdPlayNote(midi,pressure){
  var ctx=getCtx(); if(!ctx) return;
  if(activeMd[midi]) _mdHardStop(midi); // retrigger safety
@@ -12649,53 +12835,65 @@ function mdPlayNote(midi,pressure){
  var f=440*Math.pow(2,(midi-69)/12);
  var oscs=[];
 
- // one LFO per voice (so overlapping notes don't fight over a shared modulator)
- var lfo=null, lfoGain=null;
- if(mdLfoDest!=='off'){
-  lfo=ctx.createOscillator(); lfo.type=mdLfoWave; lfo.frequency.value=mdLfoRate;
-  lfoGain=ctx.createGain(); lfoGain.gain.value=0;
-  lfo.connect(lfoGain); lfo.start(t0); oscs.push(lfo);
- }
+ // Every module gets built whether it's patched or not — like real hardware,
+ // the module exists either way, it's just silent/inert until cabled in.
+ var osc1=ctx.createOscillator(); osc1.type=mdOsc[1].wave;
+ osc1.frequency.value=f*Math.pow(2,mdOsc[1].oct)*Math.pow(2,mdOsc[1].fine/12);
+ var osc1Lvl=ctx.createGain(); osc1Lvl.gain.value=mdOsc[1].lvl; osc1.connect(osc1Lvl);
 
- var mix=ctx.createGain(); mix.gain.value=1;
- [mdOsc[1],mdOsc[2]].forEach(function(cfg){
-  if(cfg.lvl<=.002) return;
-  var o=ctx.createOscillator(); o.type=cfg.wave;
-  o.frequency.value=f*Math.pow(2,cfg.oct)*Math.pow(2,cfg.fine/12);
-  var g=ctx.createGain(); g.gain.value=cfg.lvl;
-  o.connect(g); g.connect(mix);
-  if(lfo && mdLfoDest==='pitch'){ lfoGain.gain.value=mdLfoDepth*35; lfoGain.connect(o.detune); }
-  o.start(t0); oscs.push(o);
- });
- if(mdNoiseLvl>.002){
-  var ns=ctx.createBufferSource(); ns.buffer=_mdEnsureNoise(ctx); ns.loop=true;
-  var nsg=ctx.createGain(); nsg.gain.value=mdNoiseLvl;
-  ns.connect(nsg); nsg.connect(mix);
-  ns.start(t0); oscs.push(ns);
- }
+ var osc2=ctx.createOscillator(); osc2.type=mdOsc[2].wave;
+ osc2.frequency.value=f*Math.pow(2,mdOsc[2].oct)*Math.pow(2,mdOsc[2].fine/12);
+ var osc2Lvl=ctx.createGain(); osc2Lvl.gain.value=mdOsc[2].lvl; osc2.connect(osc2Lvl);
 
- // filter stage — its own attack/decay sweep, scaled by Env Amt (bipolar)
+ var noise=ctx.createBufferSource(); noise.buffer=_mdEnsureNoise(ctx); noise.loop=true;
+ var noiseLvl=ctx.createGain(); noiseLvl.gain.value=mdNoiseLvl; noise.connect(noiseLvl);
+
+ var filterIn=ctx.createGain(); filterIn.gain.value=1; // FILTER.IN summing point
  var filt=ctx.createBiquadFilter(); filt.type=mdFiltType; filt.Q.value=mdFiltReso;
- var base=Math.max(40,Math.min(18000,mdFiltCutoff));
- var peak=Math.max(40,Math.min(18000,base+base*mdFiltEnvAmt*3));
- var susCut=Math.max(40,Math.min(18000,base+(peak-base)*mdEnvS));
- filt.frequency.setValueAtTime(base,t0);
- filt.frequency.linearRampToValueAtTime(peak,t0+Math.max(mdEnvA,.002));
- filt.frequency.linearRampToValueAtTime(susCut,t0+mdEnvA+mdEnvD);
- if(lfo && mdLfoDest==='filter'){ lfoGain.gain.value=mdLfoDepth*base*.9; lfoGain.connect(filt.frequency); }
- mix.connect(filt);
+ var filtBase=Math.max(40,Math.min(18000,mdFiltCutoff));
+ filt.frequency.setValueAtTime(filtBase,t0); // stays here unless something is patched to FILTER.CV
+ filterIn.connect(filt);
 
- // VCA — always driven by the envelope; LFO can additionally ride on top for tremolo
- var amp=ctx.createGain(); amp.gain.setValueAtTime(0,t0);
- amp.gain.linearRampToValueAtTime(vel,t0+Math.max(mdEnvA,.002));
- amp.gain.linearRampToValueAtTime(Math.max(vel*mdEnvS,.0001),t0+mdEnvA+mdEnvD);
- if(lfo && mdLfoDest==='amp'){ lfoGain.gain.value=mdLfoDepth*.5; lfoGain.connect(amp.gain); }
- filt.connect(amp);
+ var ampIn=ctx.createGain(); ampIn.gain.value=1; // AMP.IN summing point
+ var amp=ctx.createGain(); amp.gain.setValueAtTime(0,t0); // silent unless something is patched to AMP.CV
+ ampIn.connect(amp);
 
- var out=ctx.createGain(); out.gain.value=mdOutLvl;
- amp.connect(out); out.connect(window._masterDest||ctx.destination);
+ var envSrc=ctx.createConstantSource(); // normalized 0..1 envelope shape, as a patchable CV
+ envSrc.offset.setValueAtTime(0,t0);
+ envSrc.offset.linearRampToValueAtTime(1,t0+Math.max(mdEnvA,.002));
+ envSrc.offset.linearRampToValueAtTime(mdEnvS,t0+mdEnvA+mdEnvD);
+ envSrc.start(t0);
 
- activeMd[midi]={oscs:oscs,filt:filt,amp:amp,out:out};
+ var lfo1=ctx.createOscillator(); lfo1.type=mdLfo[1].wave; lfo1.frequency.value=mdLfo[1].rate; lfo1.start(t0);
+ var lfo2=ctx.createOscillator(); lfo2.type=mdLfo[2].wave; lfo2.frequency.value=mdLfo[2].rate; lfo2.start(t0);
+
+ var outGain=ctx.createGain(); outGain.gain.value=mdOutLvl;
+ amp.connect(outGain); outGain.connect(window._masterDest||ctx.destination);
+
+ osc1.start(t0); osc2.start(t0); noise.start(t0);
+ var safetyEnd=t0+30; // ceiling in case a note never releases (mirrors SUSTAIN_DUR elsewhere)
+ [osc1,osc2,noise,envSrc,lfo1,lfo2].forEach(function(n){ n.stop(safetyEnd); oscs.push(n); });
+
+ var sources={
+  'vco1-out':osc1Lvl, 'vco2-out':osc2Lvl, 'noise-out':noiseLvl,
+  'filter-out':filt, 'env-out':envSrc, 'lfo1-out':lfo1, 'lfo2-out':lfo2
+ };
+ var dests={
+  'filter-in':{node:filterIn}, 'amp-in':{node:ampIn},
+  'filter-cv':{param:filt.frequency}, 'amp-cv':{param:amp.gain},
+  'vco1-cv':{param:osc1.detune}, 'vco2-cv':{param:osc2.detune}
+ };
+ mdPatches.forEach(function(p){
+  var srcNode=sources[p.from], dst=dests[p.to];
+  if(!srcNode||!dst) return;
+  if(dst.node){ srcNode.connect(dst.node); }
+  else{
+   var scaleG=ctx.createGain(); scaleG.gain.value=_mdCvScale(p.from,p.to,vel,filtBase);
+   srcNode.connect(scaleG); scaleG.connect(dst.param);
+  }
+ });
+
+ activeMd[midi]={oscs:oscs, amp:amp, filt:filt, envSrc:envSrc};
  var el=document.getElementById('md-'+midi); if(el) el.classList.add('held');
 }
 
@@ -12708,12 +12906,10 @@ function mdReleaseNote(midi){
  var t=ctx.currentTime;
  var rel=Math.max(mdEnvR,.02);
  try{
-  v.amp.gain.cancelScheduledValues(t);
-  v.amp.gain.setValueAtTime(v.amp.gain.value,t);
-  v.amp.gain.linearRampToValueAtTime(.0001,t+rel);
-  v.filt.frequency.cancelScheduledValues(t);
-  v.filt.frequency.setValueAtTime(v.filt.frequency.value,t);
-  v.filt.frequency.linearRampToValueAtTime(mdFiltCutoff,t+rel);
+  // ramping the envelope's own CV source fades every destination it's patched to at once
+  v.envSrc.offset.cancelScheduledValues(t);
+  v.envSrc.offset.setValueAtTime(v.envSrc.offset.value,t);
+  v.envSrc.offset.linearRampToValueAtTime(0,t+rel);
  }catch(e){}
  v.oscs.forEach(function(o){ try{ o.stop(t+rel+.05); }catch(e){} });
  delete activeMd[midi];
@@ -12739,6 +12935,10 @@ function buildModularKeys(){
   wrap.appendChild(btn); wrap.appendChild(lbl); container.appendChild(wrap);
  }
 }
+mdRenderPatchUI(); // now that MD_JACKS/mdPatches above are actually assigned, draw the factory-patch state
+window.addEventListener('resize', function(){
+ if(document.getElementById('page-modular')&&document.getElementById('page-modular').classList.contains('active')) mdRenderCables();
+});
 
 
 // ─── Rhythm tab: simple / sequencer mode toggle ───
