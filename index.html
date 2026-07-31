@@ -893,6 +893,26 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
+ CHORD FORM / FINGERING DIAGRAMS
+═══════════════════════════════════════ */
+.chord-diagram-body, .fingering-body {
+ color:var(--text); padding:6px 0 2px; min-height:110px;
+ display:flex; align-items:center; justify-content:center;
+}
+.cd-name {
+ font-family:'Orbitron',sans-serif; font-size:.72rem; font-weight:700;
+ color:var(--pg); letter-spacing:.04em; margin-left:6px;
+}
+.fing-note {
+ font-family:'Orbitron',sans-serif; font-size:1.5rem; font-weight:700;
+ color:var(--pg); text-align:center; line-height:1.1;
+}
+.fing-sub { font-size:.46rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-top:3px; text-align:center; }
+.fing-big { font-family:'Orbitron',sans-serif; font-size:1.6rem; font-weight:700; color:var(--text); text-align:center; letter-spacing:.06em; }
+.fing-wrap { display:flex; align-items:center; justify-content:center; gap:22px; flex-wrap:wrap; }
+.fing-none { font-size:.5rem; color:var(--muted); text-align:center; padding:14px; line-height:1.7; }
+
+/* ═══════════════════════════════════════
  VOICE TYPE MODAL
 ═══════════════════════════════════════ */
 .modal-overlay {
@@ -2381,6 +2401,13 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 
+ <!-- MōdSynth presets — only meaningful while MōdSynth is the chord voice,
+      so setWave() shows/hides this row. -->
+ <div class="sound-bar advanced-only" id="modsynth-preset-row" style="display:none">
+ <span class="sound-bar-label">MōdSynth:</span>
+ <div class="tg" style="flex-wrap:wrap" id="modsynth-preset-btns"></div>
+ </div>
+
  <!-- Diatonic chords -->
  <div class="chord-section-lbl">Diatonic <button class="tips-btn" onclick="showTip('chords',this)" title="How chords work">?</button></div>
  <div class="chords-grid" id="chords-diatonic"></div>
@@ -2403,6 +2430,20 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="li"><div class="ld" style="background:var(--subdom)"></div>Subdominant</div>
  <div class="li"><div class="ld" style="background:var(--dom)"></div>Dominant</div>
  <div class="li"><div class="ld" style="background:var(--modal)"></div>Modal</div>
+ </div>
+
+ <!-- Chord forms — follows whatever chord is sounding, including song playback -->
+ <div class="panel p-perform" id="chord-diagram-panel" style="width:100%;max-width:700px;margin-top:10px">
+  <div class="panel-title">
+   <span class="pt-icon">▦</span> Chord Forms
+   <span class="cd-name" id="chord-diagram-name">C</span>
+  </div>
+  <div class="tg" style="width:100%;margin-bottom:4px">
+   <button class="tb active" id="cdi-guitar" onclick="setChordDiagramInst('guitar')" style="flex:1">Guitar</button>
+   <button class="tb" id="cdi-ukulele" onclick="setChordDiagramInst('ukulele')" style="flex:1">Uke</button>
+   <button class="tb" id="cdi-piano" onclick="setChordDiagramInst('piano')" style="flex:1">Piano</button>
+  </div>
+  <div class="chord-diagram-body" id="chord-diagram-body"></div>
  </div>
 
  </div><!-- /pf-chords-panel -->
@@ -2452,6 +2493,20 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="bend-note-label" id="bend-note-label">—</div>
  </div>
  </div>
+ </div>
+
+ <!-- Fingering chart — advanced-mode only, per instrument -->
+ <div class="panel p-perform advanced-only" id="fingering-panel" style="width:100%;max-width:700px;margin-top:10px">
+  <div class="panel-title">
+   <span class="pt-icon">✋</span> Fingering
+   <span id="fing-note-label" style="margin-left:auto"></span>
+  </div>
+  <div class="row" style="margin-bottom:4px">
+   <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Instrument:</span>
+   <select id="fing-inst-sel" onchange="setFingerInst(this.value)"
+           style="flex:1;background:var(--surf2);color:var(--text);border:1px solid var(--border2);border-radius:var(--r-sm);padding:6px 8px;font-family:'Outfit',sans-serif;font-size:.6rem;cursor:pointer"></select>
+  </div>
+  <div class="fingering-body" id="fingering-body"></div>
  </div>
  </div><!-- /pf-melody-panel -->
 
@@ -4201,16 +4256,45 @@ function reapVoice(oscs, nodes, endSec){
 // ═══════════════════════════════════════
 // VOICE BUILDING
 // ═══════════════════════════════════════
-function buildSuperSaw(ctx,f,spread){
+function buildSuperSaw(ctx,f,spread,voices,type){
  spread=spread||28;
- const out=ctx.createGain(); out.gain.value=1/7;
+ voices=voices||7;
+ type=type||'sawtooth';
+ const out=ctx.createGain(); out.gain.value=1/Math.max(1,Math.sqrt(voices)*1.6);
  const oscs=[];
- for(let v=0;v<7;v++){
+ for(let v=0;v<voices;v++){
  const o=ctx.createOscillator();
- o.type='sawtooth'; o.frequency.value=f;
- o.detune.value=(-spread/2)+(v/6)*spread; o.connect(out); oscs.push(o);
+ o.type=type; o.frequency.value=f;
+ // A single voice sits dead centre; only a stack gets spread across the band.
+ o.detune.value = voices<2 ? 0 : (-spread/2)+(v/(voices-1))*spread;
+ o.connect(out); oscs.push(o);
  }
  return{oscs,out};
+}
+
+// ═══════════════════════════════════════
+// MŌDSYNTH PRESETS
+// ═══════════════════════════════════════
+// MōdUlar's plain oscillators live on here as presets rather than as their own
+// tab: "Sine"/"Saw"/"Square"/"Triangle" are single-oscillator, filter-open
+// patches, while the richer presets stack unison voices and switch on the sub,
+// noise transient, filter sweep and saturation stages.
+const MODSYNTH_PRESETS = {
+ mega:     {label:'Mega',    voices:18, spread:18, type:'sawtooth', sub:.55, noise:.5, q:6,   drive:1.8, sweep:true},
+ supersaw: {label:'S·Saw',   voices:7,  spread:30, type:'sawtooth', sub:0,   noise:0,  q:1.2, drive:0,   sweep:false},
+ sine:     {label:'Sine',    voices:1,  spread:0,  type:'sine',     sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
+ saw:      {label:'Saw',     voices:1,  spread:0,  type:'sawtooth', sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
+ square:   {label:'Square',  voices:1,  spread:0,  type:'square',   sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
+ triangle: {label:'Tri',     voices:1,  spread:0,  type:'triangle', sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
+ sub:      {label:'Sub',     voices:2,  spread:8,  type:'triangle', sub:.9,  noise:0,  q:2,   drive:1.2, sweep:false},
+ pluck:    {label:'Pluck',   voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7, q:8,   drive:1.4, sweep:true},
+};
+let modSynthPreset='mega';
+function setModSynthPreset(p){
+ if(!MODSYNTH_PRESETS[p]) return;
+ modSynthPreset=p;
+ document.querySelectorAll('[data-msp]').forEach(b=>b.classList.toggle('active', b.dataset.msp===p));
+ try{ localStorage.setItem('modo-modsynth-preset',p); }catch(e){}
 }
 
 // Lazily-built short noise buffer for MōdSynth's attack transient layer
@@ -4381,29 +4465,44 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  //     (independent of the shared fxCutoff/fxEnv character macros applied
  //     downstream by voiceFx — this is the voice's own built-in movement)
  //  5. a soft internal saturation stage for harmonic bite
- const unison=buildSuperSaw(ctx,f,18);
- const sub=ctx.createOscillator(); sub.type='triangle'; sub.frequency.value=f/2;
- const subG=ctx.createGain(); subG.gain.value=0.55;
- sub.connect(subG);
- const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=6;
+ const P=MODSYNTH_PRESETS[modSynthPreset]||MODSYNTH_PRESETS.mega;
+ const unison=buildSuperSaw(ctx,f,P.spread,P.voices,P.type);
+ const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=P.q;
+ if(P.sweep){
  const cutBase=Math.min(f*2.2,900);
  const cutPeak=Math.min(f*9,9000);
  filt.frequency.setValueAtTime(cutBase,t0);
  filt.frequency.linearRampToValueAtTime(cutPeak,t0+0.018);
  filt.frequency.exponentialRampToValueAtTime(Math.max(cutBase*1.4,240),t0+Math.min(Math.max(dur*0.55,0.12),1.1));
+ } else {
+ // Plain-waveform presets stay out of the way and let the shared
+ // Tone/Reso character macros downstream do the filtering instead.
+ filt.frequency.setValueAtTime(16000,t0);
+ }
+ unison.out.connect(filt);
+ let tail=filt;
+ if(P.drive>0){
  const drive=ctx.createWaveShaper();
- const cv=new Float32Array(256); for(let i=0;i<256;i++){ const x=i*2/256-1; cv[i]=Math.tanh(x*1.8); }
+ const cv=new Float32Array(256); for(let i=0;i<256;i++){ const x=i*2/256-1; cv[i]=Math.tanh(x*P.drive); }
  drive.curve=cv;
- unison.out.connect(filt); subG.connect(filt);
- filt.connect(drive); drive.connect(gainNode);
+ filt.connect(drive); tail=drive;
+ }
+ tail.connect(gainNode);
+ if(P.sub>0){
+ const sub=ctx.createOscillator(); sub.type='triangle'; sub.frequency.value=f/2;
+ const subG=ctx.createGain(); subG.gain.value=P.sub;
+ sub.connect(subG); subG.connect(filt);
+ sub.start(t0); sub.stop(t0+dur+.1); r.push(sub);
+ }
+ if(P.noise>0){
  const ns=ctx.createBufferSource(); ns.buffer=_modSynthNoise(ctx);
  const nsF=ctx.createBiquadFilter(); nsF.type='bandpass'; nsF.frequency.value=Math.min(f*3,4000); nsF.Q.value=1.1;
  const nsG=ctx.createGain();
- nsG.gain.setValueAtTime(0.5,t0); nsG.gain.exponentialRampToValueAtTime(0.001,t0+0.03);
+ nsG.gain.setValueAtTime(P.noise,t0); nsG.gain.exponentialRampToValueAtTime(0.001,t0+0.03);
  ns.connect(nsF); nsF.connect(nsG); nsG.connect(gainNode);
  ns.start(t0); ns.stop(t0+0.04); r.push(ns);
+ }
  unison.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.1);r.push(o);});
- sub.start(t0); sub.stop(t0+dur+.1); r.push(sub);
 
  } else if(wv==='piano_real'){
  // Sampled grand piano — falls back to the synthesized 'piano' voice until loaded
@@ -4654,6 +4753,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
 // Melody
 function playMelNote(midi,pressure){
  const ctx=getCtx(); if(!ctx) return;
+ if(typeof renderFingering==='function') renderFingering(midi);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
  const dec=parseFloat(document.getElementById('mel-decay').value);
@@ -5479,10 +5579,362 @@ function toggleRhythm(){
 }
 
 // ═══════════════════════════════════════
+// CHORD FORM DIAGRAMS (guitar / ukulele / piano)
+// ═══════════════════════════════════════
+// Shapes are stored once as movable forms rather than as a 12-roots-by-N-qualities
+// table: each entry is a literal fingering plus the pitch class its root lands on
+// at that position, so any root is just the same shape shifted up the neck. That
+// keeps every one of the app's 12 chromatic roots correct by construction.
+// -1 = muted string.
+const FRET_SHAPES = {
+ guitar: {
+  // openPc: pitch classes of the open strings, low to high (EADGBE)
+  openPc:[4,9,2,7,11,4], names:['E','A','D','G','B','E'],
+  shapes:{
+   maj:  [{f:[0,2,2,1,0,0],  rootPc:4}, {f:[-1,0,2,2,2,0], rootPc:9}],
+   min:  [{f:[0,2,2,0,0,0],  rootPc:4}, {f:[-1,0,2,2,1,0], rootPc:9}],
+   dom7: [{f:[0,2,0,1,0,0],  rootPc:4}, {f:[-1,0,2,0,2,0], rootPc:9}],
+   maj7: [{f:[0,2,1,1,0,0],  rootPc:4}, {f:[-1,0,2,1,2,0], rootPc:9}],
+   min7: [{f:[0,2,0,0,0,0],  rootPc:4}, {f:[-1,0,2,0,1,0], rootPc:9}],
+   m7b5: [{f:[-1,0,1,0,1,-1],rootPc:9}],
+   dim:  [{f:[-1,0,1,2,1,-1],rootPc:9}, {f:[0,1,2,0,-1,-1], rootPc:4}],
+   dim7: [{f:[-1,0,1,2,1,2], rootPc:9}, {f:[0,1,2,0,2,-1],  rootPc:4}],
+   sus4: [{f:[0,2,2,2,0,0],  rootPc:4}, {f:[-1,0,2,2,3,0], rootPc:9}],
+   sus2: [{f:[0,2,4,4,0,0],  rootPc:4}, {f:[-1,0,2,2,0,0], rootPc:9}],
+  }
+ },
+ ukulele: {
+  openPc:[7,0,4,9], names:['G','C','E','A'],
+  shapes:{
+   maj:  [{f:[0,0,0,3], rootPc:0}, {f:[0,2,3,2], rootPc:7}],
+   min:  [{f:[2,0,0,0], rootPc:9}, {f:[2,2,1,0], rootPc:2}],
+   dom7: [{f:[0,0,0,1], rootPc:0}],
+   maj7: [{f:[0,0,0,2], rootPc:0}, {f:[0,2,2,2], rootPc:7}],
+   min7: [{f:[0,0,0,0], rootPc:9}],
+   m7b5: [{f:[2,3,3,3], rootPc:9}],
+   dim:  [{f:[2,3,5,3], rootPc:9}, {f:[5,3,2,3], rootPc:0}],
+   dim7: [{f:[2,3,2,3], rootPc:9}],
+   sus4: [{f:[0,0,1,3], rootPc:0}, {f:[5,5,3,3], rootPc:0}],
+   sus2: [{f:[0,2,3,3], rootPc:0}, {f:[5,2,3,3], rootPc:0}],
+  }
+ }
+};
+// Interval signature → quality key, matched against the actual notes being
+// played so this never has to care how the chord was spelled internally.
+const QUALITY_SIGS = [
+ {pcs:[0,4,7],     q:'maj',  label:''},
+ {pcs:[0,3,7],     q:'min',  label:'m'},
+ {pcs:[0,3,6],     q:'dim',  label:'°'},
+ {pcs:[0,4,7,11],  q:'maj7', label:'maj7'},
+ {pcs:[0,3,7,10],  q:'min7', label:'m7'},
+ {pcs:[0,4,7,10],  q:'dom7', label:'7'},
+ {pcs:[0,3,6,10],  q:'m7b5', label:'ø7'},
+ {pcs:[0,3,6,9],   q:'dim7', label:'°7'},
+ {pcs:[0,2,7],     q:'sus2', label:'sus2'},
+ {pcs:[0,5,7],     q:'sus4', label:'sus4'},
+ {pcs:[0,3,7,11],  q:'min7', label:'mMaj7'},
+ {pcs:[0,2,4,7],   q:'maj',  label:'add9'},
+];
+function _chordQuality(intvs){
+ const pcs=[...new Set(intvs.filter(i=>i>=0).map(i=>((i%12)+12)%12))].sort((a,b)=>a-b);
+ const key=pcs.join(',');
+ for(const s of QUALITY_SIGS) if(s.pcs.join(',')===key) return s;
+ // Slash chords and extensions add tones the signatures don't list — fall back
+ // to the plain triad hiding inside them rather than showing nothing.
+ const has=n=>pcs.includes(n);
+ if(has(3)&&has(6)) return {q:'dim', label:'°'};
+ if(has(3)) return {q:'min', label:'m'};
+ if(has(4)&&has(10)) return {q:'dom7', label:'7'};
+ if(has(4)) return {q:'maj', label:''};
+ return {q:'maj', label:''};
+}
+// Picks the shape sitting lowest on the neck for this root.
+function _bestShape(inst, quality, rootPc){
+ const set=FRET_SHAPES[inst]; if(!set) return null;
+ const cands=set.shapes[quality]||set.shapes.maj;
+ let best=null;
+ cands.forEach(c=>{
+  const base=(((rootPc-c.rootPc)%12)+12)%12;
+  const minBase=Math.min(...c.f.filter(x=>x>=0));
+  // The same shape an octave lower is the identical chord, so try it too —
+  // without this, roots near the top of the cycle get pushed past the 12th
+  // fret when a perfectly playable low position exists.
+  [base, base-12].forEach(shift=>{
+   if(minBase+shift<0) return; // would need frets behind the nut
+   const frets=c.f.map(x=>x<0?-1:x+shift);
+   const played=frets.filter(x=>x>0);
+   const maxF=played.length?Math.max(...played):0;
+   if(!best||maxF<best.maxF) best={frets,maxF};
+  });
+ });
+ return best;
+}
+let chordDiagramInst='guitar';
+function setChordDiagramInst(i){
+ chordDiagramInst=i;
+ ['guitar','ukulele','piano'].forEach(x=>{
+  document.getElementById('cdi-'+x)?.classList.toggle('active',x===i);
+ });
+ try{ localStorage.setItem('modo-chord-diagram-inst',i); }catch(e){}
+ renderChordDiagram();
+}
+function _svgFretboard(inst, frets){
+ const set=FRET_SHAPES[inst];
+ const n=frets.length;
+ const played=frets.filter(x=>x>0);
+ const minF=played.length?Math.min(...played):1;
+ const maxF=played.length?Math.max(...played):1;
+ // Window the neck so the shape always fits in 4 frets, and label the
+ // starting fret when it isn't at the nut.
+ let startF=1;
+ if(maxF>4) startF=Math.max(1,minF);
+ const FRETS=4, sg=20, fg=22, padX=26, padY=24;
+ const w=padX*2+(n-1)*sg, h=padY+FRETS*fg+10;
+ let s=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w*1.5}px;display:block;margin:0 auto" role="img">`;
+ // nut (thick) only when the window starts at fret 1
+ s+=`<line x1="${padX}" y1="${padY}" x2="${padX+(n-1)*sg}" y2="${padY}" stroke="currentColor" stroke-width="${startF===1?3.5:1}" opacity="${startF===1?.9:.35}"/>`;
+ for(let i=1;i<=FRETS;i++) s+=`<line x1="${padX}" y1="${padY+i*fg}" x2="${padX+(n-1)*sg}" y2="${padY+i*fg}" stroke="currentColor" stroke-width="1" opacity=".35"/>`;
+ for(let i=0;i<n;i++) s+=`<line x1="${padX+i*sg}" y1="${padY}" x2="${padX+i*sg}" y2="${padY+FRETS*fg}" stroke="currentColor" stroke-width="1" opacity=".45"/>`;
+ if(startF>1) s+=`<text x="${padX-8}" y="${padY+fg*0.72}" font-size="11" fill="currentColor" opacity=".75" text-anchor="end">${startF}fr</text>`;
+ for(let i=0;i<n;i++){
+  const x=padX+i*sg, f=frets[i];
+  if(f<0){
+   s+=`<text x="${x}" y="${padY-8}" font-size="12" fill="currentColor" opacity=".55" text-anchor="middle">×</text>`;
+  } else if(f===0){
+   s+=`<circle cx="${x}" cy="${padY-12}" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".75"/>`;
+  } else {
+   const row=f-startF+1;
+   if(row>=1&&row<=FRETS){
+    const y=padY+(row-0.5)*fg;
+    s+=`<circle cx="${x}" cy="${y}" r="7.5" fill="var(--pg)"/>`;
+    s+=`<text x="${x}" y="${y+3.5}" font-size="9" font-weight="700" fill="#07080f" text-anchor="middle">${f}</text>`;
+   }
+  }
+ }
+ // string names under the diagram
+ for(let i=0;i<n;i++) s+=`<text x="${padX+i*sg}" y="${padY+FRETS*fg+9}" font-size="8" fill="currentColor" opacity=".5" text-anchor="middle">${set.names[i]}</text>`;
+ s+='</svg>';
+ return s;
+}
+function _svgPiano(pcs, rootPc){
+ // Two octaves from C, chord tones lit. Exact by construction — the keys shown
+ // are simply the pitch classes actually sounding.
+ const WHITE=[0,2,4,5,7,9,11], BLACK={1:0,3:1,6:3,8:4,10:5};
+ const kw=17, kh=64, n=14;
+ const w=n*kw, h=kh+14;
+ let s=`<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w*1.6}px;display:block;margin:0 auto" role="img">`;
+ for(let i=0;i<n;i++){
+  const pc=WHITE[i%7];
+  const on=pcs.includes(pc);
+  const isRoot=pc===rootPc;
+  const fill=on?(isRoot?'var(--pg)':'color-mix(in srgb, var(--pg) 45%, #ffffff)'):'#f4f4f8';
+  s+=`<rect x="${i*kw}" y="0" width="${kw-1.5}" height="${kh}" rx="2" fill="${fill}" stroke="#2a2c44" stroke-width="1"/>`;
+  if(on) s+=`<text x="${i*kw+(kw-1.5)/2}" y="${kh-7}" font-size="7.5" font-weight="700" fill="#07080f" text-anchor="middle">${isRoot?'R':'•'}</text>`;
+ }
+ for(let i=0;i<n;i++){
+  const oct=Math.floor(i/7), idx=i%7;
+  Object.keys(BLACK).forEach(bp=>{
+   if(BLACK[bp]!==idx) return;
+   const pc=+bp;
+   const on=pcs.includes(pc);
+   const isRoot=pc===rootPc;
+   const x=(oct*7+idx)*kw+kw-5.5;
+   const fill=on?(isRoot?'var(--pg)':'color-mix(in srgb, var(--pg) 60%, #101225)'):'#15172a';
+   s+=`<rect x="${x}" y="0" width="11" height="${kh*0.62}" rx="1.5" fill="${fill}" stroke="#2a2c44" stroke-width="1"/>`;
+  });
+ }
+ s+='</svg>';
+ return s;
+}
+function renderChordDiagram(){
+ const host=document.getElementById('chord-diagram-body'); if(!host) return;
+ const nameEl=document.getElementById('chord-diagram-name');
+ const rootPc=(((lastChordRoot%12)+12)%12);
+ const qual=_chordQuality(lastChordIntvs||[0,4,7]);
+ if(nameEl) nameEl.textContent = nn(rootPc)+qual.label;
+ if(chordDiagramInst==='piano'){
+  const pcs=[...new Set((lastChordIntvs||[]).map(i=>(((rootPc+i)%12)+12)%12))];
+  host.innerHTML=_svgPiano(pcs, rootPc);
+  return;
+ }
+ const shape=_bestShape(chordDiagramInst, qual.q, rootPc);
+ host.innerHTML = shape ? _svgFretboard(chordDiagramInst, shape.frets)
+                        : '<div style="font-size:.5rem;color:var(--muted);text-align:center;padding:12px">No shape for this chord.</div>';
+}
+
+// ═══════════════════════════════════════
+// MELODIC INSTRUMENT FINGERINGS
+// ═══════════════════════════════════════
+// `transpose` is how far WRITTEN pitch sits above the concert pitch the app
+// plays, so a horn player reading along gets the note actually on their part.
+// Brass and fretted fingerings are computed (exact by construction); sax uses
+// a fingering table. Clarinet and flute intentionally ship the written note
+// only — see FING_NO_CHART below.
+const FING_INSTS = {
+ trumpet:  {label:'Trumpet',    transpose:2,  kind:'valve',  lo:54, hi:84},
+ trombone: {label:'Trombone',   transpose:0,  kind:'slide',  lo:40, hi:70},
+ alto:     {label:'Alto Sax',   transpose:9,  kind:'sax',    lo:58, hi:89},
+ tenor:    {label:'Tenor Sax',  transpose:14, kind:'sax',    lo:58, hi:89},
+ clarinet: {label:'Clarinet',   transpose:2,  kind:'none',   lo:50, hi:91},
+ flute:    {label:'Flute',      transpose:0,  kind:'none',   lo:60, hi:96},
+ guitar:   {label:'Guitar',     transpose:0,  kind:'fret',   strings:[40,45,50,55,59,64], names:['E','A','D','G','B','e']},
+ ukulele:  {label:'Ukulele',    transpose:0,  kind:'fret',   strings:[67,60,64,69],       names:['G','C','E','A']},
+ banjo:    {label:'Banjo',      transpose:0,  kind:'fret',   strings:[50,55,59,62,67],    names:['D','G','B','D','g']},
+ mandolin: {label:'Mandolin',   transpose:0,  kind:'fret',   strings:[55,62,69,76],       names:['G','D','A','E']},
+};
+const FING_NO_CHART = 'Fingering chart not included for this instrument yet — the written note above is transposed correctly for it.';
+
+// Trumpet open harmonics (written pitch). Any note is the first harmonic at or
+// above it, with valves adding the remaining semitones — which reproduces the
+// standard chart exactly.
+const TRUMPET_HARMONICS=[60,67,72,76,79,82,84];
+const VALVE_FOR_SEMIS=['open','2','1','1-2','2-3','1-3','1-2-3'];
+// Trombone: same idea, but the slide supplies the semitones (position 1 = 0).
+const TBONE_HARMONICS=[34,46,53,58,62,65,68,70];
+const POS_NAME=['1st','2nd','3rd','4th','5th','6th','7th'];
+
+// Saxophone, written pitch. L/R are the three main tone holes per hand.
+const SAX_BASE={
+ 62:{L:[1,1,1],R:[1,1,1]},
+ 63:{L:[1,1,1],R:[1,1,1],x:'Eb key'},
+ 64:{L:[1,1,1],R:[1,1,0]},
+ 65:{L:[1,1,1],R:[1,0,0]},
+ 66:{L:[1,1,1],R:[0,0,0],x:'F# key'},
+ 67:{L:[1,1,1],R:[0,0,0]},
+ 68:{L:[1,1,1],R:[0,0,0],x:'G# key'},
+ 69:{L:[1,1,0],R:[0,0,0]},
+ 70:{L:[1,0,0],R:[0,0,0],x:'bis / side Bb'},
+ 71:{L:[1,0,0],R:[0,0,0]},
+ 72:{L:[0,1,0],R:[0,0,0]},
+ 73:{L:[0,0,0],R:[0,0,0]},
+};
+const SAX_LOW={58:'low Bb',59:'low B',60:'low C',61:'low C#'};
+const SAX_PALM={86:'palm D',87:'palm Eb',88:'palm E',89:'palm F'};
+function _saxFingering(w){
+ if(SAX_LOW[w]) return {L:[1,1,1],R:[1,1,1],oct:false,x:SAX_LOW[w]};
+ if(SAX_PALM[w]) return {L:[0,0,0],R:[0,0,0],oct:true,x:SAX_PALM[w]};
+ let base=w, oct=false;
+ if(w>=74&&w<=85){ base=w-12; oct=true; }
+ const f=SAX_BASE[base];
+ if(!f) return null;
+ return {L:f.L,R:f.R,oct,x:f.x};
+}
+function _fretFingering(inst,midi){
+ const d=FING_INSTS[inst];
+ let best=null;
+ d.strings.forEach((open,i)=>{
+  const fret=midi-open;
+  if(fret<0||fret>15) return;
+  if(!best||fret<best.fret||(fret===best.fret&&i>best.i)) best={i,fret};
+ });
+ return best?{string:d.names[best.i],fret:best.fret,idx:best.i,total:d.strings.length}:null;
+}
+function _noteFull(m){ return nn(((m%12)+12)%12)+(Math.floor(m/12)-1); }
+
+let fingerInst='trumpet';
+function setFingerInst(i){
+ if(!FING_INSTS[i]) return;
+ fingerInst=i;
+ const sel=document.getElementById('fing-inst-sel'); if(sel&&sel.value!==i) sel.value=i;
+ try{ localStorage.setItem('modo-finger-inst',i); }catch(e){}
+ renderFingering(_lastMelMidi);
+}
+let _lastMelMidi=null;
+function buildFingerInstList(){
+ const sel=document.getElementById('fing-inst-sel'); if(!sel) return;
+ sel.innerHTML='';
+ Object.keys(FING_INSTS).forEach(k=>{
+  const o=document.createElement('option');
+  o.value=k; o.textContent=FING_INSTS[k].label;
+  sel.appendChild(o);
+ });
+ let saved=null;
+ try{ saved=localStorage.getItem('modo-finger-inst'); }catch(e){}
+ setFingerInst(FING_INSTS[saved]?saved:fingerInst);
+ renderFingering(null);
+}
+function _svgSaxKeys(f){
+ const r=7, gap=19, x=28;
+ let s=`<svg viewBox="0 0 76 172" width="56" height="128" role="img">`;
+ if(f.oct) s+=`<circle cx="9" cy="14" r="5" fill="var(--pg)"/><text x="20" y="18" font-size="9" fill="currentColor" opacity=".7">oct</text>`;
+ [0,1,2].forEach(i=>{
+  const y=34+i*gap, on=f.L[i];
+  s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${on?'var(--pg)':'none'}" stroke="currentColor" stroke-width="1.4" opacity="${on?1:.55}"/>`;
+ });
+ [0,1,2].forEach(i=>{
+  const y=110+i*gap, on=f.R[i];
+  s+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${on?'var(--pg)':'none'}" stroke="currentColor" stroke-width="1.4" opacity="${on?1:.55}"/>`;
+ });
+ s+=`<line x1="${x}" y1="24" x2="${x}" y2="${34+2*gap+10}" stroke="currentColor" stroke-width="1" opacity=".25"/>`;
+ s+=`<line x1="${x}" y1="100" x2="${x}" y2="${110+2*gap+10}" stroke="currentColor" stroke-width="1" opacity=".25"/>`;
+ s+=`<text x="46" y="38" font-size="8" fill="currentColor" opacity=".5">L</text>`;
+ s+=`<text x="46" y="114" font-size="8" fill="currentColor" opacity=".5">R</text>`;
+ s+='</svg>';
+ return s;
+}
+function _svgValves(combo){
+ let s=`<svg viewBox="0 0 96 46" width="96" height="46" role="img">`;
+ [1,2,3].forEach((v,i)=>{
+  const on=combo.includes(String(v));
+  const cx=18+i*30;
+  s+=`<circle cx="${cx}" cy="23" r="12" fill="${on?'var(--pg)':'none'}" stroke="currentColor" stroke-width="1.6" opacity="${on?1:.5}"/>`;
+  s+=`<text x="${cx}" y="27" font-size="11" font-weight="700" fill="${on?'#07080f':'currentColor'}" text-anchor="middle" opacity="${on?1:.6}">${v}</text>`;
+ });
+ s+='</svg>';
+ return s;
+}
+function renderFingering(midi){
+ const host=document.getElementById('fingering-body'); if(!host) return;
+ const noteEl=document.getElementById('fing-note-label');
+ if(midi==null){
+  if(noteEl) noteEl.textContent='—';
+  host.innerHTML='<div class="fing-none">Play a melody note to see its fingering.</div>';
+  return;
+ }
+ _lastMelMidi=midi;
+ const d=FING_INSTS[fingerInst];
+ const written=midi+d.transpose;
+ if(noteEl) noteEl.innerHTML=`<span class="fing-note">${_noteFull(midi)}</span><div class="fing-sub">${d.transpose?('written '+_noteFull(written)):'concert pitch'}</div>`;
+
+ if(d.kind==='none'){ host.innerHTML='<div class="fing-none">'+FING_NO_CHART+'</div>'; return; }
+ if(d.kind==='fret'){
+  const f=_fretFingering(fingerInst,midi);
+  host.innerHTML = f
+   ? `<div class="fing-wrap"><div><div class="fing-big">${f.fret===0?'open':f.fret+(f.fret===1?'st':f.fret===2?'nd':f.fret===3?'rd':'th')+' fret'}</div><div class="fing-sub">${f.string} string</div></div></div>`
+   : `<div class="fing-none">Outside this instrument's range.</div>`;
+  return;
+ }
+ if(d.kind==='valve'){
+  if(written<d.lo||written>d.hi){ host.innerHTML='<div class="fing-none">Outside the practical range.</div>'; return; }
+  const h=TRUMPET_HARMONICS.find(x=>x>=written&&x-written<=6);
+  if(h==null){ host.innerHTML='<div class="fing-none">No standard fingering in this range.</div>'; return; }
+  const combo=VALVE_FOR_SEMIS[h-written];
+  host.innerHTML=`<div class="fing-wrap">${_svgValves(combo)}<div><div class="fing-big">${combo}</div><div class="fing-sub">valves</div></div></div>`;
+  return;
+ }
+ if(d.kind==='slide'){
+  if(written<d.lo||written>d.hi){ host.innerHTML='<div class="fing-none">Outside the practical range.</div>'; return; }
+  const h=TBONE_HARMONICS.find(x=>x>=written&&x-written<=6);
+  if(h==null){ host.innerHTML='<div class="fing-none">No standard position in this range.</div>'; return; }
+  host.innerHTML=`<div class="fing-wrap"><div><div class="fing-big">${POS_NAME[h-written]}</div><div class="fing-sub">slide position</div></div></div>`;
+  return;
+ }
+ if(d.kind==='sax'){
+  const f=_saxFingering(written);
+  if(!f){ host.innerHTML='<div class="fing-none">Outside the charted range (written Bb3–F6).</div>'; return; }
+  host.innerHTML=`<div class="fing-wrap">${_svgSaxKeys(f)}<div>${f.oct?'<div class="fing-sub">+ octave key</div>':''}${f.x?'<div class="fing-sub">+ '+f.x+'</div>':''}</div></div>`;
+  return;
+ }
+}
+
+// ═══════════════════════════════════════
 // ARP CONTROLS
 // ═══════════════════════════════════════
 function setArpChord(rootM,intvs,func){
  lastChordRoot=rootM; lastChordIntvs=intvs; lastChordFunc=func||'tonic';
+ // Every chord path — pad press, keyboard, MIDI and song playback — funnels
+ // through here, so this is the one place the diagram needs to follow.
+ if(typeof renderChordDiagram==='function') renderChordDiagram();
  arpNotes=intvs.map(s=>rootM+s);
  if(arpOcts>=2) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+12)];
  if(arpOcts>=3) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+24)];
@@ -5829,6 +6281,27 @@ function setWave(w){
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
  if(w==='piano_real') preloadSampleInstrument('piano');
+ const mspRow=document.getElementById('modsynth-preset-row');
+ if(mspRow) mspRow.style.display = w==='modsynth' ? '' : 'none';
+}
+
+// Builds the MōdSynth preset buttons once, from MODSYNTH_PRESETS.
+function buildModSynthPresets(){
+ const host=document.getElementById('modsynth-preset-btns'); if(!host) return;
+ host.innerHTML='';
+ Object.keys(MODSYNTH_PRESETS).forEach(k=>{
+  const b=document.createElement('button');
+  b.className='tb'+(k===modSynthPreset?' active':'');
+  b.dataset.msp=k;
+  b.textContent=MODSYNTH_PRESETS[k].label;
+  b.title=k==='mega'?'The full multi-stage MōdSynth voice':'MōdSynth preset — '+MODSYNTH_PRESETS[k].label;
+  b.addEventListener('click',()=>setModSynthPreset(k));
+  host.appendChild(b);
+ });
+ try{
+  const saved=localStorage.getItem('modo-modsynth-preset');
+  if(saved && MODSYNTH_PRESETS[saved]) setModSynthPreset(saved);
+ }catch(e){}
 }
 function setVoicing(v){
  voicing=v;
@@ -7226,13 +7699,26 @@ const HELP_SECTIONS=[
  {icon:'',text:'Rhythm and Arp can run simultaneously — the arp follows the BPM automatically.'},
  ]},
  {title:' MōdSynth & MōdKit', tips:[
- {icon:'',text:'<strong>MōdSynth</strong> is a multi-stage unison mega synth voice — pick it from any Sound selector (Perform, Settings). It responds to the Tone/Reso/Sweep/Drive/Width/Drift macro knobs in Settings → Sound Engine, so those knobs are the real sound-design surface once it\'s selected.'},
+ {icon:'',text:'<strong>MōdSynth</strong> is a multi-stage unison mega synth voice — pick it from any Sound selector (Perform, Settings) in Advanced view. It responds to the Tone/Reso/Sweep/Drive/Width/Drift macro knobs in Settings → Sound Engine, so those knobs are the real sound-design surface once it\'s selected.'},
+ {icon:'',text:'<strong>MōdSynth presets</strong> appear as a second row once MōdSynth is the chord voice. <strong>Mega</strong> is the full stacked voice; <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches; <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your choice is remembered between visits.'},
  {icon:'',text:'<strong>MōdKit</strong> is an 8-voice synthesized drum kit — select it like any other kit in the Rhythm tab\'s kit picker for a modern, hybrid-synth drum sound instead of a sampled 808/909.'},
  ]},
  {title:' Randomize (the dice)', tips:[
  {icon:'',text:'The <strong>die</strong> in the fixed transport bar rolls a whole <strong>patch character</strong> — waveform, arp pattern/rate/gate, envelope, filter/drive/width/drift, and voicing — not just one loose knob at a time.'},
  {icon:'',text:'If nothing is playing, it does a <strong>full reroll</strong> — key, mode and tempo included. While something\'s playing, key/mode/tempo are held steady so you don\'t get yanked out of the groove.'},
  {icon:'↶',text:'Not feeling it? <strong>Undo</strong> in the transport bar brings back the previous sound instantly; Redo re-applies the roll.'},
+ ]},
+ {title:'▦ Chord Forms — play along on a real instrument', tips:[
+ {icon:'',text:'Under the chord grid on <strong>Play → Chords</strong>, the <strong>Chord Forms</strong> panel shows how to play the current chord on <strong>Guitar</strong>, <strong>Ukulele</strong> or <strong>Piano</strong>. Pick your instrument once and it\'s remembered.'},
+ {icon:'▶',text:'It follows whatever is sounding — a pad you press, a computer-keyboard or MIDI chord, <em>and</em> the chords of a song playing in Song mode. Load a song, hit Play, and the diagram turns the pages for you.'},
+ {icon:'',text:'Fretboard diagrams mark <strong>×</strong> for a muted string and <strong>○</strong> for an open one, with the fret number inside each dot. When a shape sits up the neck, the starting fret is labelled at the left (e.g. <strong>5fr</strong>).'},
+ {icon:'',text:'The piano view lights the notes of the chord across two octaves, with <strong>R</strong> marking the root.'},
+ ]},
+ {title:'✋ Fingering — for horn and string players', tips:[
+ {icon:'',text:'On <strong>Play → Melody</strong> in <strong>Advanced</strong> view, the <strong>Fingering</strong> panel shows how to play the melody note you just triggered on your own instrument. Choose from the dropdown: trumpet, trombone, alto/tenor sax, clarinet, flute, guitar, ukulele, banjo or mandolin.'},
+ {icon:'',text:'<strong>Transposition is handled for you.</strong> MōdRiff plays concert pitch; the panel shows the note as it appears on <em>your</em> part — so a concert G reads as written A on trumpet, written E on alto sax, written A on tenor.'},
+ {icon:'',text:'<strong>Trumpet</strong> shows the valve combination, <strong>trombone</strong> the slide position, <strong>saxophone</strong> a key diagram (plus octave and auxiliary keys), and fretted instruments the string and fret.'},
+ {icon:'',text:'Clarinet and flute currently show the correctly transposed written note without a key diagram.'},
  ]},
  {title:' Workflow: Drums → Record → Perform', tips:[
  {icon:'🥁',text:'Start with <strong>Drums</strong> — pick a groove/kit in the Rhythm tab, or just hit Play in the fixed bar to hear the default pattern.'},
@@ -10208,6 +10694,9 @@ updateOct();
 buildMelodyStrip();
 initBendStrip();
 positionTabLed();
+buildModSynthPresets();
+buildFingerInstList();
+try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
