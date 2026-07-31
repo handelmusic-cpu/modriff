@@ -2177,10 +2177,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Chromatic Modal Groovebox</div>
  <div class="unlock-choices">
-  <button class="unlock-btn" onclick="unlockAudio(true)">▶ Hear a Demo</button>
+  <button class="unlock-btn" onclick="unlockAudio(true)">⚄ Roll &amp; Play</button>
   <button class="unlock-btn ghost" onclick="unlockAudio(false)">Start Blank</button>
  </div>
- <div class="unlock-note">Required for audio on iPhone &amp; iPad.<br>Demo plays a chord riff with drums &amp; bass — Blank opens silent.</div>
+ <div class="unlock-note">Required for audio on iPhone &amp; iPad.<br>Roll &amp; Play rolls the dice for a random key, groove and sound — a different jam every time. Blank opens silent.</div>
 </div>
 
 <!-- Voice Type Modal -->
@@ -3840,13 +3840,13 @@ function unlockAudio(startDemo){
  const warmLen = Math.floor(audioCtx.sampleRate * 0.1);
  const b=audioCtx.createBuffer(1,warmLen,audioCtx.sampleRate);
  const s=audioCtx.createBufferSource(); s.buffer=b;
- s.connect(window._masterDest||audioCtx.destination);
+ s.connect(masterDest(audioCtx));
  s.start(audioCtx.currentTime);
  s.stop(audioCtx.currentTime + 0.15);
  // Pre-warm oscillator at gain=0 so the first real note doesn't pop
  const g=audioCtx.createGain(); g.gain.setValueAtTime(0,audioCtx.currentTime);
  const o=audioCtx.createOscillator(); o.frequency.value=440;
- o.connect(g); g.connect(window._masterDest||audioCtx.destination);
+ o.connect(g); g.connect(masterDest(audioCtx));
  o.start(audioCtx.currentTime); o.stop(audioCtx.currentTime+0.08);
  }catch(e){}
  const o=document.getElementById('audio-unlock');
@@ -3865,9 +3865,11 @@ function unlockAudio(startDemo){
 // together. Loading the demo song fixes key/mode/tempo back to what the
 // arrangement was written for — only the sound character stays randomized.
 function startDemoJourney(){
+ // Roll first so the demo is generated in the key, mode and tempo the dice
+ // just landed on — otherwise loading the song would immediately overwrite them.
  try{ if(typeof randomizeSettings==='function') randomizeSettings(); }catch(e){}
  try{
-  const demo=buildDemoSong();
+  const demo=buildRandomDemoSong();
   let sl=loadSLData();
   let idx=sl.findIndex(s=>s.isDemo);
   if(idx<0){ sl=[demo,...sl]; saveSLData(sl); idx=0; } else { sl[idx]=demo; }
@@ -3967,7 +3969,7 @@ function buildReverb(){
  }
  reverbNode=audioCtx.createConvolver();
  reverbNode.buffer=buf;
- reverbNode.connect(window._masterDest||audioCtx.destination);
+ reverbNode.connect(masterDest(audioCtx));
 }
 // ═══════════════════════════════════════
 // CHARACTER / FX ENGINE
@@ -4041,7 +4043,7 @@ function applyDrive(){
 // as before — this matters on phones, where extra nodes per chord tone are
 // the difference between clean playback and dropouts.
 function voiceFx(ctx,t0,dur,vel,panPos){
- const dest=window._masterDest||ctx.destination;
+ const dest=masterDest(ctx);
  const wantFilt = fxCutoff<0.985 || fxEnv>0.01;
  const wantPan  = fxWidth>0.01 && panPos!=null && ctx.createStereoPanner;
  if(!wantFilt && !wantPan) return {head:dest, tail:dest, plain:true};
@@ -4115,6 +4117,16 @@ function syncFxLabels(){
 // Bypass keeps the same graph and neutralises the stages instead of rewiring,
 // so toggling it can never drop audio mid-note.
 let masterBusOn=true, masterVol=.85, masterCompAmt=.35, masterRevAmt=.18;
+
+// Single source of truth for "where does audio go". Building the bus on demand
+// closes an ordering race: anything created before buildMasterBus() ran used to
+// fall back to ctx.destination and stay wired past the master fader forever.
+function masterDest(c){
+ c = c || audioCtx;
+ if(!c) return null;
+ if(!window._masterDest && c===audioCtx) buildMasterBus();
+ return window._masterDest || c.destination;
+}
 
 function buildMasterBus(){
  const c=audioCtx; if(!c || window._masterLimiter) return;
@@ -4664,7 +4676,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(rootM-12-69)/12);
- bo.connect(bg); bg.connect(window._masterDest||ctx.destination);
+ bo.connect(bg); bg.connect(masterDest(ctx));
  const _bgRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg});
@@ -4721,7 +4733,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  }
  const bo=ctx.createOscillator(); bo.type='sine';
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
- bo.connect(bg); bg.connect(window._masterDest||ctx.destination);
+ bo.connect(bg); bg.connect(masterDest(ctx));
  const _sbRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg});
@@ -4925,7 +4937,7 @@ function initBendStrip(){
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
  bendContGain.gain.linearRampToValueAtTime(vol*.45*wg*vsc*_mxMel, now+atk);
- bendContGain.connect(window._masterDest||ctx.destination);
+ bendContGain.connect(masterDest(ctx));
  feedRev(bendContGain, revMix*.6);
 
  if(melWave==='supersaw'){
@@ -5236,7 +5248,7 @@ function scheduleMetronome(){
    const g=ctx.createGain();
    g.gain.setValueAtTime(vol,t);
    g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
-   g.connect(ctx.destination);
+   g.connect(masterDest(ctx));
    const osc=ctx.createOscillator();
    osc.type='sine'; osc.frequency.value=freq;
    osc.connect(g);
@@ -5284,7 +5296,7 @@ function scheduleArpBlock(t,dur){
  g.gain.setValueAtTime(0, strumT);
  g.gain.linearRampToValueAtTime(vol * wg * 0.7 * _mxArp, strumT + 0.01);
  g.gain.exponentialRampToValueAtTime(0.001, strumT + dur * 0.88);
- g.connect(window._masterDest||ctx.destination);
+ g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
  makeVoice(ctx, midi, g, strumT, dur * 0.85, arpWave);
  });
@@ -5391,7 +5403,7 @@ let drumKit = 'classic'; // 'classic' | '808' | '909' | 'brush'
 function scheduleDrum(type,t){
  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
  const ctx=getCtx(); if(!ctx) return;
- const dest=window._masterDest||ctx.destination;
+ const dest=masterDest(ctx);
  const rv=_cmx('drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
  const kit=drumKit;
 
@@ -6588,7 +6600,7 @@ function _rndModePool(){
  const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
  return churchHidden ? ['major','minor'] : Object.keys(MODES);
 }
-const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · tone, reso, sweep, drive, width &amp; drift · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style';
+const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · MōdSynth preset · tone, reso, sweep, drive, width &amp; drift · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style · <b>drum kit, step count, step rate, swing &amp; chord length</b>';
 // The confirm sheet earns its keep once — after you've seen what a roll does
 // and that Undo has your back, it's just a speed bump between you and the
 // next idea. Shown on the first roll only; every roll after that is instant.
@@ -6606,8 +6618,8 @@ function openRandomizeConfirm(){
  if(does) does.innerHTML = full ? _RND_SOUND_TXT+' · <b>key, mode &amp; tempo</b>' : _RND_SOUND_TXT;
  const keeps=document.getElementById('rnd-keeps');
  if(keeps) keeps.innerHTML = full
-  ? 'songs, chord charts, recordings, sequencer patterns and mixer levels'
-  : '<b>key, mode and tempo</b> (playback is running) · songs, chord charts, recordings, sequencer patterns and mixer levels';
+  ? 'songs, chord charts, recordings, your drum/bass/melody step patterns and mixer levels'
+  : '<b>key, mode and tempo</b> (playback is running) · songs, chord charts, recordings, your drum/bass/melody step patterns and mixer levels';
  const m=document.getElementById('randomize-modal'); if(m) m.classList.add('visible');
 }
 function closeRandomizeConfirm(){ const m=document.getElementById('randomize-modal'); if(m) m.classList.remove('visible'); }
@@ -6646,11 +6658,27 @@ function _capSettings(){
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
-  strumMode, wetDry, autoInvOn
+  strumMode, wetDry, autoInvOn,
+  // Musical/"audio" state — the structural side the dice now rolls too, so
+  // Undo puts the whole roll back rather than just the synth knobs.
+  chordBeats: (typeof chordBeats!=='undefined') ? chordBeats : null,
+  sqSteps:   (typeof window._sqSteps==='function')    ? window._sqSteps()    : null,
+  sqSwing:   (typeof window._sqSwingVal==='function') ? window._sqSwingVal() : null,
+  sqMach:    (typeof window._sqMach==='function')     ? window._sqMach()     : null,
+  sqRateMul: (typeof sqRateMul!=='undefined') ? sqRateMul : null,
+  modSynthPreset: (typeof modSynthPreset!=='undefined') ? modSynthPreset : null
  };
 }
 function _applySettings(s){
  if(!s) return;
+ // Structural state first: step count and rate resize the grids the other
+ // engines read, so they must settle before anything reschedules.
+ if(s.sqMach!=null && typeof window._sqSetMach==='function'){ try{ window._sqSetMach(s.sqMach); }catch(e){} }
+ if(s.sqSteps!=null && typeof setSeqStepCount==='function'){ try{ setSeqStepCount('sq', s.sqSteps); }catch(e){} }
+ if(s.sqRateMul!=null && typeof setSeqRate==='function'){ try{ setSeqRate('sq', s.sqRateMul); }catch(e){} }
+ if(s.sqSwing!=null && typeof window._sqSetSwing==='function'){ try{ window._sqSetSwing(s.sqSwing); }catch(e){} }
+ if(s.chordBeats!=null && typeof setChordBeats==='function'){ try{ setChordBeats(s.chordBeats); }catch(e){} }
+ if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){ try{ setModSynthPreset(s.modSynthPreset); }catch(e){} }
  // Voices
  if(s.wave) setWave(s.wave);
  if(s.arpWave) setArpWave(s.arpWave);
@@ -6772,6 +6800,15 @@ function randomizeSettings(){
   // a cathedral. Never the slider's full 40–220; most of that rolls unusable.
   s.bpm  = Math.round(_rndBand(A.bpm||[70,150],0));
  }
+ // Feel and shape roll on every press, playing or not — these change the
+ // groove without touching anything the user authored (the step grids,
+ // songs and mixer levels all stay put).
+ s.chordBeats = _rndPick([0,0,1,2,4]);            // ∞ weighted: most patches want to ring
+ s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
+ s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
+ s.sqSwing    = +(_rndPick([0,0,0,.08,.14,.2,.28])).toFixed(2);
+ s.sqMach     = _rndPick(['808','909','MOD','606','LIN','IDM','BRS']);
+ s.modSynthPreset = _rndPick(Object.keys(MODSYNTH_PRESETS));
 
  _applySettings(s);
  if(typeof track==='function') track('settings_randomized', {full:full, patch:A.name});
@@ -7480,6 +7517,67 @@ function saveSLData(d){ try{ localStorage.setItem('prism-sl',JSON.stringify(d));
 // A short, self-contained ii–V–I turnaround in C so a first-time visitor can
 // tap one song, hit Play, and immediately hear chords + drums + a bass line
 // locked together — rather than an empty setlist and a text-only tour step.
+// A different song every time you ask for a demo. Everything is derived from
+// the mode tables rather than hardcoded spellings, so the progression stays
+// musically correct in whatever key and mode the dice just rolled.
+const DEMO_PROGRESSIONS=[
+ {name:'ii–V–I turnaround', deg:[1,4,0,5]},
+ {name:'Pop loop',          deg:[0,4,5,3]},
+ {name:'Doo-wop',           deg:[0,5,3,4]},
+ {name:'Axis',              deg:[5,3,0,4]},
+ {name:'Blues-ish',         deg:[0,3,4,3]},
+ {name:'Descending',        deg:[0,2,5,3]},
+ {name:'Modal vamp',        deg:[0,6,3,0]},
+ {name:'Cadential',         deg:[3,4,0,0]},
+];
+const DEMO_DURATIONS=[
+ [[1,0],[1,0],[1,0],[1,0]],   // even bars
+ [[0,2],[0,2],[1,0],[1,0]],   // two quick, two long
+ [[2,0],[1,0],[1,0],[1,0]],   // long opener
+ [[1,0],[1,0],[0,2],[0,2]],   // tail acceleration
+];
+function buildRandomDemoSong(){
+ const pick=a=>a[Math.floor(Math.random()*a.length)];
+ const md=MODES[mode]||MODES.major;
+ const rm=rootMidi();
+ const prog=pick(DEMO_PROGRESSIONS);
+ const durs=pick(DEMO_DURATIONS);
+ // Some progressions want 7ths (jazz), some want plain triads (pop).
+ const ext=Math.random()<0.5?'7th':'triad';
+
+ const slots=prog.deg.map((d,i)=>{
+  const [bars,beats]=durs[i%durs.length];
+  const q=md.triadQ[d], t7=md.seventh[d];
+  const noteName=nn((root+md.steps[d])%12);
+  const label = ext==='7th'
+    ? noteName+(SUFFIX7[t7]||'')
+    : noteName+(q===1?'m':q===2?'°':'');
+  return {label,numeral:md.nums[d],rootM:rm+md.steps[d],triadQ:q,type7:t7,
+          func:md.func[d],ext,bassNote:null,isRest:false,bars,beats,eighths:0};
+ });
+
+ // Groove: a real pattern from the rhythm library, laid into the step grid.
+ const steps=16, grid={};
+ for(let ti=0;ti<8;ti++){ grid[ti]=[]; for(let x=0;x<steps;x++) grid[ti].push({v:0,r:1,orn:0,vel:100}); }
+ const r=pick(RHYTHMS);
+ for(let x=0;x<steps;x++){
+  if(r.kick&&r.kick[x])  grid[0][x].v=1;
+  if(r.snare&&r.snare[x]) grid[1][x].v=1;
+  if(r.pat&&r.pat[x])     grid[4][x].v=1;
+ }
+ const bpm=Math.round(parseFloat(document.getElementById('bpm')?.value)||100);
+ return {
+  id:Date.now(),
+  title:'Demo: '+prog.name+' in '+nn(root)+' '+md.label,
+  root, mode,
+  sections:[{name:'Head', slots:slots.concat(slots.map(x=>Object.assign({},x)))}],
+  savedAt:new Date().toLocaleDateString(),
+  perfSettings:{bpm},
+  savedRhythm:{mach:(typeof window._sqMach==='function'?window._sqMach():'808'), steps, swing:(typeof window._sqSwingVal==='function'?window._sqSwingVal():0), grid, vols:{}, pitches:{}},
+  isDemo:true
+ };
+}
+
 function buildDemoSong(){
  var steps=16;
  var grid={};
@@ -11053,7 +11151,7 @@ function sqInitFX(){
   var c=sqCtx(); if(!c||SQMG) return;
   sqEnsureNoise();
   SQMG=c.createGain(); SQMG.gain.value=0.85; // drums default ~70% of full
-  SQMG.connect(window._masterDest||c.destination);
+  SQMG.connect(masterDest(c));
   window.SQMG_REF = SQMG;
 
   sqRevGain=c.createGain(); sqRevGain.gain.value=0;
@@ -11063,18 +11161,18 @@ function sqInitFX(){
   var rd4=c.createDelay(.5);rd4.delayTime.value=.053;
   SQMG.connect(rd1);SQMG.connect(rd2);SQMG.connect(rd3);SQMG.connect(rd4);
   rd1.connect(sqRevGain);rd2.connect(sqRevGain);rd3.connect(sqRevGain);rd4.connect(sqRevGain);
-  sqRevGain.connect(c.destination);
+  sqRevGain.connect(masterDest(c));
 
   sqDelayNode=c.createDelay(2);sqDelayNode.delayTime.value=.5;
   sqDelayFB=c.createGain();sqDelayFB.gain.value=0;
   sqDelayGain=c.createGain();sqDelayGain.gain.value=0;
   SQMG.connect(sqDelayNode);sqDelayNode.connect(sqDelayFB);sqDelayFB.connect(sqDelayNode);
-  sqDelayNode.connect(sqDelayGain);sqDelayGain.connect(c.destination);
+  sqDelayNode.connect(sqDelayGain);sqDelayGain.connect(masterDest(c));
 
   sqDistNode=c.createWaveShaper();sqDistNode.oversample='4x';
   var dc=new Float32Array(256);
   for(var k=0;k<256;k++){var x=k*2/256-1;dc[k]=x;}sqDistNode.curve=dc;
-  SQMG.connect(sqDistNode);sqDistNode.connect(c.destination);
+  SQMG.connect(sqDistNode);sqDistNode.connect(masterDest(c));
 }
 
 function sqApplyFX(){
@@ -11282,6 +11380,19 @@ var SQM={
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
 var sqSwing=0, sqMach='808', sqSteps=16;
 window._sqSwingVal = function(){ return sqSwing; };
+window._sqMach = function(){ return sqMach; };
+// Structural setters for the undo/redo + dice path. These vars live inside the
+// sequencer IIFE, so without an export the outside world silently reads
+// undefined and quietly does nothing.
+window._sqSetSwing = function(v){
+ sqSwing = +v||0;
+ var el=document.getElementById('sq-swing'); if(el) el.value=sqSwing;
+ if(typeof sqSyncUI==='function') sqSyncUI();
+};
+window._sqSetMach = function(k){
+ if(!k||k===sqMach||!SQM[k]) return;
+ if(typeof sqDoSwap==='function') sqDoSwap(k); else sqMach=k;
+};
 var sqGrid={}, sqVols={}, sqPitches={}, sqMachGrids={};
 var SQ_NUM_P=8, sqPats=[], sqCurPat=0;
 for(var _pi=0;_pi<SQ_NUM_P;_pi++) sqPats.push(null);
@@ -12020,7 +12131,7 @@ function blMG(){
   if(!BL_MG){
     BL_MG = ctx.createGain();
     BL_MG.gain.value = 0.55;
-    BL_MG.connect(window._masterDest||ctx.destination);
+    BL_MG.connect(masterDest(ctx));
   }
   return BL_MG;
 }
@@ -12768,7 +12879,7 @@ function mlMG(){
   if(!ML_MG){
     ML_MG = ctx.createGain();
     ML_MG.gain.value = 0.6;
-    ML_MG.connect(window._masterDest||ctx.destination);
+    ML_MG.connect(masterDest(ctx));
   }
   return ML_MG;
 }
