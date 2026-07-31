@@ -491,9 +491,6 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 }
 .mel-inner { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; color:var(--text); pointer-events:none; }
 .mel-label { font-size:.5rem; color:var(--muted); font-weight:500; }
-/* MōdUlar's onscreen keyboard reuses the melody-strip key styling with its own accent */
-#modular-keys { --mel-c: #7dd3fc; }
-
 /* Pitch bend strip */
 .bend-strip-wrap {
  width:100%; max-width:700px; margin-top:4px; display:none;
@@ -1249,6 +1246,22 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
  filter:brightness(1.35);
  animation:logic-pulse 1.2s ease-in-out infinite;
  border-color:var(--accent) !important;
+}
+
+/* Currently-sounding chord — lit up while a chord is actively playing,
+   including during automatic Song-mode playback where nothing is being
+   pressed by the user */
+@keyframes now-playing-pulse {
+ 0% { box-shadow:0 0 10px 3px var(--pg), 0 0 0 2px var(--pg); }
+ 50% { box-shadow:0 0 20px 5px var(--pg), 0 0 0 2px var(--pg); }
+ 100% { box-shadow:0 0 10px 3px var(--pg), 0 0 0 2px var(--pg); }
+}
+.chord-split.now-playing,
+.chord-out.now-playing {
+ box-shadow:0 0 20px 5px var(--pg), 0 0 0 2px var(--pg);
+ animation:now-playing-pulse 1s ease-in-out infinite;
+ border-color:var(--pg) !important;
+ z-index:1;
 }
 
 /* Variant arm system */
@@ -2196,9 +2209,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')">
  <span class="tab-icon">🎚</span>Mix
  </button>
- <button class="tab-btn" id="tab-modular" onclick="switchTab('modular')">
- <span class="tab-icon">🔌</span>MōdUlar
- </button>
  <button class="tab-btn" id="tab-build" onclick="switchTab('build')">
  <span class="tab-icon">⚙</span>Setup
  </button>
@@ -2275,6 +2285,17 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
+ <!-- Chords / Melody sub-tabs -->
+ <div style="width:100%;max-width:700px;margin-bottom:10px">
+ <div class="tg" style="width:100%">
+ <button class="tb active" id="pf-chords-btn" onclick="setPerformMode('chords')" style="flex:1">Chords</button>
+ <button class="tb" id="pf-melody-btn" onclick="setPerformMode('melody')" style="flex:1">Melody</button>
+ </div>
+ </div>
+
+ <!-- CHORDS SUB-PAGE -->
+ <div id="pf-chords-panel">
+
  <!-- Variant arm system (hidden until enabled in Settings) -->
  <div class="advanced-only" style="display:flex;align-items:center;gap:4px;width:100%;max-width:700px;justify-content:center;margin-bottom:2px"><span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Variants</span><button class="tips-btn" onclick="showTip('variants',this)">?</button></div>
  <div class="variant-arm-row advanced-only" id="variant-arm-row">
@@ -2330,8 +2351,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="li"><div class="ld" style="background:var(--modal)"></div>Modal</div>
  </div>
 
- <!-- Melody strip -->
- <div class="panel p-perform advanced-only" style="margin-top:10px;width:100%;max-width:700px">
+ </div><!-- /pf-chords-panel -->
+
+ <!-- MELODY SUB-PAGE -->
+ <div id="pf-melody-panel" style="display:none">
+ <div class="panel p-perform" style="margin-top:10px;width:100%;max-width:700px">
  <div class="panel-title"><span class="pt-icon"></span> Melody / Solo <button class="tips-btn" onclick="showTip('melody',this)">?</button>
  <button class="tb" onclick="shiftMelOct(-1)">Oct−</button>
  <span class="oct-pill" id="mel-oct-disp">C5</span>
@@ -2375,8 +2399,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
  </div>
-
-
+ </div><!-- /pf-melody-panel -->
 
 
  <!-- Transport + Arp on PRISM tab -->
@@ -3176,110 +3199,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <b class="rnd-keep">Not the same as ⏺ Rec in the transport</b>, which captures the chords you play into an editable Song section that stays inside the app. Use that one to build a chart; use this one to get files out.
   </div>
  </div>
-</div>
-
-<!-- ══════════════════════════════════════
- MŌDULAR TAB — semi-modular synth: real oscillator/filter/envelope/LFO
- stages with genuine patch points (LFO destination, filter env amount)
- that reconfigure the live Web Audio graph, played from an onscreen
- chromatic keyboard.
-══════════════════════════════════════ -->
-<div class="tab-page" id="page-modular">
-
- <div class="panel p-perform" style="width:100%;max-width:700px">
-  <div class="panel-title"><span class="pt-icon">◈</span> Oscillators</div>
-  <div class="row">
-   <div class="sg" style="min-width:130px">
-    <div class="sl">VCO 1</div>
-    <div class="tg">
-     <button class="tb active" id="md-o1w-sawtooth" onclick="mdSetOscWave(1,'sawtooth')">Saw</button>
-     <button class="tb" id="md-o1w-square" onclick="mdSetOscWave(1,'square')">Sqr</button>
-     <button class="tb" id="md-o1w-triangle" onclick="mdSetOscWave(1,'triangle')">Tri</button>
-     <button class="tb" id="md-o1w-sine" onclick="mdSetOscWave(1,'sine')">Sin</button>
-    </div>
-   </div>
-   <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o1-oct" min="-2" max="2" step="1" value="0" oninput="mdSetOscOct(1,this.value)"><div class="sv" id="md-o1-oct-v">0</div></div>
-   <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o1-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(1,this.value)"><div class="sv" id="md-o1-fine-v">0</div></div>
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-o1-lvl" min="0" max="100" step="1" value="80" oninput="mdSetOscLvl(1,this.value)"><div class="sv" id="md-o1-lvl-v">80%</div></div>
-  </div>
-  <div class="row">
-   <div class="sg" style="min-width:130px">
-    <div class="sl">VCO 2</div>
-    <div class="tg">
-     <button class="tb" id="md-o2w-sawtooth" onclick="mdSetOscWave(2,'sawtooth')">Saw</button>
-     <button class="tb active" id="md-o2w-square" onclick="mdSetOscWave(2,'square')">Sqr</button>
-     <button class="tb" id="md-o2w-triangle" onclick="mdSetOscWave(2,'triangle')">Tri</button>
-     <button class="tb" id="md-o2w-sine" onclick="mdSetOscWave(2,'sine')">Sin</button>
-    </div>
-   </div>
-   <div class="sg"><div class="sl">Oct</div><input type="range" id="md-o2-oct" min="-2" max="2" step="1" value="-1" oninput="mdSetOscOct(2,this.value)"><div class="sv" id="md-o2-oct-v">-1</div></div>
-   <div class="sg"><div class="sl">Fine</div><input type="range" id="md-o2-fine" min="-12" max="12" step="1" value="0" oninput="mdSetOscFine(2,this.value)"><div class="sv" id="md-o2-fine-v">0</div></div>
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-o2-lvl" min="0" max="100" step="1" value="45" oninput="mdSetOscLvl(2,this.value)"><div class="sv" id="md-o2-lvl-v">45%</div></div>
-  </div>
-  <div class="row">
-   <div class="sg"><div class="sl">Noise</div><input type="range" id="md-noise-lvl" min="0" max="100" step="1" value="0" oninput="mdSetNoiseLvl(this.value)"><div class="sv" id="md-noise-lvl-v">0%</div></div>
-  </div>
- </div>
-
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">◐</span> Filter</div>
-  <div class="row">
-   <div class="tg">
-    <button class="tb active" id="md-filt-lowpass" onclick="mdSetFiltType('lowpass')">LP</button>
-    <button class="tb" id="md-filt-highpass" onclick="mdSetFiltType('highpass')">HP</button>
-    <button class="tb" id="md-filt-bandpass" onclick="mdSetFiltType('bandpass')">BP</button>
-   </div>
-   <div class="sg"><div class="sl">Cutoff</div><input type="range" id="md-filt-cutoff" min="80" max="8000" step="10" value="1800" oninput="mdSetFiltCutoff(this.value)"><div class="sv" id="md-filt-cutoff-v">1800Hz</div></div>
-   <div class="sg"><div class="sl">Reso</div><input type="range" id="md-filt-reso" min="0.1" max="20" step="0.1" value="4" oninput="mdSetFiltReso(this.value)"><div class="sv" id="md-filt-reso-v">4</div></div>
-   <div class="sg"><div class="sl">Env Amt</div><input type="range" id="md-filt-env" min="-100" max="100" step="1" value="50" oninput="mdSetFiltEnvAmt(this.value)"><div class="sv" id="md-filt-env-v">+50%</div></div>
-  </div>
- </div>
-
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">⏢</span> Envelope <span style="font-size:.42rem;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— drives Amp always, drives Filter by Env Amt above</span></div>
-  <div class="row">
-   <div class="sg"><div class="sl">Attack</div><input type="range" id="md-env-a" min="0" max="2" step="0.01" value="0.01" oninput="mdSetEnv('a',this.value)"><div class="sv" id="md-env-a-v">10ms</div></div>
-   <div class="sg"><div class="sl">Decay</div><input type="range" id="md-env-d" min="0" max="2" step="0.01" value="0.25" oninput="mdSetEnv('d',this.value)"><div class="sv" id="md-env-d-v">250ms</div></div>
-   <div class="sg"><div class="sl">Sustain</div><input type="range" id="md-env-s" min="0" max="100" step="1" value="65" oninput="mdSetEnv('s',this.value)"><div class="sv" id="md-env-s-v">65%</div></div>
-   <div class="sg"><div class="sl">Release</div><input type="range" id="md-env-r" min="0" max="3" step="0.01" value="0.4" oninput="mdSetEnv('r',this.value)"><div class="sv" id="md-env-r-v">400ms</div></div>
-  </div>
- </div>
-
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">∿</span> LFO <span style="font-size:.42rem;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">— patch point: pick where it's plugged in</span></div>
-  <div class="row">
-   <div class="sg"><div class="sl">Rate</div><input type="range" id="md-lfo-rate" min="0.1" max="20" step="0.1" value="5" oninput="mdSetLfoRate(this.value)"><div class="sv" id="md-lfo-rate-v">5.0Hz</div></div>
-   <div class="tg">
-    <button class="tb active" id="md-lw-sine" onclick="mdSetLfoWave('sine')">Sin</button>
-    <button class="tb" id="md-lw-triangle" onclick="mdSetLfoWave('triangle')">Tri</button>
-    <button class="tb" id="md-lw-square" onclick="mdSetLfoWave('square')">Sqr</button>
-   </div>
-   <div class="sg"><div class="sl">Depth</div><input type="range" id="md-lfo-depth" min="0" max="100" step="1" value="30" oninput="mdSetLfoDepth(this.value)"><div class="sv" id="md-lfo-depth-v">30%</div></div>
-  </div>
-  <div class="row">
-   <span style="font-size:.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Patch to:</span>
-   <div class="tg">
-    <button class="tb active" id="md-ld-off" onclick="mdSetLfoDest('off')">Off</button>
-    <button class="tb" id="md-ld-pitch" onclick="mdSetLfoDest('pitch')">Pitch</button>
-    <button class="tb" id="md-ld-filter" onclick="mdSetLfoDest('filter')">Filter</button>
-    <button class="tb" id="md-ld-amp" onclick="mdSetLfoDest('amp')">Amp</button>
-   </div>
-  </div>
- </div>
-
- <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
-  <div class="panel-title"><span class="pt-icon">▶</span> Output</div>
-  <div class="row">
-   <div class="sg"><div class="sl">Level</div><input type="range" id="md-out-lvl" min="0" max="100" step="1" value="75" oninput="mdSetOutLvl(this.value)"><div class="sv" id="md-out-lvl-v">75%</div></div>
-  </div>
- </div>
-
- <div class="mel-strip" style="margin-top:10px" id="md-keys-wrap">
-  <div class="mel-keys-wrap">
-   <div class="mel-keys" id="modular-keys"></div>
-  </div>
- </div>
-
 </div>
 
 <!-- ══════════════════════════════════════
@@ -6807,6 +6726,18 @@ function renderChartSeq(){
  renderPerfChartRow();
 }
 
+// Map a saved chart slot's Roman-numeral back to the diatonic degree (0-6) or
+// modal label it corresponds to, so the same pad-highlighting path used for
+// manual chord presses (applyLogicHighlights) can also light up the pad a
+// song slot is playing — same mapping addToSection() already uses.
+const NUMERAL_DEG={'I':0,'ii':1,'iii':2,'IV':3,'V':4,'vi':5,'vii':6,
+ 'i':0,'II':1,'III':2,'iv':3,'v':4,'VI':5,'VII':6};
+function _chordKeyForSlot(slot){
+ if(!slot||slot.isRest) return {deg:-1,label:null};
+ const deg = NUMERAL_DEG[slot.numeral] ?? -1;
+ return (slot.func==='modal' || deg<0) ? {deg:-1,label:slot.numeral||slot.label||null} : {deg,label:null};
+}
+
 function playChartSlot(i){
  const slots=sections[curSection]?.slots||[]; if(i<0||i>=slots.length) return;
  const slot=slots[i];
@@ -6819,6 +6750,8 @@ function playChartSlot(i){
  if(!arpOn||wetDry<.99){ stopAll(); playChord(slot.rootM,intvs,false,0); }
  }
  if(arpOn){ arpIdx=0; arpDir=1; }
+ const ck=_chordKeyForSlot(slot);
+ applyLogicHighlights(ck.deg,ck.label);
  renderPerfChartRow();
 }
 
@@ -7159,6 +7092,22 @@ const HELP_SECTIONS=[
  {icon:'',text:'12 patterns across 4/4, 3/4, 6/8, 12/8 time signatures. Selecting a new pattern while playing switches immediately on the next beat.'},
  {icon:'',text:'Rhythm and Arp can run simultaneously — the arp follows the BPM automatically.'},
  ]},
+ {title:' MōdSynth & MōdKit', tips:[
+ {icon:'',text:'<strong>MōdSynth</strong> is a multi-stage unison mega synth voice — pick it from any Sound selector (Perform, Settings). It responds to the Tone/Reso/Sweep/Drive/Width/Drift macro knobs in Settings → Sound Engine, so those knobs are the real sound-design surface once it\'s selected.'},
+ {icon:'',text:'<strong>MōdKit</strong> is an 8-voice synthesized drum kit — select it like any other kit in the Rhythm tab\'s kit picker for a modern, hybrid-synth drum sound instead of a sampled 808/909.'},
+ ]},
+ {title:' Randomize (the dice)', tips:[
+ {icon:'',text:'The <strong>die</strong> in the fixed transport bar rolls a whole <strong>patch character</strong> — waveform, arp pattern/rate/gate, envelope, filter/drive/width/drift, and voicing — not just one loose knob at a time.'},
+ {icon:'',text:'If nothing is playing, it does a <strong>full reroll</strong> — key, mode and tempo included. While something\'s playing, key/mode/tempo are held steady so you don\'t get yanked out of the groove.'},
+ {icon:'↶',text:'Not feeling it? <strong>Undo</strong> in the transport bar brings back the previous sound instantly; Redo re-applies the roll.'},
+ ]},
+ {title:' Workflow: Drums → Record → Perform', tips:[
+ {icon:'🥁',text:'Start with <strong>Drums</strong> — pick a groove/kit in the Rhythm tab, or just hit Play in the fixed bar to hear the default pattern.'},
+ {icon:'●',text:'Hit <strong>Record</strong> (● in the fixed bar) and then play a chord sequence live — by mouse, keyboard, or MIDI — or trigger chords from a song you\'ve already built. Each chord you play is captured into a new Song section.'},
+ {icon:'■',text:'Hit Record again to stop. Your captured section is saved to the current song and can be replayed, edited, or looped from the Songs tab.'},
+ {icon:'',text:'Once a song is loaded and playing, use the <strong>Arp / Bass / Mel</strong> buttons in the fixed bar to mute and unmute those layers live — that\'s the core "perform" move: build a groove, then play with what\'s in and out while the chords keep rolling.'},
+ {icon:'',text:'On the Bass/Mel tab, hit <strong>Generate</strong> to auto-write a bassline or melodic hook that follows your chords (styles like Funk, Motown, Jazz for bass). Turn on <strong>Bass+Mel: Sync</strong> (Perform tab) to have them regenerate automatically every time the chord changes.'},
+ ]},
 ];
 
 function buildHelp(){
@@ -7337,8 +7286,22 @@ const LOGIC_MODAL={
 };
 let lastTriggeredLabel=null;
 
+// The chord pad that's actually sounding right now — lit up on every manual
+// press (mouse/keyboard/MIDI, all of which already call applyLogicHighlights)
+// and on every automatic Song-mode slot change (see playChartSlot/playChartSlot2),
+// so it stays accurate whether a human or the song loop is driving playback.
+function setNowPlayingPad(deg,modalLabel){
+ document.querySelectorAll('.now-playing').forEach(e=>e.classList.remove('now-playing'));
+ if(deg>=0 && !modalLabel){
+  document.getElementById('cs-'+deg)?.classList.add('now-playing');
+ } else if(modalLabel){
+  document.querySelectorAll('[data-modal-label="'+modalLabel+'"]').forEach(e=>e.classList.add('now-playing'));
+ }
+}
+
 function applyLogicHighlights(deg,modalLabel){
  lastTriggeredDegree=deg; lastTriggeredLabel=modalLabel||null;
+ setNowPlayingPad(deg,modalLabel);
  document.querySelectorAll('.logic-suggest').forEach(e=>e.classList.remove('logic-suggest'));
  if(!logicModeOn) return;
    const addSuggest = (el) => { if(el) el.classList.add('logic-suggest'); };
@@ -7709,6 +7672,15 @@ function setSongsMode(m){
 }
 
 let bassMelMode = 'bass';
+let performMode='chords';
+function setPerformMode(m){
+ performMode = m;
+ document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
+ document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
+ document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
+ document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+}
+
 function setBassMelMode(m){
  bassMelMode = m;
  document.getElementById('bm-bass-btn')?.classList.toggle('active', m==='bass');
@@ -7793,7 +7765,7 @@ function playChartSlot2(si, ci){
  if(slot.isRest){
   stopAll();
   if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
-  if(logicModeOn) applyLogicHighlights(-1);
+  applyLogicHighlights(-1);
   return;
  }
  // Live capo: shift all notes by (current key − key at loop start), non-destructive
@@ -7831,17 +7803,10 @@ function playChartSlot2(si, ci){
  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
- // Logic mode — highlight likely next chords on Groove tab
- if(logicModeOn){
- const NUMERAL_DEG={'I':0,'ii':1,'iii':2,'IV':3,'V':4,'vi':5,'vii':6,
- 'i':0,'II':1,'III':2,'iv':3,'v':4,'VI':5,'VII':6};
- const deg = NUMERAL_DEG[slot.numeral] ?? -1;
- if(slot.func==='modal' || deg < 0){
- applyLogicHighlights(-1, slot.numeral || slot.label);
- } else {
- applyLogicHighlights(deg);
- }
- }
+ // Light up the pad this slot corresponds to (now-playing) and, in Logic
+ // mode, suggest likely next chords too.
+ const ck=_chordKeyForSlot(slot);
+ applyLogicHighlights(ck.deg, ck.label);
  // Auto-regenerate bass line and melody when song loop advances to a new chord (if sync is enabled)
  if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync){
  if(typeof window.blGenerate==='function') setTimeout(window.blGenerate, 10);
@@ -7883,7 +7848,6 @@ function switchTab(t){
  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
- if(t!=='modular' && typeof mdStopAll==='function') mdStopAll(); // no stuck notes when navigating away
  if(t==='songs') renderSetlistPerform();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
@@ -9204,6 +9168,7 @@ function stopEverything(){
  if(_isRecording) _stopRecording();
  Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
  stopAll();
+ setNowPlayingPad(-1,null);
  syncFixedTransport();
 }
 
@@ -10045,7 +10010,6 @@ renderChords();
 loadProgressionFromHash();
 updateOct();
 buildMelodyStrip();
-buildModularKeys();
 initBendStrip();
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
@@ -12565,180 +12529,6 @@ window._mlRestoreState = function(s){
 };
 
 })(); // end melody IIFE
-
-
-// ═══════════════════════════════════════
-// MŌDULAR — semi-modular synth
-// A real oscillator → filter → VCA signal path plus one LFO, all with
-// genuine patch points: the LFO's destination (Off/Pitch/Filter/Amp) and
-// the filter's envelope amount actually change which nodes get connected
-// to what, not just cosmetic labels.
-// ═══════════════════════════════════════
-var mdOsc={
- 1:{wave:'sawtooth',oct:0,fine:0,lvl:.8},
- 2:{wave:'square',oct:-1,fine:0,lvl:.45}
-};
-var mdNoiseLvl=0;
-var mdFiltType='lowpass', mdFiltCutoff=1800, mdFiltReso=4, mdFiltEnvAmt=.5;
-var mdEnvA=.01, mdEnvD=.25, mdEnvS=.65, mdEnvR=.4;
-var mdLfoRate=5, mdLfoWave='sine', mdLfoDest='off', mdLfoDepth=.3;
-var mdOutLvl=.75;
-var activeMd={}; // midi -> {oscs:[...], filt, amp, out}
-var _mdNoiseBuf=null;
-
-function _mdTxt(id,txt){ var e=document.getElementById(id); if(e) e.textContent=txt; }
-
-function mdSetOscWave(n,w){
- mdOsc[n].wave=w;
- ['sawtooth','square','triangle','sine'].forEach(function(x){
-  var b=document.getElementById('md-o'+n+'w-'+x); if(b) b.classList.toggle('active',x===w);
- });
-}
-function mdSetOscOct(n,v){ mdOsc[n].oct=parseInt(v,10); _mdTxt('md-o'+n+'-oct-v',v); }
-function mdSetOscFine(n,v){ mdOsc[n].fine=parseInt(v,10); _mdTxt('md-o'+n+'-fine-v',v); }
-function mdSetOscLvl(n,v){ mdOsc[n].lvl=v/100; _mdTxt('md-o'+n+'-lvl-v',v+'%'); }
-function mdSetNoiseLvl(v){ mdNoiseLvl=v/100; _mdTxt('md-noise-lvl-v',v+'%'); }
-function mdSetFiltType(t){
- mdFiltType=t;
- ['lowpass','highpass','bandpass'].forEach(function(x){ var b=document.getElementById('md-filt-'+x); if(b) b.classList.toggle('active',x===t); });
-}
-function mdSetFiltCutoff(v){ mdFiltCutoff=parseFloat(v); _mdTxt('md-filt-cutoff-v',Math.round(v)+'Hz'); }
-function mdSetFiltReso(v){ mdFiltReso=parseFloat(v); _mdTxt('md-filt-reso-v',(+v).toFixed(1)); }
-function mdSetFiltEnvAmt(v){ mdFiltEnvAmt=v/100; _mdTxt('md-filt-env-v',(v>=0?'+':'')+v+'%'); }
-function mdSetEnv(stage,v){
- v=parseFloat(v);
- if(stage==='a'){ mdEnvA=v; _mdTxt('md-env-a-v',Math.round(v*1000)+'ms'); }
- else if(stage==='d'){ mdEnvD=v; _mdTxt('md-env-d-v',Math.round(v*1000)+'ms'); }
- else if(stage==='s'){ mdEnvS=v/100; _mdTxt('md-env-s-v',Math.round(v)+'%'); }
- else if(stage==='r'){ mdEnvR=v; _mdTxt('md-env-r-v',Math.round(v*1000)+'ms'); }
-}
-function mdSetLfoRate(v){ mdLfoRate=parseFloat(v); _mdTxt('md-lfo-rate-v',(+v).toFixed(1)+'Hz'); }
-function mdSetLfoWave(w){
- mdLfoWave=w;
- ['sine','triangle','square'].forEach(function(x){ var b=document.getElementById('md-lw-'+x); if(b) b.classList.toggle('active',x===w); });
-}
-function mdSetLfoDepth(v){ mdLfoDepth=v/100; _mdTxt('md-lfo-depth-v',v+'%'); }
-function mdSetLfoDest(dest){
- mdLfoDest=dest;
- ['off','pitch','filter','amp'].forEach(function(x){ var b=document.getElementById('md-ld-'+x); if(b) b.classList.toggle('active',x===dest); });
-}
-function mdSetOutLvl(v){ mdOutLvl=v/100; _mdTxt('md-out-lvl-v',v+'%'); }
-
-function _mdEnsureNoise(ctx){
- if(_mdNoiseBuf) return _mdNoiseBuf;
- var len=ctx.sampleRate; // 1s, looped for held notes
- var buf=ctx.createBuffer(1,len,ctx.sampleRate);
- var d=buf.getChannelData(0);
- for(var i=0;i<len;i++) d[i]=Math.random()*2-1;
- _mdNoiseBuf=buf;
- return buf;
-}
-
-function _mdHardStop(midi){
- var v=activeMd[midi]; if(!v) return;
- var ctx=getCtx(); var t=ctx?ctx.currentTime:0;
- v.oscs.forEach(function(o){ try{ o.stop(t+.02); }catch(e){} });
- delete activeMd[midi];
-}
-
-function mdPlayNote(midi,pressure){
- var ctx=getCtx(); if(!ctx) return;
- if(activeMd[midi]) _mdHardStop(midi); // retrigger safety
- var vel = pressure>0 ? (.5+pressure*.5) : .85;
- var t0=ctx.currentTime;
- var f=440*Math.pow(2,(midi-69)/12);
- var oscs=[];
-
- // one LFO per voice (so overlapping notes don't fight over a shared modulator)
- var lfo=null, lfoGain=null;
- if(mdLfoDest!=='off'){
-  lfo=ctx.createOscillator(); lfo.type=mdLfoWave; lfo.frequency.value=mdLfoRate;
-  lfoGain=ctx.createGain(); lfoGain.gain.value=0;
-  lfo.connect(lfoGain); lfo.start(t0); oscs.push(lfo);
- }
-
- var mix=ctx.createGain(); mix.gain.value=1;
- [mdOsc[1],mdOsc[2]].forEach(function(cfg){
-  if(cfg.lvl<=.002) return;
-  var o=ctx.createOscillator(); o.type=cfg.wave;
-  o.frequency.value=f*Math.pow(2,cfg.oct)*Math.pow(2,cfg.fine/12);
-  var g=ctx.createGain(); g.gain.value=cfg.lvl;
-  o.connect(g); g.connect(mix);
-  if(lfo && mdLfoDest==='pitch'){ lfoGain.gain.value=mdLfoDepth*35; lfoGain.connect(o.detune); }
-  o.start(t0); oscs.push(o);
- });
- if(mdNoiseLvl>.002){
-  var ns=ctx.createBufferSource(); ns.buffer=_mdEnsureNoise(ctx); ns.loop=true;
-  var nsg=ctx.createGain(); nsg.gain.value=mdNoiseLvl;
-  ns.connect(nsg); nsg.connect(mix);
-  ns.start(t0); oscs.push(ns);
- }
-
- // filter stage — its own attack/decay sweep, scaled by Env Amt (bipolar)
- var filt=ctx.createBiquadFilter(); filt.type=mdFiltType; filt.Q.value=mdFiltReso;
- var base=Math.max(40,Math.min(18000,mdFiltCutoff));
- var peak=Math.max(40,Math.min(18000,base+base*mdFiltEnvAmt*3));
- var susCut=Math.max(40,Math.min(18000,base+(peak-base)*mdEnvS));
- filt.frequency.setValueAtTime(base,t0);
- filt.frequency.linearRampToValueAtTime(peak,t0+Math.max(mdEnvA,.002));
- filt.frequency.linearRampToValueAtTime(susCut,t0+mdEnvA+mdEnvD);
- if(lfo && mdLfoDest==='filter'){ lfoGain.gain.value=mdLfoDepth*base*.9; lfoGain.connect(filt.frequency); }
- mix.connect(filt);
-
- // VCA — always driven by the envelope; LFO can additionally ride on top for tremolo
- var amp=ctx.createGain(); amp.gain.setValueAtTime(0,t0);
- amp.gain.linearRampToValueAtTime(vel,t0+Math.max(mdEnvA,.002));
- amp.gain.linearRampToValueAtTime(Math.max(vel*mdEnvS,.0001),t0+mdEnvA+mdEnvD);
- if(lfo && mdLfoDest==='amp'){ lfoGain.gain.value=mdLfoDepth*.5; lfoGain.connect(amp.gain); }
- filt.connect(amp);
-
- var out=ctx.createGain(); out.gain.value=mdOutLvl;
- amp.connect(out); out.connect(window._masterDest||ctx.destination);
-
- activeMd[midi]={oscs:oscs,filt:filt,amp:amp,out:out};
- var el=document.getElementById('md-'+midi); if(el) el.classList.add('held');
-}
-
-function mdReleaseNote(midi){
- var v=activeMd[midi];
- var el=document.getElementById('md-'+midi); if(el) el.classList.remove('held');
- if(!v) return;
- var ctx=getCtx();
- if(!ctx){ delete activeMd[midi]; return; }
- var t=ctx.currentTime;
- var rel=Math.max(mdEnvR,.02);
- try{
-  v.amp.gain.cancelScheduledValues(t);
-  v.amp.gain.setValueAtTime(v.amp.gain.value,t);
-  v.amp.gain.linearRampToValueAtTime(.0001,t+rel);
-  v.filt.frequency.cancelScheduledValues(t);
-  v.filt.frequency.setValueAtTime(v.filt.frequency.value,t);
-  v.filt.frequency.linearRampToValueAtTime(mdFiltCutoff,t+rel);
- }catch(e){}
- v.oscs.forEach(function(o){ try{ o.stop(t+rel+.05); }catch(e){} });
- delete activeMd[midi];
-}
-
-function mdStopAll(){
- Object.keys(activeMd).forEach(function(m){ mdReleaseNote(+m); });
-}
-
-function buildModularKeys(){
- var container=document.getElementById('modular-keys'); if(!container) return;
- container.innerHTML='';
- var NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
- for(let midi=48; midi<=72; midi++){ // C3 – C5, chromatic
-  var name=NOTES[midi%12], oct=Math.floor(midi/12)-1;
-  var wrap=document.createElement('div'); wrap.className='mel-key';
-  var btn=document.createElement('div'); btn.className='mel-btn'; btn.id='md-'+midi;
-  btn.innerHTML='<span class="mel-inner">'+name+'</span>';
-  var lbl=document.createElement('div'); lbl.className='mel-label'; lbl.textContent=name+oct;
-  btn.addEventListener('pointerdown', e=>{ e.preventDefault(); mdPlayNote(midi, e.pressure||0); });
-  btn.addEventListener('pointerup',   e=>{ e.preventDefault(); mdReleaseNote(midi); });
-  btn.addEventListener('pointerleave',()=>{ mdReleaseNote(midi); });
-  wrap.appendChild(btn); wrap.appendChild(lbl); container.appendChild(wrap);
- }
-}
 
 
 // ─── Rhythm tab: simple / sequencer mode toggle ───
