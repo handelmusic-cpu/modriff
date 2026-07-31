@@ -145,18 +145,48 @@ body {
  font-weight:600; position:relative; min-width:0;
  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
 }
-.tab-btn .tab-icon { font-size:.95rem; }
+.tab-btn .tab-icon { font-size:.95rem; transition:filter .2s; }
+/* Each tab keeps one signal color — pulled from the same key-relative
+   palette the chord grid already uses (--pb/--pv/--pr/--pg/--po) — so the
+   dock reads as a legend instead of six identical grey labels, and still
+   rotates together with the rest of the app when the key changes. Setup is
+   deliberately neutral: it's a utility tab, not a musical one. */
+#tab-perform { --tab-c: var(--pb); }
+#tab-songs   { --tab-c: var(--pv); }
+#tab-rhythm  { --tab-c: var(--pr); }
+#tab-bass    { --tab-c: var(--pg); }
+#tab-mix     { --tab-c: var(--po); }
+#tab-build   { --tab-c: var(--muted); }
 .tab-btn.active {
- color:var(--accent);
- border-top-color:var(--accent);
- background:linear-gradient(to top, hsla(var(--kh),var(--ks),var(--kl),.10), transparent 70%);
+ color:var(--tab-c, var(--accent));
+ border-top-color:var(--tab-c, var(--accent));
+ background:linear-gradient(to top, color-mix(in srgb, var(--tab-c, var(--accent)) 14%, transparent), transparent 70%);
 }
 .tab-btn.active::before {
  content:'';
  position:absolute; top:-1px; left:18%; right:18%; height:2px;
- background:var(--accent);
+ background:var(--tab-c, var(--accent));
  filter:blur(4px);
  opacity:.7;
+}
+/* Sliding LED trace under the active tab — a hardware-panel VU light
+   instead of just a recolored label; positioned in JS by positionTabLed(). */
+.tab-led {
+ position:absolute; bottom:2px; height:2px; border-radius:2px;
+ background:var(--tab-c, var(--accent));
+ box-shadow:0 0 8px 1px var(--tab-c, var(--accent));
+ transition:left .28s cubic-bezier(.22,.7,.2,1), width .28s cubic-bezier(.22,.7,.2,1), background .2s;
+ pointer-events:none;
+}
+/* Play tab breathes when something is actually sounding, so the dock
+   reflects state instead of looking identical whether silent or playing. */
+@keyframes tabNowPlaying {
+ 0%,100% { filter:drop-shadow(0 0 0 transparent); }
+ 50%     { filter:drop-shadow(0 0 6px var(--tab-c, var(--pg))); }
+}
+.tab-btn.now-playing .tab-icon { animation:tabNowPlaying 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+ .tab-btn.now-playing .tab-icon { animation:none; }
 }
 /* Fallback for engines without color-mix */
 @supports not (color: color-mix(in srgb, red, blue)) {
@@ -840,6 +870,10 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  font-size:.52rem; color:var(--muted); letter-spacing:.1em; text-align:center;
  max-width:240px; line-height:2; opacity:.7;
 }
+/* Ambient canvas tease behind the unlock content — the tap unlocks audio,
+   it shouldn't feel like it's summoning the app from a dead standstill. */
+.unlock-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
+.unlock-logo, .unlock-sub, .unlock-btn, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
  VOICE TYPE MODAL
@@ -1133,7 +1167,7 @@ body.light-mode .tab-bar {
   border-top:none !important;
 }
 body.light-mode .tab-btn       { color:#6878b8; }
-body.light-mode .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+body.light-mode .tab-btn.active { color:var(--tab-c, var(--accent)); border-bottom-color:var(--tab-c, var(--accent)); }
 
 /* Transport buttons */
 body.light-mode .ft-btn {
@@ -1853,7 +1887,7 @@ body {
 }
 .tab-btn.active {
   background: linear-gradient(180deg,
-    hsla(var(--kh), var(--ks), var(--kl), .08) 0%,
+    color-mix(in srgb, var(--tab-c, var(--accent)) 10%, transparent) 0%,
     transparent 100%);
 }
 .tab-btn.active::before {
@@ -2103,6 +2137,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 
 <!-- Audio Unlock -->
 <div id="audio-unlock">
+ <canvas class="unlock-canvas" id="unlock-canvas" aria-hidden="true"></canvas>
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Chromatic Modal Groovebox</div>
  <button class="unlock-btn" onclick="unlockAudio()">▶ Tap to Start</button>
@@ -2193,7 +2228,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <!-- ══════════════════════════════════════
  TAB BAR
 ══════════════════════════════════════ -->
-<nav class="tab-bar">
+<nav class="tab-bar" id="tab-bar">
  <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')">
  <span class="tab-icon">🎹</span>Play
  </button>
@@ -2212,7 +2247,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tab-btn" id="tab-build" onclick="switchTab('build')">
  <span class="tab-icon">⚙</span>Setup
  </button>
-
+ <div class="tab-led" id="tab-led"></div>
 </nav>
 
 <!-- ══════════════════════════════════════
@@ -3743,10 +3778,63 @@ function unlockAudio(){
  const o=document.getElementById('audio-unlock');
  if(o){ o.style.opacity='0'; o.style.transition='opacity .35s'; setTimeout(()=>o.style.display='none',380); }
  requestGyroPerm();
+ if(window._stopUnlockAnim) window._stopUnlockAnim();
  };
  audioCtx.state==='running'?finish():audioCtx.resume().then(finish).catch(finish);
 }
 document.getElementById('audio-unlock').addEventListener('click',unlockAudio);
+
+// Ambient bars behind the unlock button — a visual tease of the sound
+// that's one tap away, so the launch screen doesn't read as a dead
+// standstill before the app "starts". Purely decorative: no real audio
+// can play before the unlock gesture, so this never claims otherwise.
+(function(){
+ const canvas=document.getElementById('unlock-canvas'); if(!canvas) return;
+ const ctx=canvas.getContext('2d');
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+ function size(){ canvas.width=canvas.clientWidth*dpr; canvas.height=canvas.clientHeight*dpr; }
+ size(); window.addEventListener('resize',size);
+ const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const barCount=22, phases=[];
+ for(let i=0;i<barCount;i++) phases.push(Math.random()*Math.PI*2);
+ function roundRect(x,y,w,h,r){
+ ctx.beginPath();
+ ctx.moveTo(x+r,y);
+ ctx.arcTo(x+w,y,x+w,y+h,r);
+ ctx.arcTo(x+w,y+h,x,y+h,r);
+ ctx.arcTo(x,y+h,x,y,r);
+ ctx.arcTo(x,y,x+w,y,r);
+ ctx.closePath();
+ }
+ function draw(t){
+ const w=canvas.width, h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ const cs=getComputedStyle(document.documentElement);
+ const hues=['--pb','--pv','--pr','--pg'].map(v=>(cs.getPropertyValue(v)||'').trim()||'#4fd6ff');
+ const gap=w/barCount, baseY=h*0.6;
+ for(let i=0;i<barCount;i++){
+ const speed = reduce?0:0.0014;
+ const amp=(Math.sin(t*speed*(1+(i%5)*0.1)+phases[i])*0.5+0.5);
+ const barH=(h*0.04)+amp*(h*0.16);
+ const x=i*gap+gap*0.3, bw=gap*0.4;
+ const grad=ctx.createLinearGradient(0,baseY-barH,0,baseY);
+ grad.addColorStop(0,hues[i%hues.length]);
+ grad.addColorStop(1,'rgba(10,11,22,0)');
+ ctx.fillStyle=grad; ctx.globalAlpha=0.5;
+ roundRect(x,baseY-barH,bw,barH,bw*0.5);
+ ctx.fill();
+ }
+ ctx.globalAlpha=1;
+ }
+ let raf=null;
+ if(reduce){
+ draw(0);
+ } else {
+ const loop=(t)=>{ draw(t); raf=requestAnimationFrame(loop); };
+ raf=requestAnimationFrame(loop);
+ }
+ window._stopUnlockAnim=()=>{ if(raf) cancelAnimationFrame(raf); window.removeEventListener('resize',size); };
+})();
 
 function getCtx(){
  if(!audioCtx) return null;
@@ -5807,6 +5895,7 @@ function syncFixedTransport(){
   const playing=isAnythingPlaying();
   rb.classList.toggle('lit',playing);
  }
+ document.getElementById('tab-perform')?.classList.toggle('now-playing', isAnythingPlaying());
  const db=document.getElementById('ft-drum-btn');
  if(db){ db.classList.toggle('off',!drumsEnabled); }
  const ab=document.getElementById('ft-arp-btn');
@@ -7853,9 +7942,24 @@ function switchTab(t){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
   if(typeof syncMasterUI==='function') syncMasterUI();
  }
+ positionTabLed();
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
+
+// Slides the LED trace under the bottom nav to whichever tab is active —
+// a hardware VU light instead of just recoloring a label.
+function positionTabLed(){
+ const bar = document.getElementById('tab-bar');
+ const led = document.getElementById('tab-led');
+ const active = bar && bar.querySelector('.tab-btn.active');
+ if(!bar || !led || !active) return;
+ const barRect = bar.getBoundingClientRect();
+ const r = active.getBoundingClientRect();
+ led.style.left = (r.left - barRect.left + r.width*0.24) + 'px';
+ led.style.width = (r.width*0.52) + 'px';
+}
+window.addEventListener('resize', positionTabLed);
 
 // ═══════════════════════════════════════
 // TIPS SYSTEM
@@ -10011,6 +10115,7 @@ loadProgressionFromHash();
 updateOct();
 buildMelodyStrip();
 initBendStrip();
+positionTabLed();
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
