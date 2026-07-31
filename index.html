@@ -184,9 +184,9 @@ body {
  0%,100% { filter:drop-shadow(0 0 0 transparent); }
  50%     { filter:drop-shadow(0 0 6px var(--tab-c, var(--pg))); }
 }
-.tab-btn.now-playing .tab-icon { animation:tabNowPlaying 1.6s ease-in-out infinite; }
+.tab-btn.nav-playing .tab-icon { animation:tabNowPlaying 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
- .tab-btn.now-playing .tab-icon { animation:none; }
+ .tab-btn.nav-playing .tab-icon { animation:none; }
 }
 /* Fallback for engines without color-mix */
 @supports not (color: color-mix(in srgb, red, blue)) {
@@ -835,7 +835,7 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 #audio-unlock {
  position:fixed; inset:0; z-index:9999; background:var(--bg);
  display:flex; flex-direction:column; align-items:center; justify-content:center;
- gap:20px; cursor:pointer; touch-action:manipulation;
+ gap:20px; touch-action:manipulation;
  background-image:
    radial-gradient(ellipse 60% 50% at 50% 40%,
      hsla(var(--kh), var(--ks), var(--kl), .08) 0%, transparent 70%),
@@ -855,12 +855,20 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  font-size:.6rem; color:var(--muted); letter-spacing:.28em; text-transform:uppercase;
  font-weight:500;
 }
+.unlock-choices {
+ display:flex; flex-direction:column; align-items:stretch; gap:10px;
+ width:100%; max-width:260px; margin-top:4px;
+}
 .unlock-btn {
- margin-top:4px; padding:16px 48px; background:var(--accent); color:#07080f;
+ padding:16px 32px; background:var(--accent); color:#07080f;
  font-family:'Orbitron',sans-serif; font-weight:700; font-size:.95rem; letter-spacing:.14em;
  border:none; border-radius:50px; cursor:pointer;
  box-shadow:0 0 0 0 hsla(var(--kh), var(--ks), var(--kl), .5);
  animation:btnPulse 2s ease-in-out infinite; touch-action:manipulation;
+}
+.unlock-btn.ghost {
+ background:transparent; color:var(--muted); font-size:.68rem; padding:12px 24px;
+ border:1px solid var(--border2); box-shadow:none; animation:none;
 }
 @keyframes btnPulse{
  0%,100%{box-shadow:0 0 24px hsla(var(--kh), var(--ks), var(--kl), .3), 0 0 0 0 hsla(var(--kh), var(--ks), var(--kl), .2);transform:scale(1);}
@@ -868,12 +876,12 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 }
 .unlock-note {
  font-size:.52rem; color:var(--muted); letter-spacing:.1em; text-align:center;
- max-width:240px; line-height:2; opacity:.7;
+ max-width:260px; line-height:2; opacity:.7;
 }
 /* Ambient canvas tease behind the unlock content — the tap unlocks audio,
    it shouldn't feel like it's summoning the app from a dead standstill. */
 .unlock-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
-.unlock-logo, .unlock-sub, .unlock-btn, .unlock-note { position:relative; z-index:1; }
+.unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
  VOICE TYPE MODAL
@@ -2140,8 +2148,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <canvas class="unlock-canvas" id="unlock-canvas" aria-hidden="true"></canvas>
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Chromatic Modal Groovebox</div>
- <button class="unlock-btn" onclick="unlockAudio()">▶ Tap to Start</button>
- <div class="unlock-note">Required for audio on iPhone &amp; iPad.<br>Tap anywhere to begin.</div>
+ <div class="unlock-choices">
+  <button class="unlock-btn" onclick="unlockAudio(true)">▶ Hear a Demo</button>
+  <button class="unlock-btn ghost" onclick="unlockAudio(false)">Start Blank</button>
+ </div>
+ <div class="unlock-note">Required for audio on iPhone &amp; iPad.<br>Demo plays a chord riff with drums &amp; bass — Blank opens silent.</div>
 </div>
 
 <!-- Voice Type Modal -->
@@ -3755,7 +3766,7 @@ function requestGyroPerm(){
 // ═══════════════════════════════════════
 // AUDIO UNLOCK
 // ═══════════════════════════════════════
-function unlockAudio(){
+function unlockAudio(startDemo){
  if(!audioCtx){
  try{ audioCtx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
  }
@@ -3779,10 +3790,30 @@ function unlockAudio(){
  if(o){ o.style.opacity='0'; o.style.transition='opacity .35s'; setTimeout(()=>o.style.display='none',380); }
  requestGyroPerm();
  if(window._stopUnlockAnim) window._stopUnlockAnim();
+ if(startDemo===true) startDemoJourney();
  };
  audioCtx.state==='running'?finish():audioCtx.resume().then(finish).catch(finish);
 }
-document.getElementById('audio-unlock').addEventListener('click',unlockAudio);
+
+// "Hear a Demo" — reroll the sound character (waveform/filter/arp feel,
+// via the same dice logic as the transport's randomize button) for variety
+// between visits, then load and play the built-in ii-V-I turnaround so the
+// very first thing a new visitor hears is chords, bass and drums locked
+// together. Loading the demo song fixes key/mode/tempo back to what the
+// arrangement was written for — only the sound character stays randomized.
+function startDemoJourney(){
+ try{ if(typeof randomizeSettings==='function') randomizeSettings(); }catch(e){}
+ try{
+  const demo=buildDemoSong();
+  let sl=loadSLData();
+  let idx=sl.findIndex(s=>s.isDemo);
+  if(idx<0){ sl=[demo,...sl]; saveSLData(sl); idx=0; } else { sl[idx]=demo; }
+  setlistData=sl;
+  loadSong(demo,idx);
+  startEverything();
+  syncFixedTransport();
+ }catch(e){}
+}
 
 // Ambient bars behind the unlock button — a visual tease of the sound
 // that's one tap away, so the launch screen doesn't read as a dead
@@ -5895,7 +5926,7 @@ function syncFixedTransport(){
   const playing=isAnythingPlaying();
   rb.classList.toggle('lit',playing);
  }
- document.getElementById('tab-perform')?.classList.toggle('now-playing', isAnythingPlaying());
+ document.getElementById('tab-perform')?.classList.toggle('nav-playing', isAnythingPlaying());
  const db=document.getElementById('ft-drum-btn');
  if(db){ db.classList.toggle('off',!drumsEnabled); }
  const ab=document.getElementById('ft-arp-btn');
@@ -7933,6 +7964,11 @@ function transposeSong(semis){
 // SWITCHTAB — updated for new structure
 // ═══════════════════════════════════════
 function switchTab(t){
+ // A falsy target (e.g. the onboarding tour's intro step, which wants to
+ // show its card over whatever tab is already open) must be a no-op —
+ // not a switch to nothing, which used to blank every tab page since none
+ // of them would match "page-" + t and regain .active.
+ if(!t) return;
  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
