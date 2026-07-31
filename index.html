@@ -691,6 +691,15 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  background:var(--py); border-color:var(--py); color:#07080f;
  box-shadow:0 0 16px hsla(60,80%,50%,.4);
 }
+/* Playing ≠ selected. seq-active (yellow) is the edit cursor — which slot a
+   new chord replaces. .playing (green) is what you're hearing right now, and
+   matches the green used by the Songs perform chart and the Play tab pads so
+   "currently sounding" looks the same everywhere in the app. */
+.chart-chord-btn.playing {
+ border-color:var(--pg);
+ box-shadow:0 0 16px hsla(145,80%,55%,.45), inset 0 0 0 1px var(--pg);
+ animation:now-playing-pulse 1s ease-in-out infinite;
+}
 .slot-cnum { font-size:.44rem; color:var(--muted); letter-spacing:.04em; }
 .chart-chord-btn.seq-active .slot-cnum { color:rgba(7,8,15,.6); }
 /* Row 1: extension type pill */
@@ -6846,6 +6855,8 @@ function renderChartSeq(){
  seq.appendChild(wrap);
  });
  renderPerfChartRow();
+ // Rebuilding the strip drops the playing highlight — repaint it from state.
+ if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
 }
 
 // Map a saved chart slot's Roman-numeral back to the diatonic degree (0-6) or
@@ -7864,6 +7875,11 @@ function renderSongsPerformView(){
  chart.appendChild(block);
  });
 
+ // Rebuilding the chart drops the playing highlight — repaint it from state,
+ // so opening the Songs tab mid-playback shows the current chord immediately
+ // instead of staying blank until the next chord change.
+ if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
+
  // Also render perform setlist
  renderSetlistPerform();
 }
@@ -8364,6 +8380,9 @@ function stopSongLoop(){
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
  if(typeof _clearCompTimers==='function') _clearCompTimers();
+ // songLoopActive is now false, so this clears rather than repaints — without
+ // it the last-played chord stays lit after stop, reading as still playing.
+ if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
  _updateSectionNavUI();
 }
 
@@ -9192,18 +9211,53 @@ function _advanceLoopSlot(){
  _playLoopSlot();
 }
 
-function _highlightLoopSlot(si, ci){
- const chart = document.getElementById('songs-full-chart'); if(!chart) return;
- chart.querySelectorAll('.songs-chord-btn').forEach(b=>b.classList.remove('active'));
- const blocks = chart.querySelectorAll('.songs-section-block');
- if(blocks[si]){
- const btns = blocks[si].querySelectorAll('.songs-chord-btn');
- if(btns[ci]) btns[ci].classList.add('active');
- // Scroll the active chord into view
- if(btns[ci]) btns[ci].scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
+// Paints "what's sounding right now" onto every song view that's currently
+// built, reading only from songCurrentSection/songCurrentSlot. Kept separate
+// from _highlightLoopSlot so the renderers can call it after they rebuild
+// their DOM — otherwise a re-render wipes the highlight and it doesn't come
+// back until the next chord change.
+function applySongPlayingHighlights(scrollIntoView){
+ const si = songCurrentSection, ci = songCurrentSlot;
+ const live = (typeof songLoopActive!=='undefined' && songLoopActive) && si>=0 && ci>=0;
+
+ // Songs tab → Perform sub-mode: the full multi-section chart
+ const chart = document.getElementById('songs-full-chart');
+ if(chart){
+  chart.querySelectorAll('.songs-chord-btn.active').forEach(b=>b.classList.remove('active'));
+  if(live){
+   const blocks = chart.querySelectorAll('.songs-section-block');
+   const btns = blocks[si] ? blocks[si].querySelectorAll('.songs-chord-btn') : null;
+   if(btns && btns[ci]){
+    btns[ci].classList.add('active');
+    if(scrollIntoView) btns[ci].scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
+   }
+  }
  }
+
+ // Songs tab → Build sub-mode: the progression strip. It only shows one
+ // section at a time, so highlight only when the playing section is the
+ // one being edited.
+ const seq = document.getElementById('chart-sequence');
+ if(seq){
+  seq.querySelectorAll('.chart-chord-btn.playing').forEach(b=>b.classList.remove('playing'));
+  if(live && si===curSection){
+   const btns = seq.querySelectorAll('.chart-chord-btn');
+   if(btns[ci]){
+    btns[ci].classList.add('playing');
+    if(scrollIntoView) btns[ci].scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
+   }
+  }
+ }
+}
+
+function _highlightLoopSlot(si, ci){
+ // State first, unconditionally — this used to sit behind an early return
+ // when the Songs perform chart wasn't built, which meant that in Build
+ // mode (the Songs tab's default) songCurrentSlot and the section banner
+ // silently stopped tracking playback altogether.
  songCurrentSection = si;
  songCurrentSlot = ci;
+ applySongPlayingHighlights(true);
  // Update banner to show current section name
  const secEl = document.getElementById('prism-song-section');
  if(secEl) secEl.textContent = (sections[si]?.name || '') + (ci !== undefined ? ' · '+(ci+1)+'/'+(sections[si]?.slots.length||0) : '');
