@@ -340,8 +340,10 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  box-shadow:0 2px 10px rgba(0,0,0,.3);
 }
 .key-name {
- font-family:'Orbitron',sans-serif; font-size:1.4rem;
- font-weight:900; color:var(--accent); min-width:46px; text-align:center;
+ /* Was 1.4rem, which made the key readout the loudest thing on a screen
+    whose actual subject is the chord grid below it. */
+ font-family:'Orbitron',sans-serif; font-size:1.05rem;
+ font-weight:900; color:var(--accent); min-width:38px; text-align:center;
  letter-spacing:.04em;
  text-shadow:0 0 20px hsla(var(--kh), var(--ks), var(--kl), .5);
 }
@@ -891,6 +893,26 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
    it shouldn't feel like it's summoning the app from a dead standstill. */
 .unlock-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
 .unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
+
+/* ═══════════════════════════════════════
+ VOICES PANEL
+═══════════════════════════════════════ */
+.voices-grid {
+ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+ gap:5px 12px; margin-bottom:8px;
+}
+.voice-row { display:flex; align-items:center; gap:7px; min-width:0; }
+.voice-ic { font-size:.72rem; opacity:.85; width:14px; text-align:center; flex-shrink:0; }
+.voice-lbl {
+ font-size:.46rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;
+ white-space:nowrap; flex-shrink:0; min-width:74px;
+}
+.voice-sel {
+ flex:1; min-width:0; background:var(--surf2); color:var(--text);
+ border:1px solid var(--border2); border-radius:var(--r-sm);
+ padding:4px 6px; font-family:'Outfit',sans-serif; font-size:.55rem; cursor:pointer;
+}
+body.light-mode .voice-sel { background:#fff; color:#1a1e38; border-color:#c2c6de; }
 
 /* ═══════════════════════════════════════
  ENDINGS
@@ -2404,36 +2426,14 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="nash-pill advanced-only" id="nash-pill" onclick="toggleNash()" title="Toggle Nashville Numbers">Numbers</button>
  <button class="tune-btn advanced-only" id="tune-cycle-btn" onclick="cycleMasterTune()" title="A4 reference pitch">A=440</button>
  <span class="midi-badge off advanced-only" id="midi-badge" onclick="toggleMidiPanel()">MIDI</span>
+ <div class="vmt-pill" style="margin-left:auto">
+  <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
+  <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
+ </div>
  </div>
 
- <!-- Basic / Advanced view toggle -->
- <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;width:100%;max-width:700px;margin-bottom:4px">
-  <span style="font-size:.42rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">View:</span>
-  <div class="vmt-pill">
-   <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
-   <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
-  </div>
- </div>
 
  <!-- Key mapping moved to Settings tab -->
-
- <!-- MIDI input mode — whether an external MIDI keyboard plays chords or melody -->
- <div class="midi-panel" id="midi-panel">
-  <div class="midi-panel-row">
-   <span class="midi-panel-lbl">MIDI input plays:</span><button class="tips-btn" onclick="showTip('midi',this)">?</button>
-   <div class="tg">
-    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
-    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
-   </div>
-  </div>
-  <div class="midi-panel-row" style="margin-top:6px">
-   <span class="midi-panel-lbl">Ports:</span>
-   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
-  </div>
-  <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
-   More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
-  </div>
- </div>
 
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
@@ -2461,45 +2461,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="varm-btn" id="varm-sl6" onclick="armVariant('/6')">/6</button>
  <button class="varm-btn" id="varm-slb7" onclick="armVariant('/b7')">/b7</button>
  <button class="varm-btn" id="varm-sl7" onclick="armVariant('/7')">/7</button>
- </div>
-
- <!-- Inline sound selector — hidden in Basic mode -->
- <div class="sound-bar advanced-only" id="sound-bar-inline">
- <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
- <div class="tg" style="flex-wrap:wrap">
- <button class="tb" id="sb-sine" onclick="setWave('sine')">Sine</button>
- <button class="tb" id="sb-saw" onclick="setWave('sawtooth')">Saw</button>
- <button class="tb" id="sb-sqr" onclick="setWave('square')">Sqr</button>
- <button class="tb" id="sb-ssaw" onclick="setWave('supersaw')">S·Saw</button>
- <button class="tb active" id="sb-piano" onclick="setWave('piano')">Piano</button>
- <button class="tb" id="sb-organ" onclick="setWave('organ')">Organ</button>
- <button class="tb" id="sb-rhodes" onclick="setWave('rhodes')">Rhodes</button>
- <button class="tb" id="sb-pad" onclick="setWave('pad')">Pad</button>
- <button class="tb" id="sb-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
- <button class="tb" id="sb-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
- </div>
- </div>
-
- <!-- MōdSynth — full control surface, shown only while it's the chord voice -->
- <div class="panel p-perform advanced-only" id="modsynth-panel" style="display:none;width:100%;max-width:700px">
-  <div class="panel-title">
-   <span class="pt-icon">◈</span> MōdSynth
-   <span class="cd-name" id="ms-patch-name">Mega</span>
-   <button class="tips-btn" onclick="showTip('sound',this)">?</button>
-  </div>
-  <canvas id="ms-scope" class="ms-scope"></canvas>
-  <div class="ms-presets" id="modsynth-preset-btns"></div>
-  <div class="ms-osc-row">
-   <span class="ms-lbl">Wave</span>
-   <div class="tg">
-    <button class="tb" id="msw-sine"     onclick="msSet('type','sine')">Sine</button>
-    <button class="tb" id="msw-sawtooth" onclick="msSet('type','sawtooth')">Saw</button>
-    <button class="tb" id="msw-square"   onclick="msSet('type','square')">Sqr</button>
-    <button class="tb" id="msw-triangle" onclick="msSet('type','triangle')">Tri</button>
-   </div>
-   <button class="tb" id="ms-sweep-btn" onclick="msSet('sweep',!modSynthParams.sweep)" title="The voice's own fast-open/slow-close filter movement">Filter Sweep: ON</button>
-  </div>
-  <div class="ms-grid" id="ms-ctrl-grid"></div>
  </div>
 
  <!-- Diatonic chords -->
@@ -2605,26 +2566,73 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div><!-- /pf-melody-panel -->
 
 
- <!-- Transport + Arp on PRISM tab -->
- <div class="panel p-perform" style="width:100%;max-width:700px">
- <div class="panel-title"><span class="pt-icon">⬡</span> Settings <button class="tips-btn" onclick="showTip('transport',this)">?</button></div>
- <div class="row">
- <!-- Chord voice selector -->
- <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
- <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Chord:</span>
+ <!-- Sound engine lives BELOW the chords and the melody player: you pick a
+      chord long before you pick a tone, so the tone controls should not sit
+      between you and the grid. -->
+<!-- Inline sound selector — hidden in Basic mode -->
+ <div class="sound-bar advanced-only" id="sound-bar-inline">
+ <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
  <div class="tg" style="flex-wrap:wrap">
- <button class="tb" id="wv-sine" onclick="setWave('sine')">Sine</button>
- <button class="tb" id="wv-saw" onclick="setWave('sawtooth')">Saw</button>
- <button class="tb" id="wv-sqr" onclick="setWave('square')">Sqr</button>
- <button class="tb" id="wv-ssaw" onclick="setWave('supersaw')">S·Saw</button>
- <button class="tb active" id="wv-piano" onclick="setWave('piano')">Piano</button>
- <button class="tb" id="wv-organ" onclick="setWave('organ')">Organ</button>
- <button class="tb" id="wv-rhodes" onclick="setWave('rhodes')">Rhodes</button>
- <button class="tb" id="wv-pad" onclick="setWave('pad')">Pad</button>
- <button class="tb" id="wv-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
- <button class="tb advanced-only" id="wv-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
+ <button class="tb" id="sb-sine" onclick="setWave('sine')">Sine</button>
+ <button class="tb" id="sb-saw" onclick="setWave('sawtooth')">Saw</button>
+ <button class="tb" id="sb-sqr" onclick="setWave('square')">Sqr</button>
+ <button class="tb" id="sb-ssaw" onclick="setWave('supersaw')">S·Saw</button>
+ <button class="tb active" id="sb-piano" onclick="setWave('piano')">Piano</button>
+ <button class="tb" id="sb-organ" onclick="setWave('organ')">Organ</button>
+ <button class="tb" id="sb-rhodes" onclick="setWave('rhodes')">Rhodes</button>
+ <button class="tb" id="sb-pad" onclick="setWave('pad')">Pad</button>
+ <button class="tb" id="sb-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
+ <button class="tb" id="sb-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
  </div>
  </div>
+
+ <!-- MōdSynth — full control surface, shown only while it's the chord voice -->
+ <div class="panel p-perform advanced-only" id="modsynth-panel" style="display:none;width:100%;max-width:700px">
+  <div class="panel-title">
+   <span class="pt-icon">◈</span> MōdSynth
+   <span class="cd-name" id="ms-patch-name">Mega</span>
+   <button class="tips-btn" onclick="showTip('sound',this)">?</button>
+  </div>
+  <canvas id="ms-scope" class="ms-scope"></canvas>
+  <div class="ms-presets" id="modsynth-preset-btns"></div>
+  <div class="ms-osc-row">
+   <span class="ms-lbl">Wave</span>
+   <div class="tg">
+    <button class="tb" id="msw-sine"     onclick="msSet('type','sine')">Sine</button>
+    <button class="tb" id="msw-sawtooth" onclick="msSet('type','sawtooth')">Saw</button>
+    <button class="tb" id="msw-square"   onclick="msSet('type','square')">Sqr</button>
+    <button class="tb" id="msw-triangle" onclick="msSet('type','triangle')">Tri</button>
+   </div>
+   <button class="tb" id="ms-sweep-btn" onclick="msSet('sweep',!modSynthParams.sweep)" title="The voice's own fast-open/slow-close filter movement">Filter Sweep: ON</button>
+  </div>
+  <div class="ms-grid" id="ms-ctrl-grid"></div>
+ </div>
+
+ <!-- MIDI input mode — whether an external MIDI keyboard plays chords or melody -->
+ <div class="midi-panel" id="midi-panel">
+  <div class="midi-panel-row">
+   <span class="midi-panel-lbl">MIDI input plays:</span><button class="tips-btn" onclick="showTip('midi',this)">?</button>
+   <div class="tg">
+    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
+    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
+   </div>
+  </div>
+  <div class="midi-panel-row" style="margin-top:6px">
+   <span class="midi-panel-lbl">Ports:</span>
+   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
+  </div>
+  <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
+   More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
+  </div>
+ </div>
+
+  <!-- Transport + Arp on PRISM tab -->
+ <div class="panel p-perform" style="width:100%;max-width:700px">
+ <div class="panel-title"><span class="pt-icon">⬡</span> Voices &amp; Timing <button class="tips-btn" onclick="showTip('voices',this)">?</button></div>
+ <!-- Every part has its own engine; they were just spread across three tabs,
+      so there was no one place to see who was playing what. -->
+ <div class="voices-grid" id="voices-grid"></div>
+ <div class="row">
  <div class="row" style="margin:4px 0">
  <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;align-self:center">Length:</span>
  <div class="tg">
@@ -5978,6 +5986,66 @@ function renderChordDiagram(){
 }
 
 // ═══════════════════════════════════════
+// VOICES PANEL — who is playing what
+// ═══════════════════════════════════════
+// Chords, arp, melody strip, bass and the melody generator have always had
+// independent engines, but their five pickers lived on three different tabs,
+// so there was no single place to answer "what is playing what". This is that
+// place; it drives the same setters the scattered controls do.
+const VOICE_PARTS=[
+ {k:'chord', icon:'⬢', label:'Chords', hint:'the chord pads',
+  get:()=>(typeof wave!=='undefined'?wave:null), set:v=>setWave(v),
+  opts:[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
+        ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],
+        ['piano_real','Real Piano'],['modsynth','MōdSynth']]},
+ {k:'arp', icon:'↺', label:'Arp', hint:'the arpeggiator',
+  get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
+  opts:[['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw']]},
+ {k:'mel', icon:'〰', label:'Melody strip', hint:'the keys you play by hand',
+  get:()=>(typeof melWave!=='undefined'?melWave:null), set:v=>setMelWave(v),
+  opts:[['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],['piano_real','Real Piano']]},
+ {k:'bass', icon:'♪', label:'Bass', hint:'the bass sequencer',
+  get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
+  set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
+  opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
+        ['sawtooth','Acid'],['square','Square'],['triangle','Tri'],['sine','Sub']]},
+ {k:'melgen', icon:'✦', label:'Melody gen', hint:'the generated melody line',
+  get:()=>{ try{ return window._mlCaptureState().wave; }catch(e){ return null; } },
+  set:v=>{ if(typeof window.setMlWave==='function') window.setMlWave(v); },
+  opts:[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
+        ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],['piano_real','Real Piano']]},
+];
+function buildVoicesPanel(){
+ const host=document.getElementById('voices-grid'); if(!host) return;
+ host.innerHTML='';
+ VOICE_PARTS.forEach(p=>{
+  const row=document.createElement('div'); row.className='voice-row';
+  const sel=document.createElement('select');
+  sel.className='voice-sel'; sel.id='vsel-'+p.k; sel.title=p.label+' — '+p.hint;
+  p.opts.forEach(([v,lab])=>{
+   const o=document.createElement('option'); o.value=v; o.textContent=lab; sel.appendChild(o);
+  });
+  sel.addEventListener('change',()=>{ try{ p.set(sel.value); }catch(e){} syncVoicesPanel(); });
+  row.innerHTML='<span class="voice-ic">'+p.icon+'</span><span class="voice-lbl">'+p.label+'</span>';
+  row.appendChild(sel);
+  host.appendChild(row);
+ });
+ syncVoicesPanel();
+}
+// Voices change from plenty of places other than this panel — the dice, undo,
+// loading a song, the per-tab pickers — so the panel reads state rather than
+// assuming it is the only writer.
+function syncVoicesPanel(){
+ VOICE_PARTS.forEach(p=>{
+  const sel=document.getElementById('vsel-'+p.k); if(!sel) return;
+  let v=null; try{ v=p.get(); }catch(e){}
+  if(v!=null && sel.value!==v){
+   if([...sel.options].some(o=>o.value===v)) sel.value=v;
+  }
+ });
+}
+
+// ═══════════════════════════════════════
 // ENDING ENGINE
 // ═══════════════════════════════════════
 // Stopping a loop mid-phrase is the thing that makes a jam sound like a demo
@@ -6495,6 +6563,7 @@ function onArpRateSlider(v){
 }
 function setArpWave(w){
  arpWave=w;
+ if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  ['sine','sawtooth','square','supersaw'].forEach(x=>{
  document.getElementById('aw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('aw-'+x+'-p')?.classList.toggle('active',x===w);
@@ -6784,6 +6853,7 @@ function setWave(w){
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
  if(w==='piano_real') preloadSampleInstrument('piano');
+ if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  const msPanel=document.getElementById('modsynth-panel');
  if(msPanel){
   msPanel.style.display = w==='modsynth' ? '' : 'none';
@@ -7186,6 +7256,7 @@ function _applySettings(s){
  if(s.sqSwing!=null && typeof window._sqSetSwing==='function'){ try{ window._sqSetSwing(s.sqSwing); }catch(e){} }
  if(s.chordBeats!=null && typeof setChordBeats==='function'){ try{ setChordBeats(s.chordBeats); }catch(e){} }
  if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){ try{ setModSynthPreset(s.modSynthPreset); }catch(e){} }
+ setTimeout(()=>{ if(typeof syncVoicesPanel==='function') syncVoicesPanel(); },0);
  // Voices
  if(s.wave) setWave(s.wave);
  if(s.arpWave) setArpWave(s.arpWave);
@@ -9193,6 +9264,13 @@ The piano view lights the chord across two octaves, with <strong>R</strong> on t
 <strong>Transposition is handled for you.</strong> MōdRiff plays concert pitch; this panel shows the note as it appears on <em>your</em> part — a concert G reads as written A on trumpet, written E on alto sax, written A on tenor.<br><br>
 <strong>Trumpet</strong> shows the valve combination, <strong>trombone</strong> the slide position, <strong>saxophone</strong> a key diagram including the octave and auxiliary keys, and the fretted instruments the string and fret.<br><br>
 Clarinet and flute currently show the correctly transposed written note without a key diagram.`
+ },
+ 'voices': {
+ title: 'Voices & Timing',
+ body: `Every part has its own instrument, and this is where you can see all of them at once.<br><br>
+<strong>Chords</strong> is the chord grid. <strong>Arp</strong> is the arpeggiator. <strong>Melody strip</strong> is the keys you play by hand. <strong>Bass</strong> and <strong>Melody gen</strong> are the two sequencers on the Bass/Mel tab.<br><br>
+They're genuinely independent — a Rhodes chord under a sine arp with an upright bass is one setting each, and changing one never touches another. The per-tab pickers set exactly the same thing.<br><br>
+<strong>Length</strong> sets how long a tapped chord rings — <strong>∞</strong> holds until you release. <strong>TAP</strong> sets the tempo by tapping. <strong>Bass+Mel: Sync</strong> regenerates both lines whenever the chord changes.`
  },
  'transport': {
  title: 'Transport',
@@ -11372,6 +11450,7 @@ initBendStrip();
 positionTabLed();
 buildModSynthPresets();
 buildFingerInstList();
+buildVoicesPanel();
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
