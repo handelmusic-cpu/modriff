@@ -893,6 +893,66 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
+ SONG CHORD CHART
+═══════════════════════════════════════ */
+.cc-sec { margin-bottom:14px; }
+.cc-sec-name {
+ font-size:.44rem; color:var(--muted); text-transform:uppercase; letter-spacing:.14em;
+ border-bottom:1px solid var(--border2); padding-bottom:3px; margin-bottom:8px;
+}
+.cc-row { display:flex; flex-wrap:wrap; gap:10px; }
+.cc-card {
+ width:92px; text-align:center; padding:6px 4px 5px; border-radius:var(--r-md);
+ border:1px solid transparent; color:var(--text); transition:all .15s;
+}
+.cc-card.playing {
+ border-color:var(--pg);
+ background:color-mix(in srgb, var(--pg) 12%, transparent);
+ box-shadow:0 0 16px -4px var(--pg);
+}
+.cc-num { font-size:.4rem; color:var(--muted); height:11px; letter-spacing:.05em; }
+.cc-name { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; margin-bottom:2px; }
+.cc-sub { font-size:.36rem; color:var(--dom); letter-spacing:.06em; text-transform:uppercase; }
+.cc-dur { font-size:.38rem; color:var(--muted); margin-top:1px; }
+
+/* ═══════════════════════════════════════
+ MŌDSYNTH PANEL
+═══════════════════════════════════════ */
+.ms-scope {
+ width:100%; height:88px; display:block; border-radius:var(--r-md);
+ background:linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.18));
+ border:1px solid var(--border2); margin-bottom:8px;
+}
+.ms-presets { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+.ms-presets .tb { flex:1 1 auto; min-width:52px; }
+.ms-osc-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.ms-lbl {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase;
+ letter-spacing:.1em; white-space:nowrap;
+}
+.ms-grid {
+ display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+ gap:10px 14px;
+}
+.ms-ctrl { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ms-ctrl input[type=range] {
+ -webkit-appearance:none; width:100%; height:3px; border-radius:2px;
+ background:var(--border2); outline:none; cursor:pointer;
+}
+.ms-ctrl input[type=range]::-webkit-slider-thumb {
+ -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+ background:var(--pg); cursor:pointer; box-shadow:0 0 8px hsla(145,80%,55%,.5);
+}
+.ms-ctrl input[type=range]::-moz-range-thumb {
+ width:13px; height:13px; border:none; border-radius:50%;
+ background:var(--pg); cursor:pointer;
+}
+.ms-val {
+ font-family:'Orbitron',sans-serif; font-size:.5rem; color:var(--text);
+ font-variant-numeric:tabular-nums;
+}
+
+/* ═══════════════════════════════════════
  CHORD FORM / FINGERING DIAGRAMS
 ═══════════════════════════════════════ */
 .chord-diagram-body, .fingering-body {
@@ -2401,11 +2461,26 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 
- <!-- MōdSynth presets — only meaningful while MōdSynth is the chord voice,
-      so setWave() shows/hides this row. -->
- <div class="sound-bar advanced-only" id="modsynth-preset-row" style="display:none">
- <span class="sound-bar-label">MōdSynth:</span>
- <div class="tg" style="flex-wrap:wrap" id="modsynth-preset-btns"></div>
+ <!-- MōdSynth — full control surface, shown only while it's the chord voice -->
+ <div class="panel p-perform advanced-only" id="modsynth-panel" style="display:none;width:100%;max-width:700px">
+  <div class="panel-title">
+   <span class="pt-icon">◈</span> MōdSynth
+   <span class="cd-name" id="ms-patch-name">Mega</span>
+   <button class="tips-btn" onclick="showTip('sound',this)">?</button>
+  </div>
+  <canvas id="ms-scope" class="ms-scope"></canvas>
+  <div class="ms-presets" id="modsynth-preset-btns"></div>
+  <div class="ms-osc-row">
+   <span class="ms-lbl">Wave</span>
+   <div class="tg">
+    <button class="tb" id="msw-sine"     onclick="msSet('type','sine')">Sine</button>
+    <button class="tb" id="msw-sawtooth" onclick="msSet('type','sawtooth')">Saw</button>
+    <button class="tb" id="msw-square"   onclick="msSet('type','square')">Sqr</button>
+    <button class="tb" id="msw-triangle" onclick="msSet('type','triangle')">Tri</button>
+   </div>
+   <button class="tb" id="ms-sweep-btn" onclick="msSet('sweep',!modSynthParams.sweep)" title="The voice's own fast-open/slow-close filter movement">Filter Sweep: ON</button>
+  </div>
+  <div class="ms-grid" id="ms-ctrl-grid"></div>
  </div>
 
  <!-- Diatonic chords -->
@@ -2719,6 +2794,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="tg" style="width:100%">
  <button class="tb active" id="songs-build-btn" onclick="setSongsMode('build')" style="flex:1"> Build</button>
  <button class="tb" id="songs-perform-btn" onclick="setSongsMode('perform')" style="flex:1">Perform</button>
+ <button class="tb" id="songs-chart-btn" onclick="setSongsMode('chart')" style="flex:1">Chart</button>
  </div>
  </div>
 
@@ -2855,6 +2931,22 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 
 
  <!-- PERFORM MODE -->
+ <div id="songs-chart-panel" style="display:none;width:100%;max-width:700px">
+  <div class="panel p-perform" style="width:100%">
+   <div class="panel-title">
+    <span class="pt-icon">▦</span> Chord Chart
+    <span class="cd-name" id="chart-song-title"></span>
+   </div>
+   <div class="tg" style="width:100%;margin-bottom:6px">
+    <button class="tb active" id="csi-guitar" onclick="setChartInst('guitar')" style="flex:1">Guitar</button>
+    <button class="tb" id="csi-ukulele" onclick="setChartInst('ukulele')" style="flex:1">Ukulele</button>
+   </div>
+   <div class="row" style="gap:6px;margin-bottom:4px">
+    <button class="tb" onclick="printChordChart()" style="flex:1">Print / Save PDF</button>
+   </div>
+   <div id="chord-chart-body"></div>
+  </div>
+ </div>
  <div id="songs-perform-panel" style="display:none;width:100%;max-width:700px">
 
  <!-- Song loaded banner -->
@@ -4302,12 +4394,91 @@ const MODSYNTH_PRESETS = {
  pluck:    {label:'Pluck',   voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7, q:8,   drive:1.4, sweep:true},
 };
 let modSynthPreset='mega';
+// The live patch. Presets load into this; the panel edits it directly, so the
+// voice always plays exactly what the controls show.
+let modSynthParams=Object.assign({},MODSYNTH_PRESETS.mega);
+const MS_CTRLS=[
+ {k:'voices', label:'Unison', min:1,  max:16, step:1,   fmt:v=>v+(v>1?' voices':' voice')},
+ {k:'spread', label:'Detune', min:0,  max:60, step:1,   fmt:v=>v+'¢'},
+ {k:'sub',    label:'Sub',    min:0,  max:1,  step:.01, fmt:v=>Math.round(v*100)+'%'},
+ {k:'noise',  label:'Attack', min:0,  max:1,  step:.01, fmt:v=>Math.round(v*100)+'%'},
+ {k:'q',      label:'Reso',   min:.5, max:20, step:.1,  fmt:v=>(+v).toFixed(1)},
+ {k:'drive',  label:'Drive',  min:0,  max:4,  step:.05, fmt:v=>v<=0?'off':(+v).toFixed(2)},
+];
 function setModSynthPreset(p){
  if(!MODSYNTH_PRESETS[p]) return;
  modSynthPreset=p;
+ modSynthParams=Object.assign({},MODSYNTH_PRESETS[p]);
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.toggle('active', b.dataset.msp===p));
  try{ localStorage.setItem('modo-modsynth-preset',p); }catch(e){}
+ syncModSynthUI();
 }
+// Any edit means the patch is no longer the preset it came from — say so
+// instead of leaving a preset button lit next to controls that have moved.
+function msSet(k,v){
+ modSynthParams[k] = (k==='type'||k==='sweep') ? v : parseFloat(v);
+ modSynthPreset='custom';
+ document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
+ syncModSynthUI();
+}
+function syncModSynthUI(){
+ const P=modSynthParams;
+ MS_CTRLS.forEach(c=>{
+  const sl=document.getElementById('ms-'+c.k); if(sl && +sl.value!==+P[c.k]) sl.value=P[c.k];
+  const vv=document.getElementById('ms-'+c.k+'-v'); if(vv) vv.textContent=c.fmt(P[c.k]);
+ });
+ ['sine','sawtooth','square','triangle'].forEach(w=>{
+  document.getElementById('msw-'+w)?.classList.toggle('active', P.type===w);
+ });
+ const sw=document.getElementById('ms-sweep-btn');
+ if(sw){ sw.textContent='Filter Sweep: '+(P.sweep?'ON':'OFF'); sw.classList.toggle('active',!!P.sweep); }
+ const nm=document.getElementById('ms-patch-name');
+ if(nm) nm.textContent = modSynthPreset==='custom' ? 'Custom' : (MODSYNTH_PRESETS[modSynthPreset]?.label||'');
+}
+
+// ── Live scope ─────────────────────────────────────────────────────────────
+// Taps the master output so the trace is genuinely what you're hearing, not a
+// redraw of the slider values. Only animates while the panel is on screen.
+let _msAnalyser=null, _msRaf=null;
+function _msEnsureAnalyser(){
+ const ctx=getCtx(); if(!ctx) return null;
+ if(_msAnalyser) return _msAnalyser;
+ const out=window._masterOut; if(!out) return null;
+ _msAnalyser=ctx.createAnalyser();
+ _msAnalyser.fftSize=2048;
+ _msAnalyser.smoothingTimeConstant=.6;
+ try{ out.connect(_msAnalyser); }catch(e){ return null; }
+ return _msAnalyser;
+}
+function msScopeTick(){
+ const cv=document.getElementById('ms-scope');
+ const panel=document.getElementById('modsynth-panel');
+ if(!cv||!panel||panel.style.display==='none'||!panel.offsetParent){ _msRaf=null; return; }
+ const an=_msEnsureAnalyser();
+ const g=cv.getContext('2d');
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+ const w=cv.clientWidth*dpr, h=cv.clientHeight*dpr;
+ if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+ g.clearRect(0,0,w,h);
+ const cs=getComputedStyle(document.documentElement);
+ const line=(cs.getPropertyValue('--pg')||'#58ffb4').trim();
+ // centre line
+ g.strokeStyle='rgba(255,255,255,.10)'; g.lineWidth=1;
+ g.beginPath(); g.moveTo(0,h/2); g.lineTo(w,h/2); g.stroke();
+ if(an){
+  const buf=new Uint8Array(an.fftSize);
+  an.getByteTimeDomainData(buf);
+  g.strokeStyle=line; g.lineWidth=2*dpr; g.beginPath();
+  for(let i=0;i<buf.length;i++){
+   const x=(i/buf.length)*w, y=(buf[i]/128-1)*(h/2*0.92)+h/2;
+   i?g.lineTo(x,y):g.moveTo(x,y);
+  }
+  g.stroke();
+  g.shadowBlur=12*dpr; g.shadowColor=line; g.stroke(); g.shadowBlur=0;
+ }
+ _msRaf=requestAnimationFrame(msScopeTick);
+}
+function msStartScope(){ if(!_msRaf) _msRaf=requestAnimationFrame(msScopeTick); }
 
 // Lazily-built short noise buffer for MōdSynth's attack transient layer
 let _modSynthNoiseBuf=null;
@@ -4477,7 +4648,7 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  //     (independent of the shared fxCutoff/fxEnv character macros applied
  //     downstream by voiceFx — this is the voice's own built-in movement)
  //  5. a soft internal saturation stage for harmonic bite
- const P=MODSYNTH_PRESETS[modSynthPreset]||MODSYNTH_PRESETS.mega;
+ const P=modSynthParams||MODSYNTH_PRESETS.mega;
  const unison=buildSuperSaw(ctx,f,P.spread,P.voices,P.type);
  const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=P.q;
  if(P.sweep){
@@ -5654,11 +5825,16 @@ function _chordQuality(intvs){
  // Slash chords and extensions add tones the signatures don't list — fall back
  // to the plain triad hiding inside them rather than showing nothing.
  const has=n=>pcs.includes(n);
- if(has(3)&&has(6)) return {q:'dim', label:'°'};
- if(has(3)) return {q:'min', label:'m'};
- if(has(4)&&has(10)) return {q:'dom7', label:'7'};
- if(has(4)) return {q:'maj', label:''};
- return {q:'maj', label:''};
+ // Reduced to the nearest playable chord — a 9th still reads as its 7th, an
+ // add9 as its triad. `sub` lets the chart say so instead of quietly lying.
+ if(has(3)&&has(6)&&has(10)) return {q:'m7b5', label:'ø7', sub:true};
+ if(has(3)&&has(6)) return {q:'dim', label:'°', sub:true};
+ if(has(3)&&has(10)) return {q:'min7', label:'m7', sub:true};
+ if(has(3)) return {q:'min', label:'m', sub:true};
+ if(has(4)&&has(10)) return {q:'dom7', label:'7', sub:true};
+ if(has(4)&&has(11)) return {q:'maj7', label:'maj7', sub:true};
+ if(has(4)) return {q:'maj', label:'', sub:true};
+ return {q:'maj', label:'', sub:true};
 }
 // Picks the shape sitting lowest on the neck for this root.
 function _bestShape(inst, quality, rootPc){
@@ -5772,6 +5948,156 @@ function renderChordDiagram(){
  const shape=_bestShape(chordDiagramInst, qual.q, rootPc);
  host.innerHTML = shape ? _svgFretboard(chordDiagramInst, shape.frets)
                         : '<div style="font-size:.5rem;color:var(--muted);text-align:center;padding:12px">No shape for this chord.</div>';
+}
+
+// ═══════════════════════════════════════
+// SONG CHORD CHART (guitar / ukulele, printable)
+// ═══════════════════════════════════════
+// Ukulele has four strings, so anything richer than a 7th physically cannot be
+// voiced complete. Rather than refuse, fall back to the nearest chord that
+// keeps the character — a 9th still sounds like a 7th, an add9 still sounds
+// like its triad — and mark it so the chart is honest about the substitution.
+const CHORD_SUBS={ m7b5:'min7', dim7:'dim', maj7:'maj', min7:'min', dom7:'maj' };
+function _shapeWithSub(inst, quality, rootPc){
+ let q=quality, sub=false, guard=0;
+ while(guard++<4){
+  const set=FRET_SHAPES[inst];
+  if(set && set.shapes[q]){
+   const sh=_bestShape(inst,q,rootPc);
+   // A uke shape needs every string within reach to count as playable.
+   if(sh && sh.maxF<=12) return {shape:sh, quality:q, sub};
+  }
+  const next=CHORD_SUBS[q];
+  if(!next) break;
+  q=next; sub=true;
+ }
+ const sh=_bestShape(inst,'maj',rootPc);
+ return sh?{shape:sh, quality:'maj', sub:true}:null;
+}
+// Slash chords: keep the chord shape, then try to put the requested bass note
+// on a string below it. If no playable low position exists, fall back to the
+// plain shape rather than inventing an unplayable stretch — the label still
+// names the bass so a player knows the intent.
+function _slashShape(inst, quality, rootPc, bassPc){
+ const base=_shapeWithSub(inst, quality, rootPc);
+ if(!base||bassPc==null) return base;
+ const set=FRET_SHAPES[inst];
+ const frets=base.shape.frets.slice();
+ const played=frets.map((f,i)=>({f,i})).filter(x=>x.f>=0);
+ if(!played.length) return base;
+ const lowIdx=played[0].i;
+ // Search from the nut up: an open string under a barre is both very common
+ // and the easiest thing to play. Never past the 12th fret.
+ const hi=Math.min(12, base.shape.maxF+2);
+ for(let i=0;i<=lowIdx;i++){
+  for(let fr=0;fr<=hi;fr++){
+   if(((set.openPc[i]+fr)%12)!==bassPc) continue;
+   const out=frets.slice();
+   for(let k=0;k<i;k++) out[k]=-1;      // mute anything below the new bass
+   out[i]=fr;
+   const pl=out.filter(x=>x>0);
+   const maxF=pl.length?Math.max(...pl):0;
+   if(maxF>12) continue;                // would leave the playable neck
+   return {shape:{frets:out, maxF}, quality:base.quality, sub:base.sub, slash:true};
+  }
+ }
+ return Object.assign({}, base, {slashUnplaced:true});
+}
+let chartInst='guitar';
+function setChartInst(i){
+ chartInst=i;
+ ['guitar','ukulele'].forEach(x=>document.getElementById('csi-'+x)?.classList.toggle('active',x===i));
+ try{ localStorage.setItem('modo-chart-inst',i); }catch(e){}
+ renderChordChart();
+}
+// One slot -> everything the chart needs to draw it.
+function _chartEntry(slot){
+ if(!slot||slot.isRest) return {rest:true};
+ const rootPc=((slot.rootM%12)+12)%12;
+ const intvs=(typeof getIntvs==='function')?getIntvs(slot.triadQ,slot.type7,slot.ext||'triad'):[0,4,7];
+ const qual=_chordQuality(intvs);
+ const bassPc=slot.bassNote!=null?((slot.bassNote%12)+12)%12:null;
+ const res=bassPc!=null?_slashShape(chartInst,qual.q,rootPc,bassPc)
+                       :_shapeWithSub(chartInst,qual.q,rootPc);
+ if(res && qual.sub) res.sub=true;
+ const name=nn(rootPc)+qual.label+(bassPc!=null?'/'+nn(bassPc):'');
+ return {name, numeral:slot.numeral||'', res, dur:(typeof _slotDurLabel==='function'?_slotDurLabel(slot):'')};
+}
+function renderChordChart(){
+ const host=document.getElementById('chord-chart-body'); if(!host) return;
+ const t=document.getElementById('chart-song-title');
+ if(t) t.textContent=(document.getElementById('chart-title')?.value||'Untitled')+' · '+nn(root)+' '+((MODES[mode]||MODES.major).label);
+ if(!sections.length||!sections.some(x=>x.slots&&x.slots.length)){
+  host.innerHTML='<div class="fing-none">No chords yet. Build a song in the Build tab, or record one live.</div>';
+  return;
+ }
+ let h='';
+ sections.forEach((sec,si)=>{
+  if(!sec.slots||!sec.slots.length) return;
+  h+='<div class="cc-sec"><div class="cc-sec-name">'+sec.name+'</div><div class="cc-row">';
+  sec.slots.forEach((slot,ci)=>{
+   const e=_chartEntry(slot);
+   const playing=(typeof songLoopActive!=='undefined'&&songLoopActive&&si===songCurrentSection&&ci===songCurrentSlot);
+   if(e.rest){ h+='<div class="cc-card'+(playing?' playing':'')+'"><div class="cc-name">Rest</div></div>'; return; }
+   const svg=e.res?_svgFretboard(chartInst,e.res.shape.frets):'';
+   h+='<div class="cc-card'+(playing?' playing':'')+'" data-cc="'+si+'-'+ci+'">'+
+      '<div class="cc-num">'+e.numeral+'</div>'+
+      '<div class="cc-name">'+e.name+'</div>'+
+      svg+
+      (e.res&&e.res.sub?'<div class="cc-sub">simplified</div>':'')+
+      (e.res&&e.res.slashUnplaced?'<div class="cc-sub">bass n/a</div>':'')+
+      '<div class="cc-dur">'+e.dur+'</div>'+
+      '</div>';
+  });
+  h+='</div></div>';
+ });
+ host.innerHTML=h;
+}
+// Keeps the chart's highlight in step with playback without rebuilding the
+// SVGs on every chord change.
+function updateChartPlaying(){
+ const host=document.getElementById('chord-chart-body'); if(!host) return;
+ host.querySelectorAll('.cc-card.playing').forEach(c=>c.classList.remove('playing'));
+ if(typeof songLoopActive==='undefined'||!songLoopActive) return;
+ const el=host.querySelector('[data-cc="'+songCurrentSection+'-'+songCurrentSlot+'"]');
+ if(el){ el.classList.add('playing'); el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'}); }
+}
+function printChordChart(){
+ if(!sections.some(x=>x.slots&&x.slots.length)){ showToast('No chords to print'); return; }
+ const title=(document.getElementById('chart-title')?.value||'Untitled');
+ const keyTxt=nn(root)+' '+((MODES[mode]||MODES.major).label);
+ let body='';
+ sections.forEach(sec=>{
+  if(!sec.slots||!sec.slots.length) return;
+  body+='<div class="sec"><h2>'+sec.name+'</h2><div class="row">';
+  sec.slots.forEach(slot=>{
+   const e=_chartEntry(slot);
+   if(e.rest){ body+='<div class="card"><div class="nm">Rest</div></div>'; return; }
+   body+='<div class="card"><div class="num">'+e.numeral+'</div><div class="nm">'+e.name+'</div>'+
+         (e.res?_svgFretboard(chartInst,e.res.shape.frets):'')+
+         (e.res&&e.res.sub?'<div class="sub">simplified</div>':'')+
+         '<div class="dur">'+e.dur+'</div></div>';
+  });
+  body+='</div></div>';
+ });
+ const w=window.open('','_blank');
+ if(!w){ showToast('Allow pop-ups to print'); return; }
+ // Printed black-on-white: the on-screen palette is unreadable on paper, and
+ // currentColor in the SVGs picks up whatever we set here.
+ w.document.write('<html><head><title>'+title+' — Chord Chart</title><style>'+
+  'body{font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;padding:22px;}'+
+  'h1{font-size:20px;margin:0 0 2px;} .key{font-size:12px;color:#555;margin-bottom:16px;}'+
+  'h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#444;'+
+  'border-bottom:1px solid #ccc;padding-bottom:3px;margin:16px 0 8px;}'+
+  '.row{display:flex;flex-wrap:wrap;gap:12px;}'+
+  '.card{width:96px;text-align:center;color:#000;page-break-inside:avoid;break-inside:avoid;}'+
+  '.card svg{color:#000;}'+
+  '.num{font-size:9px;color:#777;height:11px;} .nm{font-size:14px;font-weight:700;margin-bottom:2px;}'+
+  '.sub{font-size:8px;color:#a15;} .dur{font-size:9px;color:#777;margin-top:2px;}'+
+  '@media print{@page{margin:12mm;}}'+
+  '</style></head><body><h1>'+title+'</h1><div class="key">'+keyTxt+' · '+chartInst+'</div>'+body+'</body></html>');
+ w.document.close();
+ setTimeout(()=>{ try{ w.print(); }catch(e){} },260);
 }
 
 // ═══════════════════════════════════════
@@ -6293,12 +6619,27 @@ function setWave(w){
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
  if(w==='piano_real') preloadSampleInstrument('piano');
- const mspRow=document.getElementById('modsynth-preset-row');
- if(mspRow) mspRow.style.display = w==='modsynth' ? '' : 'none';
+ const msPanel=document.getElementById('modsynth-panel');
+ if(msPanel){
+  msPanel.style.display = w==='modsynth' ? '' : 'none';
+  if(w==='modsynth' && typeof msStartScope==='function') msStartScope();
+ }
 }
 
 // Builds the MōdSynth preset buttons once, from MODSYNTH_PRESETS.
 function buildModSynthPresets(){
+ const grid=document.getElementById('ms-ctrl-grid');
+ if(grid){
+  grid.innerHTML='';
+  MS_CTRLS.forEach(c=>{
+   const w=document.createElement('div'); w.className='ms-ctrl';
+   w.innerHTML='<div class="ms-lbl">'+c.label+'</div>'+
+    '<input type="range" id="ms-'+c.k+'" min="'+c.min+'" max="'+c.max+'" step="'+c.step+'" '+
+    'oninput="msSet(\''+c.k+'\',this.value)">'+
+    '<div class="ms-val" id="ms-'+c.k+'-v"></div>';
+   grid.appendChild(w);
+  });
+ }
  const host=document.getElementById('modsynth-preset-btns'); if(!host) return;
  host.innerHTML='';
  Object.keys(MODSYNTH_PRESETS).forEach(k=>{
@@ -6314,6 +6655,7 @@ function buildModSynthPresets(){
   const saved=localStorage.getItem('modo-modsynth-preset');
   if(saved && MODSYNTH_PRESETS[saved]) setModSynthPreset(saved);
  }catch(e){}
+ syncModSynthUI();
 }
 function setVoicing(v){
  voicing=v;
@@ -8385,6 +8727,10 @@ function setSongsMode(m){
  songsMode = m;
  document.getElementById('songs-build-btn')?.classList.toggle('active', m==='build');
  document.getElementById('songs-perform-btn')?.classList.toggle('active', m==='perform');
+ document.getElementById('songs-chart-btn')?.classList.toggle('active', m==='chart');
+ const cp=document.getElementById('songs-chart-panel');
+ if(cp) cp.style.display = m==='chart' ? '' : 'none';
+ if(m==='chart') renderChordChart();
  document.getElementById('songs-build-panel').style.display = m==='build'?'':'none';
  document.getElementById('songs-perform-panel').style.display = m==='perform'?'':'none';
  if(m === 'perform') renderSongsPerformView();
@@ -9876,6 +10222,7 @@ function _highlightLoopSlot(si, ci){
  songCurrentSection = si;
  songCurrentSlot = ci;
  applySongPlayingHighlights(true);
+ if(typeof updateChartPlaying==='function') updateChartPlaying();
  // Update banner to show current section name
  const secEl = document.getElementById('prism-song-section');
  if(secEl) secEl.textContent = (sections[si]?.name || '') + (ci !== undefined ? ' · '+(ci+1)+'/'+(sections[si]?.slots.length||0) : '');
