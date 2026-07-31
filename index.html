@@ -893,6 +893,24 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
+ ENDINGS
+═══════════════════════════════════════ */
+.ending-row {
+ display:flex; align-items:center; gap:5px; flex-wrap:wrap;
+ margin-top:8px; padding-top:8px; border-top:1px solid var(--border2);
+}
+.end-btn { font-size:.55rem; padding:5px 10px; }
+/* Armed reads as a pending state, not an active one — it hasn't fired yet. */
+.end-btn.armed {
+ background:var(--dom); color:#fff; border-color:var(--dom);
+ box-shadow:0 0 14px -2px var(--dom);
+ animation:logic-pulse 1.4s ease-in-out infinite;
+}
+.ending-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
+.ft-btn.tp-count { color:#7dd3fc; font-size:.9rem; font-weight:700; }
+body.light-mode .ft-btn.tp-count { color:#0369a1; }
+
+/* ═══════════════════════════════════════
  SONG CHORD CHART
 ═══════════════════════════════════════ */
 .cc-sec { margin-bottom:14px; }
@@ -2199,6 +2217,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 ══════════════════════════════════════ -->
 <div class="fixed-transport" id="fixed-transport">
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
+ <button class="ft-btn transport tp-count" id="ft-countin-btn" onclick="startWithCountIn()" title="Count in four beats, then start everything on beat 1" aria-label="Count in">⁴</button>
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
@@ -2965,6 +2984,14 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="btn-xp" id="slb-key-up" onclick="transposeSong(+1)" title="Transpose song up a semitone" style="width:22px;height:22px;font-size:.75rem">+</button>
  </div>
  <button class="tb" id="slb-auto-btn" onclick="toggleSongAutoAdvance()">Auto: OFF</button>
+ </div>
+ <div class="ending-row">
+  <span class="ms-lbl">Ending</span>
+  <button class="tb end-btn" data-ending="ritard" onclick="armEnding('ritard')" title="Slow down over the last bars and rest on the tonic">Ritard</button>
+  <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Land hard on the tonic and let it ring">Big Fin</button>
+  <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade the whole mix out over the final pass">Fade</button>
+  <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Everything cuts dead on the downbeat">Cold</button>
+  <span class="ending-hint">Queues to the end of the pass</span>
  </div>
  </div>
 
@@ -5951,6 +5978,144 @@ function renderChordDiagram(){
 }
 
 // ═══════════════════════════════════════
+// ENDING ENGINE
+// ═══════════════════════════════════════
+// Stopping a loop mid-phrase is the thing that makes a jam sound like a demo
+// rather than a performance. An armed ending waits for the section to finish
+// its pass — exactly like the queued Prev/Next transitions — so the finish
+// always lands on a downbeat instead of wherever you happened to hit stop.
+let songEnding=null;           // armed ending id
+let _endingRunning=false;
+let _endTimers=[];
+const ENDINGS={
+ ritard: {label:'Ritard',  hint:'Slow down over the last bars, then rest on the tonic.'},
+ finish: {label:'Big Fin', hint:'Land hard on the tonic and let it ring.'},
+ fade:   {label:'Fade',    hint:'Fade the whole mix out over the final pass.'},
+ cold:   {label:'Cold',    hint:'Everything cuts dead on the downbeat.'},
+};
+function _clearEndTimers(){ _endTimers.forEach(t=>clearTimeout(t)); _endTimers=[]; }
+function _endLater(fn,ms){ _endTimers.push(setTimeout(fn,ms)); }
+
+function armEnding(id){
+ if(!ENDINGS[id]) return;
+ // Tapping the armed ending again disarms it — no way to get stuck.
+ songEnding = (songEnding===id) ? null : id;
+ _updateEndingUI();
+ if(songEnding){
+  showToast(ENDINGS[id].label+' armed — finishes at the end of this pass');
+  // Nothing is looping, so there is no "end of pass" to wait for: run it now.
+  if(typeof songLoopActive==='undefined'||!songLoopActive) _runEnding(songEnding);
+ } else showToast('Ending cancelled');
+}
+function _updateEndingUI(){
+ document.querySelectorAll('[data-ending]').forEach(b=>{
+  b.classList.toggle('armed', b.dataset.ending===songEnding);
+ });
+}
+function _bpmNow(){ return parseFloat(document.getElementById('bpm')?.value)||100; }
+function _setBpm(v){
+ const el=document.getElementById('bpm'); if(el) el.value=v;
+ if(typeof onBpmInput==='function') onBpmInput(v);
+}
+// Fires on the downbeat after the final pass.
+function _runEnding(kind){
+ if(_endingRunning) return;
+ _endingRunning=true; songEnding=null; _updateEndingUI();
+ const beatMs=60000/_bpmNow();
+ const bar=beatMs*4;
+ const finish=()=>{
+  _clearEndTimers();
+  if(typeof stopEverything==='function') stopEverything();
+  _endingRunning=false;
+ };
+
+ if(kind==='cold'){ finish(); showToast('Ending: cold stop'); return; }
+
+ if(kind==='fade'){
+  const startVol=masterVol, steps=28, dur=bar*2;
+  for(let i=1;i<=steps;i++){
+   _endLater(()=>{
+    masterVol=Math.max(0,startVol*(1-i/steps));
+    if(typeof applyMasterBus==='function') applyMasterBus();
+    if(typeof syncMasterUI==='function') syncMasterUI();
+   }, (dur/steps)*i);
+  }
+  _endLater(()=>{ finish(); masterVol=startVol; applyMasterBus(); syncMasterUI(); }, dur+90);
+  showToast('Ending: fading out');
+  return;
+ }
+
+ if(kind==='finish'){
+  // Hit the tonic, drop the rhythm section under it, let the chord ring.
+  try{
+   const md=MODES[mode]||MODES.major;
+   const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
+   stopAll();
+   playChord(rootMidi(), intvs, false, 0, true);
+  }catch(e){}
+  _endLater(finish, Math.max(900, bar*1.2));
+  showToast('Ending: big finish');
+  return;
+ }
+
+ if(kind==='ritard'){
+  // Ease the tempo down rather than stepping it — a linear drop reads as a
+  // glitch, where a curve reads as a band slowing together.
+  const from=_bpmNow(), to=Math.max(38, from*0.45), steps=24, dur=bar*2;
+  try{
+   const md=MODES[mode]||MODES.major;
+   const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
+   stopAll();
+   playChord(rootMidi(), intvs, false, 0, true);
+  }catch(e){}
+  for(let i=1;i<=steps;i++){
+   _endLater(()=>{
+    const t=i/steps;
+    _setBpm(Math.round(from+(to-from)*(t*t)));
+   }, (dur/steps)*i);
+  }
+  _endLater(()=>{ finish(); _setBpm(Math.round(from)); }, dur+140);
+  showToast('Ending: ritardando');
+  return;
+ }
+ _endingRunning=false;
+}
+
+// Count-in: four clicks in tempo, then everything enters together on beat 1.
+let _countInRunning=false;
+function startWithCountIn(){
+ if(_countInRunning) return;
+ if(typeof isAnythingPlaying==='function' && isAnythingPlaying()){ stopEverything(); return; }
+ _countInRunning=true;
+ const ctx=getCtx();
+ const beat=60000/_bpmNow();
+ const btn=document.getElementById('ft-countin-btn');
+ for(let i=0;i<4;i++){
+  setTimeout(()=>{
+   if(btn) btn.textContent=String(4-i);
+   try{
+    if(ctx){
+     const t=ctx.currentTime;
+     const g=ctx.createGain();
+     g.gain.setValueAtTime(i===0?0.4:0.22,t);
+     g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+     g.connect(masterDest(ctx));
+     const o=ctx.createOscillator();
+     o.type='sine'; o.frequency.value=i===0?1760:1175;
+     o.connect(g); o.start(t); o.stop(t+0.06);
+    }
+   }catch(e){}
+  }, beat*i);
+ }
+ setTimeout(()=>{
+  _countInRunning=false;
+  if(btn) btn.textContent='⁴';
+  if(typeof startEverything==='function') startEverything();
+  if(typeof syncFixedTransport==='function') syncFixedTransport();
+ }, beat*4);
+}
+
+// ═══════════════════════════════════════
 // SONG CHORD CHART (guitar / ukulele, printable)
 // ═══════════════════════════════════════
 // Ukulele has four strings, so anything richer than a 7th physically cannot be
@@ -7719,8 +7884,20 @@ const NUMERAL_DEG={'I':0,'ii':1,'iii':2,'IV':3,'V':4,'vi':5,'vii':6,
  'i':0,'II':1,'III':2,'iv':3,'v':4,'VI':5,'VII':6};
 function _chordKeyForSlot(slot){
  if(!slot||slot.isRest) return {deg:-1,label:null};
- const deg = NUMERAL_DEG[slot.numeral] ?? -1;
- return (slot.func==='modal' || deg<0) ? {deg:-1,label:slot.numeral||slot.label||null} : {deg,label:null};
+ // Look the numeral up in the CURRENT mode's own table first. This is checked
+ // BEFORE func==='modal', because several modes give a diatonic degree the
+ // modal function colour — those still have a real pad of their own, and
+ // routing them down the borrowed-label path found nothing to light. The static
+ // NUMERAL_DEG map only ever covered plain Roman numerals, so altered ones —
+ // vii° in major, and most of minor (ii°, ♭III, ♭VI, ♭VII), plus every church
+ // mode — fell through and never lit their pad. The mode table is
+ // authoritative and covers all of them.
+ const nums=(MODES[mode]||MODES.major).nums||[];
+ const idx=slot.numeral!=null?nums.indexOf(slot.numeral):-1;
+ if(idx>=0) return {deg:idx,label:null};
+ if(slot.func==='modal') return {deg:-1,label:slot.numeral||slot.label||null};
+ const deg=NUMERAL_DEG[slot.numeral] ?? -1;
+ return deg<0 ? {deg:-1,label:slot.numeral||slot.label||null} : {deg,label:null};
 }
 
 function playChartSlot(i){
@@ -8145,6 +8322,19 @@ const HELP_SECTIONS=[
  {icon:'',text:'<strong>← Prev / Next →</strong> <em>queue</em> rather than jump: the section finishes its pass before the change lands, which is what makes live section changes musical.'},
  {icon:'',text:'<strong>− / +</strong> transpose the whole song on the fly like a capo, without altering the saved chart.'},
  {icon:'',text:'Songs can also be exported — chart to <strong>PDF</strong>, chords to <strong>MIDI</strong>, or shared as a link.'},
+ ]},
+ {title:'▦ Chord Chart & printing', tips:[
+ {icon:'',text:'<strong>Songs → Chart</strong> lays the whole song out as a chord sheet with real <strong>guitar</strong> or <strong>ukulele</strong> diagrams, grouped by section, with each chord’s duration underneath.'},
+ {icon:'▶',text:'It follows playback live — the chord sounding right now is highlighted and scrolled into view.'},
+ {icon:'',text:'<strong>Slash chords</strong> get the bass note placed on a lower string wherever that is playable; if it isn’t, the chart says <em>bass n/a</em> rather than inventing an impossible stretch.'},
+ {icon:'',text:'Chords too rich to voice — a 9th on a four-string ukulele, say — are reduced to the nearest chord that keeps the character and marked <strong>simplified</strong>, so you always know what you are looking at.'},
+ {icon:'',text:'<strong>Print / Save PDF</strong> opens a clean black-on-white version of the same chart, sized for paper.'},
+ ]},
+ {title:'Endings & count-in', tips:[
+ {icon:'',text:'Stopping a loop mid-phrase is what makes a jam sound unfinished. Arm an ending and it waits for the section to finish its pass, then lands on the downbeat.'},
+ {icon:'',text:'<strong>Ritard</strong> eases the tempo down and rests on the tonic. <strong>Big Fin</strong> lands hard on the tonic and lets it ring. <strong>Fade</strong> takes the whole mix down. <strong>Cold</strong> cuts everything dead.'},
+ {icon:'',text:'Tap an armed ending again to cancel it. If nothing is playing, it fires straight away.'},
+ {icon:'⁴',text:'<strong>Count-in</strong> (the ⁴ button in the transport) clicks four beats in tempo, then starts everything together on beat 1.'},
  ]},
  {title:'⬡ Drums', tips:[
  {icon:'',text:'Choose a kit — including <strong>MōdKit</strong>, an 8-voice synthesised kit — then pick a groove preset or program the step grid yourself.'},
@@ -8980,6 +9170,7 @@ The arpeggiator and the bass follow the armed voicing too. Advanced view only; y
  body: `Pick the voice your chords play through. <strong>Piano</strong>, <strong>Organ</strong>, <strong>Rhodes</strong> and <strong>Pad</strong> are synthesised; <strong>Real Piano</strong> streams recorded samples and quietly falls back to the synth Piano when you're offline.<br><br>
 <strong>MōdSynth</strong> (Advanced) is the deep voice — a stacked unison synth with its own sub, attack transient, filter sweep and saturation. Selecting it reveals a <strong>preset row</strong>:<br><br>
 <strong>Mega</strong> is the full stacked voice. <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches. <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick is remembered between visits.<br><br>
+Presets are a starting point, not a limit: <strong>Unison, Detune, Sub, Attack, Reso</strong> and <strong>Drive</strong> are all live, and the wave and filter sweep switch underneath. Move anything and the patch becomes <strong>Custom</strong>. The scope at the top traces the actual output, so you can see what each control does.<br><br>
 The <strong>Tone / Reso / Sweep / Drive / Width / Drift</strong> macros in <strong>Setup → Sound Engine</strong> shape whichever voice is loaded — that's the real sound-design surface. The <strong>dice</strong> in the transport rerolls all of it at once.`
  },
  'chordforms': {
@@ -9017,7 +9208,9 @@ Clarinet and flute currently show the correctly transposed written note without 
 The song plays its chords for you, and the current one lights up green everywhere at once — on the Play grid, in the Songs chart, and in the Chord Forms diagram.<br><br>
 <strong>← Prev / Next →</strong> don't jump immediately: they <em>queue</em>, so the section you're in finishes its pass before the change lands. That's what makes live section changes musical.<br><br>
 <strong>− / +</strong> transpose the whole song on the fly, like a capo, without altering the saved chart.<br><br>
-While it loops, use the <strong>Drums / Arp / Bass / Mel</strong> switches in the transport to perform — muting and unmuting parts over the top.`
+While it loops, use the <strong>Drums / Arp / Bass / Mel</strong> switches in the transport to perform — muting and unmuting parts over the top.<br><br>
+<strong>Endings</strong> solve the hardest part of a loop — stopping it musically. Arm <strong>Ritard</strong>, <strong>Big Fin</strong>, <strong>Fade</strong> or <strong>Cold</strong> and it waits for the section to finish its pass, then lands on the downbeat. Tap the armed button again to cancel. With nothing playing, it fires immediately.<br><br>
+<strong>⁴ Count-in</strong> in the transport clicks four beats, then starts everything together on beat 1 — the other half of the problem.`
  },
  'midi': {
  title: 'MIDI & Musical Typing',
@@ -9344,6 +9537,7 @@ function stopSongLoop(){
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
  if(typeof _clearCompTimers==='function') _clearCompTimers();
+ if(typeof _clearEndTimers==='function' && !_endingRunning){ songEnding=null; _updateEndingUI(); }
  // songLoopActive is now false, so this clears rather than repaints — without
  // it the last-played chord stays lit after stop, reading as still playing.
  if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
@@ -10164,6 +10358,9 @@ function _advanceLoopSlot(){
  if(songLoopSlot >= (sec?.slots.length||0)){
  // Finished a full pass through this section's chords.
  songLoopSlot = 0;
+ // An armed ending lands here, on the downbeat, rather than wherever the
+ // user happened to hit stop.
+ if(songEnding && typeof _runEnding==='function'){ _runEnding(songEnding); return; }
  if(songPendingSectionDelta !== 0){
  // A Next/Prev request was queued — apply it now that the section is done
  _moveToSection(songPendingSectionDelta);
