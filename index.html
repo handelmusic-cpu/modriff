@@ -959,6 +959,35 @@ body.light-mode .voice-sel { background:#fff; color:#1a1e38; border-color:#c2c6d
 .ft-btn.tp-count { color:#7dd3fc; font-size:.9rem; font-weight:700; }
 body.light-mode .ft-btn.tp-count { color:#0369a1; }
 
+.sec-follow {
+ display:inline-block; margin-left:5px; padding:0 4px; border-radius:4px;
+ font-size:.6rem; line-height:1.5; cursor:pointer;
+ background:var(--surf2); border:1px solid var(--border2); color:var(--muted);
+}
+.sec-follow.next { color:var(--pg); border-color:var(--pg); }
+.sec-follow:hover { filter:brightness(1.4); }
+.sec-follow-tag {
+ margin-left:8px; font-size:.42rem; letter-spacing:.08em;
+ color:var(--muted); text-transform:none;
+}
+.sec-follow-tag.next { color:var(--pg); }
+
+.ins-caret {
+ width:10px; align-self:stretch; min-height:38px; flex:0 0 auto;
+ border-radius:3px; cursor:pointer; position:relative;
+ transition:background .12s;
+}
+.ins-caret::before {
+ content:''; position:absolute; left:50%; translate:-50% 0; top:6px; bottom:6px;
+ width:2px; border-radius:2px; background:var(--border2); transition:all .12s;
+}
+.ins-caret:hover::before { background:var(--muted); }
+/* The active caret is where the next chord lands. */
+.ins-caret.here::before {
+ background:var(--pg); width:3px; top:2px; bottom:2px;
+ box-shadow:0 0 8px var(--pg);
+}
+
 /* ═══════════════════════════════════════
  SONG CHORD CHART
 ═══════════════════════════════════════ */
@@ -7847,12 +7876,34 @@ function loadProgressionFromHash(){
  }catch(e){ /* ignore invalid hash */ }
 }
 
+// Wording is shared between the tab badge and the perform view so the two can
+// never drift into describing the same setting differently.
+function sec_followTitle(i,mode){
+ const nxt = sections[(i+1)%sections.length];
+ return mode==='next'
+   ? 'Plays once, then moves on'+(nxt&&sections.length>1?' to '+nxt.name:'')+' — tap to loop instead'
+   : 'Loops until you move on — tap to auto-advance';
+}
 function buildSectionTabs(){
  const c=document.getElementById('section-tabs'); if(!c) return; c.innerHTML='';
  sections.forEach((s,i)=>{
  const b=document.createElement('button'); b.className='sec-tab'+(i===curSection?' active':'');
  b.innerHTML=`${s.name}<span class="sec-count">(${s.slots.length})</span>`;
  b.onclick=()=>{ curSection=i; buildSectionTabs(); renderChartSeq(); };
+ // What happens when this section finishes a pass. Default 'repeat' keeps the
+ // old behaviour, so existing songs play exactly as they did.
+ const f=document.createElement('span');
+ f.className='sec-follow'+(s.follow==='next'?' next':'');
+ f.textContent = s.follow==='next' ? '→' : '↻';
+ f.title = s.follow==='next'
+   ? sec_followTitle(i,'next') : sec_followTitle(i,'repeat');
+ f.addEventListener('click',ev=>{
+  ev.stopPropagation();                     // don't also select the section
+  s.follow = s.follow==='next' ? 'repeat' : 'next';
+  buildSectionTabs();
+  if(typeof renderSongsPerformView==='function') renderSongsPerformView();
+ });
+ b.appendChild(f);
  c.appendChild(b);
  // Long-press to rename
  let t; b.addEventListener('pointerdown',()=>t=setTimeout(()=>{ const n=prompt('Section name:',s.name); if(n){ s.name=n; buildSectionTabs(); }},600));
@@ -7977,9 +8028,23 @@ function loadProgPreset(pp){
 
 function addToSection(slot){
  if(!sections[curSection]) sections[curSection]={name:'Verse',slots:[]};
- sections[curSection].slots.push({...slot,bars:1,beats:0,eighths:0,isRest:false,bassNote:null});
+ const slots=sections[curSection].slots;
+ const entry={...slot,bars:1,beats:0,eighths:0,isRest:false,bassNote:null};
+ // chartSeqIdx doubles as the insert cursor: a new chord lands directly after
+ // the selected slot rather than always at the end, so you can build into the
+ // middle of a progression. With nothing selected it appends as before.
+ // -1 is a real cursor position meaning "before the first chord", not "unset",
+ // so the range starts there rather than at 0.
+ if(chartSeqIdx>=-1 && chartSeqIdx<slots.length){
+  slots.splice(chartSeqIdx+1,0,entry);
+  chartSeqIdx++;              // cursor follows the chord you just placed
+ } else {
+  slots.push(entry);
+  chartSeqIdx=slots.length-1;
+ }
  renderChartSeq();
  buildSectionTabs();
+ renderPerfChartRow();
  // Logic mode: highlight likely next chord after adding
  if(logicModeOn){
  const NUMERAL_DEG={'I':0,'ii':1,'iii':2,'IV':3,'V':4,'vi':5,'vii':6,
@@ -7996,6 +8061,16 @@ function renderChartSeq(){
  const seq=document.getElementById('chart-sequence'); if(!seq) return;
  const slots=sections[curSection]?.slots||[];
  seq.classList.toggle('empty',slots.length===0); seq.innerHTML='';
+ // Shows where the next chord will land. Without it you cannot tell whether a
+ // new chord is going into the middle of the progression or onto the end.
+ const mkCaret=(pos,label)=>{
+  const c=document.createElement('div');
+  c.className='ins-caret'+(chartSeqIdx===pos?' here':'');
+  c.title=label;
+  c.addEventListener('click',()=>{ chartSeqIdx=pos; renderChartSeq(); });
+  seq.appendChild(c);
+ };
+ if(slots.length) mkCaret(-1,'Insert at the start');
  slots.forEach((slot,i)=>{
  const wrap=document.createElement('div'); wrap.className='chart-slot';
  const btn=document.createElement('div'); btn.className='chart-chord-btn'+(i===chartSeqIdx?' seq-active':'');
@@ -8082,6 +8157,7 @@ function renderChartSeq(){
 
  wrap.appendChild(btn); wrap.appendChild(ext); wrap.appendChild(row2); wrap.appendChild(row3);
  seq.appendChild(wrap);
+ mkCaret(i, i===slots.length-1?'Add to the end':'Insert after '+(slot.label||'this chord'));
  });
  renderPerfChartRow();
  // Rebuilding the strip drops the playing highlight — repaint it from state.
@@ -8121,7 +8197,10 @@ function playChartSlot(i){
  playSlashChord(slot.rootM,intvs,slot.bassNote-12,0);
  } else {
  setArpChord(slot.rootM,intvs,slot.func);
+ // Root pedalled an octave down, same as the slash case — with the arp
+ // running this used to play nothing at all.
  if(!arpOn||wetDry<.99){ stopAll(); playChord(slot.rootM,intvs,false,0); }
+ else { try{ playSlashChord(slot.rootM,intvs,slot.rootM-12,0,true); }catch(e){} }
  }
  if(arpOn){ arpIdx=0; arpDir=1; }
  const ck=_chordKeyForSlot(slot);
@@ -8186,7 +8265,7 @@ function saveToSetlist(){
   showDuplicateNameModal(title);
   return;
  }
- const song={id:Date.now(),title,root,mode,sections:sections.map(s=>({name:s.name,slots:s.slots.map(sl=>({...sl}))})),savedAt:new Date().toLocaleDateString(),perfSettings:getSongPerformSettings()};
+ const song={id:Date.now(),title,root,mode,sections:sections.map(s=>({name:s.name,follow:s.follow||'repeat',slots:s.slots.map(sl=>({...sl}))})),savedAt:new Date().toLocaleDateString(),perfSettings:getSongPerformSettings()};
  if(songSaveRhythm){
   // Snapshot current drum pattern
   try{
@@ -8387,7 +8466,7 @@ function loadSong(song,idx){
  if(ab){ ab.textContent='Auto ▶ OFF'; ab.classList.remove('on'); }
 
  curSetlistIdx=idx; root=song.root; mode=song.mode;
- sections=song.sections?song.sections.map(s=>({name:s.name,slots:s.slots.map(sl=>({beats:0,eighths:0,isRest:false,...sl}))})): [{name:'Verse',slots:[]}];
+ sections=song.sections?song.sections.map(s=>({name:s.name,follow:s.follow||'repeat',slots:s.slots.map(sl=>({beats:0,eighths:0,isRest:false,...sl}))})): [{name:'Verse',slots:[]}];
  curSection=0; chartSeqIdx=-1; songCurrentSection=0; songCurrentSlot=-1;
 
  document.getElementById('chart-title').value=song.title;
@@ -9148,7 +9227,11 @@ function renderSongsPerformView(){
  block.className = 'songs-section-block';
  const lbl = document.createElement('div');
  lbl.className = 'songs-section-name';
- lbl.textContent = sec.name;
+ const nxt = sections[(si+1)%sections.length];
+ const goesNext = sec.follow==='next' && sections.filter(x=>x.slots&&x.slots.length).length>1;
+ lbl.innerHTML = sec.name +
+   '<span class="sec-follow-tag'+(goesNext?' next':'')+'">'+
+   (goesNext ? '→ then '+((nxt&&nxt.name)||'next') : '↻ repeats')+'</span>';
  block.appendChild(lbl);
  const row = document.createElement('div');
  row.className = 'songs-chord-row';
@@ -9232,11 +9315,14 @@ function playChartSlot2(si, ci){
  } else {
  playChord(playRoot, voicedIntvs, false, 0, _holdFlat);
  }
- } else if(playBass !== null){
- // arpOn + wetDry≈1: still play the bass pedal note as a sustained tone
- // under the arp — a held pedal point is the correct articulation here
- // regardless of comp style, since the arp is what's providing the rhythm.
- try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true); }catch(e){}
+ } else {
+ // arpOn + wetDry≈1: still pedal a bass note under the arp — a held pedal
+ // point is the right articulation regardless of comp style, since the arp
+ // is providing the rhythm. Every chord gets one: the slash note when there
+ // is one, otherwise the chord's own root. Previously only slash chords got
+ // a pedal here, so a plain chord lost its bass entirely once the arp ran.
+ const pedal = (playBass !== null ? playBass : playRoot) - 12;
+ try{ playSlashChord(playRoot, voicedIntvs, pedal, 0, true); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
  // Light up the pad this slot corresponds to (now-playing) and, in Logic
@@ -10545,12 +10631,19 @@ function _advanceLoopSlot(){
  // user happened to hit stop.
  if(songEnding && typeof _runEnding==='function'){ _runEnding(songEnding); return; }
  if(songPendingSectionDelta !== 0){
- // A Next/Prev request was queued — apply it now that the section is done
+ // A Next/Prev request was queued — apply it now that the section is done.
+ // A manual move always wins over the section's own setting.
  _moveToSection(songPendingSectionDelta);
  songPendingSectionDelta = 0;
  _updateSectionNavUI();
+ } else if(sections[songLoopSection] && sections[songLoopSection].follow==='next'
+           && sections.filter(x=>x.slots&&x.slots.length).length>1){
+ // Section is set to advance. Guarded on there being somewhere to go — with
+ // one playable section this would just re-enter itself every pass.
+ _moveToSection(1);
+ _updateSectionNavUI();
  }
- // else: no transition queued — loop this section again indefinitely
+ // else: loops until you move on
  }
  _playLoopSlot();
 }
