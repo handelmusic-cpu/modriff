@@ -1019,6 +1019,9 @@ body.light-mode .ft-btn.tp-count { color:#0369a1; }
  font-variant-numeric:tabular-nums;
 }
 
+.ms-partrow { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:8px;
+ padding-bottom:8px; border-bottom:1px solid var(--border2); }
+.ms-partrow > .ms-lbl { min-width:52px; }
 .ms-pgroup { display:flex; align-items:center; gap:7px; margin-bottom:4px; flex-wrap:wrap; }
 .ms-pgroup > .ms-lbl { min-width:52px; }
 .ms-lfo-wrap { margin-top:10px; padding-top:9px; border-top:1px solid var(--border2); display:flex; flex-direction:column; gap:8px; }
@@ -2645,6 +2648,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <span class="pt-icon">◈</span> MōdSynth
    <span class="cd-name" id="ms-patch-name">Mega</span>
    <button class="tips-btn" onclick="showTip('sound',this)">?</button>
+  </div>
+  <div class="ms-partrow">
+   <span class="ms-lbl">Patch for</span>
+   <div class="tg" style="flex-wrap:wrap" id="ms-part-btns"></div>
   </div>
   <canvas id="ms-scope" class="ms-scope"></canvas>
   <div class="ms-presets" id="modsynth-preset-btns"></div>
@@ -4536,10 +4543,27 @@ function _msClone(p){
  return Object.assign({},p,{lfo1:Object.assign({},p.lfo1||MS_LFO_OFF),
                             lfo2:Object.assign({},p.lfo2||MS_LFO_OFF)});
 }
-let modSynthPreset='mega';
-// The live patch. Presets load into this; the panel edits it directly, so the
-// voice always plays exactly what the controls show.
-let modSynthParams=_msClone(MODSYNTH_PRESETS.mega);
+// Every part gets its own MōdSynth. Chords, arp, melody strip, bass and the
+// melody generator each hold a full independent patch, so you can put a
+// wobble bass under a bell lead without one stealing the other's settings.
+const MS_PARTS=['chord','arp','mel','bass','melgen'];
+const MS_PART_LABELS={chord:'Chords',arp:'Arp',mel:'Melody strip',bass:'Bass',melgen:'Melody gen'};
+let modSynthPatches={}, modSynthPresetOf={};
+MS_PARTS.forEach(p=>{ modSynthPatches[p]=_msClone(MODSYNTH_PRESETS.mega); modSynthPresetOf[p]='mega'; });
+// Which part the panel is currently editing.
+let msPart='chord';
+// Back-compat aliases so existing call sites keep working against the part
+// the panel has open.
+Object.defineProperty(window,'modSynthParams',{get:()=>modSynthPatches[msPart],
+                                               set:v=>{ modSynthPatches[msPart]=v; }});
+Object.defineProperty(window,'modSynthPreset',{get:()=>modSynthPresetOf[msPart],
+                                               set:v=>{ modSynthPresetOf[msPart]=v; }});
+function setMsPart(p){
+ if(!modSynthPatches[p]) return;
+ msPart=p;
+ document.querySelectorAll('[data-mspart]').forEach(b=>b.classList.toggle('active',b.dataset.mspart===p));
+ syncModSynthUI();
+}
 const MS_CTRLS=[
  {k:'voices', label:'Unison', min:1,  max:16, step:1,   fmt:v=>v+(v>1?' voices':' voice')},
  {k:'spread', label:'Detune', min:0,  max:60, step:1,   fmt:v=>v+'¢'},
@@ -4701,7 +4725,7 @@ function releaseSustainedChord(myId){
  _sustainId++;
 }
 
-function makeVoice(ctx,midi,gainNode,t0,dur,wv){
+function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // driftMul() detunes each note by a few cents at random — every voice type
  // below derives its frequencies from f, so this one line gives the whole
  // engine analog-style pitch imperfection.
@@ -4810,7 +4834,7 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  //     (independent of the shared fxCutoff/fxEnv character macros applied
  //     downstream by voiceFx — this is the voice's own built-in movement)
  //  5. a soft internal saturation stage for harmonic bite
- const P=modSynthParams||MODSYNTH_PRESETS.mega;
+ const P=(modSynthPatches&&modSynthPatches[part||'chord'])||MODSYNTH_PRESETS.mega;
  const unison=buildSuperSaw(ctx,f,P.spread,P.voices,P.type);
  const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=P.q;
  if(P.sweep){
@@ -4885,11 +4909,11 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  // Sampled grand piano — falls back to the synthesized 'piano' voice until loaded
  if(SAMPLE_STATE.piano!=='ready'){
  preloadSampleInstrument('piano');
- return makeVoice(ctx,midi,gainNode,t0,dur,'piano');
+ return makeVoice(ctx,midi,gainNode,t0,dur,'piano',part);
  }
  const src=playSampleVoice(ctx,'piano',midi,gainNode,t0,dur);
  if(src) r.push(src);
- else return makeVoice(ctx,midi,gainNode,t0,dur,'piano');
+ else return makeVoice(ctx,midi,gainNode,t0,dur,'piano',part);
 
  } else {
  const safeWv=['sine','sawtooth','square','triangle'].includes(wv)?wv:'sine';
@@ -5066,7 +5090,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
  g.connect(fx.head);
  const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
- const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
+ const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
  activeOscs.push({oscs, gain:g});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
  });
@@ -5121,7 +5145,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
  g.connect(fx.head);
  const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
- const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave);
+ const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
  activeOscs.push({oscs:_os2, gain:g});
  reapVoice(_os2,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv2],atk+dec);
  });
@@ -5165,7 +5189,7 @@ function playMelNote(midi,pressure){
  const fx = voiceFx(ctx,startT,_mdur,vsc,melPan);
  g.connect(fx.head);
  const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
- const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave);
+ const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave,'mel');
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
  // in from zero, since the wheel was already there.
@@ -5663,7 +5687,7 @@ function scheduleArpBlock(t,dur){
  g.gain.exponentialRampToValueAtTime(0.001, strumT + dur * 0.88);
  g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
- makeVoice(ctx, midi, g, strumT, dur * 0.85, arpWave);
+ makeVoice(ctx, midi, g, strumT, dur * 0.85, arpWave,'arp');
  });
 }
 
@@ -5711,7 +5735,7 @@ function scheduleArpNote(midi,t,dur){
  const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan);
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
- const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave);
+ const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave,'arp');
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],dur);
 
  const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
@@ -6151,28 +6175,33 @@ function renderChordDiagram(){
 // independent engines, but their five pickers lived on three different tabs,
 // so there was no single place to answer "what is playing what". This is that
 // place; it drives the same setters the scattered controls do.
+// In Advanced view every part offers the same palette, MōdSynth included —
+// each part holds its own independent MōdSynth patch. Parts that have
+// bespoke voices of their own (the bass's acid/upright/sampled engines) list
+// those first, then the shared palette.
+const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
+ ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
+ ['piano_real','Real Piano'],['modsynth','MōdSynth']];
 const VOICE_PARTS=[
  {k:'chord', icon:'⬢', label:'Chords', hint:'the chord pads',
   get:()=>(typeof wave!=='undefined'?wave:null), set:v=>setWave(v),
-  opts:[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
-        ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],
-        ['piano_real','Real Piano'],['modsynth','MōdSynth']]},
+  opts:MS_SHARED_VOICES},
  {k:'arp', icon:'↺', label:'Arp', hint:'the arpeggiator',
   get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
-  opts:[['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw']]},
+  opts:MS_SHARED_VOICES},
  {k:'mel', icon:'〰', label:'Melody strip', hint:'the keys you play by hand',
   get:()=>(typeof melWave!=='undefined'?melWave:null), set:v=>setMelWave(v),
-  opts:[['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],['piano_real','Real Piano']]},
+  opts:MS_SHARED_VOICES},
  {k:'bass', icon:'♪', label:'Bass', hint:'the bass sequencer',
   get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
   opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
-        ['sawtooth','Acid'],['square','Square'],['triangle','Tri'],['sine','Sub']]},
+        ['sawtooth','Acid'],['square','Square'],['triangle','Tri'],['sine','Sub']]
+       .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
  {k:'melgen', icon:'✦', label:'Melody gen', hint:'the generated melody line',
   get:()=>{ try{ return window._mlCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof window.setMlWave==='function') window.setMlWave(v); },
-  opts:[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
-        ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],['piano_real','Real Piano']]},
+  opts:MS_SHARED_VOICES},
 ];
 function buildVoicesPanel(){
  ['voices-grid','voices-grid-dock'].forEach(hostId=>{
@@ -6731,6 +6760,7 @@ function onArpRateSlider(v){
  updateFtRateDisp();
 }
 function setArpWave(w){
+ // Any shared voice is valid now, not just the original four.
  arpWave=w;
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  ['sine','sawtooth','square','supersaw'].forEach(x=>{
@@ -7042,6 +7072,17 @@ function buildModSynthPresets(){
     'oninput="msSet(\''+c.k+'\',this.value)">'+
     '<div class="ms-val" id="ms-'+c.k+'-v"></div>';
    grid.appendChild(w);
+  });
+ }
+ const ph=document.getElementById('ms-part-btns');
+ if(ph && !ph.children.length){
+  MS_PARTS.forEach(p=>{
+   const b=document.createElement('button');
+   b.className='tb'+(p===msPart?' active':''); b.dataset.mspart=p;
+   b.textContent=MS_PART_LABELS[p];
+   b.title='Edit the MōdSynth patch used by '+MS_PART_LABELS[p];
+   b.addEventListener('click',()=>setMsPart(p));
+   ph.appendChild(b);
   });
  }
  [1,2].forEach(n=>{
@@ -13171,6 +13212,14 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
       try{ blWave = 'upright'; blPlayNote(t, note, oct, dur, vol, accent, slide); }
       finally{ blWave = _sw; }
     }
+  } else {
+    // Anything outside the bass-specific voices falls through to the shared
+    // instrument engine, so Bass can use the same palette as every other part
+    // — including its own independent MōdSynth patch.
+    // Compute the note here — _bmidi is only assigned inside the sampled
+    // branch, so relying on it would read undefined on this path.
+    var _fbMidi = note + (oct+1)*12;
+    if(typeof makeVoice === 'function') makeVoice(ctx, _fbMidi, g, t, dur, blWave, 'bass');
   }
 
   // Update slide state for next note
@@ -13788,7 +13837,7 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
   g.connect(mg);
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
-  if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave);
+  if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
 }
 
 // ── scheduler integration — registered into the shared clock, same pattern as bassline ──
