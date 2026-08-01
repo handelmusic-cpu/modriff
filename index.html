@@ -1229,7 +1229,6 @@ body.light-mode .ft-more-menu { background:rgba(244,245,252,.98); }
    let it cover the logo header. */
 body { padding-top:52px; }
 
-/* Kalimba */
 
 
 
@@ -2314,6 +2313,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <div class="ft-more-menu" id="ft-more-menu">
    <button class="ft-btn snap-on" id="ft-snap-btn" onclick="toggleSnapMode()" title="Snap: controls arp restart + song advance timing — chords always play freely">Snap: Beat</button>
    <button class="ft-btn" id="ft-theme-btn" onclick="toggleTheme()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Toggle dark/light mode">Light</button>
+   <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
   </div>
  </div>
 </div>
@@ -3512,6 +3512,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  HELP TAB (repurposed — no longer in nav)
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-help">
+ <div style="width:100%;max-width:700px;margin-bottom:8px">
+  <button class="tb" onclick="switchTab('perform')" style="width:100%">← Back to Play</button>
+ </div>
  <div class="panel p-perform" style="width:100%;max-width:700px">
  <div class="panel-title"> PRISM — Quick Reference</div>
  <p style="font-size:.52rem;color:var(--muted);line-height:1.8;margin-bottom:10px">
@@ -6767,10 +6770,6 @@ function setChordBeats(n){
   document.getElementById('cb-'+k)?.classList.toggle('active',parseInt(v)===n);
  });
 }
-function toggleHumanize(){
- humanizeOn=!humanizeOn;
- const b=document.getElementById('humanize-btn'); if(b){ b.classList.toggle('active',humanizeOn); }
-}
 
 // ─── Chromatic chord picker ────────────────────────────────────
 let chromaQ='maj'; // current quality for chromatic picker
@@ -6824,15 +6823,6 @@ function buildChromaGrid(){
 }
 
 
-function buildArpPatterns(){
- const c=document.getElementById('arp-patterns-row'); if(!c) return; c.innerHTML='';
- ARP_GATE_PATTERNS.forEach((p,i)=>{
- const b=document.createElement('button'); b.className='arp-pat'+(i===arpGatePat?' active':'');
- b.textContent=p.name;
- b.onclick=()=>setArpGatePat(i);
- c.appendChild(b);
- });
-}
 
 // ═══════════════════════════════════════
 // CHORD TRIGGERING
@@ -6843,13 +6833,6 @@ function getIntvs(triadQ,type7,ext){
  return extFn(triadQ,type7);
 }
 
-function triggerChord(rootM,triadQ,type7,func,ext,pressure){
- const intvs=getIntvs(triadQ,type7,ext||'triad');
- setArpChord(rootM,intvs,func);
- if(!arpOn||wetDry<.99){ stopAll(); playChord(rootM,intvs,false,pressure); }
- if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
- // update perf chart if matching
-}
 
 
 
@@ -6993,7 +6976,6 @@ function renderChords(){
  renderPerfChartRow();
  updateOct();
  buildMelodyStrip();
- if(document.getElementById('kalimba-wrap')?.classList.contains('visible')) buildKalimba();
 }
 
 // ═══════════════════════════════════════
@@ -7007,7 +6989,6 @@ function setMode(m){
  });
  renderChords();
 }
-function setCOFMode(m){ setMode(m); Object.keys(MODES).forEach(x=>{ const e=document.getElementById('cof-'+x+'-btn'); if(e) e.classList.toggle('active',x===m); }); }
 function toggleChurchModes(){
   const hidden=document.body.classList.toggle('hide-church-modes');
   document.querySelectorAll('.church-modes-toggle').forEach(function(t){
@@ -7121,16 +7102,13 @@ function transposeBy(s){
 }
 function setMelMode(m){
  melMode=m;
- ['keys','bend','kalimba'].forEach(x=>{
+ ['keys','bend'].forEach(x=>{
  const e=document.getElementById('mel-'+x+'-btn'); if(e) e.classList.toggle('active',x===m);
  });
  const kw=document.querySelector('.mel-keys-wrap');
  const bw=document.getElementById('bend-strip-wrap');
- const kbw=document.getElementById('kalimba-wrap');
  if(kw) kw.style.display = m==='keys' ? '' : 'none';
  if(bw) bw.classList.toggle('visible', m==='bend');
- if(kbw) kbw.classList.toggle('visible', m==='kalimba');
- if(m==='kalimba') buildKalimba();
 }
 function shiftMelOct(d){
  const n=melOctShift+d*12; if(n<-24||n>48) return;
@@ -7147,55 +7125,6 @@ function toggleHold(){
  if(!holdMode) Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
 }
 
-// ─── KALIMBA ───────────────────────────────────────────────────────────────
-function buildKalimba(){
- const container=document.getElementById('kalimba-keys');
- if(!container) return;
- container.innerHTML='';
- const md = MODES[mode] || MODES.major;
- const steps = md.steps;
- const baseM=60+(root<=5?root:root-12)+melOctShift;
- const allNotes=[];
- for(let oct=0;oct<2;oct++){
- steps.forEach((s,di)=>allNotes.push({midi:baseM+s+oct*12,name:nn((root+s)%12)}));
- }
- allNotes.push({midi:baseM+24,name:nn(root)});
-
- // Real kalimba interleave: odd scale degrees go LEFT (outer→inner), even go RIGHT (inner→outer)
- // So left side from outside in: 1,3,5,7,9,11,13 (low to high)
- // Right side from inside out: 2,4,6,8,10,12,14 (low to high going right)
- const leftNotes =allNotes.filter((_,i)=>i%2===0).reverse(); // low on outside, high near center
- const rightNotes=allNotes.filter((_,i)=>i%2!==0); // low near center, high on outside
- const ordered=[...leftNotes,...rightNotes];
-
- // Height based directly on MIDI pitch: lower pitch = longer tine = taller button
- const allMidis=ordered.map(n=>n.midi);
- const loMidi=Math.min(...allMidis);
- const hiMidi=Math.max(...allMidis);
- const minH=22, maxH=80;
-
- ordered.forEach(({midi,name})=>{
- // Invert: low midi → tall, high midi → short
- const pitchFrac=(midi-loMidi)/(hiMidi-loMidi); // 0=lowest, 1=highest
- const h=Math.round(maxH - (maxH-minH)*pitchFrac); // tall at low pitch
- const isTonic=(midi%12===((root%12)+12)%12);
-
- const wrap=document.createElement('div');
- wrap.className='kal-tine';
- const btn=document.createElement('div');
- btn.className='kal-btn'+(isTonic?' tonic-tine':'');
- btn.style.height=h+'px';
- const _ksol=solfegeOn?solfegeLabel(((midi-baseM)%12+12)%12):null;
- btn.innerHTML=`<span class="kal-note">${_ksol||name}</span>`;
- btn.addEventListener('pointerdown',e=>{e.preventDefault();btn.classList.add('lit');playMelNote(midi,e.pressure||0);});
- btn.addEventListener('pointerup',e=>{e.preventDefault();btn.classList.remove('lit');if(!holdMode)releaseMelNote(midi);});
- btn.addEventListener('pointercancel',()=>{btn.classList.remove('lit');if(!holdMode)releaseMelNote(midi);});
- const lbl=document.createElement('div');
- lbl.className='kal-label';
- lbl.textContent=isTonic?name+(Math.floor(midi/12)-1):'';
- wrap.appendChild(btn);wrap.appendChild(lbl);container.appendChild(wrap);
- });
-}
 
 // ─── FIXED TRANSPORT ───────────────────────────────────────────────────────
 function syncFixedTransport(){
@@ -7239,16 +7168,6 @@ function updateFtRateDisp(){
  const el=document.getElementById('ft-rate-val');
  if(el) el.textContent=safeRate(arpRateIdx).label;
 }
-function syncFtBeatDots(){
- const r=RHYTHMS[rhythmSel];
- const d=document.getElementById('ft-beat-dots');if(!d)return;
- d.innerHTML='';
- r.pat.forEach((v,i)=>{
- const dot=document.createElement('div');
- dot.className='beat-dot'+(r.kick&&r.kick[i]?' accent':'');
- dot.id='ftbd-'+i;d.appendChild(dot);
- });
-}
 // wetDry is now a binary layer switch (not a volume balance — that's the Mixer's
 // job): 0 = chord plays under the arp, 1 = arp only. Old saved fractional
 // values (from the pre-Mixer slider) coerce sensibly via the <.99 threshold
@@ -7265,8 +7184,6 @@ function updateStrumLabel(){ updateSV('strum-spread','strum-val',v=>(v*1000).toF
 
 // Voice modal
 const MOODS={happy:{root:0,mode:'major'},sad:{root:9,mode:'minor'},tense:{root:4,mode:'minor'},dreamy:{root:5,mode:'major'},epic:{root:7,mode:'minor'}};
-function setMood(m){ const p=MOODS[m]; root=p.root; mode=p.mode; Object.keys(MODES).forEach(x=>{ const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===mode); }); renderChords(); }
-function openVoiceModal(){ const m=document.getElementById('voice-modal'); if(m) m.classList.add('visible'); }
 function closeVoiceModal(){ const m=document.getElementById('voice-modal'); if(m) m.classList.remove('visible'); }
 
 function openKbShortcuts(){
@@ -7364,17 +7281,8 @@ let lastArchetype = null;
 function _rndPick(a){ return a[Math.floor(Math.random()*a.length)]; }
 // Continuous roll inside an archetype's [min,max] band.
 function _rndBand(b,dp){ const v=b[0]+Math.random()*(b[1]-b[0]); return +v.toFixed(dp==null?3:dp); }
-function _rndVal(min,max,step){
- const n = Math.floor((max-min)/step);
- return min + Math.floor(Math.random()*(n+1))*step;
-}
 // Sets a range input to a random in-bounds value and returns it, so the
 // caller can refresh whichever readout label belongs to that slider.
-function _rndSlider(id,min,max,step){
- const el=document.getElementById(id); if(!el) return null;
- el.value = _rndVal(min,max,step).toFixed(3);
- return parseFloat(el.value);
-}
 
 // A full reroll — key, mode and tempo included — is only safe while nothing
 // is playing. Mid-performance those three would yank the floor out from under
@@ -7687,21 +7595,6 @@ function _updateUndoUI(){
  const r=document.getElementById('ft-redo-btn');
  if(r){ r.disabled = !_redoStack.length; r.classList.toggle('off', !_redoStack.length); }
 }
-function buildVoiceGrid(){
- const g=document.getElementById('voice-grid'); if(!g) return;
- VOICE_TYPES.forEach(vt=>{
- const b=document.createElement('div'); b.className='voice-btn';
- b.innerHTML=`<div class="vb-name">${vt.name}</div><div class="vb-range">${vt.range}</div><div class="vb-keys">Best keys: ${vt.keys.join(' · ')}</div>`;
- b.addEventListener('click',()=>{
- closeVoiceModal();
- // Transpose to first suggested key
- const targetNote=vt.keys[0];
- const idx=NOTE_FLAT.indexOf(targetNote);
- if(idx>=0){ root=idx; renderChords(); }
- });
- g.appendChild(b);
- });
-}
 
 // ═══════════════════════════════════════
 // MELODY STRIP
@@ -7872,6 +7765,14 @@ function playOnboardingDemo(){
   }
 
   render();
+}
+// The written guide lives on its own page that nothing ever linked to, so
+// HELP_SECTIONS was unreachable content. Reachable from the ⋯ menu now.
+function openGuide(){
+ if(typeof buildHelp==='function') buildHelp();
+ switchTab('help');
+ const m=document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
+ window.scrollTo(0,0);
 }
 function showTour(){
   try{localStorage.removeItem('modo-demo-played');}catch(e){}
@@ -8740,7 +8641,6 @@ function toggleSolfege(){
  if(btn) btn.textContent = 'Do Re Mi Labels: ' + (solfegeOn?'ON':'OFF');
  btn?.classList.toggle('active', solfegeOn);
  buildMelodyStrip();
- if(document.getElementById('kalimba-wrap')?.classList.contains('visible')) buildKalimba();
 }
 function solfegeLabel(semisFromRoot){
  const steps = (MODES[mode]||MODES.major).steps;
@@ -8898,22 +8798,6 @@ function applyLogicHighlights(deg,modalLabel){
 // ═══════════════════════════════════════
 // INLINE VOICE GRID (Settings)
 // ═══════════════════════════════════════
-function buildVoiceGridInline(){ // voice type removed
- return;
- const g = document.getElementById('voice-grid-inline'); if(!g) return; g.innerHTML='';
- VOICE_TYPES.forEach((vt,i) => {
- const b = document.createElement('div'); b.className = 'vgi-btn';
- b.innerHTML = '<div class="vgi-name">'+vt.name+'</div><div class="vgi-range">'+vt.range+'</div><div class="vgi-keys">'+vt.keys.join(' · ')+'</div>';
- b.addEventListener('click', ()=>{
- document.querySelectorAll('.vgi-btn').forEach(x=>x.classList.remove('active'));
- b.classList.add('active');
- const target = vt.keys[0];
- const idx = NOTE_FLAT.indexOf(target);
- if(idx>=0){ root=idx; renderChords(); }
- });
- g.appendChild(b);
- });
-}
 
 // ═══════════════════════════════════════
 // MUSICAL TYPING (Ableton-style)
@@ -8980,13 +8864,6 @@ function melBendKey(dir,down){
  _melBendApply();
 }
 
-function toggleMusicalTyping(){
- musicalTypingOn = !musicalTypingOn;
- const hint = document.getElementById('keys-typing-hint');
- if(hint) hint.classList.toggle('visible', musicalTypingOn);
- const btn = document.getElementById('typing-btn');
- if(btn){ btn.textContent = '⌨ Keys '+(musicalTypingOn?'ON':'OFF'); btn.classList.toggle('active',musicalTypingOn); }
-}
 
 const musicalTypingHeld = {};
 // Sustain tokens for chords held down on the number keys, keyed by e.code so
@@ -9069,23 +8946,11 @@ window.addEventListener('blur', ()=>{
 // ═══════════════════════════════════════
 // SYNC PERF WAVE BUTTONS
 // ═══════════════════════════════════════
-function syncPerfWave(w){
- ['sine','sawtooth','square','supersaw'].forEach(x=>{
- document.getElementById('pw-'+x)?.classList.toggle('active',x===w);
- document.getElementById('bw-'+x)?.classList.toggle('active',x===w);
- });
-}
 
 // ══════════════════════════════════════
 // COF SPECTRAL GRADIENT (smooth rainbow)
 // ══════════════════════════════════════
 // Smooth spectral gradient around the circle: ROYGBIV cycling
-function cofSpectralColor(i){
- // i = 0..11, position around circle
- // Map to hue: 0=red(0°) going around 360°
- const hue = Math.round((i/12)*360);
- return `hsl(${hue},85%,58%)`;
-}
 
 
 // ═══════════════════════════════════════
@@ -9440,7 +9305,11 @@ function positionTabLed(){
  const bar = document.getElementById('tab-bar');
  const led = document.getElementById('tab-led');
  const active = bar && bar.querySelector('.tab-btn.active');
- if(!bar || !led || !active) return;
+ if(!bar || !led) return;
+ // The guide is reachable outside the nav, so no tab is active there — hide
+ // the trace rather than stranding it under whichever tab was last used.
+ led.style.opacity = active ? '1' : '0';
+ if(!active) return;
  const barRect = bar.getBoundingClientRect();
  const r = active.getBoundingClientRect();
  led.style.left = (r.left - barRect.left + r.width*0.24) + 'px';
@@ -9622,13 +9491,6 @@ function syncArpGate(v){
 
 // Sync arp wave buttons on perform strip when changed from settings
 const _origSetArpWave = typeof setArpWave !== 'undefined' ? setArpWave : null;
-function setArpWaveAll(w){
- arpWave=w;
- ['sine','sawtooth','square','supersaw'].forEach(x=>{
- document.getElementById('aw-'+x)?.classList.toggle('active',x===w);
- document.getElementById('aw-'+x+'-p')?.classList.toggle('active',x===w);
- });
-}
 
 // ═══════════════════════════════════════
 // SONG AUTO-ADVANCE LOOP
@@ -11017,12 +10879,6 @@ function setSnapMode(m) {
 }
 
 // Called by rhythm scheduler on beat 1 of each bar
-function fireSnappedChord() {
- if (!snapPending) return;
- const {rootM, triadQ, type7, func, pressure} = snapPending;
- snapPending = null;
- _triggerChordImmediate(rootM, triadQ, type7, func, pressure);
-}
 
 // _triggerChordImmediate moved above
 
@@ -11030,36 +10886,7 @@ function fireSnappedChord() {
 // RHYTHM STRIP ON PRISM TAB
 // ═══════════════════════════════════════
 let rhythmStripOpen = true;
-function toggleRhythmStrip() {
- rhythmStripOpen = !rhythmStripOpen;
- const body = document.getElementById('rhythm-strip-body');
- const arrow = document.getElementById('rhythm-strip-arrow');
- if(body) body.style.display = rhythmStripOpen ? 'block' : 'none';
- if(arrow) arrow.style.transform = rhythmStripOpen ? 'rotate(90deg)' : '';
- if(rhythmStripOpen) buildRhythmGridP();
-}
 
-function buildRhythmGridP() {
- const g = document.getElementById('rhythm-grid-p'); if(!g) return; g.innerHTML='';
- RHYTHMS.forEach((r,i) => {
- const b = document.createElement('button');
- b.className = 'rhythm-btn' + (i===rhythmSel?' active':'');
- b.innerHTML = '<b>'+r.sig+'</b><br>'+r.name;
- b.onclick = () => {
- rhythmSel=i; rhythmIdx=0;
- rhythmStepSec=rhythmStepDuration(RHYTHMS[i]);
- buildRhythmGridP();
- // Also sync settings grid if open
- buildRhythmGrid();
- buildBeatDots();
- if(rhythmOn) restartIfRunning();
- // Update preview label
- const prev = document.getElementById('ss-rhythm-preview');
- if(prev) prev.textContent = r.name;
- };
- g.appendChild(b);
- });
-}
 
 // ═══════════════════════════════════════
 // SAVE PERFORMANCE SETTINGS WITH SONG
@@ -11087,7 +10914,7 @@ function applySongPerformSettings(s) {
  if(s.arpOcts) setArpOcts(s.arpOcts);
  if(typeof s.arpGatePat==='number') setArpGatePat(s.arpGatePat);
  if(typeof s.arpRateIdx==='number') onArpRateSlider(s.arpRateIdx);
- if(typeof s.rhythmSel==='number'){ rhythmSel=s.rhythmSel; buildRhythmGrid(); buildRhythmGridP(); buildBeatDots(); rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); }
+ if(typeof s.rhythmSel==='number'){ rhythmSel=s.rhythmSel; buildRhythmGrid(); buildBeatDots(); rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); }
  if(typeof s.wetDry==='number') updateWetDry(s.wetDry);
 }
 
@@ -11192,48 +11019,8 @@ const KEY_NAV_FOURTHS = [0,5,10,3,8,1,6,11,4,9,2,7];
 
 let keyNavMode = 'chromatic'; // 'chromatic' | 'fifths' | 'fourths'
 
-function cycleKeyNavMode(){
- const modes = ['chromatic','fifths','fourths'];
- const labels = ['Chrom','5ths','4ths'];
- const idx = modes.indexOf(keyNavMode);
- keyNavMode = modes[(idx+1)%3];
- const btn = document.getElementById('key-cycle-btn');
- if(btn){
- btn.textContent = labels[(idx+1)%3];
- btn.classList.toggle('fifths', keyNavMode==='fifths');
- btn.classList.toggle('fourths', keyNavMode==='fourths');
- }
-}
 
-function transposeUp(){
- if(keyNavMode === 'chromatic'){
- transposeBy(1);
- } else if(keyNavMode === 'fifths'){
- // Move to next key in circle of fifths
- const pos = KEY_NAV_FIFTHS.indexOf(root);
- root = KEY_NAV_FIFTHS[(pos+1)%12];
- renderChords();
- } else {
- // Circle of fourths
- const pos = KEY_NAV_FOURTHS.indexOf(root);
- root = KEY_NAV_FOURTHS[(pos+1)%12];
- renderChords();
- }
-}
 
-function transposeDown(){
- if(keyNavMode === 'chromatic'){
- transposeBy(-1);
- } else if(keyNavMode === 'fifths'){
- const pos = KEY_NAV_FIFTHS.indexOf(root);
- root = KEY_NAV_FIFTHS[(pos+11)%12];
- renderChords();
- } else {
- const pos = KEY_NAV_FOURTHS.indexOf(root);
- root = KEY_NAV_FOURTHS[(pos+11)%12];
- renderChords();
- }
-}
 
 // ═══════════════════════════════════════
 // MASTER TUNE CYCLE (with 442)
@@ -11632,22 +11419,11 @@ const _origLoadProgPreset = typeof loadProgPreset !== 'undefined' ? loadProgPres
 // ═══════════════════════════════════════
 // VOICE PART MUTING
 // ═══════════════════════════════════════
-function toggleVoiceMute(idx){
- if(mutedVoices.has(idx)) mutedVoices.delete(idx);
- else mutedVoices.add(idx);
- document.getElementById('vm-'+idx)?.classList.toggle('active', mutedVoices.has(idx));
-}
 
 
 // ═══════════════════════════════════════
 // DRUM KIT SELECTOR
 // ═══════════════════════════════════════
-function setDrumKit(kit){
- drumKit = kit;
- ['classic','808','909','brush'].forEach(k=>{
- document.getElementById('dk-'+k)?.classList.toggle('active', k===kit);
- });
-}
 
 
 // ═══════════════════════════════════════
@@ -11676,8 +11452,6 @@ function toggleTheme(){
 initAccelerometer();
 buildRhythmGrid();
 buildBeatDots();
-buildArpPatterns();
-buildVoiceGridInline();
 buildSectionTabs();
 buildProgPresets();
 buildStandardsMenu();
@@ -11800,7 +11574,6 @@ function ftMelClick(){
 }
 // The mixer now has a real home, so the transport button navigates there
 // instead of sliding a panel over whatever you were looking at.
-function toggleUniversalMixer(){ switchTab('mix'); }
 function ftToggleAudition(){ document.dispatchEvent(new CustomEvent('sq-toggle-audition')); }
 function ftPlayStop(){
  if(isAnythingPlaying()){ stopEverything(); track('stop_pressed'); }
@@ -11808,16 +11581,6 @@ function ftPlayStop(){
  syncFixedTransport();
 }
 // Kept for any older call sites that still reference it.
-function ftRhyClick(){ ftPlayStop(); }
-function sqSetKit(kit){
-  // Map legacy kit names to SQM machine keys
-  var kitToMach = {classic:'808','808':'808','909':'909',brush:'BRS',linn:'LIN','606':'606',idm:'IDM'};
-  var machKey = kitToMach[kit] || '808';
-  // Also update simple rhythm engine kit if available
-  if(typeof setDrumKit==='function') setDrumKit(kit);
-  // Route through sqSwitchMach so the unified machine selector updates
-  if(machKey !== sqMach) sqSwitchMach(machKey);
-}
 function sqLoadGroove(idx){
   document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:RHYTHMS[idx],steps:RHYTHMS[idx].pat.length}}));
   // Auto-generate a bass line to match the loaded groove
@@ -11990,16 +11753,6 @@ function sqRenderMixer(){
   });
 }
 window._sqMixNodesW = window._sqMixNodesW || {};
-function sqInitMixer(){
-  var c=window.audioCtx; if(!c||window._sqMixNodesW.built) return;
-  // Each channel is a GainNode that sits between SQMG and destination
-  // For drum: SQMG -> drumGain -> dest (we'll retarget SQMG output)
-  // For chord/arp/mel/bass we tap into Vibe's graph
-  // Actually: we just use SQMG.gain as the drum bus level
-  // And add gain multipliers on Vibe's reverbNode input
-  // Simplest approach: expose a master multiplier per channel and apply at play time
-  window._sqMixNodesW.built = true;
-}
 
 // Mixer gains live at window level so unlockAudio can init them
 window.sqMixGainsW = { drum:.55, chord:.75, arp:.7, mel:.75, bass:.7 };
@@ -12008,7 +11761,6 @@ window.sqMixGainsW = { drum:.55, chord:.75, arp:.7, mel:.75, bass:.7 };
 
 // ── helpers to access Vibe's shared audio context ──
 function sqCtx(){ return getCtx(); }   // Vibe's getCtx()
-function sqNow(){ var c=sqCtx(); return c?c.currentTime:0; }
 
 // ── noise buffer (built lazily after audio unlock) ──
 var SQNBUF=null;
@@ -12768,14 +12520,7 @@ function sqWire(){
     sqEnsureGrid(); sqRenderGrid();
   };
   window._sqSteps = function(){ return sqSteps; };
-  window._sqStepDur = function(){ return sqSd(); };
 
-  function _syncBlSteps(){
-    blSteps=sqSteps;
-    var bd=document.getElementById('bl-stepsdisp');if(bd)bd.textContent=blSteps;
-    if(typeof blEnsureGrid==='function')blEnsureGrid();
-    if(typeof blRenderGrid==='function')blRenderGrid();
-  }
   var stUp=document.getElementById('sq-stepsUp');
   if(stUp)stUp.addEventListener('click',function(){setSeqStepCount('sq',sqSteps+1);});
   var stDn=document.getElementById('sq-stepsDn');
@@ -13474,7 +13219,6 @@ window._blSetStepsRaw = function(n){
 window.blSetSteps = function(delta){
   setSeqStepCount('bl', blSteps + delta);   // honours the step-count lock
 };
-window._blSteps = function(){ return blSteps; };
 window.blShiftOct = function(d){
   blOct = Math.max(1, Math.min(5, blOct + d));
   var disp = document.getElementById('bl-octdisp'); if(disp) disp.textContent = blOct;
@@ -14050,7 +13794,6 @@ window._mlSetStepsRaw = function(n){
 window.mlSetSteps = function(delta){
   setSeqStepCount('ml', mlSteps + delta);   // honours the step-count lock
 };
-window._mlSteps = function(){ return mlSteps; };
 window.mlShiftOct = function(d){
   mlOct = Math.max(1, Math.min(7, mlOct + d));
   var disp = document.getElementById('ml-octdisp'); if(disp) disp.textContent = mlOct;
@@ -14256,85 +13999,13 @@ window._mlRestoreState = function(s){
 })(); // end melody IIFE
 
 
-// ─── Rhythm tab: simple / sequencer mode toggle ───
-var rhyMode = 'simple';
-function setRhyMode(m){
-  rhyMode = m;
-  var simplePanel = document.getElementById('rhy-simple-panel');
-  var seqPanel    = document.getElementById('rhy-seq-panel');
-  var btnSimple   = document.getElementById('rhy-mode-simple');
-  var btnSeq      = document.getElementById('rhy-mode-seq');
-  if(simplePanel) simplePanel.style.display = m==='simple' ? 'block' : 'none';
-  if(seqPanel)    seqPanel.style.display    = m==='seq'    ? 'block' : 'none';
-  if(btnSimple)   btnSimple.classList.toggle('active', m==='simple');
-  if(btnSeq)      btnSeq.classList.toggle('active',    m==='seq');
-  if(m==='seq' && rhythmOn) toggleRhythm();
-  if(m==='simple' && typeof window._sqPlaying === 'function' && window._sqPlaying()){
-    document.dispatchEvent(new CustomEvent('sq-stop-request'));
-  }
-  if(typeof syncFixedTransport==='function') syncFixedTransport();
-}
+// The Rhythm tab's old simple/grid UI is gone — the sequencer replaced it.
+// A layer of monkey-patches used to wrap buildRhythmGrid, buildBeatDots,
+// resetBeatDots, setDrumKit and scheduleRhythm purely to mirror state into
+// that UI's elements. None of those elements exist any more, so every wrapper
+// either returned immediately or (in scheduleRhythm's case) just called the
+// original and did nothing else. Removed; the originals stand on their own.
 
-function importGrooveToSeq(){
-  var r = RHYTHMS[rhythmSel];
-  setRhyMode('seq');
-  setTimeout(function(){
-    document.dispatchEvent(new CustomEvent('sq-import-groove', {detail:{rhythm:r, steps:r.pat.length}}));
-  }, 80);
-}
-
-// Patch buildRhythmGrid to also populate rhythm-grid-tab
-var _origBuildRhythmGrid = buildRhythmGrid;
-buildRhythmGrid = function(){
-  _origBuildRhythmGrid();
-  var g = document.getElementById('rhythm-grid-tab'); if(!g) return;
-  g.innerHTML = '';
-  RHYTHMS.forEach(function(r,i){
-    var b = document.createElement('button');
-    b.className = 'rhythm-btn' + (i===rhythmSel?' active':'');
-    b.innerHTML = '<b>'+r.sig+'</b><br>'+r.name;
-    b.onclick = function(){ rhythmSel=i; rhythmIdx=0; rhythmStepSec=rhythmStepDuration(RHYTHMS[i]); buildRhythmGrid(); buildBeatDots(); if(rhythmOn) restartIfRunning(); applyTimeSig(); };
-    g.appendChild(b);
-  });
-};
-
-// Patch buildBeatDots to also populate beat-dots-tab
-var _origBuildBeatDots2 = buildBeatDots;
-buildBeatDots = function(){
-  _origBuildBeatDots2();
-  var d = document.getElementById('beat-dots-tab'); if(!d) return;
-  d.innerHTML = '';
-  var r = RHYTHMS[rhythmSel];
-  r.pat.forEach(function(v,i){
-    var dot = document.createElement('div');
-    dot.className = 'beat-dot' + (r.kick[i]?' accent':'');
-    dot.id = 'tabd-'+i; d.appendChild(dot);
-  });
-};
-
-// Patch resetBeatDots for tab dots
-var _origResetBeatDots2 = resetBeatDots;
-resetBeatDots = function(){
-  _origResetBeatDots2();
-  document.querySelectorAll('#beat-dots-tab .beat-dot').forEach(function(d){ d.classList.remove('active'); });
-};
-
-// Patch setDrumKit for rhythm tab buttons
-var _origSetDrumKit2 = setDrumKit;
-setDrumKit = function(kit){
-  _origSetDrumKit2(kit);
-  ['classic','808','909','brush'].forEach(function(k){
-    var b = document.getElementById('dkt-'+k); if(b) b.classList.toggle('active', k===kit);
-  });
-};
-
-// Mirror active beat dot to tab on each rhythm step
-(function(){
-  var _orig = scheduleRhythm;
-  scheduleRhythm = function(){
-    _orig();
-  };
-})();
 
 
 
@@ -14392,48 +14063,7 @@ window.buildMixChannelsInto = function(container){
   var mixerEl = null;
   var mixerOpen = false;
 
-  function buildMixerEl(){
-    if(mixerEl) return;
-    mixerEl = document.createElement('div');
-    mixerEl.id = 'universal-mixer';
-    mixerEl.style.cssText = [
-      'position:fixed','bottom:calc(56px + env(safe-area-inset-bottom,0px))','left:0','right:0','z-index:800',
-      'background:#0c0d1a','border-top:1px solid #222840',
-      'padding:12px 16px 20px','transform:translateY(100%)',
-      'transition:transform .25s cubic-bezier(.22,.68,0,1.2)',
-      'display:flex','flex-direction:column','align-items:center','gap:10px',
-      'box-shadow:0 -4px 32px rgba(0,0,0,.8)'
-    ].join(';');
 
-    var hdr = document.createElement('div');
-    hdr.style.cssText='display:flex;align-items:center;gap:8px;width:100%;max-width:500px';
-    var title = document.createElement('span');
-    title.style.cssText='font-family:Orbitron,sans-serif;font-size:.5rem;letter-spacing:.15em;color:#5a6090;text-transform:uppercase;flex:1';
-    title.textContent='Mixer';
-    var closeBtn = document.createElement('button');
-    closeBtn.style.cssText='background:none;border:none;color:#5a6090;font-size:18px;cursor:pointer;padding:0;line-height:1';
-    closeBtn.textContent='×';
-    closeBtn.onclick = closeMixer;
-    hdr.appendChild(title); hdr.appendChild(closeBtn);
-
-    var channelsRow = document.createElement('div');
-    channelsRow.id = 'universal-mixer-channels';
-    channelsRow.style.cssText='display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;justify-content:center;width:100%;max-width:500px';
-
-    mixerEl.appendChild(hdr);
-    mixerEl.appendChild(channelsRow);
-    document.body.appendChild(mixerEl);
-
-    window.buildMixChannelsInto(channelsRow);
-  }
-
-  function openMixer(){
-    buildMixerEl();
-    mixerOpen=true;
-    mixerEl.style.transform='translateY(0)';
-    var btn=document.getElementById('ft-mixer-btn');
-    if(btn) btn.classList.add('active');
-  }
   function closeMixer(){
     if(!mixerEl) return;
     mixerOpen=false;
@@ -14443,9 +14073,6 @@ window.buildMixChannelsInto = function(container){
   }
   // Only the internal impl — assigning window.toggleUniversalMixer here would
   // clobber the navigate-to-Mix-tab version defined earlier in the file.
-  window._mixerToggleImpl = function(){
-    if(mixerOpen) closeMixer(); else openMixer();
-  };
   // Close on outside click
   document.addEventListener('pointerdown',function(e){
     if(!mixerOpen||!mixerEl) return;
@@ -14507,10 +14134,6 @@ function sqBuildGroovePresets(){
 // sqLoadGroove stub above is canonical
 
 // sqSetKit is defined as stub above, this is an alias
-function _sqSetKitAlias(kit){
-  // Delegate to canonical sqSetKit (which now routes through sqSwitchMach)
-  if(typeof sqSetKit==='function') sqSetKit(kit);
-}
 
 // ── Basic / Advanced view mode ──
 function setViewMode(mode){
