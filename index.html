@@ -2581,7 +2581,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb" id="mv-saw" onclick="setMelWave('sawtooth')">Saw</button>
  <button class="tb" id="mv-square" onclick="setMelWave('square')">Sqr</button>
  <button class="tb" id="mv-supersaw" onclick="setMelWave('supersaw')">S·Saw</button>
- <button class="tb" id="mv-pianoreal" onclick="setMelWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  </div>
 
@@ -2637,7 +2636,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb" id="sb-organ" onclick="setWave('organ')">Organ</button>
  <button class="tb" id="sb-rhodes" onclick="setWave('rhodes')">Rhodes</button>
  <button class="tb" id="sb-pad" onclick="setWave('pad')">Pad</button>
- <button class="tb" id="sb-pianoreal" onclick="setWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  <button class="tb" id="sb-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
  </div>
  </div>
@@ -2798,7 +2796,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb" id="ms-sawtooth" onclick="setMelWave('sawtooth')">Saw</button>
  <button class="tb" id="ms-square" onclick="setMelWave('square')">Square</button>
  <button class="tb" id="ms-supersaw" onclick="setMelWave('supersaw')">S.Saw</button>
- <button class="tb" id="ms-pianoreal" onclick="setMelWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
  </div>
  </div>
  <div class="row">
@@ -3332,7 +3329,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
      <button class="bl-mopt" id="mlw-organ" onclick="setMlWave('organ')">Organ</button>
      <button class="bl-mopt" id="mlw-rhodes" onclick="setMlWave('rhodes')">Rhodes</button>
      <button class="bl-mopt" id="mlw-pad" onclick="setMlWave('pad')">Pad</button>
-     <button class="bl-mopt" id="mlw-pianoreal" onclick="setMlWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
    </div>
   </div>
   <!-- Style + generate: always visible -->
@@ -3407,7 +3403,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tb" id="aw-sawtooth-p" onclick="setArpWave('sawtooth')">Saw</button>
    <button class="tb" id="aw-square-p" onclick="setArpWave('square')">Sqr</button>
    <button class="tb active" id="aw-supersaw-p" onclick="setArpWave('supersaw')">S·Saw</button>
-   <button class="tb" id="aw-pianoreal-p" onclick="setArpWave('piano_real')" title="Real recorded piano samples (loads online, falls back to synth Piano offline)">Real Piano</button>
   </div>
   </div>
   <div class="row" style="margin-top:6px">
@@ -3677,7 +3672,6 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // perceived loudness. Calibrated from actual OfflineAudioContext RMS/peak
 // measurements of each voice at unity gain (not guessed) — piano's raw
 // output was used as the anchor since it previously sounded "right".
-// piano_real is a sample and couldn't be measured the same way (network
 // sample fetch isn't available in every environment); its value is an
 // estimate based on it being reported quieter than the synth piano.
 // Recalibrated against the character/FX chain (per-voice lowpass + stereo
@@ -3694,7 +3688,6 @@ const WAVE_GAIN = {
  organ:2.813,
  rhodes:1.102,
  pad:1.977,
- piano_real:1.3,
  modsynth:.95,
 };
 
@@ -3714,7 +3707,6 @@ function _natRange(octLo,octHi){
  return out;
 }
 const SAMPLE_LIBS = {
- piano: {dir:'samples/piano', notes:_natRange(2,6), fallbackWave:'piano'},
  bass:  {dir:'samples/bass',  notes:_natRange(1,4), fallbackWave:'upright'},
 };
 const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
@@ -4904,16 +4896,6 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  ns.start(t0); ns.stop(t0+0.04); r.push(ns);
  }
  unison.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.1);r.push(o);});
-
- } else if(wv==='piano_real'){
- // Sampled grand piano — falls back to the synthesized 'piano' voice until loaded
- if(SAMPLE_STATE.piano!=='ready'){
- preloadSampleInstrument('piano');
- return makeVoice(ctx,midi,gainNode,t0,dur,'piano',part);
- }
- const src=playSampleVoice(ctx,'piano',midi,gainNode,t0,dur);
- if(src) r.push(src);
- else return makeVoice(ctx,midi,gainNode,t0,dur,'piano',part);
 
  } else {
  const safeWv=['sine','sawtooth','square','triangle'].includes(wv)?wv:'sine';
@@ -6181,7 +6163,7 @@ function renderChordDiagram(){
 // those first, then the shared palette.
 const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
- ['piano_real','Real Piano'],['modsynth','MōdSynth']];
+ ['modsynth','MōdSynth']];
 const VOICE_PARTS=[
  {k:'chord', icon:'⬢', label:'Chords', hint:'the chord pads',
   get:()=>(typeof wave!=='undefined'?wave:null), set:v=>setWave(v),
@@ -6767,8 +6749,6 @@ function setArpWave(w){
  document.getElementById('aw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('aw-'+x+'-p')?.classList.toggle('active',x===w);
  });
- document.getElementById('aw-pianoreal-p')?.classList.toggle('active',w==='piano_real');
- if(w==='piano_real') preloadSampleInstrument('piano');
 }
 function setArpGatePat(i){
  arpGatePat=i; arpGateIdx=0;
@@ -7044,14 +7024,13 @@ function toggleNash(){
 function setWave(w){
  wave=w;
  // Map wave values to the actual button IDs used in HTML
- const wvIdMap={sine:'sine',sawtooth:'saw',square:'sqr',supersaw:'ssaw',piano:'piano',organ:'organ',rhodes:'rhodes',pad:'pad',piano_real:'pianoreal',modsynth:'modsynth'};
- ['sine','sawtooth','square','supersaw','piano','organ','rhodes','pad','piano_real','modsynth'].forEach(x=>{
+ const wvIdMap={sine:'sine',sawtooth:'saw',square:'sqr',supersaw:'ssaw',piano:'piano',organ:'organ',rhodes:'rhodes',pad:'pad',modsynth:'modsynth'};
+ ['sine','sawtooth','square','supersaw','piano','organ','rhodes','pad','modsynth'].forEach(x=>{
  document.getElementById('bw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('pw-'+x)?.classList.toggle('active',x===w);
  document.getElementById('wv-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
- if(w==='piano_real') preloadSampleInstrument('piano');
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  const msPanel=document.getElementById('modsynth-panel');
  if(msPanel){
@@ -8636,7 +8615,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'Clarinet and flute currently show the correctly transposed written note without a key diagram.'},
  ]},
  {title:'Sound Engine & MōdSynth', tips:[
- {icon:'',text:'<strong>Chord voices</strong>: Sine, Saw, Square, SuperSaw, Piano, Organ, Rhodes, Pad, and <strong>Real Piano</strong> — recorded samples that fall back to the synth Piano offline.'},
+ {icon:'',text:'<strong>Voices</strong>: Sine, Saw, Square, Tri, SuperSaw, Piano, Organ, Rhodes, Pad and <strong>MōdSynth</strong> — and in Advanced view every part can use any of them.'},
  {icon:'',text:'<strong>MōdSynth</strong> (Advanced) is the deep voice — stacked unison with its own sub, attack transient, filter sweep and saturation.'},
  {icon:'',text:'Selecting it reveals a <strong>preset row</strong>: <strong>Mega</strong> is the full stacked voice, <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches, and <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick persists.'},
  {icon:'',text:'The <strong>Tone / Reso / Sweep / Drive / Width / Drift</strong> macros in Setup shape whichever voice is loaded — that is the real sound-design surface.'},
@@ -9502,7 +9481,7 @@ The arpeggiator and the bass follow the armed voicing too. Advanced view only; y
  },
  'sound': {
  title: 'Chord Voice & MōdSynth',
- body: `Pick the voice your chords play through. <strong>Piano</strong>, <strong>Organ</strong>, <strong>Rhodes</strong> and <strong>Pad</strong> are synthesised; <strong>Real Piano</strong> streams recorded samples and quietly falls back to the synth Piano when you're offline.<br><br>
+ body: `Pick the voice each part plays through — in Advanced view every part offers the same list.<br><br>
 <strong>MōdSynth</strong> (Advanced) is the deep voice — a stacked unison synth with its own sub, attack transient, filter sweep and saturation. Selecting it reveals a <strong>preset row</strong>:<br><br>
 <strong>Mega</strong> is the full stacked voice. <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches. <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick is remembered between visits.<br><br>
 Presets are a starting point, not a limit: <strong>Unison, Detune, Sub, Attack, Reso</strong> and <strong>Drive</strong> are all live, and the wave and filter sweep switch underneath. Move anything and the patch becomes <strong>Custom</strong>. The scope at the top traces the actual output, so you can see what each control does.<br><br>
@@ -11287,14 +11266,11 @@ function setMelWave(w){
  ['sine','sawtooth','square','supersaw'].forEach(x=>{
  document.getElementById('ms-'+x)?.classList.toggle('active',x===w);
  });
- document.getElementById('ms-pianoreal')?.classList.toggle('active',w==='piano_real');
  // Sync groove tab buttons
  document.getElementById('mv-sine')?.classList.toggle('active',w==='sine');
  document.getElementById('mv-saw')?.classList.toggle('active',w==='sawtooth');
  document.getElementById('mv-square')?.classList.toggle('active',w==='square');
  document.getElementById('mv-supersaw')?.classList.toggle('active',w==='supersaw');
- document.getElementById('mv-pianoreal')?.classList.toggle('active',w==='piano_real');
- if(w==='piano_real') preloadSampleInstrument('piano');
 }
 
 // ═══════════════════════════════════════
@@ -14211,10 +14187,9 @@ window.mlClear = function(){ for(var s=0;s<mlSteps;s++) mlGrid[s]=mlMkCell(); ml
 // ── melody-sequencer voice selector ──
 window.setMlWave = function(w){
   mlWave = w;
-  var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad', piano_real:'mlw-pianoreal'};
+  var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
-  if(w==='piano_real') preloadSampleInstrument('piano');
 };
 
 // ── gen style buttons ──
