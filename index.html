@@ -895,6 +895,33 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .unlock-logo, .unlock-sub, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
+ VOICES DOCK (available on every tab)
+═══════════════════════════════════════ */
+.voices-dock {
+ position:fixed; left:0; right:0; z-index:519;
+ bottom:calc(var(--navh,56px) + env(safe-area-inset-bottom,0px));
+ pointer-events:none;
+}
+.voices-dock-tab {
+ pointer-events:all; display:block; margin:0 auto -1px;
+ background:var(--surf2); color:var(--muted);
+ border:1px solid var(--border2); border-bottom:none;
+ border-radius:8px 8px 0 0; padding:3px 14px;
+ font-family:'Outfit',sans-serif; font-size:.46rem; font-weight:600;
+ letter-spacing:.1em; text-transform:uppercase; cursor:pointer;
+}
+.voices-dock.open .voices-dock-tab { color:var(--pg); border-color:var(--pg); }
+.voices-dock-body {
+ pointer-events:all; display:none;
+ background:rgba(12,13,26,.97); border-top:1px solid var(--border2);
+ backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+ padding:9px 12px; box-shadow:0 -6px 22px rgba(0,0,0,.5);
+ max-height:42vh; overflow-y:auto;
+}
+.voices-dock.open .voices-dock-body { display:block; }
+body.light-mode .voices-dock-body { background:rgba(232,234,246,.98); }
+
+/* ═══════════════════════════════════════
  VOICES PANEL
 ═══════════════════════════════════════ */
 .voices-grid {
@@ -991,6 +1018,22 @@ body.light-mode .ft-btn.tp-count { color:#0369a1; }
  font-family:'Orbitron',sans-serif; font-size:.5rem; color:var(--text);
  font-variant-numeric:tabular-nums;
 }
+
+.ms-pgroup { display:flex; align-items:center; gap:7px; margin-bottom:4px; flex-wrap:wrap; }
+.ms-pgroup > .ms-lbl { min-width:52px; }
+.ms-lfo-wrap { margin-top:10px; padding-top:9px; border-top:1px solid var(--border2); display:flex; flex-direction:column; gap:8px; }
+.ms-lfo-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; transition:opacity .2s; }
+.ms-lfo-row > .ms-lbl { min-width:36px; }
+.ms-lfo-row .ms-ctrl { flex:1; min-width:76px; }
+.ms-sel {
+ flex:0 0 auto; width:auto; min-width:64px; padding:3px 5px; font-size:.5rem;
+ background:var(--surf2); color:var(--text);
+ border:1px solid var(--border2); border-radius:var(--r-sm);
+ font-family:'Outfit',sans-serif; cursor:pointer;
+}
+body.light-mode .ms-sel { background:#fff; color:#1a1e38; border-color:#c2c6de; }
+/* Routed nowhere = not doing anything; don't let it read as live. */
+.ms-lfo-row.lfo-idle { opacity:.45; }
 
 /* ═══════════════════════════════════════
  CHORD FORM / FINGERING DIAGRAMS
@@ -2390,6 +2433,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="tab-led" id="tab-led"></div>
 </nav>
 
+<!-- Voices follow you between tabs: which instrument is on which part is
+     relevant everywhere, not just on Play. Collapsed by default so it costs
+     nothing until you want it. -->
+<div class="voices-dock" id="voices-dock">
+ <button class="voices-dock-tab" id="voices-dock-tab" onclick="toggleVoicesDock()" title="Show or hide the voice assignments">⬡ Voices</button>
+ <div class="voices-dock-body" id="voices-dock-body">
+  <div class="voices-grid" id="voices-grid-dock"></div>
+ </div>
+</div>
+
 <!-- ══════════════════════════════════════
  PERFORM TAB
 ══════════════════════════════════════ -->
@@ -2606,6 +2659,22 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tb" id="ms-sweep-btn" onclick="msSet('sweep',!modSynthParams.sweep)" title="The voice's own fast-open/slow-close filter movement">Filter Sweep: ON</button>
   </div>
   <div class="ms-grid" id="ms-ctrl-grid"></div>
+  <div class="ms-lfo-wrap">
+   <div class="ms-lfo-row" id="ms-lfo1-row">
+    <span class="ms-lbl">LFO 1</span>
+    <select id="ms-lfo1-dest" class="ms-sel" onchange="msSetLfo(1,'dest',this.value)"></select>
+    <select id="ms-lfo1-shape" class="ms-sel" onchange="msSetLfo(1,'shape',this.value)"></select>
+    <div class="ms-ctrl"><div class="ms-lbl">Rate</div><input type="range" id="ms-lfo1-rate" min="0.05" max="16" step="0.05" oninput="msSetLfo(1,'rate',this.value)"><div class="ms-val" id="ms-lfo1-rate-v"></div></div>
+    <div class="ms-ctrl"><div class="ms-lbl">Depth</div><input type="range" id="ms-lfo1-depth" min="0" max="1" step="0.01" oninput="msSetLfo(1,'depth',this.value)"><div class="ms-val" id="ms-lfo1-depth-v"></div></div>
+   </div>
+   <div class="ms-lfo-row" id="ms-lfo2-row">
+    <span class="ms-lbl">LFO 2</span>
+    <select id="ms-lfo2-dest" class="ms-sel" onchange="msSetLfo(2,'dest',this.value)"></select>
+    <select id="ms-lfo2-shape" class="ms-sel" onchange="msSetLfo(2,'shape',this.value)"></select>
+    <div class="ms-ctrl"><div class="ms-lbl">Rate</div><input type="range" id="ms-lfo2-rate" min="0.05" max="16" step="0.05" oninput="msSetLfo(2,'rate',this.value)"><div class="ms-val" id="ms-lfo2-rate-v"></div></div>
+    <div class="ms-ctrl"><div class="ms-lbl">Depth</div><input type="range" id="ms-lfo2-depth" min="0" max="1" step="0.01" oninput="msSetLfo(2,'depth',this.value)"><div class="ms-val" id="ms-lfo2-depth-v"></div></div>
+   </div>
+  </div>
  </div>
 
  <!-- MIDI input mode — whether an external MIDI keyboard plays chords or melody -->
@@ -4418,20 +4487,59 @@ function buildSuperSaw(ctx,f,spread,voices,type){
 // tab: "Sine"/"Saw"/"Square"/"Triangle" are single-oscillator, filter-open
 // patches, while the richer presets stack unison voices and switch on the sub,
 // noise transient, filter sweep and saturation stages.
+// Each preset is a full patch: oscillator stack, sub, transient, filter and
+// two LFOs. `dest:'off'` means that LFO is idle — a static patch is just one
+// with nothing routed. Grouped so the row reads as a library rather than a
+// wall of buttons.
+const MS_LFO_OFF={rate:5, depth:0, shape:'sine', dest:'off'};
 const MODSYNTH_PRESETS = {
- mega:     {label:'Mega',    voices:18, spread:18, type:'sawtooth', sub:.55, noise:.5, q:6,   drive:1.8, sweep:true},
- supersaw: {label:'S·Saw',   voices:7,  spread:30, type:'sawtooth', sub:0,   noise:0,  q:1.2, drive:0,   sweep:false},
- sine:     {label:'Sine',    voices:1,  spread:0,  type:'sine',     sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
- saw:      {label:'Saw',     voices:1,  spread:0,  type:'sawtooth', sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
- square:   {label:'Square',  voices:1,  spread:0,  type:'square',   sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
- triangle: {label:'Tri',     voices:1,  spread:0,  type:'triangle', sub:0,   noise:0,  q:.7,  drive:0,   sweep:false},
- sub:      {label:'Sub',     voices:2,  spread:8,  type:'triangle', sub:.9,  noise:0,  q:2,   drive:1.2, sweep:false},
- pluck:    {label:'Pluck',   voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7, q:8,   drive:1.4, sweep:true},
+ // ── Basic: the plain oscillators, filter open, nothing moving ──
+ sine:     {label:'Sine',   group:'Basic',   voices:1,  spread:0,  type:'sine',     sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ saw:      {label:'Saw',    group:'Basic',   voices:1,  spread:0,  type:'sawtooth', sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ square:   {label:'Square', group:'Basic',   voices:1,  spread:0,  type:'square',   sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ triangle: {label:'Tri',    group:'Basic',   voices:1,  spread:0,  type:'triangle', sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+
+ // ── Classic: the sounds subtractive synths were built to make ──
+ brass:    {label:'Brass',  group:'Classic', voices:4,  spread:12, type:'sawtooth', sub:.25, noise:.15, q:4,   drive:1.1, sweep:true,
+            lfo1:{rate:5.2, depth:.10, shape:'sine', dest:'pitch'}, lfo2:{...MS_LFO_OFF}},
+ polypad:  {label:'Poly Pad',group:'Classic',voices:7, spread:26, type:'sawtooth', sub:.20, noise:0,   q:1.6, drive:0,   sweep:false,
+            lfo1:{rate:.35, depth:.45, shape:'sine', dest:'filter'}, lfo2:{rate:4.4, depth:.06, shape:'sine', dest:'pitch'}},
+ strings:  {label:'Strings',group:'Classic', voices:9,  spread:34, type:'sawtooth', sub:.15, noise:0,   q:1.2, drive:0,   sweep:false,
+            lfo1:{rate:.8,  depth:.22, shape:'triangle', dest:'filter'}, lfo2:{rate:5.6, depth:.05, shape:'sine', dest:'pitch'}},
+ fatbass:  {label:'Fat Bass',group:'Classic',voices:2, spread:6,  type:'sawtooth', sub:.95, noise:.10, q:6,   drive:2.2, sweep:true,
+            lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ lead:     {label:'Lead',   group:'Classic', voices:3,  spread:10, type:'square',   sub:.30, noise:.20, q:8,   drive:1.6, sweep:true,
+            lfo1:{rate:5.5, depth:.16, shape:'sine', dest:'pitch'}, lfo2:{...MS_LFO_OFF}},
+ bell:     {label:'Bell',   group:'Classic', voices:2,  spread:4,  type:'sine',     sub:0,   noise:.50, q:3,   drive:.6,  sweep:true,
+            lfo1:{rate:6.2, depth:.30, shape:'sine', dest:'amp'}, lfo2:{...MS_LFO_OFF}},
+
+ // ── Modern: where the same engine went once it got loud ──
+ mega:     {label:'Mega',   group:'Modern',  voices:18, spread:18, type:'sawtooth', sub:.55, noise:.5,  q:6,   drive:1.8, sweep:true,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ supersaw: {label:'S·Saw',  group:'Modern',  voices:7,  spread:30, type:'sawtooth', sub:0,   noise:0,   q:1.2, drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ pluck:    {label:'Pluck',  group:'Modern',  voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7,  q:8,   drive:1.4, sweep:true,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ sub:      {label:'Sub',    group:'Modern',  voices:2,  spread:8,  type:'triangle', sub:.9,  noise:0,   q:2,   drive:1.2, sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ reese:    {label:'Reese',  group:'Modern',  voices:2,  spread:44, type:'sawtooth', sub:.70, noise:0,   q:5,   drive:1.8, sweep:false,
+            lfo1:{rate:.5,  depth:.50, shape:'triangle', dest:'filter'}, lfo2:{...MS_LFO_OFF}},
+ wobble:   {label:'Wobble', group:'Modern',  voices:4,  spread:16, type:'sawtooth', sub:.80, noise:0,   q:14,  drive:2.4, sweep:false,
+            lfo1:{rate:3.2, depth:.85, shape:'sine', dest:'filter'}, lfo2:{...MS_LFO_OFF}},
+ hoover:   {label:'Hoover', group:'Modern',  voices:7,  spread:48, type:'sawtooth', sub:.40, noise:.20, q:7,   drive:1.5, sweep:true,
+            lfo1:{rate:.9,  depth:.30, shape:'triangle', dest:'pitch'}, lfo2:{rate:2.6, depth:.35, shape:'sine', dest:'filter'}},
+ gate:     {label:'Gate',   group:'Modern',  voices:5,  spread:20, type:'sawtooth', sub:.20, noise:0,   q:3,   drive:.8,  sweep:false,
+            lfo1:{rate:8,   depth:.95, shape:'square', dest:'amp'}, lfo2:{...MS_LFO_OFF}},
 };
+const MS_LFO_DESTS=[['off','Off'],['pitch','Pitch'],['filter','Filter'],['amp','Amp']];
+const MS_LFO_SHAPES=[['sine','Sine'],['triangle','Tri'],['square','Sqr'],['sawtooth','Saw']];
+// Presets hold nested LFO objects, so a shallow copy would hand the live patch
+// a reference straight into the preset table and let an edit corrupt it
+// permanently. Always deep-copy on load.
+function _msClone(p){
+ return Object.assign({},p,{lfo1:Object.assign({},p.lfo1||MS_LFO_OFF),
+                            lfo2:Object.assign({},p.lfo2||MS_LFO_OFF)});
+}
 let modSynthPreset='mega';
 // The live patch. Presets load into this; the panel edits it directly, so the
 // voice always plays exactly what the controls show.
-let modSynthParams=Object.assign({},MODSYNTH_PRESETS.mega);
+let modSynthParams=_msClone(MODSYNTH_PRESETS.mega);
 const MS_CTRLS=[
  {k:'voices', label:'Unison', min:1,  max:16, step:1,   fmt:v=>v+(v>1?' voices':' voice')},
  {k:'spread', label:'Detune', min:0,  max:60, step:1,   fmt:v=>v+'¢'},
@@ -4443,7 +4551,7 @@ const MS_CTRLS=[
 function setModSynthPreset(p){
  if(!MODSYNTH_PRESETS[p]) return;
  modSynthPreset=p;
- modSynthParams=Object.assign({},MODSYNTH_PRESETS[p]);
+ modSynthParams=_msClone(MODSYNTH_PRESETS[p]);
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.toggle('active', b.dataset.msp===p));
  try{ localStorage.setItem('modo-modsynth-preset',p); }catch(e){}
  syncModSynthUI();
@@ -4452,6 +4560,13 @@ function setModSynthPreset(p){
 // instead of leaving a preset button lit next to controls that have moved.
 function msSet(k,v){
  modSynthParams[k] = (k==='type'||k==='sweep') ? v : parseFloat(v);
+ modSynthPreset='custom';
+ document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
+ syncModSynthUI();
+}
+function msSetLfo(n,field,v){
+ const L=modSynthParams['lfo'+n]; if(!L) return;
+ L[field]=(field==='rate'||field==='depth')?parseFloat(v):v;
  modSynthPreset='custom';
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
  syncModSynthUI();
@@ -4467,6 +4582,18 @@ function syncModSynthUI(){
  });
  const sw=document.getElementById('ms-sweep-btn');
  if(sw){ sw.textContent='Filter Sweep: '+(P.sweep?'ON':'OFF'); sw.classList.toggle('active',!!P.sweep); }
+ [1,2].forEach(n=>{
+  const L=P['lfo'+n]||MS_LFO_OFF;
+  const d=document.getElementById('ms-lfo'+n+'-dest');   if(d&&d.value!==L.dest) d.value=L.dest;
+  const sh=document.getElementById('ms-lfo'+n+'-shape'); if(sh&&sh.value!==L.shape) sh.value=L.shape;
+  const r=document.getElementById('ms-lfo'+n+'-rate');   if(r&&+r.value!==+L.rate) r.value=L.rate;
+  const dp=document.getElementById('ms-lfo'+n+'-depth'); if(dp&&+dp.value!==+L.depth) dp.value=L.depth;
+  const rv=document.getElementById('ms-lfo'+n+'-rate-v');  if(rv) rv.textContent=(+L.rate).toFixed(2)+' Hz';
+  const dv=document.getElementById('ms-lfo'+n+'-depth-v'); if(dv) dv.textContent=Math.round(L.depth*100)+'%';
+  // An LFO routed nowhere shouldn't look live.
+  const row=document.getElementById('ms-lfo'+n+'-row');
+  if(row) row.classList.toggle('lfo-idle', L.dest==='off'||!L.depth);
+ });
  const nm=document.getElementById('ms-patch-name');
  if(nm) nm.textContent = modSynthPreset==='custom' ? 'Custom' : (MODSYNTH_PRESETS[modSynthPreset]?.label||'');
 }
@@ -4705,7 +4832,39 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv){
  drive.curve=cv;
  filt.connect(drive); tail=drive;
  }
- tail.connect(gainNode);
+ // Amp is modulated through its own stage so a tremolo/gate LFO has something
+ // to move without touching the envelope the rest of the app schedules.
+ const ampMod=ctx.createGain(); ampMod.gain.value=1;
+ tail.connect(ampMod); ampMod.connect(gainNode);
+
+ // ── LFOs ──────────────────────────────────────────────────────────────
+ // Routed by connecting the LFO into an AudioParam. Note this means the
+ // target's .value no longer tells you anything — an audio-rate connection
+ // is summed on top of it and is invisible to a param read.
+ [P.lfo1,P.lfo2].forEach(L=>{
+  if(!L||L.dest==='off'||!L.depth) return;
+  const lfo=ctx.createOscillator();
+  lfo.type=L.shape||'sine';
+  lfo.frequency.value=Math.max(.05,L.rate||1);
+  const amt=ctx.createGain();
+  lfo.connect(amt);
+  if(L.dest==='pitch'){
+   amt.gain.value=L.depth*120;                       // cents of vibrato
+   unison.oscs.forEach(o=>amt.connect(o.detune));
+  } else if(L.dest==='filter'){
+   // Scaled off the note so a wobble tracks pitch instead of swamping the
+   // bass and vanishing up top.
+   amt.gain.value=L.depth*Math.min(f*5,3800);
+   amt.connect(filt.frequency);
+  } else if(L.dest==='amp'){
+   const d=Math.min(.95,L.depth);
+   ampMod.gain.value=1-d/2;                          // centre the swing
+   amt.gain.value=d/2;
+   amt.connect(ampMod.gain);
+  }
+  lfo.start(t0); lfo.stop(t0+dur+.1); r.push(lfo);
+ });
+
  if(P.sub>0){
  const sub=ctx.createOscillator(); sub.type='triangle'; sub.frequency.value=f/2;
  const subG=ctx.createGain(); subG.gain.value=P.sub;
@@ -6016,32 +6175,42 @@ const VOICE_PARTS=[
         ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['supersaw','SuperSaw'],['piano_real','Real Piano']]},
 ];
 function buildVoicesPanel(){
- const host=document.getElementById('voices-grid'); if(!host) return;
- host.innerHTML='';
- VOICE_PARTS.forEach(p=>{
-  const row=document.createElement('div'); row.className='voice-row';
-  const sel=document.createElement('select');
-  sel.className='voice-sel'; sel.id='vsel-'+p.k; sel.title=p.label+' — '+p.hint;
-  p.opts.forEach(([v,lab])=>{
-   const o=document.createElement('option'); o.value=v; o.textContent=lab; sel.appendChild(o);
+ ['voices-grid','voices-grid-dock'].forEach(hostId=>{
+  const host=document.getElementById(hostId); if(!host) return;
+  const suffix = hostId==='voices-grid-dock' ? '-dock' : '';
+  host.innerHTML='';
+  VOICE_PARTS.forEach(p=>{
+   const row=document.createElement('div'); row.className='voice-row';
+   const sel=document.createElement('select');
+   sel.className='voice-sel'; sel.id='vsel-'+p.k+suffix; sel.title=p.label+' — '+p.hint;
+   p.opts.forEach(([v,lab])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=lab; sel.appendChild(o);
+   });
+   sel.addEventListener('change',()=>{ try{ p.set(sel.value); }catch(e){} syncVoicesPanel(); });
+   row.innerHTML='<span class="voice-ic">'+p.icon+'</span><span class="voice-lbl">'+p.label+'</span>';
+   row.appendChild(sel);
+   host.appendChild(row);
   });
-  sel.addEventListener('change',()=>{ try{ p.set(sel.value); }catch(e){} syncVoicesPanel(); });
-  row.innerHTML='<span class="voice-ic">'+p.icon+'</span><span class="voice-lbl">'+p.label+'</span>';
-  row.appendChild(sel);
-  host.appendChild(row);
  });
  syncVoicesPanel();
+}
+let voicesDockOpen=false;
+function toggleVoicesDock(){
+ voicesDockOpen=!voicesDockOpen;
+ document.getElementById('voices-dock')?.classList.toggle('open',voicesDockOpen);
+ try{ localStorage.setItem('modo-voices-dock',voicesDockOpen?'1':''); }catch(e){}
+ if(voicesDockOpen) syncVoicesPanel();
 }
 // Voices change from plenty of places other than this panel — the dice, undo,
 // loading a song, the per-tab pickers — so the panel reads state rather than
 // assuming it is the only writer.
 function syncVoicesPanel(){
  VOICE_PARTS.forEach(p=>{
-  const sel=document.getElementById('vsel-'+p.k); if(!sel) return;
   let v=null; try{ v=p.get(); }catch(e){}
-  if(v!=null && sel.value!==v){
-   if([...sel.options].some(o=>o.value===v)) sel.value=v;
-  }
+  ['','-dock'].forEach(sfx=>{
+   const sel=document.getElementById('vsel-'+p.k+sfx); if(!sel) return;
+   if(v!=null && sel.value!==v && [...sel.options].some(o=>o.value===v)) sel.value=v;
+  });
  });
 }
 
@@ -6875,17 +7044,38 @@ function buildModSynthPresets(){
    grid.appendChild(w);
   });
  }
+ [1,2].forEach(n=>{
+  const d=document.getElementById('ms-lfo'+n+'-dest');
+  if(d&&!d.options.length) MS_LFO_DESTS.forEach(([v,l])=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; d.appendChild(o); });
+  const sh=document.getElementById('ms-lfo'+n+'-shape');
+  if(sh&&!sh.options.length) MS_LFO_SHAPES.forEach(([v,l])=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; sh.appendChild(o); });
+ });
  const host=document.getElementById('modsynth-preset-btns'); if(!host) return;
  host.innerHTML='';
+ const groups={};
  Object.keys(MODSYNTH_PRESETS).forEach(k=>{
-  const b=document.createElement('button');
-  b.className='tb'+(k===modSynthPreset?' active':'');
-  b.dataset.msp=k;
-  b.textContent=MODSYNTH_PRESETS[k].label;
-  b.title=k==='mega'?'The full multi-stage MōdSynth voice':'MōdSynth preset — '+MODSYNTH_PRESETS[k].label;
-  b.addEventListener('click',()=>setModSynthPreset(k));
-  host.appendChild(b);
+  const g=MODSYNTH_PRESETS[k].group||'Other';
+  (groups[g]=groups[g]||[]).push(k);
  });
+ ['Basic','Classic','Modern'].concat(Object.keys(groups).filter(g=>!['Basic','Classic','Modern'].includes(g)))
+  .forEach(g=>{
+   if(!groups[g]) return;
+   const wrap=document.createElement('div'); wrap.className='ms-pgroup';
+   const lab=document.createElement('span'); lab.className='ms-lbl'; lab.textContent=g;
+   wrap.appendChild(lab);
+   const row=document.createElement('div'); row.className='tg'; row.style.flexWrap='wrap';
+   groups[g].forEach(k=>{
+    const b=document.createElement('button');
+    b.className='tb'+(k===modSynthPreset?' active':'');
+    b.dataset.msp=k;
+    b.textContent=MODSYNTH_PRESETS[k].label;
+    b.title='MōdSynth preset — '+MODSYNTH_PRESETS[k].label;
+    b.addEventListener('click',()=>setModSynthPreset(k));
+    row.appendChild(b);
+   });
+   wrap.appendChild(row);
+   host.appendChild(wrap);
+  });
  try{
   const saved=localStorage.getItem('modo-modsynth-preset');
   if(saved && MODSYNTH_PRESETS[saved]) setModSynthPreset(saved);
@@ -7243,7 +7433,10 @@ function _capSettings(){
   sqSwing:   (typeof window._sqSwingVal==='function') ? window._sqSwingVal() : null,
   sqMach:    (typeof window._sqMach==='function')     ? window._sqMach()     : null,
   sqRateMul: (typeof sqRateMul!=='undefined') ? sqRateMul : null,
-  modSynthPreset: (typeof modSynthPreset!=='undefined') ? modSynthPreset : null
+  modSynthPreset: (typeof modSynthPreset!=='undefined') ? modSynthPreset : null,
+  // The preset NAME alone cannot rebuild a Custom patch, so snapshot the
+  // live parameters too.
+  modSynthParams: (typeof modSynthParams!=='undefined') ? _msClone(modSynthParams) : null
  };
 }
 function _applySettings(s){
@@ -7255,7 +7448,13 @@ function _applySettings(s){
  if(s.sqRateMul!=null && typeof setSeqRate==='function'){ try{ setSeqRate('sq', s.sqRateMul); }catch(e){} }
  if(s.sqSwing!=null && typeof window._sqSetSwing==='function'){ try{ window._sqSetSwing(s.sqSwing); }catch(e){} }
  if(s.chordBeats!=null && typeof setChordBeats==='function'){ try{ setChordBeats(s.chordBeats); }catch(e){} }
- if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){ try{ setModSynthPreset(s.modSynthPreset); }catch(e){} }
+ if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){
+  try{
+   if(s.modSynthPreset!=='custom') setModSynthPreset(s.modSynthPreset);
+   if(s.modSynthParams){ modSynthParams=_msClone(s.modSynthParams); modSynthPreset=s.modSynthPreset;
+     if(typeof syncModSynthUI==='function') syncModSynthUI(); }
+  }catch(e){}
+ }
  setTimeout(()=>{ if(typeof syncVoicesPanel==='function') syncVoicesPanel(); },0);
  // Voices
  if(s.wave) setWave(s.wave);
@@ -7387,6 +7586,24 @@ function randomizeSettings(){
  s.sqSwing    = +(_rndPick([0,0,0,.08,.14,.2,.28])).toFixed(2);
  s.sqMach     = _rndPick(['808','909','MOD','606','LIN','IDM','BRS']);
  s.modSynthPreset = _rndPick(Object.keys(MODSYNTH_PRESETS));
+ // Roll the modulation on top of the preset — movement is most of what makes
+ // one patch feel different from another, and a static roll all sounds alike.
+ {
+  const base=_msClone(MODSYNTH_PRESETS[s.modSynthPreset]);
+  if(Math.random()<0.6){
+   base.lfo1={ rate:+_rndBand([0.2,9],2), depth:+_rndBand([.08,.7],2),
+               shape:_rndPick(['sine','triangle','square','sawtooth']),
+               dest:_rndPick(['filter','filter','pitch','amp']) };
+   if(base.lfo1.dest==='pitch') base.lfo1.depth=Math.min(base.lfo1.depth,.22); // keep it musical
+  }
+  if(Math.random()<0.25){
+   base.lfo2={ rate:+_rndBand([0.15,6],2), depth:+_rndBand([.05,.4],2),
+               shape:_rndPick(['sine','triangle']), dest:_rndPick(['filter','pitch']) };
+   if(base.lfo2.dest==='pitch') base.lfo2.depth=Math.min(base.lfo2.depth,.15);
+  }
+  s.modSynthParams=base;
+  s.modSynthPreset='custom';
+ }
 
  _applySettings(s);
  if(typeof track==='function') track('settings_randomized', {full:full, patch:A.name});
@@ -7561,19 +7778,22 @@ function playOnboardingDemo(){
   if(typeof setViewMode==='function') setViewMode('advanced');
 
   var steps=[
-    {title:'Welcome to MōdRiff!',text:'A chromatic modal groovebox for players of every level — from chord-chart pros to total beginners. This quick tour covers every tab; it takes about a minute.',icon:'✦',target:null,tab:null},
-    {title:'Basic vs Advanced',text:'We just switched you into <b>Advanced</b> view for this tour — it unlocks extra chords, the melody strip, church modes, and more instrument voices. <b>Basic</b> keeps things simple for quick playing. Toggle between them here, any time.',icon:'🔀',target:'vmt-adv',tab:'perform'},
-    {title:'Set Your Key',text:'Use <b>− / +</b> to change key, and pick Major, Minor, or (in Advanced) a church mode like Dorian or Lydian. Every chord on this page follows whatever key you set here.',icon:'🔑',target:'key-name',tab:'perform'},
-    {title:'Play Chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain a chord until you let go — a quick tap plays a short stab instead. Keys 1–7 on your computer keyboard trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
-    {title:'Melody / Solo Strip',text:'Scroll down on Perform to find this strip. Slide or tap to play single notes over your chords. Keyboard keys A S D F G H J (Do Re Mi…) play melodies — Z and X shift the octave up/down.',icon:'🎵',target:'melody-keys',tab:'perform'},
-    {title:'One Play Button',text:'<b>Play</b> starts everything that\'s switched on — sequencer, bass, and a loaded song — together, in sync. <b>Arp</b> and <b>Bass</b> are just on/off switches for what Play will start next; they don\'t play anything by themselves.',icon:'▶',target:'ft-playstop-btn',tab:'perform'},
-    {title:'Rhythm — Program a Groove',text:'Pick a groove preset or build your own step pattern, choose a drum kit, and dial in swing. This is what Play uses when no song is loaded.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
-    {title:'Bass — Auto or Real',text:'Pick a style — Jazz, Funk, Motown, and more — and hit <b>Generate</b> for a bassline that follows your chords automatically. Try <b>Real</b> for a sampled upright bass instead of a synth.',icon:'🎸',target:'blw-upreal',tab:'bass'},
-    {title:'Songs — Build a Chart',text:'Tap chords from the picker to build a progression. Tap a chord\'s duration (like <b>1 bar</b>) for one-tap presets sized for real jazz phrase lengths, then save it to your Setlist.',icon:'🎼',target:'chart-chord-picker',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('build'); }},
-    {title:'Songs — Perform Mode',text:'Load a song and switch to Perform to play it live. <b>− / +</b> transposes the whole song by semitones on the fly, and <b>← Prev / Next →</b> move between sections. There\'s a built-in demo song in your Setlist — try it!',icon:'▶',target:'slb-key-dn',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('perform'); }},
-    {title:'Settings — Fine-Tune Your Sound',text:'Chord waveform, attack/decay, reverb, melody voice, theme, and tuning all live here — including <b>Real Piano</b>, sampled from actual recordings instead of a synth.',icon:'⚙',target:'ms-pianoreal',tab:'build'},
-    {title:'Have fun!',text:'That\'s the whole tour. Come back to Perform, pick a key, and start playing — replay this any time with the <b>?</b> button in the transport bar.',icon:'✦',target:null,tab:'perform'},
+    {title:'Welcome to MōdRiff!',text:'A full music production system — chords, drums, bass, melody and a synth, all playing together. This tour takes about a minute and shows you the moves that matter.',icon:'✦',target:null,tab:null},
+    {title:'⚄ Start here: roll the dice',text:'The <b>dice</b> is the fastest way to hear what this thing does. One tap rolls a whole new <b>sound, key, mode, tempo, groove, drum kit and swing</b> — a different track every time. Nothing you built is touched, and <b>↶ Undo</b> puts it all back. Roll it a few times; that is the app in one button.',icon:'⚄',target:'ft-dice-btn',tab:'perform'},
+    {title:'One Play button',text:'<b>▶</b> starts everything switched on — drums, bass, melody and a loaded song — locked together. It turns into <b>■</b> while playing, and <b>Spacebar</b> does the same. <b>⁴</b> counts you in four beats first.',icon:'▶',target:'ft-playstop-btn',tab:'perform'},
+    {title:'Mute and unmute to perform',text:'<b>Drums · Arp · Bass · Mel</b> are layer switches, not play buttons. Flip them <i>while the music runs</i> to drop the drums for a bar or bring the bass back in. This is the main way you perform with MōdRiff.',icon:'🎛',target:'ft-drum-btn',tab:'perform'},
+    {title:'Play chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain. A <b>green glow</b> marks the chord sounding right now — including while a song plays itself. Keys <b>1–7</b> trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
+    {title:'Chord Forms — play along',text:'Under the grid, <b>Chord Forms</b> shows how to play the current chord on <b>guitar, ukulele or piano</b>, and it follows song playback automatically. Songs → <b>Chart</b> turns the whole song into a printable chord sheet.',icon:'▦',target:'chord-diagram-panel',tab:'perform'},
+    {title:'The melody strip — try this one',text:'Switch to the <b>Melody</b> sub-tab. Slide or tap to solo over whatever is playing, in key, so it is very hard to hit a wrong note. Your computer keyboard works too: <b>A S D F G H J</b> are Do Re Mi…, <b>Z / X</b> shift octave. It is the most enjoyable way to interact with the music you are hearing — do not skip it.',icon:'🎵',target:'pf-melody-btn',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('melody'); }},
+    {title:'Voices — who plays what',text:'Chords, arp, melody strip, bass and the melody generator each have their <b>own instrument</b>. Set them all in one place here. A Rhodes chord under a sine arp with an upright bass is three picks.',icon:'⬡',target:'voices-grid',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('chords'); }},
+    {title:'MōdSynth',text:'Pick <b>MōdSynth</b> as a voice and a full synth opens up: 18 presets across Basic, Classic and Modern, live controls for unison, detune, sub, reso and drive, <b>two LFOs</b> for vibrato, wobble and tremolo — and a scope showing the actual output.',icon:'◈',target:'modsynth-panel',tab:'perform',before:function(){ if(typeof setWave==='function') setWave('modsynth'); }},
+    {title:'Drums',text:'Pick a kit — including the synthesized <b>MōdKit</b> — then a groove preset or your own step pattern. Set steps, rate and swing here.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
+    {title:'Bass & melody, generated',text:'Pick a style — Jazz, Funk, Motown, Acid and more — and hit <b>Generate</b> for a bassline that follows your chords. The Melody tab does the same for a hook. Turn on <b>Bass+Mel: Sync</b> and both rewrite themselves every chord change.',icon:'🎸',target:'bl-gen-style',tab:'bass'},
+    {title:'Record what you play',text:'Hit <b>●</b> in the transport and just play chords — mouse, keyboard or MIDI. Every chord you hit is captured into a new Song section you can edit, loop and print afterwards.',icon:'●',target:'ft-rec-btn',tab:'perform'},
+    {title:'Songs & endings',text:'Load a song, switch <b>Song: ON</b>, and it loops itself while you perform over it. <b>− / +</b> transposes live like a capo. <b>Prev / Next</b> queue to the end of the pass. And an <b>Ending</b> — Ritard, Big Finish, Fade or Cold — lands the finish on a downbeat instead of just stopping.',icon:'🎼',target:'songs-perform-btn',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('perform'); }},
+    {title:'Go make something',text:'A good first run: hit <b>▶</b> for drums, roll the <b>dice</b> until something grabs you, play the <b>melody strip</b> over it, then mute and unmute layers. Replay this tour any time with <b>?</b> in the transport.',icon:'✦',target:null,tab:'perform'},
   ];
+
   var step=0;
   var wrap=document.createElement('div');
   wrap.id='_onboard-wrap';
@@ -9205,6 +9425,9 @@ function positionTabLed(){
  const r = active.getBoundingClientRect();
  led.style.left = (r.left - barRect.left + r.width*0.24) + 'px';
  led.style.width = (r.width*0.52) + 'px';
+ // The Voices dock sits directly on top of the nav, which changes height when
+ // it wraps — measure it rather than assuming.
+ document.documentElement.style.setProperty('--navh', Math.round(barRect.height)+'px');
 }
 window.addEventListener('resize', positionTabLed);
 
@@ -11451,6 +11674,27 @@ positionTabLed();
 buildModSynthPresets();
 buildFingerInstList();
 buildVoicesPanel();
+try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){}
+
+// Open on a different progression every launch. Only when the chart is empty,
+// so this can never overwrite something the user built or a loaded song.
+(function seedOpeningProgression(){
+ try{
+  const empty = !sections.length || !sections.some(x=>x.slots && x.slots.length);
+  if(!empty || curSetlistIdx>=0) return;
+  root = Math.floor(Math.random()*12);
+  // Weighted toward what people actually recognise. The dice can still take
+  // you to Locrian later; that is not where a first impression should start.
+  mode = _rndPick(['major','major','major','major','minor','minor','minor','dorian','mixolydian']);
+  const demo = buildRandomDemoSong();
+  sections = demo.sections.map(x=>({name:x.name, slots:x.slots.map(sl=>({...sl}))}));
+  curSection = 0; chartSeqIdx = -1;
+  const t=document.getElementById('chart-title');
+  if(t && !t.value) t.value = demo.title.replace(/^Demo: /,'');
+  renderChords(); buildSectionTabs(); renderChartSeq(); renderPerfChartRow();
+  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
+ }catch(e){}
+})();
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
