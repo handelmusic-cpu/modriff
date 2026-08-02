@@ -5862,9 +5862,8 @@ function scheduleRhythm(){
  const ci=i;
  const isBar=(rhythmIdx % r.pat.length === 0); // beat 1 of bar
  setTimeout(()=>{
- resetBeatDots();
- const bd=document.getElementById('bd-'+ci); if(bd) bd.classList.add('active');
- const fd=document.getElementById('ftbd-'+ci); if(fd) fd.classList.add('active');
+ const _r3=RHYTHMS[rhythmSel];
+ setBeatDots(ci,_r3.pat.length,_r3.kick,'rhy');
  // Compute isBeat from time signature step groups
  const r2=RHYTHMS[rhythmSel];
  const stepsPerBeat = r2.sig==='6/8'||r2.sig==='12/8' ? 3 : 4;
@@ -6268,6 +6267,35 @@ function buildBeatDots(){
 function resetBeatDots(){
  document.querySelectorAll('.beat-dot').forEach(d=>d.classList.remove('active'));
 }
+// The dots were driven only by the legacy chord-groove clock (rhythmOn). Once
+// the step sequencer became the thing actually playing, they sat frozen on the
+// selected rhythm's kick pattern and never moved — which is what made them
+// look decorative. They now follow whichever engine is running, rebuilding to
+// match its step count and marking that engine's accents.
+let _bdCount=-1, _bdSrc='';
+function setBeatDots(step,total,accents,src){
+ if(!(total>0)) return;
+ if(total!==_bdCount||src!==_bdSrc){
+  _bdCount=total; _bdSrc=src||'';
+  ['beat-dots','ft-beat-dots'].forEach(id=>{
+   const d=document.getElementById(id); if(!d) return;
+   d.innerHTML='';
+   const prefix=(id==='ft-beat-dots')?'ftbd-':'bd-';
+   for(let i=0;i<total;i++){
+    const dot=document.createElement('div');
+    dot.className='beat-dot'+((accents&&accents[i])?' accent':'');
+    dot.id=prefix+i;
+    d.appendChild(dot);
+   }
+  });
+ }
+ document.querySelectorAll('.beat-dot.active').forEach(d=>d.classList.remove('active'));
+ const a=document.getElementById('bd-'+step);   if(a) a.classList.add('active');
+ const b=document.getElementById('ftbd-'+step); if(b) b.classList.add('active');
+}
+// Force the next setBeatDots call to rebuild — used when an engine stops and
+// hands the display back to another with a different step count.
+function invalidateBeatDots(){ _bdCount=-1; }
 function toggleRhythm(){
  rhythmOn=!rhythmOn;
  ['rhy-play','rhy-play2'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=rhythmOn?'■ Stop':'▶ Rhythm'; b.className=rhythmOn?'play-btn stop':'play-btn start'; } });
@@ -7499,7 +7527,10 @@ function openKbShortcuts(){
  const live = document.getElementById('kb-sc-live-keys');
  if(live){
   const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
-  live.textContent = MEL_WHITE_KEYS.map((k,i)=>k.toUpperCase()+'='+sol[i]).join(' ')+'  ·  '+MEL_BLACK_KEYS.map(k=>k.toUpperCase()).join(' ')+' = passing tones between them  ·  K/L/; = octave-up Do/Re/Mi  ·  Z/X = octave down/up  ·  hold C/V = bend down/up a whole step';
+  var _n = ((MODES[mode]||MODES.major).steps||[]).length || 7;
+  live.textContent = MEL_SCALE_KEYS.slice(0,_n).map((k,i)=>k.toUpperCase()+'='+(sol[i]||'')).join(' ')
+    +'  ·  then K L ; \' Q W E R T Y U I O P carry on up the same scale'
+    +'  ·  Z/X = octave down/up  ·  hold C/V = bend down/up a whole step';
  }
  const m=document.getElementById('kb-shortcuts-modal'); if(m) m.classList.add('visible');
 }
@@ -7936,8 +7967,10 @@ function buildMelodyStrip(){
 function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
  const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
- const parts = MEL_WHITE_KEYS.map((k,i)=> k.toUpperCase()+'='+sol[i]);
- hint.textContent = parts.join(' ')+' · K/L/;=oct+ · Z=Oct− X=Oct+ · C=Bend− V=Bend+';
+ const n = ((MODES[mode]||MODES.major).steps||[]).length || 7;
+ const parts = MEL_SCALE_KEYS.slice(0,n).map((k,i)=> k.toUpperCase()+'='+(sol[i]||''));
+ hint.textContent = parts.join(' ')+' · … then K L ; \' Q W E R T Y U I O P keep climbing the scale'
+                  +' · Z=Oct− X=Oct+ · C=Bend− V=Bend+';
 }
 
 // ═══════════════════════════════════════
@@ -8864,7 +8897,7 @@ const HELP_SECTIONS=[
  ]},
  {title:'〰 Play → Melody', tips:[
  {icon:'',text:'<strong>Keys</strong> lays out the notes of the current key as buttons. <strong>Bend</strong> is a slide strip — <strong>Note Lock</strong> snaps to the scale, <strong>Continuous</strong> is true pitch bend.'},
- {icon:'⌨️',text:'<strong>Musical typing</strong>: A=Do, S=Re, D=Mi, F=Fa, G=Sol, H=La, J=Ti, K=Do′, black keys on W E T Y U. <strong>Z/X</strong> shift octave, <strong>C/V</strong> bend down and up.'},
+ {icon:'⌨️',text:'<strong>Musical typing</strong>: the two letter rows are one long run of the current scale — A S D F G H J K L ; &#39; then Q W E R T Y U I O P, climbing all the way. <strong>Z/X</strong> shift octave, <strong>C/V</strong> bend a whole step down and up.'},
  {icon:'⏸',text:'<strong>Hold</strong> keeps notes ringing after you lift; tap again to release everything.'},
  {icon:'',text:'<strong>Voice</strong> sets the melody’s own sound, independent of the chord voice.'},
  ]},
@@ -9161,29 +9194,25 @@ function applyLogicHighlights(deg,modalLabel){
 // ═══════════════════════════════════════
 // MUSICAL TYPING (Ableton-style)
 // ═══════════════════════════════════════
-// A S D F G H J always play the CURRENT mode's 7 scale degrees in order —
-// for every mode, not just major. (The old layout hard-coded major-scale
-// piano positions to these keys and "snapped" whatever mode was active to
-// the nearest scale tone, which for modes whose step pattern differs from
-// major's could land a scale tone on a "black" key instead, or leave two
-// white keys pointing at the same note.) K L ; continue degrees 1-3 an
-// octave up. W E R T Y U I fill in a true chromatic passing tone between
-// each pair of white keys where the mode actually has one (i.e. the two
-// scale degrees are a whole step apart); where they're only a half step
-// apart there's no room for one, so that black key just mirrors the lower
-// of the two — same as a real piano has no black key between E-F/B-C.
-const MEL_WHITE_KEYS = ['a','s','d','f','g','h','j'];
-const MEL_BLACK_KEYS = ['w','e','r','t','y','u','i'];
-const MEL_OCT_KEYS   = ['k','l',';'];
+// The two letter rows are one continuous run of the CURRENT mode's scale,
+// bottom-left to top-right: A through ' is the first eleven scale degrees,
+// then Q through P carries straight on from there. Every key sounds, no two
+// keys sound the same note, and the layout means the same thing in every
+// mode — you learn it once.
+//
+// The top row used to hold chromatic passing tones instead, placed only
+// where the mode had a whole step to put one in. That made the row's meaning
+// change from mode to mode, and wherever the mode had a half step the key
+// silently doubled its neighbour: in B Phrygian, W and Y played the same
+// notes as A and G. Chromatic notes are still reachable while playing —
+// C and V bend a whole step down and up.
+const MEL_SCALE_KEYS = ['a','s','d','f','g','h','j','k','l',';',"'",
+                        'q','w','e','r','t','y','u','i','o','p'];
 function _buildMusicalKeysMap(){
  const steps = (MODES[mode]||MODES.major).steps;
+ const n = steps.length || 7;
  const map = {};
- MEL_WHITE_KEYS.forEach((k,i)=>{ map[k]=steps[i]; });
- for(let i=0;i<7;i++){
-  const lo=steps[i], hi=(i<6?steps[i+1]:steps[0]+12);
-  map[MEL_BLACK_KEYS[i]] = (hi-lo>=2) ? lo+1 : lo;
- }
- MEL_OCT_KEYS.forEach((k,i)=>{ map[k]=steps[i]+12; });
+ MEL_SCALE_KEYS.forEach((k,i)=>{ map[k] = steps[i%n] + 12*Math.floor(i/n); });
  return map;
 }
 let musicalTypingOn = true;
@@ -10051,7 +10080,16 @@ function startSongLoop(alignedStart){
  songLoopSection = sections.findIndex(s=>s.slots&&s.slots.length);
  if(songLoopSection < 0) songLoopSection = 0;
  }
+ // Resume where a hold left off rather than snapping back to the top of the
+ // section. Restarting from slot 0 every time is what made the button feel
+ // unpredictable: whether it "worked as expected" depended entirely on
+ // whether you happened to be on the first chord when you switched it off.
  songLoopSlot = 0;
+ if(_songHeldAt && _songHeldAt.section===songLoopSection &&
+    sections[songLoopSection] && _songHeldAt.slot < sections[songLoopSection].slots.length){
+  songLoopSlot = _songHeldAt.slot;
+ }
+ _songHeldAt = null;
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(alignedStart){
  // Fresh launch: fire the first chord on the downbeat, in sync with the
@@ -10076,6 +10114,32 @@ function startSongLoop(alignedStart){
  // Free mode or no clock: start immediately
  _playLoopSlot();
  }
+}
+
+// Where a hold froze the progression, so switching Song back on picks up from
+// that chord instead of the top of the section.
+let _songHeldAt = null;
+
+// Song: HOLD — freeze the progression without tearing the performance down.
+// The chord that is sounding stays sounding, the arp keeps running on it, the
+// live capo is preserved, and the chord stays lit so it is obvious what you
+// are parked on. A full stopSongLoop() by contrast clears all of that, which
+// is why switching Song off used to feel like it killed the song rather than
+// pausing it.
+function holdSongLoop(){
+ if(!songLoopActive){ _songHeldAt = null; return; }
+ _songHeldAt = { section: songLoopSection, slot: songLoopSlot };
+ songLoopActive = false;
+ songWaitingForBar = false;
+ songPendingSectionDelta = 0;
+ clearTimeout(songLoopTimer);
+ songLoopTimer = null;
+ if(typeof _clearCompTimers==='function') _clearCompTimers();
+ // Keep the arp on the held chord so it doesn't fall silent mid-phrase.
+ if(typeof arpOn!=='undefined' && arpOn && lastChordIntvs && lastChordIntvs.length){
+  setArpChord(lastChordRoot, lastChordIntvs, lastChordFunc);
+ }
+ _updateSectionNavUI();
 }
 
 function stopSongLoop(){
@@ -11318,7 +11382,10 @@ function toggleGlobalSongMode(){
  globalSongMode = !globalSongMode;
  const btn = document.getElementById('ft-song-btn');
  if(btn){
- btn.textContent = globalSongMode ? 'Song: ON' : 'Song: OFF';
+ btn.textContent = globalSongMode ? 'Song: ON' : 'Song: HOLD';
+ btn.title = globalSongMode
+  ? 'The song is playing itself and advancing through the chart. Switch off to hold on the current chord.'
+  : 'Held on the current chord — the progression has stopped advancing. Play any chord to take over, or switch back on to carry on from here.';
  btn.classList.toggle('song-on', globalSongMode);
  btn.classList.toggle('song-off', !globalSongMode);
  }
@@ -11332,7 +11399,7 @@ function toggleGlobalSongMode(){
  updatePrismSongBanner();
  } else {
  songAutoAdvance = false;
- stopSongLoop();
+ holdSongLoop();
  if(banner) banner.style.display = 'none';
  }
  // Also update the songs tab auto button
@@ -11776,11 +11843,24 @@ function toggleBassSync(){
 let _tapTimes=[];
 function tapTempo(){
  const now=performance.now();
+ // Start a new sequence at tap time rather than on a timer. The old reset was
+ // a setTimeout that only checked whether the *last* tap had gone stale, so
+ // a pause in the middle of tapping got averaged in as though it were a beat
+ // and the tempo came out wildly wrong.
+ if(_tapTimes.length && now-_tapTimes[_tapTimes.length-1] > 2000) _tapTimes=[];
  _tapTimes.push(now);
  if(_tapTimes.length>8) _tapTimes.shift();
  if(_tapTimes.length>=2){
- const intervals=[];
+ let intervals=[];
  for(let i=1;i<_tapTimes.length;i++) intervals.push(_tapTimes[i]-_tapTimes[i-1]);
+ // From three taps on, throw out anything far from the median before
+ // averaging: one hesitant or doubled tap shouldn't drag the whole tempo.
+ if(intervals.length>=2){
+  const sorted=intervals.slice().sort((a,b)=>a-b);
+  const med=sorted[sorted.length>>1];
+  const kept=intervals.filter(v=>Math.abs(v-med)<med*0.4);
+  if(kept.length) intervals=kept;
+ }
  const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
  const bpm=Math.round(60000/avg);
  const clamped=Math.max(40,Math.min(220,bpm));
@@ -11790,8 +11870,6 @@ function tapTempo(){
  // Flash the button
  const btn=document.getElementById('tap-tempo-btn');
  if(btn){ btn.style.background='var(--accent)'; setTimeout(()=>btn.style.background='',150); }
- // Reset if gap > 3 seconds
- setTimeout(()=>{ if(_tapTimes.length&&performance.now()-_tapTimes[_tapTimes.length-1]>2500) _tapTimes=[]; },2600);
 }
 
 // ═══════════════════════════════════════
@@ -12594,7 +12672,14 @@ function sqFlushPending(){
 }
 
 function sqDraw(){
-  if(!sqPlaying){sqRafID=null;return;}
+  if(!sqPlaying){
+    sqRafID=null;
+    // Hand the dots back cleanly so the next engine to run rebuilds them at
+    // its own step count instead of inheriting ours.
+    if(typeof resetBeatDots==='function') resetBeatDots();
+    if(typeof invalidateBeatDots==='function') invalidateBeatDots();
+    return;
+  }
   var c=sqCtx();if(!c){sqRafID=requestAnimationFrame(sqDraw);return;}
   // Use seqStep directly — it's always monotonically incrementing
   // Subtract 1 because seqStep has already advanced past the current step
@@ -12608,6 +12693,13 @@ function sqDraw(){
     sqDispStep=ds;
     var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
     var sb=document.getElementById('sq-sBar');if(sb)sb.textContent=Math.floor(ds/4)+1;
+    // Feed the beat dots from the engine that's actually playing, marking the
+    // kick row as the accent so the dots read as the groove, not decoration.
+    if(typeof setBeatDots==='function'){
+      var _kr=sqGrid[0]||null, _acc=null;
+      if(_kr){ _acc=[]; for(var _i=0;_i<sqSteps;_i++) _acc.push(!!(_kr[_i]&&_kr[_i].v)); }
+      setBeatDots(ds,sqSteps,_acc,'sq');
+    }
   }
   sqRafID=requestAnimationFrame(sqDraw);
 }
