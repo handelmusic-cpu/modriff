@@ -4976,14 +4976,26 @@ const FADE_OUT = 0.022;
 // pointerup arriving after a held chord was already superseded is a no-op
 // instead of releasing whatever chord happens to be playing now.
 let _sustainId = 0;
-function stopAll(){
+// atTime lets a scheduled chord change release the previous chord at the exact
+// audio time the new one starts, instead of at whatever moment the JS timer
+// happened to run. Without it, a chord scheduled 100 ms ahead would silence
+// its predecessor 100 ms early and leave an audible hole before the downbeat.
+function stopAll(atTime){
  const ctx = getCtx();
- const t = ctx ? ctx.currentTime : 0;
+ const nowT = ctx ? ctx.currentTime : 0;
+ const t = (atTime != null) ? Math.max(atTime, nowT) : nowT;
  _sustainId++;
  activeOscs.forEach(v => {
  try {
+ // cancelAndHoldAtTime keeps the envelope's value at t rather than
+ // snapping to whatever it reads right now, which matters when t is in
+ // the future and the note is still mid-decay.
+ if(t > nowT && v.gain.gain.cancelAndHoldAtTime){
+ v.gain.gain.cancelAndHoldAtTime(t);
+ } else {
  v.gain.gain.cancelScheduledValues(t);
  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+ }
  v.gain.gain.linearRampToValueAtTime(0, t + FADE_OUT);
  v.oscs.forEach(o => { try { o.stop(t + FADE_OUT + 0.005); } catch(e){} });
  } catch(e) {
@@ -5333,7 +5345,7 @@ function velScale(pressure){
 // releaseSustainedChord(), this is just a safety ceiling on a stuck finger.
 const SUSTAIN_DUR = 30;
 
-function playChord(rootM,relIntvs,skipStop,pressure,sustain){
+function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
@@ -5344,11 +5356,13 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
  const _mxCh=_cmx('chord');
- // Start slightly after now so any fade-out from stopAll completes cleanly
- const now=ctx.currentTime + (skipStop ? 0 : FADE_OUT);
+ // atTime is an exact AudioContext time supplied by a scheduler (song loop,
+ // comp re-strikes). When it's absent this is a live tap, so start slightly
+ // after now to let any fade-out from stopAll complete cleanly.
+ const now=(atTime!=null) ? atTime : ctx.currentTime + (skipStop ? 0 : FADE_OUT);
  const intvs=voiceIntervals(relIntvs);
 
- if(!skipStop) stopAll();
+ if(!skipStop) stopAll(atTime);
 
  // Bass — sine always
  const bg=ctx.createGain();
@@ -5370,8 +5384,15 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
 
  // Chord tones
  const offsets=strumOffsets(intvs.length);
+ // A strum whose notes all fall after the beat drags: the chord's perceived
+ // attack is roughly the middle of the spread, so a 120 ms strum lands ~50 ms
+ // late against the drums. On a grid-locked hit there is scheduling headroom,
+ // so straddle the beat instead — the strum starts before it and the weight
+ // of the chord lands on it. Live taps have no headroom and keep the old
+ // behaviour, where there is no grid to be late against anyway.
+ const _strumLead=(atTime!=null && offsets.length>1) ? offsets[offsets.length-1]*0.4 : 0;
  intvs.forEach((s,i)=>{
- const t0=now+offsets[i];
+ const t0=now-_strumLead+offsets[i];
  const vl=i===0?1.0:i===intvs.length-1?.62:.78;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk);
@@ -5394,8 +5415,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain){
 }
 
 // Slash chord — plays chord with different bass
-function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
- stopAll();
+function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
+ stopAll(atTime);
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
  const atk=parseFloat(document.getElementById('attack').value);
@@ -5406,7 +5427,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
  const _mxCh=_cmx('chord');
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
- const now=ctx.currentTime + FADE_OUT;
+ const now=(atTime!=null) ? atTime : ctx.currentTime + FADE_OUT;
 
  const bg=ctx.createGain();
  const _tr=fxTrim;
@@ -5427,8 +5448,10 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain){
 
  const slashIntvs=voiceIntervals(relIntvs);
  const offsets=strumOffsets(slashIntvs.length);
+ // Same straddle as playChord — see the note there.
+ const _strumLead=(atTime!=null && offsets.length>1) ? offsets[offsets.length-1]*0.4 : 0;
  slashIntvs.forEach((s,i)=>{
- const t0=now+offsets[i];
+ const t0=now-_strumLead+offsets[i];
  const vl=i===0?1.0:i===slashIntvs.length-1?.62:.78;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk);
@@ -5846,13 +5869,17 @@ function syncSeqLinkUI(){
  });
 }
 
+// How far ahead of a scheduled event its timer is woken. The event is then
+// scheduled at its exact audio time, so anything up to this much timer lateness
+// still lands the note precisely on the beat.
+const SCHED_LEAD = 0.08;
 function beatSec(){ return 60/parseFloat(document.getElementById('bpm').value); }
 function rootMidi(){ return 60+(root<=5?root:root-12)+octShift; }
 
 function scheduleRhythm(){
  if(!rhythmOn) return;
  const ctx=getCtx(); if(!ctx) return;
- while(rhythmNextBeat<ctx.currentTime+LOOK_AHEAD){
+ while(rhythmNextBeat<schedHorizon()){
  const r=RHYTHMS[rhythmSel], i=rhythmIdx%r.pat.length;
  const t=rhythmNextBeat;
  if(r.pat[i]) scheduleDrum('hihat',t);
@@ -5861,6 +5888,10 @@ function scheduleRhythm(){
  const delay=Math.max(0,(t-ctx.currentTime)*1000);
  const ci=i;
  const isBar=(rhythmIdx % r.pat.length === 0); // beat 1 of bar
+ // Announced here, with the look-ahead still in hand, rather than from the
+ // display timer below — that timer fires at the downbeat, leaving no room
+ // to schedule anything ahead of it.
+ if(isBar && typeof tickSongLoop==='function') tickSongLoop(t);
  setTimeout(()=>{
  const _r3=RHYTHMS[rhythmSel];
  setBeatDots(ci,_r3.pat.length,_r3.kick,'rhy');
@@ -5876,8 +5907,6 @@ function scheduleRhythm(){
  arpRestartPending=false; arpIdx=0; arpDir=1; arpGateIdx=0;
  }
  }
- // ── Song loop tick: fire exactly once per bar boundary from all clock sources ──
- if(typeof tickSongLoop==='function' && isBar) tickSongLoop();
  },delay);
  rhythmNextBeat+=rhythmStepSec; rhythmIdx++;
  }
@@ -5891,7 +5920,7 @@ function scheduleArp(){
  const gate=parseFloat(document.getElementById('arp-gate').value);
  const noteDur=Math.min(parseFloat(document.getElementById('decay').value),stepSec*gate);
 
- while(arpNextBeat<ctx.currentTime+LOOK_AHEAD){
+ while(arpNextBeat<schedHorizon()){
  if(arpPat==='block'){
   scheduleArpBlock(arpNextBeat,noteDur);
   arpGateIdx++;
@@ -5943,7 +5972,33 @@ function scheduleMetronome(){
  }
 }
 
+// One scheduling horizon, computed once per tick and shared by every engine.
+//
+// Each engine advances its own next-step time by += stepSec and commits every
+// step that falls inside the horizon. That is fine while the tempo holds: all
+// the engines were anchored to CLOCK_EPOCH at launch, so every committed time
+// is epoch + k·stepSec and they sit on the same grid.
+//
+// It breaks the moment the tempo changes. The drum sequencer used a .12 s
+// horizon while bass, melody and arp used LOOK_AHEAD (.1 s), so at any instant
+// the drums had committed more steps than the others. Those engines then
+// resumed from times separated by a whole number of OLD steps — which is not a
+// whole number of NEW steps, so the gap never closed again. Measured, the bass
+// ended up as much as 76 ms off the grid after two tempo changes, and a dice
+// roll changes the tempo.
+//
+// Reading currentTime once and handing every engine the same horizon means
+// they always commit the same set of grid points, so they cannot come out of a
+// tempo change in different phases.
+function schedHorizon(){
+ if(_schedHorizon!=null) return _schedHorizon;
+ var c=getCtx();
+ return (c?c.currentTime:0)+LOOK_AHEAD;
+}
+let _schedHorizon=null;
 function tickClock(){
+ var _c0=getCtx();
+ _schedHorizon = _c0 ? _c0.currentTime+LOOK_AHEAD : null;
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
  var blRunning=(typeof window._blPlaying==='function'&&window._blPlaying());
  var mlRunning=(typeof window._mlPlaying==='function'&&window._mlPlaying());
@@ -5955,6 +6010,7 @@ function tickClock(){
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
+ _schedHorizon=null;
  clockTimer=setTimeout(tickClock,SCHED_INT);
 }
 function startClock(){
@@ -9588,12 +9644,12 @@ function renderSetlistPerform(){
  });
 }
 
-function playChartSlot2(si, ci){
+function playChartSlot2(si, ci, atTime){
  const slots = sections[si]?.slots; if(!slots||!slots[ci]) return;
  const slot = slots[ci];
  // REST: silence chord/arp but let drums/bass continue
  if(slot.isRest){
-  stopAll();
+  stopAll(atTime);
   if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
   applyLogicHighlights(-1);
   return;
@@ -9620,11 +9676,11 @@ function playChartSlot2(si, ci){
  // what makes comping sound like playing instead of a static pad.
  const _holdFlat = songCompStyle === 'sustain';
  if(wetDry < .99){
- stopAll();
+ stopAll(atTime);
  if(playBass !== null){
- playSlashChord(playRoot, voicedIntvs, playBass-12, 0, _holdFlat);
+ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, _holdFlat, atTime);
  } else {
- playChord(playRoot, voicedIntvs, false, 0, _holdFlat);
+ playChord(playRoot, voicedIntvs, false, 0, _holdFlat, atTime);
  }
  } else {
  // arpOn + wetDry≈1: still pedal a bass note under the arp — a held pedal
@@ -9633,7 +9689,7 @@ function playChartSlot2(si, ci){
  // is one, otherwise the chord's own root. Previously only slash chords got
  // a pedal here, so a plain chord lost its bass entirely once the arp ran.
  const pedal = (playBass !== null ? playBass : playRoot) - 12;
- try{ playSlashChord(playRoot, voicedIntvs, pedal, 0, true); }catch(e){}
+ try{ playSlashChord(playRoot, voicedIntvs, pedal, 0, true, atTime); }catch(e){}
  }
  if(arpOn){ arpIdx=0; arpDir=1; arpGateIdx=0; }
  // Light up the pad this slot corresponds to (now-playing) and, in Logic
@@ -10101,7 +10157,11 @@ function startSongLoop(alignedStart){
  }
  if(delayMs > 5){
  clearTimeout(songLoopTimer);
- songLoopTimer = setTimeout(function(){ if(songLoopActive) _playLoopSlot(); }, delayMs);
+ // Wake early and hand the exact epoch time down, so the very first chord
+ // is scheduled onto the downbeat rather than played when the timer lands.
+ var _epoch = CLOCK_EPOCH;
+ songLoopTimer = setTimeout(function(){ if(songLoopActive) _playLoopSlot(_epoch); },
+                            Math.max(0, delayMs - SCHED_LEAD*1000));
  } else {
  _playLoopSlot();
  }
@@ -10198,7 +10258,7 @@ document.querySelectorAll('[data-compstyle]').forEach(function(b){
 // Re-strikes the currently-held chord slot without the side effects that
 // belong only to a genuine chord change (arp phase reset, logic-mode
 // highlight, bass auto-regen) — those already happened on the first attack.
-function _compRestrike(slot){
+function _compRestrike(slot, atTime){
  if(!songLoopActive || !slot || slot.isRest) return;
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
@@ -10209,15 +10269,15 @@ function _compRestrike(slot){
  // 'sustain' — see _scheduleCompHits), so a re-strike always decays
  // naturally per the Settings decay knob rather than holding flat.
  if(wetDry < .99){
-  stopAll();
+  stopAll(atTime);
   if(playBass !== null){
-   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, false);
+   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, false, atTime);
   } else {
-   playChord(playRoot, voicedIntvs, false, 0, false);
+   playChord(playRoot, voicedIntvs, false, 0, false, atTime);
   }
  } else if(playBass !== null){
   // arpOn + wetDry≈1: still re-strike the sustained bass pedal note under the arp
-  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true); }catch(e){}
+  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true, atTime); }catch(e){}
  }
 }
 
@@ -10228,22 +10288,32 @@ function _clearCompTimers(){
 }
 // Schedules the comp re-strikes for the remainder of a slot's duration,
 // beyond the initial attack playChartSlot2() already fired.
-function _scheduleCompHits(slot){
+function _scheduleCompHits(slot, baseTime){
  _clearCompTimers();
  if(!slot || slot.isRest) return;
  const pat = COMP_PATTERNS[songCompStyle];
  if(!pat || !pat.hits) return; // 'sustain' style — no retriggering, old behavior
  const bars = slot.bars || 0;
  if(bars < 1) return; // sub-bar slots are too short to comp
+ const ctx = getCtx(); if(!ctx) return;
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
- const beatMs = 60000/bpm;
- const eighthMs = beatMs*0.5;
- const barMs = eighthMs*8;
+ const beatSecL = 60/bpm;
+ const eighthSec = beatSecL*0.5;
+ // A bar is however many steps the sequencer is running, not a hardcoded
+ // eight eighths. slotTotalMs() already worked this out; using a different
+ // bar length here meant that at any step count other than 16 the comp hits
+ // drifted against the slot they belonged to.
+ const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const barSec = steps * (60/bpm/4);
+ const base = (baseTime != null) ? baseTime : ctx.currentTime;
  for(let b=0; b<bars; b++){
   pat.hits.forEach(function(eighthIdx){
    if(b===0 && eighthIdx===0) return; // that's the initial attack, already fired
-   const atMs = b*barMs + eighthIdx*eighthMs;
-   songCompTimers.push(setTimeout(function(){ _compRestrike(slot); }, atMs));
+   const hitT = base + b*barSec + eighthIdx*eighthSec;
+   // Wake early and schedule at the exact time, so a late timer still lands
+   // the note on the beat rather than after it.
+   const fireMs = Math.max(0, (hitT - SCHED_LEAD - ctx.currentTime)*1000);
+   songCompTimers.push(setTimeout(function(){ _compRestrike(slot, hitT); }, fireMs));
   });
  }
 }
@@ -10905,7 +10975,11 @@ function loadStandard(idx){
  showToast('Loaded: '+std.title+' ('+nn(std.key)+' '+(MODES[mode]||MODES.major).label+')');
 }
 
-function _playLoopSlot(){
+// atTime is the exact AudioContext time this chord should sound. Everything
+// downstream schedules against it rather than against "whenever this function
+// ran", which is what makes the chords lock to the drums instead of landing
+// wherever the JS timer woke up.
+function _playLoopSlot(atTime){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
  if(!sec || !sec.slots.length){ songLoopActive=false; return; }
@@ -10920,14 +10994,30 @@ function _playLoopSlot(){
  _songSlotNeedsTimeout = hasSubBar;
 
  // Play the chord (or rest)
- playChartSlot2(songLoopSection, songLoopSlot);
+ playChartSlot2(songLoopSection, songLoopSlot, atTime);
+ // The audio is scheduled ahead; the highlight should still land when you
+ // actually hear it, so it waits out the lead rather than flashing early.
+ const _ctxN=getCtx();
+ const _leadMs=(atTime!=null&&_ctxN) ? Math.max(0,(atTime-_ctxN.currentTime)*1000) : 0;
+ if(_leadMs>12){
+ const _si=songLoopSection, _ci=songLoopSlot;
+ setTimeout(()=>{ if(songLoopActive) _highlightLoopSlot(_si,_ci); }, _leadMs);
+ } else {
  _highlightLoopSlot(songLoopSection, songLoopSlot);
- if(typeof _scheduleCompHits==='function') _scheduleCompHits(slot);
+ }
+ if(typeof _scheduleCompHits==='function') _scheduleCompHits(slot, atTime);
 
  var _sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(snapMode === 'off' || (!rhythmOn && !_sqOn) || _songSlotNeedsTimeout){
  clearTimeout(songLoopTimer);
- songLoopTimer = setTimeout(_advanceLoopSlot, slotTotalMs(slot));
+ // Sub-bar slots have no bar boundary to ride, so they self-schedule — but
+ // they still hand the next chord an exact audio time and fire the timer
+ // early enough to schedule against it.
+ const _dueSec=slotTotalMs(slot)/1000;
+ const _nextT=(atTime!=null) ? atTime+_dueSec : (_ctxN ? _ctxN.currentTime+_dueSec : null);
+ const _fireMs=(_nextT!=null&&_ctxN) ? Math.max(0,(_nextT-SCHED_LEAD-_ctxN.currentTime)*1000)
+                                     : slotTotalMs(slot);
+ songLoopTimer = setTimeout(()=>_advanceLoopSlot(_nextT), _fireMs);
  }
  // Snap with whole-bar clock: tickSongLoop handles advancement when !_songSlotNeedsTimeout
 }
@@ -10936,18 +11026,20 @@ function _playLoopSlot(){
 let songBeatCounter = 0;
 
 // Called once per bar boundary from all clock sources
-function tickSongLoop(){
+// atTime is the exact AudioContext time of the bar boundary being announced.
+// Clock sources call this ahead of the boundary so there is room to schedule.
+function tickSongLoop(atTime){
  if(!songLoopActive) return;
  if(_songSlotNeedsTimeout) return; // setTimeout is handling this slot
  if(songWaitingForBar){
  songWaitingForBar = false;
- _playLoopSlot();
+ _playLoopSlot(atTime);
  return;
  }
  songBeatCounter++;
  const barsNeeded = songBarsForSlot || 1;
  if(songBeatCounter >= barsNeeded){
- _advanceLoopSlot();
+ _advanceLoopSlot(atTime);
  }
 }
 
@@ -10964,7 +11056,7 @@ function _moveToSection(delta){
  songLoopSection = idx;
 }
 
-function _advanceLoopSlot(){
+function _advanceLoopSlot(atTime){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
  songLoopSlot++;
@@ -10989,7 +11081,7 @@ function _advanceLoopSlot(){
  }
  // else: loops until you move on
  }
- _playLoopSlot();
+ _playLoopSlot(atTime);
 }
 
 // Paints "what's sounding right now" onto every song view that's currently
@@ -12636,7 +12728,7 @@ function sqFireStep(s,t){
 // We register our scheduler to be called by the shared clock tick
 window._sqScheduler=function(){
   var c=sqCtx();if(!c||!sqPlaying||!SQMG)return;
-  while(sqNextT<c.currentTime+.12){
+  while(sqNextT<(typeof schedHorizon==='function'?schedHorizon():c.currentTime+0.1)){
     sqFireStep(sqSeqStep,sqNextT);
     var _stepT=sqNextT; // capture step time before advancing
     sqNextT+=sqSd();sqSeqStep++;
@@ -12647,10 +12739,19 @@ window._sqScheduler=function(){
     }
     if(sqSeqStep>=sqSteps){
       sqSeqStep=0;sqFlushPending();
-      // Tick the song loop at this bar boundary (sequencer is the beat source)
+      // The bar boundary is the step AFTER the one just fired — _stepT is the
+      // last step of the bar, not the downbeat. Announcing _stepT put every
+      // song chord one sixteenth early, which at 100 BPM is 150 ms: a constant
+      // shortfall on every bar, so the chords walked out of phase with the
+      // drums instead of jittering around them.
+      //
+      // It is also announced synchronously rather than through a timer. The
+      // scheduler already runs ahead of the audio clock, so the chord gets
+      // scheduled at an exact future time — sample-accurate, the same way the
+      // drums are — instead of playing at whatever currentTime happened to be
+      // when a setTimeout woke up.
       if(typeof tickSongLoop==='function' && typeof songLoopActive!=='undefined' && songLoopActive){
-        var _msUntil=Math.max(0,(_stepT-c.currentTime)*1000);
-        setTimeout(tickSongLoop,_msUntil);
+        tickSongLoop(_stepT+sqSd());
       }
       // Fire arp phase-reset if pending (bar snap, sequencer is clock)
       if(typeof arpRestartPending!=='undefined' && arpRestartPending && snapMode==='bar'){
@@ -13447,7 +13548,7 @@ window._blScheduler = function(){
   var stepSec = 60 / bpmNow / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = blSteps;
-  while(blNextT < ctx.currentTime + (typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)){
+  while(blNextT < (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1)){
     var cell = blGrid[blSeqStep % stepCount];
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
@@ -14059,7 +14160,7 @@ window._mlScheduler = function(){
   var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = mlSteps;
-  while(mlNextT < ctx.currentTime + (typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)){
+  while(mlNextT < (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1)){
     var cell = mlGrid[mlSeqStep % stepCount];
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
