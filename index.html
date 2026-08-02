@@ -34,6 +34,9 @@
  /* ── Derived accent tokens ── */
  --pv:     hsl(var(--kh), var(--ks), var(--kl));
  --pg:     hsl(calc(var(--kh) + 120), calc(var(--ks) - 4%), calc(var(--kl) + 4%));
+ /* One colour for "a channel is muted or soloed", used on the strips and on
+    the transport badge so the two always read as the same condition. */
+ --ms-alert:#ff9d3c;
  --pb:     hsl(calc(var(--kh) + 210), var(--ks), calc(var(--kl) + 6%));
  --py:     hsl(calc(var(--kh) + 60),  calc(var(--ks) - 6%), calc(var(--kl) - 4%));
  --pr:     hsl(calc(var(--kh) + 180), var(--ks), var(--kl));
@@ -101,7 +104,7 @@ body {
 
 .prism-logo {
  font-family:'Orbitron',sans-serif; font-weight:900;
- font-size:clamp(1.5rem,6vw,2.4rem); letter-spacing:.2em;
+ font-size:clamp(1.05rem,4vw,1.6rem); letter-spacing:.18em;
  background:linear-gradient(90deg,var(--pb),var(--pv),var(--pr),var(--po),var(--py),var(--pg),var(--pb));
  background-size:400%;
  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
@@ -1064,10 +1067,40 @@ body.light-mode .ft-btn.tp-count { color:#0369a1; }
 body.light-mode .ms-sel { background:#fff; color:#1a1e38; border-color:#c2c6de; }
 /* Routed nowhere = not doing anything; don't let it read as live. */
 .ms-lfo-row.lfo-idle { opacity:.45; }
+/* Mount points the single MōdSynth panel is moved between, one per page. */
+.ms-host { width:100%; max-width:700px; display:flex; justify-content:center; }
+.ms-host:empty { display:none; }
+.ms-stub {
+ width:100%; max-width:700px; margin-top:10px; padding:9px 12px;
+ background:var(--surf2); color:var(--muted);
+ border:1px dashed var(--border2); border-radius:var(--r-sm);
+ font-family:'Outfit',sans-serif; font-size:.55rem; letter-spacing:.04em;
+ cursor:pointer; touch-action:manipulation; transition:all .14s;
+}
+.ms-stub:hover { color:var(--pg); border-color:var(--pg); }
+body.mode-basic .ms-stub { display:none; }
 
 /* ═══════════════════════════════════════
  CHORD FORM / FINGERING DIAGRAMS
 ═══════════════════════════════════════ */
+/* Fold-away panels — the diagrams are reference material, not something you
+   always want between you and the grid, so they close from the title bar. */
+.panel-fold {
+ margin-left:auto; flex:0 0 auto;
+ width:20px; height:20px; padding:0; line-height:1;
+ display:flex; align-items:center; justify-content:center;
+ background:transparent; color:var(--muted);
+ border:1px solid var(--border2); border-radius:5px;
+ font-size:.6rem; cursor:pointer; touch-action:manipulation;
+ transition:transform .18s, color .12s, border-color .12s;
+}
+.panel-fold:hover { color:var(--pg); border-color:var(--pg); }
+/* The title keeps a fold button pinned right even when something else in the
+   row already claimed margin-left:auto. */
+.panel-title > .panel-fold ~ .panel-fold { margin-left:4px; }
+.panel.folded .panel-fold { transform:rotate(-90deg); }
+.panel.folded > *:not(.panel-title) { display:none !important; }
+.panel.folded { padding-bottom:6px; }
 .chord-diagram-body, .fingering-body {
  color:var(--text); padding:6px 0 2px; min-height:110px;
  display:flex; align-items:center; justify-content:center;
@@ -1205,6 +1238,9 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
 /* Sized so transport + the four layer switches + record + dice hold one row
    at 390px. A second row here would push content under the thumb. */
 .perf-bar .ft-btn.arp { padding:6px 9px; font-size:.6rem; letter-spacing:.02em; }
+.perf-bar .ft-bpm input[type=range] { width:74px; }
+.perf-bar .ft-bpm, .perf-bar .ft-rate { gap:3px; }
+.perf-bar .ft-btn.ur { padding:4px 7px; }
 .perf-bar .ft-btn.transport { padding:4px 5px; }
 .perf-bar .ft-btn.dice { padding:4px 6px; }
 .ft-btn {
@@ -2293,6 +2329,31 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 
 /* 25 ── Mix tab */
 .mix-chan-row { display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap; justify-content:center; width:100%; padding:4px 0; }
+.mix-strip { display:flex; flex-direction:column; align-items:center; gap:4px; transition:opacity .15s; }
+.mix-val { font-size:.5rem; text-align:center; min-width:36px; }
+.mix-lbl { font-size:.48rem; color:#5a6090; text-transform:uppercase; letter-spacing:.06em; text-align:center; }
+.mix-ms { display:flex; gap:3px; }
+.mix-msb {
+ width:19px; height:17px; padding:0; line-height:1;
+ font-family:'Outfit',sans-serif; font-size:.46rem; font-weight:700;
+ background:var(--surf2); color:var(--muted);
+ border:1px solid var(--border2); border-radius:4px;
+ cursor:pointer; touch-action:manipulation; transition:all .12s;
+}
+.mix-msb:hover { color:var(--text); border-color:var(--muted); }
+/* Muted and soloed both mean "this channel is not behaving normally", so they
+   share one alert colour instead of competing for attention. */
+.mix-msb.on { background:var(--ms-alert); border-color:var(--ms-alert); color:#12060a; }
+/* Silenced because something else is soloed — a quieter signal than an explicit mute. */
+.mix-strip.mix-silenced { opacity:.38; }
+.ft-ms-led {
+ font-family:'Orbitron',sans-serif; font-size:.42rem; font-weight:700;
+ letter-spacing:.08em; padding:4px 6px; border-radius:5px;
+ background:var(--ms-alert); color:#12060a; border:none;
+ cursor:pointer; touch-action:manipulation;
+ animation:msLedPulse 1.6s ease-in-out infinite;
+}
+@keyframes msLedPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
 .mb-led { width:8px; height:8px; border-radius:50%; background:var(--border2); margin-left:8px; transition:all .2s; }
 .mb-led.lit { background:var(--pg); box-shadow:0 0 8px var(--pg); }
 
@@ -2353,18 +2414,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="tab-led" id="tab-led"></div>
 </nav>
 <div class="fixed-transport" id="fixed-transport">
- <div class="ft-bpm">
- <span style="font-size:.55rem;color:var(--muted)">=</span>
- <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
- oninput="onBpmInput(this.value)">
- <span class="ft-bpm-val" id="ft-bpm-val">100</span>
- </div>
- <div class="ft-rate">
- <span>Arp</span>
- <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()">8th</div>
- </div>
- <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
- <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn" id="ft-help-btn" onclick="showTour()" title="App tour / help" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">?</button>
  <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted);font-weight:700">⌨</button>
@@ -2385,11 +2434,24 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
      tabs. -->
 <div class="perf-bar" id="perf-bar">
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
+ <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
  <button class="ft-btn transport tp-count" id="ft-countin-btn" onclick="startWithCountIn()" title="Count in four beats, then start everything on beat 1" aria-label="Count in">⁴</button>
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
+ <div class="ft-bpm">
+ <span style="font-size:.55rem;color:var(--muted)">=</span>
+ <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
+ oninput="onBpmInput(this.value)">
+ <span class="ft-bpm-val" id="ft-bpm-val">100</span>
+ </div>
+ <div class="ft-rate">
+ <span>Arp</span>
+ <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()">8th</div>
+ </div>
+ <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
+ <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
  <button class="ft-btn transport tp-rec off" id="ft-rec-btn" onclick="toggleSongRecord()" aria-label="Record" title="Record the chords you trigger live (click, keyboard, or MIDI) into a new Song section">●</button>
  <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
 </div>
@@ -2609,6 +2671,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <div class="panel-title">
    <span class="pt-icon">▦</span> Chord Forms <button class="tips-btn" onclick="showTip('chordforms',this)">?</button>
    <span class="cd-name" id="chord-diagram-name">C</span>
+   <button class="panel-fold" data-fold="chord-diagram-panel" onclick="togglePanelFold('chord-diagram-panel')" aria-expanded="true" title="Hide the chord diagrams">▾</button>
   </div>
   <div class="tg" style="width:100%;margin-bottom:4px">
    <button class="tb active" id="cdi-guitar" onclick="setChordDiagramInst('guitar')" style="flex:1">Guitar</button>
@@ -2671,6 +2734,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <div class="panel-title">
    <span class="pt-icon">✋</span> Fingering <button class="tips-btn" onclick="showTip('fingering',this)">?</button>
    <span id="fing-note-label" style="margin-left:auto"></span>
+   <button class="panel-fold" data-fold="fingering-panel" onclick="togglePanelFold('fingering-panel')" aria-expanded="true" title="Hide the fingering chart">▾</button>
   </div>
   <div class="row" style="margin-bottom:4px">
    <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Instrument:</span>
@@ -2679,6 +2743,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <div class="fingering-body" id="fingering-body"></div>
  </div>
+ <div class="ms-host" id="ms-host-mel"></div>
  </div><!-- /pf-melody-panel -->
 
 
@@ -2701,7 +2766,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 
- <!-- MōdSynth — full control surface, shown only while it's the chord voice -->
+ <!-- MōdSynth — one control surface that follows you. It is a single DOM
+      node moved between the .ms-host slots on each page, so the Bass, Melody
+      generator and Arp pages edit their own patches through the same
+      controls instead of five drifting copies of the same markup. -->
+ <div class="ms-host" id="ms-host-chord"></div>
  <div class="panel p-perform advanced-only" id="modsynth-panel" style="display:none;width:100%;max-width:700px">
   <div class="panel-title">
    <span class="pt-icon">◈</span> MōdSynth
@@ -2722,7 +2791,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     <button class="tb" id="msw-square"   onclick="msSet('type','square')">Sqr</button>
     <button class="tb" id="msw-triangle" onclick="msSet('type','triangle')">Tri</button>
    </div>
-   <button class="tb" id="ms-sweep-btn" onclick="msSet('sweep',!modSynthParams.sweep)" title="The voice's own fast-open/slow-close filter movement">Filter Sweep: ON</button>
   </div>
   <div class="ms-grid" id="ms-ctrl-grid"></div>
   <div class="ms-lfo-wrap">
@@ -3357,6 +3425,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="bl-mopt" id="bl-sm-accent">Accent</button>
   </div>
  </div>
+ <div class="ms-host" id="ms-host-bass"></div>
  </div><!-- /bm-bass-panel -->
 
  <!-- MELODY SUB-PAGE -->
@@ -3443,6 +3512,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="bl-mopt" id="ml-sm-accent">Accent</button>
   </div>
  </div>
+ <div class="ms-host" id="ms-host-melgen"></div>
  </div><!-- /bm-melody-panel -->
 
  <!-- ARP SUB-PAGE -->
@@ -3500,6 +3570,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <div class="row" id="arp-patterns-row-p" style="margin-top:4px"></div>
  </div>
  </div>
+ <div class="ms-host" id="ms-host-arp"></div>
  </div><!-- /bm-arp-panel -->
 
 </div><!-- #page-bass -->
@@ -4527,6 +4598,43 @@ function reapVoice(oscs, nodes, endSec){
 // ═══════════════════════════════════════
 // VOICE BUILDING
 // ═══════════════════════════════════════
+// Oscillators all start at phase zero, so a unison stack is perfectly
+// correlated for the first few milliseconds of every note and its peak is the
+// sum of all N voices rather than the ~√N the output gain is scaled for. On
+// the 18-voice presets that meant note onsets hitting 4.4× full scale — the
+// crack people were hearing as clipping, most obvious right after a dice roll
+// lands on one of the big patches.
+//
+// The fix is to decorrelate the voices: same harmonic content, randomised
+// phase per harmonic, so the waveform is identical in spectrum and the stack
+// sums incoherently from the first sample. A small cached pool per waveform is
+// enough — building a fresh PeriodicWave for all 18 voices of every note is
+// needless work, and a handful of distinct phasings already decorrelates them.
+const _RPW_POOL=8;
+let _rpwCache=null, _rpwCtx=null;
+function _randPhaseWave(ctx,type,i){
+ if(_rpwCtx!==ctx){ _rpwCache={}; _rpwCtx=ctx; }
+ const key=type;
+ if(!_rpwCache[key]){
+  const pool=[];
+  for(let p=0;p<_RPW_POOL;p++){
+   const N=48, re=new Float32Array(N), im=new Float32Array(N);
+   for(let k=1;k<N;k++){
+    let a=0;
+    if(type==='sawtooth')      a=1/k;
+    else if(type==='square')   a=(k%2)?1/k:0;
+    else if(type==='triangle') a=(k%2)?1/(k*k):0;
+    else                       a=(k===1)?1:0;   // sine
+    if(!a) continue;
+    const ph=Math.random()*Math.PI*2;
+    re[k]=a*Math.cos(ph); im[k]=a*Math.sin(ph);
+   }
+   pool.push(ctx.createPeriodicWave(re,im));
+  }
+  _rpwCache[key]=pool;
+ }
+ return _rpwCache[key][i%_RPW_POOL];
+}
 function buildSuperSaw(ctx,f,spread,voices,type){
  spread=spread||28;
  voices=voices||7;
@@ -4535,7 +4643,14 @@ function buildSuperSaw(ctx,f,spread,voices,type){
  const oscs=[];
  for(let v=0;v<voices;v++){
  const o=ctx.createOscillator();
- o.type=type; o.frequency.value=f;
+ o.frequency.value=f;
+ // A lone oscillator has nothing to beat against, so it keeps the exact
+ // built-in waveform; only a stack needs the phase scattered.
+ if(voices<2) o.type=type;
+ else{
+  try{ o.setPeriodicWave(_randPhaseWave(ctx,type,(Math.random()*_RPW_POOL)|0)); }
+  catch(e){ o.type=type; }
+ }
  // A single voice sits dead centre; only a stack gets spread across the band.
  o.detune.value = voices<2 ? 0 : (-spread/2)+(v/(voices-1))*spread;
  o.connect(out); oscs.push(o);
@@ -4557,37 +4672,37 @@ function buildSuperSaw(ctx,f,spread,voices,type){
 const MS_LFO_OFF={rate:5, depth:0, shape:'sine', dest:'off'};
 const MODSYNTH_PRESETS = {
  // ── Basic: the plain oscillators, filter open, nothing moving ──
- sine:     {label:'Sine',   group:'Basic',   voices:1,  spread:0,  type:'sine',     sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- saw:      {label:'Saw',    group:'Basic',   voices:1,  spread:0,  type:'sawtooth', sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- square:   {label:'Square', group:'Basic',   voices:1,  spread:0,  type:'square',   sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- triangle: {label:'Tri',    group:'Basic',   voices:1,  spread:0,  type:'triangle', sub:0,   noise:0,   q:.7,  drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ sine:     {label:'Sine',   group:'Basic',   voices:1,  spread:0,  type:'sine',     sub:0,   noise:0,   q:.7,  drive:0,   cut:1, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ saw:      {label:'Saw',    group:'Basic',   voices:1,  spread:0,  type:'sawtooth', sub:0,   noise:0,   q:.7,  drive:0,   cut:1, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ square:   {label:'Square', group:'Basic',   voices:1,  spread:0,  type:'square',   sub:0,   noise:0,   q:.7,  drive:0,   cut:1, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ triangle: {label:'Tri',    group:'Basic',   voices:1,  spread:0,  type:'triangle', sub:0,   noise:0,   q:.7,  drive:0,   cut:1, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
 
  // ── Classic: the sounds subtractive synths were built to make ──
- brass:    {label:'Brass',  group:'Classic', voices:4,  spread:12, type:'sawtooth', sub:.25, noise:.15, q:4,   drive:1.1, sweep:true,
+ brass:    {label:'Brass',  group:'Classic', voices:4,  spread:12, type:'sawtooth', sub:.25, noise:.15, q:4,   drive:1.1, cut:.63, swp:.80,
             lfo1:{rate:5.2, depth:.10, shape:'sine', dest:'pitch'}, lfo2:{...MS_LFO_OFF}},
- polypad:  {label:'Poly Pad',group:'Classic',voices:7, spread:26, type:'sawtooth', sub:.20, noise:0,   q:1.6, drive:0,   sweep:false,
+ polypad:  {label:'Poly Pad',group:'Classic',voices:7, spread:26, type:'sawtooth', sub:.20, noise:0,   q:1.6, drive:0,   cut:.74, swp:0,
             lfo1:{rate:.35, depth:.45, shape:'sine', dest:'filter'}, lfo2:{rate:4.4, depth:.06, shape:'sine', dest:'pitch'}},
- strings:  {label:'Strings',group:'Classic', voices:9,  spread:34, type:'sawtooth', sub:.15, noise:0,   q:1.2, drive:0,   sweep:false,
+ strings:  {label:'Strings',group:'Classic', voices:9,  spread:34, type:'sawtooth', sub:.15, noise:0,   q:1.2, drive:0,   cut:.78, swp:0,
             lfo1:{rate:.8,  depth:.22, shape:'triangle', dest:'filter'}, lfo2:{rate:5.6, depth:.05, shape:'sine', dest:'pitch'}},
- fatbass:  {label:'Fat Bass',group:'Classic',voices:2, spread:6,  type:'sawtooth', sub:.95, noise:.10, q:6,   drive:2.2, sweep:true,
+ fatbass:  {label:'Fat Bass',group:'Classic',voices:2, spread:6,  type:'sawtooth', sub:.95, noise:.10, q:6,   drive:2.2, cut:.50, swp:.85,
             lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- lead:     {label:'Lead',   group:'Classic', voices:3,  spread:10, type:'square',   sub:.30, noise:.20, q:8,   drive:1.6, sweep:true,
+ lead:     {label:'Lead',   group:'Classic', voices:3,  spread:10, type:'square',   sub:.30, noise:.20, q:8,   drive:1.6, cut:.70, swp:.75,
             lfo1:{rate:5.5, depth:.16, shape:'sine', dest:'pitch'}, lfo2:{...MS_LFO_OFF}},
- bell:     {label:'Bell',   group:'Classic', voices:2,  spread:4,  type:'sine',     sub:0,   noise:.50, q:3,   drive:.6,  sweep:true,
+ bell:     {label:'Bell',   group:'Classic', voices:2,  spread:4,  type:'sine',     sub:0,   noise:.50, q:3,   drive:.6,  cut:.85, swp:.60,
             lfo1:{rate:6.2, depth:.30, shape:'sine', dest:'amp'}, lfo2:{...MS_LFO_OFF}},
 
  // ── Modern: where the same engine went once it got loud ──
- mega:     {label:'Mega',   group:'Modern',  voices:18, spread:18, type:'sawtooth', sub:.55, noise:.5,  q:6,   drive:1.8, sweep:true,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- supersaw: {label:'S·Saw',  group:'Modern',  voices:7,  spread:30, type:'sawtooth', sub:0,   noise:0,   q:1.2, drive:0,   sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- pluck:    {label:'Pluck',  group:'Modern',  voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7,  q:8,   drive:1.4, sweep:true,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- sub:      {label:'Sub',    group:'Modern',  voices:2,  spread:8,  type:'triangle', sub:.9,  noise:0,   q:2,   drive:1.2, sweep:false, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
- reese:    {label:'Reese',  group:'Modern',  voices:2,  spread:44, type:'sawtooth', sub:.70, noise:0,   q:5,   drive:1.8, sweep:false,
+ mega:     {label:'Mega',   group:'Modern',  voices:18, spread:18, type:'sawtooth', sub:.55, noise:.5,  q:6,   drive:1.8, cut:.70, swp:.85,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ supersaw: {label:'S·Saw',  group:'Modern',  voices:7,  spread:30, type:'sawtooth', sub:0,   noise:0,   q:1.2, drive:0,   cut:1, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ pluck:    {label:'Pluck',  group:'Modern',  voices:5,  spread:14, type:'sawtooth', sub:.2,  noise:.7,  q:8,   drive:1.4, cut:.72, swp:.90,  lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ sub:      {label:'Sub',    group:'Modern',  voices:2,  spread:8,  type:'triangle', sub:.9,  noise:0,   q:2,   drive:1.2, cut:.40, swp:0, lfo1:{...MS_LFO_OFF}, lfo2:{...MS_LFO_OFF}},
+ reese:    {label:'Reese',  group:'Modern',  voices:2,  spread:44, type:'sawtooth', sub:.70, noise:0,   q:5,   drive:1.8, cut:.52, swp:0,
             lfo1:{rate:.5,  depth:.50, shape:'triangle', dest:'filter'}, lfo2:{...MS_LFO_OFF}},
- wobble:   {label:'Wobble', group:'Modern',  voices:4,  spread:16, type:'sawtooth', sub:.80, noise:0,   q:14,  drive:2.4, sweep:false,
+ wobble:   {label:'Wobble', group:'Modern',  voices:4,  spread:16, type:'sawtooth', sub:.80, noise:0,   q:14,  drive:2.4, cut:.45, swp:0,
             lfo1:{rate:3.2, depth:.85, shape:'sine', dest:'filter'}, lfo2:{...MS_LFO_OFF}},
- hoover:   {label:'Hoover', group:'Modern',  voices:7,  spread:48, type:'sawtooth', sub:.40, noise:.20, q:7,   drive:1.5, sweep:true,
+ hoover:   {label:'Hoover', group:'Modern',  voices:7,  spread:48, type:'sawtooth', sub:.40, noise:.20, q:7,   drive:1.5, cut:.68, swp:.70,
             lfo1:{rate:.9,  depth:.30, shape:'triangle', dest:'pitch'}, lfo2:{rate:2.6, depth:.35, shape:'sine', dest:'filter'}},
- gate:     {label:'Gate',   group:'Modern',  voices:5,  spread:20, type:'sawtooth', sub:.20, noise:0,   q:3,   drive:.8,  sweep:false,
+ gate:     {label:'Gate',   group:'Modern',  voices:5,  spread:20, type:'sawtooth', sub:.20, noise:0,   q:3,   drive:.8,  cut:.82, swp:0,
             lfo1:{rate:8,   depth:.95, shape:'square', dest:'amp'}, lfo2:{...MS_LFO_OFF}},
 };
 const MS_LFO_DESTS=[['off','Off'],['pitch','Pitch'],['filter','Filter'],['amp','Amp']];
@@ -4596,8 +4711,28 @@ const MS_LFO_SHAPES=[['sine','Sine'],['triangle','Tri'],['square','Sqr'],['sawto
 // a reference straight into the preset table and let an edit corrupt it
 // permanently. Always deep-copy on load.
 function _msClone(p){
- return Object.assign({},p,{lfo1:Object.assign({},p.lfo1||MS_LFO_OFF),
-                            lfo2:Object.assign({},p.lfo2||MS_LFO_OFF)});
+ return msNormalize(Object.assign({},p,{lfo1:Object.assign({},p.lfo1||MS_LFO_OFF),
+                                        lfo2:Object.assign({},p.lfo2||MS_LFO_OFF)}));
+}
+// Cutoff slider (0–1) → Hz. Exponential so the bottom half of the travel is
+// the half you can actually hear moving: 80 Hz at 0, ~1.1 kHz at .5, 16 kHz at 1.
+function msCutHz(c){
+ const v=(c==null)?1:Math.max(0,Math.min(1,c));
+ return 80*Math.pow(200,v);
+}
+// Patches saved before Cutoff/Sweep existed carry a boolean `sweep` instead.
+// Translate rather than drop them, matching what the old code actually did:
+// sweep off meant a wide-open 16 kHz filter, sweep on meant a fast open and
+// slow close roughly between 900 Hz and 9 kHz.
+function msNormalize(p){
+ if(!p) return p;
+ if(p.cut==null || p.swp==null){
+  const legacy=!!p.sweep;
+  if(p.cut==null) p.cut = legacy ? .63 : 1;
+  if(p.swp==null) p.swp = legacy ? .80 : 0;
+ }
+ delete p.sweep;
+ return p;
 }
 // Every part gets its own MōdSynth. Chords, arp, melody strip, bass and the
 // melody generator each hold a full independent patch, so you can put a
@@ -4625,6 +4760,8 @@ const MS_CTRLS=[
  {k:'spread', label:'Detune', min:0,  max:60, step:1,   fmt:v=>v+'¢'},
  {k:'sub',    label:'Sub',    min:0,  max:1,  step:.01, fmt:v=>Math.round(v*100)+'%'},
  {k:'noise',  label:'Attack', min:0,  max:1,  step:.01, fmt:v=>Math.round(v*100)+'%'},
+ {k:'cut',    label:'Cutoff', min:0,  max:1,  step:.01, fmt:v=>{const h=msCutHz(v); return h>=1000?(h/1000).toFixed(1)+' kHz':Math.round(h)+' Hz';}},
+ {k:'swp',    label:'Sweep',  min:0,  max:1,  step:.01, fmt:v=>v<=0?'off':Math.round(v*100)+'%'},
  {k:'q',      label:'Reso',   min:.5, max:20, step:.1,  fmt:v=>(+v).toFixed(1)},
  {k:'drive',  label:'Drive',  min:0,  max:4,  step:.05, fmt:v=>v<=0?'off':(+v).toFixed(2)},
 ];
@@ -4639,7 +4776,7 @@ function setModSynthPreset(p){
 // Any edit means the patch is no longer the preset it came from — say so
 // instead of leaving a preset button lit next to controls that have moved.
 function msSet(k,v){
- modSynthParams[k] = (k==='type'||k==='sweep') ? v : parseFloat(v);
+ modSynthParams[k] = (k==='type') ? v : parseFloat(v);
  modSynthPreset='custom';
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
  syncModSynthUI();
@@ -4660,8 +4797,6 @@ function syncModSynthUI(){
  ['sine','sawtooth','square','triangle'].forEach(w=>{
   document.getElementById('msw-'+w)?.classList.toggle('active', P.type===w);
  });
- const sw=document.getElementById('ms-sweep-btn');
- if(sw){ sw.textContent='Filter Sweep: '+(P.sweep?'ON':'OFF'); sw.classList.toggle('active',!!P.sweep); }
  [1,2].forEach(n=>{
   const L=P['lfo'+n]||MS_LFO_OFF;
   const d=document.getElementById('ms-lfo'+n+'-dest');   if(d&&d.value!==L.dest) d.value=L.dest;
@@ -4678,10 +4813,31 @@ function syncModSynthUI(){
  if(nm) nm.textContent = modSynthPreset==='custom' ? 'Custom' : (MODSYNTH_PRESETS[modSynthPreset]?.label||'');
 }
 
+// ── Foldable reference panels ──────────────────────────────────────────────
+// Chord Forms and Fingering are reference, not controls: useful while you're
+// learning a shape, in the way once you know it. The fold state is per panel
+// and remembered, so closing one stays closed next session.
+function togglePanelFold(id,force){
+ const p=document.getElementById(id); if(!p) return;
+ const folded = (force==null) ? !p.classList.contains('folded') : !!force;
+ p.classList.toggle('folded',folded);
+ p.querySelectorAll('.panel-fold').forEach(b=>{
+  b.setAttribute('aria-expanded', folded?'false':'true');
+  b.title = (folded?'Show ':'Hide ') + (p.id==='fingering-panel'?'the fingering chart':'the chord diagrams');
+ });
+ try{ localStorage.setItem('modo-fold-'+id, folded?'1':''); }catch(e){}
+}
+function restorePanelFolds(){
+ ['chord-diagram-panel','fingering-panel'].forEach(id=>{
+  let v=''; try{ v=localStorage.getItem('modo-fold-'+id)||''; }catch(e){}
+  if(v) togglePanelFold(id,true);
+ });
+}
+
 // ── Live scope ─────────────────────────────────────────────────────────────
 // Taps the master output so the trace is genuinely what you're hearing, not a
 // redraw of the slider values. Only animates while the panel is on screen.
-let _msAnalyser=null, _msRaf=null;
+let _msAnalyser=null, _msRaf=null, _msIdle=null;
 function _msEnsureAnalyser(){
  const ctx=getCtx(); if(!ctx) return null;
  if(_msAnalyser) return _msAnalyser;
@@ -4692,10 +4848,14 @@ function _msEnsureAnalyser(){
  try{ out.connect(_msAnalyser); }catch(e){ return null; }
  return _msAnalyser;
 }
+function _msPanelVisible(){
+ const p=document.getElementById('modsynth-panel');
+ return !!(p && p.style.display!=='none' && p.offsetParent);
+}
 function msScopeTick(){
+ _msRaf=null;
  const cv=document.getElementById('ms-scope');
- const panel=document.getElementById('modsynth-panel');
- if(!cv||!panel||panel.style.display==='none'||!panel.offsetParent){ _msRaf=null; return; }
+ if(!cv||!_msPanelVisible()){ msStartScope(); return; }
  const an=_msEnsureAnalyser();
  const g=cv.getContext('2d');
  const dpr=Math.min(window.devicePixelRatio||1,2);
@@ -4720,7 +4880,82 @@ function msScopeTick(){
  }
  _msRaf=requestAnimationFrame(msScopeTick);
 }
-function msStartScope(){ if(!_msRaf) _msRaf=requestAnimationFrame(msScopeTick); }
+// The scope used to stop dead the moment the panel went off screen and could
+// only be revived by re-picking MōdSynth as the chord voice, so switching
+// sub-tabs left a frozen trace. It now idles at a slow poll instead of
+// stopping, and gives up entirely only when no part is using MōdSynth at all.
+function msStartScope(){
+ if(_msRaf||_msIdle) return;
+ if(_msPanelVisible()){ _msRaf=requestAnimationFrame(msScopeTick); return; }
+ if(!msAnyPartUsesModSynth()) return;
+ _msIdle=setTimeout(()=>{ _msIdle=null; msStartScope(); },300);
+}
+function msStopScope(){
+ if(_msRaf) cancelAnimationFrame(_msRaf);
+ if(_msIdle) clearTimeout(_msIdle);
+ _msRaf=null; _msIdle=null;
+}
+// True when any of the five parts is currently voiced with MōdSynth — the
+// panel is worth showing (and the scope worth running) exactly then.
+function msAnyPartUsesModSynth(){
+ if(typeof VOICE_PARTS==='undefined') return false;
+ return VOICE_PARTS.some(p=>{ try{ return p.get()==='modsynth'; }catch(e){ return false; } });
+}
+
+// ── One panel, many pages ──────────────────────────────────────────────────
+// Which part each page edits. The panel is physically moved into the host slot
+// on the page you are looking at, so Bass, Melody gen and Arp get the full
+// control surface without five copies of the markup fighting over element ids.
+function msHostFor(){
+ const bassTab=document.getElementById('page-bass');
+ if(bassTab && bassTab.classList.contains('active')){
+  // Read through a try: bassMelMode is a `let` further down the file, and a
+  // switchTab() during boot can reach here while it is still in the temporal
+  // dead zone, where even `typeof` throws.
+  let m='bass'; try{ m=bassMelMode||'bass'; }catch(e){}
+  if(m==='melody') return {host:'ms-host-melgen', part:'melgen'};
+  if(m==='arp')    return {host:'ms-host-arp',    part:'arp'};
+  return {host:'ms-host-bass', part:'bass'};
+ }
+ const mel=document.getElementById('pf-melody-panel');
+ if(mel && mel.style.display!=='none' && mel.offsetParent) return {host:'ms-host-mel', part:'mel'};
+ return {host:'ms-host-chord', part:'chord'};
+}
+function msSyncHost(){
+ const panel=document.getElementById('modsynth-panel'); if(!panel) return;
+ const {host,part}=msHostFor();
+ const slot=document.getElementById(host);
+ if(slot && panel.parentNode!==slot) slot.appendChild(panel);
+ // Follow the page rather than making people re-pick the part by hand. The
+ // "Patch for" row still lets you reach across to another part's patch; that
+ // choice holds until you navigate somewhere else.
+ msPart=part;
+ document.querySelectorAll('[data-mspart]').forEach(b=>b.classList.toggle('active',b.dataset.mspart===msPart));
+ const def=(typeof VOICE_PARTS!=='undefined') ? VOICE_PARTS.find(p=>p.k===msPart) : null;
+ let v=null;
+ try{ v=def&&def.get(); }catch(e){}
+ const on = (v==='modsynth');
+ panel.style.display = on ? '' : 'none';
+ // A blank space where the synth should be reads as a missing feature. When
+ // this page's part is on some other voice, leave a one-line way in rather
+ // than nothing at all.
+ if(slot){
+  let stub=slot.querySelector('.ms-stub');
+  if(on){ if(stub) stub.remove(); }
+  else {
+   if(!stub){
+    stub=document.createElement('button');
+    stub.className='ms-stub';
+    stub.onclick=()=>{ try{ def&&def.set('modsynth'); }catch(e){} msSyncHost(); };
+    slot.appendChild(stub);
+   }
+   stub.textContent='◈ Open MōdSynth for '+(MS_PART_LABELS[msPart]||msPart);
+   stub.title='Switch '+(MS_PART_LABELS[msPart]||msPart)+" to MōdSynth and edit this part's patch here";
+  }
+ }
+ if(on) syncModSynthUI();
+ msStopScope(); msStartScope();
+}
 
 // Lazily-built short noise buffer for MōdSynth's attack transient layer
 let _modSynthNoiseBuf=null;
@@ -4893,24 +5128,39 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  const P=(modSynthPatches&&modSynthPatches[part||'chord'])||MODSYNTH_PRESETS.mega;
  const unison=buildSuperSaw(ctx,f,P.spread,P.voices,P.type);
  const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=P.q;
- if(P.sweep){
- const cutBase=Math.min(f*2.2,900);
- const cutPeak=Math.min(f*9,9000);
+ // Cutoff is a real, dialable frequency (the Cutoff slider), and Sweep is a
+ // depth rather than an on/off: at 0 the filter simply sits at the cutoff,
+ // and as it opens up the envelope starts further below the cutoff and
+ // overshoots further above it. Everything downstream — including the filter
+ // LFOs — is scaled off this one number, so turning the cutoff down actually
+ // darkens the voice instead of leaving a 16 kHz filter doing nothing.
+ const cutHz=msCutHz(P.cut);
+ const S=Math.max(0,Math.min(1,P.swp==null?0:P.swp));
+ if(S>0){
+ const cutBase=Math.max(60,cutHz*(1-0.75*S));
+ const cutPeak=Math.min(18000,cutHz*(1+4*S));
  filt.frequency.setValueAtTime(cutBase,t0);
  filt.frequency.linearRampToValueAtTime(cutPeak,t0+0.018);
- filt.frequency.exponentialRampToValueAtTime(Math.max(cutBase*1.4,240),t0+Math.min(Math.max(dur*0.55,0.12),1.1));
+ filt.frequency.exponentialRampToValueAtTime(Math.max(cutBase*1.2,70),t0+Math.min(Math.max(dur*0.55,0.12),1.1));
  } else {
- // Plain-waveform presets stay out of the way and let the shared
- // Tone/Reso character macros downstream do the filtering instead.
- filt.frequency.setValueAtTime(16000,t0);
+ filt.frequency.setValueAtTime(cutHz,t0);
  }
  unison.out.connect(filt);
  let tail=filt;
  if(P.drive>0){
+ // A WaveShaper clamps its *input* to [-1,1] before looking anything up, so a
+ // curve written over [-1,1] hard-clips everything louder than unity instead
+ // of saturating it — the opposite of what a drive stage is for. Feed it a
+ // scaled-down copy and write the curve over the same widened domain, and the
+ // transfer function is still exactly tanh(drive · signal), now soft all the
+ // way out to HEAD× full scale.
+ const HEAD=4;
+ const pre=ctx.createGain(); pre.gain.value=1/HEAD;
  const drive=ctx.createWaveShaper();
- const cv=new Float32Array(256); for(let i=0;i<256;i++){ const x=i*2/256-1; cv[i]=Math.tanh(x*P.drive); }
+ const n=1024, cv=new Float32Array(n);
+ for(let i=0;i<n;i++){ const x=(i*2/(n-1)-1)*HEAD; cv[i]=Math.tanh(x*P.drive); }
  drive.curve=cv;
- filt.connect(drive); tail=drive;
+ filt.connect(pre); pre.connect(drive); tail=drive;
  }
  // Amp is modulated through its own stage so a tremolo/gate LFO has something
  // to move without touching the envelope the rest of the app schedules.
@@ -4932,9 +5182,10 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
    amt.gain.value=L.depth*120;                       // cents of vibrato
    unison.oscs.forEach(o=>amt.connect(o.detune));
   } else if(L.dest==='filter'){
-   // Scaled off the note so a wobble tracks pitch instead of swamping the
-   // bass and vanishing up top.
-   amt.gain.value=L.depth*Math.min(f*5,3800);
+   // Scaled off the cutoff, not the note: a wobble parked under a 16 kHz
+   // cutoff is inaudible no matter how deep it is, because there's nothing
+   // left above it to close down onto.
+   amt.gain.value=L.depth*Math.min(cutHz*0.9,6000);
    amt.connect(filt.frequency);
   } else if(L.dest==='amp'){
    const d=Math.min(.95,L.depth);
@@ -6287,6 +6538,7 @@ function syncVoicesPanel(){
    if(v!=null && sel.value!==v && [...sel.options].some(o=>o.value===v)) sel.value=v;
   });
  });
+ if(typeof msSyncHost==='function') msSyncHost();
 }
 
 // ═══════════════════════════════════════
@@ -7074,11 +7326,7 @@ function setWave(w){
  document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
  });
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
- const msPanel=document.getElementById('modsynth-panel');
- if(msPanel){
-  msPanel.style.display = w==='modsynth' ? '' : 'none';
-  if(w==='modsynth' && typeof msStartScope==='function') msStartScope();
- }
+ if(typeof msSyncHost==='function') msSyncHost();
 }
 
 // Builds the MōdSynth preset buttons once, from MODSYNTH_PRESETS.
@@ -9221,6 +9469,7 @@ function setPerformMode(m){
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
  document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+ if(typeof msSyncHost==='function') msSyncHost();
 }
 
 function setBassMelMode(m){
@@ -9232,6 +9481,7 @@ function setBassMelMode(m){
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
  if(m === 'melody' && typeof mlRenderGrid==='function') mlRenderGrid();
+ if(typeof msSyncHost==='function') msSyncHost();
 }
 
 function renderSongsPerformView(){
@@ -9412,6 +9662,7 @@ function switchTab(t){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
   if(typeof syncMasterUI==='function') syncMasterUI();
  }
+ if(typeof msSyncHost==='function') msSyncHost();
  positionTabLed();
  syncFixedTransport();
  track('tab_viewed', {tab:t});
@@ -9468,7 +9719,7 @@ The arpeggiator and the bass follow the armed voicing too. Advanced view only; y
  body: `Pick the voice each part plays through — in Advanced view every part offers the same list.<br><br>
 <strong>MōdSynth</strong> (Advanced) is the deep voice — a stacked unison synth with its own sub, attack transient, filter sweep and saturation. Selecting it reveals a <strong>preset row</strong>:<br><br>
 <strong>Mega</strong> is the full stacked voice. <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches. <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick is remembered between visits.<br><br>
-Presets are a starting point, not a limit: <strong>Unison, Detune, Sub, Attack, Reso</strong> and <strong>Drive</strong> are all live, and the wave and filter sweep switch underneath. Move anything and the patch becomes <strong>Custom</strong>. The scope at the top traces the actual output, so you can see what each control does.<br><br>
+Presets are a starting point, not a limit: <strong>Unison, Detune, Sub, Attack, Cutoff, Sweep, Reso</strong> and <strong>Drive</strong> are all live, and the wave switches underneath. <strong>Cutoff</strong> is the filter's resting frequency and <strong>Sweep</strong> is how far the filter envelope opens above it and closes below it on every note — at 0 the filter just sits where you left it. Move anything and the patch becomes <strong>Custom</strong>. The scope at the top traces the actual output, so you can see what each control does.<br><br>
 The <strong>Tone / Reso / Sweep / Drive / Width / Drift</strong> macros in <strong>Setup → Sound Engine</strong> shape whichever voice is loaded — that's the real sound-design surface. The <strong>dice</strong> in the transport rerolls all of it at once.`
  },
  'chordforms': {
@@ -10835,6 +11086,23 @@ function stopEverything(){
  syncFixedTransport();
 }
 
+// Tab / Shift+Tab steps through the tabs on desktop. Skipped while typing so
+// text fields keep normal behaviour, and skipped on touch-only devices where
+// there is no Tab key to press anyway.
+// Tradeoff: this does take Tab away from browser focus-walking. Arrow keys,
+// Space and the number keys still work, and every control is directly
+// clickable, so nothing becomes unreachable.
+const TAB_ORDER=['perform','songs','rhythm','bass','mix','build'];
+document.addEventListener('keydown', e => {
+ if(e.key!=='Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+ if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+ if(window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+ e.preventDefault();
+ const cur=TAB_ORDER.findIndex(t=>document.getElementById('page-'+t)?.classList.contains('active'));
+ const n=TAB_ORDER.length;
+ switchTab(TAB_ORDER[(((cur<0?0:cur)+(e.shiftKey?-1:1))%n+n)%n]);
+});
+
 document.addEventListener('keydown', e => {
  if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
  e.preventDefault();
@@ -11180,6 +11448,7 @@ function setMelWave(w){
  document.getElementById('mv-saw')?.classList.toggle('active',w==='sawtooth');
  document.getElementById('mv-square')?.classList.toggle('active',w==='square');
  document.getElementById('mv-supersaw')?.classList.toggle('active',w==='supersaw');
+ if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 }
 
 // ═══════════════════════════════════════
@@ -11609,6 +11878,7 @@ try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){
  }catch(e){}
 })();
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
+restorePanelFolds();
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
@@ -11834,45 +12104,52 @@ function sqAttachKnob(cvs, valEl, initVal, min, max, type, onChange){
 }
 
 function sqApplyMixToNodes(ch, gain){
-  if(ch==='drum'){ var mg=window.SQMG_REF; if(mg) mg.gain.value=0.85*gain; }
+  // Deliberately does NOT touch SQMG. The sequencer's drum voices already get
+  // the channel gain applied per hit (sqHitTrack multiplies by sqMixGain),
+  // so scaling the bus here too squared it — 55% on the knob came out as 30%
+  // of full, and only once you first touched the knob, since this never ran
+  // at startup. SQMG stays a fixed headroom trim.
   if(window.sqMixGainsW) window.sqMixGainsW[ch]=gain;
 }
-// Read per-channel mix gain (1.0 = unity); safe to call from any scope
-function _cmx(ch){ return (window.sqMixGainsW&&window.sqMixGainsW[ch]!=null)?window.sqMixGainsW[ch]:1; }
+
+// ── Mute / solo ────────────────────────────────────────────────────────────
+// Solo is exclusive-by-set: any channel soloed silences every channel that
+// isn't. Mute still wins over solo on the same channel, which is what every
+// desk does and what people expect when they hit both.
+window.sqMixMute = window.sqMixMute || {};
+window.sqMixSolo = window.sqMixSolo || {};
+function sqAnySolo(){
+  var S=window.sqMixSolo||{};
+  for(var k in S) if(S[k]) return true;
+  return false;
+}
+function sqToggleMute(ch){
+  window.sqMixMute[ch]=!window.sqMixMute[ch];
+  sqSyncMixIndicators();
+}
+function sqToggleSolo(ch){
+  window.sqMixSolo[ch]=!window.sqMixSolo[ch];
+  sqSyncMixIndicators();
+}
+function sqClearMuteSolo(){
+  window.sqMixMute={}; window.sqMixSolo={};
+  sqSyncMixIndicators();
+}
+// Read per-channel mix gain (1.0 = unity); safe to call from any scope.
+// Every engine reads its level through here, so mute and solo are honoured
+// everywhere by construction rather than needing a hook per instrument.
+function _cmx(ch){
+  if(window.sqMixMute && window.sqMixMute[ch]) return 0;
+  if(sqAnySolo() && !(window.sqMixSolo && window.sqMixSolo[ch])) return 0;
+  var g=(window.sqMixGainsW&&window.sqMixGainsW[ch]!=null)?window.sqMixGainsW[ch]:1;
+  return g;
+}
+// Both mixers are the same strips: the Mix tab and the sequencer's inline
+// panel used to carry near-identical copies of this code, which is how they
+// drifted apart. One builder now feeds both.
 function sqRenderMixer(){
   var panel = document.getElementById('sq-mixer-panel'); if(!panel) return;
-  panel.innerHTML='';
-  var channels = [
-    {id:'drum', label:'Drums', color:'#ff6b35'},
-    {id:'chord', label:'Chord', color:'#3ab4ff'},
-    {id:'arp',  label:'Arp',   color:'#2df09a'},
-    {id:'mel',  label:'Mel',   color:'#f0c040'},
-    {id:'bass', label:'Bass',  color:'#a855f7'},
-  ];
-  channels.forEach(function(ch){
-    var wrap = document.createElement('div');
-    wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:3px;';
-    var cvs = document.createElement('canvas');
-    cvs.width=32; cvs.height=32;
-    var valEl = document.createElement('div');
-    valEl.style.cssText='font-size:.3rem;color:'+ch.color+';text-align:center;min-width:30px;';
-    var lbl = document.createElement('div');
-    lbl.style.cssText='font-size:.3rem;color:var(--sq-mut);text-transform:uppercase;letter-spacing:.05em;text-align:center;';
-    lbl.textContent = ch.label;
-    wrap.appendChild(cvs); wrap.appendChild(valEl); wrap.appendChild(lbl);
-    panel.appendChild(wrap);
-
-    var initV = Math.round(((window.sqMixGainsW||{})[ch.id]||1)*100);
-    sqDrawKnob(cvs, initV, 0, 100, ch.color);
-    valEl.textContent = initV+'%';
-    sqAttachKnob(cvs, valEl, initV, 0, 100, 'vol', function(v){
-      if(window.sqMixGainsW) window.sqMixGainsW[ch.id] = v/100;
-      sqDrawKnob(cvs, v, 0, 100, ch.color);
-      valEl.textContent = v+'%';
-      // Apply to live nodes where possible
-      sqApplyMixToNodes(ch.id, v/100);
-    });
-  });
+  if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(panel);
 }
 window._sqMixNodesW = window._sqMixNodesW || {};
 
@@ -12829,7 +13106,7 @@ var sqMixNodes = {}; // GainNode per channel, built after audio unlock
 
 
 // Apply mix gain: called by sqHitTrack, blPlayNote, etc. via sqMixGain('drum')
-function sqMixGain(ch){ return sqMixGains[ch]||1; }
+function sqMixGain(ch){ return (typeof _cmx==='function') ? _cmx(ch) : (sqMixGains[ch]!=null?sqMixGains[ch]:1); }
 
 // Mixer UI — rendered into #sq-mixer-panel
 // sqRenderMixer hoisted to global scope above
@@ -13555,6 +13832,7 @@ window.setBlWave = function(w){
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
   if(w==='upright_real') preloadSampleInstrument('bass');
+  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
 
 // ── gen style buttons ──
@@ -14055,6 +14333,7 @@ window.setMlWave = function(w){
   var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
+  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
 
 // ── gen style buttons ──
@@ -14154,18 +14433,29 @@ window.buildMixChannelsInto = function(container){
  container.innerHTML='';
  window.MIX_CHANNELS.forEach(function(ch){
   var wrap=document.createElement('div');
-  wrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:4px';
+  wrap.className='mix-strip';
   var cvs=document.createElement('canvas'); cvs.width=40; cvs.height=40; cvs.style.cursor='pointer';
   var valEl=document.createElement('div');
-  valEl.style.cssText='font-size:.5rem;color:'+ch.color+';text-align:center;min-width:36px';
+  valEl.className='mix-val'; valEl.style.color=ch.color;
   var lbl=document.createElement('div');
-  lbl.style.cssText='font-size:.48rem;color:#5a6090;text-transform:uppercase;letter-spacing:.06em;text-align:center';
+  lbl.className='mix-lbl';
   lbl.textContent=ch.label;
-  wrap.appendChild(cvs); wrap.appendChild(valEl); wrap.appendChild(lbl);
+  var btns=document.createElement('div'); btns.className='mix-ms';
+  var mB=document.createElement('button'); mB.className='mix-msb'; mB.textContent='M';
+  mB.title='Mute '+ch.label; mB.dataset.mixmute=ch.id;
+  var sB=document.createElement('button'); sB.className='mix-msb'; sB.textContent='S';
+  sB.title='Solo '+ch.label; sB.dataset.mixsolo=ch.id;
+  mB.onclick=function(){ sqToggleMute(ch.id); };
+  sB.onclick=function(){ sqToggleSolo(ch.id); };
+  btns.appendChild(mB); btns.appendChild(sB);
+  wrap.appendChild(cvs); wrap.appendChild(valEl); wrap.appendChild(lbl); wrap.appendChild(btns);
   container.appendChild(wrap);
 
-  var gains=window.sqMixGainsW||{drum:.65,chord:.7,arp:.7,mel:.65,bass:.7};
-  var initV=Math.round((gains[ch.id]||1)*100);
+  // Read the stored level with a null check, not `|| 1`: a channel pulled to
+  // 0 used to redraw at 100% every time the strip was rebuilt on a tab
+  // switch, so the knob and the audio disagreed from then on.
+  var gains=window.sqMixGainsW||{};
+  var initV=Math.round((gains[ch.id]!=null?gains[ch.id]:1)*100);
   if(typeof sqDrawKnob==='function') sqDrawKnob(cvs,initV,0,100,ch.color);
   valEl.textContent=initV+'%';
   if(typeof sqAttachKnob==='function'){
@@ -14177,7 +14467,44 @@ window.buildMixChannelsInto = function(container){
    });
   }
  });
+ sqSyncMixIndicators();
 };
+
+// Mute/solo state is global, but the strips exist in two places (the Mix tab
+// and the sequencer's inline mixer) and the transport shows a summary, so one
+// function repaints all of them from the single source of truth.
+function sqSyncMixIndicators(){
+ var anySolo=(typeof sqAnySolo==='function') && sqAnySolo();
+ var anyMute=false;
+ (window.MIX_CHANNELS||[]).forEach(function(ch){
+  var muted=!!(window.sqMixMute&&window.sqMixMute[ch.id]);
+  var soloed=!!(window.sqMixSolo&&window.sqMixSolo[ch.id]);
+  if(muted) anyMute=true;
+  document.querySelectorAll('[data-mixmute="'+ch.id+'"]').forEach(function(b){
+   b.classList.toggle('on',muted);
+  });
+  document.querySelectorAll('[data-mixsolo="'+ch.id+'"]').forEach(function(b){
+   b.classList.toggle('on',soloed);
+  });
+  // A channel silenced *because something else is soloed* is not the same as
+  // one you muted; dim it so the reason it's quiet is visible on its own strip.
+  document.querySelectorAll('[data-mixmute="'+ch.id+'"]').forEach(function(b){
+   var strip=b.closest('.mix-strip');
+   if(strip) strip.classList.toggle('mix-silenced', muted || (anySolo && !soloed));
+  });
+ });
+ var led=document.getElementById('ft-ms-led');
+ if(led){
+  var txt = anySolo ? 'SOLO' : (anyMute ? 'MUTE' : '');
+  led.textContent=txt;
+  led.style.display = txt ? '' : 'none';
+  led.classList.toggle('solo',anySolo);
+  led.title = anySolo
+   ? 'Something is soloed — other channels are silent. Tap to clear.'
+   : 'Something is muted. Tap to clear.';
+ }
+}
+window.sqSyncMixIndicators=sqSyncMixIndicators;
 
 // ─── Universal Mixer slide-up panel ───
 (function(){
