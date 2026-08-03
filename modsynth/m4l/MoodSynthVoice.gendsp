@@ -1,0 +1,162 @@
+{
+ "patcher": {
+  "fileversion": 1,
+  "appversion": {
+   "major": 8,
+   "minor": 5,
+   "revision": 0,
+   "architecture": "x64",
+   "modernui": 1
+  },
+  "classnamespace": "dsp.gen",
+  "rect": [
+   50,
+   90,
+   900,
+   700
+  ],
+  "bglocked": 0,
+  "openinpresentation": 0,
+  "default_fontsize": 12,
+  "default_fontface": 0,
+  "default_fontname": "Arial",
+  "gridonopen": 1,
+  "gridsize": [
+   15,
+   15
+  ],
+  "gridsnaponopen": 1,
+  "objectsnaponopen": 1,
+  "statusbarvisible": 2,
+  "toolbarvisible": 1,
+  "lefttoolbarpinned": 0,
+  "toptoolbarpinned": 0,
+  "righttoolbarpinned": 0,
+  "bottomtoolbarpinned": 0,
+  "toolbars_unpinned_last_save": 0,
+  "tallnewobj": 0,
+  "boxanimatetime": 200,
+  "enablehscroll": 1,
+  "enablevscroll": 1,
+  "devicewidth": 0,
+  "description": "",
+  "digest": "",
+  "tags": "",
+  "style": "",
+  "subpatcher_template": "",
+  "assistshowspatchername": 0,
+  "boxes": [
+   {
+    "box": {
+     "id": "obj-1",
+     "patching_rect": [
+      40,
+      40,
+      780,
+      520
+     ],
+     "maxclass": "codebox",
+     "numinlets": 1,
+     "numoutlets": 3,
+     "outlettype": [
+      "",
+      "",
+      ""
+     ],
+     "fontface": 0,
+     "fontname": "Menlo",
+     "fontsize": 11,
+     "code": "// ════════════════════════════════════════════════════════════════════════════\n// MōdSynth — one voice, for gen~ inside poly~\n// ────────────────────────────────────────────────────────────────────────────\n// This is the Live-side counterpart to js/dsp.js. It is deliberately a subset:\n// gen~ has no wavetable bank, so the oscillators are band-limited analog\n// shapes (PolyBLEP) morphed by `shape` rather than the sixteen wavetable sets\n// the web app carries. Everything else — the ZDF ladder, the TPT state\n// variable filter, the envelope timing, the unison detune law, the analog\n// drift — is the same design and the same numbers, so a patch that names a\n// cutoff of 800 Hz sounds like 800 Hz in both.\n//\n// Parameter names match js/params.js with '.' replaced by '_', which is how\n// the device patcher can forward \"flt1_cutoff 800\" straight from a live.dial.\n//\n// Inputs:  gate (0…1 velocity, 0 = release), pitch (MIDI note, fractional)\n// Outputs: out1 left, out2 right, out3 amp envelope (for poly~ voice freeing)\n// ════════════════════════════════════════════════════════════════════════════\n\nParam gate(0);\nParam pitch(60);\n\n// ── Voice ──\nParam voice_glide(0, min=0, max=4);\nParam voice_bendUp(2, min=0, max=24);\nParam voice_bendDown(2, min=0, max=24);\nParam voice_transpose(0, min=-24, max=24);\nParam voice_tune(0, min=-100, max=100);\nParam voice_drift(0.12, min=0, max=1);\nParam voice_velAmt(0.6, min=0, max=1);\nParam bend(0, min=-1, max=1);\nParam modwheel(0, min=0, max=1);\nParam aftertouch(0, min=0, max=1);\n\n// ── Oscillators. `shape` morphs sine → triangle → saw → square, matching\n//    the web app's `classic` wavetable set so patches translate directly. ──\nParam osc1_on(1);\nParam osc1_shape(0.66, min=0, max=1);\nParam osc1_pw(0.5, min=0.02, max=0.98);\nParam osc1_pulse(0);\nParam osc1_oct(0, min=-4, max=4);\nParam osc1_semi(0, min=-24, max=24);\nParam osc1_fine(0, min=-100, max=100);\nParam osc1_level(0.8, min=0, max=1);\nParam osc1_uni(1, min=1, max=4);\nParam osc1_detune(18, min=0, max=100);\n\nParam osc2_on(0);\nParam osc2_shape(0.66, min=0, max=1);\nParam osc2_pw(0.5, min=0.02, max=0.98);\nParam osc2_pulse(0);\nParam osc2_oct(0, min=-4, max=4);\nParam osc2_semi(0, min=-24, max=24);\nParam osc2_fine(0, min=-100, max=100);\nParam osc2_level(0, min=0, max=1);\nParam osc2_uni(1, min=1, max=4);\nParam osc2_detune(18, min=0, max=100);\nParam osc2_sync(0);\n\nParam mix_fm(0, min=0, max=1);\nParam mix_ring(0, min=0, max=1);\nParam mix_sub(0, min=0, max=1);\nParam mix_noise(0, min=0, max=1);\n\n// ── Filters ──\nParam flt1_model(1, min=0, max=10);\nParam flt1_cutoff(12000, min=20, max=20000);\nParam flt1_res(0.12, min=0, max=1);\nParam flt1_drive(0.1, min=0, max=1);\nParam flt1_keytrack(0, min=-1, max=1);\nParam flt1_env(0, min=-1, max=1);\nParam flt1_vel(0, min=0, max=1);\nParam flt2_model(0, min=0, max=10);\nParam flt2_cutoff(20000, min=20, max=20000);\nParam flt2_res(0.12, min=0, max=1);\n\n// ── Envelopes ──\nParam env1_a(0.005, min=0, max=12);\nParam env1_d(0.4, min=0.001, max=20);\nParam env1_s(0.85, min=0, max=1);\nParam env1_r(0.35, min=0.002, max=20);\nParam env2_a(0.004, min=0, max=12);\nParam env2_d(0.5, min=0.001, max=20);\nParam env2_s(0.4, min=0, max=1);\nParam env2_r(0.3, min=0.002, max=20);\n\n// ── LFOs ──\nParam lfo1_shape(0, min=0, max=9);\nParam lfo1_rate(5, min=0.01, max=40);\nParam lfo1_depth(1, min=0, max=1);\nParam lfo2_shape(0, min=0, max=9);\nParam lfo2_rate(0.5, min=0.01, max=40);\nParam lfo2_depth(1, min=0, max=1);\n\n// ── Fixed modulation depths. gen~ cannot switch a routing per sample without\n//    paying for every possible destination, so the sixteen-slot matrix of the\n//    web app is flattened here into the routings that actually get used. The\n//    device's JavaScript collapses a patch's matrix into these on load. ──\nParam mod_lfo1_pitch(0, min=-1, max=1);\nParam mod_lfo1_cutoff(0, min=-1, max=1);\nParam mod_lfo1_pw(0, min=-1, max=1);\nParam mod_lfo1_amp(0, min=-1, max=1);\nParam mod_lfo1_shape(0, min=-1, max=1);\nParam mod_lfo2_pitch(0, min=-1, max=1);\nParam mod_lfo2_cutoff(0, min=-1, max=1);\nParam mod_lfo2_shape(0, min=-1, max=1);\nParam mod_lfo2_pan(0, min=-1, max=1);\nParam mod_env2_pitch(0, min=-1, max=1);\nParam mod_env2_shape(0, min=-1, max=1);\nParam mod_env2_fm(0, min=-1, max=1);\nParam mod_mw_lfo1depth(0, min=-1, max=1);\nParam mod_mw_cutoff(0, min=-1, max=1);\nParam mod_at_cutoff(0, min=-1, max=1);\nParam mod_at_lfo1depth(0, min=-1, max=1);\n\n// ── Offsets written by the device's JS: the summed contribution of the eight\n//    macros plus any matrix rows whose source is global. Applied on top. ──\nParam off_cutoff(0, min=-1, max=1);\nParam off_res(0, min=-1, max=1);\nParam off_detune(0, min=-1, max=1);\nParam off_shape(0, min=-1, max=1);\nParam off_pw(0, min=-1, max=1);\nParam off_fm(0, min=-1, max=1);\nParam off_pitch(0, min=-1, max=1);\nParam off_amp(0, min=-1, max=1);\n\n// ════════════════════════════════════════════════════════════════════════════\n\nHistory gateLast(0);\nHistory velHeld(0);\nHistory e1v(0), e1stage(0), e1pos(0), e1from(0), e1rel(0);\nHistory e2v(0), e2stage(0), e2pos(0), e2from(0), e2rel(0);\nHistory glideP(60);\nHistory p1a(0), p1b(0), p1c(0), p1d(0);\nHistory p2a(0), p2b(0), p2c(0), p2d(0);\nHistory subPh(0);\nHistory l1ph(0), l2ph(0), l1sh(0), l2sh(0);\nHistory f1s1(0), f1s2(0), f1s3(0), f1s4(0);\nHistory f2s1(0), f2s2(0), f2s3(0), f2s4(0);\nHistory svA1(0), svA2(0), svB1(0), svB2(0);\nHistory dcx(0), dcy(0);\nHistory drift1(0), drift2(0), driftT(0);\n\ndt = 1 / samplerate;\n\n// ── Gate handling. A rising gate latches velocity and restarts both\n//    envelopes; a falling one moves them to release. ──\nrising = (gate > 0) && (gateLast <= 0);\nfalling = (gate <= 0) && (gateLast > 0);\ngateLast = gate;\nvelHeld = rising ? gate : velHeld;\nvel = velHeld;\n\n// ── Envelopes. Stage-timed with a hyperbolic bend, identical in shape and\n//    timing to Env.run() in js/dsp.js. ──\ne1stage = rising ? 1 : (falling && e1stage != 0 ? 4 : e1stage);\ne1pos = rising ? 0 : (falling && e1stage != 0 ? 0 : e1pos);\ne1from = rising ? e1v : e1from;\ne1rel = falling ? e1v : e1rel;\n\ne1inc = e1stage == 1 ? (env1_a > 0.00001 ? dt / env1_a : 1)\n      : e1stage == 2 ? (env1_d > 0.00001 ? dt / env1_d : 1)\n      : e1stage == 4 ? (env1_r > 0.00001 ? dt / env1_r : 1) : 0;\ne1pos = e1pos + e1inc;\ne1done = e1pos >= 1;\ne1stage = (e1stage == 1 && e1done) ? 2 : (e1stage == 2 && e1done) ? 3 : (e1stage == 4 && e1done) ? 0 : e1stage;\ne1pos = e1done ? 0 : e1pos;\ne1t = clamp(e1pos, 0, 1);\ne1atk = e1from + (1 - e1from) * e1t;\ne1dec = 1 - (1 - env1_s) * (e1t * 4 / (1 + 3 * e1t));\ne1relv = e1rel * (1 - (e1t * 4 / (1 + 3 * e1t)));\ne1v = e1stage == 1 ? e1atk : e1stage == 2 ? e1dec : e1stage == 3 ? env1_s : e1stage == 4 ? e1relv : 0;\nenv1 = clamp(e1v, 0, 1);\n\ne2stage = rising ? 1 : (falling && e2stage != 0 ? 4 : e2stage);\ne2pos = rising ? 0 : (falling && e2stage != 0 ? 0 : e2pos);\ne2from = rising ? e2v : e2from;\ne2rel = falling ? e2v : e2rel;\ne2inc = e2stage == 1 ? (env2_a > 0.00001 ? dt / env2_a : 1)\n      : e2stage == 2 ? (env2_d > 0.00001 ? dt / env2_d : 1)\n      : e2stage == 4 ? (env2_r > 0.00001 ? dt / env2_r : 1) : 0;\ne2pos = e2pos + e2inc;\ne2done = e2pos >= 1;\ne2stage = (e2stage == 1 && e2done) ? 2 : (e2stage == 2 && e2done) ? 3 : (e2stage == 4 && e2done) ? 0 : e2stage;\ne2pos = e2done ? 0 : e2pos;\ne2t = clamp(e2pos, 0, 1);\ne2v = e2stage == 1 ? (e2from + (1 - e2from) * e2t)\n    : e2stage == 2 ? (1 - (1 - env2_s) * (e2t * 4 / (1 + 3 * e2t)))\n    : e2stage == 3 ? env2_s\n    : e2stage == 4 ? (e2rel * (1 - (e2t * 4 / (1 + 3 * e2t)))) : 0;\nenv2 = clamp(e2v, 0, 1);\n\n// ── LFOs ──\nl1ph = wrap(l1ph + lfo1_rate * dt, 0, 1);\nl2ph = wrap(l2ph + lfo2_rate * dt, 0, 1);\nl1sh = (l1ph < 0.02 && lfo1_shape > 5.5) ? noise() : l1sh;\nl2sh = (l2ph < 0.02 && lfo2_shape > 5.5) ? noise() : l2sh;\nlfoShapeOf(ph, sh, held) {\n  s = round(sh);\n  return s == 0 ? sin(ph * twopi)\n       : s == 1 ? (ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph)\n       : s == 2 ? (1 - 2 * ph)\n       : s == 3 ? (2 * ph - 1)\n       : s == 4 ? (ph < 0.5 ? 1 : -1)\n       : s == 5 ? (ph < 0.25 ? 1 : -1)\n       : s == 6 ? held\n       : s == 8 ? (2 * exp(-ph * 4) - 1)\n       : held;\n}\nlfo1d = clamp(lfo1_depth + modwheel * mod_mw_lfo1depth + aftertouch * mod_at_lfo1depth, 0, 1);\nlfo1 = lfoShapeOf(l1ph, lfo1_shape, l1sh) * lfo1d;\nlfo2 = lfoShapeOf(l2ph, lfo2_shape, l2sh) * lfo2_depth;\n\n// ── Analog drift: two slow random walks, one per oscillator. ──\ndriftT = wrap(driftT + dt * 0.4, 0, 1);\nnewDrift = driftT < dt * 0.5;\ndrift1 = newDrift ? noise() : drift1;\ndrift2 = newDrift ? noise() : drift2;\n\n// ── Pitch ──\nbendSemis = bend >= 0 ? bend * voice_bendUp : bend * voice_bendDown;\ntargetP = pitch + voice_transpose + voice_tune * 0.01 + bendSemis;\nglideCoef = voice_glide > 0.0005 ? 1 - exp(-dt / (voice_glide * 0.35)) : 1;\nglideP = glideP + (targetP - glideP) * glideCoef;\nmodPitch = lfo1 * mod_lfo1_pitch * 24 + lfo2 * mod_lfo2_pitch * 24\n         + env2 * mod_env2_pitch * 24 + off_pitch * 24;\nbasePitch = glideP + modPitch;\n\n// ── PolyBLEP: subtracts the aliasing a naive discontinuity would add. Without\n//    it a saw at the top of the keyboard folds noise back down into the\n//    audible range, which is exactly what the web app's mip-mapped tables\n//    avoid by construction. ──\nblep(t, dtx) {\n  return t < dtx ? (a = t / dtx, a + a - a * a - 1)\n       : t > 1 - dtx ? (a = (t - 1) / dtx, a * a + a + a + 1)\n       : 0;\n}\n\n// One oscillator line: morphs sine → triangle → saw → square, or renders a\n// band-limited pulse of any width when `pulse` is on.\noscLine(ph, inc, shp, pw, pulse) {\n  saw = 2 * ph - 1 - blep(ph, inc);\n  ph2 = wrap(ph + pw, 0, 1);\n  sqr = (ph < pw ? 1 : -1) - blep(ph, inc) + blep(ph2, inc);\n  sine = sin(ph * twopi);\n  tri = 1 - 4 * abs(wrap(ph + 0.25, 0, 1) - 0.5);\n  m = clamp(shp, 0, 1) * 3;\n  a = m < 1 ? mix(sine, tri, m)\n    : m < 2 ? mix(tri, saw, m - 1)\n    : mix(saw, (ph < 0.5 ? 1 : -1) - blep(ph, inc) + blep(wrap(ph + 0.5, 0, 1), inc), m - 2);\n  return pulse > 0.5 ? sqr * 0.8 : a;\n}\n\ndetuneOf(cents, idx, n) {\n  return n <= 1 ? 0 : cents * ((idx / (n - 1)) * 2 - 1);\n}\n\nshape1 = clamp(osc1_shape + off_shape + lfo1 * mod_lfo1_shape + lfo2 * mod_lfo2_shape + env2 * mod_env2_shape, 0, 1);\nshape2 = clamp(osc2_shape + off_shape + lfo2 * mod_lfo2_shape, 0, 1);\npw1 = clamp(osc1_pw + off_pw + lfo1 * mod_lfo1_pw * 0.45, 0.02, 0.98);\npw2 = clamp(osc2_pw + off_pw, 0.02, 0.98);\ndet1 = clamp(osc1_detune + off_detune * 100, 0, 200);\ndet2 = clamp(osc2_detune + off_detune * 100, 0, 200);\nn1 = clamp(round(osc1_uni), 1, 4);\nn2 = clamp(round(osc2_uni), 1, 4);\n\nf1base = mtof(basePitch + osc1_oct * 12 + osc1_semi + osc1_fine * 0.01) * (1 + drift1 * voice_drift * 0.004);\nf2base = mtof(basePitch + osc2_oct * 12 + osc2_semi + osc2_fine * 0.01) * (1 + drift2 * voice_drift * 0.004);\n\n// Osc 2 first — it is the FM modulator and the ring partner.\ni2a = clamp(f2base * exp(detuneOf(det2, 0, n2) * 0.00057762) * dt, 0, 0.49);\ni2b = clamp(f2base * exp(detuneOf(det2, 1, n2) * 0.00057762) * dt, 0, 0.49);\ni2c = clamp(f2base * exp(detuneOf(det2, 2, n2) * 0.00057762) * dt, 0, 0.49);\ni2d = clamp(f2base * exp(detuneOf(det2, 3, n2) * 0.00057762) * dt, 0, 0.49);\np2a = wrap(p2a + i2a, 0, 1);\np2b = wrap(p2b + i2b, 0, 1);\np2c = wrap(p2c + i2c, 0, 1);\np2d = wrap(p2d + i2d, 0, 1);\no2 = oscLine(p2a, i2a, shape2, pw2, osc2_pulse)\n   + (n2 > 1) * oscLine(p2b, i2b, shape2, pw2, osc2_pulse)\n   + (n2 > 2) * oscLine(p2c, i2c, shape2, pw2, osc2_pulse)\n   + (n2 > 3) * oscLine(p2d, i2d, shape2, pw2, osc2_pulse);\no2 = o2 / sqrt(n2 * 0.55 + 0.45);\n\nfmAmt = clamp(mix_fm + off_fm + env2 * mod_env2_fm, 0, 1);\npm = fmAmt * fmAmt * 2.5 * o2;\n\ni1a = clamp(f1base * exp(detuneOf(det1, 0, n1) * 0.00057762) * dt, 0, 0.49);\ni1b = clamp(f1base * exp(detuneOf(det1, 1, n1) * 0.00057762) * dt, 0, 0.49);\ni1c = clamp(f1base * exp(detuneOf(det1, 2, n1) * 0.00057762) * dt, 0, 0.49);\ni1d = clamp(f1base * exp(detuneOf(det1, 3, n1) * 0.00057762) * dt, 0, 0.49);\np1a = wrap(p1a + i1a, 0, 1);\np1b = wrap(p1b + i1b, 0, 1);\np1c = wrap(p1c + i1c, 0, 1);\np1d = wrap(p1d + i1d, 0, 1);\n// Hard sync: reset osc 2 whenever osc 1's master phase wraps.\nsyncNow = osc2_sync > 0.5 && p1a < i1a;\np2a = syncNow ? 0 : p2a;\np2b = syncNow ? 0 : p2b;\np2c = syncNow ? 0 : p2c;\np2d = syncNow ? 0 : p2d;\n\no1 = oscLine(wrap(p1a + pm, 0, 1), i1a, shape1, pw1, osc1_pulse)\n   + (n1 > 1) * oscLine(wrap(p1b + pm, 0, 1), i1b, shape1, pw1, osc1_pulse)\n   + (n1 > 2) * oscLine(wrap(p1c + pm, 0, 1), i1c, shape1, pw1, osc1_pulse)\n   + (n1 > 3) * oscLine(wrap(p1d + pm, 0, 1), i1d, shape1, pw1, osc1_pulse);\no1 = o1 / sqrt(n1 * 0.55 + 0.45);\n\nsubPh = wrap(subPh + clamp(mtof(basePitch - 12) * dt, 0, 0.49), 0, 1);\nsub = sin(subPh * twopi) * mix_sub;\nnz = noise() * mix_noise * 0.6;\n\nmixed = o1 * osc1_level * (osc1_on > 0.5)\n      + o2 * osc2_level * (osc2_on > 0.5)\n      + o1 * o2 * mix_ring * 1.6\n      + sub + nz;\n\n// DC blocker — PWM and asymmetric drive both produce offset.\ndcy = mixed - dcx + 0.9985 * dcy;\ndcx = mixed;\nsig = dcy;\n\n// ── Filter 1: ZDF ladder, one saturation inside the feedback loop. ──\nkt = flt1_keytrack * (pitch - 60) / 12;\ncut1 = clamp(flt1_cutoff * exp(0.693147 * (flt1_env * env2 * 7 + kt + flt1_vel * vel * 4\n        + lfo1 * mod_lfo1_cutoff * 8 + lfo2 * mod_lfo2_cutoff * 8\n        + modwheel * mod_mw_cutoff * 8 + aftertouch * mod_at_cutoff * 8 + off_cutoff * 8)),\n        12, samplerate * 0.47);\nres1 = clamp(flt1_res + off_res, 0, 0.995);\ndrv1 = 1 + flt1_drive * 9;\ntrim1 = 1 / (1 + flt1_drive * 2.2);\ng1 = tan(pi * cut1 / samplerate);\nG1 = g1 / (1 + g1);\niG1 = 1 - G1;\nk1 = res1 * 4.2;\nS11 = iG1 * f1s1; S12 = iG1 * f1s2; S13 = iG1 * f1s3; S14 = iG1 * f1s4;\nsigma1 = G1 * G1 * G1 * S11 + G1 * G1 * S12 + G1 * S13 + S14;\nu1 = tanh((sig * drv1 - k1 * sigma1) / (1 + k1 * G1 * G1 * G1 * G1));\ny11 = G1 * u1 + S11; f1s1 = 2 * y11 - f1s1;\ny12 = G1 * y11 + S12; f1s2 = 2 * y12 - f1s2;\ny13 = G1 * y12 + S13; f1s3 = 2 * y13 - f1s3;\ny14 = G1 * y13 + S14; f1s4 = 2 * y14 - f1s4;\nlad4 = y14 * trim1;\nlad2 = y12 * trim1;\n\n// ── Shared TPT state-variable core for the remaining models. ──\nkSV = 2 - 1.94 * res1;\na1 = 1 / (1 + g1 * (g1 + kSV));\na2 = g1 * a1;\na3 = g1 * a2;\nxs = tanh(sig * drv1);\nv3 = xs - svA2;\nv1 = a1 * svA1 + a2 * v3;\nv2 = svA2 + a2 * svA1 + a3 * v3;\nsvA1 = 2 * v1 - svA1;\nsvA2 = 2 * v2 - svA2;\nsvlp = v2; svbp = v1; svhp = xs - kSV * v1 - v2;\n\nm1 = round(flt1_model);\nfiltered = m1 == 0 ? sig\n         : m1 == 1 ? lad4\n         : m1 == 2 ? lad2\n         : m1 == 3 ? svlp * trim1\n         : m1 == 4 ? svhp * trim1\n         : m1 == 5 ? svbp * (1 + res1 * 2) * trim1\n         : m1 == 6 ? (xs - kSV * v1) * trim1\n         : m1 == 7 ? (svlp - svhp) * trim1\n         : m1 == 8 ? lad2\n         : lad4;\n\n// ── Filter 2: a second TPT stage, bypassed unless a model is chosen. ──\ng2 = tan(pi * clamp(flt2_cutoff, 20, samplerate * 0.47) / samplerate);\nk2 = 2 - 1.94 * clamp(flt2_res, 0, 0.995);\nb1 = 1 / (1 + g2 * (g2 + k2));\nb2 = g2 * b1;\nb3 = g2 * b2;\nw3 = filtered - svB2;\nw1 = b1 * svB1 + b2 * w3;\nw2 = svB2 + b2 * svB1 + b3 * w3;\nsvB1 = 2 * w1 - svB1;\nsvB2 = 2 * w2 - svB2;\nm2 = round(flt2_model);\nout2nd = m2 == 0 ? filtered\n       : m2 == 4 ? (filtered - k2 * w1 - w2)\n       : m2 == 5 ? w1 * (1 + flt2_res * 2)\n       : w2;\n\n// ── Amp ──\nvelGain = 1 - voice_velAmt + voice_velAmt * vel;\namp = env1 * velGain * (1 + off_amp + lfo1 * mod_lfo1_amp) * 0.5;\npan = clamp(lfo2 * mod_lfo2_pan, -1, 1);\nsigOut = out2nd * clamp(amp, 0, 4);\n\nout1 = sigOut * sqrt((1 - pan) * 0.5);\nout2 = sigOut * sqrt((1 + pan) * 0.5);\nout3 = env1;\n"
+    }
+   },
+   {
+    "box": {
+     "id": "obj-2",
+     "patching_rect": [
+      40,
+      600,
+      60,
+      22
+     ],
+     "maxclass": "newobj",
+     "text": "out 1",
+     "numinlets": 1,
+     "numoutlets": 0,
+     "outlettype": []
+    }
+   },
+   {
+    "box": {
+     "id": "obj-3",
+     "patching_rect": [
+      130,
+      600,
+      60,
+      22
+     ],
+     "maxclass": "newobj",
+     "text": "out 2",
+     "numinlets": 1,
+     "numoutlets": 0,
+     "outlettype": []
+    }
+   },
+   {
+    "box": {
+     "id": "obj-4",
+     "patching_rect": [
+      220,
+      600,
+      60,
+      22
+     ],
+     "maxclass": "newobj",
+     "text": "out 3",
+     "numinlets": 1,
+     "numoutlets": 0,
+     "outlettype": []
+    }
+   }
+  ],
+  "lines": [
+   {
+    "patchline": {
+     "destination": [
+      "obj-2",
+      0
+     ],
+     "source": [
+      "obj-1",
+      0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "destination": [
+      "obj-3",
+      0
+     ],
+     "source": [
+      "obj-1",
+      1
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "destination": [
+      "obj-4",
+      0
+     ],
+     "source": [
+      "obj-1",
+      2
+     ]
+    }
+   }
+  ],
+  "dependency_cache": [],
+  "autosave": 0
+ }
+}

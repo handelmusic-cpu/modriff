@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>MōdSynth</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d17'/%3E%3Cpath d='M4 22 Q10 6 16 16 T28 10' stroke='%2358e6ff' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/modsynth.css">
+</head>
+<body>
+
+<!-- Audio can only start from a gesture, so the app opens behind a splash. -->
+<div class="splash" id="splash">
+  <h1>MōdSynth</h1>
+  <p>A multivoice wavetable-and-analog synthesiser. Three hundred patches, eight macros,
+     a modulation matrix, motion lanes, an arpeggiator and a drum machine.</p>
+  <button class="go" id="splash-go">Start</button>
+  <div class="err" id="splash-err"></div>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div>
+    <div class="logo">MŌDSYNTH</div>
+    <div class="logo-sub">Polyphonic Instrument</div>
+  </div>
+
+  <button class="btn icon" id="btn-prev" title="Previous patch (Shift+←)">◀</button>
+  <div class="patch-display">
+    <span class="patch-name" id="patch-name">Init</span>
+    <span class="patch-dirty" id="patch-dirty"></span>
+    <span class="patch-cat" id="patch-cat"></span>
+  </div>
+  <button class="btn icon" id="btn-next" title="Next patch (Shift+→)">▶</button>
+
+  <button class="btn" id="btn-browse" title="Browse patches">Patches</button>
+  <button class="btn icon" id="btn-fav" title="Favourite this patch">★</button>
+  <button class="btn" id="btn-save" title="Save the current sound">Save</button>
+  <button class="btn icon accent" id="btn-dice" title="Roll a random patch">⚄</button>
+  <button class="btn" id="btn-init" title="Start from a blank sound">Init</button>
+
+  <div class="seg">
+    <button class="btn icon" id="btn-play" title="Start/stop the clock (Space)">▶</button>
+  </div>
+  <input class="sel" id="bpm" type="number" min="20" max="300" step="1" value="120"
+         style="width:58px" title="Tempo">
+
+  <button class="btn icon" id="btn-panic" title="Stop all sound">⏹</button>
+
+  <div class="meters">
+    <span id="voice-count" title="Active voices">00</span>
+    <div class="vu" title="Output level"><div class="vu-fill" id="vu-fill"></div></div>
+  </div>
+</div>
+
+<!-- ── Tabs ──────────────────────────────────────────────────────────────── -->
+<div class="tabs">
+  <button class="tab on" data-page="synth">Synth</button>
+  <button class="tab" data-page="mod">Mod</button>
+  <button class="tab" data-page="fx">FX</button>
+  <button class="tab" data-page="arp">Arp &amp; Drums</button>
+  <button class="tab" data-page="midi">MIDI</button>
+</div>
+
+<!-- ── Pages ─────────────────────────────────────────────────────────────── -->
+<div class="main">
+  <div class="page on" id="page-synth"></div>
+  <div class="page" id="page-mod"></div>
+  <div class="page" id="page-fx"></div>
+  <div class="page" id="page-arp"></div>
+  <div class="page" id="page-midi"></div>
+</div>
+
+<!-- ── Macros ────────────────────────────────────────────────────────────── -->
+<div class="macro-bar" id="macro-bar"></div>
+
+<!-- ── Performance strip ─────────────────────────────────────────────────── -->
+<div class="perform">
+  <div class="wheels">
+    <div class="wheel bend" id="wheel-bend" title="Pitch bend — springs back to centre">
+      <div class="wheel-fill"></div><div class="wheel-cap"></div><div class="wheel-lbl">BEND</div>
+    </div>
+    <div class="wheel" id="wheel-mod" title="Mod wheel (CC 1) — stays where you leave it">
+      <div class="wheel-fill"></div><div class="wheel-cap"></div><div class="wheel-lbl">MOD</div>
+    </div>
+  </div>
+  <div class="keyboard" id="keyboard"></div>
+  <div class="scope-wrap">
+    <canvas id="scope" title="Output waveform"></canvas>
+    <canvas id="spectrum" title="Output spectrum"></canvas>
+    <div class="hint" id="kb-info" style="text-align:center;margin:0">Oct 4 · Vel 85</div>
+  </div>
+</div>
+
+<!-- ── Patch browser ─────────────────────────────────────────────────────── -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Patches</span>
+      <input class="search" id="search" type="search" placeholder="Search by name, category or tag…">
+      <button class="btn" id="btn-fav-filter" title="Show favourites only">★ Favourites</button>
+      <button class="btn icon" id="btn-close-browser" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="cat-list" id="cat-list"></div>
+      <div class="patch-list" id="patch-list"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btn-export">Export yours</button>
+      <button class="btn" id="btn-import">Import…</button>
+      <button class="btn" id="btn-delete">Delete</button>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none">
+      <span class="hint" style="margin:0">Click to audition · double-click to load and close · right-click to favourite</span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/params.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/sequencer.js"></script>
+<script src="js/patchlib.js"></script>
+<script src="js/patches.js"></script>
+<script src="js/patches-extra.js"></script>
+<script src="js/midi.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

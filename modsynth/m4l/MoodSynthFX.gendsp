@@ -1,0 +1,133 @@
+{
+ "patcher": {
+  "fileversion": 1,
+  "appversion": {
+   "major": 8,
+   "minor": 5,
+   "revision": 0,
+   "architecture": "x64",
+   "modernui": 1
+  },
+  "classnamespace": "dsp.gen",
+  "rect": [
+   50,
+   90,
+   900,
+   700
+  ],
+  "bglocked": 0,
+  "openinpresentation": 0,
+  "default_fontsize": 12,
+  "default_fontface": 0,
+  "default_fontname": "Arial",
+  "gridonopen": 1,
+  "gridsize": [
+   15,
+   15
+  ],
+  "gridsnaponopen": 1,
+  "objectsnaponopen": 1,
+  "statusbarvisible": 2,
+  "toolbarvisible": 1,
+  "lefttoolbarpinned": 0,
+  "toptoolbarpinned": 0,
+  "righttoolbarpinned": 0,
+  "bottomtoolbarpinned": 0,
+  "toolbars_unpinned_last_save": 0,
+  "tallnewobj": 0,
+  "boxanimatetime": 200,
+  "enablehscroll": 1,
+  "enablevscroll": 1,
+  "devicewidth": 0,
+  "description": "",
+  "digest": "",
+  "tags": "",
+  "style": "",
+  "subpatcher_template": "",
+  "assistshowspatchername": 0,
+  "boxes": [
+   {
+    "box": {
+     "id": "obj-1",
+     "patching_rect": [
+      40,
+      40,
+      780,
+      520
+     ],
+     "maxclass": "codebox",
+     "numinlets": 1,
+     "numoutlets": 2,
+     "outlettype": [
+      "",
+      ""
+     ],
+     "fontface": 0,
+     "fontname": "Menlo",
+     "fontsize": 11,
+     "code": "// ════════════════════════════════════════════════════════════════════════════\n// MōdSynth — master effects for the Live device\n// Drive → chorus → ping-pong delay → reverb → output, matching the order and\n// the parameter names of js/fx.js. The delay reads its time in seconds from\n// the device patcher, which computes it from Live's transport, so a synced\n// delay stays locked when the tempo changes.\n// ════════════════════════════════════════════════════════════════════════════\nParam fx_drive_on(0);\nParam fx_drive_amount(0.3, min=0, max=1);\nParam fx_drive_tone(0.5, min=0, max=1);\nParam fx_chorus_on(0);\nParam fx_chorus_rate(0.6, min=0.02, max=8);\nParam fx_chorus_depth(0.4, min=0, max=1);\nParam fx_chorus_mix(0.4, min=0, max=1);\nParam fx_delay_on(0);\nParam fx_delay_time(0.35, min=0.005, max=4);\nParam fx_delay_fb(0.35, min=0, max=0.95);\nParam fx_delay_pong(0, min=0, max=1);\nParam fx_delay_mix(0.25, min=0, max=1);\nParam fx_reverb_on(0);\nParam fx_reverb_size(0.55, min=0, max=1);\nParam fx_reverb_damp(0.4, min=0, max=1);\nParam fx_reverb_mix(0.25, min=0, max=1);\nParam master_vol(0.8, min=0, max=1.4);\n\nHistory chL(0), chR(0);\nHistory dTone1(0), dTone2(0);\nHistory rv1(0), rv2(0), rv3(0), rv4(0), rv5(0), rv6(0), rv7(0), rv8(0);\n\nl = in1;\nr = in2;\n\n// ── Drive: one saturation with gain compensation, so pushing the control\n//    changes the tone rather than just the level. ──\ndg = 1 + fx_drive_amount * fx_drive_amount * 24;\ndl = tanh(l * dg) / (1 + fx_drive_amount * 1.4);\ndr = tanh(r * dg) / (1 + fx_drive_amount * 1.4);\ntone = 300 * pow(60, fx_drive_tone);\ntc = clamp(1 - exp(-twopi * tone / samplerate), 0, 1);\ndTone1 = dTone1 + (dl - dTone1) * tc;\ndTone2 = dTone2 + (dr - dTone2) * tc;\nl = fx_drive_on > 0.5 ? dTone1 : l;\nr = fx_drive_on > 0.5 ? dTone2 : r;\n\n// ── Chorus: two delay lines in quadrature, panned apart. ──\nlfoA = cycle(fx_chorus_rate);\nlfoB = cycle(fx_chorus_rate * 1.13, 0.25);\ndmA = 0.012 + lfoA * fx_chorus_depth * 0.006;\ndmB = 0.018 + lfoB * fx_chorus_depth * 0.006;\ncA = delay(l, clamp(dmA * samplerate, 1, 4000), 4800);\ncB = delay(r, clamp(dmB * samplerate, 1, 4000), 4800);\ncmix = fx_chorus_on > 0.5 ? fx_chorus_mix : 0;\nl = l * (1 - cmix * 0.5) + cA * cmix;\nr = r * (1 - cmix * 0.5) + cB * cmix;\n\n// ── Ping-pong delay. Straight and crossed feedback are complementary, so the\n//    total loop gain stays at 'fb' however far the ping-pong control goes. ──\ndsamp = clamp(fx_delay_time * samplerate, 8, 190000);\ndlyL = delay(chL, dsamp, 192000);\ndlyR = delay(chR, dsamp * 1.0007, 192000);\nfbAmt = clamp(fx_delay_fb, 0, 0.95);\npong = clamp(fx_delay_pong, 0, 1);\nchL = l + dlyL * fbAmt * (1 - pong) + dlyR * fbAmt * pong;\nchR = r + dlyR * fbAmt * (1 - pong) + dlyL * fbAmt * pong;\ndmix = fx_delay_on > 0.5 ? fx_delay_mix : 0;\nl = l + dlyL * dmix;\nr = r + dlyR * dmix;\n\n// ── Reverb: a four-comb, two-allpass Schroeder network per side. Small, but\n//    dense enough to sit a pad in a room. ──\nmono = (l + r) * 0.5;\nsz = 0.55 + fx_reverb_size * 0.42;\ndamp = clamp(fx_reverb_damp, 0, 0.95);\nc1 = delay(rv1, 1557 * sz, 4096);\nc2 = delay(rv2, 1617 * sz, 4096);\nc3 = delay(rv3, 1491 * sz, 4096);\nc4 = delay(rv4, 1422 * sz, 4096);\nrv1 = mono + c1 * (0.84 - damp * 0.3);\nrv2 = mono + c2 * (0.84 - damp * 0.3);\nrv3 = mono + c3 * (0.84 - damp * 0.3);\nrv4 = mono + c4 * (0.84 - damp * 0.3);\ncombs = (c1 + c2 + c3 + c4) * 0.25;\na1 = delay(rv5, 225, 1024);\nrv5 = combs + a1 * 0.5;\nap1 = a1 - combs * 0.5;\na2 = delay(rv6, 341, 1024);\nrv6 = ap1 + a2 * 0.5;\nap2 = a2 - ap1 * 0.5;\na3 = delay(rv7, 441, 2048);\nrv7 = combs + a3 * 0.5;\nap3 = a3 - combs * 0.5;\na4 = delay(rv8, 556, 2048);\nrv8 = ap3 + a4 * 0.5;\nap4 = a4 - ap3 * 0.5;\nrmix = fx_reverb_on > 0.5 ? fx_reverb_mix : 0;\nl = l + ap2 * rmix * 1.4;\nr = r + ap4 * rmix * 1.4;\n\nout1 = clamp(l * master_vol, -1.6, 1.6);\nout2 = clamp(r * master_vol, -1.6, 1.6);\n"
+    }
+   },
+   {
+    "box": {
+     "id": "obj-2",
+     "patching_rect": [
+      40,
+      600,
+      60,
+      22
+     ],
+     "maxclass": "newobj",
+     "text": "out 1",
+     "numinlets": 1,
+     "numoutlets": 0,
+     "outlettype": []
+    }
+   },
+   {
+    "box": {
+     "id": "obj-3",
+     "patching_rect": [
+      130,
+      600,
+      60,
+      22
+     ],
+     "maxclass": "newobj",
+     "text": "out 2",
+     "numinlets": 1,
+     "numoutlets": 0,
+     "outlettype": []
+    }
+   }
+  ],
+  "lines": [
+   {
+    "patchline": {
+     "destination": [
+      "obj-2",
+      0
+     ],
+     "source": [
+      "obj-1",
+      0
+     ]
+    }
+   },
+   {
+    "patchline": {
+     "destination": [
+      "obj-3",
+      0
+     ],
+     "source": [
+      "obj-1",
+      1
+     ]
+    }
+   }
+  ],
+  "dependency_cache": [],
+  "autosave": 0
+ }
+}
