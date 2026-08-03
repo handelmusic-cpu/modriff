@@ -6174,6 +6174,11 @@ function scheduleDrum(type,t){
  const ctx=getCtx(); if(!ctx) return;
  const dest=masterDest(ctx);
  const rv=_cmx('drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
+ // Same reasoning as sqHitTrack: silent means don't play. Several voices below
+ // ramp to a value derived from rv, and an exponential ramp to exactly zero
+ // throws — which would abort the rest of that voice's scheduling and could
+ // leave a source running with no envelope to shut it off.
+ if(!(rv>0)) return;
  const kit=drumKit;
 
  if(type==='kick'){
@@ -12776,6 +12781,13 @@ function sqHitTrack(track,t,vol,ac,ps){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
+  // A silent hit is not played at all. The Math.max floor below exists so the
+  // voices never ramp an envelope to exactly zero (which throws), but on its
+  // own it turned "muted" into "-60 dB" — every hit still fired, and a bus
+  // compressor with nothing else to work on pulls -60 dB back up into
+  // earshot. Muting the Drums channel left a quiet hi-hat ticking away.
+  // It also saves scheduling dozens of inaudible oscillators per bar.
+  if(!(vol>0)) return;
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
 }
 function sqPlayCell(track,cell,t,vol,ps){
@@ -13083,7 +13095,9 @@ function sqAttachStep(el,ti,s,track){
     else if(cell.v===0){cell.v=1;}else{cell.v=0;}
     lastTap=now;
     sqRefreshStepEl(el,cell,track.c);
-    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100),cell.v===2,sqGp(sqMach,ti));}
+    // Auditioning a step goes through the Drums channel like every other hit,
+    // so a muted or turned-down kit stays muted when you tap the grid.
+    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100)*(typeof _cmx==='function'?_cmx('drum'):1),cell.v===2,sqGp(sqMach,ti));}
   });
   el.addEventListener('pointercancel',function(){if(holdT){clearTimeout(holdT);holdT=null;}});
 }
