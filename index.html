@@ -5351,7 +5351,12 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
  let dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw);
- if(strumMode && !sustain) dec=Math.min(dec,0.7); // plucked/strummed: snappier decay than a held pad
+ // The plucked/strummed character shortens the decay — but only when you
+ // haven't asked for a specific length. Clamping after chordBeats was applied
+ // meant Length 2♩ and 4♩ (1.2 s and 2.4 s at 100 BPM) were both cut to 0.7 s
+ // whenever Strum was on, which is the default: the two longest Length buttons
+ // did nothing at all.
+ if(strumMode && !sustain && !(chordBeats>0)) dec=Math.min(dec,0.7);
  const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
@@ -5422,7 +5427,12 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  const atk=parseFloat(document.getElementById('attack').value);
  const decRaw2=parseFloat(document.getElementById('decay').value);
  let dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw2,chordBeats*beatSec()):decRaw2);
- if(strumMode && !sustain) dec=Math.min(dec,0.7); // plucked/strummed: snappier decay than a held pad
+ // The plucked/strummed character shortens the decay — but only when you
+ // haven't asked for a specific length. Clamping after chordBeats was applied
+ // meant Length 2♩ and 4♩ (1.2 s and 2.4 s at 100 BPM) were both cut to 0.7 s
+ // whenever Strum was on, which is the default: the two longest Length buttons
+ // did nothing at all.
+ if(strumMode && !sustain && !(chordBeats>0)) dec=Math.min(dec,0.7);
  const revMix=parseFloat(document.getElementById('rev-mix').value);
  const _mxCh=_cmx('chord');
  const wg=WAVE_GAIN[wave]||1;
@@ -9697,10 +9707,7 @@ function playChartSlot2(si, ci, atTime){
  const ck=_chordKeyForSlot(slot);
  applyLogicHighlights(ck.deg, ck.label);
  // Auto-regenerate bass line and melody when song loop advances to a new chord (if sync is enabled)
- if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync){
- if(typeof window.blGenerate==='function') setTimeout(window.blGenerate, 10);
- if(typeof window.mlGenerate==='function') setTimeout(window.mlGenerate, 10);
- }
+ if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(atTime);
 }
 
 function transposeSong(semis){
@@ -9996,10 +10003,7 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  }
  if(v !== null){ armedVariant=null; armVariant(null); }
   // Auto-regenerate bass line and melody when a chord fires (if sync is enabled)
-  if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync){
-    if(typeof window.blGenerate==='function') setTimeout(window.blGenerate,10);
-    if(typeof window.mlGenerate==='function') setTimeout(window.mlGenerate,10);
-  }
+  if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(null);
   // Token for releaseSustainedChord() — identifies "this" trigger's generation
   return _sustainId;
 }
@@ -11925,6 +11929,28 @@ window._midiRecLogDrum=function(trackName,t,vol,accent){
   };
 })();
 
+// Bass+Mel: Sync rewrites both generated lines when the chord changes. It used
+// to do that on a flat 10 ms timer, which lands nowhere in particular: the
+// bass scheduler has already committed the next ~100 ms of steps from the old
+// pattern, so the changeover happened partway through whatever it was already
+// playing, at a different point every time. Now that chords are scheduled
+// ahead, 10 ms from now is also up to 90 ms BEFORE you hear the chord — the
+// bass would move first.
+//
+// Regenerating one look-ahead before the chord's own time puts the rewrite in
+// the gap between the last step committed under the old pattern and the first
+// step of the new chord, so the line changes exactly where the chord does.
+function _syncRegenAt(atTime){
+  var ctx=(typeof getCtx==='function')?getCtx():null;
+  var ms=10;
+  if(atTime!=null && ctx){
+    ms=Math.max(0,(atTime-(typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)-ctx.currentTime)*1000);
+  }
+  setTimeout(function(){
+    if(typeof window.blGenerate==='function') window.blGenerate();
+    if(typeof window.mlGenerate==='function') window.mlGenerate();
+  }, ms);
+}
 var _bassAutoSync=true;
 function toggleBassSync(){
   _bassAutoSync=!_bassAutoSync;
