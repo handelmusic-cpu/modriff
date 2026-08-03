@@ -4998,6 +4998,35 @@ let _sustainId = 0;
 // audio time the new one starts, instead of at whatever moment the JS timer
 // happened to run. Without it, a chord scheduled 100 ms ahead would silence
 // its predecessor 100 ms early and leave an audible hole before the downbeat.
+// A second registry, parallel to activeOscs, for a genuine hard stop — the
+// ending engine's finish(), and the spacebar panic-stop. activeOscs itself
+// is scoped to the chord engine and gets swept on every chord retrigger
+// (stopAll() runs on every new chord press), so reusing it here would let
+// playing a new chord silently kill whatever the arp, bass or melody
+// generator happened to be sounding, which a chord retrigger should not do.
+//
+// This is what an ending actually needed and didn't have: scheduleArpNote,
+// scheduleArpBlock, blPlayNote and mlPlayNote all schedule ahead by up to a
+// full look-ahead (~100ms) and, once a note is committed to the audio graph
+// with .start(t), nothing about clearing the JS clock timer un-schedules it
+// — that timer only stops FUTURE ticks from committing more notes. A note
+// already committed in the next 100ms when an ending fires plays out
+// regardless, which is the stray note after an ending.
+let _voiceKillReg=[];
+function _regKill(gain){ if(gain) _voiceKillReg.push(gain); }
+function hardKillAll(atTime){
+ const ctx=getCtx();
+ const nowT=ctx?ctx.currentTime:0;
+ const t=(atTime!=null)?Math.max(atTime,nowT):nowT;
+ _voiceKillReg.forEach(g=>{
+  try{
+   if(t>nowT && g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(t);
+   else { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value,t); }
+   g.gain.linearRampToValueAtTime(0,t+FADE_OUT);
+  }catch(e){}
+ });
+ _voiceKillReg=[];
+}
 function stopAll(atTime){
  const ctx = getCtx();
  const nowT = ctx ? ctx.currentTime : 0;
@@ -6024,7 +6053,13 @@ function schedHorizon(){
  return (c?c.currentTime:0)+LOOK_AHEAD;
 }
 let _schedHorizon=null;
+// Set by stopEverything() and read at the bottom of this same function. A
+// synchronous stop can happen NESTED inside a tick that is already running —
+// see the comment above _clockStopRequested's use below for the mechanism —
+// and tickClock() must notice that before blindly re-arming itself.
+let _clockStopRequested=false;
 function tickClock(){
+ _clockStopRequested=false;
  var _c0=getCtx();
  _schedHorizon = _c0 ? _c0.currentTime+LOOK_AHEAD : null;
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
@@ -6039,6 +6074,20 @@ function tickClock(){
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
  _schedHorizon=null;
+ // A song loop finishing its pass mid-tick (window._sqScheduler above, which
+ // announces the bar boundary SYNCHRONOUSLY via tickSongLoop) can run all the
+ // way through _advanceLoopSlot -> _runEnding -> stopEverything() before this
+ // function gets back here — a "Cold" ending is not deferred, it stops
+ // immediately. stopEverything() calls clearTimeout(clockTimer) to halt
+ // everything, but this function was already past that point in its own
+ // execution and was always going to reach its unconditional self-reschedule
+ // below regardless of what just happened three calls up the stack — which
+ // silently woke the clock right back up a moment after it had just been
+ // stopped, and kept the arp (whose "on" flag is deliberately left alone by
+ // a stop, so a later Play resumes it) firing new notes indefinitely. This
+ // is what "still playing a note after the endings" actually was: not one
+ // trailing note, but the whole clock reawakening.
+ if(_clockStopRequested){ _clockStopRequested=false; return; }
  clockTimer=setTimeout(tickClock,SCHED_INT);
 }
 function startClock(){
@@ -6068,6 +6117,7 @@ function scheduleArpBlock(t,dur){
  g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
  makeVoice(ctx, midi, g, strumT, dur * 0.85, arpWave,'arp');
+ _regKill(g);
  });
 }
 
@@ -6117,6 +6167,7 @@ function scheduleArpNote(midi,t,dur){
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
  const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave,'arp');
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],dur);
+ _regKill(g);
 
  const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
  setTimeout(()=>{
@@ -11265,6 +11316,9 @@ function isAnythingPlaying(){
 // bassline, song loop, and any held melody notes.
 // arpOn and blEnabled flags are preserved so next Play restores them.
 function stopEverything(){
+ // Recognised by tickClock() if this stop happens nested inside a tick that
+ // is already mid-execution (the Cold-ending case) — see the comment there.
+ _clockStopRequested=true;
  stopSongLoopIfActive();
  // Stop rhythm directly without restarting arp clock
  if(rhythmOn){
@@ -11290,6 +11344,11 @@ function stopEverything(){
  if(_isRecording) _stopRecording();
  Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
  stopAll();
+ // Silences whatever the arp, bass and melody generator had already
+ // committed into the next look-ahead's worth of the audio graph — see the
+ // comment on hardKillAll() for why activeOscs/stopAll() alone can't reach
+ // them. This is what stops a stray note from sounding after an ending.
+ if(typeof hardKillAll==='function') hardKillAll();
  setNowPlayingPad(-1,null);
  syncFixedTransport();
 }
@@ -13498,6 +13557,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + (slide ? 0.12 : 0.025));
   g.connect(mg);
+  if(typeof _regKill==='function') _regKill(g);
 
   var stopT = t + dur + (slide ? 0.15 : 0.06);
   // Detaching g pulls the whole upstream chain (osc, filter, shaper) out of
@@ -14243,6 +14303,7 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   g.gain.setValueAtTime(v * 0.9, t + Math.max(dur*0.6, 0.03));
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
   g.connect(mg);
+  if(typeof _regKill==='function') _regKill(g);
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
   if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
 }
