@@ -7832,9 +7832,11 @@ function _setSlider(id,val,labelFn){
 }
 function _capSettings(){
  return {
-  // voices
+  // voices — melgen's own wave was never captured here at all, so undo/redo
+  // and the dice both quietly skipped it while touching every other part.
   wave, arpWave, melWave,
   blWave: (typeof window._blCaptureState==='function') ? window._blCaptureState().wave : null,
+  melgenWave: (typeof window._mlCaptureState==='function') ? window._mlCaptureState().wave : null,
   // arp behaviour
   arpPat, arpOcts, arpVelShape, arpGatePat, arpRateIdx,
   gate: _sv('arp-gate'),
@@ -7857,8 +7859,36 @@ function _capSettings(){
   sqRateMul: (typeof sqRateMul!=='undefined') ? sqRateMul : null,
   modSynthPreset: (typeof modSynthPreset!=='undefined') ? modSynthPreset : null,
   // The preset NAME alone cannot rebuild a Custom patch, so snapshot the
-  // live parameters too.
-  modSynthParams: (typeof modSynthParams!=='undefined') ? _msClone(modSynthParams) : null
+  // live parameters too. This only ever covered the part the MōdSynth panel
+  // happened to be open on (modSynthParams is a live binding onto
+  // modSynthPatches[msPart]) — editing bass's patch while the panel was
+  // showing chords was invisible to undo. modSynthPatchesAll snapshots every
+  // part's patch, independent of which one is on screen.
+  modSynthPatchesAll: (typeof modSynthPatches!=='undefined')
+   ? Object.fromEntries(Object.entries(modSynthPatches).map(([k,v])=>[k,_msClone(v)])) : null,
+  modSynthPresetOfAll: (typeof modSynthPresetOf!=='undefined') ? Object.assign({},modSynthPresetOf) : null,
+
+  // Mixer — levels, mute and solo. Previously excluded on purpose (the dice
+  // and undo both left the mix alone); "everything is undoable" means the
+  // mixer is no exception now.
+  mixGains: (typeof window.sqMixGainsW==='object' && window.sqMixGainsW) ? Object.assign({},window.sqMixGainsW) : null,
+  mixMute:  (typeof window.sqMixMute==='object' && window.sqMixMute)     ? Object.assign({},window.sqMixMute)  : null,
+  mixSolo:  (typeof window.sqMixSolo==='object' && window.sqMixSolo)     ? Object.assign({},window.sqMixSolo)  : null,
+
+  // Drum kit choice, and the actual grid contents for all three sequenced
+  // parts (drums/bass/melody gen) — the step PATTERNS themselves, not just
+  // the tempo/step-count/swing numbers around them. Same reasoning as the
+  // mixer: these were deliberately excluded before, and now aren't.
+  drumKit: (typeof drumKit!=='undefined') ? drumKit : null,
+  sqState: (typeof window._sqCaptureState==='function') ? JSON.parse(JSON.stringify(window._sqCaptureState())) : null,
+  blState: (typeof window._blCaptureState==='function') ? JSON.parse(JSON.stringify(window._blCaptureState())) : null,
+  mlState: (typeof window._mlCaptureState==='function') ? JSON.parse(JSON.stringify(window._mlCaptureState())) : null,
+
+  // The song chart itself — sections, their chords, and each section's
+  // repeat/advance setting. The one thing every other snapshot in this app
+  // deliberately left alone; folded in here so editing a chart is undoable
+  // the same way turning a knob is, through the same ↶ / ↷.
+  sections: (typeof sections!=='undefined') ? JSON.parse(JSON.stringify(sections)) : null
  };
 }
 function _applySettings(s){
@@ -7870,11 +7900,51 @@ function _applySettings(s){
  if(s.sqRateMul!=null && typeof setSeqRate==='function'){ try{ setSeqRate('sq', s.sqRateMul); }catch(e){} }
  if(s.sqSwing!=null && typeof window._sqSetSwing==='function'){ try{ window._sqSetSwing(s.sqSwing); }catch(e){} }
  if(s.chordBeats!=null && typeof setChordBeats==='function'){ try{ setChordBeats(s.chordBeats); }catch(e){} }
- if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){
+ // Every part's MōdSynth patch, not just whichever one the panel happens to
+ // be showing — see the comment on modSynthPatchesAll in _capSettings.
+ if(s.modSynthPatchesAll && typeof modSynthPatches!=='undefined'){
+  try{
+   Object.keys(s.modSynthPatchesAll).forEach(k=>{ modSynthPatches[k]=_msClone(s.modSynthPatchesAll[k]); });
+   if(s.modSynthPresetOfAll) Object.assign(modSynthPresetOf, s.modSynthPresetOfAll);
+   if(typeof syncModSynthUI==='function') syncModSynthUI();
+  }catch(e){}
+ } else if(s.modSynthPreset!=null && typeof setModSynthPreset==='function'){
+  // Older-shaped snapshot (current part only) — kept for safety.
   try{
    if(s.modSynthPreset!=='custom') setModSynthPreset(s.modSynthPreset);
    if(s.modSynthParams){ modSynthParams=_msClone(s.modSynthParams); modSynthPreset=s.modSynthPreset;
      if(typeof syncModSynthUI==='function') syncModSynthUI(); }
+  }catch(e){}
+ }
+ // Mixer — levels, mute, solo.
+ if(s.mixGains && window.sqMixGainsW) Object.assign(window.sqMixGainsW, s.mixGains);
+ if(s.mixMute){ window.sqMixMute=Object.assign({},s.mixMute); }
+ if(s.mixSolo){ window.sqMixSolo=Object.assign({},s.mixSolo); }
+ if(s.mixGains||s.mixMute||s.mixSolo){
+  if(typeof window.buildMixChannelsInto==='function'){
+   document.querySelectorAll('.mix-chan-row').forEach(el=>window.buildMixChannelsInto(el));
+  }
+  if(typeof sqSyncMixIndicators==='function') sqSyncMixIndicators();
+ }
+ // Drum kit + the actual step patterns for drums/bass/melody gen — restored
+ // after the structural sq settings above so grid dimensions already match.
+ // No setter exists for this — it's a plain global with no UI control of its
+ // own (sqMach, the step sequencer's kit, is the one with a real picker and
+ // is already covered via sqState below) — restore it the same way.
+ if(s.drumKit!=null && typeof drumKit!=='undefined') drumKit=s.drumKit;
+ if(s.sqState && typeof window._sqRestoreState==='function'){ try{ window._sqRestoreState(s.sqState); }catch(e){} }
+ if(s.blState && typeof window._blRestoreState==='function'){ try{ window._blRestoreState(s.blState); }catch(e){} }
+ if(s.mlState && typeof window._mlRestoreState==='function'){ try{ window._mlRestoreState(s.mlState); }catch(e){} }
+ else if(s.melgenWave && typeof window.setMlWave==='function'){ setMlWave(s.melgenWave); }
+ // The song chart — sections, chords, repeat/advance. Re-render whatever's
+ // currently on screen so an undone edit is visible immediately rather than
+ // only on the next tab switch.
+ if(s.sections && typeof sections!=='undefined'){
+  try{
+   sections = JSON.parse(JSON.stringify(s.sections));
+   if(typeof buildSectionTabs==='function') buildSectionTabs();
+   if(typeof renderChartSeq==='function') renderChartSeq();
+   if(typeof renderSetlistPerform==='function') renderSetlistPerform();
   }catch(e){}
  }
  setTimeout(()=>{ if(typeof syncVoicesPanel==='function') syncVoicesPanel(); },0);
@@ -8025,6 +8095,14 @@ function randomizeSettings(){
   }
   s.modSynthParams=base;
   s.modSynthPreset='custom';
+  // _applySettings prefers modSynthPatchesAll (every part) over these two
+  // fields (the current part only) when both are present — see the comment
+  // there. s.modSynthPatchesAll is the pre-roll snapshot _capSettings()
+  // already took above, so without this the roll above would land in
+  // modSynthParams/modSynthPreset and then be silently overridden right
+  // back to the pre-roll patch the instant _applySettings ran.
+  if(s.modSynthPatchesAll) s.modSynthPatchesAll[msPart]=_msClone(base);
+  if(s.modSynthPresetOfAll) s.modSynthPresetOfAll[msPart]='custom';
  }
 
  _applySettings(s);
@@ -8943,39 +9021,40 @@ function loadSong(song,idx){
  // Auto-apply saved performance settings
  if(song.perfSettings) applySongPerformSettings(song.perfSettings);
 
- // Restore saved rhythm pattern if present
+ // Restore saved rhythm pattern if present.
+ //
+ // This whole block used to reference sqMach/sqSteps/sqSwing/sqVols/sqGrid
+ // and call sqEnsureGrid/sqSyncUI/sqRenderGrid as bare identifiers — but
+ // those all live inside the sequencer's own IIFE (see "var sqSwing=0,
+ // sqMach=..." further down the file) and were never exported to this
+ // scope. The very first bare assignment (sqMach=sr.mach) threw a
+ // ReferenceError, the surrounding try/catch swallowed it silently, and
+ // nothing after it in this block ever ran — a saved song's drum pattern
+ // has never actually come back on load. window._sqRestoreState() (added
+ // alongside the existing window._sqCaptureState()) is the real, exported
+ // way in.
  if(song.savedRhythm){
   try{
-   const sr=song.savedRhythm;
-   if(typeof sqDoSwap==='function' && sr.mach && sr.mach!==sqMach) sqDoSwap(sr.mach);
-   else if(sr.mach) sqMach=sr.mach;
-   if(sr.steps) sqSteps=sr.steps;
-   if(sr.swing!==undefined) sqSwing=sr.swing;
-   if(sr.grid) sqGrid=JSON.parse(JSON.stringify(sr.grid));
-   if(sr.vols) sqVols[sqMach]=JSON.parse(JSON.stringify(sr.vols));
-   if(sr.pitches) sqPitches[sqMach]=JSON.parse(JSON.stringify(sr.pitches));
-   if(typeof sqEnsureGrid==='function') sqEnsureGrid();
-   if(typeof sqSyncUI==='function') sqSyncUI();
-   if(typeof sqRenderGrid==='function') sqRenderGrid();
+   if(typeof window._sqRestoreState==='function') window._sqRestoreState(song.savedRhythm);
    // Reset step counter so new song's groove starts from bar 1
    if(typeof window._sqResetStep==='function') window._sqResetStep();
    // Always sync bass step count to sequencer (bar length must match)
-   blSteps = sqSteps;
-   var _bd=document.getElementById('bl-stepsdisp'); if(_bd) _bd.textContent=blSteps;
+   if(typeof window._sqSteps==='function'){
+    blSteps = window._sqSteps();
+    var _bd=document.getElementById('bl-stepsdisp'); if(_bd) _bd.textContent=blSteps;
+   }
   }catch(e){}
  }
- // Restore saved bassline if present
+ // Restore saved bassline if present — same fix, same reason: blWave/blSteps/
+ // blCutoff/blResonance/blGrid are the bass IIFE's own locals, not visible
+ // here. window._blRestoreState() is the exported way in.
  if(song.savedBass){
   try{
-   const sb=song.savedBass;
-   if(sb.wave){ blWave=sb.wave; const ws=document.getElementById('bl-wave-sel'); if(ws) ws.value=sb.wave; }
-   // bass steps from saved data, but must match sequencer — enforce sqSteps
-   if(sb.steps) blSteps=sb.steps;
-   blSteps = sqSteps; // override: bass bar length always equals sequencer bar length
-   if(sb.grid) blGrid=JSON.parse(JSON.stringify(sb.grid));
-   if(sb.cutoff!==undefined) blCutoff=sb.cutoff;
-   if(sb.resonance!==undefined) blResonance=sb.resonance;
-   if(typeof blRenderGrid==='function') blRenderGrid();
+   // override: bass bar length always equals sequencer bar length
+   var _bassState = (typeof window._sqSteps==='function')
+    ? Object.assign({},song.savedBass,{steps:window._sqSteps()})
+    : song.savedBass;
+   if(typeof window._blRestoreState==='function') window._blRestoreState(_bassState);
   }catch(e){}
  }
  // Restore saved melody sequence if present
@@ -13503,6 +13582,23 @@ window._sqCaptureState = function(){
   machGrids: sqMachGrids
  };
 };
+// The counterpart _sqCaptureState never had: two call sites (song load, and
+// now undo/redo) used to assign straight to `sqGrid` from OUTSIDE this IIFE,
+// which doesn't touch the real IIFE-local grid at all — in non-strict scope
+// that just creates an unrelated global of the same name. Silently did
+// nothing; a loaded song's saved drum pattern never actually came back.
+window._sqRestoreState = function(st){
+ if(!st) return;
+ if(st.mach!=null) sqMach = st.mach;
+ if(st.steps!=null) sqSteps = st.steps;
+ if(st.swing!=null) sqSwing = st.swing;
+ if(st.grid) sqGrid = JSON.parse(JSON.stringify(st.grid));
+ if(st.vols) sqVols[sqMach] = JSON.parse(JSON.stringify(st.vols));
+ if(st.pitches) sqPitches[sqMach] = JSON.parse(JSON.stringify(st.pitches));
+ if(st.machGrids) sqMachGrids = JSON.parse(JSON.stringify(st.machGrids));
+ sqEnsureGrid();
+ sqSyncUI(); sqRenderGrid();
+};
 
 })(); // end IIFE
 
@@ -14265,6 +14361,25 @@ window._blCaptureState = function(){
   cutoff: blCutoff, resonance: blResonance, vol: blVol,
   grid: blGrid
  };
+};
+// Same bug as the sequencer's missing restore, same fix: this IIFE never
+// exported a way to write blGrid back, so the song-load call site outside
+// it (assigning `blGrid = ...` directly) was quietly writing to a stray
+// global instead of the real grid this engine reads.
+window._blRestoreState = function(s){
+ if(!s) return;
+ if(s.wave){ blWave = s.wave; const ws=document.getElementById('bl-wave-sel'); if(ws) ws.value=s.wave; }
+ if(s.steps) blSteps = s.steps;
+ if(s.oct!=null) blOct = s.oct;
+ if(s.genStyle) blGenStyle = s.genStyle;
+ if(s.cutoff!=null) blCutoff = s.cutoff;
+ if(s.resonance!=null) blResonance = s.resonance;
+ if(s.grid) blGrid = JSON.parse(JSON.stringify(s.grid));
+ blEnsureGrid();
+ var _d=document.getElementById('bl-stepsdisp'); if(_d) _d.textContent=blSteps;
+ var _o=document.getElementById('bl-octdisp'); if(_o) _o.textContent=blOct;
+ document.querySelectorAll('[data-blstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.blstyle === blGenStyle); });
+ blRenderGrid();
 };
 
 })(); // end bassline IIFE
