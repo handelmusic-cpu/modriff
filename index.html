@@ -5415,6 +5415,13 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const intvs=voiceIntervals(relIntvs);
 
  if(!skipStop) stopAll(atTime);
+ // A muted or zeroed Chord channel used to still build every voice — the
+ // sustain+strum path even threw (an exponentialRampToValueAtTime target of
+ // exactly 0 is invalid), and the tap path ramped toward a hardcoded .0001
+ // floor regardless of the channel, which a bus compressor with nothing else
+ // playing pulls back into earshot. The previous chord is still silenced by
+ // stopAll() above; nothing new gets built when the channel itself is silent.
+ if(!(_mxCh>0)) return;
 
  // Bass — sine always
  const bg=ctx.createGain();
@@ -5485,6 +5492,9 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  const wg=WAVE_GAIN[wave]||1;
  const vsc=velScale(pressure||0);
  const now=(atTime!=null) ? atTime : ctx.currentTime + FADE_OUT;
+ // Same reasoning as playChord — see the comment there. stopAll() already
+ // ran at the top of this function, so the previous chord is still silenced.
+ if(!(_mxCh>0)) return;
 
  const bg=ctx.createGain();
  const _tr=fxTrim;
@@ -5554,6 +5564,12 @@ function playMelNote(midi,pressure){
 
  const startT = now + FADE_OUT; // start after any fade-out
  const _mxMel=_cmx('mel');
+ markMelKeyOn(midi);
+ // Same class of fix as the chord engine: a muted or zeroed Mel channel
+ // still built the voice and ramped toward a hardcoded .0001 floor. The key
+ // still lights (you can see what you played, same as a muted MIDI
+ // controller's LEDs), but nothing gets synthesized.
+ if(!(_mxMel>0)) return;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
  g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
@@ -5575,7 +5591,6 @@ function playMelNote(midi,pressure){
  }
  activeMelOscs[midi]={oscs,g};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv],_mdur);
- markMelKeyOn(midi);
  return{oscs,g};
 }
 
@@ -5700,6 +5715,9 @@ function initBendStrip(){
  const f=xToFreq(x, notes);
 
  bendStopContinuous();
+ // Same guard as playMelNote — a muted or zeroed Mel channel shouldn't start
+ // a new glide at all, not build one and ramp it toward an inaudible floor.
+ if(!(_mxMel>0)) return;
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
  bendContGain.gain.linearRampToValueAtTime(vol*.45*wg*vsc*_mxMel, now+atk);
@@ -6106,6 +6124,7 @@ function scheduleArpBlock(t,dur){
  const ctx=getCtx(); if(!ctx||!arpNotes.length) return;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
  const _mxArp=_cmx('arp');
+ if(!(_mxArp>0)) return;
  const wg = WAVE_GAIN[arpWave] || 1;
  const revMix = parseFloat(document.getElementById('rev-mix')?.value || '0.25');
  arpNotes.forEach((midi,idx)=>{
@@ -6154,6 +6173,10 @@ function scheduleArpNote(midi,t,dur){
 
  const bounceV=(arpPat==='ud'||arpPat==='bounce')?_arpBounceVel:1.0;
  const _mxArp=_cmx('arp');
+ // Gate-pattern position (arpGateIdx) has already advanced above regardless,
+ // same as when the gate itself is closed — muting shouldn't desync the
+ // pattern from where it'd be if the channel were live.
+ if(!(_mxArp>0)) return;
  const _pk=vol*.55*wg*velMult*humanVel*bounceV*velShapeMult*_mxArp*fxTrim;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
@@ -6647,12 +6670,14 @@ function renderChordDiagram(){
 const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth']];
+// Same order everywhere a list of parts appears (this dock, the Mixer):
+// Chords and Melody strip live on Play, Bass/Melody gen/Arp on the Bass tab
+// in that tab's own left-to-right order — so the order here matches the
+// order you actually encounter these controls in, instead of three
+// different orderings that happened to accrete independently.
 const VOICE_PARTS=[
  {k:'chord', icon:'⬢', label:'Chords', hint:'the chord pads',
   get:()=>(typeof wave!=='undefined'?wave:null), set:v=>setWave(v),
-  opts:MS_SHARED_VOICES},
- {k:'arp', icon:'↺', label:'Arp', hint:'the arpeggiator',
-  get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
   opts:MS_SHARED_VOICES},
  {k:'mel', icon:'〰', label:'Melody strip', hint:'the keys you play by hand',
   get:()=>(typeof melWave!=='undefined'?melWave:null), set:v=>setMelWave(v),
@@ -6666,6 +6691,9 @@ const VOICE_PARTS=[
  {k:'melgen', icon:'✦', label:'Melody gen', hint:'the generated melody line',
   get:()=>{ try{ return window._mlCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof window.setMlWave==='function') window.setMlWave(v); },
+  opts:MS_SHARED_VOICES},
+ {k:'arp', icon:'↺', label:'Arp', hint:'the arpeggiator',
+  get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
   opts:MS_SHARED_VOICES},
 ];
 function buildVoicesPanel(){
@@ -12468,7 +12496,7 @@ function sqRenderMixer(){
 window._sqMixNodesW = window._sqMixNodesW || {};
 
 // Mixer gains live at window level so unlockAudio can init them
-window.sqMixGainsW = { drum:.55, chord:.75, arp:.7, mel:.75, bass:.7 };
+window.sqMixGainsW = { chord:.75, mel:.75, drum:.55, bass:.7, melgen:.75, arp:.7 };
 (function(){
 'use strict';
 
@@ -13547,6 +13575,12 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   if(typeof window._midiRecLogBass==='function') window._midiRecLogBass(note,oct,t,dur,vol,accent);
   var freq = blFreq(note, oct);
   var _mxBs = typeof _cmx === 'function' ? _cmx('bass') : 1;
+  // Same class of fix as drums/chords: a muted or zeroed Bass channel still
+  // built and connected every voice, floored at 0.0001 so the ramp below
+  // wouldn't throw — audible once the bus compressor pulled that floor back
+  // up with nothing else in the mix. Slide state still updates so the next
+  // real note picks up cleanly once the channel comes back.
+  if(!(_mxBs>0)){ _blPrevFreq=freq; _blPrevSlide=slide; return; }
 
   // Master gain + amplitude envelope (shared by all modes)
   var g = ctx.createGain();
@@ -14292,7 +14326,9 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   var ctx = mlCtx(); if(!ctx) return;
   var mg = mlMG(); if(!mg) return;
   var midi = note + (oct+1)*12;
-  var _mxMel = typeof _cmx === 'function' ? _cmx('mel') : 1;
+  // Its own channel, not shared with the melody strip — see MIX_CHANNELS.
+  var _mxMel = typeof _cmx === 'function' ? _cmx('melgen') : 1;
+  if(!(_mxMel>0)) return;
   var wg = (typeof WAVE_GAIN !== 'undefined' && WAVE_GAIN[mlWave]) ? WAVE_GAIN[mlWave] : 1;
   var g = ctx.createGain();
   // Floored above 0: exponentialRampToValueAtTime throws if it ramps from a
@@ -14770,11 +14806,12 @@ function ftToggleAudition(){
 // panel stay identical — every knob writes the same sqMixGainsW entry, so
 // whichever one you touch, the other reflects it next time it's drawn.
 window.MIX_CHANNELS = [
- {id:'drum', label:'Drums', color:'#ff6b35'},
- {id:'chord',label:'Chord', color:'#3ab4ff'},
- {id:'arp',  label:'Arp',   color:'#2df09a'},
- {id:'mel',  label:'Mel',   color:'#f0c040'},
- {id:'bass', label:'Bass',  color:'#a855f7'},
+ {id:'chord', label:'Chord',  color:'#3ab4ff'},
+ {id:'mel',   label:'Mel',    color:'#f0c040'},
+ {id:'drum',  label:'Drums',  color:'#ff6b35'},
+ {id:'bass',  label:'Bass',   color:'#a855f7'},
+ {id:'melgen',label:'MelGen', color:'#ff8ad4'},
+ {id:'arp',   label:'Arp',    color:'#2df09a'},
 ];
 window.buildMixChannelsInto = function(container){
  if(!container) return;
