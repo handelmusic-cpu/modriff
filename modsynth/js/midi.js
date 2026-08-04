@@ -56,6 +56,9 @@
       this.onActivity = null;            // (kind, data) for the UI indicator
       this.lastCC = null;
       this._bendLsb = 0;
+      this.pickup = false;               // pickup mode: prevent jumps on patch load
+      this._pickupCaught = new Set();    // CCs that have crossed their threshold
+      this._pickupPrev = {};             // cc → previous normalized value
       this._load();
     }
 
@@ -221,6 +224,17 @@
 
       const target = this.map[cc];
       if (!target) return;
+
+      // Pickup mode: prevent jumps by requiring the knob to cross the current value first.
+      if (this.pickup && !this._pickupCaught.has(cc)) {
+        const current = eng.getNorm(target);
+        const prev = this._pickupPrev[cc];
+        const crossed = prev !== undefined && ((prev <= current && v >= current) || (prev >= current && v <= current));
+        this._pickupPrev[cc] = v;
+        if (!crossed && Math.abs(v - current) > 0.02) return;  // consumed, but ignored
+        this._pickupCaught.add(cc);
+      }
+
       if (target.startsWith('macro.')) {
         eng.setMacro(+target.split('.')[1], v);
       } else {
@@ -247,6 +261,17 @@
     resetMap() {
       this.map = Object.assign({}, DEFAULT_MAP);
       this._persist();
+    }
+
+    togglePickup() {
+      this.pickup = !this.pickup;
+      this._pickupCaught.clear();
+      this._pickupPrev = {};
+    }
+
+    resetPickup() {
+      this._pickupCaught.clear();
+      this._pickupPrev = {};
     }
 
     mappings() {

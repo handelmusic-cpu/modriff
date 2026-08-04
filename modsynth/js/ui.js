@@ -750,6 +750,13 @@
       this._mapHost = el('div', 'list');
       maps.appendChild(this._mapHost);
       const tools = this.row();
+      const pickup = el('label', 'sw');
+      pickup.appendChild(el('span', 'sw-box'));
+      pickup.appendChild(el('span', null, 'Pickup mode'));
+      pickup.title = 'Prevent parameter jumps when loading patches — knobs must cross their current value first';
+      pickup.classList.toggle('on', this.midi && this.midi.pickup);
+      pickup.addEventListener('click', () => { if (this.midi) { this.midi.togglePickup(); pickup.classList.toggle('on'); } });
+      tools.appendChild(pickup);
       const reset = el('button', 'btn', 'Reset to defaults');
       reset.addEventListener('click', () => { if (this.midi) { this.midi.resetMap(); this.refreshMidi(); this.refreshAll(); } });
       tools.appendChild(reset);

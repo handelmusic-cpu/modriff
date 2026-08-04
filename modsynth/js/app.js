@@ -258,6 +258,7 @@
     loadPatch(patch) {
       this.lib.load(patch);
       if (patch.drums && this.drums) this.drums.fromJSON(patch.drums);
+      if (this.midi) this.midi.resetPickup();
       this.ui.refreshAll();
       this.ui.refreshBrowser();
       this.ui.buildDrumGrid();
