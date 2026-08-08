@@ -10651,7 +10651,7 @@ function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
 function _songRecFinalizePending(nowCtxTime){
  if(!songRecPending || songRecSectionIdx<0 || !sections[songRecSectionIdx]) { songRecPending=null; return; }
  const bpm = parseFloat(document.getElementById('bpm')?.value||100);
- const steps = (typeof sqSteps!=='undefined'&&sqSteps>0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const eighthsPerBar = steps/2;
  const eighthSec = (60/bpm)*0.5;
  const elapsedSec = Math.max(0, nowCtxTime - songRecPending.startT);
@@ -10877,7 +10877,7 @@ function _scheduleCompHits(slot, baseTime){
  // eight eighths. slotTotalMs() already worked this out; using a different
  // bar length here meant that at any step count other than 16 the comp hits
  // drifted against the slot they belonged to.
- const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const barSec = steps * (60/bpm/4);
  const base = (baseTime != null) ? baseTime : ctx.currentTime;
  for(let b=0; b<bars; b++){
@@ -10892,10 +10892,21 @@ function _scheduleCompHits(slot, baseTime){
  }
 }
 
+// A bar is however many sixteenth steps the sequencer is running — that IS the
+// time signature (16 = 4/4, 12 = 3/4, 20 = 5/4). Three call sites read a bare
+// `sqSteps`, but that variable lives inside the sequencer's IIFE and is not in
+// scope out here, so `typeof sqSteps !== 'undefined'` was always false and every
+// one of them silently used 16. Songs never actually followed the step count,
+// despite the comments saying they did. Read it through the export instead.
+function _songBarSteps(){
+ var n = (typeof window._sqSteps==='function') ? window._sqSteps() : 16;
+ return (n > 0) ? n : 16;
+}
+
 function slotTotalMs(slot){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
  // Bar length = sqSteps sixteenth notes at current BPM, so songs follow the sequencer pattern length
- const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const barMs = steps * (60000 / bpm / 4);
  const beatMs = 60000/bpm;
  const swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
@@ -11101,11 +11112,17 @@ const STANDARDS=[
  {title:"Solar",key:0,mode:"minor",sections:[
   {name:"Head",chords:[[0,"m",2],[7,"m7",1],[0,"7",1],[5,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",1],[3,"m7",0.5],[8,"7",0.5],[1,"M7",1],[2,"hd",0.5],[7,"7",0.5]]}
  ]},
+ {title:"Someday My Prince Will Come",key:10,mode:"major",steps:12,sections:[
+  {name:"A",chords:[[0,"M7",2],[4,"7",2],[5,"M7",1],[5,"m",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[4,"7",2],[5,"M7",1],[5,"m",1],[0,"M7",1],[4,"m7",0.5],[9,"7",0.5]]},{name:"B",chords:[[2,"m7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"C",chords:[[0,"M7",1],[0,"7",1],[5,"M7",1],[5,"m",1],[0,"M7",1],[9,"m7",1],[2,"m7",0.5],[7,"7",0.5],[0,"M7",1]]}
+ ]},
  {title:"St. Thomas",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[7,"7",1],[0,"M",1]]},{name:"A2",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[2,"m7",0.5],[7,"7",0.5],[0,"M",1]]}
  ]},
  {title:"Stella by Starlight",key:10,mode:"major",sections:[
   {name:"A",chords:[[6,"hd",1],[11,"7",1],[2,"m7",1],[7,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",1],[10,"7",1]]},{name:"B",chords:[[0,"M7",1],[6,"hd",0.5],[11,"7",0.5],[4,"m7",1],[0,"m7",0.5],[5,"7",0.5],[7,"M7",1],[6,"hd",0.5],[11,"7",0.5],[11,"hd",1],[4,"7",1]]},{name:"C",chords:[[9,"7",2],[2,"m7",2],[10,"7",2],[0,"M7",2]]},{name:"D",chords:[[6,"hd",1],[11,"7",1],[4,"hd",1],[9,"7",1],[2,"hd",1],[7,"7",1],[0,"M7",2]]}
+ ]},
+ {title:"Take Five",key:3,mode:"minor",steps:20,sections:[
+  {name:"Vamp",chords:[[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1]]}
  ]},
  {title:"Take the A Train",key:0,mode:"major",sections:[
   {name:"A",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",4],[2,"7",2],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
@@ -11126,6 +11143,13 @@ function loadStandard(idx){
  if(idx<0||idx>=STANDARDS.length) return;
  const std=STANDARDS[idx];
  stopSongLoop();
+ // Meter. A bar is sqSteps sixteenths (see slotTotalMs), so the step count IS
+ // the time signature: 16 = 4/4, 12 = 3/4, 20 = 5/4. Always set it, including
+ // back to 16, so loading a 4/4 tune after a waltz doesn't leave you in 3.
+ // stepCountLock carries it to the bass and melody grids too.
+ if(typeof setSeqStepCount==='function'){
+  try{ setSeqStepCount('sq', std.steps || 16); }catch(e){}
+ }
  root=std.key; mode=std.mode||'major';
  const stdMidi=60+(std.key<=5?std.key:std.key-12);
  sections=std.sections.map(sec=>({
