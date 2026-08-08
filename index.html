@@ -819,6 +819,17 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .sl-del:hover { color:var(--dom); }
 .sl-empty { font-size:.55rem; color:var(--muted); text-align:center; padding:20px; letter-spacing:.07em; }
 
+/* Setups — same row shell as the setlist, but the name/meta stack so the
+   per-row action buttons always have somewhere to sit on a phone. */
+.sl-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.sl-main .sl-meta { white-space:normal; }
+.sl-acts { display:flex; gap:4px; flex-shrink:0; }
+.sl-acts .tb { font-size:.42rem; padding:4px 8px; }
+.sl-acts .tb.danger { color:var(--dom); border-color:var(--dom); }
+.setup-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
+.setup-bar .song-title-input { flex:1 1 140px; min-width:0; }
+.setup-hint { font-size:.46rem; color:var(--muted); line-height:1.6; margin-bottom:8px; }
+
 /* Print stylesheet */
 @media print {
  .tab-bar,.prism-header,.panel.p-cof,.panel.p-synth,.panel.p-arp,.panel.p-rhythm { display:none!important; }
@@ -3222,6 +3233,23 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="panel-title"> Setlist</div>
  <div class="setlist" id="setlist-items-perform">
  <div class="sl-empty">No songs saved yet.</div>
+ </div>
+ </div>
+
+ <!-- Setups — the whole rig: tempo, sounds, patterns, chart and setlist -->
+ <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px;margin-top:10px">
+ <div class="panel-title"><span class="pt-icon"></span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
+ <div class="setup-hint">Saves everything at once — tempo, key, every voice and patch, the mixer, your drum/bass/melody patterns, the current chart and your whole setlist.</div>
+ <div class="setup-bar">
+  <input class="song-title-input" id="setup-name" type="text" placeholder="Setup name…">
+  <button class="sc-btn primary" onclick="setupSaveNew()" title="Save the whole rig under this name" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Save Setup</button>
+  <button class="tb" onclick="setupShare('')" title="Copy a link that recreates this exact rig" style="font-size:.44rem;padding:4px 8px">Share Link</button>
+  <button class="tb" onclick="setupExport('')" title="Download this rig as a file" style="font-size:.44rem;padding:4px 8px">Export</button>
+  <button class="tb" onclick="document.getElementById('setup-file').click()" title="Load a rig from a file" style="font-size:.44rem;padding:4px 8px">Import</button>
+  <input type="file" id="setup-file" accept=".json,application/json" style="display:none" onchange="setupImportFile(this)">
+ </div>
+ <div class="setlist" id="setups-items">
+ <div class="sl-empty">No setups saved yet.</div>
  </div>
  </div>
  </div>
@@ -8455,6 +8483,245 @@ function loadProgressionFromHash(){
  }catch(e){ /* ignore invalid hash */ }
 }
 
+// ═══════════════════════════════════════
+// SETUPS — whole-app save / load / share
+// ═══════════════════════════════════════
+// A "setup" is everything that makes the app sound and behave the way it does
+// right now: tempo, key, every voice and MōdSynth patch, the FX macros, the
+// mixer, the drum/bass/melody grids, the current chart — plus, optionally,
+// the whole setlist. _capSettings()/_applySettings() already describe that
+// state completely (undo/redo rides on the same pair), so setups are a thin
+// storage + transport layer over them rather than a second state model that
+// could drift out of sync with the first.
+
+const SETUPS_KEY = 'modo-setups';
+const SETUP_URL_MAX = 12000;   // beyond this, browsers and chat apps start truncating
+
+function loadSetupsData(){ try{ return JSON.parse(localStorage.getItem(SETUPS_KEY)||'[]'); }catch(e){ return []; } }
+function saveSetupsData(d){
+ try{ localStorage.setItem(SETUPS_KEY, JSON.stringify(d)); return true; }
+ catch(e){ showToast('Storage full — export to a file instead'); return false; }
+}
+
+// The setlist rides along so "send this to a friend" hands over the songs as
+// well as the sound. It's the bulky part, hence the opt-out on sharing.
+function captureSetup(name, withSetlist){
+ return {
+  app:'modriff', v:1, name:(name||'Untitled setup'), ts:Date.now(),
+  settings:_capSettings(),
+  setlist: (withSetlist===false) ? null : loadSLData()
+ };
+}
+
+function applySetup(st){
+ if(!st) return false;
+ // Tolerate a bare _capSettings() blob (e.g. hand-edited exports) as well as
+ // the wrapped shape.
+ const s = st.settings || st;
+ if(!s || typeof s!=='object') return false;
+ try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
+ try{ _applySettings(s); }catch(e){ console.warn('setup apply failed',e); return false; }
+ if(Array.isArray(st.setlist)){
+  try{
+   setlistData = st.setlist;
+   saveSLData(setlistData);
+   curSetlistIdx = -1;
+   if(typeof renderSetlist==='function') renderSetlist();
+   if(typeof renderSetlistNav==='function') renderSetlistNav();
+   if(typeof renderSetlistPerform==='function') renderSetlistPerform();
+  }catch(e){}
+ }
+ // Undo treats a load like any other edit, so ⌘Z walks back out of it.
+ if(typeof _undoTick==='function') setTimeout(_undoTick, 400);
+ return true;
+}
+
+// ── Transport codec ──
+// deflate-raw takes the ~10 KB state to roughly 1 KB, which keeps a share link
+// inside what every browser and messaging app will carry intact. The leading
+// byte says which branch produced it so an old link never decodes as garbage.
+function _b64u(bytes){
+ let s=''; for(let i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]);
+ return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function _unb64u(str){
+ const b=atob(str.replace(/-/g,'+').replace(/_/g,'/'));
+ const u=new Uint8Array(b.length);
+ for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+ return u;
+}
+async function encodeSetup(obj){
+ const bytes=new TextEncoder().encode(JSON.stringify(obj));
+ if(typeof CompressionStream!=='undefined'){
+  try{
+   const cs=new CompressionStream('deflate-raw');
+   const w=cs.writable.getWriter(); w.write(bytes); w.close();
+   const out=new Uint8Array(await new Response(cs.readable).arrayBuffer());
+   return 'z'+_b64u(out);
+  }catch(e){ /* fall through to the uncompressed form */ }
+ }
+ return 'r'+_b64u(bytes);
+}
+async function decodeSetup(str){
+ if(!str) return null;
+ const tag=str[0], body=str.slice(1);
+ let bytes=_unb64u(body);
+ if(tag==='z'){
+  const ds=new DecompressionStream('deflate-raw');
+  const w=ds.writable.getWriter(); w.write(bytes); w.close();
+  bytes=new Uint8Array(await new Response(ds.readable).arrayBuffer());
+ } else if(tag!=='r'){
+  throw new Error('unrecognised setup link');
+ }
+ return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+// ── Actions wired to the Setups panel ──
+function setupSaveNew(){
+ const el=document.getElementById('setup-name');
+ let name=(el&&el.value.trim())||'';
+ if(!name){
+  const d=new Date();
+  name='Setup '+d.toLocaleDateString(undefined,{month:'short',day:'numeric'})
+      +' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+ }
+ const list=loadSetupsData();
+ const st=captureSetup(name,true);
+ const at=list.findIndex(x=>x.name===name);
+ if(at>=0){ st.id=list[at].id; list[at]=st; } else { st.id='s'+Date.now(); list.push(st); }
+ if(!saveSetupsData(list)) return;
+ if(el) el.value='';
+ renderSetups();
+ showToast(at>=0 ? 'Setup updated — '+name : 'Setup saved — '+name);
+ track('setup_saved',{replaced:at>=0});
+}
+function setupLoad(id){
+ const st=loadSetupsData().find(x=>x.id===id);
+ if(!st){ showToast('Setup not found'); return; }
+ if(applySetup(st)){ renderSetups(); showToast('Loaded — '+st.name); track('setup_loaded',{}); }
+ else showToast('Could not load that setup');
+}
+function setupDelete(id){
+ const list=loadSetupsData();
+ const at=list.findIndex(x=>x.id===id);
+ if(at<0) return;
+ const name=list[at].name;
+ list.splice(at,1);
+ saveSetupsData(list);
+ renderSetups();
+ showToast('Deleted — '+name);
+}
+async function setupShare(id){
+ const st = id ? loadSetupsData().find(x=>x.id===id) : captureSetup(_setupLiveName(),true);
+ if(!st){ showToast('Setup not found'); return; }
+ try{
+  let payload=await encodeSetup(st);
+  // Too long to survive a paste into a chat window — drop the setlist (by far
+  // the biggest part) and share the sound alone rather than a broken link.
+  let trimmed=false;
+  if(payload.length>SETUP_URL_MAX && st.setlist){
+   payload=await encodeSetup(Object.assign({},st,{setlist:null}));
+   trimmed=true;
+  }
+  if(payload.length>SETUP_URL_MAX){
+   showToast('Too large for a link — use Export instead');
+   return;
+  }
+  const url=location.href.split('#')[0]+'#setup='+payload;
+  const done=()=>showToast(trimmed ? 'Link copied (sound only — setlist too big)' : 'Setup link copied!');
+  if(navigator.clipboard) navigator.clipboard.writeText(url).then(done).catch(()=>prompt('Copy link:',url));
+  else prompt('Copy link:',url);
+  track('setup_shared',{trimmed:trimmed});
+ }catch(e){ showToast('Could not build a link'); console.warn(e); }
+}
+function _setupLiveName(){
+ const el=document.getElementById('setup-name');
+ return (el&&el.value.trim()) || 'MōdRiff setup';
+}
+function setupExport(id){
+ const st = id ? loadSetupsData().find(x=>x.id===id) : captureSetup(_setupLiveName(),true);
+ if(!st){ showToast('Setup not found'); return; }
+ try{
+  const blob=new Blob([JSON.stringify(st,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  // Chromium silently discards a download filename containing non-ASCII and
+  // saves it as plain "download", while a bare \w filter ate the "ō" out of
+  // the app's own default name and shipped "MdRiff". Decompose first so
+  // accents fall off their letters, then filter — "MōdRiff" → "ModRiff".
+  let base=(st.name||'');
+  try{ base=base.normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){}
+  base=base.replace(/[^A-Za-z0-9\-_ ]+/g,'').trim().replace(/\s+/g,'-') || 'modriff-setup';
+  a.download=base+'.modriff.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+  showToast('Exported '+a.download);
+ }catch(e){ showToast('Export failed'); }
+}
+function setupImportFile(input){
+ const f=input&&input.files&&input.files[0];
+ if(!f) return;
+ const rd=new FileReader();
+ rd.onload=()=>{
+  try{
+   const st=JSON.parse(String(rd.result));
+   const list=loadSetupsData();
+   st.id='s'+Date.now();
+   st.name=st.name||f.name.replace(/\.modriff\.json$|\.json$/,'');
+   // Keep the imported file rather than only applying it, so it survives a
+   // reload the same way a setup saved here does.
+   list.push(st); saveSetupsData(list);
+   renderSetups();
+   if(applySetup(st)) showToast('Imported & loaded — '+st.name);
+   else showToast('Imported, but could not apply it');
+   track('setup_imported',{});
+  }catch(e){ showToast('That file is not a MōdRiff setup'); }
+ };
+ rd.readAsText(f);
+ input.value='';
+}
+
+function renderSetups(){
+ const box=document.getElementById('setups-items');
+ if(!box) return;
+ const list=loadSetupsData().slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+ if(!list.length){ box.innerHTML='<div class="sl-empty">No setups saved yet.</div>'; return; }
+ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+ box.innerHTML=list.map(st=>{
+  const s=st.settings||{};
+  const key=(typeof nn==='function'&&typeof s.root==='number') ? nn(s.root) : '';
+  const md=(MODES[s.mode]||{}).label||s.mode||'';
+  const n=(st.setlist&&st.setlist.length)||0;
+  const when=st.ts?new Date(st.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+  const meta=[key&&md?key+' '+md:'', s.bpm?Math.round(s.bpm)+' bpm':'', n?n+' song'+(n===1?'':'s'):'', when]
+   .filter(Boolean).join(' · ');
+  return '<div class="sl-item">'
+   +'<div class="sl-main" onclick="setupLoad(\''+st.id+'\')">'
+   +'<div class="sl-name">'+esc(st.name)+'</div>'
+   +'<div class="sl-meta">'+esc(meta)+'</div></div>'
+   +'<div class="sl-acts">'
+   +'<button class="tb" title="Copy a share link for this setup" onclick="setupShare(\''+st.id+'\')">Link</button>'
+   +'<button class="tb" title="Download this setup as a file" onclick="setupExport(\''+st.id+'\')">File</button>'
+   +'<button class="tb danger" title="Delete this setup" onclick="setupDelete(\''+st.id+'\')">✕</button>'
+   +'</div></div>';
+ }).join('');
+}
+
+// Runs at startup alongside loadProgressionFromHash(). Async because the
+// codec is — the hash is cleared first either way so a reload doesn't
+// silently re-apply the link over whatever you've done since.
+async function loadSetupFromHash(){
+ const h=location.hash;
+ if(!h.startsWith('#setup=')) return;
+ const raw=h.slice(7);
+ try{ history.replaceState(null,'',location.href.split('#')[0]); }catch(e){}
+ try{
+  const st=await decodeSetup(raw);
+  if(applySetup(st)) showToast('Loaded shared setup'+(st&&st.name?' — '+st.name:''));
+  else showToast('That link could not be applied');
+ }catch(e){ showToast('That setup link is damaged'); }
+}
+
 // Wording is shared between the tab badge and the perform view so the two can
 // never drift into describing the same setting differently.
 function sec_followTitle(i,mode){
@@ -9781,6 +10048,7 @@ function setBassMelMode(m){
 }
 
 function renderSongsPerformView(){
+ if(typeof renderSetups==='function') renderSetups();
  // Update banner
  const song = setlistData[curSetlistIdx];
  const titleEl = document.getElementById('slb-title');
@@ -10050,6 +10318,15 @@ They're genuinely independent — a Rhodes chord under a sine arp with an uprigh
 Each chord carries its own <strong>length</strong>, from a fraction of a bar up to eight bars, so a chart can hold quick changes and long pedals side by side.<br><br>
 <strong>Sections</strong> (Intro, Verse, Chorus…) are separate lists of chords. The little symbol on each section tab decides what happens when it finishes a pass: <strong>↻</strong> repeats it, <strong>→</strong> moves on to the next section. Tap the symbol to switch. During playback the Songs page shows you which one each section is doing, so the arrangement is visible while it runs.<br><br>
 <strong>Transpose</strong> rewrites the stored chart into a new key, unlike the − / + on the Play tab which is a live capo. <strong>Save to Setlist</strong> keeps it; <strong>Export MIDI</strong> and <strong>Share</strong> take it elsewhere.`
+ },
+ 'setups': {
+  title: 'Setups — save, load & share the whole rig',
+  body: `A <strong>song</strong> in the Setlist is a chord chart. A <strong>setup</strong> is everything else as well — the entire state of the app in one entry.<br><br>
+That means the <strong>tempo</strong>, the <strong>key and mode</strong>, every <strong>voice</strong> (chords, melody, bass, arp, melody generator) and the full <strong>MōdSynth patch</strong> behind each one, the <strong>FX macros</strong> (cutoff, resonance, envelope, drive, width, drift), the <strong>arp settings</strong>, the <strong>mixer</strong> — levels, mutes and solos — your <strong>drum, bass and melody-generator patterns</strong>, the <strong>chart you're building</strong>, and your <strong>whole setlist</strong>.<br><br>
+<strong>Save Setup</strong> stores it under a name. Saving again with the same name updates that setup instead of making a second copy. Tap any saved setup to <strong>load</strong> it — that replaces the live state, and <strong>↶ Undo</strong> walks straight back out again if it wasn't what you wanted.<br><br>
+<strong>Share Link</strong> copies a URL with the entire setup packed inside it. Send it to anyone; opening it recreates your rig exactly, songs and all. Nothing is uploaded anywhere — the state travels in the link itself. If a setlist is too big to fit in a link that survives being pasted around, the sound is shared on its own and you'll be told.<br><br>
+<strong>Export</strong> writes the same thing to a <code>.modriff.json</code> file, which has no size limit — use it for backups, or to move a big setlist between devices. <strong>Import</strong> reads one back in, saves it to your setups and loads it.<br><br>
+Setups live in this browser only. Export the ones you care about before clearing site data.`
  },
  'chart': {
   title: 'Chord Chart & printing',
@@ -11906,6 +12183,8 @@ buildStandardsMenu();
 buildChartPicker();
 renderChords();
 loadProgressionFromHash();
+if(typeof renderSetups==='function') renderSetups();
+if(typeof loadSetupFromHash==='function') loadSetupFromHash();
 updateOct();
 buildMelodyStrip();
 initBendStrip();
