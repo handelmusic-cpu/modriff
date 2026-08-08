@@ -10256,13 +10256,34 @@ function stopSongRecord(){
  const ctx=getCtx();
  if(ctx) _songRecFinalizePending(ctx.currentTime);
  songRecActive = false;
- const sec = sections[songRecSectionIdx];
+ const recordedIdx = songRecSectionIdx;
+ const sec = sections[recordedIdx];
  const count = sec ? sec.slots.length : 0;
  songRecSectionIdx = -1;
  _updateSongRecUI();
  renderChartSeq(); buildSectionTabs();
  if(typeof renderSetlist==='function') renderSetlist();
- showToast('Recorded '+count+' chord'+(count===1?'':'s')+' into "'+(sec?sec.name:'')+'"');
+ // This is meant to work like a loop pedal — hit the button, play whatever
+ // you want, hit it again and it's already looping what you just played.
+ // Previously the second press only stopped capture and left you to go find
+ // Song: ON yourself, so what you'd just played fell silent right when you
+ // wanted to hear it back.
+ if(count>0){
+  songCurrentSection = recordedIdx;
+  _songHeldAt = null; // a fresh recording shouldn't resume an unrelated hold
+  globalSongMode = true;
+  songAutoAdvance = true;
+  startSongLoop(true); // aligned start — first chord lands on the downbeat
+  if(typeof updatePrismSongBanner==='function') updatePrismSongBanner();
+  const banner=document.getElementById('prism-song-banner');
+  if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
+  if(typeof _updateSongBtn==='function') _updateSongBtn();
+  const ab=document.getElementById('slb-auto-btn');
+  if(ab){ ab.textContent='Auto ▶ ON'; ab.classList.add('on'); }
+  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' — looping "'+(sec?sec.name:'')+'"');
+ } else {
+  showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
+ }
 }
 
 function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
