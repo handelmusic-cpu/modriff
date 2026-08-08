@@ -2414,10 +2414,15 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
  <button class="ft-btn transport tp-count" id="ft-countin-btn" onclick="startWithCountIn()" title="Count in four beats, then start everything on beat 1" aria-label="Count in">⁴</button>
+ <!-- Layer switches, in the same order the Mixer and the Voices dock use:
+      Chords, Drums, Bass, Melody gen, Arp. The transport used to run
+      Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran Bass·Melody·Arp,
+      so the same three parts appeared in two different orders. -->
+ <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
- <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
+ <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
  <div class="ft-bpm">
  <span style="font-size:.55rem;color:var(--muted)">=</span>
  <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
@@ -4119,6 +4124,18 @@ function ftDrumClick(){
  syncFixedTransport();
  if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
 }
+// Chords were the one layer with no switch of its own: you could drop the
+// drums, bass, arp or melody mid-performance but never the chords, even
+// though dropping to just bass and drums is one of the most basic moves
+// there is. Same semantics as the other four — the engine keeps running and
+// the song keeps advancing, the layer just stops sounding.
+let chordsEnabled = true;
+function ftChordClick(){
+ chordsEnabled=!chordsEnabled;
+ if(!chordsEnabled && typeof stopAll==='function') stopAll(); // drop what's ringing now
+ syncFixedTransport();
+ if(typeof track==='function') track('chords_toggled',{enabled:chordsEnabled});
+}
 let lastChordRoot=60, lastChordIntvs=[0,4,7], lastChordFunc='tonic';
 let audioCtx=null, activeOscs=[], activeMelOscs={}, reverbNode=null;
 let midiAccess=null;
@@ -5416,7 +5433,10 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  // floor regardless of the channel, which a bus compressor with nothing else
  // playing pulls back into earshot. The previous chord is still silenced by
  // stopAll() above; nothing new gets built when the channel itself is silent.
- if(!(_mxCh>0)) return;
+ // Layer switch and mixer mute share one gate: both mean "this part should
+ // not sound right now", and both leave the previous chord's release to the
+ // stopAll() just above rather than cutting it dead.
+ if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)) return;
 
  // Bass — sine always
  const bg=ctx.createGain();
@@ -5489,7 +5509,10 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  const now=(atTime!=null) ? atTime : ctx.currentTime + FADE_OUT;
  // Same reasoning as playChord — see the comment there. stopAll() already
  // ran at the top of this function, so the previous chord is still silenced.
- if(!(_mxCh>0)) return;
+ // Layer switch and mixer mute share one gate: both mean "this part should
+ // not sound right now", and both leave the previous chord's release to the
+ // stopAll() just above rather than cutting it dead.
+ if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)) return;
 
  const bg=ctx.createGain();
  const _tr=fxTrim;
@@ -7639,6 +7662,8 @@ function syncFixedTransport(){
   psb.classList.add('lit');
  }
  document.getElementById('tab-perform')?.classList.toggle('nav-playing', isAnythingPlaying());
+ const cb=document.getElementById('ft-chd-btn');
+ if(cb){ cb.classList.toggle('off',!chordsEnabled); }
  const db=document.getElementById('ft-drum-btn');
  if(db){ db.classList.toggle('off',!drumsEnabled); }
  const ab=document.getElementById('ft-arp-btn');
