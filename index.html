@@ -819,6 +819,17 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .sl-del:hover { color:var(--dom); }
 .sl-empty { font-size:.55rem; color:var(--muted); text-align:center; padding:20px; letter-spacing:.07em; }
 
+/* Setups — same row shell as the setlist, but the name/meta stack so the
+   per-row action buttons always have somewhere to sit on a phone. */
+.sl-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.sl-main .sl-meta { white-space:normal; }
+.sl-acts { display:flex; gap:4px; flex-shrink:0; }
+.sl-acts .tb { font-size:.42rem; padding:4px 8px; }
+.sl-acts .tb.danger { color:var(--dom); border-color:var(--dom); }
+.setup-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
+.setup-bar .song-title-input { flex:1 1 140px; min-width:0; }
+.setup-hint { font-size:.46rem; color:var(--muted); line-height:1.6; margin-bottom:8px; }
+
 /* Print stylesheet */
 @media print {
  .tab-bar,.prism-header,.panel.p-cof,.panel.p-synth,.panel.p-arp,.panel.p-rhythm { display:none!important; }
@@ -3224,6 +3235,23 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="sl-empty">No songs saved yet.</div>
  </div>
  </div>
+
+ <!-- Setups — the whole rig: tempo, sounds, patterns, chart and setlist -->
+ <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px;margin-top:10px">
+ <div class="panel-title"><span class="pt-icon"></span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
+ <div class="setup-hint">Saves everything at once — tempo, key, every voice and patch, the mixer, your drum/bass/melody patterns, the current chart and your whole setlist.</div>
+ <div class="setup-bar">
+  <input class="song-title-input" id="setup-name" type="text" placeholder="Setup name…">
+  <button class="sc-btn primary" onclick="setupSaveNew()" title="Save the whole rig under this name" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Save Setup</button>
+  <button class="tb" onclick="setupShare('')" title="Copy a link that recreates this exact rig" style="font-size:.44rem;padding:4px 8px">Share Link</button>
+  <button class="tb" onclick="setupExport('')" title="Download this rig as a file" style="font-size:.44rem;padding:4px 8px">Export</button>
+  <button class="tb" onclick="document.getElementById('setup-file').click()" title="Load a rig from a file" style="font-size:.44rem;padding:4px 8px">Import</button>
+  <input type="file" id="setup-file" accept=".json,application/json" style="display:none" onchange="setupImportFile(this)">
+ </div>
+ <div class="setlist" id="setups-items">
+ <div class="sl-empty">No setups saved yet.</div>
+ </div>
+ </div>
  </div>
 
 </div>
@@ -3352,7 +3380,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="bl-pb advanced-only">
      <span class="bl-pl">Oct</span>
      <button class="bl-pico" onclick="blShiftOct(-1)">−</button>
-     <span class="bl-stepsdisp" id="bl-octdisp">3</span>
+     <span class="bl-stepsdisp" id="bl-octdisp">2</span>
      <button class="bl-pico" onclick="blShiftOct(1)">+</button>
    </div>
    <div class="bl-pb" style="margin-left:auto">
@@ -3384,9 +3412,21 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
      <button class="bl-gen-btn" data-blstyle="funk">Funk</button>
      <button class="bl-gen-btn" data-blstyle="acid">Acid</button>
      <button class="bl-gen-btn" data-blstyle="latin">Latin</button>
+     <button class="bl-gen-btn" data-blstyle="reggae">Reggae</button>
+     <button class="bl-gen-btn" data-blstyle="pedal">Pedal</button>
+     <button class="bl-gen-btn" data-blstyle="halftime">Half-Time</button>
+     <button class="bl-gen-btn" data-blstyle="arpeggio">Arpeggio</button>
+     <button class="bl-gen-btn" data-blstyle="riff">Riff</button>
+     <button class="bl-gen-btn" data-blstyle="hook">Pop Hook</button>
    </div>
    <button class="bl-genbtn" onclick="blGenerate()">✦ Generate</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
+  </div>
+  <!-- Follow the changes -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+   <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: OFF</button>
+   <span class="bl-pl" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Loops the bar as written</span>
+   <button class="tips-btn" onclick="showTip('bassgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="bl-simple-view"></div>
@@ -8455,6 +8495,253 @@ function loadProgressionFromHash(){
  }catch(e){ /* ignore invalid hash */ }
 }
 
+// ═══════════════════════════════════════
+// SETUPS — whole-app save / load / share
+// ═══════════════════════════════════════
+// A "setup" is everything that makes the app sound and behave the way it does
+// right now: tempo, key, every voice and MōdSynth patch, the FX macros, the
+// mixer, the drum/bass/melody grids, the current chart — plus, optionally,
+// the whole setlist. _capSettings()/_applySettings() already describe that
+// state completely (undo/redo rides on the same pair), so setups are a thin
+// storage + transport layer over them rather than a second state model that
+// could drift out of sync with the first.
+
+const SETUPS_KEY = 'modo-setups';
+// The state rides in the fragment, so it never reaches a server and no server
+// URL limit applies. Browsers themselves are generous (Firefox ~65k, Safari
+// ~80k). What actually mangles a long link is whatever carries it — mail
+// clients that hard-wrap at 76 columns, shorteners, anything that renders a
+// URL as truncated text. There's no single documented threshold for that, so
+// this is a conservative pick, not a measured one: a typical setup lands near
+// 2k, and 12k leaves plenty of room for a real setlist while staying well
+// under what any browser will hold.
+const SETUP_URL_MAX = 12000;
+
+function loadSetupsData(){ try{ return JSON.parse(localStorage.getItem(SETUPS_KEY)||'[]'); }catch(e){ return []; } }
+function saveSetupsData(d){
+ try{ localStorage.setItem(SETUPS_KEY, JSON.stringify(d)); return true; }
+ catch(e){ showToast('Storage full — export to a file instead'); return false; }
+}
+
+// The setlist rides along so "send this to a friend" hands over the songs as
+// well as the sound. It's the bulky part, hence the opt-out on sharing.
+function captureSetup(name, withSetlist){
+ return {
+  app:'modriff', v:1, name:(name||'Untitled setup'), ts:Date.now(),
+  settings:_capSettings(),
+  setlist: (withSetlist===false) ? null : loadSLData()
+ };
+}
+
+function applySetup(st){
+ if(!st) return false;
+ // Tolerate a bare _capSettings() blob (e.g. hand-edited exports) as well as
+ // the wrapped shape.
+ const s = st.settings || st;
+ if(!s || typeof s!=='object') return false;
+ try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
+ try{ _applySettings(s); }catch(e){ console.warn('setup apply failed',e); return false; }
+ if(Array.isArray(st.setlist)){
+  try{
+   setlistData = st.setlist;
+   saveSLData(setlistData);
+   curSetlistIdx = -1;
+   if(typeof renderSetlist==='function') renderSetlist();
+   if(typeof renderSetlistNav==='function') renderSetlistNav();
+   if(typeof renderSetlistPerform==='function') renderSetlistPerform();
+  }catch(e){}
+ }
+ // Undo treats a load like any other edit, so ⌘Z walks back out of it.
+ if(typeof _undoTick==='function') setTimeout(_undoTick, 400);
+ return true;
+}
+
+// ── Transport codec ──
+// deflate-raw takes the ~10 KB state to roughly 1 KB, which keeps a share link
+// inside what every browser and messaging app will carry intact. The leading
+// byte says which branch produced it so an old link never decodes as garbage.
+function _b64u(bytes){
+ let s=''; for(let i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]);
+ return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function _unb64u(str){
+ const b=atob(str.replace(/-/g,'+').replace(/_/g,'/'));
+ const u=new Uint8Array(b.length);
+ for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+ return u;
+}
+async function encodeSetup(obj){
+ const bytes=new TextEncoder().encode(JSON.stringify(obj));
+ if(typeof CompressionStream!=='undefined'){
+  try{
+   const cs=new CompressionStream('deflate-raw');
+   const w=cs.writable.getWriter(); w.write(bytes); w.close();
+   const out=new Uint8Array(await new Response(cs.readable).arrayBuffer());
+   return 'z'+_b64u(out);
+  }catch(e){ /* fall through to the uncompressed form */ }
+ }
+ return 'r'+_b64u(bytes);
+}
+async function decodeSetup(str){
+ if(!str) return null;
+ const tag=str[0], body=str.slice(1);
+ let bytes=_unb64u(body);
+ if(tag==='z'){
+  const ds=new DecompressionStream('deflate-raw');
+  const w=ds.writable.getWriter(); w.write(bytes); w.close();
+  bytes=new Uint8Array(await new Response(ds.readable).arrayBuffer());
+ } else if(tag!=='r'){
+  throw new Error('unrecognised setup link');
+ }
+ return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+// ── Actions wired to the Setups panel ──
+function setupSaveNew(){
+ const el=document.getElementById('setup-name');
+ let name=(el&&el.value.trim())||'';
+ if(!name){
+  const d=new Date();
+  name='Setup '+d.toLocaleDateString(undefined,{month:'short',day:'numeric'})
+      +' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+ }
+ const list=loadSetupsData();
+ const st=captureSetup(name,true);
+ const at=list.findIndex(x=>x.name===name);
+ if(at>=0){ st.id=list[at].id; list[at]=st; } else { st.id='s'+Date.now(); list.push(st); }
+ if(!saveSetupsData(list)) return;
+ if(el) el.value='';
+ renderSetups();
+ showToast(at>=0 ? 'Setup updated — '+name : 'Setup saved — '+name);
+ track('setup_saved',{replaced:at>=0});
+}
+function setupLoad(id){
+ const st=loadSetupsData().find(x=>x.id===id);
+ if(!st){ showToast('Setup not found'); return; }
+ if(applySetup(st)){ renderSetups(); showToast('Loaded — '+st.name); track('setup_loaded',{}); }
+ else showToast('Could not load that setup');
+}
+function setupDelete(id){
+ const list=loadSetupsData();
+ const at=list.findIndex(x=>x.id===id);
+ if(at<0) return;
+ const name=list[at].name;
+ list.splice(at,1);
+ saveSetupsData(list);
+ renderSetups();
+ showToast('Deleted — '+name);
+}
+async function setupShare(id){
+ const st = id ? loadSetupsData().find(x=>x.id===id) : captureSetup(_setupLiveName(),true);
+ if(!st){ showToast('Setup not found'); return; }
+ try{
+  let payload=await encodeSetup(st);
+  // Past the ceiling — drop the setlist (by far the biggest part) and share
+  // the sound alone rather than hand over a link that might arrive truncated.
+  let trimmed=false;
+  if(payload.length>SETUP_URL_MAX && st.setlist){
+   payload=await encodeSetup(Object.assign({},st,{setlist:null}));
+   trimmed=true;
+  }
+  if(payload.length>SETUP_URL_MAX){
+   showToast('Too large for a link — use Export instead');
+   return;
+  }
+  const url=location.href.split('#')[0]+'#setup='+payload;
+  const done=()=>showToast(trimmed ? 'Link copied (sound only — setlist too big)' : 'Setup link copied!');
+  if(navigator.clipboard) navigator.clipboard.writeText(url).then(done).catch(()=>prompt('Copy link:',url));
+  else prompt('Copy link:',url);
+  track('setup_shared',{trimmed:trimmed});
+ }catch(e){ showToast('Could not build a link'); console.warn(e); }
+}
+function _setupLiveName(){
+ const el=document.getElementById('setup-name');
+ return (el&&el.value.trim()) || 'MōdRiff setup';
+}
+function setupExport(id){
+ const st = id ? loadSetupsData().find(x=>x.id===id) : captureSetup(_setupLiveName(),true);
+ if(!st){ showToast('Setup not found'); return; }
+ try{
+  const blob=new Blob([JSON.stringify(st,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  // Chromium silently discards a download filename containing non-ASCII and
+  // saves it as plain "download", while a bare \w filter ate the "ō" out of
+  // the app's own default name and shipped "MdRiff". Decompose first so
+  // accents fall off their letters, then filter — "MōdRiff" → "ModRiff".
+  let base=(st.name||'');
+  try{ base=base.normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){}
+  base=base.replace(/[^A-Za-z0-9\-_ ]+/g,'').trim().replace(/\s+/g,'-') || 'modriff-setup';
+  a.download=base+'.modriff.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+  showToast('Exported '+a.download);
+ }catch(e){ showToast('Export failed'); }
+}
+function setupImportFile(input){
+ const f=input&&input.files&&input.files[0];
+ if(!f) return;
+ const rd=new FileReader();
+ rd.onload=()=>{
+  try{
+   const st=JSON.parse(String(rd.result));
+   const list=loadSetupsData();
+   st.id='s'+Date.now();
+   st.name=st.name||f.name.replace(/\.modriff\.json$|\.json$/,'');
+   // Keep the imported file rather than only applying it, so it survives a
+   // reload the same way a setup saved here does.
+   list.push(st); saveSetupsData(list);
+   renderSetups();
+   if(applySetup(st)) showToast('Imported & loaded — '+st.name);
+   else showToast('Imported, but could not apply it');
+   track('setup_imported',{});
+  }catch(e){ showToast('That file is not a MōdRiff setup'); }
+ };
+ rd.readAsText(f);
+ input.value='';
+}
+
+function renderSetups(){
+ const box=document.getElementById('setups-items');
+ if(!box) return;
+ const list=loadSetupsData().slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+ if(!list.length){ box.innerHTML='<div class="sl-empty">No setups saved yet.</div>'; return; }
+ const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+ box.innerHTML=list.map(st=>{
+  const s=st.settings||{};
+  const key=(typeof nn==='function'&&typeof s.root==='number') ? nn(s.root) : '';
+  const md=(MODES[s.mode]||{}).label||s.mode||'';
+  const n=(st.setlist&&st.setlist.length)||0;
+  const when=st.ts?new Date(st.ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+  const meta=[key&&md?key+' '+md:'', s.bpm?Math.round(s.bpm)+' bpm':'', n?n+' song'+(n===1?'':'s'):'', when]
+   .filter(Boolean).join(' · ');
+  return '<div class="sl-item">'
+   +'<div class="sl-main" onclick="setupLoad(\''+st.id+'\')">'
+   +'<div class="sl-name">'+esc(st.name)+'</div>'
+   +'<div class="sl-meta">'+esc(meta)+'</div></div>'
+   +'<div class="sl-acts">'
+   +'<button class="tb" title="Copy a share link for this setup" onclick="setupShare(\''+st.id+'\')">Link</button>'
+   +'<button class="tb" title="Download this setup as a file" onclick="setupExport(\''+st.id+'\')">File</button>'
+   +'<button class="tb danger" title="Delete this setup" onclick="setupDelete(\''+st.id+'\')">✕</button>'
+   +'</div></div>';
+ }).join('');
+}
+
+// Runs at startup alongside loadProgressionFromHash(). Async because the
+// codec is — the hash is cleared first either way so a reload doesn't
+// silently re-apply the link over whatever you've done since.
+async function loadSetupFromHash(){
+ const h=location.hash;
+ if(!h.startsWith('#setup=')) return;
+ const raw=h.slice(7);
+ try{ history.replaceState(null,'',location.href.split('#')[0]); }catch(e){}
+ try{
+  const st=await decodeSetup(raw);
+  if(applySetup(st)) showToast('Loaded shared setup'+(st&&st.name?' — '+st.name:''));
+  else showToast('That link could not be applied');
+ }catch(e){ showToast('That setup link is damaged'); }
+}
+
 // Wording is shared between the tab badge and the perform view so the two can
 // never drift into describing the same setting differently.
 function sec_followTitle(i,mode){
@@ -9781,6 +10068,7 @@ function setBassMelMode(m){
 }
 
 function renderSongsPerformView(){
+ if(typeof renderSetups==='function') renderSetups();
  // Update banner
  const song = setlistData[curSetlistIdx];
  const titleEl = document.getElementById('slb-title');
@@ -10050,6 +10338,25 @@ They're genuinely independent — a Rhodes chord under a sine arp with an uprigh
 Each chord carries its own <strong>length</strong>, from a fraction of a bar up to eight bars, so a chart can hold quick changes and long pedals side by side.<br><br>
 <strong>Sections</strong> (Intro, Verse, Chorus…) are separate lists of chords. The little symbol on each section tab decides what happens when it finishes a pass: <strong>↻</strong> repeats it, <strong>→</strong> moves on to the next section. Tap the symbol to switch. During playback the Songs page shows you which one each section is doing, so the arrangement is visible while it runs.<br><br>
 <strong>Transpose</strong> rewrites the stored chart into a new key, unlike the − / + on the Play tab which is a live capo. <strong>Save to Setlist</strong> keeps it; <strong>Export MIDI</strong> and <strong>Share</strong> take it elsewhere.`
+ },
+ 'bassgen': {
+  title: 'Bassline generator & Follow',
+  body: `<strong>✦ Generate</strong> writes a bar of bass in the chosen style, over the chord you last played. Press it again for a different take — every style randomises.<br><br>
+<strong>The styles.</strong> <strong>Rock</strong> is roots and fifths on the quarters. <strong>Jazz</strong> walks in quarter notes with chromatic approaches. <strong>Motown</strong> is melodic eighths. <strong>Funk</strong> is syncopated sixteenths with slides. <strong>Acid</strong> is a 303 line — dense, sliding, accented. <strong>Latin</strong> gives you a tumbao, a 2–3 clave or a bolero feel. <strong>Reggae</strong> is a one drop, which leaves beat 1 empty on purpose. <strong>Pedal</strong> is straight eighths on one note. <strong>Half-Time</strong> is whole and half notes for sitting under a busy arrangement. <strong>Arpeggio</strong>, <strong>Riff</strong> and <strong>Pop Hook</strong> are the melody generator's shapes moved down into the bass register.<br><br>
+<strong>Octave</strong> defaults to <strong>2</strong> — that puts a root around 65&nbsp;Hz, where a bass actually sits. Octave 3 is the register a guitarist plays; useful for a lead-ish line, thin as a bass part.<br><br>
+<strong>Follow: ON</strong> is the difference between a loop and a bass part. With it off, the bar you generated repeats over the whole song no matter what the chords do. With it on, the line <strong>re-roots onto whichever chord the song is playing</strong>, keeping the rhythm and shape you generated — so a root–fifth–octave figure stays that figure on every chord.<br><br>
+<strong>Follow + Jazz</strong> is the walking bass. It stops using the grid's rhythm entirely and plays real quarter notes through the chart: the chord's root on beat 1, mostly stepwise motion through chord and scale tones in between, and on the last beat before a change it <strong>approaches the next chord's root</strong> from a half step or a fifth. It reads the chord that <em>is about to arrive</em>, not the one already playing, so the approach lands where a bass player would put it.<br><br>
+Follow needs a song running to have changes to follow. With the song stopped it falls back to looping the bar as written.`
+ },
+ 'setups': {
+  title: 'Setups — save, load & share the whole rig',
+  body: `A <strong>song</strong> in the Setlist is a chord chart. A <strong>setup</strong> is everything else as well — the entire state of the app in one entry.<br><br>
+That means the <strong>tempo</strong>, the <strong>key and mode</strong>, every <strong>voice</strong> (chords, melody, bass, arp, melody generator) and the full <strong>MōdSynth patch</strong> behind each one, the <strong>FX macros</strong> (cutoff, resonance, envelope, drive, width, drift), the <strong>arp settings</strong>, the <strong>mixer</strong> — levels, mutes and solos — your <strong>drum, bass and melody-generator patterns</strong>, the <strong>chart you're building</strong>, and your <strong>whole setlist</strong>.<br><br>
+<strong>Save Setup</strong> stores it under a name. Saving again with the same name updates that setup instead of making a second copy. Tap any saved setup to <strong>load</strong> it — that replaces the live state, and <strong>↶ Undo</strong> walks straight back out again if it wasn't what you wanted.<br><br>
+<strong>Share Link</strong> copies a URL with the entire setup packed inside it. Send it to anyone; opening it recreates your rig exactly, songs and all. Nothing is uploaded anywhere — the state travels in the link itself, so it works with no account and no server.<br><br>
+A typical setup makes a link of around 2,000 characters. Links have no hard limit in a browser, but very long ones can get truncated by things that carry them around — mail clients, link shorteners. So there's a ceiling: if a big setlist pushes the link past it, the sound is shared on its own and you'll be told. For anything that big, use <strong>Export</strong> — a file has no size limit at all.<br><br>
+<strong>Export</strong> writes the same thing to a <code>.modriff.json</code> file, which has no size limit — use it for backups, or to move a big setlist between devices. <strong>Import</strong> reads one back in, saves it to your setups and loads it.<br><br>
+Setups live in this browser only. Export the ones you care about before clearing site data.`
  },
  'chart': {
   title: 'Chord Chart & printing',
@@ -10344,7 +10651,7 @@ function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
 function _songRecFinalizePending(nowCtxTime){
  if(!songRecPending || songRecSectionIdx<0 || !sections[songRecSectionIdx]) { songRecPending=null; return; }
  const bpm = parseFloat(document.getElementById('bpm')?.value||100);
- const steps = (typeof sqSteps!=='undefined'&&sqSteps>0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const eighthsPerBar = steps/2;
  const eighthSec = (60/bpm)*0.5;
  const elapsedSec = Math.max(0, nowCtxTime - songRecPending.startT);
@@ -10440,10 +10747,12 @@ let _songHeldAt = null;
 // is why switching Song off used to feel like it killed the song rather than
 // pausing it.
 function holdSongLoop(){
+ if(typeof window._blClearChords==='function') window._blClearChords();
  if(!songLoopActive){ _songHeldAt = null; return; }
  _songHeldAt = { section: songLoopSection, slot: songLoopSlot };
  songLoopActive = false;
  songWaitingForBar = false;
+ _songSlotNeedsTimeout = false; // see stopSongLoop()
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
@@ -10458,7 +10767,19 @@ function holdSongLoop(){
 function stopSongLoop(){
  songLoopActive = false;
  _songBaseRoot = -1; // clear capo
+ // Chord windows are audio-time stamped, so any left over from a previous run
+ // are in the past. A follow-mode bass would resolve every step against the
+ // stale tail of them until the first new chord arrived.
+ if(typeof window._blClearChords==='function') window._blClearChords();
  songWaitingForBar = false;
+ // Reset with the rest of the per-run state. This is a latch meaning "the
+ // slot currently playing is sub-bar, so a setTimeout is driving advancement
+ // and the bar tick must keep its hands off". Left set from a previous run it
+ // made tickSongLoop() return early forever, so a loop waiting on its first
+ // bar boundary never got started — every song whose chart contains a
+ // half-bar chord (|Dm7 G7|, which is most of the jazz repertoire) would load
+ // and then simply never play.
+ _songSlotNeedsTimeout = false;
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
@@ -10556,7 +10877,7 @@ function _scheduleCompHits(slot, baseTime){
  // eight eighths. slotTotalMs() already worked this out; using a different
  // bar length here meant that at any step count other than 16 the comp hits
  // drifted against the slot they belonged to.
- const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const barSec = steps * (60/bpm/4);
  const base = (baseTime != null) ? baseTime : ctx.currentTime;
  for(let b=0; b<bars; b++){
@@ -10571,10 +10892,21 @@ function _scheduleCompHits(slot, baseTime){
  }
 }
 
+// A bar is however many sixteenth steps the sequencer is running — that IS the
+// time signature (16 = 4/4, 12 = 3/4, 20 = 5/4). Three call sites read a bare
+// `sqSteps`, but that variable lives inside the sequencer's IIFE and is not in
+// scope out here, so `typeof sqSteps !== 'undefined'` was always false and every
+// one of them silently used 16. Songs never actually followed the step count,
+// despite the comments saying they did. Read it through the export instead.
+function _songBarSteps(){
+ var n = (typeof window._sqSteps==='function') ? window._sqSteps() : 16;
+ return (n > 0) ? n : 16;
+}
+
 function slotTotalMs(slot){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
  // Bar length = sqSteps sixteenth notes at current BPM, so songs follow the sequencer pattern length
- const steps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+ const steps = _songBarSteps();
  const barMs = steps * (60000 / bpm / 4);
  const beatMs = 60000/bpm;
  const swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
@@ -10701,6 +11033,10 @@ function _jscQ(q){
   case 'hd': return {triadQ:2,type7:'halfdim',ext:'7th'};
   case 'd7': return {triadQ:2,type7:'dim7',ext:'7th'};
   case 'mM7': return {triadQ:1,type7:'minMaj7',ext:'7th'};
+  // Modal tunes are built on suspensions — Maiden Voyage is four of them and
+  // nothing else. Without this they all flattened to plain major triads.
+  case 's4': return {triadQ:0,type7:'none',ext:'sus4'};
+  case 's2': return {triadQ:0,type7:'none',ext:'sus2'};
   default: return {triadQ:0,type7:'none',ext:'triad'};
  }
 }
@@ -10710,485 +11046,89 @@ function _jscQ(q){
 // chord-chart app; several of these are still under copyright but bare
 // chord progressions aren't independently protected expression.
 const STANDARDS=[
- {title:"A Cup of Coffee, a Sandwich and You",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"A Pretty Girl is Like a Melody",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"d",1],[2,"m",1],[7,"7",1],[0,"M",2],[0,"a",1],[4,"7",1],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Ain't Misbehavin'",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[5,"7",2],[6,"d",1],[0,"M7",1],[9,"m7",1],[2,"7",1],[7,"7",2]]}
- ]},
- {title:"Airegin",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[8,"7",2],[1,"M7",2],[6,"m7",1],[11,"7",1],[4,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"m7",2],[7,"7",2]]}
- ]},
- {title:"Alice in Wonderland",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]}
- ]},
  {title:"All Blues",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"7",2],[10,"7",1],[3,"7",1],[0,"7",2]]}
+  {name:"Blues",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[8,"7",0.5],[7,"7",0.5],[0,"7",2]]}
  ]},
  {title:"All of Me",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",2],[2,"m7",2]]},{name:"B",chords:[[4,"7",1],[9,"m7",1],[2,"7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]}
+  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",2],[2,"m7",2]]},{name:"B",chords:[[4,"7",2],[9,"m7",2],[2,"7",2],[2,"m7",1],[7,"7",1]]},{name:"A2",chords:[[0,"M",2],[4,"7",2],[9,"7",2],[2,"m7",2]]},{name:"C",chords:[[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
  ]},
  {title:"All the Things You Are",key:8,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[6,"hd",1],[11,"7",1],[4,"M7",1]]},{name:"A2",chords:[[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",1],[0,"M7",1],[1,"hd",1],[6,"7",1],[11,"M7",1]]},{name:"B",chords:[[11,"m7",1],[4,"m7",1],[9,"7",1],[2,"M7",1],[7,"M7",1],[7,"m7",1],[0,"7",1],[5,"M7",1]]},{name:"C",chords:[[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
+  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[6,"hd",0.5],[11,"7",0.5],[4,"M7",2]]},{name:"A2",chords:[[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",1],[0,"M7",1],[1,"hd",0.5],[6,"7",0.5],[11,"M7",2]]},{name:"B",chords:[[1,"m7",1],[6,"7",1],[11,"M7",2],[10,"hd",1],[3,"7",1],[8,"M7",1],[4,"7",1]]},{name:"A3",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[5,"m7",1],[4,"m7",1],[3,"d7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
- {title:"Alone Together",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"hd",1],[10,"7",1],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2],[7,"7",2]]}
- ]},
- {title:"Angel Eyes",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[9,"hd",1],[2,"7",2],[5,"m7",2],[9,"7",2]]},{name:"B",chords:[[3,"M",2],[9,"hd",1],[2,"7",1],[0,"m",2],[7,"7",2]]}
- ]},
- {title:"Anthropology",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"April Showers",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
+ {title:"Au Privave",key:5,mode:"major",sections:[
+  {name:"Blues",chords:[[0,"7",1],[5,"7",1],[0,"7",1],[7,"m7",0.5],[0,"7",0.5],[5,"7",1],[6,"d7",1],[0,"7",1],[4,"m7",0.5],[9,"7",0.5],[2,"m7",1],[7,"7",1],[0,"7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]}
  ]},
  {title:"Autumn Leaves",key:7,mode:"minor",sections:[
   {name:"A",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"A2",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2]]},{name:"C",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
  ]},
- {title:"Autumn in New York",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[11,"hd",1],[4,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Baby Won't You Please Come Home",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",1],[6,"d",1],[0,"M",2],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",4]]}
- ]},
- {title:"Bags' Groove",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Beautiful Love",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"hd",1],[10,"7",1],[8,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[8,"M7",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Bewitched",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[9,"hd",1],[2,"7",1],[5,"m7",2],[7,"7",2]]},{name:"B",chords:[[3,"M7",2],[8,"M7",2],[9,"hd",1],[2,"7",1],[0,"m7",2]]}
- ]},
  {title:"Billie's Bounce",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",1],[2,"hd",1],[7,"7",1],[0,"7",1],[9,"m7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Black Orpheus",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",2]]},{name:"B",chords:[[8,"M7",2],[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
+  {name:"Blues",chords:[[0,"7",1],[5,"7",1],[0,"7",1],[7,"m7",0.5],[0,"7",0.5],[5,"7",1],[6,"d7",1],[0,"7",1],[4,"m7",0.5],[9,"7",0.5],[2,"m7",1],[7,"7",1],[0,"7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]}
  ]},
  {title:"Blue Bossa",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[5,"m7",1],[2,"hd",1],[7,"7",1],[0,"m7",2],[3,"m7",1],[8,"7",1]]},{name:"B",chords:[[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1]]}
+  {name:"A",chords:[[0,"m7",2],[5,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
  ]},
  {title:"Blue Monk",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[6,"d7",1],[7,"7",1],[0,"7",2]]}
+  {name:"Blues",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[5,"7",1],[6,"d7",1],[0,"7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]}
  ]},
- {title:"Blue Skies",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
+ {title:"Blue Train",key:10,mode:"major",sections:[
+  {name:"Blues",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",1],[7,"7",1]]}
  ]},
- {title:"Blues for Alice",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"m7",1],[6,"7",1],[11,"m7",1],[4,"7",1],[9,"M7",1],[2,"m7",1],[7,"7",1],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1]]}
- ]},
- {title:"Bluesette",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Body and Soul",key:1,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[1,"M7",2],[6,"7",2],[1,"M7",2],[7,"7",2]]}
- ]},
- {title:"But Not for Me",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"7",2],[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M7",2],[10,"7",2],[0,"M7",1],[0,"7",1],[5,"M7",1],[5,"m",1],[10,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"By The Light Of The Silvery Moon",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"M",1],[0,"7",1],[5,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Bye Bye Blackbird",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"d7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
- ]},
- {title:"C-Jam Blues",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Cantaloupe Island",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[3,"m7",2],[6,"7",2],[0,"m7",4],[9,"m7",4]]}
- ]},
- {title:"Caravan",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",4],[0,"m",4]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",4]]}
- ]},
- {title:"Carolina in the Morning",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",1],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
+ {title:"Chameleon",key:10,mode:"minor",sections:[
+  {name:"Vamp",chords:[[0,"m7",2],[5,"7",2],[0,"m7",2],[5,"7",2],[0,"m7",2],[5,"7",2],[0,"m7",2],[5,"7",2]]}
  ]},
  {title:"Cherokee",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2],[10,"m7",1],[3,"7",1]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[10,"hd",1],[3,"7",1]]}
- ]},
- {title:"Chicago",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Confessin'",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[4,"7",1],[5,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Confirmation",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[2,"hd",1],[7,"7",1],[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"M7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1]]}
- ]},
- {title:"Corcovado",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Days of Wine and Roses",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Desafinado",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[0,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Donna Lee",key:8,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Doxy",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",2],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Dream a Little Dream of Me",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[3,"7",2],[8,"M",2],[7,"7",2]]},{name:"Bridge",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",1],[3,"7",1],[8,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Easy Living",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Embraceable You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[4,"m",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"Exactly Like You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Falling in Love with Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Five Foot Two, Eyes of Blue",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",1],[2,"7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"d",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Fly Me to the Moon",key:0,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[11,"hd",1],[4,"7",1],[9,"m7",1]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Footprints",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[0,"m7",2],[5,"m7",2],[0,"m7",2]]},{name:"B",chords:[[8,"7",1],[3,"7",1],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Four",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2],[3,"m7",1],[8,"7",1]]},{name:"B",chords:[[6,"m7",1],[11,"7",1],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[3,"m7",1],[6,"7",1]]}
- ]},
- {title:"Freddie Freeloader",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[8,"7",2],[5,"7",2]]}
- ]},
- {title:"Georgia On My Mind",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"m",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Green Dolphin Street",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]},{name:"C",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",1],[2,"hd",1]]}
- ]},
- {title:"Have You Met Miss Jones",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[1,"M7",2],[9,"m7",1],[2,"m7",1],[7,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
- ]},
- {title:"Hello! Ma Baby",key:0,mode:"major",sections:[
-  {name:"A",chords:[[7,"7",2],[0,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Here's That Rainy Day",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[8,"7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"How 'Ya Gonna Keep 'Em Down on the Farm",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"How High the Moon",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[0,"m7",2],[5,"m7",2],[10,"7",2],[3,"M7",2],[3,"m7",2],[8,"m7",2],[1,"7",2]]},{name:"B",chords:[[6,"M7",2],[6,"m7",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]}
- ]},
- {title:"How Insensitive",key:1,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[6,"hd",1],[11,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[0,"m7",1],[6,"hd",1],[11,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"I Could Write a Book",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
+  {name:"A",chords:[[0,"M7",2],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"M7",1],[10,"m7",0.5],[3,"7",0.5],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"M7",1],[10,"m7",0.5],[3,"7",0.5],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[1,"M7",2],[1,"m7",1],[6,"7",1],[11,"M7",2],[11,"m7",1],[4,"7",1],[9,"M7",2],[9,"m7",1],[2,"7",1],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",2],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"M7",1],[10,"m7",0.5],[3,"7",0.5],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
  {title:"I Got Rhythm",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
+  {name:"A",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"A2",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[0,"M",1],[0,"M",1]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]},{name:"A3",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[0,"M",1],[0,"M",1]]}
  ]},
- {title:"I Hear a Rhapsody",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[1,"M7",2]]}
- ]},
- {title:"I Love You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"I Mean You",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[6,"7",1],[0,"M7",1],[6,"7",1],[5,"m7",1],[10,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"m7",2],[10,"7",2],[0,"M7",2],[6,"7",2]]}
- ]},
- {title:"I Remember You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[4,"m7",2],[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
- ]},
- {title:"I Wonder Who's Kissing Her Now",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I'll Remember April",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"m7",2],[5,"m7",2],[10,"7",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[0,"M",2]]}
- ]},
- {title:"I'm Forever Blowing Bubbles",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",1],[0,"M",1],[1,"d",1],[7,"7",1],[5,"M",2]]},{name:"B",chords:[[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I'm Just Wild About Harry",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I've Got You Under My Skin",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"7",2]]}
- ]},
- {title:"If I Should Lose You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"If I Were a Bell",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Impressions",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",4],[0,"m7",4]]}
- ]},
- {title:"In Walked Bud",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"In a Mellow Tone",key:10,mode:"major",sections:[
-  {name:"A",chords:[[3,"m7",2],[8,"7",2],[0,"M",2],[7,"m7",1],[0,"7",1]]},{name:"B",chords:[[5,"M",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M",2]]}
- ]},
- {title:"Indiana",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Invitation",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"m7",2],[8,"7",2],[1,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2]]}
- ]},
- {title:"Isn't It Romantic",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"It Could Happen to You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",2],[0,"7",2]]},{name:"B",chords:[[5,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]}
- ]},
- {title:"It Don't Mean a Thing",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"It Had to Be You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2],[4,"7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Jeepers Creepers",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[5,"M",2],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"M",2]]}
- ]},
- {title:"Joy Spring",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[10,"m7",1],[3,"7",1],[8,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1]]}
+ {title:"Impressions",key:2,mode:"dorian",sections:[
+  {name:"A",chords:[[0,"m7",4],[0,"m7",4]]},{name:"A2",chords:[[0,"m7",4],[0,"m7",4]]},{name:"B",chords:[[1,"m7",4],[1,"m7",4]]},{name:"A3",chords:[[0,"m7",4],[0,"m7",4]]}
  ]},
  {title:"Ladybird",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",1],[6,"m7",1],[11,"m7",1],[4,"7",1],[9,"M7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
+  {name:"Head",chords:[[0,"M7",2],[5,"m7",1],[10,"7",1],[0,"M7",2],[10,"m7",1],[3,"7",1],[9,"m7",1],[2,"7",1],[8,"m7",1],[1,"7",1],[0,"M7",0.5],[3,"7",0.5],[8,"M7",0.5],[1,"7",0.5],[0,"M7",2]]}
  ]},
- {title:"Lester Leaps In",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Like Someone in Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Love for Sale",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[5,"m",2],[0,"m",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",1],[5,"7",1],[10,"7",2]]},{name:"C",chords:[[0,"m",1],[2,"hd",1],[7,"7",1],[0,"m",2],[8,"M",2],[7,"7",2],[0,"m",2]]}
- ]},
- {title:"Lullaby of Birdland",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[8,"hd",1],[1,"7",1],[0,"M",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Maiden Voyage",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",4],[5,"m7",4]]},{name:"B",chords:[[10,"m7",4],[7,"m7",4]]}
- ]},
- {title:"Manhattan",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[5,"M",1],[7,"7",1],[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Memories of You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",2],[5,"m",2],[0,"M",1],[9,"m",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[7,"m",1],[7,"7",1],[0,"M",2],[3,"7",2],[2,"7",1],[7,"7",1]]}
- ]},
- {title:"Milestones",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",4],[0,"m7",4]]},{name:"B",chords:[[5,"m7",4],[0,"m7",4]]}
+ {title:"Maiden Voyage",key:2,mode:"dorian",sections:[
+  {name:"A",chords:[[0,"s4",4],[3,"s4",4]]},{name:"A2",chords:[[0,"s4",4],[3,"s4",4]]},{name:"B",chords:[[1,"s4",4],[4,"s4",4]]},{name:"A3",chords:[[0,"s4",4],[3,"s4",4]]}
  ]},
  {title:"Misty",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"hd",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
+  {name:"A",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"A2",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",2]]},{name:"B",chords:[[7,"m7",1],[0,"7",1],[5,"M7",2],[6,"m7",0.5],[11,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",2]]}
  ]},
- {title:"Moanin'",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[10,"7",2],[0,"m7",2],[3,"7",2]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[9,"7",2]]}
- ]},
- {title:"Mood Indigo",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[5,"7",2],[0,"7",2],[5,"M",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Moonlight Bay",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"My Favorite Things",key:4,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",4],[7,"M",4]]},{name:"B",chords:[[0,"m",4],[7,"M",4]]}
- ]},
- {title:"My Foolish Heart",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"My Funny Valentine",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",1],[0,"mM7",1],[0,"m7",1],[0,"m6",1],[8,"M7",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[2,"hd",1],[7,"7",1],[0,"m",2]]}
- ]},
- {title:"My Melancholy Baby",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"My One and Only Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"My Romance",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",2],[2,"m7",2],[7,"7",2]]},{name:"B",chords:[[0,"M",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"My Shining Hour",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Nardis",key:4,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[1,"M",2],[0,"m",2],[8,"M",2]]},{name:"B",chords:[[6,"m7",1],[11,"7",1],[0,"m",2],[7,"7",2]]}
- ]},
- {title:"Nica's Dream",key:10,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"7",2],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[3,"M",2],[8,"M",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"Night Train",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Night and Day",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Now's the Time",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",1],[2,"hd",1],[7,"7",1],[0,"7",1],[9,"m7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Oleo",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"On the Sunny Side of the Street",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Out of Nowhere",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Over the Rainbow",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[7,"M7",1],[0,"M7",1],[9,"m7",2],[2,"7",2]]},{name:"B",chords:[[7,"M7",2],[6,"d7",1],[0,"M7",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Pennies from Heaven",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Recorda-Me",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"M7",2],[8,"M7",2],[7,"m7",1],[0,"7",1]]},{name:"B",chords:[[5,"m7",2],[10,"7",2],[3,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Rhythm-a-ning",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Rock-a-Bye Your Baby",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2],[4,"7",2],[9,"m",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
+ {title:"Mr. P.C.",key:0,mode:"minor",sections:[
+  {name:"Blues",chords:[[0,"m7",4],[5,"m7",2],[0,"m7",2],[8,"7",1],[7,"7",1],[0,"m7",1],[7,"7",1]]}
  ]},
  {title:"Satin Doll",key:0,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[4,"m7",1],[9,"7",1],[4,"m7",1],[9,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[8,"M7",1],[1,"7",1],[0,"M7",4]]}
+  {name:"A",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]},{name:"A2",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]},{name:"B",chords:[[7,"m7",1],[0,"7",1],[5,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2]]},{name:"A3",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]}
  ]},
- {title:"Scrapple from the Apple",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1]]}
+ {title:"Scrapple from the Apple",key:5,mode:"major",sections:[
+  {name:"A",chords:[[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"A2",chords:[[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"B",chords:[[7,"m7",1],[0,"7",1],[5,"M7",2],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]}
  ]},
- {title:"Shine On Harvest Moon",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
+ {title:"So What",key:2,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m7",8]]},{name:"A2",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",8]]},{name:"A3",chords:[[0,"m7",8]]}
  ]},
- {title:"Shiny Stockings",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Sidewinder",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[10,"7",2],[8,"7",2]]}
- ]},
- {title:"So What",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",4],[0,"m7",4]]}
- ]},
- {title:"Softly As in a Morning Sunrise",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[7,"7",2],[0,"m",2],[3,"7",1],[8,"7",1]]},{name:"B",chords:[[1,"M",2],[9,"hd",1],[2,"7",1],[0,"m",2],[7,"7",2]]}
+ {title:"Softly as in a Morning Sunrise",key:0,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m",2],[5,"m7",2],[2,"hd",1],[7,"7",1],[0,"m",2]]},{name:"A2",chords:[[0,"m",2],[5,"m7",2],[2,"hd",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[8,"M7",2],[2,"hd",1],[7,"7",1]]},{name:"A3",chords:[[0,"m",2],[5,"m7",2],[2,"hd",1],[7,"7",1],[0,"m",2]]}
  ]},
  {title:"Solar",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[8,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[6,"hd",1],[11,"7",1]]}
+  {name:"Head",chords:[[0,"m",2],[7,"m7",1],[0,"7",1],[5,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",1],[3,"m7",0.5],[8,"7",0.5],[1,"M7",1],[2,"hd",0.5],[7,"7",0.5]]}
  ]},
- {title:"Somebody Loves Me",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[1,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[5,"M",1],[0,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Someday My Prince Will Come",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]},{name:"C",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
- ]},
- {title:"Someone to Watch Over Me",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"m",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Song for My Father",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[10,"7",2],[3,"7",2]]},{name:"B",chords:[[8,"7",2],[10,"7",2],[0,"m7",4]]}
- ]},
- {title:"Speak Low",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[3,"M",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Spring Is Here",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1]]}
+ {title:"Someday My Prince Will Come",key:10,mode:"major",steps:12,sections:[
+  {name:"A",chords:[[0,"M7",2],[4,"7",2],[5,"M7",1],[5,"m",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[4,"7",2],[5,"M7",1],[5,"m",1],[0,"M7",1],[4,"m7",0.5],[9,"7",0.5]]},{name:"B",chords:[[2,"m7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"C",chords:[[0,"M7",1],[0,"7",1],[5,"M7",1],[5,"m",1],[0,"M7",1],[9,"m7",1],[2,"m7",0.5],[7,"7",0.5],[0,"M7",1]]}
  ]},
  {title:"St. Thomas",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[7,"7",2]]},{name:"B",chords:[[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Stardust",key:0,mode:"major",sections:[
-  {name:"Verse",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1]]},{name:"Chorus",chords:[[0,"M7",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",1],[10,"d",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",2],[7,"7",2],[0,"M7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
+  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[7,"7",1],[0,"M",1]]},{name:"A2",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[2,"m7",0.5],[7,"7",0.5],[0,"M",1]]}
  ]},
  {title:"Stella by Starlight",key:10,mode:"major",sections:[
-  {name:"A",chords:[[5,"hd",1],[10,"7",1],[0,"m7",1],[5,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
+  {name:"A",chords:[[6,"hd",1],[11,"7",1],[2,"m7",1],[7,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",1],[10,"7",1]]},{name:"B",chords:[[0,"M7",1],[6,"hd",0.5],[11,"7",0.5],[4,"m7",1],[0,"m7",0.5],[5,"7",0.5],[7,"M7",1],[6,"hd",0.5],[11,"7",0.5],[11,"hd",1],[4,"7",1]]},{name:"C",chords:[[9,"7",2],[2,"m7",2],[10,"7",2],[0,"M7",2]]},{name:"D",chords:[[6,"hd",1],[11,"7",1],[4,"hd",1],[9,"7",1],[2,"hd",1],[7,"7",1],[0,"M7",2]]}
  ]},
- {title:"Stolen Moments",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",2],[10,"7",2],[3,"M7",2]]},{name:"B",chords:[[6,"7",2],[2,"hd",2],[7,"7",2],[0,"m7",2]]}
- ]},
- {title:"Straight No Chaser",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",2]]}
- ]},
- {title:"Summertime",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]},{name:"A2",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]}
- ]},
- {title:"Sweet Georgia Brown",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",2],[7,"7",2],[0,"7",2],[7,"7",2]]},{name:"B",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Take Five",key:3,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]},{name:"B",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]}
+ {title:"Take Five",key:3,mode:"minor",steps:20,sections:[
+  {name:"Vamp",chords:[[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1],[0,"m7",1],[7,"m7",1]]}
  ]},
  {title:"Take the A Train",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"7",2],[7,"M7",4]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Tenor Madness",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"The Girl from Ipanema",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"B",chords:[[1,"M7",2],[6,"7",2],[9,"M7",2],[9,"7",2],[2,"m7",2],[10,"m7",1],[3,"7",1]]},{name:"C",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"The Song Is You",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"hd",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"There Is No Greater Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"7",2]]}
+  {name:"A",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",4],[2,"7",2],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
  {title:"There Will Never Be Another You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1]]}
- ]},
- {title:"Tico Tico no Fuba",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[7,"7",2],[0,"m",2],[7,"7",2],[0,"m",2],[5,"m",1],[0,"m",1],[7,"7",2],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",2]]}
- ]},
- {title:"Time After Time",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Toot Toot Tootsie, Goo'bye",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"7",1],[7,"7",1],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Tune Up",key:3,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Watermelon Man",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2]]},{name:"B",chords:[[2,"m7",2],[7,"7",2],[0,"7",2],[7,"7",2]]}
- ]},
- {title:"Wave",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"What Is This Thing Called Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"When I Fall in Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Whisper Not",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"M7",1],[6,"m7",1],[11,"m7",1],[4,"7",1],[9,"M7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"Yardbird Suite",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Yesterdays",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[5,"hd",1],[10,"7",1],[3,"M7",1],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2]]}
- ]},
- {title:"You Don't Know What Love Is",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[8,"M7",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"You Made Me Love You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",1],[2,"m",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"You Stepped Out of a Dream",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"You'd Be So Nice to Come Home To",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
+  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1]]},{name:"B",chords:[[5,"M7",1],[10,"7",1],[0,"M7",1],[9,"m7",1],[2,"7",2],[2,"m7",1],[7,"7",1]]},{name:"A2",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1]]},{name:"C",chords:[[5,"M7",1],[10,"7",1],[0,"M7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
 ];
 
@@ -11203,6 +11143,13 @@ function loadStandard(idx){
  if(idx<0||idx>=STANDARDS.length) return;
  const std=STANDARDS[idx];
  stopSongLoop();
+ // Meter. A bar is sqSteps sixteenths (see slotTotalMs), so the step count IS
+ // the time signature: 16 = 4/4, 12 = 3/4, 20 = 5/4. Always set it, including
+ // back to 16, so loading a 4/4 tune after a waltz doesn't leave you in 3.
+ // stepCountLock carries it to the bass and melody grids too.
+ if(typeof setSeqStepCount==='function'){
+  try{ setSeqStepCount('sq', std.steps || 16); }catch(e){}
+ }
  root=std.key; mode=std.mode||'major';
  const stdMidi=60+(std.key<=5?std.key:std.key-12);
  sections=std.sections.map(sec=>({
@@ -11211,9 +11158,20 @@ function loadStandard(idx){
    const {triadQ,type7,ext}=_jscQ(q);
    const rootM=stdMidi+semi;
    const pc=((std.key+semi)%12+12)%12;
-   const sfx=(q==='m'||q==='m7'||q==='mM7')?'m':(q==='d'||q==='hd'||q==='d7')?'°':(q==='a')?'+':'';
+   const sfx=(q==='m'||q==='m7'||q==='mM7')?'m':(q==='d'||q==='hd'||q==='d7')?'°':(q==='a')?'+'
+             :(q==='s4')?'sus4':(q==='s2')?'sus2':'';
    const label=nn(pc)+sfx;
-   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:bars||1,beats:0,eighths:0,isRest:false,bassNote:null};
+   // Charts carry duration in bars, but two-chords-to-a-bar is everywhere in
+   // this repertoire (|Dm7 G7|), so a duration can be fractional. Split it
+   // into whole bars plus beats: a slot with bars:0.5 alone would be counted
+   // by the bar-boundary path (barsNeeded = 0.5 || 1, and one bar tick clears
+   // it) and ring for a full bar — the half-bar chords would all play twice
+   // as long as written. Any leftover beats route the slot to the sub-bar
+   // scheduler instead, which times it exactly.
+   const _b=bars||1;
+   const _whole=Math.floor(_b);
+   const _beats=Math.round((_b-_whole)*4);
+   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:_whole,beats:_beats,eighths:0,isRest:false,bassNote:null};
   })
  }));
  curSection=0; chartSeqIdx=-1; curSetlistIdx=-1;
@@ -11232,6 +11190,28 @@ function loadStandard(idx){
 // downstream schedules against it rather than against "whenever this function
 // ran", which is what makes the chords lock to the drums instead of landing
 // wherever the JS timer woke up.
+// Where the song will be one slot from now, without moving it there. Mirrors
+// the branch order in _advanceLoopSlot — a queued Next/Prev outranks the
+// section's own follow setting — so the bass aims at the chord that will
+// actually arrive, including across a section boundary.
+function _songPeekNextSlot(){
+ const sec = sections[songLoopSection];
+ if(!sec || !sec.slots.length) return null;
+ if(songLoopSlot + 1 < sec.slots.length) return sec.slots[songLoopSlot + 1];
+ const playable = sections.filter(x=>x.slots && x.slots.length).length;
+ let idx = songLoopSection;
+ const stepTo = (delta)=>{
+  const n = sections.length;
+  let i = ((idx + delta) % n + n) % n, guard = 0;
+  while((!sections[i] || !sections[i].slots.length) && guard < n){ i = ((i + delta) % n + n) % n; guard++; }
+  return i;
+ };
+ if(songPendingSectionDelta !== 0) idx = stepTo(songPendingSectionDelta);
+ else if(sec.follow === 'next' && playable > 1) idx = stepTo(1);
+ const nsec = sections[idx];
+ return (nsec && nsec.slots.length) ? nsec.slots[0] : sec.slots[0];
+}
+
 function _playLoopSlot(atTime){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
@@ -11248,6 +11228,13 @@ function _playLoopSlot(atTime){
 
  // Play the chord (or rest)
  playChartSlot2(songLoopSection, songLoopSlot, atTime);
+ // Hand the bass this chord's exact audio window plus the root it resolves
+ // to next, so a walking line can aim its approach note at the real target
+ // instead of guessing. Published here rather than from playChartSlot2
+ // because only this function knows the slot's duration and what follows it.
+ if(typeof window._blOnChord==='function' && atTime!=null){
+  try{ window._blOnChord(slot, atTime, slotTotalMs(slot)/1000, _songPeekNextSlot()); }catch(e){}
+ }
  // The audio is scheduled ahead; the highlight should still land when you
  // actually hear it, so it waits out the lead rather than flashing early.
  const _ctxN=getCtx();
@@ -12215,7 +12202,13 @@ function _syncRegenAt(atTime){
     ms=Math.max(0,(atTime-(typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)-ctx.currentTime)*1000);
   }
   setTimeout(function(){
-    if(typeof window.blGenerate==='function') window.blGenerate();
+    // Follow mode already moves the bass onto each new chord, and does it by
+    // transposing the line rather than rewriting it — so the figure you
+    // generated survives the changes instead of being replaced every bar,
+    // which is the difference between a bass part and a slot machine.
+    // Regenerating on top of that would undo exactly that benefit.
+    var blFollowing = (typeof window.blIsFollowOn==='function') && window.blIsFollowOn();
+    if(!blFollowing && typeof window.blGenerate==='function') window.blGenerate();
     if(typeof window.mlGenerate==='function') window.mlGenerate();
   }, ms);
 }
@@ -12313,6 +12306,8 @@ buildStandardsMenu();
 buildChartPicker();
 renderChords();
 loadProgressionFromHash();
+if(typeof renderSetups==='function') renderSetups();
+if(typeof loadSetupFromHash==='function') loadSetupFromHash();
 updateOct();
 buildMelodyStrip();
 initBendStrip();
@@ -13681,7 +13676,14 @@ function blMG(){
 var BL_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 var blGrid = []; // [{note:0-11, oct:3, len:1, slide:false, accent:false, v:0/1}]
 var blSteps = 16;
-var blOct = 3;
+// Octave 2 puts a root at 65 Hz (C2) — the register a bass actually lives in.
+// This used to default to 3, which is C at 131 Hz: the octave a guitarist
+// plays, an octave above where the low end of a mix wants a bass line.
+var blOct = 2;
+// The pitch class blGenerate() built the current grid over. Follow mode
+// measures each step's interval from this, so re-rooting the line onto a new
+// chord preserves the figure the generator actually wrote.
+var _blGridRootPc = 0;
 var blPlaying = false;
  window._blPlaying = function(){ return blPlaying; };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
@@ -13867,6 +13869,136 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   _blPrevSlide = slide;
 }
 
+// ═══════════════════════════════════════
+// FOLLOW THE CHANGES
+// ═══════════════════════════════════════
+// The grid alone is a one-bar loop that repeats over whatever the song is
+// doing — fine for a vamp, wrong over a chart. In Follow mode the song hands
+// the bass each chord's exact audio window as it's scheduled, and the bass
+// resolves every step against the window that covers that step's own time.
+// Working in scheduled time rather than "the chord that's playing now" is
+// what keeps it locked: both sides are placing notes ahead of the clock.
+
+var blFollow = false;                    // off = the grid loops as authored
+var _blChordWin = [];                    // upcoming chord windows, time-ordered
+var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk sits
+var BL_GEN_LO = 28, BL_GEN_HI = 52;      // generated grids stay under E3 (165 Hz)
+
+// Called from _playLoopSlot as each chord is committed to the audio clock.
+window._blOnChord = function(slot, atTime, durSec, nextSlot){
+  if(!slot) return;
+  var capo = (typeof _songBaseRoot!=='undefined' && _songBaseRoot>=0) ? (root - _songBaseRoot) : 0;
+  var w = {
+    t: atTime, end: atTime + durSec, rest: !!slot.isRest,
+    rootPc: ((slot.rootM + capo) % 12 + 12) % 12,
+    bassPc: (slot.bassNote!=null) ? (((slot.bassNote + capo) % 12) + 12) % 12 : null,
+    pcs: [], nextPc: null
+  };
+  try{
+    var iv = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad') || [0,4,7];
+    w.pcs = iv.map(function(d){ return ((slot.rootM + capo + d) % 12 + 12) % 12; });
+  }catch(e){ w.pcs = [w.rootPc, (w.rootPc+4)%12, (w.rootPc+7)%12]; }
+  if(nextSlot && !nextSlot.isRest){
+    w.nextPc = (nextSlot.bassNote!=null)
+      ? (((nextSlot.bassNote + capo) % 12) + 12) % 12
+      : ((nextSlot.rootM + capo) % 12 + 12) % 12;
+  }
+  _blChordWin.push(w);
+  // Drop windows that are already behind the clock, but keep one so a step
+  // scheduled a hair before the next chord still finds its chord.
+  var ctx = blCtx(), now = ctx ? ctx.currentTime : 0;
+  while(_blChordWin.length > 2 && _blChordWin[1].end < now) _blChordWin.shift();
+  if(_blChordWin.length > 64) _blChordWin.splice(0, _blChordWin.length - 64);
+};
+window._blClearChords = function(){ _blChordWin = []; _blWalkPrev = 0; _blWalkNextT = 0; _blWalkWin = null; };
+window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
+window.blIsFollowOn = function(){ return blFollow; };
+
+// Null means "no chord information for this time yet" — not "no chord". The
+// song publishes each window as it commits the chord to the audio clock, so a
+// bass scheduling further ahead than the song has scheduled will ask about
+// time it can't know about. Returning the previous window there made the walk
+// treat the *old* chord's approach note as the new chord's downbeat, landing a
+// semitone off the root every time a chord changed. The caller waits instead.
+function _blWindowAt(t){
+  for(var i=0;i<_blChordWin.length;i++){
+    var w = _blChordWin[i];
+    if(t >= w.t - 0.002 && t < w.end - 0.002) return w;
+  }
+  return null;
+}
+
+// Put a pitch class in the octave nearest a reference note, inside the range.
+function _blNear(pc, refMidi){
+  pc = ((pc % 12) + 12) % 12;
+  var best = null, bd = 1e9;
+  for(var m = BL_LO - (BL_LO % 12) - 12; m <= BL_HI + 12; m++){
+    if(m < BL_LO || m > BL_HI) continue;
+    if(((m % 12) + 12) % 12 !== pc) continue;
+    var d = Math.abs(m - refMidi);
+    if(d < bd){ bd = d; best = m; }
+  }
+  return best == null ? BL_LO + pc : best;
+}
+
+var _blWalkPrev = 0, _blWalkNextT = 0, _blWalkWin = null;
+// One quarter-note of a walking line. Beat 1 is the chord's own root; the beat
+// before a change approaches the next root from a half step or a fifth; the
+// beats between move by step through chord and scale tones, aimed at whatever
+// comes next. Deliberately mostly-stepwise — leaps are what make a generated
+// walk sound like an arpeggiator rather than a bass player.
+function _blWalkNote(w, beatIdx, beatsLeft, scalePcs){
+  var prev = _blWalkPrev || _blNear(w.rootPc, 40);
+  if(beatIdx === 0){
+    var basePc = (w.bassPc != null) ? w.bassPc : w.rootPc;
+    // _blNear already picks the octave closest to the previous note, which
+    // caps the step at a tritone. An earlier "keep off the range edges" nudge
+    // here shifted that by an octave and produced 11-semitone jumps onto
+    // downbeats — a leap, not a walk. The range is narrow enough that the
+    // nearest-octave rule keeps the line centred on its own.
+    var m = _blNear(basePc, prev);
+    _blWalkPrev = m;
+    return m;
+  }
+  var target = (w.nextPc != null) ? w.nextPc : w.rootPc;
+  if(beatsLeft <= 1){
+    // Last beat of the chord — lead into the next root.
+    var tgtM = _blNear(target, prev);
+    var opts = [tgtM - 1, tgtM + 1, tgtM - 7, tgtM + 5];
+    var cands = opts.filter(function(m){ return m >= BL_LO && m <= BL_HI && Math.abs(m - prev) <= 7; });
+    if(!cands.length) cands = opts.filter(function(m){ return m >= BL_LO && m <= BL_HI; });
+    var pickA = cands.length ? cands[(Math.random()*cands.length)|0] : _blNear((target+11)%12, prev);
+    _blWalkPrev = pickA;
+    return pickA;
+  }
+  // Middle of the chord: step toward the target through chord tones first.
+  var dir = (_blNear(target, prev) >= prev) ? 1 : -1;
+  var pool = [];
+  for(var d = 1; d <= 4; d++){
+    var up = prev + d * dir;
+    if(up < BL_LO || up > BL_HI) continue;
+    var pc = ((up % 12) + 12) % 12;
+    var weight = (w.pcs.indexOf(pc) >= 0) ? 4 : (scalePcs.indexOf(pc) >= 0 ? 2 : 0);
+    if(d > 2) weight = Math.max(0, weight - 1);
+    for(var k = 0; k < weight; k++) pool.push(up);
+  }
+  if(!pool.length){
+    for(var j = 0; j < w.pcs.length; j++){
+      var mm = _blNear(w.pcs[j], prev);
+      if(mm !== prev) pool.push(mm);
+    }
+  }
+  var out = pool.length ? pool[(Math.random()*pool.length)|0] : prev;
+  _blWalkPrev = out;
+  return out;
+}
+
+function _blScalePcs(){
+  var md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
+  var steps = md ? md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
+  return steps.map(function(d){ return (root + d) % 12; });
+}
+
 // ── scheduler integration ──
 // Register into Vibe's shared clock (same pattern as sequencer)
 window._blScheduler = function(){
@@ -13875,8 +14007,62 @@ window._blScheduler = function(){
   var stepSec = 60 / bpmNow / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = blSteps;
-  while(blNextT < (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1)){
+  var following = blFollow && _blChordWin.length > 0;
+  var walking = following && blGenStyle === 'jazz';
+  var scalePcs = following ? _blScalePcs() : null;
+  var horizon = (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1);
+
+  if(walking){
+    // A walking line is quarter notes by definition, so the grid's rhythm
+    // doesn't apply. It also can't ride the bass's own step phase: start the
+    // bass and the song separately and that phase sits wherever blPlay()
+    // happened to fall — measured at 47 ms off the chords, an audible flam.
+    // So the walk runs on the chord windows' own clock and re-anchors to each
+    // new chord's downbeat, which makes beat 1 land with the chord however
+    // playback was started.
+    var beatSec = stepSec * 4;
+    if(_blWalkNextT && _blWalkNextT < ctx.currentTime - beatSec) _blWalkNextT = 0;
+    if(!_blWalkNextT){
+      var w0 = _blChordWin[0];
+      _blWalkNextT = (w0 && w0.t > ctx.currentTime) ? w0.t : ctx.currentTime;
+    }
+    var guard = 0;
+    while(_blWalkNextT < horizon && guard++ < 256){
+      var wq = _blWindowAt(_blWalkNextT);
+      // Past the last chord the song has committed — stop here and pick it up
+      // on a later pass, rather than guessing at a chord that doesn't exist yet.
+      if(!wq) break;
+      if(wq !== _blWalkWin){
+        _blWalkWin = wq;
+        // Only ever nudge forward, or back by less than half a beat — a bigger
+        // rewind would re-fire notes already committed to the audio clock.
+        if(wq.t >= _blWalkNextT - beatSec*0.5) _blWalkNextT = wq.t;
+      }
+      if(_blWalkNextT >= horizon) break;
+      // A beat whose time already passed while we were waiting for its chord
+      // gets skipped, never played late — a late note is worse than a gap.
+      if(_blWalkNextT < ctx.currentTime){ _blWalkNextT += beatSec; continue; }
+      if(!wq.rest){
+        var into = Math.max(0, _blWalkNextT - wq.t);
+        var beatIdx = Math.round(into / beatSec);
+        var beatsLeft = Math.max(1, Math.round((wq.end - _blWalkNextT) / beatSec));
+        var midi = _blWalkNote(wq, beatIdx, beatsLeft, scalePcs);
+        blPlayNote(_blWalkNextT, ((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1,
+                   beatSec * 0.92, 1.0, beatIdx === 0, false);
+      }
+      _blWalkNextT += beatSec;
+    }
+    // Keep the step clock running so the playhead still sweeps the grid.
+    while(blNextT < horizon){
+      blNextT += stepSec; blSeqStep++;
+      if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide = false; _blPrevFreq = 0; }
+    }
+    return;
+  }
+
+  while(blNextT < horizon){
     var cell = blGrid[blSeqStep % stepCount];
+
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
       var isOdd = (blSeqStep % 2 === 1);
@@ -13884,7 +14070,27 @@ window._blScheduler = function(){
       // Cap odd-beat duration so it doesn't bleed past the next downbeat
       var maxDur = isOdd ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
-      blPlayNote(blNextT + swOff, cell.note, cell.oct, dur, 1.0, cell.accent, cell.slide);
+      var pNote = cell.note, pOct = cell.oct;
+      if(following){
+        // Keep the authored rhythm and shape, but re-root the line onto the
+        // chord that's actually sounding at this step's time. Intervals are
+        // measured from the pitch class the grid was generated over, so a
+        // root-fifth-octave figure stays a root-fifth-octave figure.
+        var wf = _blWindowAt(blNextT + swOff);
+        if(wf){
+          if(wf.rest){ blNextT += stepSec; blSeqStep++;
+                       if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; }
+                       continue; }
+          var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
+          var shift = ((basePc - _blGridRootPc) % 12 + 12) % 12;
+          var abs = pNote + (pOct + 1) * 12 + shift;
+          if(abs > BL_HI) abs -= 12;
+          if(abs < BL_LO) abs += 12;
+          pNote = ((abs % 12) + 12) % 12;
+          pOct = Math.floor(abs / 12) - 1;
+        }
+      }
+      blPlayNote(blNextT + swOff, pNote, pOct, dur, 1.0, cell.accent, cell.slide);
     } else {
       _blPrevSlide = false;
     }
@@ -14198,6 +14404,7 @@ window.blGenerate = function(){
   }
 
   for(var s=0;s<blSteps;s++){ blGrid[s]=blMkCell(); blGrid[s].oct=blOct; }
+  _blGridRootPc = chordRoot;
   var lastNote = chordRoot;
 
   if(blGenStyle === 'rock'){
@@ -14323,27 +14530,216 @@ window.blGenerate = function(){
     }
 
   } else if(blGenStyle === 'latin'){
-    // Tumbao / clave feel: anticipated root hits, 2+3 or 3+2 feel
-    // Simplified tumbao: rest on 1, hit on "and of 2", 3, "and of 4"
-    var tumbaoPat = [0,0,1,0, 0,1,0,0, 0,0,1,0, 0,1,0,1];
-    var tumNotes  = [0,0,fifth,0, 0,chordRoot,0,0, 0,0,fifth,0, 0,chordRoot,0,(chordRoot+5)%12];
+    // Tumbao / clave feel: anticipated root hits, 2+3 or 3+2 feel.
+    // Three variants rather than the single fixed tumbao this used to be —
+    // one pattern meant every Latin generate came out identical.
+    var latinPats = [
+      // classic tumbao: rest on 1, hit the "and of 2", 3, "and of 4"
+      { p:[0,0,1,0, 0,1,0,0, 0,0,1,0, 0,1,0,1],
+        n:[0,0,fifth,0, 0,chordRoot,0,0, 0,0,fifth,0, 0,chordRoot,0,(chordRoot+5)%12] },
+      // 2-3 son clave, anticipating the bar line
+      { p:[0,0,1,0, 0,0,1,0, 1,0,0,0, 0,1,0,0],
+        n:[0,0,chordRoot,0, 0,0,fifth,0, chordRoot,0,0,0, 0,fifth,0,0] },
+      // bolero/baião feel: root on 1, push into the second half
+      { p:[1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0],
+        n:[chordRoot,0,0,fifth, 0,0,chordRoot,0, fifth,0,0,chordRoot, 0,0,third,0] }
+    ];
+    var lat = pick(latinPats);
+    var tumbaoPat = lat.p, tumNotes = lat.n.slice();
+    // Three fixed note rows gave exactly three possible Latin lines. Vary the
+    // non-anchor hits so repeated generates actually differ, without touching
+    // the rhythm — the rhythm is the whole identity of a tumbao.
+    var latSubs = [fifth, chordRoot, snapToScale((chordRoot+10)%12), third];
+    for(var li2=0; li2<tumNotes.length; li2++){
+      if(tumNotes[li2] && li2>2 && Math.random()>0.55) tumNotes[li2]=pick(latSubs);
+    }
     for(var s=0;s<blSteps;s++){
-      if(tumbaoPat[s]){
+      if(tumbaoPat[s%16]){
         blGrid[s].v=1;
-        blGrid[s].note = tumNotes[s] || chordRoot;
+        blGrid[s].note = tumNotes[s%16] || chordRoot;
         blGrid[s].oct=blOct;
-        blGrid[s].accent=(s===2||s===10);
+        blGrid[s].accent=(s%16===2||s%16===10);
         blGrid[s].len=2;
-        if(s===14) blGrid[s].slide=true;
+        if(s%16===14) blGrid[s].slide=true;
         lastNote=blGrid[s].note;
       }
     }
+
+  } else if(blGenStyle === 'arpeggio'){
+    // Ported from the melody generator, which reads well an octave down: the
+    // chord spelled out in steady eighths. The melody version climbs an octave
+    // on each pass; down here that would leave the bass register, so it drops
+    // instead — the line falls back under the chord rather than rising out of it.
+    var arpTones = chordTones.length>2 ? chordTones.slice(0,4) : [chordRoot,third,fifth];
+    var shapes = [
+      arpTones,
+      arpTones.slice().reverse(),
+      arpTones.concat(arpTones.slice().reverse().slice(1))
+    ];
+    var seq = pick(shapes);
+    var ai = 0;
+    for(var s=0;s<blSteps;s+=2){
+      blGrid[s].v=1;
+      blGrid[s].note = seq[ai % seq.length];
+      blGrid[s].oct = blOct + (Math.floor(ai/seq.length)%2 ? 1 : 0);
+      blGrid[s].accent = (s%8===0);
+      blGrid[s].len = 1;
+      lastNote = blGrid[s].note;
+      ai++;
+    }
+
+  } else if(blGenStyle === 'riff'){
+    // Also from the melody generator: a one-beat motif repeated across the bar,
+    // with the third repeat lifted an octave. Root-anchored so it still holds
+    // the bottom down while it moves.
+    var motif=[];
+    for(var i=0;i<4;i++){
+      if(i===0) motif.push({on:true, note:chordRoot, accent:true});
+      else if(Math.random()>0.35) motif.push({on:true, note:weighted([[fifth,3],[third,2],[chordRoot,2],[pick(scaleNotes),1]]), accent:false});
+      else motif.push({on:false});
+    }
+    for(var s=0;s<blSteps;s++){
+      var mm = motif[s%4];
+      if(mm.on){
+        blGrid[s].v=1; blGrid[s].note=mm.note; blGrid[s].accent=mm.accent; blGrid[s].len=1;
+        blGrid[s].oct = blOct + (Math.floor(s/4)===2 ? 1 : 0);
+        lastNote = mm.note;
+      }
+    }
+
+  } else if(blGenStyle === 'hook'){
+    // The melody generator's syncopated pop line, kept low and sparse. Long
+    // notes on the strong beats so it reads as a bass part, not a countermelody.
+    var hookPats = [
+      [1,0,0,1, 0,1,0,0, 1,0,1,0, 0,1,0,0],
+      [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,1,0,0],
+      [1,0,1,0, 0,1,0,1, 1,0,0,1, 0,0,1,0]
+    ];
+    var hp = pick(hookPats);
+    for(var s=0;s<blSteps;s++){
+      if(hp[s%16]){
+        blGrid[s].v=1;
+        blGrid[s].note = (s%8===0) ? chordRoot
+          : weighted([[chordRoot,3],[fifth,3],[third,2],[snapToScale((chordRoot+10)%12),1]]);
+        blGrid[s].oct = blOct;
+        blGrid[s].accent = (s%8===0);
+        blGrid[s].len = (s%4===0) ? 2 : 1;
+        lastNote = blGrid[s].note;
+      }
+    }
+
+  } else if(blGenStyle === 'reggae'){
+    // One drop: nothing on the downbeat at all — the space is the point.
+    var dropPats = [
+      [0,0,0,0, 1,0,1,0, 0,0,0,0, 1,0,1,1],
+      [0,0,1,0, 1,0,0,0, 0,0,1,0, 1,0,0,0],
+      [0,0,0,0, 1,0,0,1, 0,1,0,0, 1,0,0,0]
+    ];
+    var dp = pick(dropPats);
+    var lowSeq = pick([
+      [chordRoot, fifth, chordRoot, snapToScale((chordRoot+10)%12)],
+      [chordRoot, chordRoot, fifth, third],
+      [chordRoot, snapToScale((chordRoot+10)%12), fifth, chordRoot]
+    ]);
+    var li = 0;
+    for(var s=0;s<blSteps;s++){
+      if(dp[s%16]){
+        blGrid[s].v=1;
+        blGrid[s].note = (li===0) ? chordRoot : lowSeq[li%lowSeq.length];
+        blGrid[s].oct = blOct;
+        blGrid[s].accent = (s%8===4);
+        blGrid[s].len = 2;
+        lastNote = blGrid[s].note; li++;
+      }
+    }
+
+  } else if(blGenStyle === 'pedal'){
+    // Straight eighths on one note. Every bass player's most-used part, and
+    // the one thing none of the other styles would ever produce.
+    var pedalPc = Math.random()>0.82 ? fifth : chordRoot;
+    // Eighths, quarters or a driving sixteenth pedal — same idea, three feels.
+    var pedStride = pick([2,2,2,4,1]);
+    for(var s=0;s<blSteps;s+=pedStride){
+      blGrid[s].v=1; blGrid[s].note=pedalPc; blGrid[s].oct=blOct;
+      blGrid[s].accent=(s%8===0); blGrid[s].len=1;
+    }
+    // A pickup into the next bar keeps it from being a drone.
+    if(blSteps>=16 && Math.random()>0.4){
+      var pu = blSteps-1;
+      blGrid[pu].v=1;
+      blGrid[pu].note=pick([snapToScale((pedalPc+10)%12), snapToScale((pedalPc+2)%12), fifth]);
+      blGrid[pu].oct=blOct; blGrid[pu].len=1; blGrid[pu].accent=false;
+    }
+    lastNote = pedalPc;
+
+  } else if(blGenStyle === 'halftime'){
+    // Whole and half notes. Slow, sustained, and the right answer under a
+    // busy arrangement — the generator had nothing in this tempo of motion.
+    var htShapes = [
+      [[0,chordRoot,8],[8,fifth,8]],
+      [[0,chordRoot,16]],
+      [[0,chordRoot,8],[8,snapToScale((chordRoot+10)%12),4],[12,fifth,4]],
+      [[0,chordRoot,12],[12,third,4]],
+      [[0,chordRoot,8],[8,third,8]],
+      [[0,fifth,8],[8,chordRoot,8]],
+      [[0,chordRoot,10],[10,fifth,3],[13,snapToScale((chordRoot+10)%12),3]],
+      [[0,chordRoot,4],[4,chordRoot,4],[8,fifth,8]]
+    ];
+    var ht = pick(htShapes);
+    ht.forEach(function(h){
+      var at=h[0]; if(at>=blSteps) return;
+      blGrid[at].v=1; blGrid[at].note=h[1]; blGrid[at].oct=blOct;
+      blGrid[at].len=Math.min(h[2], blSteps-at); blGrid[at].accent=(at===0);
+      lastNote=h[1];
+    });
+  }
+
+  // Every style that lifts an octave for a hook (riff, arpeggio, acid, motown)
+  // could stack that on top of a high pitch class and land near 250 Hz — an
+  // octave clear of where a bass belongs. Measured, not assumed: riff was
+  // topping out at B3/247 Hz and acid at G#3/208. Fold anything outside E1–E3
+  // back by octaves so the shape survives but the register doesn't drift.
+  for(var s=0;s<blSteps;s++){
+    var c=blGrid[s]; if(!c || !c.v) continue;
+    var m=c.note+(c.oct+1)*12;
+    while(m > BL_GEN_HI) m -= 12;
+    while(m < BL_GEN_LO) m += 12;
+    c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
 
   blRenderGrid();
 };
 
 window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); blRenderGrid(); };
+
+// The style lives inside this IIFE, so setting window.blGenStyle from outside
+// silently created an unrelated property and left the generator on whatever it
+// was. Anything outside here — the dice, setups, tests — goes through this.
+window.setBlGenStyle = function(st){
+  blGenStyle = st;
+  document.querySelectorAll('[data-blstyle]').forEach(function(x){
+    x.classList.toggle('active', x.dataset.blstyle === st);
+  });
+  if(typeof blSyncFollowUI==='function') blSyncFollowUI();
+};
+window._blGenStyle = function(){ return blGenStyle; };
+
+window.blToggleFollow = function(){
+  blFollow = !blFollow;
+  _blWalkPrev = 0;
+  blSyncFollowUI();
+  if(typeof track==='function') track('bass_follow_toggled',{on:blFollow, style:blGenStyle});
+};
+window.blSyncFollowUI = function(){
+  var b = document.getElementById('bl-follow-btn');
+  var h = document.getElementById('bl-follow-hint');
+  if(b){ b.textContent = 'Follow: ' + (blFollow?'ON':'OFF'); b.classList.toggle('on', blFollow); }
+  if(h){
+    h.textContent = !blFollow ? 'Loops the bar as written'
+      : (blGenStyle==='jazz' ? 'Walking bass through the changes'
+                             : 'Line re-roots onto each chord');
+  }
+};
 
 // ── bass waveform selector ──
 window.setBlWave = function(w){
@@ -14361,6 +14757,8 @@ document.querySelectorAll('[data-blstyle]').forEach(function(b){
     blGenStyle = b.dataset.blstyle;
     document.querySelectorAll('[data-blstyle]').forEach(function(x){x.classList.remove('active');});
     b.classList.add('active');
+    // Jazz + Follow is the walking line, so the hint has to keep up.
+    if(typeof blSyncFollowUI==='function') blSyncFollowUI();
   });
 });
 
@@ -14412,7 +14810,7 @@ blEnsureGrid();
 // them directly)
 window._blCaptureState = function(){
  return {
-  steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle,
+  steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle, follow: blFollow,
   cutoff: blCutoff, resonance: blResonance, vol: blVol,
   grid: blGrid
  };
@@ -14427,6 +14825,7 @@ window._blRestoreState = function(s){
  if(s.steps) blSteps = s.steps;
  if(s.oct!=null) blOct = s.oct;
  if(s.genStyle) blGenStyle = s.genStyle;
+ if(typeof s.follow==='boolean') blFollow = s.follow;
  if(s.cutoff!=null) blCutoff = s.cutoff;
  if(s.resonance!=null) blResonance = s.resonance;
  if(s.grid) blGrid = JSON.parse(JSON.stringify(s.grid));
@@ -14434,8 +14833,11 @@ window._blRestoreState = function(s){
  var _d=document.getElementById('bl-stepsdisp'); if(_d) _d.textContent=blSteps;
  var _o=document.getElementById('bl-octdisp'); if(_o) _o.textContent=blOct;
  document.querySelectorAll('[data-blstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.blstyle === blGenStyle); });
+ if(typeof blSyncFollowUI==='function') blSyncFollowUI();
  blRenderGrid();
 };
+
+blSyncFollowUI();
 
 })(); // end bassline IIFE
 
