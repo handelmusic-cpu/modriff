@@ -10444,6 +10444,7 @@ function holdSongLoop(){
  _songHeldAt = { section: songLoopSection, slot: songLoopSlot };
  songLoopActive = false;
  songWaitingForBar = false;
+ _songSlotNeedsTimeout = false; // see stopSongLoop()
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
@@ -10459,6 +10460,14 @@ function stopSongLoop(){
  songLoopActive = false;
  _songBaseRoot = -1; // clear capo
  songWaitingForBar = false;
+ // Reset with the rest of the per-run state. This is a latch meaning "the
+ // slot currently playing is sub-bar, so a setTimeout is driving advancement
+ // and the bar tick must keep its hands off". Left set from a previous run it
+ // made tickSongLoop() return early forever, so a loop waiting on its first
+ // bar boundary never got started — every song whose chart contains a
+ // half-bar chord (|Dm7 G7|, which is most of the jazz repertoire) would load
+ // and then simply never play.
+ _songSlotNeedsTimeout = false;
  songPendingSectionDelta = 0;
  clearTimeout(songLoopTimer);
  songLoopTimer = null;
@@ -10710,485 +10719,32 @@ function _jscQ(q){
 // chord-chart app; several of these are still under copyright but bare
 // chord progressions aren't independently protected expression.
 const STANDARDS=[
- {title:"A Cup of Coffee, a Sandwich and You",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"A Pretty Girl is Like a Melody",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"d",1],[2,"m",1],[7,"7",1],[0,"M",2],[0,"a",1],[4,"7",1],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Ain't Misbehavin'",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[5,"7",2],[6,"d",1],[0,"M7",1],[9,"m7",1],[2,"7",1],[7,"7",2]]}
- ]},
- {title:"Airegin",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[8,"7",2],[1,"M7",2],[6,"m7",1],[11,"7",1],[4,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"m7",2],[7,"7",2]]}
- ]},
- {title:"Alice in Wonderland",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]}
- ]},
- {title:"All Blues",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"7",2],[10,"7",1],[3,"7",1],[0,"7",2]]}
- ]},
- {title:"All of Me",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",2],[2,"m7",2]]},{name:"B",chords:[[4,"7",1],[9,"m7",1],[2,"7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]}
- ]},
  {title:"All the Things You Are",key:8,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[6,"hd",1],[11,"7",1],[4,"M7",1]]},{name:"A2",chords:[[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",1],[0,"M7",1],[1,"hd",1],[6,"7",1],[11,"M7",1]]},{name:"B",chords:[[11,"m7",1],[4,"m7",1],[9,"7",1],[2,"M7",1],[7,"M7",1],[7,"m7",1],[0,"7",1],[5,"M7",1]]},{name:"C",chords:[[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
- ]},
- {title:"Alone Together",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"hd",1],[10,"7",1],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2],[7,"7",2]]}
- ]},
- {title:"Angel Eyes",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[9,"hd",1],[2,"7",2],[5,"m7",2],[9,"7",2]]},{name:"B",chords:[[3,"M",2],[9,"hd",1],[2,"7",1],[0,"m",2],[7,"7",2]]}
- ]},
- {title:"Anthropology",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"April Showers",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
+  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[6,"hd",0.5],[11,"7",0.5],[4,"M7",2]]},{name:"A2",chords:[[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",1],[0,"M7",1],[1,"hd",0.5],[6,"7",0.5],[11,"M7",2]]},{name:"B",chords:[[1,"m7",1],[6,"7",1],[11,"M7",2],[10,"hd",1],[3,"7",1],[8,"M7",1],[4,"7",1]]},{name:"A3",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[5,"m7",1],[4,"m7",1],[3,"d7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
  {title:"Autumn Leaves",key:7,mode:"minor",sections:[
   {name:"A",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"A2",chords:[[5,"m7",1],[10,"7",1],[3,"M7",1],[8,"M7",1],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2]]},{name:"C",chords:[[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
  ]},
- {title:"Autumn in New York",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[11,"hd",1],[4,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Baby Won't You Please Come Home",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",1],[6,"d",1],[0,"M",2],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",4]]}
- ]},
- {title:"Bags' Groove",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Beautiful Love",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"hd",1],[10,"7",1],[8,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[8,"M7",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Bewitched",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[9,"hd",1],[2,"7",1],[5,"m7",2],[7,"7",2]]},{name:"B",chords:[[3,"M7",2],[8,"M7",2],[9,"hd",1],[2,"7",1],[0,"m7",2]]}
- ]},
- {title:"Billie's Bounce",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",1],[2,"hd",1],[7,"7",1],[0,"7",1],[9,"m7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Black Orpheus",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2],[5,"m7",2]]},{name:"B",chords:[[8,"M7",2],[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
- ]},
  {title:"Blue Bossa",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[5,"m7",1],[2,"hd",1],[7,"7",1],[0,"m7",2],[3,"m7",1],[8,"7",1]]},{name:"B",chords:[[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2],[2,"hd",1],[7,"7",1]]}
+  {name:"A",chords:[[0,"m7",2],[5,"m7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[1,"M7",2],[2,"hd",1],[7,"7",1],[0,"m7",2]]}
  ]},
  {title:"Blue Monk",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[6,"d7",1],[7,"7",1],[0,"7",2]]}
- ]},
- {title:"Blue Skies",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Blues for Alice",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"m7",1],[6,"7",1],[11,"m7",1],[4,"7",1],[9,"M7",1],[2,"m7",1],[7,"7",1],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1]]}
- ]},
- {title:"Bluesette",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Body and Soul",key:1,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[1,"M7",2],[6,"7",2],[1,"M7",2],[7,"7",2]]}
- ]},
- {title:"But Not for Me",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"7",2],[0,"M",1],[4,"m7",1],[9,"m7",1],[2,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M7",2],[10,"7",2],[0,"M7",1],[0,"7",1],[5,"M7",1],[5,"m",1],[10,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"By The Light Of The Silvery Moon",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"M",1],[0,"7",1],[5,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Bye Bye Blackbird",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"d7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
- ]},
- {title:"C-Jam Blues",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Cantaloupe Island",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[3,"m7",2],[6,"7",2],[0,"m7",4],[9,"m7",4]]}
- ]},
- {title:"Caravan",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",4],[0,"m",4]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",4]]}
- ]},
- {title:"Carolina in the Morning",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",1],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Cherokee",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2],[10,"m7",1],[3,"7",1]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[10,"hd",1],[3,"7",1]]}
- ]},
- {title:"Chicago",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[6,"d",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Confessin'",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",1],[4,"7",1],[5,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Confirmation",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[2,"hd",1],[7,"7",1],[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"M7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1]]}
- ]},
- {title:"Corcovado",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Days of Wine and Roses",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Desafinado",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[0,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Donna Lee",key:8,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Doxy",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",2],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Dream a Little Dream of Me",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[3,"7",2],[8,"M",2],[7,"7",2]]},{name:"Bridge",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",1],[3,"7",1],[8,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Easy Living",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Embraceable You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[4,"m",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"Exactly Like You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Falling in Love with Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Five Foot Two, Eyes of Blue",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"7",1],[2,"7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"d",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"7",2],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Fly Me to the Moon",key:0,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[5,"M7",1],[11,"hd",1],[4,"7",1],[9,"m7",1]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Footprints",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[0,"m7",2],[5,"m7",2],[0,"m7",2]]},{name:"B",chords:[[8,"7",1],[3,"7",1],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Four",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2],[3,"m7",1],[8,"7",1]]},{name:"B",chords:[[6,"m7",1],[11,"7",1],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[3,"m7",1],[6,"7",1]]}
- ]},
- {title:"Freddie Freeloader",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[8,"7",2],[5,"7",2]]}
- ]},
- {title:"Georgia On My Mind",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2],[4,"7",2],[9,"m",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"m",2],[2,"m",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Green Dolphin Street",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]},{name:"C",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",1],[2,"hd",1]]}
- ]},
- {title:"Have You Met Miss Jones",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[1,"M7",2],[9,"m7",1],[2,"m7",1],[7,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
- ]},
- {title:"Hello! Ma Baby",key:0,mode:"major",sections:[
-  {name:"A",chords:[[7,"7",2],[0,"M",2],[9,"7",2],[2,"m",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Here's That Rainy Day",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[8,"7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"How 'Ya Gonna Keep 'Em Down on the Farm",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"How High the Moon",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[0,"m7",2],[5,"m7",2],[10,"7",2],[3,"M7",2],[3,"m7",2],[8,"m7",2],[1,"7",2]]},{name:"B",chords:[[6,"M7",2],[6,"m7",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]}
- ]},
- {title:"How Insensitive",key:1,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[6,"hd",1],[11,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[0,"m7",1],[6,"hd",1],[11,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"I Could Write a Book",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
+  {name:"Blues",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[5,"7",1],[6,"d7",1],[0,"7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]}
  ]},
  {title:"I Got Rhythm",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"I Hear a Rhapsody",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[1,"M7",2]]}
- ]},
- {title:"I Love You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"I Mean You",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[6,"7",1],[0,"M7",1],[6,"7",1],[5,"m7",1],[10,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"m7",2],[10,"7",2],[0,"M7",2],[6,"7",2]]}
- ]},
- {title:"I Remember You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[4,"m7",2],[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M7",2]]}
- ]},
- {title:"I Wonder Who's Kissing Her Now",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I'll Remember April",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"m7",2],[5,"m7",2],[10,"7",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[0,"M",2]]}
- ]},
- {title:"I'm Forever Blowing Bubbles",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"7",2],[2,"m",2],[7,"7",1],[0,"M",1],[1,"d",1],[7,"7",1],[5,"M",2]]},{name:"B",chords:[[5,"m",1],[0,"M",1],[9,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I'm Just Wild About Harry",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[4,"7",1],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"I've Got You Under My Skin",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"7",2]]}
- ]},
- {title:"If I Should Lose You",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"If I Were a Bell",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Impressions",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",4],[0,"m7",4]]}
- ]},
- {title:"In Walked Bud",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"In a Mellow Tone",key:10,mode:"major",sections:[
-  {name:"A",chords:[[3,"m7",2],[8,"7",2],[0,"M",2],[7,"m7",1],[0,"7",1]]},{name:"B",chords:[[5,"M",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M",2]]}
- ]},
- {title:"Indiana",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Invitation",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"m7",2],[8,"7",2],[1,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2]]}
- ]},
- {title:"Isn't It Romantic",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"It Could Happen to You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",2],[0,"7",2]]},{name:"B",chords:[[5,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]}
- ]},
- {title:"It Don't Mean a Thing",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"It Had to Be You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"m",2],[2,"m7",1],[7,"7",1],[0,"M",2],[4,"7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Jeepers Creepers",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[5,"M",2],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"M",2]]}
- ]},
- {title:"Joy Spring",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1],[10,"m7",1],[3,"7",1],[8,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M7",1]]}
- ]},
- {title:"Ladybird",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",1],[6,"m7",1],[11,"m7",1],[4,"7",1],[9,"M7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"Lester Leaps In",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Like Someone in Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Love for Sale",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[5,"m",2],[0,"m",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",1],[5,"7",1],[10,"7",2]]},{name:"C",chords:[[0,"m",1],[2,"hd",1],[7,"7",1],[0,"m",2],[8,"M",2],[7,"7",2],[0,"m",2]]}
- ]},
- {title:"Lullaby of Birdland",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[8,"hd",1],[1,"7",1],[0,"M",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Maiden Voyage",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",4],[5,"m7",4]]},{name:"B",chords:[[10,"m7",4],[7,"m7",4]]}
- ]},
- {title:"Manhattan",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[5,"M",1],[7,"7",1],[0,"M",2],[9,"m",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Memories of You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",2],[5,"M",2],[5,"m",2],[0,"M",1],[9,"m",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[7,"m",1],[7,"7",1],[0,"M",2],[3,"7",2],[2,"7",1],[7,"7",1]]}
- ]},
- {title:"Milestones",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",4],[0,"m7",4]]},{name:"B",chords:[[5,"m7",4],[0,"m7",4]]}
+  {name:"A",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"A2",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[0,"M",1],[0,"M",1]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]},{name:"A3",chords:[[0,"M",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[7,"m7",0.5],[0,"7",0.5],[5,"M7",0.5],[5,"m",0.5],[0,"M",1],[0,"M",1]]}
  ]},
  {title:"Misty",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"hd",1],[7,"7",1],[3,"m7",1],[8,"7",1],[1,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Moanin'",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[10,"7",2],[0,"m7",2],[3,"7",2]]},{name:"B",chords:[[8,"M7",2],[1,"7",2],[6,"M7",2],[9,"7",2]]}
- ]},
- {title:"Mood Indigo",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[5,"7",2],[0,"7",2],[5,"M",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"Bridge",chords:[[9,"7",2],[2,"m7",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Moonlight Bay",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"My Favorite Things",key:4,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",4],[7,"M",4]]},{name:"B",chords:[[0,"m",4],[7,"M",4]]}
- ]},
- {title:"My Foolish Heart",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"My Funny Valentine",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",1],[0,"mM7",1],[0,"m7",1],[0,"m6",1],[8,"M7",1],[7,"7",1],[0,"m",2]]},{name:"B",chords:[[3,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[2,"hd",1],[7,"7",1],[0,"m",2]]}
- ]},
- {title:"My Melancholy Baby",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"My One and Only Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"My Romance",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",2],[2,"m7",2],[7,"7",2]]},{name:"B",chords:[[0,"M",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"My Shining Hour",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Nardis",key:4,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[1,"M",2],[0,"m",2],[8,"M",2]]},{name:"B",chords:[[6,"m7",1],[11,"7",1],[0,"m",2],[7,"7",2]]}
- ]},
- {title:"Nica's Dream",key:10,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"7",2],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[3,"M",2],[8,"M",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"Night Train",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"Night and Day",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Now's the Time",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",1],[5,"7",1],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",1],[2,"hd",1],[7,"7",1],[0,"7",1],[9,"m7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"Oleo",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[4,"7",2],[9,"7",2],[2,"7",2],[7,"7",2]]}
- ]},
- {title:"On the Sunny Side of the Street",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[4,"7",2],[9,"m",2],[2,"7",2],[7,"7",2],[0,"M",1],[9,"m7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Out of Nowhere",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Over the Rainbow",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[7,"M7",1],[0,"M7",1],[9,"m7",2],[2,"7",2]]},{name:"B",chords:[[7,"M7",2],[6,"d7",1],[0,"M7",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Pennies from Heaven",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M",2]]}
- ]},
- {title:"Recorda-Me",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[3,"M7",2],[8,"M7",2],[7,"m7",1],[0,"7",1]]},{name:"B",chords:[[5,"m7",2],[10,"7",2],[3,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"Rhythm-a-ning",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Rock-a-Bye Your Baby",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",2],[4,"7",2],[9,"m",1],[2,"7",1],[7,"7",1],[0,"M",2]]}
+  {name:"A",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",0.5],[7,"7",0.5]]},{name:"A2",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",2]]},{name:"B",chords:[[7,"m7",1],[0,"7",1],[5,"M7",2],[6,"m7",0.5],[11,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",1],[7,"m7",0.5],[0,"7",0.5],[5,"M7",1],[5,"m7",0.5],[10,"7",0.5],[0,"M7",0.5],[9,"m7",0.5],[2,"m7",0.5],[7,"7",0.5],[0,"M7",2]]}
  ]},
  {title:"Satin Doll",key:0,mode:"major",sections:[
-  {name:"A",chords:[[2,"m7",1],[7,"7",1],[2,"m7",1],[7,"7",1],[4,"m7",1],[9,"7",1],[4,"m7",1],[9,"7",1]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[8,"M7",1],[1,"7",1],[0,"M7",4]]}
+  {name:"A",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]},{name:"A2",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]},{name:"B",chords:[[7,"m7",1],[0,"7",1],[5,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2]]},{name:"A3",chords:[[2,"m7",0.5],[7,"7",0.5],[2,"m7",0.5],[7,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[4,"m7",0.5],[9,"7",0.5],[9,"m7",0.5],[2,"7",0.5],[8,"m7",0.5],[1,"7",0.5],[0,"M7",2]]}
  ]},
- {title:"Scrapple from the Apple",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"M",1],[9,"m",1],[2,"m",1],[7,"7",1],[0,"7",2],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[3,"M7",2],[6,"hd",1],[11,"7",1],[4,"M7",2],[9,"m7",1],[2,"7",1]]}
- ]},
- {title:"Shine On Harvest Moon",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[4,"7",2],[9,"m",2],[2,"7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Shiny Stockings",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Sidewinder",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[10,"7",2],[8,"7",2]]}
- ]},
- {title:"So What",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",4],[0,"m7",4]]}
- ]},
- {title:"Softly As in a Morning Sunrise",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[7,"7",2],[0,"m",2],[3,"7",1],[8,"7",1]]},{name:"B",chords:[[1,"M",2],[9,"hd",1],[2,"7",1],[0,"m",2],[7,"7",2]]}
- ]},
- {title:"Solar",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[8,"M7",1],[6,"hd",1],[11,"7",1],[3,"M7",1],[6,"hd",1],[11,"7",1]]}
- ]},
- {title:"Somebody Loves Me",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"m7",1],[7,"7",1],[0,"M",1],[1,"d",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[9,"7",2],[2,"m",2],[7,"7",2],[0,"M",2],[5,"M",1],[0,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Someday My Prince Will Come",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2],[0,"M7",2]]},{name:"B",chords:[[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2]]},{name:"C",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"m7",1],[7,"7",2]]}
- ]},
- {title:"Someone to Watch Over Me",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",1],[4,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"Bridge",chords:[[5,"M",2],[5,"m",2],[0,"M",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Song for My Father",key:5,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[10,"7",2],[3,"7",2]]},{name:"B",chords:[[8,"7",2],[10,"7",2],[0,"m7",4]]}
- ]},
- {title:"Speak Low",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[3,"M",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"Spring Is Here",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1]]}
- ]},
- {title:"St. Thomas",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[7,"7",2],[0,"M",2],[7,"7",2]]},{name:"B",chords:[[5,"M",2],[0,"M",2],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Stardust",key:0,mode:"major",sections:[
-  {name:"Verse",chords:[[0,"M",1],[4,"7",1],[9,"m",1],[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[7,"7",1]]},{name:"Chorus",chords:[[0,"M7",1],[3,"d",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",1],[10,"d",1],[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",2],[7,"7",2],[0,"M7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Stella by Starlight",key:10,mode:"major",sections:[
-  {name:"A",chords:[[5,"hd",1],[10,"7",1],[0,"m7",1],[5,"7",1],[3,"M7",2],[9,"hd",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Stolen Moments",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",2],[10,"7",2],[3,"M7",2]]},{name:"B",chords:[[6,"7",2],[2,"hd",2],[7,"7",2],[0,"m7",2]]}
- ]},
- {title:"Straight No Chaser",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[9,"hd",1],[2,"7",1],[0,"7",2]]}
- ]},
- {title:"Summertime",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]},{name:"A2",chords:[[0,"m7",2],[7,"7",2],[0,"m7",2],[5,"m7",1],[7,"7",1]]}
- ]},
- {title:"Sweet Georgia Brown",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",2],[7,"7",2],[0,"7",2],[7,"7",2]]},{name:"B",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"7",2],[0,"M",2]]}
- ]},
- {title:"Take Five",key:3,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]},{name:"B",chords:[[0,"m7",4],[7,"m7",2],[0,"m7",2]]}
+ {title:"So What",key:2,mode:"minor",sections:[
+  {name:"A",chords:[[0,"m7",8]]},{name:"A2",chords:[[0,"m7",8]]},{name:"B",chords:[[1,"m7",8]]},{name:"A3",chords:[[0,"m7",8]]}
  ]},
  {title:"Take the A Train",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"7",2],[7,"M7",4]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"Tenor Madness",key:10,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2],[7,"7",1],[5,"7",1],[0,"7",2]]}
- ]},
- {title:"The Girl from Ipanema",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[1,"M7",2],[6,"7",2]]},{name:"B",chords:[[1,"M7",2],[6,"7",2],[9,"M7",2],[9,"7",2],[2,"m7",2],[10,"m7",1],[3,"7",1]]},{name:"C",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"The Song Is You",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"hd",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
- ]},
- {title:"There Is No Greater Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[3,"m7",1],[8,"7",1],[2,"m7",1],[7,"7",1],[0,"M7",2],[9,"7",2]]}
- ]},
- {title:"There Will Never Be Another You",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[11,"hd",1],[4,"7",1],[9,"m7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[0,"m7",1],[5,"7",1],[10,"M7",2],[11,"hd",1],[4,"7",1]]}
- ]},
- {title:"Tico Tico no Fuba",key:9,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m",2],[7,"7",2],[0,"m",2],[7,"7",2],[0,"m",2],[5,"m",1],[0,"m",1],[7,"7",2],[0,"m",2]]},{name:"B",chords:[[3,"M",2],[10,"7",2],[3,"M",2],[7,"7",2],[0,"m",2]]}
- ]},
- {title:"Time After Time",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"Toot Toot Tootsie, Goo'bye",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[2,"7",1],[7,"7",1],[0,"M",2],[5,"M",1],[6,"d",1],[0,"M",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"Tune Up",key:3,mode:"major",sections:[
-  {name:"A",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[5,"m7",1],[10,"7",1],[3,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Watermelon Man",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"7",4],[5,"7",2],[0,"7",2]]},{name:"B",chords:[[2,"m7",2],[7,"7",2],[0,"7",2],[7,"7",2]]}
- ]},
- {title:"Wave",key:2,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[3,"hd",1],[8,"7",1],[1,"M7",2],[2,"m7",1],[7,"7",1]]},{name:"B",chords:[[0,"M7",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
- ]},
- {title:"What Is This Thing Called Love",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]},{name:"B",chords:[[9,"m7",2],[2,"7",2],[7,"M7",2],[9,"hd",1],[2,"7",1]]}
- ]},
- {title:"When I Fall in Love",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[9,"hd",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Whisper Not",key:5,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",1],[3,"hd",1],[8,"7",1],[1,"M7",1],[6,"m7",1],[11,"m7",1],[4,"7",1],[9,"M7",2]]},{name:"B",chords:[[2,"m7",1],[7,"7",1],[0,"M7",2],[3,"m7",1],[8,"7",1],[1,"M7",2]]}
- ]},
- {title:"Yardbird Suite",key:0,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[5,"m7",1],[10,"7",1],[3,"M7",1],[9,"m7",1],[2,"7",1],[7,"M7",2]]}
- ]},
- {title:"Yesterdays",key:2,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",1],[5,"hd",1],[10,"7",1],[3,"M7",1],[8,"M7",2],[1,"7",2]]},{name:"B",chords:[[6,"hd",1],[11,"7",1],[3,"m7",2],[8,"7",2],[0,"m7",2]]}
- ]},
- {title:"You Don't Know What Love Is",key:0,mode:"minor",sections:[
-  {name:"A",chords:[[0,"m7",2],[5,"m7",1],[10,"7",1],[3,"M7",2],[6,"hd",1],[11,"7",1]]},{name:"B",chords:[[0,"m7",2],[8,"M7",2],[6,"hd",1],[11,"7",1],[0,"m7",2]]}
- ]},
- {title:"You Made Me Love You",key:7,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[0,"a",1],[9,"7",1],[2,"m",2],[7,"7",2],[0,"M",2]]},{name:"B",chords:[[0,"7",1],[5,"M",1],[5,"m",1],[0,"M",1],[9,"7",1],[2,"m",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"You Stepped Out of a Dream",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M",2],[9,"m7",1],[2,"7",1],[7,"M7",2],[9,"m7",1],[2,"7",1]]},{name:"B",chords:[[7,"M7",2],[6,"hd",1],[11,"7",1],[4,"m7",1],[9,"7",1],[2,"m7",1],[7,"7",1],[0,"M",2]]}
- ]},
- {title:"You'd Be So Nice to Come Home To",key:3,mode:"major",sections:[
-  {name:"A",chords:[[0,"M7",2],[9,"hd",1],[2,"7",1],[7,"m7",1],[0,"7",1],[5,"M7",2]]},{name:"B",chords:[[9,"m7",1],[2,"7",1],[7,"M7",2],[0,"M7",2]]}
+  {name:"A",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"A2",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]},{name:"B",chords:[[5,"M7",4],[2,"7",2],[2,"m7",1],[7,"7",1]]},{name:"A3",chords:[[0,"M7",2],[2,"7",2],[2,"m7",1],[7,"7",1],[0,"M7",2]]}
  ]},
 ];
 
@@ -11213,7 +10769,17 @@ function loadStandard(idx){
    const pc=((std.key+semi)%12+12)%12;
    const sfx=(q==='m'||q==='m7'||q==='mM7')?'m':(q==='d'||q==='hd'||q==='d7')?'°':(q==='a')?'+':'';
    const label=nn(pc)+sfx;
-   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:bars||1,beats:0,eighths:0,isRest:false,bassNote:null};
+   // Charts carry duration in bars, but two-chords-to-a-bar is everywhere in
+   // this repertoire (|Dm7 G7|), so a duration can be fractional. Split it
+   // into whole bars plus beats: a slot with bars:0.5 alone would be counted
+   // by the bar-boundary path (barsNeeded = 0.5 || 1, and one bar tick clears
+   // it) and ring for a full bar — the half-bar chords would all play twice
+   // as long as written. Any leftover beats route the slot to the sub-bar
+   // scheduler instead, which times it exactly.
+   const _b=bars||1;
+   const _whole=Math.floor(_b);
+   const _beats=Math.round((_b-_whole)*4);
+   return {rootM,triadQ,type7,ext,label,numeral:'',func:'modal',bars:_whole,beats:_beats,eighths:0,isRest:false,bassNote:null};
   })
  }));
  curSection=0; chartSeqIdx=-1; curSetlistIdx=-1;
