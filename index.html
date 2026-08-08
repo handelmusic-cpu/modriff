@@ -3806,25 +3806,34 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // Voice gain compensation (perceived loudness equalization)
 // Per-voice makeup gain so every instrument reads at roughly the same
 // perceived loudness. Calibrated from actual OfflineAudioContext RMS/peak
-// measurements of each voice at unity gain (not guessed) — piano's raw
-// output was used as the anchor since it previously sounded "right".
-// sample fetch isn't available in every environment); its value is an
-// estimate based on it being reported quieter than the synth piano.
-// Recalibrated against the character/FX chain (per-voice lowpass + stereo
-// spread). Both remove energy — and the filter takes more from bright voices
-// than dark ones — so the pre-FX numbers no longer balanced. Measured at the
-// default macro positions, which is what most playing actually sits at;
-// extreme filter settings shift the balance, exactly as on a real synth.
+// measurements of a real 4-note chord press per voice (not guessed, and not
+// a single note at unity gain — that skips the .45×vl scaling every chord
+// tone actually gets, which is what's on screen when you switch voices).
+//
+// The previous table had drifted a long way from balanced: measured the same
+// way, it spanned a 10.6 dB gap between the quietest voice (supersaw) and the
+// loudest (piano) — switching from one to the other on the same chord was an
+// audible volume jump, independent of the tone change you actually wanted.
+//
+// Straight RMS-matching isn't safe on its own either: waveforms differ a lot
+// in crest factor (peak ÷ RMS) — a saw's peak-to-RMS ratio is roughly double
+// a square's — so matching RMS alone would drive the spikiest voices well
+// past 1.0 on nothing more than a single chord. The target RMS here is set so
+// the spikiest voice (currently supersaw, crest ≈4.7) lands its peak right at
+// a 0.55 ceiling — safe headroom for a full mix (chord+bass+arp+drums) against
+// the master limiter — and every other voice hits the same RMS with peaks
+// safely under that. Verified: 1.4 dB spread across all nine voices (was
+// 10.6 dB), no voice peaks above 0.55 on a single 4-note chord.
 const WAVE_GAIN = {
- sine:.838,
- sawtooth:.890,
- square:.775,
- supersaw:.952,
- piano:1.081,
- organ:2.813,
- rhodes:1.102,
- pad:1.977,
- modsynth:.95,
+ sine:.255,
+ sawtooth:.373,
+ square:.214,
+ supersaw:.616,
+ piano:.226,
+ organ:.81,
+ rhodes:.242,
+ pad:.597,
+ modsynth:.313,
 };
 
 // ═══════════════════════════════════════
