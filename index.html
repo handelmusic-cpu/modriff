@@ -8495,7 +8495,15 @@ function loadProgressionFromHash(){
 // could drift out of sync with the first.
 
 const SETUPS_KEY = 'modo-setups';
-const SETUP_URL_MAX = 12000;   // beyond this, browsers and chat apps start truncating
+// The state rides in the fragment, so it never reaches a server and no server
+// URL limit applies. Browsers themselves are generous (Firefox ~65k, Safari
+// ~80k). What actually mangles a long link is whatever carries it — mail
+// clients that hard-wrap at 76 columns, shorteners, anything that renders a
+// URL as truncated text. There's no single documented threshold for that, so
+// this is a conservative pick, not a measured one: a typical setup lands near
+// 2k, and 12k leaves plenty of room for a real setlist while staying well
+// under what any browser will hold.
+const SETUP_URL_MAX = 12000;
 
 function loadSetupsData(){ try{ return JSON.parse(localStorage.getItem(SETUPS_KEY)||'[]'); }catch(e){ return []; } }
 function saveSetupsData(d){
@@ -8616,8 +8624,8 @@ async function setupShare(id){
  if(!st){ showToast('Setup not found'); return; }
  try{
   let payload=await encodeSetup(st);
-  // Too long to survive a paste into a chat window — drop the setlist (by far
-  // the biggest part) and share the sound alone rather than a broken link.
+  // Past the ceiling — drop the setlist (by far the biggest part) and share
+  // the sound alone rather than hand over a link that might arrive truncated.
   let trimmed=false;
   if(payload.length>SETUP_URL_MAX && st.setlist){
    payload=await encodeSetup(Object.assign({},st,{setlist:null}));
@@ -10324,7 +10332,8 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
   body: `A <strong>song</strong> in the Setlist is a chord chart. A <strong>setup</strong> is everything else as well — the entire state of the app in one entry.<br><br>
 That means the <strong>tempo</strong>, the <strong>key and mode</strong>, every <strong>voice</strong> (chords, melody, bass, arp, melody generator) and the full <strong>MōdSynth patch</strong> behind each one, the <strong>FX macros</strong> (cutoff, resonance, envelope, drive, width, drift), the <strong>arp settings</strong>, the <strong>mixer</strong> — levels, mutes and solos — your <strong>drum, bass and melody-generator patterns</strong>, the <strong>chart you're building</strong>, and your <strong>whole setlist</strong>.<br><br>
 <strong>Save Setup</strong> stores it under a name. Saving again with the same name updates that setup instead of making a second copy. Tap any saved setup to <strong>load</strong> it — that replaces the live state, and <strong>↶ Undo</strong> walks straight back out again if it wasn't what you wanted.<br><br>
-<strong>Share Link</strong> copies a URL with the entire setup packed inside it. Send it to anyone; opening it recreates your rig exactly, songs and all. Nothing is uploaded anywhere — the state travels in the link itself. If a setlist is too big to fit in a link that survives being pasted around, the sound is shared on its own and you'll be told.<br><br>
+<strong>Share Link</strong> copies a URL with the entire setup packed inside it. Send it to anyone; opening it recreates your rig exactly, songs and all. Nothing is uploaded anywhere — the state travels in the link itself, so it works with no account and no server.<br><br>
+A typical setup makes a link of around 2,000 characters. Links have no hard limit in a browser, but very long ones can get truncated by things that carry them around — mail clients, link shorteners. So there's a ceiling: if a big setlist pushes the link past it, the sound is shared on its own and you'll be told. For anything that big, use <strong>Export</strong> — a file has no size limit at all.<br><br>
 <strong>Export</strong> writes the same thing to a <code>.modriff.json</code> file, which has no size limit — use it for backups, or to move a big setlist between devices. <strong>Import</strong> reads one back in, saves it to your setups and loads it.<br><br>
 Setups live in this browser only. Export the ones you care about before clearing site data.`
  },
