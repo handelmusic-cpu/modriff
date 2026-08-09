@@ -4264,7 +4264,7 @@ function unlockAudio(startDemo){
 function startDemoJourney(){
  // Roll first so the demo is generated in the key, mode and tempo the dice
  // just landed on — otherwise loading the song would immediately overwrite them.
- try{ if(typeof randomizeSettings==='function') randomizeSettings(); }catch(e){}
+ try{ if(typeof randomizeSettings==='function') randomizeSettings({gentle:true}); }catch(e){}
  try{
   const demo=buildRandomDemoSong();
   let sl=loadSLData();
@@ -7858,10 +7858,27 @@ function _rndBand(b,dp){ const v=b[0]+Math.random()*(b[1]-b[0]); return +v.toFix
 function _rndIsFullRoll(){ return typeof isAnythingPlaying!=='function' || !isAnythingPlaying(); }
 // Church modes are hidden in Basic view and by the "− Modes" toggle; don't
 // roll into a mode whose button the user can't even see to get back from.
+// Weighted, not uniform. A flat roll over eight modes lands on Locrian one
+// time in eight, and Locrian is the one mode with no stable tonic — its i
+// chord is diminished, so a progression in it never resolves and every roll
+// that hits it sounds like a mistake rather than a choice. The weights below
+// track roughly how much repertoire actually lives in each mode; Locrian is
+// still reachable, at about 1 roll in 50 instead of 1 in 8.
+const RND_MODE_WEIGHTS = {
+ major:26, minor:26, dorian:14, mixolydian:14, lydian:8,
+ harmonic_minor:6, phrygian:4, locrian:2
+};
 function _rndModePool(){
  const b=document.body;
  const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
- return churchHidden ? ['major','minor'] : Object.keys(MODES);
+ if(churchHidden) return ['major','minor'];
+ // Expanded into a weighted bag so _rndPick stays a plain uniform draw.
+ const bag=[];
+ Object.keys(MODES).forEach(function(m){
+  const w = RND_MODE_WEIGHTS[m] != null ? RND_MODE_WEIGHTS[m] : 8;
+  for(let i=0;i<w;i++) bag.push(m);
+ });
+ return bag;
 }
 const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · MōdSynth preset · tone, reso, sweep, drive, width &amp; drift · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style · <b>drum kit, step count, step rate, swing &amp; chord length</b>';
 // The confirm sheet earns its keep once — after you've seen what a roll does
@@ -8089,20 +8106,47 @@ function _applySettings(s){
  else if(rootChanged) renderChords();
 }
 
-function randomizeSettings(){
+// The waves the opening roll is allowed to use. Measured, not chosen by ear:
+// each wave rendered on its own as a four-note chord with the character macros
+// held neutral, scoring the share of energy in 2–5 kHz, the band the ear reads
+// as harshness. The split is not subtle —
+//
+//   supersaw 5.3–7.5%   sawtooth 6.2–6.4%   square 4.1–4.2%
+//   pad 0.3–0.9%        triangle 0.09%      sine/piano/organ/rhodes 0.00%
+//
+// — so it is the three bright oscillator waves and nothing else. Note that an
+// earlier pass at this blamed archetypes and the reso/drive knobs, from a
+// measurement taken off the master bus with drums playing: hi-hats live in
+// 2–5 kHz and dominated the number, so that run was largely scoring which
+// drum kit got rolled. Isolating the wave is what made the real split visible,
+// and organ — which the noisy run had flagged as an offender — is flat 0%.
+//
+// Bass is left alone: it is low-passed and sits below 200 Hz, where none of
+// this applies. The dice BUTTON stays unrestricted too — that press is the
+// user asking to be surprised, and Undo covers it. This is only about what a
+// first-time visitor hears before they have asked for anything.
+const RND_SOFT_WAVES = ['sine','triangle','piano','organ','rhodes','pad'];
+function _rndSoften(list, fallback){
+ const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
+ return soft.length ? soft : (fallback||RND_SOFT_WAVES);
+}
+
+function randomizeSettings(opts){
+ const gentle = !!(opts && opts.gentle);
  // Start from the live settings and overwrite only the fields the dice
  // owns — so key, mode, tempo and everything else provably stay put.
  const s = _capSettings();
  // Pick a character first, then roll inside it. Avoid repeating the archetype
  // back-to-back so consecutive rolls actually feel like they went somewhere.
  let pool = PATCH_ARCHETYPES;
- if(lastArchetype && PATCH_ARCHETYPES.length>1) pool = PATCH_ARCHETYPES.filter(a=>a.name!==lastArchetype);
+ if(lastArchetype && pool.length>1) pool = pool.filter(a=>a.name!==lastArchetype);
  const A = _rndPick(pool);
  lastArchetype = A.name;
 
- s.wave    = _rndPick(A.waves||RND_CHORD_WAVES);
- s.arpWave = _rndPick(A.arpWaves||RND_ARP_WAVES);
- s.melWave = _rndPick(A.melWaves||RND_MEL_WAVES);
+ const _cw = A.waves||RND_CHORD_WAVES, _aw = A.arpWaves||RND_ARP_WAVES, _mw = A.melWaves||RND_MEL_WAVES;
+ s.wave    = _rndPick(gentle ? _rndSoften(_cw) : _cw);
+ s.arpWave = _rndPick(gentle ? _rndSoften(_aw) : _aw);
+ s.melWave = _rndPick(gentle ? _rndSoften(_mw) : _mw);
  s.blWave  = _rndPick(A.bassWaves||RND_BASS_WAVES);
 
  s.arpPat      = _rndPick(A.pats||RND_ARP_PATS);
