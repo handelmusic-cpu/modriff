@@ -945,6 +945,14 @@ body.light-mode .voices-dock-body { background:rgba(232,234,246,.98); }
 .voice-lbl {
  font-size:.46rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;
  white-space:nowrap; flex-shrink:0; min-width:74px;
+ /* Right-aligned so every label sits against its own dropdown. Left-aligned
+    in a 74px column, "MELODY STRIP" filled the width and read as attached
+    while "BASS" and "ARP" floated a half-inch clear of the select they
+    belong to — on a wide strip that reads as belonging to the NEXT one. */
+ text-align:right;
+ /* The trailing letter-spacing puts a phantom space after the last letter,
+    which undoes some of the alignment; pull it back. */
+ margin-right:-.08em;
 }
 .voice-sel {
  flex:1; min-width:0; background:var(--surf2); color:var(--text);
@@ -3425,7 +3433,14 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <!-- Follow the changes -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: OFF</button>
+   <button class="bl-genbtn" id="bl-feel-btn" onclick="blToggleWalkFeel()" title="Four = walking quarter notes. Two = half notes on 1 and 3, the way a head is usually played">Feel: Four</button>
    <span class="bl-pl" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Loops the bar as written</span>
+   <span class="bl-pl" style="margin-left:6px">Humanize</span>
+   <input type="range" id="bl-human" min="0" max="1" step="0.05" value="0"
+          style="-webkit-appearance:none;width:70px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer"
+          title="Loosens timing and velocity. Off by default — at 0 every note is exactly on the grid."
+          oninput="window.setHumanize&&window.setHumanize(this.value)">
+   <span class="bl-pl" id="bl-human-val" style="min-width:22px">off</span>
    <button class="tips-btn" onclick="showTip('bassgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
@@ -3515,6 +3530,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    </div>
    <button class="bl-genbtn" onclick="mlGenerate()">✦ Generate</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
+  </div>
+  <!-- Follow the changes -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+   <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: OFF</button>
+   <span class="bl-pl" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Loops the bar as written</span>
+   <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="ml-simple-view"></div>
@@ -4264,7 +4285,7 @@ function unlockAudio(startDemo){
 function startDemoJourney(){
  // Roll first so the demo is generated in the key, mode and tempo the dice
  // just landed on — otherwise loading the song would immediately overwrite them.
- try{ if(typeof randomizeSettings==='function') randomizeSettings(); }catch(e){}
+ try{ if(typeof randomizeSettings==='function') randomizeSettings({gentle:true}); }catch(e){}
  try{
   const demo=buildRandomDemoSong();
   let sl=loadSLData();
@@ -7858,10 +7879,27 @@ function _rndBand(b,dp){ const v=b[0]+Math.random()*(b[1]-b[0]); return +v.toFix
 function _rndIsFullRoll(){ return typeof isAnythingPlaying!=='function' || !isAnythingPlaying(); }
 // Church modes are hidden in Basic view and by the "− Modes" toggle; don't
 // roll into a mode whose button the user can't even see to get back from.
+// Weighted, not uniform. A flat roll over eight modes lands on Locrian one
+// time in eight, and Locrian is the one mode with no stable tonic — its i
+// chord is diminished, so a progression in it never resolves and every roll
+// that hits it sounds like a mistake rather than a choice. The weights below
+// track roughly how much repertoire actually lives in each mode; Locrian is
+// still reachable, at about 1 roll in 50 instead of 1 in 8.
+const RND_MODE_WEIGHTS = {
+ major:26, minor:26, dorian:14, mixolydian:14, lydian:8,
+ harmonic_minor:6, phrygian:4, locrian:2
+};
 function _rndModePool(){
  const b=document.body;
  const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
- return churchHidden ? ['major','minor'] : Object.keys(MODES);
+ if(churchHidden) return ['major','minor'];
+ // Expanded into a weighted bag so _rndPick stays a plain uniform draw.
+ const bag=[];
+ Object.keys(MODES).forEach(function(m){
+  const w = RND_MODE_WEIGHTS[m] != null ? RND_MODE_WEIGHTS[m] : 8;
+  for(let i=0;i<w;i++) bag.push(m);
+ });
+ return bag;
 }
 const _RND_SOUND_TXT = 'chord / arp / melody / bass voices · MōdSynth preset · tone, reso, sweep, drive, width &amp; drift · arp pattern, octaves, rate, gate &amp; velocity shape · attack, release, reverb &amp; strum · voicing · comp style · <b>drum kit, step count, step rate, swing &amp; chord length</b>';
 // The confirm sheet earns its keep once — after you've seen what a roll does
@@ -8089,20 +8127,47 @@ function _applySettings(s){
  else if(rootChanged) renderChords();
 }
 
-function randomizeSettings(){
+// The waves the opening roll is allowed to use. Measured, not chosen by ear:
+// each wave rendered on its own as a four-note chord with the character macros
+// held neutral, scoring the share of energy in 2–5 kHz, the band the ear reads
+// as harshness. The split is not subtle —
+//
+//   supersaw 5.3–7.5%   sawtooth 6.2–6.4%   square 4.1–4.2%
+//   pad 0.3–0.9%        triangle 0.09%      sine/piano/organ/rhodes 0.00%
+//
+// — so it is the three bright oscillator waves and nothing else. Note that an
+// earlier pass at this blamed archetypes and the reso/drive knobs, from a
+// measurement taken off the master bus with drums playing: hi-hats live in
+// 2–5 kHz and dominated the number, so that run was largely scoring which
+// drum kit got rolled. Isolating the wave is what made the real split visible,
+// and organ — which the noisy run had flagged as an offender — is flat 0%.
+//
+// Bass is left alone: it is low-passed and sits below 200 Hz, where none of
+// this applies. The dice BUTTON stays unrestricted too — that press is the
+// user asking to be surprised, and Undo covers it. This is only about what a
+// first-time visitor hears before they have asked for anything.
+const RND_SOFT_WAVES = ['sine','triangle','piano','organ','rhodes','pad'];
+function _rndSoften(list, fallback){
+ const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
+ return soft.length ? soft : (fallback||RND_SOFT_WAVES);
+}
+
+function randomizeSettings(opts){
+ const gentle = !!(opts && opts.gentle);
  // Start from the live settings and overwrite only the fields the dice
  // owns — so key, mode, tempo and everything else provably stay put.
  const s = _capSettings();
  // Pick a character first, then roll inside it. Avoid repeating the archetype
  // back-to-back so consecutive rolls actually feel like they went somewhere.
  let pool = PATCH_ARCHETYPES;
- if(lastArchetype && PATCH_ARCHETYPES.length>1) pool = PATCH_ARCHETYPES.filter(a=>a.name!==lastArchetype);
+ if(lastArchetype && pool.length>1) pool = pool.filter(a=>a.name!==lastArchetype);
  const A = _rndPick(pool);
  lastArchetype = A.name;
 
- s.wave    = _rndPick(A.waves||RND_CHORD_WAVES);
- s.arpWave = _rndPick(A.arpWaves||RND_ARP_WAVES);
- s.melWave = _rndPick(A.melWaves||RND_MEL_WAVES);
+ const _cw = A.waves||RND_CHORD_WAVES, _aw = A.arpWaves||RND_ARP_WAVES, _mw = A.melWaves||RND_MEL_WAVES;
+ s.wave    = _rndPick(gentle ? _rndSoften(_cw) : _cw);
+ s.arpWave = _rndPick(gentle ? _rndSoften(_aw) : _aw);
+ s.melWave = _rndPick(gentle ? _rndSoften(_mw) : _mw);
  s.blWave  = _rndPick(A.bassWaves||RND_BASS_WAVES);
 
  s.arpPat      = _rndPick(A.pats||RND_ARP_PATS);
@@ -10346,7 +10411,18 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
 <strong>Octave</strong> defaults to <strong>2</strong> — that puts a root around 65&nbsp;Hz, where a bass actually sits. Octave 3 is the register a guitarist plays; useful for a lead-ish line, thin as a bass part.<br><br>
 <strong>Follow: ON</strong> is the difference between a loop and a bass part. With it off, the bar you generated repeats over the whole song no matter what the chords do. With it on, the line <strong>re-roots onto whichever chord the song is playing</strong>, keeping the rhythm and shape you generated — so a root–fifth–octave figure stays that figure on every chord.<br><br>
 <strong>Follow + Jazz</strong> is the walking bass. It stops using the grid's rhythm entirely and plays real quarter notes through the chart: the chord's root on beat 1, mostly stepwise motion through chord and scale tones in between, and on the last beat before a change it <strong>approaches the next chord's root</strong> from a half step or a fifth. It reads the chord that <em>is about to arrive</em>, not the one already playing, so the approach lands where a bass player would put it.<br><br>
+<strong>Feel: Four / Two.</strong> Four is the walking line — quarter notes all the way. Two plays half notes on beats 1 and 3, which is how a head is usually played before the solos open up. Both draw from the same generator, so a two-feel still lands on chord tones and still leads into the next chord; it just leaves the other two beats open.<br><br>
+<strong>Phrase shape.</strong> Set the step count above one bar and the closing bar becomes a turnaround instead of a copy of the first — thinned slightly, then walking back toward the downbeat so the loop point sounds intended.<br><br>
+<strong>Humanize</strong> loosens timing and velocity, and is <strong>off by default</strong>. At 0 every note sits exactly on the grid, which is how it should stay if you care about the pocket. Turning it up moves notes by a few milliseconds and varies how hard they're struck; downbeats move half as far as other beats, since the downbeat is the reference everything else is heard against. It never makes a note louder than the level you already balanced.<br><br>
 Follow needs a song running to have changes to follow. With the song stopped it falls back to looping the bar as written.`
+ },
+ 'melgen': {
+  title: 'Melody generator',
+  body: `<strong>✦ Generate</strong> writes a phrase in the chosen style over the chord you last played. <strong>Arpeggio</strong> spells the chord in eighths, <strong>Scale Run</strong> moves stepwise and lands on a chord tone each downbeat, <strong>Riff</strong> repeats a one-beat motif, <strong>Pop Hook</strong> is sparse and syncopated, and <strong>Call &amp; Response</strong> answers its own first half an octave down.<br><br>
+<strong>Follow: ON</strong> is the important one. With it off, the phrase you generated is thrown away and rewritten every time the chord changes — so no melodic idea ever lasts long enough to be an idea. With it on, the phrase <strong>moves onto each new chord</strong> instead, keeping its rhythm and contour, the same way the bass does.<br><br>
+<strong>Avoid notes.</strong> On a strong beat, the generator now steers away from scale tones that sit a half step above a chord tone — the 4th over a major or dominant chord, the 6th over a minor 7th. Those are the notes that sound like a mistake on a downbeat. They're still reachable as passing tones on weak beats, where they're often the point.<br><br>
+<strong>Phrase shape.</strong> Set the step count above one bar and the closing bar is varied rather than being a copy of the first — thinned out, with its last gesture lifted — so the phrase answers itself instead of just repeating.<br><br>
+Notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it.`
  },
  'setups': {
   title: 'Setups — save, load & share the whole rig',
@@ -12208,8 +12284,9 @@ function _syncRegenAt(atTime){
     // which is the difference between a bass part and a slot machine.
     // Regenerating on top of that would undo exactly that benefit.
     var blFollowing = (typeof window.blIsFollowOn==='function') && window.blIsFollowOn();
+    var mlFollowing = (typeof window.mlIsFollowOn==='function') && window.mlIsFollowOn();
     if(!blFollowing && typeof window.blGenerate==='function') window.blGenerate();
-    if(typeof window.mlGenerate==='function') window.mlGenerate();
+    if(!mlFollowing && typeof window.mlGenerate==='function') window.mlGenerate();
   }, ms);
 }
 var _bassAutoSync=true;
@@ -13870,6 +13947,46 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
 }
 
 // ═══════════════════════════════════════
+// HUMANIZE
+// ═══════════════════════════════════════
+// Every generated note lands exactly on the grid at exactly one velocity,
+// which is what makes a sequenced part read as sequenced. A real player pushes
+// and drags by a few milliseconds and never repeats a velocity.
+//
+// This defaults to ZERO and every helper is an exact no-op at zero, because
+// "the timing being perfectly tight is as critical as the tuning" is a
+// standing requirement here and a humanize knob that is quietly on by default
+// would violate it. Downbeats also get half the timing spread of other beats:
+// the downbeat is the reference everything else is heard against, so moving it
+// reads as an error where moving beat 3 reads as feel.
+var humanizeAmt = 0;                 // 0..1
+var HUMAN_MAX_MS = 14;               // full-scale timing spread, +/- this
+var HUMAN_MAX_VEL = 0.28;            // full-scale velocity spread
+window.setHumanize = function(v){
+  humanizeAmt = Math.max(0, Math.min(1, +v || 0));
+  var l = document.getElementById('bl-human-val');
+  if(l) l.textContent = humanizeAmt <= 0 ? 'off' : Math.round(humanizeAmt*100)+'%';
+  if(typeof track==='function') track('humanize_set',{amt:humanizeAmt});
+};
+window.getHumanize = function(){ return humanizeAmt; };
+// Exported so the melody IIFE shares one definition of feel with the bass.
+window._humanT = function(d){ return _humanT(d); };
+window._humanV = function(a){ return _humanV(a); };
+// Timing offset in seconds. Zero in, zero out.
+function _humanT(isDownbeat){
+  if(humanizeAmt <= 0) return 0;
+  var span = (HUMAN_MAX_MS/1000) * humanizeAmt * (isDownbeat ? 0.5 : 1);
+  return (Math.random()*2 - 1) * span;
+}
+// Velocity around 1.0, never above it so humanize can't make anything louder
+// than the level you already balanced.
+function _humanV(isAccent){
+  if(humanizeAmt <= 0) return 1.0;
+  var span = HUMAN_MAX_VEL * humanizeAmt * (isAccent ? 0.6 : 1);
+  return Math.max(0.35, 1.0 - Math.random()*span);
+}
+
+// ═══════════════════════════════════════
 // FOLLOW THE CHANGES
 // ═══════════════════════════════════════
 // The grid alone is a one-bar loop that repeats over whatever the song is
@@ -13880,6 +13997,10 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
 // what keeps it locked: both sides are placing notes ahead of the clock.
 
 var blFollow = false;                    // off = the grid loops as authored
+// Two-feel or four. Bassists play half notes through a head and walk on the
+// solos; it is the most recognisable arrangement move in the idiom and the
+// walk had no way to express it. 'two' lands on beats 1 and 3 only.
+var blWalkFeel = 'four';
 var _blChordWin = [];                    // upcoming chord windows, time-ordered
 var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk sits
 var BL_GEN_LO = 28, BL_GEN_HI = 52;      // generated grids stay under E3 (165 Hz)
@@ -13912,6 +14033,12 @@ window._blOnChord = function(slot, atTime, durSec, nextSlot){
 };
 window._blClearChords = function(){ _blChordWin = []; _blWalkPrev = 0; _blWalkNextT = 0; _blWalkWin = null; };
 window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
+// The chord timeline is not bass-specific — the melody generator needs exactly
+// the same "which chord covers this scheduled time" lookup to follow the
+// changes. Exported rather than duplicated so both engines can never disagree
+// about where a chord starts.
+window._songChordWindowAt = function(t){ return _blWindowAt(t); };
+window._songHasChordWindows = function(){ return _blChordWin.length > 0; };
 window.blIsFollowOn = function(){ return blFollow; };
 
 // Null means "no chord information for this time yet" — not "no chord". The
@@ -14042,13 +14169,20 @@ window._blScheduler = function(){
       // A beat whose time already passed while we were waiting for its chord
       // gets skipped, never played late — a late note is worse than a gap.
       if(_blWalkNextT < ctx.currentTime){ _blWalkNextT += beatSec; continue; }
+      var into0 = Math.max(0, _blWalkNextT - wq.t);
+      var beat0 = Math.round(into0 / beatSec);
+      // Two-feel: half notes on 1 and 3. The note still comes from the same
+      // walk generator, so it lands on chord tones and still leads into the
+      // next chord — it just leaves the other two beats open.
+      if(blWalkFeel === 'two' && (beat0 % 2) !== 0){ _blWalkNextT += beatSec; continue; }
       if(!wq.rest){
         var into = Math.max(0, _blWalkNextT - wq.t);
         var beatIdx = Math.round(into / beatSec);
         var beatsLeft = Math.max(1, Math.round((wq.end - _blWalkNextT) / beatSec));
         var midi = _blWalkNote(wq, beatIdx, beatsLeft, scalePcs);
-        blPlayNote(_blWalkNextT, ((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1,
-                   beatSec * 0.92, 1.0, beatIdx === 0, false);
+        var wDur = (blWalkFeel === 'two') ? beatSec * 1.88 : beatSec * 0.92;
+        blPlayNote(_blWalkNextT + _humanT(beatIdx===0), ((midi % 12) + 12) % 12,
+                   Math.floor(midi / 12) - 1, wDur, _humanV(beatIdx===0), beatIdx === 0, false);
       }
       _blWalkNextT += beatSec;
     }
@@ -14090,7 +14224,8 @@ window._blScheduler = function(){
           pOct = Math.floor(abs / 12) - 1;
         }
       }
-      blPlayNote(blNextT + swOff, pNote, pOct, dur, 1.0, cell.accent, cell.slide);
+      blPlayNote(blNextT + swOff + _humanT(blSeqStep%4===0), pNote, pOct, dur,
+                 _humanV(cell.accent), cell.accent, cell.slide);
     } else {
       _blPrevSlide = false;
     }
@@ -14694,6 +14829,13 @@ window.blGenerate = function(){
     });
   }
 
+  // ── Phrase shape ──
+  // Every style indexes its pattern with s%16, so a grid longer than one bar
+  // was literally the same bar stamped out again. Vary the closing bar into a
+  // turnaround: thin it, then walk back toward the downbeat so the phrase
+  // leads somewhere instead of just starting over.
+  _blShapePhrase(chordRoot, fifth, snapToScale, scaleNotes);
+
   // Every style that lifts an octave for a hook (riff, arpeggio, acid, motown)
   // could stack that on top of a high pitch class and land near 250 Hz — an
   // octave clear of where a bass belongs. Measured, not assumed: riff was
@@ -14709,6 +14851,39 @@ window.blGenerate = function(){
 
   blRenderGrid();
 };
+
+// Antecedent/consequent shape across a multi-bar grid. No-op on one bar,
+// where there is no phrase to shape.
+function _blShapePhrase(rootPc, fifthPc, snapFn, scalePcs){
+  var bar = 16;
+  if(blSteps <= bar) return;
+  var bars = Math.floor(blSteps / bar);
+  var lastStart = (bars - 1) * bar;
+  for(var s=lastStart; s<blSteps; s++){
+    var c=blGrid[s]; if(!c || !c.v) continue;
+    // Leave a little air in the closing bar.
+    if(s < blSteps - 4 && Math.random() < 0.25){ c.v = 0; continue; }
+  }
+  // A turnaround on the last two steps: approach the downbeat from a step
+  // below or above, which is what makes the loop point sound intended.
+  var t1 = blSteps - 2, t2 = blSteps - 1;
+  if(t1 >= lastStart){
+    blGrid[t1].v=1; blGrid[t1].note=fifthPc; blGrid[t1].oct=blOct;
+    blGrid[t1].len=1; blGrid[t1].accent=false; blGrid[t1].slide=false;
+    blGrid[t2].v=1;
+    blGrid[t2].note=snapFn((rootPc + (Math.random()<0.5 ? 10 : 2)) % 12);
+    blGrid[t2].oct=blOct; blGrid[t2].len=1; blGrid[t2].accent=false; blGrid[t2].slide=false;
+  }
+}
+
+window.setBlWalkFeel = function(f){
+  blWalkFeel = (f==='two') ? 'two' : 'four';
+  var b=document.getElementById('bl-feel-btn');
+  if(b){ b.textContent = 'Feel: '+(blWalkFeel==='two'?'Two':'Four'); b.classList.toggle('on', blWalkFeel==='two'); }
+  if(typeof track==='function') track('bass_walk_feel',{feel:blWalkFeel});
+};
+window.blToggleWalkFeel = function(){ window.setBlWalkFeel(blWalkFeel==='two'?'four':'two'); };
+window._blWalkFeel = function(){ return blWalkFeel; };
 
 window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); blRenderGrid(); };
 
@@ -14810,7 +14985,7 @@ blEnsureGrid();
 // them directly)
 window._blCaptureState = function(){
  return {
-  steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle, follow: blFollow,
+  steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle, follow: blFollow, walkFeel: blWalkFeel, humanize: humanizeAmt,
   cutoff: blCutoff, resonance: blResonance, vol: blVol,
   grid: blGrid
  };
@@ -14826,6 +15001,8 @@ window._blRestoreState = function(s){
  if(s.oct!=null) blOct = s.oct;
  if(s.genStyle) blGenStyle = s.genStyle;
  if(typeof s.follow==='boolean') blFollow = s.follow;
+ if(s.walkFeel && typeof window.setBlWalkFeel==='function') window.setBlWalkFeel(s.walkFeel);
+ if(typeof s.humanize==='number' && typeof window.setHumanize==='function') window.setHumanize(s.humanize);
  if(s.cutoff!=null) blCutoff = s.cutoff;
  if(s.resonance!=null) blResonance = s.resonance;
  if(s.grid) blGrid = JSON.parse(JSON.stringify(s.grid));
@@ -14866,6 +15043,15 @@ var ML_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 var mlGrid = []; // [{note:0-11, oct:5, len:1, accent:false, v:0/1}]
 var mlSteps = 16;
 var mlOct = 5;
+// Follow the changes, same idea as the bass: keep the phrase you generated and
+// move it onto whichever chord is sounding, instead of throwing it away and
+// writing a new one every bar.
+var mlFollow = false;
+var _mlGridRootPc = 0;
+// The bass got a register clamp after riff was measured topping out at 247 Hz.
+// The melody had no equivalent, so its octave-lift styles could wander as far
+// as the arithmetic took them. G3-C6 is a singable melodic range.
+var ML_GEN_LO = 55, ML_GEN_HI = 84;
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
@@ -14911,6 +15097,8 @@ window._mlScheduler = function(){
   var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = mlSteps;
+  var following = mlFollow && typeof window._songHasChordWindows==='function'
+                  && window._songHasChordWindows();
   while(mlNextT < (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1)){
     var cell = mlGrid[mlSeqStep % stepCount];
     if(cell && cell.v === 1){
@@ -14919,7 +15107,25 @@ window._mlScheduler = function(){
       var swOff = isOdd ? (swingAmt / 100) * stepSec * 0.5 : 0;
       var maxDur = isOdd ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
-      mlPlayNote(mlNextT + swOff, cell.note, cell.oct, dur, mlVol, cell.accent);
+      var pn = cell.note, po = cell.oct, skip = false;
+      if(following){
+        // Same re-rooting as the bass: intervals are measured from the pitch
+        // class the phrase was written over, so the shape survives the move.
+        var wf = window._songChordWindowAt(mlNextT + swOff);
+        if(wf){
+          if(wf.rest) skip = true;
+          else {
+            var shift = ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+            var abs = pn + (po + 1) * 12 + shift;
+            if(abs > ML_GEN_HI) abs -= 12;
+            if(abs < ML_GEN_LO) abs += 12;
+            pn = ((abs % 12) + 12) % 12;
+            po = Math.floor(abs / 12) - 1;
+          }
+        }
+      }
+      if(!skip) mlPlayNote(mlNextT + swOff + window._humanT(mlSeqStep%4===0), pn, po, dur,
+                           mlVol * window._humanV(cell.accent), cell.accent);
     }
     mlNextT += stepSec;
     mlSeqStep++;
@@ -15184,7 +15390,32 @@ window.mlGenerate = function(){
   }
 
   for(var s=0;s<mlSteps;s++){ mlGrid[s]=mlMkCell(); mlGrid[s].oct=mlOct; }
+  _mlGridRootPc = chordRoot;
   var arpTones = seventh!==undefined ? [chordRoot,third,fifth,seventh] : [chordRoot,third,fifth];
+
+  // ── Avoid notes ──
+  // A scale tone a half step above a chord tone clashes with it: the 4th over
+  // a major or dominant chord (a semitone above the 3rd) and the 6th over a
+  // minor 7th are the classic ones. The generator used to draw freely from
+  // pick(scaleNotes), so those landed on downbeats as often as anything else,
+  // which is most of what reads as "that note was wrong". This weights them
+  // down rather than banning them — as a passing note on a weak beat an
+  // avoid note is fine, and often the point.
+  var avoidPcs = scaleNotes.filter(function(n){
+    return chordTones.some(function(ct){ return ((n - ct + 12) % 12) === 1; });
+  });
+  function isAvoid(n){ return avoidPcs.indexOf(((n%12)+12)%12) >= 0; }
+  // Draw a scale tone, strongly preferring chord tones on strong beats and
+  // steering clear of avoid notes there.
+  function pickTone(strong){
+    var opts = [];
+    scaleNotes.forEach(function(n){
+      var w = chordTones.indexOf(n) >= 0 ? (strong ? 6 : 3) : (strong ? 1 : 2);
+      if(isAvoid(n)) w = strong ? 0 : 1;
+      for(var i=0;i<w;i++) opts.push(n);
+    });
+    return opts.length ? opts[Math.floor(Math.random()*opts.length)] : chordRoot;
+  }
 
   if(mlGenStyle === 'arpeggio'){
     // Steady 8ths through the chord tones, direction randomised per bar
@@ -15208,7 +15439,7 @@ window.mlGenerate = function(){
     for(var s=0;s<mlSteps;s++){
       var beat = s%4;
       if(beat===0){
-        mlGrid[s].v=1; mlGrid[s].note = weighted([[chordRoot,3],[fifth,2],[third,1]]);
+        mlGrid[s].v=1; mlGrid[s].note = pickTone(true);
         mlGrid[s].accent = (s===0); mlGrid[s].len=1;
         cur = mlGrid[s].note;
       } else if(Math.random() > 0.15){
@@ -15225,7 +15456,7 @@ window.mlGenerate = function(){
     var motif = [];
     for(var i=0;i<motifLen;i++){
       if(i===0) motif.push({on:true, note:chordRoot, accent:true});
-      else if(Math.random()>0.35) motif.push({on:true, note: weighted([[third,3],[fifth,3],[pick(scaleNotes),1]]), accent:false});
+      else if(Math.random()>0.35) motif.push({on:true, note: pickTone(i%2===0), accent:false});
       else motif.push({on:false});
     }
     for(var s=0;s<mlSteps;s++){
@@ -15242,7 +15473,7 @@ window.mlGenerate = function(){
     for(var s=0;s<mlSteps;s++){
       if(hookPat[s%16]){
         mlGrid[s].v=1;
-        mlGrid[s].note = weighted([[chordRoot,3],[third,2],[fifth,3],[pick(scaleNotes),1]]);
+        mlGrid[s].note = pickTone(s%4===0);
         mlGrid[s].accent = (s%8===0);
         mlGrid[s].len = (Math.random()>0.7)?2:1;
       }
@@ -15254,7 +15485,7 @@ window.mlGenerate = function(){
     var call = [];
     for(var s=0;s<half;s++){
       if(s===0 || Math.random()>0.45){
-        call.push({on:true, note: weighted([[chordRoot,3],[third,2],[fifth,2],[pick(scaleNotes),1]]), accent:(s===0)});
+        call.push({on:true, note: pickTone(s%4===0), accent:(s===0)});
       } else call.push({on:false});
     }
     for(var s=0;s<mlSteps;s++){
@@ -15266,7 +15497,58 @@ window.mlGenerate = function(){
     }
   }
 
+  // ── Phrase shape ──
+  // A grid longer than one bar used to be the same bar stamped out twice: the
+  // style patterns all index with s%16. A phrase that answers itself is what
+  // separates a part from a loop, so vary the closing bar — thin it out and
+  // lift its last gesture, the way a player leaves room and then leads back in.
+  _mlShapePhrase();
+  // Register clamp — see ML_GEN_LO/HI. The octave-lift styles (riff lifts on
+  // its third repeat, arpeggio climbs each pass, call-and-response answers an
+  // octave down) could stack their shift onto an already-high tone.
+  for(var s=0;s<mlSteps;s++){
+    var c=mlGrid[s]; if(!c || !c.v) continue;
+    var m=c.note+(c.oct+1)*12;
+    while(m > ML_GEN_HI) m -= 12;
+    while(m < ML_GEN_LO) m += 12;
+    c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
+  }
   mlRenderGrid();
+};
+
+// Applies antecedent/consequent shape across a multi-bar grid. No-op on a
+// single bar, where there is no phrase to shape.
+function _mlShapePhrase(){
+  var bar = 16;
+  if(mlSteps <= bar) return;
+  var bars = Math.floor(mlSteps / bar);
+  var lastStart = (bars - 1) * bar;
+  for(var s=lastStart; s<mlSteps; s++){
+    var c=mlGrid[s]; if(!c || !c.v) continue;
+    // Thin the closing bar so the phrase breathes before it comes back round.
+    if(s < mlSteps - 4 && Math.random() < 0.3){ c.v = 0; continue; }
+    // and lift the final gesture
+    if(s >= mlSteps - 3) c.oct = mlOct + 1;
+  }
+}
+
+window.setMlGenStyle = function(st){
+  mlGenStyle = st;
+  document.querySelectorAll('[data-mlstyle]').forEach(function(x){
+    x.classList.toggle('active', x.dataset.mlstyle === st);
+  });
+};
+window._mlGenStyle = function(){ return mlGenStyle; };
+window.mlIsFollowOn = function(){ return mlFollow; };
+window.mlToggleFollow = function(){
+  mlFollow = !mlFollow;
+  mlSyncFollowUI();
+  if(typeof track==='function') track('melgen_follow_toggled',{on:mlFollow});
+};
+window.mlSyncFollowUI = function(){
+  var b=document.getElementById('ml-follow-btn'), h=document.getElementById('ml-follow-hint');
+  if(b){ b.textContent='Follow: '+(mlFollow?'ON':'OFF'); b.classList.toggle('on', mlFollow); }
+  if(h) h.textContent = mlFollow ? 'Phrase re-roots onto each chord' : 'Loops the bar as written';
 };
 
 window.mlClear = function(){ for(var s=0;s<mlSteps;s++) mlGrid[s]=mlMkCell(); mlRenderGrid(); };
@@ -15323,7 +15605,7 @@ mlRenderGrid();
 // directly — mirrors window._blCaptureState).
 window._mlCaptureState = function(){
  return {
-  steps: mlSteps, oct: mlOct, wave: mlWave, genStyle: mlGenStyle,
+  steps: mlSteps, oct: mlOct, wave: mlWave, genStyle: mlGenStyle, follow: mlFollow,
   vol: mlVol, grid: mlGrid
  };
 };
@@ -15332,14 +15614,18 @@ window._mlRestoreState = function(s){
  if(s.steps) mlSteps = s.steps;
  if(s.oct) mlOct = s.oct;
  if(s.genStyle) mlGenStyle = s.genStyle;
+ if(typeof s.follow==='boolean') mlFollow = s.follow;
  // Note: no longer restoring s.vol — melody volume is fixed and controlled solely by the Mixer.
  if(s.grid) mlGrid = JSON.parse(JSON.stringify(s.grid));
  if(s.wave && typeof setMlWave === 'function') setMlWave(s.wave);
  var _d = document.getElementById('ml-stepsdisp'); if(_d) _d.textContent = mlSteps;
  var _o = document.getElementById('ml-octdisp'); if(_o) _o.textContent = mlOct;
  document.querySelectorAll('[data-mlstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.mlstyle === mlGenStyle); });
+ if(typeof mlSyncFollowUI==='function') mlSyncFollowUI();
  mlEnsureGrid(); mlRenderGrid();
 };
+
+mlSyncFollowUI();
 
 })(); // end melody IIFE
 
