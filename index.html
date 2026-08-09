@@ -3900,6 +3900,13 @@ const WAVE_GAIN = {
  rhodes:.242,
  pad:.597,
  modsynth:.313,
+ // Sampled voices, calibrated the same way as the rest of this table — a real
+ // four-note chord rendered offline, matched on RMS.
+ // These are large because they scale a raw sample buffer rather than a
+ // synthesized voice normalised to roughly unity — measured, then matched to
+ // the ~0.31 post-gain RMS the rest of this table lands on.
+ vibes:16.0,
+ jazzgtr:7.9,
 };
 
 // ═══════════════════════════════════════
@@ -3918,7 +3925,23 @@ function _natRange(octLo,octHi){
  return out;
 }
 const SAMPLE_LIBS = {
- bass:  {dir:'samples/bass',  notes:_natRange(1,4), fallbackWave:'upright'},
+ bass:    {dir:'samples/bass',    notes:_natRange(1,4), fallbackWave:'upright'},
+ // Two real jazz comping instruments. Which ones was decided by measurement,
+ // not taste: these sample sets are mp3s that brickwall around 7.5 kHz, which
+ // is why the piano set that used to ship here was removed — a piano without
+ // its 5-15 kHz brilliance stops sounding like a piano. So the test was
+ // whether an instrument's OWN spectrum fits under that ceiling. Measured
+ // band edge on a middle-register note:
+ //
+ //   muted trumpet 12.6k · trumpet 8.4k · PIANO 7.5k (clipped) · flute 5.8k
+ //   tenor sax 5.5k · nylon guitar 4.8k · JAZZ GUITAR 4.5k · VIBES 3.7k
+ //   Rhodes 2.1k · upright bass 0.8k
+ //
+ // Vibes and a jazz archtop are dark instruments by nature — the encode never
+ // reaches anything they were going to produce, so they arrive intact, which
+ // is exactly what the piano could not do.
+ vibes:   {dir:'samples/vibes',   notes:_natRange(3,6), fallbackWave:'rhodes'},
+ jazzgtr: {dir:'samples/jazzgtr', notes:_natRange(2,5), fallbackWave:'piano'},
 };
 const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
 const SAMPLE_STATE = {};   // {piano:'idle'|'loading'|'ready'|'error', ...}
@@ -5148,7 +5171,24 @@ function releaseSustainedChord(myId){
  _sustainId++;
 }
 
+// Wave names that are really sampled instruments, and the synth voice each
+// falls back to while its samples are still downloading (or if they can't be
+// reached at all — offline, or a blocked request). The fallback is deliberate:
+// selecting one of these should never produce silence.
+const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr' };
+
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
+ // Sampled instruments first — they bypass the synthesis chain entirely.
+ if(SAMPLED_WAVES[wv]){
+  const key = SAMPLED_WAVES[wv];
+  if(SAMPLE_STATE[key] === 'ready'){
+   const src = playSampleVoice(ctx, key, midi, gainNode, t0, dur);
+   if(src) return [src];
+  } else {
+   preloadSampleInstrument(key);
+  }
+  wv = (SAMPLE_LIBS[key] && SAMPLE_LIBS[key].fallbackWave) || 'piano';
+ }
  // driftMul() detunes each note by a few cents at random — every voice type
  // below derives its frequencies from f, so this one line gives the whole
  // engine analog-style pitch imperfection.
@@ -6747,6 +6787,7 @@ function renderChordDiagram(){
 // bespoke voices of their own (the bass's acid/upright/sampled engines) list
 // those first, then the shared palette.
 const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
+ ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth']];
 // Same order everywhere a list of parts appears (this dock, the Mixer):
