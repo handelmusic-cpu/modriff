@@ -8147,6 +8147,29 @@ function _applySettings(s){
 // user asking to be surprised, and Undo covers it. This is only about what a
 // first-time visitor hears before they have asked for anything.
 const RND_SOFT_WAVES = ['sine','triangle','piano','organ','rhodes','pad'];
+
+// The MōdSynth patch and the drum kit are rolled too, and BOTH were left
+// unrestricted by the first pass at this — which scored s.wave only, and
+// s.wave is never 'modsynth', so the whole preset table went unmeasured.
+// Measured the same way (four-note chord, 2-5 kHz share) the presets are
+// harsher than any plain wave:
+//
+//   pluck 11.4%  lead 10.8%  strings 10.6%  hoover 10.0%  polypad 8.3%
+//   gate 7.4%    brass 6.8%  supersaw 6.5%  saw 5.7%      mega 5.3%
+//   square 4.0%  reese 1.2%  wobble 0.9%    fatbass 0.5%  triangle 0.09%
+//   sub 0.01%    sine 0.00%  bell 0.00%
+//
+// That matters even though no archetype selects the modsynth voice: the roll
+// writes into modSynthPatches for every part, so anyone who has ever set bass
+// or arp to MōdSynth gets a fresh random patch — often one of the top four —
+// on every startup. That is the "caustic patches still load" path.
+const RND_SOFT_MS_PRESETS = ['sine','bell','sub','triangle','fatbass','wobble','reese'];
+
+// Drum kits, measured soloed over a real groove (an earlier run of this scored
+// an EMPTY grid and reported the noise floor as data — peak was 0.000 on every
+// kit). IDM is the one outlier; the rest are 2.5% and below.
+//   IDM 6.7%  LIN 2.5%  909 1.4%  BRS 1.2%  MOD 0.6%  606 0.2%  808 0.1%
+const RND_SOFT_MACHINES = ['808','909','606','MOD','BRS','LIN'];
 function _rndSoften(list, fallback){
  const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
  return soft.length ? soft : (fallback||RND_SOFT_WAVES);
@@ -8215,19 +8238,39 @@ function randomizeSettings(opts){
  s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
  s.sqSwing    = +(_rndPick([0,0,0,.08,.14,.2,.28])).toFixed(2);
- s.sqMach     = _rndPick(['808','909','MOD','606','LIN','IDM','BRS']);
- s.modSynthPreset = _rndPick(Object.keys(MODSYNTH_PRESETS));
+ s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','BRS']);
+ // _capSettings() snapshotted sqState BEFORE this roll, and _applySettings
+ // restores that snapshot AFTER writing the rolled values — and the snapshot
+ // carries its own copy of mach/steps/swing, so the restore silently put the
+ // pre-roll ones straight back. The dice has never actually been able to
+ // change the drum kit, the step count or the swing, despite its own help
+ // text listing all three. Measured: 40 consecutive rolls returned the same
+ // kit every time. Same hazard as modSynthPatchesAll below, same fix — make
+ // the snapshot agree with the roll instead of fighting it.
+ if(s.sqState){
+  s.sqState.mach  = s.sqMach;
+  s.sqState.steps = s.sqSteps;
+  s.sqState.swing = s.sqSwing;
+ }
+ s.modSynthPreset = _rndPick(gentle ? RND_SOFT_MS_PRESETS : Object.keys(MODSYNTH_PRESETS));
  // Roll the modulation on top of the preset — movement is most of what makes
  // one patch feel different from another, and a static roll all sounds alike.
  {
   const base=_msClone(MODSYNTH_PRESETS[s.modSynthPreset]);
-  if(Math.random()<0.6){
-   base.lfo1={ rate:+_rndBand([0.2,9],2), depth:+_rndBand([.08,.7],2),
-               shape:_rndPick(['sine','triangle','square','sawtooth']),
-               dest:_rndPick(['filter','filter','pitch','amp']) };
+  // Modulation shapes: square and sawtooth LFOs step the filter rather than
+  // gliding it, which on an opening roll reads as a fault. Gentle keeps the
+  // smooth ones, halves the depth, and stays off the amp and pitch — a
+  // tremolo or vibrato you did not ask for is the first thing that sounds
+  // broken to someone who has just opened the app.
+  const _lfoShapes = gentle ? ['sine','triangle'] : ['sine','triangle','square','sawtooth'];
+  const _lfoDests  = gentle ? ['filter'] : ['filter','filter','pitch','amp'];
+  if(Math.random() < (gentle ? 0.4 : 0.6)){
+   base.lfo1={ rate:+_rndBand(gentle?[0.2,4]:[0.2,9],2),
+               depth:+_rndBand(gentle?[.05,.3]:[.08,.7],2),
+               shape:_rndPick(_lfoShapes), dest:_rndPick(_lfoDests) };
    if(base.lfo1.dest==='pitch') base.lfo1.depth=Math.min(base.lfo1.depth,.22); // keep it musical
   }
-  if(Math.random()<0.25){
+  if(!gentle && Math.random()<0.25){
    base.lfo2={ rate:+_rndBand([0.15,6],2), depth:+_rndBand([.05,.4],2),
                shape:_rndPick(['sine','triangle']), dest:_rndPick(['filter','pitch']) };
    if(base.lfo2.dest==='pitch') base.lfo2.depth=Math.min(base.lfo2.depth,.15);
