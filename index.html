@@ -3275,6 +3275,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="sq-song" style="margin-bottom:0">
   <div class="sq-songhdr" style="margin-bottom:6px">
     <span class="sq-songtitle" style="font-size:.55rem">Load Groove</span>
+    <button class="tips-btn" onclick="showTip('jazzkit',this)" title="Real instruments and the synthesized Jazz kit">?</button>
   </div>
   <!-- Unified machine selector — replaces both old "Classic/808/909/Brush" and separate machine row -->
   <div id="sq-machineRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
@@ -3907,6 +3908,9 @@ const WAVE_GAIN = {
  // the ~0.31 post-gain RMS the rest of this table lands on.
  vibes:16.0,
  jazzgtr:7.9,
+ nylongtr:19.1,
+ tenorsax:6.9,
+ mutetpt:8.0,
 };
 
 // ═══════════════════════════════════════
@@ -3940,8 +3944,17 @@ const SAMPLE_LIBS = {
  // Vibes and a jazz archtop are dark instruments by nature — the encode never
  // reaches anything they were going to produce, so they arrive intact, which
  // is exactly what the piano could not do.
- vibes:   {dir:'samples/vibes',   notes:_natRange(3,6), fallbackWave:'rhodes'},
- jazzgtr: {dir:'samples/jazzgtr', notes:_natRange(2,5), fallbackWave:'piano'},
+ // Vibes/sax/muted trumpet/nylon come from MusyngKite, jazz guitar from
+ // FluidR3_GM — picked per instrument by measuring both. MusyngKite wins
+ // almost everywhere (tenor sax 10.5k vs 5.5k, vibes 5.7k vs 3.7k, muted
+ // trumpet 13.7k vs 12.6k) but its jazz guitar TRUNCATES at 1.34 s against
+ // FluidR3's full 3.13 s, which is fatal for a comping instrument, so that
+ // one stays where it was.
+ vibes:    {dir:'samples/vibes',    notes:_natRange(3,6), fallbackWave:'rhodes'},
+ jazzgtr:  {dir:'samples/jazzgtr',  notes:_natRange(2,5), fallbackWave:'piano'},
+ nylongtr: {dir:'samples/nylongtr', notes:_natRange(2,5), fallbackWave:'piano'},
+ tenorsax: {dir:'samples/tenorsax', notes:_natRange(3,5), fallbackWave:'organ'},
+ mutetpt:  {dir:'samples/mutetpt',  notes:_natRange(3,5), fallbackWave:'organ'},
 };
 const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
 const SAMPLE_STATE = {};   // {piano:'idle'|'loading'|'ready'|'error', ...}
@@ -5175,7 +5188,8 @@ function releaseSustainedChord(myId){
 // falls back to while its samples are still downloading (or if they can't be
 // reached at all — offline, or a blocked request). The fallback is deliberate:
 // selecting one of these should never produce silence.
-const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr' };
+const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
+                        tenorsax:'tenorsax', mutetpt:'mutetpt' };
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Sampled instruments first — they bypass the synthesis chain entirely.
@@ -6787,7 +6801,8 @@ function renderChordDiagram(){
 // bespoke voices of their own (the bass's acid/upright/sampled engines) list
 // those first, then the shared palette.
 const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
- ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],
+ ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
+ ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth']];
 // Same order everywhere a list of parts appears (this dock, the Mixer):
@@ -8210,7 +8225,7 @@ const RND_SOFT_MS_PRESETS = ['sine','bell','sub','triangle','fatbass','wobble','
 // an EMPTY grid and reported the noise floor as data — peak was 0.000 on every
 // kit). IDM is the one outlier; the rest are 2.5% and below.
 //   IDM 6.7%  LIN 2.5%  909 1.4%  BRS 1.2%  MOD 0.6%  606 0.2%  808 0.1%
-const RND_SOFT_MACHINES = ['808','909','606','MOD','BRS','LIN'];
+const RND_SOFT_MACHINES = ['808','909','606','MOD','BRS','LIN','JAZZ'];
 function _rndSoften(list, fallback){
  const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
  return soft.length ? soft : (fallback||RND_SOFT_WAVES);
@@ -8279,7 +8294,7 @@ function randomizeSettings(opts){
  s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
  s.sqSwing    = +(_rndPick([0,0,0,.08,.14,.2,.28])).toFixed(2);
- s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','BRS']);
+ s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','BRS','JAZZ']);
  // _capSettings() snapshotted sqState BEFORE this roll, and _applySettings
  // restores that snapshot AFTER writing the rolled values — and the snapshot
  // carries its own copy of mach/steps/swing, so the restore silently put the
@@ -10507,6 +10522,14 @@ Follow needs a song running to have changes to follow. With the song stopped it 
 <strong>Avoid notes.</strong> On a strong beat, the generator now steers away from scale tones that sit a half step above a chord tone — the 4th over a major or dominant chord, the 6th over a minor 7th. Those are the notes that sound like a mistake on a downbeat. They're still reachable as passing tones on weak beats, where they're often the point.<br><br>
 <strong>Phrase shape.</strong> Set the step count above one bar and the closing bar is varied rather than being a copy of the first — thinned out, with its last gesture lifted — so the phrase answers itself instead of just repeating.<br><br>
 Notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it.`
+ },
+ 'jazzkit': {
+  title: 'Real instruments & the Jazz kit',
+  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
+<strong>Why these instruments.</strong> The sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why a sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br>
+<strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. It is <strong>synthesized, not sampled</strong> — and that is an upgrade, not a compromise. Neither sample set has a drum bank at all, and a ride cymbal runs from 5&nbsp;kHz to past 15&nbsp;kHz, so a sampled one would have been cut off at 7.5. The synthesized ride reaches <strong>22&nbsp;kHz</strong>.<br><br>
+A cymbal is a dense set of <strong>inharmonic</strong> modes whose high partials die away faster than its low ones — that uneven decay is what your ear reads as struck metal rather than filtered hiss. Each strike also scatters its partial levels slightly, so no two rides ping identically, the way no two real ones do.<br><br>
+<strong>Ride</strong> keeps the time. <strong>Bell</strong> is the same metal struck on the cup — fewer modes, higher, damped harder so it rings clear. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Kick</strong> is a felt beater feathering the pulse. <strong>Rim</strong> is a cross-stick — wood, not snare.`
  },
  'setups': {
   title: 'Setups — save, load & share the whole rig',
@@ -12874,6 +12897,86 @@ function sqAcid(t,freq,dur,vol,cut,res,ac){
 }
 function sqSemi(n){return Math.pow(2,(n||0)/12);}
 
+// ═══════════════════════════════════════
+// JAZZ KIT — cymbal and brush synthesis
+// ═══════════════════════════════════════
+// Sampled cymbals were not an option: the sample source here ships the 128
+// melodic GM programs only, with no percussion bank, and its mp3 encode
+// brickwalls around 7.5 kHz — a ride cymbal lives from 5 kHz to past 15 kHz,
+// so even if the bank existed the encode would gut it. Synthesis has no such
+// ceiling, so it is genuinely the better instrument here rather than a
+// consolation prize.
+//
+// A cymbal is a dense set of INHARMONIC modes, and — the part that actually
+// matters — its high modes die away faster than its low ones. That
+// differential decay is what the ear reads as struck metal. The Brush kit's
+// ride was one sine plus two noise bands, which has no differential decay at
+// all and reads as a filtered hiss.
+
+// Ratios are irregular on purpose; anything close to integer multiples starts
+// to sound pitched, which a ride is not.
+var SQ_CYM_RATIOS = [1, 1.39, 1.83, 2.34, 2.87, 3.41, 4.07, 4.83, 5.62, 6.71, 7.94];
+
+// A struck cymbal. base sets the size (lower = bigger), dur the longest mode's
+// decay, tone the balance between stick and wash.
+function sqCym(t, vol, base, dur, opts){
+  var c=sqCtx(); if(!c||!SQMG) return;
+  opts = opts || {};
+  var partials = opts.partials || SQ_CYM_RATIOS.length;
+  var hp=c.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=opts.hp||2600;
+  var body=c.createGain(); body.gain.value=1;
+  body.connect(hp); hp.connect(SQMG);
+  for(var i=0;i<partials;i++){
+    var r=SQ_CYM_RATIOS[i];
+    // Higher modes decay faster — the whole point. The exponent sets how
+    // fast the top falls away: a ride shimmers, so it stays gentle.
+    var d=Math.max(0.06, dur*Math.pow(r, -(opts.damp==null?0.75:opts.damp)));
+    var o=c.createOscillator(); o.type='square'; o.frequency.value=base*r;
+    var g=c.createGain();
+    // Slight per-strike level scatter so repeated hits are not identical —
+    // the same reason a real ride never pings twice the same way.
+    var lvl=vol*(0.55/Math.pow(r,0.55))*(0.85+Math.random()*0.3);
+    g.gain.setValueAtTime(lvl, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+d);
+    o.connect(g); g.connect(body);
+    o.start(t); o.stop(t+d+0.02);
+  }
+  // Stick attack — the transient that says something hit it.
+  if(opts.ping!==false) sqNs(t, opts.pingDur||0.035, opts.pingF||5200, vol*(opts.pingLvl||0.5));
+  // Wash — the broadband shimmer that fills in behind the modes.
+  if(opts.wash!==false) sqNs(t, dur*0.55, opts.washF||8200, vol*(opts.washLvl||0.16), 'highpass', 4200, 0.6);
+}
+
+// Brush on a snare head. Two gestures: a SWIRL, which is a slow circular sweep
+// with a swell rather than an attack, and a SLAP, which is a struck accent.
+function sqBrush(t, vol, dur, swirl){
+  var c=sqCtx(); if(!c||!SQMG||!SQNBUF) return;
+  var s=c.createBufferSource(); s.buffer=SQNBUF; s.loop=true;
+  var bp=c.createBiquadFilter(); bp.type='bandpass';
+  bp.frequency.value = swirl ? 2400 : 3200;
+  bp.Q.value = swirl ? 0.7 : 1.1;
+  var g=c.createGain();
+  if(swirl){
+    // A swirl has no attack — it swells. Starting at zero and ramping up is
+    // the whole character; a noise burst with a fast attack is a slap.
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol*0.5, t+dur*0.45);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    // The filter sweeps with it, which is the circle of the brush on the head.
+    bp.frequency.setValueAtTime(1500, t);
+    bp.frequency.linearRampToValueAtTime(3400, t+dur*0.5);
+    bp.frequency.linearRampToValueAtTime(1800, t+dur);
+  } else {
+    g.gain.setValueAtTime(vol*0.75, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  }
+  s.connect(bp); bp.connect(g); g.connect(SQMG);
+  s.start(t); s.stop(t+dur+0.05);
+  // A slap carries a little head tone under the wires.
+  if(!swirl) sqTn(t, 210, 0.05, vol*0.18, 'triangle', 150);
+}
+
+
 // 6-oscillator metallic hi-hat (classic TR-808/909 approach)
 function sqHH808(t,dur,vol,baseF){
   var c=sqCtx();if(!c||!SQMG)return;
@@ -13021,6 +13124,44 @@ var SQM={
     {n:'Metal',s:'MT',c:'#aabb00',play:function(t,v,ac,ps){sqTn(t,1500*sqSemi(ps),.05,v*(ac?1.3:1)*.9,'square');sqTn(t,2300*sqSemi(ps),.05,v*.6,'square');}}
   ]},
   '303':{label:'TB-303',color:'#00ffcc',isPR:true,tracks:[]},
+  // A jazz kit: ride-led, brushes instead of a backbeat, and a kick that
+  // feathers rather than lands. Track order puts the ride first because in
+  // this idiom the ride IS the time — everything else comments on it.
+  'JAZZ':{label:'Jazz',color:'#e0b070',tracks:[
+    {n:'Ride',s:'RD',c:'#e0b070',play:function(t,v,ac,ps){
+      sqCym(t, v*(ac?1.25:1)*0.5, 372*sqSemi(ps), 2.9,
+            {damp:0.72, hp:2500, pingF:5400, pingLvl:0.45, washF:8600, washLvl:0.15});
+    }},
+    {n:'Bell',s:'BL',c:'#f0c68a',play:function(t,v,ac,ps){
+      // The bell is a smaller, tighter, more defined part of the same metal:
+      // fewer modes, higher, damped harder so it rings clear instead of washing.
+      sqCym(t, v*(ac?1.3:1)*0.52, 640*sqSemi(ps), 1.5,
+            {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
+    }},
+    {n:'Brush',s:'BR',c:'#cbb89a',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.2:1)*0.5, 0.30, false); }},
+    {n:'Swirl',s:'SW',c:'#b9a88d',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.15:1)*0.42, 0.52, true); }},
+    {n:'Kick',s:'BD',c:'#c99a5c',play:function(t,v,ac,ps){
+      // Felt beater on a small bass drum: low, soft, and short. A jazz kick
+      // feathers the pulse, it does not thump.
+      sqTn(t, 105*sqSemi(ps), 0.16, v*(ac?1.3:1)*0.62, 'sine', 48*sqSemi(ps));
+      sqNs(t, 0.02, 900, v*0.12);
+    }},
+    {n:'Rim',s:'RM',c:'#d8c0a0',play:function(t,v,ac,ps){
+      // Cross-stick: a woody click, not a snare. Stick on the rim with the
+      // butt of the stick laid across the head.
+      sqTn(t, 780*sqSemi(ps), 0.035, v*(ac?1.3:1)*0.5, 'triangle', 420*sqSemi(ps));
+      sqNs(t, 0.03, 2600, v*0.3);
+    }},
+    {n:'Hat',s:'HH',c:'#a8b8c8',play:function(t,v,ac,ps){
+      // Foot hi-hat on 2 and 4 — a chick, closed and short.
+      sqCym(t, v*(ac?1.2:1)*0.34, 520*sqSemi(ps), 0.16,
+            {partials:6, damp:1.3, hp:5200, pingLvl:0.3, washLvl:0.05});
+    }},
+    {n:'Tom',s:'TM',c:'#bfa070',play:function(t,v,ac,ps){
+      sqTn(t, 165*sqSemi(ps), 0.28, v*(ac?1.2:1)*0.55, 'sine', 82*sqSemi(ps));
+      sqNs(t, 0.05, 1400, v*0.12);
+    }}
+  ]},
   'BRS':{label:'Brush',color:'#88aacc',tracks:[
     {n:'Kick',s:'BD',c:'#88aacc',play:function(t,v,ac,ps){sqTn(t,90*sqSemi(ps),.18,v*(ac?1.3:1)*.7,'sine',55*sqSemi(ps));}},
     {n:'Snare',s:'SD',c:'#aaccee',play:function(t,v,ac,ps){sqNs(t,.3,1800,v*(ac?1.2:1)*.45);sqTn(t,160*sqSemi(ps),.04,v*.2,'triangle');}},
@@ -13044,6 +13185,14 @@ window._sqSetSwing = function(v){
  var el=document.getElementById('sq-swing'); if(el) el.value=sqSwing;
  if(typeof sqSyncUI==='function') sqSyncUI();
 };
+// The machine table lives in this IIFE. Exported so a single drum voice can be
+// fired and measured on its own, which is the only way to check a synthesized
+// cymbal actually behaves like metal rather than like a noise burst.
+window._sqTracks = function(machKey){
+  var M = SQM[machKey || sqMach];
+  return M ? M.tracks : [];
+};
+
 window._sqSetMach = function(k){
  if(!k||k===sqMach||!SQM[k]) return;
  if(typeof sqDoSwap==='function') sqDoSwap(k); else sqMach=k;
