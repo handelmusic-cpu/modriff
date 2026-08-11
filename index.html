@@ -13154,6 +13154,56 @@ function sqApplyFX(){
 }
 
 // ── synthesis primitives (use Vibe's shared ctx, route to SQMG) ──
+// ── Choke groups ──
+// On a real kit the closed hi-hat is the SAME instrument as the open one: your
+// foot shuts the cymbals and whatever was ringing stops dead. Two independent
+// voices that ignore each other is the one thing that gives away a drum machine
+// on an otherwise convincing hat part. Every voice registers itself here with a
+// group name, and any voice that declares itself a choker silences the rest of
+// its group at its own attack time — scheduled on the audio clock, not fired
+// from a timer, so it lands exactly with the hit.
+var _chokeReg = {};        // group -> [{g:GainNode, src:AudioNode, until:seconds}]
+var CHOKE_TAIL = 0.012;    // ramp, not a cut: an instant zero clicks
+
+function _chokeRegister(group, g, src, until){
+  if(!group||!g) return;
+  var c=sqCtx(); if(!c) return;
+  var arr = _chokeReg[group] || (_chokeReg[group]=[]);
+  arr.push({g:g, src:src, until:until});
+  // Drop anything that has already finished so this never grows unbounded.
+  var now=c.currentTime;
+  if(arr.length>24) _chokeReg[group]=arr.filter(function(v){ return v.until>now; });
+}
+function _chokeGroup(group, t){
+  var arr=_chokeReg[group]; if(!arr||!arr.length) return;
+  var c=sqCtx(); if(!c) return;
+  var keep=[];
+  arr.forEach(function(v){
+    if(v.until<=t){ return; }           // already done by then
+    try{
+      // cancelAndHoldAtTime, NOT cancelScheduledValues. Cancelling alone drops
+      // the pending ramp and lets the param revert toward its last
+      // setValueAtTime — which is the note's ORIGINAL full level — so the
+      // choke briefly made the hat louder instead of stopping it. Measured at
+      // +4 dB on the 808 before this was fixed. cancelAndHold pins the value
+      // to whatever the envelope had actually reached at t, and the decay
+      // starts from there.
+      if(v.g.gain.cancelAndHoldAtTime) v.g.gain.cancelAndHoldAtTime(t);
+      else {
+       // Safari and older engines: hold the value by hand before cancelling.
+       var held = v.g.gain.value;
+       v.g.gain.cancelScheduledValues(t);
+       v.g.gain.setValueAtTime(Math.max(0.0001, held), t);
+      }
+      v.g.gain.setTargetAtTime(0.0001, t, CHOKE_TAIL/3);
+      if(v.src && v.src.stop) v.src.stop(t+CHOKE_TAIL*6);
+    }catch(e){}
+  });
+  _chokeReg[group]=keep;
+}
+// Current voice's choke group, set by sqHitTrack around each track's play().
+var _chokeCur = null;
+
 function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var c=sqCtx();if(!c||!SQMG||!SQNBUF)return;
   var s=c.createBufferSource();s.buffer=SQNBUF;s.loop=true;
@@ -13162,6 +13212,7 @@ function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var chain=f;
   if(type2){var f2=c.createBiquadFilter();f2.type=type2;f2.frequency.value=freq2||freq||2000;f2.Q.value=Q2||1;f.connect(f2);chain=f2;}
   s.connect(f);chain.connect(g);g.connect(SQMG);s.start(t);s.stop(t+dur+.05);
+  if(_chokeCur) _chokeRegister(_chokeCur, g, s, t+dur);
 }
 function sqTn(t,freq,dur,vol,type,fEnd){
   var c=sqCtx();if(!c||!SQMG)return;
@@ -13170,6 +13221,7 @@ function sqTn(t,freq,dur,vol,type,fEnd){
   if(fEnd)o.frequency.exponentialRampToValueAtTime(fEnd,t+dur);
   g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
   o.connect(g);g.connect(SQMG);o.start(t);o.stop(t+dur+.02);
+  if(_chokeCur) _chokeRegister(_chokeCur, g, o, t+dur);
 }
 function sqAcid(t,freq,dur,vol,cut,res,ac){
   var c=sqCtx();if(!c||!SQMG)return;
@@ -13252,7 +13304,9 @@ function sqSample(name, t, vol, semi){
  g.gain.value = vol;
  src.connect(g); g.connect(SQMG);
  src.start(t);
- src.stop(t + buf.duration / (src.playbackRate.value || 1) + 0.05);
+ const end = t + buf.duration / (src.playbackRate.value || 1);
+ src.stop(end + 0.05);
+ if(_chokeCur) _chokeRegister(_chokeCur, g, src, end);
  return true;
 }
 
@@ -13347,10 +13401,15 @@ function sqHH808(t,dur,vol,baseF){
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=6800;
   var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=10000;bp.Q.value=0.5;
   mix.connect(hp);hp.connect(bp);bp.connect(SQMG);
+  var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
-    o.connect(mix);o.start(t);o.stop(t+dur+.01);
+    o.connect(mix);o.start(t);o.stop(t+dur+.01);_oscs.push(o);
   });
+  // The hi-hats are the whole point of the choke system and they do NOT go
+  // through sqNs/sqTn — they build their own gain node here, so registering
+  // only those two left every 808/909/MōdKit open hat unchokeable.
+  if(_chokeCur) _chokeRegister(_chokeCur, mix, _oscs[0], t+dur);
 }
 
 // 7-oscillator metallic hat — wider inharmonic spread + a peaking shimmer stage,
@@ -13365,10 +13424,12 @@ function sqHHMod(t,dur,vol,baseF){
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=7800;
   var pk=c.createBiquadFilter();pk.type='peaking';pk.frequency.value=11500;pk.Q.value=1.1;pk.gain.value=5;
   mix.connect(hp);hp.connect(pk);pk.connect(SQMG);
+  var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
-    o.connect(mix);o.start(t);o.stop(t+dur+.01);
+    o.connect(mix);o.start(t);o.stop(t+dur+.01);_oscs.push(o);
   });
+  if(_chokeCur) _chokeRegister(_chokeCur, mix, _oscs[0], t+dur);
 }
 
 // ── drum machines ──
@@ -13558,6 +13619,15 @@ window._sqSetSwing = function(v){
 // fired and measured on its own, which is the only way to check a synthesized
 // cymbal actually behaves like metal rather than like a noise burst.
 window._sqMachines = function(){ return SQM; };
+// Fire one drum voice through the real path (choke handling included) so it can
+// be measured on its own.
+window._sqHit = function(track,t,vol,ac,ps){ return sqHitTrack(track,t,vol,ac,ps); };
+// Choke a group without sounding anything, so the mechanism can be measured
+// without the choking voice's own sound sitting on top of the result.
+window._sqChoke = function(group,t){ return _chokeGroup(group||'hat', t); };
+window._sqTrackChoke = function(track){ return _trackChoke(track); };
+window._chokeCount = function(group){ return (_chokeReg[group]||[]).length; };
+window._chokeReset = function(){ _chokeReg = {}; };
 window._sqTracks = function(machKey){
   var M = SQM[machKey || sqMach];
   return M ? M.tracks : [];
@@ -13664,6 +13734,16 @@ function sqSyncUI(){
 // ── SCHEDULER (uses Vibe's shared BPM) ──
 function sqSd(){return 60/sqBpm()/4*(typeof sqRateMul!=='undefined'?sqRateMul:1);}
 
+// Which choke group a track belongs to, and whether it silences that group.
+// Derived from the shortname so it applies to EVERY kit -- the pairing is a
+// property of a hi-hat, not of any one machine's table. A closed or pedal hat
+// chokes; an open hat only rings.
+function _trackChoke(track){
+  var s = track && track.s;
+  if(s==='CH' || s==='HH' || s==='OH') return {group:'hat', chokes:(s!=='OH')};
+  return null;
+}
+
 function sqHitTrack(track,t,vol,ac,ps){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
@@ -13675,7 +13755,13 @@ function sqHitTrack(track,t,vol,ac,ps){
   // earshot. Muting the Drums channel left a quiet hi-hat ticking away.
   // It also saves scheduling dozens of inaudible oscillators per bar.
   if(!(vol>0)) return;
+  var ck=_trackChoke(track);
+  // Cut the group BEFORE this voice registers itself, or a closed hat would
+  // choke its own tail the instant it started.
+  if(ck && ck.chokes) _chokeGroup(ck.group, t);
+  _chokeCur = ck ? ck.group : null;
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
+  _chokeCur = null;
 }
 function sqPlayCell(track,cell,t,vol,ps){
   if(!cell||cell.v===0)return;
