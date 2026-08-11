@@ -848,6 +848,26 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  .subnav-btn { font-size:.54rem; letter-spacing:.1em; padding:9px 4px 10px; }
 }
 
+/* ═══════════════════════════════════════
+   PIANO ROLL — bass & melody generators
+   ═══════════════════════════════════════
+   Replaces the one-row step lane those two engines used to share. That lane
+   showed pitch as a text label inside each step, so a line's SHAPE was
+   invisible and the octave was a small digit you had to read rather than see —
+   which is exactly what makes a generated line hard to follow and harder to
+   edit. Pitch belongs on an axis. Drawn to a canvas rather than built from
+   divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
+   a lot of DOM to rebuild on every generate, on a phone. */
+.pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
+           border-radius:var(--r-md); overflow:hidden; background:var(--bg); }
+.pr-keys { flex:0 0 34px; }
+.pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+             touch-action:pan-x; overscroll-behavior-x:contain; }
+.pr-canvas { display:block; touch-action:manipulation; }
+.pr-keys-canvas { display:block; }
+.pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
+.pr-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
+
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
 .sl-item {
@@ -3466,9 +3486,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="bl-simple-view"></div>
-  <!-- Advanced mode: full 303 piano roll -->
-  <div class="bl-grid advanced-only" id="bl-grid"><div class="bl-inner" id="bl-inner"></div></div>
-  <div class="bl-phbar advanced-only"><div class="bl-phcur" id="bl-phcur"></div></div>
+  <!-- Advanced mode: piano roll -->
+  <div class="advanced-only">
+   <div class="pr-wrap" id="bl-pr">
+    <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
+    <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
+   </div>
+   <div class="pr-bar">
+    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
+   </div>
+  </div>
   <!-- Empty state: shown when no steps are active -->
   <div class="bl-empty-hint" id="bl-empty-hint">
    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -3560,9 +3587,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="ml-simple-view"></div>
-  <!-- Advanced mode: full piano roll -->
-  <div class="bl-grid advanced-only" id="ml-grid"><div class="bl-inner" id="ml-inner"></div></div>
-  <div class="bl-phbar advanced-only"><div class="bl-phcur" id="ml-phcur"></div></div>
+  <!-- Advanced mode: piano roll -->
+  <div class="advanced-only">
+   <div class="pr-wrap" id="ml-pr">
+    <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
+    <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
+   </div>
+   <div class="pr-bar">
+    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
+   </div>
+  </div>
   <!-- Empty state: shown when no steps are active -->
   <div class="bl-empty-hint" id="ml-empty-hint">
    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -10444,6 +10478,9 @@ function setBassMelMode(m){
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
  if(m === 'melody' && typeof mlRenderGrid==='function') mlRenderGrid();
+ // A canvas inside a display:none panel lays out at zero, so both rolls have
+ // to be re-measured once their page is actually on screen.
+ if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll, 0);
  positionSubnavLed('bm-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
 }
@@ -10627,6 +10664,7 @@ function switchTab(t){
  if(typeof msSyncHost==='function') msSyncHost();
  positionTabLed();
  positionAllSubnavLeds();
+ if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll,0);
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
@@ -10725,6 +10763,7 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
   title: 'Bassline generator & Follow',
   body: `<strong>✦ Generate</strong> writes a bar of bass in the chosen style, over the chord you last played. Press it again for a different take — every style randomises.<br><br>
 <strong>The styles.</strong> <strong>Rock</strong> is roots and fifths on the quarters. <strong>Jazz</strong> walks in quarter notes with chromatic approaches. <strong>Motown</strong> is melodic eighths. <strong>Funk</strong> is syncopated sixteenths with slides. <strong>Acid</strong> is a 303 line — dense, sliding, accented. <strong>Latin</strong> gives you a tumbao, a 2–3 clave or a bolero feel. <strong>Reggae</strong> is a one drop, which leaves beat 1 empty on purpose. <strong>Pedal</strong> is straight eighths on one note. <strong>Half-Time</strong> is whole and half notes for sitting under a busy arrangement. <strong>Arpeggio</strong>, <strong>Riff</strong> and <strong>Pop Hook</strong> are the melody generator's shapes moved down into the bass register.<br><br>
+<strong>The piano roll</strong> shows pitch vertically and time horizontally, with the C of each octave labelled down the left edge. A generated line's <strong>shape</strong> is visible at a glance — where it leaps, where it walks, which octave it sits in — which the old single-row lane could not show, since pitch was a text label inside each step. <strong>Tap</strong> an empty cell to place a note, tap the same note again to clear it, and <strong>press and hold</strong> for length, slide and accent. Everything the generator writes lands here, so the next pass is yours to edit.<br><br>
 <strong>Octave</strong> defaults to <strong>2</strong> — that puts a root around 65&nbsp;Hz, where a bass actually sits. Octave 3 is the register a guitarist plays; useful for a lead-ish line, thin as a bass part.<br><br>
 <strong>Follow: ON</strong> is the difference between a loop and a bass part. With it off, the bar you generated repeats over the whole song no matter what the chords do. With it on, the line <strong>re-roots onto whichever chord the song is playing</strong>, keeping the rhythm and shape you generated — so a root–fifth–octave figure stays that figure on every chord.<br><br>
 <strong>Follow + Jazz</strong> is the walking bass. It stops using the grid's rhythm entirely and plays real quarter notes through the chart: the chord's root on beat 1, mostly stepwise motion through chord and scale tones in between, and on the last beat before a change it <strong>approaches the next chord's root</strong> from a half step or a fifth. It reads the chord that <em>is about to arrive</em>, not the one already playing, so the approach lands where a bass player would put it.<br><br>
@@ -14976,6 +15015,8 @@ function blDraw(){
     var sd = document.getElementById('bls-' + ds);
     if(sd) sd.classList.add('head');
     blDispStep = ds;
+    if(typeof prRedraw==='function') prRedraw('bl');
+    blDispStep = ds;
   }
   blRafID = requestAnimationFrame(blDraw);
 }
@@ -15037,8 +15078,44 @@ window._blToggleImpl = window.blToggle = function(){
 };
 window.blPlay = window._blPlayImpl = blPlay;
 
+// ── piano roll wiring ──
+// The roll lives outside this IIFE, so it gets accessors rather than the grid.
+function blPrInit(){
+  if(typeof prRegister!=='function') return;
+  prRegister('bl', {
+    lo: BL_GEN_LO, hi: BL_GEN_HI, color:'#2df09a',
+    steps: function(){ return blSteps; },
+    cell:  function(x){ return blGrid[x]; },
+    playStep: function(){ return blPlaying ? blDispStep : -1; },
+    toggle: function(step, midi){
+      blEnsureGrid();
+      var c = blGrid[step]; if(!c) return;
+      var cur = c.note + (c.oct+1)*12;
+      if(c.v && cur === midi){ c.v = 0; }      // tapping the same note clears it
+      else {
+        c.v = 1;
+        c.note = ((midi%12)+12)%12;
+        c.oct  = Math.floor(midi/12)-1;
+        blPreviewNote(c);
+      }
+      blUpdateEmptyHint();
+      blRenderSimpleView();
+    },
+    openMenu: function(step, midi){
+      blEnsureGrid();
+      var c = blGrid[step]; if(!c) return;
+      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      var host = document.getElementById('bl-pr-canvas');
+      blOpenMenu(host, step);
+    }
+  });
+  if(typeof prWire==='function') prWire('bl');
+}
+
 // ── render grid ──
 function blRenderGrid(){
+  if(typeof prRelayout==='function'){ prRelayout('bl'); }
+  blRenderSimpleView(); blUpdateEmptyHint();
   var inner = document.getElementById('bl-inner'); if(!inner) return;
   inner.innerHTML = '';
   blEnsureGrid();
@@ -15733,6 +15810,9 @@ window._blRestoreState = function(s){
 };
 
 blSyncFollowUI();
+// Deferred: the piano roll is defined further down this file, so PR_ENGINES is
+// still in its temporal dead zone while this IIFE is executing.
+setTimeout(blPrInit, 0);
 
 })(); // end bassline IIFE
 
@@ -15851,6 +15931,37 @@ window._mlScheduler = function(){
   }
 };
 
+function mlPrInit(){
+  if(typeof prRegister!=='function') return;
+  prRegister('ml', {
+    lo: ML_GEN_LO, hi: ML_GEN_HI, color:'#ff8ad4',
+    steps: function(){ return mlSteps; },
+    cell:  function(x){ return mlGrid[x]; },
+    playStep: function(){ return mlPlaying ? mlDispStep : -1; },
+    toggle: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      var cur = c.note + (c.oct+1)*12;
+      if(c.v && cur === midi){ c.v = 0; }
+      else {
+        c.v = 1;
+        c.note = ((midi%12)+12)%12;
+        c.oct  = Math.floor(midi/12)-1;
+        if(typeof mlPreviewNote==='function') mlPreviewNote(c);
+      }
+      if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
+      if(typeof mlRenderSimpleView==='function') mlRenderSimpleView();
+    },
+    openMenu: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
+    }
+  });
+  if(typeof prWire==='function') prWire('ml');
+}
+
 // ── playhead draw ──
 function mlDraw(){
   if(!mlPlaying){ mlRafID = null; return; }
@@ -15869,6 +15980,8 @@ function mlDraw(){
     document.querySelectorAll('#ml-simple-view .bl-sdot').forEach(function(d){ d.classList.remove('head'); });
     var sd = document.getElementById('mls-' + ds);
     if(sd) sd.classList.add('head');
+    mlDispStep = ds;
+    if(typeof prRedraw==='function') prRedraw('ml');
     mlDispStep = ds;
   }
   mlRafID = requestAnimationFrame(mlDraw);
@@ -15921,6 +16034,7 @@ window.mlPlay = window._mlPlayImpl = mlPlay;
 
 // ── render grid — reuses bl-* CSS classes for identical piano-roll styling ──
 function mlRenderGrid(){
+  if(typeof prRelayout==='function'){ prRelayout('ml'); }
   var inner = document.getElementById('ml-inner'); if(!inner) return;
   inner.innerHTML = '';
   mlEnsureGrid();
@@ -16345,6 +16459,7 @@ window._mlRestoreState = function(s){
 };
 
 mlSyncFollowUI();
+setTimeout(mlPrInit, 0);
 
 })(); // end melody IIFE
 
@@ -16513,6 +16628,190 @@ switchTab = function(t){
   }
   // ft-rhy-btn is now a master Play/Stop — syncFixedTransport handles it
 };
+
+
+// ═══════════════════════════════════════
+// PIANO ROLL
+// ═══════════════════════════════════════
+// One renderer, two engines. Each caller supplies accessors rather than its
+// grid, so the roll never has to know whether it is drawing the bass or the
+// melody generator — the two live in separate IIFEs and cannot see each
+// other's state, which is why this takes functions instead of data.
+const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
+const PR_ROW_H = 11;      // px per semitone
+const PR_KEY_W = 34;
+// Column width adapts to the panel: a 16-step pattern should fill the width
+// rather than leaving half the panel empty, while a 32-step one stays legible
+// and scrolls. Recomputed on layout, so it follows a resize or a step-count
+// change without anything else having to know.
+let PR_COL_W = 26;
+function prColW(id, steps){
+ const sc = document.getElementById(id+'-pr-scroll');
+ const avail = sc ? sc.clientWidth : 0;
+ if(!avail || !steps) return 26;
+ return Math.max(16, Math.min(46, Math.floor(avail/steps)));
+}
+
+const PR_ENGINES = {};
+
+function prRegister(id, cfg){ PR_ENGINES[id] = cfg; prLayout(id); }
+
+function prLayout(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const cv = document.getElementById(id+'-pr-canvas');
+ const kv = document.getElementById(id+'-pr-keys');
+ if(!cv || !kv) return;
+ const rows = cfg.hi - cfg.lo + 1;
+ const steps = cfg.steps();
+ PR_COL_W = prColW(id, steps);
+ const dpr = Math.min(2, window.devicePixelRatio || 1);
+ const w = steps * PR_COL_W, h = rows * PR_ROW_H;
+ cv.style.width = w+'px'; cv.style.height = h+'px';
+ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+ kv.style.width = PR_KEY_W+'px'; kv.style.height = h+'px';
+ kv.width = Math.round(PR_KEY_W*dpr); kv.height = Math.round(h*dpr);
+ cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ kv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ prDrawKeys(id);
+ prDraw(id);
+}
+
+function _prCss(v, fallback){
+ try{ const c=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return c||fallback; }
+ catch(e){ return fallback; }
+}
+
+function prDrawKeys(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const kv = document.getElementById(id+'-pr-keys'); if(!kv) return;
+ const g = kv.getContext('2d');
+ const rows = cfg.hi - cfg.lo + 1;
+ g.clearRect(0,0,PR_KEY_W,rows*PR_ROW_H);
+ for(let i=0;i<rows;i++){
+  const midi = cfg.hi - i;                 // high notes at the top, as on a keyboard
+  const pc = ((midi%12)+12)%12;
+  const y = i*PR_ROW_H;
+  g.fillStyle = PR_BLACK[pc] ? '#0d0e18' : '#1b1d2c';
+  g.fillRect(0,y,PR_KEY_W,PR_ROW_H-1);
+  if(pc===0){                              // label every C, with its octave
+   g.fillStyle = '#8890b8';
+   g.font = '7px Outfit, sans-serif';
+   g.textBaseline = 'middle';
+   g.fillText('C'+(Math.floor(midi/12)-1), 4, y+PR_ROW_H/2);
+  }
+ }
+}
+
+function prDraw(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
+ const g = cv.getContext('2d');
+ const rows = cfg.hi - cfg.lo + 1, steps = cfg.steps();
+ const colW = prColW(id, steps);
+ const W = steps*colW, H = rows*PR_ROW_H;
+ g.clearRect(0,0,W,H);
+
+ // Row shading: black keys darker, so the octave is readable at a glance —
+ // the whole reason for this view.
+ for(let i=0;i<rows;i++){
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12;
+  g.fillStyle = PR_BLACK[pc] ? 'rgba(255,255,255,.012)' : 'rgba(255,255,255,.032)';
+  g.fillRect(0,i*PR_ROW_H,W,PR_ROW_H-1);
+  if(pc===0){ g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(0,i*PR_ROW_H,W,1); }
+ }
+ // Beat lines every 4 steps, bar lines every 16.
+ for(let x=0;x<=steps;x++){
+  if(x%16===0) g.fillStyle='rgba(255,255,255,.22)';
+  else if(x%4===0) g.fillStyle='rgba(255,255,255,.10)';
+  else continue;
+  g.fillRect(x*colW,0,1,H);
+ }
+ // Notes.
+ const accent = cfg.color || '#2df09a';
+ for(let x=0;x<steps;x++){
+  const c = cfg.cell(x);
+  if(!c || !c.v) continue;
+  const midi = c.note + (c.oct+1)*12;
+  const row = cfg.hi - midi;
+  const len = Math.max(1, c.len||1);
+  const y = row*PR_ROW_H;
+  const w = len*colW - 3;
+  if(row < 0 || row >= rows){
+   // Out of the drawn range — mark it at the edge rather than dropping it, so
+   // a note that wandered is visible instead of silently missing.
+   g.fillStyle = '#ff6b35';
+   g.fillRect(x*colW+1, row<0 ? 0 : H-3, colW-3, 3);
+   continue;
+  }
+  g.fillStyle = c.accent ? '#ffffff' : accent;
+  g.globalAlpha = c.accent ? .95 : .8;
+  g.fillRect(x*colW+1, y+1, w, PR_ROW_H-3);
+  g.globalAlpha = 1;
+  if(c.slide){                              // slide marker: a tail to the right
+   g.fillStyle = '#3ab4ff';
+   g.fillRect(x*colW+1+w, y+PR_ROW_H/2-1, 3, 2);
+  }
+ }
+ // Playhead.
+ const ph = cfg.playStep ? cfg.playStep() : -1;
+ if(ph>=0 && ph<steps){
+  g.fillStyle='rgba(255,255,255,.85)';
+  g.fillRect(ph*colW,0,2,H);
+ }
+}
+
+// Which cell a pointer landed on.
+function prHit(id, ev){
+ const cfg = PR_ENGINES[id]; if(!cfg) return null;
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return null;
+ const r = cv.getBoundingClientRect();
+ // Derive the column width from the canvas actually on screen rather than the
+ // module-level value, which belongs to whichever roll was drawn last.
+ const colW = r.width / Math.max(1, cfg.steps());
+ const x = Math.floor((ev.clientX - r.left)/colW);
+ const i = Math.floor((ev.clientY - r.top)/PR_ROW_H);
+ const rows = cfg.hi - cfg.lo + 1;
+ if(x<0 || x>=cfg.steps() || i<0 || i>=rows) return null;
+ return { step:x, midi: cfg.hi - i };
+}
+
+function prWire(id){
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
+ let holdT=null, moved=false, dx=0, dy=0, held=false;
+ cv.addEventListener('pointerdown', function(e){
+  const cfg = PR_ENGINES[id]; if(!cfg) return;
+  moved=false; held=false; dx=e.clientX; dy=e.clientY;
+  const h = prHit(id,e); if(!h) return;
+  holdT = setTimeout(function(){
+   holdT=null;
+   if(moved) return;
+   held=true;
+   // Long press opens the same per-step menu the old lane used, so length,
+   // slide and accent are still reachable without inventing a second UI.
+   if(cfg.openMenu) cfg.openMenu(h.step, h.midi);
+  }, 450);
+ });
+ cv.addEventListener('pointermove', function(e){
+  if(Math.abs(e.clientX-dx)+Math.abs(e.clientY-dy) > 8){
+   moved=true; if(holdT){ clearTimeout(holdT); holdT=null; }
+  }
+ });
+ cv.addEventListener('pointerup', function(e){
+  if(holdT){ clearTimeout(holdT); holdT=null; }
+  if(moved || held) return;
+  const cfg = PR_ENGINES[id]; if(!cfg) return;
+  const h = prHit(id,e); if(!h) return;
+  cfg.toggle(h.step, h.midi);
+  prDraw(id);
+ });
+ cv.addEventListener('pointercancel', function(){ if(holdT){ clearTimeout(holdT); holdT=null; } });
+}
+
+window.prRedraw = function(id){ prDraw(id); };
+window.prRelayout = function(id){ prLayout(id); };
+window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
+window.addEventListener('resize', function(){ window.prRelayoutAll(); });
 
 // ─── Groove presets: populate sq-groove-presets ───
 function sqBuildGroovePresets(){
