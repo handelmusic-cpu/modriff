@@ -804,6 +804,70 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  50% { box-shadow:0 0 0 5px hsla(var(--kh),var(--ks),var(--kl),0); }
 }
 
+/* ═══════════════════════════════════════
+   SUB-NAV — the level between the main tabs and the controls
+   ═══════════════════════════════════════
+   Chords/Melody and Bass/Melody Gen/Arp are navigation: they decide which
+   page you are looking at. They used to be .tg/.tb pill groups, which is the
+   same component the app uses for every ordinary option row — mode, variants,
+   style, sound, rate. On the Bass tab that put the page switcher above five
+   more rows of visually identical pills, so the one control that changes what
+   the whole screen means looked exactly like the one that picks a waveform.
+   This borrows the main tab bar's vocabulary instead — a sliding, glowing
+   underline — so the hierarchy is legible at a glance without reading a word. */
+.subnav {
+ display:flex; align-items:center; width:100%; position:relative;
+ border-bottom:1px solid var(--border2);
+ margin-bottom:12px; gap:2px;
+ background:linear-gradient(180deg, transparent 55%, rgba(255,255,255,.025) 100%);
+}
+.subnav-lbl {
+ font-family:'Outfit',sans-serif; font-size:.4rem; font-weight:600;
+ letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+ opacity:.65; padding:0 12px 0 4px; white-space:nowrap; flex-shrink:0;
+ align-self:center; border-right:1px solid var(--border); margin-right:6px;
+}
+.subnav-btn {
+ flex:1; background:none; border:none; cursor:pointer;
+ padding:10px 8px 11px; min-width:0;
+ font-family:'Orbitron',sans-serif;
+ font-size:.6rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+ color:color-mix(in srgb, var(--text) 62%, transparent);
+ transition:color .15s; touch-action:manipulation; white-space:nowrap;
+}
+.subnav-btn:hover { color:var(--text); }
+.subnav-btn.active { color:var(--accent); }
+.subnav-led {
+ position:absolute; bottom:-1px; height:2.5px; border-radius:2px;
+ background:var(--accent); box-shadow:0 0 9px 1px var(--accent);
+ transition:left .26s cubic-bezier(.22,.7,.2,1), width .26s cubic-bezier(.22,.7,.2,1);
+ pointer-events:none;
+}
+@media (max-width:420px){
+ .subnav-lbl { display:none; }
+ .subnav-btn { font-size:.54rem; letter-spacing:.1em; padding:9px 4px 10px; }
+}
+
+/* ═══════════════════════════════════════
+   PIANO ROLL — bass & melody generators
+   ═══════════════════════════════════════
+   Replaces the one-row step lane those two engines used to share. That lane
+   showed pitch as a text label inside each step, so a line's SHAPE was
+   invisible and the octave was a small digit you had to read rather than see —
+   which is exactly what makes a generated line hard to follow and harder to
+   edit. Pitch belongs on an axis. Drawn to a canvas rather than built from
+   divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
+   a lot of DOM to rebuild on every generate, on a phone. */
+.pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
+           border-radius:var(--r-md); overflow:hidden; background:var(--bg); }
+.pr-keys { flex:0 0 34px; }
+.pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+             touch-action:pan-x; overscroll-behavior-x:contain; }
+.pr-canvas { display:block; touch-action:manipulation; }
+.pr-keys-canvas { display:block; }
+.pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
+.pr-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
+
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
 .sl-item {
@@ -2603,11 +2667,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <!-- Chords / Melody sub-tabs — above the key strip rather than several
       controls below it, since which mode you're in is the first thing to
       orient on when you land on this tab. -->
- <div style="width:100%;max-width:700px;margin-bottom:8px">
- <div class="tg" style="width:100%">
- <button class="tb active" id="pf-chords-btn" onclick="setPerformMode('chords')" style="flex:1">Chords</button>
- <button class="tb" id="pf-melody-btn" onclick="setPerformMode('melody')" style="flex:1">Melody</button>
- </div>
+ <div class="subnav" id="pf-subnav" style="max-width:700px">
+ <span class="subnav-lbl">Part</span>
+ <button class="subnav-btn active" id="pf-chords-btn" onclick="setPerformMode('chords')">Chords</button>
+ <button class="subnav-btn" id="pf-melody-btn" onclick="setPerformMode('melody')">Melody</button>
+ <div class="subnav-led" id="pf-subnav-led"></div>
  </div>
 
  <div class="key-strip" style="width:100%;max-width:700px;margin-bottom:8px;margin-top:4px">
@@ -2721,12 +2785,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <!-- Melody voice selector -->
  <div class="row" style="margin-bottom:8px">
  <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Voice:</span>
- <div class="tg">
- <button class="tb active" id="mv-sine" onclick="setMelWave('sine')">Sine</button>
- <button class="tb" id="mv-saw" onclick="setMelWave('sawtooth')">Saw</button>
- <button class="tb" id="mv-square" onclick="setMelWave('square')">Sqr</button>
- <button class="tb" id="mv-supersaw" onclick="setMelWave('supersaw')">S·Saw</button>
- </div>
+ <div class="tg" id="melvoice-inline" style="flex-wrap:wrap"></div>
  </div>
 
  <div class="keys-typing-hint" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
@@ -2774,17 +2833,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <!-- Inline sound selector — hidden in Basic mode -->
  <div class="sound-bar advanced-only" id="sound-bar-inline">
  <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
- <div class="tg" style="flex-wrap:wrap">
- <button class="tb" id="sb-sine" onclick="setWave('sine')">Sine</button>
- <button class="tb" id="sb-saw" onclick="setWave('sawtooth')">Saw</button>
- <button class="tb" id="sb-sqr" onclick="setWave('square')">Sqr</button>
- <button class="tb" id="sb-ssaw" onclick="setWave('supersaw')">S·Saw</button>
- <button class="tb active" id="sb-piano" onclick="setWave('piano')">Piano</button>
- <button class="tb" id="sb-organ" onclick="setWave('organ')">Organ</button>
- <button class="tb" id="sb-rhodes" onclick="setWave('rhodes')">Rhodes</button>
- <button class="tb" id="sb-pad" onclick="setWave('pad')">Pad</button>
- <button class="tb" id="sb-modsynth" onclick="setWave('modsynth')" title="MōdSynth — multi-stage unison mega synth">MōdSynth</button>
- </div>
+ <button class="tb" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out." style="border-color:#e0b070;color:#e0b070">♭ Jazz</button>
+ <div class="tg" id="sb-voices" style="flex-wrap:wrap"></div>
  </div>
 
  <!-- MōdSynth — one control surface that follows you. It is a single DOM
@@ -2892,12 +2942,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  <div class="ss-body open" id="ss-sound-body">
  <div class="row">
- <div class="tg">
- <button class="tb active" id="bw-sine" onclick="setWave('sine')">Sine</button>
- <button class="tb" id="bw-sawtooth" onclick="setWave('sawtooth')">Saw</button>
- <button class="tb" id="bw-square" onclick="setWave('square')">Square</button>
- <button class="tb" id="bw-supersaw" onclick="setWave('supersaw')">SuperSaw</button>
- </div>
+ <div class="tg" id="bw-voices" style="flex-wrap:wrap"></div>
  <div class="tg">
  <button class="tb" onclick="shiftOct(-1)">Oct−</button>
  <span class="oct-pill" id="oct-disp">C4</span>
@@ -2941,12 +2986,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  <div class="ss-body open" id="ss-melody-body">
  <div class="row">
- <div class="tg">
- <button class="tb active" id="ms-sine" onclick="setMelWave('sine')">Sine</button>
- <button class="tb" id="ms-sawtooth" onclick="setMelWave('sawtooth')">Saw</button>
- <button class="tb" id="ms-square" onclick="setMelWave('square')">Square</button>
- <button class="tb" id="ms-supersaw" onclick="setMelWave('supersaw')">S.Saw</button>
- </div>
+ <div class="tg" id="melvoice-settings" style="flex-wrap:wrap"></div>
  </div>
  <div class="row">
  <div class="sg"><div class="sl">Mel Attack</div><input type="range" id="mel-attack" min=".005" max=".4" step=".005" value=".015" oninput="updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="melatk-val">15ms</div></div>
@@ -3366,12 +3406,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="tab-page" id="page-bass">
 
  <!-- Bass / Melody / Arp toggle -->
- <div style="width:100%;max-width:700px;margin-bottom:10px">
- <div class="tg" style="width:100%">
- <button class="tb active" id="bm-bass-btn" onclick="setBassMelMode('bass')" style="flex:1">Bass</button>
- <button class="tb" id="bm-mel-btn" onclick="setBassMelMode('melody')" style="flex:1">Melody</button>
- <button class="tb" id="bm-arp-btn" onclick="setBassMelMode('arp')" style="flex:1">Arp</button>
- </div>
+ <div class="subnav" id="bm-subnav" style="max-width:700px">
+ <span class="subnav-lbl">Part</span>
+ <button class="subnav-btn active" id="bm-bass-btn" onclick="setBassMelMode('bass')">Bass</button>
+ <button class="subnav-btn" id="bm-mel-btn" onclick="setBassMelMode('melody')">Melody Gen</button>
+ <button class="subnav-btn" id="bm-arp-btn" onclick="setBassMelMode('arp')">Arp</button>
+ <div class="subnav-led" id="bm-subnav-led"></div>
  </div>
 
  <!-- BASS SUB-PAGE -->
@@ -3446,9 +3486,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="bl-simple-view"></div>
-  <!-- Advanced mode: full 303 piano roll -->
-  <div class="bl-grid advanced-only" id="bl-grid"><div class="bl-inner" id="bl-inner"></div></div>
-  <div class="bl-phbar advanced-only"><div class="bl-phcur" id="bl-phcur"></div></div>
+  <!-- Advanced mode: piano roll -->
+  <div class="advanced-only">
+   <div class="pr-wrap" id="bl-pr">
+    <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
+    <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
+   </div>
+   <div class="pr-bar">
+    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
+   </div>
+  </div>
   <!-- Empty state: shown when no steps are active -->
   <div class="bl-empty-hint" id="bl-empty-hint">
    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -3540,9 +3587,16 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <div class="bl-simple-view basic-only" id="ml-simple-view"></div>
-  <!-- Advanced mode: full piano roll -->
-  <div class="bl-grid advanced-only" id="ml-grid"><div class="bl-inner" id="ml-inner"></div></div>
-  <div class="bl-phbar advanced-only"><div class="bl-phcur" id="ml-phcur"></div></div>
+  <!-- Advanced mode: piano roll -->
+  <div class="advanced-only">
+   <div class="pr-wrap" id="ml-pr">
+    <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
+    <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
+   </div>
+   <div class="pr-bar">
+    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
+   </div>
+  </div>
   <!-- Empty state: shown when no steps are active -->
   <div class="bl-empty-hint" id="ml-empty-hint">
    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -3593,12 +3647,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div id="arp-strip-body" style="padding-top:10px">
   <div class="row">
   <span style="font-size:.44rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;align-self:center">Wave:</span>
-  <div class="tg">
-   <button class="tb" id="aw-sine-p" onclick="setArpWave('sine')">Sine</button>
-   <button class="tb" id="aw-sawtooth-p" onclick="setArpWave('sawtooth')">Saw</button>
-   <button class="tb" id="aw-square-p" onclick="setArpWave('square')">Sqr</button>
-   <button class="tb active" id="aw-supersaw-p" onclick="setArpWave('supersaw')">S·Saw</button>
-  </div>
+  <div class="tg" id="aw-voices" style="flex-wrap:wrap"></div>
   </div>
   <div class="row" style="margin-top:6px">
   <div class="tg" style="flex-wrap:wrap;gap:2px">
@@ -6499,6 +6548,74 @@ const RHYTHMS=[
  {name:'12/8 Blues', sig:'12/8',stepDiv:3, pat:[1,1,0,1,1,0,1,1,0,1,1,0], kick:[1,0,0,0,0,0,0,0,1,0,0,0], snare:[0,0,0,1,0,0,0,0,0,1,0,0]},
  {name:'Bossa Nova', sig:'4/4', stepDiv:4, pat:[1,0,0,1,0,1,0,0,1,0,0,1,0,1,0,0], kick:[1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0], snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]},
  {name:'Hip Hop', sig:'4/4', stepDiv:4, pat:[1,0,0,1,1,0,0,1,0,0,1,1,0,0,1,0], kick:[1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0], snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]},
+
+ // ── Jazz ──
+ // These carry a `rows` map keyed by track shortname instead of the
+ // kick/snare/pat triple. Three rows cannot express a jazz pattern: the ride
+ // carries the time, the foot hi-hat marks 2 and 4, the kick feathers, and the
+ // brush comps — four independent voices, all of which matter. Grooves without
+ // `rows` still load exactly as before.
+ //
+ // The ride figure is the standard one, written straight and swung by the
+ // sequencer's own swing rather than baked in, so it follows the Swing control
+ // instead of fighting it: quarter notes with the "and" of 2 and 4 added, which
+ // is the ding / ding-a-ding every jazz record opens with.
+ {name:'Jazz Ride', sig:'4/4', stepDiv:4,
+  pat:  [1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0],
+  kick: [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  snare:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  rows:{ RD:[1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0],
+         HH:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+         BD:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }},
+
+ // Two-feel: the ride on half notes, which is how a head is usually played
+ // before the solos open it up.
+ {name:'Jazz Two-Feel', sig:'4/4', stepDiv:4,
+  pat:  [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  kick: [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  snare:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  rows:{ RD:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+         HH:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+         BD:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0] }},
+
+ // Brushes: the swirl is continuous, the slap answers on 2 and 4. No ride at
+ // all — this is the ballad sound.
+ {name:'Jazz Brushes', sig:'4/4', stepDiv:4,
+  pat:  [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+  kick: [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+  rows:{ SW:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+         SD:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+         HH:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+         BD:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }},
+
+ // Up-tempo: ride on every swung eighth, which is what happens as the tempo
+ // climbs and the "a" stops being optional.
+ {name:'Jazz Up', sig:'4/4', stepDiv:4,
+  pat:  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+  kick: [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  snare:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  rows:{ RD:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+         HH:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+         RM:[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0] }},
+
+ // Jazz waltz — 3/4, so 12 steps. The ride figure fills beats 2 and 3.
+ {name:'Jazz Waltz', sig:'3/4', stepDiv:4,
+  pat:  [1,0,0,0,1,0,1,0,1,0,1,0],
+  kick: [1,0,0,0,0,0,0,0,0,0,0,0],
+  snare:[0,0,0,0,0,0,0,0,0,0,0,0],
+  rows:{ RD:[1,0,0,0,1,0,1,0,1,0,1,0],
+         HH:[0,0,0,0,1,0,0,0,1,0,0,0],
+         BD:[1,0,0,0,0,0,0,0,0,0,0,0] }},
+
+ // Latin jazz: cross-stick on the clave, ride straight rather than swung.
+ {name:'Jazz Bossa', sig:'4/4', stepDiv:4,
+  pat:  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+  kick: [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0],
+  snare:[0,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0],
+  rows:{ RD:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+         RM:[0,0,0,1,0,0,1,0,0,0,0,1,0,0,1,0],
+         BD:[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0] }},
 ];
 function rhythmStepDuration(r){ return beatSec()/r.stepDiv; }
 
@@ -7389,13 +7506,12 @@ function onArpRateSlider(v){
  updateFtRateDisp();
 }
 function setArpWave(w){
- // Any shared voice is valid now, not just the original four.
  arpWave=w;
+ document.querySelectorAll('[data-arpwave]').forEach(b=>
+  b.classList.toggle('active', b.dataset.arpwave===w));
+ if(typeof _preloadIfSampled==='function') _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
- ['sine','sawtooth','square','supersaw'].forEach(x=>{
- document.getElementById('aw-'+x)?.classList.toggle('active',x===w);
- document.getElementById('aw-'+x+'-p')?.classList.toggle('active',x===w);
- });
+ if(typeof msSyncHost==='function') msSyncHost();
 }
 function setArpGatePat(i){
  arpGatePat=i; arpGateIdx=0;
@@ -7646,16 +7762,46 @@ function toggleNash(){
  const p=document.getElementById('nash-pill'); if(p) p.classList.toggle('active',nashMode);
  renderChords();
 }
+// Every voice picker in the app is now built from MS_SHARED_VOICES and synced
+// through a data attribute. They used to be hardcoded button rows with their
+// own id conventions and their own hand-maintained lists of which names to
+// highlight — so each new voice had to be added in four places, and the
+// sampled instruments had been added in none of them.
+function buildVoicePickers(){
+ if(typeof MS_SHARED_VOICES==='undefined') return;
+ const mk=(hostId, attr, cur, fn)=>{
+  const host=document.getElementById(hostId); if(!host) return;
+  host.innerHTML='';
+  MS_SHARED_VOICES.forEach(([val,label])=>{
+   const b=document.createElement('button');
+   b.className='tb'+(val===cur?' active':'');
+   b.dataset[attr]=val;
+   b.textContent=label;
+   if(val==='modsynth') b.title='MōdSynth — multi-stage unison mega synth';
+   b.addEventListener('click',()=>fn(val));
+   host.appendChild(b);
+  });
+ };
+ mk('sb-voices','wave', wave, setWave);
+ mk('bw-voices','wave', wave, setWave);
+ mk('aw-voices','arpwave', arpWave, setArpWave);
+ if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
+}
+
+// Sampled voices fetch as soon as they're selected, anywhere, so the first
+// note has the best chance of being the real instrument and not the fallback.
+window._preloadIfSampled = function(w){
+ if(typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[w] && typeof preloadSampleInstrument==='function'){
+  preloadSampleInstrument(SAMPLED_WAVES[w]);
+ }
+};
+const _preloadIfSampled = window._preloadIfSampled;
+
 function setWave(w){
  wave=w;
- // Map wave values to the actual button IDs used in HTML
- const wvIdMap={sine:'sine',sawtooth:'saw',square:'sqr',supersaw:'ssaw',piano:'piano',organ:'organ',rhodes:'rhodes',pad:'pad',modsynth:'modsynth'};
- ['sine','sawtooth','square','supersaw','piano','organ','rhodes','pad','modsynth'].forEach(x=>{
- document.getElementById('bw-'+x)?.classList.toggle('active',x===w);
- document.getElementById('pw-'+x)?.classList.toggle('active',x===w);
- document.getElementById('wv-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
- document.getElementById('sb-'+(wvIdMap[x]||x))?.classList.toggle('active',x===w);
- });
+ document.querySelectorAll('[data-wave]').forEach(b=>
+  b.classList.toggle('active', b.dataset.wave===w));
+ _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  if(typeof msSyncHost==='function') msSyncHost();
 }
@@ -7912,6 +8058,18 @@ const PATCH_ARCHETYPES = [
    mAtk:[.03,.12], mDec:[1.6,3.2], mRev:[.55,.8],
    rate:[2,5], gate:[.6,.95], pats:['up','ud','pedal'], octs:[1,2,3], vels:['cresc','flat'],
    comps:['sustain','bars'], voicings:['open'], bpm:[70,96] },
+
+ // The dice can land on a jazz sound too. Deliberately narrower than the mode:
+ // an archetype rolls a character, it does not reconfigure the bass engine or
+ // the kit. Use the Jazz button for the full rig.
+ { name:'Jazz Room', trim:1.0,
+   waves:['jazzgtr','vibes','rhodes','piano'], arpWaves:['vibes','rhodes','sine'],
+   melWaves:['tenorsax','mutetpt','vibes'], bassWaves:['upright_real','upright','electric'],
+   cut:[.5,.7], reso:[0,.1], env:[.1,.3], drive:[.02,.14], width:[.35,.6], drift:[.2,.45],
+   atk:[.008,.03], dec:[1.8,3.2], rev:[.2,.4], strum:[.08,.2],
+   mAtk:[.015,.05], mDec:[.8,1.6], mRev:[.15,.32],
+   rate:[3,6], gate:[.35,.7], pats:['up','walk','ud'], octs:[1,2], vels:['flat','hill'],
+   comps:['charleston','bars','backbeat'], voicings:['open'], bpm:[110,180] },
 
  { name:'Neon', trim:1.217,
    waves:['supersaw','sawtooth'], arpWaves:['supersaw','sawtooth','square'], melWaves:['supersaw','square'], bassWaves:['sawtooth','square','electric'],
@@ -8229,6 +8387,78 @@ const RND_SOFT_MACHINES = ['808','909','606','MOD','BRS','LIN','JAZZ'];
 function _rndSoften(list, fallback){
  const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
  return soft.length ? soft : (fallback||RND_SOFT_WAVES);
+}
+
+// ═══════════════════════════════════════
+// JAZZ MODE
+// ═══════════════════════════════════════
+// A mode rather than a dice archetype, because the two answer different
+// questions. An archetype is one entry in a random pool — you might land on
+// it. A mode is a decision: "I want to play standards now." Everything below
+// has to agree with everything else for that to work — a walking bass under a
+// rock kit is not a jazz sound, and neither is a jazz kit under a supersaw —
+// so this sets the whole rig at once and nothing here is random.
+//
+// It deliberately does NOT touch your songs, your setlist, the key, or the
+// tempo. Those are yours. And because it goes through the same settings
+// snapshot everything else does, Undo backs out of it in one step.
+function applyJazzMode(){
+ const s = _capSettings();
+
+ // Voices: the real instruments, which is the whole point of the mode.
+ s.wave       = 'jazzgtr';   // comping on an archtop
+ s.melWave    = 'tenorsax';  // the horn you play by hand
+ s.arpWave    = 'vibes';
+ s.melgenWave = 'mutetpt';
+ s.blWave     = 'upright_real';
+ // Same trap as sqState: _applySettings prefers the mlState/blState snapshots
+ // over these flat fields, and those snapshots were taken before this function
+ // changed anything — so without writing through, the restore quietly puts the
+ // old voice straight back. Measured: melgen stayed on whatever it already was.
+ if(s.mlState) s.mlState.wave = s.melgenWave;
+ if(s.blState) s.blState.wave = s.blWave;
+
+ // Character: dark, close, almost no drive. A jazz record is not a bright one.
+ s.fxCutoff = 0.62; s.fxReso = 0.05; s.fxEnv = 0.18;
+ s.fxDrive  = 0.06; s.fxWidth = 0.45; s.fxDrift = 0.35;
+ s.fxTrim   = 1;
+ s.atk = 0.012; s.dec = 2.4; s.rev = 0.28; s.strum = 0.14;
+ s.mAtk = 0.02; s.mDec = 1.1; s.mRev = 0.22;
+ s.voicing   = 'open';
+ s.compStyle = 'charleston';   // comping, not a held pad
+ s.chordBeats = 0;
+
+ // Feel: swung sixteenths and the Jazz kit.
+ s.sqMach   = 'JAZZ';
+ s.sqSteps  = 16;
+ s.sqSwing  = 0.28;
+ s.sqRateMul = 1;
+ // Same hazard as the dice: _applySettings restores the sqState snapshot after
+ // writing these, and that snapshot carries its own copy of all three.
+ if(s.sqState){ s.sqState.mach = s.sqMach; s.sqState.steps = s.sqSteps; s.sqState.swing = s.sqSwing; }
+
+ _applySettings(s);
+
+ // Bass: a walking line through the changes, which is the other half of the
+ // sound. Set after _applySettings so the restored bass state doesn't undo it.
+ try{
+  if(typeof window.setBlGenStyle==='function') window.setBlGenStyle('jazz');
+  if(typeof window.setBlWalkFeel==='function') window.setBlWalkFeel('four');
+  if(typeof window.blIsFollowOn==='function' && !window.blIsFollowOn()
+     && typeof window.blToggleFollow==='function') window.blToggleFollow();
+  if(typeof window.mlIsFollowOn==='function' && !window.mlIsFollowOn()
+     && typeof window.mlToggleFollow==='function') window.mlToggleFollow();
+  if(typeof window.blGenerate==='function') window.blGenerate();
+  if(typeof window.setHumanize==='function') window.setHumanize(0.35);
+  const hs=document.getElementById('bl-human'); if(hs) hs.value=0.35;
+ }catch(e){}
+
+ // Start the samples downloading now rather than on the first note.
+ try{ ['jazzgtr','tenorsax','vibes','mutetpt','bass'].forEach(preloadSampleInstrument); }catch(e){}
+ try{ if(typeof preloadDrumSamples==='function') preloadDrumSamples(); }catch(e){}
+
+ if(typeof track==='function') track('jazz_mode_applied',{});
+ showToast('Jazz mode — archtop, sax, vibes, upright & brushes');
 }
 
 function randomizeSettings(opts){
@@ -10210,12 +10440,32 @@ function setSongsMode(m){
 
 let bassMelMode = 'bass';
 let performMode='chords';
+// Slides a sub-nav's LED under whichever tab is active, the same way
+// positionTabLed does for the main bar. Runs on switch, on tab change (a
+// hidden element measures zero, so the position has to be recomputed once it
+// is actually on screen) and on resize.
+function positionSubnavLed(navId){
+ const nav=document.getElementById(navId); if(!nav) return;
+ const led=nav.querySelector('.subnav-led'); if(!led) return;
+ const btn=nav.querySelector('.subnav-btn.active'); if(!btn) return;
+ const nb=nav.getBoundingClientRect(), bb=btn.getBoundingClientRect();
+ if(bb.width<=0) return;               // not laid out yet
+ const inset=bb.width*0.14;
+ led.style.left=(bb.left-nb.left+inset)+'px';
+ led.style.width=Math.max(12,bb.width-inset*2)+'px';
+}
+function positionAllSubnavLeds(){
+ ['pf-subnav','bm-subnav'].forEach(positionSubnavLed);
+}
+window.addEventListener('resize', positionAllSubnavLeds);
+
 function setPerformMode(m){
  performMode = m;
  document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
  document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+ positionSubnavLed('pf-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -10228,6 +10478,10 @@ function setBassMelMode(m){
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
  if(m === 'melody' && typeof mlRenderGrid==='function') mlRenderGrid();
+ // A canvas inside a display:none panel lays out at zero, so both rolls have
+ // to be re-measured once their page is actually on screen.
+ if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll, 0);
+ positionSubnavLed('bm-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -10409,6 +10663,8 @@ function switchTab(t){
  }
  if(typeof msSyncHost==='function') msSyncHost();
  positionTabLed();
+ positionAllSubnavLeds();
+ if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll,0);
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
@@ -10507,6 +10763,7 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
   title: 'Bassline generator & Follow',
   body: `<strong>✦ Generate</strong> writes a bar of bass in the chosen style, over the chord you last played. Press it again for a different take — every style randomises.<br><br>
 <strong>The styles.</strong> <strong>Rock</strong> is roots and fifths on the quarters. <strong>Jazz</strong> walks in quarter notes with chromatic approaches. <strong>Motown</strong> is melodic eighths. <strong>Funk</strong> is syncopated sixteenths with slides. <strong>Acid</strong> is a 303 line — dense, sliding, accented. <strong>Latin</strong> gives you a tumbao, a 2–3 clave or a bolero feel. <strong>Reggae</strong> is a one drop, which leaves beat 1 empty on purpose. <strong>Pedal</strong> is straight eighths on one note. <strong>Half-Time</strong> is whole and half notes for sitting under a busy arrangement. <strong>Arpeggio</strong>, <strong>Riff</strong> and <strong>Pop Hook</strong> are the melody generator's shapes moved down into the bass register.<br><br>
+<strong>The piano roll</strong> shows pitch vertically and time horizontally, with the C of each octave labelled down the left edge. A generated line's <strong>shape</strong> is visible at a glance — where it leaps, where it walks, which octave it sits in — which the old single-row lane could not show, since pitch was a text label inside each step. <strong>Tap</strong> an empty cell to place a note, tap the same note again to clear it, and <strong>press and hold</strong> for length, slide and accent. Everything the generator writes lands here, so the next pass is yours to edit.<br><br>
 <strong>Octave</strong> defaults to <strong>2</strong> — that puts a root around 65&nbsp;Hz, where a bass actually sits. Octave 3 is the register a guitarist plays; useful for a lead-ish line, thin as a bass part.<br><br>
 <strong>Follow: ON</strong> is the difference between a loop and a bass part. With it off, the bar you generated repeats over the whole song no matter what the chords do. With it on, the line <strong>re-roots onto whichever chord the song is playing</strong>, keeping the rhythm and shape you generated — so a root–fifth–octave figure stays that figure on every chord.<br><br>
 <strong>Follow + Jazz</strong> is the walking bass. It stops using the grid's rhythm entirely and plays real quarter notes through the chart: the chord's root on beat 1, mostly stepwise motion through chord and scale tones in between, and on the last beat before a change it <strong>approaches the next chord's root</strong> from a half step or a fifth. It reads the chord that <em>is about to arrive</em>, not the one already playing, so the approach lands where a bass player would put it.<br><br>
@@ -10524,12 +10781,15 @@ Follow needs a song running to have changes to follow. With the song stopped it 
 Notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it.`
  },
  'jazzkit': {
-  title: 'Real instruments & the Jazz kit',
+  title: 'Real instruments, the Jazz kit & Jazz mode',
   body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> The sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why a sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br>
-<strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. It is <strong>synthesized, not sampled</strong> — and that is an upgrade, not a compromise. Neither sample set has a drum bank at all, and a ride cymbal runs from 5&nbsp;kHz to past 15&nbsp;kHz, so a sampled one would have been cut off at 7.5. The synthesized ride reaches <strong>22&nbsp;kHz</strong>.<br><br>
-A cymbal is a dense set of <strong>inharmonic</strong> modes whose high partials die away faster than its low ones — that uneven decay is what your ear reads as struck metal rather than filtered hiss. Each strike also scatters its partial levels slightly, so no two rides ping identically, the way no two real ones do.<br><br>
-<strong>Ride</strong> keeps the time. <strong>Bell</strong> is the same metal struck on the cup — fewer modes, higher, damped harder so it rings clear. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Kick</strong> is a felt beater feathering the pulse. <strong>Rim</strong> is a cross-stick — wood, not snare.`
+<strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
+The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
+<strong>♭ Jazz</strong> on the Play tab sets the whole rig in one tap: archtop guitar comping, tenor sax on the keys you play, vibes on the arp, muted trumpet on the melody generator, real upright bass walking through the changes, the Jazz kit, swing, and a touch of humanize. It does <strong>not</strong> touch your key, tempo, songs or setlist — those are yours — and <strong>Undo</strong> backs the whole thing out in one step. The dice can also land on a <strong>Jazz Room</strong> character, which rolls the sound but leaves the bass engine and kit alone; the button is the full rig.<br><br>
+<strong>Kick</strong> is a felt beater feathering the pulse. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Rim</strong> is a cross-stick — wood, not snare. <strong>Hat</strong> is the foot chick on 2 and 4. <strong>Ride</strong> keeps the time, and <strong>Bell</strong> is the same cymbal struck on the cup.<br><br>
+<strong>Six jazz grooves</strong> sit with the other presets on the Rhythm tab: <strong>Jazz Ride</strong> (the standard ding / ding-a-ding), <strong>Two-Feel</strong> for heads, <strong>Brushes</strong> for ballads, <strong>Up</strong> for fast tempos, <strong>Waltz</strong> in 3/4 and <strong>Bossa</strong> with the cross-stick on the clave. They're written straight and swung by the <strong>Swing</strong> control, so the feel follows the knob instead of being baked in.<br><br>
+<strong>Exporting.</strong> Every track in every kit sits on its own <strong>General MIDI</strong> percussion note — kick 36, side stick 37, snare 38, pedal hat 44, tom 47, ride 51, ride bell 53 — so an exported MIDI file drops into Ableton Live, Battery or any GM kit with each voice already on the right pad, instead of the whole kit stacking onto one.`
  },
  'setups': {
   title: 'Setups — save, load & share the whole rig',
@@ -12039,16 +12299,43 @@ function cycleMasterTune(){
 
 // Patch setMelWave to also sync groove tab buttons
 const _origSetMelWave = typeof setMelWave !== 'undefined' ? null : null;
+// Both melody-strip pickers are built from MS_SHARED_VOICES, the same list the
+// Voices dock uses. They used to be four hardcoded buttons — Sine, Saw, Square,
+// SuperSaw — which left the instrument you actually play by hand with the most
+// limited palette in the app: no piano, no organ, and none of the sampled
+// instruments. Worse, setMelWave only knew how to highlight those four names,
+// so choosing anything else from the dock left both rows still showing "Sine".
+function buildMelVoicePickers(){
+ if(typeof MS_SHARED_VOICES==='undefined') return;
+ // NOT 'ms-*': that prefix is the MōdSynth panel's namespace and it already
+ // owns an #ms-voices (its unison control). Building into that id blanked the
+ // MōdSynth Unison slider — caught because the row measured 0 buttons and the
+ // element's parent chain came back as modsynth-panel.
+ ['melvoice-inline','melvoice-settings'].forEach(id=>{
+  const host=document.getElementById(id); if(!host) return;
+  host.innerHTML='';
+  MS_SHARED_VOICES.forEach(([val,label])=>{
+   const b=document.createElement('button');
+   b.className='tb'+(val===melWave?' active':'');
+   b.dataset.melwave=val;
+   b.textContent=label;
+   b.addEventListener('click',()=>setMelWave(val));
+   host.appendChild(b);
+  });
+ });
+}
+
 function setMelWave(w){
  melWave = w;
- ['sine','sawtooth','square','supersaw'].forEach(x=>{
- document.getElementById('ms-'+x)?.classList.toggle('active',x===w);
- });
- // Sync groove tab buttons
- document.getElementById('mv-sine')?.classList.toggle('active',w==='sine');
- document.getElementById('mv-saw')?.classList.toggle('active',w==='sawtooth');
- document.getElementById('mv-square')?.classList.toggle('active',w==='square');
- document.getElementById('mv-supersaw')?.classList.toggle('active',w==='supersaw');
+ document.querySelectorAll('[data-melwave]').forEach(b=>
+  b.classList.toggle('active', b.dataset.melwave===w));
+ // Sampled instruments start fetching the moment they're chosen, so the first
+ // note you play has the best chance of being the real thing rather than the
+ // fallback.
+ if(typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[w] && typeof preloadSampleInstrument==='function'){
+  preloadSampleInstrument(SAMPLED_WAVES[w]);
+ }
+ if(typeof msSyncHost==='function') msSyncHost();
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 }
 
@@ -12166,13 +12453,50 @@ function _updateRecBtn(){
 // call a small window._midiRecLog* hook — see blPlayNote/sqHitTrack.
 var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0, _midiRecCtxEpoch=0;
 var _midiRecPendingChord=null, _midiRecActiveMel={};
+// General MIDI percussion note per track name. Every track in every machine
+// needs its own entry: an unmapped name fell through to 39 (Hand Clap), and
+// five of the Jazz kit's eight tracks were unmapped — Bell, Brush, Swirl, Rim
+// and Hat all exported as the same note, so in Live or Battery the whole kit
+// stacked onto one pad. These are the standard GM numbers, so an exported file
+// lands on the right pads in any GM-mapped kit without remapping by hand.
 var GM_DRUM_MAP={
   'Kick':36,'Snare':38,'Rimshot':37,'Clap':39,
   'Cl Hat':42,'HH':42,'Op Hat':46,
   'Lo Tom':45,'Hi Tom':50,'Tom':47,'Tom 1':47,'Tom 2':48,
   'Cymbal':49,'Ride':51,'Cowbell':56,'Conga':63,
-  'Perc':61,'Metal':56,'Glitch':70,'Zapp':70,'LIN':42
+  'Perc':61,'Metal':56,'Glitch':70,'Zapp':70,'LIN':42,
+  // Jazz kit
+  'Rim':37,        // Side Stick — the cross-stick
+  'Brush':38,      // the snare voice of this kit, played with a brush
+  'Swirl':40,      // Electric Snare — a second snare pad for the sustained sweep
+  'Hat':44,        // Pedal Hi-Hat — the foot chick, not a stick hat
+  'Bell':53,       // Ride Bell
+  // Found by the audit below, both pre-existing: MōdKit's Crash was unmapped
+  // and exported as Hand Clap, and IDM's Zapp and Glitch shared note 70.
+  'Crash':49,      // Crash Cymbal 1
+  'Zapp':75        // Claves — Glitch keeps 70, so the two stay on separate pads
 };
+// Nothing may share a note within one machine, or two voices collapse onto one
+// pad on export. Checked at load rather than trusted.
+// Deferred: SQM lives inside the sequencer IIFE and is not in scope here, so
+// the first version of this check tested `typeof SQM` and silently returned
+// every time — it never ran at all, which is how two mapping bugs sat here
+// unnoticed. Goes through the export, after load.
+setTimeout(function _auditDrumMap(){
+  try{
+    if(typeof window._sqMachines!=='function') return;
+    var M = window._sqMachines();
+    Object.keys(M).forEach(function(k){
+      var seen={}, tr=M[k].tracks||[];
+      tr.forEach(function(t){
+        var n=GM_DRUM_MAP[t.n];
+        if(n==null) console.warn('GM_DRUM_MAP: no note for "'+t.n+'" in kit '+k);
+        else if(seen[n]) console.warn('GM_DRUM_MAP: '+k+' has "'+t.n+'" and "'+seen[n]+'" both on note '+n);
+        else seen[n]=t.n;
+      });
+    });
+  }catch(e){}
+}, 1200);
 function _midiNow(){ return performance.now()-_midiRecStart; }
 function _midiCtxNow(t){ return (t-_midiRecCtxEpoch)*1000; } // AudioContext time -> ms since rec start
 function _startMidiRecording(){
@@ -12489,6 +12813,8 @@ buildProgPresets();
 buildStandardsMenu();
 buildChartPicker();
 renderChords();
+if(typeof buildVoicePickers==='function') buildVoicePickers();
+if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
 loadProgressionFromHash();
 if(typeof renderSetups==='function') renderSetups();
 if(typeof loadSetupFromHash==='function') loadSetupFromHash();
@@ -12867,6 +13193,56 @@ function sqApplyFX(){
 }
 
 // ── synthesis primitives (use Vibe's shared ctx, route to SQMG) ──
+// ── Choke groups ──
+// On a real kit the closed hi-hat is the SAME instrument as the open one: your
+// foot shuts the cymbals and whatever was ringing stops dead. Two independent
+// voices that ignore each other is the one thing that gives away a drum machine
+// on an otherwise convincing hat part. Every voice registers itself here with a
+// group name, and any voice that declares itself a choker silences the rest of
+// its group at its own attack time — scheduled on the audio clock, not fired
+// from a timer, so it lands exactly with the hit.
+var _chokeReg = {};        // group -> [{g:GainNode, src:AudioNode, until:seconds}]
+var CHOKE_TAIL = 0.012;    // ramp, not a cut: an instant zero clicks
+
+function _chokeRegister(group, g, src, until){
+  if(!group||!g) return;
+  var c=sqCtx(); if(!c) return;
+  var arr = _chokeReg[group] || (_chokeReg[group]=[]);
+  arr.push({g:g, src:src, until:until});
+  // Drop anything that has already finished so this never grows unbounded.
+  var now=c.currentTime;
+  if(arr.length>24) _chokeReg[group]=arr.filter(function(v){ return v.until>now; });
+}
+function _chokeGroup(group, t){
+  var arr=_chokeReg[group]; if(!arr||!arr.length) return;
+  var c=sqCtx(); if(!c) return;
+  var keep=[];
+  arr.forEach(function(v){
+    if(v.until<=t){ return; }           // already done by then
+    try{
+      // cancelAndHoldAtTime, NOT cancelScheduledValues. Cancelling alone drops
+      // the pending ramp and lets the param revert toward its last
+      // setValueAtTime — which is the note's ORIGINAL full level — so the
+      // choke briefly made the hat louder instead of stopping it. Measured at
+      // +4 dB on the 808 before this was fixed. cancelAndHold pins the value
+      // to whatever the envelope had actually reached at t, and the decay
+      // starts from there.
+      if(v.g.gain.cancelAndHoldAtTime) v.g.gain.cancelAndHoldAtTime(t);
+      else {
+       // Safari and older engines: hold the value by hand before cancelling.
+       var held = v.g.gain.value;
+       v.g.gain.cancelScheduledValues(t);
+       v.g.gain.setValueAtTime(Math.max(0.0001, held), t);
+      }
+      v.g.gain.setTargetAtTime(0.0001, t, CHOKE_TAIL/3);
+      if(v.src && v.src.stop) v.src.stop(t+CHOKE_TAIL*6);
+    }catch(e){}
+  });
+  _chokeReg[group]=keep;
+}
+// Current voice's choke group, set by sqHitTrack around each track's play().
+var _chokeCur = null;
+
 function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var c=sqCtx();if(!c||!SQMG||!SQNBUF)return;
   var s=c.createBufferSource();s.buffer=SQNBUF;s.loop=true;
@@ -12875,6 +13251,7 @@ function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var chain=f;
   if(type2){var f2=c.createBiquadFilter();f2.type=type2;f2.frequency.value=freq2||freq||2000;f2.Q.value=Q2||1;f.connect(f2);chain=f2;}
   s.connect(f);chain.connect(g);g.connect(SQMG);s.start(t);s.stop(t+dur+.05);
+  if(_chokeCur) _chokeRegister(_chokeCur, g, s, t+dur);
 }
 function sqTn(t,freq,dur,vol,type,fEnd){
   var c=sqCtx();if(!c||!SQMG)return;
@@ -12883,6 +13260,7 @@ function sqTn(t,freq,dur,vol,type,fEnd){
   if(fEnd)o.frequency.exponentialRampToValueAtTime(fEnd,t+dur);
   g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
   o.connect(g);g.connect(SQMG);o.start(t);o.stop(t+dur+.02);
+  if(_chokeCur) _chokeRegister(_chokeCur, g, o, t+dur);
 }
 function sqAcid(t,freq,dur,vol,cut,res,ac){
   var c=sqCtx();if(!c||!SQMG)return;
@@ -12898,7 +13276,81 @@ function sqAcid(t,freq,dur,vol,cut,res,ac){
 function sqSemi(n){return Math.pow(2,(n||0)/12);}
 
 // ═══════════════════════════════════════
-// JAZZ KIT — cymbal and brush synthesis
+// JAZZ KIT — real cymbals, synthesized brushes
+// ═══════════════════════════════════════
+// The cymbals are recorded. They were synthesized first, and the synthesis was
+// measured to behave correctly — inharmonic modes with the high partials
+// decaying 21 dB faster than the low ones, which is the thing that makes metal
+// read as metal. It still did not sound like a ride cymbal, and a measurement
+// agreeing with itself is not the same as the thing sounding right. A ride is
+// among the hardest sounds to synthesize: dozens of coupled modes, a wash that
+// builds over seconds, and an ear that knows the real thing intimately.
+//
+// The earlier conclusion that a sampled kit was impossible was too narrow. It
+// was true of the source being used — midi-js-soundfonts renders the 128
+// melodic GM programs only — but WebAudioFont publishes the FluidR3_GM
+// PERCUSSION bank as individually encoded one-shots, and those are not subject
+// to the ~7.5 kHz brickwall the melodic mp3s have. Measured: the ride reaches
+// 15.9 kHz with 18% of its energy above 7 kHz, and the ride bell 14.5 kHz with
+// a 2.65 s tail. Same SoundFont this repo already credits.
+//
+// Brushes stay synthesized: there is no brush in the GM percussion map, and a
+// brush swirl is a sustained gesture rather than a struck one, which is the
+// case synthesis handles well.
+
+// One-shot drum samples, loaded on demand and keyed by name rather than by
+// note — the melodic loader's per-note naming does not apply to percussion.
+const DRUM_SAMPLES = {
+ kick:     'samples/drums/kick.mp3',      // GM 36 Bass Drum 1
+ sidestick:'samples/drums/sidestick.mp3', // GM 37 Side Stick — the cross-stick
+ hatpedal: 'samples/drums/hatpedal.mp3',  // GM 44 Pedal Hi-Hat — the foot chick
+ hatclosed:'samples/drums/hatclosed.mp3', // GM 42 Closed Hi-Hat
+ tom:      'samples/drums/tom.mp3',       // GM 47 Low-Mid Tom
+ ride:     'samples/drums/ride.mp3',      // GM 51 Ride Cymbal 1
+ ridebell: 'samples/drums/ridebell.mp3'   // GM 53 Ride Bell
+};
+const DRUM_BUFFERS = {};
+let _drumLoadState = 'idle';
+function preloadDrumSamples(){
+ if(_drumLoadState==='loading' || _drumLoadState==='ready') return;
+ const ctx = (typeof getCtx==='function') ? getCtx() : null;
+ if(!ctx) return;
+ _drumLoadState='loading';
+ const jobs = Object.keys(DRUM_SAMPLES).map(k =>
+  fetch(DRUM_SAMPLES[k])
+   .then(r=>{ if(!r.ok) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
+   .then(a=>ctx.decodeAudioData(a))
+   .then(buf=>{ DRUM_BUFFERS[k]=buf; })
+   .catch(()=>{}));   // one missing cymbal must not sink the kit
+ Promise.all(jobs).then(()=>{
+  _drumLoadState = Object.keys(DRUM_BUFFERS).length ? 'ready' : 'error';
+ });
+}
+window.preloadDrumSamples = preloadDrumSamples;
+window._drumSampleState = function(){ return _drumLoadState; };
+// Exported for the same reason _sqTracks is: without it there is no way to
+// check that a cymbal strike took the sample path rather than the fallback.
+window._drumBuffers = function(){ return DRUM_BUFFERS; };
+
+// Returns true if it played, false if the caller should fall back to synthesis.
+function sqSample(name, t, vol, semi){
+ const buf = DRUM_BUFFERS[name];
+ if(!buf) { preloadDrumSamples(); return false; }
+ const c = sqCtx(); if(!c || !SQMG) return false;
+ const src = c.createBufferSource(); src.buffer = buf;
+ if(semi) src.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, semi/12)));
+ const g = c.createGain();
+ g.gain.value = vol;
+ src.connect(g); g.connect(SQMG);
+ src.start(t);
+ const end = t + buf.duration / (src.playbackRate.value || 1);
+ src.stop(end + 0.05);
+ if(_chokeCur) _chokeRegister(_chokeCur, g, src, end);
+ return true;
+}
+
+// ═══════════════════════════════════════
+// CYMBAL & BRUSH SYNTHESIS (fallback + brushes)
 // ═══════════════════════════════════════
 // Sampled cymbals were not an option: the sample source here ships the 128
 // melodic GM programs only, with no percussion bank, and its mp3 encode
@@ -12988,10 +13440,15 @@ function sqHH808(t,dur,vol,baseF){
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=6800;
   var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=10000;bp.Q.value=0.5;
   mix.connect(hp);hp.connect(bp);bp.connect(SQMG);
+  var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
-    o.connect(mix);o.start(t);o.stop(t+dur+.01);
+    o.connect(mix);o.start(t);o.stop(t+dur+.01);_oscs.push(o);
   });
+  // The hi-hats are the whole point of the choke system and they do NOT go
+  // through sqNs/sqTn — they build their own gain node here, so registering
+  // only those two left every 808/909/MōdKit open hat unchokeable.
+  if(_chokeCur) _chokeRegister(_chokeCur, mix, _oscs[0], t+dur);
 }
 
 // 7-oscillator metallic hat — wider inharmonic spread + a peaking shimmer stage,
@@ -13006,10 +13463,12 @@ function sqHHMod(t,dur,vol,baseF){
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=7800;
   var pk=c.createBiquadFilter();pk.type='peaking';pk.frequency.value=11500;pk.Q.value=1.1;pk.gain.value=5;
   mix.connect(hp);hp.connect(pk);pk.connect(SQMG);
+  var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
-    o.connect(mix);o.start(t);o.stop(t+dur+.01);
+    o.connect(mix);o.start(t);o.stop(t+dur+.01);_oscs.push(o);
   });
+  if(_chokeCur) _chokeRegister(_chokeCur, mix, _oscs[0], t+dur);
 }
 
 // ── drum machines ──
@@ -13127,39 +13586,49 @@ var SQM={
   // A jazz kit: ride-led, brushes instead of a backbeat, and a kick that
   // feathers rather than lands. Track order puts the ride first because in
   // this idiom the ride IS the time — everything else comments on it.
-  'JAZZ':{label:'Jazz',color:'#e0b070',tracks:[
-    {n:'Ride',s:'RD',c:'#e0b070',play:function(t,v,ac,ps){
-      sqCym(t, v*(ac?1.25:1)*0.5, 372*sqSemi(ps), 2.9,
-            {damp:0.72, hp:2500, pingF:5400, pingLvl:0.45, washF:8600, washLvl:0.15});
-    }},
-    {n:'Bell',s:'BL',c:'#f0c68a',play:function(t,v,ac,ps){
-      // The bell is a smaller, tighter, more defined part of the same metal:
-      // fewer modes, higher, damped harder so it rings clear instead of washing.
-      sqCym(t, v*(ac?1.3:1)*0.52, 640*sqSemi(ps), 1.5,
-            {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
-    }},
-    {n:'Brush',s:'BR',c:'#cbb89a',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.2:1)*0.5, 0.30, false); }},
-    {n:'Swirl',s:'SW',c:'#b9a88d',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.15:1)*0.42, 0.52, true); }},
+  // Track order matches every other machine in this table: Kick first, the
+  // snare voice second. It used to lead with Ride on the reasoning that in
+  // jazz the ride IS the time — true musically, wrong for an instrument, since
+  // it put the kick fifth and broke the muscle memory of which row is which.
+  //
+  // Every track also has a distinct, correct GM percussion note (see
+  // GM_DRUM_MAP), so an exported MIDI file lands on the right pads in Live,
+  // Battery or any GM kit instead of stacking on one.
+  'JAZZ':{label:'Jazz',color:'#e0b070',patShort:'RD',tracks:[
     {n:'Kick',s:'BD',c:'#c99a5c',play:function(t,v,ac,ps){
-      // Felt beater on a small bass drum: low, soft, and short. A jazz kick
+      if(sqSample('kick', t, v*(ac?1.25:1)*0.85, ps)) return;
+      // Felt beater on a small bass drum: low, soft, short. A jazz kick
       // feathers the pulse, it does not thump.
       sqTn(t, 105*sqSemi(ps), 0.16, v*(ac?1.3:1)*0.62, 'sine', 48*sqSemi(ps));
       sqNs(t, 0.02, 900, v*0.12);
     }},
+    {n:'Brush',s:'SD',c:'#cbb89a',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.2:1)*2.2, 0.30, false); }},
+    {n:'Swirl',s:'SW',c:'#b9a88d',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.15:1)*1.35, 0.52, true); }},
     {n:'Rim',s:'RM',c:'#d8c0a0',play:function(t,v,ac,ps){
-      // Cross-stick: a woody click, not a snare. Stick on the rim with the
-      // butt of the stick laid across the head.
+      if(sqSample('sidestick', t, v*(ac?1.2:1)*0.6, ps)) return;
+      // Cross-stick: a woody click, not a snare.
       sqTn(t, 780*sqSemi(ps), 0.035, v*(ac?1.3:1)*0.5, 'triangle', 420*sqSemi(ps));
       sqNs(t, 0.03, 2600, v*0.3);
     }},
+    {n:'Tom',s:'TM',c:'#bfa070',play:function(t,v,ac,ps){
+      if(sqSample('tom', t, v*(ac?1.2:1)*0.7, ps)) return;
+      sqTn(t, 165*sqSemi(ps), 0.28, v*(ac?1.2:1)*0.55, 'sine', 82*sqSemi(ps));
+      sqNs(t, 0.05, 1400, v*0.12);
+    }},
     {n:'Hat',s:'HH',c:'#a8b8c8',play:function(t,v,ac,ps){
-      // Foot hi-hat on 2 and 4 — a chick, closed and short.
+      if(sqSample('hatpedal', t, v*(ac?1.15:1)*0.55, ps)) return;
       sqCym(t, v*(ac?1.2:1)*0.34, 520*sqSemi(ps), 0.16,
             {partials:6, damp:1.3, hp:5200, pingLvl:0.3, washLvl:0.05});
     }},
-    {n:'Tom',s:'TM',c:'#bfa070',play:function(t,v,ac,ps){
-      sqTn(t, 165*sqSemi(ps), 0.28, v*(ac?1.2:1)*0.55, 'sine', 82*sqSemi(ps));
-      sqNs(t, 0.05, 1400, v*0.12);
+    {n:'Ride',s:'RD',c:'#e0b070',play:function(t,v,ac,ps){
+      if(sqSample('ride', t, v*(ac?1.15:1)*0.85, ps)) return;
+      sqCym(t, v*(ac?1.25:1)*0.5, 372*sqSemi(ps), 2.9,
+            {damp:0.72, hp:2500, pingF:5400, pingLvl:0.45, washF:8600, washLvl:0.15});
+    }},
+    {n:'Bell',s:'BL',c:'#f0c68a',play:function(t,v,ac,ps){
+      if(sqSample('ridebell', t, v*(ac?1.15:1)*0.63, ps)) return;
+      sqCym(t, v*(ac?1.3:1)*0.52, 640*sqSemi(ps), 1.5,
+            {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
     }}
   ]},
   'BRS':{label:'Brush',color:'#88aacc',tracks:[
@@ -13188,12 +13657,25 @@ window._sqSetSwing = function(v){
 // The machine table lives in this IIFE. Exported so a single drum voice can be
 // fired and measured on its own, which is the only way to check a synthesized
 // cymbal actually behaves like metal rather than like a noise burst.
+window._sqMachines = function(){ return SQM; };
+// Fire one drum voice through the real path (choke handling included) so it can
+// be measured on its own.
+window._sqHit = function(track,t,vol,ac,ps){ return sqHitTrack(track,t,vol,ac,ps); };
+// Choke a group without sounding anything, so the mechanism can be measured
+// without the choking voice's own sound sitting on top of the result.
+window._sqChoke = function(group,t){ return _chokeGroup(group||'hat', t); };
+window._sqTrackChoke = function(track){ return _trackChoke(track); };
+window._chokeCount = function(group){ return (_chokeReg[group]||[]).length; };
+window._chokeReset = function(){ _chokeReg = {}; };
 window._sqTracks = function(machKey){
   var M = SQM[machKey || sqMach];
   return M ? M.tracks : [];
 };
 
 window._sqSetMach = function(k){
+  // Fetch the real cymbals as soon as the Jazz kit is chosen, so the first
+  // bar has them rather than the fallback.
+  if(k==='JAZZ' && typeof preloadDrumSamples==='function') preloadDrumSamples();
  if(!k||k===sqMach||!SQM[k]) return;
  if(typeof sqDoSwap==='function') sqDoSwap(k); else sqMach=k;
 };
@@ -13291,6 +13773,16 @@ function sqSyncUI(){
 // ── SCHEDULER (uses Vibe's shared BPM) ──
 function sqSd(){return 60/sqBpm()/4*(typeof sqRateMul!=='undefined'?sqRateMul:1);}
 
+// Which choke group a track belongs to, and whether it silences that group.
+// Derived from the shortname so it applies to EVERY kit -- the pairing is a
+// property of a hi-hat, not of any one machine's table. A closed or pedal hat
+// chokes; an open hat only rings.
+function _trackChoke(track){
+  var s = track && track.s;
+  if(s==='CH' || s==='HH' || s==='OH') return {group:'hat', chokes:(s!=='OH')};
+  return null;
+}
+
 function sqHitTrack(track,t,vol,ac,ps){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
@@ -13302,7 +13794,13 @@ function sqHitTrack(track,t,vol,ac,ps){
   // earshot. Muting the Drums channel left a quiet hi-hat ticking away.
   // It also saves scheduling dozens of inaudible oscillators per bar.
   if(!(vol>0)) return;
+  var ck=_trackChoke(track);
+  // Cut the group BEFORE this voice registers itself, or a closed hat would
+  // choke its own tail the instant it started.
+  if(ck && ck.chokes) _chokeGroup(ck.group, t);
+  _chokeCur = ck ? ck.group : null;
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
+  _chokeCur = null;
 }
 function sqPlayCell(track,cell,t,vol,ps){
   if(!cell||cell.v===0)return;
@@ -13802,11 +14300,36 @@ function sqWire(){
     var bdRow  = findTrack(['BD']);
     var sdRow  = findTrack(['SD']);
     // Hihat: prefer closed hat, fall back to open, generic HH, cymbal, percussion
-    var hhRow  = findTrack(['CH','HH','OH','CY','PC']);
-    for(var s2=0;s2<steps;s2++){
-      if(r.kick  && r.kick[s2]  && bdRow>=0) { sqGrid[bdRow][s2].v=1; }
-      if(r.snare && r.snare[s2] && sdRow>=0) { sqGrid[sdRow][s2].v=1; }
-      if(r.pat   && r.pat[s2]   && hhRow>=0) { sqGrid[hhRow][s2].v=1; }
+    // A machine can nominate the row a groove's pattern belongs on. In a jazz
+    // kit that is the RIDE — the ride carries the time, and dropping the
+    // pattern on the foot hi-hat (the first HH match) put it on the one voice
+    // that should only be marking 2 and 4.
+    var patPref = (SQM[sqMach] && SQM[sqMach].patShort) ? [SQM[sqMach].patShort] : [];
+    var hhRow  = findTrack(patPref.concat(['CH','HH','OH','CY','PC']));
+    if(r.rows){
+      // Full per-voice pattern, addressed by track shortname. Any row whose
+      // voice this machine does not have is simply skipped, so a jazz groove
+      // dropped on an 808 still puts its kick and snare somewhere sensible.
+      Object.keys(r.rows).forEach(function(sh){
+        var row = findTrack([sh]);
+        if(row < 0){
+          // Fall back to the nearest equivalent so nothing is silently lost.
+          if(sh==='RD') row = findTrack(['CY','OH','CH','HH']);
+          else if(sh==='SW'||sh==='SD') row = sdRow;
+          else if(sh==='RM') row = findTrack(['RS','CP','PC']);
+          else if(sh==='HH') row = findTrack(['CH','HH','OH']);
+          else if(sh==='BD') row = bdRow;
+        }
+        if(row < 0) return;
+        var pat = r.rows[sh];
+        for(var s3=0;s3<steps;s3++) if(pat[s3]) sqGrid[row][s3].v=1;
+      });
+    } else {
+      for(var s2=0;s2<steps;s2++){
+        if(r.kick  && r.kick[s2]  && bdRow>=0) { sqGrid[bdRow][s2].v=1; }
+        if(r.snare && r.snare[s2] && sdRow>=0) { sqGrid[sdRow][s2].v=1; }
+        if(r.pat   && r.pat[s2]   && hhRow>=0) { sqGrid[hhRow][s2].v=1; }
+      }
     }
     sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
     sqRender();
@@ -14492,6 +15015,8 @@ function blDraw(){
     var sd = document.getElementById('bls-' + ds);
     if(sd) sd.classList.add('head');
     blDispStep = ds;
+    if(typeof prRedraw==='function') prRedraw('bl');
+    blDispStep = ds;
   }
   blRafID = requestAnimationFrame(blDraw);
 }
@@ -14553,8 +15078,44 @@ window._blToggleImpl = window.blToggle = function(){
 };
 window.blPlay = window._blPlayImpl = blPlay;
 
+// ── piano roll wiring ──
+// The roll lives outside this IIFE, so it gets accessors rather than the grid.
+function blPrInit(){
+  if(typeof prRegister!=='function') return;
+  prRegister('bl', {
+    lo: BL_GEN_LO, hi: BL_GEN_HI, color:'#2df09a',
+    steps: function(){ return blSteps; },
+    cell:  function(x){ return blGrid[x]; },
+    playStep: function(){ return blPlaying ? blDispStep : -1; },
+    toggle: function(step, midi){
+      blEnsureGrid();
+      var c = blGrid[step]; if(!c) return;
+      var cur = c.note + (c.oct+1)*12;
+      if(c.v && cur === midi){ c.v = 0; }      // tapping the same note clears it
+      else {
+        c.v = 1;
+        c.note = ((midi%12)+12)%12;
+        c.oct  = Math.floor(midi/12)-1;
+        blPreviewNote(c);
+      }
+      blUpdateEmptyHint();
+      blRenderSimpleView();
+    },
+    openMenu: function(step, midi){
+      blEnsureGrid();
+      var c = blGrid[step]; if(!c) return;
+      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      var host = document.getElementById('bl-pr-canvas');
+      blOpenMenu(host, step);
+    }
+  });
+  if(typeof prWire==='function') prWire('bl');
+}
+
 // ── render grid ──
 function blRenderGrid(){
+  if(typeof prRelayout==='function'){ prRelayout('bl'); }
+  blRenderSimpleView(); blUpdateEmptyHint();
   var inner = document.getElementById('bl-inner'); if(!inner) return;
   inner.innerHTML = '';
   blEnsureGrid();
@@ -15152,6 +15713,7 @@ window.blSyncFollowUI = function(){
 // ── bass waveform selector ──
 window.setBlWave = function(w){
   blWave = w;
+  if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
   var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
@@ -15248,6 +15810,9 @@ window._blRestoreState = function(s){
 };
 
 blSyncFollowUI();
+// Deferred: the piano roll is defined further down this file, so PR_ENGINES is
+// still in its temporal dead zone while this IIFE is executing.
+setTimeout(blPrInit, 0);
 
 })(); // end bassline IIFE
 
@@ -15366,6 +15931,37 @@ window._mlScheduler = function(){
   }
 };
 
+function mlPrInit(){
+  if(typeof prRegister!=='function') return;
+  prRegister('ml', {
+    lo: ML_GEN_LO, hi: ML_GEN_HI, color:'#ff8ad4',
+    steps: function(){ return mlSteps; },
+    cell:  function(x){ return mlGrid[x]; },
+    playStep: function(){ return mlPlaying ? mlDispStep : -1; },
+    toggle: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      var cur = c.note + (c.oct+1)*12;
+      if(c.v && cur === midi){ c.v = 0; }
+      else {
+        c.v = 1;
+        c.note = ((midi%12)+12)%12;
+        c.oct  = Math.floor(midi/12)-1;
+        if(typeof mlPreviewNote==='function') mlPreviewNote(c);
+      }
+      if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
+      if(typeof mlRenderSimpleView==='function') mlRenderSimpleView();
+    },
+    openMenu: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
+    }
+  });
+  if(typeof prWire==='function') prWire('ml');
+}
+
 // ── playhead draw ──
 function mlDraw(){
   if(!mlPlaying){ mlRafID = null; return; }
@@ -15384,6 +15980,8 @@ function mlDraw(){
     document.querySelectorAll('#ml-simple-view .bl-sdot').forEach(function(d){ d.classList.remove('head'); });
     var sd = document.getElementById('mls-' + ds);
     if(sd) sd.classList.add('head');
+    mlDispStep = ds;
+    if(typeof prRedraw==='function') prRedraw('ml');
     mlDispStep = ds;
   }
   mlRafID = requestAnimationFrame(mlDraw);
@@ -15436,6 +16034,7 @@ window.mlPlay = window._mlPlayImpl = mlPlay;
 
 // ── render grid — reuses bl-* CSS classes for identical piano-roll styling ──
 function mlRenderGrid(){
+  if(typeof prRelayout==='function'){ prRelayout('ml'); }
   var inner = document.getElementById('ml-inner'); if(!inner) return;
   inner.innerHTML = '';
   mlEnsureGrid();
@@ -15789,6 +16388,7 @@ window.mlClear = function(){ for(var s=0;s<mlSteps;s++) mlGrid[s]=mlMkCell(); ml
 // ── melody-sequencer voice selector ──
 window.setMlWave = function(w){
   mlWave = w;
+  if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
   var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
@@ -15859,6 +16459,7 @@ window._mlRestoreState = function(s){
 };
 
 mlSyncFollowUI();
+setTimeout(mlPrInit, 0);
 
 })(); // end melody IIFE
 
@@ -16027,6 +16628,190 @@ switchTab = function(t){
   }
   // ft-rhy-btn is now a master Play/Stop — syncFixedTransport handles it
 };
+
+
+// ═══════════════════════════════════════
+// PIANO ROLL
+// ═══════════════════════════════════════
+// One renderer, two engines. Each caller supplies accessors rather than its
+// grid, so the roll never has to know whether it is drawing the bass or the
+// melody generator — the two live in separate IIFEs and cannot see each
+// other's state, which is why this takes functions instead of data.
+const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
+const PR_ROW_H = 11;      // px per semitone
+const PR_KEY_W = 34;
+// Column width adapts to the panel: a 16-step pattern should fill the width
+// rather than leaving half the panel empty, while a 32-step one stays legible
+// and scrolls. Recomputed on layout, so it follows a resize or a step-count
+// change without anything else having to know.
+let PR_COL_W = 26;
+function prColW(id, steps){
+ const sc = document.getElementById(id+'-pr-scroll');
+ const avail = sc ? sc.clientWidth : 0;
+ if(!avail || !steps) return 26;
+ return Math.max(16, Math.min(46, Math.floor(avail/steps)));
+}
+
+const PR_ENGINES = {};
+
+function prRegister(id, cfg){ PR_ENGINES[id] = cfg; prLayout(id); }
+
+function prLayout(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const cv = document.getElementById(id+'-pr-canvas');
+ const kv = document.getElementById(id+'-pr-keys');
+ if(!cv || !kv) return;
+ const rows = cfg.hi - cfg.lo + 1;
+ const steps = cfg.steps();
+ PR_COL_W = prColW(id, steps);
+ const dpr = Math.min(2, window.devicePixelRatio || 1);
+ const w = steps * PR_COL_W, h = rows * PR_ROW_H;
+ cv.style.width = w+'px'; cv.style.height = h+'px';
+ cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+ kv.style.width = PR_KEY_W+'px'; kv.style.height = h+'px';
+ kv.width = Math.round(PR_KEY_W*dpr); kv.height = Math.round(h*dpr);
+ cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ kv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ prDrawKeys(id);
+ prDraw(id);
+}
+
+function _prCss(v, fallback){
+ try{ const c=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return c||fallback; }
+ catch(e){ return fallback; }
+}
+
+function prDrawKeys(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const kv = document.getElementById(id+'-pr-keys'); if(!kv) return;
+ const g = kv.getContext('2d');
+ const rows = cfg.hi - cfg.lo + 1;
+ g.clearRect(0,0,PR_KEY_W,rows*PR_ROW_H);
+ for(let i=0;i<rows;i++){
+  const midi = cfg.hi - i;                 // high notes at the top, as on a keyboard
+  const pc = ((midi%12)+12)%12;
+  const y = i*PR_ROW_H;
+  g.fillStyle = PR_BLACK[pc] ? '#0d0e18' : '#1b1d2c';
+  g.fillRect(0,y,PR_KEY_W,PR_ROW_H-1);
+  if(pc===0){                              // label every C, with its octave
+   g.fillStyle = '#8890b8';
+   g.font = '7px Outfit, sans-serif';
+   g.textBaseline = 'middle';
+   g.fillText('C'+(Math.floor(midi/12)-1), 4, y+PR_ROW_H/2);
+  }
+ }
+}
+
+function prDraw(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
+ const g = cv.getContext('2d');
+ const rows = cfg.hi - cfg.lo + 1, steps = cfg.steps();
+ const colW = prColW(id, steps);
+ const W = steps*colW, H = rows*PR_ROW_H;
+ g.clearRect(0,0,W,H);
+
+ // Row shading: black keys darker, so the octave is readable at a glance —
+ // the whole reason for this view.
+ for(let i=0;i<rows;i++){
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12;
+  g.fillStyle = PR_BLACK[pc] ? 'rgba(255,255,255,.012)' : 'rgba(255,255,255,.032)';
+  g.fillRect(0,i*PR_ROW_H,W,PR_ROW_H-1);
+  if(pc===0){ g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(0,i*PR_ROW_H,W,1); }
+ }
+ // Beat lines every 4 steps, bar lines every 16.
+ for(let x=0;x<=steps;x++){
+  if(x%16===0) g.fillStyle='rgba(255,255,255,.22)';
+  else if(x%4===0) g.fillStyle='rgba(255,255,255,.10)';
+  else continue;
+  g.fillRect(x*colW,0,1,H);
+ }
+ // Notes.
+ const accent = cfg.color || '#2df09a';
+ for(let x=0;x<steps;x++){
+  const c = cfg.cell(x);
+  if(!c || !c.v) continue;
+  const midi = c.note + (c.oct+1)*12;
+  const row = cfg.hi - midi;
+  const len = Math.max(1, c.len||1);
+  const y = row*PR_ROW_H;
+  const w = len*colW - 3;
+  if(row < 0 || row >= rows){
+   // Out of the drawn range — mark it at the edge rather than dropping it, so
+   // a note that wandered is visible instead of silently missing.
+   g.fillStyle = '#ff6b35';
+   g.fillRect(x*colW+1, row<0 ? 0 : H-3, colW-3, 3);
+   continue;
+  }
+  g.fillStyle = c.accent ? '#ffffff' : accent;
+  g.globalAlpha = c.accent ? .95 : .8;
+  g.fillRect(x*colW+1, y+1, w, PR_ROW_H-3);
+  g.globalAlpha = 1;
+  if(c.slide){                              // slide marker: a tail to the right
+   g.fillStyle = '#3ab4ff';
+   g.fillRect(x*colW+1+w, y+PR_ROW_H/2-1, 3, 2);
+  }
+ }
+ // Playhead.
+ const ph = cfg.playStep ? cfg.playStep() : -1;
+ if(ph>=0 && ph<steps){
+  g.fillStyle='rgba(255,255,255,.85)';
+  g.fillRect(ph*colW,0,2,H);
+ }
+}
+
+// Which cell a pointer landed on.
+function prHit(id, ev){
+ const cfg = PR_ENGINES[id]; if(!cfg) return null;
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return null;
+ const r = cv.getBoundingClientRect();
+ // Derive the column width from the canvas actually on screen rather than the
+ // module-level value, which belongs to whichever roll was drawn last.
+ const colW = r.width / Math.max(1, cfg.steps());
+ const x = Math.floor((ev.clientX - r.left)/colW);
+ const i = Math.floor((ev.clientY - r.top)/PR_ROW_H);
+ const rows = cfg.hi - cfg.lo + 1;
+ if(x<0 || x>=cfg.steps() || i<0 || i>=rows) return null;
+ return { step:x, midi: cfg.hi - i };
+}
+
+function prWire(id){
+ const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
+ let holdT=null, moved=false, dx=0, dy=0, held=false;
+ cv.addEventListener('pointerdown', function(e){
+  const cfg = PR_ENGINES[id]; if(!cfg) return;
+  moved=false; held=false; dx=e.clientX; dy=e.clientY;
+  const h = prHit(id,e); if(!h) return;
+  holdT = setTimeout(function(){
+   holdT=null;
+   if(moved) return;
+   held=true;
+   // Long press opens the same per-step menu the old lane used, so length,
+   // slide and accent are still reachable without inventing a second UI.
+   if(cfg.openMenu) cfg.openMenu(h.step, h.midi);
+  }, 450);
+ });
+ cv.addEventListener('pointermove', function(e){
+  if(Math.abs(e.clientX-dx)+Math.abs(e.clientY-dy) > 8){
+   moved=true; if(holdT){ clearTimeout(holdT); holdT=null; }
+  }
+ });
+ cv.addEventListener('pointerup', function(e){
+  if(holdT){ clearTimeout(holdT); holdT=null; }
+  if(moved || held) return;
+  const cfg = PR_ENGINES[id]; if(!cfg) return;
+  const h = prHit(id,e); if(!h) return;
+  cfg.toggle(h.step, h.midi);
+  prDraw(id);
+ });
+ cv.addEventListener('pointercancel', function(){ if(holdT){ clearTimeout(holdT); holdT=null; } });
+}
+
+window.prRedraw = function(id){ prDraw(id); };
+window.prRelayout = function(id){ prLayout(id); };
+window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
+window.addEventListener('resize', function(){ window.prRelayoutAll(); });
 
 // ─── Groove presets: populate sq-groove-presets ───
 function sqBuildGroovePresets(){
