@@ -859,14 +859,29 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
    divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
    a lot of DOM to rebuild on every generate, on a phone. */
 .pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
-           border-radius:var(--r-md); overflow:hidden; background:var(--bg); }
-.pr-keys { flex:0 0 34px; }
+           border-radius:var(--r-md); overflow:auto; background:var(--bg);
+           /* The full chromatic range is 25-30 rows tall. Cap it and scroll
+              vertically rather than letting the roll push the whole page down. */
+           max-height:min(46vh, 340px); }
+.pr-keys { flex:0 0 52px; position:sticky; left:0; z-index:2; }
 .pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
              touch-action:pan-x; overscroll-behavior-x:contain; }
 .pr-canvas { display:block; touch-action:manipulation; }
 .pr-keys-canvas { display:block; }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
 .pr-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
+
+/* The amber reads on a dark page and washes out on a light one, so the light
+   theme takes it several stops down rather than sharing one value. */
+.jazz-btn { border-color:#e0b070; color:#b57e2a; }
+body.light-mode .jazz-btn { border-color:#a9721f; color:#7a4f10; }
+
+.groove-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:7px;
+  background:var(--surf); color:var(--muted); font-family:'Outfit',sans-serif;
+  font-size:.52rem; cursor:pointer; touch-action:manipulation; transition:all .12s;
+  letter-spacing:.04em; }
+.groove-btn b { color:var(--text); }
+.groove-btn:hover { border-color:var(--modal); color:var(--modal); }
 
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
@@ -2833,7 +2848,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <!-- Inline sound selector — hidden in Basic mode -->
  <div class="sound-bar advanced-only" id="sound-bar-inline">
  <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
- <button class="tb" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out." style="border-color:#e0b070;color:#e0b070">♭ Jazz</button>
+ <button class="tb jazz-btn" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out.">♭ Jazz</button>
  <div class="tg" id="sb-voices" style="flex-wrap:wrap"></div>
  </div>
 
@@ -3373,7 +3388,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     </div>
   </div>
   <div class="sq-pslots" id="sq-pslots"></div>
-  <div class="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:#333">(hold pattern to add)</span></div>
+  <div class="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:var(--muted)">(hold pattern to add)</span></div>
   <div class="sq-chainrow" id="sq-chainRow"></div>
 </div>
 
@@ -3940,6 +3955,42 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // the master limiter — and every other voice hits the same RMS with peaks
 // safely under that. Verified: 1.4 dB spread across all nine voices (was
 // 10.6 dB), no voice peaks above 0.55 on a single 4-note chord.
+// ── Theme helpers ──
+// Anything drawn to a canvas cannot be themed by CSS, so it has to ask. White
+// ink at low alpha is invisible on a light page, and that is exactly what the
+// oscilloscope grid, the drum knobs and the piano roll were all using.
+function uiLight(){ try{ return document.body.classList.contains('light-mode'); }catch(e){ return false; } }
+function uiInk(a){ return uiLight() ? 'rgba(0,0,0,'+a+')' : 'rgba(255,255,255,'+a+')'; }
+// The per-track and per-channel accents were chosen to read on a dark
+// background. Used as TEXT on a light one they measure 1.1-2.1:1 against the
+// page, which is unreadable. This keeps the hue — the colour is how you tell
+// the tracks apart — and drops the lightness until it actually contrasts.
+function uiTextColor(css){
+ if(!uiLight()) return css;
+ let r,g,b;
+ const hex = String(css).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+ if(hex){
+  let h=hex[1]; if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16);
+ } else {
+  const m=String(css).match(/[\d.]+/g); if(!m||m.length<3) return css;
+  r=+m[0]; g=+m[1]; b=+m[2];
+ }
+ // to HSL, clamp lightness, back to CSS
+ const rr=r/255, gg=g/255, bb=b/255;
+ const mx=Math.max(rr,gg,bb), mn=Math.min(rr,gg,bb);
+ let hh=0, ss=0; const ll=(mx+mn)/2;
+ const d=mx-mn;
+ if(d){
+  ss=ll>0.5 ? d/(2-mx-mn) : d/(mx+mn);
+  if(mx===rr) hh=((gg-bb)/d+(gg<bb?6:0));
+  else if(mx===gg) hh=(bb-rr)/d+2;
+  else hh=(rr-gg)/d+4;
+  hh*=60;
+ }
+ return 'hsl('+Math.round(hh)+','+Math.round(Math.min(0.95,ss+0.1)*100)+'%,32%)';
+}
+
 const WAVE_GAIN = {
  sine:.255,
  sawtooth:.373,
@@ -5038,7 +5089,7 @@ function msScopeTick(){
  const cs=getComputedStyle(document.documentElement);
  const line=(cs.getPropertyValue('--pg')||'#58ffb4').trim();
  // centre line
- g.strokeStyle='rgba(255,255,255,.10)'; g.lineWidth=1;
+ g.strokeStyle=uiInk(uiLight()?.16:.10); g.lineWidth=1;
  g.beginPath(); g.moveTo(0,h/2); g.lineTo(w,h/2); g.stroke();
  if(an){
   const buf=new Uint8Array(an.fftSize);
@@ -6669,20 +6720,26 @@ function stepsPerBar(){
 // Called whenever the time signature changes.  Syncs sqSteps and blSteps to
 // the bar length of the selected rhythm.  Sequencer waits until stopped;
 // bassline always syncs immediately so the two stay locked.
+// Every name this function tested lived inside the sequencer or bassline IIFE,
+// so none of them resolved here and every guard was permanently false. The
+// whole function was inert: `sqPlaying` reading undefined made sqStopped always
+// true, `sqSteps = spb` and `blSteps = spb` assigned unrelated globals rather
+// than the engines' own counters, and none of the four re-render calls ever
+// ran. Changing the time signature did nothing to the sequencer or the bass.
 function applyTimeSig(){
   var spb = stepsPerBar();
-  var sqStopped = (typeof sqPlaying === 'undefined' || !sqPlaying);
-  if(sqStopped){
-    sqSteps = spb;
-    var sd = document.getElementById('sq-stepsDisp'); if(sd) sd.textContent = sqSteps;
-    if(typeof sqEnsureGrid === 'function') sqEnsureGrid();
-    if(typeof sqRenderGrid === 'function') sqRenderGrid();
+  var sqPlayingNow = (typeof window._sqPlaying==='function') && window._sqPlaying();
+  if(!sqPlayingNow){
+    if(typeof window._sqSetStepsRaw==='function') window._sqSetStepsRaw(spb);
+    var sd = document.getElementById('sq-stepsDisp'); if(sd) sd.textContent = spb;
+    if(typeof window._sqEnsureGrid==='function') window._sqEnsureGrid();
+    if(typeof window._sqRenderGrid==='function') window._sqRenderGrid();
   }
   // Bassline always syncs — keeps it locked to rhythm step count
-  blSteps = spb;
-  var bd = document.getElementById('bl-stepsdisp'); if(bd) bd.textContent = blSteps;
-  if(typeof blEnsureGrid === 'function') blEnsureGrid();
-  if(typeof blRenderGrid === 'function') blRenderGrid();
+  if(typeof window._blSetStepsRaw==='function') window._blSetStepsRaw(spb);
+  var bd = document.getElementById('bl-stepsdisp'); if(bd) bd.textContent = spb;
+  if(typeof window._blEnsureGrid==='function') window._blEnsureGrid();
+  if(typeof window._blRenderGrid==='function') window._blRenderGrid();
 }
 
 function buildRhythmGrid(){
@@ -7777,6 +7834,8 @@ function renderChords(){
 // ═══════════════════════════════════════
 function setMode(m){
  mode=m;
+ // The roll shades in-key rows, so a mode change has to repaint it.
+ if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
  Object.keys(MODES).forEach(x=>{
   const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
   const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
@@ -10511,7 +10570,7 @@ function setBassMelMode(m){
  document.getElementById('bm-bass-panel').style.display = m==='bass'?'':'none';
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
- if(m === 'melody' && typeof mlRenderGrid==='function') mlRenderGrid();
+ if(m === 'melody' && typeof window._mlRenderGrid==='function') window._mlRenderGrid();
  // A canvas inside a display:none panel lays out at zero, so both rolls have
  // to be re-measured once their page is actually on screen.
  if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll, 0);
@@ -12834,6 +12893,7 @@ function toggleTheme(){
  sl?.classList.toggle('active', isLight);
  sd?.classList.toggle('active', !isLight);
  const tv=isLight?'light':'dark'; localStorage.setItem('mv-theme',tv); localStorage.setItem('prism-theme',tv);
+ if(typeof window.prThemeChanged==='function') window.prThemeChanged();
 }
 
 // ═══════════════════════════════════════
@@ -12939,8 +12999,9 @@ function sqApplyChordGlows(){
     var el=document.getElementById(id); if(el) el.querySelectorAll('.chord-card,.chart-chord-btn,[class*=chord-btn]').forEach(function(c){c.classList.add(glowClass);});
   });
 }
-// Also apply on song builder chord picker
-var _origRenderSongChords = typeof renderSongBuilderChords==='function' ? renderSongBuilderChords : null;
+// renderSongBuilderChords has never existed — this captured null every time and
+// nothing downstream used it. Removed rather than left as a hook that looks
+// wired up but is not.
 
 // ── Forward stubs for functions defined in IIFEs ──
 // These ensure onclick="blToggle()" etc. work even if IIFEs haven't run yet
@@ -12994,6 +13055,7 @@ const MH_LT  = [60, 59, 56, 53, 50, 53, 56, 60, 63, 62, 60, 59];
 const MH_SAT = [85, 84, 82, 81, 79, 81, 82, 85, 83, 80, 80, 83];
 
 function mhApply(rootNote) {
+  if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
   const r = ((rootNote % 12) + 12) % 12;
   const h = MH_HUE[r], s = MH_SAT[r], l = MH_LT[r];
   const el = document.documentElement;
@@ -13046,7 +13108,7 @@ function sqDrawKnob(cvs, val, min, max, color){
   var valA = startA + norm*(endA-startA);
   // Track bg
   ctx2.beginPath(); ctx2.arc(cx,cy,r,startA,endA);
-  ctx2.strokeStyle='rgba(255,255,255,0.1)'; ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
+  ctx2.strokeStyle=uiInk(uiLight()?0.16:0.1); ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
   // Track fill
   ctx2.beginPath(); ctx2.arc(cx,cy,r,startA,valA);
   ctx2.strokeStyle=color; ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
@@ -13056,7 +13118,7 @@ function sqDrawKnob(cvs, val, min, max, color){
   // Pointer line
   var px=cx+Math.cos(valA)*(r-1.5), py=cy+Math.sin(valA)*(r-1.5);
   ctx2.beginPath(); ctx2.moveTo(cx,cy); ctx2.lineTo(px,py);
-  ctx2.strokeStyle='rgba(255,255,255,0.8)'; ctx2.lineWidth=1.5; ctx2.lineCap='round'; ctx2.stroke();
+  ctx2.strokeStyle=uiInk(0.8); ctx2.lineWidth=1.5; ctx2.lineCap='round'; ctx2.stroke();
 }
 
 function sqAttachKnob(cvs, valEl, initVal, min, max, type, onChange){
@@ -14033,8 +14095,8 @@ function sqRenderGrid(){
     sqAttachKnob(vCvs, vVal, vInit, 0, 100, 'vol', function(v){ sqSv(sqMach,ti,v/100); sqDrawKnob(vCvs,v,0,100,'#a855f7'); vVal.textContent=v+'%'; });
     lr.appendChild(vw);
     var lbl=document.createElement('div');
-    if(sqMach==='303'){lbl.className='sq-nlbl';lbl.style.color=color;lbl.textContent=tr.name;}
-    else{lbl.className='sq-tlbl';lbl.style.color=tr.c;lbl.innerHTML=tr.n+'<small>'+tr.s+'</small>';}
+    if(sqMach==='303'){lbl.className='sq-nlbl';lbl.style.color=uiTextColor(color);lbl.textContent=tr.name;}
+    else{lbl.className='sq-tlbl';lbl.style.color=uiTextColor(tr.c);lbl.innerHTML=tr.n+'<small>'+tr.s+'</small>';}
     lr.appendChild(lbl);gLeft.appendChild(lr);
     // grid row
     var gr=document.createElement('div');gr.className='sq-grow'+(isBlack?' bk':'');
@@ -14198,7 +14260,7 @@ function sqRenderPSlots(){
 }
 function sqRenderChain(){
   var el=document.getElementById('sq-chainRow');if(!el)return;el.innerHTML='';
-  if(!sqChain.length){el.innerHTML='<span style="font-size:.38rem;color:#282840">Hold a pattern slot to add</span>';return;}
+  if(!sqChain.length){el.innerHTML='<span style="font-size:.38rem;color:var(--muted)">Hold a pattern slot to add</span>';return;}
   for(var ci=0;ci<sqChain.length;ci++){
     (function(pi,cii){
       var item=document.createElement('div');item.className='sq-ci';
@@ -14247,6 +14309,11 @@ function sqWire(){
   if(suSl)suSl.addEventListener('input',function(){sqSwing=parseInt(this.value);var sd=document.getElementById('sq-swingDisp');if(sd)sd.textContent=sqSwing+'%';});
   // sqSteps is IIFE-local, so the global step-count linker reaches it through
   // this rather than touching the variable directly.
+  // Exports for cross-IIFE callers. Everything below was previously reached by
+  // bare name from outside this IIFE, where it does not resolve — and always
+  // behind a `typeof` guard, so each one failed silently instead of throwing.
+  window._sqEnsureGrid = function(){ sqEnsureGrid(); };
+  window._sqRenderGrid = function(){ sqRender(); };
   window._sqSetStepsRaw = function(n){
     sqSteps = Math.max(1, Math.min(32, n));
     var d=document.getElementById('sq-stepsDisp'); if(d) d.textContent=sqSteps;
@@ -14554,6 +14621,8 @@ var blOct = 2;
 var _blGridRootPc = 0;
 var blPlaying = false;
  window._blPlaying = function(){ return blPlaying; };
+window._blEnsureGrid = function(){ blEnsureGrid(); };
+window._blRenderGrid = function(){ blRenderGrid(); };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 var blMenuStep = -1;
 var blGenStyle = 'rock';
@@ -14566,7 +14635,11 @@ var blVol = 0.7;
 window.blSetCutoff = function(v){ blCutoff = +v; };
 window.blSetResonance = function(v){ blResonance = +v; };
 
-function blMkCell(){ return {note:0, oct:blOct, len:1, slide:false, accent:false, v:0}; }
+// `usr` marks a step you placed by hand. Generate fills around those rather
+// than over them, so an edit survives the next roll of the line instead of
+// disappearing — which is the difference between a generator you can work with
+// and one that keeps overwriting you.
+function blMkCell(){ return {note:0, oct:blOct, len:1, slide:false, accent:false, v:0, usr:0}; }
 
 function blEnsureGrid(){
   while(blGrid.length < blSteps) blGrid.push(blMkCell());
@@ -15061,7 +15134,10 @@ function blPlay(){
   var go = function(){
     if(blPlaying){ blStop(); return; }
     // Sync bass step count to sequencer so bars always match
-    if(typeof sqSteps !== 'undefined' && sqSteps > 0) blSteps = sqSteps;
+    // sqSteps lives in the sequencer's IIFE and is not in scope here, so this
+    // guard was always false and the bass never synced its bar length.
+    var _sqN = (typeof window._sqSteps==='function') ? window._sqSteps() : 0;
+    if(_sqN > 0) blSteps = _sqN;
     blEnsureGrid();
     blMG(); // ensure BL_MG gain node exists before scheduling
     blPlaying = true; blDispStep = -1;
@@ -15073,7 +15149,10 @@ function blPlay(){
     // past 0) keeps the bass locked to the sequencer at launch AND mid-stream.
     if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
       var _firstStep = clockAlignTo(ctx, _blStepSec, 0.05); // next 16th aligned to epoch
-      var _barSteps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
+      // Same trap, and this one mattered more: the fallback hardcoded 16, so
+      // the bass aligned its launch to a 4/4 bar even in 5/4 or 3/4.
+      var _sqN2 = (typeof window._sqSteps==='function') ? window._sqSteps() : 0;
+      var _barSteps = _sqN2 > 0 ? _sqN2 : 16;
       var _fromEpoch = Math.round((_firstStep - CLOCK_EPOCH) / _blStepSec);
       var _intoBar = ((_fromEpoch % _barSteps) + _barSteps) % _barSteps;
       var _toBar = _intoBar === 0 ? 0 : (_barSteps - _intoBar);
@@ -15126,9 +15205,9 @@ function blPrInit(){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       var cur = c.note + (c.oct+1)*12;
-      if(c.v && cur === midi){ c.v = 0; }      // tapping the same note clears it
+      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }   // tapping it again clears it, pin included
       else {
-        c.v = 1;
+        c.v = 1; c.usr = 1;
         c.note = ((midi%12)+12)%12;
         c.oct  = Math.floor(midi/12)-1;
         blPreviewNote(c);
@@ -15140,6 +15219,7 @@ function blPrInit(){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      c.usr = 1;
       var host = document.getElementById('bl-pr-canvas');
       blOpenMenu(host, step);
     }
@@ -15317,6 +15397,12 @@ window.blShiftOct = function(d){
 // Scale degrees in semitones (major and minor)
 window.blGenerate = function(){
   blEnsureGrid();
+  // Snapshot hand-edited steps before the grid is rebuilt, and put them back
+  // after the range clamp so they land exactly where you placed them.
+  var _keep = [];
+  for(var _k=0;_k<blSteps;_k++){
+    if(blGrid[_k] && blGrid[_k].usr) _keep[_k] = JSON.parse(JSON.stringify(blGrid[_k]));
+  }
   var _md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
   var scale = _md ? _md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   var rn = root;
@@ -15678,6 +15764,8 @@ window.blGenerate = function(){
     c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
 
+  for(var _r=0;_r<blSteps;_r++){ if(_keep[_r]) blGrid[_r]=_keep[_r]; }
+
   blRenderGrid();
 };
 
@@ -15714,6 +15802,7 @@ window.setBlWalkFeel = function(f){
 window.blToggleWalkFeel = function(){ window.setBlWalkFeel(blWalkFeel==='two'?'four':'two'); };
 window._blWalkFeel = function(){ return blWalkFeel; };
 
+// Clr wipes the pins too — it is the one action that means "start over".
 window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); blRenderGrid(); };
 
 // The style lives inside this IIFE, so setting window.blGenStyle from outside
@@ -15887,13 +15976,14 @@ var _mlGridRootPc = 0;
 var ML_GEN_LO = 55, ML_GEN_HI = 84;
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
+window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
 var mlMenuStep = -1;
 var mlGenStyle = 'arpeggio';
 var mlWave = 'piano';
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
-function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0}; }
+function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
 
 function mlEnsureGrid(){
   while(mlGrid.length < mlSteps) mlGrid.push(mlMkCell());
@@ -15977,9 +16067,9 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       var cur = c.note + (c.oct+1)*12;
-      if(c.v && cur === midi){ c.v = 0; }
+      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
       else {
-        c.v = 1;
+        c.v = 1; c.usr = 1;
         c.note = ((midi%12)+12)%12;
         c.oct  = Math.floor(midi/12)-1;
         if(typeof mlPreviewNote==='function') mlPreviewNote(c);
@@ -15991,6 +16081,7 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      c.usr = 1;
       if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
     }
   });
@@ -16219,6 +16310,11 @@ window.mlShiftOct = function(d){
 // ── AUTO-GENERATE — scale/chord-aware melodic pattern presets ──
 window.mlGenerate = function(){
   mlEnsureGrid();
+  // See blMkCell: hand-edited steps survive a regenerate.
+  var _keep = [];
+  for(var _k=0;_k<mlSteps;_k++){
+    if(mlGrid[_k] && mlGrid[_k].usr) _keep[_k] = JSON.parse(JSON.stringify(mlGrid[_k]));
+  }
   var _md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
   var scale = _md ? _md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   var rn = root;
@@ -16380,6 +16476,7 @@ window.mlGenerate = function(){
     while(m < ML_GEN_LO) m += 12;
     c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
+  for(var _r=0;_r<mlSteps;_r++){ if(_keep[_r]) mlGrid[_r]=_keep[_r]; }
   mlRenderGrid();
 };
 
@@ -16536,7 +16633,7 @@ window.buildMixChannelsInto = function(container){
   wrap.className='mix-strip';
   var cvs=document.createElement('canvas'); cvs.width=40; cvs.height=40; cvs.style.cursor='pointer';
   var valEl=document.createElement('div');
-  valEl.className='mix-val'; valEl.style.color=ch.color;
+  valEl.className='mix-val'; valEl.style.color=uiTextColor(ch.color);
   var lbl=document.createElement('div');
   lbl.className='mix-lbl';
   lbl.textContent=ch.label;
@@ -16659,7 +16756,7 @@ switchTab = function(t){
     showSeqRotatePopup();
   }
   if(t==='bass'){
-    if(typeof blRenderGrid==='function') blRenderGrid();
+    if(typeof window._blRenderGrid==='function') window._blRenderGrid();
   }
   // ft-rhy-btn is now a master Play/Stop — syncFixedTransport handles it
 };
@@ -16674,12 +16771,11 @@ switchTab = function(t){
 // other's state, which is why this takes functions instead of data.
 const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
-const PR_ROW_H = 11;      // px per semitone
-const PR_KEY_W = 34;
+const PR_ROW_H = 15;      // px per semitone — tall enough to letter a note name
+const PR_KEY_W = 52;      // the keyboard gutter
 // Column width adapts to the panel: a 16-step pattern should fill the width
 // rather than leaving half the panel empty, while a 32-step one stays legible
-// and scrolls. Recomputed on layout, so it follows a resize or a step-count
-// change without anything else having to know.
+// and scrolls.
 let PR_COL_W = 26;
 function prColW(id, steps){
  const sc = document.getElementById(id+'-pr-scroll');
@@ -16689,6 +16785,47 @@ function prColW(id, steps){
 }
 
 const PR_ENGINES = {};
+
+// Every colour is resolved from the theme at draw time. The first version of
+// this hardcoded dark hexes and painted its row shading as white at 1-3%
+// alpha on a TRANSPARENT canvas — which in light mode meant white on white
+// over a pale page, so the pitch grid was invisible and the key gutter was a
+// black stripe. Nothing about the roll can be hardcoded.
+function prTheme(){
+ const light = document.body.classList.contains('light-mode');
+ const cs = getComputedStyle(document.documentElement);
+ const v = (n,f)=>{ const x=cs.getPropertyValue(n).trim(); return x||f; };
+ return {
+  light: light,
+  bgWhite:  light ? '#ffffff' : '#151726',
+  bgBlack:  light ? '#dfe3f2' : '#0d0e18',
+  inKey:    light ? 'rgba(56,120,255,.10)' : 'rgba(120,170,255,.09)',
+  tonic:    light ? 'rgba(56,120,255,.20)' : 'rgba(120,170,255,.20)',
+  line:     light ? 'rgba(0,0,0,.10)'  : 'rgba(255,255,255,.07)',
+  beat:     light ? 'rgba(0,0,0,.16)'  : 'rgba(255,255,255,.11)',
+  bar:      light ? 'rgba(0,0,0,.34)'  : 'rgba(255,255,255,.26)',
+  keyWhite: light ? '#ffffff' : '#e9ecf7',
+  keyBlack: light ? '#2a2f45' : '#0b0c14',
+  keyLabel: light ? '#20264a' : '#111325',
+  keyLabelOnBlack: light ? '#e8ebfa' : '#8f97c0',
+  keyEdge:  light ? '#b9c0dc' : '#2a2e45',
+  note:     v('--pg','#2df09a'),
+  accent:   light ? '#111325' : '#ffffff',
+  slide:    v('--pb','#3ab4ff'),
+  head:     light ? 'rgba(0,0,0,.75)' : 'rgba(255,255,255,.85)',
+  oor:      '#ff6b35'
+ };
+}
+
+// Pitch classes of the current key/mode, so the roll can show which notes are
+// in the key you are actually in rather than making you count semitones.
+function prScalePcs(){
+ try{
+  const md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
+  const steps = md ? md.steps : [0,2,4,5,7,9,11];
+  return { root: ((root%12)+12)%12, set: steps.map(d=>((root+d)%12+12)%12) };
+ }catch(e){ return { root:0, set:[0,2,4,5,7,9,11] }; }
+}
 
 function prRegister(id, cfg){ PR_ENGINES[id] = cfg; prLayout(id); }
 
@@ -16712,86 +16849,110 @@ function prLayout(id){
  prDraw(id);
 }
 
-function _prCss(v, fallback){
- try{ const c=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return c||fallback; }
- catch(e){ return fallback; }
-}
-
+// An actual keyboard, not a column of shaded strips: black keys are drawn
+// narrower and darker so the pattern of twos and threes reads at a glance,
+// which is how you find a pitch without counting.
 function prDrawKeys(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const kv = document.getElementById(id+'-pr-keys'); if(!kv) return;
  const g = kv.getContext('2d');
- const rows = cfg.hi - cfg.lo + 1;
- g.clearRect(0,0,PR_KEY_W,rows*PR_ROW_H);
+ const T = prTheme(), sc = prScalePcs();
+ const rows = cfg.hi - cfg.lo + 1, H = rows*PR_ROW_H;
+ g.clearRect(0,0,PR_KEY_W,H);
+ g.fillStyle = T.keyWhite; g.fillRect(0,0,PR_KEY_W,H);
+ g.font = '600 8px Outfit, sans-serif';
+ g.textBaseline = 'middle';
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i;                 // high notes at the top, as on a keyboard
-  const pc = ((midi%12)+12)%12;
-  const y = i*PR_ROW_H;
-  g.fillStyle = PR_BLACK[pc] ? '#0d0e18' : '#1b1d2c';
-  g.fillRect(0,y,PR_KEY_W,PR_ROW_H-1);
-  if(pc===0){                              // label every C, with its octave
-   g.fillStyle = '#8890b8';
-   g.font = '7px Outfit, sans-serif';
-   g.textBaseline = 'middle';
-   g.fillText('C'+(Math.floor(midi/12)-1), 4, y+PR_ROW_H/2);
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  const black = !!PR_BLACK[pc];
+  if(black){
+   g.fillStyle = T.keyBlack;
+   g.fillRect(0,y+1,PR_KEY_W*0.64,PR_ROW_H-2);
   }
+  // hairline between keys
+  g.fillStyle = T.keyEdge;
+  g.fillRect(0,y+PR_ROW_H-1,PR_KEY_W,1);
+  // In-key marker: a dot at the right edge of the key, filled for the tonic.
+  if(sc.set.indexOf(pc)>=0){
+   g.beginPath();
+   g.arc(PR_KEY_W-6, y+PR_ROW_H/2, pc===sc.root?3:2, 0, Math.PI*2);
+   g.fillStyle = pc===sc.root ? T.slide : T.note;
+   g.fill();
+  }
+  // Name every key. This is what was missing — only C was labelled before.
+  g.fillStyle = black ? T.keyLabelOnBlack : T.keyLabel;
+  const name = PR_NOTE_NAMES[pc] + (pc===0 ? String(Math.floor(midi/12)-1) : '');
+  g.fillText(name, black?3:5, y+PR_ROW_H/2);
  }
+ g.fillStyle = T.keyEdge; g.fillRect(PR_KEY_W-1,0,1,H);
 }
 
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
  const g = cv.getContext('2d');
+ const T = prTheme(), sc = prScalePcs();
  const rows = cfg.hi - cfg.lo + 1, steps = cfg.steps();
  const colW = prColW(id, steps);
  const W = steps*colW, H = rows*PR_ROW_H;
  g.clearRect(0,0,W,H);
 
- // Row shading: black keys darker, so the octave is readable at a glance —
- // the whole reason for this view.
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i, pc = ((midi%12)+12)%12;
-  g.fillStyle = PR_BLACK[pc] ? 'rgba(255,255,255,.012)' : 'rgba(255,255,255,.032)';
-  g.fillRect(0,i*PR_ROW_H,W,PR_ROW_H-1);
-  if(pc===0){ g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(0,i*PR_ROW_H,W,1); }
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  // Opaque base first — a transparent canvas let the page background through.
+  g.fillStyle = PR_BLACK[pc] ? T.bgBlack : T.bgWhite;
+  g.fillRect(0,y,W,PR_ROW_H);
+  // Then tint the rows that are in the current key, tonic strongest.
+  if(sc.set.indexOf(pc)>=0){
+   g.fillStyle = (pc===sc.root) ? T.tonic : T.inKey;
+   g.fillRect(0,y,W,PR_ROW_H);
+  }
+  g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
  }
- // Beat lines every 4 steps, bar lines every 16.
  for(let x=0;x<=steps;x++){
-  if(x%16===0) g.fillStyle='rgba(255,255,255,.22)';
-  else if(x%4===0) g.fillStyle='rgba(255,255,255,.10)';
+  if(x%16===0) g.fillStyle=T.bar;
+  else if(x%4===0) g.fillStyle=T.beat;
   else continue;
   g.fillRect(x*colW,0,1,H);
  }
- // Notes.
- const accent = cfg.color || '#2df09a';
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
   const midi = c.note + (c.oct+1)*12;
   const row = cfg.hi - midi;
   const len = Math.max(1, c.len||1);
-  const y = row*PR_ROW_H;
-  const w = len*colW - 3;
+  const y = row*PR_ROW_H, w = len*colW - 3;
   if(row < 0 || row >= rows){
-   // Out of the drawn range — mark it at the edge rather than dropping it, so
-   // a note that wandered is visible instead of silently missing.
-   g.fillStyle = '#ff6b35';
+   g.fillStyle = T.oor;
    g.fillRect(x*colW+1, row<0 ? 0 : H-3, colW-3, 3);
    continue;
   }
-  g.fillStyle = c.accent ? '#ffffff' : accent;
-  g.globalAlpha = c.accent ? .95 : .8;
+  g.fillStyle = c.accent ? T.accent : T.note;
   g.fillRect(x*colW+1, y+1, w, PR_ROW_H-3);
-  g.globalAlpha = 1;
-  if(c.slide){                              // slide marker: a tail to the right
-   g.fillStyle = '#3ab4ff';
+  // A hand-placed note is outlined, so you can see which ones Generate will
+  // leave alone.
+  if(c.usr){
+   g.strokeStyle = T.slide; g.lineWidth = 1.5;
+   g.strokeRect(x*colW+1.5, y+1.5, w-1, PR_ROW_H-4);
+  }
+  // Name the note on the bar itself when there is room, so you can read a
+  // line without tracking back to the gutter.
+  if(w > 22){
+   // Contrast follows the BAR, not the theme. Keyed off the theme it put white
+   // text on the white accent bars in dark mode, which is invisible.
+   g.fillStyle = c.accent ? (T.light ? '#ffffff' : '#0a0c16') : '#06251a';
+   g.font = '600 8px Outfit, sans-serif';
+   g.textBaseline = 'middle';
+   g.fillText(PR_NOTE_NAMES[((midi%12)+12)%12], x*colW+4, y+PR_ROW_H/2);
+  }
+  if(c.slide){
+   g.fillStyle = T.slide;
    g.fillRect(x*colW+1+w, y+PR_ROW_H/2-1, 3, 2);
   }
  }
- // Playhead.
  const ph = cfg.playStep ? cfg.playStep() : -1;
  if(ph>=0 && ph<steps){
-  g.fillStyle='rgba(255,255,255,.85)';
+  g.fillStyle=T.head;
   g.fillRect(ph*colW,0,2,H);
  }
 }
@@ -16847,6 +17008,69 @@ window.prRedraw = function(id){ prDraw(id); };
 window.prRelayout = function(id){ prLayout(id); };
 window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
 window.addEventListener('resize', function(){ window.prRelayoutAll(); });
+// The roll reads every colour from the theme and shades rows by the current
+// key, so both have to repaint it.
+window.prThemeChanged = function(){ Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); }); };
+
+
+// ═══════════════════════════════════════
+// CROSS-SCOPE EXPORT CONTRACT
+// ═══════════════════════════════════════
+// Three engines — sequencer, bassline, melody generator — each live inside an
+// IIFE, so their state and functions are invisible to the rest of the file.
+// Outside code reaches them through window exports. The failure mode when an
+// export is missing is the problem this guards: the call sites are all written
+// as `if(typeof X === 'function') X()`, and a name that is out of scope makes
+// that test FALSE rather than throwing, so the call is skipped in silence and
+// the feature simply does nothing. Nine separate bugs in this file have had
+// that exact shape, including an applyTimeSig() in which every one of its six
+// guards was dead and the whole function was inert.
+//
+// So the contract is declared, and checked out loud at startup. A missing
+// export is a console error naming it, not a feature that quietly stopped
+// working. Tests assert window.__exportAudit().missing is empty.
+const REQUIRED_EXPORTS = {
+ // sequencer
+ _sqPlaying:'function', _sqSteps:'function', _sqSetStepsRaw:'function',
+ _sqSetSwing:'function', _sqSwingVal:'function', _sqMach:'function',
+ _sqSetMach:'function', _sqCaptureState:'function', _sqRestoreState:'function',
+ _sqEnsureGrid:'function', _sqRenderGrid:'function', _sqTracks:'function',
+ _sqMachines:'function', _sqHit:'function',
+ // bassline
+ _blPlaying:'function', _blCaptureState:'function', _blRestoreState:'function',
+ _blSetStepsRaw:'function', _blEnsureGrid:'function', _blRenderGrid:'function',
+ _blGenStyle:'function', blIsFollowOn:'function', _blWalkFeel:'function',
+ _blOnChord:'function', _blClearChords:'function', _songChordWindowAt:'function',
+ _songHasChordWindows:'function', blGenerate:'function', setBlGenStyle:'function',
+ setBlWave:'function',
+ // melody generator
+ _mlPlaying:'function', _mlCaptureState:'function', _mlRestoreState:'function',
+ _mlSetStepsRaw:'function', _mlRenderGrid:'function', _mlGenStyle:'function',
+ mlIsFollowOn:'function', mlGenerate:'function', setMlGenStyle:'function',
+ setMlWave:'function',
+ // shared
+ _humanT:'function', _humanV:'function', setHumanize:'function',
+ prRedraw:'function', prRelayout:'function'
+};
+
+window.__exportAudit = function(){
+ const missing=[], wrongType=[];
+ Object.keys(REQUIRED_EXPORTS).forEach(function(k){
+  const want=REQUIRED_EXPORTS[k], got=typeof window[k];
+  if(got==='undefined') missing.push(k);
+  else if(got!==want) wrongType.push(k+': expected '+want+', got '+got);
+ });
+ return {missing:missing, wrongType:wrongType,
+         ok: missing.length===0 && wrongType.length===0};
+};
+
+setTimeout(function(){
+ const r = window.__exportAudit();
+ if(!r.ok){
+  console.error('MODRIFF export contract broken — these call sites will fail SILENTLY:',
+                {missing:r.missing, wrongType:r.wrongType});
+ }
+}, 1500);
 
 // ─── Groove presets: populate sq-groove-presets ───
 function sqBuildGroovePresets(){
@@ -16855,10 +17079,10 @@ function sqBuildGroovePresets(){
   if(typeof RHYTHMS==='undefined') return;
   RHYTHMS.forEach(function(r,i){
     var b = document.createElement('button');
-    b.style.cssText='padding:5px 10px;border:1px solid #222840;border-radius:7px;background:#10121f;color:#5a6090;font-family:Outfit,sans-serif;font-size:.52rem;cursor:pointer;touch-action:manipulation;transition:all .12s;letter-spacing:.04em';
-    b.innerHTML='<b style="color:#eef0ff">'+r.sig+'</b> '+r.name;
-    b.onmouseover=function(){this.style.borderColor='#a855f7';this.style.color='#a855f7';};
-    b.onmouseout=function(){this.style.borderColor='#222840';this.style.color='#5a6090';};
+    // Was three hardcoded dark hexes, which rendered as dark-on-light buttons
+    // with near-invisible labels in light mode.
+    b.className='groove-btn';
+    b.innerHTML='<b>'+r.sig+'</b> '+r.name;
     b.onclick=function(){ sqLoadGroove(i); };
     el.appendChild(b);
   });
