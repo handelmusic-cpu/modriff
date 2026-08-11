@@ -871,6 +871,18 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
 .pr-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
 
+/* The amber reads on a dark page and washes out on a light one, so the light
+   theme takes it several stops down rather than sharing one value. */
+.jazz-btn { border-color:#e0b070; color:#b57e2a; }
+body.light-mode .jazz-btn { border-color:#a9721f; color:#7a4f10; }
+
+.groove-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:7px;
+  background:var(--surf); color:var(--muted); font-family:'Outfit',sans-serif;
+  font-size:.52rem; cursor:pointer; touch-action:manipulation; transition:all .12s;
+  letter-spacing:.04em; }
+.groove-btn b { color:var(--text); }
+.groove-btn:hover { border-color:var(--modal); color:var(--modal); }
+
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
 .sl-item {
@@ -2836,7 +2848,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <!-- Inline sound selector — hidden in Basic mode -->
  <div class="sound-bar advanced-only" id="sound-bar-inline">
  <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
- <button class="tb" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out." style="border-color:#e0b070;color:#e0b070">♭ Jazz</button>
+ <button class="tb jazz-btn" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out.">♭ Jazz</button>
  <div class="tg" id="sb-voices" style="flex-wrap:wrap"></div>
  </div>
 
@@ -3376,7 +3388,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     </div>
   </div>
   <div class="sq-pslots" id="sq-pslots"></div>
-  <div class="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:#333">(hold pattern to add)</span></div>
+  <div class="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:var(--muted)">(hold pattern to add)</span></div>
   <div class="sq-chainrow" id="sq-chainRow"></div>
 </div>
 
@@ -3943,6 +3955,42 @@ const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'do
 // the master limiter — and every other voice hits the same RMS with peaks
 // safely under that. Verified: 1.4 dB spread across all nine voices (was
 // 10.6 dB), no voice peaks above 0.55 on a single 4-note chord.
+// ── Theme helpers ──
+// Anything drawn to a canvas cannot be themed by CSS, so it has to ask. White
+// ink at low alpha is invisible on a light page, and that is exactly what the
+// oscilloscope grid, the drum knobs and the piano roll were all using.
+function uiLight(){ try{ return document.body.classList.contains('light-mode'); }catch(e){ return false; } }
+function uiInk(a){ return uiLight() ? 'rgba(0,0,0,'+a+')' : 'rgba(255,255,255,'+a+')'; }
+// The per-track and per-channel accents were chosen to read on a dark
+// background. Used as TEXT on a light one they measure 1.1-2.1:1 against the
+// page, which is unreadable. This keeps the hue — the colour is how you tell
+// the tracks apart — and drops the lightness until it actually contrasts.
+function uiTextColor(css){
+ if(!uiLight()) return css;
+ let r,g,b;
+ const hex = String(css).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+ if(hex){
+  let h=hex[1]; if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16);
+ } else {
+  const m=String(css).match(/[\d.]+/g); if(!m||m.length<3) return css;
+  r=+m[0]; g=+m[1]; b=+m[2];
+ }
+ // to HSL, clamp lightness, back to CSS
+ const rr=r/255, gg=g/255, bb=b/255;
+ const mx=Math.max(rr,gg,bb), mn=Math.min(rr,gg,bb);
+ let hh=0, ss=0; const ll=(mx+mn)/2;
+ const d=mx-mn;
+ if(d){
+  ss=ll>0.5 ? d/(2-mx-mn) : d/(mx+mn);
+  if(mx===rr) hh=((gg-bb)/d+(gg<bb?6:0));
+  else if(mx===gg) hh=(bb-rr)/d+2;
+  else hh=(rr-gg)/d+4;
+  hh*=60;
+ }
+ return 'hsl('+Math.round(hh)+','+Math.round(Math.min(0.95,ss+0.1)*100)+'%,32%)';
+}
+
 const WAVE_GAIN = {
  sine:.255,
  sawtooth:.373,
@@ -5041,7 +5089,7 @@ function msScopeTick(){
  const cs=getComputedStyle(document.documentElement);
  const line=(cs.getPropertyValue('--pg')||'#58ffb4').trim();
  // centre line
- g.strokeStyle='rgba(255,255,255,.10)'; g.lineWidth=1;
+ g.strokeStyle=uiInk(uiLight()?.16:.10); g.lineWidth=1;
  g.beginPath(); g.moveTo(0,h/2); g.lineTo(w,h/2); g.stroke();
  if(an){
   const buf=new Uint8Array(an.fftSize);
@@ -13060,7 +13108,7 @@ function sqDrawKnob(cvs, val, min, max, color){
   var valA = startA + norm*(endA-startA);
   // Track bg
   ctx2.beginPath(); ctx2.arc(cx,cy,r,startA,endA);
-  ctx2.strokeStyle='rgba(255,255,255,0.1)'; ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
+  ctx2.strokeStyle=uiInk(uiLight()?0.16:0.1); ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
   // Track fill
   ctx2.beginPath(); ctx2.arc(cx,cy,r,startA,valA);
   ctx2.strokeStyle=color; ctx2.lineWidth=2.5; ctx2.lineCap='round'; ctx2.stroke();
@@ -13070,7 +13118,7 @@ function sqDrawKnob(cvs, val, min, max, color){
   // Pointer line
   var px=cx+Math.cos(valA)*(r-1.5), py=cy+Math.sin(valA)*(r-1.5);
   ctx2.beginPath(); ctx2.moveTo(cx,cy); ctx2.lineTo(px,py);
-  ctx2.strokeStyle='rgba(255,255,255,0.8)'; ctx2.lineWidth=1.5; ctx2.lineCap='round'; ctx2.stroke();
+  ctx2.strokeStyle=uiInk(0.8); ctx2.lineWidth=1.5; ctx2.lineCap='round'; ctx2.stroke();
 }
 
 function sqAttachKnob(cvs, valEl, initVal, min, max, type, onChange){
@@ -14047,8 +14095,8 @@ function sqRenderGrid(){
     sqAttachKnob(vCvs, vVal, vInit, 0, 100, 'vol', function(v){ sqSv(sqMach,ti,v/100); sqDrawKnob(vCvs,v,0,100,'#a855f7'); vVal.textContent=v+'%'; });
     lr.appendChild(vw);
     var lbl=document.createElement('div');
-    if(sqMach==='303'){lbl.className='sq-nlbl';lbl.style.color=color;lbl.textContent=tr.name;}
-    else{lbl.className='sq-tlbl';lbl.style.color=tr.c;lbl.innerHTML=tr.n+'<small>'+tr.s+'</small>';}
+    if(sqMach==='303'){lbl.className='sq-nlbl';lbl.style.color=uiTextColor(color);lbl.textContent=tr.name;}
+    else{lbl.className='sq-tlbl';lbl.style.color=uiTextColor(tr.c);lbl.innerHTML=tr.n+'<small>'+tr.s+'</small>';}
     lr.appendChild(lbl);gLeft.appendChild(lr);
     // grid row
     var gr=document.createElement('div');gr.className='sq-grow'+(isBlack?' bk':'');
@@ -14212,7 +14260,7 @@ function sqRenderPSlots(){
 }
 function sqRenderChain(){
   var el=document.getElementById('sq-chainRow');if(!el)return;el.innerHTML='';
-  if(!sqChain.length){el.innerHTML='<span style="font-size:.38rem;color:#282840">Hold a pattern slot to add</span>';return;}
+  if(!sqChain.length){el.innerHTML='<span style="font-size:.38rem;color:var(--muted)">Hold a pattern slot to add</span>';return;}
   for(var ci=0;ci<sqChain.length;ci++){
     (function(pi,cii){
       var item=document.createElement('div');item.className='sq-ci';
@@ -16585,7 +16633,7 @@ window.buildMixChannelsInto = function(container){
   wrap.className='mix-strip';
   var cvs=document.createElement('canvas'); cvs.width=40; cvs.height=40; cvs.style.cursor='pointer';
   var valEl=document.createElement('div');
-  valEl.className='mix-val'; valEl.style.color=ch.color;
+  valEl.className='mix-val'; valEl.style.color=uiTextColor(ch.color);
   var lbl=document.createElement('div');
   lbl.className='mix-lbl';
   lbl.textContent=ch.label;
@@ -17031,10 +17079,10 @@ function sqBuildGroovePresets(){
   if(typeof RHYTHMS==='undefined') return;
   RHYTHMS.forEach(function(r,i){
     var b = document.createElement('button');
-    b.style.cssText='padding:5px 10px;border:1px solid #222840;border-radius:7px;background:#10121f;color:#5a6090;font-family:Outfit,sans-serif;font-size:.52rem;cursor:pointer;touch-action:manipulation;transition:all .12s;letter-spacing:.04em';
-    b.innerHTML='<b style="color:#eef0ff">'+r.sig+'</b> '+r.name;
-    b.onmouseover=function(){this.style.borderColor='#a855f7';this.style.color='#a855f7';};
-    b.onmouseout=function(){this.style.borderColor='#222840';this.style.color='#5a6090';};
+    // Was three hardcoded dark hexes, which rendered as dark-on-light buttons
+    // with near-invisible labels in light mode.
+    b.className='groove-btn';
+    b.innerHTML='<b>'+r.sig+'</b> '+r.name;
     b.onclick=function(){ sqLoadGroove(i); };
     el.appendChild(b);
   });
