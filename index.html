@@ -804,6 +804,50 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  50% { box-shadow:0 0 0 5px hsla(var(--kh),var(--ks),var(--kl),0); }
 }
 
+/* ═══════════════════════════════════════
+   SUB-NAV — the level between the main tabs and the controls
+   ═══════════════════════════════════════
+   Chords/Melody and Bass/Melody Gen/Arp are navigation: they decide which
+   page you are looking at. They used to be .tg/.tb pill groups, which is the
+   same component the app uses for every ordinary option row — mode, variants,
+   style, sound, rate. On the Bass tab that put the page switcher above five
+   more rows of visually identical pills, so the one control that changes what
+   the whole screen means looked exactly like the one that picks a waveform.
+   This borrows the main tab bar's vocabulary instead — a sliding, glowing
+   underline — so the hierarchy is legible at a glance without reading a word. */
+.subnav {
+ display:flex; align-items:center; width:100%; position:relative;
+ border-bottom:1px solid var(--border2);
+ margin-bottom:12px; gap:2px;
+ background:linear-gradient(180deg, transparent 55%, rgba(255,255,255,.025) 100%);
+}
+.subnav-lbl {
+ font-family:'Outfit',sans-serif; font-size:.4rem; font-weight:600;
+ letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+ opacity:.65; padding:0 12px 0 4px; white-space:nowrap; flex-shrink:0;
+ align-self:center; border-right:1px solid var(--border); margin-right:6px;
+}
+.subnav-btn {
+ flex:1; background:none; border:none; cursor:pointer;
+ padding:10px 8px 11px; min-width:0;
+ font-family:'Orbitron',sans-serif;
+ font-size:.6rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+ color:color-mix(in srgb, var(--text) 62%, transparent);
+ transition:color .15s; touch-action:manipulation; white-space:nowrap;
+}
+.subnav-btn:hover { color:var(--text); }
+.subnav-btn.active { color:var(--accent); }
+.subnav-led {
+ position:absolute; bottom:-1px; height:2.5px; border-radius:2px;
+ background:var(--accent); box-shadow:0 0 9px 1px var(--accent);
+ transition:left .26s cubic-bezier(.22,.7,.2,1), width .26s cubic-bezier(.22,.7,.2,1);
+ pointer-events:none;
+}
+@media (max-width:420px){
+ .subnav-lbl { display:none; }
+ .subnav-btn { font-size:.54rem; letter-spacing:.1em; padding:9px 4px 10px; }
+}
+
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
 .sl-item {
@@ -2603,11 +2647,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <!-- Chords / Melody sub-tabs — above the key strip rather than several
       controls below it, since which mode you're in is the first thing to
       orient on when you land on this tab. -->
- <div style="width:100%;max-width:700px;margin-bottom:8px">
- <div class="tg" style="width:100%">
- <button class="tb active" id="pf-chords-btn" onclick="setPerformMode('chords')" style="flex:1">Chords</button>
- <button class="tb" id="pf-melody-btn" onclick="setPerformMode('melody')" style="flex:1">Melody</button>
- </div>
+ <div class="subnav" id="pf-subnav" style="max-width:700px">
+ <span class="subnav-lbl">Part</span>
+ <button class="subnav-btn active" id="pf-chords-btn" onclick="setPerformMode('chords')">Chords</button>
+ <button class="subnav-btn" id="pf-melody-btn" onclick="setPerformMode('melody')">Melody</button>
+ <div class="subnav-led" id="pf-subnav-led"></div>
  </div>
 
  <div class="key-strip" style="width:100%;max-width:700px;margin-bottom:8px;margin-top:4px">
@@ -3342,12 +3386,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="tab-page" id="page-bass">
 
  <!-- Bass / Melody / Arp toggle -->
- <div style="width:100%;max-width:700px;margin-bottom:10px">
- <div class="tg" style="width:100%">
- <button class="tb active" id="bm-bass-btn" onclick="setBassMelMode('bass')" style="flex:1">Bass</button>
- <button class="tb" id="bm-mel-btn" onclick="setBassMelMode('melody')" style="flex:1">Melody</button>
- <button class="tb" id="bm-arp-btn" onclick="setBassMelMode('arp')" style="flex:1">Arp</button>
- </div>
+ <div class="subnav" id="bm-subnav" style="max-width:700px">
+ <span class="subnav-lbl">Part</span>
+ <button class="subnav-btn active" id="bm-bass-btn" onclick="setBassMelMode('bass')">Bass</button>
+ <button class="subnav-btn" id="bm-mel-btn" onclick="setBassMelMode('melody')">Melody Gen</button>
+ <button class="subnav-btn" id="bm-arp-btn" onclick="setBassMelMode('arp')">Arp</button>
+ <div class="subnav-led" id="bm-subnav-led"></div>
  </div>
 
  <!-- BASS SUB-PAGE -->
@@ -10293,12 +10337,32 @@ function setSongsMode(m){
 
 let bassMelMode = 'bass';
 let performMode='chords';
+// Slides a sub-nav's LED under whichever tab is active, the same way
+// positionTabLed does for the main bar. Runs on switch, on tab change (a
+// hidden element measures zero, so the position has to be recomputed once it
+// is actually on screen) and on resize.
+function positionSubnavLed(navId){
+ const nav=document.getElementById(navId); if(!nav) return;
+ const led=nav.querySelector('.subnav-led'); if(!led) return;
+ const btn=nav.querySelector('.subnav-btn.active'); if(!btn) return;
+ const nb=nav.getBoundingClientRect(), bb=btn.getBoundingClientRect();
+ if(bb.width<=0) return;               // not laid out yet
+ const inset=bb.width*0.14;
+ led.style.left=(bb.left-nb.left+inset)+'px';
+ led.style.width=Math.max(12,bb.width-inset*2)+'px';
+}
+function positionAllSubnavLeds(){
+ ['pf-subnav','bm-subnav'].forEach(positionSubnavLed);
+}
+window.addEventListener('resize', positionAllSubnavLeds);
+
 function setPerformMode(m){
  performMode = m;
  document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
  document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+ positionSubnavLed('pf-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -10311,6 +10375,7 @@ function setBassMelMode(m){
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
  if(m === 'melody' && typeof mlRenderGrid==='function') mlRenderGrid();
+ positionSubnavLed('bm-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -10492,6 +10557,7 @@ function switchTab(t){
  }
  if(typeof msSyncHost==='function') msSyncHost();
  positionTabLed();
+ positionAllSubnavLeds();
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
@@ -12601,6 +12667,7 @@ buildStandardsMenu();
 buildChartPicker();
 renderChords();
 if(typeof buildVoicePickers==='function') buildVoicePickers();
+if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
 loadProgressionFromHash();
 if(typeof renderSetups==='function') renderSetups();
 if(typeof loadSetupFromHash==='function') loadSetupFromHash();
