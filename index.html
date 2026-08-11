@@ -859,8 +859,11 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
    divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
    a lot of DOM to rebuild on every generate, on a phone. */
 .pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
-           border-radius:var(--r-md); overflow:hidden; background:var(--bg); }
-.pr-keys { flex:0 0 34px; }
+           border-radius:var(--r-md); overflow:auto; background:var(--bg);
+           /* The full chromatic range is 25-30 rows tall. Cap it and scroll
+              vertically rather than letting the roll push the whole page down. */
+           max-height:min(46vh, 340px); }
+.pr-keys { flex:0 0 52px; position:sticky; left:0; z-index:2; }
 .pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
              touch-action:pan-x; overscroll-behavior-x:contain; }
 .pr-canvas { display:block; touch-action:manipulation; }
@@ -7783,6 +7786,8 @@ function renderChords(){
 // ═══════════════════════════════════════
 function setMode(m){
  mode=m;
+ // The roll shades in-key rows, so a mode change has to repaint it.
+ if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
  Object.keys(MODES).forEach(x=>{
   const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
   const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
@@ -12840,6 +12845,7 @@ function toggleTheme(){
  sl?.classList.toggle('active', isLight);
  sd?.classList.toggle('active', !isLight);
  const tv=isLight?'light':'dark'; localStorage.setItem('mv-theme',tv); localStorage.setItem('prism-theme',tv);
+ if(typeof window.prThemeChanged==='function') window.prThemeChanged();
 }
 
 // ═══════════════════════════════════════
@@ -13001,6 +13007,7 @@ const MH_LT  = [60, 59, 56, 53, 50, 53, 56, 60, 63, 62, 60, 59];
 const MH_SAT = [85, 84, 82, 81, 79, 81, 82, 85, 83, 80, 80, 83];
 
 function mhApply(rootNote) {
+  if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
   const r = ((rootNote % 12) + 12) % 12;
   const h = MH_HUE[r], s = MH_SAT[r], l = MH_LT[r];
   const el = document.documentElement;
@@ -14580,7 +14587,11 @@ var blVol = 0.7;
 window.blSetCutoff = function(v){ blCutoff = +v; };
 window.blSetResonance = function(v){ blResonance = +v; };
 
-function blMkCell(){ return {note:0, oct:blOct, len:1, slide:false, accent:false, v:0}; }
+// `usr` marks a step you placed by hand. Generate fills around those rather
+// than over them, so an edit survives the next roll of the line instead of
+// disappearing — which is the difference between a generator you can work with
+// and one that keeps overwriting you.
+function blMkCell(){ return {note:0, oct:blOct, len:1, slide:false, accent:false, v:0, usr:0}; }
 
 function blEnsureGrid(){
   while(blGrid.length < blSteps) blGrid.push(blMkCell());
@@ -15146,9 +15157,9 @@ function blPrInit(){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       var cur = c.note + (c.oct+1)*12;
-      if(c.v && cur === midi){ c.v = 0; }      // tapping the same note clears it
+      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }   // tapping it again clears it, pin included
       else {
-        c.v = 1;
+        c.v = 1; c.usr = 1;
         c.note = ((midi%12)+12)%12;
         c.oct  = Math.floor(midi/12)-1;
         blPreviewNote(c);
@@ -15160,6 +15171,7 @@ function blPrInit(){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      c.usr = 1;
       var host = document.getElementById('bl-pr-canvas');
       blOpenMenu(host, step);
     }
@@ -15337,6 +15349,12 @@ window.blShiftOct = function(d){
 // Scale degrees in semitones (major and minor)
 window.blGenerate = function(){
   blEnsureGrid();
+  // Snapshot hand-edited steps before the grid is rebuilt, and put them back
+  // after the range clamp so they land exactly where you placed them.
+  var _keep = [];
+  for(var _k=0;_k<blSteps;_k++){
+    if(blGrid[_k] && blGrid[_k].usr) _keep[_k] = JSON.parse(JSON.stringify(blGrid[_k]));
+  }
   var _md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
   var scale = _md ? _md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   var rn = root;
@@ -15698,6 +15716,8 @@ window.blGenerate = function(){
     c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
 
+  for(var _r=0;_r<blSteps;_r++){ if(_keep[_r]) blGrid[_r]=_keep[_r]; }
+
   blRenderGrid();
 };
 
@@ -15734,6 +15754,7 @@ window.setBlWalkFeel = function(f){
 window.blToggleWalkFeel = function(){ window.setBlWalkFeel(blWalkFeel==='two'?'four':'two'); };
 window._blWalkFeel = function(){ return blWalkFeel; };
 
+// Clr wipes the pins too — it is the one action that means "start over".
 window.blClear = function(){ for(var s=0;s<blSteps;s++) blGrid[s]=blMkCell(); blRenderGrid(); };
 
 // The style lives inside this IIFE, so setting window.blGenStyle from outside
@@ -15914,7 +15935,7 @@ var mlGenStyle = 'arpeggio';
 var mlWave = 'piano';
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
-function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0}; }
+function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
 
 function mlEnsureGrid(){
   while(mlGrid.length < mlSteps) mlGrid.push(mlMkCell());
@@ -15998,9 +16019,9 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       var cur = c.note + (c.oct+1)*12;
-      if(c.v && cur === midi){ c.v = 0; }
+      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
       else {
-        c.v = 1;
+        c.v = 1; c.usr = 1;
         c.note = ((midi%12)+12)%12;
         c.oct  = Math.floor(midi/12)-1;
         if(typeof mlPreviewNote==='function') mlPreviewNote(c);
@@ -16012,6 +16033,7 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      c.usr = 1;
       if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
     }
   });
@@ -16240,6 +16262,11 @@ window.mlShiftOct = function(d){
 // ── AUTO-GENERATE — scale/chord-aware melodic pattern presets ──
 window.mlGenerate = function(){
   mlEnsureGrid();
+  // See blMkCell: hand-edited steps survive a regenerate.
+  var _keep = [];
+  for(var _k=0;_k<mlSteps;_k++){
+    if(mlGrid[_k] && mlGrid[_k].usr) _keep[_k] = JSON.parse(JSON.stringify(mlGrid[_k]));
+  }
   var _md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
   var scale = _md ? _md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   var rn = root;
@@ -16401,6 +16428,7 @@ window.mlGenerate = function(){
     while(m < ML_GEN_LO) m += 12;
     c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
+  for(var _r=0;_r<mlSteps;_r++){ if(_keep[_r]) mlGrid[_r]=_keep[_r]; }
   mlRenderGrid();
 };
 
@@ -16695,12 +16723,11 @@ switchTab = function(t){
 // other's state, which is why this takes functions instead of data.
 const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
-const PR_ROW_H = 11;      // px per semitone
-const PR_KEY_W = 34;
+const PR_ROW_H = 15;      // px per semitone — tall enough to letter a note name
+const PR_KEY_W = 52;      // the keyboard gutter
 // Column width adapts to the panel: a 16-step pattern should fill the width
 // rather than leaving half the panel empty, while a 32-step one stays legible
-// and scrolls. Recomputed on layout, so it follows a resize or a step-count
-// change without anything else having to know.
+// and scrolls.
 let PR_COL_W = 26;
 function prColW(id, steps){
  const sc = document.getElementById(id+'-pr-scroll');
@@ -16710,6 +16737,47 @@ function prColW(id, steps){
 }
 
 const PR_ENGINES = {};
+
+// Every colour is resolved from the theme at draw time. The first version of
+// this hardcoded dark hexes and painted its row shading as white at 1-3%
+// alpha on a TRANSPARENT canvas — which in light mode meant white on white
+// over a pale page, so the pitch grid was invisible and the key gutter was a
+// black stripe. Nothing about the roll can be hardcoded.
+function prTheme(){
+ const light = document.body.classList.contains('light-mode');
+ const cs = getComputedStyle(document.documentElement);
+ const v = (n,f)=>{ const x=cs.getPropertyValue(n).trim(); return x||f; };
+ return {
+  light: light,
+  bgWhite:  light ? '#ffffff' : '#151726',
+  bgBlack:  light ? '#dfe3f2' : '#0d0e18',
+  inKey:    light ? 'rgba(56,120,255,.10)' : 'rgba(120,170,255,.09)',
+  tonic:    light ? 'rgba(56,120,255,.20)' : 'rgba(120,170,255,.20)',
+  line:     light ? 'rgba(0,0,0,.10)'  : 'rgba(255,255,255,.07)',
+  beat:     light ? 'rgba(0,0,0,.16)'  : 'rgba(255,255,255,.11)',
+  bar:      light ? 'rgba(0,0,0,.34)'  : 'rgba(255,255,255,.26)',
+  keyWhite: light ? '#ffffff' : '#e9ecf7',
+  keyBlack: light ? '#2a2f45' : '#0b0c14',
+  keyLabel: light ? '#20264a' : '#111325',
+  keyLabelOnBlack: light ? '#e8ebfa' : '#8f97c0',
+  keyEdge:  light ? '#b9c0dc' : '#2a2e45',
+  note:     v('--pg','#2df09a'),
+  accent:   light ? '#111325' : '#ffffff',
+  slide:    v('--pb','#3ab4ff'),
+  head:     light ? 'rgba(0,0,0,.75)' : 'rgba(255,255,255,.85)',
+  oor:      '#ff6b35'
+ };
+}
+
+// Pitch classes of the current key/mode, so the roll can show which notes are
+// in the key you are actually in rather than making you count semitones.
+function prScalePcs(){
+ try{
+  const md = (typeof MODES!=='undefined' && MODES[mode]) ? MODES[mode] : null;
+  const steps = md ? md.steps : [0,2,4,5,7,9,11];
+  return { root: ((root%12)+12)%12, set: steps.map(d=>((root+d)%12+12)%12) };
+ }catch(e){ return { root:0, set:[0,2,4,5,7,9,11] }; }
+}
 
 function prRegister(id, cfg){ PR_ENGINES[id] = cfg; prLayout(id); }
 
@@ -16733,86 +16801,110 @@ function prLayout(id){
  prDraw(id);
 }
 
-function _prCss(v, fallback){
- try{ const c=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return c||fallback; }
- catch(e){ return fallback; }
-}
-
+// An actual keyboard, not a column of shaded strips: black keys are drawn
+// narrower and darker so the pattern of twos and threes reads at a glance,
+// which is how you find a pitch without counting.
 function prDrawKeys(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const kv = document.getElementById(id+'-pr-keys'); if(!kv) return;
  const g = kv.getContext('2d');
- const rows = cfg.hi - cfg.lo + 1;
- g.clearRect(0,0,PR_KEY_W,rows*PR_ROW_H);
+ const T = prTheme(), sc = prScalePcs();
+ const rows = cfg.hi - cfg.lo + 1, H = rows*PR_ROW_H;
+ g.clearRect(0,0,PR_KEY_W,H);
+ g.fillStyle = T.keyWhite; g.fillRect(0,0,PR_KEY_W,H);
+ g.font = '600 8px Outfit, sans-serif';
+ g.textBaseline = 'middle';
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i;                 // high notes at the top, as on a keyboard
-  const pc = ((midi%12)+12)%12;
-  const y = i*PR_ROW_H;
-  g.fillStyle = PR_BLACK[pc] ? '#0d0e18' : '#1b1d2c';
-  g.fillRect(0,y,PR_KEY_W,PR_ROW_H-1);
-  if(pc===0){                              // label every C, with its octave
-   g.fillStyle = '#8890b8';
-   g.font = '7px Outfit, sans-serif';
-   g.textBaseline = 'middle';
-   g.fillText('C'+(Math.floor(midi/12)-1), 4, y+PR_ROW_H/2);
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  const black = !!PR_BLACK[pc];
+  if(black){
+   g.fillStyle = T.keyBlack;
+   g.fillRect(0,y+1,PR_KEY_W*0.64,PR_ROW_H-2);
   }
+  // hairline between keys
+  g.fillStyle = T.keyEdge;
+  g.fillRect(0,y+PR_ROW_H-1,PR_KEY_W,1);
+  // In-key marker: a dot at the right edge of the key, filled for the tonic.
+  if(sc.set.indexOf(pc)>=0){
+   g.beginPath();
+   g.arc(PR_KEY_W-6, y+PR_ROW_H/2, pc===sc.root?3:2, 0, Math.PI*2);
+   g.fillStyle = pc===sc.root ? T.slide : T.note;
+   g.fill();
+  }
+  // Name every key. This is what was missing — only C was labelled before.
+  g.fillStyle = black ? T.keyLabelOnBlack : T.keyLabel;
+  const name = PR_NOTE_NAMES[pc] + (pc===0 ? String(Math.floor(midi/12)-1) : '');
+  g.fillText(name, black?3:5, y+PR_ROW_H/2);
  }
+ g.fillStyle = T.keyEdge; g.fillRect(PR_KEY_W-1,0,1,H);
 }
 
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
  const g = cv.getContext('2d');
+ const T = prTheme(), sc = prScalePcs();
  const rows = cfg.hi - cfg.lo + 1, steps = cfg.steps();
  const colW = prColW(id, steps);
  const W = steps*colW, H = rows*PR_ROW_H;
  g.clearRect(0,0,W,H);
 
- // Row shading: black keys darker, so the octave is readable at a glance —
- // the whole reason for this view.
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i, pc = ((midi%12)+12)%12;
-  g.fillStyle = PR_BLACK[pc] ? 'rgba(255,255,255,.012)' : 'rgba(255,255,255,.032)';
-  g.fillRect(0,i*PR_ROW_H,W,PR_ROW_H-1);
-  if(pc===0){ g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(0,i*PR_ROW_H,W,1); }
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  // Opaque base first — a transparent canvas let the page background through.
+  g.fillStyle = PR_BLACK[pc] ? T.bgBlack : T.bgWhite;
+  g.fillRect(0,y,W,PR_ROW_H);
+  // Then tint the rows that are in the current key, tonic strongest.
+  if(sc.set.indexOf(pc)>=0){
+   g.fillStyle = (pc===sc.root) ? T.tonic : T.inKey;
+   g.fillRect(0,y,W,PR_ROW_H);
+  }
+  g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
  }
- // Beat lines every 4 steps, bar lines every 16.
  for(let x=0;x<=steps;x++){
-  if(x%16===0) g.fillStyle='rgba(255,255,255,.22)';
-  else if(x%4===0) g.fillStyle='rgba(255,255,255,.10)';
+  if(x%16===0) g.fillStyle=T.bar;
+  else if(x%4===0) g.fillStyle=T.beat;
   else continue;
   g.fillRect(x*colW,0,1,H);
  }
- // Notes.
- const accent = cfg.color || '#2df09a';
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
   const midi = c.note + (c.oct+1)*12;
   const row = cfg.hi - midi;
   const len = Math.max(1, c.len||1);
-  const y = row*PR_ROW_H;
-  const w = len*colW - 3;
+  const y = row*PR_ROW_H, w = len*colW - 3;
   if(row < 0 || row >= rows){
-   // Out of the drawn range — mark it at the edge rather than dropping it, so
-   // a note that wandered is visible instead of silently missing.
-   g.fillStyle = '#ff6b35';
+   g.fillStyle = T.oor;
    g.fillRect(x*colW+1, row<0 ? 0 : H-3, colW-3, 3);
    continue;
   }
-  g.fillStyle = c.accent ? '#ffffff' : accent;
-  g.globalAlpha = c.accent ? .95 : .8;
+  g.fillStyle = c.accent ? T.accent : T.note;
   g.fillRect(x*colW+1, y+1, w, PR_ROW_H-3);
-  g.globalAlpha = 1;
-  if(c.slide){                              // slide marker: a tail to the right
-   g.fillStyle = '#3ab4ff';
+  // A hand-placed note is outlined, so you can see which ones Generate will
+  // leave alone.
+  if(c.usr){
+   g.strokeStyle = T.slide; g.lineWidth = 1.5;
+   g.strokeRect(x*colW+1.5, y+1.5, w-1, PR_ROW_H-4);
+  }
+  // Name the note on the bar itself when there is room, so you can read a
+  // line without tracking back to the gutter.
+  if(w > 22){
+   // Contrast follows the BAR, not the theme. Keyed off the theme it put white
+   // text on the white accent bars in dark mode, which is invisible.
+   g.fillStyle = c.accent ? (T.light ? '#ffffff' : '#0a0c16') : '#06251a';
+   g.font = '600 8px Outfit, sans-serif';
+   g.textBaseline = 'middle';
+   g.fillText(PR_NOTE_NAMES[((midi%12)+12)%12], x*colW+4, y+PR_ROW_H/2);
+  }
+  if(c.slide){
+   g.fillStyle = T.slide;
    g.fillRect(x*colW+1+w, y+PR_ROW_H/2-1, 3, 2);
   }
  }
- // Playhead.
  const ph = cfg.playStep ? cfg.playStep() : -1;
  if(ph>=0 && ph<steps){
-  g.fillStyle='rgba(255,255,255,.85)';
+  g.fillStyle=T.head;
   g.fillRect(ph*colW,0,2,H);
  }
 }
@@ -16868,6 +16960,9 @@ window.prRedraw = function(id){ prDraw(id); };
 window.prRelayout = function(id){ prLayout(id); };
 window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
 window.addEventListener('resize', function(){ window.prRelayoutAll(); });
+// The roll reads every colour from the theme and shades rows by the current
+// key, so both have to repaint it.
+window.prThemeChanged = function(){ Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); }); };
 
 
 // ═══════════════════════════════════════
