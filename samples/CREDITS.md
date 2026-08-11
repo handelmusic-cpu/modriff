@@ -51,9 +51,13 @@ by [WebAudioFont](https://github.com/surikov/webaudiofontdata) — the same
 SoundFont as the upright bass and jazz guitar above, so the same CC BY 3.0
 terms apply.
 
+    kick.mp3       MIDI 36, Bass Drum 1
+    sidestick.mp3  MIDI 37, Side Stick (cross-stick)
+    hatclosed.mp3  MIDI 42, Closed Hi-Hat
+    hatpedal.mp3   MIDI 44, Pedal Hi-Hat
+    tom.mp3        MIDI 47, Low-Mid Tom
     ride.mp3       MIDI 51, Ride Cymbal 1
     ridebell.mp3   MIDI 53, Ride Bell
-    hatclosed.mp3  MIDI 42, Closed Hi-Hat
 
 An earlier note here said a sampled kit was impossible. That was true of the
 source in use — midi-js-soundfonts renders the 128 melodic GM programs only —
@@ -62,7 +66,11 @@ as individually encoded one-shots, and those are NOT subject to the ~7.5 kHz
 brickwall the melodic mp3s have. Measured: the ride reaches 15.9 kHz with 18%
 of its energy above 7 kHz, the ride bell 14.5 kHz with a 2.65 s tail.
 
-Brushes and the rest of the Jazz kit stay synthesized. There is no brush in the
-GM percussion map, and a brush swirl is a sustained gesture rather than a
-struck one — the case synthesis handles well. Every sampled voice falls back to
-its synthesized version if the fetch fails, so the kit is never silent.
+Six of the Jazz kit's eight voices are these recordings. Only the two brush
+voices are synthesized, because there is no brush anywhere in the GM percussion
+map — and a brush swirl is a sustained gesture rather than a struck one, which
+is the case synthesis handles well anyway. Every sampled voice falls back to a
+synthesized version if the fetch fails, so the kit is never silent.
+
+Track names map to standard GM percussion notes, so an exported MIDI file lands
+on the right pads in Ableton Live, Battery or any GM kit without remapping.
