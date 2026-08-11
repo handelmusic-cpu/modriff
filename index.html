@@ -8353,6 +8353,7 @@ function applyJazzMode(){
 
  // Start the samples downloading now rather than on the first note.
  try{ ['jazzgtr','tenorsax','vibes','mutetpt','bass'].forEach(preloadSampleInstrument); }catch(e){}
+ try{ if(typeof preloadDrumSamples==='function') preloadDrumSamples(); }catch(e){}
 
  if(typeof track==='function') track('jazz_mode_applied',{});
  showToast('Jazz mode — archtop, sax, vibes, upright & brushes');
@@ -10676,8 +10677,8 @@ Notes are held to a singable range (G3–C6) so the octave-lifting styles can't 
   title: 'Real instruments, the Jazz kit & Jazz mode',
   body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> The sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why a sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br>
-<strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. It is <strong>synthesized, not sampled</strong> — and that is an upgrade, not a compromise. Neither sample set has a drum bank at all, and a ride cymbal runs from 5&nbsp;kHz to past 15&nbsp;kHz, so a sampled one would have been cut off at 7.5. The synthesized ride reaches <strong>22&nbsp;kHz</strong>.<br><br>
-A cymbal is a dense set of <strong>inharmonic</strong> modes whose high partials die away faster than its low ones — that uneven decay is what your ear reads as struck metal rather than filtered hiss. Each strike also scatters its partial levels slightly, so no two rides ping identically, the way no two real ones do.<br><br>
+<strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
+The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
 <strong>♭ Jazz</strong> on the Play tab sets the whole rig in one tap: archtop guitar comping, tenor sax on the keys you play, vibes on the arp, muted trumpet on the melody generator, real upright bass walking through the changes, the Jazz kit, swing, and a touch of humanize. It does <strong>not</strong> touch your key, tempo, songs or setlist — those are yours — and <strong>Undo</strong> backs the whole thing out in one step. The dice can also land on a <strong>Jazz Room</strong> character, which rolls the sound but leaves the bass engine and kit alone; the button is the full rig.<br><br>
 <strong>Ride</strong> keeps the time. <strong>Bell</strong> is the same metal struck on the cup — fewer modes, higher, damped harder so it rings clear. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Kick</strong> is a felt beater feathering the pulse. <strong>Rim</strong> is a cross-stick — wood, not snare.`
  },
@@ -13077,7 +13078,75 @@ function sqAcid(t,freq,dur,vol,cut,res,ac){
 function sqSemi(n){return Math.pow(2,(n||0)/12);}
 
 // ═══════════════════════════════════════
-// JAZZ KIT — cymbal and brush synthesis
+// JAZZ KIT — real cymbals, synthesized brushes
+// ═══════════════════════════════════════
+// The cymbals are recorded. They were synthesized first, and the synthesis was
+// measured to behave correctly — inharmonic modes with the high partials
+// decaying 21 dB faster than the low ones, which is the thing that makes metal
+// read as metal. It still did not sound like a ride cymbal, and a measurement
+// agreeing with itself is not the same as the thing sounding right. A ride is
+// among the hardest sounds to synthesize: dozens of coupled modes, a wash that
+// builds over seconds, and an ear that knows the real thing intimately.
+//
+// The earlier conclusion that a sampled kit was impossible was too narrow. It
+// was true of the source being used — midi-js-soundfonts renders the 128
+// melodic GM programs only — but WebAudioFont publishes the FluidR3_GM
+// PERCUSSION bank as individually encoded one-shots, and those are not subject
+// to the ~7.5 kHz brickwall the melodic mp3s have. Measured: the ride reaches
+// 15.9 kHz with 18% of its energy above 7 kHz, and the ride bell 14.5 kHz with
+// a 2.65 s tail. Same SoundFont this repo already credits.
+//
+// Brushes stay synthesized: there is no brush in the GM percussion map, and a
+// brush swirl is a sustained gesture rather than a struck one, which is the
+// case synthesis handles well.
+
+// One-shot drum samples, loaded on demand and keyed by name rather than by
+// note — the melodic loader's per-note naming does not apply to percussion.
+const DRUM_SAMPLES = {
+ ride:     'samples/drums/ride.mp3',
+ ridebell: 'samples/drums/ridebell.mp3',
+ hatclosed:'samples/drums/hatclosed.mp3'
+};
+const DRUM_BUFFERS = {};
+let _drumLoadState = 'idle';
+function preloadDrumSamples(){
+ if(_drumLoadState==='loading' || _drumLoadState==='ready') return;
+ const ctx = (typeof getCtx==='function') ? getCtx() : null;
+ if(!ctx) return;
+ _drumLoadState='loading';
+ const jobs = Object.keys(DRUM_SAMPLES).map(k =>
+  fetch(DRUM_SAMPLES[k])
+   .then(r=>{ if(!r.ok) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
+   .then(a=>ctx.decodeAudioData(a))
+   .then(buf=>{ DRUM_BUFFERS[k]=buf; })
+   .catch(()=>{}));   // one missing cymbal must not sink the kit
+ Promise.all(jobs).then(()=>{
+  _drumLoadState = Object.keys(DRUM_BUFFERS).length ? 'ready' : 'error';
+ });
+}
+window.preloadDrumSamples = preloadDrumSamples;
+window._drumSampleState = function(){ return _drumLoadState; };
+// Exported for the same reason _sqTracks is: without it there is no way to
+// check that a cymbal strike took the sample path rather than the fallback.
+window._drumBuffers = function(){ return DRUM_BUFFERS; };
+
+// Returns true if it played, false if the caller should fall back to synthesis.
+function sqSample(name, t, vol, semi){
+ const buf = DRUM_BUFFERS[name];
+ if(!buf) { preloadDrumSamples(); return false; }
+ const c = sqCtx(); if(!c || !SQMG) return false;
+ const src = c.createBufferSource(); src.buffer = buf;
+ if(semi) src.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, semi/12)));
+ const g = c.createGain();
+ g.gain.value = vol;
+ src.connect(g); g.connect(SQMG);
+ src.start(t);
+ src.stop(t + buf.duration / (src.playbackRate.value || 1) + 0.05);
+ return true;
+}
+
+// ═══════════════════════════════════════
+// CYMBAL & BRUSH SYNTHESIS (fallback + brushes)
 // ═══════════════════════════════════════
 // Sampled cymbals were not an option: the sample source here ships the 128
 // melodic GM programs only, with no percussion bank, and its mp3 encode
@@ -13308,10 +13377,15 @@ var SQM={
   // this idiom the ride IS the time — everything else comments on it.
   'JAZZ':{label:'Jazz',color:'#e0b070',tracks:[
     {n:'Ride',s:'RD',c:'#e0b070',play:function(t,v,ac,ps){
+      // Real cymbal when it's loaded; the synthesized one covers the gap until
+      // then and if the fetch never lands, so the kit is never silent.
+      if(sqSample('ride', t, v*(ac?1.15:1)*0.85, ps)) return;
       sqCym(t, v*(ac?1.25:1)*0.5, 372*sqSemi(ps), 2.9,
             {damp:0.72, hp:2500, pingF:5400, pingLvl:0.45, washF:8600, washLvl:0.15});
     }},
     {n:'Bell',s:'BL',c:'#f0c68a',play:function(t,v,ac,ps){
+      // GM has an actual Ride Bell (MIDI 53) — the same cymbal struck on the cup.
+      if(sqSample('ridebell', t, v*(ac?1.15:1)*0.63, ps)) return;
       // The bell is a smaller, tighter, more defined part of the same metal:
       // fewer modes, higher, damped harder so it rings clear instead of washing.
       sqCym(t, v*(ac?1.3:1)*0.52, 640*sqSemi(ps), 1.5,
@@ -13332,6 +13406,7 @@ var SQM={
       sqNs(t, 0.03, 2600, v*0.3);
     }},
     {n:'Hat',s:'HH',c:'#a8b8c8',play:function(t,v,ac,ps){
+      if(sqSample('hatclosed', t, v*(ac?1.15:1)*0.22, ps)) return;
       // Foot hi-hat on 2 and 4 — a chick, closed and short.
       sqCym(t, v*(ac?1.2:1)*0.34, 520*sqSemi(ps), 0.16,
             {partials:6, damp:1.3, hp:5200, pingLvl:0.3, washLvl:0.05});
@@ -13373,6 +13448,9 @@ window._sqTracks = function(machKey){
 };
 
 window._sqSetMach = function(k){
+  // Fetch the real cymbals as soon as the Jazz kit is chosen, so the first
+  // bar has them rather than the fallback.
+  if(k==='JAZZ' && typeof preloadDrumSamples==='function') preloadDrumSamples();
  if(!k||k===sqMach||!SQM[k]) return;
  if(typeof sqDoSwap==='function') sqDoSwap(k); else sqMach=k;
 };
