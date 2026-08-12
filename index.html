@@ -2395,6 +2395,10 @@ body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
 .vmt-btn { font-size:.44rem; padding:3px 10px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
 .vmt-btn.active { background:var(--accent); color:#07080f; }
 body.mode-basic .advanced-only { display:none !important; }
+/* One exception: a MōdSynth voice that's already selected keeps its editor
+   in Basic, so no setup can leave you with a synth you can't reach. Set by
+   msApplyBasicGate(); the extra specificity is what beats the rule above. */
+body.mode-basic #modsynth-panel.advanced-only.ms-force-show { display:block !important; }
 body:not(.mode-basic) .basic-only { display:none !important; }
 body.light-mode .vmt-btn.active { color:#fff; }
 body.hide-church-modes .church-mode-btn { display:none !important; }
@@ -5172,6 +5176,13 @@ function msSyncHost(){
  try{ v=def&&def.get(); }catch(e){}
  const on = (v==='modsynth');
  panel.style.display = on ? '' : 'none';
+ // In Basic the panel is .advanced-only and would stay hidden even when this
+ // page's part IS on MōdSynth. Reveal it only in that case — not merely
+ // because some other part uses the synth, which would show the wrong page's
+ // editor. msApplyBasicGate() stops Basic from offering the voice at all;
+ // this is the escape hatch for setups that already had it selected.
+ panel.classList.toggle('ms-force-show', on);
+ if(typeof msApplyBasicGate==='function') msApplyBasicGate();
  // A blank space where the synth should be reads as a missing feature. When
  // this page's part is on some other voice, leave a one-line way in rather
  // than nothing at all.
@@ -8773,8 +8784,16 @@ function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
  const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
  const n = ((MODES[mode]||MODES.major).steps||[]).length || 7;
- const parts = MEL_SCALE_KEYS.slice(0,n).map((k,i)=> k.toUpperCase()+'='+(sol[i]||''));
- hint.textContent = parts.join(' ')+' · … then K L ; \' Q W E R T Y U I O P keep climbing the scale'
+ // Spell the two rows the way they're actually laid out — home key, then the
+ // in-between key above it when this mode leaves a gap there. Naming only the
+ // upper keys that sound keeps the hint honest about the dead ones.
+ const parts = [];
+ MEL_HOME_KEYS.slice(0,n).forEach((k,i)=>{
+  parts.push(k.toUpperCase()+'='+(sol[i]||''));
+  const up = MEL_UPPER_KEYS[i];
+  if(up && _buildMusicalKeysMap()[up]!==undefined) parts.push(up.toUpperCase()+'='+(sol[i]||'')+'♯');
+ });
+ hint.textContent = parts.join(' ')+' · K L ; \' carry on up'
                   +' · Z=Oct− X=Oct+ · C=Bend− V=Bend+';
 }
 
@@ -10276,25 +10295,41 @@ function applyLogicHighlights(deg,modalLabel){
 // ═══════════════════════════════════════
 // MUSICAL TYPING (Ableton-style)
 // ═══════════════════════════════════════
-// The two letter rows are one continuous run of the CURRENT mode's scale,
-// bottom-left to top-right: A through ' is the first eleven scale degrees,
-// then Q through P carries straight on from there. Every key sounds, no two
-// keys sound the same note, and the layout means the same thing in every
-// mode — you learn it once.
+// The keyboard is laid out like a piano, not like a list. The home row
+// A S D F G H J K L ; ' is the current mode's scale degrees in order — so
+// the row always spells the key you're in. The row above holds the notes
+// that fall BETWEEN those degrees: each upper key plays a semitone above the
+// home key it sits on, but only where the mode actually leaves a gap there.
 //
-// The top row used to hold chromatic passing tones instead, placed only
-// where the mode had a whole step to put one in. That made the row's meaning
-// change from mode to mode, and wherever the mode had a half step the key
-// silently doubled its neighbour: in B Phrygian, W and Y played the same
-// notes as A and G. Chromatic notes are still reachable while playing —
-// C and V bend a whole step down and up.
-const MEL_SCALE_KEYS = ['a','s','d','f','g','h','j','k','l',';',"'",
-                        'q','w','e','r','t','y','u','i','o','p'];
-function _buildMusicalKeysMap(){
+// In C major that reduces to exactly the layout every DAW uses —
+// A=C W=C♯ S=D E=D♯ D=E F=F T=F♯ G=G Y=G♯ H=A U=A♯ J=B K=C — and R and I
+// stay silent, because a piano has no black key between E–F or B–C.
+//
+// This row was tried once before and pulled, for a real reason: where the
+// mode had a half step the upper key silently doubled its neighbour, so in
+// B Phrygian W and Y just repeated A and G. That was the bug, not the idea.
+// A gap of one semitone now yields no key at all rather than a duplicate,
+// which is precisely what a piano does — the dead keys ARE the information,
+// telling you where the mode's half steps are. Chromatic notes outside any
+// gap remain reachable with the C and V bend keys.
+const MEL_HOME_KEYS  = ['a','s','d','f','g','h','j','k','l',';',"'"];
+const MEL_UPPER_KEYS = ['w','e','r','t','y','u','i','o','p','[',']'];
+// Semitones above the key's root for the i-th scale degree, wrapping into
+// higher octaves past the end of the scale.
+function _melDegreeSemis(i){
  const steps = (MODES[mode]||MODES.major).steps;
  const n = steps.length || 7;
+ return steps[((i%n)+n)%n] + 12*Math.floor(i/n);
+}
+function _buildMusicalKeysMap(){
  const map = {};
- MEL_SCALE_KEYS.forEach((k,i)=>{ map[k] = steps[i%n] + 12*Math.floor(i/n); });
+ MEL_HOME_KEYS.forEach((k,i)=>{ map[k] = _melDegreeSemis(i); });
+ MEL_UPPER_KEYS.forEach((k,i)=>{
+  const here = _melDegreeSemis(i), next = _melDegreeSemis(i+1);
+  // Only a whole step or wider has room for a note in between. A half step
+  // leaves this key unbound — no sound, no duplicate.
+  if(next - here > 1) map[k] = here + 1;
+ });
  return map;
 }
 let musicalTypingOn = true;
@@ -10310,10 +10345,23 @@ let musicalTypingOn = true;
 const MEL_BEND_RANGE_CENTS = 200;
 const MEL_BEND_RAMP = 0.09;
 let melBendDownHeld=false, melBendUpHeld=false, melBendCents=0;
+// Position of a real MIDI pitch wheel, in cents. C/V and the wheel drive the
+// same destination; this just remembers where the wheel is left sitting.
+let melBendWheelCents=0;
 
 function _melBendTargetCents(){
  // Both held cancels out, like a wheel pushed both ways at once.
- return melBendDownHeld===melBendUpHeld ? 0 : (melBendDownHeld ? -MEL_BEND_RANGE_CENTS : MEL_BEND_RANGE_CENTS);
+ if(melBendDownHeld!==melBendUpHeld) return melBendDownHeld ? -MEL_BEND_RANGE_CENTS : MEL_BEND_RANGE_CENTS;
+ // No key held — a physical wheel has the floor.
+ return melBendWheelCents;
+}
+// norm is −1..+1 with 0 at centre detent.
+function melBendWheel(norm){
+ const v = Math.max(-1, Math.min(1, norm||0));
+ // Wheels rarely return to exactly centre; without a dead zone the melody
+ // sits permanently a few cents sharp after one nudge.
+ melBendWheelCents = Math.abs(v) < 0.02 ? 0 : v * MEL_BEND_RANGE_CENTS;
+ _melBendApply();
 }
 function _melBendApply(){
  const ctx=getCtx(); if(!ctx) return;
@@ -10540,6 +10588,12 @@ function onMidiMsg(e){
  if(!holdMode) releaseSustainedChord(midiChordTokens[n]);
  delete midiChordTokens[n];
  }
+ } else if(type === 0xe0){
+ // Pitch wheel — 14-bit, LSB first, centre 8192. Nothing was listening for
+ // 0xE0 at all, which is why the wheel did nothing while C/V bent fine: the
+ // bend engine was there, it just had no MIDI input wired to it.
+ const raw = ((e.data[2]||0) << 7) | (e.data[1]||0);
+ melBendWheel((raw - 8192) / 8192);
  } else if(type === 0xb0){
  if(e.data[1]===1){ document.getElementById('decay').value=(.1+(vel/127)*7.9).toFixed(2); }
  if(e.data[1]===11){
@@ -17150,6 +17204,29 @@ function setViewMode(mode){
   if(btnB){ btnB.classList.toggle('active', isBasic); }
   if(btnA){ btnA.classList.toggle('active', !isBasic); }
   try{ localStorage.setItem('modo-view-mode', mode); }catch(e){}
+  if(typeof msApplyBasicGate==='function') msApplyBasicGate();
+}
+
+// Basic mode hides everything marked .advanced-only, and the MōdSynth editor
+// is one of those — but the voice pickers still offered MōdSynth, so you
+// could select a synth in Basic and have nowhere to edit it. Two halves to
+// the rule: don't offer it, and if something else already selected it (a
+// saved setup, a randomised patch, a preset), show the editor anyway rather
+// than stranding a voice you can't reach.
+function msApplyBasicGate(){
+ var isBasic = document.body.classList.contains('mode-basic');
+ // Voice dropdowns: drop the option in Basic, but keep it whenever it's the
+ // value currently showing, or the select would render blank.
+ document.querySelectorAll('select.voice-sel').forEach(function(sel){
+  var opt = Array.prototype.find.call(sel.options, function(o){ return o.value==='modsynth'; });
+  if(!opt) return;
+  var keep = !isBasic || sel.value==='modsynth';
+  opt.hidden = !keep; opt.disabled = !keep;
+ });
+ // The melody page lists voices as buttons rather than a select.
+ document.querySelectorAll('[data-wave="modsynth"]').forEach(function(b){
+  b.style.display = (!isBasic || b.classList.contains('active')) ? '' : 'none';
+ });
 }
 // Initialize from localStorage (default: basic)
 (function(){
