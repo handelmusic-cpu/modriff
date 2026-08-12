@@ -3846,7 +3846,13 @@ const MINOR_STEPS = [0,2,3,5,7,8,10];
 const MAJOR_TRIAD_Q = [0,1,1,0,0,1,2]; // 0=maj 1=min 2=dim
 const MINOR_TRIAD_Q = [1,2,0,1,1,0,0];
 const MAJOR_7TH_T = ['maj7','min7','min7','maj7','dom7','min7','halfdim'];
-const MINOR_7TH_T = ['minMaj7','halfdim','maj7','min7','min7','maj7','dom7'];
+// The tonic seventh of natural minor is min7, not minMaj7. A minMaj7 needs a
+// ♮7 (11 semitones), which is not in MINOR_STEPS at all — so the "diatonic"
+// tonic was the one chord in the row sounding a note from outside the scale,
+// clashing with the ♭7 the bass and melody generators take from that scale.
+// The mMaj7 tonic belongs to harmonic minor, which this app already carries
+// as its own mode (MODES.harmonic_minor) and spells correctly there.
+const MINOR_7TH_T = ['min7','halfdim','maj7','min7','min7','maj7','dom7'];
 const MAJOR_NUMS = ['I','ii','iii','IV','V','vi','vii°'];
 const MINOR_NUMS = ['i','ii°','♭III','iv','v','♭VI','♭VII'];
 
@@ -3873,7 +3879,11 @@ const MODES = {
  phrygian: {
  steps:[0,1,3,5,7,8,10], triadQ:[1,0,0,1,2,0,1],
  seventh:['min7','maj7','dom7','min7','halfdim','maj7','min7'],
- nums:['i','♭II','♭III','iv','v°','♭VI','♭VII'],
+ // ♭vii is lower-case here on purpose: Phrygian's seventh degree carries a
+ // minor triad (in E Phrygian that's D–F–A), unlike natural minor's major
+ // ♭VII. It read as "♭VII" — a major numeral over a chord the app was
+ // correctly playing, and still labelling, as minor.
+ nums:['i','♭II','♭III','iv','v°','♭VI','♭vii'],
  func:['tonic','dom','modal','subdom','dom','modal','modal'],
  label:'Phrygian'
  },
@@ -3893,7 +3903,8 @@ const MODES = {
  },
  minor: {
  steps:[0,2,3,5,7,8,10], triadQ:[1,2,0,1,1,0,0],
- seventh:['minMaj7','halfdim','maj7','min7','min7','maj7','dom7'],
+ // i7 is min7 — see the note on MINOR_7TH_T above.
+ seventh:['min7','halfdim','maj7','min7','min7','maj7','dom7'],
  nums:['i','ii°','♭III','iv','v','♭VI','♭VII'],
  func:['tonic','dom','modal','subdom','dom','modal','modal'],
  label:'Minor'
@@ -4112,8 +4123,9 @@ function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
 // Returns { label, semis, type7, func } relative to root
 function getAllBorrowed(m) {
  if (m === 'major') return [
- // Tonic function borrowings
- {label:'i', semis:0, type7:'minMaj7', func:'tonic', bass:null},
+ // Tonic function borrowings — borrowed from the parallel *natural* minor,
+ // so i7 is min7 here too (Cm7 in C major), matching MINOR_7TH_T.
+ {label:'i', semis:0, type7:'min7', func:'tonic', bass:null},
  // Subdominant borrowings
  {label:'iv', semis:MINOR_STEPS[3], type7:'min7', func:'subdom', bass:null},
  {label:'ii°', semis:MINOR_STEPS[1], type7:'halfdim', func:'subdom', bass:null},
@@ -8924,11 +8936,28 @@ function exportMidi(){
     function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
     function u16(n){return[(n>>8)&0xff,n&0xff];}
     function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
+    // A bar is however many sixteenth steps the song is actually running in —
+    // a 3/4 groove is 12, not 16 — and a slot's length is bars+beats+eighths,
+    // the same sum slotTotalMs() plays back. Exporting every slot as one 4/4
+    // bar put every chord after the first in the wrong place in any meter but
+    // 4/4, and flattened every partial-bar chord to a full bar.
+    var stepsBar=16;
+    try{ if(typeof _songBarSteps==='function') stepsBar=_songBarSteps(); }catch(e){}
+    if(!(stepsBar>0)) stepsBar=16;
+    var qPerBar=stepsBar/4;                     // quarter notes per bar
+    var barTicks=Math.round(tpq*qPerBar);
+    function slotTicks(sl){
+      var t=Math.round((sl.bars||0)*barTicks+(sl.beats||0)*tpq+(sl.eighths||0)*tpq/2);
+      return t>0?t:barTicks;                    // same fallback as slotTotalMs()
+    }
     var track=[];
     // Tempo
     track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
-    // Time sig 4/4
-    track.push(0,0xff,0x58,0x04,0x04,0x02,0x18,0x08);
+    // Time sig — denominator stays 4 (dd=2), so the numerator is just the
+    // number of quarter notes in a bar. Non-integer bar lengths can't be
+    // notated that way, so those fall back to 4/4 rather than writing junk.
+    var sigNum=Number.isInteger(qPerBar)?Math.max(1,Math.min(255,qPerBar)):4;
+    track.push(0,0xff,0x58,0x04,sigNum,0x02,0x18,0x08);
     // Program change: piano
     track.push(0,0xc0,0x00);
     var allSlots=[];
@@ -8936,17 +8965,29 @@ function exportMidi(){
       sections.forEach(function(sec){if(sec&&sec.slots)sec.slots.forEach(function(sl){if(sl&&sl.rootM!==undefined)allSlots.push(sl);});});
     }
     if(!allSlots.length){showToast('No chords in song to export');return;}
+    var pending=0; // ticks of silence owed to the next note-on (rest slots)
     allSlots.forEach(function(slot){
+      var dur=slotTicks(slot);
+      // A rest holds its place in the bar without sounding — it used to export
+      // as a full chord, so every rest in the chart came back as a played one.
+      if(slot.isRest){ pending+=dur; return; }
       var intvs=[];
       try{var ext=slot.ext||'triad';intvs=EXTS[ext](slot.triadQ,slot.type7);}catch(e){intvs=[0,4,7];}
-      var dur=tpq*4*(slot.bars||1);
       var notes=intvs.map(function(iv){return Math.max(21,Math.min(108,slot.rootM+iv));});
-      // Note-on
-      notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?0:0));track.push(0x90,n,80);});
+      // Slash chords carry their bass the way playChartSlot2 sounds it, so the
+      // exported chord matches the one printed on the chart.
+      if(slot.bassNote!=null) notes.push(Math.max(21,Math.min(108,slot.bassNote-12)));
+      // Two note-ons on one pitch share a single note-off, which leaves the
+      // pitch hanging in the DAW — clamping to 21..108 can collide, so dedupe.
+      notes=notes.filter(function(n,i){return notes.indexOf(n)===i;});
+      // Note-on — the first carries any rest time owed before it
+      notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?pending:0));track.push(0x90,n,80);});
+      pending=0;
       // Note-off after dur ticks
       notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?dur:0));track.push(0x80,n,0);});
     });
-    track.push(0,0xff,0x2f,0x00);
+    // Trailing rests still run the file out to the end of the song
+    track.push.apply(track,varLen(pending));track.push(0xff,0x2f,0x00);
     var hdr=str('MThd').concat(u32(6),u16(0),u16(1),u16(tpq));
     var trk=str('MTrk').concat(u32(track.length),track);
     var bytes=new Uint8Array(hdr.concat(trk));
@@ -9432,7 +9473,7 @@ function renderChartSeq(){
  if(slot.isRest){
   btn.innerHTML='<span class="slot-cnum" style="color:var(--muted)">—</span><span style="color:var(--muted);font-size:.6rem">REST</span>';
  } else {
-  const displayName=slot.bassNote!==null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
+  const displayName=slot.bassNote!=null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
   btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
   if(slot.ext&&slot.ext!=='triad') btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${slot.ext}</span>`;
  }
@@ -9454,7 +9495,7 @@ function renderChartSeq(){
 
  const bass=document.createElement('div'); bass.className='slot-bass';
  const updateBass=()=>{
- if(slot.bassNote===null){ bass.textContent='△ Bass'; bass.classList.remove('active'); }
+ if(slot.bassNote==null){ bass.textContent='△ Bass'; bass.classList.remove('active'); }
  else {
  const bassPC=((slot.bassNote%12)+12)%12;
  bass.textContent='/'+nn(bassPC);
@@ -9463,7 +9504,7 @@ function renderChartSeq(){
  };
  updateBass();
  bass.addEventListener('click',()=>{
- if(slot.bassNote===null){ slot.bassNote=slot.rootM-1; }
+ if(slot.bassNote==null){ slot.bassNote=slot.rootM-1; }
  else {
  const stepsBelow=slot.rootM-slot.bassNote;
  if(stepsBelow>=12) slot.bassNote=null;
@@ -9545,7 +9586,7 @@ function playChartSlot(i){
  const slots=sections[curSection]?.slots||[]; if(i<0||i>=slots.length) return;
  const slot=slots[i];
  const intvs=getIntvs(slot.triadQ,slot.type7,slot.ext);
- if(slot.bassNote!==null){
+ if(slot.bassNote!=null){
  setArpChord(slot.rootM,[slot.bassNote-slot.rootM,...intvs],slot.func);
  playSlashChord(slot.rootM,intvs,slot.bassNote-12,0);
  } else {
@@ -9566,7 +9607,7 @@ function renderPerfChartRow(){
  const slots=sections[curSection]?.slots||[];
  slots.forEach((slot,i)=>{
  const el=document.createElement('div'); el.className='pcs'+(i===chartSeqIdx?' pcs-active':'');
- el.textContent=slot.label+(slot.bassNote!==null?'/'+nn(slot.bassNote%12):'');
+ el.textContent=slot.label+(slot.bassNote!=null?'/'+nn(slot.bassNote%12):'');
  el.addEventListener('click',()=>{ chartSeqIdx=i; playChartSlot(i); renderChartSeq(); });
  row.appendChild(el);
  });
@@ -9907,7 +9948,7 @@ function printChart(){
  const title=document.getElementById('chart-title').value||'Untitled';
  const win=window.open('','_blank');
  let html=`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}.sec{margin-bottom:20px;}.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}.chords{display:flex;flex-wrap:wrap;gap:8px;}.chord{padding:8px 14px;border:1px solid #ccc;border-radius:6px;font-size:18px;font-weight:bold;}</style></head><body><h1>${title}</h1><h3>${nn(root)} ${(MODES[mode]||MODES.major).label}</h3>`;
- sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${slot.ext&&slot.ext!=='triad'?'<sup>'+slot.ext+'</sup>':''}${slot.bassNote!==null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
+ sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${slot.ext&&slot.ext!=='triad'?'<sup>'+slot.ext+'</sup>':''}${slot.bassNote!=null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
  html+='</body></html>';
  win.document.write(html); win.document.close(); win.print();
 }
@@ -10622,7 +10663,7 @@ function renderSongsPerformView(){
   btn.style.opacity = '.55';
  } else {
   const extLabel = (slot.ext && slot.ext!=='triad') ? '<sup style="font-size:.5em;opacity:.7">'+slot.ext+'</sup>' : '';
-  const bassLabel = slot.bassNote!==null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
+  const bassLabel = slot.bassNote!=null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
   const durLabel = '<div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
   btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+slot.label+extLabel+bassLabel+durLabel;
  }
@@ -10667,7 +10708,7 @@ function playChartSlot2(si, ci, atTime){
  // Live capo: shift all notes by (current key − key at loop start), non-destructive
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
- const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
+ const playBass = slot.bassNote!=null ? slot.bassNote + capo : null;
  const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
  const voicedIntvs = autoInvOn ? smartVoiceLead(playRoot, intvs) : intvs;
  // When there's a bass note, include it in arpNotes as the lowest note
@@ -10725,7 +10766,7 @@ function transposeSong(semis){
  if(m) slot.label = nn(newRootM) + slot.label.slice(m[0].length);
  }
  slot.rootM = newRootM;
- if(slot.bassNote !== null) slot.bassNote = slot.bassNote + semis;
+ if(slot.bassNote!=null) slot.bassNote = slot.bassNote + semis;
  }));
  // The chord data itself now reflects the new key — if the song loop is
  // playing, resync the live-capo baseline so playChartSlot2 doesn't ALSO
@@ -11372,7 +11413,7 @@ function _compRestrike(slot, atTime){
  if(!songLoopActive || !slot || slot.isRest) return;
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
- const playBass = slot.bassNote !== null ? slot.bassNote + capo : null;
+ const playBass = slot.bassNote!=null ? slot.bassNote + capo : null;
  const intvs = getIntvs(slot.triadQ, slot.type7, slot.ext||'triad');
  const voicedIntvs = autoInvOn ? smartVoiceLead(playRoot, intvs) : intvs;
  // _compRestrike is only ever scheduled for comp styles with hits (never
@@ -12660,7 +12701,15 @@ function _downloadMidiRecording(){
     var conductor=[];
     var tempo=Math.round(60000000/bpm);
     conductor.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
-    conductor.push(0,0xff,0x58,0x04,0x04,0x02,0x18,0x08);
+    // Notes land on absolute ticks, so the meter only decides where the DAW
+    // draws its bar lines — but a 3/4 take opened as 4/4 still has every
+    // barline in the wrong place. Follow the song's real bar length.
+    var _stepsBar=16;
+    try{ if(typeof _songBarSteps==='function') _stepsBar=_songBarSteps(); }catch(e){}
+    if(!(_stepsBar>0)) _stepsBar=16;
+    var _qPerBar=_stepsBar/4;
+    var _sigNum=Number.isInteger(_qPerBar)?Math.max(1,Math.min(255,_qPerBar)):4;
+    conductor.push(0,0xff,0x58,0x04,_sigNum,0x02,0x18,0x08);
     conductor.push(0,0xff,0x2f,0x00);
     var conductorTrk=str('MTrk').concat(u32(conductor.length),conductor);
     var allTrks=conductorTrk;
