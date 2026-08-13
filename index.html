@@ -3520,9 +3520,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tips-btn" onclick="showTip('bassgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
-  <div class="bl-simple-view basic-only" id="bl-simple-view"></div>
-  <!-- Advanced mode: piano roll -->
-  <div class="advanced-only">
+  <!-- The roll is the sequencer in both modes now. Basic used to get a single
+       row of step dots instead, which meant Basic had no way to see or set a
+       note's pitch — and on the Melody page it rendered nothing at all, so
+       the sequencer simply looked missing. -->
+  <div>
    <div class="pr-wrap" id="bl-pr">
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
@@ -3621,9 +3623,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
-  <div class="bl-simple-view basic-only" id="ml-simple-view"></div>
-  <!-- Advanced mode: piano roll -->
-  <div class="advanced-only">
+  <!-- Same as the bass page: the roll shows in Basic too. -->
+  <div>
    <div class="pr-wrap" id="ml-pr">
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
@@ -5845,7 +5846,13 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
 }
 
 // Melody
-function playMelNote(midi,pressure){
+// `sustain` means "a finger/key is physically down and will send a release" —
+// every gesture source (the strip, musical typing, MIDI) passes it. Without
+// it a held note still decayed on the Decay slider's schedule, so pressing
+// and holding gave you the same short note as a tap, and holding a key did
+// nothing at all. holdMode is the separate latch: it keeps a note ringing
+// AFTER release, which is not the same question.
+function playMelNote(midi,pressure,sustain){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
@@ -5879,12 +5886,15 @@ function playMelNote(midi,pressure){
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
  g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
- if(holdMode){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
+ if(holdMode||sustain){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
  else { g.gain.exponentialRampToValueAtTime(.0001,startT+atk+dec); }
  // Lead sits near the centre — a little off-axis by pitch so it doesn't
  // fight the chord's middle, but not swung out wide like the chord tones.
  const melPan = Math.max(-.5,Math.min(.5,((midi-72)/24)))*0.5;
- const _mdur=holdMode?10:atk+dec;
+ // A sustained note has no known end until the finger lifts, so the FX chain
+ // gets the same long window the latch already used rather than being torn
+ // down at atk+dec while the note is still sounding.
+ const _mdur=(holdMode||sustain)?10:atk+dec;
  const fx = voiceFx(ctx,startT,_mdur,vsc,melPan);
  g.connect(fx.head);
  const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
@@ -6070,7 +6080,7 @@ function initBendStrip(){
  if(midi!==bendCurrentMidi){
  if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
  bendCurrentMidi=midi;
- playMelNote(midi, touch.force||0);
+ playMelNote(midi, touch.force||0, true);
  }
  } else {
  // Continuous mode: every gesture *starts* snapped in-tune, like a tap.
@@ -6080,7 +6090,7 @@ function initBendStrip(){
  const idx=Math.floor(x * notes.length);
  const midi=notes[Math.min(idx, notes.length-1)];
  bendTapMidi=midi;
- playMelNote(midi, touch.force||0);
+ playMelNote(midi, touch.force||0, true);
  }
  };
 
@@ -6100,7 +6110,7 @@ function initBendStrip(){
  if(midi!==bendCurrentMidi){
  if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
  bendCurrentMidi=midi;
- playMelNote(midi, touch.force||0);
+ playMelNote(midi, touch.force||0, true);
  }
  } else if(bendIsGliding){
  // Already gliding — true continuous pitch, no snapping
@@ -6123,7 +6133,7 @@ function initBendStrip(){
  if(midi!==bendTapMidi){
  if(bendTapMidi!==null) releaseMelNote(bendTapMidi);
  bendTapMidi=midi;
- playMelNote(midi, touch.force||0);
+ playMelNote(midi, touch.force||0, true);
  }
  }
  }
@@ -7416,6 +7426,10 @@ function printChordChart(){
 // a fingering table. Clarinet and flute intentionally ship the written note
 // only — see FING_NO_CHART below.
 const FING_INSTS = {
+ // Default. The chart is reference material, not a control — showing a
+ // trumpet fingering to someone who never asked for one is noise, so nothing
+ // is charted until you pick an instrument.
+ off:      {label:'None',       transpose:0,  kind:'off'},
  trumpet:  {label:'Trumpet',    transpose:2,  kind:'valve',  lo:54, hi:84},
  trombone: {label:'Trombone',   transpose:0,  kind:'slide',  lo:40, hi:70},
  alto:     {label:'Alto Sax',   transpose:9,  kind:'sax',    lo:58, hi:89},
@@ -7428,6 +7442,16 @@ const FING_INSTS = {
  mandolin: {label:'Mandolin',   transpose:0,  kind:'fret',   strings:[55,62,69,76],       names:['G','D','A','E']},
 };
 const FING_NO_CHART = 'Fingering chart not included for this instrument yet — the written note above is transposed correctly for it.';
+// "Out of range" and "we don't have a chart for it" are different answers and
+// used to come out sounding the same. A note the instrument physically cannot
+// play says so, and names the range, rather than implying the chart is
+// missing.
+function _fingOutOfRange(d){
+ const span = (d.lo!=null && d.hi!=null)
+  ? ' Its range is '+_noteFull(d.lo-d.transpose)+'–'+_noteFull(d.hi-d.transpose)+' concert.'
+  : '';
+ return '<div class="fing-none"><b>Out of range</b> — the '+d.label+' cannot play this note.'+span+'</div>';
+}
 
 // Trumpet open harmonics (written pitch). Any note is the first harmonic at or
 // above it, with valves adding the remaining semitones — which reproduces the
@@ -7476,7 +7500,9 @@ function _fretFingering(inst,midi){
 }
 function _noteFull(m){ return nn(((m%12)+12)%12)+(Math.floor(m/12)-1); }
 
-let fingerInst='trumpet';
+// Defaults to 'off' — the chart shows nothing until you ask it to. A saved
+// choice still wins, so anyone who picked an instrument keeps it.
+let fingerInst='off';
 function setFingerInst(i){
  if(!FING_INSTS[i]) return;
  fingerInst=i;
@@ -7538,6 +7564,11 @@ function renderFingering(midi){
  }
  _lastMelMidi=midi;
  const d=FING_INSTS[fingerInst];
+ if(d.kind==='off'){
+  if(noteEl) noteEl.innerHTML=`<span class="fing-note">${_noteFull(midi)}</span>`;
+  host.innerHTML='<div class="fing-none">Pick an instrument above to see how this note is fingered on it.</div>';
+  return;
+ }
  const written=midi+d.transpose;
  if(noteEl) noteEl.innerHTML=`<span class="fing-note">${_noteFull(midi)}</span><div class="fing-sub">${d.transpose?('written '+_noteFull(written)):'concert pitch'}</div>`;
 
@@ -7546,11 +7577,11 @@ function renderFingering(midi){
   const f=_fretFingering(fingerInst,midi);
   host.innerHTML = f
    ? `<div class="fing-wrap"><div><div class="fing-big">${f.fret===0?'open':f.fret+(f.fret===1?'st':f.fret===2?'nd':f.fret===3?'rd':'th')+' fret'}</div><div class="fing-sub">${f.string} string</div></div></div>`
-   : `<div class="fing-none">Outside this instrument's range.</div>`;
+   : _fingOutOfRange(d);
   return;
  }
  if(d.kind==='valve'){
-  if(written<d.lo||written>d.hi){ host.innerHTML='<div class="fing-none">Outside the practical range.</div>'; return; }
+  if(written<d.lo||written>d.hi){ host.innerHTML=_fingOutOfRange(d); return; }
   const h=TRUMPET_HARMONICS.find(x=>x>=written&&x-written<=6);
   if(h==null){ host.innerHTML='<div class="fing-none">No standard fingering in this range.</div>'; return; }
   const combo=VALVE_FOR_SEMIS[h-written];
@@ -7558,15 +7589,18 @@ function renderFingering(midi){
   return;
  }
  if(d.kind==='slide'){
-  if(written<d.lo||written>d.hi){ host.innerHTML='<div class="fing-none">Outside the practical range.</div>'; return; }
+  if(written<d.lo||written>d.hi){ host.innerHTML=_fingOutOfRange(d); return; }
   const h=TBONE_HARMONICS.find(x=>x>=written&&x-written<=6);
   if(h==null){ host.innerHTML='<div class="fing-none">No standard position in this range.</div>'; return; }
   host.innerHTML=`<div class="fing-wrap"><div><div class="fing-big">${POS_NAME[h-written]}</div><div class="fing-sub">slide position</div></div></div>`;
   return;
  }
  if(d.kind==='sax'){
+  // Genuinely unplayable comes first; only a note the horn CAN play but the
+  // table doesn't cover falls through to the charted-range wording.
+  if(written<d.lo||written>d.hi){ host.innerHTML=_fingOutOfRange(d); return; }
   const f=_saxFingering(written);
-  if(!f){ host.innerHTML='<div class="fing-none">Outside the charted range (written Bb3–F6).</div>'; return; }
+  if(!f){ host.innerHTML='<div class="fing-none">In range, but not in the chart (charted written B♭3–F6).</div>'; return; }
   host.innerHTML=`<div class="fing-wrap">${_svgSaxKeys(f)}<div>${f.oct?'<div class="fing-sub">+ octave key</div>':''}${f.x?'<div class="fing-sub">+ '+f.x+'</div>':''}</div></div>`;
   return;
  }
@@ -8787,7 +8821,7 @@ function buildMelodyStrip(){
  btn.innerHTML=`<span class="mel-inner">${_sol||name}</span>`;
  const lbl=document.createElement('div'); lbl.className='mel-label'; lbl.textContent=name+oct;
 
- btn.addEventListener('pointerdown',e=>{ e.preventDefault(); btn.classList.add('held'); playMelNote(midi,e.pressure||0); });
+ btn.addEventListener('pointerdown',e=>{ e.preventDefault(); btn.classList.add('held'); playMelNote(midi,e.pressure||0,true); });
  btn.addEventListener('pointerup',e=>{ e.preventDefault(); if(!holdMode){ btn.classList.remove('held'); releaseMelNote(midi); } });
  btn.addEventListener('pointerleave',e=>{ if(!holdMode){ btn.classList.remove('held'); releaseMelNote(midi); } });
  wrap.appendChild(btn); wrap.appendChild(lbl); container.appendChild(wrap);
@@ -10422,7 +10456,7 @@ document.addEventListener('keydown', e => {
  const midi = baseM + offset;
  if(!musicalTypingHeld[e.key]){
  musicalTypingHeld[e.key] = midi;
- playMelNote(midi, 0);
+ playMelNote(midi, 0, true);
  }
  return;
  }
@@ -10570,7 +10604,7 @@ function onMidiMsg(e){
  // Smart: transpose so C maps to root
  midi = note + (root<=5?root:root-12);
  }
- playMelNote(midi + melOctShift, pressure);
+ playMelNote(midi + melOctShift, pressure, true);
  } else {
  // Chord mode: map pc to chord
  const steps = (MODES[mode]||MODES.major).steps;
@@ -12263,7 +12297,7 @@ function _rollTick(){
  if(!_rollOn) return;
  const notes = _activeMelMidiList();
  if(!notes.length){ _stopRoll(); return; }
- notes.forEach(midi=>{ playMelNote(midi, 0.9); });
+ notes.forEach(midi=>{ playMelNote(midi, 0.9, true); });
  if(_accentOn) _setMelodyAccent(true);
  const stepSec = beatSec()/6; // 16th-note triplet = 6 hits per beat
  _rollTimer = setTimeout(_rollTick, Math.max(30, stepSec*1000));
@@ -13459,6 +13493,14 @@ function _chokeGroup(group, t){
 // Current voice's choke group, set by sqHitTrack around each track's play().
 var _chokeCur = null;
 
+// Every drum voice registers its output gain on the global kill list, so an
+// ending can silence hits the sequencer has already committed to the audio
+// graph. The arp, bass and melody generator all did this; the kit never did,
+// which is why an ending stopped everything else dead and then let the drums
+// play on for the rest of the look-ahead — the few stray notes after an
+// ending. hardKillAll() needs a GainNode, so filters at the end of a chain
+// (sqCym, sqNs2, sqHHMod) register the gain feeding them instead.
+function _sqKill(g){ try{ if(typeof _regKill==='function') _regKill(g); }catch(e){} }
 function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var c=sqCtx();if(!c||!SQMG||!SQNBUF)return;
   var s=c.createBufferSource();s.buffer=SQNBUF;s.loop=true;
@@ -13466,7 +13508,7 @@ function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var g=c.createGain();g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var chain=f;
   if(type2){var f2=c.createBiquadFilter();f2.type=type2;f2.frequency.value=freq2||freq||2000;f2.Q.value=Q2||1;f.connect(f2);chain=f2;}
-  s.connect(f);chain.connect(g);g.connect(SQMG);s.start(t);s.stop(t+dur+.05);
+  s.connect(f);chain.connect(g);g.connect(SQMG);_sqKill(g);s.start(t);s.stop(t+dur+.05);
   if(_chokeCur) _chokeRegister(_chokeCur, g, s, t+dur);
 }
 function sqTn(t,freq,dur,vol,type,fEnd){
@@ -13475,7 +13517,7 @@ function sqTn(t,freq,dur,vol,type,fEnd){
   o.type=type||'sine';o.frequency.setValueAtTime(freq,t);
   if(fEnd)o.frequency.exponentialRampToValueAtTime(fEnd,t+dur);
   g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-  o.connect(g);g.connect(SQMG);o.start(t);o.stop(t+dur+.02);
+  o.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+dur+.02);
   if(_chokeCur) _chokeRegister(_chokeCur, g, o, t+dur);
 }
 function sqAcid(t,freq,dur,vol,cut,res,ac){
@@ -13487,7 +13529,7 @@ function sqAcid(t,freq,dur,vol,cut,res,ac){
   var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*9/(1+8*Math.abs(x));}dw.curve=cv;
   var v=ac?vol*1.5:vol;
   g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-  o.connect(f);f.connect(dw);dw.connect(g);g.connect(SQMG);o.start(t);o.stop(t+dur+.02);
+  o.connect(f);f.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+dur+.02);
 }
 function sqSemi(n){return Math.pow(2,(n||0)/12);}
 
@@ -13557,7 +13599,7 @@ function sqSample(name, t, vol, semi){
  if(semi) src.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, semi/12)));
  const g = c.createGain();
  g.gain.value = vol;
- src.connect(g); g.connect(SQMG);
+ src.connect(g); g.connect(SQMG); _sqKill(g);
  src.start(t);
  const end = t + buf.duration / (src.playbackRate.value || 1);
  src.stop(end + 0.05);
@@ -13593,7 +13635,7 @@ function sqCym(t, vol, base, dur, opts){
   var partials = opts.partials || SQ_CYM_RATIOS.length;
   var hp=c.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=opts.hp||2600;
   var body=c.createGain(); body.gain.value=1;
-  body.connect(hp); hp.connect(SQMG);
+  body.connect(hp); hp.connect(SQMG); _sqKill(body);
   for(var i=0;i<partials;i++){
     var r=SQ_CYM_RATIOS[i];
     // Higher modes decay faster — the whole point. The exponent sets how
@@ -13638,7 +13680,7 @@ function sqBrush(t, vol, dur, swirl){
     g.gain.setValueAtTime(vol*0.75, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
   }
-  s.connect(bp); bp.connect(g); g.connect(SQMG);
+  s.connect(bp); bp.connect(g); g.connect(SQMG); _sqKill(g);
   s.start(t); s.stop(t+dur+0.05);
   // A slap carries a little head tone under the wires.
   if(!swirl) sqTn(t, 210, 0.05, vol*0.18, 'triangle', 150);
@@ -13655,7 +13697,7 @@ function sqHH808(t,dur,vol,baseF){
   mix.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=6800;
   var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=10000;bp.Q.value=0.5;
-  mix.connect(hp);hp.connect(bp);bp.connect(SQMG);
+  mix.connect(hp);hp.connect(bp);bp.connect(SQMG);_sqKill(mix);
   var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
@@ -13678,7 +13720,7 @@ function sqHHMod(t,dur,vol,baseF){
   mix.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=7800;
   var pk=c.createBiquadFilter();pk.type='peaking';pk.frequency.value=11500;pk.Q.value=1.1;pk.gain.value=5;
-  mix.connect(hp);hp.connect(pk);pk.connect(SQMG);
+  mix.connect(hp);hp.connect(pk);pk.connect(SQMG);_sqKill(mix);
   var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
@@ -13700,7 +13742,7 @@ var SQM={
       var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*2.5);}dw.curve=cv;
       o.type='sine';o.frequency.setValueAtTime(160*p,t);o.frequency.exponentialRampToValueAtTime(52*p,t+.55);
       g.gain.setValueAtTime(vel*1.4,t);g.gain.linearRampToValueAtTime(vel*1.2,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+.6);
-      o.connect(dw);dw.connect(g);g.connect(SQMG);o.start(t);o.stop(t+.65);
+      o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.65);
       sqNs(t,.008,120,vel*.55);
     }},
     {n:'Snare',s:'SD',c:'#ffaa00',play:function(t,v,ac,ps){
@@ -13721,7 +13763,7 @@ var SQM={
     {n:'Cowbell',s:'CB',c:'#ff9900',play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,562*p,.55,v*(ac?1.3:1)*.7,'square');sqTn(t,845*p,.55,v*.45,'square');}}
   ]},
   '909':{label:'TR-909',color:'#4a9eff',tracks:[
-    {n:'Kick',s:'BD',c:'#4a9eff',play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(35*p,t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.connect(dw);dw.connect(g);g.connect(SQMG);o.start(t);o.stop(t+.5);sqNs(t,.018,1000,v*.3);}},
+    {n:'Kick',s:'BD',c:'#4a9eff',play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(35*p,t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.5);sqNs(t,.018,1000,v*.3);}},
     {n:'Snare',s:'SD',c:'#6699ff',play:function(t,v,ac,ps){sqNs(t,.09,3500,v*(ac?1.3:1));sqNs(t,.22,500,v*.38);sqTn(t,220*sqSemi(ps),.06,v*.65,'sine',.5);}},
     {n:'Rimshot',s:'RS',c:'#88aaff',play:function(t,v,ac,ps){sqTn(t,1200*sqSemi(ps),.02,v*(ac?1.4:1),'square');sqNs(t,.03,4000,v*.5);}},
     {n:'Clap',s:'CP',c:'#44ccff',play:function(t,v,ac,ps){var vel=v*(ac?1.4:1);[0,.005,.010,.018].forEach(function(d){sqNs(t+d,.065,1600,vel*.88);});sqNs(t+.022,.2,1200,vel*.5);}},
@@ -13738,14 +13780,14 @@ var SQM={
       var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*3.2);}dw.curve=cv;
       o.type='sine';o.frequency.setValueAtTime(145*p,t);o.frequency.exponentialRampToValueAtTime(42*p,t+.075);o.frequency.exponentialRampToValueAtTime(38*p,t+.5);
       g.gain.setValueAtTime(vel*1.5,t);g.gain.linearRampToValueAtTime(vel*1.25,t+.003);g.gain.exponentialRampToValueAtTime(.0001,t+.62);
-      o.connect(dw);dw.connect(g);g.connect(SQMG);o.start(t);o.stop(t+.66);
+      o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.66);
       // click: a hair of bright noise right at the attack for definition
       sqNs(t,.006,3200,vel*.5,'highpass',2600,0.9);
       // sub layer: reinforces the low end a beat after the click so the transient stays sharp
       var o2=c2.createOscillator(),g2=c2.createGain();
       o2.type='sine';o2.frequency.setValueAtTime(48*p,t);o2.frequency.exponentialRampToValueAtTime(34*p,t+.4);
       g2.gain.setValueAtTime(vel*.55,t+.01);g2.gain.exponentialRampToValueAtTime(.0001,t+.5);
-      o2.connect(g2);g2.connect(SQMG);o2.start(t+.01);o2.stop(t+.52);
+      o2.connect(g2);g2.connect(SQMG);_sqKill(g2);o2.start(t+.01);o2.stop(t+.52);
     }},
     {n:'Snare',s:'SD',c:'#ffe08a',play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.35:1);
