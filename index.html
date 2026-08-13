@@ -2727,6 +2727,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb purple advanced-only church-mode-btn" id="bm-mixolydian" onclick="setMode('mixolydian')">Mixo</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-locrian" onclick="setMode('locrian')">Locrian</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
+ <button class="tb purple advanced-only church-mode-btn" id="bm-major_pent" onclick="setMode('major_pent')" title="Major pentatonic — five notes, harmonised from the parent major">Maj Pent</button>
+ <button class="tb purple advanced-only church-mode-btn" id="bm-minor_pent" onclick="setMode('minor_pent')" title="Minor pentatonic — five notes, harmonised from the parent minor">Min Pent</button>
  <button class="church-modes-toggle advanced-only" id="church-modes-toggle" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
  </div>
  <button class="nash-pill advanced-only" id="nash-pill" onclick="toggleNash()" title="Toggle Nashville Numbers">Numbers</button>
@@ -3150,6 +3152,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-mixolydian" onclick="setMode('mixolydian')">Mix</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-locrian" onclick="setMode('locrian')">Loc</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
+   <button class="tb purple advanced-only church-mode-btn" id="songs-bm-major_pent" onclick="setMode('major_pent')">Maj Pent</button>
+   <button class="tb purple advanced-only church-mode-btn" id="songs-bm-minor_pent" onclick="setMode('minor_pent')">Min Pent</button>
    <button class="church-modes-toggle advanced-only" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
   </div>
  </div>
@@ -3944,6 +3948,32 @@ const MODES = {
  func:['tonic','dom','modal','subdom','dom','modal','dom'],
  label:'Harm. Min.'
  },
+ // ── Pentatonics: five degrees, not seven ──
+ // Every other entry here is a seven-note scale whose chords come from
+ // stacking its own thirds. That does not work on a pentatonic: stack the
+ // scale's own "thirds" in C major pentatonic and degree 1 gives C–E–A, a
+ // sixth chord, not a triad. Pentatonic is a melodic scale — in practice you
+ // play it over the chords of its parent key — so the qualities below are the
+ // parent scale's, read at the five degrees the pentatonic actually has.
+ // C major pentatonic is C D E G A, which in C major is I ii iii V vi; C minor
+ // pentatonic is C E♭ F G B♭, which in C minor is i ♭III iv v ♭VII. Both are
+ // what you would actually comp behind the scale, and the chord a pentatonic
+ // leaves out (IV in major) still reaches you through the Borrowed row, since
+ // getAllBorrowed() offers every parent-scale root the mode itself lacks.
+ major_pent: {
+ steps:[0,2,4,7,9], triadQ:[0,1,1,0,1],
+ seventh:['maj7','min7','min7','dom7','min7'],
+ nums:['I','ii','iii','V','vi'],
+ func:['tonic','subdom','tonic','dom','tonic'],
+ label:'Maj Pent'
+ },
+ minor_pent: {
+ steps:[0,3,5,7,10], triadQ:[1,0,1,1,0],
+ seventh:['min7','maj7','min7','min7','dom7'],
+ nums:['i','♭III','iv','v','♭VII'],
+ func:['tonic','modal','subdom','dom','modal'],
+ label:'Min Pent'
+ },
 };
 
 const TRIAD = { 0:[0,4,7], 1:[0,3,7], 2:[0,3,6], 3:[0,4,8] }; // 3=augmented
@@ -4311,6 +4341,26 @@ const MODE_PROG_PRESETS = {
     {degrees:[0,2,4,0]},   // i–♭III+–V–i
     {degrees:[0,5,2,4]},   // i–♭VI–♭III+–V
     {degrees:[0,3,6,4]},   // i–iv–vii°–V
+  ],
+  // Degrees here index the pentatonic's own five, not the parent scale's
+  // seven: major_pent is I ii iii V vi (0–4), minor_pent is i ♭III iv v ♭VII.
+  // Without these the picker fell back to the major table, whose degree 5 and
+  // 6 do not exist in a five-note scale.
+  major_pent: [
+    {degrees:[0,3,4,1]},   // I–V–vi–ii
+    {degrees:[0,4,1,3]},   // I–vi–ii–V
+    {degrees:[4,3,0]},     // vi–V–I
+    {degrees:[0,2,4,3]},   // I–iii–vi–V
+    {degrees:[0,3,0]},     // I–V–I
+    {degrees:[1,3,0]},     // ii–V–I
+  ],
+  minor_pent: [
+    {degrees:[0,4,1,2]},   // i–♭VII–♭III–iv
+    {degrees:[0,2,3,0]},   // i–iv–v–i
+    {degrees:[0,1,4,2]},   // i–♭III–♭VII–iv
+    {degrees:[0,4,2,0]},   // i–♭VII–iv–i
+    {degrees:[0,2,0]},     // i–iv–i
+    {degrees:[1,4,0]},     // ♭III–♭VII–i
   ],
 };
 
@@ -10177,6 +10227,10 @@ const SOLFEGE_BY_MODE = {
  minor:          ['Do','Re','Me','Fa','Sol','Le','Te'],
  locrian:        ['Do','Ra','Me','Fa','Se','Le','Te'],
  harmonic_minor: ['Do','Re','Me','Fa','Sol','Le','Ti'],
+ // Five syllables, matching the five degrees — the two the parent scale drops
+ // (Fa and Ti in major, Re and Le in minor) are simply absent.
+ major_pent:     ['Do','Re','Mi','Sol','La'],
+ minor_pent:     ['Do','Me','Fa','Sol','Te'],
 };
 function toggleSolfege(){
  solfegeOn = !solfegeOn;
@@ -10469,6 +10523,10 @@ document.addEventListener('keydown', e => {
  if(idx===undefined) return;
  const _md=MODES[mode]||MODES.major;
  const steps=_md.steps, tq=_md.triadQ, t7=_md.seventh, f=_md.func;
+ // 1–7 are wired to seven degrees, but a pentatonic only has five. Keys 6 and
+ // 7 would read past the end of the scale and transpose the chord by NaN,
+ // which silences it. There is no sixth degree to play, so they do nothing.
+ if(idx>=steps.length) return;
  const crm=rootMidi()+steps[idx];
  const el=document.getElementById('cs-'+idx);
  // Hold-to-sustain, exactly like a mouse press on the same chord button.
@@ -12250,7 +12308,7 @@ document.addEventListener('keydown', e => {
 // ARROW KEYS (Perform tab only) — Up/Down transpose the key by a
 // semitone, Left/Right cycle through modes in the on-screen button order.
 // ═══════════════════════════════════════
-const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor'];
+const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','major_pent','minor_pent'];
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
  if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
