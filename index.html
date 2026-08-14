@@ -3412,6 +3412,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     <span class="sq-pl" style="font-size:.5rem">Swing</span>
     <input type="range" class="sq-sl" id="sq-swingSl" min="0" max="70" value="0">
     <span class="sq-pv sq-dim" id="sq-swingDisp" style="font-size:.65rem">0%</span>
+    <button class="seq-rbtn active" id="sq-swing16" onclick="window._sqSetSwing8(false)" title="Swing every other 16th — the tighter, busier feel">16th</button>
+    <button class="seq-rbtn" id="sq-swing8" onclick="window._sqSetSwing8(true)" title="Swing every other 8th — the long-short triplet feel of a shuffle or a jazz ride">8th</button>
   </div>
   <div class="sq-pb">
     <span class="sq-pl" style="font-size:.5rem">FX</span>
@@ -8482,6 +8484,7 @@ function _capSettings(){
   chordBeats: (typeof chordBeats!=='undefined') ? chordBeats : null,
   sqSteps:   (typeof window._sqSteps==='function')    ? window._sqSteps()    : null,
   sqSwing:   (typeof window._sqSwingVal==='function') ? window._sqSwingVal() : null,
+  sqSwing8:  (typeof window._sqSwing8==='function')   ? window._sqSwing8()   : null,
   sqMach:    (typeof window._sqMach==='function')     ? window._sqMach()     : null,
   sqRateMul: (typeof sqRateMul!=='undefined') ? sqRateMul : null,
   modSynthPreset: (typeof modSynthPreset!=='undefined') ? modSynthPreset : null,
@@ -8526,6 +8529,7 @@ function _applySettings(s){
  if(s.sqSteps!=null && typeof setSeqStepCount==='function'){ try{ setSeqStepCount('sq', s.sqSteps); }catch(e){} }
  if(s.sqRateMul!=null && typeof setSeqRate==='function'){ try{ setSeqRate('sq', s.sqRateMul); }catch(e){} }
  if(s.sqSwing!=null && typeof window._sqSetSwing==='function'){ try{ window._sqSetSwing(s.sqSwing); }catch(e){} }
+ if(s.sqSwing8!=null && typeof window._sqSetSwing8==='function'){ try{ window._sqSetSwing8(s.sqSwing8); }catch(e){} }
  if(s.chordBeats!=null && typeof setChordBeats==='function'){ try{ setChordBeats(s.chordBeats); }catch(e){} }
  // Every part's MōdSynth patch, not just whichever one the panel happens to
  // be showing — see the comment on modSynthPatchesAll in _capSettings.
@@ -14074,7 +14078,25 @@ var SQM={
 // ── state ──
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
 var sqSwing=0, sqMach='808', sqSteps=16;
-window._sqSwingVal = function(){ return sqSwing; };
+// Swing resolution. 16th swing delays every other 16th step — the default, and
+// what this engine has always done. 8th swing delays every other EIGHTH, which
+// on a 16th grid is every fourth step. The shift scales with the pair it is
+// swinging: half a 16th at 16th resolution, half an 8th (a whole 16th step) at
+// 8th resolution, so the same percentage means the same proportion of the note
+// pair either way rather than a much weaker 8th feel.
+var sqSwing8 = false;   // false = 16ths, true = 8ths
+window._sqSwingVal  = function(){ return sqSwing; };
+window._sqSwing8    = function(){ return sqSwing8; };
+window._sqSetSwing8 = function(on){ sqSwing8 = !!on; if(typeof sqSyncUI==='function') sqSyncUI(); };
+// One rule for all four engines. Returns the delay in seconds for a step, or 0
+// if that step falls on the beat side of the pair. Drums, bass and melody all
+// used to carry their own copy of `step % 2 === 1`, which is exactly how they
+// would drift apart the moment one of them changed.
+window._sqSwingOffset = function(stepIdx, stepSec, amtPct){
+  var unit = sqSwing8 ? 4 : 2;                       // 16th steps per swung pair
+  if((((stepIdx % unit) + unit) % unit) !== unit/2) return 0;
+  return ((amtPct||0)/100) * stepSec * (unit/4);
+};
 window._sqMach = function(){ return sqMach; };
 // Structural setters for the undo/redo + dice path. These vars live inside the
 // sequencer IIFE, so without an export the outside world silently reads
@@ -14196,6 +14218,8 @@ function sqLoadPatPlay(idx){
 function sqSyncUI(){
   var sd=document.getElementById('sq-stepsDisp');if(sd)sd.textContent=sqSteps;
   var sw=document.getElementById('sq-swingDisp');if(sw)sw.textContent=sqSwing+'%';
+  var s16=document.getElementById('sq-swing16');if(s16)s16.classList.toggle('active',!sqSwing8);
+  var s8=document.getElementById('sq-swing8');if(s8)s8.classList.toggle('active',sqSwing8);
   var ss=document.getElementById('sq-swingSl');if(ss)ss.value=sqSwing;
   var sm=document.getElementById('sq-sMach');if(sm)sm.textContent=SQM[sqMach].label;
 }
@@ -14241,7 +14265,7 @@ function sqPlayCell(track,cell,t,vol,ps){
   for(var i=0;i<r;i++)sqHitTrack(track,t+i*sub,i===0?v:v*.75,ac&&i===0,ps);
 }
 function sqFireStep(s,t){
-  var sw=(s%2===1)?(sqSwing/100)*sqSd()*.5:0,at=t+sw;
+  var sw=window._sqSwingOffset(s, sqSd(), sqSwing),at=t+sw;
   if(sqMach==='303'){
     SQ_PIANO.forEach(function(nr,ti){
       var cell=sqGrid[ti]&&sqGrid[ti][s];
@@ -15396,10 +15420,11 @@ window._blScheduler = function(){
 
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
-      var isOdd = (blSeqStep % 2 === 1);
-      var swOff = isOdd ? (swingAmt / 100) * stepSec * 0.5 : 0;
-      // Cap odd-beat duration so it doesn't bleed past the next downbeat
-      var maxDur = isOdd ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
+      var swOff = (typeof window._sqSwingOffset==='function')
+        ? window._sqSwingOffset(blSeqStep, stepSec, swingAmt)
+        : ((blSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0);
+      // Cap a pushed step's duration so it doesn't bleed past the next downbeat
+      var maxDur = swOff > 0 ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
       var pNote = cell.note, pOct = cell.oct;
       if(following){
@@ -16359,9 +16384,10 @@ window._mlScheduler = function(){
     var cell = mlGrid[mlSeqStep % stepCount];
     if(cell && cell.v === 1){
       var len = Math.max(1, cell.len || 1);
-      var isOdd = (mlSeqStep % 2 === 1);
-      var swOff = isOdd ? (swingAmt / 100) * stepSec * 0.5 : 0;
-      var maxDur = isOdd ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
+      var swOff = (typeof window._sqSwingOffset==='function')
+        ? window._sqSwingOffset(mlSeqStep, stepSec, swingAmt)
+        : ((mlSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0);
+      var maxDur = swOff > 0 ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
       var pn = cell.note, po = cell.oct, skip = false;
       if(following){
