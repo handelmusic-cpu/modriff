@@ -2727,6 +2727,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb purple advanced-only church-mode-btn" id="bm-mixolydian" onclick="setMode('mixolydian')">Mixo</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-locrian" onclick="setMode('locrian')">Locrian</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
+ <button class="tb purple advanced-only church-mode-btn" id="bm-hijaz" onclick="setMode('hijaz')" title="Hijaz / Phrygian dominant — the flamenco and maqam scale">Hijaz</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-major_pent" onclick="setMode('major_pent')" title="Major pentatonic — five notes, harmonised from the parent major">Maj Pent</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-minor_pent" onclick="setMode('minor_pent')" title="Minor pentatonic — five notes, harmonised from the parent minor">Min Pent</button>
  <button class="church-modes-toggle advanced-only" id="church-modes-toggle" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
@@ -3152,6 +3153,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-mixolydian" onclick="setMode('mixolydian')">Mix</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-locrian" onclick="setMode('locrian')">Loc</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
+   <button class="tb purple advanced-only church-mode-btn" id="songs-bm-hijaz" onclick="setMode('hijaz')">Hijaz</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-major_pent" onclick="setMode('major_pent')">Maj Pent</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-minor_pent" onclick="setMode('minor_pent')">Min Pent</button>
    <button class="church-modes-toggle advanced-only" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
@@ -3948,6 +3950,21 @@ const MODES = {
  func:['tonic','dom','modal','subdom','dom','modal','dom'],
  label:'Harm. Min.'
  },
+ // ── Hijaz / Phrygian dominant ──
+ // The 12-tone maqam — the same scale as flamenco's Andalusian cadence,
+ // klezmer's Ahava Rabbah and the 5th mode of harmonic minor. Its chord
+ // table is derived from the scale rather than chosen: stack the scale's own
+ // thirds on each degree and every one lands on a triad the app already
+ // knows, with a seventh already in the SEVENTH table, so it needed nothing
+ // added to the engine. The ♭II is the characteristic chord — I–♭II is the
+ // Phrygian cadence this scale exists for.
+ hijaz: {
+ steps:[0,1,4,5,7,8,10], triadQ:[0,0,2,1,2,3,1],
+ seventh:['dom7','maj7','dim7','minMaj7','halfdim','augMaj7','min7'],
+ nums:['I','♭II','iii°','iv','v°','♭VI+','♭vii'],
+ func:['tonic','subdom','dom','subdom','dom','modal','modal'],
+ label:'Hijaz'
+ },
  // ── Pentatonics: five degrees, not seven ──
  // Every other entry here is a seven-note scale whose chords come from
  // stacking its own thirds. That does not work on a pentatonic: stack the
@@ -4341,6 +4358,16 @@ const MODE_PROG_PRESETS = {
     {degrees:[0,2,4,0]},   // i–♭III+–V–i
     {degrees:[0,5,2,4]},   // i–♭VI–♭III+–V
     {degrees:[0,3,6,4]},   // i–iv–vii°–V
+  ],
+  // I-♭II is the Phrygian cadence this scale exists for, so most of these
+  // resolve through it. Degrees are the usual 0-6.
+  hijaz: [
+    {degrees:[0,1,0]},     // I–♭II–I
+    {degrees:[3,2,1,0]},   // iv–iii°–♭II–I  (descent onto the cadence)
+    {degrees:[0,5,1,0]},   // I–♭VI–♭II–I
+    {degrees:[0,3,1,0]},   // I–iv–♭II–I
+    {degrees:[0,6,5,0]},   // I–♭vii–♭VI–I
+    {degrees:[0,3,0]},     // I–iv–I
   ],
   // Degrees here index the pentatonic's own five, not the parent scale's
   // seven: major_pent is I ii iii V vi (0–4), minor_pent is i ♭III iv v ♭VII.
@@ -7888,7 +7915,10 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  // Triad area
  const trDiv=document.createElement('div');
  trDiv.className='btn-tri';
- const tName=nashMode?numeral:noteN+(triadQ===1?'m':triadQ===2?'°':'');
+ // Augmented needs its own symbol: without it an aug triad printed as a bare
+ // note name, so Harmonic Minor's ♭III+ and Hijaz's ♭VI+ both read as plain
+ // major chords on the button while the numeral above said otherwise.
+ const tName=nashMode?numeral:noteN+(triadQ===1?'m':triadQ===2?'°':triadQ===3?'+':'');
  const tQual=QLABEL[triadQ]||'';
  trDiv.innerHTML=`<span class="cnum">${numeral}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${tQual}</span>`;
  _wireChordHold(trDiv, ()=>{
@@ -7930,7 +7960,7 @@ function makeOutBtn(label,noteN,type7,crm,func){
  // ── Bottom: triad ──
  const trDiv=document.createElement('div');
  trDiv.className='btn-tri';
- const tName = nashMode ? label : noteN+(triadQ===1?'m':triadQ===2?'°':'');
+ const tName = nashMode ? label : noteN+(triadQ===1?'m':triadQ===2?'°':triadQ===3?'+':'');
  trDiv.innerHTML=`<span class="cnum">${label}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${QLABEL[triadQ]||''}</span>`;
  _wireChordHold(trDiv, ()=>{
  const tok=triggerChordWithVariant(crm,triadQ,type7,func,0,undefined,true);
@@ -10265,6 +10295,7 @@ const SOLFEGE_BY_MODE = {
  harmonic_minor: ['Do','Re','Me','Fa','Sol','Le','Ti'],
  // Five syllables, matching the five degrees — the two the parent scale drops
  // (Fa and Ti in major, Re and Le in minor) are simply absent.
+ hijaz:          ['Do','Ra','Mi','Fa','Sol','Le','Te'],
  major_pent:     ['Do','Re','Mi','Sol','La'],
  minor_pent:     ['Do','Me','Fa','Sol','Te'],
 };
@@ -12344,7 +12375,7 @@ document.addEventListener('keydown', e => {
 // ARROW KEYS (Perform tab only) — Up/Down transpose the key by a
 // semitone, Left/Right cycle through modes in the on-screen button order.
 // ═══════════════════════════════════════
-const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','major_pent','minor_pent'];
+const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','hijaz','major_pent','minor_pent'];
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
  if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
