@@ -2534,7 +2534,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
- <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Toggle the arpeggiator and jump to its controls (Bass/Melody tab → Arp)">Arp</button>
+ <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Bass/Melody tab, under Arp">Arp</button>
  <div class="ft-bpm">
  <span style="font-size:.55rem;color:var(--muted)">=</span>
  <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
@@ -5360,12 +5360,31 @@ function releaseSustainedChord(myId){
  const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
  const t=ctx.currentTime;
  const dec=parseFloat(document.getElementById('decay').value)||2.0;
+ const atk=parseFloat(document.getElementById('attack').value)||0.025;
  activeOscs.forEach(v=>{
  try{
- v.gain.gain.cancelScheduledValues(t);
- v.gain.gain.setValueAtTime(v.gain.gain.value, t);
- v.gain.gain.exponentialRampToValueAtTime(.0001, t+dec);
- v.oscs.forEach(o=>{ try{ o.stop(t+dec+.05); }catch(e){} });
+ // A chord is scheduled to start FADE_OUT ahead of the press, plus its strum
+ // offset, so a quick tap releases BEFORE its own envelope has taken effect.
+ // The whole envelope is still in the future, which means the param has not
+ // been touched yet and .value reads the createGain() default of 1.0 — not
+ // the voice's real peak. Cancelling from there threw the envelope away and
+ // decayed from unity, about 10 dB above what the same chord reaches when
+ // held. That is why tapping was louder than holding.
+ //
+ // Release no earlier than the end of this voice's attack, and start from the
+ // peak the voice was actually built for. Once the envelope IS running, the
+ // live value is the honest one (strum has settled it to 0.7 by then), so
+ // take whichever is lower and never jump up on release.
+ const startT = (v.t0 != null) ? v.t0 : t;
+ const relT = Math.max(t, startT + atk + 0.02);
+ const running = t > startT + atk;
+ let from = (v.peak != null) ? v.peak : v.gain.gain.value;
+ if(running) from = Math.min(from, v.gain.gain.value);
+ if(!(from > 0.0002)) from = 0.0002;   // exponentialRamp needs a positive start
+ v.gain.gain.cancelScheduledValues(relT);
+ v.gain.gain.setValueAtTime(from, relT);
+ v.gain.gain.exponentialRampToValueAtTime(.0001, relT+dec);
+ v.oscs.forEach(o=>{ try{ o.stop(relT+dec+.05); }catch(e){} });
  }catch(e){
  if(v.oscs) v.oscs.forEach(o=>{ try{o.stop();}catch(ex){} });
  }
@@ -5792,7 +5811,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  bo.connect(bg); bg.connect(masterDest(ctx));
  const _bgRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
- activeOscs.push({oscs:[bo], gain:bg});
+ activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.38*vsc*_mxCh*_tr});
  reapVoice([bo],[bg,_bgRev],atk+dec);
 
  // Chord tones
@@ -5822,7 +5841,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  g.connect(fx.head);
  const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
- activeOscs.push({oscs, gain:g});
+ activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
  });
 }
@@ -5867,7 +5886,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  bo.connect(bg); bg.connect(masterDest(ctx));
  const _sbRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
- activeOscs.push({oscs:[bo], gain:bg});
+ activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.42*vsc*_mxCh*_tr});
  reapVoice([bo],[bg,_sbRev],atk+dec);
 
  const slashIntvs=voiceIntervals(relIntvs);
@@ -5890,7 +5909,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  g.connect(fx.head);
  const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
  const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
- activeOscs.push({oscs:_os2, gain:g});
+ activeOscs.push({oscs:_os2, gain:g, t0:t0, peak:vol*.22*vl*wg*vsc*_mxCh*_tr});
  reapVoice(_os2,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv2],atk+dec);
  });
 }
@@ -7707,9 +7726,13 @@ function toggleArp(){
 // the Arp sub-tab under Bass/Melody — instead of leaving its controls
 // stranded wherever the user happened to be when they turned it on.
 function ftArpClick(){
+ // Chords, Drums, Bass and Mel all just toggle their layer and leave you where
+ // you are. Arp used to also jump to its own tab, so the one switch you might
+ // hit mid-performance was the one that moved the page out from under you.
+ // Toggling a layer and navigating are two different intentions; the Bass/Mel
+ // tab's own Arp sub-tab is still there when you want the controls.
  toggleArp();
- switchTab('bass');
- setBassMelMode('arp');
+ track('arp_toggled', {enabled:arpOn});
 }
 function onArpRateSlider(v){
  arpRateIdx=Math.max(0,Math.min(parseInt(v),ARP_RATES.length-1));
