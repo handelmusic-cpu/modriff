@@ -7239,6 +7239,17 @@ function _setBpm(v){
  if(typeof onBpmInput==='function') onBpmInput(v);
 }
 // Fires on the downbeat after the final pass.
+// An ending that lands on the tonic has to move the arp there too. The arp
+// holds whatever chord the chart last handed it and nothing here was updating
+// it, so through a ritard's two bars of slowdown it kept arpeggiating the
+// PREVIOUS chord over the top of the tonic — measured at 36 notes outside the
+// tonic triad on a I-IV-V-vi loop, all of them the vi. That is the stray chord
+// you hear at the end of a song. Retargeting also refreshes lastChordRoot/
+// Intvs/Func, so the arp reload inside stopSongLoopIfActive() cannot put the
+// old chord back on the way out.
+function _endingRetargetArp(intvs){
+ try{ if(typeof setArpChord==='function') setArpChord(rootMidi(), intvs, 'tonic'); }catch(e){}
+}
 function _runEnding(kind){
  if(_endingRunning) return;
  _endingRunning=true; songEnding=null; _updateEndingUI();
@@ -7272,6 +7283,7 @@ function _runEnding(kind){
    const md=MODES[mode]||MODES.major;
    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
    stopAll();
+   _endingRetargetArp(intvs);
    playChord(rootMidi(), intvs, false, 0, true);
   }catch(e){}
   _endLater(finish, Math.max(900, bar*1.2));
@@ -7287,6 +7299,7 @@ function _runEnding(kind){
    const md=MODES[mode]||MODES.major;
    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
    stopAll();
+   _endingRetargetArp(intvs);
    playChord(rootMidi(), intvs, false, 0, true);
   }catch(e){}
   for(let i=1;i<=steps;i++){
