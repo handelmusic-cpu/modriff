@@ -7298,7 +7298,23 @@ function _setBpm(v){
 function _endingRetargetArp(intvs){
  try{ if(typeof setArpChord==='function') setArpChord(rootMidi(), intvs, 'tonic'); }catch(e){}
 }
-function _runEnding(kind){
+// Stops the band without touching whatever chord is ringing. stopEverything()
+// also calls stopAll(), which would cut the tonic an ending just landed on —
+// this is the "drop the rhythm section under it" half on its own. Chord voices
+// are not on the kill registry (only arp, bass, melody and drums are), so
+// hardKillAll() clears their look-ahead without silencing the chord.
+function _endingDropRhythm(){
+ try{ if(typeof stopSongLoopIfActive==='function') stopSongLoopIfActive(); }catch(e){}
+ try{ if(rhythmOn){ rhythmOn=false; clearTimeout(clockTimer); if(typeof resetBeatDots==='function') resetBeatDots(); } }catch(e){}
+ try{ if(typeof window._sqPlaying==='function' && window._sqPlaying()) document.dispatchEvent(new CustomEvent('sq-stop-request')); }catch(e){}
+ try{ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blPlayImpl==='function') window._blPlayImpl(); }catch(e){}
+ try{ if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlPlayImpl==='function') window._mlPlayImpl(); }catch(e){}
+ try{ arpOn=false; }catch(e){}
+ try{ clearTimeout(clockTimer); }catch(e){}
+ try{ if(typeof hardKillAll==='function') hardKillAll(); }catch(e){}
+ try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
+}
+function _runEnding(kind, atTime){
  if(_endingRunning) return;
  _endingRunning=true; songEnding=null; _updateEndingUI();
  const beatMs=60000/_bpmNow();
@@ -7309,7 +7325,17 @@ function _runEnding(kind){
   _endingRunning=false;
  };
 
- if(kind==='cold'){ finish(); showToast('Ending: cold stop'); return; }
+ if(kind==='cold'){
+  // The ending fires on the bar boundary, which is beat 1 of the bar that
+  // would have come next — so cutting there let the whole final bar play out.
+  // Land one beat earlier instead, on the last beat of the final bar.
+  const _c=getCtx(), _beat=60/_bpmNow();
+  const cutAt=(atTime!=null) ? atTime-_beat : null;
+  const waitMs=(cutAt!=null && _c) ? Math.max(0,(cutAt-_c.currentTime)*1000) : 0;
+  if(waitMs>8) _endLater(finish, waitMs); else finish();
+  showToast('Ending: cold stop');
+  return;
+ }
 
  if(kind==='fade'){
   const startVol=masterVol, steps=28, dur=bar*2;
@@ -7320,21 +7346,42 @@ function _runEnding(kind){
     if(typeof syncMasterUI==='function') syncMasterUI();
    }, (dur/steps)*i);
   }
-  _endLater(()=>{ finish(); masterVol=startVol; applyMasterBus(); syncMasterUI(); }, dur+90);
+  _endLater(()=>{
+   finish();
+   // Restore the master only once everything has actually gone quiet.
+   // Putting it back in the same tick as finish() snapped the still-ramping
+   // tails straight to full — the full-volume chord at the end of a fade.
+   setTimeout(()=>{
+    masterVol=startVol;
+    if(typeof applyMasterBus==='function') applyMasterBus();
+    if(typeof syncMasterUI==='function') syncMasterUI();
+   }, 500);
+  }, dur+90);
   showToast('Ending: fading out');
   return;
  }
 
  if(kind==='finish'){
-  // Hit the tonic, drop the rhythm section under it, let the chord ring.
+  // Hit the tonic, drop the rhythm section under it, let the chord ring — the
+  // comment always said that, but the band kept playing and then everything
+  // was cut at 1.2 bars, which is neither a beat nor the end of the ring. Now
+  // the band stops on the hit, the chord rings a whole bar, and it is released
+  // into its own decay rather than chopped.
+  let _tok=null;
   try{
    const md=MODES[mode]||MODES.major;
    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
    stopAll();
    _endingRetargetArp(intvs);
    playChord(rootMidi(), intvs, false, 0, true);
+   _tok=_sustainId;
   }catch(e){}
-  _endLater(finish, Math.max(900, bar*1.2));
+  _endingDropRhythm();
+  _endLater(()=>{
+   try{ if(_tok!==null && typeof releaseSustainedChord==='function') releaseSustainedChord(_tok); }catch(e){}
+   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
+   _endLater(finish, dec*1000+120);   // after the chord's own decay, not through it
+  }, bar);
   showToast('Ending: big finish');
   return;
  }
@@ -12144,7 +12191,7 @@ function _advanceLoopSlot(atTime){
  songLoopSlot = 0;
  // An armed ending lands here, on the downbeat, rather than wherever the
  // user happened to hit stop.
- if(songEnding && typeof _runEnding==='function'){ _runEnding(songEnding); return; }
+ if(songEnding && typeof _runEnding==='function'){ _runEnding(songEnding, atTime); return; }
  if(songPendingSectionDelta !== 0){
  // A Next/Prev request was queued — apply it now that the section is done.
  // A manual move always wins over the section's own setting.
@@ -14025,6 +14072,16 @@ var SQM={
     }},
     {n:'Brush',s:'SD',c:'#cbb89a',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.2:1)*2.2, 0.30, false); }},
     {n:'Swirl',s:'SW',c:'#b9a88d',play:function(t,v,ac,ps){ sqBrush(t, v*(ac?1.15:1)*1.35, 0.52, true); }},
+    // A stick on the snare — the brushes' opposite number, for backbeats and
+    // accents brushes are too soft to carry. It sits with the other snare
+    // voices, between the brush sweep and the cross-stick. There's no snare
+    // sample, so it is synthesized: wires rattling over a short noise burst,
+    // with a little body tone under it so it reads as a drum, not a hiss.
+    {n:'Snare',s:'SN',c:'#d8c8b0',play:function(t,v,ac,ps){
+      sqTn(t, 190*sqSemi(ps), 0.085, v*(ac?1.25:1)*0.30, 'triangle', 138*sqSemi(ps));
+      sqNs(t, 0.13, 1900, v*(ac?1.3:1)*0.44);
+      sqNs(t, 0.045, 3900, v*(ac?1.3:1)*0.18);
+    }},
     {n:'Rim',s:'RM',c:'#d8c0a0',play:function(t,v,ac,ps){
       if(sqSample('sidestick', t, v*(ac?1.2:1)*0.6, ps)) return;
       // Cross-stick: a woody click, not a snare.
@@ -14060,18 +14117,6 @@ var SQM={
       if(sqSample('ridebell', t, v*(ac?1.15:1)*0.34, ps)) return;
       sqCym(t, v*(ac?1.3:1)*0.28, 640*sqSemi(ps), 1.5,
             {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
-    }},
-    // Appended rather than slotted in beside the brushes on purpose: sqGrid is
-    // indexed by track POSITION, so inserting a row here would shift every
-    // saved jazz pattern down one and play each part on the wrong voice.
-    // A stick on the snare — the brushes' opposite number, for backbeats and
-    // accents brushes are too soft to carry. There's no snare sample, so this
-    // is synthesized: wires rattling over a short noise burst, with a little
-    // body tone under it so it reads as a drum rather than a hiss.
-    {n:'Snare',s:'SN',c:'#d8c8b0',play:function(t,v,ac,ps){
-      sqTn(t, 190*sqSemi(ps), 0.085, v*(ac?1.25:1)*0.30, 'triangle', 138*sqSemi(ps));
-      sqNs(t, 0.13, 1900, v*(ac?1.3:1)*0.44);
-      sqNs(t, 0.045, 3900, v*(ac?1.3:1)*0.18);
     }}
   ]},
   'BRS':{label:'Brush',color:'#88aacc',tracks:[
@@ -14947,6 +14992,20 @@ window._sqRestoreState = function(st){
  if(st.steps!=null) sqSteps = st.steps;
  if(st.swing!=null) sqSwing = st.swing;
  if(st.swing8!=null) sqSwing8 = !!st.swing8;
+ // JAZZ gained a stick Snare at row 3, between Swirl and Rim. sqGrid is keyed
+ // by row INDEX, so a pattern saved before that exists would play Rim, Tom,
+ // Hat, Ride and Bell one voice too high. Grids from before the Snare have
+ // eight rows: open a gap at index 3 so every old row lands back under its own
+ // track. Nine rows are already current and are left alone.
+ try{
+  if((st.mach||sqMach)==='JAZZ' && st.grid && Object.keys(st.grid).length===8){
+   var _mg={}; Object.keys(st.grid).forEach(function(k){
+    var i=+k; _mg[i<3?i:i+1]=st.grid[k];
+   });
+   _mg[3]=[];
+   st.grid=_mg;
+  }
+ }catch(e){}
  if(st.grid) sqGrid = JSON.parse(JSON.stringify(st.grid));
  if(st.vols) sqVols[sqMach] = JSON.parse(JSON.stringify(st.vols));
  if(st.pitches) sqPitches[sqMach] = JSON.parse(JSON.stringify(st.pitches));
