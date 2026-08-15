@@ -3318,10 +3318,11 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  <div class="ending-row">
   <span class="ms-lbl">Ending</span>
-  <button class="tb end-btn" data-ending="ritard" onclick="armEnding('ritard')" title="Slow down over the last bars and rest on the tonic">Ritard</button>
-  <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Land hard on the tonic and let it ring">Big Fin</button>
-  <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade the whole mix out over the final pass">Fade</button>
-  <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Everything cuts dead on the downbeat">Cold</button>
+  <button class="tb end-btn" data-ending="ritard" onclick="armEnding('ritard')" title="Ritardando — the whole band slows together while the changes keep moving, then lands on the tonic">Ritard</button>
+  <button class="tb end-btn" data-ending="tag"    onclick="armEnding('tag')"    title="Tag — hold the last chord and let the band vamp on it for two more bars, then stop clean">Tag</button>
+  <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Big finish — hit the tonic, the band drops out under it, and the chord rings out">Big Fin</button>
+  <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade the whole mix out over the final bars">Fade</button>
+  <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Everything cuts dead on the last beat of the final bar">Cold</button>
   <span class="ending-hint">Queues to the end of the pass</span>
  </div>
  </div>
@@ -7258,6 +7259,7 @@ let _endingRunning=false;
 let _endTimers=[];
 const ENDINGS={
  ritard: {label:'Ritard',  hint:'Slow down over the last bars, then rest on the tonic.'},
+ tag:    {label:'Tag',     hint:'Vamp on the tonic for two more bars, then stop clean.'},
  finish: {label:'Big Fin', hint:'Land hard on the tonic and let it ring.'},
  fade:   {label:'Fade',    hint:'Fade the whole mix out over the final pass.'},
  cold:   {label:'Cold',    hint:'Everything cuts dead on the downbeat.'},
@@ -7386,26 +7388,65 @@ function _runEnding(kind, atTime){
   return;
  }
 
- if(kind==='ritard'){
-  // Ease the tempo down rather than stepping it — a linear drop reads as a
-  // glitch, where a curve reads as a band slowing together.
-  const from=_bpmNow(), to=Math.max(38, from*0.45), steps=24, dur=bar*2;
+ if(kind==='tag'){
+  // Adds time at the end: the band stays on the final chord for two more bars
+  // at tempo, then stops clean. This is what Ritard used to do — hold the last
+  // chord and stretch it — which is a tag, not a ritardando, so it is its own
+  // button now and Ritard is free to actually slow down.
+  let _tok=null;
   try{
    const md=MODES[mode]||MODES.major;
    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
    stopAll();
    _endingRetargetArp(intvs);
    playChord(rootMidi(), intvs, false, 0, true);
+   _tok=_sustainId;
   }catch(e){}
+  // The rhythm section deliberately keeps going — that is the added time. The
+  // loop stops advancing (this returns falsy), so it vamps on the tonic rather
+  // than walking on through the chart.
+  _endLater(()=>{
+   _endingDropRhythm();
+   // Release into the chord's own decay. Letting finish() cut it at the
+   // two-bar mark chops a still-sustaining chord, which clicks.
+   try{ if(_tok!==null && typeof releaseSustainedChord==='function') releaseSustainedChord(_tok); }catch(e){}
+   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
+   _endLater(finish, dec*1000+120);
+  }, bar*2);
+  showToast('Ending: tag');
+  return;
+ }
+
+ if(kind==='ritard'){
+  // A ritardando is the whole band slowing together while the music carries
+  // on — so this no longer jumps to the tonic and stretches it. The loop keeps
+  // running (see the return below), the changes keep moving, and the tempo
+  // curve pulls everything down underneath them. The tonic landing happens at
+  // the end of the slowdown, not instead of it.
+  const from=_bpmNow(), to=Math.max(38, from*0.5), steps=28;
+  // Bars get longer as the tempo drops, so two bars of music is more than two
+  // bars of wall clock at the starting tempo. 2.6 covers it closely enough.
+  const dur=bar*2.6;
   for(let i=1;i<=steps;i++){
    _endLater(()=>{
     const t=i/steps;
     _setBpm(Math.round(from+(to-from)*(t*t)));
    }, (dur/steps)*i);
   }
-  _endLater(()=>{ finish(); _setBpm(Math.round(from)); }, dur+140);
+  _endLater(()=>{
+   try{
+    const md=MODES[mode]||MODES.major;
+    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
+    stopAll();
+    _endingRetargetArp(intvs);
+    playChord(rootMidi(), intvs, false, 0, true);
+   }catch(e){}
+   _endingDropRhythm();
+   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
+   _endLater(()=>{ finish(); _setBpm(Math.round(from)); }, dec*1000+120);
+  }, dur+120);
   showToast('Ending: ritardando');
-  return;
+  return true;   // stay in the loop — the changes play on through the slowdown
  }
  _endingRunning=false;
 }
@@ -12191,7 +12232,12 @@ function _advanceLoopSlot(atTime){
  songLoopSlot = 0;
  // An armed ending lands here, on the downbeat, rather than wherever the
  // user happened to hit stop.
- if(songEnding && typeof _runEnding==='function'){ _runEnding(songEnding, atTime); return; }
+ if(songEnding && typeof _runEnding==='function'){
+   // A real ritardando keeps the changes moving while the band slows, so it
+   // asks to stay in the loop. Every other ending takes the song over here.
+   const _keepLooping = _runEnding(songEnding, atTime);
+   if(!_keepLooping) return;
+ }
  if(songPendingSectionDelta !== 0){
  // A Next/Prev request was queued — apply it now that the section is done.
  // A manual move always wins over the section's own setting.
