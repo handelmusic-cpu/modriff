@@ -3412,8 +3412,8 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
     <span class="sq-pl" style="font-size:.5rem">Swing</span>
     <input type="range" class="sq-sl" id="sq-swingSl" min="0" max="70" value="0">
     <span class="sq-pv sq-dim" id="sq-swingDisp" style="font-size:.65rem">0%</span>
-    <button class="seq-rbtn active" id="sq-swing16" onclick="window._sqSetSwing8(false)" title="Swing every other 16th — the tighter, busier feel">16th</button>
-    <button class="seq-rbtn" id="sq-swing8" onclick="window._sqSetSwing8(true)" title="Swing every other 8th — the long-short triplet feel of a shuffle or a jazz ride">8th</button>
+    <button class="seq-rbtn" id="sq-swing16" onclick="window._sqSetSwing8(false)" title="Swing every other 16th — the tighter funk and hip-hop feel">16th</button>
+    <button class="seq-rbtn active" id="sq-swing8" onclick="window._sqSetSwing8(true)" title="Swing every other 8th — the long-short feel of a jazz ride or a shuffle. This is what &quot;swing&quot; means unqualified.">8th</button>
   </div>
   <div class="sq-pb">
     <span class="sq-pl" style="font-size:.5rem">FX</span>
@@ -8733,14 +8733,19 @@ function applyJazzMode(){
  s.compStyle = 'charleston';   // comping, not a held pad
  s.chordBeats = 0;
 
- // Feel: swung sixteenths and the Jazz kit.
+ // Feel: swung EIGHTHS and the Jazz kit. Two bugs lived on this line. The
+ // amount was 0.28 against a 0-70 control, so the swing this button promised
+ // measured 0.175ms at 120bpm — around 200x too small, i.e. dead straight.
+ // And the resolution was sixteenths, which is a funk feel; jazz swings the
+ // eighths. Both are why "♭ Jazz" came out stiff.
  s.sqMach   = 'JAZZ';
  s.sqSteps  = 16;
- s.sqSwing  = 0.28;
+ s.sqSwing  = 58;      // a jazz ride sits near the triplet
+ s.sqSwing8 = true;
  s.sqRateMul = 1;
  // Same hazard as the dice: _applySettings restores the sqState snapshot after
  // writing these, and that snapshot carries its own copy of all three.
- if(s.sqState){ s.sqState.mach = s.sqMach; s.sqState.steps = s.sqSteps; s.sqState.swing = s.sqSwing; }
+ if(s.sqState){ s.sqState.mach = s.sqMach; s.sqState.steps = s.sqSteps; s.sqState.swing = s.sqSwing; s.sqState.swing8 = s.sqSwing8; }
 
  _applySettings(s);
 
@@ -8828,7 +8833,10 @@ function randomizeSettings(opts){
  s.chordBeats = _rndPick([0,0,1,2,4]);            // ∞ weighted: most patches want to ring
  s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
- s.sqSwing    = +(_rndPick([0,0,0,.08,.14,.2,.28])).toFixed(2);
+ // Was [0 … .28] against a 0-70 control, so every non-zero roll produced
+ // silence-adjacent swing and the dice's "swing" never audibly did anything.
+ s.sqSwing    = _rndPick([0,0,0,15,25,40,55]);
+ s.sqSwing8   = _rndPick([true,true,true,false]);   // mostly eighths
  s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','BRS','JAZZ']);
  // _capSettings() snapshotted sqState BEFORE this roll, and _applySettings
  // restores that snapshot AFTER writing the rolled values — and the snapshot
@@ -8842,6 +8850,7 @@ function randomizeSettings(opts){
   s.sqState.mach  = s.sqMach;
   s.sqState.steps = s.sqSteps;
   s.sqState.swing = s.sqSwing;
+  s.sqState.swing8 = s.sqSwing8;
  }
  s.modSynthPreset = _rndPick(gentle ? RND_SOFT_MS_PRESETS : Object.keys(MODSYNTH_PRESETS));
  // Roll the modulation on top of the preset — movement is most of what makes
@@ -14084,7 +14093,10 @@ var sqSwing=0, sqMach='808', sqSteps=16;
 // swinging: half a 16th at 16th resolution, half an 8th (a whole 16th step) at
 // 8th resolution, so the same percentage means the same proportion of the note
 // pair either way rather than a much weaker 8th feel.
-var sqSwing8 = false;   // false = 16ths, true = 8ths
+// Defaults to 8ths. "Swing" without qualification means the eighths — it is
+// what a jazz ride, a shuffle and a blues shuffle all do. Swung SIXTEENTHS are
+// a funk/hip-hop feel and a deliberate choice, not the baseline.
+var sqSwing8 = true;    // true = 8ths (default), false = 16ths
 window._sqSwingVal  = function(){ return sqSwing; };
 window._sqSwing8    = function(){ return sqSwing8; };
 window._sqSetSwing8 = function(on){ sqSwing8 = !!on; if(typeof sqSyncUI==='function') sqSyncUI(); };
@@ -14917,7 +14929,7 @@ window._sqResetStep = function(){ sqSeqStep = 0; };
 // them directly)
 window._sqCaptureState = function(){
  return {
-  steps: sqSteps, swing: sqSwing, mach: sqMach,
+  steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: sqMach,
   grid: sqGrid,
   vols: sqVols[sqMach] || {},
   pitches: sqPitches[sqMach] || {},
@@ -14934,6 +14946,7 @@ window._sqRestoreState = function(st){
  if(st.mach!=null) sqMach = st.mach;
  if(st.steps!=null) sqSteps = st.steps;
  if(st.swing!=null) sqSwing = st.swing;
+ if(st.swing8!=null) sqSwing8 = !!st.swing8;
  if(st.grid) sqGrid = JSON.parse(JSON.stringify(st.grid));
  if(st.vols) sqVols[sqMach] = JSON.parse(JSON.stringify(st.vols));
  if(st.pitches) sqPitches[sqMach] = JSON.parse(JSON.stringify(st.pitches));
