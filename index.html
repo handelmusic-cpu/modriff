@@ -4505,6 +4505,82 @@ const MODE_PROG_PRESETS = {
   ],
 };
 
+// ── Blues forms ──
+// Everything in MODE_PROG_PRESETS is indexed by scale degree, which works
+// because those progressions are diatonic. A blues is not: it wants dominant
+// sevenths on I, IV and V at once, which no major or minor scale contains, and
+// the jazz form reaches further out still (♯iv°7, VI7). Indexing those by
+// degree would mean writing a different, wrong version per mode.
+//
+// So these are chromatic — semitones from the tonic, with the chord quality
+// stated outright. One definition, correct in every key and every mode, which
+// is also just true of the music: you can play a blues in any of them.
+//
+// s = semitones above the tonic · q = triad quality (0 maj, 1 min, 2 dim)
+// bars/beats = how long the chord holds, so the bar counts are real
+const BLUES_FORMS = [
+ { name:'12-Bar Blues', chords:[
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:4},
+   {s:5,q:0,t7:'dom7',num:'IV7',func:'subdom',bars:2},
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:2},
+   {s:7,q:0,t7:'dom7',num:'V7', func:'dom',   bars:1},
+   {s:5,q:0,t7:'dom7',num:'IV7',func:'subdom',bars:1},
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:1},
+   {s:7,q:0,t7:'dom7',num:'V7', func:'dom',   bars:1},   // turnaround
+ ]},
+ // The "quick change": IV in bar 2 instead of four bars of I. The other
+ // standard 12-bar, and the one most blues bands actually count off.
+ { name:'12-Bar Blues (Quick Change)', chords:[
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:1},
+   {s:5,q:0,t7:'dom7',num:'IV7',func:'subdom',bars:1},
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:2},
+   {s:5,q:0,t7:'dom7',num:'IV7',func:'subdom',bars:2},
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:2},
+   {s:7,q:0,t7:'dom7',num:'V7', func:'dom',   bars:1},
+   {s:5,q:0,t7:'dom7',num:'IV7',func:'subdom',bars:1},
+   {s:0,q:0,t7:'dom7',num:'I7', func:'tonic', bars:1},
+   {s:7,q:0,t7:'dom7',num:'V7', func:'dom',   bars:1},
+ ]},
+ // Bird blues territory: the ♯iv°7 in bar 6, the VI7 kicking bar 8, and
+ // ii-V's carrying the last four. Bars 4, 11 and 12 hold two chords each,
+ // which is what beats:2 is for.
+ { name:'12-Bar Jazz Blues', chords:[
+   {s:0,q:0,t7:'dom7',   num:'I7',  func:'tonic', bars:1},
+   {s:5,q:0,t7:'dom7',   num:'IV7', func:'subdom',bars:1},
+   {s:0,q:0,t7:'dom7',   num:'I7',  func:'tonic', bars:1},
+   {s:7,q:1,t7:'min7',   num:'v7',  func:'dom',   bars:0,beats:2},
+   {s:0,q:0,t7:'dom7',   num:'I7',  func:'tonic', bars:0,beats:2},
+   {s:5,q:0,t7:'dom7',   num:'IV7', func:'subdom',bars:1},
+   {s:6,q:2,t7:'dim7',   num:'♯iv°',func:'dom',   bars:1},
+   {s:0,q:0,t7:'dom7',   num:'I7',  func:'tonic', bars:1},
+   {s:9,q:0,t7:'dom7',   num:'VI7', func:'dom',   bars:1},
+   {s:2,q:1,t7:'min7',   num:'ii7', func:'subdom',bars:1},
+   {s:7,q:0,t7:'dom7',   num:'V7',  func:'dom',   bars:1},
+   {s:0,q:0,t7:'dom7',   num:'I7',  func:'tonic', bars:0,beats:2},
+   {s:9,q:0,t7:'dom7',   num:'VI7', func:'dom',   bars:0,beats:2},
+   {s:2,q:1,t7:'min7',   num:'ii7', func:'subdom',bars:0,beats:2},
+   {s:7,q:0,t7:'dom7',   num:'V7',  func:'dom',   bars:0,beats:2},
+ ]},
+ // Minor blues: minor sevenths on i and iv, and the ♭VI7–V7 that gives the
+ // form its ending. "The Thrill Is Gone" is this.
+ { name:'12-Bar Minor Blues', chords:[
+   {s:0,q:1,t7:'min7',num:'i7',  func:'tonic', bars:4},
+   {s:5,q:1,t7:'min7',num:'iv7', func:'subdom',bars:2},
+   {s:0,q:1,t7:'min7',num:'i7',  func:'tonic', bars:2},
+   {s:8,q:0,t7:'dom7',num:'♭VI7',func:'modal', bars:1},
+   {s:7,q:0,t7:'dom7',num:'V7',  func:'dom',   bars:1},
+   {s:0,q:1,t7:'min7',num:'i7',  func:'tonic', bars:1},
+   {s:7,q:0,t7:'dom7',num:'V7',  func:'dom',   bars:1},
+ ]},
+];
+// One list, built once, so the dropdown's option indices and the loader's
+// lookup can never drift apart — which they would the moment two call sites
+// each did their own concatenation.
+function _progPresetsFor(m){
+ return (MODE_PROG_PRESETS[m]||MODE_PROG_PRESETS.major).concat(BLUES_FORMS);
+}
+
+
 // ── Voice types ──
 const VOICE_TYPES = [
  {name:'Soprano', range:'C4–C6', keys:['G','A','B','C','D']},
@@ -9901,9 +9977,11 @@ function buildProgPresets(){
  // Keep the placeholder option, clear the rest
  while(sel.options.length > 1) sel.remove(1);
  const md=MODES[mode]||MODES.major;
- const presets=MODE_PROG_PRESETS[mode]||MODE_PROG_PRESETS.major;
- presets.forEach((pp,i)=>{
-  const name=pp.degrees.map(d=>md.nums[d]).join(' – ');
+ _progPresetsFor(mode).forEach((pp,i)=>{
+  // A degree preset names itself from its numerals; a blues form is twelve
+  // bars long and would spell out to something unreadable, so it carries its
+  // own name.
+  const name = pp.name || pp.degrees.map(d=>md.nums[d]).join(' – ');
   const opt=document.createElement('option'); opt.value=i; opt.textContent=name;
   sel.appendChild(opt);
  });
@@ -9911,23 +9989,45 @@ function buildProgPresets(){
 }
 
 function loadProgPresetByIdx(idx){
- const presets=MODE_PROG_PRESETS[mode]||MODE_PROG_PRESETS.major;
+ const presets=_progPresetsFor(mode);
  if(idx<0||idx>=presets.length) return;
  loadProgPreset(presets[idx]);
  document.getElementById('prog-preset-sel').value='-1';
+}
+
+function _progSlot(o){
+ return Object.assign({bassNote:null,bars:1,beats:0,eighths:0,isRest:false}, o);
 }
 
 function loadProgPreset(pp){
  const md=MODES[mode]||MODES.major;
  const steps=md.steps, tqs=md.triadQ, t7s=md.seventh, nums=md.nums, funcs=md.func;
  const rm=rootMidi();
+ const qSuffix=q=>(q===1?'m':q===2?'°':q===3?'+':'');
  if(!sections[curSection]) sections[curSection]={name:'Verse',slots:[]};
  sections[curSection].slots=[];
- pp.degrees.forEach(di=>{
- const s=steps[di], noteN=nn((root+s)%12), q=tqs[di];
- const triadName=noteN+(q===1?'m':q===2?'°':q===3?'+':'');
- sections[curSection].slots.push({label:triadName,numeral:nums[di],rootM:rm+s,triadQ:q,type7:t7s[di],func:funcs[di],ext:'triad',bassNote:null,bars:1,beats:0,eighths:0,isRest:false});
- });
+ if(pp.chords){
+  // Chromatic form (the blues ones): semitones from the tonic with the chord
+  // quality stated, so it lands identically whatever mode is selected. These
+  // load as sevenths — a blues played on triads is not a blues.
+  pp.chords.forEach(c=>{
+   sections[curSection].slots.push(_progSlot({
+    label: nn((root+c.s)%12)+qSuffix(c.q),
+    numeral: c.num, rootM: rm+c.s, triadQ: c.q, type7: c.t7,
+    func: c.func||'tonic', ext: c.ext||'7th',
+    bars: c.bars==null?1:c.bars, beats: c.beats||0
+   }));
+  });
+ } else {
+  pp.degrees.forEach(di=>{
+   const st=steps[di], q=tqs[di];
+   sections[curSection].slots.push(_progSlot({
+    label: nn((root+st)%12)+qSuffix(q),
+    numeral: nums[di], rootM: rm+st, triadQ: q, type7: t7s[di],
+    func: funcs[di], ext:'triad'
+   }));
+  });
+ }
  buildSectionTabs(); renderChartSeq();
 }
 
