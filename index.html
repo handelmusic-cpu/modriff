@@ -1333,7 +1333,6 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
    beat dots are gone (the Drums page keeps its own set), which is what pays
    for tempo and arp rate staying reachable without opening a menu. */
 .perf-bar .ft-btn.arp { padding:6px 9px; font-size:.6rem; letter-spacing:.02em; }
-.perf-bar .ft-bpm input[type=range] { width:74px; }
 .perf-bar .ft-bpm, .perf-bar .ft-rate { gap:3px; }
 .perf-bar .ft-btn.ur { padding:4px 7px; }
 .perf-bar .ft-btn.transport { padding:4px 5px; }
@@ -1395,11 +1394,37 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 #universal-mixer { font-family:'Outfit',sans-serif; }
 .ft-btn.song-off { background:rgba(80,200,120,.06); border:1px solid rgba(80,200,120,.25); color:var(--pg); }
 .ft-bpm {
- display:flex; align-items:center; gap:5px;
+ display:flex; align-items:center; gap:5px; position:relative;
  font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em;
 }
-.ft-bpm input[type=range] { width:80px; }
-.ft-bpm-val { color:var(--accent); min-width:32px; font-size:.6rem; font-family:'Outfit',sans-serif; font-weight:700; }
+.ft-bpm-val {
+ color:var(--accent); min-width:32px; text-align:center;
+ font-size:.6rem; font-family:'Outfit',sans-serif; font-weight:700;
+ cursor:ew-resize; user-select:none; -webkit-user-select:none;
+ /* The drag has to own the gesture or a phone scrolls the page instead. */
+ touch-action:none; padding:3px 6px; border-radius:5px;
+ border:1px solid transparent; transition:background .12s, border-color .12s;
+}
+.ft-bpm-val:hover, .ft-bpm-val:focus-visible {
+ background:var(--surf2); border-color:var(--border2); outline:none;
+}
+.ft-bpm-val.dragging { background:var(--surf2); border-color:var(--accent); }
+/* Opens upward, over the app rather than the OS chrome at the bottom edge. */
+.ft-bpm-pop {
+ position:absolute; bottom:calc(100% + 9px); left:50%; transform:translateX(-50%);
+ display:none; align-items:center; gap:7px; z-index:60;
+ background:var(--surf); border:1px solid var(--border2); border-radius:9px;
+ padding:8px 10px; box-shadow:0 10px 28px rgba(0,0,0,.5);
+}
+.ft-bpm-pop.open { display:flex; }
+.ft-bpm-pop input[type=range] { width:min(46vw,160px); }
+.ft-bpm-nudge {
+ flex:none; width:24px; height:24px; line-height:1; font-size:.8rem;
+ background:var(--surf2); color:var(--text); border:1px solid var(--border2);
+ border-radius:6px; cursor:pointer; touch-action:manipulation;
+}
+.ft-bpm-nudge:active { background:var(--accent); color:#07080f; }
+body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shadow:0 10px 28px rgba(40,44,80,.22); }
 .ft-rate {
  display:flex; align-items:center; gap:5px;
  font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em;
@@ -2545,11 +2570,21 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Bass/Melody tab, under Arp">Arp</button>
- <div class="ft-bpm">
+ <!-- The 80px range input that used to sit inline here was permanent transport
+      real estate for a value most people set once a session, and a miserable
+      target on a phone. The readout IS the control now: drag it like a DAW
+      tempo field, or tap it for a proper slider with nudge buttons. -->
+ <div class="ft-bpm" id="ft-bpm-wrap">
  <span style="font-size:.55rem;color:var(--muted)">=</span>
- <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
- oninput="onBpmInput(this.value)">
- <span class="ft-bpm-val" id="ft-bpm-val">100</span>
+ <span class="ft-bpm-val" id="ft-bpm-val" role="slider" tabindex="0"
+       aria-label="Tempo" aria-valuemin="40" aria-valuemax="220" aria-valuenow="100"
+       title="Tempo — drag to change, tap for a slider">100</span>
+ <div class="ft-bpm-pop" id="ft-bpm-pop" aria-hidden="true">
+  <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
+  <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
+         oninput="onBpmInput(this.value)" aria-label="Tempo">
+  <button class="ft-bpm-nudge" onclick="nudgeBpm(1)" aria-label="Faster" title="1 bpm faster">+</button>
+ </div>
  </div>
  <div class="ft-rate">
  <span>Arp</span>
@@ -2747,13 +2782,17 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb purple advanced-only church-mode-btn" id="bm-locrian" onclick="setMode('locrian')">Locrian</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-hijaz" onclick="setMode('hijaz')" title="Hijaz / Phrygian dominant — the flamenco and maqam scale">Hijaz</button>
- <button class="tb purple advanced-only church-mode-btn" id="bm-major_pent" onclick="setMode('major_pent')" title="Major pentatonic — five notes, harmonised from the parent major">Maj Pent</button>
+ <button class="tb purple" id="bm-major_pent" onclick="setMode('major_pent')" title="Major pentatonic — five notes, harmonised from the parent major">Maj Pent</button>
  <button class="tb purple advanced-only church-mode-btn" id="bm-minor_pent" onclick="setMode('minor_pent')" title="Minor pentatonic — five notes, harmonised from the parent minor">Min Pent</button>
+ <button class="tb purple advanced-only church-mode-btn" id="bm-blues" onclick="setMode('blues')" title="Blues — minor pentatonic plus the ♭5, over I7 IV7 V7 changes">Blues</button>
  <button class="church-modes-toggle advanced-only" id="church-modes-toggle" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
  </div>
  <button class="nash-pill advanced-only" id="nash-pill" onclick="toggleNash()" title="Toggle Nashville Numbers">Numbers</button>
- <button class="tune-btn advanced-only" id="tune-cycle-btn" onclick="cycleMasterTune()" title="A4 reference pitch">A=440</button>
- <span class="midi-badge off advanced-only" id="midi-badge" onclick="toggleMidiPanel()">MIDI</span>
+ <!-- The A=440 cycler and the MIDI badge used to sit here. Reference pitch is a
+      set-and-forget preference, not a performance control, and it now lives in
+      Settings > Master tune (still 440 by default). The MIDI badge was only a
+      status light; the same one is in Settings, next to the MIDI panel it
+      opens. Both were taking header room the mode buttons needed. -->
  <div class="vmt-pill" style="margin-left:auto">
   <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
   <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
@@ -3030,7 +3069,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="Play the sustained chord underneath the arp, not just the arp notes. Relative volume between Chord and Arp is set in the Mixer.">Chord Layer: ON</button>
  <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Gives chords a plucked, strummed character (quicker decay, settles after the initial hit) instead of a sustained pad">Strum: ON</button>
  </div>
- <span class="midi-badge off" id="midi-badge2" style="display:block;text-align:center;margin-top:6px">MIDI</span>
+ <!-- The only MIDI badge now that the Perform header one is gone, so it has to
+      carry the panel it used to open. -->
+ <span class="midi-badge off" id="midi-badge2" onclick="toggleMidiPanel()" title="Connected MIDI inputs — tap to open MIDI setup" style="display:block;text-align:center;margin-top:6px">MIDI</span>
  </div>
  </div>
 
@@ -3173,8 +3214,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-locrian" onclick="setMode('locrian')">Loc</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-harmonic_minor" onclick="setMode('harmonic_minor')">H.Min</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-hijaz" onclick="setMode('hijaz')">Hijaz</button>
-   <button class="tb purple advanced-only church-mode-btn" id="songs-bm-major_pent" onclick="setMode('major_pent')">Maj Pent</button>
+   <button class="tb purple" id="songs-bm-major_pent" onclick="setMode('major_pent')">Maj Pent</button>
    <button class="tb purple advanced-only church-mode-btn" id="songs-bm-minor_pent" onclick="setMode('minor_pent')">Min Pent</button>
+   <button class="tb purple advanced-only church-mode-btn" id="songs-bm-blues" onclick="setMode('blues')">Blues</button>
    <button class="church-modes-toggle advanced-only" onclick="toggleChurchModes()" title="Show/hide church modes">− Modes</button>
   </div>
  </div>
@@ -4013,6 +4055,25 @@ const MODES = {
  func:['tonic','modal','subdom','dom','modal'],
  label:'Min Pent'
  },
+ // Minor pentatonic plus the ♭5 — six degrees. Harmonised the same way the
+ // pentatonics are, because a blues has the same split between what you play
+ // and what the band plays: the melody leans on ♭3 and ♭5 while the changes
+ // underneath are I7 IV7 V7, all dominant, all with a natural 3rd. Comping a
+ // C blues on Cm because the scale has an E♭ is the one thing this must not
+ // teach. So the qualities below are the blues' real harmony:
+ //
+ //   I7  ♭III  IV7  ♯iv°7  V7  ♭VII
+ //
+ // ♯iv°7 is the bar-6 diminished of a jazz blues (F♯°7 in C) — the ♭5 in the
+ // scale is exactly the note it is built on. ♭VII is the backdoor, ♭III the
+ // rock/blues flat-third chord. Nothing invented; these are the changes.
+ blues: {
+ steps:[0,3,5,6,7,10], triadQ:[0,0,0,2,0,0],
+ seventh:['dom7','maj7','dom7','dim7','dom7','dom7'],
+ nums:['I7','♭III','IV7','♯iv°','V7','♭VII'],
+ func:['tonic','modal','subdom','dom','dom','modal'],
+ label:'Blues'
+ },
 };
 
 const TRIAD = { 0:[0,4,7], 1:[0,3,7], 2:[0,3,6], 3:[0,4,8] }; // 3=augmented
@@ -4410,6 +4471,16 @@ const MODE_PROG_PRESETS = {
     {degrees:[0,4,2,0]},   // i–♭VII–iv–i
     {degrees:[0,2,0]},     // i–iv–i
     {degrees:[1,4,0]},     // ♭III–♭VII–i
+  ],
+  // Six degrees: 0=I7 1=♭III 2=IV7 3=♯iv° 4=V7 5=♭VII. These are the moves a
+  // 12-bar is made of, not the full 12 bars — the chart is where you lay one out.
+  blues: [
+    {degrees:[0,2,0,4,2,0]},  // I–IV–I–V–IV–I  (the 12-bar skeleton)
+    {degrees:[0,2,0,0]},      // I–IV–I–I       (the first four bars)
+    {degrees:[4,2,0,0]},      // V–IV–I–I       (the turnaround)
+    {degrees:[0,2,3,0]},      // I–IV–♯iv°–I    (the bar-6 diminished)
+    {degrees:[0,5,0]},        // I–♭VII–I
+    {degrees:[0,1,5,0]},      // I–♭III–♭VII–I
   ],
 };
 
@@ -10418,6 +10489,8 @@ const SOLFEGE_BY_MODE = {
  hijaz:          ['Do','Ra','Mi','Fa','Sol','Le','Te'],
  major_pent:     ['Do','Re','Mi','Sol','La'],
  minor_pent:     ['Do','Me','Fa','Sol','Te'],
+ // Six: the minor pentatonic's five plus Se, the ♭5 blue note.
+ blues:          ['Do','Me','Fa','Se','Sol','Te'],
 };
 function toggleSolfege(){
  solfegeOn = !solfegeOn;
@@ -10678,9 +10751,43 @@ const musicalTypingHeld = {};
 // Sustain tokens for chords held down on the number keys, keyed by e.code so
 // the release matches the physical key regardless of modifiers.
 const heldChordKeys = {};
+
+// Should the focused control swallow this keystroke?
+//
+// Every keyboard handler in here used to answer that with tagName alone —
+// `['INPUT','TEXTAREA'].includes(activeElement.tagName)` — which is far too
+// blunt. A range slider and a checkbox are <input>s, so touching ANY control
+// in Settings parked focus on one and killed musical typing until you clicked
+// somewhere neutral. MIDI kept working the whole time, since it never goes
+// through this path, which is exactly how the bug got reported.
+//
+// A control only owns the keys it actually uses: a text field takes
+// everything, a slider takes its own nudge keys, a checkbox takes Space and
+// Enter. Letters and digits go back to the instrument.
+function _focusOwnsKey(e){
+ const ae=document.activeElement; if(!ae) return false;
+ const tag=ae.tagName;
+ if(tag==='TEXTAREA' || ae.isContentEditable) return true;
+ const key=(e&&e.key)||'';
+ // Keys a control moves or commits with. While a native <select> is actually
+ // open the browser eats keystrokes before they reach the document, so a
+ // focused-but-closed one has no claim on letters — which matters, because
+ // every voice dropdown on Perform and Bass is a <select> and holding the
+ // keyboard after picking a sound is the same bug in a different costume.
+ const NAV = /^Arrow/.test(key) || key==='Home' || key==='End'
+          || key==='PageUp' || key==='PageDown' || key==='Enter' || key==='Escape';
+ const COMMIT = key===' ' || key==='Spacebar' || key==='Enter';
+ if(tag==='SELECT') return NAV || COMMIT;
+ if(tag!=='INPUT') return false;
+ const type=(ae.type||'text').toLowerCase();
+ if(type==='range') return NAV;
+ if(['checkbox','radio','button','submit','reset','color','file','image'].indexOf(type)>=0) return COMMIT;
+ return true;   // text, search, number, date … — real typing
+}
+
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey) return;
- if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+ if(_focusOwnsKey(e)) return;
 
  // Z/X octave shift for melody
  if(e.key==='z'){ shiftMelOct(-1); return; }
@@ -11178,7 +11285,7 @@ const TIPS = {
  title: 'Key & Mode',
  body: `<strong>− / +</strong> transpose the key a semitone at a time. Every chord, the melody strip and the fingering charts follow instantly.<br><br>
 <strong>Maj / Min</strong> are always available. <strong>Advanced</strong> view adds the church modes — Dorian, Phrygian, Lydian, Mixolydian, Locrian and Harmonic Minor — which you can fold away again with the <strong>− Modes</strong> button.<br><br>
-<strong>Numbers</strong> switches chord names to Nashville / Roman numerals (I, ii, iii, IV, V, vi, vii°) so the relationships stay readable in any key. <strong>A=440</strong> cycles the reference pitch (432 / 440 / 444 and a custom setting in Setup).<br><br>
+<strong>Numbers</strong> switches chord names to Nashville / Roman numerals (I, ii, iii, IV, V, vi, vii°) so the relationships stay readable in any key. Reference pitch is standard A=440 unless you change it under <strong>Settings › Master tune</strong> (432 / 442 / 444 / 528, or anything from 415–466 Hz).<br><br>
 <strong>Arrow keys</strong> on the Play tab: ↑ / ↓ transpose, ← / → step through modes. You can also tap any segment of the Circle of Keys in <strong>Setup</strong> to set key and mode together.`
  },
  'chords': {
@@ -12431,7 +12538,9 @@ function stopEverything(){
 const TAB_ORDER=['perform','songs','rhythm','bass','mix','build'];
 document.addEventListener('keydown', e => {
  if(e.key!=='Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
- if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+ // Tab is how you move between fields, so unlike the note keys it stays with
+ // ANY focused control, not just the ones that type.
+ if(document.activeElement && document.activeElement!==document.body) return;
  if(window.matchMedia && window.matchMedia('(hover: none)').matches) return;
  e.preventDefault();
  const cur=TAB_ORDER.findIndex(t=>document.getElementById('page-'+t)?.classList.contains('active'));
@@ -12440,7 +12549,7 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keydown', e => {
- if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
+ if (e.code === 'Space' && !_focusOwnsKey(e)) {
  e.preventDefault();
  if(isAnythingPlaying()) stopEverything();
  else startEverything();
@@ -12490,7 +12599,7 @@ function startEverything(){
 // ═══════════════════════════════════════
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
- if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(_focusOwnsKey(e)) return;
  if(e.key!=='n' && e.key!=='b') return;
  if(!sections.length) return;
  e.preventDefault();
@@ -12501,10 +12610,10 @@ document.addEventListener('keydown', e => {
 // ARROW KEYS (Perform tab only) — Up/Down transpose the key by a
 // semitone, Left/Right cycle through modes in the on-screen button order.
 // ═══════════════════════════════════════
-const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','hijaz','major_pent','minor_pent'];
+const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','hijaz','major_pent','minor_pent','blues'];
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
- if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(_focusOwnsKey(e)) return;
  if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) return;
  const perfTab = document.getElementById('page-perform');
  if(!perfTab || !perfTab.classList.contains('active')) return;
@@ -12565,7 +12674,7 @@ function _stopRoll(){
 
 document.addEventListener('keydown', e=>{
  if(e.repeat) return;
- if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+ if(_focusOwnsKey(e)) return;
  if(e.key==='Control'){
  if(_activeMelMidiList().length){ e.preventDefault(); _accentOn=true; _setMelodyAccent(true); }
  } else if(e.key==='Alt'){
@@ -12836,11 +12945,79 @@ const _origOnBpmInput = typeof onBpmInput !== 'undefined' ? null : null;
 function onBpmInput(v){
  ['bpm','ft-bpm-sl'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=v; });
  ['bpm-disp','bpm-disp2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.textContent='♪='+v; });
- const ftv=document.getElementById('ft-bpm-val'); if(ftv) ftv.textContent=v;
+ const ftv=document.getElementById('ft-bpm-val');
+ if(ftv){ ftv.textContent=v; ftv.setAttribute('aria-valuenow', v); }
  rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]);
  // Restart clock immediately so new tempo takes effect now
  if(rhythmOn || arpOn) restartIfRunning();
 }
+
+// ── Tempo: drag the readout, tap it for a slider ──
+// Replaces the inline range input that used to live in the transport. Every
+// path here funnels through onBpmInput, so the Settings slider, the popover
+// slider and the drag all stay in sync with each other for free.
+const BPM_MIN=40, BPM_MAX=220;
+function _clampBpm(v){ return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v))); }
+function nudgeBpm(d){ onBpmInput(_clampBpm(_bpmNow()+d)); }
+function _bpmPopOpen(on){
+ const pop=document.getElementById('ft-bpm-pop'); if(!pop) return;
+ pop.classList.toggle('open', !!on);
+ pop.setAttribute('aria-hidden', on?'false':'true');
+}
+function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classList.contains('open'); }
+(function _initBpmDrag(){
+ const el=document.getElementById('ft-bpm-val'); if(!el) return;
+ let drag=false, moved=0, x0=0, y0=0, v0=100;
+ el.addEventListener('pointerdown', e=>{
+  // Suppress the text selection a drag over a <span> would otherwise start.
+  // That also kills the implicit focus, so it is taken by hand.
+  e.preventDefault();
+  drag=true; moved=0; x0=e.clientX; y0=e.clientY; v0=_bpmNow();
+  el.classList.add('dragging'); el.focus();
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  _bpmPopOpen(true);
+ });
+ el.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const dx=e.clientX-x0, dy=y0-e.clientY;   // right or up = faster
+  moved=Math.max(moved, Math.abs(dx), Math.abs(dy));
+  // 2.5px per bpm: fine enough to land on an exact number, and the whole
+  // 40-220 range still fits in one comfortable swipe.
+  const v=_clampBpm(v0+(dx+dy)/2.5);
+  // Only push a real change — onBpmInput restarts the clock, and doing that
+  // on every pointermove that rounds to the same bpm stutters the transport.
+  if(v!==_bpmNow()) onBpmInput(v);
+ });
+ const end=e=>{
+  if(!drag) return;
+  drag=false; el.classList.remove('dragging');
+  try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+  // A tap leaves the slider up to fine-tune with. A drag has already done the
+  // job, so it clears itself out of the way.
+  if(moved>4) setTimeout(()=>{ if(!drag) _bpmPopOpen(false); }, 700);
+ };
+ el.addEventListener('pointerup', end);
+ el.addEventListener('pointercancel', end);
+ el.addEventListener('wheel', e=>{ e.preventDefault(); nudgeBpm(e.deltaY<0?1:-1); }, {passive:false});
+ // The readout reports itself as a slider, so it has to behave like one for
+ // the keyboard too. stopPropagation matters: these are document-level keys
+ // elsewhere (arrows drive key nav, Space is play/stop) and a focused tempo
+ // field must not fire both.
+ el.addEventListener('keydown', e=>{
+  const step=e.shiftKey?10:1;
+  if(e.key==='ArrowUp'||e.key==='ArrowRight'){ nudgeBpm(step); }
+  else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){ nudgeBpm(-step); }
+  else if(e.key==='Enter'||e.key===' '){ _bpmPopOpen(!_bpmPopIsOpen()); }
+  else if(e.key==='Escape'){ _bpmPopOpen(false); el.blur(); }
+  else return;
+  e.preventDefault(); e.stopPropagation();
+ });
+ // Anything outside the tempo control dismisses the slider.
+ document.addEventListener('pointerdown', e=>{
+  const wrap=document.getElementById('ft-bpm-wrap');
+  if(wrap && !wrap.contains(e.target)) _bpmPopOpen(false);
+ }, true);
+})();
 
 // ── Audio Recording ──
 // Captures raw PCM via a silently-tapped ScriptProcessorNode and writes a
