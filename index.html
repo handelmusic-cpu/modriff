@@ -1372,6 +1372,11 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
    files). Both say what they do — the bare dot that used to sit here was the
    whole problem. */
 .ft-rec-group { display:flex; gap:4px; align-items:center; }
+/* Deliberately quieter than Capture and Bounce — it is a modifier on Bounce,
+   not a third thing that records. Lit means the next bounce writes stems. */
+.ft-btn.ft-stems { background:rgba(229,56,79,.06); border-color:rgba(229,56,79,.30); color:#e5384f; padding:5px 7px; font-size:.5rem; opacity:.75; }
+.ft-btn.ft-stems.active { background:rgba(229,56,79,.85); color:#fff; border-color:#e5384f; opacity:1; box-shadow:0 0 9px rgba(229,56,79,.35); }
+body.light-mode .ft-btn.ft-stems { color:#c81e3a; border-color:rgba(200,30,58,.4); }
 .ft-btn.ft-cap    { background:rgba(56,189,248,.10); border-color:rgba(56,189,248,.45); color:#38bdf8; padding:5px 8px; font-size:.55rem; }
 .ft-btn.ft-cap:not(.off)    { background:#38bdf8; color:#07080f; border-color:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,.4); }
 .ft-btn.ft-bounce { background:rgba(229,56,79,.10); border-color:rgba(229,56,79,.45); color:#e5384f; padding:5px 8px; font-size:.55rem; }
@@ -2606,6 +2611,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    title="Capture — the chords you play (mouse, keys or MIDI) are written into a new Song section you can edit and loop. Nothing is saved to disk.">◉&nbsp;Capture</button>
   <button class="ft-btn ft-bounce off" id="ft-bounce-btn" onclick="toggleRecording()" aria-label="Bounce audio and MIDI to files"
    title="Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.">⬤&nbsp;Bounce</button>
+  <!-- Whether this take gets stems is a decision you make reaching for Bounce,
+       so the switch belongs against it. It also lives on the Mix tab's Export
+       panel; both carry data-stemtoggle and _updateStemBtn drives every one,
+       so the two can never disagree. -->
+  <button class="ft-btn ft-stems off" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
+   title="Stems — Bounce also writes one .wav per part (Chords, Arp, Melody, Drums, Bass, Melody-Seq) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
  </div>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song: OFF</button>
@@ -5607,47 +5618,118 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  tOsc.start(t0); tOsc.stop(t0+dur+.5); r.push(tOsc);
 
  } else if(wv==='piano'){
- // Additive piano: sine fundamental + inharmonic stretched partials, each with a different decay rate
- const inh=1+f*0.000014; // inharmonicity grows with frequency (real piano strings stretch)
- // Fundamental through bright→warm filter sweep
- const o1=ctx.createOscillator(); o1.type='sine'; o1.frequency.value=f;
+ // Additive piano.
+ //
+ // The old version was four sine partials at fixed levels (1, .22, .13, .07)
+ // plus a 38ms FM blip for the hammer. Four partials is an organ's spectrum,
+ // not a piano's — a real one has a dozen or more audible in the middle of the
+ // keyboard, and that difference is most of why this read as "synth doing a
+ // piano impression". Three other things were off:
+ //
+ //  · the upper partials' decay was tied to `dur`, so holding a note made its
+ //    2nd and 3rd partials ring longer. On a real string the opposite is
+ //    absolute: high partials die first and fast, no matter how long you hold.
+ //  · nothing depended on register. A piano's bass rings for many seconds and
+ //    its top octave is gone in under one, and its bass is far richer in
+ //    partials than its treble. All 88 notes here decayed alike.
+ //  · the inharmonic stretch used inh, inh^2, inh^3 for partials 2, 3, 4,
+ //    which grows much too fast. The real relation is
+ //    f(n) = n*f*sqrt(1 + B*n^2).
+ //
+ // What is deliberately NOT here: velocity-dependent brightness. makeVoice
+ // never receives velocity — it is already baked into gainNode's envelope by
+ // the caller — so guessing at it from inside would be inventing data.
+ const rel = Math.max(0, Math.min(1, (midi - 21) / 66));   // A0 = 0, C7 = 1
+ // Inharmonicity coefficient. Real pianos run ~0.0002 mid-range and climb
+ // steeply in the short treble strings; the bass is stiffer than the middle
+ // too, which is the classic U-shape.
+ const B = 0.00008 + 0.0009*Math.pow(rel,3) + 0.0004*Math.pow(1-rel,4);
+ const pf = n => f * n * Math.sqrt(1 + B*n*n);
+ // Partial count falls with register: the bass is rich, the top is nearly a
+ // sine. Also keeps the voice count sane when a chord is four notes deep.
+ const nPart = Math.max(4, Math.round(13 - 8*rel));
+ // How long the body of the note rings, before the caller's own envelope has
+ // its say. Bass ~7s, treble under 1s.
+ const bodyDecay = Math.min(dur + 0.6, 7.5*Math.pow(1-rel,1.7) + 0.55);
+
+ // Fewer partials up top means they sum more coherently, so the treble came
+ // out 2.7 dB hotter than the bass and peaked past 1.0. Measured across the
+ // keyboard the raw peak runs about 0.87 + 0.36*rel; this flattens it, so the
+ // piano is one instrument across 88 notes instead of getting louder as it
+ // gets higher. Everything in this voice goes through it.
+ const pg=ctx.createGain();
+ const pTrim = 0.98/(0.87 + 0.36*rel);
+ pg.connect(gainNode);
+ // It also carries the body decay, which the fundamental had none of: only
+ // the partials thinned out, so a top-octave note rang exactly as long as a
+ // bass one. A real piano's top octave is gone in well under a second while
+ // its bass rings for many.
+ //
+ // It decays to a floor rather than to nothing, and that is a deliberate
+ // compromise. A real string does go to silence, but this voice is also what
+ // held chords and pads are built from, and sustaining a held note is a
+ // feature here — so the note loses most of its energy on the piano's own
+ // curve and then holds a quiet tail for as long as you keep the key down.
+ const pFloor = 0.16 + 0.16*(1-rel);
+ pg.gain.setValueAtTime(pTrim, t0);
+ pg.gain.exponentialRampToValueAtTime(pTrim*pFloor, t0+bodyDecay);
+
+ // Fundamental, through the bright-to-warm sweep every struck string has.
+ const o1=ctx.createOscillator(); o1.type='sine'; o1.frequency.value=pf(1);
  o1.detune.value=(Math.random()-.5)*2.5;
  const filt=ctx.createBiquadFilter(); filt.type='lowpass';
- filt.frequency.setValueAtTime(Math.min(f*7,6500),t0);
- filt.frequency.exponentialRampToValueAtTime(Math.max(f*1.4,160),t0+dur*0.65);
+ filt.frequency.setValueAtTime(Math.min(f*9,9000),t0);
+ filt.frequency.exponentialRampToValueAtTime(Math.max(f*1.5,180),t0+Math.min(dur*0.7,bodyDecay*0.7));
  filt.Q.value=0.6;
- // 2nd partial — slightly stretched, fades over half the note
- const o2=ctx.createOscillator(); o2.type='sine'; o2.frequency.value=f*2*inh;
- const g2=ctx.createGain();
- g2.gain.setValueAtTime(0.22,t0);
- g2.gain.exponentialRampToValueAtTime(0.001,t0+Math.max(dur*0.5,0.18));
- // 3rd partial — decays faster
- const o3=ctx.createOscillator(); o3.type='sine'; o3.frequency.value=f*3*inh*inh;
- const g3=ctx.createGain();
- g3.gain.setValueAtTime(0.13,t0);
- g3.gain.exponentialRampToValueAtTime(0.001,t0+Math.max(dur*0.28,0.09));
- // 4th partial — brief brightness burst at attack
- const o4=ctx.createOscillator(); o4.type='sine'; o4.frequency.value=f*4*inh*inh*inh;
- const g4=ctx.createGain();
- g4.gain.setValueAtTime(0.07,t0);
- g4.gain.exponentialRampToValueAtTime(0.001,t0+0.08);
- // Hammer strike — FM clamped so high notes don't detune wildly
+ o1.connect(filt); filt.connect(pg);
+ o1.start(t0); o1.stop(t0+dur+0.05);
+ r.push(o1);
+
+ // Upper partials. Level falls as roughly 1/n^1.35 with a gentle even-harmonic
+ // lift, and each one decays faster than the one below it — the single most
+ // recognisable thing about a struck string.
+ for(let n=2;n<=nPart;n++){
+  const o=ctx.createOscillator(); o.type='sine';
+  o.frequency.value=pf(n);
+  // A few cents of spread per partial stands in for the two or three slightly
+  // mistuned strings a real note is played on, which is where the shimmer in
+  // a piano's sustain comes from.
+  o.detune.value=(Math.random()-.5)*(3+n*0.6);
+  const g=ctx.createGain();
+  const lvl = (0.62/Math.pow(n,1.35)) * (n%2===0 ? 1.12 : 0.88);
+  const pDecay = Math.max(0.05, Math.min(bodyDecay*Math.pow(0.72,n-2), dur+0.4));
+  g.gain.setValueAtTime(lvl,t0);
+  g.gain.exponentialRampToValueAtTime(0.0008,t0+pDecay);
+  o.connect(g); g.connect(pg);
+  o.start(t0); o.stop(t0+pDecay+0.03);
+  r.push(o);
+ }
+
+ // Hammer. Two parts, both very short: an FM knock that gives the strike its
+ // pitch, and a noise thump for the felt hitting the string. The noise is what
+ // the old voice had no equivalent of at all, and it is most of what makes an
+ // attack sound struck rather than faded in.
  const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*2.76;
  const modG=ctx.createGain();
  modG.gain.setValueAtTime(Math.min(f*0.09,48),t0);
  modG.gain.exponentialRampToValueAtTime(0.001,t0+0.038);
  mod.connect(modG); modG.connect(o1.frequency);
- o1.connect(filt); filt.connect(gainNode);
- o2.connect(g2); g2.connect(gainNode);
- o3.connect(g3); g3.connect(gainNode);
- o4.connect(g4); g4.connect(gainNode);
  mod.start(t0); mod.stop(t0+0.055);
- o1.start(t0); o2.start(t0); o3.start(t0); o4.start(t0);
- o1.stop(t0+dur+0.05);
- o2.stop(t0+Math.max(dur*0.55,0.25));
- o3.stop(t0+Math.max(dur*0.35,0.12));
- o4.stop(t0+0.12);
- r.push(o1,o2,o3,o4,mod);
+ r.push(mod);
+
+ try{
+  const nz=ctx.createBufferSource(); nz.buffer=_modSynthNoise(ctx);
+  const nf=ctx.createBiquadFilter(); nf.type='bandpass';
+  // Felt noise tracks the note, bright but never fizzy at the top.
+  nf.frequency.value=Math.min(Math.max(f*3.2,700),5200); nf.Q.value=0.8;
+  const ng=ctx.createGain();
+  // Quieter as you go up: the treble hammers are tiny and the strings short.
+  ng.gain.setValueAtTime(0.05*(1-0.55*rel),t0);
+  ng.gain.exponentialRampToValueAtTime(0.0005,t0+0.022);
+  nz.connect(nf); nf.connect(ng); ng.connect(pg);
+  nz.start(t0); nz.stop(t0+0.05);
+  r.push(nz);
+ }catch(e){}
 
  } else if(wv==='organ'){
  // Hammond-style additive: fundamental + 2nd + 3rd + 4th harmonics
@@ -13094,7 +13176,11 @@ function toggleStemExport(){
 function _updateStemBtn(){
   document.querySelectorAll('[data-stemtoggle]').forEach(function(b){
     b.classList.toggle('active', exportStems);
-    b.textContent = 'Stems: ' + (exportStems?'ON':'OFF');
+    // The transport has no room for "Stems: OFF" — there the lit state says
+    // it. The Export panel spells it out.
+    b.classList.toggle('off', !exportStems);
+    b.textContent = b.classList.contains('ft-stems')
+      ? 'Stems' : ('Stems: ' + (exportStems?'ON':'OFF'));
   });
 }
 // Names as a musician would label the tracks, not as the code names them.
@@ -13246,8 +13332,10 @@ function _updateRecBtn(){
   if(tb){
     tb.classList.toggle('off',!_isRecording);
     tb.innerHTML=_isRecording?'⬤&nbsp;Stop':'⬤&nbsp;Bounce';
-    tb.title=_isRecording?'Bouncing — tap to stop and download the .wav and .mid'
-      :'Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.';
+    tb.title=_isRecording
+      ? ('Bouncing — tap to stop and download the .wav'+(exportStems?', the stems':'')+' and .mid')
+      : ('Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.'
+         + (exportStems?' Stems is on, so you also get one .wav per part.':''));
   }
   var led=document.getElementById('exp-led');
   if(led) led.classList.toggle('lit',_isRecording);
@@ -18069,6 +18157,9 @@ if(typeof _undoInit==='function'){
 }
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'hidden') _seqAutosave(); });
 window.addEventListener('pagehide', _seqAutosave);
+// Both stem toggles are painted from the live flag on load, so the transport
+// switch and the Export panel's can never start out disagreeing.
+try{ _updateStemBtn(); }catch(e){}
 
 </script>
 
