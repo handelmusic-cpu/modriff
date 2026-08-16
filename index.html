@@ -990,7 +990,14 @@ body.light-mode .jazz-btn { border-color:#a9721f; color:#7a4f10; }
 ═══════════════════════════════════════ */
 .voices-dock {
  position:fixed; left:0; right:0; z-index:519;
- bottom:calc(var(--perfh,56px) + env(safe-area-inset-bottom,0px));
+ /* --perfh is the transport's measured offsetHeight, and .perf-bar already
+    pads itself by env(safe-area-inset-bottom) — so that inset is inside the
+    number. Adding env() again here counted it twice and floated the dock a
+    home-indicator's height (~34px) above the transport on iOS. Everywhere
+    the inset is 0 the double-count was invisible, which is why it shipped. */
+ /* The fallback is the only value used before that measurement lands, so it
+    is the one place the inset still has to be added by hand. */
+ bottom:var(--perfh, calc(56px + env(safe-area-inset-bottom,0px)));
  pointer-events:none;
 }
 .voices-dock-tab {
@@ -3850,9 +3857,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <div class="row" style="margin-bottom:8px">
    <button class="tb" id="rec-btn" onclick="toggleRecording()" style="color:var(--pr);font-weight:700">⬤ Record Audio + MIDI</button>
+   <button class="tb" data-stemtoggle onclick="toggleStemExport()" title="Also write one .wav per part — Chords, Arp, Melody, Drums, Bass, Melody-Seq — alongside the mix. Stems are dry: they are tapped at each part's own bus, before the reverb send and the master limiter.">Stems: OFF</button>
   </div>
   <div style="font-size:.42rem;color:var(--muted);line-height:1.7">
    Captures a <b>.wav</b> of everything you hear — post master bus, including Master Vol — plus a <b>.mid</b> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.
+   <br><br>
+   <b>Stems</b> adds one <b>.wav</b> per part next to the mix. They are <b>dry</b> — tapped at each part's own bus, before the reverb send and the master limiter — so you can put your own space on them in a DAW. A part that never sounded is skipped rather than written as silence.
    <br><br>
    <b class="rnd-keep">Not the same as ⏺ Rec in the transport</b>, which captures the chords you play into an editable Song section that stays inside the app. Use that one to build a chart; use this one to get files out.
   </div>
@@ -4799,8 +4809,46 @@ function applyDrive(){
 // returns the destination itself, so the cheap path stays exactly as cheap
 // as before — this matters on phones, where extra nodes per chord tone are
 // the difference between clean playback and dropouts.
-function voiceFx(ctx,t0,dur,vel,panPos){
- const dest=masterDest(ctx);
+// ── Per-part buses ──
+// Chords, arp and the melody strip used to connect straight to the master, so
+// unlike drums/bass/melody-gen they had no node of their own — nothing to
+// meter, and nothing to record a stem from. Each part now passes through one
+// unity gain node on its way to exactly the same destination, so the mix is
+// bit-identical and there is finally something to tap.
+window._partBuses = window._partBuses || {};
+function _partDest(ctx, part){
+ const master = masterDest(ctx);
+ if(!part || !ctx) return master;
+ let b = window._partBuses[part];
+ if(!b || b.context!==ctx){
+  b = ctx.createGain();
+  b.gain.value = 1;      // a tap point, not a level — the Mixer sets levels
+  b.connect(master);
+  window._partBuses[part] = b;
+ }
+ return b;
+}
+// Every part bus that exists right now, including the three engines that
+// build their own inside their IIFEs.
+function _allPartBuses(){
+ const out = Object.assign({}, window._partBuses);
+ if(window.SQMG_REF)   out.drum   = window.SQMG_REF;
+ if(window.BL_MG_REF)  out.bass   = window.BL_MG_REF;
+ if(window.ML_MG_REF)  out.melgen = window.ML_MG_REF;
+ return out;
+}
+// Build the ones that don't exist yet, so a stem bounce started before the
+// bass has ever played still gets a bass track instead of silently missing it.
+function _ensureAllPartBuses(ctx){
+ ['chord','arp','mel'].forEach(p=>_partDest(ctx,p));
+ try{ if(typeof sqInitFX==='function') sqInitFX(); }catch(e){}
+ try{ if(typeof window._blEnsureBus==='function') window._blEnsureBus(); }catch(e){}
+ try{ if(typeof window._mlEnsureBus==='function') window._mlEnsureBus(); }catch(e){}
+ return _allPartBuses();
+}
+
+function voiceFx(ctx,t0,dur,vel,panPos,part){
+ const dest=_partDest(ctx,part);
  const wantFilt = fxCutoff<0.985 || fxEnv>0.01;
  const wantPan  = fxWidth>0.01 && panPos!=null && ctx.createStereoPanner;
  if(!wantFilt && !wantPan) return {head:dest, tail:dest, plain:true};
@@ -5957,7 +6005,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  // Spread the chord tones across the stereo image, low note left through
  // high note right, so a chord occupies a space instead of a single point.
  const pan = intvs.length>1 ? (i/(intvs.length-1))*2-1 : 0;
- const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
+ const fx = voiceFx(ctx,t0,atk+dec,vsc,pan,'chord');
  g.connect(fx.head);
  const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
@@ -6025,7 +6073,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  g.gain.setValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
  const pan = slashIntvs.length>1 ? (i/(slashIntvs.length-1))*2-1 : 0;
- const fx = voiceFx(ctx,t0,atk+dec,vsc,pan);
+ const fx = voiceFx(ctx,t0,atk+dec,vsc,pan,'chord');
  g.connect(fx.head);
  const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
  const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
@@ -6084,7 +6132,7 @@ function playMelNote(midi,pressure,sustain){
  // gets the same long window the latch already used rather than being torn
  // down at atk+dec while the note is still sounding.
  const _mdur=(holdMode||sustain)?10:atk+dec;
- const fx = voiceFx(ctx,startT,_mdur,vsc,melPan);
+ const fx = voiceFx(ctx,startT,_mdur,vsc,melPan,'mel');
  g.connect(fx.head);
  const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave,'mel');
@@ -6690,7 +6738,7 @@ function scheduleArpNote(midi,t,dur){
  // a fast arp feel like it's moving through the field rather than drilling
  // one spot. Uses the gate index so the pattern is stable, not random.
  const arpPan = (arpGateIdx%2 ? 1 : -1) * 0.75;
- const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan);
+ const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan,'arp');
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
  const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave,'arp');
@@ -8992,6 +9040,11 @@ function randomizeSettings(opts){
  s.chordBeats = _rndPick([0,0,1,2,4]);            // ∞ weighted: most patches want to ring
  s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
+ // 2x is thirty-second notes. On a hi-hat that is a roll; on the bass it is
+ // mud, and Rate Linked — the default — hands the same multiplier to all
+ // three engines, so a rolled 2x was double-timing the bassline. Unlock the
+ // rate and the dice can still put the drums there.
+ if(s.sqRateMul===2 && stepRateLock) s.sqRateMul=1;
  // Was [0 … .28] against a 0-70 control, so every non-zero roll produced
  // silence-adjacent swing and the dice's "swing" never audibly did anything.
  s.sqSwing    = _rndPick([0,0,0,15,25,40,55]);
@@ -13025,6 +13078,85 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
 // compressed webm/opus containers in Chrome — not something most DAWs or
 // simple media players open cleanly).
 var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false, _recTapNode=null;
+
+// ── Stem export ──
+// Off by default and deliberately so: a stem bounce spins up one
+// ScriptProcessor per part, and paying for six of them on every bounce when
+// almost every bounce wants the master mix would be a tax on the common case.
+// Nothing below runs unless this is on.
+var exportStems=false, _stemTaps=[];
+function toggleStemExport(){
+  exportStems=!exportStems;
+  _updateStemBtn();
+  showToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
+                        : 'Bounce writes the master mix only');
+}
+function _updateStemBtn(){
+  document.querySelectorAll('[data-stemtoggle]').forEach(function(b){
+    b.classList.toggle('active', exportStems);
+    b.textContent = 'Stems: ' + (exportStems?'ON':'OFF');
+  });
+}
+// Names as a musician would label the tracks, not as the code names them.
+var STEM_LABELS = { chord:'Chords', arp:'Arp', mel:'Melody', drum:'Drums', bass:'Bass', melgen:'Melody-Seq' };
+function _startStemTaps(ctx){
+  _stemTaps=[];
+  if(!exportStems) return;
+  var buses = _ensureAllPartBuses(ctx);
+  Object.keys(STEM_LABELS).forEach(function(part){
+    var node = buses[part]; if(!node) return;
+    var proc = ctx.createScriptProcessor(4096,2,2);
+    var tap = { part:part, node:node, proc:proc, L:[], R:[] };
+    proc.onaudioprocess = function(e){
+      var inBuf=e.inputBuffer;
+      tap.L.push(new Float32Array(inBuf.getChannelData(0)));
+      tap.R.push(new Float32Array(inBuf.numberOfChannels>1?inBuf.getChannelData(1):inBuf.getChannelData(0)));
+    };
+    // Same trick the master tap uses: a ScriptProcessor only runs while it is
+    // part of a graph that reaches the destination, so it goes through a
+    // zero-gain node and adds nothing to what you hear.
+    var sg=ctx.createGain(); sg.gain.value=0;
+    node.connect(proc); proc.connect(sg); sg.connect(ctx.destination);
+    tap.sg=sg;
+    _stemTaps.push(tap);
+  });
+}
+// Stems are tapped at the part bus, which sits before the reverb send and
+// before the master limiter — so they come out dry and unprocessed, which is
+// what you want to mix with anyway.
+function _finishStemTaps(baseName, sampleRate){
+  var taps=_stemTaps; _stemTaps=[];
+  var written=[];
+  taps.forEach(function(t){
+    try{ t.node.disconnect(t.proc); }catch(e){}
+    try{ t.proc.disconnect(); }catch(e){}
+    t.proc.onaudioprocess=null;
+    try{ t.sg.disconnect(); }catch(e){}
+    var total=t.L.reduce(function(a,c){return a+c.length;},0);
+    if(!total) return;
+    var L=new Float32Array(total), R=new Float32Array(total), pos=0;
+    for(var i=0;i<t.L.length;i++){ L.set(t.L[i],pos); R.set(t.R[i],pos); pos+=t.L[i].length; }
+    // A part that never sounded writes a silent file nobody wants. Skip it.
+    var peak=0; for(var j=0;j<L.length;j++){ var a=Math.abs(L[j]); if(a>peak) peak=a; }
+    if(peak < 0.0005) return;
+    written.push({ name: baseName+' - '+STEM_LABELS[t.part]+'.wav',
+                   blob: _floatsToWavBlob(L,R,sampleRate) });
+  });
+  return written;
+}
+// Browsers throttle a burst of downloads from one gesture, so they go out one
+// at a time rather than all at once.
+function _downloadBlobs(list){
+  list.forEach(function(item, i){
+    setTimeout(function(){
+      var url=URL.createObjectURL(item.blob);
+      var a=document.createElement('a'); a.href=url; a.download=item.name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+    }, i*350);
+  });
+}
+
 function toggleRecording(){
   if(_isRecording) _stopRecording();
   else _startRecording();
@@ -13053,8 +13185,9 @@ function _startRecording(){
   _recTapNode.connect(_recProcessor);
   _recProcessor.connect(_recSilentGain);
   _recSilentGain.connect(ctx.destination);
+  _startStemTaps(ctx);
   _isRecording=true;_updateRecBtn();
-  showToast('Recording…');
+  showToast(exportStems ? 'Recording — mix + stems…' : 'Recording…');
 }
 function _floatsToWavBlob(left,right,sampleRate){
   var numFrames=left.length,numChannels=2,bytesPerSample=2;
@@ -13088,14 +13221,15 @@ function _stopRecording(){
     var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
     for(var i=0;i<_recChunksL.length;i++){fullL.set(_recChunksL[i],pos);fullR.set(_recChunksR[i],pos);pos+=_recChunksL[i].length;}
     _recChunksL=[];_recChunksR=[];
-    var blob=_floatsToWavBlob(fullL,fullR,getCtx().sampleRate);
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');a.href=url;
-    a.download=(document.getElementById('chart-title')?.value||'modo-session')+'.wav';
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    setTimeout(function(){URL.revokeObjectURL(url);},3000);
+    var _sr=getCtx().sampleRate;
+    var base=(document.getElementById('chart-title')?.value||'modo-session');
+    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr) }];
+    var stems=_finishStemTaps(base,_sr);
+    files=files.concat(stems);
+    _downloadBlobs(files);
     _isRecording=false;_updateRecBtn();
-    showToast('Recording saved as WAV!');
+    showToast(stems.length ? ('Saved the mix + '+stems.length+' stem'+(stems.length>1?'s':'')) 
+                           : 'Recording saved as WAV!');
   },150);
 }
 function _updateRecBtn(){
@@ -13837,7 +13971,11 @@ var sqRevGain, sqDelayNode, sqDelayGain, sqDelayFB, sqDistNode;
 function sqInitFX(){
   var c=sqCtx(); if(!c||SQMG) return;
   sqEnsureNoise();
-  SQMG=c.createGain(); SQMG.gain.value=0.85; // drums default ~70% of full
+  // 0.85 / 0.55 — the old fixed baseline divided by the Drums fader's default
+  // position, which sqHitTrack now actually applies. Net result at the default
+  // is the same 0.85 the kit has always been at; the difference is that moving
+  // the fader, muting or soloing now changes what you hear.
+  SQMG=c.createGain(); SQMG.gain.value=0.85/0.55;
   SQMG.connect(masterDest(c));
   window.SQMG_REF = SQMG;
 
@@ -14521,6 +14659,18 @@ function sqHitTrack(track,t,vol,ac,ps){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
+  // The Mixer's Drums channel — level, mute AND solo — did nothing at all
+  // while the sequencer was running. _cmx('drum') was applied on exactly one
+  // path: auditioning a step by clicking it in the grid. Every scheduled hit
+  // went straight through at full level, so the fader moved, the Mute button
+  // lit, soloing another part left the drums playing, and none of it reached
+  // the audio. Measured: muting Drums changed the mix by 1.1 dB, and all of
+  // that 1.1 dB came from scheduleDrum's separate voices, not the kit.
+  //
+  // This is the choke point every scheduled hit passes through, so the channel
+  // gain belongs here. SQMG's baseline was rescaled by the same factor (see
+  // sqInitFX) so the default position sounds exactly as it did.
+  vol = vol * (typeof _cmx==='function' ? _cmx('drum') : 1);
   // A silent hit is not played at all. The Math.max floor below exists so the
   // voices never ramp an envelope to exactly zero (which throws), but on its
   // own it turned "muted" into "-60 dB" — every hit still fired, and a bus
@@ -14843,7 +14993,9 @@ function sqAttachStep(el,ti,s,track){
     sqRefreshStepEl(el,cell,track.c);
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
-    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100)*(typeof _cmx==='function'?_cmx('drum'):1),cell.v===2,sqGp(sqMach,ti));}
+    // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
+    // it for every path now, so applying it again would square the fader.
+    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100),cell.v===2,sqGp(sqMach,ti));}
   });
   el.addEventListener('pointercancel',function(){if(holdT){clearTimeout(holdT);holdT=null;}});
 }
@@ -15253,11 +15405,23 @@ function blMG(){
   var ctx = getCtx(); if(!ctx) return null;
   if(!BL_MG){
     BL_MG = ctx.createGain();
-    BL_MG.gain.value = 0.55;
+    // Measured, soloing each part on a fixed scene (C major, rock line, sine
+    // bass, 110bpm): the bass read the SAME RMS as the entire mix, and muting
+    // it dropped the mix 13.6 dB — it was ~96% of the energy, sitting 13.8 dB
+    // over the chords. 47% of the full mix's spectrum was under 100 Hz. That
+    // is the "too loud on a random roll" and most of the "muddy": low notes
+    // eat all the headroom, so everything above them ducks.
+    BL_MG.gain.value = 0.30;
     BL_MG.connect(masterDest(ctx));
+    // Published the same way the drum bus publishes SQMG_REF: this node lives
+    // inside the bassline IIFE, so nothing outside can reach the part's own
+    // bus to meter it or tap it without an export.
+    window.BL_MG_REF = BL_MG;
   }
   return BL_MG;
 }
+// So a stem bounce can build this bus before the bass has ever played.
+window._blEnsureBus = function(){ return blMG(); };
 
 // ── state ──
 var BL_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -15320,7 +15484,11 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var g = ctx.createGain();
   // Floored above 0: exponentialRampToValueAtTime throws if it ramps from a
   // zero baseline, which a muted mixer channel (_mxBs=0) or vol=0 would hit.
-  var v = Math.max(0.0001, vol * (accent ? 1.3 : 0.85) * _mxBs);
+  // blVol is the bassline's own level. It has been captured in every state
+  // snapshot since it was added and never once multiplied into a voice — a
+  // volume control that did nothing. It scales the part here now, which is
+  // where the mixer channel already applies.
+  var v = Math.max(0.0001, vol * blVol * (accent ? 1.3 : 0.85) * _mxBs);
   g.gain.setValueAtTime(v, t);
   g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + (slide ? 0.12 : 0.025));
@@ -15519,7 +15687,19 @@ var blFollow = false;                    // off = the grid loops as authored
 var blWalkFeel = 'four';
 var _blChordWin = [];                    // upcoming chord windows, time-ordered
 var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk sits
-var BL_GEN_LO = 28, BL_GEN_HI = 52;      // generated grids stay under E3 (165 Hz)
+// The band a GENERATED grid folds into. Was E1-E3 (28-52).
+//
+// The top mattered more than it looked: every style that lifts an octave for
+// a hook was having that lift folded straight back down, because root+12 from
+// anywhere at or above C2 lands past 52. The line came out pinned to a single
+// octave no matter what the generator asked for — which is the "needs more
+// range" complaint, and part of the mud, since everything stacked on the same
+// low fundamental. A3 gives the lift somewhere to land.
+//
+// The bottom moved up to match the walk's own floor. Below A1 (55 Hz) nothing
+// is musically useful here; it is only where an octave fold could dump a note
+// into rumble that no phone or laptop reproduces but every meter counts.
+var BL_GEN_LO = 33, BL_GEN_HI = 57;      // A1-A3 (55-220 Hz)
 
 // Called from _playLoopSlot as each chord is committed to the audio clock.
 window._blOnChord = function(slot, atTime, durSec, nextSlot){
@@ -16609,9 +16789,11 @@ function mlMG(){
     ML_MG = ctx.createGain();
     ML_MG.gain.value = 0.6;
     ML_MG.connect(masterDest(ctx));
+    window.ML_MG_REF = ML_MG;
   }
   return ML_MG;
 }
+window._mlEnsureBus = function(){ return mlMG(); };
 
 // ── state ──
 var ML_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -17833,12 +18015,18 @@ function _ftMoreOutsideClick(e){
   sync();
   if(typeof ResizeObserver !== 'undefined'){
     var ro = new ResizeObserver(sync);
-    if(top) ro.observe(top);
-    if(perf) ro.observe(perf);
-  } else {
-    window.addEventListener('resize', sync);
-    window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); });
+    // border-box, not the default content-box: .perf-bar carries the iOS
+    // safe-area inset as padding, and env(safe-area-inset-bottom) changes on
+    // rotation. A content-box observer sees no change at all when only
+    // padding moves, so --perfh would keep the old inset and the Voices dock
+    // would sit adrift until something else happened to trigger a resync.
+    if(top) ro.observe(top, {box:'border-box'});
+    if(perf) ro.observe(perf, {box:'border-box'});
   }
+  // Kept regardless of ResizeObserver support: rotation is exactly the case
+  // above, and it is cheap to be sure of.
+  window.addEventListener('resize', sync);
+  window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); });
 })();
 
 // ── Sequencer/bassline autosave (save side) — restore logic lives near the
