@@ -202,7 +202,14 @@ body.light-mode .tab-bar { background:#e8eaf6; border-bottom-color:#c2c6de; }
 .tab-page {
  display:none; flex-direction:column; align-items:center;
  padding:10px 12px calc(96px + env(safe-area-inset-bottom,0px)); overflow-y:auto;
- flex:1; width:100%; box-sizing:border-box;
+ /* min-height:0 overrides the flex item's default min-height:auto, which
+    otherwise lets it grow to fit all its content instead of clipping to the
+    space flex:1 actually gives it — without this, overflow-y:auto never has
+    anything to do (this box never itself overflows) and the WINDOW scrolls
+    instead, which is what let content, including the sticky sub-tab nav
+    below, scroll off the top of the screen entirely rather than staying
+    put. */
+ flex:1 1 0; min-height:0; width:100%; box-sizing:border-box;
 }
 /* Every direct child of a tab-page gets max-width cap and full width */
 .tab-page > * {
@@ -1355,7 +1362,10 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
    widest thing in this row. Colour alone now carries the state (see
    .song-on/.song-off/.song-hold), so the button is just "Song" and small
    enough that the bar fits on two rows instead of three. */
-#ft-song-btn { padding:3px 4px; font-size:.46rem; letter-spacing:0; }
+/* Sized to match STEMS, the smallest of its neighbors — shrinking it
+   further than that (as a previous pass did, chasing an exact two-row fit)
+   made it read as missing rather than just small. */
+#ft-song-btn { padding:5px 7px; font-size:.5rem; }
 .ft-btn {
  padding:6px 12px; border:1px solid transparent; border-radius:var(--r-sm);
  font-family:'Outfit',sans-serif; font-size:.65rem; font-weight:600;
@@ -6310,6 +6320,21 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
 // and holding gave you the same short note as a tap, and holding a key did
 // nothing at all. holdMode is the separate latch: it keeps a note ringing
 // AFTER release, which is not the same question.
+// The five sampled ◆ voices read noticeably louder than everything else on
+// the melody strip specifically. WAVE_GAIN is shared with the chord engine
+// (calibrated there against a full chord), and a chord's several
+// simultaneous voices mask a hot sample the way one exposed solo melody
+// note never does, so the same relative loudness reads as flatly louder
+// here. Measured with a real AnalyserNode on the master bus, one voice at a
+// time, holding melody's own gain formula fixed: a basic wave (sine, saw,
+// square) peaks around 0.10-0.16 there; before any trim the five sampled
+// voices ranged from Mute Tpt at 0.40 up to Nylon at 0.84 — 3-8x hotter —
+// and not in the same proportions their WAVE_GAIN entries would suggest
+// (Jazz Gtr's raw sample content simply reads louder than Vibes' despite a
+// smaller WAVE_GAIN), so each voice needed its own factor rather than one
+// blanket trim. These bring all five back down to roughly that same
+// 0.10-0.16 range other melody voices already sit in.
+const MEL_SAMPLE_TRIM = {vibes:0.31, jazzgtr:0.19, nylongtr:0.16, tenorsax:0.30, mutetpt:0.33};
 function playMelNote(midi,pressure,sustain){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -6317,7 +6342,7 @@ function playMelNote(midi,pressure,sustain){
  const atk=parseFloat(document.getElementById('mel-attack').value);
  const dec=parseFloat(document.getElementById('mel-decay').value);
  const revMix=parseFloat(document.getElementById('mel-rev').value);
- const wg=WAVE_GAIN[melWave]||1;
+ const wg=(WAVE_GAIN[melWave]||1) * (MEL_SAMPLE_TRIM[melWave]||1);
  const vsc=velScale(pressure||0);
  const now=ctx.currentTime;
 
@@ -9570,7 +9595,10 @@ function openGuide(){
  if(typeof buildHelp==='function') buildHelp();
  switchTab('help');
  const m=document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
- window.scrollTo(0,0);
+ // Each tab scrolls within itself now (see .tab-page's min-height fix), not
+ // the window, so resetting to the top means resetting this tab's own
+ // scroll position rather than the page's.
+ const pg=document.getElementById('page-help'); if(pg) pg.scrollTop=0;
 }
 function showTour(){
   try{localStorage.removeItem('modo-demo-played');}catch(e){}
