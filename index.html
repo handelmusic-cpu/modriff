@@ -816,11 +816,16 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
    This borrows the main tab bar's vocabulary instead — a sliding, glowing
    underline — so the hierarchy is legible at a glance without reading a word. */
 .subnav {
- display:flex; align-items:center; width:100%; position:relative;
+ display:flex; align-items:center; width:100%; position:sticky; top:0; z-index:40;
  border-bottom:1px solid var(--border2);
  margin-bottom:12px; gap:2px;
+ background:var(--bg);
+}
+.subnav::before {
+ content:''; position:absolute; inset:0; z-index:-1;
  background:linear-gradient(180deg, transparent 55%, rgba(255,255,255,.025) 100%);
 }
+body.light-mode .subnav { background:#e8eaf6; }
 .subnav-lbl {
  font-family:'Outfit',sans-serif; font-size:.4rem; font-weight:600;
  letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
@@ -873,8 +878,6 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 
 /* The amber reads on a dark page and washes out on a light one, so the light
    theme takes it several stops down rather than sharing one value. */
-.jazz-btn { border-color:#e0b070; color:#b57e2a; }
-body.light-mode .jazz-btn { border-color:#a9721f; color:#7a4f10; }
 
 .groove-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:7px;
   background:var(--surf); color:var(--muted); font-family:'Outfit',sans-serif;
@@ -1344,6 +1347,15 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
 .perf-bar .ft-btn.ur { padding:4px 7px; }
 .perf-bar .ft-btn.transport { padding:4px 5px; }
 .perf-bar .ft-btn.dice { padding:4px 6px; }
+/* A single ⋯ glyph doesn't need the base .ft-btn's 12px horizontal padding —
+   trimming it is what leaves Song (and this button itself) enough room to
+   land on the second row instead of wrapping to a third on their own. */
+#ft-more-btn { padding:5px 7px; }
+/* Compact pill — the label used to spell out ON/OFF/HOLD, which was the
+   widest thing in this row. Colour alone now carries the state (see
+   .song-on/.song-off/.song-hold), so the button is just "Song" and small
+   enough that the bar fits on two rows instead of three. */
+#ft-song-btn { padding:3px 4px; font-size:.46rem; letter-spacing:0; }
 .ft-btn {
  padding:6px 12px; border:1px solid transparent; border-radius:var(--r-sm);
  font-family:'Outfit',sans-serif; font-size:.65rem; font-weight:600;
@@ -1395,7 +1407,8 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 .ft-btn.bas.off { background:rgba(245,158,11,.07); border-color:rgba(245,158,11,.35); color:#f59e0b; box-shadow:none; }
 .ft-btn.snap-on { background:var(--accent); color:#07080f; border-color:var(--accent); box-shadow:0 0 10px hsla(var(--kh), var(--ks), var(--kl), .25); }
 .ft-btn.snap-off { background:rgba(255,255,255,.04); border-color:var(--border2); color:var(--muted); }
-.ft-btn.song-on { background:var(--pg); color:#07080f; border-color:var(--pg); }
+.ft-btn.song-on { background:var(--pg); color:#07080f; border-color:var(--pg); box-shadow:0 0 10px hsla(140,60%,50%,.3); }
+.ft-btn.song-hold { background:rgba(255,157,60,.14); border-color:var(--ms-alert); color:var(--ms-alert); }
 .ft-btn.mix { background:rgba(255,255,255,.04); border-color:var(--border2); color:var(--muted); }
 .ft-btn.mix.active { background:rgba(168,85,247,.1); border-color:var(--pv); color:var(--pv); }
 #ft-mixer-btn { background:rgba(255,255,255,.04); border:1px solid var(--border2); color:var(--muted); }
@@ -1404,7 +1417,7 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 #sq-groove-presets { scrollbar-width:none; }
 /* Universal mixer */
 #universal-mixer { font-family:'Outfit',sans-serif; }
-.ft-btn.song-off { background:rgba(80,200,120,.06); border:1px solid rgba(80,200,120,.25); color:var(--pg); }
+.ft-btn.song-off { background:rgba(229,56,79,.08); border:1px solid rgba(229,56,79,.35); color:#e5384f; }
 .ft-bpm {
  display:flex; align-items:center; gap:5px; position:relative;
  font-size:.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:.07em;
@@ -1421,6 +1434,7 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
  background:var(--surf2); border-color:var(--border2); outline:none;
 }
 .ft-bpm-val.dragging { background:var(--surf2); border-color:var(--accent); }
+.ft-bpm-val.tap-flash { background:var(--accent); color:#07080f; border-color:var(--accent); }
 /* Opens upward, over the app rather than the OS chrome at the bottom edge. */
 .ft-bpm-pop {
  position:absolute; bottom:calc(100% + 9px); left:50%; transform:translateX(-50%);
@@ -1941,7 +1955,8 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .bl-smrow { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
 .bl-smlbl { font-size:.42rem; color:var(--muted); width:44px; flex-shrink:0; letter-spacing:.07em; text-transform:uppercase; }
 .bl-mopt { background:var(--surf); border:1px solid var(--border2); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.52rem; padding:5px 8px; cursor:pointer; border-radius:5px; touch-action:manipulation; }
-.bl-mopt.sel { border-color:var(--pg); color:var(--pg); }
+.bl-mopt.sel, .bl-mopt.active { border-color:var(--pg); color:var(--pg); background:rgba(80,200,120,.1); }
+.bl-wave-current { font-size:.42rem; color:var(--muted); align-self:center; white-space:nowrap; }
 .bl-smclose { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; align-self:flex-end; padding:0; line-height:1; }
 .bl-notepicker { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
 .bl-notepick { padding:6px 2px; background:var(--surf); border:1px solid var(--border2); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.48rem; cursor:pointer; border-radius:4px; text-align:center; touch-action:manipulation; }
@@ -2590,7 +2605,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <span style="font-size:.55rem;color:var(--muted)">=</span>
  <span class="ft-bpm-val" id="ft-bpm-val" role="slider" tabindex="0"
        aria-label="Tempo" aria-valuemin="40" aria-valuemax="220" aria-valuenow="100"
-       title="Tempo — drag to change, tap for a slider">100</span>
+       title="Tempo — drag to change, tap 4+ times to set by feel, or tap once for a slider">100</span>
  <div class="ft-bpm-pop" id="ft-bpm-pop" aria-hidden="true">
   <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
   <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
@@ -2598,9 +2613,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <button class="ft-bpm-nudge" onclick="nudgeBpm(1)" aria-label="Faster" title="1 bpm faster">+</button>
  </div>
  </div>
+ <!-- The "Arp" label cost more width than the value it introduced — the
+      readout is the control (same idea as tempo, just above), so it doesn't
+      need one either, and freeing that width is what lets Song (below) fit
+      on this row instead of wrapping to a third. -->
  <div class="ft-rate">
- <span>Arp</span>
- <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()">8th</div>
+ <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()" title="Arp rate — tap to cycle">8th</div>
  </div>
  <!-- Two different recorders, which is exactly why they used to be confusing:
       one bare red dot did the first, and the second lived on another tab. They
@@ -2619,7 +2637,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    title="Stems — Bounce also writes one .wav per part (Chords, Arp, Melody, Drums, Bass, Melody-Seq) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
  </div>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
- <button class="ft-btn" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song: OFF</button>
+ <button class="ft-btn song-off" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song</button>
  <div class="ft-more-wrap">
   <button class="ft-btn" id="ft-more-btn" onclick="toggleFtMore(event)" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="More settings">⋯</button>
   <div class="ft-more-menu" id="ft-more-menu">
@@ -2763,13 +2781,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <div class="tab-page active" id="page-perform">
 
  <!-- Key strip -->
- <!-- Song mode banner on PRISM tab -->
- <div id="prism-song-banner" style="display:none;width:100%;max-width:700px;background:linear-gradient(90deg,var(--surf2),#061a12);border:1px solid var(--pg);border-radius:8px;padding:6px 12px;margin-bottom:6px;display:none;align-items:center;gap:8px">
- <div style="width:7px;height:7px;border-radius:50%;background:var(--pg);flex-shrink:0;animation:pulse .8s ease-in-out infinite alternate"></div>
- <div id="prism-song-name" style="font-family:'Orbitron',sans-serif;font-size:.54rem;font-weight:700;color:var(--pg);flex:1"></div>
- <div id="prism-song-section" style="font-size:.42rem;color:var(--muted)"></div><button class="tips-btn" onclick="showTip('songmode',this)">?</button>
- <button onclick="toggleGlobalSongMode()" style="font-size:.44rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px;touch-action:manipulation"> Exit</button>
- </div>
+ <!-- The looping-song name banner that used to live here was removed —
+      which chord you're on is already visible in the chart below, and the
+      Song button in the transport already shows on/off/held by colour. -->
 
  <!-- Chords / Melody sub-tabs — above the key strip rather than several
       controls below it, since which mode you're in is the first thing to
@@ -2865,8 +2879,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="li"><div class="ld" style="background:var(--modal)"></div>Modal</div>
  </div>
 
- <!-- Chord forms — follows whatever chord is sounding, including song playback -->
- <div class="panel p-perform" id="chord-diagram-panel" style="width:100%;max-width:700px;margin-top:10px">
+ <!-- Chord forms — follows whatever chord is sounding, including song playback.
+      Advanced-mode only and folded shut by default, same as Fingering. -->
+ <div class="panel p-perform advanced-only" id="chord-diagram-panel" style="width:100%;max-width:700px;margin-top:10px">
   <div class="panel-title">
    <span class="pt-icon">▦</span> Chord Forms <button class="tips-btn" onclick="showTip('chordforms',this)">?</button>
    <span class="cd-name" id="chord-diagram-name">C</span>
@@ -2895,6 +2910,17 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="tg" style="width:100%;margin-bottom:6px;">
  <button class="tb active" id="mel-mode-btn" onclick="setMelMode('keys')" style="flex:1">Keys</button>
  <button class="tb" id="mel-bend-btn" onclick="setMelMode('bend')" style="flex:1">〰 Bend</button>
+ </div>
+ <!-- The melody generator's own octave used to live only on the Bass/Mel
+      tab, grouped in with Steps and Rate with nothing nearby saying
+      "melody" — easy to mix up with the strip's octave above, or miss
+      entirely. Mirrored here too, right next to the strip it's most often
+      confused with; mlShiftOct/_mlSyncOctDisp keep both copies in sync. -->
+ <div class="bl-pb" style="margin-bottom:8px">
+ <span class="bl-pl">Melody Gen Oct</span>
+ <button class="bl-pico" onclick="mlShiftOct(-1)">−</button>
+ <span class="bl-stepsdisp ml-oct-mirror" id="ml-octdisp-strip">5</span>
+ <button class="bl-pico" onclick="mlShiftOct(1)">+</button>
  </div>
  <!-- Melody voice selector -->
  <div class="row" style="margin-bottom:8px">
@@ -2947,7 +2973,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <!-- Inline sound selector — hidden in Basic mode -->
  <div class="sound-bar advanced-only" id="sound-bar-inline">
  <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
- <button class="tb jazz-btn" id="jazz-mode-btn" onclick="applyJazzMode()" title="Set the whole rig for standards: archtop, sax, vibes, real upright, brushes, swing and a walking bass. Undo backs it out.">♭ Jazz</button>
  <div class="tg" id="sb-voices" style="flex-wrap:wrap"></div>
  </div>
 
@@ -3012,28 +3037,6 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
    More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
   </div>
- </div>
-
-  <!-- Transport + Arp on PRISM tab -->
- <div class="panel p-perform" style="width:100%;max-width:700px">
- <div class="panel-title"><span class="pt-icon">⬡</span> Voices &amp; Timing <button class="tips-btn" onclick="showTip('voices',this)">?</button></div>
- <!-- Every part has its own engine; they were just spread across three tabs,
-      so there was no one place to see who was playing what. -->
- <div class="voices-grid" id="voices-grid"></div>
- <div class="row">
- <div class="row" style="margin:4px 0">
- <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;align-self:center">Length:</span>
- <div class="tg">
-  <button class="tb active green" id="cb-inf" onclick="setChordBeats(0)">∞</button>
-  <button class="tb green" id="cb-1" onclick="setChordBeats(1)">1♩</button>
-  <button class="tb green" id="cb-2" onclick="setChordBeats(2)">2♩</button>
-  <button class="tb green" id="cb-4" onclick="setChordBeats(4)">4♩</button>
- </div>
- </div>
-<button class="tb" id="tap-tempo-btn" onclick="tapTempo()" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">TAP</button>
- <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes" style="flex-shrink:0;font-size:.5rem;padding:4px 8px">Bass+Mel: Sync</button>
- </div>
- <div class="beat-dots" id="beat-dots" style="margin-top:6px"></div>
  </div>
 
 
@@ -3146,6 +3149,22 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  <div class="row">
  <button class="tb" id="auto-start-btn" onclick="toggleAutoStart()">Auto-start: OFF</button>
+ </div>
+ <!-- Chord length and the bass/melody auto-regen link used to live in a
+      "Voices & Timing" panel on the Play tab, duplicating the Voices dock
+      that already follows you to every tab. Chord length is a set-once
+      behaviour, same as everything else in this section. -->
+ <div class="row">
+ <span style="font-size:.48rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Chord length:</span>
+ <div class="tg">
+  <button class="tb active green" id="cb-inf" onclick="setChordBeats(0)">∞</button>
+  <button class="tb green" id="cb-1" onclick="setChordBeats(1)">1♩</button>
+  <button class="tb green" id="cb-2" onclick="setChordBeats(2)">2♩</button>
+  <button class="tb green" id="cb-4" onclick="setChordBeats(4)">4♩</button>
+ </div>
+ </div>
+ <div class="row">
+ <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes">Bass+Mel: Sync</button>
  </div>
  <div class="row">
  <span style="font-size:.48rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Key mapping:</span>
@@ -3564,6 +3583,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
      <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
+     <!-- Covers any voice picked via the Voices drawer that isn't one of the
+          seven quick buttons above (piano, vibes, modsynth, ...), so the
+          current bass sound is never unclear. -->
+     <span class="bl-wave-current" id="bl-wave-current"></span>
    </div>
   </div>
   <!-- Filter controls row -->
@@ -3673,7 +3696,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="bl-pb advanced-only">
      <span class="bl-pl">Oct</span>
      <button class="bl-pico" onclick="mlShiftOct(-1)">−</button>
-     <span class="bl-stepsdisp" id="ml-octdisp">5</span>
+     <span class="bl-stepsdisp ml-oct-mirror" id="ml-octdisp">5</span>
      <button class="bl-pico" onclick="mlShiftOct(1)">+</button>
    </div>
   </div>
@@ -3690,6 +3713,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
      <button class="bl-mopt" id="mlw-rhodes" onclick="setMlWave('rhodes')">Rhodes</button>
      <button class="bl-mopt" id="mlw-pad" onclick="setMlWave('pad')">Pad</button>
    </div>
+   <!-- Covers any voice picked via the Voices drawer that isn't one of the
+        eight quick buttons above (vibes, modsynth, ...). -->
+   <span class="bl-wave-current" id="ml-wave-current"></span>
   </div>
   <!-- Style + generate: always visible -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
@@ -4195,6 +4221,17 @@ const WAVE_GAIN = {
  tenorsax:6.9,
  mutetpt:8.0,
 };
+
+// The bass engine doesn't route through WAVE_GAIN at all (its voices are
+// hand-built in blPlayNote, not makeVoice()), so the one sampled bass voice
+// — 'upright_real' ("Real") — got none of the compensation every other
+// sampled voice above has: playSampleVoice() connects the raw buffer
+// straight to the note's gain node, and a plucked/decaying acoustic
+// recording's held RMS reads much quieter next to the synthesized 'upright'
+// voice's sustained additive-oscillator stack, even at the same envelope.
+// This is an estimate in the same spirit as the table above rather than a
+// measured match — retune it if "Real" still sits off the other bass voices.
+const BASS_SAMPLE_GAIN = 4.5;
 
 // ═══════════════════════════════════════
 // SAMPLE ENGINE — real instrument samples (progressive enhancement)
@@ -4798,8 +4835,30 @@ function getCtx(){
 // that suspension can outlast the async resume() call triggered by the
 // very next note, silently dropping it. Proactively resume the instant
 // the page/tab becomes active again instead of waiting for a note to ask.
+//
+// While suspended, ctx.currentTime freezes — but every scheduler's own
+// "next event" tracker (sqNextT, blNextT, mlNextT, rhythmNextBeat,
+// arpNextBeat) keeps whatever value it had before the suspend, and Page
+// Visibility timer throttling doesn't necessarily freeze or resume in
+// lockstep with AudioContext suspension. Left alone, the very next
+// scheduling pass after resuming either fires a burst of "missed" notes
+// catching every tracker up to the present, or fires one stale note at a
+// moment that no longer lines up with anything playing — audible as a
+// short stray note right at the resume boundary. Re-align every running
+// engine's tracker to a fresh, grid-locked "now" the same way each one
+// already does on its own explicit start, instead of letting it try to
+// catch up across a gap it was never scheduled to survive.
 function _resumeAudioIfNeeded(){
- if(audioCtx && audioCtx.state==='suspended') audioCtx.resume().catch(()=>{});
+ if(!audioCtx) return;
+ var wasSuspended = audioCtx.state==='suspended';
+ if(wasSuspended) audioCtx.resume().catch(()=>{});
+ if(!wasSuspended) return;
+ var c=getCtx(); if(!c) return;
+ if(rhythmOn) rhythmNextBeat = clockAlignTo(c, rhythmStepSec||clockStepSec(), 0.1);
+ if(arpOn) arpNextBeat = clockAlignTo(c, clockStepSec(), 0.1);
+ if(typeof window._sqPlaying==='function' && window._sqPlaying() && typeof window._sqResync==='function') window._sqResync();
+ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blResync==='function') window._blResync();
+ if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlResync==='function') window._mlResync();
 }
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') _resumeAudioIfNeeded(); });
 window.addEventListener('pageshow', _resumeAudioIfNeeded);
@@ -5377,8 +5436,10 @@ function syncModSynthUI(){
 
 // ── Foldable reference panels ──────────────────────────────────────────────
 // Chord Forms and Fingering are reference, not controls: useful while you're
-// learning a shape, in the way once you know it. The fold state is per panel
-// and remembered, so closing one stays closed next session.
+// learning a shape, in the way once you know it. Both start folded — closed
+// until you ask to see them, like Fingering's own reveal button — and the
+// fold state is remembered per panel from then on, so opening (or
+// re-closing) one stays that way next session.
 function togglePanelFold(id,force){
  const p=document.getElementById(id); if(!p) return;
  const folded = (force==null) ? !p.classList.contains('folded') : !!force;
@@ -5387,12 +5448,14 @@ function togglePanelFold(id,force){
   b.setAttribute('aria-expanded', folded?'false':'true');
   b.title = (folded?'Show ':'Hide ') + (p.id==='fingering-panel'?'the fingering chart':'the chord diagrams');
  });
- try{ localStorage.setItem('modo-fold-'+id, folded?'1':''); }catch(e){}
+ try{ localStorage.setItem('modo-fold-'+id, folded?'1':'0'); }catch(e){}
 }
 function restorePanelFolds(){
  ['chord-diagram-panel','fingering-panel'].forEach(id=>{
-  let v=''; try{ v=localStorage.getItem('modo-fold-'+id)||''; }catch(e){}
-  if(v) togglePanelFold(id,true);
+  let v=null; try{ v=localStorage.getItem('modo-fold-'+id); }catch(e){}
+  // No stored preference yet ⇒ default closed. '0' means the user has
+  // explicitly opened it before, so honor that instead of re-closing it.
+  togglePanelFold(id, v!=='0');
  });
 }
 
@@ -6419,7 +6482,21 @@ function initBendStrip(){
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
  const revMix=parseFloat(document.getElementById('mel-rev').value);
- const wg=WAVE_GAIN[melWave]||1;
+ // A true continuous glide needs an oscillator whose frequency can be swept
+ // in real time. A sampled ◆ instrument (Vibes, Jazz Gtr, Nylon, Tenor Sax,
+ // Mute Tpt) is a fixed-pitch recorded buffer and can't do that, so a glide
+ // always synthesizes a plain tone standing in for it — that part is fine.
+ // What wasn't fine: assigning melWave straight to OscillatorNode.type did
+ // this by accident rather than on purpose. 'vibes' etc. aren't valid
+ // oscillator types, so the browser silently ignored the assignment and left
+ // it at the default 'sine' — while the gain right below still used that
+ // sampled instrument's WAVE_GAIN (up to 16x, calibrated for a quiet raw
+ // sample buffer, not a synthesized tone). That mismatch is what made a
+ // glide on any of those five voices blast out far louder than every other
+ // sound. Pick the stand-in wave and its gain to match on purpose instead.
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt'].indexOf(melWave) >= 0;
+ const glideWave = isSampledMelWave ? 'sine' : melWave;
+ const wg=WAVE_GAIN[glideWave]||1;
  const vsc=velScale(touch.force||0);
  const _mxMel=_cmx('mel');
  const now=ctx.currentTime;
@@ -6431,11 +6508,20 @@ function initBendStrip(){
  if(!(_mxMel>0)) return;
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
- bendContGain.gain.linearRampToValueAtTime(vol*.45*wg*vsc*_mxMel, now+atk);
- bendContGain.connect(masterDest(ctx));
- feedRev(bendContGain, revMix*.6);
+ // Same sustain level and character chain as a held note (playMelNote) — a
+ // glide used to skip both fxTrim and the filter/pan macro chain entirely
+ // and connect straight to the master bus, which is why bend mode read
+ // louder and brighter across every instrument, not just the sampled ones;
+ // Note Lock mode (which just calls playMelNote per note) never had either
+ // problem.
+ bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim, now+atk);
+ const idxForPan=Math.round(x*(notes.length-1));
+ const melPan=Math.max(-.5,Math.min(.5,((notes[Math.min(idxForPan,notes.length-1)]-72)/24)))*0.5;
+ const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
+ bendContGain.connect(fx.head);
+ feedRev(fx.plain?bendContGain:fx.tail, revMix*.6);
 
- if(melWave==='supersaw'){
+ if(glideWave==='supersaw'){
  const ss=buildSuperSaw(ctx, f);
  ss.out.connect(bendContGain);
  // Start ALL 7 oscillators
@@ -6448,7 +6534,7 @@ function initBendStrip(){
  };
  } else {
  const o=ctx.createOscillator();
- o.type=melWave;
+ o.type=glideWave;
  o.frequency.value=f;
  o.connect(bendContGain);
  o.start(now);
@@ -7457,6 +7543,17 @@ const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],
  ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth']];
+// Bass's quick-select row uses its own pet names (Acid, Sub, ...) for a wave
+// id shared with everything else, since "Saw" doesn't say "acid bassline" the
+// way "Acid" does. Anything picked for bass that ISN'T one of these seven —
+// i.e. a shared voice reached through the Voices drawer — falls back to the
+// shared catalog's label so the current sound is never unlabeled.
+const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Real Upright'};
+function _sharedVoiceLabel(w){
+ const m=MS_SHARED_VOICES.find(o=>o[0]===w);
+ return m?m[1]:w;
+}
+function _blWaveLabel(w){ return BL_WAVE_LABELS[w] || _sharedVoiceLabel(w); }
 // Same order everywhere a list of parts appears (this dock, the Mixer):
 // Chords and Melody strip live on Play, Bass/Melody gen/Arp on the Bass tab
 // in that tab's own left-to-right order — so the order here matches the
@@ -8670,6 +8767,27 @@ const RND_ARP_PATS    = ['up','down','ud','rand','weighted','pedal','walk','bloc
 const RND_ARP_VELS    = ['flat','cresc','decrsc','hill','valley'];
 const RND_COMP_STYLES = ['sustain','bars','backbeat','charleston','strum','bossa'];
 
+// ── Roll constraints ────────────────────────────────────────────────────
+// Every archetype above still picks its own character, but every part's roll
+// is now clamped to a subset that always sounds right regardless of which
+// archetype wins: piano/organ/pad on chords, the plain oscillators on the
+// melody strip, no "Real" bass sample (network-dependent, see the note
+// above), no Brush kit (a struck-transient synth trying to fake a sustained
+// gesture), and no MōdSynth on melody gen or arp — a hand-tuned patch that
+// a roll can't dial in for you. _rndConstrain intersects an archetype's own
+// list with the allowed set, falling back to the allowed set whole if an
+// archetype's list happens to share nothing with it.
+function _rndConstrain(list, allowed){
+ const kept=(list||[]).filter(w=>allowed.indexOf(w)>=0);
+ return kept.length ? kept : allowed;
+}
+const RND_CHORD_ALLOWED   = ['piano','organ','pad'];
+const RND_MELSTRIP_ALLOWED= ['sine','square','sawtooth'];
+const RND_MELGEN_ARP_ALLOWED = ['sine','sawtooth','square','triangle','supersaw'];
+const RND_BASS_ALLOWED    = ['sawtooth','square','triangle','sine','electric','upright'];
+// Indices into ARP_RATES for 8th, 8th-T (triplet) and 16th.
+const RND_ARP_RATE_ALLOWED = [5,6,7];
+
 // ── Patch archetypes ───────────────────────────────────────────────────
 // Rolling every parameter independently across its full range produces
 // something unusable the large majority of the time — the knobs aren't
@@ -9053,87 +9171,12 @@ const RND_SOFT_MS_PRESETS = ['sine','bell','sub','triangle','fatbass','wobble','
 // an EMPTY grid and reported the noise floor as data — peak was 0.000 on every
 // kit). IDM is the one outlier; the rest are 2.5% and below.
 //   IDM 6.7%  LIN 2.5%  909 1.4%  BRS 1.2%  MOD 0.6%  606 0.2%  808 0.1%
-const RND_SOFT_MACHINES = ['808','909','606','MOD','BRS','LIN','JAZZ'];
+// BRS (Brush) excluded — its cymbals are synthesized rather than sampled and
+// don't hold up as a roll result; pick it by hand from the Rhythm tab instead.
+const RND_SOFT_MACHINES = ['808','909','606','MOD','LIN','JAZZ'];
 function _rndSoften(list, fallback){
  const soft = (list||[]).filter(w=>RND_SOFT_WAVES.indexOf(w)>=0);
  return soft.length ? soft : (fallback||RND_SOFT_WAVES);
-}
-
-// ═══════════════════════════════════════
-// JAZZ MODE
-// ═══════════════════════════════════════
-// A mode rather than a dice archetype, because the two answer different
-// questions. An archetype is one entry in a random pool — you might land on
-// it. A mode is a decision: "I want to play standards now." Everything below
-// has to agree with everything else for that to work — a walking bass under a
-// rock kit is not a jazz sound, and neither is a jazz kit under a supersaw —
-// so this sets the whole rig at once and nothing here is random.
-//
-// It deliberately does NOT touch your songs, your setlist, the key, or the
-// tempo. Those are yours. And because it goes through the same settings
-// snapshot everything else does, Undo backs out of it in one step.
-function applyJazzMode(){
- const s = _capSettings();
-
- // Voices: the real instruments, which is the whole point of the mode.
- s.wave       = 'jazzgtr';   // comping on an archtop
- s.melWave    = 'tenorsax';  // the horn you play by hand
- s.arpWave    = 'vibes';
- s.melgenWave = 'mutetpt';
- s.blWave     = 'upright_real';
- // Same trap as sqState: _applySettings prefers the mlState/blState snapshots
- // over these flat fields, and those snapshots were taken before this function
- // changed anything — so without writing through, the restore quietly puts the
- // old voice straight back. Measured: melgen stayed on whatever it already was.
- if(s.mlState) s.mlState.wave = s.melgenWave;
- if(s.blState) s.blState.wave = s.blWave;
-
- // Character: dark, close, almost no drive. A jazz record is not a bright one.
- s.fxCutoff = 0.62; s.fxReso = 0.05; s.fxEnv = 0.18;
- s.fxDrive  = 0.06; s.fxWidth = 0.45; s.fxDrift = 0.35;
- s.fxTrim   = 1;
- s.atk = 0.012; s.dec = 2.4; s.rev = 0.28; s.strum = 0.14;
- s.mAtk = 0.02; s.mDec = 1.1; s.mRev = 0.22;
- s.voicing   = 'open';
- s.compStyle = 'charleston';   // comping, not a held pad
- s.chordBeats = 0;
-
- // Feel: swung EIGHTHS and the Jazz kit. Two bugs lived on this line. The
- // amount was 0.28 against a 0-70 control, so the swing this button promised
- // measured 0.175ms at 120bpm — around 200x too small, i.e. dead straight.
- // And the resolution was sixteenths, which is a funk feel; jazz swings the
- // eighths. Both are why "♭ Jazz" came out stiff.
- s.sqMach   = 'JAZZ';
- s.sqSteps  = 16;
- s.sqSwing  = 58;      // a jazz ride sits near the triplet
- s.sqSwing8 = true;
- s.sqRateMul = 1;
- // Same hazard as the dice: _applySettings restores the sqState snapshot after
- // writing these, and that snapshot carries its own copy of all three.
- if(s.sqState){ s.sqState.mach = s.sqMach; s.sqState.steps = s.sqSteps; s.sqState.swing = s.sqSwing; s.sqState.swing8 = s.sqSwing8; }
-
- _applySettings(s);
-
- // Bass: a walking line through the changes, which is the other half of the
- // sound. Set after _applySettings so the restored bass state doesn't undo it.
- try{
-  if(typeof window.setBlGenStyle==='function') window.setBlGenStyle('jazz');
-  if(typeof window.setBlWalkFeel==='function') window.setBlWalkFeel('four');
-  if(typeof window.blIsFollowOn==='function' && !window.blIsFollowOn()
-     && typeof window.blToggleFollow==='function') window.blToggleFollow();
-  if(typeof window.mlIsFollowOn==='function' && !window.mlIsFollowOn()
-     && typeof window.mlToggleFollow==='function') window.mlToggleFollow();
-  if(typeof window.blGenerate==='function') window.blGenerate();
-  if(typeof window.setHumanize==='function') window.setHumanize(0.35);
-  const hs=document.getElementById('bl-human'); if(hs) hs.value=0.35;
- }catch(e){}
-
- // Start the samples downloading now rather than on the first note.
- try{ ['jazzgtr','tenorsax','vibes','mutetpt','bass'].forEach(preloadSampleInstrument); }catch(e){}
- try{ if(typeof preloadDrumSamples==='function') preloadDrumSamples(); }catch(e){}
-
- if(typeof track==='function') track('jazz_mode_applied',{});
- showToast('Jazz mode — archtop, sax, vibes, upright & brushes');
 }
 
 function randomizeSettings(opts){
@@ -9148,19 +9191,31 @@ function randomizeSettings(opts){
  const A = _rndPick(pool);
  lastArchetype = A.name;
 
- const _cw = A.waves||RND_CHORD_WAVES, _aw = A.arpWaves||RND_ARP_WAVES, _mw = A.melWaves||RND_MEL_WAVES;
+ // Every list is intersected with its RND_*_ALLOWED set before anything is
+ // picked from it — see "Roll constraints" above — so an archetype can still
+ // lean the character one way (e.g. Warm Keys favouring piano) without ever
+ // landing outside the sounds a roll is allowed to choose.
+ const _cw = _rndConstrain(A.waves||RND_CHORD_WAVES, RND_CHORD_ALLOWED);
+ const _aw = _rndConstrain(A.arpWaves||RND_ARP_WAVES, RND_MELGEN_ARP_ALLOWED);
+ const _mw = _rndConstrain(A.melWaves||RND_MEL_WAVES, RND_MELSTRIP_ALLOWED);
  s.wave    = _rndPick(gentle ? _rndSoften(_cw) : _cw);
  s.arpWave = _rndPick(gentle ? _rndSoften(_aw) : _aw);
  s.melWave = _rndPick(gentle ? _rndSoften(_mw) : _mw);
- s.blWave  = _rndPick(A.bassWaves||RND_BASS_WAVES);
+ s.blWave  = _rndPick(_rndConstrain(A.bassWaves||RND_BASS_WAVES, RND_BASS_ALLOWED));
+ // Melody gen never actually got a fresh voice from the dice before — the
+ // roll wrote into modSynthPatches for every part but never picked a new
+ // waveform for this one, so it silently kept whatever it already had.
+ // Same allowed pool as the arp, so it never lands on MōdSynth either.
+ s.melgenWave = _rndPick(_rndConstrain(A.arpWaves||RND_ARP_WAVES, RND_MELGEN_ARP_ALLOWED));
+ if(s.mlState) s.mlState.wave = s.melgenWave; // same restore-fights-the-roll hazard as sqState/blState below
 
  s.arpPat      = _rndPick(A.pats||RND_ARP_PATS);
  s.arpOcts     = _rndPick(A.octs||[1,2,3]);
  s.arpVelShape = _rndPick(A.vels||RND_ARP_VELS);
  s.arpGatePat  = Math.floor(Math.random()*ARP_GATE_PATTERNS.length);
- // Rate band never reaches Whole/Half — they tick over so slowly they don't
- // read as an arpeggio at all, which just looks like the button did nothing.
- s.arpRateIdx  = Math.round(_rndBand(A.rate||[2,9],0));
+ // 8th, 8th-T (triplet) or 16th only — anything slower doesn't read as an
+ // arpeggio, anything faster turns to mud.
+ s.arpRateIdx  = _rndPick(RND_ARP_RATE_ALLOWED);
  s.gate        = _rndBand(A.gate||[.15,.95],2);
 
  s.atk   = _rndBand(A.atk||[.005,.3],3);
@@ -9196,7 +9251,9 @@ function randomizeSettings(opts){
  // groove without touching anything the user authored (the step grids,
  // songs and mixer levels all stay put).
  s.chordBeats = _rndPick([0,0,1,2,4]);            // ∞ weighted: most patches want to ring
- s.sqSteps    = _rndPick([8,16,16,16,12,24,32]);  // 16 weighted: the common bar
+ // Fixed at 16 across drums, bass and melody — not rolled — so a roll never
+ // leaves you with a lopsided 12- or 32-step grid to untangle.
+ s.sqSteps    = 16;
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
  // 2x is thirty-second notes. On a hi-hat that is a roll; on the bass it is
  // mud, and Rate Linked — the default — hands the same multiplier to all
@@ -9207,7 +9264,8 @@ function randomizeSettings(opts){
  // silence-adjacent swing and the dice's "swing" never audibly did anything.
  s.sqSwing    = _rndPick([0,0,0,15,25,40,55]);
  s.sqSwing8   = _rndPick([true,true,true,false]);   // mostly eighths
- s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','BRS','JAZZ']);
+ // BRS (Brush) excluded — see RND_SOFT_MACHINES above.
+ s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','JAZZ']);
  // _capSettings() snapshotted sqState BEFORE this roll, and _applySettings
  // restores that snapshot AFTER writing the rolled values — and the snapshot
  // carries its own copy of mach/steps/swing, so the restore silently put the
@@ -9222,6 +9280,12 @@ function randomizeSettings(opts){
   s.sqState.swing = s.sqSwing;
   s.sqState.swing8 = s.sqSwing8;
  }
+ // Same fixed 16 for bass and melody, written straight into their own
+ // captured snapshots for the same reason as sqState just above — Steps
+ // Linked usually fans sqSteps out to both already, but when it's off the
+ // restore would otherwise put each one's own pre-roll count straight back.
+ if(s.blState) s.blState.steps = 16;
+ if(s.mlState) s.mlState.steps = 16;
  s.modSynthPreset = _rndPick(gentle ? RND_SOFT_MS_PRESETS : Object.keys(MODSYNTH_PRESETS));
  // Roll the modulation on top of the preset — movement is most of what makes
  // one patch feel different from another, and a static roll all sounds alike.
@@ -9432,7 +9496,7 @@ function playOnboardingDemo(){
     {title:'Play chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain. A <b>green glow</b> marks the chord sounding right now — including while a song plays itself. Keys <b>1–7</b> trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
     {title:'Chord Forms — play along',text:'Under the grid, <b>Chord Forms</b> shows how to play the current chord on <b>guitar, ukulele or piano</b>, and it follows song playback automatically. Songs → <b>Chart</b> turns the whole song into a printable chord sheet.',icon:'▦',target:'chord-diagram-panel',tab:'perform'},
     {title:'The melody strip — try this one',text:'Switch to the <b>Melody</b> sub-tab. Slide or tap to solo over whatever is playing, in key, so it is very hard to hit a wrong note. Your computer keyboard works too: <b>A S D F G H J</b> are Do Re Mi…, <b>Z / X</b> shift octave. It is the most enjoyable way to interact with the music you are hearing — do not skip it.',icon:'🎵',target:'pf-melody-btn',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('melody'); }},
-    {title:'Voices — who plays what',text:'Chords, arp, melody strip, bass and the melody generator each have their <b>own instrument</b>. Set them all in one place here. A Rhodes chord under a sine arp with an upright bass is three picks.',icon:'⬡',target:'voices-grid',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('chords'); }},
+    {title:'Voices — who plays what',text:'Chords, arp, melody strip, bass and the melody generator each have their <b>own instrument</b>. The <b>⬡ Voices</b> drawer sets them all in one place, and it follows you to every tab. A Rhodes chord under a sine arp with an upright bass is three picks.',icon:'⬡',target:'voices-grid-dock',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('chords'); if(typeof voicesDockOpen!=='undefined' && !voicesDockOpen && typeof toggleVoicesDock==='function') toggleVoicesDock(); }},
     {title:'MōdSynth',text:'Pick <b>MōdSynth</b> as a voice and a full synth opens up: 18 presets across Basic, Classic and Modern, live controls for unison, detune, sub, <b>cutoff and filter sweep</b>, reso and drive, <b>two LFOs</b> for vibrato, wobble and tremolo — and a scope showing the actual output.',icon:'◈',target:'modsynth-panel',tab:'perform',before:function(){ if(typeof setWave==='function') setWave('modsynth'); }},
     {title:'Drums',text:'Pick a kit — including the synthesized <b>MōdKit</b> — then a groove preset or your own step pattern. Set steps, rate and swing here.',icon:'🥁',target:'sq-groove-presets',tab:'rhythm'},
     {title:'Bass & melody, generated',text:'Pick a style — Jazz, Funk, Motown, Acid and more — and hit <b>Generate</b> for a bassline that follows your chords. The Melody tab does the same for a hook. Turn on <b>Bass+Mel: Sync</b> and both rewrite themselves every chord change.',icon:'🎸',target:'bl-gen-style',tab:'bass'},
@@ -10351,16 +10415,44 @@ const DEMO_DURATIONS=[
  [[2,0],[1,0],[1,0],[1,0]],   // long opener
  [[1,0],[1,0],[0,2],[0,2]],   // tail acceleration
 ];
+// A default title for any generated song/recording — "ModRiff: " plus the
+// progression itself (e.g. "ModRiff: Dm - G - C - Am"), so what you see
+// before you've named anything is the music, not the word "Demo". Repeats
+// collapse (a 2-bar chord stored as two identical slots reads as one name).
+function defaultModRiffTitle(slots){
+ const names=[];
+ (slots||[]).forEach(sl=>{
+  const lbl = sl && sl.isRest ? 'N.C.' : (sl && sl.label) || '';
+  if(lbl && names[names.length-1]!==lbl) names.push(lbl);
+ });
+ return names.length ? 'ModRiff: '+names.join(' - ') : 'ModRiff';
+}
 function buildRandomDemoSong(){
  const pick=a=>a[Math.floor(Math.random()*a.length)];
  const md=MODES[mode]||MODES.major;
  const rm=rootMidi();
- const prog=pick(DEMO_PROGRESSIONS);
+ // DEMO_PROGRESSIONS assumes every mode has seven degrees — some entries
+ // index as high as degree 6. Pentatonics (5 degrees) and blues (6) don't,
+ // and indexing past the end of md.nums/steps/triadQ is exactly how a roll
+ // that lands on one of those modes (this runs right after the dice can pick
+ // any mode, see startDemoJourney) used to produce an "undefined / undefined"
+ // chord. Those modes already have their own degree-safe progressions in
+ // MODE_PROG_PRESETS — the same table the Common Progressions picker uses —
+ // so borrow from there instead of assuming seven degrees everywhere.
+ const gapped = md.steps.length < 7;
+ const prog = gapped
+  ? { name:md.label+' vamp', deg:pick(MODE_PROG_PRESETS[mode]||MODE_PROG_PRESETS.major).degrees }
+  : pick(DEMO_PROGRESSIONS);
  const durs=pick(DEMO_DURATIONS);
  // Some progressions want 7ths (jazz), some want plain triads (pop).
  const ext=Math.random()<0.5?'7th':'triad';
 
- const slots=prog.deg.map((d,i)=>{
+ // Belt and suspenders: skip any degree that still doesn't exist in the
+ // current mode rather than ever building an "undefined" chord slot.
+ const validDeg = prog.deg.filter(d=>d>=0 && d<md.steps.length);
+ const degs = validDeg.length ? validDeg : [0];
+
+ const slots=degs.map((d,i)=>{
   const [bars,beats]=durs[i%durs.length];
   const q=md.triadQ[d], t7=md.seventh[d];
   const noteName=nn((root+md.steps[d])%12);
@@ -10383,7 +10475,7 @@ function buildRandomDemoSong(){
  const bpm=Math.round(parseFloat(document.getElementById('bpm')?.value)||100);
  return {
   id:Date.now(),
-  title:'Demo: '+prog.name+' in '+nn(root)+' '+md.label,
+  title:defaultModRiffTitle(slots),
   root, mode,
   sections:[{name:'Head', slots:slots.concat(slots.map(x=>Object.assign({},x)))}],
   savedAt:new Date().toLocaleDateString(),
@@ -10415,7 +10507,7 @@ function buildDemoSong(){
  var slots=phrase.concat(phrase.map(function(sl){ return Object.assign({},sl); }));
  return {
   id:Date.now(),
-  title:'Demo: ii–V–I Turnaround',
+  title:defaultModRiffTitle(phrase),
   root:0, mode:'major',
   sections:[{name:'Head', slots:slots}],
   savedAt:new Date().toLocaleDateString(),
@@ -11570,13 +11662,6 @@ The piano view lights the chord across two octaves, with <strong>R</strong> on t
 <strong>Trumpet</strong> shows the valve combination, <strong>trombone</strong> the slide position, <strong>saxophone</strong> a key diagram including the octave and auxiliary keys, and the fretted instruments the string and fret.<br><br>
 Clarinet and flute currently show the correctly transposed written note without a key diagram.`
  },
- 'voices': {
- title: 'Voices & Timing',
- body: `Every part has its own instrument, and this is where you can see all of them at once.<br><br>
-<strong>Chords</strong> is the chord grid. <strong>Arp</strong> is the arpeggiator. <strong>Melody strip</strong> is the keys you play by hand. <strong>Bass</strong> and <strong>Melody gen</strong> are the two sequencers on the Bass/Mel tab.<br><br>
-They're genuinely independent — a Rhodes chord under a sine arp with an upright bass is one setting each, and changing one never touches another. The per-tab pickers set exactly the same thing.<br><br>
-<strong>Length</strong> sets how long a tapped chord rings — <strong>∞</strong> holds until you release. <strong>TAP</strong> sets the tempo by tapping. <strong>Bass+Mel: Sync</strong> regenerates both lines whenever the chord changes.`
- },
  'builder': {
   title: 'Song Builder',
   body: `Tap chords on the grid to lay them into the chart. New chords land <strong>directly after the cursor</strong>, not always at the end — so click any chord already in the chart to put the cursor there, and the next one you play is inserted right after it. The cursor follows along as you go.<br><br>
@@ -11606,12 +11691,11 @@ Follow needs a song running to have changes to follow. With the song stopped it 
 Notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it.`
  },
  'jazzkit': {
-  title: 'Real instruments, the Jazz kit & Jazz mode',
+  title: 'Real instruments & the Jazz kit',
   body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> The sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why a sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br>
 <strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
 The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
-<strong>♭ Jazz</strong> on the Play tab sets the whole rig in one tap: archtop guitar comping, tenor sax on the keys you play, vibes on the arp, muted trumpet on the melody generator, real upright bass walking through the changes, the Jazz kit, swing, and a touch of humanize. It does <strong>not</strong> touch your key, tempo, songs or setlist — those are yours — and <strong>Undo</strong> backs the whole thing out in one step. The dice can also land on a <strong>Jazz Room</strong> character, which rolls the sound but leaves the bass engine and kit alone; the button is the full rig.<br><br>
 <strong>Kick</strong> is a felt beater feathering the pulse. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Rim</strong> is a cross-stick — wood, not snare. <strong>Hat</strong> is the foot chick on 2 and 4. <strong>Ride</strong> keeps the time, and <strong>Bell</strong> is the same cymbal struck on the cup.<br><br>
 <strong>Six jazz grooves</strong> sit with the other presets on the Rhythm tab: <strong>Jazz Ride</strong> (the standard ding / ding-a-ding), <strong>Two-Feel</strong> for heads, <strong>Brushes</strong> for ballads, <strong>Up</strong> for fast tempos, <strong>Waltz</strong> in 3/4 and <strong>Bossa</strong> with the cross-stick on the clave. They're written straight and swung by the <strong>Swing</strong> control, so the feel follows the knob instead of being baked in.<br><br>
 <strong>Exporting.</strong> Every track in every kit sits on its own <strong>General MIDI</strong> percussion note — kick 36, side stick 37, snare 38, pedal hat 44, tom 47, ride 51, ride bell 53 — so an exported MIDI file drops into Ableton Live, Battery or any GM kit with each voice already on the right pad, instead of the whole kit stacking onto one.`
@@ -13024,14 +13108,18 @@ function toggleGlobalSongMode(){
 function _updateSongBtn(){
  const btn = document.getElementById('ft-song-btn'); if(!btn) return;
  const held = !globalSongMode && _songHeldAt != null;
- btn.textContent = globalSongMode ? 'Song: ON' : (held ? 'Song: HOLD' : 'Song: OFF');
+ // Colour carries the state now — on/off/held read as green/red/amber — so
+ // the label doesn't need to spell it out too; that's what let this button
+ // shrink enough for the bar to fit in two rows instead of three.
+ btn.textContent = 'Song';
  btn.title = globalSongMode
   ? 'The song is playing itself and advancing through the chart. Switch off to hold on the current chord.'
   : (held
      ? 'Held on the current chord — the progression has stopped advancing. Play any chord to take over, or switch back on to carry on from here.'
      : "Play the loaded song's chart automatically");
  btn.classList.toggle('song-on', globalSongMode);
- btn.classList.toggle('song-off', !globalSongMode);
+ btn.classList.toggle('song-hold', held);
+ btn.classList.toggle('song-off', !globalSongMode && !held);
 }
 
 function updatePrismSongBanner(){
@@ -13230,6 +13318,9 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
   // A tap leaves the slider up to fine-tune with. A drag has already done the
   // job, so it clears itself out of the way.
   if(moved>4) setTimeout(()=>{ if(!drag) _bpmPopOpen(false); }, 700);
+  // A tap (not a drag) is also a tap-tempo beat — this readout is the only
+  // tap-tempo control there is now, no separate TAP button.
+  else tapTempo();
  };
  el.addEventListener('pointerup', end);
  el.addEventListener('pointercancel', end);
@@ -13740,6 +13831,13 @@ function toggleBassSync(){
 }
 
 let _tapTimes=[];
+// Tap tempo lives on the transport's tempo readout now, not a separate
+// button — see the pointerup handler in _initBpmDrag below, which calls
+// this on every tap that isn't a drag. It stays a rolling window of the
+// last 4 taps rather than an ever-growing average: tempo only updates once
+// more than 3 taps have landed (so a stray first tap can't set it), and
+// each tap after that re-fits against the 4 most recent, so the reading
+// tracks a tempo you're actively changing instead of dragging on stale taps.
 function tapTempo(){
  const now=performance.now();
  // Start a new sequence at tap time rather than on a timer. The old reset was
@@ -13748,27 +13846,26 @@ function tapTempo(){
  // and the tempo came out wildly wrong.
  if(_tapTimes.length && now-_tapTimes[_tapTimes.length-1] > 2000) _tapTimes=[];
  _tapTimes.push(now);
- if(_tapTimes.length>8) _tapTimes.shift();
- if(_tapTimes.length>=2){
+ if(_tapTimes.length>4) _tapTimes.shift();
+ if(_tapTimes.length>=4){
  let intervals=[];
  for(let i=1;i<_tapTimes.length;i++) intervals.push(_tapTimes[i]-_tapTimes[i-1]);
- // From three taps on, throw out anything far from the median before
- // averaging: one hesitant or doubled tap shouldn't drag the whole tempo.
- if(intervals.length>=2){
-  const sorted=intervals.slice().sort((a,b)=>a-b);
-  const med=sorted[sorted.length>>1];
-  const kept=intervals.filter(v=>Math.abs(v-med)<med*0.4);
-  if(kept.length) intervals=kept;
- }
+ // Throw out anything far from the median before averaging: one hesitant
+ // or doubled tap shouldn't drag the whole tempo.
+ const sorted=intervals.slice().sort((a,b)=>a-b);
+ const med=sorted[sorted.length>>1];
+ const kept=intervals.filter(v=>Math.abs(v-med)<med*0.4);
+ if(kept.length) intervals=kept;
  const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
  const bpm=Math.round(60000/avg);
  const clamped=Math.max(40,Math.min(220,bpm));
  onBpmInput(clamped);
  const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
  }
- // Flash the button
- const btn=document.getElementById('tap-tempo-btn');
- if(btn){ btn.style.background='var(--accent)'; setTimeout(()=>btn.style.background='',150); }
+ // Flash the readout itself so each registered tap gives feedback, even
+ // the first few before there's enough of a window to set a tempo yet.
+ const el=document.getElementById('ft-bpm-val');
+ if(el){ el.classList.add('tap-flash'); setTimeout(()=>el.classList.remove('tap-flash'),120); }
 }
 
 // ═══════════════════════════════════════
@@ -13855,7 +13952,7 @@ try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){
   sections = demo.sections.map(x=>({name:x.name, slots:x.slots.map(sl=>({...sl}))}));
   curSection = 0; chartSeqIdx = -1;
   const t=document.getElementById('chart-title');
-  if(t && !t.value) t.value = demo.title.replace(/^Demo: /,'');
+  if(t && !t.value) t.value = demo.title;
   renderChords(); buildSectionTabs(); renderChartSeq(); renderPerfChartRow();
   if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  }catch(e){}
@@ -14673,7 +14770,19 @@ var SQM={
     {n:'Snare',s:'SD',c:'#aaccee',play:function(t,v,ac,ps){sqNs(t,.3,1800,v*(ac?1.2:1)*.45);sqTn(t,160*sqSemi(ps),.04,v*.2,'triangle');}},
     {n:'Cl Hat',s:'CH',c:'#ccddff',play:function(t,v,ac,ps){sqNs(t,.12,5000,v*(ac?1.2:1)*.32);}},
     {n:'Op Hat',s:'OH',c:'#ddeeff',play:function(t,v,ac,ps){sqNs(t,.45,4500,v*(ac?1.1:1)*.28);}},
-    {n:'Ride',s:'RD',c:'#bbccdd',play:function(t,v,ac,ps){sqNs(t,1.4,7500,v*(ac?1.2:1)*.18);sqNs(t,.55,4200,v*(ac?1.1:1)*.12);sqTn(t,680*sqSemi(ps),1.1,v*.13,'sine');}},
+    // Was one flat sine plus two noise bands — no differential decay at all
+    // (the high modes falling away faster than the low ones is what actually
+    // reads as struck metal), so it landed as a filtered hiss rather than a
+    // ride. Uses the same real ride recording the Jazz kit does — it's the
+    // same cymbal, just played with a stick instead of brushes — and falls
+    // back to the inharmonic sqCym() model (a touch duller/shorter than the
+    // Jazz kit's own, to sit under this kit's generally softer dynamics)
+    // rather than the old sine+noise combo if the sample hasn't loaded.
+    {n:'Ride',s:'RD',c:'#bbccdd',play:function(t,v,ac,ps){
+      if(sqSample('ride', t, v*(ac?1.15:1)*0.34, ps)) return;
+      sqCym(t, v*(ac?1.2:1)*0.20, 372*sqSemi(ps), 2.6,
+            {damp:0.85, hp:2800, pingF:5000, pingLvl:0.35, washF:8200, washLvl:0.13});
+    }},
     {n:'Tom',s:'TM',c:'#99bbdd',play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.2:1)*.6,'sine',60*sqSemi(ps));}}
   ]}
 };
@@ -14744,6 +14853,14 @@ var sqPlaying=false, sqSchedID=null, sqRafID=null;
   window._sqPlaying=function(){return sqPlaying;};
   window._sqPlayingVal=false;
 var sqSeqStep=0, sqDispStep=-1, sqNextT=0;
+// Re-aligns sqNextT to a fresh, grid-locked "now" — same helper sqStart()
+// itself uses — instead of resuming from wherever it was left. See the
+// visibilitychange handler near _resumeAudioIfNeeded for why this exists:
+// a backgrounded tab can leave sqNextT stale by more than the AudioContext
+// clock itself moved, and without this the next tick either bursts through
+// every step it "missed" or fires one at a moment that no longer lines up
+// with anything.
+window._sqResync=function(){ var c=sqCtx(); if(c) sqNextT=clockAlignTo(c, sqSd(), 0.1); };
 var sqPendMach=null, sqPendPat=null;
 var sqChain=[], sqChainPos=0, sqUsingChain=false;
 var sqStepEls={};
@@ -15625,6 +15742,12 @@ var blOct = 2;
 var _blGridRootPc = 0;
 var blPlaying = false;
  window._blPlaying = function(){ return blPlaying; };
+// See window._sqResync — same fix, same reason, for the bass step clock.
+window._blResync = function(){
+  var c=blCtx(); if(!c) return;
+  var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
+  blNextT = clockAlignTo(c, 60/bpmNow/4*(typeof blRateMul!=='undefined'?blRateMul:1), 0.1);
+};
 window._blEnsureGrid = function(){ blEnsureGrid(); };
 window._blRenderGrid = function(){ blRenderGrid(); };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
@@ -15654,7 +15777,7 @@ function blEnsureGrid(){
 function blFreq(note, oct){ return 440 * Math.pow(2, (note + (oct+1)*12 - 69) / 12); }
 
 // ── synthesis ──
-var _blPrevFreq=0, _blPrevSlide=false;
+var _blPrevFreq=0, _blPrevSlide=false, _blPrevGain=null, _blPrevEnd=0;
 function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var ctx = blCtx(); if(!ctx) return;
   var mg = blMG(); if(!mg) return;
@@ -15667,6 +15790,23 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // up with nothing else in the mix. Slide state still updates so the next
   // real note picks up cleanly once the channel comes back.
   if(!(_mxBs>0)){ _blPrevFreq=freq; _blPrevSlide=slide; return; }
+
+  // A real bass is monophonic — a new pluck always cuts the previous note
+  // off, never rings on top of it. Step patterns are supposed to leave a
+  // step silent when a longer note is already ringing through it, but when
+  // one doesn't (or a swung/humanized step lands a hair inside a still-
+  // ringing note's tail), this is the backstop: cut whatever's still
+  // sounding right at the new note's onset instead of letting the two sum
+  // together — which is what reads as a quiet "ghost" extra note between
+  // the main hits, most audible on the sampled Real Upright voice, where
+  // the two notes don't blend the way synthesized ones do.
+  if(_blPrevGain && t < _blPrevEnd){
+    try{
+      _blPrevGain.gain.cancelScheduledValues(t);
+      _blPrevGain.gain.setValueAtTime(_blPrevGain.gain.value, t);
+      _blPrevGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
+    }catch(e){}
+  }
 
   // Master gain + amplitude envelope (shared by all modes)
   var g = ctx.createGain();
@@ -15684,6 +15824,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   if(typeof _regKill==='function') _regKill(g);
 
   var stopT = t + dur + (slide ? 0.15 : 0.06);
+  _blPrevGain = g; _blPrevEnd = stopT;
   // Detaching g pulls the whole upstream chain (osc, filter, shaper) out of
   // the graph in one move — nothing feeding a disconnected node keeps getting
   // processed. At 16 steps a bar this is the fastest-accumulating leak.
@@ -15796,7 +15937,15 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   } else if(blWave === 'upright_real'){
     // Sampled upright bass — falls back to the synthesized 'upright' voice until loaded
     var _bmidi = note + (oct+1)*12;
-    var src = (SAMPLE_STATE.bass === 'ready') ? playSampleVoice(ctx, 'bass', _bmidi, g, t, dur) : null;
+    var src = null;
+    if(SAMPLE_STATE.bass === 'ready'){
+      // playSampleVoice() connects the raw buffer straight through with no
+      // level compensation — see BASS_SAMPLE_GAIN above — so boost it into
+      // its own gain stage ahead of the shared envelope node rather than
+      // feeding the buffer into g directly.
+      var sg = ctx.createGain(); sg.gain.value = BASS_SAMPLE_GAIN; sg.connect(g);
+      src = playSampleVoice(ctx, 'bass', _bmidi, sg, t, dur);
+    }
     if(!src){
       if(SAMPLE_STATE.bass !== 'ready') preloadSampleInstrument('bass');
       var _sw = blWave;
@@ -16485,20 +16634,32 @@ window.blGenerate = function(){
     for(var s=0;s<blSteps;s++){
       var beat = s % 4;
       if(beat === 0 || beat === 2){
+        // The fill on the very next step (if any) is decided right here,
+        // not when the loop reaches it, so this note's ring length can
+        // leave room for it instead of overlapping it. A len:2 downbeat
+        // still ringing when the next step independently fires its own
+        // note is exactly the "ghost" extra note that turns up between the
+        // main hits — most obvious on the sampled Real Upright voice,
+        // where the two notes don't blend the way synthesized ones do.
+        var nextFree = (s+1 < blSteps);
+        var willFill = nextFree && (beat===0 ? Math.random() > 0.3 : Math.random() > 0.5);
         blGrid[s].v=1; blGrid[s].note=chordRoot; blGrid[s].oct=blOct;
-        blGrid[s].accent=(beat===0); blGrid[s].len=2;
-      } else if(beat === 1){
-        if(Math.random() > 0.3){
-          blGrid[s].v=1;
-          blGrid[s].note = useOct ? chordRoot : fifth;
-          blGrid[s].oct = useOct ? blOct+1 : blOct;
-          blGrid[s].len=2;
+        blGrid[s].accent=(beat===0); blGrid[s].len = willFill ? 1 : 2;
+        if(willFill){
+          if(beat===0){
+            blGrid[s+1].v=1;
+            blGrid[s+1].note = useOct ? chordRoot : fifth;
+            blGrid[s+1].oct = useOct ? blOct+1 : blOct;
+            blGrid[s+1].len=2;
+          } else {
+            blGrid[s+1].v=1;
+            blGrid[s+1].note = weighted([[chordRoot,3],[fifth,2],[snapToScale((chordRoot+5)%12),1]]);
+            blGrid[s+1].oct=blOct; blGrid[s+1].len=1;
+          }
         }
-      } else if(beat === 3 && Math.random() > 0.5){
-        blGrid[s].v=1;
-        blGrid[s].note = weighted([[chordRoot,3],[fifth,2],[snapToScale((chordRoot+5)%12),1]]);
-        blGrid[s].oct=blOct; blGrid[s].len=1;
       }
+      // beat 1 and beat 3 are filled in above (as the preceding downbeat's
+      // fill) rather than decided independently when the loop reaches them.
     }
 
   } else if(blGenStyle === 'jazz'){
@@ -16862,6 +17023,10 @@ window.setBlWave = function(w){
   var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
+  // Covers voices reached through the Voices drawer that aren't one of the
+  // quick buttons above — the label is the only indication then.
+  var cur=document.getElementById('bl-wave-current');
+  if(cur) cur.textContent = e ? '' : (typeof _blWaveLabel==='function' ? _blWaveLabel(w) : w);
   if(w==='upright_real') preloadSampleInstrument('bass');
   if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
@@ -16936,7 +17101,11 @@ window._blCaptureState = function(){
 // global instead of the real grid this engine reads.
 window._blRestoreState = function(s){
  if(!s) return;
- if(s.wave){ blWave = s.wave; const ws=document.getElementById('bl-wave-sel'); if(ws) ws.value=s.wave; }
+ // setBlWave (not a direct assignment) so the quick-select row's highlight
+ // and current-sound label actually follow a restore — a dead reference to
+ // a 'bl-wave-sel' element that doesn't exist meant this used to silently
+ // leave the picker showing whatever it last had, right or not.
+ if(s.wave && typeof window.setBlWave==='function') window.setBlWave(s.wave);
  if(s.steps) blSteps = s.steps;
  if(s.oct!=null) blOct = s.oct;
  if(s.genStyle) blGenStyle = s.genStyle;
@@ -16999,6 +17168,12 @@ var _mlGridRootPc = 0;
 var ML_GEN_LO = 55, ML_GEN_HI = 84;
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
+// See window._sqResync — same fix, same reason, for the melody-gen step clock.
+window._mlResync = function(){
+  var c=mlCtx(); if(!c) return;
+  var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
+  mlNextT = clockAlignTo(c, 60/bpmNow/4*(typeof mlRateMul!=='undefined'?mlRateMul:1), 0.1);
+};
 window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
 var mlMenuStep = -1;
@@ -17326,9 +17501,15 @@ window._mlSetStepsRaw = function(n){
 window.mlSetSteps = function(delta){
   setSeqStepCount('ml', mlSteps + delta);   // honours the step-count lock
 };
+// Two mounts share this — the original on Bass/Mel and a mirror on the Play
+// tab's Melody panel, next to the strip's own octave control — so both stay
+// in sync regardless of which one moved it.
+function _mlSyncOctDisp(){
+  document.querySelectorAll('.ml-oct-mirror').forEach(function(e){ e.textContent = mlOct; });
+}
 window.mlShiftOct = function(d){
   mlOct = Math.max(1, Math.min(7, mlOct + d));
-  var disp = document.getElementById('ml-octdisp'); if(disp) disp.textContent = mlOct;
+  _mlSyncOctDisp();
 };
 
 // ── AUTO-GENERATE — scale/chord-aware melodic pattern presets ──
@@ -17548,6 +17729,10 @@ window.setMlWave = function(w){
   var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
+  // Covers voices reached through the Voices drawer that aren't one of the
+  // quick buttons above — the label is the only indication then.
+  var cur=document.getElementById('ml-wave-current');
+  if(cur) cur.textContent = e ? '' : (typeof _sharedVoiceLabel==='function' ? _sharedVoiceLabel(w) : w);
   if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
 
@@ -17581,7 +17766,7 @@ if(_seqAutosaveData && _seqAutosaveData.melody){
   if(_ms.grid) mlGrid = _ms.grid;
   if(_ms.wave && typeof setMlWave === 'function') setMlWave(_ms.wave);
   var _mlStepsDisp = document.getElementById('ml-stepsdisp'); if(_mlStepsDisp) _mlStepsDisp.textContent = mlSteps;
-  var _mlOctDisp = document.getElementById('ml-octdisp'); if(_mlOctDisp) _mlOctDisp.textContent = mlOct;
+  _mlSyncOctDisp();
   document.querySelectorAll('[data-mlstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.mlstyle === mlGenStyle); });
 }
 
@@ -17608,7 +17793,7 @@ window._mlRestoreState = function(s){
  if(s.grid) mlGrid = JSON.parse(JSON.stringify(s.grid));
  if(s.wave && typeof setMlWave === 'function') setMlWave(s.wave);
  var _d = document.getElementById('ml-stepsdisp'); if(_d) _d.textContent = mlSteps;
- var _o = document.getElementById('ml-octdisp'); if(_o) _o.textContent = mlOct;
+ _mlSyncOctDisp();
  document.querySelectorAll('[data-mlstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.mlstyle === mlGenStyle); });
  if(typeof mlSyncFollowUI==='function') mlSyncFollowUI();
  mlEnsureGrid(); mlRenderGrid();
