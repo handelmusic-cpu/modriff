@@ -6482,7 +6482,21 @@ function initBendStrip(){
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
  const revMix=parseFloat(document.getElementById('mel-rev').value);
- const wg=WAVE_GAIN[melWave]||1;
+ // A true continuous glide needs an oscillator whose frequency can be swept
+ // in real time. A sampled ◆ instrument (Vibes, Jazz Gtr, Nylon, Tenor Sax,
+ // Mute Tpt) is a fixed-pitch recorded buffer and can't do that, so a glide
+ // always synthesizes a plain tone standing in for it — that part is fine.
+ // What wasn't fine: assigning melWave straight to OscillatorNode.type did
+ // this by accident rather than on purpose. 'vibes' etc. aren't valid
+ // oscillator types, so the browser silently ignored the assignment and left
+ // it at the default 'sine' — while the gain right below still used that
+ // sampled instrument's WAVE_GAIN (up to 16x, calibrated for a quiet raw
+ // sample buffer, not a synthesized tone). That mismatch is what made a
+ // glide on any of those five voices blast out far louder than every other
+ // sound. Pick the stand-in wave and its gain to match on purpose instead.
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt'].indexOf(melWave) >= 0;
+ const glideWave = isSampledMelWave ? 'sine' : melWave;
+ const wg=WAVE_GAIN[glideWave]||1;
  const vsc=velScale(touch.force||0);
  const _mxMel=_cmx('mel');
  const now=ctx.currentTime;
@@ -6494,11 +6508,20 @@ function initBendStrip(){
  if(!(_mxMel>0)) return;
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
- bendContGain.gain.linearRampToValueAtTime(vol*.45*wg*vsc*_mxMel, now+atk);
- bendContGain.connect(masterDest(ctx));
- feedRev(bendContGain, revMix*.6);
+ // Same sustain level and character chain as a held note (playMelNote) — a
+ // glide used to skip both fxTrim and the filter/pan macro chain entirely
+ // and connect straight to the master bus, which is why bend mode read
+ // louder and brighter across every instrument, not just the sampled ones;
+ // Note Lock mode (which just calls playMelNote per note) never had either
+ // problem.
+ bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim, now+atk);
+ const idxForPan=Math.round(x*(notes.length-1));
+ const melPan=Math.max(-.5,Math.min(.5,((notes[Math.min(idxForPan,notes.length-1)]-72)/24)))*0.5;
+ const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
+ bendContGain.connect(fx.head);
+ feedRev(fx.plain?bendContGain:fx.tail, revMix*.6);
 
- if(melWave==='supersaw'){
+ if(glideWave==='supersaw'){
  const ss=buildSuperSaw(ctx, f);
  ss.out.connect(bendContGain);
  // Start ALL 7 oscillators
@@ -6511,7 +6534,7 @@ function initBendStrip(){
  };
  } else {
  const o=ctx.createOscillator();
- o.type=melWave;
+ o.type=glideWave;
  o.frequency.value=f;
  o.connect(bendContGain);
  o.start(now);
