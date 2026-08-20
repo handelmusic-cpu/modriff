@@ -531,17 +531,73 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
 }
 .mel-inner { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; color:var(--text); pointer-events:none; }
 .mel-label { font-size:.5rem; color:var(--muted); font-weight:500; }
+/* A key fills from the bottom up to wherever the finger sits — the Touch Mod
+   position, shown on the key you're actually holding. */
+.mel-btn::after {
+ content:''; position:absolute; left:0; right:0; bottom:0;
+ height:var(--mod-y,0%);
+ background:linear-gradient(to top, hsla(60,90%,55%,.34), hsla(60,90%,55%,.05));
+ border-top:1px solid hsla(60,95%,65%,.55);
+ opacity:0; transition:opacity .1s; pointer-events:none;
+}
+.mel-btn.modding::after { opacity:1; }
+
+/* One-shot highlight for a panel something just navigated to. */
+@keyframes panelFlash {
+ 0%,100% { box-shadow:0 0 0 0 rgba(139,92,246,0); }
+ 30%     { box-shadow:0 0 0 3px rgba(139,92,246,.55), 0 0 26px rgba(139,92,246,.35); }
+}
+.panel-flash { animation:panelFlash 1.4s ease-out; }
+@media (prefers-reduced-motion: reduce) { .panel-flash { animation:none; } }
+
+/* Touch Mod bar */
+.touchmod-bar {
+ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+ padding:7px 9px; margin-bottom:8px;
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-md);
+}
+.touchmod-bar.off { opacity:.55; }
+.tmod-toggle {
+ padding:5px 11px; border-radius:var(--r-sm); cursor:pointer; flex-shrink:0;
+ border:1px solid var(--border2); background:var(--bg); color:var(--muted);
+ font-family:'Outfit',sans-serif; font-size:.52rem; letter-spacing:.07em;
+ text-transform:uppercase; transition:all .12s;
+}
+.tmod-toggle.active { border-color:var(--mel-c); color:var(--mel-c); background:#221e08; }
+.tmod-dests { flex-wrap:wrap; }
+.tmod-dests .tb { font-size:.48rem; padding:4px 9px; }
+.tmod-depth { display:flex; align-items:center; gap:6px; flex:1 1 150px; min-width:150px; }
+.tmod-depth input[type=range] { flex:1; min-width:70px; }
+.tmod-lbl { font-size:.45rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.tmod-val { font-size:.5rem; color:var(--mel-c); font-family:'Orbitron',sans-serif; min-width:34px; text-align:right; }
+.tmod-hint { flex:1 1 100%; font-size:.45rem; color:var(--muted); letter-spacing:.04em; }
+
 /* Pitch bend strip */
 .bend-strip-wrap {
  width:100%; max-width:700px; margin-top:4px; display:none;
 }
 .bend-strip-wrap.visible { display:block; }
 .bend-strip {
- width:100%; height:56px; background:var(--surf2);
+ /* Taller than it was: across is pitch, up and down is the mod wheel, and
+    56px gave a finger almost nothing to travel through. */
+ width:100%; height:104px; background:var(--surf2);
+ background-image:linear-gradient(to top, rgba(0,0,0,.28), rgba(255,255,255,.035));
  border:1px solid var(--border2); border-radius:10px;
  position:relative; overflow:hidden; cursor:crosshair;
  touch-action:none;
 }
+.bend-mod-line {
+ position:absolute; left:0; right:0; height:2px; bottom:0;
+ background:linear-gradient(to right, transparent, var(--mel-c), transparent);
+ box-shadow:0 0 8px var(--mel-c); opacity:0;
+ transition:opacity .1s; pointer-events:none;
+}
+.bend-axis {
+ position:absolute; font-size:.42rem; color:var(--muted);
+ letter-spacing:.1em; text-transform:uppercase; pointer-events:none;
+}
+.bend-axis-x { bottom:4px; left:50%; transform:translateX(-50%); }
+.bend-axis-y { top:4px; right:7px; color:var(--mel-c); font-family:'Orbitron',sans-serif; letter-spacing:.06em; }
 .bend-indicator {
  position:absolute; top:0; bottom:0; width:2px;
  background:var(--mel-c); border-radius:2px;
@@ -2669,6 +2725,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
         (interactive walkthrough) and written Guide (reference page) are two
         different things, kept as two entries rather than merged into one. -->
    <button class="ft-btn" id="ft-help-btn" onclick="showTour()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Interactive app tour">? Tour</button>
+   <!-- The one entry here that isn't help: saving where you are is something
+        you reach for mid-session, from whatever tab you happen to be on. -->
+   <button class="ft-btn" id="ft-setups-btn" onclick="openSetups()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
    <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
    <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Keyboard shortcuts">⌨ Shortcuts</button>
   </div>
@@ -2689,7 +2748,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   <button class="unlock-btn" onclick="unlockAudio(true)">⚄ Roll &amp; Play</button>
   <button class="unlock-btn ghost" onclick="unlockAudio(false)">Start Blank</button>
  </div>
- <div class="unlock-note">Required for audio on iPhone &amp; iPad.<br>Roll &amp; Play rolls the dice for a random key, groove and sound — a different jam every time. Blank opens silent.</div>
+ <div class="unlock-note">Roll &amp; Play rolls the dice for a random key, groove and sound — a different jam every time. Blank opens silent.</div>
 </div>
 
 <!-- Voice Type Modal -->
@@ -2921,6 +2980,18 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb active" id="mel-mode-btn" onclick="setMelMode('keys')" style="flex:1">Keys</button>
  <button class="tb" id="mel-bend-btn" onclick="setMelMode('bend')" style="flex:1">〰 Bend</button>
  </div>
+ <!-- Touch Mod — vertical finger position as a per-note mod wheel. -->
+ <div class="touchmod-bar" id="touchmod-bar">
+  <button class="tmod-toggle" id="tmod-toggle" onclick="toggleMelMod()"
+   title="Vertical finger position on a key or the bend strip modulates that note">↕ Touch Mod</button>
+  <div class="tg tmod-dests" id="tmod-dests"></div>
+  <div class="tmod-depth">
+   <span class="tmod-lbl">Depth</span>
+   <input type="range" id="tmod-depth" min="0" max="1" step="0.01" value="0.5" oninput="setMelModDepth(this.value)">
+   <span class="tmod-val" id="tmod-depth-val">50%</span>
+  </div>
+  <div class="tmod-hint" id="tmod-hint"></div>
+ </div>
  <!-- The melody generator's own octave used to live only on the Bass/Mel
       tab, grouped in with Steps and Rate with nothing nearby saying
       "melody" — easy to mix up with the strip's octave above, or miss
@@ -2943,18 +3014,23 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="mel-keys" id="melody-keys"></div>
  </div>
  <div class="bend-strip-wrap" id="bend-strip-wrap">
- <div style="display:flex;gap:0;margin-bottom:6px;">
- <div class="tg">
+ <!-- Wraps rather than squeezing: at phone width the caption used to crush
+      the two mode buttons until "Continuous" was clipped mid-word. -->
+ <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;align-items:center">
+ <div class="tg" style="flex:0 0 auto">
  <button class="tb active" id="bend-locked-btn" onclick="setBendMode('locked')">Note Lock</button>
  <button class="tb" id="bend-cont-btn" onclick="setBendMode('continuous')">Continuous</button>
  </div>
- <span style="font-size:.42rem;color:var(--muted);align-self:center;margin-left:10px;letter-spacing:.06em">
- Slide to play · Continuous = true pitch bend
+ <span style="font-size:.42rem;color:var(--muted);letter-spacing:.06em;flex:1 1 140px;min-width:0">
+ Slide across for pitch, up and down for Touch Mod · Continuous = true bend
  </span>
  </div>
  <div class="bend-strip" id="bend-strip">
  <div class="bend-indicator" id="bend-indicator"></div>
+ <div class="bend-mod-line" id="bend-mod-line"></div>
  <div class="bend-note-label" id="bend-note-label">—</div>
+ <div class="bend-axis bend-axis-x">← pitch →</div>
+ <div class="bend-axis bend-axis-y" id="bend-mod-read"></div>
  </div>
  </div>
  </div>
@@ -3230,6 +3306,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <button class="tb active" id="songs-build-btn" onclick="setSongsMode('build')" style="flex:1"> Build</button>
  <button class="tb" id="songs-perform-btn" onclick="setSongsMode('perform')" style="flex:1">Perform</button>
  <button class="tb" id="songs-chart-btn" onclick="setSongsMode('chart')" style="flex:1">Chart</button>
+ <button class="tb" id="songs-setups-btn" onclick="setSongsMode('setups')" style="flex:1" title="Save and reload the whole app exactly as it stands">◈ Setups</button>
  </div>
  </div>
 
@@ -3434,12 +3511,20 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  </div>
  </div>
 
- <!-- Setups — the whole rig: tempo, sounds, patterns, chart and setlist -->
- <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px;margin-top:10px">
- <div class="panel-title"><span class="pt-icon"></span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
- <div class="setup-hint">Saves everything at once — tempo, key, every voice and patch, the mixer, your drum/bass/melody patterns, the current chart and your whole setlist.</div>
+ </div>
+
+ <!-- SETUPS MODE — the whole rig: tempo, sounds, patterns, chart and setlist.
+      This lived at the bottom of Perform mode, below the setlist, where
+      nobody scrolled far enough to find out the app could save its own
+      state at all. It is the single most important thing in this tab for
+      anyone who wants to play the same thing twice, so it gets its own
+      sub-mode alongside Build / Perform / Chart. -->
+ <div id="songs-setups-panel" style="display:none;width:100%;max-width:700px">
+ <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px">
+ <div class="panel-title"><span class="pt-icon">◈</span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
+ <div class="setup-hint">A setup is the whole app frozen exactly as it stands — tempo, key and mode, every voice and MōdSynth patch, the FX macros, the mixer, your drum, bass and melody patterns, the current chart and your whole setlist. Save one, and opening it again puts you back where you were, ready to perform.</div>
  <div class="setup-bar">
-  <input class="song-title-input" id="setup-name" type="text" placeholder="Setup name…">
+  <input class="song-title-input" id="setup-name" type="text" placeholder="Name this setup…">
   <button class="sc-btn primary" onclick="setupSaveNew()" title="Save the whole rig under this name" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Save Setup</button>
   <button class="tb" onclick="setupShare('')" title="Copy a link that recreates this exact rig" style="font-size:.44rem;padding:4px 8px">Share Link</button>
   <button class="tb" onclick="setupExport('')" title="Download this rig as a file" style="font-size:.44rem;padding:4px 8px">Export</button>
@@ -6334,8 +6419,157 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
 // smaller WAVE_GAIN), so each voice needed its own factor rather than one
 // blanket trim. These bring all five back down to roughly that same
 // 0.10-0.16 range other melody voices already sit in.
+// ═══════════════════════════════════════
+// TOUCH VELOCITY — one convention for every melody surface
+// ═══════════════════════════════════════
+// The Keys strip plays through PointerEvent, whose `pressure` is 0.5 on any
+// hardware that doesn't report force — which is nearly all of it, since Apple
+// dropped 3D Touch after the XS and a mouse never had it. The bend strip
+// plays through TouchEvent, whose `force` is a flat 0 on that same hardware.
+// Both fed their raw number straight to velScale(), and velScale reads 0 as
+// "no velocity information at all, play it at full" — so the identical note
+// struck on the bend strip came out at velocity 1.0 against the Keys strip's
+// 0.625. Measured on an offline render of both paths: 1.60x, +4.1 dB, which
+// is why every bend-strip note read as too loud. Normalise both surfaces onto
+// the PointerEvent default instead of leaving each one to interpret its own
+// silence.
+const MEL_NEUTRAL_PRESSURE = 0.5;
+function melPressure(src){
+ if(!src) return MEL_NEUTRAL_PRESSURE;
+ const p = (typeof src.force==='number'    && src.force>0)    ? src.force
+         : (typeof src.pressure==='number' && src.pressure>0) ? src.pressure
+         : MEL_NEUTRAL_PRESSURE;
+ return Math.max(0, Math.min(1, p));
+}
+
+// ═══════════════════════════════════════
+// TOUCH MOD — vertical finger position as a per-note mod wheel
+// ═══════════════════════════════════════
+// AniMoog's trick: while a note is sounding, how high up the key your finger
+// sits is a mod wheel for that note alone, so a phrase can move without ever
+// reaching for a control. Every destination below is built so y=0 is
+// transparent — the stage sits at unity, or is bypassed entirely — which
+// means turning Touch Mod on can never change how a patch sounds until you
+// actually move your finger.
+// Off until asked for. Every destination is transparent at y=0, but a finger
+// naturally lands mid-key rather than at the very bottom, so switching this on
+// for everyone would quietly retune how the melody sits in the mix — and the
+// melody's level is exactly what this release is fixing.
+let melModOn = false;
+let melModDest = 'bright';        // 'bright' | 'wah' | 'vib' | 'trem'
+let melModDepth = 0.5;            // 0–1
+const MEL_MOD_DESTS = {
+ bright: {label:'Bright',  hint:'Slide up to open a high shelf — air and presence.'},
+ wah:    {label:'Wah',     hint:'Slide up to close a resonant filter over the note.'},
+ vib:    {label:'Vibrato', hint:'Slide up to fade in pitch vibrato.'},
+ trem:   {label:'Tremolo', hint:'Slide up to fade in amplitude tremolo.'}
+};
+const MEL_MOD_LFO_HZ = 5.4;
+// Where a freshly struck note starts. Whatever gesture triggers the note sets
+// this first, so a key hit near the top opens straight away instead of always
+// starting closed and needing a move to get anywhere. Notes with no touch
+// behind them — musical typing, an external MIDI keyboard — inherit whatever
+// the last touch left here, which is how a real mod wheel behaves: it stays
+// where you put it.
+let melModY = 0;
+
+// A finger sliding up a key sends a move event every few milliseconds, and
+// writing each one straight onto an AudioParam is exactly the zipper noise a
+// smoothed param exists to avoid.
+function _melModRamp(param, v, when){
+ if(!param || !isFinite(v)) return;
+ try{ param.setTargetAtTime(v, when, 0.02); }
+ catch(e){ try{ param.value = v; }catch(_){} }
+}
+
+// Builds one note's modulation chain, or null when Touch Mod is off — in
+// which case every call site falls back to exactly the graph it built before
+// this existed.
+function buildMelMod(ctx, t0){
+ if(!melModOn || !(melModDepth>0)) return null;
+ const d=Math.max(0,Math.min(1,melModDepth));
+ const input=ctx.createGain(); input.gain.value=1;
+ let tail=input, vibAmt=null, apply=null;
+ const lfos=[], nodes=[input];
+
+ if(melModDest==='wah'){
+  const f=ctx.createBiquadFilter();
+  f.type='lowpass'; f.Q.value=0.7; f.frequency.value=18000;
+  tail.connect(f); tail=f; nodes.push(f);
+  // Sweeps down from wide open rather than up from closed, so the bottom of
+  // the travel is still the untouched patch and climbing the key draws a
+  // resonant filter across it. Q rides in with the sweep for the same reason:
+  // parked at 18 kHz, a fixed Q of ~10 still puts a resonant bump on the top
+  // of the note, so "no modulation" measured audibly brighter than Touch Mod
+  // switched off entirely.
+  apply=(y,when)=>{
+   _melModRamp(f.frequency, 18000*Math.pow(300/18000, y*d), when);
+   _melModRamp(f.Q, 0.7+y*d*9, when);
+  };
+
+ } else if(melModDest==='vib'){
+  const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=MEL_MOD_LFO_HZ;
+  vibAmt=ctx.createGain(); vibAmt.gain.value=0;
+  lfo.connect(vibAmt); lfo.start(t0); lfos.push(lfo); nodes.push(vibAmt);
+  apply=(y,when)=>_melModRamp(vibAmt.gain, y*d*75, when);   // cents of swing
+
+ } else if(melModDest==='trem'){
+  const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=MEL_MOD_LFO_HZ*0.86;
+  const amt=ctx.createGain(); amt.gain.value=0;
+  const vca=ctx.createGain(); vca.gain.value=1;
+  lfo.connect(amt); amt.connect(vca.gain);
+  lfo.start(t0); lfos.push(lfo); nodes.push(amt,vca);
+  tail.connect(vca); tail=vca;
+  // Centred on the swing rather than added on top of it, so deep tremolo
+  // dips below the note's level instead of just making it louder.
+  apply=(y,when)=>{ const a=y*d*0.5; _melModRamp(vca.gain,1-a,when); _melModRamp(amt.gain,a,when); };
+
+ } else {
+  const sh=ctx.createBiquadFilter();
+  sh.type='highshelf'; sh.frequency.value=1400; sh.gain.value=0;
+  // A shelf boost is also a level boost, so the makeup gain takes most of it
+  // back out: sliding up should read as the note opening, not turning up.
+  const mk=ctx.createGain(); mk.gain.value=1;
+  tail.connect(sh); sh.connect(mk); tail=mk; nodes.push(sh,mk);
+  apply=(y,when)=>{
+   _melModRamp(sh.gain, y*d*15, when);
+   _melModRamp(mk.gain, 1/(1+0.6*y*d), when);
+  };
+ }
+
+ return {
+  input, output: tail, nodes,
+  setY(y,when){ apply(Math.max(0,Math.min(1,y||0)), when); },
+  // Vibrato is the one destination that can't sit in the signal path — it has
+  // to reach the oscillators' detune, and those only exist once makeVoice has
+  // run. Sampled voices are AudioBufferSourceNodes, which carry detune too,
+  // so they vibrato just like the synthesized ones.
+  attach(oscs){
+   if(!vibAmt || !oscs) return;
+   oscs.forEach(o=>{ try{ if(o && o.detune) vibAmt.connect(o.detune); }catch(e){} });
+  },
+  stop(t){ lfos.forEach(o=>{ try{ o.stop(t); }catch(e){} }); }
+ };
+}
+
+// Live update for a note that is still sounding.
+function melNoteSetY(midi, y){
+ const n=activeMelOscs[midi];
+ if(!n || !n.mod) return;
+ const ctx=getCtx(); if(!ctx) return;
+ n.mod.setY(y, ctx.currentTime);
+}
+
+// Vertical position inside an element, 0 at the bottom edge and 1 at the top.
+function melTouchY(el, src){
+ if(!el || !src) return 0;
+ const r=el.getBoundingClientRect();
+ if(!(r.height>0)) return 0;
+ return Math.max(0, Math.min(1, 1-(src.clientY-r.top)/r.height));
+}
+
 const MEL_SAMPLE_TRIM = {vibes:0.31, jazzgtr:0.19, nylongtr:0.16, tenorsax:0.30, mutetpt:0.33};
-function playMelNote(midi,pressure,sustain){
+function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
@@ -6379,24 +6613,30 @@ function playMelNote(midi,pressure,sustain){
  // down at atk+dec while the note is still sounding.
  const _mdur=(holdMode||sustain)?10:atk+dec;
  const fx = voiceFx(ctx,startT,_mdur,vsc,melPan,'mel');
- g.connect(fx.head);
- const _mrv=feedRev(fx.plain?g:fx.tail,revMix*.6);
+ // Touch Mod sits between this note's envelope and the shared character
+ // chain, so it colours this note alone. With it off, mod is null and what
+ // follows is the graph this function has always built.
+ const mod = buildMelMod(ctx,startT);
+ const chainOut = mod ? (g.connect(mod.input), mod.output) : g;
+ chainOut.connect(fx.head);
+ const _mrv=feedRev(fx.plain?chainOut:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave,'mel');
+ if(mod){ mod.attach(oscs); mod.setY(modY==null?melModY:modY, startT); }
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
  // in from zero, since the wheel was already there.
  if(typeof melBendCents!=='undefined' && melBendCents!==0){
   oscs.forEach(o=>{ try{ o.detune.setValueAtTime(melBendCents,startT); }catch(e){} });
  }
- activeMelOscs[midi]={oscs,g};
- reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv],_mdur);
- return{oscs,g};
+ activeMelOscs[midi]={oscs,g,mod};
+ reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
+ return{oscs,g,mod};
 }
 
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(!activeMelOscs[midi]) return;
- const {g,oscs}=activeMelOscs[midi];
+ const {g,oscs,mod}=activeMelOscs[midi];
  const ctx=getCtx(); if(!ctx){ delete activeMelOscs[midi]; return; }
  const now=ctx.currentTime;
  const dec=parseFloat(document.getElementById('mel-decay').value);
@@ -6404,6 +6644,10 @@ function releaseMelNote(midi){
  g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value,now);
  g.gain.exponentialRampToValueAtTime(.0001,now+dec*.5);
  oscs.forEach(o=>{try{o.stop(now+dec*.5+.05);}catch(e){}});
+ // The mod LFOs are free-running oscillators, not scheduled voices — left
+ // alone they'd tick on past the note that owns them until reapVoice cuts
+ // the graph, which for a sustained note is a 45s ceiling away.
+ if(mod) mod.stop(now+dec*.5+.1);
  }catch(e){}
  delete activeMelOscs[midi];
 }
@@ -6423,7 +6667,17 @@ function markMelKeyOff(midi){
 
 // ─── PITCH BEND STRIP ───
 let bendCurrentMidi=null;
-let bendContOsc=null, bendContGain=null, bendContActive=false;
+let bendContOsc=null, bendContGain=null, bendContActive=false, bendContMod=null;
+// The glide's level was calibrated (and the user signed off on it) against
+// the flat velocity 1.0 the strip used to report for every touch — see
+// melPressure. Now that the strip reports a real neutral 0.5, that same
+// calibration would land 1.6x quieter. Put exactly that factor back, derived
+// from velScale rather than hardcoded so it still cancels when Vel Sense
+// moves. Only the tapped note was too loud; the glissando was already right.
+function bendGlideTrim(){
+ const v=velScale(MEL_NEUTRAL_PRESSURE);
+ return v>0 ? 1/v : 1;
+}
 let bendMode='locked'; // 'locked' | 'continuous'
 // Continuous mode starts every gesture snapped to the nearest in-tune note
 // (so a tap sounds like a tap, not a random microtone) and only switches to
@@ -6455,16 +6709,34 @@ function bendStopContinuous(){
  bendContGain.gain.setValueAtTime(bendContGain.gain.value, now);
  bendContGain.gain.exponentialRampToValueAtTime(0.0001, now+dec*.4);
  bendContOsc.stop(now+dec*.4+.01);
+ if(bendContMod) bendContMod.stop(now+dec*.4+.06);
  }catch(e){}
  }
- bendContOsc=null; bendContGain=null; bendContActive=false;
+ bendContOsc=null; bendContGain=null; bendContActive=false; bendContMod=null;
 }
 
 function initBendStrip(){
  const strip=document.getElementById('bend-strip');
  const indicator=document.getElementById('bend-indicator');
  const label=document.getElementById('bend-note-label');
+ const modLine=document.getElementById('bend-mod-line');
+ const modRead=document.getElementById('bend-mod-read');
  if(!strip) return;
+
+ // One place that draws the whole gesture: the pitch line across, the mod
+ // line up and down, the note name and how far the mod wheel has travelled.
+ const paintBend=(x,y,name)=>{
+  indicator.style.left=(x*100)+'%';
+  indicator.style.opacity='1';
+  label.textContent=name;
+  if(modLine){
+   modLine.style.bottom=(y*100)+'%';
+   modLine.style.opacity=melModOn?'1':'0';
+  }
+  if(modRead) modRead.textContent = melModOn
+   ? (MEL_MOD_DESTS[melModDest]||MEL_MOD_DESTS.bright).label+' '+Math.round(y*100)+'%'
+   : '';
+ };
 
  // Build note list for current key/octave
  const getSteps=()=>{
@@ -6502,7 +6774,7 @@ function initBendStrip(){
 
  // Begin a true continuous glide starting at the given x, taking over from
  // whatever snapped tap note was sounding.
- const startGlide=(x, notes, touch)=>{
+ const startGlide=(x, y, notes, touch)=>{
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
@@ -6522,7 +6794,8 @@ function initBendStrip(){
  const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt'].indexOf(melWave) >= 0;
  const glideWave = isSampledMelWave ? 'sine' : melWave;
  const wg=WAVE_GAIN[glideWave]||1;
- const vsc=velScale(touch.force||0);
+ // Same convention as every other melody surface — see melPressure.
+ const vsc=velScale(melPressure(touch));
  const _mxMel=_cmx('mel');
  const now=ctx.currentTime;
  const f=xToFreq(x, notes);
@@ -6539,18 +6812,24 @@ function initBendStrip(){
  // louder and brighter across every instrument, not just the sampled ones;
  // Note Lock mode (which just calls playMelNote per note) never had either
  // problem.
- bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim, now+atk);
+ bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*bendGlideTrim()*_mxMel*fxTrim, now+atk);
  const idxForPan=Math.round(x*(notes.length-1));
  const melPan=Math.max(-.5,Math.min(.5,((notes[Math.min(idxForPan,notes.length-1)]-72)/24)))*0.5;
  const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
- bendContGain.connect(fx.head);
- feedRev(fx.plain?bendContGain:fx.tail, revMix*.6);
+ // A glide gets the same vertical mod a tapped note does, so a glissando can
+ // open up or shake as it travels rather than being the one gesture on the
+ // strip that can't move.
+ bendContMod=buildMelMod(ctx,now);
+ const glideOut = bendContMod ? (bendContGain.connect(bendContMod.input), bendContMod.output) : bendContGain;
+ glideOut.connect(fx.head);
+ feedRev(fx.plain?glideOut:fx.tail, revMix*.6);
 
  if(glideWave==='supersaw'){
  const ss=buildSuperSaw(ctx, f);
  ss.out.connect(bendContGain);
  // Start ALL 7 oscillators
  ss.oscs.forEach(o=>o.start(now));
+ if(bendContMod){ bendContMod.attach(ss.oscs); bendContMod.setY(y, now); }
  // Store a wrapper object so glide and stop work uniformly
  bendContOsc={
  _ss: ss,
@@ -6563,6 +6842,7 @@ function initBendStrip(){
  o.frequency.value=f;
  o.connect(bendContGain);
  o.start(now);
+ if(bendContMod){ bendContMod.attach([o]); bendContMod.setY(y, now); }
  bendContOsc=o;
  }
  bendContActive=true;
@@ -6573,11 +6853,12 @@ function initBendStrip(){
  const touch=e.touches?e.touches[0]:e;
  const rect=strip.getBoundingClientRect();
  const x=Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+ // Across the strip is pitch; up and down it is the mod wheel.
+ const y=melTouchY(strip, touch);
  const notes=getSteps();
+ melModY=y;
 
- indicator.style.left=(x*100)+'%';
- indicator.style.opacity='1';
- label.textContent=xToName(x, notes);
+ paintBend(x, y, xToName(x, notes));
 
  if(bendMode==='locked'){
  // Note-locked: always snap to nearest scale degree, no continuous glide ever
@@ -6586,7 +6867,7 @@ function initBendStrip(){
  if(midi!==bendCurrentMidi){
  if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
  bendCurrentMidi=midi;
- playMelNote(midi, touch.force||0, true);
+ playMelNote(midi, melPressure(touch), true, y);
  }
  } else {
  // Continuous mode: every gesture *starts* snapped in-tune, like a tap.
@@ -6596,7 +6877,7 @@ function initBendStrip(){
  const idx=Math.floor(x * notes.length);
  const midi=notes[Math.min(idx, notes.length-1)];
  bendTapMidi=midi;
- playMelNote(midi, touch.force||0, true);
+ playMelNote(midi, melPressure(touch), true, y);
  }
  };
 
@@ -6605,10 +6886,11 @@ function initBendStrip(){
  const touch=e.touches?e.touches[0]:e;
  const rect=strip.getBoundingClientRect();
  const x=Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+ const y=melTouchY(strip, touch);
  const notes=getSteps();
+ melModY=y;
 
- indicator.style.left=(x*100)+'%';
- label.textContent=xToName(x, notes);
+ paintBend(x, y, xToName(x, notes));
 
  if(bendMode==='locked'){
  const idx=Math.floor(x * notes.length);
@@ -6616,7 +6898,9 @@ function initBendStrip(){
  if(midi!==bendCurrentMidi){
  if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
  bendCurrentMidi=midi;
- playMelNote(midi, touch.force||0, true);
+ playMelNote(midi, melPressure(touch), true, y);
+ } else {
+ melNoteSetY(midi, y);
  }
  } else if(bendIsGliding){
  // Already gliding — true continuous pitch, no snapping
@@ -6625,21 +6909,26 @@ function initBendStrip(){
  if(bendContOsc && bendContOsc.frequency){
  bendContOsc.frequency.setValueAtTime(f, ctx.currentTime);
  }
+ if(bendContMod) bendContMod.setY(y, ctx.currentTime);
  } else {
  // Still within tap tolerance — behave like locked mode until the
- // gesture actually moves like a glissando.
+ // gesture actually moves like a glissando. Vertical travel alone is a
+ // mod gesture, not a glissando, so only horizontal distance counts
+ // towards the threshold.
  const moved = bendGestureStartX===null ? 0 : Math.abs(x - bendGestureStartX);
  if(moved > noteSpacing(notes)*0.6){
  bendIsGliding=true;
  if(bendTapMidi!==null){ releaseMelNote(bendTapMidi); bendTapMidi=null; }
- startGlide(x, notes, touch);
+ startGlide(x, y, notes, touch);
  } else {
  const idx=Math.floor(x * notes.length);
  const midi=notes[Math.min(idx, notes.length-1)];
  if(midi!==bendTapMidi){
  if(bendTapMidi!==null) releaseMelNote(bendTapMidi);
  bendTapMidi=midi;
- playMelNote(midi, touch.force||0, true);
+ playMelNote(midi, melPressure(touch), true, y);
+ } else {
+ melNoteSetY(midi, y);
  }
  }
  }
@@ -6647,6 +6936,8 @@ function initBendStrip(){
 
  const handleEnd=(e)=>{
  indicator.style.opacity='0'; label.textContent='—';
+ if(modLine) modLine.style.opacity='0';
+ if(modRead) modRead.textContent='';
  if(bendMode==='locked'){
  if(bendCurrentMidi!==null){ if(!holdMode) releaseMelNote(bendCurrentMidi); bendCurrentMidi=null; }
  } else {
@@ -6662,9 +6953,16 @@ function initBendStrip(){
  strip.addEventListener('touchstart', handleStart, {passive:false});
  strip.addEventListener('touchmove', handleMove, {passive:false});
  strip.addEventListener('touchend', handleEnd);
+ // A gesture the browser takes away (a scroll it decides to own, a call
+ // coming in) fires touchcancel and never touchend — without this the note
+ // it started sustains until something else happens to stop it.
+ strip.addEventListener('touchcancel', handleEnd);
  strip.addEventListener('mousedown', handleStart);
  strip.addEventListener('mousemove', e=>{if(e.buttons) handleMove(e);});
  strip.addEventListener('mouseup', handleEnd);
+ // Same hazard with a mouse: release outside the strip and mouseup never
+ // reaches it.
+ strip.addEventListener('mouseleave', e=>{ if(e.buttons) handleEnd(e); });
 }
 
 // ═══════════════════════════════════════
@@ -8686,6 +8984,60 @@ function setMelMode(m){
  if(kw) kw.style.display = m==='keys' ? '' : 'none';
  if(bw) bw.classList.toggle('visible', m==='bend');
 }
+// ── Touch Mod controls ──
+function toggleMelMod(){
+ melModOn=!melModOn;
+ // Notes already sounding keep the chain they were built with — rebuilding a
+ // live voice's graph mid-note is a click. The switch takes effect from the
+ // next note, which is how every other voice setting here behaves.
+ syncMelModUI();
+ try{ localStorage.setItem('modo-melmod-on', melModOn?'1':''); }catch(e){}
+ showToast(melModOn?'Touch Mod on — slide up and down a note':'Touch Mod off');
+}
+function setMelModDest(d){
+ if(!MEL_MOD_DESTS[d]) return;
+ melModDest=d;
+ syncMelModUI();
+ try{ localStorage.setItem('modo-melmod-dest',d); }catch(e){}
+}
+function setMelModDepth(v){
+ melModDepth=Math.max(0,Math.min(1,parseFloat(v)||0));
+ syncMelModUI();
+ try{ localStorage.setItem('modo-melmod-depth',String(melModDepth)); }catch(e){}
+}
+function syncMelModUI(){
+ const bar=document.getElementById('touchmod-bar');
+ if(bar) bar.classList.toggle('off',!melModOn);
+ const t=document.getElementById('tmod-toggle');
+ if(t) t.classList.toggle('active',melModOn);
+ const box=document.getElementById('tmod-dests');
+ if(box){
+  if(!box.children.length){
+   box.innerHTML=Object.keys(MEL_MOD_DESTS).map(k=>
+    '<button class="tb" data-tmod="'+k+'" onclick="setMelModDest(\''+k+'\')">'+MEL_MOD_DESTS[k].label+'</button>').join('');
+  }
+  box.querySelectorAll('[data-tmod]').forEach(b=>b.classList.toggle('active',b.dataset.tmod===melModDest));
+ }
+ const d=document.getElementById('tmod-depth'); if(d) d.value=melModDepth;
+ const dv=document.getElementById('tmod-depth-val'); if(dv) dv.textContent=Math.round(melModDepth*100)+'%';
+ const h=document.getElementById('tmod-hint');
+ if(h) h.textContent = melModOn
+  ? (MEL_MOD_DESTS[melModDest]||MEL_MOD_DESTS.bright).hint+' Hold a key or the bend strip and move your finger up or down.'
+  : 'Off — notes play flat, with no vertical movement.';
+}
+// Restore the three Touch Mod settings before the first sync so the panel
+// comes up showing what the engine will actually do.
+(function(){
+ try{
+  const on=localStorage.getItem('modo-melmod-on');
+  if(on!==null) melModOn = on==='1';
+  const dst=localStorage.getItem('modo-melmod-dest');
+  if(dst && MEL_MOD_DESTS[dst]) melModDest=dst;
+  const dep=parseFloat(localStorage.getItem('modo-melmod-depth'));
+  if(isFinite(dep)) melModDepth=Math.max(0,Math.min(1,dep));
+ }catch(e){}
+})();
+
 function shiftMelOct(d){
  const n=melOctShift+d*12; if(n<-24||n>48) return;
  melOctShift=n; updateMelOctDisp(); buildMelodyStrip();
@@ -8983,6 +9335,9 @@ function _capSettings(){
   mAtk:_sv('mel-attack'), mDec:_sv('mel-decay'), mRev:_sv('mel-rev'),
   // character macros
   fxCutoff, fxReso, fxEnv, fxDrive, fxWidth, fxDrift, fxTrim,
+  // Touch Mod — part of how the melody plays, so a setup that recreates a
+  // performance has to bring it back with everything else.
+  melModOn, melModDest, melModDepth,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
@@ -9121,6 +9476,12 @@ function _applySettings(s){
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
  _setSlider('mel-decay',s.mDec,()=>updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s'));
  _setSlider('mel-rev',s.mRev,()=>updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%'));
+
+ // Touch Mod
+ if(typeof s.melModOn==='boolean') melModOn=s.melModOn;
+ if(s.melModDest && MEL_MOD_DESTS[s.melModDest]) melModDest=s.melModDest;
+ if(typeof s.melModDepth==='number') melModDepth=Math.max(0,Math.min(1,s.melModDepth));
+ if(typeof syncMelModUI==='function') syncMelModUI();
 
  // Character macros — write the state, mirror it onto the sliders, then let
  // onFxInput() read back so labels and the drive curve refresh from one place.
@@ -9280,11 +9641,15 @@ function randomizeSettings(opts){
  // leaves you with a lopsided 12- or 32-step grid to untangle.
  s.sqSteps    = 16;
  s.sqRateMul  = _rndPick([1,1,1,0.5,2]);
- // 2x is thirty-second notes. On a hi-hat that is a roll; on the bass it is
- // mud, and Rate Linked — the default — hands the same multiplier to all
- // three engines, so a rolled 2x was double-timing the bassline. Unlock the
- // rate and the dice can still put the drums there.
- if(s.sqRateMul===2 && stepRateLock) s.sqRateMul=1;
+ // sqRateMul multiplies step DURATION (see SEQ_RATES): 0.5 is thirty-second
+ // notes, 2 is half time. This guard named 2 — so it was suppressing the
+ // half-time roll, which is perfectly musical, and letting the double-time
+ // one straight through. On a hi-hat 0.5 is a roll; on the bass it is mud,
+ // and Rate Linked — the default — hands the same multiplier to all three
+ // engines, which is why a random pattern so often came back with the
+ // bassline running at double speed. Unlock the rate and the dice can still
+ // put the drums there.
+ if(s.sqRateMul===0.5 && stepRateLock) s.sqRateMul=1;
  // Was [0 … .28] against a 0-70 control, so every non-zero roll produced
  // silence-adjacent swing and the dice's "swing" never audibly did anything.
  s.sqSwing    = _rndPick([0,0,0,15,25,40,55]);
@@ -9412,6 +9777,16 @@ function _updateUndoUI(){
 // ═══════════════════════════════════════
 // MELODY STRIP
 // ═══════════════════════════════════════
+// Fills a key from the bottom up to wherever the finger is sitting, so the
+// mod position is visible on the key you're actually holding rather than only
+// in a readout somewhere else.
+function melKeyPaintMod(btn,y){
+ if(!btn) return;
+ if(y==null || !melModOn){ btn.style.removeProperty('--mod-y'); btn.classList.remove('modding'); return; }
+ btn.style.setProperty('--mod-y',(y*100).toFixed(1)+'%');
+ btn.classList.add('modding');
+}
+
 function buildMelodyStrip(){
  const md = MODES[mode] || MODES.major;
  const steps = md.steps;
@@ -9428,9 +9803,49 @@ function buildMelodyStrip(){
  btn.innerHTML=`<span class="mel-inner">${_sol||name}</span>`;
  const lbl=document.createElement('div'); lbl.className='mel-label'; lbl.textContent=name+oct;
 
- btn.addEventListener('pointerdown',e=>{ e.preventDefault(); btn.classList.add('held'); playMelNote(midi,e.pressure||0,true); });
- btn.addEventListener('pointerup',e=>{ e.preventDefault(); if(!holdMode){ btn.classList.remove('held'); releaseMelNote(midi); } });
- btn.addEventListener('pointerleave',e=>{ if(!holdMode){ btn.classList.remove('held'); releaseMelNote(midi); } });
+ // Which pointer is playing this key, if any. Tracked here rather than read
+ // back from hasPointerCapture(): setPointerCapture can refuse (older
+ // engines, a pointer the browser no longer considers active), and gating the
+ // move handler on the capture would then silently kill Touch Mod on exactly
+ // the devices that fell back.
+ let keyPid=null;
+ const holdsCapture=()=>{ try{ return keyPid!==null && btn.hasPointerCapture(keyPid); }catch(_){ return false; } };
+ btn.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  // Capture so the note survives the finger drifting off a 44px-wide key
+  // while it works the vertical travel. Without it the browser stops sending
+  // moves the moment you leave the button — which is most of a mod gesture —
+  // and pointerup can land on something else entirely.
+  keyPid=e.pointerId;
+  try{ btn.setPointerCapture(e.pointerId); }catch(_){}
+  btn.classList.add('held');
+  const y=melTouchY(btn,e);
+  melModY=y;
+  playMelNote(midi,melPressure(e),true,y);
+  melKeyPaintMod(btn,y);
+ });
+ btn.addEventListener('pointermove',e=>{
+  if(keyPid===null || e.pointerId!==keyPid) return;
+  const y=melTouchY(btn,e);
+  melModY=y;
+  melNoteSetY(midi,y);
+  melKeyPaintMod(btn,y);
+ });
+ const endKey=e=>{
+  if(keyPid!==null){ try{ btn.releasePointerCapture(keyPid); }catch(_){} }
+  keyPid=null;
+  melKeyPaintMod(btn,null);
+  if(!holdMode){ btn.classList.remove('held'); releaseMelNote(midi); }
+ };
+ btn.addEventListener('pointerup',e=>{ e.preventDefault(); endKey(e); });
+ btn.addEventListener('pointercancel',endKey);
+ btn.addEventListener('pointerleave',e=>{
+  // Only a safety net for a browser that refused the capture — while it is
+  // held the pointer never "leaves", and the note is meant to survive the
+  // drift rather than cut out mid-gesture.
+  if(holdsCapture()) return;
+  endKey(e);
+ });
  wrap.appendChild(btn); wrap.appendChild(lbl); container.appendChild(wrap);
  });
  updateMelOctDisp();
@@ -10712,6 +11127,8 @@ const HELP_SECTIONS=[
  {icon:'',text:'<strong>Keys</strong> lays out the notes of the current key as buttons. <strong>Bend</strong> is a slide strip — <strong>Note Lock</strong> snaps to the scale, <strong>Continuous</strong> is true pitch bend.'},
  {icon:'⌨️',text:'<strong>Musical typing</strong>: the two letter rows are one long run of the current scale — A S D F G H J K L ; &#39; then Q W E R T Y U I O P, climbing all the way. <strong>Z/X</strong> shift octave, <strong>C/V</strong> bend a whole step down and up.'},
  {icon:'⏸',text:'<strong>Hold</strong> keeps notes ringing after you lift; tap again to release everything.'},
+ {icon:'↕',text:'<strong>Touch Mod</strong> makes the vertical half of your touch a mod wheel for that note alone. Hold a key — or the Bend strip — and slide up and down: the bottom of the travel is the patch as it stands, the top is full modulation.'},
+ {icon:'',text:'Choose what it moves: <strong>Bright</strong> opens a high shelf, <strong>Wah</strong> draws a resonant filter across the note, <strong>Vibrato</strong> shakes the pitch, <strong>Tremolo</strong> the level. <strong>Depth</strong> sets how far. It works on tapped notes and glissandi alike.'},
  {icon:'',text:'<strong>Voice</strong> sets the melody’s own sound, independent of the chord voice.'},
  ]},
  {title:'✋ Fingering — for horn and string players', tips:[
@@ -10739,6 +11156,12 @@ const HELP_SECTIONS=[
  {icon:'',text:'<strong>← Prev / Next →</strong> <em>queue</em> rather than jump: the section finishes its pass before the change lands, which is what makes live section changes musical.'},
  {icon:'',text:'<strong>− / +</strong> transpose the whole song on the fly like a capo, without altering the saved chart.'},
  {icon:'',text:'Songs can also be exported — chart to <strong>PDF</strong>, chords to <strong>MIDI</strong>, or shared as a link.'},
+ ]},
+ {title:'◈ Setups — save the whole app, not just the song', tips:[
+ {icon:'◈',text:'A <strong>song</strong> is a chord chart. A <strong>setup</strong> is the entire state of the app — tempo, key and mode, every voice and MōdSynth patch, the FX macros, the mixer, your drum, bass and melody patterns, the chart you’re building and your whole setlist. Save one and opening it again puts you back exactly where you were.'},
+ {icon:'',text:'Find it at <strong>Songs → ◈ Setups</strong>, or from <strong>⋯ → ◈ Setups</strong> in the transport bar, which jumps there from wherever you are.'},
+ {icon:'',text:'<strong>Save Setup</strong> stores it under a name — saving again with the same name updates it rather than making a second copy. Tap a saved setup to load it; <strong>↶ Undo</strong> walks straight back out if it wasn’t what you wanted.'},
+ {icon:'',text:'<strong>Share Link</strong> packs the whole rig into a URL. Nothing is uploaded — the state travels inside the link itself, so it works with no account and no server. <strong>Export</strong> writes the same thing to a file, with no size limit, for backups and moving between devices.'},
  ]},
  {title:'▦ Chord Chart & printing', tips:[
  {icon:'',text:'<strong>Songs → Chart</strong> lays the whole song out as a chord sheet with real <strong>guitar</strong> or <strong>ukulele</strong> diagrams, grouped by section, with each chord’s duration underneath.'},
@@ -11375,12 +11798,34 @@ function setSongsMode(m){
  document.getElementById('songs-build-btn')?.classList.toggle('active', m==='build');
  document.getElementById('songs-perform-btn')?.classList.toggle('active', m==='perform');
  document.getElementById('songs-chart-btn')?.classList.toggle('active', m==='chart');
+ document.getElementById('songs-setups-btn')?.classList.toggle('active', m==='setups');
  const cp=document.getElementById('songs-chart-panel');
  if(cp) cp.style.display = m==='chart' ? '' : 'none';
  if(m==='chart') renderChordChart();
  document.getElementById('songs-build-panel').style.display = m==='build'?'':'none';
  document.getElementById('songs-perform-panel').style.display = m==='perform'?'':'none';
+ const sp=document.getElementById('songs-setups-panel');
+ if(sp) sp.style.display = m==='setups'?'':'none';
  if(m === 'perform') renderSongsPerformView();
+ if(m === 'setups' && typeof renderSetups==='function') renderSetups();
+}
+
+// Jump straight to Setups from anywhere — wired to the transport's ⋯ menu, so
+// "save where I am right now" is reachable mid-session without hunting for
+// the tab it happens to live on.
+function openSetups(){
+ if(typeof closeFtMore==='function') closeFtMore();
+ switchTab('songs');
+ setSongsMode('setups');
+ const el=document.getElementById('setups-panel');
+ if(el){
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+  // A one-shot highlight: landing on a tab you've never opened, on a panel
+  // you didn't know existed, otherwise gives no clue what just moved.
+  el.classList.add('panel-flash');
+  setTimeout(()=>el.classList.remove('panel-flash'),1400);
+ }
+ const nm=document.getElementById('setup-name'); if(nm) nm.focus();
 }
 
 let bassMelMode = 'bass';
@@ -11681,6 +12126,7 @@ The piano view lights the chord across two octaves, with <strong>R</strong> on t
  body: `Two modes. <strong>Keys</strong> gives you the notes of the current key as buttons. <strong>Bend</strong> is a slide strip — <strong>Note Lock</strong> snaps to the scale, <strong>Continuous</strong> is true pitch bend between notes.<br><br>
 <strong>Musical typing</strong>: the two letter rows are one long run of the current scale. <strong>A S D F G H J K L ; &#39;</strong> gives you the first eleven scale degrees, and <strong>Q W E R T Y U I O P</strong> carries straight on up from there. Every key sounds, no two keys give the same note, and the layout means the same thing in every mode. <strong>Z / X</strong> shift the octave, <strong>C / V</strong> bend a whole step down and up for the notes between.<br><br>
 <strong>Hold</strong> keeps notes ringing after you lift; tap it again to release everything. <strong>Oct− / Oct+</strong> move the range.<br><br>
+<strong>Touch Mod</strong> turns the vertical half of your touch into a mod wheel for that one note. Hold a key — or the Bend strip — and slide your finger up and down: the bottom of the travel is the patch exactly as it is, and the top is full modulation. Pick what it moves — <strong>Bright</strong> (a high shelf opening up), <strong>Wah</strong> (a resonant filter drawn across the note), <strong>Vibrato</strong> (pitch) or <strong>Tremolo</strong> (level) — and set how far it goes with <strong>Depth</strong>. It works on tapped notes and on glissandi alike, and the key fills in from the bottom so you can see where you are.<br><br>
 <strong>Voice</strong> sets the melody's own sound, separate from the chords. A MIDI keyboard can play melody instead of chords — see the MIDI panel.`
  },
  'fingering': {
@@ -13960,6 +14406,7 @@ if(typeof loadSetupFromHash==='function') loadSetupFromHash();
 updateOct();
 buildMelodyStrip();
 initBendStrip();
+syncMelModUI();
 positionTabLed();
 buildModSynthPresets();
 buildFingerInstList();
@@ -18388,6 +18835,14 @@ function toggleFtMore(e){
       document.addEventListener('pointerdown', _ftMoreOutsideClick);
     }, 0);
   }
+}
+// Shuts the ⋯ menu and drops its outside-click listener. Anything that
+// navigates away from the transport calls this, so the menu can't be left
+// hanging open over the tab it just sent you to.
+function closeFtMore(){
+  var m = document.getElementById('ft-more-menu');
+  if(m) m.classList.remove('open');
+  document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
 function _ftMoreOutsideClick(e){
   var wrap = document.querySelector('.ft-more-wrap');
