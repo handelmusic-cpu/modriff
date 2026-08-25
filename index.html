@@ -17736,7 +17736,7 @@ window._blScheduler = function(){
     // Keep the step clock running so the playhead still sweeps the grid.
     while(blNextT < horizon){
       blNextT += stepSec; blSeqStep++;
-      if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide = false; _blPrevFreq = 0; }
+      if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide = false; _blPrevFreq = 0; _blApplyPending(); }
     }
     return;
   }
@@ -17761,7 +17761,7 @@ window._blScheduler = function(){
         var wf = _blWindowAt(blNextT + swOff);
         if(wf){
           if(wf.rest){ blNextT += stepSec; blSeqStep++;
-                       if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; }
+                       if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; _blApplyPending(); }
                        continue; }
           var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
           var shift = ((basePc - _blGridRootPc) % 12 + 12) % 12;
@@ -17779,7 +17779,7 @@ window._blScheduler = function(){
     }
     blNextT += stepSec;
     blSeqStep++;
-    if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide = false; _blPrevFreq = 0; }
+    if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide = false; _blPrevFreq = 0; _blApplyPending(); }
   }
 };
 
@@ -17854,6 +17854,9 @@ function blPlay(){
 }
 
 function blStop(){
+  // Stopping is a cycle boundary too: a pending line must not be lost, and
+  // the roll must not go on showing a pattern that is no longer next.
+  _blApplyPending();
   blPlaying = false;
   cancelAnimationFrame(blRafID); blRafID = null;
   document.querySelectorAll('#bl-inner .bl-step').forEach(function(c){ c.classList.remove('head'); });
@@ -18462,8 +18465,81 @@ window.blGenerate = function(){
 
   for(var _r=0;_r<blSteps;_r++){ if(_keep[_r]) blGrid[_r]=_keep[_r]; }
 
+  // Last, so it also sees the hand-edited steps put back just above.
+  _blClampLens();
+
   blRenderGrid();
 };
+
+// A bass is monophonic, so a note may never be written longer than the gap to
+// the next note. Several generators broke that on their own: rock gives its
+// off-beat fill note len 2, which runs into the note the loop then places on
+// the following beat; latin and pedal set len 2 on every hit regardless of how
+// close together the pattern puts them. The step that lands inside the ringing
+// note is the extra note in the bassline — measured over ten seconds of a
+// four-chord loop, ten of fifty notes started one sixteenth into a two-
+// sixteenth note. blPlayNote's monophonic backstop then cuts the first note
+// short at the second one's onset, which is why it comes out as one note
+// clipped into two rather than as two notes sounding together.
+//
+// Fixed here rather than at each site: it is one rule, it cannot be forgotten
+// by the next style added, and it leaves hand-drawn overlaps alone — those are
+// a choice, and the backstop already handles them.
+function _blClampLens(){
+  for(var s=0;s<blSteps;s++){
+    var c=blGrid[s];
+    if(!c || c.v!==1) continue;
+    var room=1;
+    for(var k=1;k<blSteps;k++){
+      var n=blGrid[(s+k)%blSteps];
+      if(n && n.v===1) break;      // wraps, because the pattern loops
+      room++;
+    }
+    if((c.len||1) > room) c.len=room;
+  }
+}
+
+// ── Regenerating while the pattern is playing ──
+// Bass+Mel Sync regenerates the line on every chord change, and blGenerate()
+// replaces blGrid outright. The scheduler walks that same array and has
+// already committed notes to the audio clock up to the look-ahead horizon, so
+// a swap landing mid-bar could put a fresh note on a step the note currently
+// sounding was still covering — and blPlayNote's monophonic backstop then cut
+// that note short at the new onset. One held note, heard as two. It is the
+// residue left after _blClampLens: with regeneration off the count is zero,
+// with it on it was two notes in fifty, and always at a chord boundary, which
+// is the downbeat the report described.
+//
+// So while the pattern plays, a regenerate goes into a pending buffer and is
+// swapped in when the step counter comes back to 0. The line still follows the
+// changes; it changes at the top of the cycle the way a player would, rather
+// than halfway through a note. A chord shorter than one cycle therefore picks
+// its new line up at the next cycle — Follow mode, which transposes instead of
+// rewriting, is the one that tracks every chord as it lands.
+var _blPendingGrid = null;
+(function(){
+ var raw = window.blGenerate;
+ window.blGenerate = function(){
+  if(!blPlaying) return raw.apply(this, arguments);
+  var live = JSON.parse(JSON.stringify(blGrid));
+  var out = raw.apply(this, arguments);
+  _blPendingGrid = blGrid;
+  blGrid = live;                 // keep playing, and showing, what is sounding
+  blRenderGrid();
+  return out;
+ };
+})();
+function _blApplyPending(){
+ if(!_blPendingGrid) return;
+ // A step-count change between the generate and the swap would leave the
+ // buffer the wrong length; the live grid is already correct, so drop it.
+ if(_blPendingGrid.length === blGrid.length){
+  blGrid = _blPendingGrid;
+  blRenderGrid();
+ }
+ _blPendingGrid = null;
+}
+
 
 // Antecedent/consequent shape across a multi-bar grid. No-op on one bar,
 // where there is no phrase to shape.
@@ -18772,7 +18848,7 @@ window._mlScheduler = function(){
     }
     mlNextT += stepSec;
     mlSeqStep++;
-    if(mlSeqStep >= stepCount){ mlSeqStep = 0; }
+    if(mlSeqStep >= stepCount){ mlSeqStep = 0; _mlApplyPending(); }
   }
 };
 
@@ -18865,6 +18941,7 @@ function mlPlay(){
 }
 
 function mlStop(){
+  _mlApplyPending();
   mlPlaying = false;
   cancelAnimationFrame(mlRafID); mlRafID = null;
   document.querySelectorAll('#ml-inner .bl-step').forEach(function(c){ c.classList.remove('head'); });
@@ -19203,8 +19280,47 @@ window.mlGenerate = function(){
     c.note=((m%12)+12)%12; c.oct=Math.floor(m/12)-1;
   }
   for(var _r=0;_r<mlSteps;_r++){ if(_keep[_r]) mlGrid[_r]=_keep[_r]; }
+  _mlClampLens();
   mlRenderGrid();
 };
+
+// Same two rules as the bassline — see _blClampLens and _blPendingGrid.
+function _mlClampLens(){
+  for(var s=0;s<mlSteps;s++){
+    var c=mlGrid[s];
+    if(!c || c.v!==1) continue;
+    var room=1;
+    for(var k=1;k<mlSteps;k++){
+      var n=mlGrid[(s+k)%mlSteps];
+      if(n && n.v===1) break;
+      room++;
+    }
+    if((c.len||1) > room) c.len=room;
+  }
+}
+
+var _mlPendingGrid = null;
+(function(){
+ var raw = window.mlGenerate;
+ window.mlGenerate = function(){
+  if(!mlPlaying) return raw.apply(this, arguments);
+  var live = JSON.parse(JSON.stringify(mlGrid));
+  var out = raw.apply(this, arguments);
+  _mlPendingGrid = mlGrid;
+  mlGrid = live;
+  mlRenderGrid();
+  return out;
+ };
+})();
+function _mlApplyPending(){
+ if(!_mlPendingGrid) return;
+ if(_mlPendingGrid.length === mlGrid.length){
+  mlGrid = _mlPendingGrid;
+  mlRenderGrid();
+ }
+ _mlPendingGrid = null;
+}
+
 
 // Applies antecedent/consequent shape across a multi-bar grid. No-op on a
 // single bar, where there is no phrase to shape.
