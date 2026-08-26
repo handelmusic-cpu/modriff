@@ -2941,6 +2941,38 @@ select[data-sstate="loading"], select[data-sstate="error"] { border-color:var(--
 .sq-clrbtn:hover, .sq-clrbtn:focus-visible {
  border-color:var(--sq-red); color:var(--sq-red); background:hsla(0,60%,12%,.45);
 }
+
+/* ── Bass note picker ──
+   The slot bass control opens this instead of cycling downward one semitone
+   per tap with no way back up. Built on the duration picker's furniture so
+   the two sheets read as the same kind of thing. */
+.bass-picker-box { max-width:360px; }
+.bp-sec {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase; letter-spacing:.12em;
+ font-weight:600; margin:14px 0 6px;
+}
+.bp-sec:first-of-type { margin-top:4px; }
+.bp-grid { grid-template-columns:repeat(4,1fr); }
+.bp-grid .dp-val { font-size:.7rem; }
+.bp-grid .dp-lbl { font-size:.36rem; }
+.bp-chroma { display:grid; grid-template-columns:repeat(6,1fr); gap:5px; }
+.bp-note {
+ padding:9px 2px; border-radius:8px; border:1px solid var(--border2); background:var(--bg);
+ color:var(--text); font-family:'Outfit',sans-serif; font-size:.56rem; font-weight:600;
+ cursor:pointer; touch-action:manipulation; transition:all .1s;
+}
+.bp-note:hover { border-color:var(--accent); }
+.bp-chip.active { border-color:var(--accent); background:rgba(139,92,246,.18); color:var(--accent); }
+.bp-nudge {
+ display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px;
+ border-top:1px solid var(--border2);
+}
+.bp-nudge-btn { width:30px; height:30px; flex:none; font-size:.75rem; }
+.bp-readout {
+ flex:1; text-align:center; font-family:'Outfit',sans-serif; font-weight:700;
+ font-size:.62rem; color:var(--accent); line-height:1.25;
+}
+.bp-readout.none { color:var(--muted); font-weight:500; font-size:.55rem; }
 </style>
 </head>
 <body>
@@ -11721,24 +11753,27 @@ function renderChartSeq(){
  // ── Row 2: Bass + Duration ─────────────────
  const row2=document.createElement('div'); row2.className='slot-controls-row2';
 
- const bass=document.createElement('div'); bass.className='slot-bass';
+ // Opens the picker rather than cycling. See showBassPicker for why.
+ const bass=document.createElement('button'); bass.type='button'; bass.className='slot-bass';
  const updateBass=()=>{
- if(slot.bassNote==null){ bass.textContent='△ Bass'; bass.classList.remove('active'); }
- else {
- const bassPC=((slot.bassNote%12)+12)%12;
- bass.textContent='/'+nn(bassPC);
- bass.classList.add('active');
- }
+  const what=slot.label||'this chord';
+  if(slot.bassNote==null){
+   bass.textContent='△ Bass'; bass.classList.remove('active');
+   bass.title='Put a different note in the bass under '+what;
+  } else {
+   const bassPC=((slot.bassNote%12)+12)%12;
+   bass.textContent='/'+nn(bassPC);
+   bass.classList.add('active');
+   bass.title=what+' over '+nn(bassPC)+' in the bass — tap to change';
+  }
+  bass.setAttribute('aria-label', bass.title);
  };
  updateBass();
  bass.addEventListener('click',()=>{
- if(slot.bassNote==null){ slot.bassNote=slot.rootM-1; }
- else {
- const stepsBelow=slot.rootM-slot.bassNote;
- if(stepsBelow>=12) slot.bassNote=null;
- else slot.bassNote=slot.bassNote-1;
- }
- updateBass();
+  // Full re-render, same as the extension control does: the chord button's own
+  // label carries the slash too, so both have to move together. The picker
+  // holds the slot object, not its DOM, so rebuilding under it is safe.
+  showBassPicker(slot, ()=>{ renderChartSeq(); renderPerfChartRow(); });
  });
 
  // Duration: single button opens a preset picker (1 tap for common jazz phrase lengths,
@@ -13970,6 +14005,131 @@ function _attachRepeatPress(el, fn){
  el.addEventListener('pointerup',stop);
  el.addEventListener('pointerleave',stop);
  el.addEventListener('pointercancel',stop);
+}
+
+// ── Bass note picker ─────────────────────────────────────────────────
+// The slot's bass button used to be a one-way cycle: first tap dropped the
+// bass to rootM-1, and every tap after that went down another semitone until
+// it wrapped to none at twelve. There was no way back up, so overshooting the
+// note you wanted meant tapping through the remaining eleven — and the common
+// choices (a third or a fifth in the bass) sat five and seven taps in.
+//
+// Same shape as showDurationPicker: the chord's own tones as one-tap
+// inversions, every chromatic note under them for anything else, and a −/+
+// nudge for walking a bass line by ear.
+
+// A bass note is stored in the octave below the chord root — [rootM-12,
+// rootM-1] — which is what playSlashChord and the MIDI export both assume.
+function _bassNoteForPc(rootM, pc){
+ const target=((pc%12)+12)%12;
+ for(let n=rootM-1; n>=rootM-12; n--) if(((n%12)+12)%12===target) return n;
+ return rootM-12;
+}
+const _IVL_NAME={0:'root',1:'♭9',2:'9',3:'♭3',4:'3',5:'4',6:'♭5',7:'5',8:'♭6',9:'6',10:'♭7',11:'7'};
+
+function showBassPicker(slot, onChange){
+ const rootM=slot.rootM;
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div'); box.className='dur-picker-box bass-picker-box';
+ const chordName=slot.label||'this chord';
+ box.innerHTML='<div class="dur-picker-title">Bass Note</div>'
+   +'<div class="dur-picker-sub">Which note sits under <b>'+chordName+'</b>?</div>';
+
+ const readout=document.createElement('div'); readout.className='bp-readout';
+ const repaint=()=>{
+  const has=slot.bassNote!=null;
+  readout.textContent = has ? chordName+' / '+nn(((slot.bassNote%12)+12)%12) : chordName+' — root position';
+  readout.classList.toggle('none',!has);
+  box.querySelectorAll('.bp-chip').forEach(c=>{
+   const pc=c.dataset.pc===''?null:+c.dataset.pc;
+   const cur=has?((slot.bassNote%12)+12)%12:null;
+   c.classList.toggle('active', pc===cur);
+  });
+ };
+
+ const mkChip=(pc, big, small)=>{
+  const c=document.createElement('button');
+  c.type='button'; c.className='dur-preset-chip bp-chip';
+  c.dataset.pc = pc==null ? '' : String(pc);
+  c.innerHTML='<span class="dp-val">'+big+'</span><span class="dp-lbl">'+small+'</span>';
+  c.setAttribute('aria-label', pc==null ? 'Root position — no slash bass' : 'Bass note '+nn(pc)+', '+small);
+  c.addEventListener('click',()=>{
+   slot.bassNote = pc==null ? null : _bassNoteForPc(rootM, pc);
+   repaint();
+   if(onChange) onChange();
+  });
+  return c;
+ };
+
+ // ── The chord's own tones, as inversions ──
+ let intvs=[0,4,7];
+ try{ intvs=EXTS[slot.ext||'triad'](slot.triadQ, slot.type7)||intvs; }catch(e){}
+ const seen=new Set();
+ const inv=document.createElement('div'); inv.className='dur-preset-grid bp-grid';
+ inv.appendChild(mkChip(null,'—','root position'));
+ intvs.forEach(iv=>{
+  const semi=((iv%12)+12)%12;
+  if(semi===0 || seen.has(semi)) return;      // 0 is root position, already offered
+  seen.add(semi);
+  inv.appendChild(mkChip((rootM+semi)%12, nn((rootM+semi)%12), _IVL_NAME[semi]+' in bass'));
+ });
+ const invLbl=document.createElement('div'); invLbl.className='bp-sec'; invLbl.textContent='Inversions';
+ box.appendChild(invLbl); box.appendChild(inv);
+
+ // ── Every other note ──
+ const anyLbl=document.createElement('div'); anyLbl.className='bp-sec'; anyLbl.textContent='Any note';
+ const any=document.createElement('div'); any.className='bp-chroma';
+ // Every pitch class except the root's — "—" above is how you say root
+ // position. Always the same eleven chips in the same order, so the one you
+ // want is in the same place on every chord, even where it duplicates an
+ // inversion offered above.
+ for(let s=1;s<=11;s++){
+  const pc=(rootM+s)%12;
+  const c=document.createElement('button');
+  c.type='button'; c.className='bp-note bp-chip';
+  c.dataset.pc=String(pc);
+  c.textContent=nn(pc);
+  c.title=_IVL_NAME[s%12]+' of '+chordName;
+  c.setAttribute('aria-label','Bass note '+nn(pc)+', '+_IVL_NAME[s%12]+' of '+chordName);
+  c.addEventListener('click',()=>{ slot.bassNote=_bassNoteForPc(rootM,pc); repaint(); if(onChange) onChange(); });
+  any.appendChild(c);
+ }
+ box.appendChild(anyLbl); box.appendChild(any);
+
+ // ── Nudge, for walking one by ear ──
+ const nudge=document.createElement('div'); nudge.className='bp-nudge';
+ const mkN=(glyph,label,delta)=>{
+  const b=document.createElement('button');
+  b.type='button'; b.className='dur-ft-btn bp-nudge-btn'; b.textContent=glyph;
+  b.setAttribute('aria-label',label); b.title=label;
+  b.addEventListener('click',()=>{
+   // Starting from root position, either direction steps off the root.
+   let n = slot.bassNote==null ? rootM-12 : slot.bassNote+delta;
+   // Wrap inside the octave under the root rather than running out of range.
+   if(n > rootM-1)  n -= 12;
+   if(n < rootM-12) n += 12;
+   slot.bassNote=n; repaint(); if(onChange) onChange();
+  });
+  return b;
+ };
+ nudge.appendChild(mkN('−','A semitone lower',-1));
+ nudge.appendChild(readout);
+ nudge.appendChild(mkN('+','A semitone higher',+1));
+ box.appendChild(nudge);
+
+ const done=document.createElement('button'); done.className='dur-picker-done'; done.textContent='Done';
+ done.addEventListener('click',()=>{ overlay.remove(); if(onChange) onChange(); });
+ box.appendChild(done);
+
+ overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+ document.addEventListener('keydown', function esc(e){
+  if(e.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown',esc); }
+ });
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ repaint();
+ setTimeout(()=>box.querySelector('.bp-chip')?.focus(),30);
 }
 
 function showDurationPicker(slot, onChange){
