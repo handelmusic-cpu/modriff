@@ -2887,6 +2887,60 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 body.light-mode .ft-btn.rec     { background:#c81e3a !important; color:#fff !important; border-color:#c81e3a !important; }
 body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !important; border-color:#c81e3a !important; }
 
+/* ── Sampled-voice load state ──────────────────────────────────────
+   A ◆ voice plays a stand-in synth until its mp3s arrive, and forever if
+   they never do. These say which of the three you are hearing. */
+[data-sstate="loading"] { position:relative; }
+[data-sstate="loading"]::after {
+ content:''; position:absolute; top:3px; right:3px;
+ width:5px; height:5px; border-radius:50%;
+ background:var(--po); animation:sstatePulse 1s ease-in-out infinite;
+}
+@keyframes sstatePulse { 0%,100%{opacity:.25;transform:scale(.8);} 50%{opacity:1;transform:scale(1);} }
+[data-sstate="error"] { opacity:.6; }
+[data-sstate="error"]::after {
+ content:'!'; position:absolute; top:0; right:3px;
+ font-size:.5rem; font-weight:700; color:var(--ms-alert); line-height:1.1;
+}
+[data-sstate="error"] { position:relative; }
+select[data-sstate="loading"], select[data-sstate="error"] { border-color:var(--po); }
+@media (prefers-reduced-motion: reduce){
+ [data-sstate="loading"]::after { animation:none; opacity:.85; }
+}
+
+
+/* The transport's two numbers, told apart. The tempo carries a metronome mark
+   with a font stack that has an actual quarter-note glyph in it, and the arp
+   rate carries a cap — they used to read as "= 100   16TH" with nothing
+   saying one was tempo and the other a subdivision. */
+.ft-bpm-mark {
+ font-size:.6rem; color:var(--muted); line-height:1;
+ font-family:'Outfit', 'Segoe UI Symbol', 'Apple Symbols', 'Noto Music', 'Noto Sans Symbols 2', sans-serif;
+}
+.ft-rate-cap {
+ font-size:.4rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em;
+ font-weight:600; line-height:1;
+}
+
+/* Destructive controls, demoted. Each of these is the one irreversible action
+   in a row of reversible ones, and each was styled at least as loudly as its
+   neighbours. Quiet by default, unmistakable on hover and focus. */
+.sc-sep { flex:0 0 auto; width:1px; align-self:stretch; background:var(--border2); margin:0 4px; }
+.sc-btn.quiet-danger { color:var(--muted); border-color:var(--border); }
+.sc-btn.quiet-danger:hover, .sc-btn.quiet-danger:focus-visible {
+ color:var(--dom); border-color:var(--dom); background:hsla(0,60%,10%,.5);
+}
+/* The slot delete sat flush against the two nudge arrows at ~24px each. */
+.slot-controls-row3 .slot-del { margin-left:8px; }
+/* CLR wipes the pattern and read as a fourth entry in the FX group next to it.
+   Same treatment: separated, and quiet until you mean it. */
+.sq-clrbtn {
+ margin-left:10px; border-color:var(--sq-bdr2); color:var(--sq-mut);
+ transition:color .12s, border-color .12s, background .12s;
+}
+.sq-clrbtn:hover, .sq-clrbtn:focus-visible {
+ border-color:var(--sq-red); color:var(--sq-red); background:hsla(0,60%,12%,.45);
+}
 </style>
 </head>
 <body>
@@ -2947,7 +3001,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
       target on a phone. The readout IS the control now: drag it like a DAW
       tempo field, or tap it for a proper slider with nudge buttons. -->
  <div class="ft-bpm" id="ft-bpm-wrap">
- <span style="font-size:.55rem;color:var(--muted)">=</span>
+ <!-- A metronome mark, not a stray equals sign. The "=" alone sat next to an
+      unlabelled arp rate, so the transport showed two bare numbers and said
+      which was which nowhere. -->
+ <span class="ft-bpm-mark" aria-hidden="true">♩=</span>
  <span class="ft-bpm-val" id="ft-bpm-val" role="slider" tabindex="0"
        aria-label="Tempo" aria-valuemin="40" aria-valuemax="220" aria-valuenow="100"
        title="Tempo — drag to change, tap 4+ times to set by feel, or tap once for tempo and feel">100</span>
@@ -2985,7 +3042,13 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
       need one either, and freeing that width is what lets Song (below) fit
       on this row instead of wrapping to a third. -->
  <div class="ft-rate">
- <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()" title="Arp rate — tap to cycle">8th</div>
+ <!-- "Rate", not "Arp": this sits immediately right of the Arp on/off layer
+      button, and two adjacent captions reading "ARP" meant two different
+      things. The aria-label on the value still says "Arp rate" in full. -->
+ <span class="ft-rate-cap" aria-hidden="true">Rate</span>
+ <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()"
+      role="button" tabindex="0" aria-label="Arp rate — tap to cycle"
+      title="Arp rate — tap to cycle">8th</div>
  </div>
  <!-- Two different recorders, which is exactly why they used to be confusing:
       one bare red dot did the first, and the second lived on another tab. They
@@ -3661,10 +3724,15 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="song-meta">
  <input class="song-title-input" id="chart-title" type="text" placeholder="Song title…">
  <button class="sc-btn primary" onclick="saveToSetlist()" title="Save song to setlist" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Save</button>
- <button class="sc-btn danger" onclick="clearChart()" title="Clear all chords and sections" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Clear</button>
  <button class="tb advanced-only" id="save-rhythm-btn" onclick="toggleSaveRhythm()" title="Also save current drum pattern, bassline, and melody sequence with this song" style="font-size:.42rem;padding:4px 8px;flex-shrink:0">+Rhythm: OFF</button>
  <button class="tb" onclick="shareProgression()" title="Copy share URL to clipboard" style="font-size:.44rem;padding:4px 8px">Share</button>
  <button class="tb" onclick="exportMidi()" title="Export MIDI file" style="font-size:.44rem;padding:4px 8px">MIDI</button>
+ <!-- Clear used to be the second solid pill, immediately after Save, with
+      Share and MIDI trailing off as dim ghost text — the one irreversible
+      action in the row holding the position the eye reaches first. It sits
+      at the end now, past a divider, styled as the quietest thing here. -->
+ <span class="sc-sep" aria-hidden="true"></span>
+ <button class="sc-btn quiet-danger" onclick="clearChart()" title="Clear all chords and sections" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Clear</button>
  <div class="song-key-strip">
   <button class="btn-xp" onclick="transposeBy(-1)">−</button>
   <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
@@ -4749,11 +4817,24 @@ function _sampleNoteToMidi(name){
  return base + (m[2]==='s'?1:0) + (parseInt(m[3],10)+1)*12;
 }
 
+// SAMPLE_STATE was tracked and never shown. Selecting a sampled voice fetches
+// 21-28 mp3s (up to 668 KB for the jazz guitar) and, until they land,
+// makeVoice() substitutes fallbackWave — so on a phone you picked Tenor Sax,
+// heard an organ, and concluded the sax was broken. Offline you heard the
+// organ forever, because 'error' was never surfaced either. Anything that
+// wants to react to a state change registers here.
+const _sampleWatchers = [];
+function onSampleState(fn){ _sampleWatchers.push(fn); }
+function _sampleStateChanged(key){
+ _sampleWatchers.forEach(fn=>{ try{ fn(key, SAMPLE_STATE[key]); }catch(e){} });
+}
+
 function preloadSampleInstrument(key){
  const lib=SAMPLE_LIBS[key]; if(!lib) return;
  if(SAMPLE_STATE[key]==='ready'||SAMPLE_STATE[key]==='loading') return;
  const ctx=getCtx(); if(!ctx) return;
  SAMPLE_STATE[key]='loading';
+ _sampleStateChanged(key);
  SAMPLE_BUFFERS[key]=SAMPLE_BUFFERS[key]||{};
  const loads=lib.notes.map(n=>fetch(lib.dir+'/'+n+'.mp3')
   .then(r=>{ if(!r.ok) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
@@ -4762,6 +4843,7 @@ function preloadSampleInstrument(key){
   .catch(()=>{})); // one missing/blocked note shouldn't sink the whole instrument
  Promise.all(loads).then(()=>{
   SAMPLE_STATE[key] = Object.keys(SAMPLE_BUFFERS[key]).length ? 'ready' : 'error';
+  _sampleStateChanged(key);
  });
 }
 
@@ -9306,6 +9388,7 @@ function setArpWave(w){
  if(typeof _preloadIfSampled==='function') _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  if(typeof msSyncHost==='function') msSyncHost();
+ if(typeof syncSampleUI==='function') syncSampleUI();
 }
 function setArpGatePat(i){
  arpGatePat=i; arpGateIdx=0;
@@ -9600,6 +9683,9 @@ window._preloadIfSampled = function(w){
  if(typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[w] && typeof preloadSampleInstrument==='function'){
   preloadSampleInstrument(SAMPLED_WAVES[w]);
  }
+ // Paints the picker even when the state does not change — selecting an
+ // already-'ready' voice still has to lose the previous one's badge.
+ if(typeof syncSampleUI==='function') syncSampleUI();
 };
 const _preloadIfSampled = window._preloadIfSampled;
 
@@ -9610,6 +9696,7 @@ function setWave(w){
  _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  if(typeof msSyncHost==='function') msSyncHost();
+ if(typeof syncSampleUI==='function') syncSampleUI();
 }
 
 // Builds the MōdSynth preset buttons once, from MODSYNTH_PRESETS.
@@ -11682,12 +11769,32 @@ function renderChartSeq(){
 
  // ── Row 3: Reorder + Delete ────────────────
  const row3=document.createElement('div'); row3.className='slot-controls-row3';
- const up=document.createElement('div'); up.className='slot-arr'; up.textContent='←';
- const dn=document.createElement('div'); dn.className='slot-arr'; dn.textContent='→';
- const del=document.createElement('div'); del.className='slot-del'; del.textContent='✕'; del.title='Delete slot';
+ // <button>, not <div>: these were unreachable by keyboard and invisible to a
+ // screen reader, on a control that repeats once per chord in the chart.
+ const mkTool=(cls,glyph,label)=>{
+  const b=document.createElement('button');
+  b.type='button'; b.className=cls; b.textContent=glyph;
+  b.setAttribute('aria-label', label); b.title=label;
+  return b;
+ };
+ const what = slot.label || 'this chord';
+ const up=mkTool('slot-arr','←','Move '+what+' earlier');
+ const dn=mkTool('slot-arr','→','Move '+what+' later');
+ const del=mkTool('slot-del','✕','Delete '+what);
  up.addEventListener('click',()=>{ if(i>0){[slots[i],slots[i-1]]=[slots[i-1],slots[i]]; renderChartSeq();} });
  dn.addEventListener('click',()=>{ if(i<slots.length-1){[slots[i],slots[i+1]]=[slots[i+1],slots[i]]; renderChartSeq();} });
- del.addEventListener('click',()=>{ slots.splice(i,1); if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1; renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); });
+ // Was an immediate, unrecoverable splice on a 24px target sitting flush
+ // against the two nudge arrows. Same undo every other destructive button in
+ // this app already offers.
+ del.addEventListener('click',()=>{
+  withUndo('Deleted '+what,
+   ()=>slots.map(sl=>({...sl})),
+   before=>{ slots.length=0; before.forEach(sl=>slots.push(sl));
+             renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); },
+   ()=>{ slots.splice(i,1);
+         if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1;
+         renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); });
+ });
  row3.appendChild(up); row3.appendChild(dn); row3.appendChild(del);
 
  wrap.appendChild(btn); wrap.appendChild(ext); wrap.appendChild(row2); wrap.appendChild(row3);
@@ -20191,6 +20298,246 @@ function _ftMoreOutsideClick(e){
   // above, and it is cheap to be sure of.
   window.addEventListener('resize', sync);
   window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// SAMPLED VOICE STATE — visible
+// ══════════════════════════════════════════════════════════════════
+// Every control that can select a sampled voice gets data-sstate, so the ◆
+// voices show whether you are hearing the real instrument or the stand-in.
+// The states, and what a person is actually hearing in each:
+//   loading → the fallbackWave, and the samples are on their way
+//   error   → the fallbackWave, permanently, because the fetch failed
+//   ready   → the instrument itself
+// Anything with no data-sstate is a synth voice and has nothing to wait for.
+
+function _sampleKeyOf(wave){
+ return (typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[wave]) || null;
+}
+function _fallbackLabelFor(key){
+ const fw = SAMPLE_LIBS[key] && SAMPLE_LIBS[key].fallbackWave;
+ return fw ? _sharedVoiceLabel(fw) : 'a synth voice';
+}
+// Every place a voice is currently chosen, so a toast can tell whether the
+// instrument that just finished loading is one you are actually hearing.
+function _selectedWaves(){
+ const w = [];
+ try{ w.push(wave); }catch(e){}
+ try{ w.push(arpWave); }catch(e){}
+ try{ w.push(melWave); }catch(e){}
+ try{ w.push(blWave); }catch(e){}
+ try{ w.push(mlWave); }catch(e){}
+ return w.filter(Boolean);
+}
+
+function syncSampleUI(){
+ try{
+  const paint=(el, val)=>{
+   const key=_sampleKeyOf(val);
+   if(!key){ el.removeAttribute('data-sstate'); el.removeAttribute('title'); return; }
+   const st=SAMPLE_STATE[key]||'idle';
+   el.setAttribute('data-sstate', st);
+   const label=_sharedVoiceLabel(val).replace(/\s*◆$/,'');
+   if(st==='loading') el.title=label+' is loading — you are hearing '+_fallbackLabelFor(key)+' until it arrives';
+   else if(st==='error') el.title=label+' could not be loaded — playing '+_fallbackLabelFor(key)+' instead';
+   else if(st==='ready') el.title=label+' — recorded instrument';
+   else el.title=label+' — recorded instrument, loads when you select it';
+  };
+  document.querySelectorAll('[data-wave]').forEach(el=>paint(el, el.dataset.wave));
+  document.querySelectorAll('[data-arpwave]').forEach(el=>paint(el, el.dataset.arpwave));
+  document.querySelectorAll('[data-melwave]').forEach(el=>paint(el, el.dataset.melwave));
+  // The Voices drawer and the bass page use <select>; the control itself
+  // carries the state of whatever is currently chosen.
+  document.querySelectorAll('select.voice-sel').forEach(el=>paint(el, el.value));
+ }catch(e){}
+}
+
+onSampleState(function(key, state){
+ syncSampleUI();
+ // Only speak up about an instrument the user is actually listening to.
+ const affected = _selectedWaves().some(w=>_sampleKeyOf(w)===key);
+ if(!affected) return;
+ const wv = Object.keys(SAMPLED_WAVES).find(w=>SAMPLED_WAVES[w]===key) || key;
+ const label = _sharedVoiceLabel(wv).replace(/\s*◆$/,'');
+ if(state==='ready')      showToast(label+' loaded — that is the real instrument now');
+ else if(state==='error') showToast('Could not load '+label+' — playing '+_fallbackLabelFor(key)+' instead');
+});
+
+syncSampleUI();
+
+// ══════════════════════════════════════════════════════════════════
+// ACCESSIBLE NAMES
+// ══════════════════════════════════════════════════════════════════
+// 349 buttons, of which 90 were an icon or a bare glyph with nothing a screen
+// reader could announce, and 35 of 37 sliders had no name at all. Most already
+// carried a `title` — which assistive tech treats inconsistently and a touch
+// device never surfaces — and the rest sit in repeating groups (the ? help
+// buttons, the −/+ steppers, the ½×/1×/2× rate rows) whose meaning comes from
+// the group, not the glyph.
+//
+// This runs as a pass rather than 90 hand-written attributes because most of
+// these controls are built by JS and rebuilt whenever a voice, a pattern or a
+// mixer strip changes. A MutationObserver re-runs it after any subtree change,
+// so a generated control is named the same as a static one. Anything that
+// already has an aria-label is left alone, so a hand-written name always wins.
+
+// Sliders whose visible label is not adjacent, or is too terse to stand alone.
+const A11Y_SLIDER = {
+ 'tmod-depth'    : 'Touch Mod depth',
+ 'ms-lfo1-rate'  : 'LFO 1 rate',
+ 'ms-lfo1-depth' : 'LFO 1 depth',
+ 'ms-lfo2-rate'  : 'LFO 2 rate',
+ 'ms-lfo2-depth' : 'LFO 2 depth',
+ 'sq-swingSl'    : 'Swing amount, all parts',
+ 'sq-velSl'      : 'Step velocity',
+ 'bl-cutoff'     : 'Bass filter cutoff',
+ 'bl-reso'       : 'Bass filter resonance',
+ 'bl-human'      : 'Bass humanize amount',
+ 'arp-gate'      : 'Arp gate length',
+ 'arp-gate-p'    : 'Arp gate length',
+ 'arp-rate-sl'   : 'Arp rate',
+ 'arp-rate-sl-p' : 'Arp rate',
+ 'bpm'           : 'Tempo',
+ 'master-tune-sl': 'Master tuning reference, in hertz'
+};
+
+// Buttons identified by id.
+const A11Y_BTN = {
+ 'ft-ms-led'   : 'Something is muted or soloed — clear it',
+ 'ft-more-btn' : 'More settings',
+ 'bl-smclose'  : 'Close step options',
+ 'ml-smclose'  : 'Close step options',
+ 'sq-smClose'  : 'Close step options',
+ 'sq-stepsDn'  : 'One fewer step',
+ 'sq-stepsUp'  : 'One more step',
+ 'slb-key-dn'  : 'Transpose song down a semitone',
+ 'slb-key-up'  : 'Transpose song up a semitone',
+ 'sec-plays-inf':'Loop this section until you move on yourself',
+ 'cb-inf'      : 'Chord length: hold until the next chord',
+ 'cb-1'        : 'Chord length: one beat',
+ 'cb-2'        : 'Chord length: two beats',
+ 'cb-4'        : 'Chord length: four beats',
+ 'varm-5'      : 'Power chord — root and fifth, no third',
+ 'varm-sl5'    : 'Slash chord over the fifth',
+ 'varm-slb6'   : 'Slash chord over the flat sixth',
+ 'varm-sl6'    : 'Slash chord over the sixth',
+ 'varm-slb7'   : 'Slash chord over the flat seventh',
+ 'varm-sl7'    : 'Slash chord over the seventh',
+ 'ap-up-p'     : 'Arp pattern: up',
+ 'ap-weighted-p':'Arp pattern: weighted',
+ 'ao-1-p'      : 'Arp range: one octave',
+ 'ao-2-p'      : 'Arp range: two octaves',
+ 'ao-3-p'      : 'Arp range: three octaves'
+};
+
+// The ? buttons name the section they explain, taken from TIPS itself so the
+// two can never drift apart.
+function _a11yTipName(el){
+ const m = (el.getAttribute('onclick')||'').match(/showTip\(\s*'([^']+)'/);
+ const t = m && typeof TIPS!=='undefined' && TIPS[m[1]];
+ return t && t.title ? 'What is “'+t.title+'”?' : 'Help';
+}
+
+// Steppers and rate rows read from the group they sit in: the nearest heading,
+// label or legend to their left, or the panel title above them.
+function _a11yGroupName(el){
+ const row = el.closest('.row, .sq-ctl, .bl-row, .sg, .tg, .panel, .settings-section');
+ if(!row) return '';
+ const lbl = row.querySelector('.sl, .sq-lbl, .bl-pl, .panel-title, .ss-hdr > span');
+ return lbl ? lbl.textContent.replace(/\s+/g,' ').trim().replace(/[:?]+$/,'') : '';
+}
+
+function _a11yName(el, name){
+ if(!name) return;
+ if(el.getAttribute('aria-label')) return;   // a hand-written name always wins
+ el.setAttribute('aria-label', name);
+}
+
+function a11yPass(){
+ try{
+  // ── Sliders ──
+  document.querySelectorAll('input[type=range]').forEach(el=>{
+   if(el.getAttribute('aria-label')) return;
+   let n = A11Y_SLIDER[el.id];
+   if(!n){
+    // The Setup-tab pattern: .sg wraps a .sl caption, the input, and a .sv
+    // readout. The caption is the name; the readout is the current value, and
+    // aria-valuetext is what makes "35%" audible instead of a raw "0.35".
+    const sg = el.closest('.sg');
+    const sl = sg && sg.querySelector('.sl');
+    if(sl) n = sl.textContent.replace(/\s+/g,' ').trim();
+   }
+   if(!n){
+    // MōdSynth builds its own .ms-ctrl columns from MS_CTRLS; the caption is
+    // the first non-input child. Qualified, because "Cutoff" and "Drive" also
+    // exist on the chord engine and a screen reader hears no panel around it.
+    const mc = el.closest('.ms-ctrl');
+    const cap = mc && [...mc.children].find(c=>c!==el && c.textContent.trim());
+    if(cap) n = 'MōdSynth '+cap.textContent.replace(/\s+/g,' ').trim();
+   }
+   _a11yName(el, n);
+   const sv = el.closest('.sg')?.querySelector('.sv');
+   if(sv && sv.textContent.trim()) el.setAttribute('aria-valuetext', sv.textContent.trim());
+  });
+
+  // ── Buttons ──
+  document.querySelectorAll('button').forEach(el=>{
+   if(el.getAttribute('aria-label')) return;
+   const txt = el.textContent.replace(/\s+/g,' ').trim();
+   if(txt.length > 2) return;                 // already announces itself
+
+   if(A11Y_BTN[el.id]) { _a11yName(el, A11Y_BTN[el.id]); return; }
+   if(el.classList.contains('tips-btn')) { _a11yName(el, _a11yTipName(el)); return; }
+   if(el.classList.contains('panel-fold')){
+    // Only the title's own text nodes. Its children are the icon, the
+    // Reference badge, the live chord name and this button's own caret —
+    // none of which belong in "Hide the chord diagrams".
+    const t = el.closest('.panel')?.querySelector('.panel-title');
+    const nm = t ? [...t.childNodes].filter(k=>k.nodeType===3)
+                    .map(k=>k.textContent).join(' ').replace(/\s+/g,' ').trim()
+                 : '';
+    _a11yName(el, (el.getAttribute('aria-expanded')==='false'?'Show ':'Hide ')+(nm||'this panel'));
+    return;
+   }
+   // The chromatic key picker: a note name is a fine label, but not on its own
+   // — "C" alone says nothing about what pressing it does.
+   if(el.classList.contains('chroma-note')){ _a11yName(el, 'Set key to '+txt); return; }
+   // ½× / 1× / 2× rate rows, and the ×1..×4 step-repeat options.
+   if(el.classList.contains('seq-rbtn') || el.classList.contains('sq-mopt')){
+    const g = _a11yGroupName(el);
+    _a11yName(el, txt+(g?' — '+g:' rate'));
+    return;
+   }
+   // Note-length / option numbers inside the step popups.
+   if(el.classList.contains('bl-mopt')){ _a11yName(el, txt+' steps long'); return; }
+   // −/+ steppers of every flavour.
+   if(/^[−\-+]$/.test(txt)){
+    const g = _a11yGroupName(el);
+    _a11yName(el, (txt==='+'?'Increase':'Decrease')+(g?' '+g.toLowerCase():''));
+    return;
+   }
+   if(el.classList.contains('sn-btn')){
+    _a11yName(el, txt==='◀' ? 'Previous section' : 'Next section'); return;
+   }
+   if(txt==='×'||txt==='✕'){ _a11yName(el, el.title || 'Delete'); return; }
+   // Last resort: a title is a poor accessible name, but it beats a glyph.
+   if(el.title) _a11yName(el, el.title);
+  });
+
+  // ── Tab pages are the panels their tabs control ──
+  document.querySelectorAll('.tab-page').forEach(pg=>{
+   if(!pg.getAttribute('role')) pg.setAttribute('role','tabpanel');
+  });
+ }catch(e){ /* naming is never worth breaking a render over */ }
+}
+
+a11yPass();
+// Re-run after any subtree rebuild. childList only: step highlighting during
+// playback moves classes rather than nodes, so the hot path never wakes this.
+(function(){
+ let t=null;
+ const obs=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(a11yPass,250); });
+ obs.observe(document.body,{childList:true,subtree:true});
 })();
 
 // ── Sequencer/bassline autosave (save side) — restore logic lives near the
