@@ -2,8 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- user-scalable=no is gone. Every surface that owns a drag gesture — the
+     melody keys, the bend strip, the tempo readout, the drum knobs — already
+     declares touch-action:none, and the scrollers declare pan-x, so pinch was
+     being blocked page-wide to solve a problem that was already solved
+     per-element. Blocking it cost the one route to bigger text on the device
+     where the text is smallest. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>MōdRiff</title>
+
+<!-- Link previews. The whole way this app travels is #prog= and #setup= links
+     pasted into a chat, and until these tags existed every one of them landed
+     as a bare URL with no title, no art and no description. og:image is
+     root-relative: scrapers resolve it against the page URL, so it follows
+     the app to whatever domain it is served from. -->
+<meta name="description" content="A chromatic modal groovebox in a browser tab. Chords, drums, bass, melody and a synth playing together — no install, no account, and the whole rig travels inside a link.">
+<meta name="theme-color" content="#05060c">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MōdRiff">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MōdRiff">
+<meta property="og:title" content="MōdRiff — Chromatic Modal Groovebox">
+<meta property="og:description" content="Chords, drums, bass, melody and a synth playing together in a browser tab. Nothing to install, nothing uploaded — the whole rig travels inside the link.">
+<meta property="og:image" content="/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The MōdRiff wordmark over a spectrum of coloured level bars.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MōdRiff — Chromatic Modal Groovebox">
+<meta name="twitter:description" content="Chords, drums, bass, melody and a synth playing together in a browser tab. The whole rig travels inside the link.">
+<meta name="twitter:image" content="/og-card.png">
 <script>
   !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
   posthog.init('phc_Ce7tm5SE2SoCu4dKKapsuXioRPVyX27d5CU3RXnedL9A', {
@@ -70,7 +102,11 @@
  --r-lg: 14px;
 }
 
-html { font-size: 20px; }
+/* 125% of the browser's own base, not a hard 20px. At the default 16px base
+   this computes to exactly the 20px every rem in this file was tuned against,
+   so nothing moves — but a reader who has set their browser text larger now
+   gets a larger app instead of being overridden. */
+html { font-size: 125%; }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
 body {
@@ -214,6 +250,17 @@ body.light-mode .tab-bar { background:#e8eaf6; border-bottom-color:#c2c6de; }
 /* Every direct child of a tab-page gets max-width cap and full width */
 .tab-page > * {
  width:100%; max-width:700px; box-sizing:border-box;
+ /* flex-shrink:0 is load-bearing. .tab-page is a column flex container, so
+    its children default to flex-shrink:1 and get SQUEEZED below their content
+    height whenever the page is taller than the viewport — and .panel is
+    overflow:hidden, so the squeezed-off part is silently clipped rather than
+    scrolled to. On a 390x844 phone that cost the Mix tab its entire wrapped
+    Arp channel: the panel rendered 202px tall around 270px of content, so
+    Arp's level, its name and its mute/solo buttons were painted outside the
+    panel and hit-testing them landed on the Master Bus title underneath.
+    Panels keep their natural height now and .tab-page's own overflow-y:auto
+    does the scrolling, which is what it was always there for. */
+ flex-shrink:0;
 }
 /* Center all content within tab pages */
 /* max-width handled by .tab-page > * rule above */
@@ -2184,7 +2231,36 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .bl-playbtn.active { background:var(--pr); color:#fff; }
 .bl-genbtn { padding:6px 12px; border:1px solid var(--pg); border-radius:7px; background:none; color:var(--pg); font-family:'Outfit',sans-serif; font-size:.55rem; cursor:pointer; touch-action:manipulation; }
 .bl-grid { overflow-x:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x; overscroll-behavior-x:contain; padding-bottom:4px; }
-.bl-empty-hint { display:none; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:30px 16px 8px; color:var(--muted); }
+/* The empty state sits ON the roll, not under it. It used to render after the
+   grid in document order, which put "No bassline yet" 83px BELOW the bottom of
+   the 338px empty grid it was explaining — so you met the empty grid first and
+   found out why it was empty second, if the window was tall enough to show
+   both. Overlaid and pointer-events:none, so the invitation to "tap any step"
+   is still something you can act on through it. */
+/* A two-row grid so the hint can share row 1 with the roll — overlaying the
+   grid exactly, and leaving the "tap a cell…" instruction bar in row 2
+   uncovered. An absolutely-positioned overlay can't do this: .pr-wrap is
+   overflow:auto, so inset:0 inside it would size to the scrolled content, and
+   inset:0 on the host would dim the instruction bar too. */
+.pr-host { display:grid; grid-template-rows:auto auto; }
+.pr-host > .pr-wrap { grid-area:1/1; }
+.pr-host > .pr-bar  { grid-area:2/1; }
+.bl-empty-hint {
+ display:none; flex-direction:column; align-items:center; justify-content:center;
+ text-align:center; gap:8px; padding:16px; color:var(--muted);
+ grid-area:1/1; z-index:3; pointer-events:none; overflow:hidden;
+ background:linear-gradient(to bottom,
+   hsla(var(--kh), 30%, 6%, .82) 0%,
+   hsla(var(--kh), 30%, 6%, .93) 45%,
+   hsla(var(--kh), 30%, 6%, .82) 100%);
+ border-radius:var(--r-md);
+}
+body.light-mode .bl-empty-hint {
+ background:linear-gradient(to bottom,
+   hsla(var(--kh), 24%, 97%, .84) 0%,
+   hsla(var(--kh), 24%, 97%, .94) 45%,
+   hsla(var(--kh), 24%, 97%, .84) 100%);
+}
 .bl-empty-hint.show { display:flex; }
 .bl-empty-hint svg { opacity:.45; }
 .bl-empty-hint .bl-eh-title { font-family:'Outfit',sans-serif; font-weight:700; font-size:.78rem; color:var(--text); }
@@ -2816,26 +2892,35 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
 <body>
 
 <div class="top-stack" id="top-stack">
-<nav class="tab-bar" id="tab-bar">
- <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')">
- <span class="tab-icon">🎹</span>Play
+<!-- A real ARIA tablist. Left/Right/Home/End move between tabs while the bar
+     has focus, which is the standard pattern and, more to the point, is what
+     lets Tab go back to doing its own job — see the tabBarKey handler. -->
+<nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
+ <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')"
+   role="tab" aria-selected="true" aria-controls="page-perform">
+ <span class="tab-icon" aria-hidden="true">🎹</span>Play
  </button>
- <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')">
- <span class="tab-icon">📄</span>Songs
+ <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')"
+   role="tab" aria-selected="false" aria-controls="page-songs" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">📄</span>Songs
  </button>
- <button class="tab-btn" id="tab-rhythm" onclick="switchTab('rhythm')">
- <span class="tab-icon">🥁</span>Drums
+ <button class="tab-btn" id="tab-rhythm" onclick="switchTab('rhythm')"
+   role="tab" aria-selected="false" aria-controls="page-rhythm" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🥁</span>Drums
  </button>
- <button class="tab-btn" id="tab-bass" onclick="switchTab('bass')">
- <span class="tab-icon">🎸</span>Bass/Mel
+ <button class="tab-btn" id="tab-bass" onclick="switchTab('bass')"
+   role="tab" aria-selected="false" aria-controls="page-bass" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🎸</span>Bass/Mel
  </button>
- <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')">
- <span class="tab-icon">🎚</span>Mix
+ <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
+   role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🎚</span>Mix
  </button>
- <button class="tab-btn" id="tab-build" onclick="switchTab('build')">
- <span class="tab-icon">⚙</span>Setup
+ <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
+   role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">⚙</span>Setup
  </button>
- <div class="tab-led" id="tab-led"></div>
+ <div class="tab-led" id="tab-led" aria-hidden="true"></div>
 </nav>
 </div>
 <!-- Performance bar — the controls you touch WHILE playing live in the
@@ -3042,6 +3127,14 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Playback</div>
   <div class="kb-sc-row"><span class="kb-key">Space</span><span class="kb-desc">Start / stop everything (sequencer, bass, song) in sync.</span></div>
+ </div>
+
+ <div class="kb-sc-group">
+  <div class="kb-sc-hdr">Getting Around</div>
+  <div class="kb-sc-row"><span class="kb-key">Tab</span><span class="kb-desc">Step through the controls on screen. The section bar at the top is the first stop.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">With the section bar focused: move between Play, Songs, Drums, Bass/Mel, Mix and Setup. Home / End jump to the first or last.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + K</span><span class="kb-desc">Find any control by name and jump straight to it. Bare <b>/</b> does the same when you are not typing.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + Z</span><span class="kb-desc">Undo a sound-setting change. Add Shift to redo.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -4003,7 +4096,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
        row of step dots instead, which meant Basic had no way to see or set a
        note's pitch — and on the Melody page it rendered nothing at all, so
        the sequencer simply looked missing. -->
-  <div>
+  <!-- pr-host is the positioning context for the empty state, which sits ON
+       the roll rather than under it — see .bl-empty-hint. -->
+  <div class="pr-host">
    <div class="pr-wrap" id="bl-pr">
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
@@ -4011,12 +4106,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="pr-bar">
     <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
    </div>
-  </div>
-  <!-- Empty state: shown when no steps are active -->
-  <div class="bl-empty-hint" id="bl-empty-hint">
-   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-   <div class="bl-eh-title">No bassline yet</div>
-   <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, or tap any step below to place a note by hand.</div>
+   <!-- Empty state: shown when no steps are active -->
+   <div class="bl-empty-hint" id="bl-empty-hint">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    <div class="bl-eh-title">No bassline yet</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, or tap any step to place a note by hand.</div>
+   </div>
   </div>
  </div>
  <!-- Bassline step popup (position:fixed, works from any tab) -->
@@ -4106,7 +4201,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <!-- Same as the bass page: the roll shows in Basic too. -->
-  <div>
+  <div class="pr-host">
    <div class="pr-wrap" id="ml-pr">
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
@@ -4114,12 +4209,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="pr-bar">
     <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
    </div>
-  </div>
-  <!-- Empty state: shown when no steps are active -->
-  <div class="bl-empty-hint" id="ml-empty-hint">
-   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-   <div class="bl-eh-title">No melody yet</div>
-   <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords and key, or tap any step below to place a note by hand.</div>
+   <!-- Empty state: shown when no steps are active -->
+   <div class="bl-empty-hint" id="ml-empty-hint">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    <div class="bl-eh-title">No melody yet</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords and key, or tap any step to place a note by hand.</div>
+   </div>
   </div>
  </div>
  <!-- Melody step popup (position:fixed, works from any tab) -->
@@ -9407,7 +9502,16 @@ function renderChords(){
  const mdLabel=(MODES[mode]||MODES.major).label;
  document.getElementById('key-mode').textContent=mdLabel;
  const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mdLabel}`;
- Object.keys(MODES).forEach(x=>{ const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode); });
+ // Both mode rows are painted from `mode` here, not just the Songs one. Four
+ // places set `mode` directly rather than through setMode() — the opening
+ // progression seed, loading a setlist song, loading a jazz standard, and a
+ // restored setup — and every one of them left the Play tab's row showing
+ // whatever was lit before. The seed alone opens on a non-major mode five
+ // launches in nine, so the row was usually wrong on arrival.
+ Object.keys(MODES).forEach(x=>{
+  const e=document.getElementById('bm-'+x);        if(e)  e.classList.toggle('active',x===mode);
+  const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode);
+ });
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -9447,10 +9551,8 @@ function setMode(m){
  mode=m;
  // The roll shades in-key rows, so a mode change has to repaint it.
  if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
- Object.keys(MODES).forEach(x=>{
-  const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
-  const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
- });
+ // renderChords() paints both mode rows from `mode`, so this no longer keeps
+ // its own copy of that loop.
  renderChords();
 }
 function toggleChurchModes(){
@@ -11689,7 +11791,7 @@ function toggleSaveRhythm(){
 function saveToSetlist(){
  const titleInput=document.getElementById('chart-title');
  const title=titleInput.value.trim()||'Untitled';
- if(!sections.some(s=>s.slots.length)){ if(typeof alert!=='undefined') alert('Add some chords first!'); return; }
+ if(!sections.some(s=>s.slots.length)){ showToast('Nothing to save yet — add some chords to the chart first'); return; }
  setlistData=loadSLData();
  // Block saving under a name another song already has — re-saving the song
  // that's currently loaded (same slot) is fine, that's an update, not a dupe.
@@ -11942,8 +12044,9 @@ function loadSong(song,idx){
  curSection=0; chartSeqIdx=-1; songCurrentSection=0; songCurrentSlot=-1;
 
  document.getElementById('chart-title').value=song.title;
- document.getElementById('bm-major')?.classList.toggle('active',mode==='major');
- document.getElementById('bm-minor')?.classList.toggle('active',mode==='minor');
+ // Mode row sync used to be these two lines, which only knew about major and
+ // minor — a song in any other mode lit neither, or left the previous song's
+ // mode lit. renderChords() paints every mode button now.
 
  // Auto-apply saved performance settings
  if(song.perfSettings) applySongPerformSettings(song.perfSettings);
@@ -12018,7 +12121,17 @@ function exportSetlist(){
 function importSetlist(e){
  const file=e.target.files[0]; if(!file) return;
  const reader=new FileReader();
- reader.onload=ev=>{ try{ const d=JSON.parse(ev.target.result); if(Array.isArray(d)){ saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav(); } }catch(e){ alert('Invalid file'); } };
+ reader.onload=ev=>{
+  // Was a blocking alert('Invalid file') that named neither the file nor what
+  // was wrong with it. Both failure modes are worth telling apart: unreadable
+  // JSON, and readable JSON that isn't a setlist.
+  let d;
+  try{ d=JSON.parse(ev.target.result); }
+  catch(err){ showToast('“'+file.name+'” isn’t readable as a setlist — it should be a .json file exported from Setlist → Export'); return; }
+  if(!Array.isArray(d)){ showToast('“'+file.name+'” is valid JSON but not a setlist — expected a list of songs'); return; }
+  saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav();
+  showToast('Imported '+d.length+' song'+(d.length===1?'':'s')+' from “'+file.name+'”');
+ };
  reader.readAsText(file);
 }
 
@@ -13008,6 +13121,7 @@ function switchTab(t){
  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
+ if(typeof syncTabRoving==='function') syncTabRoving();
  if(t==='songs') renderSetlistPerform();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
@@ -14302,23 +14416,50 @@ function stopEverything(){
  syncFixedTransport();
 }
 
-// Tab / Shift+Tab steps through the tabs on desktop. Skipped while typing so
-// text fields keep normal behaviour, and skipped on touch-only devices where
-// there is no Tab key to press anyway.
-// Tradeoff: this does take Tab away from browser focus-walking. Arrow keys,
-// Space and the number keys still work, and every control is directly
-// clickable, so nothing becomes unreachable.
+// Section switching by keyboard, the standard tablist way: Left/Right/Home/End
+// while the tab bar has focus.
+//
+// This used to be a global Tab/Shift+Tab handler that fired whenever
+// document.activeElement was <body>. That is the state the page loads in, and
+// switching tabs does not move focus — so focus stayed on <body> and Tab
+// cycled Play → Songs → Drums → … forever. A keyboard-only visitor could
+// never reach a single control: 25 presses of Tab from a fresh load left
+// activeElement on <body> every time. The old comment reasoned that "every
+// control is directly clickable, so nothing becomes unreachable", which held
+// for every control except the first one, and only if you had a pointer.
+//
+// Tab now does what Tab does. The bar is first in the DOM, so it is still the
+// first thing a keyboard user lands on, and the arrows do what the hijack did.
 const TAB_ORDER=['perform','songs','rhythm','bass','mix','build'];
-document.addEventListener('keydown', e => {
- if(e.key!=='Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
- // Tab is how you move between fields, so unlike the note keys it stays with
- // ANY focused control, not just the ones that type.
- if(document.activeElement && document.activeElement!==document.body) return;
- if(window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+function _tabBtns(){ return TAB_ORDER.map(t=>document.getElementById('tab-'+t)).filter(Boolean); }
+// Roving tabindex: only the selected tab is in the tab order, so Tab steps
+// past the whole bar in one press rather than six.
+function syncTabRoving(){
+ TAB_ORDER.forEach(t=>{
+  const b=document.getElementById('tab-'+t); if(!b) return;
+  const on=b.classList.contains('active');
+  b.setAttribute('aria-selected', on?'true':'false');
+  b.tabIndex = on ? 0 : -1;
+ });
+}
+document.getElementById('tab-bar')?.addEventListener('keydown', e => {
+ const btns=_tabBtns();
+ const i=btns.indexOf(document.activeElement);
+ if(i<0) return;
+ let j=-1;
+ if(e.key==='ArrowRight'||e.key==='ArrowDown') j=(i+1)%btns.length;
+ else if(e.key==='ArrowLeft'||e.key==='ArrowUp') j=(i-1+btns.length)%btns.length;
+ else if(e.key==='Home') j=0;
+ else if(e.key==='End') j=btns.length-1;
+ else return;
  e.preventDefault();
- const cur=TAB_ORDER.findIndex(t=>document.getElementById('page-'+t)?.classList.contains('active'));
- const n=TAB_ORDER.length;
- switchTab(TAB_ORDER[(((cur<0?0:cur)+(e.shiftKey?-1:1))%n+n)%n]);
+ // The Perform tab owns bare arrow keys globally (↑↓ transposes, ←→ cycles
+ // modes) and a focused <button> makes no claim on them via _focusOwnsKey.
+ // Without this, an arrow press on the tab bar would switch section AND
+ // transpose the key on the way past.
+ e.stopPropagation();
+ switchTab(TAB_ORDER[j]);
+ btns[j].focus();
 });
 
 document.addEventListener('keydown', e => {
