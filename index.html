@@ -3076,6 +3076,45 @@ select[data-sstate="loading"], select[data-sstate="error"] { border-color:var(--
 
 /* Free mode hides everything pro, the same way Basic hides .advanced-only. */
 body.mode-free .pro-only { display:none !important; }
+
+/* ── MōdFX v2: presets and the motion recorder ── */
+.fx-presets { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
+.fx-preset {
+ position:relative; padding:5px 11px; border-radius:var(--r-sm);
+ border:1px solid var(--border2); background:var(--surf2); color:var(--muted);
+ font-family:'Outfit',sans-serif; font-size:.46rem; font-weight:600;
+ cursor:pointer; touch-action:manipulation; transition:all .12s;
+}
+.fx-preset:hover { border-color:var(--accent); color:var(--text); }
+.fx-preset.on { border-color:var(--accent); color:var(--accent); background:var(--acc-dim); }
+.fx-preset.user { padding-right:22px; }
+.fx-preset.add { border-style:dashed; color:var(--muted); }
+.fx-preset-x {
+ position:absolute; right:5px; top:50%; transform:translateY(-50%);
+ width:14px; height:14px; line-height:13px; text-align:center; border-radius:50%;
+ font-size:.5rem; color:var(--muted);
+}
+.fx-preset-x:hover { color:var(--dom); background:hsla(0,60%,14%,.7); }
+
+.fx-motion {
+ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+ margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+}
+.fx-motion-lbl {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase; letter-spacing:.12em;
+ font-weight:600; flex:0 0 auto;
+}
+.fx-mo-btn {
+ padding:5px 11px; border-radius:var(--r-sm); border:1px solid var(--border2);
+ background:var(--surf2); color:var(--muted); font-family:'Outfit',sans-serif;
+ font-size:.46rem; font-weight:600; cursor:pointer; touch-action:manipulation; transition:all .12s;
+}
+.fx-mo-btn:hover:not(:disabled) { border-color:var(--accent); color:var(--text); }
+.fx-mo-btn:disabled { opacity:.35; cursor:default; }
+.fx-mo-btn.on { border-color:var(--pg); color:var(--pg); background:hsla(150,60%,14%,.5); }
+.fx-mo-btn.rec { border-color:#e5384f; color:#fff; background:#e5384f; animation:recBlink 1s ease-in-out infinite; }
+.fx-motion-state { font-size:.42rem; color:var(--muted); margin-left:auto; }
+@media (prefers-reduced-motion: reduce){ .fx-mo-btn.rec { animation:none; } }
 </style>
 </head>
 <body>
@@ -5781,7 +5820,7 @@ function _allPartBuses(){
 // bass has ever played still gets a bass track instead of silently missing it.
 function _ensureAllPartBuses(ctx){
  ['chord','arp','mel'].forEach(p=>_partDest(ctx,p));
- try{ if(typeof sqInitFX==='function') sqInitFX(); }catch(e){}
+ try{ if(typeof window._sqEnsureBus==='function') window._sqEnsureBus(); }catch(e){}
  try{ if(typeof window._blEnsureBus==='function') window._blEnsureBus(); }catch(e){}
  try{ if(typeof window._mlEnsureBus==='function') window._mlEnsureBus(); }catch(e){}
  return _allPartBuses();
@@ -16300,6 +16339,12 @@ function sqEnsureNoise(){
 var SQMG=null, sqFxRev=false, sqFxDel=false, sqFxDst=false;
 var sqRevGain, sqDelayNode, sqDelayGain, sqDelayFB, sqDistNode;
 
+// Published on window like _blEnsureBus and _mlEnsureBus. It never was, so
+// _ensureAllPartBuses()'s `typeof sqInitFX==='function'` guard was always
+// false and its try/catch hid that — meaning the drum bus was only ever built
+// by the drums actually playing. A stem bounce started before the first hit
+// silently had no drum track, which is the exact failure that function's own
+// comment says it exists to prevent, and MōdFX had no drum chain to insert.
 function sqInitFX(){
   var c=sqCtx(); if(!c||SQMG) return;
   sqEnsureNoise();
@@ -16336,6 +16381,7 @@ function sqInitFX(){
   for(var k=0;k<256;k++){var x=k*2/256-1;dc[k]=x;}sqDistNode.curve=dc;
   SQMG.connect(sqDistNode);sqDistNode.connect(masterDest(c));
 }
+window._sqEnsureBus = sqInitFX;
 
 function sqApplyFX(){
   var c=sqCtx(); if(!c||!SQMG) return;
@@ -20650,7 +20696,15 @@ const FX_PARAMS = {
   reverse: { label:'Reverse',     short:'REV↺',unit:'div', base:0,   fmt:v=>v<=0.001?'off':_fxDivLabel(v) },
   warp:    { label:'Time warp',   short:'WRP', unit:'x',   base:0.5, fmt:v=>(_fxWarpRate(v)).toFixed(2)+'×' },
   gate:    { label:'Gate',        short:'GATE',unit:'pct', base:1,   fmt:v=>Math.round(v*100)+'%' },
-  width:   { label:'Width',       short:'WID', unit:'pct', base:0.5, fmt:v=>Math.round((v*2-1)*100)+'%' }
+  width:   { label:'Width',       short:'WID', unit:'pct', base:0.5, fmt:v=>Math.round((v*2-1)*100)+'%' },
+  // v2 additions. Tremolo splits into depth and rate so either can take an
+  // axis on its own — sweeping the rate while the depth stays put is the
+  // gesture, and one combined control cannot do it.
+  tremolo: { label:'Tremolo',     short:'TRM', unit:'pct', base:0,   fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
+  tremrate:{ label:'Tremolo rate',short:'TRT', unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
+  pan:     { label:'Pan',         short:'PAN', unit:'lr',  base:0.5, fmt:v=>{const n=Math.round((v*2-1)*100);
+                                                                     return n===0?'centre':(n<0?Math.abs(n)+'L':n+'R');} },
+  ringmod: { label:'Ring mod',    short:'RNG', unit:'hz',  base:0,   fmt:v=>v<=0.001?'off':Math.round(_fxRingHz(v))+'Hz' }
 };
 const FX_PARAM_KEYS = Object.keys(FX_PARAMS);
 
@@ -20658,6 +20712,7 @@ function _fxFiltHz(v){ return 120*Math.pow(150,Math.max(0,Math.min(1,v))); }   /
 function _fxHpHz(v){ return 20*Math.pow(200,Math.max(0,Math.min(1,v))); }      // 20Hz..4kHz
 function _fxHzFmt(hz){ return hz>=1000 ? (hz/1000).toFixed(1)+'k' : Math.round(hz)+'Hz'; }
 function _fxWarpRate(v){ return Math.pow(2,(Math.max(0,Math.min(1,v))-0.5)*2); } // 0.5x..2x
+function _fxRingHz(v){ return 18*Math.pow(46,Math.max(0,Math.min(1,v))); }        // 18Hz..830Hz
 // Musical divisions, so a stutter or a delay lands on the grid rather than
 // wherever a linear slider happened to stop.
 const FX_DIVS=[
@@ -20821,22 +20876,50 @@ function fxBuildChain(ctx, ch){
  const gate=ctx.createGain(); gate.gain.value=1;
  postDrive.connect(gate);
 
+ // Tremolo: an LFO on a gain, biased so depth 0 is unity and never touches
+ // the signal. The LFO free-runs; only its depth and rate are automated, so
+ // a depth sweep does not restart the wobble mid-gesture.
+ const trem=ctx.createGain(); trem.gain.value=1;
+ const tremLfo=ctx.createOscillator(); tremLfo.type='sine'; tremLfo.frequency.value=4;
+ const tremDepth=ctx.createGain(); tremDepth.gain.value=0;
+ tremLfo.connect(tremDepth); tremDepth.connect(trem.gain);
+ try{ tremLfo.start(); }catch(e){}
+ gate.connect(trem);
+
+ const pan=ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+ let panTail=trem;
+ if(pan){ trem.connect(pan); panTail=pan; }
+
+ // Ring mod as a parallel branch: the wet side is a VCA whose gain is driven
+ // by a bipolar oscillator, which is multiplication, not tremolo. Blended
+ // rather than switched so 0 is bit-identical to no ring mod.
+ const ringOsc=ctx.createOscillator(); ringOsc.type='sine'; ringOsc.frequency.value=_fxRingHz(0);
+ const ringWet=ctx.createGain(); ringWet.gain.value=0;
+ const ringAmt=ctx.createGain(); ringAmt.gain.value=0;
+ const ringDry=ctx.createGain(); ringDry.gain.value=1;
+ ringOsc.connect(ringWet.gain);
+ try{ ringOsc.start(); }catch(e){}
+ panTail.connect(ringWet); panTail.connect(ringDry);
+ const postRing=ctx.createGain();
+ ringWet.connect(ringAmt); ringAmt.connect(postRing); ringDry.connect(postRing);
+
  // Sends
  const dly=ctx.createDelay(4);  dly.delayTime.value=0.25;
  const dlyFb=ctx.createGain();  dlyFb.gain.value=0.35;
  const dlySend=ctx.createGain();dlySend.gain.value=0;
  const dlyRet=ctx.createGain(); dlyRet.gain.value=1;
- gate.connect(dlySend); dlySend.connect(dly); dly.connect(dlyFb); dlyFb.connect(dly);
+ postRing.connect(dlySend); dlySend.connect(dly); dly.connect(dlyFb); dlyFb.connect(dly);
  dly.connect(dlyRet); dlyRet.connect(out);
 
  const rev=ctx.createConvolver(); rev.buffer=_fxRoomIR(ctx,2.2);
  const revSend=ctx.createGain(); revSend.gain.value=0;
- gate.connect(revSend); revSend.connect(rev); rev.connect(out);
+ postRing.connect(revSend); revSend.connect(rev); rev.connect(out);
 
- gate.connect(out);          // dry
+ postRing.connect(out);      // dry
  out.connect(dest);
 
- const bundle={ctx,io,out,filt,hp,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend};
+ const bundle={ctx,io,out,filt,hp,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend,
+               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry};
  fxChains[ch]=bundle;
  return bundle;
 }
@@ -20914,6 +20997,18 @@ function fxApplyChannel(ch){
 
  chain.gate.gain.setTargetAtTime(v('gate'), t, S);
 
+ const trm=v('tremolo');
+ chain.tremDepth.gain.setTargetAtTime(trm*0.5, t, S);
+ chain.trem.gain.setTargetAtTime(1-trm*0.5, t, S);
+ chain.tremLfo.frequency.setTargetAtTime(Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate')))), t, S);
+
+ if(chain.pan) chain.pan.pan.setTargetAtTime(Math.max(-1,Math.min(1, v('pan')*2-1)), t, S);
+
+ const rng=v('ringmod');
+ chain.ringOsc.frequency.setTargetAtTime(_fxRingHz(rng), t, S);
+ chain.ringAmt.gain.setTargetAtTime(rng<=0.001?0:1, t, S);
+ chain.ringDry.gain.setTargetAtTime(rng<=0.001?1:0, t, S);
+
  chain.dlySend.gain.setTargetAtTime(v('delay')*0.6, t, S);
  chain.dly.delayTime.setTargetAtTime(Math.min(3.9,_fxDivSec(v('dtime'))), t, S);
  chain.dlyFb.gain.setTargetAtTime(Math.min(0.88, v('feedback')*0.88), t, S);
@@ -20946,6 +21041,10 @@ function fxSetPos(x,y){
  fxPos.x=Math.max(0,Math.min(1,x));
  fxPos.y=Math.max(0,Math.min(1,y));
  fxTargets.forEach(fxApplyChannel);
+ // Every move is a frame while the recorder is armed — including the ones
+ // that come from playback, which is why fxMotionCapture no-ops unless
+ // recording is actually on.
+ if(typeof fxMotionCapture==='function') fxMotionCapture();
  if(typeof fxPaintPad==='function') fxPaintPad();
 }
 function fxEngage(on){
@@ -21000,8 +21099,12 @@ function fxChannelSummary(ch){
 
 // State for setups and shared links — the thing the drum toggles never had.
 function fxCaptureState(){
- return { v:1, sends:JSON.parse(JSON.stringify(fxSends)), x:fxPadX, y:fxPadY,
-          targets:fxTargets.slice(), hold:fxHold, pos:{...fxPos}, engaged:fxEngaged };
+ return { v:2, sends:JSON.parse(JSON.stringify(fxSends)), x:fxPadX, y:fxPadY,
+          targets:fxTargets.slice(), hold:fxHold, pos:{...fxPos}, engaged:fxEngaged,
+          // Your own presets and a recorded move are part of the performance,
+          // so they travel with it rather than being stranded in localStorage.
+          presets: fxUserPresets.map(x=>({...x})),
+          motion: fxMotionHas() ? {frames:fxMotion.frames.map(f=>({...f})), loopSec:fxMotion.loopSec} : null };
 }
 function fxRestoreState(st){
  if(!st||!st.sends) return false;
@@ -21013,10 +21116,173 @@ function fxRestoreState(st){
  fxHold=!!st.hold;
  if(st.pos) fxPos={x:+st.pos.x||0.5, y:+st.pos.y||0.5};
  fxEngaged=!!st.engaged && fxHold;
+ // Merge rather than replace: a shared link should not delete presets you
+ // made yourself. Anything already saved under the same name is left alone.
+ if(Array.isArray(st.presets)){
+  st.presets.forEach(x=>{
+   if(!x || !FX_PARAMS[x.x] || !FX_PARAMS[x.y]) return;
+   if(fxUserPresets.some(y=>y.name===x.name && String(y.t)===String(x.t))) return;
+   fxUserPresets.push({...x, user:true});
+  });
+  fxSavePresets();
+ }
+ if(typeof fxMotionStopPlaying==='function') fxMotionStopPlaying();
+ if(st.motion && Array.isArray(st.motion.frames) && st.motion.frames.length>1){
+  fxMotion.frames=st.motion.frames.map(f=>({...f}));
+  fxMotion.loopSec=+st.motion.loopSec||0;
+ } else {
+  fxMotion.frames=[]; fxMotion.loopSec=0;
+ }
  fxApplyAll();
  if(typeof fxSyncUI==='function') fxSyncUI();
  return true;
 }
+
+
+// ── Presets ──────────────────────────────────────────────────────
+// Two dropdowns and six sliders is not something you operate mid-bar. A preset
+// is one tap that sets both axes, the target channels and, optionally, the
+// sends — so a move you worked out once is a move you can reach for.
+const FX_FACTORY_PRESETS = [
+ {name:'Filter Sweep', x:'cutoff',  y:'reso',    t:['drum','bass'], sends:null},
+ {name:'Tape Stop',    x:'warp',    y:'cutoff',  t:['drum','bass','chord','arp','mel','melgen'], sends:null},
+ {name:'Beat Repeat',  x:'stutter', y:'cutoff',  t:['drum'],        sends:null},
+ {name:'Dub Delay',    x:'delay',   y:'feedback',t:['chord','arp'], sends:{rev:0.15}},
+ {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass'], sends:{drv:0.25}},
+ {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel'], sends:null},
+ {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass'],        sends:null},
+ {name:'Ring Wash',    x:'ringmod', y:'reverb',  t:['mel','melgen'],sends:null}
+];
+const FX_PRESET_KEY='modo-fx-presets';
+let fxUserPresets=[];
+try{ fxUserPresets=JSON.parse(localStorage.getItem(FX_PRESET_KEY)||'[]')||[]; }catch(e){ fxUserPresets=[]; }
+function fxAllPresets(){ return FX_FACTORY_PRESETS.concat(fxUserPresets); }
+function fxSavePresets(){ try{ localStorage.setItem(FX_PRESET_KEY, JSON.stringify(fxUserPresets)); }catch(e){} }
+
+function fxApplyPreset(i){
+ const p=fxAllPresets()[i]; if(!p) return;
+ if(FX_PARAMS[p.x]) fxPadX=p.x;
+ if(FX_PARAMS[p.y]) fxPadY=p.y;
+ if(Array.isArray(p.t)&&p.t.length) fxTargets=p.t.filter(c=>FX_CHANNELS.indexOf(c)>=0);
+ if(!fxTargets.length) fxTargets=['drum'];
+ // A preset's sends apply only to the channels it targets, and only the keys
+ // it names — it tilts the mix rather than resetting everyone else's.
+ if(p.sends) fxTargets.forEach(ch=>{
+  Object.keys(p.sends).forEach(k=>{ fxSends[ch][k]=p.sends[k]; });
+ });
+ fxApplyAll(); fxSyncUI();
+ showToast('MōdFX: '+p.name);
+}
+function fxSaveUserPreset(){
+ // Named from what it does, not a counter: "Cutoff × Reverb" tells you what
+ // you saved when you come back to it, "My 3" does not.
+ const name=FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label;
+ if(fxUserPresets.some(x=>x.name===name && String(x.t)===String(fxTargets))){
+  showToast('You already have that one saved'); return;
+ }
+ fxUserPresets.push({name, x:fxPadX, y:fxPadY,
+                     t:fxTargets.slice(), sends:null, user:true});
+ fxSavePresets(); fxSyncUI();
+ showToast('Saved as a MōdFX preset', {actionLabel:'Undo', onAction(){
+  fxUserPresets.pop(); fxSavePresets(); fxSyncUI(); showToast('Removed');
+ }});
+}
+function fxDeleteUserPreset(i){
+ const abs=i-FX_FACTORY_PRESETS.length; if(abs<0) return;
+ const gone=fxUserPresets.splice(abs,1)[0];
+ fxSavePresets(); fxSyncUI();
+ showToast('Deleted “'+gone.name+'”', {actionLabel:'Undo', onAction(){
+  fxUserPresets.splice(abs,0,gone); fxSavePresets(); fxSyncUI();
+ }});
+}
+
+// ── Motion record ────────────────────────────────────────────────
+// The pad's whole limitation is that it needs a finger. Recording a gesture
+// and looping it in time turns a move into a part — the thing a Kaoss pad is
+// actually for once you have both hands busy.
+const fxMotion = { armed:false, recording:false, playing:false,
+                   frames:[], loopSec:0, t0:0, raf:null };
+
+function _fxNowSec(){ const c=getCtx(); return c ? c.currentTime : (performance.now()/1000); }
+// Round a take to whole bars so it loops musically instead of drifting.
+function _fxQuantiseBars(sec){
+ const bpm=parseFloat(document.getElementById('bpm')?.value)||100;
+ const bar=(60/bpm)*4;
+ return Math.max(bar, Math.round(sec/bar)*bar);
+}
+
+function fxMotionRecord(){
+ if(fxMotion.recording){ fxMotionStopRecording(); return; }
+ fxMotionStopPlaying();
+ fxMotion.frames=[]; fxMotion.recording=true; fxMotion.t0=_fxNowSec();
+ fxSyncUI();
+ showToast('Recording the pad — move it, then tap Rec again');
+}
+function fxMotionCapture(){
+ if(!fxMotion.recording) return;
+ fxMotion.frames.push({t:_fxNowSec()-fxMotion.t0, x:fxPos.x, y:fxPos.y, e:fxEngaged});
+}
+function fxMotionStopRecording(){
+ if(!fxMotion.recording) return;
+ fxMotion.recording=false;
+ const raw=_fxNowSec()-fxMotion.t0;
+ if(fxMotion.frames.length<2){
+  fxMotion.frames=[]; fxSyncUI();
+  showToast('Nothing recorded — hold the pad and move it while Rec is lit');
+  return;
+ }
+ fxMotion.loopSec=_fxQuantiseBars(raw);
+ fxSyncUI();
+ showToast('Recorded '+ (fxMotion.loopSec/((60/(parseFloat(document.getElementById('bpm')?.value)||100))*4)).toFixed(0)
+           +' bar'+(fxMotion.loopSec>((60/(parseFloat(document.getElementById('bpm')?.value)||100))*4*1.5)?'s':'')+' — tap Play to loop it');
+}
+function fxMotionPlay(){
+ if(fxMotion.playing){ fxMotionStopPlaying(); return; }
+ if(fxMotion.frames.length<2){ showToast('Record a move first'); return; }
+ fxMotion.playing=true; fxMotion.t0=_fxNowSec();
+ fxEngaged=true;
+ const tick=()=>{
+  if(!fxMotion.playing) return;
+  const phase=((_fxNowSec()-fxMotion.t0)%fxMotion.loopSec);
+  const f=fxMotion.frames;
+  const last=f[f.length-1];
+  let ax,ay,bx,by,t0,t1;
+  if(phase>=last.t){
+   // Past the end of the take. A gesture is almost always shorter than the bar
+   // it is quantised to, so without this the pad parks on the final position
+   // for the rest of the loop and the "loop" is one move then a long hold.
+   // Travel back to the opening position over the remaining time instead.
+   ax=last.x; ay=last.y; bx=f[0].x; by=f[0].y;
+   t0=last.t; t1=fxMotion.loopSec;
+  } else {
+   // Linear interpolation between the two frames that straddle this instant,
+   // so playback is smooth rather than stepped at the sample rate of a drag.
+   let i=0; while(i<f.length-1 && f[i+1].t<=phase) i++;
+   const a=f[i], b=f[Math.min(i+1,f.length-1)];
+   ax=a.x; ay=a.y; bx=b.x; by=b.y; t0=a.t; t1=b.t;
+  }
+  const k=Math.max(0,Math.min(1,(phase-t0)/Math.max(1e-4,t1-t0)));
+  fxSetPos(ax+(bx-ax)*k, ay+(by-ay)*k);
+  fxMotion.raf=requestAnimationFrame(tick);
+ };
+ fxApplyAll(); fxSyncUI(); tick();
+ showToast('Looping the recorded move');
+}
+function fxMotionStopPlaying(){
+ if(fxMotion.raf) cancelAnimationFrame(fxMotion.raf);
+ fxMotion.raf=null;
+ if(!fxMotion.playing) return;
+ fxMotion.playing=false;
+ if(!fxHold) fxEngaged=false;
+ fxApplyAll(); fxSyncUI();
+}
+function fxMotionClear(){
+ fxMotionStopPlaying();
+ fxMotion.frames=[]; fxMotion.recording=false; fxMotion.loopSec=0;
+ fxSyncUI();
+ showToast('Cleared the recorded move');
+}
+function fxMotionHas(){ return fxMotion.frames.length>1; }
 
 // ══════════════════════════════════════════════════════════════════
 // MōdFX — surface
@@ -21039,6 +21305,7 @@ function fxBuildPanel(){
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   + '</div></div>'
+  + '<div class="fx-presets" id="fx-presets" role="group" aria-label="MōdFX presets"></div>'
   + '<div class="fx-targets" id="fx-targets" role="group" aria-label="Channels the pad affects"></div>'
   // Both axes in one row above the pad. A vertical <select> (writing-mode:
   // vertical-rl) rendered as a cramped box with its dropdown arrow on its
@@ -21059,6 +21326,7 @@ function fxBuildPanel(){
   +   '<div class="fx-readout" id="fx-readout"></div>'
   +  '</div>'
   + '</div>'
+  + '<div class="fx-motion" id="fx-motion" role="group" aria-label="Pad motion recorder"></div>'
   + '<div class="fx-sends" id="fx-sends"></div>'
   + '<div class="fx-note" id="fx-note"></div>';
  fxWirePad();
@@ -21090,6 +21358,37 @@ function fxSyncUI(){
        +' aria-label="'+FX_CHANNEL_LABEL[ch]+' '+({rev:'reverb',dly:'delay',drv:'drive'})[w]+' send"'
        +' oninput="fxSetSend(\''+ch+'\',\''+w+'\',this.value)"></label>').join('')
     + '</div>').join('');
+
+ const pr=document.getElementById('fx-presets');
+ if(pr){
+  const all=fxAllPresets();
+  const cur=all.findIndex(x=>x.x===fxPadX&&x.y===fxPadY);
+  pr.innerHTML=all.map((x,i)=>
+    '<button class="fx-preset'+(i===cur?' on':'')+(x.user?' user':'')+'" onclick="fxApplyPreset('+i+')"'
+    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+'"'
+    +' aria-label="Preset '+x.name+': '+FX_PARAMS[x.x].label+' on X, '+FX_PARAMS[x.y].label+' on Y">'
+    +x.name+(x.user?'<span class="fx-preset-x" onclick="event.stopPropagation();fxDeleteUserPreset('+i+')" '
+    +'role="button" tabindex="0" aria-label="Delete preset '+x.name+'">×</span>':'')+'</button>').join('')
+   +'<button class="fx-preset add" onclick="fxSaveUserPreset()" aria-label="Save the current axes and channels as a preset">+ Save</button>';
+ }
+
+ const mo=document.getElementById('fx-motion');
+ if(mo){
+  const has=fxMotionHas();
+  mo.innerHTML='<span class="fx-motion-lbl">Motion</span>'
+   +'<button class="fx-mo-btn'+(fxMotion.recording?' rec':'')+'" onclick="fxMotionRecord()"'
+   +' aria-pressed="'+fxMotion.recording+'" aria-label="'+(fxMotion.recording?'Stop recording the pad':'Record a pad move')+'">'
+   +(fxMotion.recording?'■ Stop':'● Rec')+'</button>'
+   +'<button class="fx-mo-btn'+(fxMotion.playing?' on':'')+'" onclick="fxMotionPlay()"'
+   +(has?'':' disabled')+' aria-pressed="'+fxMotion.playing+'"'
+   +' aria-label="'+(fxMotion.playing?'Stop the looping move':'Loop the recorded move')+'">'
+   +(fxMotion.playing?'■ Stop':'▶ Loop')+'</button>'
+   +'<button class="fx-mo-btn" onclick="fxMotionClear()"'+(has?'':' disabled')
+   +' aria-label="Clear the recorded move">Clear</button>'
+   +'<span class="fx-motion-state">'+(fxMotion.recording?'recording…'
+      : has ? (fxMotion.loopSec>0?(fxMotion.loopSec/((60/(parseFloat(document.getElementById('bpm')?.value)||100))*4)).toFixed(0)+' bar loop':'take ready')
+      : 'nothing recorded')+'</span>';
+ }
 
  const h=document.getElementById('fx-hold-btn');
  if(h){ h.classList.toggle('on',fxHold); h.setAttribute('aria-pressed',String(fxHold)); }
