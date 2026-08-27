@@ -1364,20 +1364,36 @@ body.light-mode .ft-btn.tp-count { color:#0369a1; }
  font-size:.44rem; color:var(--muted); text-transform:uppercase; letter-spacing:.14em;
  border-bottom:1px solid var(--border2); padding-bottom:3px; margin-bottom:8px;
 }
-.cc-row { display:flex; flex-wrap:wrap; gap:10px; }
+.cc-row { display:flex; flex-wrap:wrap; gap:12px; }
+/* The Chart is the view you read from while playing, often propped up a metre
+   away — the fretboards were drawn into a 92px card, which is smaller than the
+   same diagram gets on the Play tab where you are holding the phone. They
+   scale with the space available now. */
 .cc-card {
- width:92px; text-align:center; padding:6px 4px 5px; border-radius:var(--r-md);
- border:1px solid transparent; color:var(--text); transition:all .15s;
+ width:clamp(120px, 15vw, 168px); text-align:center; padding:8px 5px 7px;
+ border-radius:var(--r-md); border:1px solid transparent; color:var(--text);
+ transition:all .15s;
 }
 .cc-card.playing {
  border-color:var(--pg);
  background:color-mix(in srgb, var(--pg) 12%, transparent);
  box-shadow:0 0 16px -4px var(--pg);
 }
-.cc-num { font-size:.4rem; color:var(--muted); height:11px; letter-spacing:.05em; }
-.cc-name { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; margin-bottom:2px; }
-.cc-sub { font-size:.36rem; color:var(--dom); letter-spacing:.06em; text-transform:uppercase; }
-.cc-dur { font-size:.38rem; color:var(--muted); margin-top:1px; }
+.cc-num { font-size:.46rem; color:var(--muted); height:13px; letter-spacing:.05em; }
+.cc-name { font-family:'Orbitron',sans-serif; font-size:.8rem; font-weight:700; margin-bottom:3px; }
+.cc-sub { font-size:.42rem; color:var(--dom); letter-spacing:.06em; text-transform:uppercase; }
+.cc-dur { font-size:.44rem; color:var(--muted); margin-top:2px; }
+/* The fretboard fills the card rather than stopping at the old 1.5x cap. */
+.cc-card svg { max-width:100% !important; }
+@media (min-width:1100px){
+ #songs-chart-panel { max-width:1060px !important; }
+ /* The wrapper widening is not enough on its own — the .panel inside it
+    carries the global 700px cap, which is what was still holding the chart
+    to three diagrams a row on a 1440px screen. */
+ #songs-chart-panel > .panel { max-width:none !important; }
+ .cc-card { width:clamp(150px, 12vw, 190px); }
+ .cc-name { font-size:.92rem; }
+}
 
 /* ═══════════════════════════════════════
  MŌDSYNTH PANEL
@@ -3242,6 +3258,14 @@ body.mode-free .pro-only { display:none !important; }
 
 .unlock-ver { font-size:.44rem; letter-spacing:.24em; color:var(--muted); opacity:.5; margin-top:4px; }
 .ft-ver { font-size:.44rem; color:var(--muted); opacity:.6; letter-spacing:.08em; align-self:center; padding:0 4px; }
+
+.ext-picker-box { max-width:440px; max-height:82vh; overflow-y:auto; }
+.ext-grid { grid-template-columns:repeat(4,1fr); gap:6px; }
+.ext-grid .dp-val { font-size:.62rem; }
+.ext-grid .dp-lbl { font-size:.33rem; line-height:1.25; }
+.ext-chip.tier-locked { pointer-events:auto; }   /* tappable, so it can say why */
+
+.ft-ms-led.fx { background:var(--pv); border-color:var(--pv); color:#07080f; }
 </style>
 </head>
 <body>
@@ -5009,6 +5033,23 @@ const EXTS = {
  sus2: ()=>[0,2,7],
  sus4: ()=>[0,5,7],
  add9: (q)=>[...(TRIAD[q]||[0,4,7]),14],
+ // ── Extended qualities (Pro). Each respects the chord's own triad quality or
+ // seventh type where that makes sense, so a ♯11 on a minor degree is built
+ // from its minor seventh rather than being forced major. 'alt' and '7sus4'
+ // are dominant shapes by definition and are spelled outright. ──
+ '6th':   (q)=>[...(TRIAD[q]||[0,4,7]),9],
+ '69':    (q)=>[...(TRIAD[q]||[0,4,7]),9,14],
+ '11th':  (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+14,s[0]+17]; },
+ '#11':   (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+14,s[0]+18]; },
+ '13th':  (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+14,s[0]+21]; },
+ 'b9':    (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+13]; },
+ '#9':    (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+15]; },
+ 'b13':   (q,t)=>{ const s=SEVENTH[t]||TRIAD[q]; return [...s,s[0]+20]; },
+ 'alt':   ()=>[0,4,10,13,15,20],
+ '7sus4': ()=>[0,5,7,10],
+ 'maj9':  ()=>[0,4,7,11,14],
+ 'dim7':  ()=>[0,3,6,9],
+ 'aug':   ()=>[0,4,8],
  // Power chord — root and fifth only. No third, so it carries no major/minor
  // quality at all, which is the point: "C5" sounds the same whether the
  // underlying degree is major, minor or diminished.
@@ -12202,14 +12243,14 @@ function renderChartSeq(){
  btn.addEventListener('click',()=>{ chartSeqIdx=i; if(!slot.isRest) playChartSlot(i); renderChartSeq(); });
 
  // ── Row 1: Extension type ──────────────────
- const ext=document.createElement('div'); ext.className='slot-ext';
- const EXTS=['triad','7th','9th','sus2','sus4','add9'];
- ext.textContent=slot.ext||'triad';
+ // Opens the catalogue rather than cycling six values. See showExtPicker.
+ const ext=document.createElement('button'); ext.type='button'; ext.className='slot-ext';
+ const _extLabel=k=>{ const e=EXT_CATALOG.find(x=>x.k===(k||'triad')); return e?e.label:(k||'triad'); };
+ ext.textContent=_extLabel(slot.ext);
+ ext.title='Chord quality — tap to change';
+ ext.setAttribute('aria-label','Chord quality: '+_extLabel(slot.ext)+' — tap to change');
  ext.addEventListener('click',()=>{
- const ci=EXTS.indexOf(slot.ext||'triad');
- slot.ext=EXTS[(ci+1)%EXTS.length];
- ext.textContent=slot.ext;
- renderChartSeq();
+  showExtPicker(slot, ()=>{ renderChartSeq(); renderPerfChartRow(); });
  });
 
  // ── Row 2: Bass + Duration ─────────────────
@@ -14510,6 +14551,78 @@ function _attachRepeatPress(el, fn){
  el.addEventListener('pointercancel',stop);
 }
 
+
+// ── Chord quality picker ─────────────────────────────────────────
+// The slot's quality control was a cycle through six values: to reach add9
+// from triad you tapped five times and past it you went round again. Same
+// treatment as the bass note — tap, see everything, pick one — and the
+// extended qualities that only make sense with a picker are now worth having.
+const EXT_CATALOG = [
+ {k:'triad', label:'Triad',   note:'Root, third, fifth',            pro:false},
+ {k:'7th',   label:'7th',     note:'The scale-correct seventh',     pro:false},
+ {k:'9th',   label:'9th',     note:'Seventh plus the ninth',        pro:false},
+ {k:'sus2',  label:'sus2',    note:'Second instead of the third',   pro:false},
+ {k:'sus4',  label:'sus4',    note:'Fourth instead of the third',   pro:false},
+ {k:'add9',  label:'add9',    note:'Triad plus a ninth, no seventh',pro:false},
+ {k:'6th',   label:'6',       note:'Triad plus a sixth',            pro:true},
+ {k:'69',    label:'6/9',     note:'Sixth and ninth — no seventh',  pro:true},
+ {k:'maj9',  label:'maj9',    note:'Major seventh plus the ninth',  pro:true},
+ {k:'11th',  label:'11',      note:'Through the eleventh',          pro:true},
+ {k:'#11',   label:'♯11',     note:'Lydian tension',                pro:true},
+ {k:'13th',  label:'13',      note:'Through the thirteenth',        pro:true},
+ {k:'b9',    label:'♭9',      note:'Flat ninth over the seventh',   pro:true},
+ {k:'#9',    label:'♯9',      note:'The Hendrix tension',           pro:true},
+ {k:'b13',   label:'♭13',     note:'Flat thirteenth',               pro:true},
+ {k:'alt',   label:'alt',     note:'♭9 ♯9 ♭13 — fully altered',     pro:true},
+ {k:'7sus4', label:'7sus4',   note:'Dominant with a suspended 4th', pro:true},
+ {k:'dim7',  label:'°7',      note:'Fully diminished',              pro:true},
+ {k:'aug',   label:'+',       note:'Augmented triad',               pro:true}
+];
+
+function showExtPicker(slot, onChange){
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div'); box.className='dur-picker-box ext-picker-box';
+ const what=slot.label||'this chord';
+ box.innerHTML='<div class="dur-picker-title">Chord Quality</div>'
+   +'<div class="dur-picker-sub">What kind of chord is <b>'+what+'</b>?</div>';
+
+ const mkGrid=(items,label)=>{
+  if(!items.length) return;
+  const h=document.createElement('div'); h.className='bp-sec'; h.textContent=label;
+  const g=document.createElement('div'); g.className='dur-preset-grid ext-grid';
+  items.forEach(e=>{
+   const locked = e.pro && typeof modAllows==='function' && !modAllows('chordExtensions');
+   const c=document.createElement('button');
+   c.type='button';
+   c.className='dur-preset-chip ext-chip'+((slot.ext||'triad')===e.k?' active':'')+(locked?' tier-locked':'');
+   c.innerHTML='<span class="dp-val">'+e.label+'</span><span class="dp-lbl">'+e.note+'</span>';
+   c.setAttribute('aria-label', e.label+' — '+e.note+(locked?' (Pro)':''));
+   c.addEventListener('click',()=>{
+    if(locked) return freeBlocked('Extended chord qualities');
+    slot.ext=e.k;
+    box.querySelectorAll('.ext-chip').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');
+    if(onChange) onChange();
+   });
+   g.appendChild(c);
+  });
+  box.appendChild(h); box.appendChild(g);
+ };
+ mkGrid(EXT_CATALOG.filter(e=>!e.pro), 'Basics');
+ mkGrid(EXT_CATALOG.filter(e=>e.pro),  'Extended · Pro');
+
+ const done=document.createElement('button'); done.className='dur-picker-done'; done.textContent='Done';
+ done.addEventListener('click',()=>{ overlay.remove(); if(onChange) onChange(); });
+ box.appendChild(done);
+ overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+ document.addEventListener('keydown', function esc(e){
+  if(e.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown',esc); }
+ });
+ overlay.appendChild(box); document.body.appendChild(overlay);
+ setTimeout(()=>box.querySelector('.ext-chip')?.focus(),30);
+}
+
 // ── Bass note picker ─────────────────────────────────────────────────
 // The slot's bass button used to be a one-way cycle: first tap dropped the
 // bass to rootM-1, and every tap after that went down another semitone until
@@ -16615,6 +16728,19 @@ function sqToggleSolo(ch){
   sqSyncMixIndicators();
 }
 function sqClearMuteSolo(){
+ // When the badge is lit for MōdFX rather than a mute or solo, this is the
+ // one-tap way out of a latched pad from anywhere in the app.
+ try{
+  var led=document.getElementById('ft-ms-led');
+  if(led && led.classList.contains('fx')){
+   if(typeof fxHold!=='undefined' && fxHold && typeof fxToggleHold==='function') fxToggleHold();
+   if(typeof fxEngaged!=='undefined'){ fxEngaged=false; fxApplyAll(); }
+   if(typeof fxSyncUI==='function') fxSyncUI();
+   if(typeof showToast==='function') showToast('Released the MōdFX pad');
+   if(typeof sqSyncMixIndicators==='function') sqSyncMixIndicators();
+   return;
+  }
+ }catch(e){}
   window.sqMixMute={}; window.sqMixSolo={};
   sqSyncMixIndicators();
 }
@@ -20620,13 +20746,25 @@ function sqSyncMixIndicators(){
  });
  var led=document.getElementById('ft-ms-led');
  if(led){
-  var txt = anySolo ? 'SOLO' : (anyMute ? 'MUTE' : '');
+  // MōdFX belongs here too. A held pad can filter, gate or drown a channel
+  // from a tab you are not looking at — which is indistinguishable from "the
+  // bass just stopped working" unless something in the transport says so.
+  var fxHeld = false, fxWhat = '';
+  try{
+   if(typeof fxEngaged!=='undefined' && fxEngaged && typeof fxTargets!=='undefined' && fxTargets.length){
+    fxHeld = true;
+    fxWhat = fxTargets.map(function(c){ return FX_CHANNEL_LABEL[c]||c; }).join(', ');
+   }
+  }catch(e){}
+  var txt = anySolo ? 'SOLO' : (anyMute ? 'MUTE' : (fxHeld ? 'FX' : ''));
   led.textContent=txt;
   led.style.display = txt ? '' : 'none';
   led.classList.toggle('solo',anySolo);
+  led.classList.toggle('fx', !anySolo && !anyMute && fxHeld);
   led.title = anySolo
    ? 'Something is soloed — other channels are silent. Tap to clear.'
-   : 'Something is muted. Tap to clear.';
+   : anyMute ? 'Something is muted. Tap to clear.'
+   : 'MōdFX is holding ' + fxWhat + '. Tap to release it.';
  }
 }
 window.sqSyncMixIndicators=sqSyncMixIndicators;
@@ -21185,8 +21323,10 @@ const FX_PARAMS = {
 };
 const FX_PARAM_KEYS = Object.keys(FX_PARAMS);
 
-function _fxFiltHz(v){ return 120*Math.pow(150,Math.max(0,Math.min(1,v))); }   // 120Hz..18kHz
-function _fxHpHz(v){ return 20*Math.pow(200,Math.max(0,Math.min(1,v))); }      // 20Hz..4kHz
+// From 60Hz, not 120: on a bass or a kick, a lowpass that stops at 120Hz is
+// still above most of the energy and barely does anything.
+function _fxFiltHz(v){ return 60*Math.pow(300,Math.max(0,Math.min(1,v))); }    // 60Hz..18kHz
+function _fxHpHz(v){ return 20*Math.pow(400,Math.max(0,Math.min(1,v))); }      // 20Hz..8kHz
 function _fxHzFmt(hz){ return hz>=1000 ? (hz/1000).toFixed(1)+'k' : Math.round(hz)+'Hz'; }
 function _fxWarpRate(v){ return Math.pow(2,(Math.max(0,Math.min(1,v))-0.5)*2); } // 0.5x..2x
 function _fxRingHz(v){ return 18*Math.pow(46,Math.max(0,Math.min(1,v))); }        // 18Hz..830Hz
@@ -21388,15 +21528,23 @@ function fxBuildChain(ctx, ch){
  postRing.connect(dlySend); dlySend.connect(dly); dly.connect(dlyFb); dlyFb.connect(dly);
  dly.connect(dlyRet); dlyRet.connect(out);
 
- const rev=ctx.createConvolver(); rev.buffer=_fxRoomIR(ctx,2.2);
+ // A bigger room with a return stage: the send alone could not make the tail
+ // loud enough to read as an effect rather than an ambience.
+ const rev=ctx.createConvolver(); rev.buffer=_fxRoomIR(ctx,3.4);
  const revSend=ctx.createGain(); revSend.gain.value=0;
- postRing.connect(revSend); revSend.connect(rev); rev.connect(out);
+ const revRet=ctx.createGain(); revRet.gain.value=2.2;
+ postRing.connect(revSend); revSend.connect(rev); rev.connect(revRet); revRet.connect(out);
 
- postRing.connect(out);      // dry
+ // The dry path is a gain, not a hard wire. It used to be wired straight to
+ // the output at unity, so delay and reverb were sends ADDED to a full-level
+ // dry signal — at the top of the pad you still heard mostly dry, which is
+ // why the whole unit read as "mixed in at 25%". It ducks against wetness now.
+ const dry=ctx.createGain(); dry.gain.value=1;
+ postRing.connect(dry); dry.connect(out);
  out.connect(dest);
 
  const bundle={ctx,io,out,filt,hp,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend,
-               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry};
+               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet};
  fxChains[ch]=bundle;
  return bundle;
 }
@@ -21466,19 +21614,27 @@ function fxApplyChannel(ch){
  const v=k=>fxValue(ch,k);
 
  chain.filt.frequency.setTargetAtTime(_fxFiltHz(v('cutoff')), t, S);
- chain.filt.Q.setTargetAtTime(1+v('reso')*22, t, S);
+ chain.filt.Q.setTargetAtTime(0.7+v('reso')*28, t, S);   // to self-oscillation territory
  chain.hp.frequency.setTargetAtTime(_fxHpHz(v('hpf')), t, S);
 
+ // Drive goes fully wet at the top, with the saturator's own gain cancelled
+ // the same way the master drive does it — measured off the curve rather than
+ // guessed. Without this the axis was +2900% RMS at the top and peaked at
+ // 1.40, i.e. it clipped: "louder" reading as "more effect".
  const drv=v('drive');
- chain.shaper.curve=_fxDriveCurve(drv);
- chain.drvWet.gain.setTargetAtTime(drv, t, S);
- chain.drvDry.gain.setTargetAtTime(1-drv*0.6, t, S);
+ const dcurve=_fxDriveCurve(drv);
+ chain.shaper.curve=dcurve;
+ const mk = (typeof _curveRmsGain==='function') ? _curveRmsGain(dcurve, 0.2) : 1;
+ chain.drvWet.gain.setTargetAtTime(drv*(mk>0.001 ? 1/mk : 1), t, S);
+ chain.drvDry.gain.setTargetAtTime(1-drv, t, S);
 
  chain.gate.gain.setTargetAtTime(v('gate'), t, S);
 
+ // Tremolo reaches full depth — at the top the signal is chopped to silence
+ // between cycles, which is the point of it.
  const trm=v('tremolo');
- chain.tremDepth.gain.setTargetAtTime(trm*0.5, t, S);
- chain.trem.gain.setTargetAtTime(1-trm*0.5, t, S);
+ chain.tremDepth.gain.setTargetAtTime(trm*0.98, t, S);
+ chain.trem.gain.setTargetAtTime(1-trm*0.98, t, S);
  chain.tremLfo.frequency.setTargetAtTime(Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate')))), t, S);
 
  if(chain.pan) chain.pan.pan.setTargetAtTime(Math.max(-1,Math.min(1, v('pan')*2-1)), t, S);
@@ -21488,10 +21644,17 @@ function fxApplyChannel(ch){
  chain.ringAmt.gain.setTargetAtTime(rng<=0.001?0:1, t, S);
  chain.ringDry.gain.setTargetAtTime(rng<=0.001?1:0, t, S);
 
- chain.dlySend.gain.setTargetAtTime(v('delay')*0.6, t, S);
+ // Delay and reverb are wet/dry, not sends bolted onto a full dry signal.
+ // At the top of either axis the dry drops to 12%, so "all the way up" sounds
+ // like all the way up. Feedback reaches 0.95, which is where a dub delay
+ // actually lives.
+ const dlyAmt=v('delay'), revAmt=v('reverb');
+ chain.dlySend.gain.setTargetAtTime(dlyAmt*1.15, t, S);
  chain.dly.delayTime.setTargetAtTime(Math.min(3.9,_fxDivSec(v('dtime'))), t, S);
- chain.dlyFb.gain.setTargetAtTime(Math.min(0.88, v('feedback')*0.88), t, S);
- chain.revSend.gain.setTargetAtTime(v('reverb')*0.7, t, S);
+ chain.dlyFb.gain.setTargetAtTime(Math.min(0.95, v('feedback')*0.95), t, S);
+ chain.revSend.gain.setTargetAtTime(revAmt*1.25, t, S);
+ const wet=Math.max(dlyAmt, revAmt);
+ if(chain.dry) chain.dry.gain.setTargetAtTime(1-0.88*wet, t, S);
 
  if(chain.worklet){
   const pr=chain.worklet.parameters;
@@ -21525,6 +21688,8 @@ function fxSetPos(x,y){
  // recording is actually on.
  if(typeof fxMotionCapture==='function') fxMotionCapture();
  if(typeof fxPaintPad==='function') fxPaintPad();
+ if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
+ if(typeof sqSyncMixIndicators==='function') sqSyncMixIndicators();
 }
 function fxEngage(on){
  // Hold keeps the last position live after you lift, which is the difference
@@ -21533,6 +21698,10 @@ function fxEngage(on){
  else if(!fxHold) fxEngaged=false;
  fxApplyAll();
  if(typeof fxPaintPad==='function') fxPaintPad();
+ // The readouts on every tab are how you find out a channel is being held
+ // under an effect. They were only refreshed by fxSyncUI, so a held pad
+ // reported "No effects" on the very tab whose sound it was changing.
+ if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
 }
 function fxRelease(){
  if(fxHold) return;              // stays where you left it
@@ -22013,6 +22182,7 @@ const FREE_LIMITS = {
   samples:      false,   // sampled ◆ voices
   stemExport:   false,
   midiExport:   false,
+  chordExtensions: false,      // 6/9, 11, #11, 13, b9, #9, alt, ... are Pro
   drumKits:     ['MOD'],        // SQM's key for MōdKit — the synthesized one
   stepCounts:   [16],
   bassStyles:   ['Rock','Jazz','Funk'],
