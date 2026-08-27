@@ -3139,6 +3139,76 @@ body.mode-free .pro-only { display:none !important; }
 /* Free tier: locked controls stay visible but inert, so the ceiling is
    legible rather than mysterious — a control that vanishes reads as a bug. */
 .tier-locked { opacity:.34; pointer-events:none; position:relative; filter:grayscale(.7); }
+
+/* ══ Wide screens ═══════════════════════════════════════════════
+   Every panel was capped at 700px at every size, so a 1440x900 laptop showed
+   the app in 49% of its width and 48% of its height with nothing below the
+   fold — while the same app ships a search palette to cope with density on a
+   phone. Above 1100px the tabs that have two things to show, show both.
+
+   Deliberately not a blanket max-width bump: widening a chord grid or a step
+   grid to 1400px makes its targets worse, not better. What changes is how
+   many capped columns fit beside each other. The inline style="max-width:700px"
+   on most panels is why these rules carry !important — they are overriding a
+   per-element cap, not another stylesheet. */
+@media (min-width: 1100px) {
+  .tab-page > * { max-width: 1060px; }
+
+  /* Mix — channels beside the master bus, so a meter and the limiter it feeds
+     are in view together; Export spans underneath. */
+  /* Fixed column widths rather than fractions: #page-mix is itself the
+     .tab-page, so it is not subject to the child cap above, and fr units let
+     the spanning Export panel stretch to the full 1416px of a 1440 window. */
+  /* .active is load-bearing: an id selector outranks .tab-page{display:none},
+     so an unqualified "#page-mix{display:grid}" makes the Mix tab visible on
+     every other tab as well. */
+  #page-mix.active {
+    display: grid; grid-template-columns: minmax(0,560px) minmax(0,488px);
+    gap: 12px; align-content: start; justify-content: center;
+  }
+  #page-mix.active > .panel { max-width: none !important; width: 100% !important; margin: 0 !important; }
+  #page-mix.active > .panel:nth-of-type(3) { grid-column: 1 / -1; }
+
+  /* Play — the chord grid keeps its comfortable width and Chord Forms moves
+     alongside it instead of below the fold. */
+  #pf-chords-panel { display: grid; grid-template-columns: minmax(0,1fr) 300px;
+                     gap: 14px; align-items: start; }
+  #pf-chords-panel > * { min-width: 0; }
+  #pf-chords-panel > #chord-diagram-panel {
+    grid-column: 2; grid-row: 1 / span 99;
+    max-width: none !important; width: 100% !important; margin-top: 0 !important;
+  }
+
+  /* Drums — all sixteen steps without scrolling. */
+  #page-rhythm > .sq-wrap { max-width: 1060px !important; }
+}
+/* Wider still: a third column would take each below a usable width, so the
+   layout stops growing and stays centred. */
+@media (min-width: 1500px) { .tab-page > * { max-width: 1180px; } }
+
+/* ── Song Builder: one inspector instead of eight control stacks ── */
+.chart-inspector { display:none; }
+.chart-inspector.has-slot {
+ display:flex; flex-direction:column; gap:8px;
+ margin-top:8px; padding:10px 12px;
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-md);
+}
+.ci-head { display:flex; align-items:baseline; gap:8px; }
+.ci-what { font-family:'Outfit',sans-serif; font-weight:700; font-size:.7rem; color:var(--accent); }
+.ci-pos { font-size:.44rem; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+.ci-body { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.ci-body > * { margin:0 !important; }
+/* Full-size targets, now that there is room for them. */
+.ci-body .slot-arr, .ci-body .slot-del, .ci-body .slot-bass,
+.ci-body .slot-dur-btn, .ci-body .slot-rest-btn, .ci-body .slot-ext {
+ font-size:.55rem; padding:7px 12px; min-height:32px;
+}
+.ci-body .slot-controls-row2, .ci-body .slot-controls-row3 { display:flex; gap:6px; align-items:center; }
+/* The selected chord is what the inspector is pointing at, so say so. */
+.chart-slot.slot-selected .chart-chord-btn {
+ outline:2px solid var(--accent); outline-offset:2px;
+}
+.ci-rest { font-size:.5rem; color:var(--muted); text-align:center; padding:2px 0; }
 </style>
 </head>
 <body>
@@ -3991,6 +4061,8 @@ body.mode-free .pro-only { display:none !important; }
  <!-- Chart sequence — shown above picker so you can see what you've built -->
  <div class="chart-lbl" style="margin-top:4px">Your progression:</div>
  <div class="chart-seq empty" id="chart-sequence"></div>
+ <!-- One set of slot controls, for whichever chord is selected. -->
+ <div class="chart-inspector" id="chart-inspector" aria-live="polite"></div>
  <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
  <button class="sc-btn" onclick="printChart()" style="font-size:.44rem;padding:4px 10px">⎙ PDF</button>
  <!-- Not the same setting as the transport's Feel. This one stretches the
@@ -11932,6 +12004,20 @@ function renderChartSeq(){
  const seq=document.getElementById('chart-sequence'); if(!seq) return;
  const slots=sections[curSection]?.slots||[];
  seq.classList.toggle('empty',slots.length===0); seq.innerHTML='';
+ const _ins=document.getElementById('chart-inspector');
+ if(_ins){
+  _ins.innerHTML='';
+  const _sel = chartSeqIdx>=0 && chartSeqIdx<slots.length;
+  _ins.classList.toggle('has-slot', _sel || slots.length>0);
+  // Resting state. Without it, arriving at a chart with nothing selected
+  // showed bare chord cards and no sign that tapping one is what gives you
+  // the controls that used to be stacked under every single chord.
+  // chartSeqIdx is not auto-set here: it also decides where the next chord
+  // gets inserted, and moving that silently would surprise.
+  if(!_sel && slots.length>0){
+   _ins.innerHTML='<div class="ci-rest">Tap a chord to change its extension, bass note, length or position.</div>';
+  }
+ }
  // Shows where the next chord will land. Without it you cannot tell whether a
  // new chord is going into the middle of the progression or onto the end.
  const mkCaret=(pos,label)=>{
@@ -12053,7 +12139,30 @@ function renderChartSeq(){
  });
  row3.appendChild(up); row3.appendChild(dn); row3.appendChild(del);
 
- wrap.appendChild(btn); wrap.appendChild(ext); wrap.appendChild(row2); wrap.appendChild(row3);
+ // Every slot used to carry all eight of its own controls: an extension
+ // dropdown, a bass button, a length button, a rest toggle, two nudge arrows
+ // and a delete, once per chord. On the eight-chord chart this app's own demo
+ // song ships with, that is 64 targets competing in one view — with the chord
+ // symbol, the only thing you actually read while playing, as the smallest
+ // element on its own card and every control squeezed too small for a label.
+ //
+ // The controls are the same; there is one copy of them now, under the
+ // progression, editing whichever slot is selected. chartSeqIdx already
+ // tracked that selection for the insert caret, so nothing new has to.
+ wrap.appendChild(btn);
+ if(i===chartSeqIdx){
+  wrap.classList.add('slot-selected');
+  const ins=document.getElementById('chart-inspector');
+  if(ins){
+   const head=document.createElement('div'); head.className='ci-head';
+   head.innerHTML='<span class="ci-what">'+(slot.isRest?'Rest':(slot.label||'Chord'))+'</span>'
+     +'<span class="ci-pos">chord '+(i+1)+' of '+slots.length+'</span>';
+   ins.appendChild(head);
+   const body=document.createElement('div'); body.className='ci-body';
+   body.appendChild(ext); body.appendChild(row2); body.appendChild(row3);
+   ins.appendChild(body);
+  }
+ }
  seq.appendChild(wrap);
  mkCaret(i, i===slots.length-1?'Add to the end':'Insert after '+(slot.label||'this chord'));
  });
