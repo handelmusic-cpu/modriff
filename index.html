@@ -2,8 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- user-scalable=no is gone. Every surface that owns a drag gesture — the
+     melody keys, the bend strip, the tempo readout, the drum knobs — already
+     declares touch-action:none, and the scrollers declare pan-x, so pinch was
+     being blocked page-wide to solve a problem that was already solved
+     per-element. Blocking it cost the one route to bigger text on the device
+     where the text is smallest. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>MōdRiff</title>
+
+<!-- Link previews. The whole way this app travels is #prog= and #setup= links
+     pasted into a chat, and until these tags existed every one of them landed
+     as a bare URL with no title, no art and no description. og:image is
+     root-relative: scrapers resolve it against the page URL, so it follows
+     the app to whatever domain it is served from. -->
+<meta name="description" content="A chromatic modal groovebox in a browser tab. Chords, drums, bass, melody and a synth playing together — no install, no account, and the whole rig travels inside a link.">
+<meta name="theme-color" content="#05060c">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MōdRiff">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MōdRiff">
+<meta property="og:title" content="MōdRiff — Chromatic Modal Groovebox">
+<meta property="og:description" content="Chords, drums, bass, melody and a synth playing together in a browser tab. Nothing to install, nothing uploaded — the whole rig travels inside the link.">
+<meta property="og:image" content="/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The MōdRiff wordmark over a spectrum of coloured level bars.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MōdRiff — Chromatic Modal Groovebox">
+<meta name="twitter:description" content="Chords, drums, bass, melody and a synth playing together in a browser tab. The whole rig travels inside the link.">
+<meta name="twitter:image" content="/og-card.png">
 <script>
   !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
   posthog.init('phc_Ce7tm5SE2SoCu4dKKapsuXioRPVyX27d5CU3RXnedL9A', {
@@ -70,7 +102,11 @@
  --r-lg: 14px;
 }
 
-html { font-size: 20px; }
+/* 125% of the browser's own base, not a hard 20px. At the default 16px base
+   this computes to exactly the 20px every rem in this file was tuned against,
+   so nothing moves — but a reader who has set their browser text larger now
+   gets a larger app instead of being overridden. */
+html { font-size: 125%; }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
 body {
@@ -214,6 +250,17 @@ body.light-mode .tab-bar { background:#e8eaf6; border-bottom-color:#c2c6de; }
 /* Every direct child of a tab-page gets max-width cap and full width */
 .tab-page > * {
  width:100%; max-width:700px; box-sizing:border-box;
+ /* flex-shrink:0 is load-bearing. .tab-page is a column flex container, so
+    its children default to flex-shrink:1 and get SQUEEZED below their content
+    height whenever the page is taller than the viewport — and .panel is
+    overflow:hidden, so the squeezed-off part is silently clipped rather than
+    scrolled to. On a 390x844 phone that cost the Mix tab its entire wrapped
+    Arp channel: the panel rendered 202px tall around 270px of content, so
+    Arp's level, its name and its mute/solo buttons were painted outside the
+    panel and hit-testing them landed on the Master Bus title underneath.
+    Panels keep their natural height now and .tab-page's own overflow-y:auto
+    does the scrolling, which is what it was always there for. */
+ flex-shrink:0;
 }
 /* Center all content within tab pages */
 /* max-width handled by .tab-page > * rule above */
@@ -2184,7 +2231,36 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .bl-playbtn.active { background:var(--pr); color:#fff; }
 .bl-genbtn { padding:6px 12px; border:1px solid var(--pg); border-radius:7px; background:none; color:var(--pg); font-family:'Outfit',sans-serif; font-size:.55rem; cursor:pointer; touch-action:manipulation; }
 .bl-grid { overflow-x:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x; overscroll-behavior-x:contain; padding-bottom:4px; }
-.bl-empty-hint { display:none; flex-direction:column; align-items:center; text-align:center; gap:8px; padding:30px 16px 8px; color:var(--muted); }
+/* The empty state sits ON the roll, not under it. It used to render after the
+   grid in document order, which put "No bassline yet" 83px BELOW the bottom of
+   the 338px empty grid it was explaining — so you met the empty grid first and
+   found out why it was empty second, if the window was tall enough to show
+   both. Overlaid and pointer-events:none, so the invitation to "tap any step"
+   is still something you can act on through it. */
+/* A two-row grid so the hint can share row 1 with the roll — overlaying the
+   grid exactly, and leaving the "tap a cell…" instruction bar in row 2
+   uncovered. An absolutely-positioned overlay can't do this: .pr-wrap is
+   overflow:auto, so inset:0 inside it would size to the scrolled content, and
+   inset:0 on the host would dim the instruction bar too. */
+.pr-host { display:grid; grid-template-rows:auto auto; }
+.pr-host > .pr-wrap { grid-area:1/1; }
+.pr-host > .pr-bar  { grid-area:2/1; }
+.bl-empty-hint {
+ display:none; flex-direction:column; align-items:center; justify-content:center;
+ text-align:center; gap:8px; padding:16px; color:var(--muted);
+ grid-area:1/1; z-index:3; pointer-events:none; overflow:hidden;
+ background:linear-gradient(to bottom,
+   hsla(var(--kh), 30%, 6%, .82) 0%,
+   hsla(var(--kh), 30%, 6%, .93) 45%,
+   hsla(var(--kh), 30%, 6%, .82) 100%);
+ border-radius:var(--r-md);
+}
+body.light-mode .bl-empty-hint {
+ background:linear-gradient(to bottom,
+   hsla(var(--kh), 24%, 97%, .84) 0%,
+   hsla(var(--kh), 24%, 97%, .94) 45%,
+   hsla(var(--kh), 24%, 97%, .84) 100%);
+}
 .bl-empty-hint.show { display:flex; }
 .bl-empty-hint svg { opacity:.45; }
 .bl-empty-hint .bl-eh-title { font-family:'Outfit',sans-serif; font-weight:700; font-size:.78rem; color:var(--text); }
@@ -2811,31 +2887,126 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 body.light-mode .ft-btn.rec     { background:#c81e3a !important; color:#fff !important; border-color:#c81e3a !important; }
 body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !important; border-color:#c81e3a !important; }
 
+/* ── Sampled-voice load state ──────────────────────────────────────
+   A ◆ voice plays a stand-in synth until its mp3s arrive, and forever if
+   they never do. These say which of the three you are hearing. */
+[data-sstate="loading"] { position:relative; }
+[data-sstate="loading"]::after {
+ content:''; position:absolute; top:3px; right:3px;
+ width:5px; height:5px; border-radius:50%;
+ background:var(--po); animation:sstatePulse 1s ease-in-out infinite;
+}
+@keyframes sstatePulse { 0%,100%{opacity:.25;transform:scale(.8);} 50%{opacity:1;transform:scale(1);} }
+[data-sstate="error"] { opacity:.6; }
+[data-sstate="error"]::after {
+ content:'!'; position:absolute; top:0; right:3px;
+ font-size:.5rem; font-weight:700; color:var(--ms-alert); line-height:1.1;
+}
+[data-sstate="error"] { position:relative; }
+select[data-sstate="loading"], select[data-sstate="error"] { border-color:var(--po); }
+@media (prefers-reduced-motion: reduce){
+ [data-sstate="loading"]::after { animation:none; opacity:.85; }
+}
+
+
+/* The transport's two numbers, told apart. The tempo carries a metronome mark
+   with a font stack that has an actual quarter-note glyph in it, and the arp
+   rate carries a cap — they used to read as "= 100   16TH" with nothing
+   saying one was tempo and the other a subdivision. */
+.ft-bpm-mark {
+ font-size:.6rem; color:var(--muted); line-height:1;
+ font-family:'Outfit', 'Segoe UI Symbol', 'Apple Symbols', 'Noto Music', 'Noto Sans Symbols 2', sans-serif;
+}
+.ft-rate-cap {
+ font-size:.4rem; color:var(--muted); text-transform:uppercase; letter-spacing:.1em;
+ font-weight:600; line-height:1;
+}
+
+/* Destructive controls, demoted. Each of these is the one irreversible action
+   in a row of reversible ones, and each was styled at least as loudly as its
+   neighbours. Quiet by default, unmistakable on hover and focus. */
+.sc-sep { flex:0 0 auto; width:1px; align-self:stretch; background:var(--border2); margin:0 4px; }
+.sc-btn.quiet-danger { color:var(--muted); border-color:var(--border); }
+.sc-btn.quiet-danger:hover, .sc-btn.quiet-danger:focus-visible {
+ color:var(--dom); border-color:var(--dom); background:hsla(0,60%,10%,.5);
+}
+/* The slot delete sat flush against the two nudge arrows at ~24px each. */
+.slot-controls-row3 .slot-del { margin-left:8px; }
+/* CLR wipes the pattern and read as a fourth entry in the FX group next to it.
+   Same treatment: separated, and quiet until you mean it. */
+.sq-clrbtn {
+ margin-left:10px; border-color:var(--sq-bdr2); color:var(--sq-mut);
+ transition:color .12s, border-color .12s, background .12s;
+}
+.sq-clrbtn:hover, .sq-clrbtn:focus-visible {
+ border-color:var(--sq-red); color:var(--sq-red); background:hsla(0,60%,12%,.45);
+}
+
+/* ── Bass note picker ──
+   The slot bass control opens this instead of cycling downward one semitone
+   per tap with no way back up. Built on the duration picker's furniture so
+   the two sheets read as the same kind of thing. */
+.bass-picker-box { max-width:360px; }
+.bp-sec {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase; letter-spacing:.12em;
+ font-weight:600; margin:14px 0 6px;
+}
+.bp-sec:first-of-type { margin-top:4px; }
+.bp-grid { grid-template-columns:repeat(4,1fr); }
+.bp-grid .dp-val { font-size:.7rem; }
+.bp-grid .dp-lbl { font-size:.36rem; }
+.bp-chroma { display:grid; grid-template-columns:repeat(6,1fr); gap:5px; }
+.bp-note {
+ padding:9px 2px; border-radius:8px; border:1px solid var(--border2); background:var(--bg);
+ color:var(--text); font-family:'Outfit',sans-serif; font-size:.56rem; font-weight:600;
+ cursor:pointer; touch-action:manipulation; transition:all .1s;
+}
+.bp-note:hover { border-color:var(--accent); }
+.bp-chip.active { border-color:var(--accent); background:rgba(139,92,246,.18); color:var(--accent); }
+.bp-nudge {
+ display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px;
+ border-top:1px solid var(--border2);
+}
+.bp-nudge-btn { width:30px; height:30px; flex:none; font-size:.75rem; }
+.bp-readout {
+ flex:1; text-align:center; font-family:'Outfit',sans-serif; font-weight:700;
+ font-size:.62rem; color:var(--accent); line-height:1.25;
+}
+.bp-readout.none { color:var(--muted); font-weight:500; font-size:.55rem; }
 </style>
 </head>
 <body>
 
 <div class="top-stack" id="top-stack">
-<nav class="tab-bar" id="tab-bar">
- <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')">
- <span class="tab-icon">🎹</span>Play
+<!-- A real ARIA tablist. Left/Right/Home/End move between tabs while the bar
+     has focus, which is the standard pattern and, more to the point, is what
+     lets Tab go back to doing its own job — see the tabBarKey handler. -->
+<nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
+ <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')"
+   role="tab" aria-selected="true" aria-controls="page-perform">
+ <span class="tab-icon" aria-hidden="true">🎹</span>Play
  </button>
- <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')">
- <span class="tab-icon">📄</span>Songs
+ <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')"
+   role="tab" aria-selected="false" aria-controls="page-songs" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">📄</span>Songs
  </button>
- <button class="tab-btn" id="tab-rhythm" onclick="switchTab('rhythm')">
- <span class="tab-icon">🥁</span>Drums
+ <button class="tab-btn" id="tab-rhythm" onclick="switchTab('rhythm')"
+   role="tab" aria-selected="false" aria-controls="page-rhythm" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🥁</span>Drums
  </button>
- <button class="tab-btn" id="tab-bass" onclick="switchTab('bass')">
- <span class="tab-icon">🎸</span>Bass/Mel
+ <button class="tab-btn" id="tab-bass" onclick="switchTab('bass')"
+   role="tab" aria-selected="false" aria-controls="page-bass" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🎸</span>Bass/Mel
  </button>
- <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')">
- <span class="tab-icon">🎚</span>Mix
+ <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
+   role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🎚</span>Mix
  </button>
- <button class="tab-btn" id="tab-build" onclick="switchTab('build')">
- <span class="tab-icon">⚙</span>Setup
+ <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
+   role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">⚙</span>Setup
  </button>
- <div class="tab-led" id="tab-led"></div>
+ <div class="tab-led" id="tab-led" aria-hidden="true"></div>
 </nav>
 </div>
 <!-- Performance bar — the controls you touch WHILE playing live in the
@@ -2862,7 +3033,10 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
       target on a phone. The readout IS the control now: drag it like a DAW
       tempo field, or tap it for a proper slider with nudge buttons. -->
  <div class="ft-bpm" id="ft-bpm-wrap">
- <span style="font-size:.55rem;color:var(--muted)">=</span>
+ <!-- A metronome mark, not a stray equals sign. The "=" alone sat next to an
+      unlabelled arp rate, so the transport showed two bare numbers and said
+      which was which nowhere. -->
+ <span class="ft-bpm-mark" aria-hidden="true">♩=</span>
  <span class="ft-bpm-val" id="ft-bpm-val" role="slider" tabindex="0"
        aria-label="Tempo" aria-valuemin="40" aria-valuemax="220" aria-valuenow="100"
        title="Tempo — drag to change, tap 4+ times to set by feel, or tap once for tempo and feel">100</span>
@@ -2900,7 +3074,13 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
       need one either, and freeing that width is what lets Song (below) fit
       on this row instead of wrapping to a third. -->
  <div class="ft-rate">
- <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()" title="Arp rate — tap to cycle">8th</div>
+ <!-- "Rate", not "Arp": this sits immediately right of the Arp on/off layer
+      button, and two adjacent captions reading "ARP" meant two different
+      things. The aria-label on the value still says "Arp rate" in full. -->
+ <span class="ft-rate-cap" aria-hidden="true">Rate</span>
+ <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()"
+      role="button" tabindex="0" aria-label="Arp rate — tap to cycle"
+      title="Arp rate — tap to cycle">8th</div>
  </div>
  <!-- Two different recorders, which is exactly why they used to be confusing:
       one bare red dot did the first, and the second lived on another tab. They
@@ -3042,6 +3222,14 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Playback</div>
   <div class="kb-sc-row"><span class="kb-key">Space</span><span class="kb-desc">Start / stop everything (sequencer, bass, song) in sync.</span></div>
+ </div>
+
+ <div class="kb-sc-group">
+  <div class="kb-sc-hdr">Getting Around</div>
+  <div class="kb-sc-row"><span class="kb-key">Tab</span><span class="kb-desc">Step through the controls on screen. The section bar at the top is the first stop.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">With the section bar focused: move between Play, Songs, Drums, Bass/Mel, Mix and Setup. Home / End jump to the first or last.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + K</span><span class="kb-desc">Find any control by name and jump straight to it. Bare <b>/</b> does the same when you are not typing.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + Z</span><span class="kb-desc">Undo a sound-setting change. Add Shift to redo.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -3568,10 +3756,15 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
  <div class="song-meta">
  <input class="song-title-input" id="chart-title" type="text" placeholder="Song title…">
  <button class="sc-btn primary" onclick="saveToSetlist()" title="Save song to setlist" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Save</button>
- <button class="sc-btn danger" onclick="clearChart()" title="Clear all chords and sections" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Clear</button>
  <button class="tb advanced-only" id="save-rhythm-btn" onclick="toggleSaveRhythm()" title="Also save current drum pattern, bassline, and melody sequence with this song" style="font-size:.42rem;padding:4px 8px;flex-shrink:0">+Rhythm: OFF</button>
  <button class="tb" onclick="shareProgression()" title="Copy share URL to clipboard" style="font-size:.44rem;padding:4px 8px">Share</button>
  <button class="tb" onclick="exportMidi()" title="Export MIDI file" style="font-size:.44rem;padding:4px 8px">MIDI</button>
+ <!-- Clear used to be the second solid pill, immediately after Save, with
+      Share and MIDI trailing off as dim ghost text — the one irreversible
+      action in the row holding the position the eye reaches first. It sits
+      at the end now, past a divider, styled as the quietest thing here. -->
+ <span class="sc-sep" aria-hidden="true"></span>
+ <button class="sc-btn quiet-danger" onclick="clearChart()" title="Clear all chords and sections" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Clear</button>
  <div class="song-key-strip">
   <button class="btn-xp" onclick="transposeBy(-1)">−</button>
   <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
@@ -4003,7 +4196,9 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
        row of step dots instead, which meant Basic had no way to see or set a
        note's pitch — and on the Melody page it rendered nothing at all, so
        the sequencer simply looked missing. -->
-  <div>
+  <!-- pr-host is the positioning context for the empty state, which sits ON
+       the roll rather than under it — see .bl-empty-hint. -->
+  <div class="pr-host">
    <div class="pr-wrap" id="bl-pr">
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
@@ -4011,12 +4206,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="pr-bar">
     <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
    </div>
-  </div>
-  <!-- Empty state: shown when no steps are active -->
-  <div class="bl-empty-hint" id="bl-empty-hint">
-   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-   <div class="bl-eh-title">No bassline yet</div>
-   <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, or tap any step below to place a note by hand.</div>
+   <!-- Empty state: shown when no steps are active -->
+   <div class="bl-empty-hint" id="bl-empty-hint">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    <div class="bl-eh-title">No bassline yet</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, or tap any step to place a note by hand.</div>
+   </div>
   </div>
  </div>
  <!-- Bassline step popup (position:fixed, works from any tab) -->
@@ -4106,7 +4301,7 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
   </div>
   <!-- Basic mode: single-line step dots -->
   <!-- Same as the bass page: the roll shows in Basic too. -->
-  <div>
+  <div class="pr-host">
    <div class="pr-wrap" id="ml-pr">
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
@@ -4114,12 +4309,12 @@ body.light-mode .ft-btn.rec.off { background:#f5d8dc !important; color:#c81e3a !
    <div class="pr-bar">
     <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
    </div>
-  </div>
-  <!-- Empty state: shown when no steps are active -->
-  <div class="bl-empty-hint" id="ml-empty-hint">
-   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-   <div class="bl-eh-title">No melody yet</div>
-   <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords and key, or tap any step below to place a note by hand.</div>
+   <!-- Empty state: shown when no steps are active -->
+   <div class="bl-empty-hint" id="ml-empty-hint">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    <div class="bl-eh-title">No melody yet</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords and key, or tap any step to place a note by hand.</div>
+   </div>
   </div>
  </div>
  <!-- Melody step popup (position:fixed, works from any tab) -->
@@ -4654,11 +4849,24 @@ function _sampleNoteToMidi(name){
  return base + (m[2]==='s'?1:0) + (parseInt(m[3],10)+1)*12;
 }
 
+// SAMPLE_STATE was tracked and never shown. Selecting a sampled voice fetches
+// 21-28 mp3s (up to 668 KB for the jazz guitar) and, until they land,
+// makeVoice() substitutes fallbackWave — so on a phone you picked Tenor Sax,
+// heard an organ, and concluded the sax was broken. Offline you heard the
+// organ forever, because 'error' was never surfaced either. Anything that
+// wants to react to a state change registers here.
+const _sampleWatchers = [];
+function onSampleState(fn){ _sampleWatchers.push(fn); }
+function _sampleStateChanged(key){
+ _sampleWatchers.forEach(fn=>{ try{ fn(key, SAMPLE_STATE[key]); }catch(e){} });
+}
+
 function preloadSampleInstrument(key){
  const lib=SAMPLE_LIBS[key]; if(!lib) return;
  if(SAMPLE_STATE[key]==='ready'||SAMPLE_STATE[key]==='loading') return;
  const ctx=getCtx(); if(!ctx) return;
  SAMPLE_STATE[key]='loading';
+ _sampleStateChanged(key);
  SAMPLE_BUFFERS[key]=SAMPLE_BUFFERS[key]||{};
  const loads=lib.notes.map(n=>fetch(lib.dir+'/'+n+'.mp3')
   .then(r=>{ if(!r.ok) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
@@ -4667,6 +4875,7 @@ function preloadSampleInstrument(key){
   .catch(()=>{})); // one missing/blocked note shouldn't sink the whole instrument
  Promise.all(loads).then(()=>{
   SAMPLE_STATE[key] = Object.keys(SAMPLE_BUFFERS[key]).length ? 'ready' : 'error';
+  _sampleStateChanged(key);
  });
 }
 
@@ -9211,6 +9420,7 @@ function setArpWave(w){
  if(typeof _preloadIfSampled==='function') _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  if(typeof msSyncHost==='function') msSyncHost();
+ if(typeof syncSampleUI==='function') syncSampleUI();
 }
 function setArpGatePat(i){
  arpGatePat=i; arpGateIdx=0;
@@ -9407,7 +9617,16 @@ function renderChords(){
  const mdLabel=(MODES[mode]||MODES.major).label;
  document.getElementById('key-mode').textContent=mdLabel;
  const _kb=document.getElementById('chart-key-badge'); if(_kb) _kb.textContent=`${nn(root)} ${mdLabel}`;
- Object.keys(MODES).forEach(x=>{ const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode); });
+ // Both mode rows are painted from `mode` here, not just the Songs one. Four
+ // places set `mode` directly rather than through setMode() — the opening
+ // progression seed, loading a setlist song, loading a jazz standard, and a
+ // restored setup — and every one of them left the Play tab's row showing
+ // whatever was lit before. The seed alone opens on a non-major mode five
+ // launches in nine, so the row was usually wrong on arrival.
+ Object.keys(MODES).forEach(x=>{
+  const e=document.getElementById('bm-'+x);        if(e)  e.classList.toggle('active',x===mode);
+  const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode);
+ });
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -9447,10 +9666,8 @@ function setMode(m){
  mode=m;
  // The roll shades in-key rows, so a mode change has to repaint it.
  if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
- Object.keys(MODES).forEach(x=>{
-  const e=document.getElementById('bm-'+x); if(e) e.classList.toggle('active',x===m);
-  const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===m);
- });
+ // renderChords() paints both mode rows from `mode`, so this no longer keeps
+ // its own copy of that loop.
  renderChords();
 }
 function toggleChurchModes(){
@@ -9498,6 +9715,9 @@ window._preloadIfSampled = function(w){
  if(typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[w] && typeof preloadSampleInstrument==='function'){
   preloadSampleInstrument(SAMPLED_WAVES[w]);
  }
+ // Paints the picker even when the state does not change — selecting an
+ // already-'ready' voice still has to lose the previous one's badge.
+ if(typeof syncSampleUI==='function') syncSampleUI();
 };
 const _preloadIfSampled = window._preloadIfSampled;
 
@@ -9508,6 +9728,7 @@ function setWave(w){
  _preloadIfSampled(w);
  if(typeof syncVoicesPanel==='function') syncVoicesPanel();
  if(typeof msSyncHost==='function') msSyncHost();
+ if(typeof syncSampleUI==='function') syncSampleUI();
 }
 
 // Builds the MōdSynth preset buttons once, from MODSYNTH_PRESETS.
@@ -11532,24 +11753,31 @@ function renderChartSeq(){
  // ── Row 2: Bass + Duration ─────────────────
  const row2=document.createElement('div'); row2.className='slot-controls-row2';
 
- const bass=document.createElement('div'); bass.className='slot-bass';
+ // Opens the picker rather than cycling. See showBassPicker for why.
+ const bass=document.createElement('button'); bass.type='button'; bass.className='slot-bass';
  const updateBass=()=>{
- if(slot.bassNote==null){ bass.textContent='△ Bass'; bass.classList.remove('active'); }
- else {
- const bassPC=((slot.bassNote%12)+12)%12;
- bass.textContent='/'+nn(bassPC);
- bass.classList.add('active');
- }
+  const what=slot.label||'this chord';
+  if(slot.bassNote==null){
+   // Plain "Bass". The label used to lead with △, which in lead-sheet notation
+   // means major seventh — on a control sitting inches from chord symbols in a
+   // chart tool, that reading is live, and the glyph was carrying no meaning of
+   // its own now that the button opens a picker rather than cycling.
+   bass.textContent='Bass'; bass.classList.remove('active');
+   bass.title='Put a different note in the bass under '+what;
+  } else {
+   const bassPC=((slot.bassNote%12)+12)%12;
+   bass.textContent='/'+nn(bassPC);
+   bass.classList.add('active');
+   bass.title=what+' over '+nn(bassPC)+' in the bass — tap to change';
+  }
+  bass.setAttribute('aria-label', bass.title);
  };
  updateBass();
  bass.addEventListener('click',()=>{
- if(slot.bassNote==null){ slot.bassNote=slot.rootM-1; }
- else {
- const stepsBelow=slot.rootM-slot.bassNote;
- if(stepsBelow>=12) slot.bassNote=null;
- else slot.bassNote=slot.bassNote-1;
- }
- updateBass();
+  // Full re-render, same as the extension control does: the chord button's own
+  // label carries the slash too, so both have to move together. The picker
+  // holds the slot object, not its DOM, so rebuilding under it is safe.
+  showBassPicker(slot, ()=>{ renderChartSeq(); renderPerfChartRow(); });
  });
 
  // Duration: single button opens a preset picker (1 tap for common jazz phrase lengths,
@@ -11580,12 +11808,32 @@ function renderChartSeq(){
 
  // ── Row 3: Reorder + Delete ────────────────
  const row3=document.createElement('div'); row3.className='slot-controls-row3';
- const up=document.createElement('div'); up.className='slot-arr'; up.textContent='←';
- const dn=document.createElement('div'); dn.className='slot-arr'; dn.textContent='→';
- const del=document.createElement('div'); del.className='slot-del'; del.textContent='✕'; del.title='Delete slot';
+ // <button>, not <div>: these were unreachable by keyboard and invisible to a
+ // screen reader, on a control that repeats once per chord in the chart.
+ const mkTool=(cls,glyph,label)=>{
+  const b=document.createElement('button');
+  b.type='button'; b.className=cls; b.textContent=glyph;
+  b.setAttribute('aria-label', label); b.title=label;
+  return b;
+ };
+ const what = slot.label || 'this chord';
+ const up=mkTool('slot-arr','←','Move '+what+' earlier');
+ const dn=mkTool('slot-arr','→','Move '+what+' later');
+ const del=mkTool('slot-del','✕','Delete '+what);
  up.addEventListener('click',()=>{ if(i>0){[slots[i],slots[i-1]]=[slots[i-1],slots[i]]; renderChartSeq();} });
  dn.addEventListener('click',()=>{ if(i<slots.length-1){[slots[i],slots[i+1]]=[slots[i+1],slots[i]]; renderChartSeq();} });
- del.addEventListener('click',()=>{ slots.splice(i,1); if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1; renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); });
+ // Was an immediate, unrecoverable splice on a 24px target sitting flush
+ // against the two nudge arrows. Same undo every other destructive button in
+ // this app already offers.
+ del.addEventListener('click',()=>{
+  withUndo('Deleted '+what,
+   ()=>slots.map(sl=>({...sl})),
+   before=>{ slots.length=0; before.forEach(sl=>slots.push(sl));
+             renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); },
+   ()=>{ slots.splice(i,1);
+         if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1;
+         renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); });
+ });
  row3.appendChild(up); row3.appendChild(dn); row3.appendChild(del);
 
  wrap.appendChild(btn); wrap.appendChild(ext); wrap.appendChild(row2); wrap.appendChild(row3);
@@ -11689,7 +11937,7 @@ function toggleSaveRhythm(){
 function saveToSetlist(){
  const titleInput=document.getElementById('chart-title');
  const title=titleInput.value.trim()||'Untitled';
- if(!sections.some(s=>s.slots.length)){ if(typeof alert!=='undefined') alert('Add some chords first!'); return; }
+ if(!sections.some(s=>s.slots.length)){ showToast('Nothing to save yet — add some chords to the chart first'); return; }
  setlistData=loadSLData();
  // Block saving under a name another song already has — re-saving the song
  // that's currently loaded (same slot) is fine, that's an update, not a dupe.
@@ -11942,8 +12190,9 @@ function loadSong(song,idx){
  curSection=0; chartSeqIdx=-1; songCurrentSection=0; songCurrentSlot=-1;
 
  document.getElementById('chart-title').value=song.title;
- document.getElementById('bm-major')?.classList.toggle('active',mode==='major');
- document.getElementById('bm-minor')?.classList.toggle('active',mode==='minor');
+ // Mode row sync used to be these two lines, which only knew about major and
+ // minor — a song in any other mode lit neither, or left the previous song's
+ // mode lit. renderChords() paints every mode button now.
 
  // Auto-apply saved performance settings
  if(song.perfSettings) applySongPerformSettings(song.perfSettings);
@@ -12018,7 +12267,17 @@ function exportSetlist(){
 function importSetlist(e){
  const file=e.target.files[0]; if(!file) return;
  const reader=new FileReader();
- reader.onload=ev=>{ try{ const d=JSON.parse(ev.target.result); if(Array.isArray(d)){ saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav(); } }catch(e){ alert('Invalid file'); } };
+ reader.onload=ev=>{
+  // Was a blocking alert('Invalid file') that named neither the file nor what
+  // was wrong with it. Both failure modes are worth telling apart: unreadable
+  // JSON, and readable JSON that isn't a setlist.
+  let d;
+  try{ d=JSON.parse(ev.target.result); }
+  catch(err){ showToast('“'+file.name+'” isn’t readable as a setlist — it should be a .json file exported from Setlist → Export'); return; }
+  if(!Array.isArray(d)){ showToast('“'+file.name+'” is valid JSON but not a setlist — expected a list of songs'); return; }
+  saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav();
+  showToast('Imported '+d.length+' song'+(d.length===1?'':'s')+' from “'+file.name+'”');
+ };
  reader.readAsText(file);
 }
 
@@ -13008,6 +13267,7 @@ function switchTab(t){
  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
+ if(typeof syncTabRoving==='function') syncTabRoving();
  if(t==='songs') renderSetlistPerform();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
@@ -13751,6 +14011,131 @@ function _attachRepeatPress(el, fn){
  el.addEventListener('pointercancel',stop);
 }
 
+// ── Bass note picker ─────────────────────────────────────────────────
+// The slot's bass button used to be a one-way cycle: first tap dropped the
+// bass to rootM-1, and every tap after that went down another semitone until
+// it wrapped to none at twelve. There was no way back up, so overshooting the
+// note you wanted meant tapping through the remaining eleven — and the common
+// choices (a third or a fifth in the bass) sat five and seven taps in.
+//
+// Same shape as showDurationPicker: the chord's own tones as one-tap
+// inversions, every chromatic note under them for anything else, and a −/+
+// nudge for walking a bass line by ear.
+
+// A bass note is stored in the octave below the chord root — [rootM-12,
+// rootM-1] — which is what playSlashChord and the MIDI export both assume.
+function _bassNoteForPc(rootM, pc){
+ const target=((pc%12)+12)%12;
+ for(let n=rootM-1; n>=rootM-12; n--) if(((n%12)+12)%12===target) return n;
+ return rootM-12;
+}
+const _IVL_NAME={0:'root',1:'♭9',2:'9',3:'♭3',4:'3',5:'4',6:'♭5',7:'5',8:'♭6',9:'6',10:'♭7',11:'7'};
+
+function showBassPicker(slot, onChange){
+ const rootM=slot.rootM;
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div'); box.className='dur-picker-box bass-picker-box';
+ const chordName=slot.label||'this chord';
+ box.innerHTML='<div class="dur-picker-title">Bass Note</div>'
+   +'<div class="dur-picker-sub">Which note sits under <b>'+chordName+'</b>?</div>';
+
+ const readout=document.createElement('div'); readout.className='bp-readout';
+ const repaint=()=>{
+  const has=slot.bassNote!=null;
+  readout.textContent = has ? chordName+' / '+nn(((slot.bassNote%12)+12)%12) : chordName+' — root position';
+  readout.classList.toggle('none',!has);
+  box.querySelectorAll('.bp-chip').forEach(c=>{
+   const pc=c.dataset.pc===''?null:+c.dataset.pc;
+   const cur=has?((slot.bassNote%12)+12)%12:null;
+   c.classList.toggle('active', pc===cur);
+  });
+ };
+
+ const mkChip=(pc, big, small)=>{
+  const c=document.createElement('button');
+  c.type='button'; c.className='dur-preset-chip bp-chip';
+  c.dataset.pc = pc==null ? '' : String(pc);
+  c.innerHTML='<span class="dp-val">'+big+'</span><span class="dp-lbl">'+small+'</span>';
+  c.setAttribute('aria-label', pc==null ? 'Root position — no slash bass' : 'Bass note '+nn(pc)+', '+small);
+  c.addEventListener('click',()=>{
+   slot.bassNote = pc==null ? null : _bassNoteForPc(rootM, pc);
+   repaint();
+   if(onChange) onChange();
+  });
+  return c;
+ };
+
+ // ── The chord's own tones, as inversions ──
+ let intvs=[0,4,7];
+ try{ intvs=EXTS[slot.ext||'triad'](slot.triadQ, slot.type7)||intvs; }catch(e){}
+ const seen=new Set();
+ const inv=document.createElement('div'); inv.className='dur-preset-grid bp-grid';
+ inv.appendChild(mkChip(null,'—','root position'));
+ intvs.forEach(iv=>{
+  const semi=((iv%12)+12)%12;
+  if(semi===0 || seen.has(semi)) return;      // 0 is root position, already offered
+  seen.add(semi);
+  inv.appendChild(mkChip((rootM+semi)%12, nn((rootM+semi)%12), _IVL_NAME[semi]+' in bass'));
+ });
+ const invLbl=document.createElement('div'); invLbl.className='bp-sec'; invLbl.textContent='Inversions';
+ box.appendChild(invLbl); box.appendChild(inv);
+
+ // ── Every other note ──
+ const anyLbl=document.createElement('div'); anyLbl.className='bp-sec'; anyLbl.textContent='Any note';
+ const any=document.createElement('div'); any.className='bp-chroma';
+ // Every pitch class except the root's — "—" above is how you say root
+ // position. Always the same eleven chips in the same order, so the one you
+ // want is in the same place on every chord, even where it duplicates an
+ // inversion offered above.
+ for(let s=1;s<=11;s++){
+  const pc=(rootM+s)%12;
+  const c=document.createElement('button');
+  c.type='button'; c.className='bp-note bp-chip';
+  c.dataset.pc=String(pc);
+  c.textContent=nn(pc);
+  c.title=_IVL_NAME[s%12]+' of '+chordName;
+  c.setAttribute('aria-label','Bass note '+nn(pc)+', '+_IVL_NAME[s%12]+' of '+chordName);
+  c.addEventListener('click',()=>{ slot.bassNote=_bassNoteForPc(rootM,pc); repaint(); if(onChange) onChange(); });
+  any.appendChild(c);
+ }
+ box.appendChild(anyLbl); box.appendChild(any);
+
+ // ── Nudge, for walking one by ear ──
+ const nudge=document.createElement('div'); nudge.className='bp-nudge';
+ const mkN=(glyph,label,delta)=>{
+  const b=document.createElement('button');
+  b.type='button'; b.className='dur-ft-btn bp-nudge-btn'; b.textContent=glyph;
+  b.setAttribute('aria-label',label); b.title=label;
+  b.addEventListener('click',()=>{
+   // Starting from root position, either direction steps off the root.
+   let n = slot.bassNote==null ? rootM-12 : slot.bassNote+delta;
+   // Wrap inside the octave under the root rather than running out of range.
+   if(n > rootM-1)  n -= 12;
+   if(n < rootM-12) n += 12;
+   slot.bassNote=n; repaint(); if(onChange) onChange();
+  });
+  return b;
+ };
+ nudge.appendChild(mkN('−','A semitone lower',-1));
+ nudge.appendChild(readout);
+ nudge.appendChild(mkN('+','A semitone higher',+1));
+ box.appendChild(nudge);
+
+ const done=document.createElement('button'); done.className='dur-picker-done'; done.textContent='Done';
+ done.addEventListener('click',()=>{ overlay.remove(); if(onChange) onChange(); });
+ box.appendChild(done);
+
+ overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+ document.addEventListener('keydown', function esc(e){
+  if(e.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown',esc); }
+ });
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ repaint();
+ setTimeout(()=>box.querySelector('.bp-chip')?.focus(),30);
+}
+
 function showDurationPicker(slot, onChange){
  const overlay=document.createElement('div');
  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -14302,23 +14687,50 @@ function stopEverything(){
  syncFixedTransport();
 }
 
-// Tab / Shift+Tab steps through the tabs on desktop. Skipped while typing so
-// text fields keep normal behaviour, and skipped on touch-only devices where
-// there is no Tab key to press anyway.
-// Tradeoff: this does take Tab away from browser focus-walking. Arrow keys,
-// Space and the number keys still work, and every control is directly
-// clickable, so nothing becomes unreachable.
+// Section switching by keyboard, the standard tablist way: Left/Right/Home/End
+// while the tab bar has focus.
+//
+// This used to be a global Tab/Shift+Tab handler that fired whenever
+// document.activeElement was <body>. That is the state the page loads in, and
+// switching tabs does not move focus — so focus stayed on <body> and Tab
+// cycled Play → Songs → Drums → … forever. A keyboard-only visitor could
+// never reach a single control: 25 presses of Tab from a fresh load left
+// activeElement on <body> every time. The old comment reasoned that "every
+// control is directly clickable, so nothing becomes unreachable", which held
+// for every control except the first one, and only if you had a pointer.
+//
+// Tab now does what Tab does. The bar is first in the DOM, so it is still the
+// first thing a keyboard user lands on, and the arrows do what the hijack did.
 const TAB_ORDER=['perform','songs','rhythm','bass','mix','build'];
-document.addEventListener('keydown', e => {
- if(e.key!=='Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
- // Tab is how you move between fields, so unlike the note keys it stays with
- // ANY focused control, not just the ones that type.
- if(document.activeElement && document.activeElement!==document.body) return;
- if(window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+function _tabBtns(){ return TAB_ORDER.map(t=>document.getElementById('tab-'+t)).filter(Boolean); }
+// Roving tabindex: only the selected tab is in the tab order, so Tab steps
+// past the whole bar in one press rather than six.
+function syncTabRoving(){
+ TAB_ORDER.forEach(t=>{
+  const b=document.getElementById('tab-'+t); if(!b) return;
+  const on=b.classList.contains('active');
+  b.setAttribute('aria-selected', on?'true':'false');
+  b.tabIndex = on ? 0 : -1;
+ });
+}
+document.getElementById('tab-bar')?.addEventListener('keydown', e => {
+ const btns=_tabBtns();
+ const i=btns.indexOf(document.activeElement);
+ if(i<0) return;
+ let j=-1;
+ if(e.key==='ArrowRight'||e.key==='ArrowDown') j=(i+1)%btns.length;
+ else if(e.key==='ArrowLeft'||e.key==='ArrowUp') j=(i-1+btns.length)%btns.length;
+ else if(e.key==='Home') j=0;
+ else if(e.key==='End') j=btns.length-1;
+ else return;
  e.preventDefault();
- const cur=TAB_ORDER.findIndex(t=>document.getElementById('page-'+t)?.classList.contains('active'));
- const n=TAB_ORDER.length;
- switchTab(TAB_ORDER[(((cur<0?0:cur)+(e.shiftKey?-1:1))%n+n)%n]);
+ // The Perform tab owns bare arrow keys globally (↑↓ transposes, ←→ cycles
+ // modes) and a focused <button> makes no claim on them via _focusOwnsKey.
+ // Without this, an arrow press on the tab bar would switch section AND
+ // transpose the key on the way past.
+ e.stopPropagation();
+ switchTab(TAB_ORDER[j]);
+ btns[j].focus();
 });
 
 document.addEventListener('keydown', e => {
@@ -20050,6 +20462,246 @@ function _ftMoreOutsideClick(e){
   // above, and it is cheap to be sure of.
   window.addEventListener('resize', sync);
   window.addEventListener('orientationchange', function(){ setTimeout(sync, 300); });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// SAMPLED VOICE STATE — visible
+// ══════════════════════════════════════════════════════════════════
+// Every control that can select a sampled voice gets data-sstate, so the ◆
+// voices show whether you are hearing the real instrument or the stand-in.
+// The states, and what a person is actually hearing in each:
+//   loading → the fallbackWave, and the samples are on their way
+//   error   → the fallbackWave, permanently, because the fetch failed
+//   ready   → the instrument itself
+// Anything with no data-sstate is a synth voice and has nothing to wait for.
+
+function _sampleKeyOf(wave){
+ return (typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[wave]) || null;
+}
+function _fallbackLabelFor(key){
+ const fw = SAMPLE_LIBS[key] && SAMPLE_LIBS[key].fallbackWave;
+ return fw ? _sharedVoiceLabel(fw) : 'a synth voice';
+}
+// Every place a voice is currently chosen, so a toast can tell whether the
+// instrument that just finished loading is one you are actually hearing.
+function _selectedWaves(){
+ const w = [];
+ try{ w.push(wave); }catch(e){}
+ try{ w.push(arpWave); }catch(e){}
+ try{ w.push(melWave); }catch(e){}
+ try{ w.push(blWave); }catch(e){}
+ try{ w.push(mlWave); }catch(e){}
+ return w.filter(Boolean);
+}
+
+function syncSampleUI(){
+ try{
+  const paint=(el, val)=>{
+   const key=_sampleKeyOf(val);
+   if(!key){ el.removeAttribute('data-sstate'); el.removeAttribute('title'); return; }
+   const st=SAMPLE_STATE[key]||'idle';
+   el.setAttribute('data-sstate', st);
+   const label=_sharedVoiceLabel(val).replace(/\s*◆$/,'');
+   if(st==='loading') el.title=label+' is loading — you are hearing '+_fallbackLabelFor(key)+' until it arrives';
+   else if(st==='error') el.title=label+' could not be loaded — playing '+_fallbackLabelFor(key)+' instead';
+   else if(st==='ready') el.title=label+' — recorded instrument';
+   else el.title=label+' — recorded instrument, loads when you select it';
+  };
+  document.querySelectorAll('[data-wave]').forEach(el=>paint(el, el.dataset.wave));
+  document.querySelectorAll('[data-arpwave]').forEach(el=>paint(el, el.dataset.arpwave));
+  document.querySelectorAll('[data-melwave]').forEach(el=>paint(el, el.dataset.melwave));
+  // The Voices drawer and the bass page use <select>; the control itself
+  // carries the state of whatever is currently chosen.
+  document.querySelectorAll('select.voice-sel').forEach(el=>paint(el, el.value));
+ }catch(e){}
+}
+
+onSampleState(function(key, state){
+ syncSampleUI();
+ // Only speak up about an instrument the user is actually listening to.
+ const affected = _selectedWaves().some(w=>_sampleKeyOf(w)===key);
+ if(!affected) return;
+ const wv = Object.keys(SAMPLED_WAVES).find(w=>SAMPLED_WAVES[w]===key) || key;
+ const label = _sharedVoiceLabel(wv).replace(/\s*◆$/,'');
+ if(state==='ready')      showToast(label+' loaded — that is the real instrument now');
+ else if(state==='error') showToast('Could not load '+label+' — playing '+_fallbackLabelFor(key)+' instead');
+});
+
+syncSampleUI();
+
+// ══════════════════════════════════════════════════════════════════
+// ACCESSIBLE NAMES
+// ══════════════════════════════════════════════════════════════════
+// 349 buttons, of which 90 were an icon or a bare glyph with nothing a screen
+// reader could announce, and 35 of 37 sliders had no name at all. Most already
+// carried a `title` — which assistive tech treats inconsistently and a touch
+// device never surfaces — and the rest sit in repeating groups (the ? help
+// buttons, the −/+ steppers, the ½×/1×/2× rate rows) whose meaning comes from
+// the group, not the glyph.
+//
+// This runs as a pass rather than 90 hand-written attributes because most of
+// these controls are built by JS and rebuilt whenever a voice, a pattern or a
+// mixer strip changes. A MutationObserver re-runs it after any subtree change,
+// so a generated control is named the same as a static one. Anything that
+// already has an aria-label is left alone, so a hand-written name always wins.
+
+// Sliders whose visible label is not adjacent, or is too terse to stand alone.
+const A11Y_SLIDER = {
+ 'tmod-depth'    : 'Touch Mod depth',
+ 'ms-lfo1-rate'  : 'LFO 1 rate',
+ 'ms-lfo1-depth' : 'LFO 1 depth',
+ 'ms-lfo2-rate'  : 'LFO 2 rate',
+ 'ms-lfo2-depth' : 'LFO 2 depth',
+ 'sq-swingSl'    : 'Swing amount, all parts',
+ 'sq-velSl'      : 'Step velocity',
+ 'bl-cutoff'     : 'Bass filter cutoff',
+ 'bl-reso'       : 'Bass filter resonance',
+ 'bl-human'      : 'Bass humanize amount',
+ 'arp-gate'      : 'Arp gate length',
+ 'arp-gate-p'    : 'Arp gate length',
+ 'arp-rate-sl'   : 'Arp rate',
+ 'arp-rate-sl-p' : 'Arp rate',
+ 'bpm'           : 'Tempo',
+ 'master-tune-sl': 'Master tuning reference, in hertz'
+};
+
+// Buttons identified by id.
+const A11Y_BTN = {
+ 'ft-ms-led'   : 'Something is muted or soloed — clear it',
+ 'ft-more-btn' : 'More settings',
+ 'bl-smclose'  : 'Close step options',
+ 'ml-smclose'  : 'Close step options',
+ 'sq-smClose'  : 'Close step options',
+ 'sq-stepsDn'  : 'One fewer step',
+ 'sq-stepsUp'  : 'One more step',
+ 'slb-key-dn'  : 'Transpose song down a semitone',
+ 'slb-key-up'  : 'Transpose song up a semitone',
+ 'sec-plays-inf':'Loop this section until you move on yourself',
+ 'cb-inf'      : 'Chord length: hold until the next chord',
+ 'cb-1'        : 'Chord length: one beat',
+ 'cb-2'        : 'Chord length: two beats',
+ 'cb-4'        : 'Chord length: four beats',
+ 'varm-5'      : 'Power chord — root and fifth, no third',
+ 'varm-sl5'    : 'Slash chord over the fifth',
+ 'varm-slb6'   : 'Slash chord over the flat sixth',
+ 'varm-sl6'    : 'Slash chord over the sixth',
+ 'varm-slb7'   : 'Slash chord over the flat seventh',
+ 'varm-sl7'    : 'Slash chord over the seventh',
+ 'ap-up-p'     : 'Arp pattern: up',
+ 'ap-weighted-p':'Arp pattern: weighted',
+ 'ao-1-p'      : 'Arp range: one octave',
+ 'ao-2-p'      : 'Arp range: two octaves',
+ 'ao-3-p'      : 'Arp range: three octaves'
+};
+
+// The ? buttons name the section they explain, taken from TIPS itself so the
+// two can never drift apart.
+function _a11yTipName(el){
+ const m = (el.getAttribute('onclick')||'').match(/showTip\(\s*'([^']+)'/);
+ const t = m && typeof TIPS!=='undefined' && TIPS[m[1]];
+ return t && t.title ? 'What is “'+t.title+'”?' : 'Help';
+}
+
+// Steppers and rate rows read from the group they sit in: the nearest heading,
+// label or legend to their left, or the panel title above them.
+function _a11yGroupName(el){
+ const row = el.closest('.row, .sq-ctl, .bl-row, .sg, .tg, .panel, .settings-section');
+ if(!row) return '';
+ const lbl = row.querySelector('.sl, .sq-lbl, .bl-pl, .panel-title, .ss-hdr > span');
+ return lbl ? lbl.textContent.replace(/\s+/g,' ').trim().replace(/[:?]+$/,'') : '';
+}
+
+function _a11yName(el, name){
+ if(!name) return;
+ if(el.getAttribute('aria-label')) return;   // a hand-written name always wins
+ el.setAttribute('aria-label', name);
+}
+
+function a11yPass(){
+ try{
+  // ── Sliders ──
+  document.querySelectorAll('input[type=range]').forEach(el=>{
+   if(el.getAttribute('aria-label')) return;
+   let n = A11Y_SLIDER[el.id];
+   if(!n){
+    // The Setup-tab pattern: .sg wraps a .sl caption, the input, and a .sv
+    // readout. The caption is the name; the readout is the current value, and
+    // aria-valuetext is what makes "35%" audible instead of a raw "0.35".
+    const sg = el.closest('.sg');
+    const sl = sg && sg.querySelector('.sl');
+    if(sl) n = sl.textContent.replace(/\s+/g,' ').trim();
+   }
+   if(!n){
+    // MōdSynth builds its own .ms-ctrl columns from MS_CTRLS; the caption is
+    // the first non-input child. Qualified, because "Cutoff" and "Drive" also
+    // exist on the chord engine and a screen reader hears no panel around it.
+    const mc = el.closest('.ms-ctrl');
+    const cap = mc && [...mc.children].find(c=>c!==el && c.textContent.trim());
+    if(cap) n = 'MōdSynth '+cap.textContent.replace(/\s+/g,' ').trim();
+   }
+   _a11yName(el, n);
+   const sv = el.closest('.sg')?.querySelector('.sv');
+   if(sv && sv.textContent.trim()) el.setAttribute('aria-valuetext', sv.textContent.trim());
+  });
+
+  // ── Buttons ──
+  document.querySelectorAll('button').forEach(el=>{
+   if(el.getAttribute('aria-label')) return;
+   const txt = el.textContent.replace(/\s+/g,' ').trim();
+   if(txt.length > 2) return;                 // already announces itself
+
+   if(A11Y_BTN[el.id]) { _a11yName(el, A11Y_BTN[el.id]); return; }
+   if(el.classList.contains('tips-btn')) { _a11yName(el, _a11yTipName(el)); return; }
+   if(el.classList.contains('panel-fold')){
+    // Only the title's own text nodes. Its children are the icon, the
+    // Reference badge, the live chord name and this button's own caret —
+    // none of which belong in "Hide the chord diagrams".
+    const t = el.closest('.panel')?.querySelector('.panel-title');
+    const nm = t ? [...t.childNodes].filter(k=>k.nodeType===3)
+                    .map(k=>k.textContent).join(' ').replace(/\s+/g,' ').trim()
+                 : '';
+    _a11yName(el, (el.getAttribute('aria-expanded')==='false'?'Show ':'Hide ')+(nm||'this panel'));
+    return;
+   }
+   // The chromatic key picker: a note name is a fine label, but not on its own
+   // — "C" alone says nothing about what pressing it does.
+   if(el.classList.contains('chroma-note')){ _a11yName(el, 'Set key to '+txt); return; }
+   // ½× / 1× / 2× rate rows, and the ×1..×4 step-repeat options.
+   if(el.classList.contains('seq-rbtn') || el.classList.contains('sq-mopt')){
+    const g = _a11yGroupName(el);
+    _a11yName(el, txt+(g?' — '+g:' rate'));
+    return;
+   }
+   // Note-length / option numbers inside the step popups.
+   if(el.classList.contains('bl-mopt')){ _a11yName(el, txt+' steps long'); return; }
+   // −/+ steppers of every flavour.
+   if(/^[−\-+]$/.test(txt)){
+    const g = _a11yGroupName(el);
+    _a11yName(el, (txt==='+'?'Increase':'Decrease')+(g?' '+g.toLowerCase():''));
+    return;
+   }
+   if(el.classList.contains('sn-btn')){
+    _a11yName(el, txt==='◀' ? 'Previous section' : 'Next section'); return;
+   }
+   if(txt==='×'||txt==='✕'){ _a11yName(el, el.title || 'Delete'); return; }
+   // Last resort: a title is a poor accessible name, but it beats a glyph.
+   if(el.title) _a11yName(el, el.title);
+  });
+
+  // ── Tab pages are the panels their tabs control ──
+  document.querySelectorAll('.tab-page').forEach(pg=>{
+   if(!pg.getAttribute('role')) pg.setAttribute('role','tabpanel');
+  });
+ }catch(e){ /* naming is never worth breaking a render over */ }
+}
+
+a11yPass();
+// Re-run after any subtree rebuild. childList only: step highlighting during
+// playback moves classes rather than nodes, so the hot path never wakes this.
+(function(){
+ let t=null;
+ const obs=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(a11yPass,250); });
+ obs.observe(document.body,{childList:true,subtree:true});
 })();
 
 // ── Sequencer/bassline autosave (save side) — restore logic lives near the
