@@ -22,6 +22,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MōdRiff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="MōdRiff">
@@ -3132,6 +3135,10 @@ body.mode-free .pro-only { display:none !important; }
 }
 .mix-mm-note { flex:0 0 auto; font-size:.4rem; color:var(--muted); }
 @media (max-width:520px){ .mix-mm-note { display:none; } }
+
+/* Free tier: locked controls stay visible but inert, so the ceiling is
+   legible rather than mysterious — a control that vanishes reads as a bug. */
+.tier-locked { opacity:.34; pointer-events:none; position:relative; filter:grayscale(.7); }
 </style>
 </head>
 <body>
@@ -3284,6 +3291,8 @@ body.mode-free .pro-only { display:none !important; }
    <!-- The one entry here that isn't help: saving where you are is something
         you reach for mid-session, from whatever tab you happen to be on. -->
    <button class="ft-btn" id="ft-setups-btn" onclick="openSetups()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
+   <button class="ft-btn" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
+     onclick="installApp()" title="Install MōdRiff so it opens on its own and works offline">⤓ Install app</button>
    <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
    <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Keyboard shortcuts">⌨ Shortcuts</button>
   </div>
@@ -3929,7 +3938,7 @@ body.mode-free .pro-only { display:none !important; }
  <button class="sc-btn primary" onclick="saveToSetlist()" title="Save song to setlist" style="font-size:.44rem;padding:4px 10px;flex-shrink:0"> Save</button>
  <button class="tb advanced-only" id="save-rhythm-btn" onclick="toggleSaveRhythm()" title="Also save current drum pattern, bassline, and melody sequence with this song" style="font-size:.42rem;padding:4px 8px;flex-shrink:0">+Rhythm: OFF</button>
  <button class="tb" onclick="shareProgression()" title="Copy share URL to clipboard" style="font-size:.44rem;padding:4px 8px">Share</button>
- <button class="tb" onclick="exportMidi()" title="Export MIDI file" style="font-size:.44rem;padding:4px 8px">MIDI</button>
+ <button class="tb" data-midiexport onclick="exportMidi()" title="Export MIDI file" style="font-size:.44rem;padding:4px 8px">MIDI</button>
  <!-- Clear used to be the second solid pill, immediately after Save, with
       Share and MIDI trailing off as dim ghost text — the one irreversible
       action in the row holding the position the eye reaches first. It sits
@@ -7816,6 +7825,13 @@ function _applyStepCount(eng, n){
  }
 }
 function setSeqStepCount(eng, n){
+ // Guarded at the setter, not just hidden in the UI: a shared link, a saved
+ // setup and the dice all reach this without going near a button.
+ if(typeof freeAllowsSteps==='function' && !freeAllowsSteps(n)){
+  const l=(typeof FREE_LIMITS!=='undefined'&&Array.isArray(FREE_LIMITS.stepCounts))?FREE_LIMITS.stepCounts:[16];
+  if(typeof freeBlocked==='function') freeBlocked('Changing the step count');
+  n=l[l.length-1];
+ }
  if(stepCountLock){ _applyStepCount('sq',n); _applyStepCount('bl',n); _applyStepCount('ml',n); }
  else _applyStepCount(eng, n);
  syncSeqLinkUI();
@@ -11127,6 +11143,7 @@ function showTour(){
   playOnboardingDemo();
 }
 function exportMidi(){
+  if(typeof modAllows==='function' && !modAllows('midiExport')) return freeBlocked('MIDI export');
   try{
     var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
     var tempo=Math.round(60000000/bpm);
@@ -15468,6 +15485,9 @@ var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _is
 // Nothing below runs unless this is on.
 var exportStems=false, _stemTaps=[];
 function toggleStemExport(){
+  if(!exportStems && typeof modAllows==='function' && !modAllows('stemExport')){
+   return freeBlocked('Stem export');
+  }
   exportStems=!exportStems;
   _updateStemBtn();
   showToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
@@ -17293,13 +17313,17 @@ function sqRenderMachines(){
     var m=SQM[key];
     var b=document.createElement('button');
     b.className='sq-mbtn'+(key===sqMach?' active':'');
+    b.dataset.mach=key;          // exact id for the tier check, not the label
     b.textContent=m.label;
     // Color the active border with the machine's own color
     if(key===sqMach){
       b.style.borderColor=m.color;
       b.style.color=m.color;
     }
-    b.addEventListener('click',function(){sqSwitchMach(key);});
+    b.addEventListener('click',function(){
+      if(typeof freeAllowsKit==='function' && !freeAllowsKit(key)) return freeBlocked('This drum kit');
+      sqSwitchMach(key);
+    });
     row.appendChild(b);
   });
 }
@@ -21693,7 +21717,7 @@ const FREE_LIMITS = {
   samples:      false,   // sampled ◆ voices
   stemExport:   false,
   midiExport:   false,
-  drumKits:     ['modkit'],
+  drumKits:     ['MOD'],        // SQM's key for MōdKit — the synthesized one
   stepCounts:   [16],
   bassStyles:   ['Rock','Jazz','Funk'],
   arpRates:     ['8th','16th'],
@@ -21707,6 +21731,7 @@ function setModTier(t){
   try{ localStorage.setItem('modo-tier', _modTier); }catch(e){}
   if(_modTier==='free' && performMode==='fx' && typeof setPerformMode==='function') setPerformMode('chords');
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
+  if(typeof freeApplyLimits==='function') freeApplyLimits();
 }
 function modAllows(feature){
   if(_modTier!=='free') return true;
@@ -21715,6 +21740,134 @@ function modAllows(feature){
 }
 function fxIsAvailable(){ return modAllows('modfx'); }
 try{ setModTier(localStorage.getItem('modo-tier')||'pro'); }catch(e){ setModTier('pro'); }
+
+
+
+// ── Install and offline ──────────────────────────────────────────
+// A single self-contained file plus an immutable sample set caches cleanly,
+// and a groovebox is the thing you want on a home screen and working on a
+// plane. It is also half the fix for sampled voices standing in a synth while
+// they download: cached, they are ready before the first note.
+//
+// Registered after load, not during it: a service worker install competes for
+// bandwidth with the samples and the fonts, and there is nothing it can do for
+// the visit that is already happening.
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+ window.addEventListener('load', ()=>{
+  navigator.serviceWorker.register('sw.js').catch(e=>console.warn('offline unavailable',e));
+ });
+}
+
+// Chromium fires beforeinstallprompt and expects the page to hold it until the
+// user asks. Safari and Firefox never fire it, so the button only appears where
+// it can actually do something rather than sitting there inert.
+let _installPrompt=null;
+window.addEventListener('beforeinstallprompt', e=>{
+ e.preventDefault(); _installPrompt=e;
+ document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='');
+});
+window.addEventListener('appinstalled', ()=>{
+ _installPrompt=null;
+ document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='none');
+ showToast('MōdRiff installed — it opens on its own now, online or not');
+});
+async function installApp(){
+ if(!_installPrompt){
+  showToast('Use your browser’s “Add to Home Screen” or “Install” to keep MōdRiff offline');
+  return;
+ }
+ _installPrompt.prompt();
+ try{ await _installPrompt.userChoice; }catch(e){}
+ _installPrompt=null;
+ document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='none');
+}
+
+// ── Free tier: enforcement ───────────────────────────────────────
+// FREE_LIMITS declares the tier; this is what actually holds it. Two halves,
+// and both are needed: hide what free does not get, AND refuse it at the
+// setter, because a saved setup, a shared link or the dice can all arrive
+// carrying a pro value that no amount of hiding would have stopped.
+
+function _freeList(key){ const v=FREE_LIMITS[key]; return Array.isArray(v)?v:null; }
+function freeAllowsKit(id){
+ const l=_freeList('drumKits'); if(modTier()!=='free'||!l) return true;
+ return l.some(k=>String(k).toLowerCase()===String(id).toLowerCase());
+}
+function freeAllowsStyle(id){
+ const l=_freeList('bassStyles'); if(modTier()!=='free'||!l) return true;
+ return l.some(k=>String(k).toLowerCase()===String(id).toLowerCase());
+}
+function freeAllowsSteps(n){
+ const l=_freeList('stepCounts'); if(modTier()!=='free'||!l) return true;
+ return l.indexOf(+n)>=0;
+}
+function freeAllowsArpRate(label){
+ const l=_freeList('arpRates'); if(modTier()!=='free'||!l) return true;
+ return l.some(k=>String(k).toLowerCase()===String(label).toLowerCase());
+}
+// One message, so the ceiling always sounds like the same ceiling.
+let _freeToastAt=0;
+function freeBlocked(what){
+ const now=Date.now();
+ if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
+  _freeToastAt=now;
+  showToast(what+' is part of MōdRiff Pro');
+ }
+ return false;
+}
+
+function freeApplyLimits(){
+ const free = modTier()==='free';
+ try{
+  // Drum kits — MōdKit only.
+  document.querySelectorAll('#sq-machineRow .sq-mbtn').forEach(b=>{
+   const id=(b.dataset.mach||'').trim();
+   b.classList.toggle('tier-locked', free && !freeAllowsKit(id));
+  });
+  // Groove presets — the first few only.
+  const gp=document.querySelectorAll('#sq-groove-presets > *');
+  gp.forEach((b,i)=>{ b.classList.toggle('tier-locked', free && i>=(FREE_LIMITS.drumPresets||6)); });
+  // Bass and melody generator styles.
+  document.querySelectorAll('[data-blstyle]').forEach(b=>{
+   b.classList.toggle('tier-locked', free && !freeAllowsStyle(b.dataset.blstyle));
+  });
+  // Sampled ◆ voices, everywhere a voice is chosen.
+  const sampled = (typeof SAMPLED_WAVES!=='undefined') ? Object.keys(SAMPLED_WAVES) : [];
+  const lockSample = free && !modAllows('samples');
+  sampled.forEach(w=>{
+   document.querySelectorAll('[data-wave="'+w+'"],[data-arpwave="'+w+'"],[data-melwave="'+w+'"]')
+    .forEach(b=>b.classList.toggle('tier-locked', lockSample));
+  });
+  document.querySelectorAll('select.voice-sel').forEach(sel=>{
+   Array.prototype.forEach.call(sel.options, o=>{
+    if(sampled.indexOf(o.value)<0) return;
+    const keep = !lockSample || sel.value===o.value;   // never blank the select
+    o.hidden=!keep; o.disabled=!keep;
+   });
+  });
+  // Exports.
+  document.querySelectorAll('[data-stemtoggle]').forEach(b=>
+   b.classList.toggle('tier-locked', free && !modAllows('stemExport')));
+  document.querySelectorAll('[data-midiexport]').forEach(b=>
+   b.classList.toggle('tier-locked', free && !modAllows('midiExport')));
+  // Step counts beyond the allowed set.
+  document.querySelectorAll('#sq-stepsUp,#sq-stepsDn').forEach(b=>
+   b.classList.toggle('tier-locked', free));
+  // Anything already past a limit when the tier flips has to come back.
+  if(free){
+   if(typeof window._sqSteps==='function' && !freeAllowsSteps(window._sqSteps())){
+    const l=_freeList('stepCounts')||[16];
+    try{ setSeqStepCount('sq', l[l.length-1]); }catch(e){}
+   }
+   if(!modAllows('stemExport') && typeof exportStems!=='undefined' && exportStems){
+    try{ toggleStemExport(); }catch(e){}
+   }
+   if(lockSample && typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[wave]){
+    try{ setWave(SAMPLE_LIBS[SAMPLED_WAVES[wave]].fallbackWave||'piano'); }catch(e){}
+   }
+  }
+ }catch(e){ /* a tier check must never break a render */ }
+}
 
 // ── MōdFX boot ───────────────────────────────────────────────────
 // The worklet module has to load before any chain is built, or the chains come
@@ -21980,7 +22133,12 @@ a11yPass();
 // playback moves classes rather than nodes, so the hot path never wakes this.
 (function(){
  let t=null;
- const obs=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(a11yPass,250); });
+ const obs=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(()=>{
+  a11yPass();
+  // Tier limits ride the same debounce: kit rows, style rows and voice
+  // pickers are all rebuilt on tab switches and would come back unlocked.
+  if(typeof freeApplyLimits==='function') freeApplyLimits();
+ },250); });
  obs.observe(document.body,{childList:true,subtree:true});
 })();
 
