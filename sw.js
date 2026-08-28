@@ -12,7 +12,7 @@
 // revalidated, because samples/<kit>/<note>.mp3 is immutable — if a sample
 // ever changes it changes name.
 
-const VERSION   = 'modriff-2.0.0';   // bump on release: it invalidates the old caches
+const VERSION   = 'modriff-2.0.1';   // bump on release: it invalidates the old caches
 const SHELL     = VERSION + '-shell';
 const ASSETS    = VERSION + '-assets';
 const SHELL_URLS = ['./', './index.html', './manifest.webmanifest',
