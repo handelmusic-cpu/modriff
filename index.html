@@ -4500,9 +4500,9 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <!-- Follow the changes -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-   <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: OFF</button>
+   <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: ON</button>
    <button class="bl-genbtn" id="bl-feel-btn" onclick="blToggleWalkFeel()" title="Four = walking quarter notes. Two = half notes on 1 and 3, the way a head is usually played">Feel: Four</button>
-   <span class="bl-pl" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Loops the bar as written</span>
+   <span class="bl-pl" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Line re-roots onto each chord</span>
    <span class="bl-pl" style="margin-left:6px">Humanize</span>
    <input type="range" id="bl-human" min="0" max="1" step="0.05" value="0"
           style="-webkit-appearance:none;width:70px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer"
@@ -4617,8 +4617,8 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <!-- Follow the changes -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
-   <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: OFF</button>
-   <span class="bl-pl" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Loops the bar as written</span>
+   <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: ON</button>
+   <span class="bl-pl" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
@@ -9186,16 +9186,44 @@ function _sharedVoiceLabel(w){
  return m?m[1]:w;
 }
 function _blWaveLabel(w){ return BL_WAVE_LABELS[w] || _sharedVoiceLabel(w); }
-// Same order everywhere a list of parts appears (this dock, the Mixer):
-// Chords and Melody strip live on Play, Bass/Melody gen/Arp on the Bass tab
-// in that tab's own left-to-right order — so the order here matches the
-// order you actually encounter these controls in, instead of three
-// different orderings that happened to accrete independently.
-const VOICE_PARTS=[
+// ═══════════════════════════════════════
+// PARTS — the one place the app's parts are named and ordered.
+// ═══════════════════════════════════════
+// There used to be six different orderings (transport, mixer, voices dock,
+// stems, sub-navs) and a comment on the transport claiming they agreed, which
+// they did not. Everything downstream is derived from this list now, so a new
+// surface cannot drift and a new part is one row.
+//
+// The order is the order you meet these things: Chords and the Melody strip
+// are on Play because you play them; Drums, Aux Perc, Bass, Melody Seq and Arp
+// are on Accomp because they play themselves. It is also the order the
+// walkthrough teaches.
+//
+//   voice — has an instrument you can pick in the Voices dock
+//   layer — has an on/off switch in the transport
+//   mix   — has a mixer channel and a stem
+const PARTS=[
+ {id:'chord',  label:'Chords',     stem:'Chords',     color:'#3ab4ff', icon:'⬢', voice:true,  layer:true,  mix:true},
+ {id:'mel',    label:'Melody',     stem:'Melody',     color:'#f0c040', icon:'〰', voice:true,  layer:false, mix:true},
+ {id:'drum',   label:'Drums',      stem:'Drums',      color:'#ff6b35', icon:'🥁', voice:false, layer:true,  mix:true},
+ {id:'bass',   label:'Bass',       stem:'Bass',       color:'#a855f7', icon:'♪', voice:true,  layer:true,  mix:true},
+ {id:'melgen', label:'Melody Seq', stem:'Melody Seq', color:'#ff8ad4', icon:'✦', voice:true,  layer:true,  mix:true},
+ {id:'arp',    label:'Arp',        stem:'Arp',        color:'#2df09a', icon:'↺', voice:true,  layer:true,  mix:true},
+];
+const PART_ORDER = PARTS.map(p=>p.id);
+function partIndex(id){ const i=PART_ORDER.indexOf(id); return i<0 ? 999 : i; }
+function partById(id){ return PARTS.find(p=>p.id===id) || null; }
+// Sorts any array of objects carrying a part id under `key` into canon order.
+function sortByPart(arr, key){ return arr.slice().sort((a,b)=>partIndex(a[key])-partIndex(b[key])); }
+
+// The Voices dock: canon order, minus Drums, which picks a kit rather than a
+// voice. The get/set/opts below are behaviour rather than data, so they stay
+// here; only the order and the labels come from PARTS.
+const VOICE_PARTS=sortByPart([
  {k:'chord', icon:'⬢', label:'Chords', hint:'the chord pads',
   get:()=>(typeof wave!=='undefined'?wave:null), set:v=>setWave(v),
   opts:MS_SHARED_VOICES},
- {k:'mel', icon:'〰', label:'Melody strip', hint:'the keys you play by hand',
+ {k:'mel', icon:'〰', label:'Melody', hint:'the keys you play by hand',
   get:()=>(typeof melWave!=='undefined'?melWave:null), set:v=>setMelWave(v),
   opts:MS_SHARED_VOICES},
  {k:'bass', icon:'♪', label:'Bass', hint:'the bass sequencer',
@@ -9204,14 +9232,14 @@ const VOICE_PARTS=[
   opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
         ['sawtooth','Acid'],['square','Square'],['triangle','Tri'],['sine','Sub']]
        .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
- {k:'melgen', icon:'✦', label:'Melody gen', hint:'the generated melody line',
+ {k:'melgen', icon:'✦', label:'Melody Seq', hint:'the generated melody line',
   get:()=>{ try{ return window._mlCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof window.setMlWave==='function') window.setMlWave(v); },
   opts:MS_SHARED_VOICES},
  {k:'arp', icon:'↺', label:'Arp', hint:'the arpeggiator',
   get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
   opts:MS_SHARED_VOICES},
-];
+], 'k');
 function buildVoicesPanel(){
  ['voices-grid','voices-grid-dock'].forEach(hostId=>{
   const host=document.getElementById(hostId); if(!host) return;
@@ -15885,7 +15913,9 @@ function _updateStemBtn(){
   });
 }
 // Names as a musician would label the tracks, not as the code names them.
-var STEM_LABELS = { chord:'Chords', arp:'Arp', mel:'Melody', drum:'Drums', bass:'Bass', melgen:'Melody-Seq' };
+// Derived from PARTS, so stems come out in canon order under canon names
+// rather than the fourth ordering and the fourth name for the melody generator.
+var STEM_LABELS = PARTS.reduce(function(o,p){ if(p.mix) o[p.id]=p.stem; return o; }, {});
 function _startStemTaps(ctx){
   _stemTaps=[];
   if(!exportStems) return;
@@ -16510,6 +16540,12 @@ const _tbtn = document.getElementById('typing-btn');
 if(_tbtn){ _tbtn.classList.add('active'); }
 // Show keys hint since typing is on
 document.getElementById('keys-typing-hint')?.classList.add('visible');
+// Follow now defaults ON, and both buttons are hardcoded "Follow: OFF" in the
+// markup. Their sync functions were only ever called from the toggle handlers,
+// so without these two lines the feature would run on while the UI said off.
+if(typeof window.blSyncFollowUI==='function') window.blSyncFollowUI();
+if(typeof window.mlSyncFollowUI==='function') window.mlSyncFollowUI();
+
 setTimeout(playOnboardingDemo, 1200);
 
 
@@ -18597,7 +18633,12 @@ function _humanV(isAccent){
 // Working in scheduled time rather than "the chord that's playing now" is
 // what keeps it locked: both sides are placing notes ahead of the clock.
 
-var blFollow = false;                    // off = the grid loops as authored
+// Default ON. The app's own help calls this "the difference between a loop
+// and a bass part" — it shipped off, so every first-timer who hit Generate got
+// the version the docs call wrong. blSyncFollowUI() runs at boot (see the
+// init block) because the markup hardcodes "Follow: OFF": flipping the flag
+// alone would leave the button lying about the state.
+var blFollow = true;
 // Two-feel or four. Bassists play half notes through a head and walk on the
 // solos; it is the most recognisable arrangement move in the idiom and the
 // walk had no way to express it. 'two' lands on beats 1 and 3 only.
@@ -19823,7 +19864,7 @@ var mlOct = 5;
 // Follow the changes, same idea as the bass: keep the phrase you generated and
 // move it onto whichever chord is sounding, instead of throwing it away and
 // writing a new one every bar.
-var mlFollow = false;
+var mlFollow = true;   // see blFollow — same reasoning, same boot-time sync
 var _mlGridRootPc = 0;
 // The bass got a register clamp after riff was measured topping out at 247 Hz.
 // The melody had no equivalent, so its octave-lift styles could wander as far
@@ -20666,14 +20707,9 @@ function _mixMeterTick(){
 function mixMetersStart(){ if(!_mixMeterRaf) _mixMeterTick(); }
 function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _mixMeterRaf=null; }
 
-window.MIX_CHANNELS = [
- {id:'chord', label:'Chord',  color:'#3ab4ff'},
- {id:'mel',   label:'Mel',    color:'#f0c040'},
- {id:'drum',  label:'Drums',  color:'#ff6b35'},
- {id:'bass',  label:'Bass',   color:'#a855f7'},
- {id:'melgen',label:'MelGen', color:'#ff8ad4'},
- {id:'arp',   label:'Arp',    color:'#2df09a'},
-];
+// Derived from PARTS — see the block above VOICE_PARTS. Adding a part there
+// gives it a mixer strip, a stem and a place in every ordered list at once.
+window.MIX_CHANNELS = PARTS.filter(p=>p.mix).map(p=>({id:p.id, label:p.label, color:p.color}));
 window.buildMixChannelsInto = function(container){
  if(!container) return;
  container.innerHTML='';
