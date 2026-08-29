@@ -5712,6 +5712,19 @@ function buildUnlockChoices(){
   return;
  }
  let html='';
+ // A first-time visitor gets the walkthrough as the primary action. Leading
+ // with a dice roll meant the app's opening move was "here are some sounds you
+ // did not choose", which is the least interesting thing it does. Anyone who
+ // has been here before keeps the old splash exactly.
+ const firstTime = !hasLastSession() && !tourChapterDone(1);
+ if(firstTime){
+  html+=btn('', 'learn', '▶ Start here — 2 minute walkthrough');
+  html+=btn('ghost','rollplay','⚄ Randomize &amp; Play');
+  html+=btn('ghost','blank','Start Blank');
+  box.innerHTML=html;
+  if(note) note.textContent = 'The walkthrough is hands-on — you play the chords, the melody and the drums as it goes, and it takes about two minutes. Randomize skips it and rolls a jam instead.';
+  return;
+ }
  if(hasLastSession()) html+=btn('', 'resume', '▶ Pick up where I left off');
  html+=btn(hasLastSession()?'ghost':'', 'rollplay', '⚄ Randomize &amp; Play');
  html+=btn('ghost','roll','⚄ Randomize');
@@ -5761,6 +5774,9 @@ function unlockAudio(startDemo){
   startDemoJourney(true);
  } else if(mode==='roll'){
   startDemoJourney(false);
+ } else if(mode==='learn'){
+  // The walkthrough lays its own bed, so nothing is rolled first.
+  setTimeout(function(){ if(typeof playOnboardingDemo==='function') playOnboardingDemo([1,2]); }, 350);
  }
  // From here on, keep a running snapshot so "pick up where I left off" has
  // something to come back to next time.
@@ -11369,93 +11385,309 @@ function withUndo(msg, snapshot, restore, act){
   catch(e){ showToast('Could not undo that'); }
  }});
 }
-function playOnboardingDemo(){
-  if(typeof localStorage!=='undefined'&&localStorage.getItem('modo-demo-played')) return;
-  if(document.getElementById('_onboard-wrap')) return;
+// ═══════════════════════════════════════
+// WALKTHROUGH
+// ═══════════════════════════════════════
+// The old version was fourteen cards with a Next button: it explained the app
+// while the user watched, and the one card that begged them to try something
+// ("do not skip it") was still just a card. This one never advances on its own.
+// Every step listens for the real action and waits, so the only way through is
+// to play the thing being described. "Show me" performs the action and moves
+// on, so nobody is ever stuck — but doing it is the default path.
+//
+// It runs in Basic view. The old tour forced Advanced for its duration and put
+// the user's setting back afterwards, which is disorienting on a first run and
+// shows off controls a newcomer has no use for yet. Every target below is
+// checked to be visible in Basic; anything advanced-only is out of scope.
+//
+// Four chapters, tracked separately, because fifteen gated steps in one sitting
+// is too much to ask. 1–2 are the first run; 3–4 are offered at the end and can
+// be taken later from ⋯ › Tour.
+const TOUR_CH_KEY = 'modo-tour-ch';
+const TOUR_CHAPTERS = [
+  {id:1, name:'Chords and keys',   where:'Play'},
+  {id:2, name:'Play a melody',     where:'Play'},
+  {id:3, name:'Make the drums yours', where:'Accomp'},
+  {id:4, name:'Bass, melody, arp', where:'Accomp'},
+];
+function tourChapterDone(n){ try{ return !!localStorage.getItem(TOUR_CH_KEY+n); }catch(e){ return false; } }
+function markTourChapter(n){ try{ localStorage.setItem(TOUR_CH_KEY+n,'1'); }catch(e){} }
 
-  // The tour needs Advanced-only areas (melody strip, secondary dominants,
-  // extra voices) visible, so it switches to Advanced for its duration and
-  // restores whatever the user actually had set once it's done.
-  var _originalViewMode='basic';
-  try{ _originalViewMode=localStorage.getItem('modo-view-mode')||'basic'; }catch(e){}
-  if(typeof setViewMode==='function') setViewMode('advanced');
+// ── gates ──────────────────────────────────────────────────────────────────
+// Each returns a function that arms the listener and returns a teardown. They
+// resolve by calling done(); nothing polls.
+function _gClick(sel, opts){
+  opts = opts || {};
+  return function(done){
+    var seen = [];
+    function h(e){
+      var el = e.target.closest ? e.target.closest(sel) : null;
+      if(!el) return;
+      if(opts.distinct){ if(seen.indexOf(el) < 0) seen.push(el); }
+      else seen.push(el);
+      if(seen.length >= (opts.n || 1)) done();
+    }
+    document.addEventListener('click', h, true);
+    return function(){ document.removeEventListener('click', h, true); };
+  };
+}
+// The melody strip and the chord pads respond to pointerdown, not click, so a
+// slide across them never fires a click event at all.
+function _gPointer(sel, opts){
+  opts = opts || {};
+  return function(done){
+    var n = 0;
+    function h(e){
+      var el = e.target.closest ? e.target.closest(sel) : null;
+      if(!el) return;
+      if(++n >= (opts.n || 1)) done();
+    }
+    document.addEventListener('pointerdown', h, true);
+    return function(){ document.removeEventListener('pointerdown', h, true); };
+  };
+}
+// Sub-gates in order: the next one is not armed until the previous resolves,
+// which is what makes "switch to Minor, then play three chords" one step.
+function _gSeq(){
+  var gates = Array.prototype.slice.call(arguments);
+  return function(done){
+    var idx = 0, teardown = null;
+    function arm(){
+      if(idx >= gates.length) return done();
+      teardown = gates[idx++](function(){ if(teardown) teardown(); arm(); });
+    }
+    arm();
+    return function(){ if(teardown) teardown(); };
+  };
+}
 
-  var steps=[
-    {title:'Welcome to MōdRiff!',text:'A full music production system — chords, drums, bass, melody and a synth, all playing together. This tour takes about a minute and shows you the moves that matter.',icon:'✦',target:null,tab:null},
-    {title:'⚄ Start here: roll the dice',text:'The <b>dice</b> is the fastest way to hear what this thing does. One tap rolls a whole new <b>sound, key, mode, tempo, groove, drum kit and swing</b> — a different track every time. Nothing you built is touched, and <b>↶ Undo</b> puts it all back. Roll it a few times; that is the app in one button.',icon:'⚄',target:'ft-dice-btn',tab:'perform'},
-    {title:'One Play button',text:'<b>▶</b> starts everything switched on — drums, bass, melody and a loaded song — locked together. It turns into <b>■</b> while playing, and <b>Spacebar</b> does the same. <b>⁴</b> counts you in four beats first.',icon:'▶',target:'ft-playstop-btn',tab:'perform'},
-    {title:'Mute and unmute to perform',text:'<b>Drums · Arp · Bass · Mel</b> are layer switches, not play buttons. Flip them <i>while the music runs</i> to drop the drums for a bar or bring the bass back in. This is the main way you perform with MōdRiff.',icon:'🎛',target:'ft-drum-btn',tab:'perform'},
-    {title:'Play chords',text:'Tap the <b>bottom half</b> of a button for the triad, the <b>top strip</b> for its 7th. <b>Press and hold</b> to sustain. A <b>green glow</b> marks the chord sounding right now — including while a song plays itself. Keys <b>1–7</b> trigger the same chords.',icon:'🎹',target:'chords-diatonic',tab:'perform'},
-    {title:'Chord Forms — play along',text:'Under the grid, <b>Chord Forms</b> shows how to play the current chord on <b>guitar, ukulele or piano</b>, and it follows song playback automatically. Songs → <b>Chart</b> turns the whole song into a printable chord sheet.',icon:'▦',target:'chord-diagram-panel',tab:'perform'},
-    {title:'The melody strip — try this one',text:'Switch to the <b>Melody</b> sub-tab. Slide or tap to solo over whatever is playing, in key, so it is very hard to hit a wrong note. Your computer keyboard works too: <b>A S D F G H J</b> are Do Re Mi…, <b>Z / X</b> shift octave. It is the most enjoyable way to interact with the music you are hearing — do not skip it.',icon:'🎵',target:'pf-melody-btn',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('melody'); }},
-    {title:'Voices — who plays what',text:'Chords, arp, melody strip, bass and the melody generator each have their <b>own instrument</b>. The <b>⬡ Voices</b> drawer sets them all in one place, and it follows you to every tab. A Rhodes chord under a sine arp with an upright bass is three picks.',icon:'⬡',target:'voices-grid-dock',tab:'perform',before:function(){ if(typeof setPerformMode==='function') setPerformMode('chords'); if(typeof voicesDockOpen!=='undefined' && !voicesDockOpen && typeof toggleVoicesDock==='function') toggleVoicesDock(); }},
-    {title:'MōdSynth',text:'Pick <b>MōdSynth</b> as a voice and a full synth opens up: 18 presets across Basic, Classic and Modern, live controls for unison, detune, sub, <b>cutoff and filter sweep</b>, reso and drive, <b>two LFOs</b> for vibrato, wobble and tremolo — and a scope showing the actual output.',icon:'◈',target:'modsynth-panel',tab:'perform',before:function(){ if(typeof setWave==='function') setWave('modsynth'); }},
-    {title:'Drums',text:'Pick a kit — including the synthesized <b>MōdKit</b> — then a groove preset or your own step pattern. Set steps, rate and swing here.',icon:'🥁',target:'sq-groove-presets',tab:'accomp',before:function(){ if(typeof setAccompMode==='function') setAccompMode('drums'); }},
-    {title:'Bass & melody, generated',text:'Pick a style — Jazz, Funk, Motown, Acid and more — and hit <b>Generate</b> for a bassline that follows your chords. The Melody tab does the same for a hook. Turn on <b>Bass+Mel: Sync</b> and both rewrite themselves every chord change.',icon:'🎸',target:'bl-gen-style',tab:'accomp',before:function(){ if(typeof setAccompMode==='function') setAccompMode('bass'); }},
-    {title:'Capture what you play',text:'Hit <b>Capture</b> in the transport and just play chords — mouse, keyboard or MIDI. Every chord lands in a new Song section you can edit, loop and print. <b>Bounce</b>, next to it, is the other one: that writes a <b>.wav</b> of what you hear plus a <b>.mid</b> of what you played, straight to your downloads.',icon:'◉',target:'ft-rec-btn',tab:'perform'},
-    {title:'Songs & endings',text:'Load a song, switch <b>Song: ON</b>, and it loops itself while you perform over it. <b>− / +</b> transposes live like a capo. <b>Prev / Next</b> queue to the end of the pass. And an <b>Ending</b> — Ritard, Big Finish, Fade or Cold — lands the finish on a downbeat instead of just stopping.',icon:'🎼',target:'songs-perform-btn',tab:'songs',before:function(){ if(typeof setSongsMode==='function') setSongsMode('perform'); }},
-    {title:'Go make something',text:'A good first run: hit <b>▶</b> for drums, roll the <b>dice</b> until something grabs you, play the <b>melody strip</b> over it, then mute and unmute layers. Replay this tour any time with <b>?</b> in the transport.',icon:'✦',target:null,tab:'perform'},
+function _tourSet(fn){ try{ fn(); }catch(e){} }
+
+// ── the bed ────────────────────────────────────────────────────────────────
+// A known-good state rather than the random seed, so the first thing anyone
+// hears is in tune with what the cards say. Drums only: the user does not
+// control them and is not shown their controls until chapter 3.
+function tourLayBed(){
+  _tourSet(function(){ if(typeof setViewMode==='function') setViewMode('basic'); });
+  _tourSet(function(){ root = 0; mode = 'major'; if(typeof renderChords==='function') renderChords(); });
+  _tourSet(function(){ if(typeof onBpmInput==='function') onBpmInput(100); });
+  _tourSet(function(){ if(typeof songLoopActive!=='undefined' && songLoopActive && typeof toggleGlobalSongMode==='function') toggleGlobalSongMode(); });
+  _tourSet(function(){ if(typeof window._sqSetMach==='function') window._sqSetMach('MOD'); });
+  _tourSet(function(){
+    if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return;
+    for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name==='4/4 Rock'){ sqLoadGroove(i); break; }
+  });
+  // Only drums armed. These are plain flags; the transport re-reads them.
+  _tourSet(function(){
+    if(typeof drumsEnabled!=='undefined') drumsEnabled = true;
+    if(typeof blEnabled!=='undefined') blEnabled = false;
+    if(typeof mlEnabled!=='undefined') mlEnabled = false;
+    if(typeof arpOn!=='undefined' && arpOn && typeof toggleArp==='function') toggleArp();
+    if(typeof syncFixedTransport==='function') syncFixedTransport();
+  });
+}
+
+// ── steps ──────────────────────────────────────────────────────────────────
+function tourSteps(){
+  return [
+  // ── Chapter 1 — chords, keys, sevenths ──
+  {ch:1, icon:'▶', title:'Press play', tab:'perform',
+   text:'Drums first, so there is something to play over. Everything else stays off until you turn it on.',
+   target:'ft-playstop-btn',
+   gate:_gClick('#ft-playstop-btn'),
+   showMe:function(){ if(typeof ftPlayStop==='function') ftPlayStop(); }},
+
+  {ch:1, icon:'🎹', title:'Play three chords', tab:'perform',
+   text:'Tap the <b>bottom half</b> of any three buttons. They are the chords that belong together in this key — there is no wrong one to pick.',
+   target:'chords-diatonic',
+   gate:_gPointer('#chords-diatonic .btn-tri', {n:3}),
+   showMe:function(){ var b=document.querySelectorAll('#chords-diatonic .btn-tri'); if(b[0]) b[0].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); }},
+
+  {ch:1, icon:'✦', title:'Now the strip on top', tab:'perform',
+   text:'The <b>thin strip</b> along the top of a chord button plays its <b>7th</b> — the same chord with one more note, and a lot more colour. Try one.',
+   target:'chords-diatonic',
+   gate:_gPointer('#chords-diatonic .btn-sev'),
+   showMe:function(){ var b=document.querySelector('#chords-diatonic .btn-sev'); if(b) b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); }},
+
+  {ch:1, icon:'♭', title:'Switch to Minor', tab:'perform',
+   text:'Tap <b>Min</b>, then play three chords again. Same buttons, same drums — the whole mood moves. That is what the key selector does.',
+   target:'bm-minor',
+   gate:_gSeq(_gClick('#bm-minor'), _gPointer('#chords-diatonic .btn-tri', {n:3})),
+   showMe:function(){ if(typeof setMode==='function') setMode('minor'); }},
+
+  {ch:1, icon:'⭐', title:'Try Maj Pent', tab:'perform',
+   text:'Tap <b>Maj Pent</b> and play a couple. Five notes instead of seven — the two that can clash are simply gone, which is why it sounds good under almost anything.',
+   target:'bm-major_pent',
+   gate:_gSeq(_gClick('#bm-major_pent'), _gPointer('#chords-diatonic .btn-tri', {n:2})),
+   showMe:function(){ if(typeof setMode==='function') setMode('major_pent'); }},
+
+  // ── Chapter 2 — the melody strip ──
+  {ch:2, icon:'〰', title:'Open the Melody strip', tab:'perform',
+   text:'Chords are the backing. Now play something over the top — tap <b>Melody</b>.',
+   target:'pf-melody-btn',
+   gate:_gClick('#pf-melody-btn'),
+   showMe:function(){ if(typeof setPerformMode==='function') setPerformMode('melody'); }},
+
+  {ch:2, icon:'🎵', title:'Play five notes', tab:'perform',
+   before:function(){ if(typeof setPerformMode==='function') setPerformMode('melody'); },
+   text:'Slide or tap along the strip. Every note is in the key you picked, so you cannot land on a wrong one. Your keyboard works too: <b>A S D F G H J</b>.',
+   target:'melody-keys',
+   gate:_gPointer('#melody-keys .mel-key, #melody-keys > *', {n:5}),
+   showMe:function(){ var k=document.querySelectorAll('#melody-keys > *'); if(k[0]) k[0].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); }},
+
+  // ── Chapter 3 — drums ──
+  {ch:3, icon:'🥁', title:'Open the Accomp tab', tab:'perform',
+   text:'Everything that plays itself lives on one tab: <b>drums, bass, melody and arp</b>. Go there.',
+   target:'tab-accomp',
+   gate:_gClick('#tab-accomp'),
+   showMe:function(){ if(typeof switchTab==='function') switchTab('accomp'); }},
+
+  {ch:3, icon:'⚄', title:'Roll a new groove', tab:'accomp',
+   before:function(){ if(typeof setAccompMode==='function') setAccompMode('drums'); },
+   text:'Pick a <b>style</b>, or hit <b>Roll</b> for a whole new feel — style, kit, groove and swing at once. The chords you played stay exactly as they are.',
+   target:'sq-gen-style',
+   gate:_gClick('#sq-gen-style button, .sq-song button[onclick*="sqGrooveDice"], .sq-song button[onclick*="sqGenerate"], #sq-groove-presets button'),
+   showMe:function(){ if(typeof sqGrooveDice==='function') sqGrooveDice(); }},
+
+  {ch:3, icon:'▦', title:'Change one hit', tab:'accomp',
+   text:'Tap any square in the grid. That is the moment it stops being a preset and starts being your pattern.',
+   target:'sq-gInner',
+   gate:_gPointer('#sq-gInner .sq-step'),
+   showMe:function(){ var e=document.querySelector('#sq-gInner .sq-step'); if(e){ e.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); e.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); } }},
+
+  {ch:3, icon:'✧', title:'Add a shaker', tab:'accomp',
+   text:'Switch the <b>Layer</b> to <b>Aux Perc</b> — a second kit of shakers, congas and clave that sits on top of the first. Tap a few squares on the top row.',
+   target:'sq-layerRow',
+   gate:_gSeq(_gClick('[data-sqlayer="1"]'), _gPointer('#sq-gInner .sq-step', {n:2})),
+   showMe:function(){ if(typeof window._sqSetFocus==='function') window._sqSetFocus(1); }},
+
+  // ── Chapter 4 — bass, melody generator, arp ──
+  {ch:4, icon:'♪', title:'Generate a bassline', tab:'accomp',
+   before:function(){ if(typeof setAccompMode==='function') setAccompMode('bass'); },
+   text:'Tap <b>Bass</b>, pick a style, then <b>Generate</b>. It follows your chord changes on its own — that is <b>Follow</b>, and it is already on.',
+   target:'bl-gen-style',
+   gate:_gSeq(_gClick('#ac-bass-btn, #bl-gen-style button'), _gClick('button[onclick*="blGenerate"]')),
+   showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('bass'); if(typeof window.blGenerate==='function') window.blGenerate(); }},
+
+  {ch:4, icon:'✦', title:'And a melody line', tab:'accomp',
+   text:'Same two moves under <b>Melody</b>. Four parts playing now, and you programmed none of them by hand.',
+   target:'bm-subnav',
+   gate:_gSeq(_gClick('#ac-mel-btn'), _gClick('button[onclick*="mlGenerate"]')),
+   showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('melody'); if(typeof window.mlGenerate==='function') window.mlGenerate(); }},
+
+  {ch:4, icon:'↺', title:'Turn on the Arp, then hold a chord', tab:'accomp',
+   text:'The arp breaks a chord into a run of single notes — but it needs a chord to work on. Switch it on, then go back to <b>Play</b> and <b>hold</b> one.',
+   target:'bm-subnav',
+   gate:_gSeq(_gClick('#ac-arp-btn'), _gClick('#arp-toggle-p'), _gPointer('#chords-diatonic .btn-tri')),
+   showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('arp'); if(typeof arpOn!=='undefined' && !arpOn && typeof toggleArp==='function') toggleArp(); }},
+
+  {ch:4, icon:'⚄', title:'Now roll the dice', tab:'perform',
+   text:'You built a track. The <b>dice</b> in the <b>⋯</b> menu rolls the whole thing again — key, sound, groove, tempo — and <b>Undo</b> puts it back. Everything you just learned is what it is rolling.',
+   target:'ft-more-btn',
+   gate:_gClick('#ft-dice-btn, #ft-more-btn'),
+   showMe:function(){ var m=document.getElementById('ft-more-menu'); if(m) m.classList.add('open'); }},
   ];
+}
 
-  var step=0;
-  var wrap=document.createElement('div');
-  wrap.id='_onboard-wrap';
-  wrap.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9100;pointer-events:none;';
+// ── runner ─────────────────────────────────────────────────────────────────
+let _tourTeardown = null, _tourSnapshot = null;
 
-  var spotlight=document.createElement('div');
-  spotlight.id='_onboard-spot';
-  spotlight.style.cssText='position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;';
+function playOnboardingDemo(chapters){
+  if(document.getElementById('_onboard-wrap')) return;
+  var all = tourSteps();
+  var want = chapters || [1,2].filter(function(n){ return !tourChapterDone(n); });
+  if(!want.length) return;
+  var steps = all.filter(function(st){ return want.indexOf(st.ch) >= 0; });
+  if(!steps.length) return;
+
+  // On a replay the user has a rig they care about; the bed would flatten it.
+  try{ _tourSnapshot = (typeof captureSetup==='function') ? captureSetup('Before walkthrough', true) : null; }catch(e){ _tourSnapshot = null; }
+  tourLayBed();
+
+  var step = 0;
+  var wrap = document.createElement('div');
+  wrap.id = '_onboard-wrap';
+  wrap.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9100;pointer-events:none;';
+  var spotlight = document.createElement('div');
+  spotlight.id = '_onboard-spot';
+  spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;';
   document.body.appendChild(spotlight);
-
-  var card=document.createElement('div');
-  card.style.cssText='position:relative;pointer-events:all;margin:0 auto 0;max-width:420px;background:linear-gradient(135deg,#130d22,#0a1a10);border:1px solid var(--pg);border-radius:18px 18px 0 0;padding:18px 18px 22px;box-shadow:0 -4px 32px rgba(0,0,0,.8);color:#eef0ff;';
+  var card = document.createElement('div');
+  card.style.cssText = 'position:relative;pointer-events:all;margin:0 auto;max-width:420px;background:linear-gradient(135deg,#130d22,#0a1a10);border:1px solid var(--pg);border-radius:18px 18px 0 0;padding:18px 18px 22px;box-shadow:0 -4px 32px rgba(0,0,0,.8);color:#eef0ff;';
   wrap.appendChild(card);
   document.body.appendChild(wrap);
 
   function spotTarget(tid){
-    if(!tid){spotlight.style.display='none'; return;}
-    var el=document.getElementById(tid);
-    if(!el){spotlight.style.display='none'; return;}
-    el.scrollIntoView({behavior:'smooth',block:'center'});
-    var doSpot=function(){
-      var r=el.getBoundingClientRect();
-      var pad=8;
-      spotlight.style.cssText='position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
-    };
-    setTimeout(doSpot,260); // wait for scrollIntoView to settle before measuring
+    if(!tid){ spotlight.style.display='none'; return; }
+    var el = document.getElementById(tid);
+    if(!el || el.offsetParent === null){ spotlight.style.display='none'; return; }
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(function(){
+      var r = el.getBoundingClientRect(), pad = 8;
+      spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
+    }, 260);
+  }
+
+  function advance(){
+    if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+    var doneCh = steps[step].ch;
+    step++;
+    if(step >= steps.length){ markTourChapter(doneCh); return finish(); }
+    if(steps[step].ch !== doneCh) markTourChapter(doneCh);
+    render();
   }
 
   function render(){
-    var s=steps[step];
-    if(s.tab && typeof switchTab==='function') switchTab(s.tab);
-    if(s.before) s.before();
-    spotTarget(s.target);
-    card.innerHTML='<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'+
-      '<span style="font-size:1.4rem;line-height:1">'+s.icon+'</span>'+
-      '<div style="flex:1"><div style="font-family:\'Orbitron\',sans-serif;font-size:.65rem;font-weight:700;color:var(--pg);margin-bottom:4px">'+s.title+'</div>'+
-      '<div style="font-size:.55rem;color:#eef0ff;line-height:1.7">'+s.text+'</div></div></div>'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">'+
-      '<div style="display:flex;gap:4px">'+(steps.map((_,i)=>'<div style="width:'+(i===step?14:5)+'px;height:5px;border-radius:3px;background:'+(i===step?'var(--pg)':'rgba(255,255,255,.2)')+';transition:all .25s"></div>').join(''))+'</div>'+
-      '<div style="display:flex;gap:8px">'+
-      '<button id="_ob-skip" style="font-size:.48rem;padding:5px 12px;border:1px solid rgba(255,255,255,.2);border-radius:20px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-family:\'Outfit\',sans-serif">'+
-      (step===steps.length-1?'Done':'Skip')+'</button>'+
-      (step<steps.length-1?'<button id="_ob-next" style="font-size:.48rem;padding:5px 14px;border:none;border-radius:20px;background:var(--pg);color:#07080f;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:700">Next →</button>':'')+'</div></div>';
-
-    var skip=document.getElementById('_ob-skip');
-    var next=document.getElementById('_ob-next');
-    if(skip) skip.onclick=dismiss;
-    if(next) next.onclick=function(){ step++; if(step>=steps.length) dismiss(); else render(); };
+    var st = steps[step];
+    if(st.tab && typeof switchTab==='function') switchTab(st.tab);
+    if(st.before) _tourSet(st.before);
+    spotTarget(st.target);
+    var pct = Math.round(step / steps.length * 100);
+    card.innerHTML =
+      '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">' +
+      '<span style="font-size:1.4rem;line-height:1">' + st.icon + '</span>' +
+      '<div style="flex:1"><div style="font-family:\'Orbitron\',sans-serif;font-size:.65rem;font-weight:700;color:var(--pg);margin-bottom:4px">' + st.title + '</div>' +
+      '<div style="font-size:.55rem;color:#eef0ff;line-height:1.7">' + st.text + '</div></div></div>' +
+      '<div style="height:3px;background:rgba(255,255,255,.14);border-radius:2px;overflow:hidden;margin:12px 0 10px">' +
+      '<div style="height:100%;width:' + pct + '%;background:var(--pg);transition:width .3s"></div></div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+      '<span style="font-size:.45rem;color:rgba(255,255,255,.5);letter-spacing:.06em">Your turn — step ' + (step+1) + ' of ' + steps.length + '</span>' +
+      '<div style="display:flex;gap:8px">' +
+      '<button id="_ob-skip" style="font-size:.48rem;padding:5px 12px;border:1px solid rgba(255,255,255,.2);border-radius:20px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-family:\'Outfit\',sans-serif">Skip</button>' +
+      '<button id="_ob-show" style="font-size:.48rem;padding:5px 14px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:#eef0ff;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:700">Show me</button>' +
+      '</div></div>';
+    document.getElementById('_ob-skip').onclick = finish;
+    document.getElementById('_ob-show').onclick = function(){ if(st.showMe) _tourSet(st.showMe); advance(); };
+    // Arm the gate last, so nothing set up by before/showMe can trip it.
+    setTimeout(function(){ _tourTeardown = st.gate(advance); }, 60);
   }
 
-  function dismiss(){
+  function finish(){
+    if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
     spotlight.remove(); wrap.remove();
-    if(typeof setViewMode==='function') setViewMode(_originalViewMode);
-    if(typeof switchTab==='function') switchTab('perform');
-    try{localStorage.setItem('modo-demo-played','1');}catch(e){}
+    var nextCh = [3,4].filter(function(n){ return !tourChapterDone(n); });
+    if(want.indexOf(3) < 0 && nextCh.length){
+      if(typeof showToast==='function') showToast('Nice. ⋯ › Tour has two more chapters when you want them.');
+    }
   }
 
   render();
 }
+
+// Replaying from the ⋯ menu runs every chapter and puts the rig back after.
+function showTour(){
+  var existing = document.getElementById('_onboard-wrap');
+  if(existing){ existing.remove(); var sp=document.getElementById('_onboard-spot'); if(sp) sp.remove(); }
+  try{ [1,2,3,4].forEach(function(n){ localStorage.removeItem(TOUR_CH_KEY+n); }); }catch(e){}
+  playOnboardingDemo([1,2,3,4]);
+}
+// Restores whatever the user had before a replay. Nothing calls this on a
+// first run, where the bed is the starting point rather than an interruption.
+function tourRestoreRig(){
+  if(_tourSnapshot && typeof applySetup==='function'){ try{ applySetup(_tourSnapshot); }catch(e){} }
+  _tourSnapshot = null;
+}
+
 // The written guide lives on its own page that nothing ever linked to, so
 // HELP_SECTIONS was unreachable content. Reachable from the ⋯ menu now.
 function openGuide(){
@@ -11466,12 +11698,6 @@ function openGuide(){
  // the window, so resetting to the top means resetting this tab's own
  // scroll position rather than the page's.
  const pg=document.getElementById('page-help'); if(pg) pg.scrollTop=0;
-}
-function showTour(){
-  try{localStorage.removeItem('modo-demo-played');}catch(e){}
-  var existing=document.getElementById('_onboard-wrap');
-  if(existing){existing.remove();var s=document.getElementById('_onboard-spot');if(s)s.remove();}
-  playOnboardingDemo();
 }
 function exportMidi(){
   if(typeof modAllows==='function' && !modAllows('midiExport')) return freeBlocked('MIDI export');
@@ -16596,7 +16822,9 @@ document.getElementById('keys-typing-hint')?.classList.add('visible');
 if(typeof window.blSyncFollowUI==='function') window.blSyncFollowUI();
 if(typeof window.mlSyncFollowUI==='function') window.mlSyncFollowUI();
 
-setTimeout(playOnboardingDemo, 1200);
+// The walkthrough is a splash choice now, not something that appears over
+// whatever you picked 1.2s after landing.
+
 
 
 // Chord-row glows were removed: the whole feature was inert. It queried
