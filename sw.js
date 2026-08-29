@@ -12,7 +12,15 @@
 // revalidated, because samples/<kit>/<note>.mp3 is immutable — if a sample
 // ever changes it changes name.
 
-const VERSION   = 'modriff-2.0.0';   // bump on release: it invalidates the old caches
+// NOT a release label — that is MODRIFF_VERSION in index.html. This is a cache
+// key, and bumping it is usually the wrong move. The shell is network-first, so
+// a new index.html reaches everyone on their next online launch without it.
+// What a bump actually does is make activate() below delete every cache that
+// does not match, which evicts the ~3.4 MB of samples in ASSETS — files that
+// never change, since a sample that changes changes name. Bump this only when
+// an immutable asset really has changed (a sample, an icon, the OG card),
+// because those are the only ones the network-first path cannot refresh.
+const VERSION   = 'modriff-2.0.0';
 const SHELL     = VERSION + '-shell';
 const ASSETS    = VERSION + '-assets';
 const SHELL_URLS = ['./', './index.html', './manifest.webmanifest',
