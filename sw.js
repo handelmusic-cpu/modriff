@@ -20,7 +20,8 @@
 // never change, since a sample that changes changes name. Bump this only when
 // an immutable asset really has changed (a sample, an icon, the OG card),
 // because those are the only ones the network-first path cannot refresh.
-const VERSION   = 'modriff-2.0.0';
+// v2.1.0 changed none, so this stays where 2.0.1 left it.
+const VERSION   = 'modriff-2.0.1';
 const SHELL     = VERSION + '-shell';
 const ASSETS    = VERSION + '-assets';
 const SHELL_URLS = ['./', './index.html', './manifest.webmanifest',
