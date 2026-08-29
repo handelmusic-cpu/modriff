@@ -4323,6 +4323,22 @@ body.mode-free .pro-only { display:none !important; }
  <div id="ac-drums-panel">
 <div class="sq-wrap">
 
+<!-- Generate row — the verb Drums was missing. Every other part on this tab
+     answers a button with a part; this one only had a preset list and a grid,
+     so it was somewhere you set once rather than somewhere you played. Styles
+     are the bass generator's own names so "Funk" means one thing app-wide. -->
+<div class="sq-song" style="margin-bottom:0">
+  <div class="sq-songhdr" style="margin-bottom:6px">
+    <span class="sq-songtitle" style="font-size:.55rem">Generate</span>
+  </div>
+  <div class="bl-gen-style" id="sq-gen-style" style="margin-bottom:6px"></div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+    <button class="bl-genbtn" onclick="sqGrooveDice()" title="Roll a whole new feel — style, kit, groove and swing together">&#9860; Roll</button>
+    <button class="bl-genbtn" onclick="sqGenerate()" title="Generate a pattern in the selected style">&#10022; Generate</button>
+    <button class="bl-genbtn" onclick="sqVary()" title="Keep the pattern, move it around — and add a fill">&#8635; Vary</button>
+  </div>
+</div>
+
 <!-- Groove presets row -->
 <div class="sq-song" style="margin-bottom:0">
   <div class="sq-songhdr" style="margin-bottom:6px">
@@ -4451,6 +4467,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
      <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
+     <button class="bl-mopt" id="blw-303" onclick="blPreset303()" title="The TB-303 sound the drum tab used to carry: acid saw, filter at 2000, resonance 10">303</button>
      <!-- Covers any voice picked via the Voices drawer that isn't one of the
           seven quick buttons above (piano, vibes, modsynth, ...), so the
           current bass sound is never unclear. -->
@@ -8769,6 +8786,22 @@ function scheduleDrum(type,t){
 // ═══════════════════════════════════════
 // RHYTHM
 // ═══════════════════════════════════════
+const DRUM_STYLES = {
+  rock:     {grooves:['4/4 Rock','4/4 Basic'],                              kits:['909','808','MOD'],  swing:[0,0]},
+  funk:     {grooves:['4/4 Funk','Hip Hop'],                                kits:['LIN','909','MOD'],  swing:[0,18]},
+  jazz:     {grooves:['Jazz Ride','Jazz Two-Feel','Jazz Brushes','Jazz Up'],kits:['JAZZ','BRS'],       swing:[46,62]},
+  motown:   {grooves:['4/4 Basic','4/4 Rock'],                              kits:['MOD','909'],        swing:[0,12]},
+  acid:     {grooves:['4/4 Basic','Hip Hop'],                               kits:['808','606'],        swing:[0,0]},
+  latin:    {grooves:['Bossa Nova','Jazz Bossa'],                           kits:['JAZZ','MOD','LIN'], swing:[0,0]},
+  reggae:   {grooves:['4/4 Basic','Shuffle'],                               kits:['808','MOD'],        swing:[0,14]},
+  halftime: {grooves:['Hip Hop','4/4 Basic'],                               kits:['909','LIN','IDM'],  swing:[0,20]},
+  pedal:    {grooves:['4/4 Basic','12/8 Slow'],                             kits:['MOD','BRS'],        swing:[0,0]},
+  arpeggio: {grooves:['4/4 Basic','6/8 Feel'],                              kits:['606','MOD'],        swing:[0,0]},
+  riff:     {grooves:['4/4 Rock','Shuffle'],                                kits:['909','808'],        swing:[0,30]},
+  hook:     {grooves:['4/4 Basic','4/4 Rock'],                              kits:['MOD','909'],        swing:[0,0]},
+};
+let drumStyle = 'rock';
+
 const RHYTHMS=[
  {name:'4/4 Basic', sig:'4/4', stepDiv:4, pat:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0], kick:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]},
  {name:'4/4 Rock', sig:'4/4', stepDiv:4, pat:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], kick:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0], snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]},
@@ -18130,6 +18163,62 @@ function sqWire(){
     // If NOT playing, auto-start so the groove plays immediately
     if(!sqPlaying){ sqStart(); }
   });
+
+  // ── Vary: perturb the pattern instead of replacing it ──────────────────
+  // The reason anyone opens a drum machine twice. Deliberately conservative:
+  // the kick and snare carry the identity of the groove, so they are nudged at
+  // most once, while hats and percussion — where a human player actually
+  // varies — take most of the movement. The last bar gets a fill.
+  document.addEventListener('sq-vary', function(e){
+    var amount = (e.detail && e.detail.amount) || 0.5;
+    var tracks = SQM[sqMach] ? SQM[sqMach].tracks : [];
+    if(!tracks.length) return;
+    function rowsFor(shorts){
+      var out=[];
+      tracks.forEach(function(t,i){ if(shorts.indexOf(t.s)>=0) out.push(i); });
+      return out;
+    }
+    var keep = rowsFor(['BD','SD','SN']);              // identity: barely touch
+    var move = rowsFor(['CH','OH','HH','RD','CY','PC','CG','CB','RS','RM','SW','BL']);
+    if(!move.length) move = rowsFor(['LT','HT','T1','T2','TM']);
+
+    sqEnsureGrid();
+    // Hats and percussion: flip a proportion of steps, off-beats preferred.
+    move.forEach(function(ti){
+      for(var st=0; st<sqSteps; st++){
+        if(Math.random() > amount*0.35) continue;
+        var offbeat = (st % 4) !== 0;
+        var cell = sqGrid[ti][st];
+        if(cell.v){ if(offbeat && Math.random()<0.5) cell.v = 0; }
+        else if(offbeat && Math.random()<0.6){ cell.v = 1; cell.vel = 60 + Math.floor(Math.random()*40); }
+      }
+    });
+    // Kick/snare: one displacement at most, and never off beat 1.
+    keep.forEach(function(ti){
+      if(Math.random() > amount*0.4) return;
+      var from=-1;
+      for(var st=sqSteps-1; st>0; st--){ if(sqGrid[ti][st].v){ from=st; break; } }
+      if(from>0){
+        var to = Math.max(1, Math.min(sqSteps-1, from + (Math.random()<0.5?-1:1)));
+        if(!sqGrid[ti][to].v){ sqGrid[ti][to].v = sqGrid[ti][from].v; sqGrid[ti][from].v = 0; }
+      }
+    });
+    // Fill: last four steps get a tom/snare figure with a rising velocity.
+    if(Math.random() < amount){
+      var fillRows = rowsFor(['LT','HT','T1','T2','TM']);
+      if(!fillRows.length) fillRows = rowsFor(['SD','SN']);
+      if(fillRows.length){
+        var start = Math.max(0, sqSteps-4);
+        for(var f=start; f<sqSteps; f++){
+          var r2 = fillRows[Math.floor(Math.random()*fillRows.length)];
+          sqGrid[r2][f].v = 1;
+          sqGrid[r2][f].vel = 70 + Math.round(50*(f-start)/Math.max(1,sqSteps-1-start));
+        }
+      }
+    }
+    sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
+    sqRender();
+  });
   // Handle stop request from mode toggle
   document.addEventListener('sq-stop-request', function(){
     if(sqPlaying) sqStop();
@@ -18354,6 +18443,7 @@ var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 var blMenuStep = -1;
 var blGenStyle = 'rock';
 var blWave = 'electric';
+var blAcidDrive = 'soft';   // 'soft' | 'hard' — see the waveshaper in blPlayNote
 var blCutoff = 600;
 var blResonance = 2;
 var blOpen = true;
@@ -18361,6 +18451,18 @@ var blVol = 0.7;
 
 window.blSetCutoff = function(v){ blCutoff = +v; };
 window.blSetResonance = function(v){ blResonance = +v; };
+window.blSetAcidDrive = function(v){ blAcidDrive = (v==='hard') ? 'hard' : 'soft'; };
+// One tap for the sound the retired TB-303 kit made. The filter here is
+// blCutoff*4, so 500 lands on that kit's hardcoded 2000, and Q 10 matches the
+// resonance it froze — the bass shipped Q 2, which is a plain filtered saw
+// rather than the squelch anyone reaching for "acid" is after.
+window.blPreset303 = function(){
+  if(typeof setBlWave==='function') setBlWave('sawtooth');
+  blCutoff = 500; blResonance = 10; blAcidDrive = 'hard';
+  var c=document.getElementById('bl-cutoff'); if(c) c.value = 500;
+  var r=document.getElementById('bl-reso');   if(r) r.value = 10;
+  if(typeof showToast==='function') showToast('303: acid saw, filter 2000, Q10');
+};
 
 // `usr` marks a step you placed by hand. Generate fills around those rather
 // than over them, so an edit survives the next roll of the line instead of
@@ -18446,7 +18548,12 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     f.Q.value = blResonance;
     var dw = ctx.createWaveShaper();
     var cv = new Float32Array(256);
-    for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*3.5)*0.88;}
+    // Two curves. 'soft' is this voice's own tanh saturation and stays the
+    // default. 'hard' is x*9/(1+8|x|), the rational clipper the TB-303 kit on
+    // the drum tab used before it was retired — more bite, and what the 303
+    // preset selects so that character did not leave with the kit.
+    if(blAcidDrive === 'hard'){ for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*9/(1+8*Math.abs(x));} }
+    else { for(var i=0;i<256;i++){var x2=i*2/256-1;cv[i]=Math.tanh(x2*3.5)*0.88;} }
     dw.curve = cv;
     o.connect(f); f.connect(dw); dw.connect(g);
     o.start(t); o.stop(stopT);
@@ -20994,6 +21101,76 @@ setTimeout(function(){
 }, 1500);
 
 // ─── Groove presets: populate sq-groove-presets ───
+
+// ════════════════════════════════════════════════════
+// DRUM GENERATOR
+// ════════════════════════════════════════════════════
+// Every other part on this tab had a Generate button; drums had a preset list
+// and a step grid, which is a thing you set once rather than a thing you play
+// with. The style names are the bass generator's own, so picking "Funk" means
+// the same thing for both parts.
+
+function _dsPick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function _grooveIndexByName(n){
+  if(typeof RHYTHMS==='undefined') return -1;
+  for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===n) return i;
+  return -1;
+}
+
+// Honours the free tier the same way the preset buttons do, so generation can
+// never land somewhere the user is not allowed to be.
+function _dsAllowedKit(k){
+  return (typeof freeAllowsKit!=='function') || freeAllowsKit(k);
+}
+
+function setDrumStyle(st){
+  drumStyle = st;
+  document.querySelectorAll('[data-drumstyle]').forEach(function(b){
+    b.classList.toggle('active', b.dataset.drumstyle===st);
+  });
+}
+
+// Pick a groove, kit and swing from the style, then lay it in.
+function sqGenerate(style){
+  var st = DRUM_STYLES[style || drumStyle] || DRUM_STYLES.rock;
+  var kits = st.kits.filter(_dsAllowedKit);
+  if(kits.length && typeof window._sqSetMach==='function') window._sqSetMach(_dsPick(kits));
+  var gi = _grooveIndexByName(_dsPick(st.grooves));
+  if(gi < 0) gi = 0;
+  var lo = st.swing[0], hi = st.swing[1];
+  var sw = lo === hi ? lo : lo + Math.floor(Math.random()*(hi-lo+1));
+  if(typeof setSwingAll==='function') setSwingAll(sw);
+  if(typeof sqLoadGroove==='function') sqLoadGroove(gi);
+  if(typeof showToast==='function') showToast('Drums: ' + (style||drumStyle));
+}
+
+// The app's signature gesture, scoped to one part: a whole new feel in a tap.
+function sqGrooveDice(){
+  var styles = Object.keys(DRUM_STYLES);
+  var st = _dsPick(styles);
+  setDrumStyle(st);
+  sqGenerate(st);
+}
+
+// Keep the pattern, move it around. See the sq-vary handler for what changes.
+function sqVary(){
+  document.dispatchEvent(new CustomEvent('sq-vary',{detail:{amount:0.5}}));
+  if(typeof showToast==='function') showToast('Varied');
+}
+
+function sqBuildDrumStyles(){
+  var el = document.getElementById('sq-gen-style'); if(!el) return;
+  el.innerHTML='';
+  Object.keys(DRUM_STYLES).forEach(function(k){
+    var b=document.createElement('button');
+    b.className='bl-gen-btn'+(k===drumStyle?' active':'');
+    b.dataset.drumstyle=k;
+    b.textContent=k.charAt(0).toUpperCase()+k.slice(1);
+    b.onclick=function(){ setDrumStyle(k); sqGenerate(k); };
+    el.appendChild(b);
+  });
+}
+
 function sqBuildGroovePresets(){
   var el = document.getElementById('sq-groove-presets'); if(!el) return;
   el.innerHTML='';
@@ -21007,6 +21184,7 @@ function sqBuildGroovePresets(){
     b.onclick=function(){ sqLoadGroove(i); };
     el.appendChild(b);
   });
+  sqBuildDrumStyles();
 }
 
 // sqLoadGroove stub above is canonical
