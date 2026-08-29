@@ -4346,6 +4346,16 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tips-btn" onclick="showTip('jazzkit',this)" title="Real instruments and the synthesized Jazz kit">?</button>
   </div>
   <!-- Unified machine selector — replaces both old "Classic/808/909/Brush" and separate machine row -->
+  <!-- Two layers, one grid. Focus decides which layer the grid below edits;
+       both play regardless, so you balance them on the mixer rather than by
+       muting one to hear the other. Aux Perc has no kick and no snare, so it
+       layers on top of any kit instead of competing with it. -->
+  <div class="seq-link-row" id="sq-layerRow" style="margin-bottom:6px">
+    <span class="seq-link-lbl">Layer</span>
+    <button class="seq-rbtn active" data-sqlayer="0" onclick="window._sqSetFocus(0)" title="Edit the main kit">Kit</button>
+    <button class="seq-rbtn" data-sqlayer="1" onclick="window._sqSetFocus(1)" title="Edit the aux percussion layer">Aux Perc</button>
+    <button class="seq-lockbtn active" id="sq-aux-onbtn" onclick="window._sqToggleAuxOn()" title="Play the aux percussion layer">Aux: ON</button>
+  </div>
   <div id="sq-machineRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
   <div id="sq-groove-presets" style="display:flex;gap:5px;flex-wrap:wrap"></div>
 </div>
@@ -9226,6 +9236,7 @@ const PARTS=[
  {id:'chord',  label:'Chords',     stem:'Chords',     color:'#3ab4ff', icon:'⬢', voice:true,  layer:true,  mix:true},
  {id:'mel',    label:'Melody',     stem:'Melody',     color:'#f0c040', icon:'〰', voice:true,  layer:false, mix:true},
  {id:'drum',   label:'Drums',      stem:'Drums',      color:'#ff6b35', icon:'🥁', voice:false, layer:true,  mix:true},
+ {id:'auxperc',label:'Aux Perc',   stem:'Aux Perc',   color:'#2ad4e0', icon:'✧', voice:false, layer:false, mix:true},
  {id:'bass',   label:'Bass',       stem:'Bass',       color:'#a855f7', icon:'♪', voice:true,  layer:true,  mix:true},
  {id:'melgen', label:'Melody Seq', stem:'Melody Seq', color:'#ff8ad4', icon:'✦', voice:true,  layer:true,  mix:true},
  {id:'arp',    label:'Arp',        stem:'Arp',        color:'#2df09a', icon:'↺', voice:true,  layer:true,  mix:true},
@@ -17402,12 +17413,61 @@ var SQM={
             {damp:0.85, hp:2800, pingF:5000, pingLvl:0.35, washF:8200, washLvl:0.13});
     }},
     {n:'Tom',s:'TM',c:'#99bbdd',play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.2:1)*.6,'sine',60*sqSemi(ps));}}
+  ]},
+  // Aux Perc — the second layer's default kit. Deliberately has no kick and no
+  // snare: with nothing to fight the main kit with, it cannot turn a groove
+  // into two competing backbeats, which is how a second drum layer usually
+  // goes wrong. Percussion was previously scattered as leftover track slots
+  // across the other kits (Linn's Perc and Conga, the 808's Cowbell, MōdKit's
+  // Crash); this is where it belongs. All synthesized — no samples needed.
+  'PERC':{label:'Aux Perc',color:'#2ad4e0',tracks:[
+    {n:'Shaker',s:'SH',c:'#2ad4e0',play:function(t,v,ac,ps){
+      sqNs(t,.045,9000,v*(ac?1.3:1)*.34,'highpass',6500,0.8);
+      sqNs(t+.004,.03,12000,v*.16,'highpass',9000,0.7);
+    }},
+    {n:'Tamb',s:'TB',c:'#5fe0e8',play:function(t,v,ac,ps){
+      var vel=v*(ac?1.35:1);
+      sqNs(t,.09,8000,vel*.30,'highpass',5200,0.6);
+      [0,.006,.013].forEach(function(d,i){ sqTn(t+d,7200+i*900,.05,vel*.08,'square'); });
+    }},
+    {n:'Hi Conga',s:'CG',c:'#7fe8ee',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps); sqTn(t,340*pp,.18,v*(ac?1.3:1)*.62,'sine',180*pp);
+      sqNs(t,.02,1800,v*.18);
+    }},
+    {n:'Lo Conga',s:'CL',c:'#3ec9d6',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps); sqTn(t,210*pp,.26,v*(ac?1.3:1)*.66,'sine',115*pp);
+      sqNs(t,.022,1200,v*.16);
+    }},
+    {n:'Clave',s:'CV',c:'#a8f0f4',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps); sqTn(t,2400*pp,.045,v*(ac?1.4:1)*.5,'sine');
+      sqTn(t,3300*pp,.03,v*.2,'triangle');
+    }},
+    {n:'Cowbell',s:'CB',c:'#63d8c4',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps),vel=v*(ac?1.3:1)*.42;
+      sqTn(t,562*pp,.32,vel,'square'); sqTn(t,845*pp,.32,vel*.62,'square');
+    }},
+    {n:'Triangle',s:'TR',c:'#c9f6f8',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps),vel=v*(ac?1.25:1)*.2;
+      [1,2.76,5.4,8.9].forEach(function(m,i){ sqTn(t,1180*pp*m,i?1.5:2.2,vel/(1+i*1.5),'sine'); });
+    }},
+    {n:'Woodblk',s:'WB',c:'#8ae0d0',play:function(t,v,ac,ps){
+      var pp=sqSemi(ps); sqTn(t,1050*pp,.055,v*(ac?1.35:1)*.5,'square',760*pp);
+      sqNs(t,.014,3000,v*.16);
+    }}
   ]}
 };
 
 // ── state ──
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
 var sqSwing=0, sqMach='808', sqSteps=16;
+// ── Aux Perc: the second drum layer ───────────────────────────────────────
+// sqGrid/sqMach are always the FOCUSED layer, so every editing path — the
+// grid renderer, the step menu, the vol/pitch knobs, the pattern slots —
+// keeps working untouched. Switching focus swaps the two pairs rather than
+// threading a layer index through forty call sites. sqFireStep plays both.
+var sqAux = { mach:'PERC', grid:{}, on:true };
+var sqFocus = 0;                       // 0 = kit, 1 = aux perc
+function sqLayerCh(){ return sqFocus===0 ? 'drum' : 'auxperc'; }
 // Swing resolution. 16th swing delays every other 16th step — the default, and
 // what this engine has always done. 8th swing delays every other EIGHTH, which
 // on a 16th grid is every fourth step. The shift scales with the pair it is
@@ -17516,6 +17576,29 @@ function sqSwitchMach(key){
   if(sqPlaying){sqPendMach=key;sqRenderMachines();sqUpdateStatus();return;}
   sqDoSwap(key);
 }
+// Focus swaps which layer sqGrid/sqMach point at. The grid keeps its height
+// because only one layer is edited at a time — which matters on a phone, where
+// the drum grid already needs landscape.
+function sqSetFocus(f){
+  f = f ? 1 : 0;
+  if(f === sqFocus) return;
+  var m = sqMach, g = sqGrid;
+  sqMach = sqAux.mach; sqGrid = sqAux.grid;
+  sqAux.mach = m; sqAux.grid = g;
+  sqFocus = f;
+  sqEnsureGrid(); sqRender();
+  var lay=document.getElementById('sq-layerRow');
+  if(lay) lay.querySelectorAll('[data-sqlayer]').forEach(function(b){
+    b.classList.toggle('active', (+b.dataset.sqlayer)===sqFocus);
+  });
+}
+function sqToggleAuxOn(){
+  sqAux.on = !sqAux.on;
+  var b=document.getElementById('sq-aux-onbtn');
+  if(b){ b.classList.toggle('active', sqAux.on); b.textContent = sqAux.on ? 'Aux: ON' : 'Aux: OFF'; }
+}
+window._sqSetFocus = sqSetFocus;
+window._sqToggleAuxOn = sqToggleAuxOn;
 function sqDoSwap(key){
   // sqGrid is ONE shared pattern across every kit — switching machines only changes
   // which synth plays each track, never the programmed steps. Track index ti keeps
@@ -17582,7 +17665,7 @@ function _trackChoke(track){
   return null;
 }
 
-function sqHitTrack(track,t,vol,ac,ps){
+function sqHitTrack(track,t,vol,ac,ps,ch){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
@@ -17597,7 +17680,9 @@ function sqHitTrack(track,t,vol,ac,ps){
   // This is the choke point every scheduled hit passes through, so the channel
   // gain belongs here. SQMG's baseline was rescaled by the same factor (see
   // sqInitFX) so the default position sounds exactly as it did.
-  vol = vol * (typeof _cmx==='function' ? _cmx('drum') : 1);
+  // The aux layer has its own channel, so the fader that scales a hit
+  // follows the layer it came from rather than always being Drums.
+  vol = vol * (typeof _cmx==='function' ? _cmx(ch||'drum') : 1);
   // A silent hit is not played at all. The Math.max floor below exists so the
   // voices never ramp an envelope to exactly zero (which throws), but on its
   // own it turned "muted" into "-60 dB" — every hit still fired, and a bus
@@ -17613,20 +17698,31 @@ function sqHitTrack(track,t,vol,ac,ps){
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
   _chokeCur = null;
 }
-function sqPlayCell(track,cell,t,vol,ps){
+function sqPlayCell(track,cell,t,vol,ps,ch){
   if(!cell||cell.v===0)return;
   var ac=cell.v===2,vel=(cell.vel||100)/100,v=vol*vel;
   var r=Math.max(1,cell.r||1),sub=sqSd()/r,orn=cell.orn||0;
-  if(orn===1){sqHitTrack(track,t-.030,v*.45,false,ps);}
-  else if(orn===2){sqHitTrack(track,t-.060,v*.35,false,ps);sqHitTrack(track,t-.040,v*.50,false,ps);sqHitTrack(track,t-.020,v*.65,false,ps);}
-  for(var i=0;i<r;i++)sqHitTrack(track,t+i*sub,i===0?v:v*.75,ac&&i===0,ps);
+  if(orn===1){sqHitTrack(track,t-.030,v*.45,false,ps,ch);}
+  else if(orn===2){sqHitTrack(track,t-.060,v*.35,false,ps,ch);sqHitTrack(track,t-.040,v*.50,false,ps,ch);sqHitTrack(track,t-.020,v*.65,false,ps,ch);}
+  for(var i=0;i<r;i++)sqHitTrack(track,t+i*sub,i===0?v:v*.75,ac&&i===0,ps,ch);
+}
+// One layer's worth of a step. Both layers share the clock, the step count and
+// the swing — they are two voices of one part, not two sequencers.
+function _sqFireLayer(mach, grid, s, at, ch){
+  var M=SQM[mach]; if(!M) return;
+  M.tracks.forEach(function(track,ti){
+    var cell=grid[ti]&&grid[ti][s];
+    if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(mach,ti),sqGp(mach,ti),ch);
+  });
 }
 function sqFireStep(s,t){
   var sw=window._sqSwingOffset(s, sqSd(), sqSwing),at=t+sw;
+  // The unfocused layer still plays — focus only decides what the grid edits.
+  if(sqAux.on && sqAux.grid) _sqFireLayer(sqAux.mach, sqAux.grid, s, at, sqFocus===0?'auxperc':'drum');
   var M=SQM[sqMach]; if(M){
     M.tracks.forEach(function(track,ti){
       var cell=sqGrid[ti]&&sqGrid[ti][s];
-      if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(sqMach,ti),sqGp(sqMach,ti));
+      if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(sqMach,ti),sqGp(sqMach,ti),sqLayerCh());
     });
   }
 }
@@ -18338,12 +18434,19 @@ window._sqResetStep = function(){ sqSeqStep = 0; };
 // to this IIFE, not global, so the save/restore code outside it can't touch
 // them directly)
 window._sqCaptureState = function(){
+ // Always written main-layer-first regardless of which layer is focused, so a
+ // saved rig does not depend on where the user happened to be editing.
+ var mainMach = sqFocus===0 ? sqMach   : sqAux.mach;
+ var mainGrid = sqFocus===0 ? sqGrid   : sqAux.grid;
+ var auxMach  = sqFocus===0 ? sqAux.mach : sqMach;
+ var auxGrid  = sqFocus===0 ? sqAux.grid : sqGrid;
  return {
-  steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: sqMach,
-  grid: sqGrid,
-  vols: sqVols[sqMach] || {},
-  pitches: sqPitches[sqMach] || {},
-  machGrids: sqMachGrids
+  steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: mainMach,
+  grid: mainGrid,
+  vols: sqVols[mainMach] || {},
+  pitches: sqPitches[mainMach] || {},
+  machGrids: sqMachGrids,
+  aux: { mach: auxMach, grid: auxGrid, on: !!sqAux.on }
  };
 };
 // The counterpart _sqCaptureState never had: two call sites (song load, and
@@ -18379,8 +18482,25 @@ window._sqRestoreState = function(st){
  if(st.vols) sqVols[sqMach] = JSON.parse(JSON.stringify(st.vols));
  if(st.pitches) sqPitches[sqMach] = JSON.parse(JSON.stringify(st.pitches));
  if(st.machGrids) sqMachGrids = JSON.parse(JSON.stringify(st.machGrids));
+ // Restoring always lands on the main layer, so focus is normalised here too.
+ // A state written before the aux layer existed simply has no `aux` key — that
+ // is a coercion to an empty Aux Perc layer, not a migration.
+ sqFocus = 0;
+ if(st.aux && SQM[st.aux.mach]){
+   sqAux = { mach: st.aux.mach,
+             grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
+             on: st.aux.on !== false };
+ } else {
+   sqAux = { mach:'PERC', grid:{}, on:true };
+ }
  sqEnsureGrid();
  sqSyncUI(); sqRenderGrid();
+ var lay=document.getElementById('sq-layerRow');
+ if(lay) lay.querySelectorAll('[data-sqlayer]').forEach(function(b){
+   b.classList.toggle('active', (+b.dataset.sqlayer)===0);
+ });
+ var ab=document.getElementById('sq-aux-onbtn');
+ if(ab){ ab.classList.toggle('active', sqAux.on); ab.textContent = sqAux.on ? 'Aux: ON' : 'Aux: OFF'; }
 };
 
 })(); // end IIFE
