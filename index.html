@@ -19280,6 +19280,29 @@ function blFreq(note, oct){ return 440 * Math.pow(2, (note + (oct+1)*12 - 69) / 
 
 // ── synthesis ──
 var _blPrevFreq=0, _blPrevSlide=false, _blPrevGain=null, _blPrevEnd=0;
+// A short bandpassed noise burst at the onset — the sound of the string being
+// plucked rather than the tone it settles into. Bandpass rather than lowpass so
+// it reads as contact noise instead of a click, and it tracks the note so low
+// notes thud and high notes snap.
+function _blPluck(ctx, dest, t, v, accent, freq){
+  try{
+    var n = ctx.createBufferSource();
+    var len = Math.floor(ctx.sampleRate * 0.02);
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for(var i=0;i<len;i++) d[i] = (Math.random()*2-1) * (1 - i/len);
+    n.buffer = buf;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = Math.min(4200, Math.max(700, freq * 9));
+    bp.Q.value = 0.9;
+    var ng = ctx.createGain();
+    ng.gain.setValueAtTime(v * (accent ? 0.30 : 0.20), t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    n.connect(bp); bp.connect(ng); ng.connect(dest);
+    n.start(t); n.stop(t + 0.03);
+  }catch(e){}
+}
 function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var ctx = blCtx(); if(!ctx) return;
   var mg = blMG(); if(!mg) return;
@@ -19319,8 +19342,29 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // volume control that did nothing. It scales the part here now, which is
   // where the mixer channel already applies.
   var v = Math.max(0.0001, vol * blVol * (accent ? 1.3 : 0.85) * _mxBs);
+  // Plucked voices decay; sustained ones hold. This used to be one envelope
+  // for both — a flat shelf at 88% through the whole note — which is why the
+  // electric and upright read as an organ holding a pitch rather than a string
+  // that was struck and is dying away. The shelf stays for the voices that are
+  // genuinely sustained (sub, square, triangle, the acid saws, which shape
+  // themselves with their filter instead).
+  var _plucked = (blWave === 'electric' || blWave === 'upright' || blWave === 'upright_real');
+  // Makeup for the decay below. The old shelf sat at 0.88 for the whole note;
+  // the plucked envelope averages nearer 0.6 of its peak, so without this the
+  // change would quietly drop the bass ~3 dB in the mix. 1.25 brings the mean
+  // back to roughly where it was while keeping the peak-to-mean ratio that
+  // makes it read as a struck string. The master limiter handles the taller
+  // peak. NOTE: arithmetic, not measurement — see the commit message.
+  if(_plucked) v *= 1.25;
   g.gain.setValueAtTime(v, t);
-  g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
+  if(_plucked){
+    // Fast initial drop off the attack, then a slow tail — roughly how a wound
+    // string behaves once the pick or finger leaves it.
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.62), t + Math.min(0.09, dur * 0.35));
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.34), t + dur * 0.85);
+  } else {
+    g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
+  }
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur + (slide ? 0.12 : 0.025));
   g.connect(mg);
   if(typeof _regKill==='function') _regKill(g);
@@ -19416,18 +19460,34 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
       o1.frequency.setValueAtTime(freq, t);
       o2.frequency.setValueAtTime(freq*2, t);
     }
-    var mg1 = ctx.createGain(); mg1.gain.value = 0.72;
-    var mg2 = ctx.createGain(); mg2.gain.value = 0.28;
+    // A third partial. Two partials put nearly all the energy below 200Hz,
+    // where a phone speaker reproduces none of it — the note was there on
+    // headphones and simply absent on a laptop. This is what carries the pitch
+    // up into a range small speakers can actually move.
+    var o3e = ctx.createOscillator(); o3e.type = 'sine';
+    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
+      o3e.frequency.setValueAtTime(_blPrevFreq*3, t);
+      o3e.frequency.exponentialRampToValueAtTime(freq*3, t + Math.min(dur*0.45, 0.06));
+    } else { o3e.frequency.setValueAtTime(freq*3, t); }
+    // 0.64 + 0.26 + 0.10 = 1.00, the same total the two partials summed to,
+    // so adding the third redistributes the tone without changing the level.
+    var mg1 = ctx.createGain(); mg1.gain.value = 0.64;
+    var mg2 = ctx.createGain(); mg2.gain.value = 0.26;
+    var mg3 = ctx.createGain(); mg3.gain.value = 0.10;
     var f = ctx.createBiquadFilter();
     f.type = 'lowpass';
     var pk2 = accent ? 3000 : 2200;
     f.frequency.setValueAtTime(pk2, t);
     f.frequency.exponentialRampToValueAtTime(Math.max(blCutoff, 200), t + 0.09);
     f.Q.value = Math.min(blResonance, 5);
-    o1.connect(mg1); o2.connect(mg2);
-    mg1.connect(f); mg2.connect(f); f.connect(g);
-    o1.start(t); o2.start(t);
-    o1.stop(stopT); o2.stop(stopT);
+    o1.connect(mg1); o2.connect(mg2); o3e.connect(mg3);
+    mg1.connect(f); mg2.connect(f); mg3.connect(f); f.connect(g);
+    o1.start(t); o2.start(t); o3e.start(t);
+    o1.stop(stopT); o2.stop(stopT); o3e.stop(stopT);
+    // Finger noise. A bass note starts with the string being displaced, not
+    // with a tone appearing — without this the onset is a pure fade-in and the
+    // line has no edge to sit on top of a kick.
+    _blPluck(ctx, g, t, v, accent, freq);
 
   } else if(blWave === 'upright'){
     // Upright/double bass — warm body with natural harmonic decay
