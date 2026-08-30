@@ -21911,6 +21911,17 @@ function prDrawKeys(id){
  g.fillStyle = T.keyEdge; g.fillRect(PR_KEY_W-1,0,1,H);
 }
 
+// The drum grid's pads are 5px-rounded with a 3px inset fill; Canvas has no
+// border-radius, so the roll gets the same shape from a path.
+function _prRound(g,x,y,w,h,r){
+ r = Math.min(r, w/2, h/2);
+ g.beginPath();
+ g.moveTo(x+r,y); g.lineTo(x+w-r,y); g.quadraticCurveTo(x+w,y,x+w,y+r);
+ g.lineTo(x+w,y+h-r); g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+ g.lineTo(x+r,y+h); g.quadraticCurveTo(x,y+h,x,y+h-r);
+ g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y);
+ g.closePath();
+}
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
@@ -21933,11 +21944,24 @@ function prDraw(id){
   }
   g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
  }
+ // Empty step cells, drawn the way the drum grid draws its pads: a rounded
+ // outline per step rather than bare gridlines. The two sequencers sit on the
+ // same tab now and were reading as different instruments — one a grid of pads,
+ // the other a bare chart — when they are the same idea at different pitches.
+ g.lineWidth = 1;
+ g.strokeStyle = T.line;
+ for(let i=0;i<rows;i++){
+  for(let x=0;x<steps;x++){
+   _prRound(g, x*colW+1.5, i*PR_ROW_H+1.5, colW-3, PR_ROW_H-3, 3);
+   g.stroke();
+  }
+ }
+ // Beat and bar rules on top, so the pulse still reads through the lattice.
  for(let x=0;x<=steps;x++){
   if(x%16===0) g.fillStyle=T.bar;
   else if(x%4===0) g.fillStyle=T.beat;
   else continue;
-  g.fillRect(x*colW,0,1,H);
+  g.fillRect(x*colW,0,x%16===0?2:1,H);
  }
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
@@ -21952,12 +21976,14 @@ function prDraw(id){
    continue;
   }
   g.fillStyle = c.accent ? T.accent : T.note;
-  g.fillRect(x*colW+1, y+1, w, PR_ROW_H-3);
+  _prRound(g, x*colW+1.5, y+1.5, w, PR_ROW_H-3, 3);
+  g.fill();
   // A hand-placed note is outlined, so you can see which ones Generate will
   // leave alone.
   if(c.usr){
    g.strokeStyle = T.slide; g.lineWidth = 1.5;
-   g.strokeRect(x*colW+1.5, y+1.5, w-1, PR_ROW_H-4);
+   _prRound(g, x*colW+2, y+2, w-1, PR_ROW_H-4, 2.5);
+   g.stroke();
   }
   // Name the note on the bar itself when there is room, so you can read a
   // line without tracking back to the gutter.
