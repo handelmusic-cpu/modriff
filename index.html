@@ -4419,8 +4419,9 @@ body.mode-free .pro-only { display:none !important; }
   <div class="seq-link-row" id="sq-layerRow" style="margin-bottom:6px">
     <span class="seq-link-lbl">Layer</span>
     <button class="seq-rbtn active" data-sqlayer="0" onclick="window._sqSetFocus(0)" title="Edit the main kit">Kit</button>
+    <button class="seq-lockbtn active" data-sqlayeron="0" onclick="window._sqToggleLayer(0)" title="Mute Kit">&#9679;</button>
     <button class="seq-rbtn" data-sqlayer="1" onclick="window._sqSetFocus(1)" title="Edit the aux percussion layer">Aux Perc</button>
-    <button class="seq-lockbtn active" id="sq-aux-onbtn" onclick="window._sqToggleAuxOn()" title="Play the aux percussion layer">Aux: ON</button>
+    <button class="seq-lockbtn active" data-sqlayeron="1" onclick="window._sqToggleLayer(1)" title="Mute Aux Perc">&#9679;</button>
   </div>
   <div id="sq-machineRow" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px"></div>
   <div id="sq-groove-presets" style="display:flex;gap:5px;flex-wrap:wrap"></div>
@@ -17895,9 +17896,19 @@ var sqSwing=0, sqMach='808', sqSteps=16;
 // grid renderer, the step menu, the vol/pitch knobs, the pattern slots —
 // keeps working untouched. Switching focus swaps the two pairs rather than
 // threading a layer index through forty call sites. sqFireStep plays both.
-var sqAux = { mach:'PERC', grid:{}, on:true };
-var sqFocus = 0;                       // 0 = kit, 1 = aux perc
-function sqLayerCh(){ return sqFocus===0 ? 'drum' : 'auxperc'; }
+// Layer 0 is the kit, layer 1 is Aux Perc, and that never changes — the first
+// version stored "the layer you are not looking at", so its on/off flag gated
+// whichever slot happened to be stashed. Switching to the Aux screen and
+// turning Aux off silenced the KIT and left the aux playing alone.
+// sqMach/sqGrid stay a view onto the focused layer so every editing path is
+// untouched; identity and the on/off flags live here.
+var sqLayers = [ {mach:'808', grid:{}, on:true}, {mach:'PERC', grid:{}, on:true} ];
+var sqFocus = 0;
+const SQ_LAYER_CH = ['drum','auxperc'];
+const SQ_LAYER_NAME = ['Kit','Aux Perc'];
+function sqLayerCh(){ return SQ_LAYER_CH[sqFocus]; }
+// Push the live view back into its record, so the record is always current.
+function sqStashFocused(){ sqLayers[sqFocus].mach = sqMach; sqLayers[sqFocus].grid = sqGrid; }
 // Swing resolution. 16th swing delays every other 16th step — the default, and
 // what this engine has always done. 8th swing delays every other EIGHTH, which
 // on a 16th grid is every fourth step. The shift scales with the pair it is
@@ -18012,23 +18023,33 @@ function sqSwitchMach(key){
 function sqSetFocus(f){
   f = f ? 1 : 0;
   if(f === sqFocus) return;
-  var m = sqMach, g = sqGrid;
-  sqMach = sqAux.mach; sqGrid = sqAux.grid;
-  sqAux.mach = m; sqAux.grid = g;
+  sqStashFocused();
   sqFocus = f;
+  sqMach = sqLayers[f].mach; sqGrid = sqLayers[f].grid;
   sqEnsureGrid(); sqRender();
-  var lay=document.getElementById('sq-layerRow');
-  if(lay) lay.querySelectorAll('[data-sqlayer]').forEach(function(b){
-    b.classList.toggle('active', (+b.dataset.sqlayer)===sqFocus);
+  sqSyncLayerUI();
+}
+// Each layer plays or does not, independently of which one is being edited.
+function sqToggleLayer(i){
+  i = i ? 1 : 0;
+  sqLayers[i].on = !sqLayers[i].on;
+  sqSyncLayerUI();
+}
+function sqSyncLayerUI(){
+  var lay = document.getElementById('sq-layerRow'); if(!lay) return;
+  lay.querySelectorAll('[data-sqlayer]').forEach(function(b){
+    b.classList.toggle('active', (+b.dataset.sqlayer) === sqFocus);
+  });
+  lay.querySelectorAll('[data-sqlayeron]').forEach(function(b){
+    var i = +b.dataset.sqlayeron;
+    b.classList.toggle('active', !!sqLayers[i].on);
+    b.textContent = sqLayers[i].on ? '\u25CF' : '\u25CB';
+    b.title = (sqLayers[i].on ? 'Mute ' : 'Play ') + SQ_LAYER_NAME[i];
   });
 }
-function sqToggleAuxOn(){
-  sqAux.on = !sqAux.on;
-  var b=document.getElementById('sq-aux-onbtn');
-  if(b){ b.classList.toggle('active', sqAux.on); b.textContent = sqAux.on ? 'Aux: ON' : 'Aux: OFF'; }
-}
 window._sqSetFocus = sqSetFocus;
-window._sqToggleAuxOn = sqToggleAuxOn;
+window._sqToggleLayer = sqToggleLayer;
+window._sqSyncLayerUI = sqSyncLayerUI;
 function sqDoSwap(key){
   // sqGrid is ONE shared pattern across every kit — switching machines only changes
   // which synth plays each track, never the programmed steps. Track index ti keeps
@@ -18147,13 +18168,15 @@ function _sqFireLayer(mach, grid, s, at, ch){
 }
 function sqFireStep(s,t){
   var sw=window._sqSwingOffset(s, sqSd(), sqSwing),at=t+sw;
-  // The unfocused layer still plays — focus only decides what the grid edits.
-  if(sqAux.on && sqAux.grid) _sqFireLayer(sqAux.mach, sqAux.grid, s, at, sqFocus===0?'auxperc':'drum');
-  var M=SQM[sqMach]; if(M){
-    M.tracks.forEach(function(track,ti){
-      var cell=sqGrid[ti]&&sqGrid[ti][s];
-      if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(sqMach,ti),sqGp(sqMach,ti),sqLayerCh());
-    });
+  // Both layers play; focus only decides which one the grid edits. Everything
+  // here is keyed by layer INDEX — reading the focused layer's data out of the
+  // live view and the other out of its record — so a layer's on/off flag and
+  // its mixer channel always belong to that layer rather than to a slot.
+  sqStashFocused();
+  for(var i=0;i<sqLayers.length;i++){
+    var L = sqLayers[i];
+    if(!L.on || !L.grid) continue;
+    _sqFireLayer(L.mach, L.grid, s, at, SQ_LAYER_CH[i]);
   }
 }
 
@@ -18866,17 +18889,16 @@ window._sqResetStep = function(){ sqSeqStep = 0; };
 window._sqCaptureState = function(){
  // Always written main-layer-first regardless of which layer is focused, so a
  // saved rig does not depend on where the user happened to be editing.
- var mainMach = sqFocus===0 ? sqMach   : sqAux.mach;
- var mainGrid = sqFocus===0 ? sqGrid   : sqAux.grid;
- var auxMach  = sqFocus===0 ? sqAux.mach : sqMach;
- var auxGrid  = sqFocus===0 ? sqAux.grid : sqGrid;
+ sqStashFocused();
+ var K = sqLayers[0], A = sqLayers[1];
  return {
-  steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: mainMach,
-  grid: mainGrid,
-  vols: sqVols[mainMach] || {},
-  pitches: sqPitches[mainMach] || {},
+  steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: K.mach,
+  grid: K.grid,
+  vols: sqVols[K.mach] || {},
+  pitches: sqPitches[K.mach] || {},
   machGrids: sqMachGrids,
-  aux: { mach: auxMach, grid: auxGrid, on: !!sqAux.on }
+  kitOn: K.on !== false,
+  aux: { mach: A.mach, grid: A.grid, on: A.on !== false }
  };
 };
 // The counterpart _sqCaptureState never had: two call sites (song load, and
@@ -18916,21 +18938,15 @@ window._sqRestoreState = function(st){
  // A state written before the aux layer existed simply has no `aux` key — that
  // is a coercion to an empty Aux Perc layer, not a migration.
  sqFocus = 0;
- if(st.aux && SQM[st.aux.mach]){
-   sqAux = { mach: st.aux.mach,
-             grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
-             on: st.aux.on !== false };
- } else {
-   sqAux = { mach:'PERC', grid:{}, on:true };
- }
+ sqLayers[0] = { mach: sqMach, grid: sqGrid, on: st.kitOn !== false };
+ sqLayers[1] = (st.aux && SQM[st.aux.mach])
+   ? { mach: st.aux.mach,
+       grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
+       on: st.aux.on !== false }
+   : { mach:'PERC', grid:{}, on:true };
  sqEnsureGrid();
  sqSyncUI(); sqRenderGrid();
- var lay=document.getElementById('sq-layerRow');
- if(lay) lay.querySelectorAll('[data-sqlayer]').forEach(function(b){
-   b.classList.toggle('active', (+b.dataset.sqlayer)===0);
- });
- var ab=document.getElementById('sq-aux-onbtn');
- if(ab){ ab.classList.toggle('active', sqAux.on); ab.textContent = sqAux.on ? 'Aux: ON' : 'Aux: OFF'; }
+ sqSyncLayerUI();
 };
 
 })(); // end IIFE
