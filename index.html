@@ -6792,7 +6792,14 @@ function msAnyPartUsesModSynth(){
 // on the page you are looking at, so Bass, Melody gen and Arp get the full
 // control surface without five copies of the markup fighting over element ids.
 function msHostFor(){
- const bassTab=document.getElementById('page-bass');
+ // MōdFX is a performance surface, not a patch editor — the synth's preset
+ // picker trailing underneath it read as a stray patch selector on the FX
+ // page. Nothing hosts it there.
+ const fxPanel=document.getElementById('pf-fx-panel');
+ if(fxPanel && fxPanel.style.display!=='none' && fxPanel.offsetParent) return {host:null, part:'chord'};
+ // Was 'page-bass', which stopped existing when Drums and Bass/Mel merged into
+ // Accomp — so every Accomp sub-tab fell through to the chord host.
+ const bassTab=document.getElementById('page-accomp');
  if(bassTab && bassTab.classList.contains('active')){
   // Read through a try: bassMelMode is a `let` further down the file, and a
   // switchTab() during boot can reach here while it is still in the temporal
@@ -6809,6 +6816,7 @@ function msHostFor(){
 function msSyncHost(){
  const panel=document.getElementById('modsynth-panel'); if(!panel) return;
  const {host,part}=msHostFor();
+ if(!host){ panel.style.display='none'; panel.classList.remove('ms-force-show'); return; }
  const slot=document.getElementById(host);
  if(slot && panel.parentNode!==slot) slot.appendChild(panel);
  // Follow the page rather than making people re-pick the part by hand. The
@@ -22293,8 +22301,10 @@ const FX_PARAMS = {
   hpf:     { label:'High-pass',   short:'HPF', unit:'hz',  base:0,   fmt:v=>v<=0.001?'off':_fxHzFmt(_fxHpHz(v)) },
   reso:    { label:'Resonance',   short:'RES', unit:'q',   base:0,   fmt:v=>v<=0.001?'off':(1+v*22).toFixed(1)+' Q' },
   drive:   { label:'Drive',       short:'DRV', unit:'pct', base:null, send:'drv', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
-  delay:   { label:'Delay',       short:'DLY', unit:'pct', base:null, send:'dly', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
-  dtime:   { label:'Delay time',  short:'DTM', unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
+  // `delay` is the send amount and stays reachable from the Sends rows below
+  // the pad; it is deliberately not offered as a pad axis (see FX_AXIS_KEYS).
+  delay:   { label:'Delay mix',   short:'DLY', unit:'pct', base:null, send:'dly', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
+  dtime:   { label:'Delay',       short:'DLY', unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
   feedback:{ label:'Feedback',    short:'FB',  unit:'pct', base:0.35, fmt:v=>Math.round(v*88)+'%' },
   reverb:  { label:'Reverb',      short:'REV', unit:'pct', base:null, send:'rev', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
   crush:   { label:'Crush',       short:'CRU', unit:'bit', base:0,   fmt:v=>v<=0.001?'off':(16-Math.round(v*13))+' bit' },
@@ -22313,6 +22323,10 @@ const FX_PARAMS = {
   ringmod: { label:'Ring mod',    short:'RNG', unit:'hz',  base:0,   fmt:v=>v<=0.001?'off':Math.round(_fxRingHz(v))+'Hz' }
 };
 const FX_PARAM_KEYS = Object.keys(FX_PARAMS);
+// What the X/Y pad can be assigned to. The three send amounts are excluded:
+// each already has its own slider under the pad, and a pad axis that duplicates
+// a latched send is a worse version of it. Delay on the pad means delay TIME.
+const FX_AXIS_KEYS = FX_PARAM_KEYS.filter(k=>!FX_PARAMS[k].send);
 
 // From 60Hz, not 120: on a bass or a kick, a lowpass that stops at 120Hz is
 // still above most of the energy and barely does anything.
@@ -22802,7 +22816,10 @@ function fxApplyPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
  if(FX_PARAMS[p.x]) fxPadX=p.x;
  if(FX_PARAMS[p.y]) fxPadY=p.y;
- if(Array.isArray(p.t)&&p.t.length) fxTargets=p.t.filter(c=>FX_CHANNELS.indexOf(c)>=0);
+ // Deliberately does NOT touch fxTargets. A patch is a pair of axes and a
+ // send tilt — which instruments it applies to is the user's standing choice,
+ // and having it reassigned underfoot on every patch change made the targets
+ // feel broken. Only fall back if nothing is selected at all.
  if(!fxTargets.length) fxTargets=['drum'];
  // A preset's sends apply only to the channels it targets, and only the keys
  // it names — it tilts the mix rather than resetting everyone else's.
@@ -22929,7 +22946,7 @@ function fxMotionHas(){ return fxMotion.frames.length>1; }
 
 function fxAxisMenu(which){
  const cur = which==='x' ? fxPadX : fxPadY;
- return FX_PARAM_KEYS.map(k=>
+ return FX_AXIS_KEYS.map(k=>
   '<option value="'+k+'"'+(k===cur?' selected':'')+
   (FX_PARAMS[k].buffer && !fxBufferEffectsAvailable() ? ' disabled':'')+
   '>'+FX_PARAMS[k].label+'</option>').join('');
