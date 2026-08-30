@@ -4544,7 +4544,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
      <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
-     <button class="bl-mopt" id="blw-303" onclick="blPreset303()" title="The TB-303 sound the drum tab used to carry: acid saw, filter at 2000, resonance 10">303</button>
+     <button class="bl-mopt" id="blw-303" onclick="setBlWave('acid303')" title="The TB-303 voice the drum tab used to carry — its own filter and resonance, so the Cutoff and Reso sliders do not apply">303</button>
      <!-- Covers any voice picked via the Voices drawer that isn't one of the
           seven quick buttons above (piano, vibes, modsynth, ...), so the
           current bass sound is never unclear. -->
@@ -9444,7 +9444,7 @@ const VOICE_PARTS=sortByPart([
   get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
   opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
-        ['sawtooth','Acid'],['square','Square'],['triangle','Tri'],['sine','Sub']]
+        ['sawtooth','Acid'],['acid303','303'],['square','Square'],['triangle','Tri'],['sine','Sub']]
        .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
  {k:'melgen', icon:'✦', label:'Melody Seq', hint:'the generated melody line',
   get:()=>{ try{ return window._mlCaptureState().wave; }catch(e){ return null; } },
@@ -19215,7 +19215,6 @@ var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 var blMenuStep = -1;
 var blGenStyle = 'rock';
 var blWave = 'electric';
-var blAcidDrive = 'soft';   // 'soft' | 'hard' — see the waveshaper in blPlayNote
 var blCutoff = 600;
 var blResonance = 2;
 var blOpen = true;
@@ -19223,18 +19222,6 @@ var blVol = 0.7;
 
 window.blSetCutoff = function(v){ blCutoff = +v; };
 window.blSetResonance = function(v){ blResonance = +v; };
-window.blSetAcidDrive = function(v){ blAcidDrive = (v==='hard') ? 'hard' : 'soft'; };
-// One tap for the sound the retired TB-303 kit made. The filter here is
-// blCutoff*4, so 500 lands on that kit's hardcoded 2000, and Q 10 matches the
-// resonance it froze — the bass shipped Q 2, which is a plain filtered saw
-// rather than the squelch anyone reaching for "acid" is after.
-window.blPreset303 = function(){
-  if(typeof setBlWave==='function') setBlWave('sawtooth');
-  blCutoff = 500; blResonance = 10; blAcidDrive = 'hard';
-  var c=document.getElementById('bl-cutoff'); if(c) c.value = 500;
-  var r=document.getElementById('bl-reso');   if(r) r.value = 10;
-  if(typeof showToast==='function') showToast('303: acid saw, filter 2000, Q10');
-};
 
 // `usr` marks a step you placed by hand. Generate fills around those rather
 // than over them, so an edit survives the next roll of the line instead of
@@ -19304,7 +19291,34 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // processed. At 16 steps a bar this is the fastest-accumulating leak.
   reapVoice(null,[g], Math.max(0, stopT - ctx.currentTime));
 
-  if(blWave === 'sawtooth'){
+  if(blWave === 'acid303'){
+    // The voice the retired TB-303 drum kit made, rebuilt as a real bass voice
+    // rather than a preset that set 'sawtooth' and then read as Acid in the UI.
+    // Values are sqAcid's: filter 2000 open (7000 accented), Q 10 (20
+    // accented), sweeping to 6% of the peak across the note, the x*9/(1+8|x|)
+    // rational clipper, and a plain exponential decay — no sustain shelf, which
+    // is what made the Acid voice read as a held saw instead of a pluck.
+    // Slide is kept, which the drum-tab version never had.
+    var o3 = ctx.createOscillator();
+    o3.type = 'sawtooth';
+    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
+      o3.frequency.setValueAtTime(_blPrevFreq, t);
+      o3.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
+    } else { o3.frequency.setValueAtTime(freq, t); }
+    var f3 = ctx.createBiquadFilter();
+    f3.type = 'lowpass';
+    var pk3 = accent ? 7000 : 2000;
+    f3.frequency.setValueAtTime(pk3, t);
+    f3.frequency.exponentialRampToValueAtTime(Math.max(pk3*0.06, 60), t + Math.max(dur, 0.12));
+    f3.Q.value = accent ? 20 : 10;
+    var dw3 = ctx.createWaveShaper();
+    var cv3 = new Float32Array(256);
+    for(var i3=0;i3<256;i3++){ var x3=i3*2/256-1; cv3[i3]=x3*9/(1+8*Math.abs(x3)); }
+    dw3.curve = cv3;
+    o3.connect(f3); f3.connect(dw3); dw3.connect(g);
+    o3.start(t); o3.stop(stopT);
+
+  } else if(blWave === 'sawtooth'){
     // Acid 303 — resonant filter sweep + soft saturation
     var o = ctx.createOscillator();
     o.type = 'sawtooth';
@@ -19320,12 +19334,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     f.Q.value = blResonance;
     var dw = ctx.createWaveShaper();
     var cv = new Float32Array(256);
-    // Two curves. 'soft' is this voice's own tanh saturation and stays the
-    // default. 'hard' is x*9/(1+8|x|), the rational clipper the TB-303 kit on
-    // the drum tab used before it was retired — more bite, and what the 303
-    // preset selects so that character did not leave with the kit.
-    if(blAcidDrive === 'hard'){ for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*9/(1+8*Math.abs(x));} }
-    else { for(var i=0;i<256;i++){var x2=i*2/256-1;cv[i]=Math.tanh(x2*3.5)*0.88;} }
+    for(var i=0;i<256;i++){ var x=i*2/256-1; cv[i]=Math.tanh(x*3.5)*0.88; }
     dw.curve = cv;
     o.connect(f); f.connect(dw); dw.connect(g);
     o.start(t); o.stop(stopT);
@@ -19789,7 +19798,12 @@ window._blScheduler = function(){
         // chord that's actually sounding at this step's time. Intervals are
         // measured from the pitch class the grid was generated over, so a
         // root-fifth-octave figure stays a root-fifth-octave figure.
-        if(wf){
+        // ...except a note you placed by hand. Follow exists to move a
+        // GENERATED figure onto each chord; a step you drew on the roll is a
+        // specific pitch you chose, and transposing it means the roll shows one
+        // note and the speaker plays another. blGenerate already exempts these
+        // (cell.usr) when it rebuilds the grid — Follow has to as well.
+        if(wf && !cell.usr){
           if(wf.rest){ blNextT += stepSec; blSeqStep++;
                        if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; _blApplyPending(); }
                        continue; }
@@ -20562,7 +20576,7 @@ window.blSyncFollowUI = function(){
 window.setBlWave = function(w){
   blWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
-  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal'};
+  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal', acid303:'blw-303'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
   // Covers voices reached through the Voices drawer that aren't one of the
@@ -20831,7 +20845,8 @@ window._mlScheduler = function(){
       }else if(following){
         // Same re-rooting as the bass: intervals are measured from the pitch
         // class the phrase was written over, so the shape survives the move.
-        if(wf){
+        // Same exemption as the bass: hand-drawn steps sound as drawn.
+        if(wf && !cell.usr){
           if(wf.rest) skip = true;
           else {
             var shift = ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
