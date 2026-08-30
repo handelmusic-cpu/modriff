@@ -2052,6 +2052,10 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
  padding:6px 0; margin-bottom:4px;
 }
 .variant-arm-row.visible { display:flex; }
+/* The extension row is independent of the Variants toggle: it opens on its own
+   button and stays shut otherwise. */
+.variant-ext-row { display:none; margin-top:4px; }
+.variant-ext-row.visible { display:flex; }
 .varm-btn {
  padding:7px 14px; background:var(--surf2); border:1px solid var(--border2);
  border-radius:var(--r-sm); color:var(--muted); font-family:'Outfit',sans-serif;
@@ -3687,17 +3691,23 @@ body.mode-free .pro-only { display:none !important; }
  <!-- Variant arm system (hidden until enabled in Settings) -->
  <div class="advanced-only" style="display:flex;align-items:center;gap:4px;width:100%;max-width:700px;justify-content:center;margin-bottom:2px"><span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Variants</span><button class="tips-btn" onclick="showTip('variants',this)">?</button></div>
  <div class="variant-arm-row advanced-only" id="variant-arm-row">
- <button class="varm-btn armed" id="varm-none" onclick="armVariant(null)">Root</button>
- <button class="varm-btn" id="varm-sus2" onclick="armVariant('sus2')">sus2</button>
- <button class="varm-btn" id="varm-sus4" onclick="armVariant('sus4')">sus4</button>
- <button class="varm-btn" id="varm-add9" onclick="armVariant('add9')">add9</button>
- <button class="varm-btn" id="varm-5" onclick="armVariant('5')" title="Power chord — root and fifth, no third">5</button>
- <button class="varm-btn" id="varm-sl5" onclick="armVariant('/5')">/5</button>
- <button class="varm-btn" id="varm-slb6" onclick="armVariant('/b6')">/b6</button>
- <button class="varm-btn" id="varm-sl6" onclick="armVariant('/6')">/6</button>
- <button class="varm-btn" id="varm-slb7" onclick="armVariant('/b7')">/b7</button>
- <button class="varm-btn" id="varm-sl7" onclick="armVariant('/7')">/7</button>
+ <button class="varm-btn armed" id="varm-none" data-varm="" onclick="armVariant(null)">Root</button>
+ <button class="varm-btn" id="varm-sus2" data-varm="sus2" onclick="armVariant('sus2')">sus2</button>
+ <button class="varm-btn" id="varm-sus4" data-varm="sus4" onclick="armVariant('sus4')">sus4</button>
+ <button class="varm-btn" id="varm-add9" data-varm="add9" onclick="armVariant('add9')">add9</button>
+ <button class="varm-btn" id="varm-5" data-varm="5" onclick="armVariant('5')" title="Power chord — root and fifth, no third">5</button>
+ <button class="varm-btn" id="varm-sl5" data-varm="/5" onclick="armVariant('/5')">/5</button>
+ <button class="varm-btn" id="varm-slb6" data-varm="/b6" onclick="armVariant('/b6')">/b6</button>
+ <button class="varm-btn" id="varm-sl6" data-varm="/6" onclick="armVariant('/6')">/6</button>
+ <button class="varm-btn" id="varm-slb7" data-varm="/b7" onclick="armVariant('/b7')">/b7</button>
+ <button class="varm-btn" id="varm-sl7" data-varm="/7" onclick="armVariant('/7')">/7</button>
+ <button class="varm-toggle" id="variant-ext-toggle" onclick="toggleExtRow()"
+   title="Every chord quality the app knows — sixths, ninths, elevenths, alterations">+ More qualities</button>
  </div>
+ <!-- Generated from EXT_CATALOG by buildExtArmRow(), collapsed by default:
+      nineteen more buttons above the grid would push the chords themselves off
+      a phone screen, which is the thing you came here to press. -->
+ <div class="variant-arm-row variant-ext-row" id="variant-ext-row"></div>
 
  <!-- Diatonic chords -->
  <div class="chord-section-lbl">Diatonic <button class="tips-btn" onclick="showTip('chords',this)" title="How chords work">?</button><span class="pk pk-play">Plays</span></div>
@@ -13529,15 +13539,38 @@ function toggleVariantSystem(){
 
 function armVariant(v){
  armedVariant = v;
- // Update button states
- document.querySelectorAll('.varm-btn').forEach(b => b.classList.remove('armed'));
- const id = v === null ? 'varm-none' :
- v === 'sus2' ? 'varm-sus2' : v === 'sus4' ? 'varm-sus4' :
- v === 'add9' ? 'varm-add9' : v === '5' ? 'varm-5' : v === '7th' ? 'varm-7th' :
- v === '/5' ? 'varm-sl5' : v === '/b6' ? 'varm-slb6' :
- v === '/6' ? 'varm-sl6' : v === '/b7' ? 'varm-slb7' :
- v === '/7' ? 'varm-sl7' : 'varm-none';
- document.getElementById(id)?.classList.add('armed');
+ // Matched on the value each button carries rather than an id ladder, so the
+ // extension row below can be generated from EXT_CATALOG without touching this.
+ document.querySelectorAll('.varm-btn').forEach(b => {
+  const bv = b.dataset.varm;
+  b.classList.toggle('armed', (bv === undefined ? null : bv) === (v === null ? null : String(v)));
+ });
+ if(v === null) document.getElementById('varm-none')?.classList.add('armed');
+}
+
+// The full chord vocabulary, live. These qualities already existed but were
+// only reachable from the song chart's picker, so you could write a ♭9 into a
+// chart and never play one by hand. Built from EXT_CATALOG so the two lists
+// cannot drift, and collapsed by default because 19 more buttons above the
+// grid would push the chords themselves off a phone screen.
+let extRowOpen = false;
+function buildExtArmRow(){
+ const host = document.getElementById('variant-ext-row'); if(!host) return;
+ const already = ['triad','sus2','sus4','add9'];
+ host.innerHTML = EXT_CATALOG.filter(e=>already.indexOf(e.k)<0).map(e=>
+   '<button class="varm-btn'+(e.pro?' pro-only':'')+'" data-varm="'+e.k+'"'
+   + ' onclick="armVariant(\''+e.k+'\')" title="'+e.note+'">'+e.label+'</button>').join('');
+ // No freeApplyLimits() here: this runs during boot, before _modTier is
+ // initialised, and reaching it throws out of the rest of the script. The
+ // .pro-only class these carry is styled by CSS, and boot's own tier pass
+ // picks them up afterwards.
+}
+function toggleExtRow(){
+ extRowOpen = !extRowOpen;
+ const host = document.getElementById('variant-ext-row');
+ const btn  = document.getElementById('variant-ext-toggle');
+ if(host) host.classList.toggle('visible', extRowOpen);
+ if(btn) btn.textContent = extRowOpen ? '− Fewer' : '+ More qualities';
 }
 
 // Modified triggerChord to consume armed variant
@@ -14598,14 +14631,12 @@ let songPendingSectionDelta = 0; // queued nav: +1 next, -1 prev, 0 = none (stay
 function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, sustain) {
  const v = armedVariant;
  let ext = baseExt || 'triad', bassOverride = null;
- if(v==='sus2') ext='sus2'; else if(v==='sus4') ext='sus4';
- else if(v==='add9') ext='add9'; else if(v==='5') ext='power';
- else if(v==='7th') ext='7th';
- else if(v==='/5') bassOverride=rootM-12+7;
- else if(v==='/b6') bassOverride=rootM-12+8;
- else if(v==='/6') bassOverride=rootM-12+9;
- else if(v==='/b7') bassOverride=rootM-12+10;
- else if(v==='/7') bassOverride=rootM-12+11;
+ // Slash variants move the bass; everything else names a chord quality, so
+ // any EXTS key can be armed rather than the five that used to be spelled out.
+ const SLASH = {'/5':7, '/b6':8, '/6':9, '/b7':10, '/7':11};
+ if(v && SLASH[v] != null) bassOverride = rootM - 12 + SLASH[v];
+ else if(v === '5') ext = 'power';
+ else if(v && EXTS[v]) ext = v;
 
  if(songRecActive) _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride);
 
@@ -16972,6 +17003,7 @@ positionTabLed();
 buildModSynthPresets();
 buildFingerInstList();
 buildVoicesPanel();
+if(typeof buildExtArmRow==='function') buildExtArmRow();
 try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){}
 
 // Open on a different progression every launch. Only when the chart is empty,
