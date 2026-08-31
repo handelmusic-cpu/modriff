@@ -19899,6 +19899,10 @@ window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || nul
 // changes. Exported rather than duplicated so both engines can never disagree
 // about where a chord starts.
 window._songChordWindowAt = function(t){ return _blWindowAt(t); };
+// See _blWindowFor — the melody generator outruns the committed chords the
+// same way the bass does, and was falling through un-remapped for the same
+// reason.
+window._songChordWindowFor = function(t){ return _blWindowFor(t); };
 window._songHasChordWindows = function(){ return _blChordWin.length > 0; };
 window.blIsFollowOn = function(){ return blFollow; };
 
@@ -19924,6 +19928,27 @@ function _blWindowAt(t){
     if(t >= w.t - 0.002 && t < w.end - 0.002) return w;
   }
   return null;
+}
+// The grid scheduler runs ahead of the song's committed chords, and how far
+// ahead depends on the rate: at 2x the bass burns through its bar in half the
+// time and reaches into bars the song has not committed yet. A note landing
+// there found no window and fell through with NO remap at all — sounding at
+// the pitch the grid was generated over, the same wrong note every time.
+// Measured at 39% of notes at 2x rate (1-2% at 1x).
+//
+// Carry the last committed chord forward instead. A chord that has not changed
+// yet is very nearly always the right answer, and it is always closer than the
+// generator's own root. Rests are not carried: a rest that has already ended
+// would silence notes that should sound.
+function _blWindowFor(t){
+  var w = _blWindowAt(t);
+  if(w) return w;
+  var last = null;
+  for(var i=0;i<_blChordWin.length;i++){
+    var c = _blChordWin[i];
+    if(c.t <= t && (!last || c.t > last.t)) last = c;
+  }
+  return (last && !last.rest) ? last : null;
 }
 
 // Put a pitch class in the octave nearest a reference note, inside the range.
@@ -20146,7 +20171,7 @@ window._blScheduler = function(){
     var swOff = (typeof window._sqSwingOffset==='function')
       ? window._sqSwingOffset(blSeqStep, stepSec, swingAmt)
       : ((blSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0);
-    var wf = following ? _blWindowAt(blNextT + swOff) : null;
+    var wf = following ? _blWindowFor(blNextT + swOff) : null;
     // A locked phrase replaces the bar for this chord only, and is indexed
     // from the chord's own downbeat rather than from the bar's — that is what
     // makes the figure start where the chord starts however the two clocks
@@ -20328,7 +20353,7 @@ function _blDisplayWindow(x){
     } else {
       when = ctx.currentTime + x * stepSec;
     }
-    wf = _blWindowAt(when);
+    wf = _blWindowFor(when);
   }catch(e){ return null; }
   if(!wf || wf.rest) return null;
   return wf;
@@ -21279,7 +21304,7 @@ window._mlScheduler = function(){
     var swOff = (typeof window._sqSwingOffset==='function')
       ? window._sqSwingOffset(mlSeqStep, stepSec, swingAmt)
       : ((mlSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0);
-    var wf = following ? window._songChordWindowAt(mlNextT + swOff) : null;
+    var wf = following ? window._songChordWindowFor(mlNextT + swOff) : null;
     // Same per-chord exception the bass gets: a locked phrase replaces the bar
     // for its own chord and is indexed from that chord's downbeat.
     var lock = _mlLockFor(wf);
@@ -21352,7 +21377,7 @@ function _mlDisplayWindow(x){
     } else {
       when = ctx.currentTime + x * stepSec;
     }
-    wf = (typeof window._songChordWindowAt==='function') ? window._songChordWindowAt(when) : null;
+    wf = (typeof window._songChordWindowFor==='function') ? window._songChordWindowFor(when) : null;
   }catch(e){ return null; }
   if(!wf || wf.rest) return null;
   return wf;
