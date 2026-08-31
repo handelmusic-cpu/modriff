@@ -321,6 +321,11 @@ body.light-mode .tab-bar { background:#e8eaf6; border-bottom-color:#c2c6de; }
  border-radius:var(--r-md); overflow:hidden;
  box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
 }
+/* Six segments (Triad … add9) are wider than a phone, and .tg clips what it
+   cannot fit — "add9" was cut off the right edge with no way to reach it.
+   Scoped to this row so the other segmented controls keep their single-line
+   pill shape. */
+#ext-toggle { flex-wrap:wrap; }
 .tb {
  padding:7px 13px; background:none; border:none; color:var(--muted);
  font-family:'Outfit',sans-serif; font-size:.68rem; letter-spacing:.06em;
@@ -2293,7 +2298,7 @@ body.light-mode .bl-empty-hint {
 .bl-empty-hint .bl-eh-text { font-size:.62rem; line-height:1.65; max-width:280px; }
 .bl-empty-hint .bl-eh-text b { color:var(--pg); }
 .bl-controls { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px; }
-.bl-pb { display:flex; align-items:center; gap:4px; background:var(--surf); border:1px solid var(--border2); border-radius:7px; padding:4px 8px; }
+.bl-pb { display:flex; flex-wrap:wrap; align-items:center; gap:4px; background:var(--surf); border:1px solid var(--border2); border-radius:7px; padding:4px 8px; max-width:100%; min-width:0; }
 .bl-pl { font-size:.46rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
 .bl-pico { background:none; border:1px solid var(--border2); color:var(--text); font-size:13px; width:22px; height:22px; cursor:pointer; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:monospace; touch-action:manipulation; }
 .bl-stepsdisp { font-size:.65rem; font-family:'Orbitron',sans-serif; color:var(--pg); min-width:24px; text-align:center; }
@@ -11060,6 +11065,17 @@ function _capSettings(){
   // this only means anything alongside the chart below it.
   phraseLocks: (typeof window.phraseCaptureState==='function') ? window.phraseCaptureState() : null,
 
+  // Which parts are armed for the next Play. The snapshot restored every
+  // bassline, melody line and arp setting but not whether those parts were
+  // switched on, so "Pick up where I left off" handed back a full rig playing
+  // drums only, with no hint that Bass and Mel were dark in the transport.
+  armed: {
+   drums: (typeof drumsEnabled!=='undefined') ? !!drumsEnabled : null,
+   bass:  (typeof blEnabled!=='undefined')    ? !!blEnabled    : null,
+   melgen:(typeof mlEnabled!=='undefined')    ? !!mlEnabled    : null,
+   arp:   (typeof arpOn!=='undefined')        ? !!arpOn        : null
+  },
+
   // The song chart itself — sections, their chords, and each section's
   // repeat/advance setting. The one thing every other snapshot in this app
   // deliberately left alone; folded in here so editing a chart is undoable
@@ -11191,6 +11207,19 @@ function _applySettings(s){
  // Only push tempo when it actually moved — onBpmInput restarts the running
  // clock, which would put a small hiccup in playback on every undo/redo.
  if(s.bpm!=null && s.bpm!==_sv('bpm') && typeof onBpmInput==='function') onBpmInput(s.bpm);
+
+ // Which parts are armed. See `armed` in _capSettings. These are the flags
+ // Play reads, so writing them here is inert until the transport runs — a
+ // snapshot can never start music on its own. The arp is a live toggle rather
+ // than a plain flag, so it goes through toggleArp() when it differs.
+ if(s.armed && typeof s.armed==='object'){
+  if(typeof s.armed.drums ==='boolean' && typeof drumsEnabled!=='undefined') drumsEnabled = s.armed.drums;
+  if(typeof s.armed.bass  ==='boolean' && typeof blEnabled   !=='undefined') blEnabled    = s.armed.bass;
+  if(typeof s.armed.melgen==='boolean' && typeof mlEnabled   !=='undefined') mlEnabled    = s.armed.melgen;
+  if(typeof s.armed.arp   ==='boolean' && typeof arpOn!=='undefined'
+     && s.armed.arp!==arpOn && typeof toggleArp==='function') toggleArp();
+  if(typeof syncFixedTransport==='function') syncFixedTransport();
+ }
 
  // Key/mode last — setMode() re-renders the whole chord grid (and the melody
  // strip with it), so let it be the one repaint rather than doing two.
@@ -11958,7 +11987,16 @@ function playOnboardingDemo(chapters){
       '<button id="_ob-show" style="font-size:.48rem;padding:5px 14px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:#eef0ff;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:700">Show me</button>' +
       '</div></div>';
     document.getElementById('_ob-skip').onclick = finish;
-    document.getElementById('_ob-show').onclick = function(){ if(st.showMe) _tourSet(st.showMe); advance(); };
+    // Disarm this step's gate before performing the action for them. Several
+    // showMe handlers do the very thing the gate is listening for — step 3
+    // dispatches a pointerdown on a 7th strip, which IS step 3's gate — so the
+    // gate fired advance(), then this handler advanced again and the next step
+    // flashed past unseen. Steps 4 and 11 were unreachable via Show me.
+    document.getElementById('_ob-show').onclick = function(){
+      if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+      if(st.showMe) _tourSet(st.showMe);
+      advance();
+    };
     // Arm the gate last, so nothing set up by before/showMe can trip it.
     setTimeout(function(){ _tourTeardown = st.gate(advance); }, 60);
   }
@@ -12174,6 +12212,12 @@ function applySetup(st){
  // the wrapped shape.
  const s = st.settings || st;
  if(!s || typeof s!=='object') return false;
+ // Swapping the whole rig out from under the engines needs a stop first, but
+ // this never started anything again — so undo, loading a setup, and restoring
+ // the last session all silently killed playback and left the transport dark
+ // with no indication why. Remember what was running and put it back.
+ const _wasPlaying = (typeof window._sqPlaying==='function' && window._sqPlaying())
+   || (typeof rhythmOn!=='undefined' && rhythmOn);
  try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
  try{ _applySettings(s); }catch(e){ console.warn('setup apply failed',e); return false; }
  if(Array.isArray(st.setlist)){
@@ -12185,6 +12229,16 @@ function applySetup(st){
    if(typeof renderSetlistNav==='function') renderSetlistNav();
    if(typeof renderSetlistPerform==='function') renderSetlistPerform();
   }catch(e){}
+ }
+ // Put the transport back if it was running. Deliberately only resumes what
+ // was already going — a setup loaded from a stopped state stays stopped, so
+ // this cannot surprise anyone by starting music on its own. The delay lets
+ // the applied state settle before the engines read it.
+ if(_wasPlaying && typeof startEverything==='function'){
+  setTimeout(function(){ try{
+   if(typeof window._sqPlaying==='function' && window._sqPlaying()) return;
+   startEverything();
+  }catch(e){} }, 120);
  }
  // Undo treats a load like any other edit, so ⌘Z walks back out of it.
  if(typeof _undoTick==='function') setTimeout(_undoTick, 400);
@@ -18382,9 +18436,7 @@ function sqDraw(){
   if(ds!==sqDispStep){
     if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
     var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2)e2.classList.add('head');}
-    var ph=document.getElementById('sq-phcur');
-    var gs=document.getElementById('sq-gScroll');
-    if(gs&&ph){ph.style.left=Math.max(0,ds*36-gs.scrollLeft)+'px';}
+    sqPosPlayhead(ds);
     sqDispStep=ds;
     var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
     var sb=document.getElementById('sq-sBar');if(sb)sb.textContent=Math.floor(ds/4)+1;
@@ -18427,13 +18479,29 @@ function sqStart(){
   _withAudio(c, go);
 }
 
+// The playhead dot lives in .sq-phbar, which spans the whole card, while the
+// steps live in #sq-gScroll behind the row-label gutter. Placing the dot at
+// ds*36 from the bar's own left edge put it a gutter-width to the left of the
+// step it was marking, and on a phone the later steps landed past the right
+// edge of the screen — which gave the whole Accomp page a sideways scroll you
+// could drag. Measure the gutter, and hide the dot when its step is scrolled
+// out of the grid's viewport rather than parking it somewhere it isn't.
+function sqPosPlayhead(ds){
+  var ph=document.getElementById('sq-phcur'); if(!ph) return;
+  var gs=document.getElementById('sq-gScroll'), bar=ph.parentElement;
+  if(!gs||!bar){ ph.style.left='0'; return; }
+  var x = ds*36 - gs.scrollLeft;
+  if(x < -4 || x > gs.clientWidth){ ph.style.display='none'; return; }
+  ph.style.display='';
+  ph.style.left = (gs.getBoundingClientRect().left - bar.getBoundingClientRect().left + x) + 'px';
+}
 function sqStop(){
   sqPlaying=false;window._sqPlayingVal=false;
   cancelAnimationFrame(sqRafID);sqRafID=null;
   if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
   var pb=document.getElementById('sq-playBtn');
   if(pb){pb.textContent='▶ Play';pb.classList.remove('active');}
-  var ph=document.getElementById('sq-phcur');if(ph)ph.style.left='0';
+  sqPosPlayhead(0);
   // If Vibe's clock has nothing else to do, stop it
   var blStillOn=typeof window._blPlaying==='function'&&window._blPlaying();
   var mlStillOn=typeof window._mlPlaying==='function'&&window._mlPlaying();
@@ -22634,7 +22702,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.2.6';
+const MODRIFF_VERSION = '2.2.5';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
