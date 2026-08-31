@@ -6048,6 +6048,10 @@ function _resyncEngines(){
  if(typeof window._sqPlaying==='function' && window._sqPlaying() && typeof window._sqResync==='function') window._sqResync();
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blResync==='function') window._blResync();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlResync==='function') window._mlResync();
+ // Realigning the step times is useless if the timer chain itself died while
+ // the tab was in the background — which is the usual reason there is no audio
+ // on return.
+ if(typeof ensureClockRunning==='function') ensureClockRunning();
 }
 
 let _gestureResumeArmed=false;
@@ -8655,7 +8659,17 @@ let _schedHorizon=null;
 // see the comment above _clockStopRequested's use below for the mechanism —
 // and tickClock() must notice that before blindly re-arming itself.
 let _clockStopRequested=false;
+// Anything that should currently be producing sound. Used both to decide
+// whether the clock has work to do and to notice when it has silently stopped.
+function _clockShouldRun(){
+ return !!(rhythmOn || arpOn || metronomeOn
+   || (typeof window._sqPlaying==='function' && window._sqPlaying())
+   || (typeof window._blPlaying==='function' && window._blPlaying())
+   || (typeof window._mlPlaying==='function' && window._mlPlaying()));
+}
+let _clockLastTick = 0;
 function tickClock(){
+ _clockLastTick = Date.now();
  _clockStopRequested=false;
  var _c0=getCtx();
  _schedHorizon = _c0 ? _c0.currentTime+LOOK_AHEAD : null;
@@ -8687,6 +8701,37 @@ function tickClock(){
  if(_clockStopRequested){ _clockStopRequested=false; return; }
  clockTimer=setTimeout(tickClock,SCHED_INT);
 }
+// The scheduler is a self-rescheduling setTimeout chain: the ONLY thing that
+// keeps audio alive is the last line of the previous tick. That made it a
+// single point of failure — one exception anywhere inside a tick, and the
+// chain is never re-armed, so the transport goes on saying it is playing while
+// nothing is ever scheduled again. Silent, permanent, and only fixable by
+// reloading. Wrapping it means a bad note costs one tick instead of the
+// session.
+const _tickClockInner = tickClock;
+tickClock = function(){
+ try{ _tickClockInner(); }
+ catch(e){
+  try{ console.error('tickClock', e); }catch(_){}
+  if(_clockShouldRun()) clockTimer=setTimeout(tickClock,SCHED_INT);
+ }
+};
+// Restart the chain if something should be sounding and no tick has landed
+// recently. This is what was missing when you came back to a backgrounded tab:
+// browsers freeze timers there, so the pending setTimeout can simply never
+// fire, and nothing on the resume path re-armed it — _resyncEngines only
+// realigned the times of a clock that was no longer running.
+function ensureClockRunning(){
+ if(!_clockShouldRun()) return;
+ if(Date.now() - _clockLastTick < SCHED_INT * 4) return;
+ clearTimeout(clockTimer);
+ tickClock();
+}
+// A backstop for anything that stops the chain in a way the explicit calls
+// miss. Cheap: a comparison every second, and it does nothing unless a part
+// says it is playing while the clock has gone quiet.
+setInterval(ensureClockRunning, 1000);
+window.ensureClockRunning = ensureClockRunning;
 function startClock(){
  const ctx=getCtx(); if(!ctx) return;
  clockSetEpoch(ctx);
@@ -19270,7 +19315,12 @@ function blMG(){
     // over the chords. 47% of the full mix's spectrum was under 100 Hz. That
     // is the "too loud on a random roll" and most of the "muddy": low notes
     // eat all the headroom, so everything above them ducks.
-    BL_MG.gain.value = 0.30;
+    // 0.30 was measured when the bass sat 13.8 dB over everything else. The
+    // plucked envelope introduced in 2.1.5 lowered its average level, and node
+    // churn is now well below where it was, so there is headroom to give some
+    // back — at the bus rather than at the note peak, so nothing is driven
+    // harder into the limiter. About +1.6 dB.
+    BL_MG.gain.value = 0.36;
     BL_MG.connect(masterDest(ctx));
     // Published the same way the drum bus publishes SQMG_REF: this node lives
     // inside the bassline IIFE, so nothing outside can reach the part's own
@@ -20091,22 +20141,69 @@ window.blPlay = window._blPlayImpl = blPlay;
 
 // ── piano roll wiring ──
 // The roll lives outside this IIFE, so it gets accessors rather than the grid.
+// What Follow will do to a step, so the roll can show the notes that will
+// actually SOUND rather than the figure they were written as. Without this the
+// roll showed one thing and the speaker played another every time the line
+// re-rooted onto a new chord — the display was only correct on the chord the
+// grid happened to be generated over.
+function _blDisplayShift(x){
+  if(!blFollow) return 0;
+  var c = blGrid[x];
+  if(!c || !c.v || c.usr) return 0;   // hand-drawn notes never move; nor do rests
+  var wf = null;
+  try{
+    var ctx = blCtx(); if(!ctx) return 0;
+    // The chord is looked up PER STEP during playback, and a bar can span more
+    // than one — using a single chord for the whole grid collapsed every note
+    // onto the same pitch. Project this step's own time the way the scheduler
+    // does, wrapping forward so steps already behind the playhead show the
+    // chord they will meet on the next pass rather than the one just gone.
+    var bpmNow = parseFloat(document.getElementById('bpm')?.value) || 120;
+    var stepSec = 60 / bpmNow / 4 * (typeof blRateMul!=='undefined' ? blRateMul : 1);
+    var when;
+    if(blPlaying){
+      var ahead = ((x - blSeqStep) % blSteps + blSteps) % blSteps;
+      when = blNextT + ahead * stepSec;
+    } else {
+      when = ctx.currentTime + x * stepSec;
+    }
+    wf = _blWindowAt(when);
+  }catch(e){ return 0; }
+  if(!wf || wf.rest) return 0;
+  var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
+  return ((basePc - _blGridRootPc) % 12 + 12) % 12;
+}
+// Playback folds a shifted note back into the playable range; the roll has to
+// fold it the same way or it would draw notes off the top of the grid.
+function _blDisplayMidi(x){
+  var c = blGrid[x]; if(!c) return null;
+  var abs = c.note + (c.oct + 1) * 12 + _blDisplayShift(x);
+  if(abs > BL_HI) abs -= 12;
+  if(abs < BL_LO) abs += 12;
+  return abs;
+}
 function blPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('bl', {
     lo: BL_GEN_LO, hi: BL_GEN_HI, color:'#2df09a',
     steps: function(){ return blSteps; },
     cell:  function(x){ return blGrid[x]; },
+    // The pitch this step will actually sound as, after Follow. prDraw uses
+    // this in preference to the cell's own note/oct.
+    displayMidi: function(x){ return _blDisplayMidi(x); },
+
     playStep: function(){ return blPlaying ? blDispStep : -1; },
     toggle: function(step, midi){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
-      var cur = c.note + (c.oct+1)*12;
+      var cur = _blDisplayMidi(step);
       if(c.v && cur === midi){ c.v = 0; c.usr = 0; }   // tapping it again clears it, pin included
       else {
-        c.v = 1; c.usr = 1;
-        c.note = ((midi%12)+12)%12;
-        c.oct  = Math.floor(midi/12)-1;
+        c.v = 1;
+        var raw = midi - _blDisplayShift(step);
+        c.usr = 1;                       // a tapped note is yours, so it stops moving
+        c.note = ((raw%12)+12)%12;
+        c.oct  = Math.floor(raw/12)-1;
         blPreviewNote(c);
       }
       blUpdateEmptyHint();
@@ -20115,7 +20212,9 @@ function blPrInit(){
     openMenu: function(step, midi){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
-      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      // Same conversion as toggle: the roll hands us a SOUNDING pitch.
+      if(!c.v){ var raw = midi - _blDisplayShift(step);
+                c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
       var host = document.getElementById('bl-pr-canvas');
       blOpenMenu(host, step);
@@ -21054,22 +21153,56 @@ function _mlLockFor(w){
   return (lk && lk.grid && lk.steps) ? lk : null;
 }
 
+// The melody generator's counterpart to _blDisplayShift — see that for why.
+function _mlDisplayShift(x){
+  if(!mlFollow) return 0;
+  var c = mlGrid[x];
+  if(!c || !c.v || c.usr) return 0;
+  var wf = null;
+  try{
+    var ctx = getCtx(); if(!ctx) return 0;
+    var bpmNow = parseFloat(document.getElementById('bpm')?.value) || 120;
+    var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined' ? mlRateMul : 1);
+    var when;
+    if(mlPlaying){
+      var ahead = ((x - mlSeqStep) % mlSteps + mlSteps) % mlSteps;
+      when = mlNextT + ahead * stepSec;
+    } else {
+      when = ctx.currentTime + x * stepSec;
+    }
+    wf = (typeof window._songChordWindowAt==='function') ? window._songChordWindowAt(when) : null;
+  }catch(e){ return 0; }
+  if(!wf || wf.rest) return 0;
+  return ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+}
+function _mlDisplayMidi(x){
+  var c = mlGrid[x]; if(!c) return null;
+  var abs = c.note + (c.oct + 1) * 12 + _mlDisplayShift(x);
+  if(abs > ML_GEN_HI) abs -= 12;
+  if(abs < ML_GEN_LO) abs += 12;
+  return abs;
+}
 function mlPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('ml', {
     lo: ML_GEN_LO, hi: ML_GEN_HI, color:'#ff8ad4',
     steps: function(){ return mlSteps; },
     cell:  function(x){ return mlGrid[x]; },
+    // Follow moves this line onto each chord exactly as it does the bass, so
+    // the roll has to draw the sounding pitch for the same reason.
+    displayMidi: function(x){ return _mlDisplayMidi(x); },
     playStep: function(){ return mlPlaying ? mlDispStep : -1; },
     toggle: function(step, midi){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      var cur = c.note + (c.oct+1)*12;
+      var cur = _mlDisplayMidi(step);
       if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
       else {
-        c.v = 1; c.usr = 1;
-        c.note = ((midi%12)+12)%12;
-        c.oct  = Math.floor(midi/12)-1;
+        c.v = 1;
+        var raw = midi - _mlDisplayShift(step);
+        c.usr = 1;
+        c.note = ((raw%12)+12)%12;
+        c.oct  = Math.floor(raw/12)-1;
         if(typeof mlPreviewNote==='function') mlPreviewNote(c);
       }
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
@@ -21078,7 +21211,8 @@ function mlPrInit(){
     openMenu: function(step, midi){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      if(!c.v){ c.v=1; c.note=((midi%12)+12)%12; c.oct=Math.floor(midi/12)-1; }
+      if(!c.v){ var raw = midi - _mlDisplayShift(step);
+                c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
       if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
     }
@@ -22117,7 +22251,13 @@ function prDraw(id){
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
-  const midi = c.note + (c.oct+1)*12;
+  // Ask the engine where this step will actually sound; fall back to the cell's
+  // own pitch for engines that do not re-root.
+  let midi = c.note + (c.oct+1)*12;
+  if(typeof cfg.displayMidi === 'function'){
+   const dm = cfg.displayMidi(x);
+   if(dm != null) midi = dm;
+  }
   const row = cfg.hi - midi;
   const len = Math.max(1, c.len||1);
   const y = row*PR_ROW_H, w = len*colW - 3;
@@ -22494,7 +22634,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.2.5';
+const MODRIFF_VERSION = '2.2.6';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
