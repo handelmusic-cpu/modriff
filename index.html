@@ -2055,6 +2055,9 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 /* The extension row is independent of the Variants toggle: it opens on its own
    button and stays shut otherwise. */
 .variant-ext-row { display:none; margin-top:4px; }
+/* Room for the walkthrough card, so a target near the bottom of a page can
+   still be scrolled above it. */
+body.tour-open .tab-page { padding-bottom: 46vh; }
 .variant-ext-row.visible { display:flex; }
 .varm-btn {
  padding:7px 14px; background:var(--surf2); border:1px solid var(--border2);
@@ -6907,8 +6910,22 @@ let _sustainId = 0;
 // — that timer only stops FUTURE ticks from committing more notes. A note
 // already committed in the next 100ms when an ending fires plays out
 // regardless, which is the stray note after an ending.
+// Gains that hardKillAll() should silence — i.e. things that might still be
+// SOUNDING. It used to grow without limit: every scheduled note pushed one and
+// nothing removed them until a panic-stop, so a few minutes of playing left
+// thousands of finished nodes referenced here, none of them collectable, and
+// the graph kept growing until the audio could not keep up. That is what the
+// dropouts were. Bounded to the most recent entries, which is all a kill can
+// usefully act on — anything older finished long ago.
+const _VOICE_KILL_MAX = 256;
 let _voiceKillReg=[];
-function _regKill(gain){ if(gain) _voiceKillReg.push(gain); }
+function _regKill(gain){
+ if(!gain) return;
+ _voiceKillReg.push(gain);
+ if(_voiceKillReg.length > _VOICE_KILL_MAX){
+  _voiceKillReg.splice(0, _voiceKillReg.length - _VOICE_KILL_MAX);
+ }
+}
 function hardKillAll(atTime){
  const ctx=getCtx();
  const nowT=ctx?ctx.currentTime:0;
@@ -11821,16 +11838,50 @@ function playOnboardingDemo(chapters){
   card.style.cssText = 'position:relative;pointer-events:all;margin:0 auto;max-width:420px;background:linear-gradient(135deg,#130d22,#0a1a10);border:1px solid var(--pg);border-radius:18px 18px 0 0;padding:18px 18px 22px;box-shadow:0 -4px 32px rgba(0,0,0,.8);color:#eef0ff;';
   wrap.appendChild(card);
   document.body.appendChild(wrap);
+  // Without this the bottom of a page cannot scroll up past the card at all,
+  // so the final targets on a tab are unreachable however we aim.
+  document.body.classList.add('tour-open');
 
+  // The card is fixed to the bottom of the screen and is tall — on a phone it
+  // covers roughly the lower third. block:'center' put the target dead centre
+  // of the WINDOW, which on the bass and melody steps is behind the card: it
+  // was asking you to tap something it was sitting on top of. Targets are
+  // centred in the space that is actually visible above the card instead.
   function spotTarget(tid){
     if(!tid){ spotlight.style.display='none'; return; }
     var el = document.getElementById(tid);
     if(!el || el.offsetParent === null){ spotlight.style.display='none'; return; }
-    el.scrollIntoView({behavior:'smooth', block:'center'});
+    // A target inside the fixed transport can never be scrolled clear of a card
+    // pinned to the bottom — they both live there. Send the card to the top for
+    // those steps instead of trying to move the page.
+    var inFixedBar = !!(el.closest && el.closest('#perf-bar'));
+    wrap.style.top = inFixedBar ? '0' : '';
+    wrap.style.bottom = inFixedBar ? 'auto' : '0';
+    card.style.borderRadius = inFixedBar ? '0 0 18px 18px' : '18px 18px 0 0';
+    if(inFixedBar){ spotlight.style.display='none'; }
+    var cardH = (card.getBoundingClientRect().height || 0) + 12;
+    var free = Math.max(120, window.innerHeight - cardH);
+    var page = el.closest ? el.closest('.tab-page') : null;
+    var r0 = el.getBoundingClientRect();
+    // Aim the element's middle at the middle of the free strip.
+    var delta = (r0.top + r0.height/2) - free/2;
+    var scroller = (page && page.scrollHeight > page.clientHeight) ? page
+                 : (document.scrollingElement || document.documentElement);
+    try{ scroller.scrollBy({top: delta, behavior:'smooth'}); }
+    catch(e){ scroller.scrollTop += delta; }
     setTimeout(function(){
       var r = el.getBoundingClientRect(), pad = 8;
-      spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
-    }, 260);
+      // If it still cannot clear the card (a target taller than the free strip,
+      // or a page that will not scroll), do not draw a spotlight that points
+      // underneath the card — better no ring than a misleading one.
+      if(inFixedBar){
+        // Ring it where it actually is, at the bottom; the card is out of the way now.
+        spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
+        return;
+      }
+      if(r.top > free){ spotlight.style.display='none'; return; }
+      spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+Math.min(r.height+pad*2, free-r.top+pad)+'px;display:block;border:2px solid var(--pg);';
+    }, 320);
   }
 
   function advance(){
@@ -11870,6 +11921,7 @@ function playOnboardingDemo(chapters){
   function finish(){
     if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
     spotlight.remove(); wrap.remove();
+    document.body.classList.remove('tour-open');
     var nextCh = [3,4].filter(function(n){ return !tourChapterDone(n); });
     if(want.indexOf(3) < 0 && nextCh.length){
       if(typeof showToast==='function') showToast('Nice. ⋯ › Tour has two more chapters when you want them.');
@@ -19284,22 +19336,51 @@ var _blPrevFreq=0, _blPrevSlide=false, _blPrevGain=null, _blPrevEnd=0;
 // plucked rather than the tone it settles into. Bandpass rather than lowpass so
 // it reads as contact noise instead of a click, and it tracks the note so low
 // notes thud and high notes snap.
+// Built once and reused. The first version allocated a fresh AudioBuffer and
+// filled it with an 882-sample loop on EVERY note, which is garbage collected
+// straight back — the kind of per-note allocation that shows up as the audio
+// hiccuping rather than as anything visible.
+// One PeriodicWave for the electric's harmonic content, built once per context.
+var _BL_ELEC_WAVE = null;
+function _blElectricWave(ctx){
+  if(_BL_ELEC_WAVE && _BL_ELEC_WAVE._ctx === ctx) return _BL_ELEC_WAVE.w;
+  // DC, fundamental, octave, twelfth — the 0.64/0.26/0.10 balance the three
+  // oscillators used to mix by hand.
+  var real = new Float32Array([0, 0, 0, 0]);
+  var imag = new Float32Array([0, 0.64, 0.26, 0.10]);
+  var w = ctx.createPeriodicWave(real, imag, {disableNormalization:false});
+  _BL_ELEC_WAVE = {_ctx:ctx, w:w};
+  return w;
+}
+var _BL_PLUCK_BUF = null;
+function _blPluckBuf(ctx){
+  if(_BL_PLUCK_BUF && _BL_PLUCK_BUF.sampleRate === ctx.sampleRate) return _BL_PLUCK_BUF;
+  var len = Math.floor(ctx.sampleRate * 0.02);
+  var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  var d = buf.getChannelData(0);
+  // Shaped once here — a decaying burst with the mid emphasis the bandpass used
+  // to add — so the per-note path is just "play it at a rate".
+  var prev = 0;
+  for(var i=0;i<len;i++){
+    var white = Math.random()*2-1;
+    prev = prev*0.55 + white*0.45;            // gentle tilt, cheap one-pole
+    d[i] = (white - prev*0.8) * (1 - i/len);  // band-ish, decaying
+  }
+  _BL_PLUCK_BUF = buf;
+  return buf;
+}
 function _blPluck(ctx, dest, t, v, accent, freq){
   try{
     var n = ctx.createBufferSource();
-    var len = Math.floor(ctx.sampleRate * 0.02);
-    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    var d = buf.getChannelData(0);
-    for(var i=0;i<len;i++) d[i] = (Math.random()*2-1) * (1 - i/len);
-    n.buffer = buf;
-    var bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = Math.min(4200, Math.max(700, freq * 9));
-    bp.Q.value = 0.9;
+    n.buffer = _blPluckBuf(ctx);
+    // Pitch the pre-shaped buffer instead of running a bandpass per note. It
+    // tracks the note the same way and costs one node rather than two, which
+    // matters when this fires on every bass note.
+    n.playbackRate.value = Math.max(0.6, Math.min(2.4, freq / 70));
     var ng = ctx.createGain();
     ng.gain.setValueAtTime(v * (accent ? 0.30 : 0.20), t);
     ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
-    n.connect(bp); bp.connect(ng); ng.connect(dest);
+    n.connect(ng); ng.connect(dest);
     n.start(t); n.stop(t + 0.03);
   }catch(e){}
 }
@@ -19349,19 +19430,23 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // genuinely sustained (sub, square, triangle, the acid saws, which shape
   // themselves with their filter instead).
   var _plucked = (blWave === 'electric' || blWave === 'upright' || blWave === 'upright_real');
-  // Makeup for the decay below. The old shelf sat at 0.88 for the whole note;
-  // the plucked envelope averages nearer 0.6 of its peak, so without this the
-  // change would quietly drop the bass ~3 dB in the mix. 1.25 brings the mean
-  // back to roughly where it was while keeping the peak-to-mean ratio that
-  // makes it read as a struck string. The master limiter handles the taller
-  // peak. NOTE: arithmetic, not measurement — see the commit message.
-  if(_plucked) v *= 1.25;
+  // No makeup for the decay below. There WAS a 1.25 boost here on the reasoning
+  // that the new envelope averages lower than the old shelf; it was arithmetic
+  // rather than a measurement, and this part is already documented as carrying
+  // ~96% of the mix's energy at 13.8 dB over the chords (see BL_MG). Pushing it
+  // another 25% into the limiter is what "fuzzing out" sounds like. If the bass
+  // now sits too quiet, BL_MG is the honest place to trim, with ears on it.
   g.gain.setValueAtTime(v, t);
   if(_plucked){
-    // Fast initial drop off the attack, then a slow tail — roughly how a wound
-    // string behaves once the pick or finger leaves it.
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.62), t + Math.min(0.09, dur * 0.35));
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.34), t + dur * 0.85);
+    // Drop off the attack, then a slow tail — how a wound string behaves once
+    // the pick leaves it. Gentler than the first attempt (0.62/0.34), which was
+    // audibly quieter than the shelf it replaced: this averages about 0.80 of
+    // peak against the old flat 0.88, roughly 0.8 dB down and inaudible, where
+    // the steeper one lost nearly 3 dB. Loudness is restored by shaping the
+    // decay rather than by boosting the gain, so nothing is pushed harder into
+    // the limiter — this part already carries most of the mix's energy.
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.82), t + Math.min(0.09, dur * 0.35));
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0001, v * 0.62), t + dur * 0.85);
   } else {
     g.gain.setValueAtTime(v * 0.88, t + dur * 0.5);
   }
@@ -19449,41 +19534,27 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
 
   } else if(blWave === 'electric'){
     // Electric bass — triangle fundamental + 2nd harmonic, punchy attack filter
-    var o1 = ctx.createOscillator(); o1.type = 'triangle';
-    var o2 = ctx.createOscillator(); o2.type = 'sine';
+    var o1 = ctx.createOscillator();
     if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
       o1.frequency.setValueAtTime(_blPrevFreq, t);
       o1.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
-      o2.frequency.setValueAtTime(_blPrevFreq*2, t);
-      o2.frequency.exponentialRampToValueAtTime(freq*2, t + Math.min(dur*0.45, 0.06));
     } else {
       o1.frequency.setValueAtTime(freq, t);
-      o2.frequency.setValueAtTime(freq*2, t);
     }
-    // A third partial. Two partials put nearly all the energy below 200Hz,
-    // where a phone speaker reproduces none of it — the note was there on
-    // headphones and simply absent on a laptop. This is what carries the pitch
-    // up into a range small speakers can actually move.
-    var o3e = ctx.createOscillator(); o3e.type = 'sine';
-    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-      o3e.frequency.setValueAtTime(_blPrevFreq*3, t);
-      o3e.frequency.exponentialRampToValueAtTime(freq*3, t + Math.min(dur*0.45, 0.06));
-    } else { o3e.frequency.setValueAtTime(freq*3, t); }
-    // 0.64 + 0.26 + 0.10 = 1.00, the same total the two partials summed to,
-    // so adding the third redistributes the tone without changing the level.
-    var mg1 = ctx.createGain(); mg1.gain.value = 0.64;
-    var mg2 = ctx.createGain(); mg2.gain.value = 0.26;
-    var mg3 = ctx.createGain(); mg3.gain.value = 0.10;
+    // The three partials ride on ONE oscillator via a cached PeriodicWave
+    // instead of three oscillators through three mixer gains. Same spectrum —
+    // 0.64 fundamental, 0.26 octave, 0.10 twelfth — for two nodes instead of
+    // six. Node churn is what was overloading the audio thread, and the bass
+    // is the busiest part in the app.
+    o1.setPeriodicWave(_blElectricWave(ctx));
     var f = ctx.createBiquadFilter();
     f.type = 'lowpass';
     var pk2 = accent ? 3000 : 2200;
     f.frequency.setValueAtTime(pk2, t);
     f.frequency.exponentialRampToValueAtTime(Math.max(blCutoff, 200), t + 0.09);
     f.Q.value = Math.min(blResonance, 5);
-    o1.connect(mg1); o2.connect(mg2); o3e.connect(mg3);
-    mg1.connect(f); mg2.connect(f); mg3.connect(f); f.connect(g);
-    o1.start(t); o2.start(t); o3e.start(t);
-    o1.stop(stopT); o2.stop(stopT); o3e.stop(stopT);
+    o1.connect(f); f.connect(g);
+    o1.start(t); o1.stop(stopT);
     // Finger noise. A bass note starts with the string being displaced, not
     // with a tone appearing — without this the onset is a pure fade-in and the
     // line has no edge to sit on top of a kick.
@@ -20591,13 +20662,19 @@ var _blPendingGrid = null;
 })();
 function _blApplyPending(){
  if(!_blPendingGrid) return;
- // A step-count change between the generate and the swap would leave the
- // buffer the wrong length; the live grid is already correct, so drop it.
- if(_blPendingGrid.length === blGrid.length){
-  blGrid = _blPendingGrid;
-  blRenderGrid();
- }
+ // A step-count change between the generate and the swap used to THROW THE
+ // GENERATED LINE AWAY: the guard compared lengths and dropped the pending
+ // grid if they differed. But the pending grid is the one built at the new
+ // length — it is the correct one, and the live grid is the stale one.
+ //
+ // It went from rare to constant when Drums got a generator: sqGenerate loads
+ // a groove, which changes the step count, and then regenerates the bass 80ms
+ // later. Every Roll or Generate while the transport ran hit exactly this and
+ // silently produced no new bassline.
+ blGrid = _blPendingGrid;
  _blPendingGrid = null;
+ blEnsureGrid();          // normalise to the current step count either way
+ blRenderGrid();
 }
 
 
@@ -21982,6 +22059,51 @@ function _prRound(g,x,y,w,h,r){
  g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y);
  g.closePath();
 }
+// The static half of the roll — key rows, the cell lattice, beat and bar rules
+// — cached to an offscreen canvas. None of it changes as the playhead moves,
+// and prDraw runs on every step change on the same main thread the audio
+// scheduler's timers live on, so redrawing it 8+ times a second per engine was
+// starving the clock. That is what the breaking-up sounded like; it was never
+// really a graphics problem.
+const _PR_BG = {};
+function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
+ const key = [rows,steps,colW,W,H,T.light,sc.root,sc.set.join('')].join('|');
+ const hit = _PR_BG[id];
+ if(hit && hit.key === key) return hit.cv;
+ const off = document.createElement('canvas');
+ off.width = W; off.height = H;
+ const g = off.getContext('2d');
+ for(let i=0;i<rows;i++){
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  g.fillStyle = PR_BLACK[pc] ? T.bgBlack : T.bgWhite;
+  g.fillRect(0,y,W,PR_ROW_H);
+  if(sc.set.indexOf(pc)>=0){
+   g.fillStyle = (pc===sc.root) ? T.tonic : T.inKey;
+   g.fillRect(0,y,W,PR_ROW_H);
+  }
+  g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
+ }
+ // The drum grid's pad lattice, so the two sequencers read as one instrument.
+ // Stroked per cell rather than as one giant path: a single path holding 400
+ // rounded rects is slower to tessellate than 400 small ones. Either way it is
+ // paid once here, not on every step.
+ g.lineWidth = 1; g.strokeStyle = T.line;
+ for(let i=0;i<rows;i++){
+  for(let x=0;x<steps;x++){
+   _prRound(g, x*colW+1.5, i*PR_ROW_H+1.5, colW-3, PR_ROW_H-3, 3);
+   g.stroke();
+  }
+ }
+ for(let x=0;x<=steps;x++){
+  if(x%16===0) g.fillStyle=T.bar;
+  else if(x%4===0) g.fillStyle=T.beat;
+  else continue;
+  g.fillRect(x*colW,0,x%16===0?2:1,H);
+ }
+ _PR_BG[id] = {key, cv:off};
+ return off;
+}
+
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
@@ -21991,38 +22113,7 @@ function prDraw(id){
  const colW = prColW(id, steps);
  const W = steps*colW, H = rows*PR_ROW_H;
  g.clearRect(0,0,W,H);
-
- for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
-  // Opaque base first — a transparent canvas let the page background through.
-  g.fillStyle = PR_BLACK[pc] ? T.bgBlack : T.bgWhite;
-  g.fillRect(0,y,W,PR_ROW_H);
-  // Then tint the rows that are in the current key, tonic strongest.
-  if(sc.set.indexOf(pc)>=0){
-   g.fillStyle = (pc===sc.root) ? T.tonic : T.inKey;
-   g.fillRect(0,y,W,PR_ROW_H);
-  }
-  g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
- }
- // Empty step cells, drawn the way the drum grid draws its pads: a rounded
- // outline per step rather than bare gridlines. The two sequencers sit on the
- // same tab now and were reading as different instruments — one a grid of pads,
- // the other a bare chart — when they are the same idea at different pitches.
- g.lineWidth = 1;
- g.strokeStyle = T.line;
- for(let i=0;i<rows;i++){
-  for(let x=0;x<steps;x++){
-   _prRound(g, x*colW+1.5, i*PR_ROW_H+1.5, colW-3, PR_ROW_H-3, 3);
-   g.stroke();
-  }
- }
- // Beat and bar rules on top, so the pulse still reads through the lattice.
- for(let x=0;x<=steps;x++){
-  if(x%16===0) g.fillStyle=T.bar;
-  else if(x%4===0) g.fillStyle=T.beat;
-  else continue;
-  g.fillRect(x*colW,0,x%16===0?2:1,H);
- }
+ g.drawImage(_prBg(id, cfg, T, sc, rows, steps, colW, W, H), 0, 0);
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
@@ -22403,7 +22494,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.1.5';
+const MODRIFF_VERSION = '2.2.5';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
