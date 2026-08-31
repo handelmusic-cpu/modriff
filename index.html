@@ -3221,9 +3221,15 @@ body.mode-free .pro-only { display:none !important; }
      alongside it instead of below the fold. */
   #pf-chords-panel { display: grid; grid-template-columns: minmax(0,1fr) 300px;
                      gap: 14px; align-items: start; }
-  #pf-chords-panel > * { min-width: 0; }
+  /* Everything except the diagram is pinned to column 1. Without this the
+     diagram had to span 99 rows to stop auto-placement leaking the chord rows
+     into column 2 — and spanning 99 rows CREATES 99 rows. The ~91 empty ones
+     still each contributed a 14px gap, so the chord page grew about 1300px of
+     void below the legend and pushed the Chord sound row and the MōdSynth
+     panel that far off the bottom. On a desktop they read as simply gone. */
+  #pf-chords-panel > * { min-width: 0; grid-column: 1; }
   #pf-chords-panel > #chord-diagram-panel {
-    grid-column: 2; grid-row: 1 / span 99;
+    grid-column: 2; grid-row: 1; align-self: start;
     max-width: none !important; width: 100% !important; margin-top: 0 !important;
   }
 
@@ -3856,7 +3862,10 @@ body.mode-free .pro-only { display:none !important; }
       between you and the grid. -->
 <!-- Inline sound selector — hidden in Basic mode -->
  <div class="sound-bar advanced-only" id="sound-bar-inline">
- <span class="sound-bar-label">Sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
+ <!-- This row sets the CHORD voice (sb-voices writes `wave`). It is also on
+      screen on the Melody page, right under that panel's own "Voice:" picker,
+      where a bare "Sound:" gave no way to tell the two apart. -->
+ <span class="sound-bar-label">Chord sound:</span><button class="tips-btn" onclick="showTip('sound',this)">?</button>
  <div class="tg" id="sb-voices" style="flex-wrap:wrap"></div>
  </div>
 
@@ -4594,7 +4603,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-blstyle="riff">Riff</button>
      <button class="bl-gen-btn" data-blstyle="hook">Pop Hook</button>
    </div>
-   <button class="bl-genbtn" onclick="blGenerate()">✦ Generate</button>
+   <button class="bl-genbtn" onclick="blGenerateAndArm()">✦ Generate</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
@@ -4720,7 +4729,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-mlstyle="hook">Pop Hook</button>
      <button class="bl-gen-btn" data-mlstyle="callresponse">Call &amp; Response</button>
    </div>
-   <button class="bl-genbtn" onclick="mlGenerate()">✦ Generate</button>
+   <button class="bl-genbtn" onclick="mlGenerateAndArm()">✦ Generate</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
@@ -12782,7 +12791,10 @@ function loadProgPreset(pp){
  const md=MODES[mode]||MODES.major;
  const steps=md.steps, tqs=md.triadQ, t7s=md.seventh, nums=md.nums, funcs=md.func;
  const rm=rootMidi();
- const qSuffix=q=>(q===1?'m':q===2?'°':q===3?'+':'');
+ // _chordLabelFromData is the app's one chord-naming function. This used to
+ // spell its own labels from the triad quality alone, which meant the blues
+ // forms — loaded as sevenths on purpose — went onto the chart reading "E"
+ // while playing E7.
  if(!sections[curSection]) sections[curSection]={name:'Verse',slots:[]};
  sections[curSection].slots=[];
  if(pp.chords){
@@ -12790,20 +12802,27 @@ function loadProgPreset(pp){
   // quality stated, so it lands identically whatever mode is selected. These
   // load as sevenths — a blues played on triads is not a blues.
   pp.chords.forEach(c=>{
+   const ext = c.ext||'7th';
    sections[curSection].slots.push(_progSlot({
-    label: nn((root+c.s)%12)+qSuffix(c.q),
+    label: _chordLabelFromData(rm+c.s, c.q, c.t7, ext, null),
     numeral: c.num, rootM: rm+c.s, triadQ: c.q, type7: c.t7,
-    func: c.func||'tonic', ext: c.ext||'7th',
+    func: c.func||'tonic', ext: ext,
     bars: c.bars==null?1:c.bars, beats: c.beats||0
    }));
   });
  } else {
   pp.degrees.forEach(di=>{
    const st=steps[di], q=tqs[di];
+   // A numeral that says "7" loads as a seventh — what the picker names is
+   // what lands on the chart. Blues is the mode this matters in: its I, IV
+   // and V are dominant sevenths by definition and the picker calls them
+   // I7/IV7/V7, but every degree preset was loading a plain triad, so
+   // "I7 – IV7 – I7 – V7 – IV7 – I7" put six triads on the chart.
+   const ext = /7/.test(nums[di]||'') ? '7th' : 'triad';
    sections[curSection].slots.push(_progSlot({
-    label: nn((root+st)%12)+qSuffix(q),
+    label: _chordLabelFromData(rm+st, q, t7s[di], ext, null),
     numeral: nums[di], rootM: rm+st, triadQ: q, type7: t7s[di],
-    func: funcs[di], ext:'triad'
+    func: funcs[di], ext:ext
    }));
   });
  }
@@ -12829,6 +12848,11 @@ function addToSection(slot){
  renderChartSeq();
  buildSectionTabs();
  renderPerfChartRow();
+ // Sound it. Tapping a chord that is already on the chart has always played
+ // it; adding one silently meant you built a progression without hearing any
+ // of it until you pressed play. Same call the chart cards use, so a chord
+ // sounds identically whether you are placing it or reviewing it.
+ try{ playChartSlot(chartSeqIdx); }catch(e){}
  // Logic mode: highlight likely next chord after adding
  if(logicModeOn){
  const NUMERAL_DEG={'I':0,'ii':1,'iii':2,'IV':3,'V':4,'vi':5,'vii':6,
@@ -17257,6 +17281,20 @@ function ftBassClick(){
   syncFixedTransport();
   track('bass_toggled', {enabled:blEnabled});
 }
+// Pressing Generate and hearing nothing is the most confusing thing in the
+// Accomp tab: the line IS written, but the part is still switched off in the
+// transport, so nothing reaches the mix and there is no indication why. Asking
+// for a bassline is asking to hear one. These are what the Generate buttons
+// call; the raw generators stay untouched so a drum Roll, which regenerates
+// the bass behind the scenes, still cannot arm a part you did not ask for.
+function blGenerateAndArm(){
+  if(typeof window.blGenerate==='function') window.blGenerate();
+  if(typeof blEnabled!=='undefined' && !blEnabled && typeof ftBassClick==='function') ftBassClick();
+}
+function mlGenerateAndArm(){
+  if(typeof window.mlGenerate==='function') window.mlGenerate();
+  if(typeof mlEnabled!=='undefined' && !mlEnabled && typeof ftMelClick==='function') ftMelClick();
+}
 function ftMelClick(){
   mlEnabled=!mlEnabled;
   var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
@@ -19412,6 +19450,10 @@ var blOct = 2;
 // measures each step's interval from this, so re-rooting the line onto a new
 // chord preserves the figure the generator actually wrote.
 var _blGridRootPc = 0;
+// The intervals above _blGridRootPc that were chord tones when the grid was
+// generated, in chord order (root, third, fifth, seventh). Follow reads this
+// to know what ROLE each generated note had — see window._followRemapPc.
+var _blGridIntvs = [0,4,7];
 var blPlaying = false;
  window._blPlaying = function(){ return blPlaying; };
 // See window._sqResync — same fix, same reason, for the bass step clock.
@@ -19954,6 +19996,56 @@ function _blScalePcs(){
   var steps = md ? md.steps : (mode==='minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11]);
   return steps.map(function(d){ return (root + d) % 12; });
 }
+// The melody generator needs the same scale, and there is only one key.
+window._songScalePcs = function(){ return _blScalePcs(); };
+
+// ── following the changes ──────────────────────────────────────────────────
+// Follow used to slide the whole generated figure by the distance between
+// chord roots. That keeps the rhythm and the contour, but it also carries the
+// old chord's QUALITY onto the new one. A line written over C major, moved
+// onto A minor, plays C# — the major third of A, which is in neither the chord
+// nor the key. Measured on a plain I-vi-IV-V: 3% of bass notes and 10% of
+// melody notes landing outside the key, and the generator's careful work
+// (chord tones on strong beats, avoid notes weighted down) undone the moment
+// the chart moved off the chord the line happened to be written over.
+//
+// So map roles, not pitches. A note that was the third of its chord becomes
+// the third of whatever chord is sounding, whatever quality that chord is. A
+// note that was not a chord tone moves with the root and is pulled into the
+// key, so it stays a passing note instead of becoming an accidental.
+window._followRemapPc = function(pc, gridRootPc, gridIntvs, win, scalePcs){
+  pc = ((pc % 12) + 12) % 12;
+  var iv = ((pc - gridRootPc) % 12 + 12) % 12;
+  var si = (gridIntvs && gridIntvs.length) ? gridIntvs.indexOf(iv) : -1;
+  if(si >= 0 && win.pcs && win.pcs.length){
+    // Role for role. The root takes the slash bass when there is one, so a
+    // /E still sounds like a /E.
+    if(si === 0 && win.bassPc != null) return win.bassPc;
+    return win.pcs[Math.min(si, win.pcs.length - 1)];
+  }
+  var base = (win.bassPc != null) ? win.bassPc : win.rootPc;
+  var moved = (base + iv) % 12;
+  if(!scalePcs || !scalePcs.length || scalePcs.indexOf(moved) >= 0) return moved;
+  var best = scalePcs[0], bd = 12;
+  for(var i=0;i<scalePcs.length;i++){
+    var d = Math.min((moved - scalePcs[i] + 12) % 12, (scalePcs[i] - moved + 12) % 12);
+    if(d < bd){ bd = d; best = scalePcs[i]; }
+  }
+  return best;
+};
+// Nearest octave of `pc` to `ref`, inside [lo,hi] — keeps the line's register
+// where parallel transposition would have put it, so only the pitch class
+// changes and the contour survives.
+window._followNearIn = function(pc, ref, lo, hi){
+  pc = ((pc % 12) + 12) % 12;
+  var best = null, bd = 1e9;
+  for(var m = lo; m <= hi; m++){
+    if((((m % 12) + 12) % 12) !== pc) continue;
+    var d = Math.abs(m - ref);
+    if(d < bd){ bd = d; best = m; }
+  }
+  return (best == null) ? lo : best;
+};
 
 // ── scheduler integration ──
 // Register into Vibe's shared clock (same pattern as sequencer)
@@ -20098,10 +20190,11 @@ window._blScheduler = function(){
                        if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; _blApplyPending(); }
                        continue; }
           var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
-          var shift = ((basePc - _blGridRootPc) % 12 + 12) % 12;
-          var abs = pNote + (pOct + 1) * 12 + shift;
-          if(abs > BL_HI) abs -= 12;
-          if(abs < BL_LO) abs += 12;
+          // Where a straight transposition would have put it — used only as
+          // the register to stay near, so the contour survives the remap.
+          var ref = pNote + (pOct + 1) * 12 + ((basePc - _blGridRootPc) % 12 + 12) % 12;
+          var outPc = window._followRemapPc(pNote, _blGridRootPc, _blGridIntvs, wf, scalePcs);
+          var abs = window._followNearIn(outPc, ref, BL_LO, BL_HI);
           pNote = ((abs % 12) + 12) % 12;
           pOct = Math.floor(abs / 12) - 1;
         }
@@ -20214,13 +20307,13 @@ window.blPlay = window._blPlayImpl = blPlay;
 // roll showed one thing and the speaker played another every time the line
 // re-rooted onto a new chord — the display was only correct on the chord the
 // grid happened to be generated over.
-function _blDisplayShift(x){
-  if(!blFollow) return 0;
+function _blDisplayWindow(x){
+  if(!blFollow) return null;
   var c = blGrid[x];
-  if(!c || !c.v || c.usr) return 0;   // hand-drawn notes never move; nor do rests
+  if(!c || !c.v || c.usr) return null;   // hand-drawn notes never move; nor do rests
   var wf = null;
   try{
-    var ctx = blCtx(); if(!ctx) return 0;
+    var ctx = blCtx(); if(!ctx) return null;
     // The chord is looked up PER STEP during playback, and a bar can span more
     // than one — using a single chord for the whole grid collapsed every note
     // onto the same pitch. Project this step's own time the way the scheduler
@@ -20236,16 +20329,23 @@ function _blDisplayShift(x){
       when = ctx.currentTime + x * stepSec;
     }
     wf = _blWindowAt(when);
-  }catch(e){ return 0; }
-  if(!wf || wf.rest) return 0;
-  var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
-  return ((basePc - _blGridRootPc) % 12 + 12) % 12;
+  }catch(e){ return null; }
+  if(!wf || wf.rest) return null;
+  return wf;
 }
-// Playback folds a shifted note back into the playable range; the roll has to
-// fold it the same way or it would draw notes off the top of the grid.
+// Playback remaps a followed note onto the sounding chord and keeps it in the
+// playable range; the roll has to do exactly the same or it draws one note and
+// the speaker plays another.
 function _blDisplayMidi(x){
   var c = blGrid[x]; if(!c) return null;
-  var abs = c.note + (c.oct + 1) * 12 + _blDisplayShift(x);
+  var wf = _blDisplayWindow(x);
+  if(wf && wf.pcs){
+    var basePc = (wf.bassPc != null) ? wf.bassPc : wf.rootPc;
+    var ref = c.note + (c.oct + 1) * 12 + ((basePc - _blGridRootPc) % 12 + 12) % 12;
+    var outPc = window._followRemapPc(c.note, _blGridRootPc, _blGridIntvs, wf, _blScalePcs());
+    return window._followNearIn(outPc, ref, BL_LO, BL_HI);
+  }
+  var abs = c.note + (c.oct + 1) * 12;
   if(abs > BL_HI) abs -= 12;
   if(abs < BL_LO) abs += 12;
   return abs;
@@ -20268,8 +20368,13 @@ function blPrInit(){
       if(c.v && cur === midi){ c.v = 0; c.usr = 0; }   // tapping it again clears it, pin included
       else {
         c.v = 1;
-        var raw = midi - _blDisplayShift(step);
-        c.usr = 1;                       // a tapped note is yours, so it stops moving
+        // A tapped note is yours, so Follow will never move it again — which
+        // means it has to be STORED at the pitch you tapped. Subtracting the
+        // follow offset here stored it that far below the row you hit and
+        // nothing ever added it back: a third of taps sounded up to nine
+        // semitones away from the row under your finger.
+        var raw = midi;
+        c.usr = 1;
         c.note = ((raw%12)+12)%12;
         c.oct  = Math.floor(raw/12)-1;
         blPreviewNote(c);
@@ -20281,7 +20386,7 @@ function blPrInit(){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       // Same conversion as toggle: the roll hands us a SOUNDING pitch.
-      if(!c.v){ var raw = midi - _blDisplayShift(step);
+      if(!c.v){ var raw = midi;   // see toggle: it is about to become yours
                 c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
       var host = document.getElementById('bl-pr-canvas');
@@ -20394,9 +20499,12 @@ window.blGenerate = function(){
   var scaleNotes = scale.map(function(d){ return (rn+d)%12; });
   var hasCT = lastChordIntvs && lastChordIntvs.length > 0;
   var chordRoot = hasCT ? (lastChordRoot%12) : rn;
+  // Root, third, fifth — the same order getIntvs gives, so chordTones[1] is
+  // the third on both paths. The fallback used to list the fifth second, which
+  // made `third` below the fifth whenever no chord had been played yet.
   var chordTones = hasCT
     ? lastChordIntvs.map(function(d){ return (lastChordRoot+d)%12; })
-    : [rn, (rn+7)%12, (rn+4)%12];
+    : [rn, (rn+4)%12, (rn+7)%12];
   var fifth = (chordRoot+7)%12, third = chordTones[1]||((chordRoot+4)%12);
   var tensionNotes = scaleNotes.filter(function(n){ return chordTones.indexOf(n)<0; });
   if(!tensionNotes.length) tensionNotes = scaleNotes;
@@ -20440,6 +20548,7 @@ window.blGenerate = function(){
 
   for(var s=0;s<blSteps;s++){ blGrid[s]=blMkCell(); blGrid[s].oct=blOct; }
   _blGridRootPc = chordRoot;
+  _blGridIntvs = chordTones.map(function(pc){ return ((pc - chordRoot) % 12 + 12) % 12; });
   var lastNote = chordRoot;
 
   if(blGenStyle === 'rock'){
@@ -20911,9 +21020,11 @@ window.blSyncFollowUI = function(){
   var h = document.getElementById('bl-follow-hint');
   if(b){ b.textContent = 'Follow: ' + (blFollow?'ON':'OFF'); b.classList.toggle('on', blFollow); }
   if(h){
-    h.textContent = !blFollow ? 'Loops the bar as written'
-      : (blGenStyle==='jazz' ? 'Walking bass through the changes'
-                             : 'Line re-roots onto each chord');
+    // "Re-roots" described the old parallel transposition and meant nothing to
+    // anyone who had not read the code. Say what you will hear.
+    h.textContent = !blFollow ? 'Plays this bar as written, on every chord'
+      : (blGenStyle==='jazz' ? 'Walks through your chord changes'
+                             : 'This bar, re-voiced onto each chord in your chart');
   }
 };
 
@@ -21103,6 +21214,9 @@ var mlOct = 5;
 // writing a new one every bar.
 var mlFollow = true;   // see blFollow — same reasoning, same boot-time sync
 var _mlGridRootPc = 0;
+// See _blGridIntvs — the roles the melody's notes had in the chord it was
+// written over, so Follow can hand them the same roles in the next chord.
+var _mlGridIntvs = [0,4,7];
 // The bass got a register clamp after riff was measured topping out at 247 Hz.
 // The melody had no equivalent, so its octave-lift styles could wander as far
 // as the arithmetic took them. G3-C6 is a singable melodic range.
@@ -21194,10 +21308,10 @@ window._mlScheduler = function(){
         if(wf && !cell.usr){
           if(wf.rest) skip = true;
           else {
-            var shift = ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
-            var abs = pn + (po + 1) * 12 + shift;
-            if(abs > ML_GEN_HI) abs -= 12;
-            if(abs < ML_GEN_LO) abs += 12;
+            var ref = pn + (po + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+            var outPc = window._followRemapPc(pn, _mlGridRootPc, _mlGridIntvs, wf,
+                          (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
+            var abs = window._followNearIn(outPc, ref, ML_GEN_LO, ML_GEN_HI);
             pn = ((abs % 12) + 12) % 12;
             po = Math.floor(abs / 12) - 1;
           }
@@ -21221,14 +21335,14 @@ function _mlLockFor(w){
   return (lk && lk.grid && lk.steps) ? lk : null;
 }
 
-// The melody generator's counterpart to _blDisplayShift — see that for why.
-function _mlDisplayShift(x){
-  if(!mlFollow) return 0;
+// The melody generator's counterpart to _blDisplayWindow — see that for why.
+function _mlDisplayWindow(x){
+  if(!mlFollow) return null;
   var c = mlGrid[x];
-  if(!c || !c.v || c.usr) return 0;
+  if(!c || !c.v || c.usr) return null;
   var wf = null;
   try{
-    var ctx = getCtx(); if(!ctx) return 0;
+    var ctx = getCtx(); if(!ctx) return null;
     var bpmNow = parseFloat(document.getElementById('bpm')?.value) || 120;
     var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined' ? mlRateMul : 1);
     var when;
@@ -21239,13 +21353,20 @@ function _mlDisplayShift(x){
       when = ctx.currentTime + x * stepSec;
     }
     wf = (typeof window._songChordWindowAt==='function') ? window._songChordWindowAt(when) : null;
-  }catch(e){ return 0; }
-  if(!wf || wf.rest) return 0;
-  return ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+  }catch(e){ return null; }
+  if(!wf || wf.rest) return null;
+  return wf;
 }
 function _mlDisplayMidi(x){
   var c = mlGrid[x]; if(!c) return null;
-  var abs = c.note + (c.oct + 1) * 12 + _mlDisplayShift(x);
+  var wf = _mlDisplayWindow(x);
+  if(wf && wf.pcs){
+    var ref = c.note + (c.oct + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+    var outPc = window._followRemapPc(c.note, _mlGridRootPc, _mlGridIntvs, wf,
+                  (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
+    return window._followNearIn(outPc, ref, ML_GEN_LO, ML_GEN_HI);
+  }
+  var abs = c.note + (c.oct + 1) * 12;
   if(abs > ML_GEN_HI) abs -= 12;
   if(abs < ML_GEN_LO) abs += 12;
   return abs;
@@ -21267,7 +21388,8 @@ function mlPrInit(){
       if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
       else {
         c.v = 1;
-        var raw = midi - _mlDisplayShift(step);
+        var raw = midi;   // see the bass roll's toggle — a tap is yours, so
+                          // it is stored at the pitch you tapped
         c.usr = 1;
         c.note = ((raw%12)+12)%12;
         c.oct  = Math.floor(raw/12)-1;
@@ -21279,7 +21401,7 @@ function mlPrInit(){
     openMenu: function(step, midi){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      if(!c.v){ var raw = midi - _mlDisplayShift(step);
+      if(!c.v){ var raw = midi;
                 c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
       if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
@@ -21495,6 +21617,7 @@ window.mlGenerate = function(){
 
   for(var s=0;s<mlSteps;s++){ mlGrid[s]=mlMkCell(); mlGrid[s].oct=mlOct; }
   _mlGridRootPc = chordRoot;
+  _mlGridIntvs = chordTones.map(function(pc){ return ((pc - chordRoot) % 12 + 12) % 12; });
   var arpTones = seventh!==undefined ? [chordRoot,third,fifth,seventh] : [chordRoot,third,fifth];
 
   // ── Avoid notes ──
