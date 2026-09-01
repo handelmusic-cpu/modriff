@@ -20058,6 +20058,29 @@ window._followRemapPc = function(pc, gridRootPc, gridIntvs, win, scalePcs){
   }
   return best;
 };
+// Which chord was a grid written over? Every generator puts the chord root on
+// step 0 and draws the rest from that chord's tones, so the grid itself says
+// so. Only needed for a grid restored from a save made before the chord was
+// stored alongside it — see _blCaptureState.
+window._followInferGridChord = function(grid, steps){
+  var counts = {}, first = null;
+  for(var i=0;i<steps;i++){
+    var c = grid[i];
+    if(!c || !c.v) continue;
+    var pc = ((c.note % 12) + 12) % 12;
+    if(first === null) first = pc;
+    counts[pc] = (counts[pc] || 0) + 1;
+  }
+  if(first === null) return null;
+  var ivs = Object.keys(counts).map(function(k){ return ((+k - first) % 12 + 12) % 12; });
+  // Root, a third, a fifth, a seventh — in chord order, so role indices line
+  // up with the pcs a chord window publishes.
+  var keep = [0];
+  [3,4].forEach(function(t){ if(ivs.indexOf(t)>=0) keep.push(t); });
+  [6,7,8].forEach(function(t){ if(ivs.indexOf(t)>=0) keep.push(t); });
+  [10,11].forEach(function(t){ if(ivs.indexOf(t)>=0) keep.push(t); });
+  return {rootPc: first, intvs: keep.length>1 ? keep : [0,4,7]};
+};
 // Nearest octave of `pc` to `ref`, inside [lo,hi] — keeps the line's register
 // where parallel transposition would have put it, so only the pitch class
 // changes and the contour survives.
@@ -21129,7 +21152,16 @@ window._blCaptureState = function(){
  return {
   steps: blSteps, oct: blOct, wave: blWave, genStyle: blGenStyle, follow: blFollow, walkFeel: blWalkFeel, humanize: humanizeAmt,
   cutoff: blCutoff, resonance: blResonance, vol: blVol,
-  grid: blGrid
+  grid: blGrid,
+  // The chord this grid was WRITTEN over. Follow measures every note's role
+  // from it, and without it a restored grid was read against the default C
+  // major — so a line written over D had every note treated as a passing tone
+  // and moved by the wrong distance. The line stayed in the key and ignored
+  // the chords: over Am7 it played B, D and F# instead of A, C and E. Saved
+  // sessions, shared links, loaded setups, undo and the dice all restore
+  // through here, so all of them lost it.
+  gridRootPc: _blGridRootPc,
+  gridIntvs: _blGridIntvs
  };
 };
 // Same bug as the sequencer's missing restore, same fix: this IIFE never
@@ -21148,11 +21180,21 @@ window._blRestoreState = function(s){
  if(s.genStyle) blGenStyle = s.genStyle;
  if(typeof s.follow==='boolean') blFollow = s.follow;
  if(s.walkFeel && typeof window.setBlWalkFeel==='function') window.setBlWalkFeel(s.walkFeel);
+ if(s.gridRootPc!=null) _blGridRootPc = s.gridRootPc;
+ if(Array.isArray(s.gridIntvs) && s.gridIntvs.length) _blGridIntvs = s.gridIntvs;
  if(typeof s.humanize==='number' && typeof window.setHumanize==='function') window.setHumanize(s.humanize);
  if(s.cutoff!=null) blCutoff = s.cutoff;
  if(s.resonance!=null) blResonance = s.resonance;
  if(s.grid) blGrid = JSON.parse(JSON.stringify(s.grid));
  blEnsureGrid();
+ // A session saved before the chord travelled with the grid restores a line
+ // with no record of what it was written over, and reading it against the
+ // default C major is exactly the bug this fixes. The grid itself says which
+ // chord it came from, so recover it rather than leave the line unfollowable.
+ if(s.gridRootPc == null && typeof window._followInferGridChord === 'function'){
+  var _inf = window._followInferGridChord(blGrid, blSteps);
+  if(_inf){ _blGridRootPc = _inf.rootPc; _blGridIntvs = _inf.intvs; }
+ }
  var _d=document.getElementById('bl-stepsdisp'); if(_d) _d.textContent=blSteps;
  var _o=document.getElementById('bl-octdisp'); if(_o) _o.textContent=blOct;
  document.querySelectorAll('[data-blstyle]').forEach(function(b){ b.classList.toggle('active', b.dataset.blstyle === blGenStyle); });
@@ -21908,7 +21950,10 @@ mlRenderGrid();
 window._mlCaptureState = function(){
  return {
   steps: mlSteps, oct: mlOct, wave: mlWave, genStyle: mlGenStyle, follow: mlFollow,
-  vol: mlVol, grid: mlGrid
+  vol: mlVol, grid: mlGrid,
+  // See _blCaptureState — the melody lost the same thing the same way.
+  gridRootPc: _mlGridRootPc,
+  gridIntvs: _mlGridIntvs
  };
 };
 window._mlRestoreState = function(s){
@@ -21917,8 +21962,14 @@ window._mlRestoreState = function(s){
  if(s.oct) mlOct = s.oct;
  if(s.genStyle) mlGenStyle = s.genStyle;
  if(typeof s.follow==='boolean') mlFollow = s.follow;
+ if(s.gridRootPc!=null) _mlGridRootPc = s.gridRootPc;
+ if(Array.isArray(s.gridIntvs) && s.gridIntvs.length) _mlGridIntvs = s.gridIntvs;
  // Note: no longer restoring s.vol — melody volume is fixed and controlled solely by the Mixer.
  if(s.grid) mlGrid = JSON.parse(JSON.stringify(s.grid));
+ if(s.gridRootPc == null && typeof window._followInferGridChord === 'function'){
+  var _mi = window._followInferGridChord(mlGrid, mlSteps);   // see _blRestoreState
+  if(_mi){ _mlGridRootPc = _mi.rootPc; _mlGridIntvs = _mi.intvs; }
+ }
  if(s.wave && typeof setMlWave === 'function') setMlWave(s.wave);
  var _d = document.getElementById('ml-stepsdisp'); if(_d) _d.textContent = mlSteps;
  _mlSyncOctDisp();
