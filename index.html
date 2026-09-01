@@ -580,8 +580,16 @@ input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
  MELODY STRIP
 ═══════════════════════════════════════ */
 .mel-strip { width:100%; max-width:700px; }
-.mel-keys-wrap { overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
-.mel-keys { display:flex; gap:4px; min-width:max-content; padding:3px 3px 6px; justify-content:center; flex-wrap:wrap; }
+/* Centred, and still scrollable when the strip is wider than the space it has.
+   justify-content lived on .mel-keys, which is min-width:max-content — it is
+   never wider than its own contents, so there was no free space to centre into
+   and the strip sat hard left of a panel half again its width. Centring
+   belongs on the scroller. `safe` is what keeps a strip that really is too
+   wide from having its first keys pushed off the scrollable area, where no
+   amount of scrolling reaches them. */
+.mel-keys-wrap { overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch;
+                 display:flex; justify-content:center; justify-content:safe center; }
+.mel-keys { display:flex; gap:4px; flex:0 0 auto; padding:3px 3px 6px; flex-wrap:nowrap; }
 .mel-key { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
 .mel-btn {
  width:44px; height:66px; border-radius:var(--r-md);
@@ -3380,20 +3388,32 @@ body.mode-free .pro-only { display:none !important; }
   #page-mix.active > .panel:nth-of-type(3) { grid-column: 1 / -1; }
 
   /* Play — the chord grid keeps its comfortable width and Chord Forms moves
-     alongside it instead of below the fold. */
-  #pf-chords-panel { display: grid; grid-template-columns: minmax(0,1fr) 300px;
-                     gap: 14px; align-items: start; }
-  /* Everything except the diagram is pinned to column 1. Without this the
-     diagram had to span 99 rows to stop auto-placement leaking the chord rows
-     into column 2 — and spanning 99 rows CREATES 99 rows. The ~91 empty ones
-     still each contributed a 14px gap, so the chord page grew about 1300px of
-     void below the legend and pushed the Chord sound row and the MōdSynth
-     panel that far off the bottom. On a desktop they read as simply gone. */
-  #pf-chords-panel > * { min-width: 0; grid-column: 1; }
-  #pf-chords-panel > #chord-diagram-panel {
-    grid-column: 2; grid-row: 1; align-self: start;
-    max-width: none !important; width: 100% !important; margin-top: 0 !important;
+     alongside it instead of below the fold.
+
+     This is a flex row over two wrappers, not a grid over the whole sub-page.
+     The grid version pinned the diagram to grid-row 1 — and row 1 of the
+     sub-page is the MōdFX bar, so the reference diagrams landed at the very
+     top, above the chords they are a reference for. Every fix inside a grid
+     runs into the same wall: put the diagram in the chord grid's own row and
+     its 220px height stretches that row, pushing the chords down; span the
+     rows instead and you are back to the span-99 hack that once grew 1300px
+     of empty gaps below the legend. Two flex children have no rows to fight
+     over: the chords take the space they need and the diagram sits beside
+     them, top-aligned, whatever either of them contains. */
+  #chords-main { display: flex; align-items: flex-start; gap: 14px; }
+  #chords-col { flex: 1 1 auto; min-width: 0; }
+  #chords-main > #chord-diagram-panel {
+    flex: 0 0 300px;
+    max-width: none !important; width: 300px !important; margin-top: 0 !important;
   }
+
+  /* Two octaves of melody keys measure 722px, so inside a 700px panel the
+     strip overflowed its own container by 56px: it scrolled, and a scrolling
+     flex row cannot centre, so it sat hard left. Give that one panel enough
+     width to hold its own instrument — and the rest of the sub-page the same
+     width, so the column has one straight right edge rather than a 700px bar
+     hanging off an 820px panel. */
+  #pf-melody-panel > * { max-width: 820px !important; }
 
   /* Drums — all sixteen steps without scrolling. */
   #ac-drums-panel > .sq-wrap { max-width: 1060px !important; }
@@ -3861,8 +3881,10 @@ body.mode-free .pro-only { display:none !important; }
  </div>
 
  <div id="pf-chords-panel">
- <button class="fx-readout-bar pro-only" id="fx-ro-chords" onclick="fxOpenPanel('chord')"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
-
+ <!-- The MōdFX readout used to be the first thing on this page — a mostly
+      empty status bar sitting where the chords should be. It is a way in to a
+      panel, not something you read, so it goes under the grid it applies to.
+      See the bottom of this panel. -->
 
  <!-- Variant arm system (hidden until enabled in Settings) -->
  <div class="advanced-only" style="display:flex;align-items:center;gap:4px;width:100%;max-width:700px;justify-content:center;margin-bottom:2px"><span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Variants</span><button class="tips-btn" onclick="showTip('variants',this)">?</button></div>
@@ -3884,6 +3906,15 @@ body.mode-free .pro-only { display:none !important; }
       nineteen more buttons above the grid would push the chords themselves off
       a phone screen, which is the thing you came here to press. -->
  <div class="variant-arm-row variant-ext-row" id="variant-ext-row"></div>
+
+ <!-- The chords and the reference that follows them. They are wrapped
+      together because on a desktop this becomes a two-column flex row —
+      #chords-col beside #chord-diagram-panel — so the diagrams sit level with
+      the grid instead of above it, and neither column's height affects the
+      other. On a phone it is plain block flow and the diagram is simply
+      below, as before. -->
+ <div id="chords-main">
+ <div id="chords-col">
 
  <!-- Diatonic chords -->
  <div class="chord-section-lbl">Diatonic <button class="tips-btn" onclick="showTip('chords',this)" title="How chords work">?</button><span class="pk pk-play">Plays</span></div>
@@ -3909,6 +3940,8 @@ body.mode-free .pro-only { display:none !important; }
  <div class="li"><div class="ld" style="background:var(--modal)"></div>Modal</div>
  </div>
 
+ </div><!-- /chords-col -->
+
  <!-- Chord forms — follows whatever chord is sounding, including song playback.
       Advanced-mode only and folded shut by default, same as Fingering. -->
  <div class="panel p-perform advanced-only is-ref" id="chord-diagram-panel" style="width:100%;max-width:700px;margin-top:10px">
@@ -3926,13 +3959,19 @@ body.mode-free .pro-only { display:none !important; }
   <div class="chord-diagram-body" id="chord-diagram-body"></div>
  </div>
 
+ </div><!-- /chords-main -->
+
+ <!-- Effects last: what you reach for after the chords, not before them. -->
+ <button class="fx-readout-bar pro-only" id="fx-ro-chords" onclick="fxOpenPanel('chord')" style="margin-top:10px"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
+
  </div><!-- /pf-chords-panel -->
 
  <!-- MELODY SUB-PAGE -->
  <div id="pf-melody-panel" style="display:none">
- <button class="fx-readout-bar pro-only" id="fx-ro-melody" onclick="fxOpenPanel('mel')"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
+ <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
+      note on the chords page. -->
 
- <div class="panel p-perform is-play" style="margin-top:10px;width:100%;max-width:700px">
+ <div class="panel p-perform is-play" id="melody-panel" style="width:100%;max-width:700px">
  <div class="panel-title"><span class="pt-icon"></span> Melody / Solo <button class="tips-btn" onclick="showTip('melody',this)">?</button>
  <span class="pk pk-play">Plays</span>
  <button class="tb" onclick="shiftMelOct(-1)">Oct−</button>
@@ -4015,6 +4054,7 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <div class="fingering-body" id="fingering-body"></div>
  </div>
+ <button class="fx-readout-bar pro-only" id="fx-ro-melody" onclick="fxOpenPanel('mel')" style="margin-top:10px"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
  <div class="ms-host" id="ms-host-mel"></div>
  </div><!-- /pf-melody-panel -->
 
