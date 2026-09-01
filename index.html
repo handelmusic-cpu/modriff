@@ -46,7 +46,20 @@
     person_profiles: 'identified_only'
   });
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- The webfonts are not render-blocking. As a plain stylesheet link this was
+     the single slowest thing about opening the app on a bad connection: the
+     browser will not paint until it resolves, so on a blocked or throttled
+     network the page sat blank for as long as the request took to give up —
+     measured at thirteen seconds behind a proxy that refuses fonts.gstatic.
+     media="print" makes it a non-blocking fetch that switches itself on when
+     it lands, and the URL already carries display=swap, so text is drawn
+     immediately in the fallback stack every rule already names and re-drawn in
+     Orbitron/Outfit the moment they arrive. <noscript> keeps the old blocking
+     behaviour for the case where nothing can flip the media attribute. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
 /* ═══════════════════════════════════════
  DESIGN TOKENS
@@ -944,12 +957,25 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
  font-size:.55rem; color:var(--muted); letter-spacing:.06em; white-space:nowrap; pointer-events:none;
 }
 .chart-slot { display:flex; flex-direction:column; align-items:center; gap:3px; }
+/* Drag to reorder. pan-y so a finger that starts on a chord can still scroll
+   the page vertically — the browser keeps the vertical gesture, we take the
+   horizontal one, which is the axis a progression runs along. */
+.chart-slot.dragging { opacity:.3; }
+.chart-ghost {
+ position:fixed; z-index:9400; pointer-events:none; opacity:.94;
+ transform:translate(-50%,-50%) scale(1.06); transform-origin:center;
+ box-shadow:0 10px 26px rgba(0,0,0,.55);
+}
+.ins-caret.drop::before {
+ background:var(--accent); width:4px; top:0; bottom:0;
+ box-shadow:0 0 10px var(--accent);
+}
 .chart-chord-btn {
  padding:10px 10px 8px; min-width:58px; background:var(--surf2); border:1px solid var(--border2);
  border-radius:var(--r-md); color:var(--text); font-family:'Orbitron',sans-serif; font-size:.82rem; font-weight:700;
- cursor:pointer; transition:all .1s; text-align:center;
+ cursor:grab; transition:all .1s; text-align:center;
  display:flex; flex-direction:column; align-items:center; gap:3px; line-height:1;
- touch-action:manipulation;
+ touch-action:pan-y; user-select:none; -webkit-user-select:none;
 }
 .chart-chord-btn.seq-active {
  background:var(--py); border-color:var(--py); color:#07080f;
@@ -1148,16 +1174,23 @@ body.light-mode .subnav { background:#e8eaf6; }
 .groove-btn:hover { border-color:var(--modal); color:var(--modal); }
 
 /* Setlist */
-.setlist { display:flex; flex-direction:column; gap:4px; max-height:190px; overflow-y:auto; margin-bottom:10px; }
+.setlist { display:flex; flex-direction:column; gap:4px; max-height:240px; overflow-y:auto; margin-bottom:10px; }
 .sl-item {
- display:flex; align-items:center; gap:10px; padding:10px 14px;
+ display:flex; align-items:center; gap:10px; padding:10px 14px; flex-wrap:wrap; row-gap:3px;
  background:var(--bg); border:1px solid var(--border); border-radius:var(--r-md);
  cursor:pointer; transition:all .12s; touch-action:manipulation;
+}
+/* The progression itself, on its own line under the name — order pushes it
+   past the delete button so it wraps rather than splitting the top row. */
+.sl-chords {
+ order:9; flex:1 0 100%; font-size:.46rem; color:var(--muted); opacity:.85;
+ letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .sl-item:hover { border-color:var(--pg); background:#051008; }
 .sl-item.active { border-color:var(--pg); background:#061410; }
 .sl-name { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; color:var(--text); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.sl-meta { font-size:.5rem; color:var(--muted); letter-spacing:.05em; white-space:nowrap; }
+.sl-meta { font-size:.5rem; color:var(--muted); letter-spacing:.05em; white-space:nowrap;
+           flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .sl-del { font-size:.55rem; color:var(--muted); cursor:pointer; padding:3px 7px; border-radius:4px; transition:all .1s; touch-action:manipulation; }
 .sl-del:hover { color:var(--dom); }
 .sl-empty { font-size:.55rem; color:var(--muted); text-align:center; padding:20px; letter-spacing:.07em; }
@@ -2061,8 +2094,109 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
    button and stays shut otherwise. */
 .variant-ext-row { display:none; margin-top:4px; }
 /* Room for the walkthrough card, so a target near the bottom of a page can
-   still be scrolled above it. */
+   still be scrolled above it. No matching padding-top for the flipped card:
+   the card only moves to the top when its target is down at the BOTTOM of the
+   screen, so padding there would scroll the target away rather than reveal it. */
 body.tour-open .tab-page { padding-bottom: 46vh; }
+
+/* ── Walkthrough ─────────────────────────────────────────────────────────
+   The card is the only chrome the tour adds. It never blocks the app: the
+   wrapper is click-through and only the card itself takes pointer events, so
+   every control the step is asking you to press stays live underneath. */
+.tour-wrap {
+ position:fixed; left:0; right:0; bottom:0; z-index:9100; pointer-events:none;
+}
+.tour-wrap.at-top { top:0; bottom:auto; }
+.tour-card {
+ position:relative; pointer-events:auto; margin:0 auto; max-width:420px;
+ background:linear-gradient(135deg,#130d22,#0a1a10); border:1px solid var(--pg);
+ border-radius:18px 18px 0 0; padding:14px 16px 18px; color:#eef0ff;
+ box-shadow:0 -4px 32px rgba(0,0,0,.8);
+}
+.tour-wrap.at-top .tour-card { border-radius:0 0 18px 18px; box-shadow:0 4px 32px rgba(0,0,0,.8); }
+.tour-top-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.tour-chip {
+ font-family:'Outfit',sans-serif; font-size:.44rem; letter-spacing:.08em;
+ text-transform:uppercase; color:var(--pg); border:1px solid rgba(45,240,154,.4);
+ border-radius:20px; padding:3px 9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.tour-chip.done { color:#ffd166; border-color:rgba(255,209,102,.45); }
+.tour-x {
+ flex:none; width:26px; height:26px; border-radius:50%; border:1px solid rgba(255,255,255,.22);
+ background:transparent; color:rgba(255,255,255,.75); font-size:.62rem; cursor:pointer;
+ line-height:1; touch-action:manipulation;
+}
+.tour-x:hover { border-color:var(--pg); color:var(--pg); }
+.tour-body { display:flex; align-items:flex-start; gap:10px; }
+.tour-icon { font-size:1.4rem; line-height:1; }
+.tour-title { font-family:'Orbitron',sans-serif; font-size:.65rem; font-weight:700; color:var(--pg); margin-bottom:4px; }
+.tour-text { font-size:.55rem; color:#eef0ff; line-height:1.7; }
+.tour-prog { height:3px; background:rgba(255,255,255,.14); border-radius:2px; overflow:hidden; margin:12px 0 10px; }
+.tour-prog-fill { height:100%; background:var(--pg); transition:width .3s; }
+.tour-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.tour-count { font-size:.45rem; color:rgba(255,255,255,.55); letter-spacing:.06em; }
+.tour-btns { display:flex; gap:8px; flex:none; }
+.tour-btn {
+ font-family:'Outfit',sans-serif; font-size:.48rem; padding:6px 13px; border-radius:20px;
+ border:1px solid rgba(255,255,255,.22); background:transparent; color:rgba(255,255,255,.75);
+ cursor:pointer; touch-action:manipulation;
+}
+.tour-btn.go { border:none; background:rgba(255,255,255,.16); color:#eef0ff; font-weight:700; }
+.tour-btn[disabled] { opacity:.35; cursor:default; }
+/* A toast fired during the walkthrough would land underneath the card, which
+   is where the card is. Send it to the opposite edge instead. */
+body.tour-open:not(.tour-top) #_toast {
+ bottom:auto !important; top:calc(12px + env(safe-area-inset-top,0px)); }
+/* The ring dims everything but the one control the step is asking for. It is
+   click-through, so the highlighted control is still the thing you press. */
+.tour-spot {
+ position:fixed; display:none; pointer-events:none; z-index:9099;
+ border-radius:8px; border:2px solid var(--pg);
+ box-shadow:0 0 0 9999px rgba(0,0,0,.55), 0 0 14px rgba(45,240,154,.7);
+ transition:top .3s, left .3s, width .3s, height .3s;
+ animation:tourPulse 1.6s ease-in-out infinite;
+}
+@keyframes tourPulse {
+ 0%,100% { box-shadow:0 0 0 9999px rgba(0,0,0,.55), 0 0 10px rgba(45,240,154,.55); }
+ 50%     { box-shadow:0 0 0 9999px rgba(0,0,0,.55), 0 0 22px rgba(45,240,154,.95); }
+}
+@media (prefers-reduced-motion: reduce){ .tour-spot { animation:none; } }
+/* Chapter picker — the way in. */
+.tour-picker {
+ position:fixed; inset:0; z-index:9200; background:rgba(0,0,0,.72);
+ display:flex; align-items:center; justify-content:center; padding:16px;
+}
+.tp-box {
+ width:100%; max-width:390px; max-height:86vh; overflow-y:auto;
+ background:var(--surf); border:1px solid var(--pg); border-radius:16px; padding:16px;
+}
+.tp-head {
+ display:flex; align-items:center; justify-content:space-between;
+ font-family:'Orbitron',sans-serif; font-size:.66rem; font-weight:700; color:var(--pg);
+}
+.tp-x {
+ width:26px; height:26px; border-radius:50%; border:1px solid var(--border2);
+ background:transparent; color:var(--muted); font-size:.6rem; cursor:pointer; line-height:1;
+}
+.tp-sub { font-size:.5rem; color:var(--muted); line-height:1.7; margin:8px 0 12px; }
+.tp-row, .tp-all, .tp-resume {
+ display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+ padding:9px 11px; margin-bottom:6px; border-radius:10px;
+ border:1px solid var(--border2); background:var(--surf2); color:var(--text);
+ font-family:'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; transition:all .12s;
+}
+.tp-row:hover, .tp-all:hover, .tp-resume:hover { border-color:var(--pg); }
+.tp-tick {
+ flex:none; width:22px; height:22px; border-radius:50%; display:flex;
+ align-items:center; justify-content:center; font-size:.52rem; font-weight:700;
+ border:1px solid var(--border2); color:var(--muted);
+}
+.tp-tick.on { background:var(--pg); border-color:var(--pg); color:#07080f; }
+.tp-txt { display:flex; flex-direction:column; gap:2px; }
+.tp-txt b { font-size:.58rem; font-weight:700; }
+.tp-txt i { font-style:normal; font-size:.46rem; color:var(--muted); line-height:1.5; }
+.tp-all, .tp-resume { justify-content:center; font-size:.55rem; font-weight:700; }
+.tp-resume { border-color:var(--pg); color:var(--pg); }
 .variant-ext-row.visible { display:flex; }
 .varm-btn {
  padding:7px 14px; background:var(--surf2); border:1px solid var(--border2);
@@ -2394,7 +2528,31 @@ body.light-mode .bl-empty-hint {
 .sq-tlbl small { display:block; font-size:.3rem; color:#222; margin-top:1px; }
 /* step cell */
 .sq-step { width:var(--sq-sz); height:var(--sq-sz); border-radius:5px; background:var(--sq-sur); border:1px solid var(--sq-bdr); cursor:pointer; flex-shrink:0; position:relative; overflow:hidden; touch-action:pan-x; user-select:none; -webkit-user-select:none; outline:none; }
-.sq-step.b4 { border-left:2px solid rgba(168,85,247,.18); scroll-snap-align:start; }
+/* Groups of four. A 2px edge at 18% alpha was the only thing separating one
+   beat from the next, which is not enough to find "one" on a moving grid: the
+   beat that starts a bar now gets a bright edge, and every other group of four
+   gets a wash, so the four-square blocks read without counting. */
+.sq-step.b4 { border-left:2px solid rgba(168,85,247,.45); scroll-snap-align:start; }
+/* A wash layered over whatever the cell's own background is, rather than a
+   different background colour: --sq-sur and --sq-sur2 are two shades of the
+   same near-black, and the difference between them does not survive being
+   looked at on a phone in daylight. */
+.sq-step.bandB { background-image:linear-gradient(rgba(168,85,247,.11),rgba(168,85,247,.11)); }
+.sq-step.b1 { border-left:3px solid var(--sq-acc); }
+/* Beat ruler above the grid — one number per group of four. */
+.sq-gruler { align-items:flex-end; height:13px; }
+.sq-rcell {
+ width:var(--sq-sz); flex-shrink:0; font-family:'Outfit',sans-serif; font-size:.44rem;
+ line-height:13px; color:var(--sq-mut); letter-spacing:.04em; text-align:left; padding-left:2px;
+ border-left:1px solid transparent;
+}
+.sq-rcell.b4 { border-left:1px solid rgba(168,85,247,.4); }
+.sq-rcell.b1 { border-left:2px solid var(--sq-acc); color:var(--sq-acc); font-weight:700; }
+.sq-gruler-lbl {
+ height:13px; line-height:13px; font-family:'Outfit',sans-serif; font-size:.42rem;
+ color:var(--sq-mut); letter-spacing:.1em; text-align:right; padding-right:2px;
+}
+.sq-gspacer { height:13px; }
 .sq-step .vb { position:absolute; bottom:0; left:0; right:0; pointer-events:none; opacity:.25; }
 .sq-step .fi { position:absolute; inset:3px; border-radius:3px; background:transparent; pointer-events:none; }
 .sq-step.on .fi { background:var(--sq-tc,#888); }
@@ -3110,6 +3268,10 @@ body.mode-free .pro-only { display:none !important; }
 .pl-chip-main:hover,.pl-chip-rec:hover{ color:var(--text) }
 .pl-chip.on{ border-color:var(--accent) }
 .pl-chip.on .pl-chip-main{ color:var(--accent) }
+/* Arrange wrote this one. Green, because it is generated material — the same
+   colour Generate uses — where amber means a line you froze yourself. */
+.pl-chip.auto{ border-color:var(--pg) }
+.pl-chip.auto .pl-chip-main{ color:var(--pg) }
 /* The chord whose locked line is sounding right now. */
 .pl-chip.live{ background:color-mix(in srgb, var(--accent) 22%, transparent) }
 .pl-chip.live .pl-chip-main{ color:var(--text) }
@@ -3473,7 +3635,7 @@ body.mode-free .pro-only { display:none !important; }
    <button class="ft-btn" id="ft-setups-btn" onclick="openSetups()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
    <button class="ft-btn" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
      onclick="installApp()" title="Install MōdRiff so it opens on its own and works offline">⤓ Install app</button>
-   <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.0.1</span>
+   <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.7.0</span>
    <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
    <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Keyboard shortcuts">⌨ Shortcuts</button>
   </div>
@@ -3490,7 +3652,7 @@ body.mode-free .pro-only { display:none !important; }
  <canvas class="unlock-canvas" id="unlock-canvas" aria-hidden="true"></canvas>
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v2.0.1</div>
+ <div class="unlock-ver" id="unlock-ver">v2.7.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -4180,7 +4342,7 @@ body.mode-free .pro-only { display:none !important; }
  </div>
 
  <!-- Chart sequence — shown above picker so you can see what you've built -->
- <div class="chart-lbl" style="margin-top:4px">Your progression:</div>
+ <div class="chart-lbl" style="margin-top:4px">Your progression: <span style="opacity:.6;text-transform:none;letter-spacing:0">drag a chord to move it</span></div>
  <div class="chart-seq empty" id="chart-sequence"></div>
  <!-- One set of slot controls, for whichever chord is selected. -->
  <div class="chart-inspector" id="chart-inspector" aria-live="polite"></div>
@@ -4603,7 +4765,8 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-blstyle="riff">Riff</button>
      <button class="bl-gen-btn" data-blstyle="hook">Pop Hook</button>
    </div>
-   <button class="bl-genbtn" onclick="blGenerateAndArm()">✦ Generate</button>
+   <button class="bl-genbtn" id="bl-gen-go" onclick="blGenerateAndArm()" title="Write one line in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn" id="bl-arr-go" onclick="blArrange()" title="Write a different line for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
@@ -4619,13 +4782,15 @@ body.mode-free .pro-only { display:none !important; }
    <span class="bl-pl" id="bl-human-val" style="min-width:22px">off</span>
    <button class="tips-btn" onclick="showTip('bassgen',this)">?</button>
   </div>
-  <!-- Phrase locks: a per-chord exception to Follow. Pro only — Follow itself
-       stays in the free tier, this is the arranging tool on top of it. -->
+  <!-- Per-chord lines: one chip per distinct chord in the chart. ✦ means
+       Arrange wrote it, 🔒 means you froze it yourself, ↺ opens it in the roll.
+       Pro only — Generate and Follow stay in the free tier, this is the
+       arranging tool on top of them. -->
   <div class="pl-row pro-only">
-   <span class="pl-lbl">🔒 Phrase locks</span>
+   <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="bl-lock-chips"></div>
    <button class="pl-clr" id="bl-lock-clr" style="display:none"
-           onclick="phraseClearLocks('bass')" title="Drop every lock on this part">Clear</button>
+           onclick="phraseClearLocks('bass')" title="Drop every per-chord line on this part">Clear</button>
    <button class="tips-btn" onclick="showTip('phraselocks',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
@@ -4647,7 +4812,7 @@ body.mode-free .pro-only { display:none !important; }
    <div class="bl-empty-hint" id="bl-empty-hint">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No bassline yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -4729,7 +4894,8 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-mlstyle="hook">Pop Hook</button>
      <button class="bl-gen-btn" data-mlstyle="callresponse">Call &amp; Response</button>
    </div>
-   <button class="bl-genbtn" onclick="mlGenerateAndArm()">✦ Generate</button>
+   <button class="bl-genbtn" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
@@ -4738,13 +4904,12 @@ body.mode-free .pro-only { display:none !important; }
    <span class="bl-pl" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
-  <!-- Phrase locks: a per-chord exception to Follow. Pro only — Follow itself
-       stays in the free tier, this is the arranging tool on top of it. -->
+  <!-- See the bass page — same row, same meaning. -->
   <div class="pl-row pro-only">
-   <span class="pl-lbl">🔒 Phrase locks</span>
+   <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="ml-lock-chips"></div>
    <button class="pl-clr" id="ml-lock-clr" style="display:none"
-           onclick="phraseClearLocks('mel')" title="Drop every lock on this part">Clear</button>
+           onclick="phraseClearLocks('mel')" title="Drop every per-chord line on this part">Clear</button>
    <button class="tips-btn" onclick="showTip('phraselocks',this)">?</button>
   </div>
   <!-- Basic mode: single-line step dots -->
@@ -4761,7 +4926,7 @@ body.mode-free .pro-only { display:none !important; }
    <div class="bl-empty-hint" id="ml-empty-hint">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No melody yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords and key, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -5834,12 +5999,14 @@ function buildUnlockChoices(){
   html+=btn('ghost','rollplay','⚄ Randomize &amp; Play');
   html+=btn('ghost','blank','Start Blank');
   box.innerHTML=html;
-  if(note) note.textContent = 'The walkthrough is hands-on — you play the chords, the melody and the drums as it goes, and it takes about two minutes. Randomize skips it and rolls a jam instead.';
+  if(note) note.textContent = 'The walkthrough is hands-on — you play the chords, the melody and the drums as it goes, and it takes about two minutes. You can leave it at any point and it remembers where you were. Randomize skips it and rolls a jam instead.';
   return;
  }
  if(hasLastSession()) html+=btn('', 'resume', '▶ Pick up where I left off');
  html+=btn(hasLastSession()?'ghost':'', 'rollplay', '⚄ Randomize &amp; Play');
  html+=btn('ghost','roll','⚄ Randomize');
+ // Leaving the walkthrough half-done should not mean hunting for it again.
+ if(tourSavedAt()) html+=btn('ghost','learn','↺ Resume the walkthrough');
  html+=btn('ghost','blank','Start Blank');
  box.innerHTML=html;
  if(note) note.textContent = hasLastSession()
@@ -5888,7 +6055,12 @@ function unlockAudio(startDemo){
   startDemoJourney(false);
  } else if(mode==='learn'){
   // The walkthrough lays its own bed, so nothing is rolled first.
-  setTimeout(function(){ if(typeof playOnboardingDemo==='function') playOnboardingDemo([1,2]); }, 350);
+  setTimeout(function(){
+   if(typeof playOnboardingDemo!=='function') return;
+   var at = (typeof tourSavedAt==='function') ? tourSavedAt() : null;
+   if(at) playOnboardingDemo(at.ch, {startAt:at.i});
+   else playOnboardingDemo([1,2]);
+  }, 350);
  }
  // From here on, keep a running snapshot so "pick up where I left off" has
  // something to come back to next time.
@@ -8466,6 +8638,15 @@ const FIND_INDEX = [
   go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('bass')})},
  {name:'Melody sequencer', where:'Accomp › Melody', keys:'melody generator sequencer riff notes grid',
   go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('melody')})},
+ {name:'Arrange the bass (a line per chord)', where:'Accomp › Bass', keys:'arrange bass per chord line different each chord arrangement compose write voicing',
+  note:'Writes a different bassline for every chord in your song, each one openable and editable.',
+  go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('bass'), el:'bl-arr-go'})},
+ {name:'Arrange the melody (a line per chord)', where:'Accomp › Melody', keys:'arrange melody per chord phrase different each chord arrangement compose write',
+  note:'Writes a different phrase for every chord in your song, each one openable and editable.',
+  go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('melody'), el:'ml-arr-go'})},
+ {name:'Reorder chords by dragging', where:'Songs › Build', keys:'drag reorder rearrange move chord order progression sort swap',
+  note:'Drag any chord in your progression to a new place.',
+  go:()=>_findGo({tab:'songs', el:'chart-sequence'})},
  {name:'Arpeggiator', where:'Accomp › Arp', keys:'arp arpeggiator pattern rate gate octaves up down',
   go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('arp')})},
  {name:'Mixer — levels, mute, solo', where:'Mix', keys:'mixer mix level volume fader mute solo balance loud quiet',
@@ -11705,18 +11886,41 @@ function withUndo(msg, snapshot, restore, act){
 // shows off controls a newcomer has no use for yet. Every target below is
 // checked to be visible in Basic; anything advanced-only is out of scope.
 //
-// Four chapters, tracked separately, because fifteen gated steps in one sitting
+// Four chapters, tracked separately, because sixteen gated steps in one sitting
 // is too much to ask. 1–2 are the first run; 3–4 are offered at the end and can
-// be taken later from ⋯ › Tour.
+// be taken later from ⋯ › ? Walkthrough, which opens a chapter picker rather
+// than restarting from step one.
+//
+// Getting out is as important as getting in, and the first version had no way
+// out but a "Skip" that ended everything and remembered nothing. Every screen
+// now carries ✕ (pause and remember where you were), Esc (the same), Back, and
+// "Show me". The position survives a reload, so the splash and the picker can
+// both offer to resume — and a step whose target this view does not show is
+// stepped over rather than dimming the screen and pointing at nothing.
 const TOUR_CH_KEY = 'modo-tour-ch';
+// Where you stopped, so leaving mid-chapter is a pause rather than a loss.
+const TOUR_AT_KEY = 'modo-tour-at';
 const TOUR_CHAPTERS = [
-  {id:1, name:'Chords and keys',   where:'Play'},
-  {id:2, name:'Play a melody',     where:'Play'},
-  {id:3, name:'Make the drums yours', where:'Accomp'},
-  {id:4, name:'Bass, melody, arp', where:'Accomp'},
+  {id:1, name:'Chords and keys',      blurb:'Press play, then play the chords that belong together'},
+  {id:2, name:'Play a melody',        blurb:'A tune over the top — every note already in key'},
+  {id:3, name:'Make the drums yours', blurb:'Roll a groove, then bend it into your own'},
+  {id:4, name:'Bass, melody, arp',    blurb:'Three more parts that play themselves'},
 ];
 function tourChapterDone(n){ try{ return !!localStorage.getItem(TOUR_CH_KEY+n); }catch(e){ return false; } }
 function markTourChapter(n){ try{ localStorage.setItem(TOUR_CH_KEY+n,'1'); }catch(e){} }
+function tourChapterName(n){ for(var i=0;i<TOUR_CHAPTERS.length;i++) if(TOUR_CHAPTERS[i].id===n) return TOUR_CHAPTERS[i].name; return ''; }
+// A pause point: which chapters were running and how far in. Cleared the
+// moment the run finishes or the last chapter is marked done.
+function tourSaveAt(chapters, idx){
+  try{ localStorage.setItem(TOUR_AT_KEY, JSON.stringify({ch:chapters, i:idx})); }catch(e){}
+}
+function tourClearAt(){ try{ localStorage.removeItem(TOUR_AT_KEY); }catch(e){} }
+function tourSavedAt(){
+  try{
+    var r = JSON.parse(localStorage.getItem(TOUR_AT_KEY) || 'null');
+    return (r && Array.isArray(r.ch) && r.i > 0) ? r : null;
+  }catch(e){ return null; }
+}
 
 // ── gates ──────────────────────────────────────────────────────────────────
 // Each returns a function that arms the listener and returns a teardown. They
@@ -11753,13 +11957,20 @@ function _gPointer(sel, opts){
 }
 // Sub-gates in order: the next one is not armed until the previous resolves,
 // which is what makes "switch to Minor, then play three chords" one step.
+// Each time a sub-gate is armed it announces its index, so a step whose
+// target is a list can move its ring onto whatever it is now waiting for —
+// otherwise the second half of a two-part step is asked for with the ring
+// still sitting on the control you already pressed.
+var _tourStageHook = null;
 function _gSeq(){
   var gates = Array.prototype.slice.call(arguments);
   return function(done){
     var idx = 0, teardown = null;
     function arm(){
       if(idx >= gates.length) return done();
-      teardown = gates[idx++](function(){ if(teardown) teardown(); arm(); });
+      var at = idx++;
+      if(_tourStageHook){ try{ _tourStageHook(at); }catch(e){} }
+      teardown = gates[at](function(){ if(teardown) teardown(); arm(); });
     }
     arm();
     return function(){ if(teardown) teardown(); };
@@ -11767,6 +11978,9 @@ function _gSeq(){
 }
 
 function _tourSet(fn){ try{ fn(); }catch(e){} }
+// Same, but for a predicate: a step's extra precondition should not be able to
+// take the whole walkthrough down with it.
+function _tourSet2(fn){ try{ return !!fn(); }catch(e){ return false; } }
 
 // ── the bed ────────────────────────────────────────────────────────────────
 // A known-good state rather than the random seed, so the first thing anyone
@@ -11782,6 +11996,15 @@ function tourLayBed(){
     if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return;
     for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name==='4/4 Rock'){ sqLoadGroove(i); break; }
   });
+  // Four chords on the chart. Chapter 4 talks about following the changes and
+  // about writing a line per chord, and neither means anything against an
+  // empty progression — but a chart you already built is never overwritten.
+  _tourSet(function(){
+    if(typeof sections==='undefined' || typeof loadProgPreset!=='function') return;
+    var has = sections.some(function(sec){ return sec && sec.slots && sec.slots.length; });
+    if(has) return;
+    loadProgPreset({degrees:[0,5,3,4]});     // I – vi – IV – V, in the bed's C major
+  });
   // Only drums armed. These are plain flags; the transport re-reads them.
   _tourSet(function(){
     if(typeof drumsEnabled!=='undefined') drumsEnabled = true;
@@ -11793,6 +12016,9 @@ function tourLayBed(){
 }
 
 // ── steps ──────────────────────────────────────────────────────────────────
+// `target` is either one element id or a list of them, one per sub-gate of a
+// _gSeq step — the ring walks along the list as each half is done, and `tab`
+// may be a list the same way when a step spans two tabs.
 function tourSteps(){
   return [
   // ── Chapter 1 — chords, keys, sevenths ──
@@ -11815,14 +12041,14 @@ function tourSteps(){
    showMe:function(){ var b=document.querySelector('#chords-diatonic .btn-sev'); if(b) b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); }},
 
   {ch:1, icon:'♭', title:'Switch to Minor', tab:'perform',
-   text:'Tap <b>Min</b>, then play three chords again. Same buttons, same drums — the whole mood moves. That is what the key selector does.',
-   target:'bm-minor',
+   text:'Tap <b>Min</b> — then play three chords again. Same buttons, same drums, and the whole mood moves. That is what the key selector does.',
+   target:['bm-minor','chords-diatonic'],
    gate:_gSeq(_gClick('#bm-minor'), _gPointer('#chords-diatonic .btn-tri', {n:3})),
    showMe:function(){ if(typeof setMode==='function') setMode('minor'); }},
 
   {ch:1, icon:'⭐', title:'Try Maj Pent', tab:'perform',
    text:'Tap <b>Maj Pent</b> and play a couple. Five notes instead of seven — the two that can clash are simply gone, which is why it sounds good under almost anything.',
-   target:'bm-major_pent',
+   target:['bm-major_pent','chords-diatonic'],
    gate:_gSeq(_gClick('#bm-major_pent'), _gPointer('#chords-diatonic .btn-tri', {n:2})),
    showMe:function(){ if(typeof setMode==='function') setMode('major_pent'); }},
 
@@ -11855,34 +12081,44 @@ function tourSteps(){
    showMe:function(){ if(typeof sqGrooveDice==='function') sqGrooveDice(); }},
 
   {ch:3, icon:'▦', title:'Change one hit', tab:'accomp',
-   text:'Tap any square in the grid. That is the moment it stops being a preset and starts being your pattern.',
+   text:'Tap any square in the grid. Every fourth square starts a new beat — those are the ones with the brighter edge. That is the moment this stops being a preset and starts being your pattern.',
    target:'sq-gInner',
    gate:_gPointer('#sq-gInner .sq-step'),
    showMe:function(){ var e=document.querySelector('#sq-gInner .sq-step'); if(e){ e.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); e.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); } }},
 
   {ch:3, icon:'✧', title:'Add a shaker', tab:'accomp',
-   text:'Switch the <b>Layer</b> to <b>Aux Perc</b> — a second kit of shakers, congas and clave that sits on top of the first. Tap a few squares on the top row.',
-   target:'sq-layerRow',
+   text:'Switch the <b>Layer</b> to <b>Aux Perc</b> — a second kit of shakers, congas and clave that sits on top of the first. Then tap a couple of squares.',
+   target:['sq-layerRow','sq-gInner'],
    gate:_gSeq(_gClick('[data-sqlayer="1"]'), _gPointer('#sq-gInner .sq-step', {n:2})),
    showMe:function(){ if(typeof window._sqSetFocus==='function') window._sqSetFocus(1); }},
 
   // ── Chapter 4 — bass, melody generator, arp ──
   {ch:4, icon:'♪', title:'Generate a bassline', tab:'accomp',
    before:function(){ if(typeof setAccompMode==='function') setAccompMode('bass'); },
-   text:'Tap <b>Bass</b>, pick a style, then <b>Generate</b>. It follows your chord changes on its own — that is <b>Follow</b>, and it is already on.',
-   target:'bl-gen-style',
+   text:'You are on <b>Bass</b>. Pick a style, then tap <b>✦ Generate</b>. It follows your chord changes on its own — that is <b>Follow</b>, and it is already on.',
+   target:['bl-gen-style','bl-gen-go'],
    gate:_gSeq(_gClick('#ac-bass-btn, #bl-gen-style button'), _gClick('button[onclick*="blGenerate"]')),
    showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('bass'); if(typeof window.blGenerate==='function') window.blGenerate(); }},
 
   {ch:4, icon:'✦', title:'And a melody line', tab:'accomp',
-   text:'Same two moves under <b>Melody</b>. Four parts playing now, and you programmed none of them by hand.',
-   target:'bm-subnav',
+   text:'Same two moves under <b>Melody</b>: tap the tab, then <b>✦ Generate</b>. Four parts playing now, and you programmed none of them by hand.',
+   target:['ac-mel-btn','ml-gen-go'],
    gate:_gSeq(_gClick('#ac-mel-btn'), _gClick('button[onclick*="mlGenerate"]')),
    showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('melody'); if(typeof window.mlGenerate==='function') window.mlGenerate(); }},
 
-  {ch:4, icon:'↺', title:'Turn on the Arp, then hold a chord', tab:'accomp',
-   text:'The arp breaks a chord into a run of single notes — but it needs a chord to work on. Switch it on, then go back to <b>Play</b> and <b>hold</b> one.',
-   target:'bm-subnav',
+  {ch:4, icon:'⟳', title:'One line per chord', tab:'accomp',
+   text:'<b>⟳ Arrange</b> writes a <i>different</i> phrase for every chord in your song, instead of moving one figure around. Tap it — then tap the <b>↺</b> on any chip to open that chord’s phrase in the roll and see exactly what it wrote.',
+   target:['ml-arr-go','ml-lock-chips'],
+   need:function(){ return document.getElementById('ml-lock-chips') && !document.body.classList.contains('mode-free'); },
+   gate:_gSeq(_gClick('#ml-arr-go, #bl-arr-go'), _gClick('.pl-chip-rec')),
+   showMe:function(){
+     if(typeof window.mlArrange==='function') window.mlArrange();
+     var r=document.querySelector('#ml-lock-chips .pl-chip-rec'); if(r) r.click();
+   }},
+
+  {ch:4, icon:'↺', title:'Turn on the Arp, then hold a chord', tab:['accomp','accomp','perform'],
+   text:'The arp breaks a chord into a run of single notes — but it needs a chord to work on. Switch it on; the tour will take you back to <b>Play</b>, where you <b>hold</b> one.',
+   target:['ac-arp-btn','arp-toggle-p','chords-diatonic'],
    gate:_gSeq(_gClick('#ac-arp-btn'), _gClick('#arp-toggle-p'), _gPointer('#chords-diatonic .btn-tri')),
    showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('arp'); if(typeof arpOn!=='undefined' && !arpOn && typeof toggleArp==='function') toggleArp(); }},
 
@@ -11895,9 +12131,30 @@ function tourSteps(){
 }
 
 // ── runner ─────────────────────────────────────────────────────────────────
-let _tourTeardown = null, _tourSnapshot = null;
+// A walkthrough you cannot get out of is not inviting, so every screen carries
+// the same three ways out and one way back: ✕ pauses and remembers where you
+// were, Esc does the same from a keyboard, Back re-runs the previous step, and
+// "Show me" does the thing for you when you would rather watch. Nothing here
+// blocks: the app underneath stays fully live the whole time.
+let _tourTeardown = null, _tourSnapshot = null, _tourReplay = false, _tourEsc = null;
 
-function playOnboardingDemo(chapters){
+function _tourShown(id){
+  var el = id ? document.getElementById(id) : null;
+  if(!el || el.offsetParent === null) return false;
+  var r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+// Restores whatever the rig was before the walkthrough laid its bed. Offered
+// as a toast action at the end of a replay rather than done automatically —
+// after fifteen steps of building something, silently throwing it away is the
+// last thing anyone wants.
+function tourRestoreRig(){
+  if(_tourSnapshot && typeof applySetup==='function'){ try{ applySetup(_tourSnapshot); }catch(e){} }
+  _tourSnapshot = null;
+}
+
+function playOnboardingDemo(chapters, opts){
+  opts = opts || {};
   if(document.getElementById('_onboard-wrap')) return;
   var all = tourSteps();
   var want = chapters || [1,2].filter(function(n){ return !tourChapterDone(n); });
@@ -11907,134 +12164,315 @@ function playOnboardingDemo(chapters){
 
   // On a replay the user has a rig they care about; the bed would flatten it.
   try{ _tourSnapshot = (typeof captureSetup==='function') ? captureSetup('Before walkthrough', true) : null; }catch(e){ _tourSnapshot = null; }
+  _tourReplay = !!opts.replay;
   tourLayBed();
 
-  var step = 0;
+  var step = Math.max(0, Math.min(steps.length - 1, opts.startAt || 0));
   var wrap = document.createElement('div');
   wrap.id = '_onboard-wrap';
-  wrap.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9100;pointer-events:none;';
+  wrap.className = 'tour-wrap';
   var spotlight = document.createElement('div');
   spotlight.id = '_onboard-spot';
-  spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;';
+  spotlight.className = 'tour-spot';
   document.body.appendChild(spotlight);
   var card = document.createElement('div');
-  card.style.cssText = 'position:relative;pointer-events:all;margin:0 auto;max-width:420px;background:linear-gradient(135deg,#130d22,#0a1a10);border:1px solid var(--pg);border-radius:18px 18px 0 0;padding:18px 18px 22px;box-shadow:0 -4px 32px rgba(0,0,0,.8);color:#eef0ff;';
+  card.className = 'tour-card';
   wrap.appendChild(card);
   document.body.appendChild(wrap);
   // Without this the bottom of a page cannot scroll up past the card at all,
   // so the final targets on a tab are unreachable however we aim.
   document.body.classList.add('tour-open');
+  _tourEsc = function(e){ if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); leave(); } };
+  document.addEventListener('keydown', _tourEsc, true);
 
-  // The card is fixed to the bottom of the screen and is tall — on a phone it
-  // covers roughly the lower third. block:'center' put the target dead centre
-  // of the WINDOW, which on the bass and melody steps is behind the card: it
-  // was asking you to tap something it was sitting on top of. Targets are
-  // centred in the space that is actually visible above the card instead.
-  function spotTarget(tid){
-    if(!tid){ spotlight.style.display='none'; return; }
-    var el = document.getElementById(tid);
-    if(!el || el.offsetParent === null){ spotlight.style.display='none'; return; }
-    // A target inside the fixed transport can never be scrolled clear of a card
-    // pinned to the bottom — they both live there. Send the card to the top for
-    // those steps instead of trying to move the page.
+  // The card is fixed to one edge of the screen and is tall — on a phone it
+  // covers roughly the lower third. The old version gave up and hid the ring
+  // whenever the target could not be scrolled clear of it, which left a dimmed
+  // screen with nothing highlighted: the one thing a walkthrough must never do.
+  // It gets two passes now. Scroll the target into the strip the card is not
+  // using; if it still overlaps, flip the card to the other edge and ring it
+  // where it is. Something is always lit.
+  var _spotAt = null;
+  function _placeCard(top){
+    wrap.classList.toggle('at-top', !!top);
+    document.body.classList.toggle('tour-top', !!top);
+  }
+  // Clamped to the viewport. Several targets are wider or taller than the
+  // screen — the chord pads, the melody strip, the drum grid all scroll
+  // sideways — and a ring drawn round their full extent puts two of its four
+  // edges off-screen, which reads as no ring at all on that side.
+  function _ring(el){
+    var r = el.getBoundingClientRect(), pad = 8, m = 3;
+    var t = Math.max(m, r.top - pad), l = Math.max(m, r.left - pad);
+    var b = Math.min(window.innerHeight - m, r.bottom + pad);
+    var rt = Math.min(window.innerWidth - m, r.right + pad);
+    spotlight.style.top    = t + 'px';
+    spotlight.style.left   = l + 'px';
+    spotlight.style.width  = Math.max(8, rt - l) + 'px';
+    spotlight.style.height = Math.max(8, b - t) + 'px';
+    spotlight.style.display = 'block';
+  }
+  function _clash(el){
+    var a = el.getBoundingClientRect(), b = card.getBoundingClientRect();
+    return !(a.bottom < b.top - 6 || a.top > b.bottom + 6);
+  }
+  function spotTarget(tid, force){
+    if(!force && tid === _spotAt) return;
+    _spotAt = tid;
+    var el = tid ? document.getElementById(tid) : null;
+    if(!_tourShown(tid)){ spotlight.style.display = 'none'; _placeCard(false); return; }
+    // A target inside the fixed transport can never be scrolled clear of a
+    // card pinned to the bottom — they both live there.
     var inFixedBar = !!(el.closest && el.closest('#perf-bar'));
-    wrap.style.top = inFixedBar ? '0' : '';
-    wrap.style.bottom = inFixedBar ? 'auto' : '0';
-    card.style.borderRadius = inFixedBar ? '0 0 18px 18px' : '18px 18px 0 0';
-    if(inFixedBar){ spotlight.style.display='none'; }
+    _placeCard(inFixedBar);
     var cardH = (card.getBoundingClientRect().height || 0) + 12;
     var free = Math.max(120, window.innerHeight - cardH);
     var page = el.closest ? el.closest('.tab-page') : null;
     var r0 = el.getBoundingClientRect();
-    // Aim the element's middle at the middle of the free strip.
-    var delta = (r0.top + r0.height/2) - free/2;
-    var scroller = (page && page.scrollHeight > page.clientHeight) ? page
-                 : (document.scrollingElement || document.documentElement);
-    try{ scroller.scrollBy({top: delta, behavior:'smooth'}); }
-    catch(e){ scroller.scrollTop += delta; }
+    if(!inFixedBar){
+      // Aim the element's middle at the middle of the free strip.
+      var delta = (r0.top + r0.height/2) - free/2;
+      var scroller = (page && page.scrollHeight > page.clientHeight) ? page
+                   : (document.scrollingElement || document.documentElement);
+      try{ scroller.scrollBy({top: delta, behavior:'smooth'}); }
+      catch(e){ scroller.scrollTop += delta; }
+    }
     setTimeout(function(){
-      var r = el.getBoundingClientRect(), pad = 8;
-      // If it still cannot clear the card (a target taller than the free strip,
-      // or a page that will not scroll), do not draw a spotlight that points
-      // underneath the card — better no ring than a misleading one.
-      if(inFixedBar){
-        // Ring it where it actually is, at the bottom; the card is out of the way now.
-        spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+(r.height+pad*2)+'px;display:block;border:2px solid var(--pg);';
-        return;
-      }
-      if(r.top > free){ spotlight.style.display='none'; return; }
-      spotlight.style.cssText = 'position:fixed;pointer-events:none;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:9099;transition:all .3s;top:'+(r.top-pad)+'px;left:'+(r.left-pad)+'px;width:'+(r.width+pad*2)+'px;height:'+Math.min(r.height+pad*2, free-r.top+pad)+'px;display:block;border:2px solid var(--pg);';
-    }, 320);
+      if(_spotAt !== tid) return;              // a later step already moved on
+      if(!_tourShown(tid)){ spotlight.style.display = 'none'; return; }
+      if(!inFixedBar && _clash(el)) _placeCard(true);
+      // One more frame for the flipped card to settle before measuring.
+      requestAnimationFrame(function(){
+        if(_spotAt !== tid) return;
+        _ring(el);
+      });
+    }, 340);
+  }
+
+  function targetFor(st, stage){
+    var t = st.target;
+    if(Array.isArray(t)) return t[Math.min(stage || 0, t.length - 1)];
+    return t;
+  }
+  function tabFor(st, stage){
+    var t = st.tab;
+    if(Array.isArray(t)) return t[Math.min(stage || 0, t.length - 1)];
+    return t;
   }
 
   function advance(){
     if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
     var doneCh = steps[step].ch;
     step++;
-    if(step >= steps.length){ markTourChapter(doneCh); return finish(); }
+    if(step >= steps.length){ markTourChapter(doneCh); return finish(doneCh); }
     if(steps[step].ch !== doneCh) markTourChapter(doneCh);
     render();
+  }
+  function back(){
+    if(step <= 0) return;
+    if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+    step--;
+    render();
+  }
+  // Pausing, not quitting. The position is kept so the next visit can pick it
+  // straight back up, and the toast says where to find it again.
+  function leave(){
+    var at = step;
+    teardown();
+    tourSaveAt(want, at);
+    if(typeof showToast==='function'){
+      showToast('Walkthrough paused — ⋯ › ? Walkthrough brings it back', {
+        actionLabel:'Resume',
+        onAction:function(){ playOnboardingDemo(want, {startAt:at, replay:_tourReplay}); }
+      });
+    }
+    if(typeof track==='function') track('tour_exit', {step:at});
+  }
+  function teardown(){
+    if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+    _tourStageHook = null;
+    if(_tourEsc){ document.removeEventListener('keydown', _tourEsc, true); _tourEsc = null; }
+    spotlight.remove(); wrap.remove();
+    document.body.classList.remove('tour-open');
+    document.body.classList.remove('tour-top');
   }
 
   function render(){
     var st = steps[step];
-    if(st.tab && typeof switchTab==='function') switchTab(st.tab);
+    var tb = tabFor(st, 0);
+    if(tb && typeof switchTab==='function') switchTab(tb);
     if(st.before) _tourSet(st.before);
-    spotTarget(st.target);
-    var pct = Math.round(step / steps.length * 100);
+    // A step aimed at something this view does not show (a Pro row in the free
+    // tier, an advanced-only control in Basic) would otherwise dim the screen
+    // and point at nothing. Step over it instead.
+    // Only the first target is checked: a later stage may deliberately live on
+    // another tab or in a panel this step is about to open, where "hidden" is
+    // the normal state rather than a reason to skip. A step with a second
+    // condition states it in `need`.
+    var blocked = (st.target && !_tourShown(targetFor(st, 0)))
+               || (st.need && !_tourSet2(st.need));
+    if(blocked && step < steps.length - 1) return advance();
+    tourSaveAt(want, step);
+    spotTarget(targetFor(st, 0), true);
+    // The chapter's own number, not its position in this run: starting chapter
+    // 3 on its own from the picker should still say chapter 3.
+    var chName = tourChapterName(st.ch);
+    var pct = Math.round((step + 1) / steps.length * 100);
     card.innerHTML =
-      '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">' +
-      '<span style="font-size:1.4rem;line-height:1">' + st.icon + '</span>' +
-      '<div style="flex:1"><div style="font-family:\'Orbitron\',sans-serif;font-size:.65rem;font-weight:700;color:var(--pg);margin-bottom:4px">' + st.title + '</div>' +
-      '<div style="font-size:.55rem;color:#eef0ff;line-height:1.7">' + st.text + '</div></div></div>' +
-      '<div style="height:3px;background:rgba(255,255,255,.14);border-radius:2px;overflow:hidden;margin:12px 0 10px">' +
-      '<div style="height:100%;width:' + pct + '%;background:var(--pg);transition:width .3s"></div></div>' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
-      '<span style="font-size:.45rem;color:rgba(255,255,255,.5);letter-spacing:.06em">Your turn — step ' + (step+1) + ' of ' + steps.length + '</span>' +
-      '<div style="display:flex;gap:8px">' +
-      '<button id="_ob-skip" style="font-size:.48rem;padding:5px 12px;border:1px solid rgba(255,255,255,.2);border-radius:20px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-family:\'Outfit\',sans-serif">Skip</button>' +
-      '<button id="_ob-show" style="font-size:.48rem;padding:5px 14px;border:none;border-radius:20px;background:rgba(255,255,255,.16);color:#eef0ff;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:700">Show me</button>' +
-      '</div></div>';
-    document.getElementById('_ob-skip').onclick = finish;
+      '<div class="tour-top-row">' +
+        '<span class="tour-chip">Chapter ' + st.ch + ' · ' + chName + '</span>' +
+        '<button id="_ob-exit" class="tour-x" aria-label="Pause the walkthrough — you can come back to it">✕</button>' +
+      '</div>' +
+      '<div class="tour-body">' +
+        '<span class="tour-icon">' + st.icon + '</span>' +
+        '<div><div class="tour-title">' + st.title + '</div>' +
+        '<div class="tour-text">' + st.text + '</div></div>' +
+      '</div>' +
+      '<div class="tour-prog"><div class="tour-prog-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="tour-foot">' +
+        '<span class="tour-count">Your turn — step ' + (step+1) + ' of ' + steps.length + '</span>' +
+        '<div class="tour-btns">' +
+          '<button id="_ob-back" class="tour-btn"' + (step===0 ? ' disabled' : '') + '>← Back</button>' +
+          '<button id="_ob-show" class="tour-btn go">Show me</button>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('_ob-exit').onclick = leave;
+    document.getElementById('_ob-back').onclick = back;
     // Disarm this step's gate before performing the action for them. Several
-    // showMe handlers do the very thing the gate is listening for — step 3
-    // dispatches a pointerdown on a 7th strip, which IS step 3's gate — so the
-    // gate fired advance(), then this handler advanced again and the next step
-    // flashed past unseen. Steps 4 and 11 were unreachable via Show me.
+    // showMe handlers do the very thing the gate is listening for — the 7th
+    // step dispatches a pointerdown on a 7th strip, which IS that step's gate —
+    // so the gate fired advance(), then this handler advanced again and the
+    // next step flashed past unseen.
     document.getElementById('_ob-show').onclick = function(){
       if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+      _tourStageHook = null;
       if(st.showMe) _tourSet(st.showMe);
       advance();
     };
-    // Arm the gate last, so nothing set up by before/showMe can trip it.
-    setTimeout(function(){ _tourTeardown = st.gate(advance); }, 60);
+    // Arm the gate last, so nothing set up by before/showMe can trip it. The
+    // stage hook walks the ring along a multi-part step as each half lands.
+    setTimeout(function(){
+      _tourStageHook = function(stage){
+        if(stage === 0) return;                // already spotted above
+        var nt = tabFor(st, stage);
+        if(nt && typeof switchTab==='function') switchTab(nt);
+        setTimeout(function(){ spotTarget(targetFor(st, stage)); }, 60);
+      };
+      _tourTeardown = st.gate(advance);
+    }, 60);
   }
 
-  function finish(){
+  // The end of a chapter is the natural place to stop, so it is offered as a
+  // choice rather than dumping you back into the app with a toast.
+  function finish(doneCh){
+    tourClearAt();
+    var nextCh = [1,2,3,4].filter(function(n){ return !tourChapterDone(n); });
     if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
-    spotlight.remove(); wrap.remove();
-    document.body.classList.remove('tour-open');
-    var nextCh = [3,4].filter(function(n){ return !tourChapterDone(n); });
-    if(want.indexOf(3) < 0 && nextCh.length){
-      if(typeof showToast==='function') showToast('Nice. ⋯ › Tour has two more chapters when you want them.');
-    }
+    _tourStageHook = null;
+    spotlight.style.display = 'none';
+    _placeCard(false);
+    if(typeof track==='function') track('tour_chapter_done', {ch:doneCh});
+    var more = nextCh.length ? TOUR_CHAPTERS.filter(function(c){ return c.id === nextCh[0]; })[0] : null;
+    card.innerHTML =
+      '<div class="tour-top-row">' +
+        '<span class="tour-chip done">✓ ' + (more ? 'Chapter done' : 'Walkthrough complete') + '</span>' +
+        '<button id="_ob-exit" class="tour-x" aria-label="Close">✕</button>' +
+      '</div>' +
+      '<div class="tour-body">' +
+        '<span class="tour-icon">' + (more ? '✓' : '🎉') + '</span>' +
+        '<div><div class="tour-title">' + (more ? 'Nice — that is ' + tourChapterName(doneCh) + ' done' : 'That is the whole thing') + '</div>' +
+        '<div class="tour-text">' +
+          (more ? 'Next up: <b>' + more.name + '</b> — ' + more.blurb + '. It takes a couple of minutes, and it is here whenever you want it.'
+                : 'You have played chords, changed key, written a melody, built a groove and set three parts running. Keep going — the ⋯ menu has the written guide when you want detail.') +
+        '</div></div>' +
+      '</div>' +
+      '<div class="tour-foot">' +
+        '<span class="tour-count">⋯ › ? Walkthrough re-opens this any time</span>' +
+        '<div class="tour-btns">' +
+          '<button id="_ob-later" class="tour-btn">' + (more ? 'Later' : 'Done') + '</button>' +
+          (more ? '<button id="_ob-next" class="tour-btn go">Keep going →</button>' : '') +
+        '</div>' +
+      '</div>';
+    var close = function(){
+      teardown();
+      if(_tourReplay && _tourSnapshot && typeof showToast==='function'){
+        var snap = _tourSnapshot;
+        showToast('Walkthrough finished', {
+          actionLabel:'Restore my rig',
+          onAction:function(){ _tourSnapshot = snap; tourRestoreRig(); }
+        });
+      }
+    };
+    document.getElementById('_ob-exit').onclick = close;
+    document.getElementById('_ob-later').onclick = close;
+    var nx = document.getElementById('_ob-next');
+    if(nx) nx.onclick = function(){
+      teardown();
+      setTimeout(function(){ playOnboardingDemo(nextCh, {replay:_tourReplay}); }, 80);
+    };
   }
 
   render();
 }
 
-// Replaying from the ⋯ menu runs every chapter and puts the rig back after.
+// ── ways in ────────────────────────────────────────────────────────────────
+// One entry point that never traps you in a re-run you did not want: if there
+// is a saved position it offers to resume, otherwise it lets you pick a
+// chapter. Straight into chapter 1 was the old behaviour and is still one tap.
 function showTour(){
   var existing = document.getElementById('_onboard-wrap');
-  if(existing){ existing.remove(); var sp=document.getElementById('_onboard-spot'); if(sp) sp.remove(); }
-  try{ [1,2,3,4].forEach(function(n){ localStorage.removeItem(TOUR_CH_KEY+n); }); }catch(e){}
-  playOnboardingDemo([1,2,3,4]);
+  if(existing){
+    // Tearing the card out of the DOM is not enough: a run that is still armed
+    // leaves its gate listening and its Escape handler pointing at a card that
+    // no longer exists, so both come out here too.
+    existing.remove();
+    var sp = document.getElementById('_onboard-spot'); if(sp) sp.remove();
+    if(_tourTeardown){ _tourTeardown(); _tourTeardown = null; }
+    _tourStageHook = null;
+    if(_tourEsc){ document.removeEventListener('keydown', _tourEsc, true); _tourEsc = null; }
+    document.body.classList.remove('tour-open','tour-top');
+  }
+  var m = document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
+  tourPicker();
 }
-// Restores whatever the user had before a replay. Nothing calls this on a
-// first run, where the bed is the starting point rather than an interruption.
-function tourRestoreRig(){
-  if(_tourSnapshot && typeof applySetup==='function'){ try{ applySetup(_tourSnapshot); }catch(e){} }
-  _tourSnapshot = null;
+
+function tourStart(chapters, opts){
+  var el = document.getElementById('_tour-picker'); if(el) el.remove();
+  playOnboardingDemo(chapters, Object.assign({replay:true}, opts||{}));
+}
+
+function tourPicker(){
+  var old = document.getElementById('_tour-picker'); if(old) old.remove();
+  var at = tourSavedAt();
+  var ov = document.createElement('div');
+  ov.id = '_tour-picker'; ov.className = 'tour-picker';
+  var rows = TOUR_CHAPTERS.map(function(c){
+    var done = tourChapterDone(c.id);
+    return '<button class="tp-row" data-ch="' + c.id + '">' +
+      '<span class="tp-tick' + (done ? ' on' : '') + '">' + (done ? '✓' : c.id) + '</span>' +
+      '<span class="tp-txt"><b>' + c.name + '</b><i>' + c.blurb + '</i></span></button>';
+  }).join('');
+  ov.innerHTML =
+    '<div class="tp-box" role="dialog" aria-modal="true" aria-label="Walkthrough">' +
+      '<div class="tp-head">Hands-on walkthrough' +
+        '<button class="tp-x" id="_tp-x" aria-label="Close">✕</button></div>' +
+      '<div class="tp-sub">You play it — every step waits for you, and <b>Show me</b> does it for you if you would rather watch. Leave any time; it remembers where you were.</div>' +
+      (at ? '<button class="tp-resume" id="_tp-resume">↺ Resume where you left off</button>' : '') +
+      rows +
+      '<button class="tp-all" id="_tp-all">▶ Start from the beginning</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target === ov) ov.remove(); });
+  document.getElementById('_tp-x').onclick = function(){ ov.remove(); };
+  document.getElementById('_tp-all').onclick = function(){
+    try{ [1,2,3,4].forEach(function(n){ localStorage.removeItem(TOUR_CH_KEY+n); }); }catch(e){}
+    tourClearAt();
+    tourStart([1,2,3,4]);
+  };
+  if(at) document.getElementById('_tp-resume').onclick = function(){ tourStart(at.ch, {startAt:at.i}); };
+  ov.querySelectorAll('.tp-row').forEach(function(b){
+    b.onclick = function(){ tourStart([parseInt(b.getAttribute('data-ch'), 10)]); };
+  });
 }
 
 // The written guide lives on its own page that nothing ever linked to, so
@@ -12073,6 +12511,30 @@ function exportMidi(){
       return t>0?t:barTicks;                    // same fallback as slotTotalMs()
     }
     var track=[];
+    // Name the track and write down what it is. A .mid landing in a DAW as
+    // "Track 1" with no key, no chart and no step counts is the same problem
+    // the bounce had — MIDI has meta events for exactly this.
+    function meta(type, text){
+      var b=str(_riffAscii(text).slice(0,250));
+      track.push(0,0xff,type); track.push.apply(track,varLen(b.length)); track.push.apply(track,b);
+    }
+    meta(0x03, (document.getElementById('chart-title')?.value || 'MōdRiff chords'));
+    (function(){
+      var bits=[];
+      try{ bits.push(nn(root)+' '+((MODES[mode]||MODES.major).label)); }catch(e){}
+      bits.push(Math.round(bpm)+' bpm');
+      var st=[];
+      try{ if(typeof window._sqSteps==='function') st.push('drums '+window._sqSteps()); }catch(e){}
+      try{ st.push('bass '+window._blCaptureState().steps); }catch(e){}
+      try{ st.push('melody '+window._mlCaptureState().steps); }catch(e){}
+      if(st.length) bits.push('Steps: '+st.join(', '));
+      meta(0x01, 'MōdRiff — '+bits.join(' | '));
+      var ch=[];
+      (typeof sections!=='undefined'?sections:[]).forEach(function(sec){
+        (sec.slots||[]).forEach(function(sl){ ch.push(sl.isRest?'—':(sl.label||'?')); });
+      });
+      if(ch.length) meta(0x01, 'Chords: '+ch.join(' - '));
+    })();
     // Tempo
     track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
     // Time sig — denominator stays 4 (dd=2), so the numerator is just the
@@ -12885,7 +13347,7 @@ function renderChartSeq(){
   // chartSeqIdx is not auto-set here: it also decides where the next chord
   // gets inserted, and moving that silently would surprise.
   if(!_sel && slots.length>0){
-   _ins.innerHTML='<div class="ci-rest">Tap a chord to change its extension, bass note, length or position.</div>';
+   _ins.innerHTML='<div class="ci-rest">Tap a chord to change its extension, bass note or length — or drag it to a new place in the progression.</div>';
   }
  }
  // Shows where the next chord will land. Without it you cannot tell whether a
@@ -12910,7 +13372,14 @@ function renderChartSeq(){
   btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
   if(slot.ext&&slot.ext!=='triad') btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${slot.ext}</span>`;
  }
- btn.addEventListener('click',()=>{ chartSeqIdx=i; if(!slot.isRest) playChartSlot(i); renderChartSeq(); });
+ btn.addEventListener('click',()=>{
+  // A drag ends in a click on the same element; without this the chord you
+  // just moved would also be selected and re-sounded on the drop.
+  if(performance.now() - _chartDragEndedAt < 350) return;
+  chartSeqIdx=i; if(!slot.isRest) playChartSlot(i); renderChartSeq();
+ });
+ btn.addEventListener('pointerdown',ev=>chartDragStart(ev,i,wrap));
+ btn.setAttribute('title','Drag to move '+(slot.label||'this chord')+' — or tap to select it');
 
  // ── Row 1: Extension type ──────────────────
  // Opens the catalogue rather than cycling six values. See showExtPicker.
@@ -13041,6 +13510,119 @@ function renderChartSeq(){
  if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
 }
 
+// ── Drag to reorder ────────────────────────────────────────────────────────
+// The two nudge arrows in the inspector move a chord one place at a time, and
+// they are still there for the keyboard — but moving the fourth chord to the
+// front of an eight-bar progression that way is seven taps, on a control that
+// is only visible once the chord is selected. Picking it up and putting it
+// down is the obvious gesture, so it is the one this does, from a mouse or a
+// finger, using pointer events so there is one code path for both.
+//
+// HTML5 drag-and-drop is deliberately not used: it does not fire on touch at
+// all, which would have made this a desktop-only feature.
+let _chartDragEndedAt = 0;
+
+// Where a drop at (x,y) would land, as an index into slots BEFORE the dragged
+// chord is taken out. Both edges of every card are candidates, so dropping to
+// the right of the last chord appends rather than snapping back to it.
+function _chartDropAt(seq, x, y){
+ const wraps = seq.querySelectorAll('.chart-slot');
+ let best = wraps.length, bestD = Infinity;
+ wraps.forEach((w,i)=>{
+  const r = w.getBoundingClientRect();
+  const cy = Math.max(r.top, Math.min(y, r.bottom));
+  const dl = Math.hypot(x-r.left, y-cy), dr = Math.hypot(x-r.right, y-cy);
+  if(dl < bestD){ bestD = dl; best = i; }
+  if(dr < bestD){ bestD = dr; best = i+1; }
+ });
+ return best;
+}
+
+function chartDragStart(ev, from, wrapEl){
+ if(ev.button != null && ev.button !== 0) return;
+ const seq = document.getElementById('chart-sequence'); if(!seq) return;
+ const slots = (sections[curSection] && sections[curSection].slots) || [];
+ if(slots.length < 2) return;                 // nothing to reorder
+ const x0 = ev.clientX, y0 = ev.clientY;
+ const btn = ev.currentTarget;
+ let live = false, ghost = null, drop = from, caret = null;
+ // Captured on the way down, not once the drag is recognised: a quick flick
+ // can leave the button before the threshold is crossed, and without capture
+ // those moves would never arrive.
+ try{ btn.setPointerCapture(ev.pointerId); }catch(e){}
+
+ const marker = (idx)=>{
+  if(caret) caret.classList.remove('drop');
+  const carets = seq.querySelectorAll('.ins-caret');
+  // Caret n sits before slot n, so its DOM index IS the insertion index.
+  caret = carets[Math.max(0, Math.min(carets.length-1, idx))] || null;
+  if(caret) caret.classList.add('drop');
+ };
+ const begin = ()=>{
+  live = true;
+  const r = btn.getBoundingClientRect();
+  ghost = btn.cloneNode(true);
+  ghost.className = btn.className.replace('seq-active','') + ' chart-ghost';
+  ghost.style.width = r.width+'px';
+  document.body.appendChild(ghost);
+  wrapEl.classList.add('dragging');
+  document.body.style.cursor = 'grabbing';
+ };
+ const move = (e)=>{
+  if(!live){
+   // A short threshold, so a tap to select a chord is never read as a drag.
+   if(Math.abs(e.clientX-x0) + Math.abs(e.clientY-y0) < 7) return;
+   begin();
+  }
+  e.preventDefault();
+  ghost.style.left = e.clientX+'px';
+  ghost.style.top  = e.clientY+'px';
+  drop = _chartDropAt(seq, e.clientX, e.clientY);
+  marker(drop);
+ };
+ const end = (e)=>{
+  btn.removeEventListener('pointermove', move);
+  btn.removeEventListener('pointerup', end);
+  btn.removeEventListener('pointercancel', cancel);
+  document.removeEventListener('keydown', esc, true);
+  if(!live) return;
+  _chartDragEndedAt = performance.now();
+  if(ghost) ghost.remove();
+  wrapEl.classList.remove('dragging');
+  document.body.style.cursor = '';
+  if(caret) caret.classList.remove('drop');
+  // The index shifts down by one for anything dropped past its own position,
+  // because the chord comes out of the list before it goes back in.
+  let to = drop > from ? drop-1 : drop;
+  to = Math.max(0, Math.min(slots.length-1, to));
+  if(to === from){ renderChartSeq(); return; }
+  const moved = slots.splice(from,1)[0];
+  slots.splice(to,0,moved);
+  chartSeqIdx = to;
+  renderChartSeq(); buildSectionTabs(); renderPerfChartRow();
+  if(typeof showToast==='function') showToast((moved.label||'Chord')+' → position '+(to+1));
+  if(typeof track==='function') track('chord_dragged',{});
+ };
+ const cancel = ()=>{
+  btn.removeEventListener('pointermove', move);
+  btn.removeEventListener('pointerup', end);
+  btn.removeEventListener('pointercancel', cancel);
+  document.removeEventListener('keydown', esc, true);
+  if(!live) return;
+  _chartDragEndedAt = performance.now();
+  if(ghost) ghost.remove();
+  wrapEl.classList.remove('dragging');
+  document.body.style.cursor = '';
+  if(caret) caret.classList.remove('drop');
+  renderChartSeq();
+ };
+ const esc = (e)=>{ if(e.key === 'Escape'){ e.preventDefault(); cancel(); } };
+ btn.addEventListener('pointermove', move);
+ btn.addEventListener('pointerup', end);
+ btn.addEventListener('pointercancel', cancel);
+ document.addEventListener('keydown', esc, true);
+}
+
 // Map a saved chart slot's Roman-numeral back to the diatonic degree (0-6) or
 // modal label it corresponds to, so the same pad-highlighting path used for
 // manual chord presses (applyLogicHighlights) can also light up the pad a
@@ -13130,6 +13712,72 @@ function toggleSaveRhythm(){
  if(btn){ btn.textContent = '+Rhythm: '+(songSaveRhythm?'ON':'OFF'); btn.classList.toggle('active', songSaveRhythm); }
 }
 
+// ── Saved-song metadata ────────────────────────────────────────────────────
+// A saved song used to record its key, its mode and a count of chords, and
+// nothing about how it was actually laid out — so the setlist could tell you
+// "C Major · 8 chords" and not which eight, and nothing at all about the
+// sequencers those chords were written against. Reopening a song six months
+// later meant loading it to find out what it was.
+//
+// This writes both down: the progression in order, section by section, and the
+// step count each sequencer was running. It is metadata, not state — loading a
+// song still restores from `sections` and `savedRhythm` as it always has — so
+// an old saved song without it still opens, and this can be read by anything
+// that lists songs without having to replay them.
+function songMetaSnapshot(song){
+ const num = (fn)=>{ try{ const v = fn(); return (typeof v==='number' && v>0) ? v : null; }catch(e){ return null; } };
+ const chords = [];
+ (song.sections||[]).forEach(sec=>{
+  // The label already spells the extension (Emaj7, C7sus4, …) — the slash bass
+  // is the one part of a slot the label does not carry, so it is added here.
+  const names = (sec.slots||[]).map(sl=>{
+   if(sl.isRest) return '—';
+   const nm = sl.label || '?';
+   return sl.bassNote!=null ? nm+'/'+nn(((sl.bassNote%12)+12)%12) : nm;
+  });
+  chords.push({ section: sec.name || 'Section', plays: sec.plays==null ? 1 : sec.plays, chords: names });
+ });
+ return {
+  v: 1,
+  savedAt: new Date().toISOString(),
+  app: (typeof MODRIFF_VERSION!=='undefined') ? MODRIFF_VERSION : null,
+  key: nn(song.root) + ' ' + ((MODES[song.mode]||MODES.major).label),
+  bpm: num(()=>parseFloat(document.getElementById('bpm')?.value)),
+  chordCount: chords.reduce((a,s)=>a+s.chords.length, 0),
+  // Flat, in play order, so a reader that does not care about sections can
+  // just print it.
+  progression: chords.reduce((a,s)=>a.concat(s.chords), []),
+  sections: chords,
+  // Step counts of the three step sequencers, as they stood at save time.
+  steps: {
+   drums:  num(()=>window._sqSteps()),
+   bass:   num(()=>window._blCaptureState().steps),
+   melody: num(()=>window._mlCaptureState().steps)
+  }
+ };
+}
+// One line a person can read: "C Major · 120 bpm · 16/16/16 steps · C – Am – F – G".
+function songMetaLine(song){
+ const m = song && song.meta;
+ const key = m ? m.key : (nn(song.root)+' '+((MODES[song.mode]||MODES.major).label));
+ const n = m ? m.chordCount : ((song.sections||[]).reduce((a,s)=>a+s.slots.length,0)||0);
+ const bits = [key, n+' chord'+(n===1?'':'s')];
+ if(m && m.bpm) bits.push(Math.round(m.bpm)+' bpm');
+ if(m && m.steps){
+  const st = [m.steps.drums, m.steps.bass, m.steps.melody].filter(x=>x);
+  if(st.length) bits.push(st.join('/')+' steps');
+ }
+ return bits.join(' · ');
+}
+function songMetaChords(song){
+ const m = song && song.meta;
+ const list = m ? m.progression
+                : (song.sections||[]).reduce((a,s)=>a.concat((s.slots||[]).map(sl=>sl.isRest?'—':(sl.label||'?'))), []);
+ if(!list.length) return '';
+ // Long charts are trimmed rather than wrapped over four lines in a list row.
+ return (list.length > 12 ? list.slice(0,12).join(' – ')+' …' : list.join(' – '));
+}
+
 function saveToSetlist(){
  const titleInput=document.getElementById('chart-title');
  const title=titleInput.value.trim()||'Untitled';
@@ -13143,6 +13791,7 @@ function saveToSetlist(){
   return;
  }
  const song={id:Date.now(),title,root,mode,sections:sections.map(s=>({name:s.name,follow:s.follow||'repeat',plays:secPlays(s),slots:s.slots.map(sl=>({...sl}))})),savedAt:new Date().toLocaleDateString(),perfSettings:getSongPerformSettings()};
+ song.meta = songMetaSnapshot(song);
  if(songSaveRhythm){
   // Snapshot current drum pattern
   try{
@@ -13343,7 +13992,11 @@ function renderSetlist(){
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
  const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
- item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div><div class="sl-meta">${nn(song.root)} ${(MODES[song.mode]||MODES.major).label} · ${song.sections?.reduce((a,s)=>a+s.slots.length,0)||0} chords</div><div class="sl-del" title="Delete song"></div>`;
+ const _chordLine=songMetaChords(song);
+ item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div>`
+  +`<div class="sl-meta">${songMetaLine(song)}</div>`
+  +(_chordLine?`<div class="sl-chords" title="${_chordLine.replace(/"/g,'&quot;')}">${_chordLine}</div>`:'')
+  +`<div class="sl-del" title="Delete song"></div>`;
  item.querySelector('.sl-del').addEventListener('click',e=>{
  e.stopPropagation();
  // Was a blocking confirm() on every delete. An Undo you can ignore costs
@@ -14554,14 +15207,16 @@ window.addEventListener('resize', positionTabLed);
 // ═══════════════════════════════════════
 const TIPS = {
  'phraselocks': {
-  title: 'Phrase locks',
-  body: `<strong>Follow</strong> takes one bar and moves it onto every chord in the song. That keeps a line coherent, but it also means every chord gets the same figure with a different root. A <strong>lock</strong> is the exception to that: one line that belongs to one chord and comes back every time that chord does.<br><br>
-<strong>How to use it.</strong> Write or generate a line you like, play the song until you hear it land the way you want over a particular chord, then tap that chord's chip in the <strong>🔒 Phrase locks</strong> row. The chip lights up, and from then on <em>that</em> chord plays <em>that</em> line — the rest of the progression carries on following the changes as before.<br><br>
+  title: 'Lines per chord',
+  body: `<strong>Three ways to get a part.</strong> <strong>✦ Generate</strong> writes one line and <strong>Follow</strong> moves it onto every chord — coherent, but every chord gets the same figure. <strong>⟳ Arrange</strong> writes a <em>different</em> line for every chord in your chart instead, and files each against its chord. Or write your own on the roll and freeze it against one chord yourself. All three end up in the same place: the row of chips below.<br><br>
+<strong>Reading the chips.</strong> One chip per distinct chord in your progression. <strong style="color:var(--pg)">✦ green</strong> means Arrange wrote it — the next Arrange will rewrite it. <strong style="color:var(--accent)">🔒 amber</strong> means you froze it yourself, and nothing overwrites that. A plain chip means that chord is still following the changes.<br><br>
+<strong>Seeing what was generated.</strong> Tap <strong>↺</strong> on any chip and that chord's line opens in the roll, note for note — edit it, then tap the chip name to keep your version. That is how an arranged part becomes yours.<br><br>
+<strong>Freezing your own.</strong> Write or generate a line you like, play the song until you hear it land the way you want over a particular chord, then tap that chord's chip. The chip lights up, and from then on <em>that</em> chord plays <em>that</em> line — the rest of the progression carries on following the changes as before.<br><br>
 <strong>It captures what you heard</strong>, not what is drawn in the editor. In Follow mode the grid you are looking at is written over one root and shifted onto the chord as it plays, so a lock stores the shifted version: the notes that actually sounded over that chord.<br><br>
 <strong>Chords, not bars.</strong> A lock is keyed to the chord itself, so if C&nbsp;min7 turns up four times in the progression, all four play the locked line — however many bars apart they sit. A Cm9 is a different chord and is not affected. Change the key and the locked lines transpose with the song.<br><br>
 <strong>The phrase starts when the chord starts</strong>, not when the bar does. A chord shorter than the phrase gets the opening of it; a chord longer than the phrase repeats it.<br><br>
-<strong>↺</strong> on a locked chip loads that line back into the editor so you can change it — lock it again to save the edit. Tapping the chip name again unlocks the chord and hands it back to Follow. <strong>Clear</strong> drops every lock on that part.<br><br>
-Locks need <strong>Follow: ON</strong> — with Follow off there are no changes for a lock to be an exception to. They work on the <strong>bass</strong> and the <strong>melody sequencer</strong> independently, and they save with your setup.`
+Tapping a chip's name again drops its line and hands the chord back to Follow. <strong>Clear</strong> drops every per-chord line on that part, and Arrange offers an <strong>Undo</strong> for a few seconds after it runs.<br><br>
+These need <strong>Follow: ON</strong> — with Follow off there are no changes for a per-chord line to be an exception to. They work on the <strong>bass</strong> and the <strong>melody sequencer</strong> independently, and they save and share with your setup and your songs.`
  },
  'key': {
  title: 'Key & Mode',
@@ -16634,7 +17289,7 @@ function _startStemTaps(ctx){
 // Stems are tapped at the part bus, which sits before the reverb send and
 // before the master limiter — so they come out dry and unprocessed, which is
 // what you want to mix with anyway.
-function _finishStemTaps(baseName, sampleRate){
+function _finishStemTaps(baseName, sampleRate, tags){
   var taps=_stemTaps; _stemTaps=[];
   var written=[];
   taps.forEach(function(t){
@@ -16649,8 +17304,12 @@ function _finishStemTaps(baseName, sampleRate){
     // A part that never sounded writes a silent file nobody wants. Skip it.
     var peak=0; for(var j=0;j<L.length;j++){ var a=Math.abs(L[j]); if(a>peak) peak=a; }
     if(peak < 0.0005) return;
+    // Each stem carries the same tags with its own part name, so the chart and
+    // the step counts survive being dragged into a DAW one file at a time.
+    var stemTags = Object.assign({}, tags||{});
+    if(stemTags.INAM) stemTags.INAM += ' — ' + STEM_LABELS[t.part];
     written.push({ name: baseName+' - '+STEM_LABELS[t.part]+'.wav',
-                   blob: _floatsToWavBlob(L,R,sampleRate) });
+                   blob: _floatsToWavBlob(L,R,sampleRate,stemTags) });
   });
   return written;
 }
@@ -16699,18 +17358,83 @@ function _startRecording(){
   _isRecording=true;_updateRecBtn();
   showToast(exportStems ? 'Recording — mix + stems…' : 'Recording…');
 }
-function _floatsToWavBlob(left,right,sampleRate){
+// What the take actually was — the chart, the tempo, the key and the step
+// count of each sequencer — written into the file itself as a RIFF LIST/INFO
+// chunk. A bounce used to land in a folder as an anonymous .wav; this is the
+// same information the setlist shows, travelling with the audio, and every
+// player and DAW that reads INFO tags shows it. Readers that don't just skip
+// the chunk, which is what LIST is for.
+function _bounceInfoTags(){
+  var tags = {};
+  try{
+    var title = (document.getElementById('chart-title')||{}).value || '';
+    if(title.trim()) tags.INAM = title.trim();
+    tags.IART = 'MōdRiff';
+    tags.ISFT = 'MōdRiff' + (typeof MODRIFF_VERSION!=='undefined' ? ' v'+MODRIFF_VERSION : '');
+    tags.ICRD = new Date().toISOString().slice(0,10);
+    var bits = [];
+    try{ bits.push(nn(root)+' '+((MODES[mode]||MODES.major).label)); }catch(e){}
+    var bpm = parseFloat((document.getElementById('bpm')||{}).value);
+    if(bpm > 0) bits.push(Math.round(bpm)+' bpm');
+    var st = [];
+    try{ if(typeof window._sqSteps==='function') st.push('drums '+window._sqSteps()); }catch(e){}
+    try{ st.push('bass '+window._blCaptureState().steps); }catch(e){}
+    try{ st.push('melody '+window._mlCaptureState().steps); }catch(e){}
+    if(st.length) bits.push('Steps: '+st.join(', '));
+    var ch = [];
+    try{
+      (sections||[]).forEach(function(sec){
+        (sec.slots||[]).forEach(function(sl){ ch.push(sl.isRest ? '—' : (sl.label||'?')); });
+      });
+    }catch(e){}
+    if(ch.length) bits.push('Chords: '+ch.join(' - '));
+    if(bits.length) tags.ICMT = bits.join(' | ');
+  }catch(e){}
+  return tags;
+}
+// INFO values are Latin-1 by spec; anything outside it (the ō in MōdRiff, a ♭
+// in a chord name) would be written as a mangled byte, so it is transliterated
+// rather than emitted broken.
+function _riffAscii(str){
+  return String(str)
+    .replace(/[ōŌ]/g,'o').replace(/♭/g,'b').replace(/♯/g,'#')
+    .replace(/[–—]/g,'-').replace(/[’‘]/g,"'").replace(/[“”]/g,'"').replace(/°/g,'dim')
+    .replace(/[^\x20-\x7e]/g,'?');
+}
+function _riffInfoChunk(tags){
+  var keys = Object.keys(tags||{}).filter(function(k){ return tags[k]; });
+  if(!keys.length) return null;
+  var parts = [], total = 4;                    // 'INFO'
+  keys.forEach(function(k){
+    var v = _riffAscii(tags[k]).slice(0, 512) + '\0';
+    if(v.length % 2) v += '\0';                 // chunks are word-aligned
+    parts.push({id:k, val:v});
+    total += 8 + v.length;
+  });
+  var buf = new ArrayBuffer(8 + total), dv = new DataView(buf), off = 0;
+  function ws(sv){ for(var i=0;i<sv.length;i++) dv.setUint8(off+i, sv.charCodeAt(i) & 0xff); off += sv.length; }
+  ws('LIST'); dv.setUint32(off, total, true); off += 4; ws('INFO');
+  parts.forEach(function(p){
+    ws(p.id); dv.setUint32(off, p.val.length, true); off += 4; ws(p.val);
+  });
+  return new Uint8Array(buf);
+}
+function _floatsToWavBlob(left,right,sampleRate,tags){
   var numFrames=left.length,numChannels=2,bytesPerSample=2;
   var blockAlign=numChannels*bytesPerSample,dataSize=numFrames*blockAlign;
-  var buf=new ArrayBuffer(44+dataSize),view=new DataView(buf);
+  var info=_riffInfoChunk(tags);
+  var infoLen=info?info.length:0;
+  var buf=new ArrayBuffer(44+infoLen+dataSize),view=new DataView(buf);
   function ws(off,s){for(var i=0;i<s.length;i++)view.setUint8(off+i,s.charCodeAt(i));}
-  ws(0,'RIFF');view.setUint32(4,36+dataSize,true);ws(8,'WAVE');
+  ws(0,'RIFF');view.setUint32(4,36+infoLen+dataSize,true);ws(8,'WAVE');
   ws(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);
   view.setUint16(22,numChannels,true);view.setUint32(24,sampleRate,true);
   view.setUint32(28,sampleRate*blockAlign,true);view.setUint16(32,blockAlign,true);
   view.setUint16(34,16,true);
-  ws(36,'data');view.setUint32(40,dataSize,true);
-  var off=44;
+  // LIST sits between fmt and data, which is where readers expect to find it.
+  if(info) new Uint8Array(buf).set(info, 36);
+  ws(36+infoLen,'data');view.setUint32(40+infoLen,dataSize,true);
+  var off=44+infoLen;
   for(var i=0;i<numFrames;i++){
     var l=Math.max(-1,Math.min(1,left[i])),r=Math.max(-1,Math.min(1,right[i]));
     view.setInt16(off,l<0?l*0x8000:l*0x7FFF,true);off+=2;
@@ -16733,8 +17457,9 @@ function _stopRecording(){
     _recChunksL=[];_recChunksR=[];
     var _sr=getCtx().sampleRate;
     var base=(document.getElementById('chart-title')?.value||'modo-session');
-    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr) }];
-    var stems=_finishStemTaps(base,_sr);
+    var tags=_bounceInfoTags();
+    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
+    var stems=_finishStemTaps(base,_sr,tags);
     files=files.concat(stems);
     _downloadBlobs(files);
     _isRecording=false;_updateRecBtn();
@@ -16894,6 +17619,31 @@ function _downloadMidiRecording(){
     }
     var conductor=[];
     var tempo=Math.round(60000000/bpm);
+    // Same metadata the bounced .wav and the chord .mid carry: a live take is
+    // no less worth labelling than an exported chart.
+    (function(){
+      function cmeta(type, text){
+        var b=str(_riffAscii(text).slice(0,250));
+        conductor.push(0,0xff,type);
+        conductor.push.apply(conductor,varLen(b.length));
+        conductor.push.apply(conductor,b);
+      }
+      cmeta(0x03, (document.getElementById('chart-title')?.value || 'MōdRiff performance'));
+      var bits=[];
+      try{ bits.push(nn(root)+' '+((MODES[mode]||MODES.major).label)); }catch(e){}
+      bits.push(Math.round(bpm)+' bpm');
+      var st=[];
+      try{ if(typeof window._sqSteps==='function') st.push('drums '+window._sqSteps()); }catch(e){}
+      try{ st.push('bass '+window._blCaptureState().steps); }catch(e){}
+      try{ st.push('melody '+window._mlCaptureState().steps); }catch(e){}
+      if(st.length) bits.push('Steps: '+st.join(', '));
+      cmeta(0x01, 'MōdRiff — '+bits.join(' | '));
+      var ch=[];
+      (typeof sections!=='undefined'?sections:[]).forEach(function(sec){
+        (sec.slots||[]).forEach(function(sl){ ch.push(sl.isRest?'—':(sl.label||'?')); });
+      });
+      if(ch.length) cmeta(0x01, 'Chords: '+ch.join(' - '));
+    })();
     conductor.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
     // Notes land on absolute ticks, so the meter only decides where the DAW
     // draws its bar lines — but a 3/4 take opened as 4/4 still has every
@@ -18579,6 +19329,19 @@ function sqRenderGrid(){
   if(!gLeft||!gInner||!gRight)return;
   gLeft.innerHTML='';gInner.innerHTML='';gRight.innerHTML='';
   sqStepEls={};
+  // Beat ruler. One row in each of the three columns so they stay aligned —
+  // gLeft/gInner/gRight are independent stacks, and a row added to one only.
+  var rlbl=document.createElement('div');rlbl.className='sq-gruler-lbl';rlbl.textContent='BEAT';
+  gLeft.appendChild(rlbl);
+  var rrow=document.createElement('div');rrow.className='sq-grow sq-gruler';
+  for(var rs=0;rs<sqSteps;rs++){
+    var rc=document.createElement('div');
+    rc.className='sq-rcell'+(rs%4===0?' b4':'')+(rs===0?' b1':'');
+    rc.textContent=(rs%4===0)?String(rs/4+1):'';
+    rrow.appendChild(rc);
+  }
+  gInner.appendChild(rrow);
+  var rsp=document.createElement('div');rsp.className='sq-gspacer';gRight.appendChild(rsp);
   var tracks=(SQM[sqMach]||{tracks:[]}).tracks;
   tracks.forEach(function(tr,ti){
     var color=tr.c;
@@ -18665,7 +19428,7 @@ function sqUpdatePageDots(){
 
 function sqMakeStepEl(cell,color,s){
   var el=document.createElement('div');
-  var cls='sq-step'+(s%4===0?' b4':'');
+  var cls='sq-step'+(s%4===0?' b4':'')+(s===0?' b1':'')+((Math.floor(s/4)%2)?' bandB':'');
   if(cell.v===2)cls+=' accent';else if(cell.v===1)cls+=' on';
   el.className=cls;el.style.setProperty('--sq-tc',color);
   if(cell.v>0)el.style.borderColor=color;
@@ -19268,6 +20031,9 @@ window.phraseFold = function(note, oct, shift, lo, hi){
 };
 
 // Distinct chords of the current chart, in the order they first appear.
+// rootM and intvs ride along so Arrange can write a line over a chord without
+// having to press it first — the generators read the last chord PLAYED, which
+// is no use when the point is to write for one that is not sounding.
 function phraseChordList(){
  var out = [], seen = {};
  if(typeof sections === 'undefined' || !sections) return out;
@@ -19276,7 +20042,10 @@ function phraseChordList(){
    var k = window.phraseKey(slot);
    if(!k || seen[k]) return;
    seen[k] = 1;
-   out.push({ key:k, name:_phraseName(slot), rootPc:((slot.rootM%12)+12)%12 });
+   var intvs = [0,4,7];
+   try{ intvs = EXTS[slot.ext||'triad'](slot.triadQ, slot.type7) || intvs; }catch(e){}
+   out.push({ key:k, name:_phraseName(slot), rootPc:((slot.rootM%12)+12)%12,
+              rootM:slot.rootM, intvs:intvs });
   });
  });
  return out;
@@ -19287,12 +20056,19 @@ function _phraseChordByKey(key){
  return null;
 }
 
+// Three states, one control. No line → freeze what is in the roll against this
+// chord. An ARRANGED line → take it over: the roll (which is where you just
+// opened and edited it) becomes yours, and Arrange stops rewriting it. Your own
+// line → drop it, back to following the changes. Adopting rather than deleting
+// on the middle step is the whole point of being able to see generated
+// material: "open it, change it, keep it" has to end somewhere.
 window.phraseLockToggle = function(part, el){
  var host = el && el.closest ? el.closest('[data-plk]') : null;
  var key = host ? host.getAttribute('data-plk') : null;
  if(!key) return;
- if(PHRASE_LOCKS[part][key]){
-  var gone = PHRASE_LOCKS[part][key].name || 'that chord';
+ var have = PHRASE_LOCKS[part][key];
+ if(have && !have.auto){
+  var gone = have.name || 'that chord';
   delete PHRASE_LOCKS[part][key];
   phraseLocksSave(); window.phraseRenderChips();
   if(typeof showToast==='function') showToast(gone + ' unlocked — back to following the changes');
@@ -19302,17 +20078,25 @@ window.phraseLockToggle = function(part, el){
  var chord = _phraseChordByKey(key);
  if(!api || !chord) return;
  if(api.isEmpty && api.isEmpty()){
-  if(typeof showToast==='function') showToast('Nothing to lock — write or generate a phrase first');
+  if(typeof showToast==='function') showToast('Nothing to keep — write or generate a phrase first');
   return;
  }
  var cap = api.capture(chord.rootPc);
  if(!cap || !cap.steps) return;
  cap.rootPc = chord.rootPc;
  cap.name = chord.name;
+ cap.auto = 0;
  PHRASE_LOCKS[part][key] = cap;
  phraseLocksSave(); window.phraseRenderChips();
- if(typeof showToast==='function') showToast('Locked to ' + chord.name + ' — it plays this line every time it comes round');
- if(typeof track==='function') track('phrase_locked', {part:part});
+ if(typeof showToast==='function'){
+  showToast(have ? (chord.name + ' is yours now — Arrange will leave it alone')
+                 : ('Locked to ' + chord.name + ' — it plays this line every time it comes round'),
+   have ? { actionLabel:'Undo', onAction:function(){
+            PHRASE_LOCKS[part][key] = have; phraseLocksSave(); window.phraseRenderChips();
+            showToast('Arranged line put back');
+          } } : {});
+ }
+ if(typeof track==='function') track('phrase_locked', {part:part, adopted:!!have});
 };
 
 window.phraseLockRecall = function(part, el){
@@ -19322,8 +20106,80 @@ window.phraseLockRecall = function(part, el){
  var api = PHRASE_PARTS[part];
  if(!lock || !api || !api.apply) return;
  api.apply(lock);
- if(typeof showToast==='function') showToast('Loaded ' + (lock.name||'locked') + ' phrase into the editor');
+ // Which chord's line is on screen matters once there are twelve of them, and
+ // an arranged line says so — editing it and re-freezing is how you take it
+ // over, which is the point of being able to see it at all.
+ if(typeof showToast==='function'){
+  showToast((lock.auto ? 'Arranged line for ' : 'Your line for ') + (lock.name||'that chord') +
+            ' is in the roll — edit it, then tap the chip to keep it');
+ }
 };
+
+// ── Arrange ────────────────────────────────────────────────────────────────
+// Generate writes ONE line and Follow moves it onto every chord, which keeps a
+// track coherent but means every chord gets the same figure. Arrange writes a
+// DIFFERENT line for each chord in the chart instead, in the style that is
+// selected, and files each one against that chord — so the part is arranged
+// through the progression rather than transposed across it.
+//
+// Nothing about it is hidden: every line it writes lands on a chip you can tap
+// to load into the roll, edit and re-freeze. That is the whole answer to
+// "where did the generated material go" — it goes somewhere you can open.
+window.phraseArrange = function(part){
+ var list = phraseChordList();
+ if(!list.length){
+  if(typeof showToast==='function') showToast('Build a progression first — Arrange writes a line for each chord in it');
+  return;
+ }
+ if(typeof modTier==='function' && modTier()==='free') return freeBlocked('Arrange');
+ var lineFor = (part==='bass') ? window._blLineFor : window._mlLineFor;
+ if(typeof lineFor !== 'function') return;
+ var api = PHRASE_PARTS[part];
+ var before = JSON.parse(JSON.stringify(PHRASE_LOCKS[part]));
+ var wasEmpty = !!(api && api.isEmpty && api.isEmpty());
+ var made = 0, kept = 0, firstMade = null;
+ list.forEach(function(c){
+  var have = PHRASE_LOCKS[part][c.key];
+  // A line you wrote and froze yourself is yours. Arrange fills the gaps and
+  // rewrites its own earlier attempts, and never touches a hand-made lock.
+  if(have && !have.auto){ kept++; return; }
+  var cap = lineFor(c.rootM, c.intvs);
+  if(!cap || !cap.steps) return;
+  cap.rootPc = c.rootPc; cap.name = c.name; cap.auto = 1;
+  PHRASE_LOCKS[part][c.key] = cap;
+  if(!firstMade) firstMade = cap;
+  made++;
+ });
+ // Arrange on an empty roll used to leave the roll empty — twelve lines
+ // written and "No bassline yet" still on screen, with no sign anything had
+ // happened. Open the first one, so pressing Arrange always ends with a line
+ // in front of you and the chips as the way to the rest. A roll you had
+ // already written in is left alone.
+ if(wasEmpty && firstMade && api && api.apply){ try{ api.apply(firstMade); }catch(e){} }
+ phraseLocksSave(); window.phraseRenderChips();
+ // One repaint for the whole run, not one per chord.
+ try{ (part==='bass' ? window._blRenderGrid : window._mlRenderGrid)(); }catch(e){}
+ if(typeof track==='function') track('phrase_arranged',{part:part, n:made});
+ if(!made){
+  if(typeof showToast==='function') showToast('Every chord already has a line you wrote — clear one to let Arrange fill it');
+  return;
+ }
+ if(typeof showToast==='function'){
+  showToast('Arranged ' + made + ' chord' + (made>1?'s':'') +
+            (kept ? ' — kept your ' + kept + ' own' : '') +
+            (wasEmpty && firstMade ? '. Showing ' + (firstMade.name||'the first') + ' — tap a chip for the others.'
+                                   : '. Tap a chip to open one.'),
+   { actionLabel:'Undo', onAction:function(){
+      PHRASE_LOCKS[part] = JSON.parse(JSON.stringify(before));
+      // Put the roll back too, if Arrange is what put a line in it.
+      if(wasEmpty && api && api.clear){ try{ api.clear(); }catch(e){} }
+      phraseLocksSave(); window.phraseRenderChips();
+      showToast('Arrangement removed');
+     } });
+ }
+};
+window.blArrange = function(){ window.phraseArrange('bass'); };
+window.mlArrange = function(){ window.phraseArrange('mel'); };
 
 window.phraseClearLocks = function(part){
  var t = PHRASE_LOCKS[part]; if(!t) return;
@@ -19355,20 +20211,26 @@ window.phraseRenderChips = function(){
   var clr = document.getElementById(pair[1] + '-lock-clr');
   if(clr) clr.style.display = n ? '' : 'none';
   if(!list.length){
-   host.innerHTML = '<span class="pl-none">Build a progression first — a lock attaches to one of its chords.</span>';
+   host.innerHTML = '<span class="pl-none">Build a progression first — each chord in it gets a chip here.</span>';
    return;
   }
   var h = '';
   list.forEach(function(c){
-   var on = !!PHRASE_LOCKS[part][c.key];
-   h += '<span class="pl-chip' + (on ? ' on' : '') + (_phraseLive[part]===c.key ? ' live' : '') +
+   var lk = PHRASE_LOCKS[part][c.key];
+   var on = !!lk, auto = !!(lk && lk.auto);
+   // Two ways a chord ends up with its own line, and they read differently:
+   // ✦ is one Arrange wrote for you and will rewrite next time; 🔒 is one you
+   // froze yourself, which nothing overwrites.
+   h += '<span class="pl-chip' + (on ? ' on' : '') + (auto ? ' auto' : '') +
+        (_phraseLive[part]===c.key ? ' live' : '') +
         '" data-plk="' + c.key + '">' +
         '<button class="pl-chip-main" onclick="phraseLockToggle(\'' + part + '\',this)" title="' +
-        (on ? 'Unlock ' + c.name + ' so it follows the changes again'
+        (on ? (auto ? 'Arranged for ' + c.name + ' — tap ↺ to open it, then tap here to keep the roll as your own'
+                    : 'Your line for ' + c.name + ' — tap to drop it and follow the changes again')
             : 'Freeze the phrase you have now as the line for ' + c.name) +
-        '">' + (on ? '🔒 ' : '') + c.name + '</button>' +
+        '">' + (on ? (auto ? '✦ ' : '🔒 ') : '') + c.name + '</button>' +
         (on ? '<button class="pl-chip-rec" onclick="phraseLockRecall(\'' + part + '\',this)" ' +
-              'title="Load this line into the editor" aria-label="Load the locked phrase for ' +
+              'title="Open this chord\'s line in the roll — edit it and it becomes yours" aria-label="Open the line written for ' +
               c.name + '">↺</button>' : '') +
         '</span>';
   });
@@ -20983,7 +21845,41 @@ var _blPendingGrid = null;
   blRenderGrid();
   return out;
  };
+ // Arrange needs the line the generator actually wrote, right now, for a chord
+ // that is not the one playing — the deferral above would hand it back the
+ // sounding grid instead. This is the same generator with none of that.
+ window._blGenerateRaw = function(){ return raw.apply(window, arguments); };
 })();
+
+// ── Arrange: one line written over one named chord ─────────────────────────
+// Returns a lock payload rather than touching anything: the grid on screen and
+// the grid being played are both put back exactly as they were, so arranging a
+// twelve-chord chart never disturbs what you are listening to.
+window._blLineFor = function(rootM, intvs){
+ var saveGrid = blGrid, saveRoot = _blGridRootPc, saveIntvs = _blGridIntvs;
+ var saveLCR = lastChordRoot, saveLCI = lastChordIntvs;
+ var out = null;
+ try{
+  // A fresh grid, with no `usr` pins: Generate preserves hand-placed steps by
+  // design, and carrying one chord's pins into the next chord's line would
+  // make every chord in the arrangement start from the last one's leftovers.
+  blGrid = [];
+  for(var i=0;i<blSteps;i++) blGrid.push(blMkCell());
+  lastChordRoot = rootM;
+  lastChordIntvs = (intvs && intvs.length) ? intvs : [0,4,7];
+  window._blGenerateRaw();
+  out = { steps: blSteps, grid: blGrid.map(function(c){
+   return { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1,
+            accent:!!c.accent, slide:!!c.slide };
+  }) };
+ }catch(e){ out = null; }
+ blGrid = saveGrid; _blGridRootPc = saveRoot; _blGridIntvs = saveIntvs;
+ lastChordRoot = saveLCR; lastChordIntvs = saveLCI;
+ // Deliberately no redraw: the grid is put back byte for byte, so the canvas
+ // is already correct — and Arrange calls this once per chord, so a redraw
+ // here would repaint a twelve-chord chart twelve times for nothing.
+ return out;
+};
 function _blApplyPending(){
  if(!_blPendingGrid) return;
  // A step-count change between the generate and the swap used to THROW THE
@@ -21228,6 +22124,11 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('b
    g.push(o);
   }
   return { steps: blSteps, grid: g };
+ },
+ // Undoing an Arrange that filled an empty roll has to empty it again.
+ clear: function(){
+  for(var i=0;i<blSteps;i++) blGrid[i] = blMkCell();
+  blRenderGrid();
  },
  apply: function(lock){
   blSteps = lock.steps;
@@ -21839,7 +22740,29 @@ var _mlPendingGrid = null;
   mlRenderGrid();
   return out;
  };
+ window._mlGenerateRaw = function(){ return raw.apply(window, arguments); };
 })();
+
+// See _blLineFor — the melody half of Arrange, same contract.
+window._mlLineFor = function(rootM, intvs){
+ var saveGrid = mlGrid, saveRoot = _mlGridRootPc, saveIntvs = _mlGridIntvs;
+ var saveLCR = lastChordRoot, saveLCI = lastChordIntvs;
+ var out = null;
+ try{
+  mlGrid = [];
+  for(var i=0;i<mlSteps;i++) mlGrid.push(mlMkCell());
+  lastChordRoot = rootM;
+  lastChordIntvs = (intvs && intvs.length) ? intvs : [0,4,7];
+  window._mlGenerateRaw();
+  out = { steps: mlSteps, grid: mlGrid.map(function(c){
+   return { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1, accent:!!c.accent };
+  }) };
+ }catch(e){ out = null; }
+ mlGrid = saveGrid; _mlGridRootPc = saveRoot; _mlGridIntvs = saveIntvs;
+ lastChordRoot = saveLCR; lastChordIntvs = saveLCI;
+ // See _blLineFor — nothing changed on screen, so nothing is repainted.
+ return out;
+};
 function _mlApplyPending(){
  if(!_mlPendingGrid) return;
  if(_mlPendingGrid.length === mlGrid.length){
@@ -21999,6 +22922,10 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('m
    g.push(o);
   }
   return { steps: mlSteps, grid: g };
+ },
+ clear: function(){
+  for(var i=0;i<mlSteps;i++) mlGrid[i] = mlMkCell();
+  mlRenderGrid();
  },
  apply: function(lock){
   mlSteps = lock.steps;
@@ -22335,6 +23262,23 @@ const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
 const PR_ROW_H = 15;      // px per semitone — tall enough to letter a note name
 const PR_KEY_W = 52;      // the keyboard gutter
+// A beat ruler along the top. Four sixteenths is one beat and four beats is a
+// bar, and until this strip existed the only sign of either was a hairline
+// every fourth column — you had to count squares to work out where "one" was.
+// It is part of the same canvas rather than a second element, so it scrolls
+// with the grid it labels and costs no layout.
+const PR_RULER_H = 14;
+
+// How many steps make a bar in this roll. A bar is however many sixteenths the
+// song is actually running in (a 3/4 groove is 12, not 16) — but only when
+// that tiles the roll evenly, otherwise the bar lines would land somewhere
+// different on every pass round the loop, which is worse than not drawing them.
+function prBarSteps(steps){
+ var n = 16;
+ try{ if(typeof window._sqSteps === 'function'){ var k = window._sqSteps(); if(k > 0) n = k; } }catch(e){}
+ if(!(n > 0) || steps % n !== 0) n = (steps % 16 === 0) ? 16 : steps;
+ return Math.max(1, n);
+}
 // Column width adapts to the panel: a 16-step pattern should fill the width
 // rather than leaving half the panel empty, while a 32-step one stays legible
 // and scrolls.
@@ -22364,8 +23308,14 @@ function prTheme(){
   inKey:    light ? 'rgba(56,120,255,.10)' : 'rgba(120,170,255,.09)',
   tonic:    light ? 'rgba(56,120,255,.20)' : 'rgba(120,170,255,.20)',
   line:     light ? 'rgba(0,0,0,.10)'  : 'rgba(255,255,255,.07)',
-  beat:     light ? 'rgba(0,0,0,.16)'  : 'rgba(255,255,255,.11)',
-  bar:      light ? 'rgba(0,0,0,.34)'  : 'rgba(255,255,255,.26)',
+  beat:     light ? 'rgba(0,0,0,.22)'  : 'rgba(255,255,255,.17)',
+  bar:      light ? 'rgba(0,0,0,.45)'  : 'rgba(255,255,255,.40)',
+  // Every other group of four gets a wash, so the beats read as blocks
+  // without having to count columns.
+  band:     light ? 'rgba(0,0,0,.065)' : 'rgba(255,255,255,.06)',
+  down:     light ? 'rgba(56,120,255,.13)' : 'rgba(120,170,255,.13)',
+  rulerBg:  light ? '#e9edf8' : '#10121e',
+  rulerTx:  light ? '#5a6288' : '#7f88b4',
   keyWhite: light ? '#ffffff' : '#e9ecf7',
   keyBlack: light ? '#2a2f45' : '#0b0c14',
   keyLabel: light ? '#20264a' : '#111325',
@@ -22400,7 +23350,7 @@ function prLayout(id){
  const steps = cfg.steps();
  PR_COL_W = prColW(id, steps);
  const dpr = Math.min(2, window.devicePixelRatio || 1);
- const w = steps * PR_COL_W, h = rows * PR_ROW_H;
+ const w = steps * PR_COL_W, h = rows * PR_ROW_H + PR_RULER_H;
  cv.style.width = w+'px'; cv.style.height = h+'px';
  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
  kv.style.width = PR_KEY_W+'px'; kv.style.height = h+'px';
@@ -22419,13 +23369,19 @@ function prDrawKeys(id){
  const kv = document.getElementById(id+'-pr-keys'); if(!kv) return;
  const g = kv.getContext('2d');
  const T = prTheme(), sc = prScalePcs();
- const rows = cfg.hi - cfg.lo + 1, H = rows*PR_ROW_H;
+ const rows = cfg.hi - cfg.lo + 1, H = rows*PR_ROW_H + PR_RULER_H;
  g.clearRect(0,0,PR_KEY_W,H);
  g.fillStyle = T.keyWhite; g.fillRect(0,0,PR_KEY_W,H);
+ // The gutter's own slice of the ruler row — labelled, so the strip beside it
+ // is read as beats rather than as a row of stray numbers.
+ g.fillStyle = T.rulerBg; g.fillRect(0,0,PR_KEY_W,PR_RULER_H);
+ g.fillStyle = T.rulerTx; g.font = '700 7px Outfit, sans-serif';
+ g.textBaseline = 'middle'; g.fillText('BEAT', 4, PR_RULER_H/2);
+ g.fillStyle = T.keyEdge; g.fillRect(0,PR_RULER_H-1,PR_KEY_W,1);
  g.font = '600 8px Outfit, sans-serif';
  g.textBaseline = 'middle';
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = PR_RULER_H + i*PR_ROW_H;
   const black = !!PR_BLACK[pc];
   if(black){
    g.fillStyle = T.keyBlack;
@@ -22468,14 +23424,16 @@ function _prRound(g,x,y,w,h,r){
 // really a graphics problem.
 const _PR_BG = {};
 function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
- const key = [rows,steps,colW,W,H,T.light,sc.root,sc.set.join('')].join('|');
+ const bar = prBarSteps(steps);
+ const key = [rows,steps,colW,W,H,bar,T.light,sc.root,sc.set.join('')].join('|');
  const hit = _PR_BG[id];
  if(hit && hit.key === key) return hit.cv;
  const off = document.createElement('canvas');
  off.width = W; off.height = H;
  const g = off.getContext('2d');
+ const gridTop = PR_RULER_H, gridH = rows*PR_ROW_H;
  for(let i=0;i<rows;i++){
-  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = i*PR_ROW_H;
+  const midi = cfg.hi - i, pc = ((midi%12)+12)%12, y = gridTop + i*PR_ROW_H;
   g.fillStyle = PR_BLACK[pc] ? T.bgBlack : T.bgWhite;
   g.fillRect(0,y,W,PR_ROW_H);
   if(sc.set.indexOf(pc)>=0){
@@ -22484,6 +23442,18 @@ function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
   }
   g.fillStyle = T.line; g.fillRect(0,y+PR_ROW_H-1,W,1);
  }
+ // Beats as blocks, not as columns you have to count: every other group of
+ // four is washed, in a strict alternation so the eye reads a regular pulse.
+ g.fillStyle = T.band;
+ for(let x=0;x<steps;x+=4){
+  if(Math.floor((x % bar)/4) % 2 === 0) continue;
+  g.fillRect(x*colW, gridTop, Math.min(4, steps-x)*colW, gridH);
+ }
+ // The downbeat gets its own column rather than a wash over its whole beat —
+ // washing the first group would break the alternation above and make the
+ // groups of four harder to see, not easier.
+ g.fillStyle = T.down;
+ for(let x=0;x<steps;x+=bar) g.fillRect(x*colW, gridTop, colW, gridH);
  // The drum grid's pad lattice, so the two sequencers read as one instrument.
  // Stroked per cell rather than as one giant path: a single path holding 400
  // rounded rects is slower to tessellate than 400 small ones. Either way it is
@@ -22491,16 +23461,32 @@ function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
  g.lineWidth = 1; g.strokeStyle = T.line;
  for(let i=0;i<rows;i++){
   for(let x=0;x<steps;x++){
-   _prRound(g, x*colW+1.5, i*PR_ROW_H+1.5, colW-3, PR_ROW_H-3, 3);
+   _prRound(g, x*colW+1.5, gridTop + i*PR_ROW_H+1.5, colW-3, PR_ROW_H-3, 3);
    g.stroke();
   }
  }
  for(let x=0;x<=steps;x++){
-  if(x%16===0) g.fillStyle=T.bar;
+  const isBar = (x % bar === 0);
+  if(isBar) g.fillStyle=T.bar;
   else if(x%4===0) g.fillStyle=T.beat;
   else continue;
-  g.fillRect(x*colW,0,x%16===0?2:1,H);
+  g.fillRect(x*colW, gridTop, isBar?2:1, gridH);
  }
+ // ── the ruler ──
+ g.fillStyle = T.rulerBg; g.fillRect(0,0,W,PR_RULER_H);
+ g.textBaseline = 'middle';
+ for(let x=0;x<steps;x+=4){
+  const inBar = x % bar;
+  const isBar = (inBar === 0);
+  const beatNo = Math.floor(inBar/4) + 1;
+  g.fillStyle = isBar ? T.bar : T.beat;
+  g.fillRect(x*colW, 0, isBar?2:1, PR_RULER_H);
+  g.fillStyle = isBar ? T.note : T.rulerTx;
+  g.font = (isBar ? '700 9px ' : '600 8px ') + 'Outfit, sans-serif';
+  // A bar's downbeat says which bar it is; the beats inside it just count.
+  g.fillText(isBar ? ('▎' + (Math.floor(x/bar)+1)) : String(beatNo), x*colW+4, PR_RULER_H/2);
+ }
+ g.fillStyle = T.line; g.fillRect(0, PR_RULER_H-1, W, 1);
  _PR_BG[id] = {key, cv:off};
  return off;
 }
@@ -22512,7 +23498,7 @@ function prDraw(id){
  const T = prTheme(), sc = prScalePcs();
  const rows = cfg.hi - cfg.lo + 1, steps = cfg.steps();
  const colW = prColW(id, steps);
- const W = steps*colW, H = rows*PR_ROW_H;
+ const H = rows*PR_ROW_H + PR_RULER_H, W = steps*colW;
  g.clearRect(0,0,W,H);
  g.drawImage(_prBg(id, cfg, T, sc, rows, steps, colW, W, H), 0, 0);
  for(let x=0;x<steps;x++){
@@ -22527,10 +23513,10 @@ function prDraw(id){
   }
   const row = cfg.hi - midi;
   const len = Math.max(1, c.len||1);
-  const y = row*PR_ROW_H, w = len*colW - 3;
+  const y = PR_RULER_H + row*PR_ROW_H, w = len*colW - 3;
   if(row < 0 || row >= rows){
    g.fillStyle = T.oor;
-   g.fillRect(x*colW+1, row<0 ? 0 : H-3, colW-3, 3);
+   g.fillRect(x*colW+1, row<0 ? PR_RULER_H : H-3, colW-3, 3);
    continue;
   }
   g.fillStyle = c.accent ? T.accent : T.note;
@@ -22562,6 +23548,8 @@ function prDraw(id){
  if(ph>=0 && ph<steps){
   g.fillStyle=T.head;
   g.fillRect(ph*colW,0,2,H);
+  // A cap in the ruler, so the playhead is findable at a glance on a long roll.
+  g.fillRect(ph*colW-2,0,6,3);
  }
 }
 
@@ -22574,7 +23562,9 @@ function prHit(id, ev){
  // module-level value, which belongs to whichever roll was drawn last.
  const colW = r.width / Math.max(1, cfg.steps());
  const x = Math.floor((ev.clientX - r.left)/colW);
- const i = Math.floor((ev.clientY - r.top)/PR_ROW_H);
+ // The ruler is part of the canvas, so a tap in it is not a cell — the row
+ // index has to come off the grid's own top edge, not the canvas's.
+ const i = Math.floor((ev.clientY - r.top - PR_RULER_H)/PR_ROW_H);
  const rows = cfg.hi - cfg.lo + 1;
  if(x<0 || x>=cfg.steps() || i<0 || i>=rows) return null;
  return { step:x, midi: cfg.hi - i };
@@ -22650,15 +23640,16 @@ const REQUIRED_EXPORTS = {
  _blGenStyle:'function', blIsFollowOn:'function', _blWalkFeel:'function',
  _blOnChord:'function', _blClearChords:'function', _songChordWindowAt:'function',
  _songHasChordWindows:'function', blGenerate:'function', setBlGenStyle:'function',
- setBlWave:'function',
+ setBlWave:'function', _blLineFor:'function', _blGenerateRaw:'function',
  // melody generator
  _mlPlaying:'function', _mlCaptureState:'function', _mlRestoreState:'function',
  _mlSetStepsRaw:'function', _mlRenderGrid:'function', _mlGenStyle:'function',
  mlIsFollowOn:'function', mlGenerate:'function', setMlGenStyle:'function',
- setMlWave:'function',
+ setMlWave:'function', _mlLineFor:'function', _mlGenerateRaw:'function',
  // shared
  _humanT:'function', _humanV:'function', setHumanize:'function',
- prRedraw:'function', prRelayout:'function'
+ prRedraw:'function', prRelayout:'function',
+ phraseArrange:'function', blArrange:'function', mlArrange:'function'
 };
 
 window.__exportAudit = function(){
@@ -22901,7 +23892,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.2.6';
+const MODRIFF_VERSION = '2.7.0';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
