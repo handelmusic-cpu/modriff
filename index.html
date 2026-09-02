@@ -15541,6 +15541,15 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  }
  }
  if(v !== null){ armedVariant=null; armVariant(null); }
+ // Hand the chord to the generators so Follow can re-root the bass and the
+ // melody onto it. Skipped while the song loop is driving the changes: those
+ // windows are scheduled ahead of time and a pad press must not wipe them.
+ if(typeof songLoopActive==='undefined' || !songLoopActive){
+  if(typeof window._blOnLiveChord==='function'){
+   try{ window._blOnLiveChord({ rootM: rootM, triadQ: triadQ, type7: type7,
+                                ext: ext, bassNote: bassOverride, isRest: false }); }catch(e){}
+  }
+ }
   // Auto-regenerate bass line and melody when a chord fires (if sync is enabled)
   if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(null);
   // Token for releaseSustainedChord() — identifies "this" trigger's generation
@@ -20766,9 +20775,13 @@ var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk 
 var BL_GEN_LO = 33, BL_GEN_HI = 57;      // A1-A3 (55-220 Hz)
 
 // Called from _playLoopSlot as each chord is committed to the audio clock.
-window._blOnChord = function(slot, atTime, durSec, nextSlot){
+window._blOnChord = function(slot, atTime, durSec, nextSlot, capoOverride){
   if(!slot) return;
-  var capo = (typeof _songBaseRoot!=='undefined' && _songBaseRoot>=0) ? (root - _songBaseRoot) : 0;
+  // A chart slot is stored in the key the song was written in, so it needs the
+  // capo. A chord played by hand is already the sounding pitch and must not be
+  // shifted again — hence the override rather than a second code path.
+  var capo = (capoOverride != null) ? capoOverride
+           : ((typeof _songBaseRoot!=='undefined' && _songBaseRoot>=0) ? (root - _songBaseRoot) : 0);
   var w = {
     t: atTime, end: atTime + durSec, rest: !!slot.isRest,
     rootPc: ((slot.rootM + capo) % 12 + 12) % 12,
@@ -20795,6 +20808,28 @@ window._blOnChord = function(slot, atTime, durSec, nextSlot){
   if(_blChordWin.length > 64) _blChordWin.splice(0, _blChordWin.length - 64);
 };
 window._blClearChords = function(){ _blChordWin = []; _blWalkPrev = 0; _blWalkNextT = 0; _blWalkWin = null; };
+// The chord you are playing by hand, as a window the generators can follow.
+//
+// Until this existed, the ONLY thing that ever created a chord window was the
+// song chart — so Follow, which is on by default, had nothing to follow the
+// moment you were performing rather than playing back a song, and the bass and
+// melody looped one bar over whatever you pressed. The fallback that would
+// have regenerated the line instead is deliberately disabled while Follow is
+// on, so between them the two mechanisms left live playing with no chord
+// tracking at all.
+//
+// A held chord has no scheduled end — it lasts until you play the next one —
+// so this replaces the timeline with one open window rather than appending to
+// a schedule. The window opens at `now`, which leaves any step already
+// committed to the audio clock playing under the chord it was written for,
+// the same way a song chord change does.
+window._blOnLiveChord = function(slot){
+  if(!slot) return;
+  var ctx = blCtx(); if(!ctx) return;
+  _blChordWin = [];
+  _blWalkPrev = 0; _blWalkNextT = 0; _blWalkWin = null;
+  window._blOnChord(slot, ctx.currentTime, 3600, null, 0);
+};
 window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
 // The chord timeline is not bass-specific — the melody generator needs exactly
 // the same "which chord covers this scheduled time" lookup to follow the
