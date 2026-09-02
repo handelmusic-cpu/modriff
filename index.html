@@ -24881,27 +24881,117 @@ if('serviceWorker' in navigator && location.protocol!=='file:'){
 }
 
 // Chromium fires beforeinstallprompt and expects the page to hold it until the
-// user asks. Safari and Firefox never fire it, so the button only appears where
-// it can actually do something rather than sitting there inert.
+// user asks. Safari never fires it — but on iOS the app is perfectly
+// installable, just only by hand through the Share sheet. Hiding the button
+// wherever the event is absent therefore hid it on the one platform that most
+// needs telling, and an iPhone got no route to offline and no sign in the app
+// that there was one. The event decides how the button BEHAVES; whether it is
+// shown is a separate question.
 let _installPrompt=null;
+
+// iPadOS 13+ reports itself as a Mac, so the touch-point count is what
+// separates an iPad from a desktop Safari, which cannot do this.
+const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// Every browser on iOS is WebKit underneath, but only Safari itself can add to
+// the home screen — Chrome, Firefox, Edge and Opera there cannot, and the help
+// has to say so rather than give steps that lead nowhere.
+const _isIOSSafari = _isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+// Already the installed copy? Offering to install it again is pure noise.
+function appIsInstalled(){
+ try{
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || navigator.standalone === true;
+ }catch(e){ return false; }
+}
+function _showInstallBtn(on){
+ document.querySelectorAll('[data-installbtn]').forEach(b=>{ b.style.display = on ? '' : 'none'; });
+}
+
 window.addEventListener('beforeinstallprompt', e=>{
  e.preventDefault(); _installPrompt=e;
- document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='');
+ _showInstallBtn(true);
 });
 window.addEventListener('appinstalled', ()=>{
  _installPrompt=null;
- document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='none');
+ _showInstallBtn(false);
  showToast('MōdRiff installed — it opens on its own now, online or not');
 });
+// No event is ever coming on iOS, so the entry is revealed outright.
+if(_isIOS && !appIsInstalled()) _showInstallBtn(true);
+
 async function installApp(){
- if(!_installPrompt){
-  showToast('Use your browser’s “Add to Home Screen” or “Install” to keep MōdRiff offline');
-  return;
- }
+ const m=document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
+ if(!_installPrompt) return showInstallHelp();
  _installPrompt.prompt();
  try{ await _installPrompt.userChoice; }catch(e){}
  _installPrompt=null;
- document.querySelectorAll('[data-installbtn]').forEach(b=>b.style.display='none');
+ _showInstallBtn(false);
+}
+
+// Two steps, one of which is a glyph most people know by sight and not by
+// name, and you have to leave the app to do them — which is more than a toast
+// that fades after two seconds can carry.
+function showInstallHelp(){
+ const old=document.getElementById('_install-help'); if(old) old.remove();
+ // The share glyph, drawn rather than typed: the ⎋/􀈂 characters render as
+ // tofu on half the platforms that would need them.
+ const shareIcon = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" '
+  + 'style="vertical-align:-3px" fill="none" stroke="currentColor" stroke-width="1.8" '
+  + 'stroke-linecap="round" stroke-linejoin="round">'
+  + '<path d="M12 15V3"/><path d="m8 7 4-4 4 4"/>'
+  + '<path d="M4 13v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/></svg>';
+ let steps, note;
+ if(_isIOSSafari){
+  steps = '<li>Tap <b>Share</b> ' + shareIcon + ' in the bar at the bottom of Safari.</li>'
+        + '<li>Scroll down the list and tap <b>Add to Home Screen</b>.</li>'
+        + '<li>Tap <b>Add</b>.</li>';
+  note  = 'It is your phone\u2019s own Add to Home Screen — nothing custom. What MōdRiff adds is '
+        + 'the part that makes it a real app rather than a bookmark: it opens without browser '
+        + 'chrome and it keeps working with the network off.';
+ } else if(_isIOS){
+  steps = '<li>Open this page in <b>Safari</b>.</li>'
+        + '<li>Tap <b>Share</b> ' + shareIcon + ', then <b>Add to Home Screen</b>.</li>';
+  note  = 'On an iPhone or iPad only Safari can add an app to the home screen — Chrome, Firefox '
+        + 'and Edge there are all Safari underneath, but none of them is allowed to do this.';
+ } else {
+  steps = '<li>Open your browser\u2019s menu.</li>'
+        + '<li>Choose <b>Install</b>, <b>Install app</b>, or <b>Add to Home Screen</b>.</li>';
+  note  = 'Not every browser can do it — Chrome, Edge and Samsung Internet can; desktop Firefox '
+        + 'cannot. Installed, MōdRiff opens without browser chrome and keeps working offline.';
+ }
+ const ov=document.createElement('div');
+ ov.id='_install-help';
+ ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9600;display:flex;'
+  +'align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.setAttribute('role','dialog'); box.setAttribute('aria-modal','true');
+ box.setAttribute('aria-label','Keep MōdRiff on your phone');
+ box.style.cssText='width:100%;max-width:360px;max-height:86vh;overflow-y:auto;background:var(--surf);'
+  +'border:1px solid var(--pg);border-radius:16px;padding:18px;color:var(--text);';
+ box.innerHTML =
+   '<div style="font-family:\'Orbitron\',sans-serif;font-size:.66rem;font-weight:700;color:var(--pg);'
+     +'margin-bottom:10px">Keep MōdRiff on your phone</div>'
+  +'<ol style="margin:0 0 12px;padding-left:20px;font-size:.55rem;line-height:1.9;color:var(--text)">'
+     + steps + '</ol>'
+  +'<div style="font-size:.5rem;color:var(--muted);line-height:1.7;margin-bottom:10px">' + note + '</div>'
+  // The one thing that is genuinely easy to get wrong: the shell caches on the
+  // first visit, the samples only when a sampled voice actually plays.
+  +'<div style="font-size:.5rem;color:var(--muted);line-height:1.7;margin-bottom:14px">'
+     +'<b style="color:var(--text)">Before you lose signal:</b> play each ◆ sampled voice once. '
+     +'The app itself caches straight away, but the instrument samples are only stored once you '
+     +'have played them — otherwise they fall back to their synth versions offline.</div>'
+  +'<button id="_ih-ok" style="width:100%;padding:9px 14px;border:none;border-radius:9px;'
+     +'background:var(--pg);color:#07080f;font-family:\'Outfit\',sans-serif;font-size:.58rem;'
+     +'font-weight:700;cursor:pointer;touch-action:manipulation">Got it</button>';
+ ov.appendChild(box);
+ document.body.appendChild(ov);
+ const close=()=>{ ov.remove(); document.removeEventListener('keydown', esc, true); };
+ const esc=e=>{ if(e.key==='Escape'){ e.preventDefault(); close(); } };
+ ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
+ box.querySelector('#_ih-ok').onclick = close;
+ document.addEventListener('keydown', esc, true);
+ if(typeof track==='function') track('install_help_shown', {ios:_isIOS, safari:_isIOSSafari});
 }
 
 // ── Free tier: enforcement ───────────────────────────────────────
