@@ -14678,6 +14678,10 @@ function melBendKey(dir,down){
 
 
 const musicalTypingHeld = {};
+// Identity of a physical key, stable across the whole press. e.code is the
+// key's position on the board, unchanged by layout, modifiers or dead-key
+// composition; e.key is only a fallback for an engine that omits it.
+function _keyId(e){ return (e && (e.code || e.key)) || ''; }
 // Sustain tokens for chords held down on the number keys, keyed by e.code so
 // the release matches the physical key regardless of modifiers.
 const heldChordKeys = {};
@@ -14732,8 +14736,20 @@ document.addEventListener('keydown', e => {
  if(offset !== undefined){
  const baseM = 60 + (root<=5?root:root-12) + melOctShift;
  const midi = baseM + offset;
- if(!musicalTypingHeld[e.key]){
- musicalTypingHeld[e.key] = midi;
+ // A key we sound is a key we own, so the browser does not also get to act
+ // on it. Firefox opens Quick Find on ' (and on /), which moves focus into
+ // browser chrome — where the keyup never reaches this document, leaving
+ // the note sustaining with nothing left to release it.
+ e.preventDefault();
+ // Keyed by physical key, exactly as heldChordKeys is, and for the same
+ // reason: e.key is the character the layout produced, and the character
+ // reported on keyup is not guaranteed to match the one on keydown. A
+ // modifier released early, a dead key composing, a layout switched
+ // mid-hold — any mismatch orphans the entry, and an orphaned entry is a
+ // note nothing will ever stop.
+ const kid = _keyId(e);
+ if(musicalTypingHeld[kid] === undefined){
+ musicalTypingHeld[kid] = midi;
  playMelNote(midi, 0, true);
  }
  return;
@@ -14770,9 +14786,13 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keyup', e => {
- if(musicalTypingOn && musicalTypingHeld[e.key]){
- if(!holdMode) releaseMelNote(musicalTypingHeld[e.key]);
- delete musicalTypingHeld[e.key];
+ // Deliberately not gated on musicalTypingOn: whether we release a note is
+ // not the toggle's business, only whether we start one is. Switching
+ // musical typing off with a key still down used to strand that note too.
+ const kid = _keyId(e);
+ if(musicalTypingHeld[kid] !== undefined){
+ if(!holdMode) releaseMelNote(musicalTypingHeld[kid]);
+ delete musicalTypingHeld[kid];
  }
  if(heldChordKeys[e.code]!==undefined){
  if(!holdMode) releaseSustainedChord(heldChordKeys[e.code]);
@@ -14787,11 +14807,22 @@ document.addEventListener('keyup', e => {
 // 30s sustain, since the keyup never arrives — same reasoning applies to a
 // bend key: without this, alt-tabbing away mid-bend leaves every melody note
 // stuck sharp or flat with no keyup ever coming to release it.
-window.addEventListener('blur', ()=>{
+//
+// Melody notes belong here for the same reason and were the one held thing
+// missing from it. Anything that takes focus away between keydown and keyup
+// swallows the keyup: alt-tab, a click into browser chrome, the OS stealing
+// the window. The keys are only the common case — this is the backstop, so
+// no route to a stuck note depends on a keyup that may never come.
+function _releaseAllHeldKeys(){
  Object.keys(heldChordKeys).forEach(k=>{ if(!holdMode) releaseSustainedChord(heldChordKeys[k]); delete heldChordKeys[k]; });
+ Object.keys(musicalTypingHeld).forEach(k=>{ if(!holdMode) releaseMelNote(musicalTypingHeld[k]); delete musicalTypingHeld[k]; });
  document.querySelectorAll('.kb-active').forEach(el=>el.classList.remove('kb-active'));
  if(melBendDownHeld||melBendUpHeld){ melBendDownHeld=false; melBendUpHeld=false; _melBendApply(); }
-});
+}
+window.addEventListener('blur', _releaseAllHeldKeys);
+// Backgrounding a tab on mobile does not reliably fire blur, and a phone is
+// where a note left ringing is hardest to find and silence.
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) _releaseAllHeldKeys(); });
 
 // ═══════════════════════════════════════
 // SYNC PERF WAVE BUTTONS
