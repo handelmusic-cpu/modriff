@@ -2262,6 +2262,22 @@ body.tour-open:not(.tour-top) #_toast {
  font-size:.46rem; color:var(--muted); text-transform:uppercase;
  letter-spacing:.08em; min-width:100px;
 }
+.midi-cc-row {
+ display:flex; align-items:center; gap:8px; padding:4px 8px; margin-bottom:3px;
+ background:var(--surf2); border:1px solid var(--border); border-radius:6px;
+ font-size:.5rem; transition:border-color .18s, background .18s;
+}
+.midi-cc-row.lit { border-color:var(--pg); background:rgba(88,255,180,.09); }
+.midi-cc-num { font-family:'Orbitron',sans-serif; font-weight:700; color:var(--pg);
+               letter-spacing:.06em; min-width:46px; }
+.midi-cc-arrow { color:var(--muted); }
+.midi-cc-dest { flex:1; color:var(--text); }
+.midi-cc-x {
+ background:none; border:none; color:var(--muted); cursor:pointer;
+ font-size:.8rem; line-height:1; padding:0 2px;
+}
+.midi-cc-x:hover { color:var(--dom); }
+.midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
 
 /* Logic indicator button */
 .logic-indicator {
@@ -4153,6 +4169,24 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
    More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
+  </div>
+  <div class="midi-panel-row" style="margin-top:8px">
+   <span class="midi-panel-lbl">Pitch wheel bends:</span>
+   <div class="tg">
+    <button class="tb" id="midi-bend-mel" onclick="setMidiBendScope('mel')" title="The pitch wheel bends melody notes only — chords stay planted">Melody</button>
+    <button class="tb active" id="midi-bend-all" onclick="setMidiBendScope('all')" title="The pitch wheel bends everything sounding, chords included — the whole triad slides">Melody + Chords</button>
+   </div>
+  </div>
+  <div class="midi-panel-row" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:6px">
+   <span class="midi-panel-lbl" style="min-width:0">Knobs &amp; sliders:</span>
+   <div id="midi-cc-rows"></div>
+   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <select id="midi-cc-dest" style="flex:1;min-width:150px"></select>
+    <button class="tb" id="midi-cc-learn">Learn</button>
+   </div>
+   <div style="font-size:.44rem;color:var(--muted);line-height:1.6">
+    Pick a parameter, hit <strong>Learn</strong>, then move the knob or slider you want to use — the next control change binds to it. MōdSynth parameters follow the part selected under <strong>Patch for</strong> in the MōdSynth panel.
+   </div>
   </div>
  </div>
 
@@ -8111,7 +8145,10 @@ function playMelNote(midi,pressure,sustain,modY){
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
  // in from zero, since the wheel was already there.
  if(typeof melBendCents!=='undefined' && melBendCents!==0){
-  oscs.forEach(o=>{ try{ o.detune.setValueAtTime(melBendCents,startT); }catch(e){} });
+  oscs.forEach(o=>{ try{
+   if(o._bendBase === undefined) o._bendBase = o.detune.value;
+   o.detune.setValueAtTime(o._bendBase + melBendCents, startT);
+  }catch(e){} });
  }
  activeMelOscs[midi]={oscs,g,mod};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
@@ -14707,19 +14744,51 @@ function melBendWheel(norm){
  melBendWheelCents = Math.abs(v) < 0.02 ? 0 : v * MEL_BEND_RANGE_CENTS;
  _melBendApply();
 }
+// Melody, or melody and chords together. A wheel on a real keyboard bends
+// everything it is holding, which is what 'all' does; 'mel' keeps the lead
+// line bendable while chords stay planted, since a whole triad sliding is a
+// much stronger gesture than one note doing it.
+let melBendScope='all';
+// Bend is applied on top of whatever each oscillator is already offset by,
+// never as an absolute value. Unison spread and analog drift live on .detune
+// too — up to 60 cents of it on a wide MōdSynth patch — so ramping every
+// oscillator to one figure collapses a detuned stack into bare unison the
+// moment the wheel moves, and it never comes back. The base is captured the
+// first time an oscillator is bent, by which point makeVoice has already
+// applied its spread. An LFO routed to pitch still sums on top, since that
+// arrives through a connection rather than through .value.
+function _bendOscs(list, now){
+ (list||[]).forEach(o=>{
+  try{
+   if(o._bendBase === undefined) o._bendBase = o.detune.value;
+   o.detune.cancelScheduledValues(now);
+   o.detune.setValueAtTime(o.detune.value, now);
+   o.detune.linearRampToValueAtTime(o._bendBase + melBendCents, now+MEL_BEND_RAMP);
+  }catch(e){}
+ });
+}
 function _melBendApply(){
  const ctx=getCtx(); if(!ctx) return;
  melBendCents=_melBendTargetCents();
  const now=ctx.currentTime;
- Object.values(activeMelOscs).forEach(v=>{
-  (v.oscs||[]).forEach(o=>{
-   try{
-    o.detune.cancelScheduledValues(now);
-    o.detune.setValueAtTime(o.detune.value, now);
-    o.detune.linearRampToValueAtTime(melBendCents, now+MEL_BEND_RAMP);
-   }catch(e){}
-  });
+ Object.values(activeMelOscs).forEach(v=>_bendOscs(v.oscs, now));
+ // Chord voices live in a parallel array rather than a by-midi map, but they
+ // hold oscillators just the same, so the wheel can reach them by the same
+ // .detune route — no need to know what pitch any of them started on.
+ if(melBendScope==='all' && typeof activeOscs!=='undefined'){
+  activeOscs.forEach(v=>_bendOscs(v && v.oscs, now));
+ }
+}
+function setMidiBendScope(v){
+ melBendScope = (v==='mel') ? 'mel' : 'all';
+ ['mel','all'].forEach(k=>{
+  const b=document.getElementById('midi-bend-'+k);
+  if(b) b.classList.toggle('active', k===melBendScope);
  });
+ try{ localStorage.setItem('modo-midi-bend', melBendScope); }catch(e){}
+ // A chord left bent by a scope change would never be corrected, since
+ // nothing else re-reads the wheel until it moves again.
+ _melBendApply();
 }
 function melBendKey(dir,down){
  if(dir==='down') melBendDownHeld=down; else melBendUpHeld=down;
@@ -14894,6 +14963,10 @@ let midiPanelOpen = false;
 function toggleMidiPanel(){
  midiPanelOpen = !midiPanelOpen;
  document.getElementById('midi-panel')?.classList.toggle('visible', midiPanelOpen);
+ // Opening it is the only time the CC list is worth building, and a learn
+ // left armed from last time should not still be waiting.
+ if(midiPanelOpen){ if(typeof renderMidiCC==='function') renderMidiCC(); }
+ else midiCCLearning = null;
 }
 function setMidiMode(m){
  midiMode = m;
@@ -14943,6 +15016,201 @@ function midiPCToChord(pc, inSteps){
 // Sustain tokens for chords currently held on the MIDI keyboard, keyed by note.
 const midiChordTokens = {};
 // Override onMidiMsg with full routing logic
+// ═══════════════════════════════════════
+// MIDI CC ROUTING
+// ═══════════════════════════════════════
+// Two control changes used to be hardcoded here — CC1 nudged the chord
+// Release slider's value (without firing its oninput, so the label under it
+// disagreed with the sound) and CC11 set the Mixer's chord level. Nothing
+// else on a controller did anything, and nothing said so.
+//
+// Destinations are declared, not hardcoded, so a controller knob can reach
+// anything the app already exposes as a slider — including every MōdSynth
+// parameter, derived from MS_CTRLS rather than listed again here. Routing a
+// CC to a slider drives the slider and dispatches its input event, which
+// means the existing oninput handler does the work and the on-screen control
+// moves with the knob. One source of truth per parameter.
+let midiCCRoutes = {};
+let midiCCLearning = null;      // destination key waiting for a knob to move
+let midiCCLast = {};            // last value seen per CC, for the panel readout
+
+function midiCCDests(){
+ const T = {};
+ const sl = (key,label,group,id) => { T[key] = {label, group, slider:id}; };
+ sl('chordatk','Chord Attack','Chords','attack');
+ sl('chordrel','Chord Release','Chords','decay');
+ sl('chordrev','Chord Reverb','Chords','rev-mix');
+ sl('revsize','Reverb Size','Chords','rev-size');
+ sl('strum','Strum Spread','Chords','strum-spread');
+ sl('velsense','Velocity Sensitivity','Chords','vel-sense');
+ sl('melatk','Melody Attack','Melody','mel-attack');
+ sl('melrel','Melody Release','Melody','mel-decay');
+ sl('melrev','Melody Reverb','Melody','mel-rev');
+ sl('tone','Tone','Tone macros','fx-cutoff');
+ sl('reso','Reso','Tone macros','fx-reso');
+ sl('sweep','Sweep','Tone macros','fx-env');
+ sl('drive','Drive','Tone macros','fx-drive');
+ sl('width','Width','Tone macros','fx-width');
+ sl('drift','Drift','Tone macros','fx-drift');
+ T['fxx'] = {label:'MōdFX — X axis', group:'MōdFX', fx:'x'};
+ T['fxy'] = {label:'MōdFX — Y axis', group:'MōdFX', fx:'y'};
+ (typeof MS_MIX_KEYS!=='undefined' ? MS_MIX_KEYS : [
+   ['chord','Chords'],['mel','Melody strip'],['bass','Bass'],
+   ['drum','Drums'],['melgen','Melody gen'],['arp','Arp']
+ ]).forEach(([k,label])=>{ T['mix_'+k] = {label:label+' Level', group:'Mixer', mix:k}; });
+ if(typeof MS_CTRLS!=='undefined'){
+  MS_CTRLS.forEach(c=>{ T['ms_'+c.k] = {label:'MōdSynth '+c.label, group:'MōdSynth', ms:c}; });
+ }
+ return T;
+}
+const MIDI_CC_DESTS = midiCCDests();
+
+// norm is 0..1, straight off the CC's 0-127.
+function midiCCApply(destKey, norm){
+ const d = MIDI_CC_DESTS[destKey]; if(!d) return;
+ norm = Math.max(0, Math.min(1, norm));
+ try{ _midiCCApply(d, norm); }catch(err){}
+}
+// Split out so the guard above covers every destination kind. The MōdFX
+// state it reads is declared much further down the file, and a knob nudged
+// while the page is still evaluating would otherwise hit its dead zone.
+function _midiCCApply(d, norm){
+ if(d.slider){
+  const el = document.getElementById(d.slider); if(!el) return;
+  const lo = parseFloat(el.min), hi = parseFloat(el.max);
+  if(!isFinite(lo) || !isFinite(hi)) return;
+  el.value = lo + norm*(hi-lo);
+  // The slider's own oninput is what updates the engine and the label. Going
+  // through it rather than around it is why this needs no per-parameter code.
+  el.dispatchEvent(new Event('input', {bubbles:true}));
+  return;
+ }
+ if(d.fx){
+  if(typeof fxSetPos !== 'function') return;
+  // The pad applies nothing at all unless it is engaged, so a wheel off its
+  // floor counts as a finger down and returning to the floor lifts it.
+  if(typeof fxEngage === 'function'){
+   if(norm > 0.004 && !fxEngaged) fxEngage(true);
+   else if(norm <= 0.004 && fxEngaged && !fxHold) fxEngage(false);
+  }
+  fxSetPos(d.fx==='x' ? norm : fxPos.x, d.fx==='y' ? norm : fxPos.y);
+  return;
+ }
+ if(d.mix){
+  if(window.sqMixGainsW) window.sqMixGainsW[d.mix] = norm;
+  if(typeof sqApplyMixToNodes === 'function') sqApplyMixToNodes(d.mix, norm);
+  if(typeof sqSyncMixIndicators === 'function') sqSyncMixIndicators();
+  if(typeof sqRenderMixer === 'function') sqRenderMixer();
+  return;
+ }
+ if(d.ms){
+  if(typeof msSet !== 'function') return;
+  const c = d.ms;
+  let v = c.min + norm*(c.max - c.min);
+  if(c.step >= 1) v = Math.round(v);
+  // Edits the patch the MōdSynth panel currently has open — the part chosen
+  // under "Patch for" — which is the same thing dragging that slider does.
+  msSet(c.k, v);
+  return;
+ }
+}
+
+function midiCCOnMessage(cc, val){
+ midiCCLast[cc] = val;
+ if(midiCCLearning){
+  // A knob only counts once it moves, so a controller streaming a resting
+  // value on connect cannot claim the binding on its own.
+  const dest = midiCCLearning;
+  midiCCLearning = null;
+  // One CC drives one destination: rebinding it replaces whatever it had.
+  Object.keys(midiCCRoutes).forEach(k=>{ if(midiCCRoutes[k]===dest) delete midiCCRoutes[k]; });
+  midiCCRoutes[cc] = dest;
+  midiCCSave();
+  renderMidiCC();
+  return;
+ }
+ const dest = midiCCRoutes[cc];
+ if(dest) midiCCApply(dest, val/127);
+ renderMidiCCActivity(cc);
+}
+
+function midiCCSave(){
+ try{ localStorage.setItem('modo-midi-cc', JSON.stringify(midiCCRoutes)); }catch(e){}
+}
+function midiCCLoad(){
+ // CC1 is the modulation wheel on every controller ever made, and the X axis
+ // of the MōdFX pad is the most expressive thing in the app to hand it.
+ // CC11 is expression, and keeps the chord level it already had.
+ const defaults = {1:'fxx', 11:'mix_chord'};
+ let saved = null;
+ try{ saved = JSON.parse(localStorage.getItem('modo-midi-cc') || 'null'); }catch(e){}
+ midiCCRoutes = (saved && typeof saved === 'object') ? saved : defaults;
+ // Drop routes naming a destination this build no longer has.
+ Object.keys(midiCCRoutes).forEach(cc=>{ if(!MIDI_CC_DESTS[midiCCRoutes[cc]]) delete midiCCRoutes[cc]; });
+ try{ const b=localStorage.getItem('modo-midi-bend'); if(b) melBendScope = (b==='mel')?'mel':'all'; }catch(e){}
+}
+
+function midiCCLearn(){
+ const sel = document.getElementById('midi-cc-dest');
+ if(!sel || !sel.value) return;
+ midiCCLearning = sel.value;
+ renderMidiCC();
+}
+function midiCCCancelLearn(){ midiCCLearning = null; renderMidiCC(); }
+function midiCCClear(cc){ delete midiCCRoutes[cc]; midiCCSave(); renderMidiCC(); }
+
+// A brief flash on the row a CC just moved, so you can see which knob is
+// which without watching the parameter it lands on.
+function renderMidiCCActivity(cc){
+ const row = document.getElementById('midi-cc-row-'+cc);
+ if(!row) return;
+ row.classList.add('lit');
+ clearTimeout(row._litT);
+ row._litT = setTimeout(()=>row.classList.remove('lit'), 220);
+}
+
+function renderMidiCC(){
+ const host = document.getElementById('midi-cc-rows');
+ const sel  = document.getElementById('midi-cc-dest');
+ const btn  = document.getElementById('midi-cc-learn');
+ if(sel && !sel.options.length){
+  const groups = {};
+  Object.keys(MIDI_CC_DESTS).forEach(k=>{
+   const g = MIDI_CC_DESTS[k].group || 'Other';
+   (groups[g] = groups[g] || []).push(k);
+  });
+  Object.keys(groups).forEach(g=>{
+   const og = document.createElement('optgroup'); og.label = g;
+   groups[g].forEach(k=>{
+    const o = document.createElement('option');
+    o.value = k; o.textContent = MIDI_CC_DESTS[k].label;
+    og.appendChild(o);
+   });
+   sel.appendChild(og);
+  });
+ }
+ if(btn){
+  btn.textContent = midiCCLearning ? 'Move a knob…' : 'Learn';
+  btn.classList.toggle('active', !!midiCCLearning);
+  btn.onclick = midiCCLearning ? midiCCCancelLearn : midiCCLearn;
+ }
+ if(!host) return;
+ const ccs = Object.keys(midiCCRoutes).sort((a,b)=>a-b);
+ if(!ccs.length){
+  host.innerHTML = '<div class="midi-cc-empty">Nothing mapped. Pick a parameter, hit Learn, then move the knob you want to use.</div>';
+  return;
+ }
+ host.innerHTML = ccs.map(cc=>{
+  const d = MIDI_CC_DESTS[midiCCRoutes[cc]];
+  return '<div class="midi-cc-row" id="midi-cc-row-'+cc+'">'
+       + '<span class="midi-cc-num">CC '+cc+'</span>'
+       + '<span class="midi-cc-arrow">→</span>'
+       + '<span class="midi-cc-dest">'+(d?d.label:'—')+'</span>'
+       + '<button class="midi-cc-x" title="Unmap CC '+cc+'" '
+       + 'onclick="midiCCClear('+cc+')">×</button></div>';
+ }).join('');
+}
+
 function onMidiMsg(e){
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
@@ -15008,12 +15276,7 @@ function onMidiMsg(e){
  const raw = ((e.data[2]||0) << 7) | (e.data[1]||0);
  melBendWheel((raw - 8192) / 8192);
  } else if(type === 0xb0){
- if(e.data[1]===1){ document.getElementById('decay').value=(.1+(vel/127)*7.9).toFixed(2); }
- if(e.data[1]===11){
-  // Expression pedal now controls the Mixer's Chord channel directly (volume lives solely in the Mixer)
-  if(window.sqMixGainsW) window.sqMixGainsW.chord=vel/127;
-  if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes('chord', vel/127);
- }
+ midiCCOnMessage(e.data[1], vel);
  }
 }
 
@@ -18084,6 +18347,9 @@ buildChartPicker();
 renderChords();
 if(typeof buildVoicePickers==='function') buildVoicePickers();
 if(typeof syncSSPreviews==='function') syncSSPreviews();
+if(typeof midiCCLoad==='function'){ midiCCLoad(); }
+if(typeof setMidiBendScope==='function') setMidiBendScope(melBendScope);
+if(typeof renderMidiCC==='function') renderMidiCC();
 if(typeof syncAutoInvUI==='function') syncAutoInvUI();
 if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
 // Both loaders are async (the codec is). Whichever one the hash matches
