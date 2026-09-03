@@ -373,6 +373,27 @@ input[type=range]::-webkit-slider-thumb {
  transition:transform .1s;
 }
 input[type=range]::-webkit-slider-thumb:active { transform:scale(1.2); }
+/* The fine-control layer below drives these by hand, including vertically,
+   so the browser must not also pan or scroll from the same gesture. */
+input[type=range] { touch-action:none; }
+
+/* Value readout while dragging a slider. It sits above the track because on
+   a phone the thing you are adjusting is under your fingertip, and the
+   number printed beneath it — the one you are trying to land on — is the
+   first thing the finger covers. */
+.sl-bubble {
+ position:fixed; z-index:9500; transform:translate(-50%,-100%);
+ padding:5px 9px; border-radius:7px; pointer-events:none; opacity:0;
+ background:var(--surf); border:1px solid var(--pg);
+ box-shadow:0 6px 18px rgba(0,0,0,.45);
+ font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700;
+ letter-spacing:.06em; color:var(--text); white-space:nowrap;
+ transition:opacity .1s;
+}
+.sl-bubble.on { opacity:1; }
+.sl-bubble b { color:var(--pg); font-weight:700; }
+.sl-bubble .sl-hint { color:var(--muted); font-family:'Outfit',sans-serif;
+ font-size:.5rem; font-weight:400; letter-spacing:.02em; margin-left:6px; }
 
 /* ═══════════════════════════════════════
  FUNCTIONAL COLOR SYSTEM
@@ -915,6 +936,25 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
  font-size:.62rem; cursor:pointer; transition:all .12s; touch-action:manipulation;
 }
 .sec-add:hover { border-color:var(--py); color:var(--py); }
+/* Move / delete for the selected section. A section could be added and renamed
+   but never moved, removed or put anywhere but the end — so a mis-hit Capture
+   left a section in the song with no way to take it back out. */
+.sec-ctrls { display:flex; align-items:center; gap:4px; margin:-4px 0 10px; flex-wrap:wrap; }
+.sec-ctrls:empty { display:none; }
+.sec-ctrls .sec-ctrl-lbl {
+ font-size:.46rem; color:var(--muted); text-transform:uppercase;
+ letter-spacing:.09em; margin-right:2px;
+}
+.sec-btn {
+ display:flex; align-items:center; justify-content:center; min-width:26px; height:24px;
+ padding:0 7px; border-radius:6px; border:1px solid var(--border2);
+ background:none; color:var(--muted); cursor:pointer; font-size:.62rem;
+ transition:all .12s; touch-action:manipulation;
+}
+.sec-btn:hover:not(:disabled) { border-color:var(--py); color:var(--py); }
+.sec-btn:disabled { opacity:.3; cursor:default; }
+.sec-btn.danger:hover:not(:disabled) { border-color:var(--dom); color:var(--dom);
+                                       background:rgba(255,77,109,.1); }
 
 /* Progression presets */
 .prog-presets { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px; }
@@ -1180,6 +1220,15 @@ body.light-mode .subnav { background:#e8eaf6; }
   letter-spacing:.04em; }
 .groove-btn b { color:var(--text); }
 .groove-btn:hover { border-color:var(--modal); color:var(--modal); }
+.groove-btn.active { border-color:var(--pg); color:var(--pg); background:rgba(45,240,154,.10); }
+.groove-btn.active b { color:var(--pg); }
+/* Queued for the next downbeat. It pulses so a tap that will not be heard for
+   up to a bar still reads as having landed. */
+.groove-btn.queued { border-color:var(--modal); color:var(--modal);
+                     background:rgba(168,85,247,.12); animation:grooveQueued 1s ease-in-out infinite; }
+.groove-btn.queued b { color:var(--modal); }
+@keyframes grooveQueued { 0%,100% { opacity:1; } 50% { opacity:.55; } }
+@media (prefers-reduced-motion: reduce) { .groove-btn.queued { animation:none; } }
 
 /* Setlist */
 .setlist { display:flex; flex-direction:column; gap:4px; max-height:240px; overflow-y:auto; margin-bottom:10px; }
@@ -1194,13 +1243,41 @@ body.light-mode .subnav { background:#e8eaf6; }
  order:9; flex:1 0 100%; font-size:.46rem; color:var(--muted); opacity:.85;
  letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.sl-item:hover { border-color:var(--pg); background:#051008; }
-.sl-item.active { border-color:var(--pg); background:#061410; }
+/* Selected and hovered rows were two hardcoded near-blacks with no light-mode
+   override. In light mode --text and --muted are dark, so the selected song's
+   own title became dark-on-black and unreadable — the row you are looking at
+   was the one row you could not read. Tinting the theme's own surface keeps
+   the highlight legible in both, because it moves with the text it sits under
+   rather than against it. */
+.sl-item:hover  { border-color:var(--pg);
+                  background:color-mix(in srgb, var(--pg) 7%, var(--surf)); }
+.sl-item.active { border-color:var(--pg);
+                  background:color-mix(in srgb, var(--pg) 13%, var(--surf)); }
+/* color-mix is wide but not universal; older engines land here instead and
+   still get a readable row rather than the near-black. */
+@supports not (background: color-mix(in srgb, red 1%, blue)) {
+ .sl-item:hover  { background:var(--surf); }
+ .sl-item.active { background:var(--surf2); }
+}
 .sl-name { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; color:var(--text); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sl-meta { font-size:.5rem; color:var(--muted); letter-spacing:.05em; white-space:nowrap;
            flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
-.sl-del { font-size:.55rem; color:var(--muted); cursor:pointer; padding:3px 7px; border-radius:4px; transition:all .1s; touch-action:manipulation; }
-.sl-del:hover { color:var(--dom); }
+.sl-del { font-size:.7rem; line-height:1; color:var(--muted); cursor:pointer;
+          padding:5px 9px; border-radius:4px; transition:all .1s;
+          touch-action:manipulation; flex:0 0 auto; }
+.sl-del:hover { color:var(--dom); background:rgba(255,77,109,.1); }
+
+/* ── Setlist select mode ── */
+.sl-tools { display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+.sl-tools .sl-count { font-size:.5rem; color:var(--muted); letter-spacing:.06em; margin-left:auto; }
+.sl-check {
+ flex:0 0 auto; width:16px; height:16px; border-radius:4px; cursor:pointer;
+ border:1px solid var(--border2); background:var(--bg);
+ display:flex; align-items:center; justify-content:center;
+ font-size:.6rem; line-height:1; color:var(--bg);
+}
+.sl-item.picked .sl-check { background:var(--pg); border-color:var(--pg); color:#04120b; }
+.sl-item.picked { border-color:var(--pg); }
 .sl-empty { font-size:.55rem; color:var(--muted); text-align:center; padding:20px; letter-spacing:.07em; }
 
 /* Setups — same row shell as the setlist, but the name/meta stack so the
@@ -1922,6 +1999,18 @@ body { padding-top:52px; padding-bottom:56px; }
  background:var(--surf2);
 }
 .ss-body.open { display:block; }
+/* Names the reach of the controls under it. The Sound Engine section mixes
+   two scopes — the chord voice's own envelope and reverb, and six macros that
+   colour every voice in the app — and looked like one flat list of knobs,
+   which is most of why nobody could tell what it was editing. */
+.ss-scope {
+ display:flex; align-items:center; gap:8px; margin:14px 0 8px;
+ font-family:'Orbitron',sans-serif; font-size:.5rem; font-weight:700;
+ letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+}
+.ss-scope::after { content:''; flex:1; height:1px; background:var(--border); }
+.ss-scope:first-child { margin-top:0; }
+.ss-scope b { color:var(--pg); font-weight:700; }
 
 /* Light mode */
 /* ═══════════════════════════════════════
@@ -2250,6 +2339,30 @@ body.tour-open:not(.tour-top) #_toast {
  font-size:.46rem; color:var(--muted); text-transform:uppercase;
  letter-spacing:.08em; min-width:100px;
 }
+.midi-cc-row {
+ display:flex; align-items:center; gap:8px; padding:4px 8px; margin-bottom:3px;
+ background:var(--surf2); border:1px solid var(--border); border-radius:6px;
+ font-size:.5rem; transition:border-color .18s, background .18s;
+}
+.midi-cc-row.lit { border-color:var(--pg); background:rgba(88,255,180,.09); }
+.midi-cc-num { font-family:'Orbitron',sans-serif; font-weight:700; color:var(--pg);
+               letter-spacing:.06em; min-width:46px; }
+.midi-cc-arrow { color:var(--muted); }
+.midi-cc-dest { flex:1; color:var(--text); }
+.midi-cc-x {
+ background:none; border:none; color:var(--muted); cursor:pointer;
+ font-size:.8rem; line-height:1; padding:0 2px;
+}
+.midi-cc-x:hover { color:var(--dom); }
+.midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
+/* An unstyled native select renders white-on-black against this panel. Matched
+   to the MōdFX axis pickers, which are the same control doing the same job. */
+#midi-cc-dest {
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
+ color:var(--text); font-family:'Outfit',sans-serif; font-size:.52rem;
+ padding:7px 9px; cursor:pointer;
+}
+#midi-cc-dest:focus { outline:none; border-color:var(--pg); }
 
 /* Logic indicator button */
 .logic-indicator {
@@ -3526,7 +3639,7 @@ body.mode-free .pro-only { display:none !important; }
 <nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
  <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
    role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">⚙</span>Setup
+ <span class="tab-icon" aria-hidden="true">⚙</span>Settings
  </button>
  <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
    role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
@@ -3665,7 +3778,7 @@ body.mode-free .pro-only { display:none !important; }
    <button class="ft-btn" id="ft-setups-btn" onclick="openSetups()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
    <button class="ft-btn" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
      onclick="installApp()" title="Install MōdRiff so it opens on its own and works offline">⤓ Install app</button>
-   <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.7.0</span>
+   <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.8.0</span>
    <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
    <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Keyboard shortcuts">⌨ Shortcuts</button>
   </div>
@@ -3682,7 +3795,7 @@ body.mode-free .pro-only { display:none !important; }
  <canvas class="unlock-canvas" id="unlock-canvas" aria-hidden="true"></canvas>
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v2.7.0</div>
+ <div class="unlock-ver" id="unlock-ver">v2.8.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -4127,22 +4240,6 @@ body.mode-free .pro-only { display:none !important; }
  </div>
 
  <!-- MIDI input mode — whether an external MIDI keyboard plays chords or melody -->
- <div class="midi-panel" id="midi-panel">
-  <div class="midi-panel-row">
-   <span class="midi-panel-lbl">MIDI input plays:</span><button class="tips-btn" onclick="showTip('midi',this)">?</button>
-   <div class="tg">
-    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
-    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
-   </div>
-  </div>
-  <div class="midi-panel-row" style="margin-top:6px">
-   <span class="midi-panel-lbl">Ports:</span>
-   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
-  </div>
-  <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
-   More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
-  </div>
- </div>
 
 
 </div><!-- /page-perform -->
@@ -4152,17 +4249,29 @@ body.mode-free .pro-only { display:none !important; }
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-build">
 
- <!-- Settings collapsible sections -->
+ <!-- Four panes rather than one long scroll. Settings is not somewhere you
+      browse; it is somewhere you go to change one known thing, and a named
+      pane gets you there without reading past three others. -->
+ <div class="subnav" id="set-subnav" style="max-width:700px">
+  <button class="subnav-btn active" id="set-sounds-btn" onclick="setSettingsPane('sounds')">Sounds</button>
+  <button class="subnav-btn" id="set-midi-btn" onclick="setSettingsPane('midi')">MIDI</button>
+  <button class="subnav-btn" id="set-playing-btn" onclick="setSettingsPane('playing')">Playing</button>
+  <button class="subnav-btn" id="set-ui-btn" onclick="setSettingsPane('ui')">Interface</button>
+  <div class="subnav-led" id="set-subnav-led"></div>
+ </div>
+
  <div style="width:100%;max-width:700px">
 
+  <div class="set-pane" id="set-pane-sounds">
  <!-- Sound Engine -->
  <div class="settings-section" id="ss-sound">
  <div class="ss-hdr open" onclick="toggleSS('sound')">
- <span>Sound Engine</span>
- <div class="ss-preview" id="ss-sound-preview">Sine · Close</div>
+ <span>Chord Sound Engine</span>
+ <div class="ss-preview" id="ss-sound-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-sound-body">
+ <div class="ss-scope">Voice <b>the chord buttons play</b></div>
  <div class="row">
  <div class="tg" id="bw-voices" style="flex-wrap:wrap"></div>
  <div class="tg">
@@ -4181,6 +4290,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="sg"><div class="sl">Strum</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
  <div class="sg"><div class="sl">Velocity</div><input type="range" id="vel-sense" min="0" max="1" step=".05" value=".5"><div class="sl" style="margin-top:2px">Sensitivity</div></div>
  </div>
+ <div class="ss-scope">Tone macros <b>every voice in the app</b></div>
  <div class="row" style="margin-top:2px">
  <div class="sg"><div class="sl">Tone</div><input type="range" id="fx-cutoff" min=".08" max="1" step=".01" value=".88" oninput="onFxInput()"><div class="sv" id="fxcut-val">—</div></div>
  <div class="sg"><div class="sl">Reso</div><input type="range" id="fx-reso" min="0" max="1" step=".01" value=".12" oninput="onFxInput()"><div class="sv" id="fxreso-val">12%</div></div>
@@ -4191,21 +4301,21 @@ body.mode-free .pro-only { display:none !important; }
  <div class="sg"><div class="sl">Width</div><input type="range" id="fx-width" min="0" max="1" step=".01" value=".4" oninput="onFxInput()"><div class="sv" id="fxwidth-val">40%</div></div>
  <div class="sg"><div class="sl">Drift</div><input type="range" id="fx-drift" min="0" max="1" step=".01" value=".3" oninput="onFxInput()"><div class="sv" id="fxdrift-val">30%</div></div>
  </div>
+ <div class="ss-scope">Chords <b>only</b></div>
  <div class="row">
  <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="Play the sustained chord underneath the arp, not just the arp notes. Relative volume between Chord and Arp is set in the Mixer.">Chord Layer: ON</button>
  <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Gives chords a plucked, strummed character (quicker decay, settles after the initial hit) instead of a sustained pad">Strum: ON</button>
  </div>
  <!-- The only MIDI badge now that the Perform header one is gone, so it has to
       carry the panel it used to open. -->
- <span class="midi-badge off" id="midi-badge2" onclick="toggleMidiPanel()" title="Connected MIDI inputs — tap to open MIDI setup" style="display:block;text-align:center;margin-top:6px">MIDI</span>
  </div>
  </div>
 
  <!-- Melody Voice -->
  <div class="settings-section" id="ss-melody">
  <div class="ss-hdr open" onclick="toggleSS('melody')">
- <span> Melody Voice</span>
- <div class="ss-preview" id="ss-melody-preview">Sine</div>
+ <span> Melody Sound Engine</span>
+ <div class="ss-preview" id="ss-melody-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-melody-body">
@@ -4224,68 +4334,11 @@ body.mode-free .pro-only { display:none !important; }
  </div>
  </div>
 
- <!-- Display & Logic -->
- <div class="settings-section" id="ss-display">
- <div class="ss-hdr open" onclick="toggleSS('display')">
- <span>◐ Display &amp; Logic</span>
- <div class="ss-preview" id="ss-display-preview">Dark · Standard</div>
- <span class="ss-arrow">›</span>
- </div>
- <div class="ss-body open" id="ss-display-body">
- <div class="row">
- <div class="tg">
- <button class="tb active" id="theme-dark" onclick="setTheme('dark')">Dark</button>
- <button class="tb" id="theme-light" onclick="setTheme('light')">Light</button>
- </div>
- </div>
- <div class="row">
- <button class="tb" id="metro-btn" onclick="toggleMetronome()">Metro OFF</button>
- <button class="tb" id="variants-btn" onclick="toggleVariantSystem()">Chord Variants: ON</button>
- </div>
- <div class="row">
- <button class="tb" id="logic-btn" onclick="toggleLogicMode()">Logic Mode (suggestions): OFF</button>
- </div>
- <div class="row">
- <div class="tg">
- <button class="tb active" id="bv-close" onclick="setVoicing('close')">Close</button>
- <button class="tb" id="bv-open" onclick="setVoicing('open')">Spread</button>
- </div>
- <button class="tb active" id="auto-inv-btn" onclick="toggleAutoInv()" title="Chooses the inversion nearest the last chord, so voices move as little as possible and stay in a comfortable register. On by default.">VoiceLead: ON</button>
- </div>
- <div class="row">
- <button class="tb" id="auto-start-btn" onclick="toggleAutoStart()">Auto-start: OFF</button>
- </div>
- <!-- Chord length and the bass/melody auto-regen link used to live in a
-      "Voices & Timing" panel on the Play tab, duplicating the Voices dock
-      that already follows you to every tab. Chord length is a set-once
-      behaviour, same as everything else in this section. -->
- <div class="row">
- <span style="font-size:.48rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Chord length:</span>
- <div class="tg">
-  <button class="tb active green" id="cb-inf" onclick="setChordBeats(0)">∞</button>
-  <button class="tb green" id="cb-1" onclick="setChordBeats(1)">1♩</button>
-  <button class="tb green" id="cb-2" onclick="setChordBeats(2)">2♩</button>
-  <button class="tb green" id="cb-4" onclick="setChordBeats(4)">4♩</button>
- </div>
- </div>
- <div class="row">
- <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes">Bass+Mel: Sync</button>
- </div>
- <div class="row">
- <span style="font-size:.48rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Key mapping:</span>
- <div class="tg">
- <button class="tb active" id="midi-movable-btn" onclick="setMidiKeyMap('movable')">Movable Do</button>
- <button class="tb" id="midi-smart-btn" onclick="setMidiKeyMap('smart')">Smart Keys (C=I)</button>
- </div>
- </div>
- </div>
- </div>
-
  <!-- Master Tune -->
  <div class="settings-section" id="ss-tune">
  <div class="ss-hdr open" onclick="toggleSS('tune')">
  <span>〜 Master Tune</span>
- <div class="ss-preview" id="ss-tune-preview">A = 440 Hz</div>
+ <div class="ss-preview" id="ss-tune-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-tune-body">
@@ -4309,6 +4362,124 @@ body.mode-free .pro-only { display:none !important; }
  </div>
  </div>
  </div>
+  </div>
+
+  <div class="set-pane" id="set-pane-midi" style="display:none">
+  <!-- Everything a controller touches, in one place. The input-mode switch —
+       whether your keys play chords or the melody strip — used to be the only
+       way to change that, hidden inside a panel that only opened from a badge
+       at the bottom of the chord sound settings. -->
+  <div class="ss-scope" style="margin-top:0">Connected <b id="ss-midi-preview">—</b></div>
+ <div class="midi-panel visible" id="midi-panel">
+  <div class="midi-panel-row">
+   <span class="midi-panel-lbl">MIDI input plays:</span><button class="tips-btn" onclick="showTip('midi',this)">?</button>
+   <div class="tg">
+    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
+    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
+   </div>
+  </div>
+  <div class="midi-panel-row">
+   <span class="midi-panel-lbl">Key mapping:</span>
+   <div class="tg">
+    <button class="tb active" id="midi-movable-btn" onclick="setMidiKeyMap('movable')" title="Middle C plays the tonic, whatever key you are in">Movable Do</button>
+    <button class="tb" id="midi-smart-btn" onclick="setMidiKeyMap('smart')" title="C is always chord I, whatever key you are in">Smart Keys (C=I)</button>
+   </div>
+  </div>
+  <div class="midi-panel-row" style="margin-top:6px">
+   <span class="midi-panel-lbl">Ports:</span>
+   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
+  </div>
+  <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
+   More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
+  </div>
+  <div class="midi-panel-row" style="margin-top:8px">
+   <span class="midi-panel-lbl">Pitch wheel bends:</span>
+   <div class="tg">
+    <button class="tb" id="midi-bend-mel" onclick="setMidiBendScope('mel')" title="The pitch wheel bends melody notes only — chords stay planted">Melody</button>
+    <button class="tb active" id="midi-bend-all" onclick="setMidiBendScope('all')" title="The pitch wheel bends everything sounding, chords included — the whole triad slides">Melody + Chords</button>
+   </div>
+  </div>
+  <div class="midi-panel-row" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:6px">
+   <span class="midi-panel-lbl" style="min-width:0">Knobs &amp; sliders:</span>
+   <div id="midi-cc-rows"></div>
+   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <select id="midi-cc-dest" style="flex:1;min-width:150px"></select>
+    <button class="tb" id="midi-cc-learn">Learn</button>
+   </div>
+   <div style="font-size:.44rem;color:var(--muted);line-height:1.6">
+    Pick a parameter, hit <strong>Learn</strong>, then move the knob or slider you want to use — the next control change binds to it. MōdSynth parameters follow the part selected under <strong>Patch for</strong> in the MōdSynth panel.
+   </div>
+  </div>
+ </div>
+  </div>
+
+  <div class="set-pane" id="set-pane-playing" style="display:none">
+  <!-- Playing — how the instrument behaves when you play it. These used to be
+       mixed in with the theme switch under "Display & Logic", which named the
+       one thing in it that was not a musical decision. -->
+  <div class="settings-section" id="ss-playing">
+   <div class="ss-hdr open" onclick="toggleSS('playing')">
+    <span>▶ Playing</span>
+    <div class="ss-preview" id="ss-playing-preview"></div>
+    <span class="ss-arrow">›</span>
+   </div>
+   <div class="ss-body open" id="ss-playing-body">
+    <div class="ss-scope">Voicing <b>how chords are stacked</b></div>
+    <div class="row">
+     <div class="tg">
+      <button class="tb active" id="bv-close" onclick="setVoicing('close')">Close</button>
+      <button class="tb" id="bv-open" onclick="setVoicing('open')">Spread</button>
+     </div>
+     <button class="tb active" id="auto-inv-btn" onclick="toggleAutoInv()" title="Chooses the inversion nearest the last chord, so voices move as little as possible and stay in a comfortable register. On by default.">VoiceLead: ON</button>
+    </div>
+    <div class="ss-scope">Chords <b>length and suggestions</b></div>
+    <div class="row">
+     <span style="font-size:.48rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;align-self:center">Chord length:</span>
+     <div class="tg">
+      <button class="tb active green" id="cb-inf" onclick="setChordBeats(0)">∞</button>
+      <button class="tb green" id="cb-1" onclick="setChordBeats(1)">1♩</button>
+      <button class="tb green" id="cb-2" onclick="setChordBeats(2)">2♩</button>
+      <button class="tb green" id="cb-4" onclick="setChordBeats(4)">4♩</button>
+     </div>
+    </div>
+    <div class="row">
+     <button class="tb" id="logic-btn" onclick="toggleLogicMode()">Logic Mode (suggestions): OFF</button>
+     <button class="tb" id="variants-btn" onclick="toggleVariantSystem()">Chord Variants: ON</button>
+    </div>
+    <div class="ss-scope">Transport <b>and the other parts</b></div>
+    <div class="row">
+     <button class="tb" id="metro-btn" onclick="toggleMetronome()">Metro OFF</button>
+     <button class="tb" id="auto-start-btn" onclick="toggleAutoStart()">Auto-start: OFF</button>
+    </div>
+    <div class="row">
+     <button class="tb advanced-only active" id="bass-sync-btn" onclick="toggleBassSync()" title="Auto-regenerate bass and melody when chord changes">Bass+Mel: Sync</button>
+    </div>
+   </div>
+  </div>
+  </div>
+
+  <div class="set-pane" id="set-pane-ui" style="display:none">
+  <!-- Interface — how the app looks, not how it plays. -->
+  <div class="settings-section" id="ss-ui">
+   <div class="ss-hdr open" onclick="toggleSS('ui')">
+    <span>◐ Interface</span>
+    <div class="ss-preview" id="ss-ui-preview"></div>
+    <span class="ss-arrow">›</span>
+   </div>
+   <div class="ss-body open" id="ss-ui-body">
+    <div class="ss-scope">Theme</div>
+    <div class="row">
+     <div class="tg">
+      <button class="tb active" id="theme-dark" onclick="setTheme('dark')">Dark</button>
+      <button class="tb" id="theme-light" onclick="setTheme('light')">Light</button>
+     </div>
+    </div>
+    <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:8px;letter-spacing:.05em;line-height:1.7">
+     Basic and Advanced view live in the transport's ⋯ menu, so you can change how much is on screen without leaving what you are playing.
+    </div>
+   </div>
+  </div>
+  </div>
 
  </div>
 
@@ -4372,6 +4543,7 @@ body.mode-free .pro-only { display:none !important; }
 
  <!-- Sections -->
  <div class="section-tabs" id="section-tabs"></div>
+ <div class="sec-ctrls" id="section-ctrls"></div>
 
  <!-- How many times the selected section plays before the song moves on.
       This was a glyph a few pixels wide in the corner of the tab above; it
@@ -4483,6 +4655,7 @@ body.mode-free .pro-only { display:none !important; }
  <!-- Setlist -->
  <div class="panel p-songs" style="width:100%;max-width:700px">
  <div class="panel-title"> Setlist</div>
+ <div class="sl-tools" id="setlist-tools"></div>
  <div class="setlist" id="setlist-items">
  <div class="sl-empty">No songs saved yet.<br><span style="opacity:.75">Add chords in Build, name it, then tap Save.</span></div>
  </div>
@@ -4524,6 +4697,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="slb-controls">
  <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (← key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
  <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (→ key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
+ <button class="sc-btn" id="slb-save-btn" onclick="showSongSaveDialog()" title="Save this song to the setlist — playback keeps going">&#128190; Save Song</button>
  <button class="sc-btn" onclick="updateSongPerfSettings()" title="Save current tempo/arp/rhythm to this song"> Save Settings</button>
  <div class="tg" style="align-items:center;gap:4px">
  <button class="btn-xp" id="slb-key-dn" onclick="transposeSong(-1)" title="Transpose song down a semitone" style="width:22px;height:22px;font-size:.75rem">−</button>
@@ -4634,21 +4808,11 @@ body.mode-free .pro-only { display:none !important; }
  <div id="ac-drums-panel">
 <div class="sq-wrap">
 
-<!-- Generate row — the verb Drums was missing. Every other part on this tab
-     answers a button with a part; this one only had a preset list and a grid,
-     so it was somewhere you set once rather than somewhere you played. Styles
-     are the bass generator's own names so "Funk" means one thing app-wide. -->
-<div class="sq-song" style="margin-bottom:0">
-  <div class="sq-songhdr" style="margin-bottom:6px">
-    <span class="sq-songtitle" style="font-size:.55rem">Generate</span>
-  </div>
-  <div class="bl-gen-style" id="sq-gen-style" style="margin-bottom:6px"></div>
-  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
-    <button class="bl-genbtn" onclick="sqGrooveDice()" title="Roll a whole new feel — style, kit, groove and swing together">&#9860; Roll</button>
-    <button class="bl-genbtn" onclick="sqGenerate()" title="Generate a pattern in the selected style">&#10022; Generate</button>
-    <button class="bl-genbtn" onclick="sqVary()" title="Keep the pattern, move it around — and add a fill">&#8635; Vary</button>
-  </div>
-</div>
+<!-- The drum Generate row lived here: a style list plus Roll / Generate /
+     Vary. It has been removed. Load Groove below already names every feel it
+     could produce, and a named groove tells you what you are about to hear
+     where a generator only tells you afterwards. The generator functions
+     themselves are kept — the transport dice still rolls a whole setup. -->
 
 <!-- Groove presets row -->
 <div class="sq-song" style="margin-bottom:0">
@@ -4808,10 +4972,10 @@ body.mode-free .pro-only { display:none !important; }
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Style:</span>
    <div class="bl-gen-style" id="bl-gen-style">
-     <button class="bl-gen-btn active" data-blstyle="rock">Rock</button>
+     <button class="bl-gen-btn" data-blstyle="rock">Rock</button>
      <button class="bl-gen-btn" data-blstyle="jazz">Jazz</button>
      <button class="bl-gen-btn" data-blstyle="motown">Motown</button>
-     <button class="bl-gen-btn" data-blstyle="funk">Funk</button>
+     <button class="bl-gen-btn active" data-blstyle="funk">Funk</button>
      <button class="bl-gen-btn" data-blstyle="acid">Acid</button>
      <button class="bl-gen-btn" data-blstyle="latin">Latin</button>
      <button class="bl-gen-btn" data-blstyle="reggae">Reggae</button>
@@ -4944,10 +5108,10 @@ body.mode-free .pro-only { display:none !important; }
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Pattern:</span>
    <div class="bl-gen-style" id="ml-gen-style">
-     <button class="bl-gen-btn active" data-mlstyle="arpeggio">Arpeggio</button>
+     <button class="bl-gen-btn" data-mlstyle="arpeggio">Arpeggio</button>
      <button class="bl-gen-btn" data-mlstyle="scalerun">Scale Run</button>
      <button class="bl-gen-btn" data-mlstyle="riff">Riff</button>
-     <button class="bl-gen-btn" data-mlstyle="hook">Pop Hook</button>
+     <button class="bl-gen-btn active" data-mlstyle="hook">Pop Hook</button>
      <button class="bl-gen-btn" data-mlstyle="callresponse">Call &amp; Response</button>
    </div>
    <button class="bl-genbtn" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
@@ -7695,6 +7859,7 @@ function strumOffsets(n){
 // Velocity from pointer pressure or random humanize
 function setMasterTune(hz){
  masterTune=parseFloat(hz)||440;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  const disp=document.getElementById('master-tune-disp');
  if(disp) disp.textContent='A = '+masterTune.toFixed(1)+' Hz';
  // Update preset buttons
@@ -8095,7 +8260,10 @@ function playMelNote(midi,pressure,sustain,modY){
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
  // in from zero, since the wheel was already there.
  if(typeof melBendCents!=='undefined' && melBendCents!==0){
-  oscs.forEach(o=>{ try{ o.detune.setValueAtTime(melBendCents,startT); }catch(e){} });
+  oscs.forEach(o=>{ try{
+   if(o._bendBase === undefined) o._bendBase = o.detune.value;
+   o.detune.setValueAtTime(o._bendBase + melBendCents, startT);
+  }catch(e){} });
  }
  activeMelOscs[midi]={oscs,g,mod};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
@@ -10796,6 +10964,7 @@ const _preloadIfSampled = window._preloadIfSampled;
 
 function setWave(w){
  wave=w;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-wave]').forEach(b=>
   b.classList.toggle('active', b.dataset.wave===w));
  _preloadIfSampled(w);
@@ -10869,6 +11038,7 @@ function buildModSynthPresets(){
 }
 function setVoicing(v){
  voicing=v;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  ['close','open'].forEach(x=>{ const e=document.getElementById('bv-'+x); if(e) e.classList.toggle('active',x===v); });
 }
 function shiftOct(d){
@@ -10878,6 +11048,7 @@ function shiftOct(d){
 function updateOct(){
  const m=rootMidi(); const octN=Math.floor(m/12)-1;
  const d=document.getElementById('oct-disp'); if(d) d.textContent=nn(root)+octN;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
 }
 function transposeBy(s){
  root=((root+s)%12+12)%12;
@@ -11857,13 +12028,17 @@ function initMidi(){
 function updateMidiBadge(){
  const ins=midiAccess?[...midiAccess.inputs.values()]:[];
  const cnt=ins.length;
- ['midi-badge','midi-badge2'].forEach(id=>{ const b=document.getElementById(id); if(!b) return; b.textContent=cnt>0?`MIDI: ${cnt}`:'MIDI'; b.classList.toggle('off',cnt===0); });
+ // The two MIDI badges are gone: one was removed with the Perform header, the
+ // other was a button at the bottom of the chord sound settings whose only job
+ // was to open a panel that is now a Settings pane of its own. The count they
+ // carried is the pane's own heading, filled by syncSSPreviews below.
  // Name the ports so a controller the OS has enumerated twice is visible
  // rather than something you can only infer from the sound.
  const list=document.getElementById('midi-port-list');
  if(list) list.textContent = cnt ? ins.map(i=>i.name||'Unnamed').join(' · ') : 'none connected';
  const warn=document.getElementById('midi-dupe-warn');
  if(warn) warn.style.display = cnt>1 ? '' : 'none';
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
 }
 // onMidiMsg now defined in MIDI ROUTING section
 
@@ -12135,12 +12310,12 @@ function tourSteps(){
    gate:_gClick('#tab-accomp'),
    showMe:function(){ if(typeof switchTab==='function') switchTab('accomp'); }},
 
-  {ch:3, icon:'⚄', title:'Roll a new groove', tab:'accomp',
+  {ch:3, icon:'⚄', title:'Pick a groove', tab:'accomp',
    before:function(){ if(typeof setAccompMode==='function') setAccompMode('drums'); },
-   text:'Pick a <b>style</b>, or hit <b>Roll</b> for a whole new feel — style, kit, groove and swing at once. The chords you played stay exactly as they are.',
-   target:'sq-gen-style',
-   gate:_gClick('#sq-gen-style button, .sq-song button[onclick*="sqGrooveDice"], .sq-song button[onclick*="sqGenerate"], #sq-groove-presets button'),
-   showMe:function(){ if(typeof sqGrooveDice==='function') sqGrooveDice(); }},
+   text:'Pick a <b>groove</b> — each one names its feel and its time signature. It changes on the next downbeat, so the bar you are in finishes first. The chords you played stay exactly as they are.',
+   target:'sq-groove-presets',
+   gate:_gClick('#sq-groove-presets button, #sq-machineRow button'),
+   showMe:function(){ var e=document.querySelector('#sq-groove-presets button'); if(e) e.click(); }},
 
   {ch:3, icon:'▦', title:'Change one hit', tab:'accomp',
    text:'Tap any square in the grid. Every fourth square starts a new beat — those are the ones with the brighter edge. That is the moment this stops being a preset and starts being your pattern.',
@@ -13120,6 +13295,74 @@ function sec_followTitle(i,mode){
  if(n===0) return 'Loops until you move on yourself';
  return 'Plays '+n+(n===1?' time':' times')+', then moves on'+to;
 }
+// Everything that remembers a section by index has to be corrected when the
+// list is reordered or shortened, or the song loop carries on pointing at
+// whatever moved into that slot. Kept in one place so a new index-holder is
+// one line here rather than a bug found later during a gig.
+function _sectionReindex(map){
+ curSection        = map(curSection);
+ songCurrentSection = map(songCurrentSection);
+ songLoopSection   = map(songLoopSection);
+ songRecSectionIdx = map(songRecSectionIdx);
+ if(_songHeldAt){
+  const n = map(_songHeldAt.section);
+  if(n < 0) _songHeldAt = null; else _songHeldAt.section = n;
+ }
+ if(curSection < 0 || curSection >= sections.length){
+  curSection = Math.max(0, Math.min(sections.length-1, curSection));
+ }
+}
+function _sectionRepaint(){
+ buildSectionTabs();
+ renderChartSeq();
+ if(typeof renderSectionPlays==='function') renderSectionPlays();
+ if(typeof renderSongsPerformView==='function' && songsMode==='perform') renderSongsPerformView();
+}
+
+// Move the selected section one place along. Swapping rather than splicing so
+// the two indices are the only ones that change.
+function sectionMove(dir){
+ const i = curSection, j = i + dir;
+ if(i<0 || j<0 || j>=sections.length) return;
+ const t = sections[i]; sections[i] = sections[j]; sections[j] = t;
+ _sectionReindex(k => k===i ? j : (k===j ? i : k));
+ _sectionRepaint();
+}
+
+function sectionDelete(){
+ const i = curSection;
+ const sec = sections[i]; if(!sec) return;
+ const n = sec.slots ? sec.slots.length : 0;
+ const last = sections.length <= 1;
+ showConfirm({
+  title: last ? 'Clear this section?' : 'Delete this section?',
+  bodyHtml: '<strong style="color:var(--text)">'
+   + String(sec.name||'Section').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+   + '</strong>'
+   + (n ? ' and its ' + n + ' chord' + (n===1?'':'s') : ' is empty and')
+   + (last
+      ? ' will be replaced with a fresh empty section — a song always has at least one.'
+      : ' will be removed from the song.'),
+  confirmLabel: last ? 'Clear' : 'Delete',
+  onConfirm: ()=>{
+   // A loop running inside the section being removed has nowhere to go.
+   if(typeof songLoopActive!=='undefined' && songLoopActive && songLoopSection===i){
+    if(typeof stopSongLoop==='function') stopSongLoop();
+   }
+   const wasName = sec.name;
+   if(last){
+    sections[0] = {name:'Section 1', slots:[], plays:0, follow:'repeat'};
+    _sectionReindex(k => k===0 ? 0 : -1);
+   } else {
+    sections.splice(i,1);
+    _sectionReindex(k => k<0 ? k : (k===i ? -1 : (k>i ? k-1 : k)));
+   }
+   _sectionRepaint();
+   showToast((last?'Cleared ':'Deleted ') + '"' + wasName + '"');
+  }
+ });
+}
+
 function buildSectionTabs(){
  const c=document.getElementById('section-tabs'); if(!c) return; c.innerHTML='';
  sections.forEach((s,i)=>{
@@ -13168,8 +13411,42 @@ function buildSectionTabs(){
  // selected. Deferred so the row's own rebuild isn't re-entrant.
  setTimeout(renderSectionPlays,0);
  const add=document.createElement('button'); add.className='sec-add'; add.textContent='+ Section';
- add.onclick=()=>{ sections.push({name:'Section '+sections.length,slots:[],plays:0,follow:'repeat'}); curSection=sections.length-1; buildSectionTabs(); renderChartSeq(); renderSectionPlays(); };
+ add.onclick=()=>{
+  // Inserted after the selected section rather than always appended, so a
+  // section can be put where it belongs instead of only ever at the end and
+  // then walked back with the arrows.
+  const at = Math.min(sections.length, curSection+1);
+  // First unused number, not the list length: inserting into the middle of
+  // three sections used to produce "Section 4", which names a position it is
+  // not in.
+  let n = 1; while(sections.some(x=>x && x.name==='Section '+n)) n++;
+  sections.splice(at, 0, {name:'Section '+n, slots:[], plays:0, follow:'repeat'});
+  _sectionReindex(k => (k>=at && k>=0) ? k+1 : k);
+  curSection = at;
+  _sectionRepaint();
+ };
  c.appendChild(add);
+ renderSectionCtrls();
+}
+
+// Move / delete for whichever section is selected.
+function renderSectionCtrls(){
+ const host=document.getElementById('section-ctrls'); if(!host) return;
+ const sec=sections[curSection];
+ if(!sec){ host.innerHTML=''; return; }
+ const name=String(sec.name||'Section').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+ host.innerHTML =
+   '<span class="sec-ctrl-lbl">'+name+'</span>'
+  +'<button class="sec-btn" id="sec-mv-l" title="Move this section earlier"'
+  +(curSection<=0?' disabled':'')+'>&#9664;</button>'
+  +'<button class="sec-btn" id="sec-mv-r" title="Move this section later"'
+  +(curSection>=sections.length-1?' disabled':'')+'>&#9654;</button>'
+  +'<button class="sec-btn danger" id="sec-del" title="'
+  +(sections.length<=1?'Clear this section':'Delete this section')+'">&#10005;</button>';
+ const l=host.querySelector('#sec-mv-l'), r=host.querySelector('#sec-mv-r'), d=host.querySelector('#sec-del');
+ if(l) l.onclick=()=>sectionMove(-1);
+ if(r) r.onclick=()=>sectionMove(1);
+ if(d) d.onclick=()=>sectionDelete();
 }
 
 // Inline rename, in place on the tab. prompt() blocks the page, looks like an
@@ -13880,7 +14157,12 @@ function saveToSetlist(){
   curSetlistIdx=setlistData.length-1;
  }
  saveSLData(setlistData);
+ // What is on screen now IS what is stored, so the banner stops saying
+ // otherwise. Taken after the write, not before, so a save that threw does
+ // not leave the song looking clean.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderSetlist(); renderSetlistNav();
+ if(typeof renderSongsPerformView==='function' && typeof songsMode!=='undefined' && songsMode==='perform') renderSongsPerformView();
  showToast(songSaveRhythm ? 'Saved with rhythm & bass' : 'Saved to setlist');
  track('song_saved', {withRhythm:songSaveRhythm});
 }
@@ -13909,6 +14191,84 @@ function showDuplicateNameModal(title){
  };
  box.querySelector('#dnm-ok').addEventListener('click',tryOk);
  input.addEventListener('keydown',e=>{ if(e.key==='Enter') tryOk(); });
+}
+
+// A confirmation you have to answer, for the deletes where Undo is not enough
+// reassurance. Deliberately a real dialog rather than a toast: the point is to
+// stop the hand, and a notice you can keep walking past does not.
+function showConfirm(opts){
+ const o = opts || {};
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const accent = o.danger===false ? 'var(--accent)' : 'var(--dom)';
+ const box=document.createElement('div');
+ box.style.cssText='background:var(--surf);border:2px solid '+accent+';border-radius:16px;padding:22px 24px;max-width:320px;width:100%;text-align:center;';
+ const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+ box.innerHTML='<div style="font-size:.72rem;font-weight:700;color:'+accent+';margin-bottom:10px">'+esc(o.title||'Are you sure?')+'</div>'
+  +'<div style="font-size:.54rem;color:var(--muted);line-height:1.7;margin-bottom:16px">'+(o.bodyHtml||esc(o.body||''))+'</div>'
+  +'<div style="display:flex;gap:8px">'
+  +'<button id="cfm-no" style="flex:1;padding:8px 0;border:1px solid var(--border2);border-radius:8px;background:none;color:var(--text);cursor:pointer;font-size:.6rem">'+esc(o.cancelLabel||'Cancel')+'</button>'
+  +'<button id="cfm-yes" style="flex:1;padding:8px 0;border:none;border-radius:8px;background:'+accent+';color:#fff;cursor:pointer;font-size:.6rem;font-weight:600">'+esc(o.confirmLabel||'Delete')+'</button>'
+  +'</div>';
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ const close=()=>{ overlay.remove(); document.removeEventListener('keydown',onKey); };
+ function onKey(e){
+  if(e.key==='Escape'){ close(); if(o.onCancel) o.onCancel(); }
+  if(e.key==='Enter'){ close(); if(o.onConfirm) o.onConfirm(); }
+ }
+ document.addEventListener('keydown',onKey);
+ // Clicking the backdrop is a cancel, never a confirm.
+ overlay.addEventListener('click',e=>{ if(e.target===overlay){ close(); if(o.onCancel) o.onCancel(); } });
+ box.querySelector('#cfm-no').addEventListener('click',()=>{ close(); if(o.onCancel) o.onCancel(); });
+ const yes=box.querySelector('#cfm-yes');
+ yes.addEventListener('click',()=>{ close(); if(o.onConfirm) o.onConfirm(); });
+ yes.focus();
+}
+
+// Saving from the Perform page, where saveToSetlist' own title field is not.
+// Nothing here stops the transport — you save the thing you are playing while
+// it is still playing, which is the whole point of saving from this page.
+function showSongSaveDialog(){
+ if(!songHasChords()){ showToast('Nothing to save yet — capture or build a chart first'); return; }
+ const cur = setlistData[curSetlistIdx];
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.style.cssText='background:var(--surf);border:2px solid var(--pg);border-radius:16px;padding:22px 24px;max-width:320px;width:100%;text-align:center;';
+ const chords = sections.reduce((a,x)=>a+(x.slots?x.slots.length:0),0);
+ box.innerHTML='<div style="font-size:.72rem;font-weight:700;color:var(--pg);margin-bottom:10px">Save song</div>'
+  +'<div style="font-size:.52rem;color:var(--muted);line-height:1.7;margin-bottom:12px">'
+  + nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+chords+' chord'+(chords===1?'':'s')
+  +' · '+sections.filter(x=>x.slots&&x.slots.length).length+' section(s)</div>'
+  +'<input id="ssd-input" type="text" placeholder="Name this song" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:.62rem;margin-bottom:14px;text-align:center" />'
+  +'<div style="display:flex;gap:8px">'
+  +'<button id="ssd-no" style="flex:1;padding:8px 0;border:1px solid var(--border2);border-radius:8px;background:none;color:var(--text);cursor:pointer;font-size:.6rem">Cancel</button>'
+  +'<button id="ssd-ok" style="flex:1;padding:8px 0;border:none;border-radius:8px;background:var(--pg);color:#07080f;cursor:pointer;font-size:.6rem;font-weight:700">Save</button>'
+  +'</div>';
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ const input=box.querySelector('#ssd-input');
+ input.value = cur ? cur.title : '';
+ input.focus(); input.select();
+ const close=()=>{ overlay.remove(); document.removeEventListener('keydown',onKey); };
+ function onKey(e){ if(e.key==='Escape') close(); }
+ document.addEventListener('keydown',onKey);
+ overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
+ box.querySelector('#ssd-no').addEventListener('click',close);
+ const go=()=>{
+  const v=input.value.trim();
+  if(!v){ input.focus(); return; }
+  // saveToSetlist reads the Build page's title field, so that is where the
+  // name has to land — one save path rather than a second one that would
+  // drift from it.
+  const t=document.getElementById('chart-title');
+  if(t) t.value=v;
+  close();
+  saveToSetlist();
+ };
+ box.querySelector('#ssd-ok').addEventListener('click',go);
+ input.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
 }
 
 function loadSLData(){ try{ return JSON.parse(localStorage.getItem('prism-sl')||'[]'); }catch(e){ return []; } }
@@ -14050,41 +14410,139 @@ function seedDemoSongIfNeeded(){
  }catch(e){}
 }
 
+// Select mode, for clearing out a setlist that has grown to dozens of songs
+// one confirmation at a time.
+let slSelectMode = false;
+let slPicked = {};      // song id -> true
+
+function _slRedraw(){
+ renderSetlist();
+ if(typeof renderSetlistNav==='function') renderSetlistNav();
+ if(typeof renderSetlistPerform==='function') renderSetlistPerform();
+}
+function slToggleSelectMode(on){
+ slSelectMode = (on==null) ? !slSelectMode : !!on;
+ slPicked = {};
+ _slRedraw();
+}
+function slPickedIds(){ return Object.keys(slPicked).filter(k=>slPicked[k]); }
+
+function slDeletePicked(){
+ const ids = slPickedIds();
+ if(!ids.length) return;
+ const titles = setlistData.filter(s=>ids.indexOf(String(s.id))>=0).map(s=>s.title||'Untitled');
+ const shown = titles.slice(0,6).map(t=>'<strong style="color:var(--text)">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</strong>').join(', ');
+ showConfirm({
+  title: 'Delete '+ids.length+' song'+(ids.length===1?'':'s')+'?',
+  bodyHtml: shown + (titles.length>6 ? ' and '+(titles.length-6)+' more' : '') + '.<br>This cannot be undone once you leave the page.',
+  confirmLabel: 'Delete '+ids.length,
+  onConfirm: ()=>{
+   const before = setlistData.slice();
+   const beforeCur = curSetlistIdx;
+   withUndo('Deleted '+ids.length+' song'+(ids.length===1?'':'s'),
+    ()=>({before, cur:beforeCur}),
+    (st)=>{ setlistData = st.before.slice(); curSetlistIdx = st.cur; saveSLData(setlistData); _slRedraw(); },
+    ()=>{
+     const curId = (curSetlistIdx>=0 && setlistData[curSetlistIdx]) ? String(setlistData[curSetlistIdx].id) : null;
+     setlistData = setlistData.filter(s=>ids.indexOf(String(s.id))<0);
+     // The loaded song's index moves when rows above it go; find it again by
+     // identity rather than trying to arithmetic the index into place.
+     curSetlistIdx = curId==null ? -1 : setlistData.findIndex(s=>String(s.id)===curId);
+     saveSLData(setlistData);
+     slSelectMode = false; slPicked = {};
+     _slRedraw();
+    });
+   // No toast of our own here: withUndo already raised one carrying the Undo
+   // button, and a second showToast replaces it — taking the only way back
+   // with it. That is exactly the bug this batch is meant to close, not open.
+  }
+ });
+}
+
+function renderSetlistTools(){
+ const t=document.getElementById('setlist-tools'); if(!t) return;
+ if(!setlistData.length){ t.innerHTML=''; return; }
+ if(!slSelectMode){
+  t.innerHTML='<button class="sc-btn" onclick="slToggleSelectMode(true)" '
+   +'title="Pick several songs to delete at once">☑ Select</button>';
+  return;
+ }
+ const n=slPickedIds().length;
+ t.innerHTML='<button class="sc-btn" onclick="slToggleSelectMode(false)">Done</button>'
+  +'<button class="sc-btn" onclick="slSelectAll()">'
+  +(n===setlistData.length?'Select none':'Select all')+'</button>'
+  +'<button class="sc-btn" onclick="slDeletePicked()"'+(n?'':' disabled style="opacity:.4"')
+  +'>🗑 Delete'+(n?' ('+n+')':'')+'</button>'
+  +'<span class="sl-count">'+n+' of '+setlistData.length+' selected</span>';
+}
+function slSelectAll(){
+ const all = slPickedIds().length===setlistData.length;
+ slPicked = {};
+ if(!all) setlistData.forEach(s=>{ slPicked[String(s.id)]=true; });
+ _slRedraw();
+}
+
 function renderSetlist(){
  setlistData=loadSLData();
  const el=document.getElementById('setlist-items'); if(!el) return;
- if(!setlistData.length){ el.innerHTML='<div class="sl-empty">No songs saved yet.<br><span style="opacity:.75">Add chords in Build, name it, then tap Save.</span></div>'; return; }
+ if(!setlistData.length){
+  slSelectMode=false;
+  renderSetlistTools();
+  el.innerHTML='<div class="sl-empty">No songs saved yet.<br><span style="opacity:.75">Add chords in Build, name it, then tap Save.</span></div>';
+  return;
+ }
+ renderSetlistTools();
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
- const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
+ const sid=String(song.id);
+ const item=document.createElement('div');
+ item.className='sl-item'+(i===curSetlistIdx?' active':'')+(slPicked[sid]?' picked':'');
  const _chordLine=songMetaChords(song);
- item.innerHTML=`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div>`
+ item.innerHTML=(slSelectMode?`<div class="sl-check">${slPicked[sid]?'✓':''}</div>`:'')
+  +`<div class="sl-name">${song.title}${song.isDemo?' <span style="font-size:.4rem;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:1px 5px;vertical-align:middle">DEMO</span>':''}</div>`
   +`<div class="sl-meta">${songMetaLine(song)}</div>`
   +(_chordLine?`<div class="sl-chords" title="${_chordLine.replace(/"/g,'&quot;')}">${_chordLine}</div>`:'')
-  +`<div class="sl-del" title="Delete song"></div>`;
- item.querySelector('.sl-del').addEventListener('click',e=>{
+  +(slSelectMode?'':`<div class="sl-del" title="Delete song" role="button" aria-label="Delete ${String(song.title||'song').replace(/"/g,'&quot;')}">✕</div>`);
+ const delEl=item.querySelector('.sl-del');
+ if(delEl) delEl.addEventListener('click',e=>{
  e.stopPropagation();
- // Was a blocking confirm() on every delete. An Undo you can ignore costs
- // nothing when you meant it and saves you when you didn't — and unlike a
- // confirm it also covers a mis-tap you didn't realise you made.
- const _redraw=()=>{ renderSetlist(); renderSetlistNav(); renderSetlistPerform(); };
- withUndo('Deleted — '+(song.title||'song'),
-  ()=>({i, song, cur:curSetlistIdx}),
-  (st)=>{
-   setlistData.splice(Math.min(st.i,setlistData.length),0,st.song);
-   curSetlistIdx=st.cur;
-   saveSLData(setlistData);
-   _redraw();
-  },
-  ()=>{
-   setlistData.splice(i,1);
-   if(curSetlistIdx===i) curSetlistIdx=-1;
-   else if(curSetlistIdx>i) curSetlistIdx--;
-   saveSLData(setlistData);
-   _redraw();
-  });
+ // This used to delete on the first tap and offer an Undo. Undo is still
+ // wired up underneath, but it is no longer the only thing between a
+ // mis-tap and a lost song: people forget Undo exists, and by the time you
+ // notice the song is gone the toast has been gone longer.
+ showConfirm({
+  title:'Delete this song?',
+  bodyHtml:'<strong style="color:var(--text)">'+String(song.title||'Untitled').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</strong> will be removed from your setlist.',
+  confirmLabel:'Delete',
+  onConfirm:()=>{
+   withUndo('Deleted — '+(song.title||'song'),
+    ()=>({i, song, cur:curSetlistIdx}),
+    (st)=>{
+     setlistData.splice(Math.min(st.i,setlistData.length),0,st.song);
+     curSetlistIdx=st.cur;
+     saveSLData(setlistData);
+     _slRedraw();
+    },
+    ()=>{
+     setlistData.splice(i,1);
+     if(curSetlistIdx===i) curSetlistIdx=-1;
+     else if(curSetlistIdx>i) curSetlistIdx--;
+     saveSLData(setlistData);
+     _slRedraw();
+    });
+  }
  });
- item.addEventListener('click',()=>loadSong(song,i));
+ });
+ item.addEventListener('click',()=>{
+  // In select mode a row is a checkbox, not a song to load — loading one
+  // mid-selection would swap the whole app's state out from under you.
+  if(slSelectMode){
+   slPicked[sid] = !slPicked[sid];
+   _slRedraw();
+   return;
+  }
+  loadSong(song,i);
+ });
  el.appendChild(item);
  });
 }
@@ -14154,6 +14612,10 @@ function loadSong(song,idx){
  // Demo song: prime bass to play too, so a first-time Play press is a full arrangement
  if(song.isDemo) blEnabled=true;
 
+ // The chart on screen now matches what was just loaded, so later edits have
+ // a baseline to be compared against — without this, loading a second song
+ // inherits the first one's fingerprint and reads as unsaved immediately.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
@@ -14361,6 +14823,39 @@ function toggleSS(id){
  const body = document.getElementById('ss-'+id+'-body');
  if(hdr) hdr.classList.toggle('open', ssOpen[id]);
  if(body) body.classList.toggle('open', ssOpen[id]);
+ syncSSPreviews();
+}
+
+// The one-line summary on each Settings section header, so a collapsed
+// section still says what it is set to.
+//
+// These four were hardcoded in the markup and updated by nothing — the Sound
+// Engine header read "Sine · Close" no matter which of fifteen voices was
+// lit, and "Close" is a voicing button that lives in a different section
+// entirely. A summary that never changes is worse than none: it is not a
+// blank you learn to ignore, it is a wrong answer you believe.
+function syncSSPreviews(){
+ // Wrapped whole, because the setters this hangs off run during boot and the
+ // state it reads is declared with let further down the file. `typeof` is no
+ // guard there: on a let still in its temporal dead zone it throws rather
+ // than returning 'undefined', which took the rest of the script's
+ // evaluation with it. A cosmetic summary must never be able to do that —
+ // the explicit boot call below fills all four in once everything exists.
+ try{
+  const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt||''; };
+  const label=w=>{ try{ return _sharedVoiceLabel(w); }catch(e){ return w||''; } };
+  const oct=document.getElementById('oct-disp');
+  set('ss-sound-preview', label(wave) + (oct&&oct.textContent ? ' · '+oct.textContent : ''));
+  set('ss-melody-preview', label(melWave));
+  set('ss-ui-preview', document.body.classList.contains('light-mode') ? 'Light' : 'Dark');
+  set('ss-playing-preview',
+      (voicing==='open' ? 'Spread' : 'Close')
+      + ' · ' + (logicModeOn ? 'Logic on' : 'Logic off'));
+  set('ss-tune-preview', 'A = ' + masterTune + ' Hz');
+  var _ins = (typeof midiAccess!=='undefined' && midiAccess) ? [...midiAccess.inputs.values()].length : 0;
+  set('ss-midi-preview', (_ins ? _ins+' input'+(_ins===1?'':'s') : 'No input')
+      + ' · ' + (midiMode==='melody' ? 'Melody' : 'Chords'));
+ }catch(e){}
 }
 
 // ═══════════════════════════════════════
@@ -14368,6 +14863,7 @@ function toggleSS(id){
 // ═══════════════════════════════════════
 function setTheme(t){
  document.body.classList.toggle('light-mode', t==='light');
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.getElementById('theme-dark')?.classList.toggle('active', t==='dark');
  document.getElementById('theme-light')?.classList.toggle('active', t==='light');
  try{ localStorage.setItem('prism-theme', t); }catch(e){}
@@ -14500,6 +14996,7 @@ let lastTriggeredDegree = -99;
 
 function toggleLogicMode(){
  logicModeOn = !logicModeOn;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  const btn = document.getElementById('logic-btn');
  const btn2 = document.getElementById('logic-indicator');
  if(btn) btn.textContent = 'Logic Mode: ' + (logicModeOn?'ON':'OFF');
@@ -14657,19 +15154,51 @@ function melBendWheel(norm){
  melBendWheelCents = Math.abs(v) < 0.02 ? 0 : v * MEL_BEND_RANGE_CENTS;
  _melBendApply();
 }
+// Melody, or melody and chords together. A wheel on a real keyboard bends
+// everything it is holding, which is what 'all' does; 'mel' keeps the lead
+// line bendable while chords stay planted, since a whole triad sliding is a
+// much stronger gesture than one note doing it.
+let melBendScope='all';
+// Bend is applied on top of whatever each oscillator is already offset by,
+// never as an absolute value. Unison spread and analog drift live on .detune
+// too — up to 60 cents of it on a wide MōdSynth patch — so ramping every
+// oscillator to one figure collapses a detuned stack into bare unison the
+// moment the wheel moves, and it never comes back. The base is captured the
+// first time an oscillator is bent, by which point makeVoice has already
+// applied its spread. An LFO routed to pitch still sums on top, since that
+// arrives through a connection rather than through .value.
+function _bendOscs(list, now){
+ (list||[]).forEach(o=>{
+  try{
+   if(o._bendBase === undefined) o._bendBase = o.detune.value;
+   o.detune.cancelScheduledValues(now);
+   o.detune.setValueAtTime(o.detune.value, now);
+   o.detune.linearRampToValueAtTime(o._bendBase + melBendCents, now+MEL_BEND_RAMP);
+  }catch(e){}
+ });
+}
 function _melBendApply(){
  const ctx=getCtx(); if(!ctx) return;
  melBendCents=_melBendTargetCents();
  const now=ctx.currentTime;
- Object.values(activeMelOscs).forEach(v=>{
-  (v.oscs||[]).forEach(o=>{
-   try{
-    o.detune.cancelScheduledValues(now);
-    o.detune.setValueAtTime(o.detune.value, now);
-    o.detune.linearRampToValueAtTime(melBendCents, now+MEL_BEND_RAMP);
-   }catch(e){}
-  });
+ Object.values(activeMelOscs).forEach(v=>_bendOscs(v.oscs, now));
+ // Chord voices live in a parallel array rather than a by-midi map, but they
+ // hold oscillators just the same, so the wheel can reach them by the same
+ // .detune route — no need to know what pitch any of them started on.
+ if(melBendScope==='all' && typeof activeOscs!=='undefined'){
+  activeOscs.forEach(v=>_bendOscs(v && v.oscs, now));
+ }
+}
+function setMidiBendScope(v){
+ melBendScope = (v==='mel') ? 'mel' : 'all';
+ ['mel','all'].forEach(k=>{
+  const b=document.getElementById('midi-bend-'+k);
+  if(b) b.classList.toggle('active', k===melBendScope);
  });
+ try{ localStorage.setItem('modo-midi-bend', melBendScope); }catch(e){}
+ // A chord left bent by a scope change would never be corrected, since
+ // nothing else re-reads the wheel until it moves again.
+ _melBendApply();
 }
 function melBendKey(dir,down){
  if(dir==='down') melBendDownHeld=down; else melBendUpHeld=down;
@@ -14678,6 +15207,10 @@ function melBendKey(dir,down){
 
 
 const musicalTypingHeld = {};
+// Identity of a physical key, stable across the whole press. e.code is the
+// key's position on the board, unchanged by layout, modifiers or dead-key
+// composition; e.key is only a fallback for an engine that omits it.
+function _keyId(e){ return (e && (e.code || e.key)) || ''; }
 // Sustain tokens for chords held down on the number keys, keyed by e.code so
 // the release matches the physical key regardless of modifiers.
 const heldChordKeys = {};
@@ -14732,8 +15265,20 @@ document.addEventListener('keydown', e => {
  if(offset !== undefined){
  const baseM = 60 + (root<=5?root:root-12) + melOctShift;
  const midi = baseM + offset;
- if(!musicalTypingHeld[e.key]){
- musicalTypingHeld[e.key] = midi;
+ // A key we sound is a key we own, so the browser does not also get to act
+ // on it. Firefox opens Quick Find on ' (and on /), which moves focus into
+ // browser chrome — where the keyup never reaches this document, leaving
+ // the note sustaining with nothing left to release it.
+ e.preventDefault();
+ // Keyed by physical key, exactly as heldChordKeys is, and for the same
+ // reason: e.key is the character the layout produced, and the character
+ // reported on keyup is not guaranteed to match the one on keydown. A
+ // modifier released early, a dead key composing, a layout switched
+ // mid-hold — any mismatch orphans the entry, and an orphaned entry is a
+ // note nothing will ever stop.
+ const kid = _keyId(e);
+ if(musicalTypingHeld[kid] === undefined){
+ musicalTypingHeld[kid] = midi;
  playMelNote(midi, 0, true);
  }
  return;
@@ -14770,9 +15315,13 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keyup', e => {
- if(musicalTypingOn && musicalTypingHeld[e.key]){
- if(!holdMode) releaseMelNote(musicalTypingHeld[e.key]);
- delete musicalTypingHeld[e.key];
+ // Deliberately not gated on musicalTypingOn: whether we release a note is
+ // not the toggle's business, only whether we start one is. Switching
+ // musical typing off with a key still down used to strand that note too.
+ const kid = _keyId(e);
+ if(musicalTypingHeld[kid] !== undefined){
+ if(!holdMode) releaseMelNote(musicalTypingHeld[kid]);
+ delete musicalTypingHeld[kid];
  }
  if(heldChordKeys[e.code]!==undefined){
  if(!holdMode) releaseSustainedChord(heldChordKeys[e.code]);
@@ -14787,11 +15336,22 @@ document.addEventListener('keyup', e => {
 // 30s sustain, since the keyup never arrives — same reasoning applies to a
 // bend key: without this, alt-tabbing away mid-bend leaves every melody note
 // stuck sharp or flat with no keyup ever coming to release it.
-window.addEventListener('blur', ()=>{
+//
+// Melody notes belong here for the same reason and were the one held thing
+// missing from it. Anything that takes focus away between keydown and keyup
+// swallows the keyup: alt-tab, a click into browser chrome, the OS stealing
+// the window. The keys are only the common case — this is the backstop, so
+// no route to a stuck note depends on a keyup that may never come.
+function _releaseAllHeldKeys(){
  Object.keys(heldChordKeys).forEach(k=>{ if(!holdMode) releaseSustainedChord(heldChordKeys[k]); delete heldChordKeys[k]; });
+ Object.keys(musicalTypingHeld).forEach(k=>{ if(!holdMode) releaseMelNote(musicalTypingHeld[k]); delete musicalTypingHeld[k]; });
  document.querySelectorAll('.kb-active').forEach(el=>el.classList.remove('kb-active'));
  if(melBendDownHeld||melBendUpHeld){ melBendDownHeld=false; melBendUpHeld=false; _melBendApply(); }
-});
+}
+window.addEventListener('blur', _releaseAllHeldKeys);
+// Backgrounding a tab on mobile does not reliably fire blur, and a phone is
+// where a note left ringing is hardest to find and silence.
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) _releaseAllHeldKeys(); });
 
 // ═══════════════════════════════════════
 // SYNC PERF WAVE BUTTONS
@@ -14810,12 +15370,17 @@ let midiMode = 'chord'; // 'chord' | 'melody'
 let midiKeyMap = 'movable'; // 'movable' | 'smart'
 let midiPanelOpen = false;
 
+// The panel is no longer a thing that opens over a page — it is the MIDI pane
+// of Settings. Anything that used to open it now goes there instead, which is
+// also somewhere you can get back to without knowing the badge was a button.
 function toggleMidiPanel(){
- midiPanelOpen = !midiPanelOpen;
- document.getElementById('midi-panel')?.classList.toggle('visible', midiPanelOpen);
+ midiCCLearning = null;
+ if(typeof switchTab==='function') switchTab('build');
+ if(typeof setSettingsPane==='function') setSettingsPane('midi');
 }
 function setMidiMode(m){
  midiMode = m;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.getElementById('midi-chord-btn')?.classList.toggle('active', m==='chord');
  document.getElementById('midi-melody-btn')?.classList.toggle('active', m==='melody');
 }
@@ -14862,6 +15427,393 @@ function midiPCToChord(pc, inSteps){
 // Sustain tokens for chords currently held on the MIDI keyboard, keyed by note.
 const midiChordTokens = {};
 // Override onMidiMsg with full routing logic
+// ═══════════════════════════════════════
+// SLIDER FINE CONTROL
+// ═══════════════════════════════════════
+// Every adjustable parameter in the app is a native range input 85px wide.
+// Most of them run 0-1 in steps of .01, which is a hundred values across
+// eighty-five pixels: 0.85px per step, under a fingertip covering forty. On
+// a phone the smallest change you can ask for is roughly a tenth of the
+// range, and a native slider also jumps to wherever you touch — so a nudge
+// starts by destroying the setting you were trying to nudge.
+//
+// This drives every range input by hand instead:
+//
+//   · Touching one changes nothing. The value moves from where it already
+//     is, relative to the drag, so the first millimetre is a small change
+//     rather than a jump to your fingertip.
+//   · Sliding away from the track buys precision, the gesture a DAW uses.
+//     Near the track a full track width is the full range, as before; drag
+//     off it and the same movement covers a quarter, then a twelfth.
+//   · The value shows in a bubble above the track, because the number
+//     printed underneath is the first thing a finger covers.
+//
+// One delegated listener, so this reaches all of them — including any added
+// later — and none of them need their markup or their oninput touched.
+const SLIDER_FINE_ZONES = [
+ {beyond:70, scale:1/12, label:'fine ×12'},
+ {beyond:26, scale:1/4,  label:'fine ×4'},
+ {beyond:0,  scale:1,    label:''},
+];
+function _slZone(dy){
+ const d = Math.abs(dy);
+ for(const z of SLIDER_FINE_ZONES) if(d >= z.beyond) return z;
+ return SLIDER_FINE_ZONES[SLIDER_FINE_ZONES.length-1];
+}
+(function(){
+ let el=null, pid=null, startX=0, startY=0, startVal=0, curVal=0, moved=false;
+ let bubble=null, lastTapT=0, lastTapEl=null, lastTapX=0, lastTapY=0;
+
+ // The app already prints this value somewhere next to the track, formatted
+ // its own way — percent, hertz, seconds. Reusing that text rather than
+ // inventing a second format keeps the bubble from ever disagreeing with the
+ // label it floats above.
+ function readout(t){
+  const par = t.parentElement;
+  const g = par && par.querySelector('.sv, .ms-val, .sq-kval, .sq-pkval');
+  const txt = g && g.textContent && g.textContent.trim();
+  if(txt) return txt;
+  const v = +t.value;
+  return Math.abs(v) >= 100 ? String(Math.round(v)) : String(+v.toFixed(3));
+ }
+ function paint(t, zone){
+  if(!bubble){
+   bubble = document.createElement('div');
+   bubble.className = 'sl-bubble';
+   document.body.appendChild(bubble);
+  }
+  const r = t.getBoundingClientRect();
+  bubble.innerHTML = '<b>' + readout(t).replace(/[<&]/g,'') + '</b>'
+   + (zone && zone.label ? '<span class="sl-hint">' + zone.label + '</span>'
+                         : '<span class="sl-hint">↕ for fine</span>');
+  bubble.style.left = (r.left + r.width/2) + 'px';
+  bubble.style.top  = (r.top - 6) + 'px';
+  bubble.classList.add('on');
+ }
+ function hide(){ if(bubble) bubble.classList.remove('on'); }
+
+ // A range input with no step attribute steps by 1, per spec — not by some
+ // small default. Assuming otherwise quantises to a grid the control does not
+ // have, and the swing slider is exactly that case.
+ function stepOf(t){
+  const raw = (t.getAttribute('step')||'').trim().toLowerCase();
+  if(raw === 'any'){
+   const r = parseFloat(t.max) - parseFloat(t.min);
+   return isFinite(r) && r > 0 ? r/1000 : 0.001;
+  }
+  const st = parseFloat(raw);
+  return (isFinite(st) && st > 0) ? st : 1;
+ }
+ function commit(t, v){
+  const lo=parseFloat(t.min), hi=parseFloat(t.max);
+  const st=stepOf(t);
+  let x=Math.max(lo,Math.min(hi,v));
+  // Land on the control's own step grid, or the value it reports back is
+  // one the slider could never have been dragged to.
+  x = lo + Math.round((x-lo)/st)*st;
+  x = Math.max(lo,Math.min(hi,x));
+  const prev = t.value;
+  t.value = x;
+  if(t.value !== prev){
+   t.dispatchEvent(new Event('input',{bubbles:true}));
+   t._slDirty = true;
+  }
+ }
+ // A native slider fires change when the drag ends, and something is
+ // listening: Reverb Size rebuilds its impulse response on change, not on
+ // input, precisely so it is not rebuilt for every pixel of a drag. Driving
+ // these by hand means sending it ourselves, or that rebuild never happens.
+ function settle(t){
+  if(!t || !t._slDirty) return;
+  t._slDirty = false;
+  t.dispatchEvent(new Event('change',{bubbles:true}));
+ }
+
+ document.addEventListener('pointerdown', function(e){
+  const t = e.target;
+  if(!t || t.tagName!=='INPUT' || (t.type||'').toLowerCase()!=='range') return;
+  if(t.disabled || t.readOnly) return;
+  // Double-tap resets to the value the markup shipped with, the same escape
+  // hatch the drum knobs already give you. Only two genuine taps count —
+  // recorded on release, and only when neither moved. Timing the press
+  // instead meant releasing a drag and grabbing the slider again inside a
+  // third of a second read as a double-tap and threw the setting away.
+  // Both taps also have to land in the same place, so a quick adjustment
+  // in two goes is not mistaken for one gesture.
+  const now = performance.now();
+  if(lastTapEl===t && now-lastTapT < 320
+     && Math.abs(e.clientX-lastTapX) < 12 && Math.abs(e.clientY-lastTapY) < 12){
+   lastTapT = 0; lastTapEl = null;
+   commit(t, parseFloat(t.defaultValue));
+   paint(t, null);
+   if(bubble) bubble.innerHTML = '<b>'+readout(t).replace(/[<&]/g,'')
+                               + '</b><span class="sl-hint">reset</span>';
+   setTimeout(hide, 700);
+   settle(t);
+   e.preventDefault();
+   return;
+  }
+
+  // Suppress the native jump-to-finger and take the gesture over.
+  e.preventDefault();
+  el=t; pid=e.pointerId; startX=e.clientX; startY=e.clientY;
+  startVal=curVal=parseFloat(t.value); moved=false;
+  try{ t.setPointerCapture(e.pointerId); }catch(_){}
+  // preventDefault costs the input its focus, and focus is what the arrow
+  // keys need — a slider you can nudge with a finger should not stop being
+  // one you can nudge with a keyboard.
+  try{ t.focus({preventScroll:true}); }catch(_){ try{ t.focus(); }catch(__){} }
+  paint(t, SLIDER_FINE_ZONES[SLIDER_FINE_ZONES.length-1]);
+ }, true);
+
+ document.addEventListener('pointermove', function(e){
+  if(!el || e.pointerId!==pid) return;
+  e.preventDefault();
+  const lo=parseFloat(el.min), hi=parseFloat(el.max), range=hi-lo;
+  const w = el.getBoundingClientRect().width || 85;
+  const zone = _slZone(e.clientY - startY);
+  const dx = e.clientX - startX;
+  // Full track width is the full range at 1x, so a gross move feels exactly
+  // as it did before; the zones only ever make it finer.
+  curVal = startVal + (dx/w) * range * zone.scale;
+  if(Math.abs(dx) > 2) moved = true;
+  commit(el, curVal);
+  paint(el, zone);
+ }, true);
+
+ function end(e){
+  if(!el || (e && e.pointerId!==pid)) return;
+  try{ el.releasePointerCapture(pid); }catch(_){}
+  // A tap that never moved is not a value change, but it did focus the
+  // control, so the arrow keys are live on it now — and it is the first
+  // half of a possible double-tap. A drag is neither.
+  if(!moved){
+   setTimeout(hide, 400);
+   lastTapT = performance.now(); lastTapEl = el;
+   lastTapX = startX; lastTapY = startY;
+  } else {
+   hide();
+   lastTapT = 0; lastTapEl = null;
+  }
+  settle(el);
+  el=null; pid=null; moved=false;
+ }
+ document.addEventListener('pointerup', end, true);
+ document.addEventListener('pointercancel', end, true);
+ // A slider left mid-drag when the window goes away would keep its bubble up.
+ window.addEventListener('blur', ()=>{ if(el) end({pointerId:pid}); });
+
+ // The wheel is the desktop half of the same problem: one notch should be
+ // one step, not a tenth of the range.
+ document.addEventListener('wheel', function(e){
+  const t=e.target;
+  if(!t || t.tagName!=='INPUT' || (t.type||'').toLowerCase()!=='range') return;
+  if(t.disabled || t.readOnly) return;
+  e.preventDefault();
+  const st=stepOf(t);
+  const mult = e.shiftKey ? 10 : 1;
+  commit(t, parseFloat(t.value) + (e.deltaY<0 ? st*mult : -st*mult));
+  paint(t, null);
+  clearTimeout(t._slWheelT);
+  t._slWheelT = setTimeout(()=>{ hide(); settle(t); }, 400);
+ }, {passive:false, capture:true});
+})();
+
+// ═══════════════════════════════════════
+// MIDI CC ROUTING
+// ═══════════════════════════════════════
+// Two control changes used to be hardcoded here — CC1 nudged the chord
+// Release slider's value (without firing its oninput, so the label under it
+// disagreed with the sound) and CC11 set the Mixer's chord level. Nothing
+// else on a controller did anything, and nothing said so.
+//
+// Destinations are declared, not hardcoded, so a controller knob can reach
+// anything the app already exposes as a slider — including every MōdSynth
+// parameter, derived from MS_CTRLS rather than listed again here. Routing a
+// CC to a slider drives the slider and dispatches its input event, which
+// means the existing oninput handler does the work and the on-screen control
+// moves with the knob. One source of truth per parameter.
+let midiCCRoutes = {};
+let midiCCLearning = null;      // destination key waiting for a knob to move
+let midiCCLast = {};            // last value seen per CC, for the panel readout
+
+function midiCCDests(){
+ const T = {};
+ const sl = (key,label,group,id) => { T[key] = {label, group, slider:id}; };
+ sl('chordatk','Chord Attack','Chords','attack');
+ sl('chordrel','Chord Release','Chords','decay');
+ sl('chordrev','Chord Reverb','Chords','rev-mix');
+ sl('revsize','Reverb Size','Chords','rev-size');
+ sl('strum','Strum Spread','Chords','strum-spread');
+ sl('velsense','Velocity Sensitivity','Chords','vel-sense');
+ sl('melatk','Melody Attack','Melody','mel-attack');
+ sl('melrel','Melody Release','Melody','mel-decay');
+ sl('melrev','Melody Reverb','Melody','mel-rev');
+ sl('tone','Tone','Tone macros','fx-cutoff');
+ sl('reso','Reso','Tone macros','fx-reso');
+ sl('sweep','Sweep','Tone macros','fx-env');
+ sl('drive','Drive','Tone macros','fx-drive');
+ sl('width','Width','Tone macros','fx-width');
+ sl('drift','Drift','Tone macros','fx-drift');
+ T['fxx'] = {label:'MōdFX — X axis', group:'MōdFX', fx:'x'};
+ T['fxy'] = {label:'MōdFX — Y axis', group:'MōdFX', fx:'y'};
+ (typeof MS_MIX_KEYS!=='undefined' ? MS_MIX_KEYS : [
+   ['chord','Chords'],['mel','Melody strip'],['bass','Bass'],
+   ['drum','Drums'],['melgen','Melody gen'],['arp','Arp']
+ ]).forEach(([k,label])=>{ T['mix_'+k] = {label:label+' Level', group:'Mixer', mix:k}; });
+ if(typeof MS_CTRLS!=='undefined'){
+  MS_CTRLS.forEach(c=>{ T['ms_'+c.k] = {label:'MōdSynth '+c.label, group:'MōdSynth', ms:c}; });
+ }
+ return T;
+}
+const MIDI_CC_DESTS = midiCCDests();
+
+// norm is 0..1, straight off the CC's 0-127.
+function midiCCApply(destKey, norm){
+ const d = MIDI_CC_DESTS[destKey]; if(!d) return;
+ norm = Math.max(0, Math.min(1, norm));
+ try{ _midiCCApply(d, norm); }catch(err){}
+}
+// Split out so the guard above covers every destination kind. The MōdFX
+// state it reads is declared much further down the file, and a knob nudged
+// while the page is still evaluating would otherwise hit its dead zone.
+function _midiCCApply(d, norm){
+ if(d.slider){
+  const el = document.getElementById(d.slider); if(!el) return;
+  const lo = parseFloat(el.min), hi = parseFloat(el.max);
+  if(!isFinite(lo) || !isFinite(hi)) return;
+  el.value = lo + norm*(hi-lo);
+  // The slider's own oninput is what updates the engine and the label. Going
+  // through it rather than around it is why this needs no per-parameter code.
+  el.dispatchEvent(new Event('input', {bubbles:true}));
+  return;
+ }
+ if(d.fx){
+  if(typeof fxSetPos !== 'function') return;
+  // The pad applies nothing at all unless it is engaged, so a wheel off its
+  // floor counts as a finger down and returning to the floor lifts it.
+  if(typeof fxEngage === 'function'){
+   if(norm > 0.004 && !fxEngaged) fxEngage(true);
+   else if(norm <= 0.004 && fxEngaged && !fxHold) fxEngage(false);
+  }
+  fxSetPos(d.fx==='x' ? norm : fxPos.x, d.fx==='y' ? norm : fxPos.y);
+  return;
+ }
+ if(d.mix){
+  if(window.sqMixGainsW) window.sqMixGainsW[d.mix] = norm;
+  if(typeof sqApplyMixToNodes === 'function') sqApplyMixToNodes(d.mix, norm);
+  if(typeof sqSyncMixIndicators === 'function') sqSyncMixIndicators();
+  if(typeof sqRenderMixer === 'function') sqRenderMixer();
+  return;
+ }
+ if(d.ms){
+  if(typeof msSet !== 'function') return;
+  const c = d.ms;
+  let v = c.min + norm*(c.max - c.min);
+  if(c.step >= 1) v = Math.round(v);
+  // Edits the patch the MōdSynth panel currently has open — the part chosen
+  // under "Patch for" — which is the same thing dragging that slider does.
+  msSet(c.k, v);
+  return;
+ }
+}
+
+function midiCCOnMessage(cc, val){
+ midiCCLast[cc] = val;
+ if(midiCCLearning){
+  // A knob only counts once it moves, so a controller streaming a resting
+  // value on connect cannot claim the binding on its own.
+  const dest = midiCCLearning;
+  midiCCLearning = null;
+  // One CC drives one destination: rebinding it replaces whatever it had.
+  Object.keys(midiCCRoutes).forEach(k=>{ if(midiCCRoutes[k]===dest) delete midiCCRoutes[k]; });
+  midiCCRoutes[cc] = dest;
+  midiCCSave();
+  renderMidiCC();
+  return;
+ }
+ const dest = midiCCRoutes[cc];
+ if(dest) midiCCApply(dest, val/127);
+ renderMidiCCActivity(cc);
+}
+
+function midiCCSave(){
+ try{ localStorage.setItem('modo-midi-cc', JSON.stringify(midiCCRoutes)); }catch(e){}
+}
+function midiCCLoad(){
+ // CC1 is the modulation wheel on every controller ever made, and the X axis
+ // of the MōdFX pad is the most expressive thing in the app to hand it.
+ // CC11 is expression, and keeps the chord level it already had.
+ const defaults = {1:'fxx', 11:'mix_chord'};
+ let saved = null;
+ try{ saved = JSON.parse(localStorage.getItem('modo-midi-cc') || 'null'); }catch(e){}
+ midiCCRoutes = (saved && typeof saved === 'object') ? saved : defaults;
+ // Drop routes naming a destination this build no longer has.
+ Object.keys(midiCCRoutes).forEach(cc=>{ if(!MIDI_CC_DESTS[midiCCRoutes[cc]]) delete midiCCRoutes[cc]; });
+ try{ const b=localStorage.getItem('modo-midi-bend'); if(b) melBendScope = (b==='mel')?'mel':'all'; }catch(e){}
+}
+
+function midiCCLearn(){
+ const sel = document.getElementById('midi-cc-dest');
+ if(!sel || !sel.value) return;
+ midiCCLearning = sel.value;
+ renderMidiCC();
+}
+function midiCCCancelLearn(){ midiCCLearning = null; renderMidiCC(); }
+function midiCCClear(cc){ delete midiCCRoutes[cc]; midiCCSave(); renderMidiCC(); }
+
+// A brief flash on the row a CC just moved, so you can see which knob is
+// which without watching the parameter it lands on.
+function renderMidiCCActivity(cc){
+ const row = document.getElementById('midi-cc-row-'+cc);
+ if(!row) return;
+ row.classList.add('lit');
+ clearTimeout(row._litT);
+ row._litT = setTimeout(()=>row.classList.remove('lit'), 220);
+}
+
+function renderMidiCC(){
+ const host = document.getElementById('midi-cc-rows');
+ const sel  = document.getElementById('midi-cc-dest');
+ const btn  = document.getElementById('midi-cc-learn');
+ if(sel && !sel.options.length){
+  const groups = {};
+  Object.keys(MIDI_CC_DESTS).forEach(k=>{
+   const g = MIDI_CC_DESTS[k].group || 'Other';
+   (groups[g] = groups[g] || []).push(k);
+  });
+  Object.keys(groups).forEach(g=>{
+   const og = document.createElement('optgroup'); og.label = g;
+   groups[g].forEach(k=>{
+    const o = document.createElement('option');
+    o.value = k; o.textContent = MIDI_CC_DESTS[k].label;
+    og.appendChild(o);
+   });
+   sel.appendChild(og);
+  });
+ }
+ if(btn){
+  btn.textContent = midiCCLearning ? 'Move a knob…' : 'Learn';
+  btn.classList.toggle('active', !!midiCCLearning);
+  btn.onclick = midiCCLearning ? midiCCCancelLearn : midiCCLearn;
+ }
+ if(!host) return;
+ const ccs = Object.keys(midiCCRoutes).sort((a,b)=>a-b);
+ if(!ccs.length){
+  host.innerHTML = '<div class="midi-cc-empty">Nothing mapped. Pick a parameter, hit Learn, then move the knob you want to use.</div>';
+  return;
+ }
+ host.innerHTML = ccs.map(cc=>{
+  const d = MIDI_CC_DESTS[midiCCRoutes[cc]];
+  return '<div class="midi-cc-row" id="midi-cc-row-'+cc+'">'
+       + '<span class="midi-cc-num">CC '+cc+'</span>'
+       + '<span class="midi-cc-arrow">→</span>'
+       + '<span class="midi-cc-dest">'+(d?d.label:'—')+'</span>'
+       + '<button class="midi-cc-x" title="Unmap CC '+cc+'" '
+       + 'onclick="midiCCClear('+cc+')">×</button></div>';
+ }).join('');
+}
+
 function onMidiMsg(e){
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
@@ -14927,12 +15879,7 @@ function onMidiMsg(e){
  const raw = ((e.data[2]||0) << 7) | (e.data[1]||0);
  melBendWheel((raw - 8192) / 8192);
  } else if(type === 0xb0){
- if(e.data[1]===1){ document.getElementById('decay').value=(.1+(vel/127)*7.9).toFixed(2); }
- if(e.data[1]===11){
-  // Expression pedal now controls the Mixer's Chord channel directly (volume lives solely in the Mixer)
-  if(window.sqMixGainsW) window.sqMixGainsW.chord=vel/127;
-  if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes('chord', vel/127);
- }
+ midiCCOnMessage(e.data[1], vel);
  }
 }
 
@@ -14997,7 +15944,28 @@ function positionSubnavLed(navId){
  led.style.width=Math.max(12,bb.width-inset*2)+'px';
 }
 function positionAllSubnavLeds(){
- ['pf-subnav','bm-subnav'].forEach(positionSubnavLed);
+ ['pf-subnav','bm-subnav','set-subnav'].forEach(positionSubnavLed);
+}
+
+// Which pane of Settings is showing. Persisted, because you almost always come
+// back for the same one.
+const SET_PANES = ['sounds','midi','playing','ui'];
+let settingsPane = 'sounds';
+function setSettingsPane(which){
+ if(SET_PANES.indexOf(which) < 0) which = 'sounds';
+ settingsPane = which;
+ SET_PANES.forEach(k=>{
+  const pane = document.getElementById('set-pane-'+k);
+  if(pane) pane.style.display = (k===which) ? '' : 'none';
+  const btn = document.getElementById('set-'+k+'-btn');
+  if(btn) btn.classList.toggle('active', k===which);
+ });
+ try{ localStorage.setItem('modo-settings-pane', which); }catch(e){}
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
+ // The MIDI pane builds its routing list lazily, and a hidden element has no
+ // width to position the LED against, so both wait until the pane is up.
+ if(which==='midi' && typeof renderMidiCC==='function') renderMidiCC();
+ setTimeout(()=>positionSubnavLed('set-subnav'), 0);
 }
 window.addEventListener('resize', positionAllSubnavLeds);
 
@@ -15052,6 +16020,38 @@ function setAccompMode(m){
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
+// A fingerprint of what a save would actually store, so "has this changed
+// since it was saved" is answerable without trusting every edit path to
+// remember to raise a flag.
+function _songSig(){
+ try{
+  return JSON.stringify({
+   root, mode,
+   sections: sections.map(s=>({
+    n:s.name, p:secPlays(s),
+    sl:(s.slots||[]).map(x=>[x.rootM,x.triadQ,x.type7,x.ext,x.bassNote,
+                             x.bars,x.beats,x.eighths,x.isRest?1:0])
+   }))
+  });
+ }catch(e){ return ''; }
+}
+let _songSavedSig = null;   // signature as of the last load or save
+function markSongSaved(){ _songSavedSig = _songSig(); }
+function songHasChords(){ return sections.some(s=>s && s.slots && s.slots.length); }
+function songIsDirty(){ return _songSavedSig !== null && _songSig() !== _songSavedSig; }
+
+// What to call the thing currently loaded. Three states, and the banner used
+// to collapse two of them into "No song loaded" — which it said over a chart
+// full of chords, because it only ever looked at the setlist index. A song you
+// built or captured is not "no song"; it is a song you have not saved yet, and
+// that is the one state worth prompting about.
+function songDisplayTitle(){
+ const song = setlistData[curSetlistIdx];
+ if(song) return song.title + (songIsDirty() ? ' (unsaved changes)' : '');
+ if(songHasChords()) return 'Untitled (not saved)';
+ return 'No song loaded';
+}
+
 function renderSongsPerformView(){
  if(typeof renderSetups==='function') renderSetups();
  // Update banner
@@ -15059,13 +16059,23 @@ function renderSongsPerformView(){
  const titleEl = document.getElementById('slb-title');
  const metaEl = document.getElementById('slb-meta');
  const keyEl = document.getElementById('slb-key');
- if(song){
- if(titleEl) titleEl.textContent = song.title;
- if(metaEl) metaEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+sections.reduce((a,s)=>a+s.slots.length,0)+' chords';
+ const saveBtn = document.getElementById('slb-save-btn');
+ const chordCount = sections.reduce((a,s)=>a+(s.slots?s.slots.length:0),0);
+ if(titleEl) titleEl.textContent = songDisplayTitle();
  if(keyEl) keyEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label;
- } else {
- if(titleEl) titleEl.textContent = 'No song loaded';
- if(metaEl) metaEl.textContent = 'Load a song from Build mode';
+ if(metaEl){
+  metaEl.textContent = songHasChords()
+   ? nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+chordCount+' chords'
+   : 'Build a chart, or capture one with ◉ in the transport';
+ }
+ if(saveBtn){
+  // Nothing to save with an empty chart, and nothing to do when what is
+  // loaded already matches what is stored.
+  const needed = songHasChords() && (!song || songIsDirty());
+  saveBtn.style.display = songHasChords() ? '' : 'none';
+  saveBtn.classList.toggle('on', needed);
+  saveBtn.title = needed ? 'Save this song to the setlist — playback keeps going'
+                         : 'Saved. Save again under a new name to make a copy.';
  }
 
  // Render full chart — all sections
@@ -15620,7 +16630,10 @@ function startSongRecord(){
  stopSongLoopIfActive();
  const base='Recording';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
- sections.push({name:base+' '+n, slots:[]});
+ // plays:0 spelled out rather than left to secPlays' default, so a freshly
+ // captured section loops on itself instead of inheriting anything from the
+ // song it was recorded into.
+ sections.push({name:base+' '+n, slots:[], plays:0, follow:'repeat'});
  songRecSectionIdx = sections.length-1;
  curSection = songRecSectionIdx;
  songRecActive = true;
@@ -15630,6 +16643,43 @@ function startSongRecord(){
  showToast('Recording to "'+base+' '+n+'" — play some chords');
 }
 
+// Total length of a captured section, in eighths — the unit the recorder
+// already stores durations in.
+function _songSectionEighths(sec){
+ if(!sec || !sec.slots) return 0;
+ const eighthsPerBar = _songBarSteps()/2;
+ return sec.slots.reduce((a,sl)=>
+   a + (sl.bars||0)*eighthsPerBar + (sl.beats||0)*2 + (sl.eighths||0), 0);
+}
+
+// A capture ends when you stop playing, which is almost never on a bar line.
+// The section was left exactly as long as you happened to take, so looping it
+// put its first chord wherever the drums happened to be — a few eighths adrift
+// on every pass, compounding. It sounded like the chords were late.
+//
+// The last slot is padded out with a rest instead, so the section is a whole
+// number of bars and the loop comes back around on the downbeat. A rest rather
+// than stretching the final chord: the silence is what you actually played,
+// and it stays editable in the chart either way.
+function _songRecPadToBar(sec){
+ if(!sec || !sec.slots || !sec.slots.length) return 0;
+ const eighthsPerBar = _songBarSteps()/2;
+ if(!(eighthsPerBar > 0)) return 0;
+ const total = _songSectionEighths(sec);
+ const rem = total % eighthsPerBar;
+ if(rem === 0) return 0;
+ const pad = eighthsPerBar - rem;
+ sec.slots.push({
+  label:'', numeral:'', rootM:null, triadQ:null, type7:null,
+  func:null, ext:'triad', bassNote:null,
+  bars:Math.floor(pad/eighthsPerBar),
+  beats:Math.floor((pad%eighthsPerBar)/2),
+  eighths:pad%2,
+  isRest:true
+ });
+ return pad;
+}
+
 function stopSongRecord(){
  if(!songRecActive) return;
  const ctx=getCtx();
@@ -15637,7 +16687,10 @@ function stopSongRecord(){
  songRecActive = false;
  const recordedIdx = songRecSectionIdx;
  const sec = sections[recordedIdx];
+ // Counted before padding: the rest that fills out the bar is not a chord you
+ // played, and reporting it as one would be off by one on every capture.
  const count = sec ? sec.slots.length : 0;
+ const _padded = _songRecPadToBar(sec);
  songRecSectionIdx = -1;
  _updateSongRecUI();
  renderChartSeq(); buildSectionTabs();
@@ -15658,7 +16711,9 @@ function stopSongRecord(){
   if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
   if(typeof _updateSongBtn==='function') _updateSongBtn();
   if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
-  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' — looping "'+(sec?sec.name:'')+'"');
+  showToast('Recorded '+count+' chord'+(count===1?'':'s')
+   + (_padded ? ' + a rest to finish the bar' : '')
+   + ' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
  }
@@ -16415,6 +17470,10 @@ function loadStandard(idx){
  document.getElementById('chart-title').value=std.title;
  ['bm-major','songs-bm-major'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='major'));
  ['bm-minor','songs-bm-minor'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='minor'));
+ // The chart on screen now matches what was just loaded, so later edits have
+ // a baseline to be compared against — without this, loading a second song
+ // inherits the first one's fingerprint and reads as unsaved immediately.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof buildChartPicker==='function') buildChartPicker();
@@ -17209,6 +18268,7 @@ function buildMelVoicePickers(){
 
 function setMelWave(w){
  melWave = w;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-melwave]').forEach(b=>
   b.classList.toggle('active', b.dataset.melwave===w));
  // Sampled instruments start fetching the moment they're chosen, so the first
@@ -18001,6 +19061,14 @@ buildStandardsMenu();
 buildChartPicker();
 renderChords();
 if(typeof buildVoicePickers==='function') buildVoicePickers();
+if(typeof syncSSPreviews==='function') syncSSPreviews();
+if(typeof midiCCLoad==='function'){ midiCCLoad(); }
+if(typeof setSettingsPane==='function'){
+ var _sp=null; try{ _sp=localStorage.getItem('modo-settings-pane'); }catch(e){}
+ setSettingsPane(_sp||'sounds');
+}
+if(typeof setMidiBendScope==='function') setMidiBendScope(melBendScope);
+if(typeof renderMidiCC==='function') renderMidiCC();
 if(typeof syncAutoInvUI==='function') syncAutoInvUI();
 if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
 // Both loaders are async (the codec is). Whichever one the hash matches
@@ -18159,12 +19227,69 @@ function ftPlayStop(){
  syncFixedTransport();
 }
 // Kept for any older call sites that still reference it.
+// Loading a groove rewrites the grid AND the step count. Done mid-bar while
+// the sequencer is running, that is what "it adds beats": sqSeqStep keeps
+// counting against a length that changed underneath it, so the bar in flight
+// gets stretched or cut and everything downstream walks out of phase.
+//
+// So it waits for the downbeat, the same way a kit swap already does —
+// sqFlushPending runs at the bar line, which is the one moment where changing
+// the length costs nothing.
+// The groove queue lives out here with sqLoadGroove, outside the sequencer
+// IIFE that owns sqSteps and sqPlaying. The scheduler reaches it through the
+// two window hooks below — the same contract every other cross-boundary call
+// in this file uses. Putting the state inside the IIFE and reading it from
+// out here is exactly the mistake this boundary exists to catch.
+var sqPendGroove = null;   // groove waiting for the next downbeat
+var sqCurGroove  = -1;     // groove currently loaded, so the row can show it
+
+window._sqFlushGroove = function(){
+  if(sqPendGroove===null) return false;
+  var g = sqPendGroove; sqPendGroove = null;
+  sqApplyGroove(g);
+  if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
+  return true;
+};
+window._sqClearPendGroove = function(){
+  if(sqPendGroove===null) return;
+  sqPendGroove = null;
+  if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
+};
+
 function sqLoadGroove(idx){
-  document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:RHYTHMS[idx],steps:RHYTHMS[idx].pat.length}}));
-  // Auto-generate a bass line to match the loaded groove
-  setTimeout(function(){
-    if(typeof window.blGenerate==='function') window.blGenerate();
-  }, 80);
+  var playing = (typeof window._sqPlaying==='function') && window._sqPlaying();
+  if(playing){
+    sqPendGroove = idx;
+    if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
+    return;
+  }
+  sqApplyGroove(idx);
+  // Applied immediately, so repaint here too — otherwise the row only picks up
+  // the active groove on the paths that flush a queue, and a groove chosen
+  // while stopped shows nothing at all.
+  if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
+}
+
+function sqApplyGroove(idx){
+  var r = RHYTHMS[idx]; if(!r) return;
+  sqCurGroove = idx;
+  var newSteps = r.pat.length;
+  var oldSteps = (typeof window._sqSteps==='function') ? window._sqSteps() : newSteps;
+  document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:r,steps:newSteps}}));
+  // The bass used to be regenerated on every groove change, on an 80ms timer.
+  // That threw away a line you liked because you wanted different drums under
+  // it — two separate parts, one button. It keeps grooving along now.
+  //
+  // The exception is the step count. If the new groove is a different length
+  // and the sequencers are linked, the bass and melody have to move with it or
+  // "linked" is a lie; their existing patterns no longer fit the bar, so those
+  // two do regenerate at the new length. Unlinked, they keep their own length
+  // and their own line, and nothing happens to them at all.
+  if(newSteps !== oldSteps && typeof stepCountLock!=='undefined' && stepCountLock){
+    if(typeof setSeqStepCount==='function') setSeqStepCount('sq', newSteps);
+    if(typeof window.blGenerate==='function'){ try{ window.blGenerate(); }catch(e){} }
+    if(typeof window.mlGenerate==='function'){ try{ window.mlGenerate(); }catch(e){} }
+  }
 }
 
 
@@ -19296,6 +20421,10 @@ window._sqScheduler=function(){
 
 function sqFlushPending(){
   var did=false;
+  // Groove first: it sets the step count the rest of this bar is measured in.
+  // The queue lives outside this IIFE with sqLoadGroove, so it is reached the
+  // way everything else crosses that boundary — through window.
+  if(typeof window._sqFlushGroove==='function' && window._sqFlushGroove()) did=true;
   if(sqPendMach){sqDoSwap(sqPendMach);did=true;}
   if(sqPendPat!==null){var idx=sqPendPat;sqPendPat=null;sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatPlay(idx);did=true;}
   if(!did&&sqUsingChain&&sqChain.length>0){sqChainPos=(sqChainPos+1)%sqChain.length;var ni=sqChain[sqChainPos];sqSavePat(sqCurPat);sqCurPat=ni;if(sqPats[ni])sqLoadPatPlay(ni);}
@@ -19389,6 +20518,7 @@ function sqStop(){
   var mlStillOn=typeof window._mlPlaying==='function'&&window._mlPlaying();
   if(!rhythmOn&&!arpOn&&!blStillOn&&!mlStillOn)clearTimeout(clockTimer);
   sqUsingChain=false;sqDispStep=-1;sqPendPat=null;sqPendMach=null;
+  if(typeof window._sqClearPendGroove==='function') window._sqClearPendGroove();
   sqUpdateStatus();sqRenderPSlots();sqRenderMachines();
 }
 
@@ -20422,7 +21552,11 @@ window._blEnsureGrid = function(){ blEnsureGrid(); };
 window._blRenderGrid = function(){ blRenderGrid(); };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 var blMenuStep = -1;
-var blGenStyle = 'rock';
+// Funk out of the box rather than Rock: the eighth-note root pattern is the
+// most neutral thing the generator makes, and neutral is the one thing a
+// starting point should not be. A restored session carries its own style,
+// so this only decides where a blank one begins.
+var blGenStyle = 'funk';
 var blWave = 'electric';
 var blCutoff = 600;
 var blResonance = 2;
@@ -22320,7 +23454,9 @@ window._mlResync = function(){
 window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
 var mlMenuStep = -1;
-var mlGenStyle = 'arpeggio';
+// Pop Hook rather than Arpeggio, for the same reason: an arpeggio spells the
+// chord you are already hearing, where a hook is a line of its own.
+var mlGenStyle = 'hook';
 var mlWave = 'piano';
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
@@ -23870,12 +25006,16 @@ function sqBuildGroovePresets(){
     var b = document.createElement('button');
     // Was three hardcoded dark hexes, which rendered as dark-on-light buttons
     // with near-invisible labels in light mode.
-    b.className='groove-btn';
+    b.className='groove-btn'
+      + (i===sqCurGroove ? ' active' : '')
+      + (i===sqPendGroove ? ' queued' : '');
     b.innerHTML='<b>'+r.sig+'</b> '+r.name;
+    // A groove that is waiting for the downbeat has to say so, or the tap
+    // reads as having done nothing at all for up to a whole bar.
+    if(i===sqPendGroove) b.title='Queued — starts on the next downbeat';
     b.onclick=function(){ sqLoadGroove(i); };
     el.appendChild(b);
   });
-  sqBuildDrumStyles();
 }
 
 // sqLoadGroove stub above is canonical
@@ -24012,7 +25152,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.7.0';
+const MODRIFF_VERSION = '2.8.0';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
