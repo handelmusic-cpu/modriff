@@ -1922,6 +1922,18 @@ body { padding-top:52px; padding-bottom:56px; }
  background:var(--surf2);
 }
 .ss-body.open { display:block; }
+/* Names the reach of the controls under it. The Sound Engine section mixes
+   two scopes — the chord voice's own envelope and reverb, and six macros that
+   colour every voice in the app — and looked like one flat list of knobs,
+   which is most of why nobody could tell what it was editing. */
+.ss-scope {
+ display:flex; align-items:center; gap:8px; margin:14px 0 8px;
+ font-family:'Orbitron',sans-serif; font-size:.5rem; font-weight:700;
+ letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+}
+.ss-scope::after { content:''; flex:1; height:1px; background:var(--border); }
+.ss-scope:first-child { margin-top:0; }
+.ss-scope b { color:var(--pg); font-weight:700; }
 
 /* Light mode */
 /* ═══════════════════════════════════════
@@ -4158,11 +4170,12 @@ body.mode-free .pro-only { display:none !important; }
  <!-- Sound Engine -->
  <div class="settings-section" id="ss-sound">
  <div class="ss-hdr open" onclick="toggleSS('sound')">
- <span>Sound Engine</span>
- <div class="ss-preview" id="ss-sound-preview">Sine · Close</div>
+ <span>Chord Sound Engine</span>
+ <div class="ss-preview" id="ss-sound-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-sound-body">
+ <div class="ss-scope">Voice <b>the chord buttons play</b></div>
  <div class="row">
  <div class="tg" id="bw-voices" style="flex-wrap:wrap"></div>
  <div class="tg">
@@ -4181,6 +4194,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="sg"><div class="sl">Strum</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
  <div class="sg"><div class="sl">Velocity</div><input type="range" id="vel-sense" min="0" max="1" step=".05" value=".5"><div class="sl" style="margin-top:2px">Sensitivity</div></div>
  </div>
+ <div class="ss-scope">Tone macros <b>every voice in the app</b></div>
  <div class="row" style="margin-top:2px">
  <div class="sg"><div class="sl">Tone</div><input type="range" id="fx-cutoff" min=".08" max="1" step=".01" value=".88" oninput="onFxInput()"><div class="sv" id="fxcut-val">—</div></div>
  <div class="sg"><div class="sl">Reso</div><input type="range" id="fx-reso" min="0" max="1" step=".01" value=".12" oninput="onFxInput()"><div class="sv" id="fxreso-val">12%</div></div>
@@ -4191,6 +4205,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="sg"><div class="sl">Width</div><input type="range" id="fx-width" min="0" max="1" step=".01" value=".4" oninput="onFxInput()"><div class="sv" id="fxwidth-val">40%</div></div>
  <div class="sg"><div class="sl">Drift</div><input type="range" id="fx-drift" min="0" max="1" step=".01" value=".3" oninput="onFxInput()"><div class="sv" id="fxdrift-val">30%</div></div>
  </div>
+ <div class="ss-scope">Chords <b>only</b></div>
  <div class="row">
  <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="Play the sustained chord underneath the arp, not just the arp notes. Relative volume between Chord and Arp is set in the Mixer.">Chord Layer: ON</button>
  <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Gives chords a plucked, strummed character (quicker decay, settles after the initial hit) instead of a sustained pad">Strum: ON</button>
@@ -4204,8 +4219,8 @@ body.mode-free .pro-only { display:none !important; }
  <!-- Melody Voice -->
  <div class="settings-section" id="ss-melody">
  <div class="ss-hdr open" onclick="toggleSS('melody')">
- <span> Melody Voice</span>
- <div class="ss-preview" id="ss-melody-preview">Sine</div>
+ <span> Melody Sound Engine</span>
+ <div class="ss-preview" id="ss-melody-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-melody-body">
@@ -4228,7 +4243,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="settings-section" id="ss-display">
  <div class="ss-hdr open" onclick="toggleSS('display')">
  <span>◐ Display &amp; Logic</span>
- <div class="ss-preview" id="ss-display-preview">Dark · Standard</div>
+ <div class="ss-preview" id="ss-display-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-display-body">
@@ -4285,7 +4300,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="settings-section" id="ss-tune">
  <div class="ss-hdr open" onclick="toggleSS('tune')">
  <span>〜 Master Tune</span>
- <div class="ss-preview" id="ss-tune-preview">A = 440 Hz</div>
+ <div class="ss-preview" id="ss-tune-preview"></div>
  <span class="ss-arrow">›</span>
  </div>
  <div class="ss-body open" id="ss-tune-body">
@@ -7695,6 +7710,7 @@ function strumOffsets(n){
 // Velocity from pointer pressure or random humanize
 function setMasterTune(hz){
  masterTune=parseFloat(hz)||440;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  const disp=document.getElementById('master-tune-disp');
  if(disp) disp.textContent='A = '+masterTune.toFixed(1)+' Hz';
  // Update preset buttons
@@ -10796,6 +10812,7 @@ const _preloadIfSampled = window._preloadIfSampled;
 
 function setWave(w){
  wave=w;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-wave]').forEach(b=>
   b.classList.toggle('active', b.dataset.wave===w));
  _preloadIfSampled(w);
@@ -10869,6 +10886,7 @@ function buildModSynthPresets(){
 }
 function setVoicing(v){
  voicing=v;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  ['close','open'].forEach(x=>{ const e=document.getElementById('bv-'+x); if(e) e.classList.toggle('active',x===v); });
 }
 function shiftOct(d){
@@ -10878,6 +10896,7 @@ function shiftOct(d){
 function updateOct(){
  const m=rootMidi(); const octN=Math.floor(m/12)-1;
  const d=document.getElementById('oct-disp'); if(d) d.textContent=nn(root)+octN;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
 }
 function transposeBy(s){
  root=((root+s)%12+12)%12;
@@ -14361,6 +14380,35 @@ function toggleSS(id){
  const body = document.getElementById('ss-'+id+'-body');
  if(hdr) hdr.classList.toggle('open', ssOpen[id]);
  if(body) body.classList.toggle('open', ssOpen[id]);
+ syncSSPreviews();
+}
+
+// The one-line summary on each Settings section header, so a collapsed
+// section still says what it is set to.
+//
+// These four were hardcoded in the markup and updated by nothing — the Sound
+// Engine header read "Sine · Close" no matter which of fifteen voices was
+// lit, and "Close" is a voicing button that lives in a different section
+// entirely. A summary that never changes is worse than none: it is not a
+// blank you learn to ignore, it is a wrong answer you believe.
+function syncSSPreviews(){
+ // Wrapped whole, because the setters this hangs off run during boot and the
+ // state it reads is declared with let further down the file. `typeof` is no
+ // guard there: on a let still in its temporal dead zone it throws rather
+ // than returning 'undefined', which took the rest of the script's
+ // evaluation with it. A cosmetic summary must never be able to do that —
+ // the explicit boot call below fills all four in once everything exists.
+ try{
+  const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt||''; };
+  const label=w=>{ try{ return _sharedVoiceLabel(w); }catch(e){ return w||''; } };
+  const oct=document.getElementById('oct-disp');
+  set('ss-sound-preview', label(wave) + (oct&&oct.textContent ? ' · '+oct.textContent : ''));
+  set('ss-melody-preview', label(melWave));
+  set('ss-display-preview',
+      (document.body.classList.contains('light-mode') ? 'Light' : 'Dark')
+      + ' · ' + (logicModeOn ? 'Logic on' : 'Logic off'));
+  set('ss-tune-preview', 'A = ' + masterTune + ' Hz');
+ }catch(e){}
 }
 
 // ═══════════════════════════════════════
@@ -14368,6 +14416,7 @@ function toggleSS(id){
 // ═══════════════════════════════════════
 function setTheme(t){
  document.body.classList.toggle('light-mode', t==='light');
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.getElementById('theme-dark')?.classList.toggle('active', t==='dark');
  document.getElementById('theme-light')?.classList.toggle('active', t==='light');
  try{ localStorage.setItem('prism-theme', t); }catch(e){}
@@ -14500,6 +14549,7 @@ let lastTriggeredDegree = -99;
 
 function toggleLogicMode(){
  logicModeOn = !logicModeOn;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  const btn = document.getElementById('logic-btn');
  const btn2 = document.getElementById('logic-indicator');
  if(btn) btn.textContent = 'Logic Mode: ' + (logicModeOn?'ON':'OFF');
@@ -17240,6 +17290,7 @@ function buildMelVoicePickers(){
 
 function setMelWave(w){
  melWave = w;
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-melwave]').forEach(b=>
   b.classList.toggle('active', b.dataset.melwave===w));
  // Sampled instruments start fetching the moment they're chosen, so the first
@@ -18032,6 +18083,7 @@ buildStandardsMenu();
 buildChartPicker();
 renderChords();
 if(typeof buildVoicePickers==='function') buildVoicePickers();
+if(typeof syncSSPreviews==='function') syncSSPreviews();
 if(typeof syncAutoInvUI==='function') syncAutoInvUI();
 if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
 // Both loaders are async (the codec is). Whichever one the hash matches
