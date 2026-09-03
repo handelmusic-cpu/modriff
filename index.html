@@ -936,6 +936,25 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
  font-size:.62rem; cursor:pointer; transition:all .12s; touch-action:manipulation;
 }
 .sec-add:hover { border-color:var(--py); color:var(--py); }
+/* Move / delete for the selected section. A section could be added and renamed
+   but never moved, removed or put anywhere but the end — so a mis-hit Capture
+   left a section in the song with no way to take it back out. */
+.sec-ctrls { display:flex; align-items:center; gap:4px; margin:-4px 0 10px; flex-wrap:wrap; }
+.sec-ctrls:empty { display:none; }
+.sec-ctrls .sec-ctrl-lbl {
+ font-size:.46rem; color:var(--muted); text-transform:uppercase;
+ letter-spacing:.09em; margin-right:2px;
+}
+.sec-btn {
+ display:flex; align-items:center; justify-content:center; min-width:26px; height:24px;
+ padding:0 7px; border-radius:6px; border:1px solid var(--border2);
+ background:none; color:var(--muted); cursor:pointer; font-size:.62rem;
+ transition:all .12s; touch-action:manipulation;
+}
+.sec-btn:hover:not(:disabled) { border-color:var(--py); color:var(--py); }
+.sec-btn:disabled { opacity:.3; cursor:default; }
+.sec-btn.danger:hover:not(:disabled) { border-color:var(--dom); color:var(--dom);
+                                       background:rgba(255,77,109,.1); }
 
 /* Progression presets */
 .prog-presets { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px; }
@@ -4479,6 +4498,7 @@ body.mode-free .pro-only { display:none !important; }
 
  <!-- Sections -->
  <div class="section-tabs" id="section-tabs"></div>
+ <div class="sec-ctrls" id="section-ctrls"></div>
 
  <!-- How many times the selected section plays before the song moves on.
       This was a glyph a few pixels wide in the corner of the tab above; it
@@ -13225,6 +13245,74 @@ function sec_followTitle(i,mode){
  if(n===0) return 'Loops until you move on yourself';
  return 'Plays '+n+(n===1?' time':' times')+', then moves on'+to;
 }
+// Everything that remembers a section by index has to be corrected when the
+// list is reordered or shortened, or the song loop carries on pointing at
+// whatever moved into that slot. Kept in one place so a new index-holder is
+// one line here rather than a bug found later during a gig.
+function _sectionReindex(map){
+ curSection        = map(curSection);
+ songCurrentSection = map(songCurrentSection);
+ songLoopSection   = map(songLoopSection);
+ songRecSectionIdx = map(songRecSectionIdx);
+ if(_songHeldAt){
+  const n = map(_songHeldAt.section);
+  if(n < 0) _songHeldAt = null; else _songHeldAt.section = n;
+ }
+ if(curSection < 0 || curSection >= sections.length){
+  curSection = Math.max(0, Math.min(sections.length-1, curSection));
+ }
+}
+function _sectionRepaint(){
+ buildSectionTabs();
+ renderChartSeq();
+ if(typeof renderSectionPlays==='function') renderSectionPlays();
+ if(typeof renderSongsPerformView==='function' && songsMode==='perform') renderSongsPerformView();
+}
+
+// Move the selected section one place along. Swapping rather than splicing so
+// the two indices are the only ones that change.
+function sectionMove(dir){
+ const i = curSection, j = i + dir;
+ if(i<0 || j<0 || j>=sections.length) return;
+ const t = sections[i]; sections[i] = sections[j]; sections[j] = t;
+ _sectionReindex(k => k===i ? j : (k===j ? i : k));
+ _sectionRepaint();
+}
+
+function sectionDelete(){
+ const i = curSection;
+ const sec = sections[i]; if(!sec) return;
+ const n = sec.slots ? sec.slots.length : 0;
+ const last = sections.length <= 1;
+ showConfirm({
+  title: last ? 'Clear this section?' : 'Delete this section?',
+  bodyHtml: '<strong style="color:var(--text)">'
+   + String(sec.name||'Section').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+   + '</strong>'
+   + (n ? ' and its ' + n + ' chord' + (n===1?'':'s') : ' is empty and')
+   + (last
+      ? ' will be replaced with a fresh empty section — a song always has at least one.'
+      : ' will be removed from the song.'),
+  confirmLabel: last ? 'Clear' : 'Delete',
+  onConfirm: ()=>{
+   // A loop running inside the section being removed has nowhere to go.
+   if(typeof songLoopActive!=='undefined' && songLoopActive && songLoopSection===i){
+    if(typeof stopSongLoop==='function') stopSongLoop();
+   }
+   const wasName = sec.name;
+   if(last){
+    sections[0] = {name:'Section 1', slots:[], plays:0, follow:'repeat'};
+    _sectionReindex(k => k===0 ? 0 : -1);
+   } else {
+    sections.splice(i,1);
+    _sectionReindex(k => k<0 ? k : (k===i ? -1 : (k>i ? k-1 : k)));
+   }
+   _sectionRepaint();
+   showToast((last?'Cleared ':'Deleted ') + '"' + wasName + '"');
+  }
+ });
+}
+
 function buildSectionTabs(){
  const c=document.getElementById('section-tabs'); if(!c) return; c.innerHTML='';
  sections.forEach((s,i)=>{
@@ -13273,8 +13361,42 @@ function buildSectionTabs(){
  // selected. Deferred so the row's own rebuild isn't re-entrant.
  setTimeout(renderSectionPlays,0);
  const add=document.createElement('button'); add.className='sec-add'; add.textContent='+ Section';
- add.onclick=()=>{ sections.push({name:'Section '+sections.length,slots:[],plays:0,follow:'repeat'}); curSection=sections.length-1; buildSectionTabs(); renderChartSeq(); renderSectionPlays(); };
+ add.onclick=()=>{
+  // Inserted after the selected section rather than always appended, so a
+  // section can be put where it belongs instead of only ever at the end and
+  // then walked back with the arrows.
+  const at = Math.min(sections.length, curSection+1);
+  // First unused number, not the list length: inserting into the middle of
+  // three sections used to produce "Section 4", which names a position it is
+  // not in.
+  let n = 1; while(sections.some(x=>x && x.name==='Section '+n)) n++;
+  sections.splice(at, 0, {name:'Section '+n, slots:[], plays:0, follow:'repeat'});
+  _sectionReindex(k => (k>=at && k>=0) ? k+1 : k);
+  curSection = at;
+  _sectionRepaint();
+ };
  c.appendChild(add);
+ renderSectionCtrls();
+}
+
+// Move / delete for whichever section is selected.
+function renderSectionCtrls(){
+ const host=document.getElementById('section-ctrls'); if(!host) return;
+ const sec=sections[curSection];
+ if(!sec){ host.innerHTML=''; return; }
+ const name=String(sec.name||'Section').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+ host.innerHTML =
+   '<span class="sec-ctrl-lbl">'+name+'</span>'
+  +'<button class="sec-btn" id="sec-mv-l" title="Move this section earlier"'
+  +(curSection<=0?' disabled':'')+'>&#9664;</button>'
+  +'<button class="sec-btn" id="sec-mv-r" title="Move this section later"'
+  +(curSection>=sections.length-1?' disabled':'')+'>&#9654;</button>'
+  +'<button class="sec-btn danger" id="sec-del" title="'
+  +(sections.length<=1?'Clear this section':'Delete this section')+'">&#10005;</button>';
+ const l=host.querySelector('#sec-mv-l'), r=host.querySelector('#sec-mv-r'), d=host.querySelector('#sec-del');
+ if(l) l.onclick=()=>sectionMove(-1);
+ if(r) r.onclick=()=>sectionMove(1);
+ if(d) d.onclick=()=>sectionDelete();
 }
 
 // Inline rename, in place on the tab. prompt() blocks the page, looks like an
@@ -16336,7 +16458,10 @@ function startSongRecord(){
  stopSongLoopIfActive();
  const base='Recording';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
- sections.push({name:base+' '+n, slots:[]});
+ // plays:0 spelled out rather than left to secPlays' default, so a freshly
+ // captured section loops on itself instead of inheriting anything from the
+ // song it was recorded into.
+ sections.push({name:base+' '+n, slots:[], plays:0, follow:'repeat'});
  songRecSectionIdx = sections.length-1;
  curSection = songRecSectionIdx;
  songRecActive = true;
