@@ -2288,6 +2288,16 @@ body.tour-open:not(.tour-top) #_toast {
  color:var(--pg); cursor:pointer; touch-action:manipulation;
 }
 .slb-auto-btn.on { background:var(--pg); color:#07080f; font-weight:700; }
+/* The one reason to be on this page, so it leads the row rather than trailing
+   it — and it reads as running, not merely "on", while the song plays. */
+.slb-play-btn {
+ order:-1; font-size:.65rem; font-weight:700; padding:9px 18px;
+ background:var(--pg); color:#07080f; border-color:var(--pg);
+}
+.slb-play-btn.on {
+ background:var(--dom); border-color:var(--dom); color:#fff;
+ box-shadow:0 0 12px hsla(0,70%,55%,.35);
+}
 
 /* Songs full chart */
 .songs-section-block { margin-bottom:14px; }
@@ -4520,7 +4530,13 @@ body.mode-free .pro-only { display:none !important; }
  <span class="slb-key" id="slb-key">C Maj</span>
  <button class="btn-xp" id="slb-key-up" onclick="transposeSong(+1)" title="Transpose song up a semitone" style="width:22px;height:22px;font-size:.75rem">+</button>
  </div>
- <button class="tb" id="slb-auto-btn" onclick="toggleSongAutoAdvance()">Auto: OFF</button>
+ <!-- The song's own play control. It was labelled "Auto", which named
+      nothing: it calls toggleGlobalSongMode, i.e. it starts and stops the
+      chart playing itself. Buried at the end of a row of section and
+      transpose controls, it was also the least prominent thing here despite
+      being the only reason to be on this page. -->
+ <button class="sc-btn slb-play-btn" id="slb-auto-btn" onclick="toggleSongAutoAdvance()"
+   title="Play the loaded song — the chart drives the chords and the parts follow it">▶ Play Song</button>
  </div>
  <div class="ending-row">
   <span class="ms-lbl">Ending</span>
@@ -10962,6 +10978,12 @@ function syncFixedTransport(){
   psb.classList.add('lit');
  }
  document.getElementById('tab-perform')?.classList.toggle('nav-playing', isAnythingPlaying());
+ // Both song controls repaint from state here, alongside the layer switches,
+ // rather than only inside the toggle that changes it — anything that moves
+ // song mode by another route (loading a song, an ending, a restored setup)
+ // would otherwise leave the label saying the opposite of what is happening.
+ if(typeof _updateSongBtn==='function') _updateSongBtn();
+ if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
  const cb=document.getElementById('ft-chd-btn');
  if(cb){ cb.classList.toggle('off',!chordsEnabled); }
  const db=document.getElementById('ft-drum-btn');
@@ -13546,6 +13568,9 @@ function renderChartSeq(){
  mkCaret(i, i===slots.length-1?'Add to the end':'Insert after '+(slot.label||'this chord'));
  });
  renderPerfChartRow();
+ // Build the first chord of a progression and the Song switch should appear
+ // with it, not on the next tab change.
+ if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  // Rebuilding the strip drops the playing highlight — repaint it from state.
  if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
 }
@@ -14071,8 +14096,7 @@ function loadSong(song,idx){
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function') window.blPlay();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window.mlPlay==='function') window.mlPlay();
  songAutoAdvance = false;
- const ab=document.getElementById('slb-auto-btn');
- if(ab){ ab.textContent='Auto ▶ OFF'; ab.classList.remove('on'); }
+ if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
 
  curSetlistIdx=idx; root=song.root; mode=song.mode;
  sections=song.sections?song.sections.map(s=>({name:s.name,follow:s.follow||'repeat',plays:secPlays(s),slots:s.slots.map(sl=>({beats:0,eighths:0,isRest:false,...sl}))})): [{name:'Verse',slots:[]}];
@@ -15633,8 +15657,7 @@ function stopSongRecord(){
   const banner=document.getElementById('prism-song-banner');
   if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
   if(typeof _updateSongBtn==='function') _updateSongBtn();
-  const ab=document.getElementById('slb-auto-btn');
-  if(ab){ ab.textContent='Auto ▶ ON'; ab.classList.add('on'); }
+  if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
   showToast('Recorded '+count+' chord'+(count===1?'':'s')+' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
@@ -16663,8 +16686,7 @@ function stopSongLoopIfActive(){
  if(songLoopActive){
  stopSongLoop();
  songAutoAdvance = false;
- const btn=document.getElementById('slb-auto-btn');
- if(btn){ btn.textContent='Auto ▶ OFF'; btn.classList.remove('on'); }
+ if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
  // Reload arp with last chord so arp keeps playing
  if(arpOn && lastChordIntvs.length) setArpChord(lastChordRoot, lastChordIntvs, lastChordFunc);
  }
@@ -16808,8 +16830,10 @@ function startEverything(){
  // Any song with programmed chords counts — not just setlist-loaded ones.
  var _hasSong=sections.length>0&&sections.some(s=>s.slots&&s.slots.length);
 
- // Always use the sequencer — songs are stored as sequencer patterns;
- // simple rhythm engine is never auto-started (no percussion unless programmed).
+ // The sequencer is the master clock every other engine aligns to, so it runs
+ // whenever anything does. Whether you HEAR drums is drumsEnabled, checked in
+ // sqHitTrack — switching Drums off gives you silence over a running clock,
+ // which is what "chords and bass, no drums" needs.
  if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
   document.dispatchEvent(new CustomEvent('sq-start-request'));
  }
@@ -16821,8 +16845,12 @@ function startEverything(){
  if(mlEnabled&&!(typeof window._mlPlaying==='function'&&window._mlPlaying())){
   if(typeof window._mlPlayImpl==='function') window._mlPlayImpl();
  }
- // Start the song loop from the top, first chord landing on the downbeat
- if(_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
+ // The song plays only when you have asked for it — the Song switch, or the
+ // Songs tab's Perform mode. Play used to launch the chart for ANY chart with
+ // chords in it, and a demo song ships loaded, so the most common first press
+ // in the app started a song nobody chose and gave no clue what had happened
+ // or how to stop it. Play now starts what is lit and nothing else.
+ if(globalSongMode&&_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
   songCurrentSection=-1; // force startSongLoop to pick the first non-empty section
   startSongLoop(true);   // aligned launch — no full-bar wait
  }
@@ -17013,9 +17041,19 @@ function toggleGlobalSongMode(){
  // decides whether anything is actually being held, so reading that first
  // meant the button could never say HOLD.
  _updateSongBtn();
- // Also update the songs tab auto button
- const ab = document.getElementById('slb-auto-btn');
- if(ab){ ab.textContent='Auto ▶ '+(globalSongMode?'ON':'OFF'); ab.classList.toggle('on',globalSongMode); }
+ _updateSongPlayBtn();
+}
+
+// The Songs tab's play control. Four separate places used to write this
+// button's label by hand and had already drifted apart — the markup said
+// "Auto: OFF" and the code said "Auto ▶ OFF" — so it says it in one place now.
+function _updateSongPlayBtn(){
+ const b = document.getElementById('slb-auto-btn'); if(!b) return;
+ b.textContent = globalSongMode ? '■ Stop Song' : '▶ Play Song';
+ b.title = globalSongMode
+  ? 'The song is playing itself and advancing through the chart. Stop to hold on the current chord and take over by hand.'
+  : 'Play the loaded song — the chart drives the chords and the parts follow it';
+ b.classList.toggle('on', globalSongMode);
 }
 
 // HOLD only once there is genuinely something held — before the song has ever
@@ -17064,12 +17102,19 @@ function toggleSnapMode(){
  }
 }
 
-// Show ft-song-btn when a song is loaded
+// The Song switch appears whenever there is a chart it could play — which is
+// any progression with chords in it, not only a setlist entry that has been
+// loaded. It used to key off curSetlistIdx, so a progression you built in the
+// Song Builder gave you no switch at all, while Play would happily start it:
+// the one control that governs the behaviour was hidden in exactly the case
+// where the behaviour was surprising.
 function updateFtSongBtn(){
  const btn = document.getElementById('ft-song-btn');
  if(!btn) return;
- const hasSong = curSetlistIdx >= 0 && setlistData[curSetlistIdx];
+ const hasSong = (typeof sections!=='undefined') &&
+                 sections.some(s => s && s.slots && s.slots.length);
  btn.style.display = hasSong ? '' : 'none';
+ if(typeof _updateSongBtn==='function') _updateSongBtn();
 }
 
 // ═══════════════════════════════════════
