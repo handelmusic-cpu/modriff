@@ -4652,6 +4652,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="slb-controls">
  <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (← key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
  <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (→ key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
+ <button class="sc-btn" id="slb-save-btn" onclick="showSongSaveDialog()" title="Save this song to the setlist — playback keeps going">&#128190; Save Song</button>
  <button class="sc-btn" onclick="updateSongPerfSettings()" title="Save current tempo/arp/rhythm to this song"> Save Settings</button>
  <div class="tg" style="align-items:center;gap:4px">
  <button class="btn-xp" id="slb-key-dn" onclick="transposeSong(-1)" title="Transpose song down a semitone" style="width:22px;height:22px;font-size:.75rem">−</button>
@@ -14107,7 +14108,12 @@ function saveToSetlist(){
   curSetlistIdx=setlistData.length-1;
  }
  saveSLData(setlistData);
+ // What is on screen now IS what is stored, so the banner stops saying
+ // otherwise. Taken after the write, not before, so a save that threw does
+ // not leave the song looking clean.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderSetlist(); renderSetlistNav();
+ if(typeof renderSongsPerformView==='function' && typeof songsMode!=='undefined' && songsMode==='perform') renderSongsPerformView();
  showToast(songSaveRhythm ? 'Saved with rhythm & bass' : 'Saved to setlist');
  track('song_saved', {withRhythm:songSaveRhythm});
 }
@@ -14169,6 +14175,51 @@ function showConfirm(opts){
  const yes=box.querySelector('#cfm-yes');
  yes.addEventListener('click',()=>{ close(); if(o.onConfirm) o.onConfirm(); });
  yes.focus();
+}
+
+// Saving from the Perform page, where saveToSetlist' own title field is not.
+// Nothing here stops the transport — you save the thing you are playing while
+// it is still playing, which is the whole point of saving from this page.
+function showSongSaveDialog(){
+ if(!songHasChords()){ showToast('Nothing to save yet — capture or build a chart first'); return; }
+ const cur = setlistData[curSetlistIdx];
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.style.cssText='background:var(--surf);border:2px solid var(--pg);border-radius:16px;padding:22px 24px;max-width:320px;width:100%;text-align:center;';
+ const chords = sections.reduce((a,x)=>a+(x.slots?x.slots.length:0),0);
+ box.innerHTML='<div style="font-size:.72rem;font-weight:700;color:var(--pg);margin-bottom:10px">Save song</div>'
+  +'<div style="font-size:.52rem;color:var(--muted);line-height:1.7;margin-bottom:12px">'
+  + nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+chords+' chord'+(chords===1?'':'s')
+  +' · '+sections.filter(x=>x.slots&&x.slots.length).length+' section(s)</div>'
+  +'<input id="ssd-input" type="text" placeholder="Name this song" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:.62rem;margin-bottom:14px;text-align:center" />'
+  +'<div style="display:flex;gap:8px">'
+  +'<button id="ssd-no" style="flex:1;padding:8px 0;border:1px solid var(--border2);border-radius:8px;background:none;color:var(--text);cursor:pointer;font-size:.6rem">Cancel</button>'
+  +'<button id="ssd-ok" style="flex:1;padding:8px 0;border:none;border-radius:8px;background:var(--pg);color:#07080f;cursor:pointer;font-size:.6rem;font-weight:700">Save</button>'
+  +'</div>';
+ overlay.appendChild(box);
+ document.body.appendChild(overlay);
+ const input=box.querySelector('#ssd-input');
+ input.value = cur ? cur.title : '';
+ input.focus(); input.select();
+ const close=()=>{ overlay.remove(); document.removeEventListener('keydown',onKey); };
+ function onKey(e){ if(e.key==='Escape') close(); }
+ document.addEventListener('keydown',onKey);
+ overlay.addEventListener('click',e=>{ if(e.target===overlay) close(); });
+ box.querySelector('#ssd-no').addEventListener('click',close);
+ const go=()=>{
+  const v=input.value.trim();
+  if(!v){ input.focus(); return; }
+  // saveToSetlist reads the Build page's title field, so that is where the
+  // name has to land — one save path rather than a second one that would
+  // drift from it.
+  const t=document.getElementById('chart-title');
+  if(t) t.value=v;
+  close();
+  saveToSetlist();
+ };
+ box.querySelector('#ssd-ok').addEventListener('click',go);
+ input.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
 }
 
 function loadSLData(){ try{ return JSON.parse(localStorage.getItem('prism-sl')||'[]'); }catch(e){ return []; } }
@@ -14512,6 +14563,10 @@ function loadSong(song,idx){
  // Demo song: prime bass to play too, so a first-time Play press is a full arrangement
  if(song.isDemo) blEnabled=true;
 
+ // The chart on screen now matches what was just loaded, so later edits have
+ // a baseline to be compared against — without this, loading a second song
+ // inherits the first one's fingerprint and reads as unsaved immediately.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
@@ -15890,6 +15945,38 @@ function setAccompMode(m){
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
+// A fingerprint of what a save would actually store, so "has this changed
+// since it was saved" is answerable without trusting every edit path to
+// remember to raise a flag.
+function _songSig(){
+ try{
+  return JSON.stringify({
+   root, mode,
+   sections: sections.map(s=>({
+    n:s.name, p:secPlays(s),
+    sl:(s.slots||[]).map(x=>[x.rootM,x.triadQ,x.type7,x.ext,x.bassNote,
+                             x.bars,x.beats,x.eighths,x.isRest?1:0])
+   }))
+  });
+ }catch(e){ return ''; }
+}
+let _songSavedSig = null;   // signature as of the last load or save
+function markSongSaved(){ _songSavedSig = _songSig(); }
+function songHasChords(){ return sections.some(s=>s && s.slots && s.slots.length); }
+function songIsDirty(){ return _songSavedSig !== null && _songSig() !== _songSavedSig; }
+
+// What to call the thing currently loaded. Three states, and the banner used
+// to collapse two of them into "No song loaded" — which it said over a chart
+// full of chords, because it only ever looked at the setlist index. A song you
+// built or captured is not "no song"; it is a song you have not saved yet, and
+// that is the one state worth prompting about.
+function songDisplayTitle(){
+ const song = setlistData[curSetlistIdx];
+ if(song) return song.title + (songIsDirty() ? ' (unsaved changes)' : '');
+ if(songHasChords()) return 'Untitled (not saved)';
+ return 'No song loaded';
+}
+
 function renderSongsPerformView(){
  if(typeof renderSetups==='function') renderSetups();
  // Update banner
@@ -15897,13 +15984,23 @@ function renderSongsPerformView(){
  const titleEl = document.getElementById('slb-title');
  const metaEl = document.getElementById('slb-meta');
  const keyEl = document.getElementById('slb-key');
- if(song){
- if(titleEl) titleEl.textContent = song.title;
- if(metaEl) metaEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+sections.reduce((a,s)=>a+s.slots.length,0)+' chords';
+ const saveBtn = document.getElementById('slb-save-btn');
+ const chordCount = sections.reduce((a,s)=>a+(s.slots?s.slots.length:0),0);
+ if(titleEl) titleEl.textContent = songDisplayTitle();
  if(keyEl) keyEl.textContent = nn(root)+' '+(MODES[mode]||MODES.major).label;
- } else {
- if(titleEl) titleEl.textContent = 'No song loaded';
- if(metaEl) metaEl.textContent = 'Load a song from Build mode';
+ if(metaEl){
+  metaEl.textContent = songHasChords()
+   ? nn(root)+' '+(MODES[mode]||MODES.major).label+' · '+chordCount+' chords'
+   : 'Build a chart, or capture one with ◉ in the transport';
+ }
+ if(saveBtn){
+  // Nothing to save with an empty chart, and nothing to do when what is
+  // loaded already matches what is stored.
+  const needed = songHasChords() && (!song || songIsDirty());
+  saveBtn.style.display = songHasChords() ? '' : 'none';
+  saveBtn.classList.toggle('on', needed);
+  saveBtn.title = needed ? 'Save this song to the setlist — playback keeps going'
+                         : 'Saved. Save again under a new name to make a copy.';
  }
 
  // Render full chart — all sections
@@ -17298,6 +17395,10 @@ function loadStandard(idx){
  document.getElementById('chart-title').value=std.title;
  ['bm-major','songs-bm-major'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='major'));
  ['bm-minor','songs-bm-minor'].forEach(id=>document.getElementById(id)?.classList.toggle('active',mode==='minor'));
+ // The chart on screen now matches what was just loaded, so later edits have
+ // a baseline to be compared against — without this, loading a second song
+ // inherits the first one's fingerprint and reads as unsaved immediately.
+ if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof buildChartPicker==='function') buildChartPicker();
