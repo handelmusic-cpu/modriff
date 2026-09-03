@@ -16346,6 +16346,43 @@ function startSongRecord(){
  showToast('Recording to "'+base+' '+n+'" — play some chords');
 }
 
+// Total length of a captured section, in eighths — the unit the recorder
+// already stores durations in.
+function _songSectionEighths(sec){
+ if(!sec || !sec.slots) return 0;
+ const eighthsPerBar = _songBarSteps()/2;
+ return sec.slots.reduce((a,sl)=>
+   a + (sl.bars||0)*eighthsPerBar + (sl.beats||0)*2 + (sl.eighths||0), 0);
+}
+
+// A capture ends when you stop playing, which is almost never on a bar line.
+// The section was left exactly as long as you happened to take, so looping it
+// put its first chord wherever the drums happened to be — a few eighths adrift
+// on every pass, compounding. It sounded like the chords were late.
+//
+// The last slot is padded out with a rest instead, so the section is a whole
+// number of bars and the loop comes back around on the downbeat. A rest rather
+// than stretching the final chord: the silence is what you actually played,
+// and it stays editable in the chart either way.
+function _songRecPadToBar(sec){
+ if(!sec || !sec.slots || !sec.slots.length) return 0;
+ const eighthsPerBar = _songBarSteps()/2;
+ if(!(eighthsPerBar > 0)) return 0;
+ const total = _songSectionEighths(sec);
+ const rem = total % eighthsPerBar;
+ if(rem === 0) return 0;
+ const pad = eighthsPerBar - rem;
+ sec.slots.push({
+  label:'', numeral:'', rootM:null, triadQ:null, type7:null,
+  func:null, ext:'triad', bassNote:null,
+  bars:Math.floor(pad/eighthsPerBar),
+  beats:Math.floor((pad%eighthsPerBar)/2),
+  eighths:pad%2,
+  isRest:true
+ });
+ return pad;
+}
+
 function stopSongRecord(){
  if(!songRecActive) return;
  const ctx=getCtx();
@@ -16353,7 +16390,10 @@ function stopSongRecord(){
  songRecActive = false;
  const recordedIdx = songRecSectionIdx;
  const sec = sections[recordedIdx];
+ // Counted before padding: the rest that fills out the bar is not a chord you
+ // played, and reporting it as one would be off by one on every capture.
  const count = sec ? sec.slots.length : 0;
+ const _padded = _songRecPadToBar(sec);
  songRecSectionIdx = -1;
  _updateSongRecUI();
  renderChartSeq(); buildSectionTabs();
@@ -16374,7 +16414,9 @@ function stopSongRecord(){
   if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
   if(typeof _updateSongBtn==='function') _updateSongBtn();
   if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
-  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' — looping "'+(sec?sec.name:'')+'"');
+  showToast('Recorded '+count+' chord'+(count===1?'':'s')
+   + (_padded ? ' + a rest to finish the bar' : '')
+   + ' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
  }
