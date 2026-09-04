@@ -15719,6 +15719,8 @@ function _slZone(dy){
 }
 (function(){
  let el=null, pid=null, startX=0, startY=0, startVal=0, curVal=0, moved=false;
+ // The dragged track's box, measured once at pointerdown — see the comment there.
+ let elW=0, elRect=null;
  let bubble=null, lastTapT=0, lastTapEl=null, lastTapX=0, lastTapY=0;
 
  // The app already prints this value somewhere next to the track, formatted
@@ -15733,16 +15735,26 @@ function _slZone(dy){
   const v = +t.value;
   return Math.abs(v) >= 100 ? String(Math.round(v)) : String(+v.toFixed(3));
  }
+ // The bubble's two spans, built once. This runs on every pointermove of a
+ // drag, and assigning innerHTML there meant invoking the HTML parser at up to
+ // 120 Hz to change two short strings.
+ let bubVal=null, bubHint=null;
  function paint(t, zone){
   if(!bubble){
    bubble = document.createElement('div');
    bubble.className = 'sl-bubble';
+   bubVal = document.createElement('b');
+   bubHint = document.createElement('span'); bubHint.className = 'sl-hint';
+   bubble.appendChild(bubVal); bubble.appendChild(bubHint);
    document.body.appendChild(bubble);
   }
-  const r = t.getBoundingClientRect();
-  bubble.innerHTML = '<b>' + readout(t).replace(/[<&]/g,'') + '</b>'
-   + (zone && zone.label ? '<span class="sl-hint">' + zone.label + '</span>'
-                         : '<span class="sl-hint">↕ for fine</span>');
+  // While a drag is running the control cannot move, so its box is the one
+  // measured when the finger landed. Measuring it here read back a layout the
+  // same handler had just dirtied by writing the slider's value — a full
+  // reflow per pointer event, which is what made a drag feel heavy.
+  const r = (t===el && elRect) ? elRect : t.getBoundingClientRect();
+  bubVal.textContent = readout(t);
+  bubHint.textContent = (zone && zone.label) ? zone.label : '↕ for fine';
   bubble.style.left = (r.left + r.width/2) + 'px';
   bubble.style.top  = (r.top - 6) + 'px';
   bubble.classList.add('on');
@@ -15802,9 +15814,11 @@ function _slZone(dy){
      && Math.abs(e.clientX-lastTapX) < 12 && Math.abs(e.clientY-lastTapY) < 12){
    lastTapT = 0; lastTapEl = null;
    commit(t, parseFloat(t.defaultValue));
+   // paint() has just filled the bubble in; this only relabels the hint. It
+   // used to rebuild the bubble with innerHTML, which threw away the two nodes
+   // paint() now keeps hold of.
    paint(t, null);
-   if(bubble) bubble.innerHTML = '<b>'+readout(t).replace(/[<&]/g,'')
-                               + '</b><span class="sl-hint">reset</span>';
+   if(bubHint) bubHint.textContent = 'reset';
    setTimeout(hide, 700);
    settle(t);
    e.preventDefault();
@@ -15815,6 +15829,15 @@ function _slZone(dy){
   e.preventDefault();
   el=t; pid=e.pointerId; startX=e.clientX; startY=e.clientY;
   startVal=curVal=parseFloat(t.value); moved=false;
+  // The track width, taken once for the whole gesture. pointermove used to
+  // measure it on every event, and a getBoundingClientRect has to flush layout
+  // before it can answer — while the same handler had just written the
+  // slider's value and dirtied it. Every pixel of every drag was paying for a
+  // full reflow, at up to 120 events a second on a phone, which is what made
+  // the sliders feel like they were catching up with your finger. A slider
+  // does not change width while you are dragging it.
+  elRect = t.getBoundingClientRect();
+  elW = elRect.width || 85;
   try{ t.setPointerCapture(e.pointerId); }catch(_){}
   // preventDefault costs the input its focus, and focus is what the arrow
   // keys need — a slider you can nudge with a finger should not stop being
@@ -15827,7 +15850,7 @@ function _slZone(dy){
   if(!el || e.pointerId!==pid) return;
   e.preventDefault();
   const lo=parseFloat(el.min), hi=parseFloat(el.max), range=hi-lo;
-  const w = el.getBoundingClientRect().width || 85;
+  const w = elW || 85;
   const zone = _slZone(e.clientY - startY);
   const dx = e.clientX - startX;
   // Full track width is the full range at 1x, so a gross move feels exactly
@@ -15853,7 +15876,7 @@ function _slZone(dy){
    lastTapT = 0; lastTapEl = null;
   }
   settle(el);
-  el=null; pid=null; moved=false;
+  el=null; pid=null; moved=false; elRect=null; elW=0;
  }
  document.addEventListener('pointerup', end, true);
  document.addEventListener('pointercancel', end, true);
@@ -16245,6 +16268,7 @@ function setPerformMode(m){
   // Re-run every time: the drum bus may only have appeared since last visit.
   if(typeof fxInsertAll==='function') fxInsertAll();
   if(typeof fxBuildPanel==='function' && !document.getElementById('fx-pad')) fxBuildPanel();
+  if(typeof fxInvalidatePad==='function') fxInvalidatePad();
   if(typeof fxPaintPad==='function') setTimeout(fxPaintPad,0);
  }
  positionSubnavLed('pf-subnav');
@@ -25204,6 +25228,7 @@ window.addEventListener('resize', function(){
 window.prThemeChanged = function(){
  prThemeInvalidate();
  if(typeof msScopeInvalidate==='function') msScopeInvalidate();
+ if(typeof fxInvalidatePad==='function') fxInvalidatePad();
  Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); });
 };
 
@@ -26564,6 +26589,26 @@ function fxSyncUI(){
  fxSyncAllReadouts();
 }
 
+// The pad repaints on every pointer event of a drag, so everything in here
+// that is not the drawing itself is paid at up to 120 Hz. Three things were:
+// the pad's box (a getBoundingClientRect, which flushes layout), the key hue
+// (a getComputedStyle, which flushes style), and the readout (an innerHTML
+// assignment, which invokes the HTML parser). None of the three can change
+// during a drag. The canvas was also being RESIZED every repaint —
+// reallocating its backing store and clearing it — to the size it already was.
+let _fxPadGeom=null, _fxPadHue=null, _fxRoNodes=null;
+function fxInvalidatePad(){ _fxPadGeom=null; _fxPadHue=null; }
+function _fxReadoutNodes(ro){
+ if(_fxRoNodes && _fxRoNodes.host===ro && _fxRoNodes.xs.isConnected) return _fxRoNodes;
+ ro.textContent='';
+ const xs=document.createElement('b'), xv=document.createTextNode('');
+ const mid=document.createTextNode('\u00a0·\u00a0');
+ const ys=document.createElement('b'), yv=document.createTextNode('');
+ const idle=document.createElement('span'); idle.className='fx-idle'; idle.textContent='Touch the pad';
+ ro.appendChild(xs); ro.appendChild(xv); ro.appendChild(mid);
+ ro.appendChild(ys); ro.appendChild(yv); ro.appendChild(idle);
+ return (_fxRoNodes={host:ro, xs, xv, mid, ys, yv, idle});
+}
 function fxPaintPad(){
  const pad=document.getElementById('fx-pad'); if(!pad) return;
  const dot=document.getElementById('fx-dot');
@@ -26575,47 +26620,68 @@ function fxPaintPad(){
  }
  pad.classList.toggle('engaged',fxEngaged);
  if(ro){
+  const n=_fxReadoutNodes(ro);
   const px=FX_PARAMS[fxPadX], py=FX_PARAMS[fxPadY];
-  ro.innerHTML = fxEngaged
-   ? '<b>'+px.short+'</b> '+px.fmt(fxPos.x)+' &nbsp;·&nbsp; <b>'+py.short+'</b> '+py.fmt(fxPos.y)
-   : '<span class="fx-idle">Touch the pad</span>';
+  n.xs.textContent=fxEngaged?px.short:''; n.xv.nodeValue=fxEngaged?(' '+px.fmt(fxPos.x)):'';
+  n.mid.nodeValue=fxEngaged?'\u00a0·\u00a0':'';
+  n.ys.textContent=fxEngaged?py.short:''; n.yv.nodeValue=fxEngaged?(' '+py.fmt(fxPos.y)):'';
+  n.idle.hidden=!!fxEngaged;
  }
  const cv=document.getElementById('fx-pad-canvas');
  if(cv){
-  const r=pad.getBoundingClientRect(), dpr=Math.min(2,window.devicePixelRatio||1);
-  if(r.width>0){
-   cv.width=r.width*dpr; cv.height=r.height*dpr;
-   const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
-   g.clearRect(0,0,r.width,r.height);
-   g.strokeStyle='rgba(255,255,255,.06)'; g.lineWidth=1;
-   for(let i=1;i<4;i++){
-    g.beginPath(); g.moveTo(r.width*i/4,0); g.lineTo(r.width*i/4,r.height); g.stroke();
-    g.beginPath(); g.moveTo(0,r.height*i/4); g.lineTo(r.width,r.height*i/4); g.stroke();
-   }
-   if(fxEngaged){
-    // A canvas colour string is not CSS: var(--kh) never resolves there and
-    // addColorStop throws on it, which killed every repaint mid-gesture. Read
-    // the live key hue off the root and build a real colour.
-    const kh=(getComputedStyle(document.documentElement).getPropertyValue('--kh')||'280').trim()||'280';
-    const cx=fxPos.x*r.width, cy=(1-fxPos.y)*r.height;
-    const grd=g.createRadialGradient(cx,cy,0,cx,cy,Math.max(r.width,r.height)*.42);
-    grd.addColorStop(0,'hsla('+kh+',80%,60%,.30)');
-    grd.addColorStop(1,'hsla('+kh+',80%,60%,0)');
-    g.fillStyle=grd; g.fillRect(0,0,r.width,r.height);
-   }
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  if(!_fxPadGeom){
+   const m=pad.getBoundingClientRect();
+   if(!(m.width>0)) return;
+   _fxPadGeom={w:m.width, h:m.height, dpr};
+  }
+  const r=_fxPadGeom;
+  const cw=Math.round(r.w*dpr), chh=Math.round(r.h*dpr);
+  // Assigning to width or height resets the canvas even when the value is
+  // unchanged, so this has to be guarded rather than written every frame.
+  if(cv.width!==cw || cv.height!==chh){ cv.width=cw; cv.height=chh; }
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,r.w,r.h);
+  g.strokeStyle='rgba(255,255,255,.06)'; g.lineWidth=1;
+  for(let i=1;i<4;i++){
+   g.beginPath(); g.moveTo(r.w*i/4,0); g.lineTo(r.w*i/4,r.h); g.stroke();
+   g.beginPath(); g.moveTo(0,r.h*i/4); g.lineTo(r.w,r.h*i/4); g.stroke();
+  }
+  if(fxEngaged){
+   // A canvas colour string is not CSS: var(--kh) never resolves there and
+   // addColorStop throws on it, which killed every repaint mid-gesture. Read
+   // the live key hue off the root and build a real colour.
+   if(_fxPadHue===null)
+    _fxPadHue=(getComputedStyle(document.documentElement).getPropertyValue('--kh')||'280').trim()||'280';
+   const kh=_fxPadHue;
+   const cx=fxPos.x*r.w, cy=(1-fxPos.y)*r.h;
+   const grd=g.createRadialGradient(cx,cy,0,cx,cy,Math.max(r.w,r.h)*.42);
+   grd.addColorStop(0,'hsla('+kh+',80%,60%,.30)');
+   grd.addColorStop(1,'hsla('+kh+',80%,60%,0)');
+   g.fillStyle=grd; g.fillRect(0,0,r.w,r.h);
   }
  }
 }
 
 function fxWirePad(){
  const pad=document.getElementById('fx-pad'); if(!pad) return;
+ // The pad's box, measured once when a finger lands and reused for the rest of
+ // the gesture. It was being measured on every pointermove — and
+ // getBoundingClientRect cannot answer without flushing layout, which the
+ // pad's own repaint in fxSetPos had just invalidated. That is a full reflow
+ // per pointer event on the app's main performance surface, at up to 120
+ // events a second on a phone: the pad lagging behind the finger dragging it.
+ // The pointer is captured and the gesture preventDefault()s, so nothing can
+ // move the pad out from under a drag in progress.
+ let padRect=null;
  const at=e=>{
-  const r=pad.getBoundingClientRect();
+  const r = padRect || (padRect = pad.getBoundingClientRect());
   return { x:(e.clientX-r.left)/r.width, y:1-(e.clientY-r.top)/r.height };
  };
  pad.addEventListener('pointerdown',e=>{
   e.preventDefault();
   try{ pad.setPointerCapture(e.pointerId); }catch(err){}
+  padRect=null;
   const p=at(e); fxSetPos(p.x,p.y); fxEngage(true); fxSyncAllReadouts();
  });
  pad.addEventListener('pointermove',e=>{
@@ -26623,7 +26689,7 @@ function fxWirePad(){
   if(e.buttons===0 && !fxHold) return;
   const p=at(e); fxSetPos(p.x,p.y);
  });
- const up=()=>{ fxRelease(); fxSyncAllReadouts(); };
+ const up=()=>{ padRect=null; fxRelease(); fxSyncAllReadouts(); };
  pad.addEventListener('pointerup',up);
  pad.addEventListener('pointercancel',up);
  // Keyboard: the pad is the one control here that has no other way in.
@@ -26640,7 +26706,7 @@ function fxWirePad(){
   fxSetPos(fxPos.x+dx, fxPos.y+dy);
   fxSyncAllReadouts();
  });
- window.addEventListener('resize',()=>fxPaintPad());
+ window.addEventListener('resize',()=>{ padRect=null; fxInvalidatePad(); fxPaintPad(); });
 }
 
 // ── Per-tab sends readouts ──
