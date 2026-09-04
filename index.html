@@ -25639,7 +25639,17 @@ const GATE_PAT_STEPS=16;
 // Nominal step length inside the buffer. One 16-step pattern is 2s of buffer,
 // which is one bar at 120bpm — so playbackRate is simply 2/barSeconds.
 const GATE_STEP_SEC=0.125;
+// One buffer for every channel. It is a read-only control signal, and an
+// AudioBuffer can feed any number of sources — building it per chain cost
+// about 3MB each and roughly doubled the app's heap with all six chains up.
+let _fxGateBuf=null, _fxGateBufCtx=null;
 function _fxGatePatternBuffer(ctx){
+ if(_fxGateBuf && _fxGateBufCtx===ctx) return _fxGateBuf;
+ const b=_fxBuildGatePatternBuffer(ctx);
+ _fxGateBuf=b; _fxGateBufCtx=ctx;
+ return b;
+}
+function _fxBuildGatePatternBuffer(ctx){
  const sr=ctx.sampleRate;
  const stepN=Math.round(GATE_STEP_SEC*sr);
  const buf=ctx.createBuffer(1, stepN*GATE_PAT_STEPS*GATE_PATTERNS.length, sr);
