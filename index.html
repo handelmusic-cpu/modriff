@@ -6249,9 +6249,31 @@ function buildUnlockChoices(){
   : 'Randomize rolls the dice for a fresh key, groove and sound — a different jam every time. & Play starts it going straight away. Blank opens silent.';
 }
 
+// How much output buffer to ask the browser for. The default an
+// AudioContext takes when you give it nothing is 'interactive', which on iOS
+// means the smallest buffer CoreAudio will hand out — a couple of hundred
+// frames. That is the right choice for a synth you play like an instrument
+// and the wrong one for this, which is a whole band: every buffer the render
+// thread misses is an audible dropout, and a graph carrying a chord, a bass,
+// a melody, an arp and a drum kit through the master FX chain does not have
+// the headroom to make a 5 ms deadline on a phone. Asking for ~20 ms of
+// buffer trades latency nobody can hear on a tap for roughly four times the
+// deadline to fill it, and dropouts fall off a cliff.
+//
+// It is a HINT: the browser rounds it to a buffer size it likes and may
+// ignore it entirely. Passing it can never make things worse than the
+// default, and a browser too old to know the option throws, which the catch
+// below turns back into a plain AudioContext.
+function _newAudioCtx(){
+ const AC = window.AudioContext || window.webkitAudioContext;
+ if(!AC) return null;
+ try{ return new AC({ latencyHint: 0.02 }); }
+ catch(e){ try{ return new AC(); }catch(e2){ return null; } }
+}
 function unlockAudio(startDemo){
  if(!audioCtx){
- try{ audioCtx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+ audioCtx=_newAudioCtx();
+ if(!audioCtx) return;
  }
  const finish=()=>{
  if(typeof _watchAudioState==='function') _watchAudioState();
@@ -6896,22 +6918,51 @@ function feedRev(node,mix){
 // actually finishing. The timeout is a backstop for the cases where 'ended'
 // never arrives (an oscillator that was never started, or one stopped during
 // a context interruption), because a missed reap is a permanent leak.
+// Cleanup used to be arranged per voice: an 'ended' listener on every
+// oscillator, plus a setTimeout as the backstop, for every note. That reads
+// naturally and costs far more than it looks. A piano voice is a dozen
+// oscillators and a four-note chord is four of those, so one chord armed
+// fifty-odd listeners and a timer — measured with the full band running, about
+// seventy listeners and seventy timers a second, each one its own wake-up on
+// the main thread. The 25 ms scheduler tick that keeps the music in time is on
+// that same thread and has to win every race against them.
+//
+// One sweeper replaces the lot. A voice goes into a queue with the audio-clock
+// time it is finished at, and a single timer walks the queue four times a
+// second and disconnects whatever is due. Same guarantee that nothing is left
+// connected, at one timer for the whole app instead of one per note, and no
+// per-oscillator listeners at all.
+//
+// The deadline is deliberately identical to the old backstop's, because that
+// backstop — not the 'ended' listeners — is what actually cut nearly every
+// voice: the listeners could only ever fire earlier, and for the bass and
+// melody engines, which pass no oscillators at all, there were none.
+const _reapQ=[];
+let _reapTimer=null;
+function _reapSweep(){
+ const ctx=getCtx();
+ // No context left means nothing is sounding, so everything queued is due.
+ const now=ctx?ctx.currentTime:Infinity;
+ let keep=0;
+ for(let i=0;i<_reapQ.length;i++){
+  const v=_reapQ[i];
+  if(v.at>now){ _reapQ[keep++]=v; continue; }
+  for(const n of v.nodes){ try{ n.disconnect(); }catch(e){} }
+ }
+ _reapQ.length=keep;
+ if(!_reapQ.length){ clearInterval(_reapTimer); _reapTimer=null; }
+}
 function reapVoice(oscs, nodes, endSec){
  const live = (nodes||[]).filter(Boolean);
  if(!live.length) return;
- let done=false;
- const cut=()=>{ if(done) return; done=true;
-  for(const n of live){ try{ n.disconnect(); }catch(e){} } };
- const list = (oscs||[]).filter(o=>o&&typeof o.addEventListener==='function');
- let pending = list.length;
- if(pending){
-  for(const o of list){
-   try{ o.addEventListener('ended', ()=>{ if(--pending<=0) cut(); }, {once:true}); }
-   catch(e){ pending--; }
-  }
- }
- const ms = Math.max(200, ((endSec||1)+0.6)*1000);
- setTimeout(cut, Math.min(ms, 45000));
+ const ctx=getCtx();
+ // Measured against the audio clock rather than wall time. endSec is a
+ // duration from the note's own start and a scheduler hands notes out a
+ // look-ahead ahead of the clock, so this is both what was meant and what
+ // stays correct when the two drift apart.
+ const at=(ctx?ctx.currentTime:0)+Math.min(45, Math.max(0.2,(endSec||1)+0.6));
+ _reapQ.push({at, nodes:live});
+ if(!_reapTimer) _reapTimer=setInterval(_reapSweep,250);
 }
 
 // ═══════════════════════════════════════
@@ -8634,7 +8685,40 @@ function initBendStrip(){
 // CLOCK
 // ═══════════════════════════════════════
 let clockTimer=null;
-const LOOK_AHEAD=.1, SCHED_INT=25;
+// How far ahead of the audio clock the schedulers commit notes, and how often
+// they wake up to do it. The tick is a plain setTimeout on the main thread, so
+// the look-ahead is the whole safety margin: anything that blocks the main
+// thread for longer than this — a garbage collection, a layout storm, a big
+// canvas repaint — means the next tick arrives to find grid steps whose time
+// has already passed. Web Audio plays a past-dated event immediately, so a run
+// of them lands in one instant: the flam-then-rush that reads as the app
+// "running behind".
+//
+// 100 ms was less headroom than a phone reliably has. 200 ms costs nothing
+// audible — a note is still committed at an exact future time and lands
+// sample-accurately — and doubles the stall the app absorbs without a trace.
+// The only thing it changes is how long a live twist of a knob takes to reach
+// the sound, which at a fifth of a second is still under what a hand notices.
+const LOOK_AHEAD=.2, SCHED_INT=25;
+
+// A tempo read for DRAWING only — never for scheduling a note.
+//
+// The bass and melody playheads interpolate their position between steps, so
+// both of their animation loops were doing a getElementById plus a parseFloat
+// on the tempo slider sixty times a second each, purely to move a marker. The
+// slider itself is written from four different places and does not always
+// raise an event, so this refreshes on a short expiry rather than trying to
+// track every writer: a tenth of a second of staleness is invisible in a
+// playhead and would be unacceptable in a note, which is why nothing that
+// makes sound uses this.
+let _clockBpmVal=0, _clockBpmAt=-1e9;
+function _clockBpm(){
+ const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+ if(now-_clockBpmAt < 100 && _clockBpmVal>0) return _clockBpmVal;
+ _clockBpmAt=now;
+ _clockBpmVal=parseFloat(document.getElementById('bpm')?.value)||120;
+ return _clockBpmVal;
+}
 let rhythmNextBeat=0, rhythmStepSec=0, arpNextBeat=0;
 
 // ── Master clock epoch — all engines align to this ──
@@ -9170,7 +9254,23 @@ tickClock = function(){
 // realigned the times of a clock that was no longer running.
 function ensureClockRunning(){
  if(!_clockShouldRun()) return;
- if(Date.now() - _clockLastTick < SCHED_INT * 4) return;
+ const gap = Date.now() - _clockLastTick;
+ if(gap < SCHED_INT * 4) return;
+ // A gap this long is past what the look-ahead covers, so every running
+ // engine's "next step" time is now in the past — and each of them advances
+ // that time by += stepSec in a loop until it reaches the horizon, which means
+ // the next tick would commit every step of the gap at once, all of them
+ // past-dated, all of them sounding together. Realign to the grid instead and
+ // let the missed steps go: a skip is a moment of silence, a burst is a bang.
+ //
+ // This is the same realignment the resume-from-background path already does,
+ // for the same reason — the only difference is what stopped the clock.
+ //
+ // Claim the gap before anything else: _resyncEngines() finishes by calling
+ // this function back, and a stale _clockLastTick would send it straight into
+ // the branch it is already inside. tickClock() stamps it again a line later.
+ _clockLastTick = Date.now();
+ if(gap > 400 && typeof _resyncEngines==='function') _resyncEngines();
  clearTimeout(clockTimer);
  tickClock();
 }
@@ -9572,6 +9672,7 @@ function buildBeatDots(){
 }
 function resetBeatDots(){
  document.querySelectorAll('.beat-dot').forEach(d=>d.classList.remove('active'));
+ _bdLit=-1;
 }
 // The dots were driven only by the legacy chord-groove clock (rhythmOn). Once
 // the step sequencer became the thing actually playing, they sat frozen on the
@@ -9579,10 +9680,15 @@ function resetBeatDots(){
 // look decorative. They now follow whichever engine is running, rebuilding to
 // match its step count and marking that engine's accents.
 let _bdCount=-1, _bdSrc='';
+// Which step is lit. Sweeping the document for '.beat-dot.active' to unlight
+// one dot ran eight or more times a second on the same thread as the
+// scheduler; the dots have predictable ids, so remembering the last one turns
+// that search into two lookups.
+let _bdLit=-1;
 function setBeatDots(step,total,accents,src){
  if(!(total>0)) return;
  if(total!==_bdCount||src!==_bdSrc){
-  _bdCount=total; _bdSrc=src||'';
+  _bdCount=total; _bdSrc=src||''; _bdLit=-1;
   ['beat-dots','ft-beat-dots'].forEach(id=>{
    const d=document.getElementById(id); if(!d) return;
    d.innerHTML='';
@@ -9595,9 +9701,13 @@ function setBeatDots(step,total,accents,src){
    }
   });
  }
- document.querySelectorAll('.beat-dot.active').forEach(d=>d.classList.remove('active'));
+ if(_bdLit>=0 && _bdLit!==step){
+  const pa=document.getElementById('bd-'+_bdLit);   if(pa) pa.classList.remove('active');
+  const pb=document.getElementById('ftbd-'+_bdLit); if(pb) pb.classList.remove('active');
+ }
  const a=document.getElementById('bd-'+step);   if(a) a.classList.add('active');
  const b=document.getElementById('ftbd-'+step); if(b) b.classList.add('active');
+ _bdLit=step;
 }
 // Force the next setBeatDots call to rebuild — used when an engine stops and
 // hands the display back to another with a different step count.
@@ -16044,7 +16154,9 @@ function setAccompMode(m){
  if(m === 'melody' && typeof window._mlRenderGrid==='function') window._mlRenderGrid();
  if(m === 'bass' && typeof window._blRenderGrid==='function') window._blRenderGrid();
  // A canvas inside a display:none panel lays out at zero, so both rolls have
- // to be re-measured once their page is actually on screen.
+ // to be re-measured once their page is actually on screen — and so does the
+ // drum playhead's gutter offset.
+ if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
  if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll, 0);
  positionSubnavLed('bm-subnav');
  if(typeof msSyncHost==='function') msSyncHost();
@@ -16283,6 +16395,7 @@ function switchTab(t){
  if(typeof msSyncHost==='function') msSyncHost();
  positionTabLed();
  positionAllSubnavLeds();
+ if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
  if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll,0);
  syncFixedTransport();
  track('tab_viewed', {tab:t});
@@ -20528,14 +20641,30 @@ function sqStart(){
 // edge of the screen — which gave the whole Accomp page a sideways scroll you
 // could drag. Measure the gutter, and hide the dot when its step is scrolled
 // out of the grid's viewport rather than parking it somewhere it isn't.
+// The distance from the bar's left edge to the grid's is the row-label gutter,
+// and it is fixed until something is resized — but it was being derived from
+// two getBoundingClientRect() calls on every step, each of which flushes
+// layout. That made moving a 2px dot one of the most expensive things in the
+// app. Measure it once and keep it; sqInvalidatePlayhead() throws it away
+// whenever the layout it describes can have changed.
+var _sqGutter=null;
+function sqInvalidatePlayhead(){ _sqGutter=null; }
+// This function lives inside the sequencer's IIFE and the tab and sub-tab
+// switches that need it do not, so it crosses the boundary on window the same
+// way _sqResync and the rest do.
+window._sqInvalidatePlayhead = sqInvalidatePlayhead;
 function sqPosPlayhead(ds){
   var ph=document.getElementById('sq-phcur'); if(!ph) return;
   var gs=document.getElementById('sq-gScroll'), bar=ph.parentElement;
   if(!gs||!bar){ ph.style.left='0'; return; }
+  // Nothing to place while the drum grid is off screen, and the measurement
+  // would be meaningless anyway — a hidden element has no box.
+  if(ph.offsetParent===null){ _sqGutter=null; return; }
   var x = ds*36 - gs.scrollLeft;
   if(x < -4 || x > gs.clientWidth){ ph.style.display='none'; return; }
   ph.style.display='';
-  ph.style.left = (gs.getBoundingClientRect().left - bar.getBoundingClientRect().left + x) + 'px';
+  if(_sqGutter===null) _sqGutter = gs.getBoundingClientRect().left - bar.getBoundingClientRect().left;
+  ph.style.left = (_sqGutter + x) + 'px';
 }
 function sqStop(){
   sqPlaying=false;window._sqPlayingVal=false;
@@ -22366,8 +22495,7 @@ window._blScheduler = function(){
 function blDraw(){
   if(!blPlaying){ blRafID = null; return; }
   var ctx = blCtx(); if(!ctx){ blRafID = requestAnimationFrame(blDraw); return; }
-  var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
-  var stepSec = 60 / bpmNow / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
+  var stepSec = 60 / _clockBpm() / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
   var elapsed = ctx.currentTime - blNextT + 0.12;
   var ds = ((blSeqStep - Math.round(elapsed / stepSec)) % blSteps + blSteps) % blSteps;
   if(ds !== blDispStep){
@@ -23623,23 +23751,19 @@ function mlPrInit(){
 function mlDraw(){
   if(!mlPlaying){ mlRafID = null; return; }
   var ctx = mlCtx(); if(!ctx){ mlRafID = requestAnimationFrame(mlDraw); return; }
-  var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
-  var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
+  var stepSec = 60 / _clockBpm() / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
   var elapsed = ctx.currentTime - mlNextT + 0.12;
   var ds = ((mlSeqStep - Math.round(elapsed / stepSec)) % mlSteps + mlSteps) % mlSteps;
   if(ds !== mlDispStep){
-    var cells = document.querySelectorAll('#ml-inner .bl-step');
-    cells.forEach(function(c){ c.classList.remove('head'); });
-    if(cells[ds]) cells[ds].classList.add('head');
-    var ph = document.getElementById('ml-phcur');
-    var gi = document.getElementById('ml-grid');
-    if(ph && gi) ph.style.left = Math.max(0, ds * 36 - gi.scrollLeft) + 'px';
-    document.querySelectorAll('#ml-simple-view .bl-sdot').forEach(function(d){ d.classList.remove('head'); });
-    var sd = document.getElementById('mls-' + ds);
-    if(sd) sd.classList.add('head');
+    // What used to be here was the step-strip lighting from before the melody
+    // moved onto the piano-roll canvas: two querySelectorAll sweeps and two
+    // getElementById lookups, for #ml-inner, #ml-simple-view, #ml-phcur and
+    // #ml-grid. Not one of those four elements is in the document any more, so
+    // every step of every bar it searched the whole document four times and
+    // found nothing — measured as the single biggest querySelectorAll cost in
+    // the app. The roll below is what actually draws the playhead now.
     mlDispStep = ds;
     if(typeof prRedraw==='function') prRedraw('ml');
-    mlDispStep = ds;
   }
   if(typeof window.phraseMarkLive==='function'){
     var lw = (typeof window._songChordWindowAt==='function')
@@ -24524,21 +24648,54 @@ function prBarSteps(steps){
 // rather than leaving half the panel empty, while a 32-step one stays legible
 // and scrolls.
 let PR_COL_W = 26;
-function prColW(id, steps){
+// Measuring the scroll box means reading clientWidth, and reading a layout
+// property flushes any pending layout first. prDraw() called this on every
+// step change, twice over with the bass and melody rolls both running — which
+// made it, by a clear margin, the most expensive thing this app did on the
+// main thread. The width it returns only changes when the panel is resized or
+// the step count changes, and both of those already go through prLayout(), so
+// the measurement belongs there and the answer belongs in a cache.
+const _PR_COL_W_CACHE = {};
+function _prMeasureColW(id, steps){
  const sc = document.getElementById(id+'-pr-scroll');
  const avail = sc ? sc.clientWidth : 0;
  if(!avail || !steps) return 26;
  return Math.max(16, Math.min(46, Math.floor(avail/steps)));
 }
+function prColW(id, steps){
+ const hit = _PR_COL_W_CACHE[id];
+ if(hit && hit.steps === steps) return hit.w;
+ const w = _prMeasureColW(id, steps);
+ _PR_COL_W_CACHE[id] = {steps, w};
+ return w;
+}
+// Resizes do not change the step count, so the cache above cannot notice them
+// on its own — prLayout() drops the entry before re-measuring.
+function prInvalidateColW(id){
+ if(id) delete _PR_COL_W_CACHE[id];
+ else Object.keys(_PR_COL_W_CACHE).forEach(k=>delete _PR_COL_W_CACHE[k]);
+}
 
 const PR_ENGINES = {};
+// Per-roll "is it on screen", refreshed by prLayout — see prRedraw below.
+const _PR_ONSCREEN = {};
 
 // Every colour is resolved from the theme at draw time. The first version of
 // this hardcoded dark hexes and painted its row shading as white at 1-3%
 // alpha on a TRANSPARENT canvas — which in light mode meant white on white
 // over a pale page, so the pitch grid was invisible and the key gutter was a
 // black stripe. Nothing about the roll can be hardcoded.
+// Resolving the theme means getComputedStyle plus a getPropertyValue for each
+// custom property, and getComputedStyle forces the style pass it reads from.
+// The colours change when the theme changes and at no other time, so this is
+// computed once and handed out until prThemeChanged() drops it.
+let _PR_THEME = null;
+function prThemeInvalidate(){ _PR_THEME = null; }
 function prTheme(){
+ if(_PR_THEME) return _PR_THEME;
+ return (_PR_THEME = _prBuildTheme());
+}
+function _prBuildTheme(){
  const light = document.body.classList.contains('light-mode');
  const cs = getComputedStyle(document.documentElement);
  const v = (n,f)=>{ const x=cs.getPropertyValue(n).trim(); return x||f; };
@@ -24589,6 +24746,7 @@ function prLayout(id){
  if(!cv || !kv) return;
  const rows = cfg.hi - cfg.lo + 1;
  const steps = cfg.steps();
+ prInvalidateColW(id);
  PR_COL_W = prColW(id, steps);
  const dpr = Math.min(2, window.devicePixelRatio || 1);
  const w = steps * PR_COL_W, h = rows * PR_ROW_H + PR_RULER_H;
@@ -24598,6 +24756,10 @@ function prLayout(id){
  kv.width = Math.round(PR_KEY_W*dpr); kv.height = Math.round(h*dpr);
  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
  kv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ // Whether this roll is on screen at all. It changes only when a tab or a
+ // sub-tab changes, and both of those end up here, so the one layout read it
+ // costs is paid at the switch instead of on every step of every bar.
+ _PR_ONSCREEN[id] = cv.offsetParent !== null;
  prDrawKeys(id);
  prDraw(id);
 }
@@ -24843,13 +25005,31 @@ function prWire(id){
  cv.addEventListener('pointercancel', function(){ if(holdT){ clearTimeout(holdT); holdT=null; } });
 }
 
-window.prRedraw = function(id){ prDraw(id); };
+// The playhead's way in, called by the bass and melody engines every time
+// their step changes. Everything else that redraws a roll — an edit, a
+// relayout, a theme change — goes straight to prDraw and stays synchronous, so
+// touching the grid still repaints under your finger.
+//
+// The difference that matters is that this one runs whether or not anyone can
+// see it. Bass and melody keep playing while you are on the Perform tab or in
+// the mixer, and their rolls were being fully repainted eight or more times a
+// second the whole time, into canvases nobody was looking at, on the same
+// thread as the scheduler. prLayout() redraws each roll as it comes back on
+// screen, so nothing is lost by declining to paint it while it is away.
+window.prRedraw = function(id){ if(_PR_ONSCREEN[id] !== false) prDraw(id); };
 window.prRelayout = function(id){ prLayout(id); };
 window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
-window.addEventListener('resize', function(){ window.prRelayoutAll(); });
+window.addEventListener('resize', function(){
+ prInvalidateColW();
+ if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
+ window.prRelayoutAll();
+});
 // The roll reads every colour from the theme and shades rows by the current
 // key, so both have to repaint it.
-window.prThemeChanged = function(){ Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); }); };
+window.prThemeChanged = function(){
+ prThemeInvalidate();
+ Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); });
+};
 
 
 // ═══════════════════════════════════════
