@@ -25218,8 +25218,8 @@ const FX_PARAMS = {
   drive:   { label:'Drive',       short:'DRV', unit:'pct', base:null, send:'drv', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
   // `delay` is the send amount and stays reachable from the Sends rows below
   // the pad; it is deliberately not offered as a pad axis (see FX_AXIS_KEYS).
-  delay:   { label:'Delay mix',   short:'DLY', unit:'pct', base:null, send:'dly', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
-  dtime:   { label:'Delay',       short:'DLY', unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
+  delay:   { label:'Delay mix',   short:'MIX', unit:'pct', base:null, send:'dly', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
+  dtime:   { label:'Delay time',  short:'TIME',unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
   feedback:{ label:'Feedback',    short:'FB',  unit:'pct', base:0.35, fmt:v=>Math.round(v*88)+'%' },
   reverb:  { label:'Reverb',      short:'REV', unit:'pct', base:null, send:'rev', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
   crush:   { label:'Crush',       short:'CRU', unit:'bit', base:0,   fmt:v=>v<=0.001?'off':(16-Math.round(v*13))+' bit' },
@@ -25235,13 +25235,33 @@ const FX_PARAMS = {
   tremrate:{ label:'Tremolo rate',short:'TRT', unit:'div', base:0.5, fmt:v=>_fxDivLabel(v) },
   pan:     { label:'Pan',         short:'PAN', unit:'lr',  base:0.5, fmt:v=>{const n=Math.round((v*2-1)*100);
                                                                      return n===0?'centre':(n<0?Math.abs(n)+'L':n+'R');} },
-  ringmod: { label:'Ring mod',    short:'RNG', unit:'hz',  base:0,   fmt:v=>v<=0.001?'off':Math.round(_fxRingHz(v))+'Hz' }
+  ringmod: { label:'Ring mod',    short:'RNG', unit:'hz',  base:0,   fmt:v=>v<=0.001?'off':Math.round(_fxRingHz(v))+'Hz' },
+  // Cutoff and resonance on one axis, which is how a Kaoss pad does it and why
+  // its filter sweeps sound like an effect rather than a tone control: closing
+  // the filter also pushes the resonance up, so the sweep sings instead of
+  // just going quiet. Separate cutoff and reso axes stay available for anyone
+  // who wants to place them independently.
+  lpsweep: { label:'LP sweep',    short:'LP↓', unit:'hz',  base:1,   gang:'lp',
+             fmt:v=>_fxHzFmt(_fxFiltHz(v))+' · Q'+(0.7+_fxGangQ(v)*28).toFixed(0) },
+  hpsweep: { label:'HP sweep',    short:'HP↑', unit:'hz',  base:0,   gang:'hp',
+             fmt:v=>v<=0.001?'off':_fxHzFmt(_fxHpHz(v))+' · Q'+(0.7+_fxGangQ(1-v)*28).toFixed(0) }
 };
+// Resonance profile for a ganged sweep: most pronounced where the filter is
+// doing the most work, backing off at the open end so a parked axis is not
+// permanently ringing.
+function _fxGangQ(v){ return 0.25 + (1-Math.max(0,Math.min(1,v)))*0.55; }
 const FX_PARAM_KEYS = Object.keys(FX_PARAMS);
-// What the X/Y pad can be assigned to. The three send amounts are excluded:
-// each already has its own slider under the pad, and a pad axis that duplicates
-// a latched send is a worse version of it. Delay on the pad means delay TIME.
-const FX_AXIS_KEYS = FX_PARAM_KEYS.filter(k=>!FX_PARAMS[k].send);
+// What the X/Y pad can be assigned to: everything, sends included.
+//
+// The sends used to be excluded on the grounds that each has its own slider
+// under the pad and a pad axis duplicating a latched send is a worse version
+// of it. That is wrong twice over. Delay Time on X against Delay Mix on Y is
+// the single most common pairing on a Kaoss pad — fourteen of its sixteen
+// delay programs — because sweeping the time while riding the amount is the
+// gesture, and a latched slider cannot be ridden. And the Dub Delay factory
+// preset below already assigned the delay send to an axis, so the picker was
+// hiding a choice the app itself was making.
+const FX_AXIS_KEYS = FX_PARAM_KEYS;
 
 // From 60Hz, not 120: on a bass or a kick, a lowpass that stops at 120Hz is
 // still above most of the energy and barely does anything.
@@ -25533,9 +25553,16 @@ function fxApplyChannel(ch){
  const c=chain.ctx, t=c.currentTime, S=0.02;
  const v=k=>fxValue(ch,k);
 
- chain.filt.frequency.setTargetAtTime(_fxFiltHz(v('cutoff')), t, S);
- chain.filt.Q.setTargetAtTime(0.7+v('reso')*28, t, S);   // to self-oscillation territory
- chain.hp.frequency.setTargetAtTime(_fxHpHz(v('hpf')), t, S);
+ // A ganged axis owns both the frequency and the Q of the filter it drives;
+ // otherwise the separate cutoff/reso/hpf params do, exactly as before.
+ const lpOn = (fxPadX==='lpsweep' || fxPadY==='lpsweep');
+ const hpOn = (fxPadX==='hpsweep' || fxPadY==='hpsweep');
+ const lpV = lpOn ? v('lpsweep') : v('cutoff');
+ const hpV = hpOn ? v('hpsweep') : v('hpf');
+ chain.filt.frequency.setTargetAtTime(_fxFiltHz(lpV), t, S);
+ chain.filt.Q.setTargetAtTime(0.7 + (lpOn ? _fxGangQ(lpV) : v('reso'))*28, t, S);
+ chain.hp.frequency.setTargetAtTime(_fxHpHz(hpV), t, S);
+ if(chain.hp.Q) chain.hp.Q.setTargetAtTime(0.7 + (hpOn ? _fxGangQ(1-hpV) : 0)*20, t, S);
 
  // Drive goes fully wet at the top, with the saturator's own gain cancelled
  // the same way the master drive does it — measured off the curve rather than
@@ -25716,6 +25743,10 @@ const FX_FACTORY_PRESETS = [
  {name:'Tape Stop',    x:'warp',    y:'cutoff',  t:['drum','bass','chord','arp','mel','melgen'], sends:null},
  {name:'Beat Repeat',  x:'stutter', y:'cutoff',  t:['drum'],        sends:null},
  {name:'Dub Delay',    x:'delay',   y:'feedback',t:['chord','arp'], sends:{rev:0.15}},
+ // Time against amount — the Kaoss pad's most-used pairing by a distance.
+ {name:'Delay Throw',  x:'dtime',   y:'delay',   t:['chord','arp','mel','melgen'], sends:{dly:0}},
+ {name:'Filter Gate',  x:'lpsweep', y:'gate',    t:['drum','bass','chord'], sends:null},
+ {name:'HP Riser',     x:'hpsweep', y:'reverb',  t:['chord','arp','mel'], sends:null},
  {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass'], sends:{drv:0.25}},
  {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel'], sends:null},
  {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass'],        sends:null},
