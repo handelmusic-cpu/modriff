@@ -25243,6 +25243,17 @@ const FX_PARAMS = {
   // who wants to place them independently.
   srate:   { label:'Rate crush',  short:'SR',  unit:'hz',  base:0,
              fmt:v=>v<=0.001?'off':_fxHzFmt(48000/Math.max(1,Math.round(Math.pow(96,v)))) },
+  talk:    { label:'Talk',        short:'TLK', unit:'vow', base:0,
+             // Same mapping the frequencies use — floor(v*6) named a different
+             // vowel than the formants were actually sitting on for most of
+             // the sweep.
+             fmt:v=>v<=0.001?'off':'\u201c'+'aeɛiou'[Math.round(v*(FMT_VOWELS.length-1))]+'\u201d' },
+  gatepat: { label:'Gate pattern', short:'GPT', unit:'pat', base:0,
+             fmt:v=>v<=0.001?'off':'pattern '+(_fxGatePatIdx(v)+1) },
+  grain:   { label:'Grain',       short:'GRN', unit:'div', base:0,
+             fmt:v=>v<=0.001?'off':_fxDivLabel(v) },
+  grainlen:{ label:'Grain length',short:'GLN', unit:'pct', base:0.5,
+             fmt:v=>Math.round(6+v*94)+'%' },
   iso:     { label:'Isolate',     short:'ISO', unit:'band',base:0.5,
              fmt:v=>{ const g=_fxIsoGains(v);
                       const on=[['Low',g.lo],['Mid',g.mid],['Hi',g.hi]].filter(x=>x[1]>0.02);
@@ -25320,7 +25331,9 @@ class ModFxProc extends AudioWorkletProcessor {
     {name:'reverse', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
     {name:'warp',    defaultValue:1, minValue:0.25, maxValue:4, automationRate:'k-rate'},
     {name:'crush',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
-    {name:'srate',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'}
+    {name:'srate',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+    {name:'grain',   defaultValue:0, minValue:0, maxValue:4, automationRate:'k-rate'},
+    {name:'grainlen',defaultValue:0.5, minValue:0, maxValue:1, automationRate:'k-rate'}
   ]; }
   constructor(){
     super();
@@ -25330,6 +25343,7 @@ class ModFxProc extends AudioWorkletProcessor {
     this.rd = 0;                           // read head, fractional for warp
     this.sliceStart = 0; this.sliceLen = 0;
     this.holdC = 0; this.holdV = [0,0];   // sample-and-hold counter and last values
+    this.gCycle = 0; this.gPos = 0; this.gStart = 0;   // grain shifter state
     this.mode = 'thru'; this.pos = 0;
     this.xf = 0;                           // crossfade in/out of an effect
   }
@@ -25346,7 +25360,9 @@ class ModFxProc extends AudioWorkletProcessor {
     // Full sample rate down to about 500Hz, which is far enough to turn a
     // chord into a ring-modulated buzz.
     const holdN = srate>0.001 ? Math.max(1, Math.round(Math.pow(sampleRate/500, srate))) : 1;
+    const grainSec = params.grain[0], grainLen = params.grainlen[0];
     const wantMode = stut>0.001 ? 'stutter' : rev>0.001 ? 'reverse'
+                   : grainSec>0.001 ? 'grain'
                    : Math.abs(warp-1)>0.001 ? 'warp' : 'thru';
     if(wantMode !== this.mode){
       // Entering an effect captures a fresh slice from where we are now.
@@ -25357,9 +25373,18 @@ class ModFxProc extends AudioWorkletProcessor {
         this.pos = 0;
       } else if(wantMode==='warp'){
         this.rd = this.w;
+      } else if(wantMode==='grain'){
+        this.gCycle = 0; this.gPos = 0; this.gStart = this.w;
       }
       this.mode = wantMode; this.xf = 0;
     }
+    // Grain shifter: every cycle, grab a fresh slice from the live input and
+    // repeat it for the rest of the cycle. Short grains stutter the sound into
+    // a pitchless texture; long ones read as a rough loop. Unlike stutter,
+    // which captures once, this recaptures each cycle — so the effect keeps
+    // moving with the music instead of freezing on one moment of it.
+    const gCycleN = Math.max(64, Math.floor(grainSec * sampleRate));
+    const gLenN   = Math.max(32, Math.floor(gCycleN * (0.06 + grainLen*0.94)));
     const bits = crush>0.001 ? Math.pow(2, 16 - crush*13) : 0;
     for(let c=0;c<chn;c++){
       const o = out[c];
@@ -25370,7 +25395,10 @@ class ModFxProc extends AudioWorkletProcessor {
       // writes back. Advancing on the last channel ALONE would leave channel 0
       // reading one sample forever, which is DC, not audio.
       let w = this.w, rd = this.rd, pos = this.pos, xf = this.xf;
-      if(c>0) this.holdC -= n;   // rewind so every channel walks the same grid
+      if(c>0){ this.holdC -= n; }   // rewind so every channel walks the same grid
+      // Grain reads gPos/gCycle per sample and only the last channel commits
+      // the countdown, so snapshot and restore them for the earlier channels.
+      const _gPos0=this.gPos, _gCyc0=this.gCycle, _gSt0=this.gStart;
       for(let k=0;k<n;k++){
         const s = i ? i[k] : 0;
         b[w] = s;
@@ -25381,6 +25409,16 @@ class ModFxProc extends AudioWorkletProcessor {
         } else if(this.mode==='reverse'){
           y = b[(this.sliceStart + this.sliceLen - 1 - pos + this.N) % this.N];
           pos++; if(pos>=this.sliceLen) pos = 0;
+        } else if(this.mode==='grain'){
+          if(this.gCycle <= 0){ this.gStart = w; this.gPos = 0; this.gCycle = gCycleN; }
+          y = b[(this.gStart + this.gPos) % this.N];
+          this.gPos++; if(this.gPos >= gLenN) this.gPos = 0;
+          this.gCycle--;
+          // Counted down on EVERY channel, not just the last. Guarding it
+          // meant channel 0 never reached a reset while channel 1 did, so the
+          // two sides captured different grains — a stereo image that tears
+          // apart the moment the effect engages. Non-last channels have their
+          // state restored after the frame instead.
         } else if(this.mode==='warp'){
           const i0 = Math.floor(rd), fr = rd - i0;
           const a = b[((i0 % this.N) + this.N) % this.N];
@@ -25400,6 +25438,7 @@ class ModFxProc extends AudioWorkletProcessor {
         w = (w + 1) % this.N;
       }
       if(c===chn-1){ this.w = w; this.rd = rd; this.pos = pos; this.xf = xf; }
+      else { this.gPos=_gPos0; this.gCycle=_gCyc0; this.gStart=_gSt0; }
     }
     return true;
   }
@@ -25477,8 +25516,42 @@ function fxBuildChain(ctx, ch){
  postDrive.connect(isoDry);
  isoWet.connect(postIso); isoDry.connect(postIso);
 
+ // ── Talk filter ──────────────────────────────────────────────────────
+ // Two resonant bandpasses in parallel is the whole trick behind a vowel
+ // sound: F1 and F2 together are what your ear reads as "ah" or "ee", and
+ // sweeping the pair is why the Kaoss version sounds like speech rather than
+ // like a filter. Wet/dry for the same reason as the isolator — two high-Q
+ // peaks summed are nothing like flat.
+ const fmtIn=ctx.createGain();
+ const fmt1=ctx.createBiquadFilter(); fmt1.type='bandpass'; fmt1.frequency.value=700;  fmt1.Q.value=FMT_Q;
+ const fmt2=ctx.createBiquadFilter(); fmt2.type='bandpass'; fmt2.frequency.value=1800; fmt2.Q.value=FMT_Q;
+ const fmt1G=ctx.createGain(); fmt1G.gain.value=1;
+ const fmt2G=ctx.createGain(); fmt2G.gain.value=0.8;
+ const fmtWet=ctx.createGain(); fmtWet.gain.value=0;
+ const fmtDry=ctx.createGain(); fmtDry.gain.value=1;
+ const postFmt=ctx.createGain();
+ postIso.connect(fmtIn);
+ fmtIn.connect(fmt1); fmt1.connect(fmt1G); fmt1G.connect(fmtWet);
+ fmtIn.connect(fmt2); fmt2.connect(fmt2G); fmt2G.connect(fmtWet);
+ postIso.connect(fmtDry);
+ fmtWet.connect(postFmt); fmtDry.connect(postFmt);
+
  const gate=ctx.createGain(); gate.gain.value=1;
- postIso.connect(gate);
+ postFmt.connect(gate);
+
+ // ── Rhythmic gate ────────────────────────────────────────────────────
+ // Eight patterns, driven by a looping buffer wired straight into the gate's
+ // gain. A buffer rather than scheduled automation because it is sample
+ // accurate and free-running: the pattern keeps its own phase against the
+ // clock instead of drifting with whenever a timer happened to fire, and
+ // switching pattern is a loop-point move rather than a rebuilt node.
+ const gatePatBuf = _fxGatePatternBuffer(ctx);
+ const gatePat = ctx.createBufferSource();
+ gatePat.buffer = gatePatBuf; gatePat.loop = true;
+ gatePat.loopStart = 0; gatePat.loopEnd = GATE_PAT_STEPS*GATE_STEP_SEC;
+ const gatePatAmt = ctx.createGain(); gatePatAmt.gain.value = 0;
+ gatePat.connect(gatePatAmt); gatePatAmt.connect(gate.gain);
+ try{ gatePat.start(); }catch(e){}
 
  // Tremolo: an LFO on a gain, biased so depth 0 is unity and never touches
  // the signal. The LFO free-runs; only its depth and rate are automated, so
@@ -25532,7 +25605,8 @@ function fxBuildChain(ctx, ch){
 
  const bundle={ctx,io,out,filt,hp,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend,
                trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,
-               isoLoG,isoMidG,isoHiG,isoWet,isoDry};
+               isoLoG,isoMidG,isoHiG,isoWet,isoDry,
+               fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt};
  fxChains[ch]=bundle;
  return bundle;
 }
@@ -25541,6 +25615,58 @@ function fxBuildChain(ctx, ch){
 // the low band; 2.6kHz puts hats and the top of a snare in the high one, which
 // is where the three-band split is most useful on a groove.
 const ISO_LO_HZ=220, ISO_HI_HZ=2600;
+// High enough that each peak is a distinct formant rather than a broad bump;
+// much past this and the filters start whistling on their own.
+const FMT_Q=9;
+// Vowel formant pairs, swept through in order. These are the usual measured
+// values for a male voice — the point is the RATIO between F1 and F2, which is
+// what the ear reads as a vowel regardless of pitch.
+const FMT_VOWELS=[[730,1090],[660,1720],[530,1840],[390,1990],[300,870],[440,1020]]; // a e ɛ i o u
+// Eight bar-long gate patterns, one bit per sixteenth. Straight, offbeat,
+// gallop, four-on-the-floor, sixteenths, dotted, stutter-in and a long-short
+// swing — enough shapes to find one that fits a groove.
+const GATE_PATTERNS=[
+ [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
+ [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],
+ [1,0,1,1, 0,0,1,0, 1,0,1,1, 0,0,1,0],
+ [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,1,0],
+ [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+ [1,0,0,1, 0,0,1,0, 0,1,0,0, 1,0,0,1],
+ [1,1,1,1, 1,1,0,0, 1,1,0,0, 1,0,1,0],
+ [1,1,0,1, 1,0,1,1, 0,1,1,0, 1,1,0,1]
+];
+const GATE_PAT_STEPS=16;
+// Nominal step length inside the buffer. One 16-step pattern is 2s of buffer,
+// which is one bar at 120bpm — so playbackRate is simply 2/barSeconds.
+const GATE_STEP_SEC=0.125;
+function _fxGatePatternBuffer(ctx){
+ const sr=ctx.sampleRate;
+ const stepN=Math.round(GATE_STEP_SEC*sr);
+ const buf=ctx.createBuffer(1, stepN*GATE_PAT_STEPS*GATE_PATTERNS.length, sr);
+ const d=buf.getChannelData(0);
+ // A couple of milliseconds of ramp on each edge: a hard 0-to-1 step on a
+ // gain is a click, and eight of them a bar is a rhythm made of clicks.
+ const edge=Math.max(4, Math.round(sr*0.003));
+ GATE_PATTERNS.forEach((pat,pi)=>{
+  const base=pi*stepN*GATE_PAT_STEPS;
+  pat.forEach((on,si)=>{
+   const at=base+si*stepN;
+   for(let k=0;k<stepN;k++){
+    let v=on?1:0;
+    if(on){
+     if(k<edge) v=k/edge;
+     else if(k>stepN-edge) v=(stepN-k)/edge;
+    }
+    d[at+k]=v;
+   }
+  });
+ });
+ return buf;
+}
+function _fxGatePatIdx(v){
+ return Math.max(0, Math.min(GATE_PATTERNS.length-1,
+        Math.floor(Math.max(0,Math.min(0.999,v))*GATE_PATTERNS.length)));
+}
 // Where the axis sits decides which band survives. 0 is low only, 0.5 mid
 // only, 1 high only, with short crossfades between so a sweep is continuous
 // rather than three steps. Bands are not merely attenuated at the edges —
@@ -25672,7 +25798,45 @@ function fxApplyChannel(ch){
   chain.isoDry.gain.setTargetAtTime(isoOn?0:1, t, S);
  }
 
- chain.gate.gain.setTargetAtTime(v('gate'), t, S);
+ // Talk filter: the two formants track one axis through the vowel table, so a
+ // sweep walks a–e–ɛ–i–o–u rather than moving two unrelated peaks.
+ const talkOn = (fxPadX==='talk' || fxPadY==='talk');
+ if(chain.fmtWet){
+  const tv = talkOn ? v('talk') : 0;
+  if(talkOn && tv>0.001){
+   const f = Math.min(FMT_VOWELS.length-1.001, tv*(FMT_VOWELS.length-1));
+   const i0 = Math.floor(f), fr = f-i0;
+   const a = FMT_VOWELS[i0], b2 = FMT_VOWELS[Math.min(FMT_VOWELS.length-1,i0+1)];
+   chain.fmt1.frequency.setTargetAtTime(a[0]+(b2[0]-a[0])*fr, t, S);
+   chain.fmt2.frequency.setTargetAtTime(a[1]+(b2[1]-a[1])*fr, t, S);
+  }
+  // Ramped in rather than switched, so arriving on a vowel is a move and not
+  // a jump — and 0 leaves the stage bit-identical to absent.
+  chain.fmtWet.gain.setTargetAtTime(talkOn?Math.min(1,tv*1.4):0, t, S);
+  chain.fmtDry.gain.setTargetAtTime(talkOn?Math.max(0,1-tv*1.2):1, t, S);
+ }
+
+ // Rhythmic gate. The buffer runs free; the axis only picks which pattern the
+ // loop points enclose and how deep it cuts.
+ const gpOn = (fxPadX==='gatepat' || fxPadY==='gatepat');
+ if(chain.gatePat){
+  const gv = gpOn ? v('gatepat') : 0;
+  if(gpOn && gv>0.001){
+   const pi=_fxGatePatIdx(gv);
+   const span=GATE_PAT_STEPS*GATE_STEP_SEC;
+   chain.gatePat.loopStart = pi*span;
+   chain.gatePat.loopEnd   = (pi+1)*span;
+   // One loop of the buffer is one bar, whatever the tempo says a bar is.
+   const bpm=parseFloat(document.getElementById('bpm')?.value)||100;
+   const barSec=(60/bpm)*4;
+   try{ chain.gatePat.playbackRate.setTargetAtTime(span/barSec, t, 0.05); }catch(e){}
+  }
+  // The pattern ADDS to gate.gain, so the base has to duck out of its way by
+  // exactly as much as the pattern is contributing — otherwise a pattern at
+  // full depth just adds gain on top of an already-open gate.
+  chain.gatePatAmt.gain.setTargetAtTime(gpOn?gv:0, t, S);
+ }
+ chain.gate.gain.setTargetAtTime(v('gate') * (gpOn ? Math.max(0,1-v('gatepat')) : 1), t, S);
 
  // Tremolo reaches full depth — at the top the signal is chopped to silence
  // between cycles, which is the point of it.
@@ -25710,6 +25874,12 @@ function fxApplyChannel(ch){
   pr.get('warp').setValueAtTime(_fxWarpRate(v('warp')), t);
   pr.get('crush').setValueAtTime(v('crush'), t);
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
+  if(pr.get('grain')){
+   // Cycle length in seconds, so the worklet does not need the tempo.
+   const gOn = (fxPadX==='grain' || fxPadY==='grain');
+   pr.get('grain').setValueAtTime(gOn ? Math.max(0.01,_fxDivSec(v('grain'))) : 0, t);
+   pr.get('grainlen').setValueAtTime(v('grainlen'), t);
+  }
  }
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
@@ -25854,6 +26024,10 @@ const FX_FACTORY_PRESETS = [
  {name:'Isolator',    x:'iso',     y:'drive',   t:['drum','bass','chord','arp','mel','melgen'], sends:null},
  {name:'Iso Delay',   x:'iso',     y:'delay',   t:['drum','chord','arp'], sends:{dly:0}},
  {name:'Decimator',   x:'srate',   y:'crush',   t:['drum','bass','chord'], sends:null},
+ {name:'Audio Gate',  x:'gatepat', y:'lpsweep', t:['chord','arp','mel','melgen'], sends:null},
+ {name:'Gate & Verb', x:'gatepat', y:'reverb',  t:['chord','arp'], sends:null},
+ {name:'Grain',       x:'grain',   y:'grainlen',t:['chord','arp','mel','melgen'], sends:null},
+ {name:'Talk Box',    x:'talk',    y:'drive',   t:['chord','arp','mel'], sends:null},
  {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass'], sends:{drv:0.25}},
  {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel'], sends:null},
  {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass'],        sends:null},
