@@ -25241,6 +25241,12 @@ const FX_PARAMS = {
   // the filter also pushes the resonance up, so the sweep sings instead of
   // just going quiet. Separate cutoff and reso axes stay available for anyone
   // who wants to place them independently.
+  srate:   { label:'Rate crush',  short:'SR',  unit:'hz',  base:0,
+             fmt:v=>v<=0.001?'off':_fxHzFmt(48000/Math.max(1,Math.round(Math.pow(96,v)))) },
+  iso:     { label:'Isolate',     short:'ISO', unit:'band',base:0.5,
+             fmt:v=>{ const g=_fxIsoGains(v);
+                      const on=[['Low',g.lo],['Mid',g.mid],['Hi',g.hi]].filter(x=>x[1]>0.02);
+                      return on.length?on.map(x=>x[0]).join('+'):'silent'; } },
   lpsweep: { label:'LP sweep',    short:'LP↓', unit:'hz',  base:1,   gang:'lp',
              fmt:v=>_fxHzFmt(_fxFiltHz(v))+' · Q'+(0.7+_fxGangQ(v)*28).toFixed(0) },
   hpsweep: { label:'HP sweep',    short:'HP↑', unit:'hz',  base:0,   gang:'hp',
@@ -25313,7 +25319,8 @@ class ModFxProc extends AudioWorkletProcessor {
     {name:'stutter', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
     {name:'reverse', defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
     {name:'warp',    defaultValue:1, minValue:0.25, maxValue:4, automationRate:'k-rate'},
-    {name:'crush',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'}
+    {name:'crush',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+    {name:'srate',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'}
   ]; }
   constructor(){
     super();
@@ -25322,6 +25329,7 @@ class ModFxProc extends AudioWorkletProcessor {
     this.w = 0;                            // write head
     this.rd = 0;                           // read head, fractional for warp
     this.sliceStart = 0; this.sliceLen = 0;
+    this.holdC = 0; this.holdV = [0,0];   // sample-and-hold counter and last values
     this.mode = 'thru'; this.pos = 0;
     this.xf = 0;                           // crossfade in/out of an effect
   }
@@ -25332,6 +25340,12 @@ class ModFxProc extends AudioWorkletProcessor {
     const chn = out.length;
     const stut = params.stutter[0], rev = params.reverse[0];
     const warp = params.warp[0],    crush = params.crush[0];
+    const srate = params.srate[0];
+    // Sample-and-hold rate reduction. Bit crushing quantises amplitude; this
+    // quantises time, and the two together are what a decimator actually is.
+    // Full sample rate down to about 500Hz, which is far enough to turn a
+    // chord into a ring-modulated buzz.
+    const holdN = srate>0.001 ? Math.max(1, Math.round(Math.pow(sampleRate/500, srate))) : 1;
     const wantMode = stut>0.001 ? 'stutter' : rev>0.001 ? 'reverse'
                    : Math.abs(warp-1)>0.001 ? 'warp' : 'thru';
     if(wantMode !== this.mode){
@@ -25356,6 +25370,7 @@ class ModFxProc extends AudioWorkletProcessor {
       // writes back. Advancing on the last channel ALONE would leave channel 0
       // reading one sample forever, which is DC, not audio.
       let w = this.w, rd = this.rd, pos = this.pos, xf = this.xf;
+      if(c>0) this.holdC -= n;   // rewind so every channel walks the same grid
       for(let k=0;k<n;k++){
         const s = i ? i[k] : 0;
         b[w] = s;
@@ -25372,6 +25387,11 @@ class ModFxProc extends AudioWorkletProcessor {
           const bb = b[(((i0+1) % this.N) + this.N) % this.N];
           y = a + (bb - a) * fr;
           rd = (rd + warp) % this.N;
+        }
+        if(holdN>1){
+          if(this.holdC % holdN === 0) this.holdV[c] = y;
+          y = this.holdV[c];
+          if(c===chn-1) this.holdC++;
         }
         if(bits>0) y = Math.round(y * bits) / bits;
         // Short ramp on entering/leaving so a mode change does not click.
@@ -25430,8 +25450,35 @@ function fxBuildChain(ctx, ch){
  const postDrive=ctx.createGain();
  drvWet.connect(postDrive); drvDry.connect(postDrive);
 
+ // ── 3-band isolator ──────────────────────────────────────────────────
+ // The most drastic thing a Kaoss pad does, and the reason its filter section
+ // reads as an instrument rather than an EQ: one axis sweeps Low – Mid – Hi
+ // and everything either side of the chosen band is gone, not attenuated.
+ //
+ // Wet/dry rather than always in circuit. Three second-order bands summed
+ // back together do not reconstruct flat — the crossovers phase-cancel — so
+ // leaving it in the path at unity would colour every sound in the app. At
+ // wet 0 this is bit-identical to no isolator, the same way drive and ring
+ // mod are.
+ const isoIn=ctx.createGain();
+ const isoLo=ctx.createBiquadFilter(); isoLo.type='lowpass';  isoLo.frequency.value=ISO_LO_HZ; isoLo.Q.value=0.7;
+ const isoMidA=ctx.createBiquadFilter(); isoMidA.type='highpass'; isoMidA.frequency.value=ISO_LO_HZ; isoMidA.Q.value=0.7;
+ const isoMidB=ctx.createBiquadFilter(); isoMidB.type='lowpass';  isoMidB.frequency.value=ISO_HI_HZ; isoMidB.Q.value=0.7;
+ const isoHi=ctx.createBiquadFilter(); isoHi.type='highpass'; isoHi.frequency.value=ISO_HI_HZ; isoHi.Q.value=0.7;
+ const isoLoG=ctx.createGain(), isoMidG=ctx.createGain(), isoHiG=ctx.createGain();
+ isoLoG.gain.value=1; isoMidG.gain.value=1; isoHiG.gain.value=1;
+ const isoWet=ctx.createGain(); isoWet.gain.value=0;
+ const isoDry=ctx.createGain(); isoDry.gain.value=1;
+ const postIso=ctx.createGain();
+ postDrive.connect(isoIn);
+ isoIn.connect(isoLo);   isoLo.connect(isoLoG);   isoLoG.connect(isoWet);
+ isoIn.connect(isoMidA); isoMidA.connect(isoMidB); isoMidB.connect(isoMidG); isoMidG.connect(isoWet);
+ isoIn.connect(isoHi);   isoHi.connect(isoHiG);   isoHiG.connect(isoWet);
+ postDrive.connect(isoDry);
+ isoWet.connect(postIso); isoDry.connect(postIso);
+
  const gate=ctx.createGain(); gate.gain.value=1;
- postDrive.connect(gate);
+ postIso.connect(gate);
 
  // Tremolo: an LFO on a gain, biased so depth 0 is unity and never touches
  // the signal. The LFO free-runs; only its depth and rate are automated, so
@@ -25484,9 +25531,29 @@ function fxBuildChain(ctx, ch){
  out.connect(dest);
 
  const bundle={ctx,io,out,filt,hp,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend,
-               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet};
+               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,
+               isoLoG,isoMidG,isoHiG,isoWet,isoDry};
  fxChains[ch]=bundle;
  return bundle;
+}
+
+// Isolator crossovers. 220Hz keeps a kick and a bass fundamental together in
+// the low band; 2.6kHz puts hats and the top of a snare in the high one, which
+// is where the three-band split is most useful on a groove.
+const ISO_LO_HZ=220, ISO_HI_HZ=2600;
+// Where the axis sits decides which band survives. 0 is low only, 0.5 mid
+// only, 1 high only, with short crossfades between so a sweep is continuous
+// rather than three steps. Bands are not merely attenuated at the edges —
+// they go to silence, which is what makes it an isolator.
+function _fxIsoGains(v){
+ v=Math.max(0,Math.min(1,v));
+ const band=(centre,half)=>{
+  const d=Math.abs(v-centre);
+  if(d>=half) return 0;
+  // Equal-power crossfade, so the sum stays even through the transitions.
+  return Math.cos((d/half)*Math.PI/2);
+ };
+ return { lo:band(0,0.5), mid:band(0.5,0.5), hi:band(1,0.5) };
 }
 
 function _fxDriveCurve(amount){
@@ -25548,9 +25615,27 @@ function fxValue(ch, key){
  return p.base;
 }
 
+// How long the effect takes to fall back to nothing when you lift off the pad.
+// Every Kaoss program carries one of these; without it an effect stops the
+// instant your finger leaves, which is the one thing a real unit never does.
+// Applied as the smoothing constant on the way out, so every parameter glides
+// home on its own curve instead of being re-scheduled by hand.
+let fxReleaseSec = 0.18;             // seconds
+function fxSetRelease(v){
+ fxReleaseSec = Math.max(0, Math.min(2.5, +v||0));
+ const o=document.getElementById('fx-release-val');
+ if(o) o.textContent = fxReleaseSec<0.02 ? 'off' : fxReleaseSec.toFixed(2)+'s';
+ try{ localStorage.setItem('modo-fx-release', String(fxReleaseSec)); }catch(e){}
+}
+// True while the pad has just been let go and the tail is still running.
+let _fxReleasing = false;
+
 function fxApplyChannel(ch){
  const chain=fxChains[ch]; if(!chain) return;
- const c=chain.ctx, t=c.currentTime, S=0.02;
+ const c=chain.ctx, t=c.currentTime;
+ // setTargetAtTime reaches ~95% in three time constants, so the tau is a
+ // third of the release the user asked for.
+ const S = _fxReleasing ? Math.max(0.02, fxReleaseSec/3) : 0.02;
  const v=k=>fxValue(ch,k);
 
  // A ganged axis owns both the frequency and the Q of the filter it drives;
@@ -25574,6 +25659,18 @@ function fxApplyChannel(ch){
  const mk = (typeof _curveRmsGain==='function') ? _curveRmsGain(dcurve, 0.2) : 1;
  chain.drvWet.gain.setTargetAtTime(drv*(mk>0.001 ? 1/mk : 1), t, S);
  chain.drvDry.gain.setTargetAtTime(1-drv, t, S);
+
+ // Isolator is only in circuit when an axis is driving it — see the chain
+ // comment on why it cannot simply sit there at unity.
+ const isoOn = (fxPadX==='iso' || fxPadY==='iso');
+ if(chain.isoWet){
+  const g = isoOn ? _fxIsoGains(v('iso')) : {lo:1,mid:1,hi:1};
+  chain.isoLoG.gain.setTargetAtTime(g.lo, t, S);
+  chain.isoMidG.gain.setTargetAtTime(g.mid, t, S);
+  chain.isoHiG.gain.setTargetAtTime(g.hi, t, S);
+  chain.isoWet.gain.setTargetAtTime(isoOn?1:0, t, S);
+  chain.isoDry.gain.setTargetAtTime(isoOn?0:1, t, S);
+ }
 
  chain.gate.gain.setTargetAtTime(v('gate'), t, S);
 
@@ -25612,6 +25709,7 @@ function fxApplyChannel(ch){
   pr.get('reverse').setValueAtTime(rv<=0.001?0:Math.min(0.99,_fxDivSec(rv)/4), t);
   pr.get('warp').setValueAtTime(_fxWarpRate(v('warp')), t);
   pr.get('crush').setValueAtTime(v('crush'), t);
+  if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
  }
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
@@ -25641,19 +25739,24 @@ function fxSetPos(x,y){
 function fxEngage(on){
  // Hold keeps the last position live after you lift, which is the difference
  // between a stab and a setting.
- if(on) fxEngaged=true;
- else if(!fxHold) fxEngaged=false;
+ if(on){ fxEngaged=true; _fxReleasing=false; }
+ else if(!fxHold){ fxEngaged=false; _fxReleasing = fxReleaseSec>0.02; }
  fxApplyAll();
+ // The tail is a one-shot: the next application is back to normal smoothing,
+ // or a parameter moved during the tail would inherit the slow glide.
+ if(_fxReleasing) setTimeout(()=>{ _fxReleasing=false; }, Math.round(fxReleaseSec*1000)+40);
  if(typeof fxPaintPad==='function') fxPaintPad();
  // The readouts on every tab are how you find out a channel is being held
  // under an effect. They were only refreshed by fxSyncUI, so a held pad
  // reported "No effects" on the very tab whose sound it was changing.
  if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
 }
+// Lifting off the pad. This used to clear fxEngaged and re-apply by hand,
+// which meant the release tail — and anything else fxEngage does on the way
+// out — was skipped on the one gesture it exists for. One path now.
 function fxRelease(){
  if(fxHold) return;              // stays where you left it
- fxEngaged=false;
- fxApplyAll();
+ fxEngage(false);
  if(typeof fxPaintPad==='function') fxPaintPad();
 }
 function fxSetAxis(which, key){
@@ -25747,6 +25850,10 @@ const FX_FACTORY_PRESETS = [
  {name:'Delay Throw',  x:'dtime',   y:'delay',   t:['chord','arp','mel','melgen'], sends:{dly:0}},
  {name:'Filter Gate',  x:'lpsweep', y:'gate',    t:['drum','bass','chord'], sends:null},
  {name:'HP Riser',     x:'hpsweep', y:'reverb',  t:['chord','arp','mel'], sends:null},
+ // The isolator is the one that turns a full mix into a part of itself.
+ {name:'Isolator',    x:'iso',     y:'drive',   t:['drum','bass','chord','arp','mel','melgen'], sends:null},
+ {name:'Iso Delay',   x:'iso',     y:'delay',   t:['drum','chord','arp'], sends:{dly:0}},
+ {name:'Decimator',   x:'srate',   y:'crush',   t:['drum','bass','chord'], sends:null},
  {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass'], sends:{drv:0.25}},
  {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel'], sends:null},
  {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass'],        sends:null},
@@ -25755,6 +25862,7 @@ const FX_FACTORY_PRESETS = [
 const FX_PRESET_KEY='modo-fx-presets';
 let fxUserPresets=[];
 try{ fxUserPresets=JSON.parse(localStorage.getItem(FX_PRESET_KEY)||'[]')||[]; }catch(e){ fxUserPresets=[]; }
+try{ const _r=localStorage.getItem('modo-fx-release'); if(_r!=null) fxReleaseSec=Math.max(0,Math.min(2.5,parseFloat(_r)||0)); }catch(e){}
 function fxAllPresets(){ return FX_FACTORY_PRESETS.concat(fxUserPresets); }
 function fxSavePresets(){ try{ localStorage.setItem(FX_PRESET_KEY, JSON.stringify(fxUserPresets)); }catch(e){} }
 
@@ -25929,9 +26037,22 @@ function fxBuildPanel(){
   +  '</div>'
   + '</div>'
   + '<div class="fx-motion" id="fx-motion" role="group" aria-label="Pad motion recorder"></div>'
+  + '<div class="fx-sends"><div class="fx-sends-hdr">Release</div>'
+  +  '<div class="sg" style="min-width:120px">'
+  +   '<input type="range" id="fx-release-sl" min="0" max="1.2" step="0.02" value="0.18" '
+  +    'oninput="fxSetRelease(this.value)" '
+  +    'title="How long the effect takes to fall away after you lift off the pad">'
+  +   '<div class="sv" id="fx-release-val">0.18s</div>'
+  +  '</div>'
+  + '</div>'
   + '<div class="fx-sends" id="fx-sends"></div>'
   + '<div class="fx-note" id="fx-note"></div>';
  fxWirePad();
+ // The panel is rebuilt on open, so the slider has to be told where the
+ // stored release actually sits rather than keeping its markup default.
+ const rs=document.getElementById('fx-release-sl');
+ if(rs){ rs.value=fxReleaseSec; }
+ fxSetRelease(fxReleaseSec);
  fxSyncUI();
 }
 
