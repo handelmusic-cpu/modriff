@@ -6489,8 +6489,8 @@ function _audioStalled(){ return !!audioCtx && audioCtx.state!=='running'; }
 
 function _resyncEngines(){
  var c=getCtx(); if(!c) return;
- if(rhythmOn) rhythmNextBeat = clockAlignTo(c, rhythmStepSec||clockStepSec(), 0.1);
- if(arpOn) arpNextBeat = clockAlignTo(c, clockStepSec(), 0.1);
+ if(rhythmOn) rhythmNextBeat = clockAlignTo(c, rhythmStepSec||clockStepSec(), ALIGN_LEAD);
+ if(arpOn) arpNextBeat = clockAlignTo(c, clockStepSec(), ALIGN_LEAD);
  if(typeof window._sqPlaying==='function' && window._sqPlaying() && typeof window._sqResync==='function') window._sqResync();
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blResync==='function') window._blResync();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlResync==='function') window._mlResync();
@@ -8724,6 +8724,22 @@ let clockTimer=null;
 // The only thing it changes is how long a live twist of a knob takes to reach
 // the sound, which at a fifth of a second is still under what a hand notices.
 const LOOK_AHEAD=.2, SCHED_INT=25;
+// Where an engine puts its first note when it starts, restarts, or realigns.
+//
+// Two things depend on this being one number rather than the spread of 0.05,
+// 0.08, 0.1 and 0.15 that used to be scattered across the call sites. Engines
+// must resolve to the SAME grid step or they come out of an alignment in
+// different phases — that is the failure the comment above schedHorizon()
+// describes. And an aligned time must not land INSIDE the scheduler's horizon,
+// because then the very next tick commits it with whatever margin is left over
+// rather than a full look-ahead, and a blocked main thread turns that straight
+// into a late note. A lead of exactly one look-ahead satisfies both: the note
+// is committed on the next tick with the full margin the horizon is for.
+const ALIGN_LEAD = LOOK_AHEAD;
+// The epoch itself has to sit a little PAST that, so clockAlignTo() resolves to
+// the epoch rather than rounding up to the step after it — which is what
+// "lead the epoch by more than the largest look-ahead" has always meant here.
+const EPOCH_LEAD = LOOK_AHEAD + 0.05;
 
 // A tempo read for DRAWING only — never for scheduling a note.
 //
@@ -8753,7 +8769,7 @@ function clockStepSec(){ return 60/(parseFloat(document.getElementById('bpm')?.v
 
 // Call this when the FIRST engine starts — or when tempo changes significantly
 function clockSetEpoch(ctx){
-  CLOCK_EPOCH = ctx.currentTime + 0.08;
+  CLOCK_EPOCH = ctx.currentTime + EPOCH_LEAD;
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
 }
 
@@ -8763,7 +8779,7 @@ function clockAlignTo(ctx, stepSec, lookahead){
   var bpmNow = parseFloat(document.getElementById('bpm')?.value)||120;
   // If bpm changed, treat as new epoch
   if(Math.abs(bpmNow - CLOCK_EPOCH_BPM) > 0.5){ clockSetEpoch(ctx); return CLOCK_EPOCH; }
-  var target = ctx.currentTime + (lookahead||0.08);
+  var target = ctx.currentTime + (lookahead==null ? ALIGN_LEAD : lookahead);
   var elapsed = target - CLOCK_EPOCH;
   if(elapsed < 0) return CLOCK_EPOCH; // epoch is still in the future
   var stepsIn = Math.ceil(elapsed / stepSec);
@@ -18124,10 +18140,13 @@ function startEverything(){
  // arbitrary 16th-note offset — the "not aligned" problem.
  var _ctx=getCtx();
  if(_ctx){
-  // Lead the epoch by more than the largest engine look-ahead (0.10s) so the
+  // Lead the epoch by more than the alignment lead every engine uses, so the
   // sequencer, bass and song all resolve clockAlignTo() to this exact beat-1
-  // instead of one engine rounding up to the next 16th.
-  CLOCK_EPOCH = _ctx.currentTime + 0.15;
+  // instead of one engine rounding up to the next 16th. It was a bare 0.15
+  // against a look-ahead described as 0.10 — correct then, and silently wrong
+  // the moment either number moved, which is why both now come from the same
+  // place.
+  CLOCK_EPOCH = _ctx.currentTime + EPOCH_LEAD;
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
  }
 
@@ -20430,7 +20449,7 @@ var sqSeqStep=0, sqDispStep=-1, sqNextT=0;
 // clock itself moved, and without this the next tick either bursts through
 // every step it "missed" or fires one at a moment that no longer lines up
 // with anything.
-window._sqResync=function(){ var c=sqCtx(); if(c) sqNextT=clockAlignTo(c, sqSd(), 0.1); };
+window._sqResync=function(){ var c=sqCtx(); if(c) sqNextT=clockAlignTo(c, sqSd(), ALIGN_LEAD); };
 var sqPendMach=null, sqPendPat=null;
 var sqChain=[], sqChainPos=0, sqUsingChain=false;
 var sqStepEls={};
@@ -20729,10 +20748,10 @@ function sqStart(){
     sqPlaying=true;window._sqPlayingVal=true;sqSeqStep=0;sqDispStep=-1;
     sqUsingChain=sqChain.length>0;sqChainPos=0;
     if(sqUsingChain&&sqPats[sqChain[0]])sqLoadPatPlay(sqChain[0]);
-    sqNextT=clockAlignTo(c, sqSd(), 0.10);
+    sqNextT=clockAlignTo(c, sqSd(), ALIGN_LEAD);
     // Also re-align arp and rhythm to same epoch if they're running
-    if(arpOn) arpNextBeat=clockAlignTo(c, clockStepSec(), 0.10);
-    if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), 0.10); rhythmIdx=0; }
+    if(arpOn) arpNextBeat=clockAlignTo(c, clockStepSec(), ALIGN_LEAD);
+    if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), ALIGN_LEAD); rhythmIdx=0; }
     sqApplyFX();
     // Always kick clock so arp/bass scheduling runs alongside sequencer
     clearTimeout(clockTimer);tickClock();
@@ -21787,7 +21806,7 @@ var blPlaying = false;
 window._blResync = function(){
   var c=blCtx(); if(!c) return;
   var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
-  blNextT = clockAlignTo(c, 60/bpmNow/4*(typeof blRateMul!=='undefined'?blRateMul:1), 0.1);
+  blNextT = clockAlignTo(c, 60/bpmNow/4*(typeof blRateMul!=='undefined'?blRateMul:1), ALIGN_LEAD);
 };
 window._blEnsureGrid = function(){ blEnsureGrid(); };
 window._blRenderGrid = function(){ blRenderGrid(); };
@@ -22668,7 +22687,7 @@ function blPlay(){
     // sqSeqStep, which the sequencer's look-ahead has usually already advanced
     // past 0) keeps the bass locked to the sequencer at launch AND mid-stream.
     if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
-      var _firstStep = clockAlignTo(ctx, _blStepSec, 0.05); // next 16th aligned to epoch
+      var _firstStep = clockAlignTo(ctx, _blStepSec, ALIGN_LEAD); // next 16th aligned to epoch
       // Same trap, and this one mattered more: the fallback hardcoded 16, so
       // the bass aligned its launch to a 4/4 bar even in 5/4 or 3/4.
       var _sqN2 = (typeof window._sqSteps==='function') ? window._sqSteps() : 0;
@@ -22679,7 +22698,7 @@ function blPlay(){
       blNextT = _firstStep + _toBar * _blStepSec;
       blSeqStep = 0;
     } else {
-      blNextT = ctx.currentTime + 0.05;
+      blNextT = ctx.currentTime + ALIGN_LEAD;
       blSeqStep = 0;
     }
     // Always kick clock — tickClock will keep running as long as blPlaying is true
@@ -23697,7 +23716,7 @@ window._mlPlaying = function(){ return mlPlaying; };
 window._mlResync = function(){
   var c=mlCtx(); if(!c) return;
   var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
-  mlNextT = clockAlignTo(c, 60/bpmNow/4*(typeof mlRateMul!=='undefined'?mlRateMul:1), 0.1);
+  mlNextT = clockAlignTo(c, 60/bpmNow/4*(typeof mlRateMul!=='undefined'?mlRateMul:1), ALIGN_LEAD);
 };
 window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
@@ -23927,7 +23946,7 @@ function mlPlay(){
     // Align to the next bar boundary from the shared CLOCK_EPOCH, same as bass,
     // so melody always lands on beat 1 alongside sequencer/bass/song.
     if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
-      var _firstStep = clockAlignTo(ctx, _mlStepSec, 0.05);
+      var _firstStep = clockAlignTo(ctx, _mlStepSec, ALIGN_LEAD);
       var _barSteps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
       var _fromEpoch = Math.round((_firstStep - CLOCK_EPOCH) / _mlStepSec);
       var _intoBar = ((_fromEpoch % _barSteps) + _barSteps) % _barSteps;
@@ -27201,6 +27220,11 @@ a11yPass();
 // Periodic + save-on-hide covers accidental navigation (e.g. a mouse
 // back-button click firing mid-edit) without hooking every single grid
 // mutation call site individually. ──
+// localStorage.setItem is synchronous, and on a phone it is a synchronous write
+// to a database — so this fires fifteen times a minute whether or not a single
+// note has been moved. Building the snapshot is cheap; writing it is not, so
+// compare first and only write when the answer has actually changed.
+var _seqSavedJson = null;
 function _seqAutosave(){
   try{
     var state = {
@@ -27209,7 +27233,10 @@ function _seqAutosave(){
       bass: (typeof window._blCaptureState === 'function') ? window._blCaptureState() : null,
       melody: (typeof window._mlCaptureState === 'function') ? window._mlCaptureState() : null
     };
-    localStorage.setItem('modo-seq-autosave', JSON.stringify(state));
+    var json = JSON.stringify(state);
+    if(json === _seqSavedJson) return;
+    localStorage.setItem('modo-seq-autosave', json);
+    _seqSavedJson = json;
   }catch(e){ /* localStorage unavailable/full — autosave is best-effort */ }
 }
 setInterval(_seqAutosave, 4000);
