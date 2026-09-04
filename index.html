@@ -6384,11 +6384,14 @@ function startDemoJourney(autoPlay){
  ctx.arcTo(x,y,x+w,y,r);
  ctx.closePath();
  }
+ // Resolved once. getComputedStyle forces a style pass, and this was calling it
+ // sixty times a second for four custom properties that cannot change while
+ // the splash is the only thing on screen.
+ const _cs=getComputedStyle(document.documentElement);
+ const hues=['--pb','--pv','--pr','--pg'].map(v=>(_cs.getPropertyValue(v)||'').trim()||'#4fd6ff');
  function draw(t){
  const w=canvas.width, h=canvas.height;
  ctx.clearRect(0,0,w,h);
- const cs=getComputedStyle(document.documentElement);
- const hues=['--pb','--pv','--pr','--pg'].map(v=>(cs.getPropertyValue(v)||'').trim()||'#4fd6ff');
  const gap=w/barCount, baseY=h*0.6;
  for(let i=0;i<barCount;i++){
  const speed = reduce?0:0.0014;
@@ -7226,23 +7229,33 @@ function _msPanelVisible(){
  const p=document.getElementById('modsynth-panel');
  return !!(p && p.style.display!=='none' && p.offsetParent);
 }
+// Everything the scope needs that is not the waveform itself. Recomputing it
+// per frame meant a getComputedStyle (which forces a style pass), two layout
+// reads for the canvas size, and a fresh Uint8Array for the garbage collector,
+// sixty times a second — for a decorative trace. It all changes on a theme
+// change or a resize and at no other time.
+let _msBuf=null, _msLine='#58ffb4', _msW=0, _msH=0, _msDpr=1;
+function msScopeInvalidate(){ _msW=0; _msLine=''; }
 function msScopeTick(){
  _msRaf=null;
  const cv=document.getElementById('ms-scope');
  if(!cv||!_msPanelVisible()){ msStartScope(); return; }
  const an=_msEnsureAnalyser();
  const g=cv.getContext('2d');
- const dpr=Math.min(window.devicePixelRatio||1,2);
- const w=cv.clientWidth*dpr, h=cv.clientHeight*dpr;
- if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
+ if(!_msW || !_msLine){
+  _msDpr=Math.min(window.devicePixelRatio||1,2);
+  _msW=cv.clientWidth*_msDpr; _msH=cv.clientHeight*_msDpr;
+  if(cv.width!==_msW||cv.height!==_msH){ cv.width=_msW; cv.height=_msH; }
+  _msLine=(getComputedStyle(document.documentElement).getPropertyValue('--pg')||'#58ffb4').trim();
+ }
+ const w=_msW, h=_msH, dpr=_msDpr, line=_msLine;
  g.clearRect(0,0,w,h);
- const cs=getComputedStyle(document.documentElement);
- const line=(cs.getPropertyValue('--pg')||'#58ffb4').trim();
  // centre line
  g.strokeStyle=uiInk(uiLight()?.16:.10); g.lineWidth=1;
  g.beginPath(); g.moveTo(0,h/2); g.lineTo(w,h/2); g.stroke();
  if(an){
-  const buf=new Uint8Array(an.fftSize);
+  if(!_msBuf||_msBuf.length!==an.fftSize) _msBuf=new Uint8Array(an.fftSize);
+  const buf=_msBuf;
   an.getByteTimeDomainData(buf);
   g.strokeStyle=line; g.lineWidth=2*dpr; g.beginPath();
   for(let i=0;i<buf.length;i++){
@@ -7250,7 +7263,14 @@ function msScopeTick(){
    i?g.lineTo(x,y):g.moveTo(x,y);
   }
   g.stroke();
-  g.shadowBlur=12*dpr; g.shadowColor=line; g.stroke(); g.shadowBlur=0;
+  // The glow was a second full stroke of the same path under a 12px
+  // shadowBlur. A blurred stroke is about the most expensive thing a 2D canvas
+  // can be asked for — it is a separate rasterisation and blur of the whole
+  // path — and this one ran every frame, on the thread the clock runs on. A
+  // wider, translucent stroke of the same colour reads the same at a glance
+  // and is an ordinary stroke.
+  g.globalAlpha=0.28; g.lineWidth=6*dpr; g.stroke();
+  g.globalAlpha=1;
  }
  _msRaf=requestAnimationFrame(msScopeTick);
 }
@@ -7304,6 +7324,10 @@ function msHostFor(){
 }
 function msSyncHost(){
  const panel=document.getElementById('modsynth-panel'); if(!panel) return;
+ // The panel physically moves between pages, so the scope's canvas can be a
+ // different size on the other side of this call — its cached measurements go
+ // with it.
+ msScopeInvalidate();
  const {host,part}=msHostFor();
  if(!host){ panel.style.display='none'; panel.classList.remove('ms-force-show'); return; }
  const slot=document.getElementById(host);
@@ -9364,11 +9388,40 @@ function scheduleArpNote(midi,t,dur){
  _regKill(g);
 
  const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
- setTimeout(()=>{
- const s1=document.getElementById('arp-status'), s2=document.getElementById('arp-status2');
- const txt=`<span class="arp-dot"></span>${nn(midi)} <span style="color:var(--muted)">${Math.floor(midi/12)-1}</span>`;
- if(s1) s1.innerHTML=txt; if(s2) s2.innerHTML=txt;
- },delay);
+ setTimeout(()=>_arpShowNote(midi),delay);
+}
+
+// Which note the arp is on, as text under the arp controls. It was being built
+// as an HTML string and handed to innerHTML — a full parse — on every note the
+// arp plays, which at a sixteenth-note rate is eight times a second on the same
+// thread as the clock. The shape never changes, only the two labels in it, so
+// the nodes are built once and only their text is written after that.
+let _arpRdName=null, _arpRdOct=null, _arpRdName2=null, _arpRdOct2=null;
+function _arpBuildReadout(id){
+ const host=document.getElementById(id); if(!host) return null;
+ host.textContent='';
+ const dot=document.createElement('span'); dot.className='arp-dot';
+ const name=document.createTextNode('');
+ const oct=document.createElement('span'); oct.style.color='var(--muted)';
+ host.appendChild(dot); host.appendChild(name);
+ host.appendChild(document.createTextNode(' ')); host.appendChild(oct);
+ return {name, oct};
+}
+function _arpShowNote(midi){
+ // Loading a chord writes its own "Loaded E · 3 notes" line into the same
+ // element, which throws these nodes out of the document. isConnected is how
+ // we notice and put ours back, rather than writing into a text node that is
+ // no longer attached to anything.
+ if(!_arpRdName || !_arpRdName.isConnected){
+  const a=_arpBuildReadout('arp-status');
+  _arpRdName = a ? a.name : null; _arpRdOct = a ? a.oct : null;
+  const b=_arpBuildReadout('arp-status2');
+  _arpRdName2 = b ? b.name : null; _arpRdOct2 = b ? b.oct : null;
+  if(!_arpRdName) return;
+ }
+ const nm=nn(midi), oc=String(Math.floor(midi/12)-1);
+ _arpRdName.nodeValue=nm; _arpRdOct.textContent=oc;
+ if(_arpRdName2 && _arpRdName2.isConnected){ _arpRdName2.nodeValue=nm; _arpRdOct2.textContent=oc; }
 }
 
 // ─── Arp note chooser ───
@@ -9414,6 +9467,39 @@ function nextArpNote(){
 // Drum kit selector state
 let drumKit = 'classic'; // 'classic' | '808' | '909' | 'brush'
 
+// One white-noise buffer for every noise voice in this engine, instead of a
+// freshly generated one per hit.
+//
+// The snare and the hats each allocated an AudioBuffer and filled it with
+// Math.random() every single time they fired — up to fourteen thousand samples
+// for a brush snare — on the main thread, several times a beat, alongside the
+// scheduler. The sequencer's own kit has worked from a cached buffer since it
+// was written (SQNBUF); this is the older Vibe rhythm engine, which never got
+// the same treatment.
+//
+// Each hit still sounds different: the source loops and starts at a random
+// offset, so no two hits read the same slice. That is the same trick the
+// sequencer's noise voices use.
+let _drumNoiseBuf=null, _drumNoiseCtx=null;
+function _drumNoise(ctx){
+ if(_drumNoiseBuf && _drumNoiseCtx===ctx) return _drumNoiseBuf;
+ const len=Math.floor(ctx.sampleRate*0.5);
+ const b=ctx.createBuffer(1,len,ctx.sampleRate);
+ const d=b.getChannelData(0);
+ for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+ _drumNoiseCtx=ctx; _drumNoiseBuf=b;
+ return b;
+}
+// A looping source onto the shared buffer, opened at a random point so
+// successive hits are not the same noise twice.
+function _drumNoiseSrc(ctx,t,len){
+ const src=ctx.createBufferSource();
+ const buf=_drumNoise(ctx);
+ src.buffer=buf; src.loop=true;
+ src.start(t, Math.random()*Math.max(0, buf.duration-len));
+ src.stop(t+len);
+ return src;
+}
 function scheduleDrum(type,t){
  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
  const ctx=getCtx(); if(!ctx) return;
@@ -9443,11 +9529,9 @@ function scheduleDrum(type,t){
  g.gain.exponentialRampToValueAtTime(.001,t+.28);
  o.connect(g); g.connect(dest); o.start(t); o.stop(t+.3); reapVoice([o],[g],.3);
  // click layer
- const nb=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.008),ctx.sampleRate);
- const nd=nb.getChannelData(0); for(let j=0;j<nd.length;j++) nd[j]=Math.random()*2-1;
- const ns=ctx.createBufferSource(); ns.buffer=nb;
+ const ns=_drumNoiseSrc(ctx,t,.008);
  const ng=ctx.createGain(); ng.gain.setValueAtTime(rv*.8,t); ng.gain.exponentialRampToValueAtTime(.001,t+.008);
- ns.connect(ng); ng.connect(dest); ns.start(t); reapVoice([ns],[ng],.05);
+ ns.connect(ng); ng.connect(dest); reapVoice([ns],[ng],.05);
  } else if(kit==='brush'){
  // Brush: soft thud, no real kick — use floor tom sound
  o.frequency.setValueAtTime(90,t);
@@ -9464,9 +9548,7 @@ function scheduleDrum(type,t){
 
  } else if(type==='snare'){
  const slen = kit==='808'?.22 : kit==='brush'?.3 : kit==='909'?.12 : .18;
- const buf=ctx.createBuffer(1,Math.floor(ctx.sampleRate*slen),ctx.sampleRate);
- const dd=buf.getChannelData(0); for(let j=0;j<dd.length;j++) dd[j]=Math.random()*2-1;
- const src=ctx.createBufferSource(); src.buffer=buf;
+ const src=_drumNoiseSrc(ctx,t,slen);
  const g=ctx.createGain(), f=ctx.createBiquadFilter();
  if(kit==='brush'){
  // Brush snare: softer, lower, swishy
@@ -9483,23 +9565,19 @@ function scheduleDrum(type,t){
  f.type='bandpass'; f.frequency.value=4000; f.Q.value=.8;
  g.gain.setValueAtTime(rv*.75,t); g.gain.exponentialRampToValueAtTime(.001,t+.1);
  // Crack layer — short white noise burst
- const cb=ctx.createBuffer(1,Math.floor(ctx.sampleRate*.01),ctx.sampleRate);
- const cd=cb.getChannelData(0); for(let j=0;j<cd.length;j++) cd[j]=Math.random()*2-1;
- const cs=ctx.createBufferSource(); cs.buffer=cb;
+ const cs=_drumNoiseSrc(ctx,t,.01);
  const cg=ctx.createGain(); cg.gain.setValueAtTime(rv*.9,t); cg.gain.exponentialRampToValueAtTime(.001,t+.01);
- cs.connect(cg); cg.connect(dest); cs.start(t); reapVoice([cs],[cg],.4);
+ cs.connect(cg); cg.connect(dest); reapVoice([cs],[cg],.4);
  } else {
  f.type='bandpass'; f.frequency.value=3200; f.Q.value=.7;
  g.gain.setValueAtTime(rv*.65,t); g.gain.exponentialRampToValueAtTime(.001,t+.14);
  }
- src.connect(f); f.connect(g); g.connect(dest); src.start(t); reapVoice([src],[g,f],.6);
+ src.connect(f); f.connect(g); g.connect(dest); reapVoice([src],[g,f],.6);
 
  } else {
  // Hihat / cymbal
  const hlen = kit==='808'?.04 : kit==='brush'?.12 : .06;
- const buf=ctx.createBuffer(1,Math.floor(ctx.sampleRate*hlen),ctx.sampleRate);
- const dd=buf.getChannelData(0); for(let j=0;j<dd.length;j++) dd[j]=Math.random()*2-1;
- const src=ctx.createBufferSource(); src.buffer=buf;
+ const src=_drumNoiseSrc(ctx,t,hlen);
  const g=ctx.createGain(), f=ctx.createBiquadFilter();
  if(kit==='brush'){
  // Brush: softer, metallic swish
@@ -9517,7 +9595,7 @@ function scheduleDrum(type,t){
  f.type='highpass'; f.frequency.value=8000;
  g.gain.setValueAtTime(rv*.48,t); g.gain.exponentialRampToValueAtTime(.001,t+.055);
  }
- src.connect(f); f.connect(g); g.connect(dest); src.start(t); reapVoice([src],[g,f],.6);
+ src.connect(f); f.connect(g); g.connect(dest); reapVoice([src],[g,f],.6);
  }
 }
 
@@ -9687,6 +9765,11 @@ let _bdCount=-1, _bdSrc='';
 let _bdLit=-1;
 function setBeatDots(step,total,accents,src){
  if(!(total>0)) return;
+ // #beat-dots and #ft-beat-dots were both removed when the transport bar was
+ // reworked; this code and the .beat-dot CSS outlived them. Until one comes
+ // back there is nothing to light, and this runs on every step of every bar,
+ // so find that out in one lookup rather than four plus an array build.
+ if(!document.getElementById('beat-dots') && !document.getElementById('ft-beat-dots')) return;
  if(total!==_bdCount||src!==_bdSrc){
   _bdCount=total; _bdSrc=src||''; _bdLit=-1;
   ['beat-dots','ft-beat-dots'].forEach(id=>{
@@ -12001,8 +12084,29 @@ let _undoStack=[], _redoStack=[];
 let _undoCommitted=null, _undoPending=null, _undoBusy=false;
 
 function _undoInit(){ _undoCommitted = JSON.stringify(_capSettings()); _updateUndoUI(); }
+// _capSettings() reads three dozen DOM values and its result is JSON-encoded,
+// three times a second, almost always to conclude that nothing changed — and
+// it does that on the same thread as the clock, so the answer costs a small
+// spike of scheduler jitter every time. What it is watching for is you moving
+// a control, and nothing reaches a control without raising an input, change,
+// pointerup or keyup somewhere, so those arm the check.
+//
+// A few things do change settings without touching the DOM at all — the dice,
+// a MIDI knob, loading a preset — so an unprompted check still runs every
+// couple of seconds. Nothing goes unnoticed; it is just noticed on the second
+// tick instead of the first when no finger was involved.
+let _undoDirty = true, _undoCheckedAt = 0;
+['input','change','pointerup','keyup'].forEach(function(ev){
+ document.addEventListener(ev, function(){ _undoDirty = true; }, true);
+});
 function _undoTick(){
  if(_undoBusy || _undoCommitted===null) return;
+ const nowMs = Date.now();
+ // _undoPending means an edit is half-banked and the next tick decides it, so
+ // that one always runs whatever the flag says.
+ if(!_undoDirty && !_undoPending && nowMs - _undoCheckedAt < 2000) return;
+ _undoCheckedAt = nowMs;
+ _undoDirty = false;
  const cur = JSON.stringify(_capSettings());
  if(cur === _undoCommitted){ _undoPending=null; return; }
  if(_undoPending === cur){
@@ -20589,12 +20693,18 @@ function sqDraw(){
   // Subtract 1 because seqStep has already advanced past the current step
   var ds=((sqSeqStep-1)%sqSteps+sqSteps)%sqSteps;
   if(ds!==sqDispStep){
-    if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
-    var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2)e2.classList.add('head');}
-    sqPosPlayhead(ds);
+    // The grid, the playhead and the step/bar readouts all live inside the drum
+    // panel, so none of it is worth a single DOM write when that panel is not
+    // the one you are looking at. The beat dots below are the exception —
+    // they are in the transport bar, which follows you across every tab.
+    if(sqGridOn()){
+      if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
+      var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2)e2.classList.add('head');}
+      sqPosPlayhead(ds);
+      var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
+      var sb=document.getElementById('sq-sBar');if(sb)sb.textContent=Math.floor(ds/4)+1;
+    }
     sqDispStep=ds;
-    var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
-    var sb=document.getElementById('sq-sBar');if(sb)sb.textContent=Math.floor(ds/4)+1;
     // Feed the beat dots from the engine that's actually playing, marking the
     // kick row as the accent so the dots read as the groove, not decoration.
     if(typeof setBeatDots==='function'){
@@ -20647,24 +20757,41 @@ function sqStart(){
 // layout. That made moving a 2px dot one of the most expensive things in the
 // app. Measure it once and keep it; sqInvalidatePlayhead() throws it away
 // whenever the layout it describes can have changed.
-var _sqGutter=null;
-function sqInvalidatePlayhead(){ _sqGutter=null; }
+// Everything about the grid's geometry that does not change between steps,
+// measured once and kept: whether the grid is on screen at all, how wide the
+// row-label gutter is, and how much of the grid is visible. Only the scroll
+// position has to be read live, because dragging the grid sideways goes
+// through none of the hooks that clear this.
+var _sqPhBox=null;
+function sqInvalidatePlayhead(){ _sqPhBox=null; }
 // This function lives inside the sequencer's IIFE and the tab and sub-tab
 // switches that need it do not, so it crosses the boundary on window the same
 // way _sqResync and the rest do.
 window._sqInvalidatePlayhead = sqInvalidatePlayhead;
-function sqPosPlayhead(ds){
-  var ph=document.getElementById('sq-phcur'); if(!ph) return;
+function _sqPhGeom(){
+  if(_sqPhBox) return _sqPhBox;
+  var ph=document.getElementById('sq-phcur'); if(!ph) return null;
   var gs=document.getElementById('sq-gScroll'), bar=ph.parentElement;
-  if(!gs||!bar){ ph.style.left='0'; return; }
-  // Nothing to place while the drum grid is off screen, and the measurement
-  // would be meaningless anyway — a hidden element has no box.
-  if(ph.offsetParent===null){ _sqGutter=null; return; }
-  var x = ds*36 - gs.scrollLeft;
-  if(x < -4 || x > gs.clientWidth){ ph.style.display='none'; return; }
-  ph.style.display='';
-  if(_sqGutter===null) _sqGutter = gs.getBoundingClientRect().left - bar.getBoundingClientRect().left;
-  ph.style.left = (_sqGutter + x) + 'px';
+  if(!gs||!bar) return null;
+  // offsetParent, getBoundingClientRect and clientWidth all flush layout, so
+  // they are taken together, here, at most once per tab or sub-tab change —
+  // never on the step change they used to run on.
+  return (_sqPhBox={ ph:ph, gs:gs,
+                     on: ph.offsetParent!==null,
+                     gutter: gs.getBoundingClientRect().left - bar.getBoundingClientRect().left,
+                     viewW: gs.clientWidth });
+}
+// Is the drum grid actually on screen? The sequencer is the master clock, so it
+// keeps running — and kept redrawing itself — while you are on Perform, in the
+// mixer, or editing the bass.
+function sqGridOn(){ var b=_sqPhGeom(); return !b || b.on; }
+function sqPosPlayhead(ds){
+  var b=_sqPhGeom(); if(!b) return;
+  if(!b.on) return;
+  var x = ds*36 - b.gs.scrollLeft;
+  if(x < -4 || x > b.viewW){ b.ph.style.display='none'; return; }
+  b.ph.style.display='';
+  b.ph.style.left = (b.gutter + x) + 'px';
 }
 function sqStop(){
   sqPlaying=false;window._sqPlayingVal=false;
@@ -21665,6 +21792,9 @@ window._blResync = function(){
 window._blEnsureGrid = function(){ blEnsureGrid(); };
 window._blRenderGrid = function(){ blRenderGrid(); };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
+// The step duration the scheduler last worked out, published for blDraw() —
+// see the assignment in _blScheduler.
+var _blStepSecLive = 0;
 var blMenuStep = -1;
 // Funk out of the box rather than Rock: the eighth-note root pattern is the
 // most neutral thing the generator makes, and neutral is the one thing a
@@ -22331,6 +22461,11 @@ window._blScheduler = function(){
   var ctx = blCtx(); var mg=blMG(); if(!ctx || !blPlaying || !mg) return;
   var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
   var stepSec = 60 / bpmNow / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
+  // blDraw() needs this to interpolate the playhead between steps, and it runs
+  // sixty times a second against this function's forty. Handing it the value
+  // already computed here means the animation loop touches neither the DOM nor
+  // the clock.
+  _blStepSecLive = stepSec;
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = blSteps;
   var following = blFollow && _blChordWin.length > 0;
@@ -22495,7 +22630,7 @@ window._blScheduler = function(){
 function blDraw(){
   if(!blPlaying){ blRafID = null; return; }
   var ctx = blCtx(); if(!ctx){ blRafID = requestAnimationFrame(blDraw); return; }
-  var stepSec = 60 / _clockBpm() / 4 * (typeof blRateMul!=='undefined'?blRateMul:1);
+  var stepSec = _blStepSecLive || (60 / _clockBpm() / 4 * (typeof blRateMul!=='undefined'?blRateMul:1));
   var elapsed = ctx.currentTime - blNextT + 0.12;
   var ds = ((blSeqStep - Math.round(elapsed / stepSec)) % blSteps + blSteps) % blSteps;
   if(ds !== blDispStep){
@@ -23566,6 +23701,8 @@ window._mlResync = function(){
 };
 window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
+// As _blStepSecLive, for the melody — see the assignment in _mlScheduler.
+var _mlStepSecLive = 0;
 var mlMenuStep = -1;
 // Pop Hook rather than Arpeggio, for the same reason: an arpeggio spells the
 // chord you are already hearing, where a hook is a line of its own.
@@ -23608,6 +23745,9 @@ window._mlScheduler = function(){
   var ctx = mlCtx(); var mg=mlMG(); if(!ctx || !mlPlaying || !mg) return;
   var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
   var stepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
+  // See the same line in _blScheduler: mlDraw() reads this instead of asking
+  // the tempo slider on every animation frame.
+  _mlStepSecLive = stepSec;
   var swingAmt = typeof window._sqSwingVal === 'function' ? window._sqSwingVal() : 0;
   var stepCount = mlSteps;
   var following = mlFollow && typeof window._songHasChordWindows==='function'
@@ -23751,7 +23891,7 @@ function mlPrInit(){
 function mlDraw(){
   if(!mlPlaying){ mlRafID = null; return; }
   var ctx = mlCtx(); if(!ctx){ mlRafID = requestAnimationFrame(mlDraw); return; }
-  var stepSec = 60 / _clockBpm() / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
+  var stepSec = _mlStepSecLive || (60 / _clockBpm() / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1));
   var elapsed = ctx.currentTime - mlNextT + 0.12;
   var ds = ((mlSeqStep - Math.round(elapsed / stepSec)) % mlSteps + mlSteps) % mlSteps;
   if(ds !== mlDispStep){
@@ -24432,9 +24572,25 @@ function mixClipReset(){
  _mixClipped=false;
  const el=document.getElementById('mix-clip'); if(el) el.classList.remove('lit');
 }
+// The strips, their analysers and their colours are all fixed for as long as
+// the mixer is open — they change when buildMixChannelsInto() rebuilds the
+// panel and at no other time. Resolving them per frame meant a document-wide
+// querySelectorAll plus a linear search of MIX_CHANNELS for every strip, sixty
+// times a second, on the thread the clock is on. mixMetersStart() rebuilds
+// this list, and it is the only way the loop starts.
+let _mixStrips=null;
+function _mixCollectStrips(){
+ const chans=window.MIX_CHANNELS||[];
+ _mixStrips=[...document.querySelectorAll('.mix-meter[data-mixmeter]')].map(cv=>{
+  const id=cv.dataset.mixmeter;
+  const ch=chans.find(c=>c.id===id);
+  return { cv, id, color: ch?ch.color:'#2df09a' };
+ });
+ return _mixStrips;
+}
 function _mixMeterTick(){
- const strips=document.querySelectorAll('.mix-meter[data-mixmeter]');
- if(!strips.length){ _mixMeterRaf=null; return; }
+ const strips=_mixStrips||_mixCollectStrips();
+ if(!strips.length){ _mixMeterRaf=null; _mixStrips=null; return; }
  const now=performance.now();
  // Latching, because a clip is one or two samples and a light that blinks for
  // 16ms is a light nobody sees. It stays lit until you clear it, so you can
@@ -24444,8 +24600,8 @@ function _mixMeterTick(){
   _mixClipped=true;
   const el=document.getElementById('mix-clip'); if(el) el.classList.add('lit');
  }
- strips.forEach(cv=>{
-  const id=cv.dataset.mixmeter;
+ for(let i=0;i<strips.length;i++){
+  const st=strips[i], id=st.id;
   const an = id==='__master' ? _mixMasterAnalyserGet() : _mixAnalyserFor(id);
   const lvl=_mixNorm(_mixLevel(an));
   const p=_mixPeak[id] || (_mixPeak[id]={v:0,until:0});
@@ -24453,13 +24609,12 @@ function _mixMeterTick(){
   // transient you would otherwise miss between frames.
   if(lvl>=p.v){ p.v=lvl; p.until=now+900; }
   else if(now>p.until){ p.v=Math.max(lvl, p.v-0.02); }
-  const ch=(window.MIX_CHANNELS||[]).find(c=>c.id===id);
-  _mixDrawMeter(cv, lvl, p.v, ch?ch.color:'#2df09a');
- });
+  _mixDrawMeter(st.cv, lvl, p.v, st.color);
+ }
  _mixMeterRaf=requestAnimationFrame(_mixMeterTick);
 }
-function mixMetersStart(){ if(!_mixMeterRaf) _mixMeterTick(); }
-function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _mixMeterRaf=null; }
+function mixMetersStart(){ _mixStrips=null; if(!_mixMeterRaf) _mixMeterTick(); }
+function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _mixMeterRaf=null; _mixStrips=null; }
 
 // Derived from PARTS — see the block above VOICE_PARTS. Adding a part there
 // gives it a mixer strip, a stem and a place in every ordered list at once.
@@ -25022,12 +25177,14 @@ window.prRelayoutAll = function(){ Object.keys(PR_ENGINES).forEach(prLayout); };
 window.addEventListener('resize', function(){
  prInvalidateColW();
  if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
+ if(typeof msScopeInvalidate==='function') msScopeInvalidate();
  window.prRelayoutAll();
 });
 // The roll reads every colour from the theme and shades rows by the current
 // key, so both have to repaint it.
 window.prThemeChanged = function(){
  prThemeInvalidate();
+ if(typeof msScopeInvalidate==='function') msScopeInvalidate();
  Object.keys(PR_ENGINES).forEach(function(id){ prDrawKeys(id); prDraw(id); });
 };
 
