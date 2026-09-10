@@ -1452,8 +1452,6 @@ body.light-mode .voice-sel { background:#fff; color:#1a1e38; border-color:#c2c6d
  animation:logic-pulse 1.4s ease-in-out infinite;
 }
 .ending-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
-.ft-btn.tp-count { color:#7dd3fc; font-size:.9rem; font-weight:700; }
-body.light-mode .ft-btn.tp-count { color:#0369a1; }
 
 .sec-follow {
  /* Carries a real number now ("×4", "∞"), not a one-character glyph, so it
@@ -3677,7 +3675,6 @@ body.mode-free .pro-only { display:none !important; }
 <div class="perf-bar" id="perf-bar">
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
- <button class="ft-btn transport tp-count" id="ft-countin-btn" onclick="startWithCountIn()" title="Count in four beats, then start everything on beat 1" aria-label="Count in">⁴</button>
  <!-- Layer switches, in the same order the Mixer and the Voices dock use:
       Chords, Drums, Bass, Melody gen, Arp. The transport used to run
       Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran Bass·Melody·Arp,
@@ -10424,40 +10421,6 @@ function _runEnding(kind, atTime){
   return true;   // stay in the loop — the changes play on through the slowdown
  }
  _endingRunning=false;
-}
-
-// Count-in: four clicks in tempo, then everything enters together on beat 1.
-let _countInRunning=false;
-function startWithCountIn(){
- if(_countInRunning) return;
- if(typeof isAnythingPlaying==='function' && isAnythingPlaying()){ stopEverything(); return; }
- _countInRunning=true;
- const ctx=getCtx();
- const beat=60000/_bpmNow();
- const btn=document.getElementById('ft-countin-btn');
- for(let i=0;i<4;i++){
-  setTimeout(()=>{
-   if(btn) btn.textContent=String(4-i);
-   try{
-    if(ctx){
-     const t=ctx.currentTime;
-     const g=ctx.createGain();
-     g.gain.setValueAtTime(i===0?0.4:0.22,t);
-     g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
-     g.connect(masterDest(ctx));
-     const o=ctx.createOscillator();
-     o.type='sine'; o.frequency.value=i===0?1760:1175;
-     o.connect(g); o.start(t); o.stop(t+0.06);
-    }
-   }catch(e){}
-  }, beat*i);
- }
- setTimeout(()=>{
-  _countInRunning=false;
-  if(btn) btn.textContent='⁴';
-  if(typeof startEverything==='function') startEverything();
-  if(typeof syncFixedTransport==='function') syncFixedTransport();
- }, beat*4);
 }
 
 // ═══════════════════════════════════════
