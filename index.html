@@ -1798,6 +1798,32 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
 body.light-mode .ft-btn.ft-stems { color:#c81e3a; border-color:rgba(200,30,58,.4); }
 .ft-btn.ft-cap    { background:rgba(56,189,248,.10); border-color:rgba(56,189,248,.45); color:#38bdf8; padding:5px 8px; font-size:.55rem; }
 .ft-btn.ft-cap:not(.off)    { background:#38bdf8; color:#07080f; border-color:#38bdf8; box-shadow:0 0 10px rgba(56,189,248,.4); }
+/* The two halves butt together into one control: the seam between them is a
+   single shared edge, and only the outer corners are round. */
+.ft-cap-split { display:flex; align-items:stretch; }
+.ft-cap-split > .ft-btn { border-radius:0; }
+.ft-cap-split > .ft-btn:first-child { border-top-left-radius:7px; border-bottom-left-radius:7px; }
+.ft-cap-split > .ft-btn:last-child  { border-top-right-radius:7px; border-bottom-right-radius:7px; border-left-width:0; }
+/* Deliberately NOT .ft-cap. That class carries `:not(.off)` styling for the
+   forward half's armed state — a solid cyan fill — and the back half is never
+   "off", so it inherited the look of a button mid-recording and then had an
+   opacity knocked over the top of it. The empty state came out as a bright
+   button at 30% and the ready state as a faint one at 100%, which is why the
+   two were almost impossible to tell apart. Its own colours, then. */
+.ft-btn.ft-cap-back {
+ padding:5px 8px; font-size:.62rem; line-height:1;
+ background:rgba(56,189,248,.30); border-color:#38bdf8; color:#7dd3fc;
+ box-shadow:0 0 8px rgba(56,189,248,.30);
+}
+/* Nothing in the log yet, so there is nothing this could take. Flat and
+   untappable rather than hidden: a control that appears from nowhere is
+   startling, one that lights up is an invitation. */
+.ft-btn.ft-cap-back.empty {
+ background:transparent; border-color:var(--border2); color:var(--muted);
+ box-shadow:none; opacity:.5; pointer-events:none;
+}
+body.light-mode .ft-btn.ft-cap-back { background:rgba(2,132,199,.16); border-color:#0284c7; color:#0369a1; }
+body.light-mode .ft-btn.ft-cap-back.empty { background:transparent; border-color:var(--border2); color:var(--muted); }
 .ft-btn.ft-bounce { background:rgba(229,56,79,.10); border-color:rgba(229,56,79,.45); color:#e5384f; padding:5px 8px; font-size:.55rem; }
 .ft-btn.ft-bounce:not(.off) { background:#e5384f; color:#fff; border-color:#e5384f; animation:recBlink 1s ease-in-out infinite; }
 body.light-mode .ft-btn.ft-cap    { color:#0369a1; border-color:rgba(3,105,161,.5); }
@@ -3743,8 +3769,18 @@ body.mode-free .pro-only { display:none !important; }
       are now side by side, each saying what it produces. Capture writes into
       the song; Bounce writes files to disk. -->
  <div class="ft-rec-group">
-  <button class="ft-btn ft-cap off" id="ft-rec-btn" onclick="toggleSongRecord()" aria-label="Capture chords into the song"
-   title="Capture — the chords you play (mouse, keys or MIDI) are written into a new Song section you can edit and loop. Nothing is saved to disk.">◉&nbsp;Capture</button>
+  <!-- Capture points both ways. The ◀ half takes the chords you have ALREADY
+       played out of the rolling log and makes a section of them; the ◉ half is
+       the original arm-and-play. They share a border and read as one control,
+       and the ◀ half is dark until there is actually something behind it —
+       which is how you find out it exists without being told. -->
+  <div class="ft-cap-split">
+   <button class="ft-btn ft-cap-back empty" id="ft-cap-back" onclick="captureBack()"
+    aria-label="Keep the chords just played as a song section"
+    title="Keep what you just played — the chords from the last run become a new Song section. Lights up once there is something to keep.">◀</button>
+   <button class="ft-btn ft-cap off" id="ft-rec-btn" onclick="toggleSongRecord()" aria-label="Capture chords into the song"
+    title="Capture — the chords you play (mouse, keys or MIDI) are written into a new Song section you can edit and loop. Nothing is saved to disk.">◉&nbsp;Capture</button>
+  </div>
   <button class="ft-btn ft-bounce off" id="ft-bounce-btn" onclick="toggleRecording()" aria-label="Bounce audio and MIDI to files"
    title="Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.">⬤&nbsp;Bounce</button>
   <!-- Whether this take gets stems is a decision you make reaching for Bounce,
@@ -16803,6 +16839,9 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  else if(v && EXTS[v]) ext = v;
 
  if(songRecActive) _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride);
+ // Logged whether or not anything is armed — this is what the back half of
+ // Capture reads. See _chordRingPush.
+ else if(typeof _chordRingPush==='function') _chordRingPush(rootM, triadQ, type7, ext, func, bassOverride);
 
  const intvs = getIntvs(triadQ, type7, ext);
 
@@ -16977,6 +17016,130 @@ function stopSongRecord(){
  }
 }
 
+// ─── The chords you already played ────────────────────────────────────────
+//
+// Capture used to point one way only: arm it, then play. That covers the
+// deliberate take and misses the one that matters — the pass where you were
+// not recording because you were not planning to keep it, and then it came
+// out right. This is the other direction: a log of every chord that sounded,
+// running whether or not anything is armed, so "I just played that" has
+// something to read back from.
+//
+// Bounded by time rather than count. Ninety seconds is comfortably more than
+// anyone plays before deciding they liked it, and a chord event is a dozen
+// small fields, so the whole ring is a few kilobytes even when full.
+const CHORD_RING_SEC = 90;
+let _chordRing = [];
+let _chordRingTimer = null;
+
+// Drops events that have aged out, then re-arms a single timer for the moment
+// the next-oldest one will. No polling: an idle app has no timer at all, which
+// is the point — the back half of the button must go dark on its own, or
+// "lit means there is something to keep" is a lie.
+function _chordRingTrim(){
+ const ctx=getCtx();
+ const now = ctx ? ctx.currentTime : 0;
+ const cut = now - CHORD_RING_SEC;
+ let i=0; while(i<_chordRing.length && _chordRing[i].t < cut) i++;
+ if(i) _chordRing.splice(0,i);
+ if(_chordRingTimer){ clearTimeout(_chordRingTimer); _chordRingTimer=null; }
+ if(_chordRing.length && ctx){
+  const ms = Math.max(500, (_chordRing[0].t + CHORD_RING_SEC - now) * 1000);
+  _chordRingTimer = setTimeout(()=>{ _chordRingTimer=null; _chordRingTrim(); _updateSongRecUI(); }, ms);
+ }
+}
+function _chordRingPush(rootM, triadQ, type7, ext, func, bassOverride){
+ const ctx=getCtx(); if(!ctx) return;
+ const md = MODES[mode]||MODES.major;
+ const pc = ((rootM - rootMidi())%12+12)%12;
+ const di = md.steps.indexOf(pc);
+ _chordRing.push({
+  label: _chordLabelFromData(rootM,triadQ,type7,ext,bassOverride),
+  numeral: di>=0 ? md.nums[di] : '',
+  rootM, triadQ, type7, func, ext,
+  // Same octave compensation as the forward path — see _songRecCapture.
+  bassNote: bassOverride!==null ? bassOverride+12 : null,
+  t: ctx.currentTime
+ });
+ _chordRingTrim();
+ _updateSongRecUI();
+}
+
+// How much of the ring counts as "just now".
+//
+// Walking back to the start of the ring would hand you every chord of the last
+// minute and a half, most of which was a different idea. A gap of two bars is
+// the seam: nobody leaves two bars of silence in the middle of a phrase, and
+// everybody leaves at least that between one attempt and the next.
+function _chordRingRun(){
+ const ctx=getCtx(); if(!ctx || !_chordRing.length) return [];
+ const bpm = parseFloat(document.getElementById('bpm')?.value||100);
+ const barSec = (60/bpm) * (_songBarSteps()/4);
+ const gap = barSec * 2;
+ let start = _chordRing.length - 1;
+ while(start > 0 && (_chordRing[start].t - _chordRing[start-1].t) <= gap) start--;
+ return _chordRing.slice(start);
+}
+
+// Turn the run into a section, the same shape the forward path writes.
+function captureBack(){
+ if(songRecActive){ showToast('Already capturing — stop first'); return; }
+ const ctx=getCtx();
+ const run=_chordRingRun();
+ if(!ctx || !run.length){ showToast('Play some chords first'); return; }
+
+ stopSongLoopIfActive();
+ const bpm = parseFloat(document.getElementById('bpm')?.value||100);
+ const stepsPerBar = _songBarSteps();
+ const eighthsPerBar = stepsPerBar/2;
+ const eighthSec = (60/bpm)*0.5;
+
+ const base='Captured';
+ let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
+ const sec={name:base+' '+n, slots:[], plays:0, follow:'repeat'};
+
+ run.forEach((ev,i)=>{
+  // A chord lasts until the next one starts; the last one lasts until now.
+  const endT = (i+1<run.length) ? run[i+1].t : ctx.currentTime;
+  let totalEighths = Math.round(Math.max(0, endT-ev.t)/eighthSec);
+  if(totalEighths < 1) totalEighths = 1;
+  const bars = Math.floor(totalEighths/eighthsPerBar);
+  const rem  = totalEighths%eighthsPerBar;
+  sec.slots.push({
+   label:ev.label, numeral:ev.numeral, rootM:ev.rootM, triadQ:ev.triadQ,
+   type7:ev.type7, func:ev.func, ext:ev.ext, bassNote:ev.bassNote,
+   bars, beats:Math.floor(rem/2), eighths:rem%2, isRest:false
+  });
+ });
+
+ sections.push(sec);
+ const idx = sections.length-1;
+ curSection = idx;
+ // Same tidy-up the forward path does, so a capture that stopped mid-bar
+ // still loops on the bar line.
+ if(typeof _songRecPadToBar==='function') _songRecPadToBar(sec);
+ buildSectionTabs(); renderChartSeq();
+ if(typeof renderSetlist==='function') renderSetlist();
+ _updateSongRecUI();
+
+ // Taking the same chords twice would be the obvious mistake, so the run that
+ // just became a section is spent.
+ _chordRing = [];
+ _chordRingTrim();
+ _updateSongRecUI();
+
+ showToast('Kept '+run.length+' chord'+(run.length>1?'s':'')+' as "'+sec.name+'"', {
+  actionLabel:'Undo', ms:7000,
+  onAction:function(){
+   const at=sections.indexOf(sec);
+   if(at>=0) sections.splice(at,1);
+   if(curSection>=sections.length) curSection=Math.max(0,sections.length-1);
+   buildSectionTabs(); renderChartSeq();
+   if(typeof renderSetlist==='function') renderSetlist();
+  }
+ });
+}
+
 function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
  const ctx=getCtx(); if(!ctx) return;
  const now = ctx.currentTime;
@@ -17029,6 +17192,16 @@ function _updateSongRecUI(){
   btn.innerHTML = songRecActive ? '◉&nbsp;Stop' : '◉&nbsp;Capture';
   btn.title = songRecActive ? 'Capturing — tap to stop and keep the section'
     : 'Capture — the chords you play (mouse, keys or MIDI) are written into a new Song section you can edit and loop. Nothing is saved to disk.';
+ }
+ const back=document.getElementById('ft-cap-back');
+ if(back){
+  // Dark while there is nothing to take, and while the forward half is
+  // already capturing — you cannot look back and record forward at once.
+  const run = (!songRecActive && typeof _chordRingRun==='function') ? _chordRingRun() : [];
+  back.classList.toggle('empty', run.length===0);
+  back.title = run.length
+   ? ('Keep the '+run.length+' chord'+(run.length>1?'s':'')+' you just played as a new Song section')
+   : 'Keep what you just played — the chords from the last run become a new Song section. Lights up once there is something to keep.';
  }
 }
 
