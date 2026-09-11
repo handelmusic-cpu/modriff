@@ -61,15 +61,42 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  // Network-first, but not network-at-any-cost. The shell is a 1.4 MB HTML
+  // file, and waiting for all of it before painting anything is the difference
+  // between an app that opens and an app that hangs — on a phone, on a bad
+  // connection, which is exactly where someone opens a groovebox. A plain
+  // network-first only reaches the cache when the request FAILS, so a slow
+  // network is worse than no network at all: an outright failure falls back in
+  // milliseconds, a crawling one keeps the screen blank for as long as it
+  // crawls.
+  //
+  // So the network still wins whenever it can answer promptly — a deploy
+  // reaches people on their next online launch, which is the whole point of
+  // network-first here and is unchanged. It just stops being allowed to hold
+  // the app hostage: past the deadline the cached copy is served, and the
+  // response still in flight is banked for next time.
+  const NET_DEADLINE = 1500;
+  const fromNet = fetch(req).then(res => {
+    if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
+    return res;
+  });
+  // Offline: the cached shell, and for a navigation the app itself rather than
+  // the browser's dinosaur.
+  const cached = () => caches.match(req).then(hit =>
+    hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined));
+  const netThenCache = () => fromNet.catch(() => cached().then(hit => hit || Response.error()));
+
+  // Only a navigation is worth racing. It is the request a person is actually
+  // waiting on, and the only one where a slightly stale answer beats a late
+  // one; everything else keeps plain network-first. A cache miss falls back to
+  // whatever the network eventually says, so racing can never make a first
+  // visit worse.
   e.respondWith(
-    fetch(req)
-      .then(res => {
-        if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
-        return res;
-      })
-      // Offline: the cached shell, and for a navigation the app itself rather
-      // than the browser's dinosaur.
-      .catch(() => caches.match(req).then(hit =>
-        hit || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
+    req.mode !== 'navigate' ? netThenCache() : Promise.race([
+      netThenCache(),
+      new Promise(resolve => setTimeout(resolve, NET_DEADLINE))
+        .then(() => cached())
+        .then(hit => hit || netThenCache())
+    ])
   );
 });
