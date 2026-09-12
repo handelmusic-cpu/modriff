@@ -8807,6 +8807,18 @@ const LOOK_AHEAD=.2, SCHED_INT=25;
 // is committed on the next tick with the full margin the horizon is for.
 const ALIGN_LEAD = LOOK_AHEAD;
 
+// The longest pattern any sequencer holds, in sixteenth steps.
+//
+// It was 32, written out separately in the drum, bass and melody engines and
+// again in the meter's arithmetic — five places that all had to agree and
+// nothing making them. 64 is four bars of 4/4, which is what a drum pattern
+// with a fill in the last bar needs and what 32 could never hold; it also
+// takes 12/4, 5/2 and everything else up to sixteen quarter-note beats.
+//
+// The grid does not change to suit it. A 64-step bar scrolls, the same way a
+// 32-step one already does.
+const MAX_STEPS = 64;
+
 // ─── Time signature ───────────────────────────────────────────────────────
 //
 // One place the app counts from. Everything that used to assume four beats of
@@ -8845,13 +8857,13 @@ function meterResolve(beats, unit){
  beats = Math.max(1, Math.min(32, beats|0));
  unit  = ({2:2,4:4,8:8,16:16})[unit] || 4;
  const want = Math.max(1, Math.round(16/unit));
- return (beats * want <= 32)
+ return (beats * want <= MAX_STEPS)
   ? { beats, unit, reqUnit: unit, fellBack: false }
   : { beats, unit: 16, reqUnit: unit, fellBack: unit !== 16 };
 }
 // The most beats the grid can hold at a given base, for the UI to explain with.
 function meterMaxBeatsAt(unit){
- return Math.max(1, Math.floor(32 / Math.max(1, Math.round(16/unit))));
+ return Math.max(1, Math.floor(MAX_STEPS / Math.max(1, Math.round(16/unit))));
 }
 // The metronome's beat is the meter's beat, not always a quarter. Tempo is
 // still quarter-note BPM — ♩=100 means the same thing in 7/8 as in 4/4 — so an
@@ -8867,13 +8879,13 @@ function setMeter(beats, unit, opts){
  const res = meterResolve(beats, unit);
  const perBar = res.beats * Math.max(1, Math.round(16/res.unit));
  if(res.fellBack && opts.quiet !== true && typeof showToast==='function'){
-  showToast(res.beats+'/'+unit+' is '+(res.beats*Math.round(16/unit))+' steps — over the 32 limit, so '+meterLabelOf(res));
+  showToast(res.beats+'/'+unit+' is '+(res.beats*Math.round(16/unit))+' steps — over the '+MAX_STEPS+' limit, so '+meterLabelOf(res));
  }
  beats = res.beats; unit = res.unit;
  const oldPerBar = meterStepsPerBar();
  const cur = (typeof window._sqSteps==='function') ? (window._sqSteps()||oldPerBar) : oldPerBar;
  let bars = Math.max(1, Math.round(cur/oldPerBar));
- while(perBar*bars > 32 && bars > 1) bars--;
+ while(perBar*bars > MAX_STEPS && bars > 1) bars--;
 
  METER = { beats, unit, reqUnit: res.reqUnit };
  // The beat just changed length, so where the next click belongs has to be
@@ -8924,7 +8936,7 @@ function meterSyncUI(){
             ' · beat every ' + meterBeatSteps();
   if(METER.reqUnit && METER.reqUnit !== METER.unit){
    txt += ' — /' + METER.reqUnit + ' would need ' +
-          (METER.beats * Math.round(16/METER.reqUnit)) + ', past the 32 a pattern holds';
+          (METER.beats * Math.round(16/METER.reqUnit)) + ', past the '+MAX_STEPS+' a pattern holds';
   }
   note.textContent = txt;
  }
@@ -8996,7 +9008,7 @@ const SEQ_RATES = [0.5, 1, 2];
 const SEQ_RATE_LABEL = {0.5:'½×', 1:'1×', 2:'2×'};
 
 function _applyStepCount(eng, n){
- n = Math.max(1, Math.min(32, n|0));
+ n = Math.max(1, Math.min(MAX_STEPS, n|0));
  if(eng==='sq'){
   if(typeof window._sqSetStepsRaw==='function') window._sqSetStepsRaw(n);
  } else if(eng==='bl'){
@@ -21676,7 +21688,7 @@ function sqWire(){
   window._sqEnsureGrid = function(){ sqEnsureGrid(); };
   window._sqRenderGrid = function(){ sqRender(); };
   window._sqSetStepsRaw = function(n){
-    sqSteps = Math.max(1, Math.min(32, n));
+    sqSteps = Math.max(1, Math.min(MAX_STEPS, n));
     var d=document.getElementById('sq-stepsDisp'); if(d) d.textContent=sqSteps;
     sqEnsureGrid(); sqRenderGrid();
   };
@@ -23453,7 +23465,7 @@ function blCloseMenu(){ var m = document.getElementById('bl-smenu'); if(m) m.sty
 
 // ── steps / octave ──
 window._blSetStepsRaw = function(n){
-  blSteps = Math.max(1, Math.min(32, n));
+  blSteps = Math.max(1, Math.min(MAX_STEPS, n));
   var d = document.getElementById('bl-stepsdisp'); if(d) d.textContent = blSteps;
   blEnsureGrid(); blRenderGrid();
 };
@@ -24595,7 +24607,7 @@ function mlCloseMenu(){ var m = document.getElementById('ml-smenu'); if(m) m.sty
 
 // ── steps / octave ──
 window._mlSetStepsRaw = function(n){
-  mlSteps = Math.max(1, Math.min(32, n));
+  mlSteps = Math.max(1, Math.min(MAX_STEPS, n));
   var d = document.getElementById('ml-stepsdisp'); if(d) d.textContent = mlSteps;
   mlEnsureGrid(); mlRenderGrid();
 };
