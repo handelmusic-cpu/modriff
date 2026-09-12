@@ -1912,7 +1912,14 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 /* Shown only away from 4/4 — see meterSyncUI. The transport does not grow to
    carry a value that nearly everyone leaves alone. */
 .ft-meter-val { font-size:.52rem; font-weight:700; letter-spacing:.04em; color:var(--modal); margin-left:3px; }
-.ft-meter-row { flex-wrap:wrap; }
+.ft-meter-row { flex-wrap:nowrap; gap:3px; }
+.ft-meter-num { min-width:22px; text-align:center; font-weight:700; font-size:.72rem; color:var(--modal); font-variant-numeric:tabular-nums; }
+.ft-meter-slash { color:var(--muted); font-size:.7rem; margin:0 1px; }
+.ft-btn.ft-meter-base, .ft-pop-btn.ft-meter-base { padding:4px 6px; font-size:.55rem; min-width:24px; }
+/* A base this numerator cannot reach inside 32 steps. Dimmed, not hidden:
+   tapping it still works and says what happened, but the ceiling is visible
+   before you walk into it. */
+.ft-pop-btn.ft-meter-base.over { opacity:.38; }
 .ft-swing-pip {
  width:6px; height:6px; border-radius:50%; margin-left:3px;
  background:var(--accent); box-shadow:0 0 7px var(--accent);
@@ -3752,12 +3759,16 @@ body.mode-free .pro-only { display:none !important; }
   <div class="ft-pop-sep"></div>
   <div class="ft-pop-row ft-meter-row">
    <span class="ft-pop-lbl">Bar</span>
-   <button class="ft-pop-btn" data-meter="4/4" onclick="setMeter(4,4)">4/4</button>
-   <button class="ft-pop-btn" data-meter="3/4" onclick="setMeter(3,4)">3/4</button>
-   <button class="ft-pop-btn" data-meter="6/8" onclick="setMeter(6,8)">6/8</button>
-   <button class="ft-pop-btn" data-meter="5/4" onclick="setMeter(5,4)">5/4</button>
-   <button class="ft-pop-btn" data-meter="7/8" onclick="setMeter(7,8)">7/8</button>
+   <button class="ft-bpm-nudge" onclick="meterNudge(-1)" aria-label="Fewer beats to the bar">−</button>
+   <span class="ft-meter-num" id="ft-meter-num" aria-live="polite">4</span>
+   <button class="ft-bpm-nudge" onclick="meterNudge(1)" aria-label="More beats to the bar">+</button>
+   <span class="ft-meter-slash" aria-hidden="true">/</span>
+   <button class="ft-pop-btn ft-meter-base" data-mbase="2"  onclick="setMeterBase(2)">2</button>
+   <button class="ft-pop-btn ft-meter-base" data-mbase="4"  onclick="setMeterBase(4)">4</button>
+   <button class="ft-pop-btn ft-meter-base" data-mbase="8"  onclick="setMeterBase(8)">8</button>
+   <button class="ft-pop-btn ft-meter-base" data-mbase="16" onclick="setMeterBase(16)">16</button>
   </div>
+  <div class="ft-pop-note" id="ft-meter-note"></div>
   <div class="ft-pop-row">
    <button class="ft-pop-btn" id="ft-swing8-btn" onclick="setSwingUnit(true)"
     title="Swing every other 8th — the long-short feel of a jazz ride or a shuffle">8th</button>
@@ -8807,11 +8818,41 @@ const ALIGN_LEAD = LOOK_AHEAD;
 // which note gets one. Steps are sixteenths everywhere in this app, so a beat
 // is 16/unit of them: a quarter is four, an eighth is two. That single line is
 // what makes 7/8 fourteen steps instead of a special case.
-let METER = { beats: 4, unit: 4 };
+// unit is the one in force; reqUnit is the one asked for. They differ only
+// where the bar would not fit — see meterResolve.
+let METER = { beats: 4, unit: 4, reqUnit: 4 };
 function meterBeatSteps(){ return Math.max(1, Math.round(16 / METER.unit)); }
 function meterStepsPerBar(){ return Math.max(1, METER.beats * meterBeatSteps()); }
 function meterLabel(){ return METER.beats + '/' + METER.unit; }
 function meterIsCommon(){ return METER.beats === 4 && METER.unit === 4; }
+
+// What a requested meter actually resolves to.
+//
+// A step is a sixteenth — sqSd() and clockStepSec() both divide the beat by
+// four and nothing else in the app disagrees — so a bar's length in steps is
+// its length in sixteenths, and that is not negotiable: 12/4 is twelve
+// quarters is forty-eight sixteenths, whatever anyone would prefer. Patterns
+// cap at 32 steps, so some meters simply cannot be spelled at the base asked
+// for.
+//
+// Rather than refuse them, the base drops to sixteenths and the numerator is
+// kept: ask for 12/4 and you get 12/16 — twelve beats to the bar, accented and
+// ruled as twelve, each one a step. The label says 12/16 because that is what
+// it is; quietly printing 12/4 over a bar a quarter of the right length would
+// be the actual lie. The requested base is remembered, so bringing the
+// numerator back under the limit restores it.
+function meterResolve(beats, unit){
+ beats = Math.max(1, Math.min(32, beats|0));
+ unit  = ({2:2,4:4,8:8,16:16})[unit] || 4;
+ const want = Math.max(1, Math.round(16/unit));
+ return (beats * want <= 32)
+  ? { beats, unit, reqUnit: unit, fellBack: false }
+  : { beats, unit: 16, reqUnit: unit, fellBack: unit !== 16 };
+}
+// The most beats the grid can hold at a given base, for the UI to explain with.
+function meterMaxBeatsAt(unit){
+ return Math.max(1, Math.floor(32 / Math.max(1, Math.round(16/unit))));
+}
 // The metronome's beat is the meter's beat, not always a quarter. Tempo is
 // still quarter-note BPM — ♩=100 means the same thing in 7/8 as in 4/4 — so an
 // eighth-note meter clicks twice as often against the same number.
@@ -8823,22 +8864,18 @@ function meterBeatSec(){ return beatSec() * (4 / METER.unit); }
 // 3/4, not a 32-step pattern with bar lines every 12.
 function setMeter(beats, unit, opts){
  opts = opts || {};
- beats = Math.max(1, Math.min(16, beats|0));
- unit  = ({2:2,4:4,8:8,16:16})[unit] || 4;
- const perBar = beats * Math.max(1, Math.round(16/unit));
- // Step counts top out at 32. A meter whose bar will not fit is refused
- // outright rather than truncated into something that is not the meter asked
- // for and would silently mis-bar everything downstream.
- if(perBar > 32){
-  if(typeof showToast==='function') showToast(beats+'/'+unit+' needs '+perBar+' steps — past the 32 limit');
-  return false;
+ const res = meterResolve(beats, unit);
+ const perBar = res.beats * Math.max(1, Math.round(16/res.unit));
+ if(res.fellBack && opts.quiet !== true && typeof showToast==='function'){
+  showToast(res.beats+'/'+unit+' is '+(res.beats*Math.round(16/unit))+' steps — over the 32 limit, so '+meterLabelOf(res));
  }
+ beats = res.beats; unit = res.unit;
  const oldPerBar = meterStepsPerBar();
  const cur = (typeof window._sqSteps==='function') ? (window._sqSteps()||oldPerBar) : oldPerBar;
  let bars = Math.max(1, Math.round(cur/oldPerBar));
  while(perBar*bars > 32 && bars > 1) bars--;
 
- METER = { beats, unit };
+ METER = { beats, unit, reqUnit: res.reqUnit };
  // The beat just changed length, so where the next click belongs has to be
  // worked out again rather than advanced from the old grid.
  try{ metroNextBeat = 0; }catch(e){}
@@ -8858,15 +8895,39 @@ function setMeter(beats, unit, opts){
 // The transport shows the meter only when there is something to say. In 4/4 it
 // is absent entirely, which is most of the time for most people; anywhere else
 // it sits beside the tempo, because they are the same decision seen twice.
+function meterLabelOf(m){ return m.beats + '/' + m.unit; }
+// Step the numerator, keeping the base you asked for wherever it still fits.
+function meterNudge(d){
+ const n = Math.max(1, Math.min(32, METER.beats + d));
+ setMeter(n, METER.reqUnit || METER.unit, {quiet:true});
+}
+function setMeterBase(u){ setMeter(METER.beats, u); }
 function meterSyncUI(){
  const out=document.getElementById('ft-meter-val');
  if(out){
   out.textContent = meterIsCommon() ? '' : meterLabel();
   out.style.display = meterIsCommon() ? 'none' : '';
  }
- document.querySelectorAll('[data-meter]').forEach(function(b){
-  b.classList.toggle('active', b.dataset.meter === meterLabel());
+ const num=document.getElementById('ft-meter-num');
+ if(num) num.textContent = METER.beats;
+ // The base in force is lit; a base the current numerator cannot reach is
+ // dimmed rather than hidden, so the limit is visible before you hit it.
+ document.querySelectorAll('[data-mbase]').forEach(function(b){
+  const u=+b.dataset.mbase;
+  b.classList.toggle('active', u === METER.unit);
+  b.classList.toggle('over', METER.beats > meterMaxBeatsAt(u));
  });
+ const note=document.getElementById('ft-meter-note');
+ if(note){
+  const perBar = meterStepsPerBar();
+  let txt = meterLabel() + ' · ' + perBar + ' step' + (perBar===1?'':'s') +
+            ' · beat every ' + meterBeatSteps();
+  if(METER.reqUnit && METER.reqUnit !== METER.unit){
+   txt += ' — /' + METER.reqUnit + ' would need ' +
+          (METER.beats * Math.round(16/METER.reqUnit)) + ', past the 32 a pattern holds';
+  }
+  note.textContent = txt;
+ }
 }
 // The epoch itself has to sit a little PAST that, so clockAlignTo() resolves to
 // the epoch rather than rounding up to the step after it — which is what
