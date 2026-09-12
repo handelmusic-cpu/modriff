@@ -1909,6 +1909,10 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 }
 /* Swing state has to be legible without opening anything — this is the dot
    next to the tempo that says the groove is not straight. */
+/* Shown only away from 4/4 — see meterSyncUI. The transport does not grow to
+   carry a value that nearly everyone leaves alone. */
+.ft-meter-val { font-size:.52rem; font-weight:700; letter-spacing:.04em; color:var(--modal); margin-left:3px; }
+.ft-meter-row { flex-wrap:wrap; }
 .ft-swing-pip {
  width:6px; height:6px; border-radius:50%; margin-left:3px;
  background:var(--accent); box-shadow:0 0 7px var(--accent);
@@ -3723,6 +3727,7 @@ body.mode-free .pro-only { display:none !important; }
        aria-label="Tempo" aria-valuemin="40" aria-valuemax="220" aria-valuenow="100"
        title="Tempo — drag to change, tap 4+ times to set by feel, or tap once for tempo and feel">100</span>
  <span class="ft-swing-pip" id="ft-swing-pip" title="Swing is on" aria-hidden="true"></span>
+ <span class="ft-meter-val" id="ft-meter-val" style="display:none" title="Time signature — tap the tempo to change it"></span>
  <div class="ft-bpm-pop" id="ft-bpm-pop" aria-hidden="true">
   <div class="ft-pop-row">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
@@ -3740,6 +3745,18 @@ body.mode-free .pro-only { display:none !important; }
    <input type="range" min="0" max="70" step="1" value="0" id="ft-swing-sl"
           oninput="setSwingAll(this.value)" aria-label="Swing amount">
    <span class="ft-pop-val" id="ft-swing-val">Straight</span>
+  </div>
+  <!-- Meter sits with tempo and Feel for the same reason Feel does: all three
+       are the one decision about how the beat is laid out. It also costs the
+       transport nothing, which a fourth button on a two-row bar would not. -->
+  <div class="ft-pop-sep"></div>
+  <div class="ft-pop-row ft-meter-row">
+   <span class="ft-pop-lbl">Bar</span>
+   <button class="ft-pop-btn" data-meter="4/4" onclick="setMeter(4,4)">4/4</button>
+   <button class="ft-pop-btn" data-meter="3/4" onclick="setMeter(3,4)">3/4</button>
+   <button class="ft-pop-btn" data-meter="6/8" onclick="setMeter(6,8)">6/8</button>
+   <button class="ft-pop-btn" data-meter="5/4" onclick="setMeter(5,4)">5/4</button>
+   <button class="ft-pop-btn" data-meter="7/8" onclick="setMeter(7,8)">7/8</button>
   </div>
   <div class="ft-pop-row">
    <button class="ft-pop-btn" id="ft-swing8-btn" onclick="setSwingUnit(true)"
@@ -8778,6 +8795,79 @@ const LOOK_AHEAD=.2, SCHED_INT=25;
 // into a late note. A lead of exactly one look-ahead satisfies both: the note
 // is committed on the next tick with the full margin the horizon is for.
 const ALIGN_LEAD = LOOK_AHEAD;
+
+// ─── Time signature ───────────────────────────────────────────────────────
+//
+// One place the app counts from. Everything that used to assume four beats of
+// four sixteenths reads it from here instead: the metronome's accent, the drum
+// grid's beat ruler, the piano roll's bar lines, and the song builder's bar
+// arithmetic.
+//
+// Two fields, because a meter is two decisions — how many beats to a bar, and
+// which note gets one. Steps are sixteenths everywhere in this app, so a beat
+// is 16/unit of them: a quarter is four, an eighth is two. That single line is
+// what makes 7/8 fourteen steps instead of a special case.
+let METER = { beats: 4, unit: 4 };
+function meterBeatSteps(){ return Math.max(1, Math.round(16 / METER.unit)); }
+function meterStepsPerBar(){ return Math.max(1, METER.beats * meterBeatSteps()); }
+function meterLabel(){ return METER.beats + '/' + METER.unit; }
+function meterIsCommon(){ return METER.beats === 4 && METER.unit === 4; }
+// The metronome's beat is the meter's beat, not always a quarter. Tempo is
+// still quarter-note BPM — ♩=100 means the same thing in 7/8 as in 4/4 — so an
+// eighth-note meter clicks twice as often against the same number.
+function meterBeatSec(){ return beatSec() * (4 / METER.unit); }
+
+// Changing the meter changes how long a bar is, so the pattern length has to
+// follow or the grid stops lining up with the bar lines drawn on it. The
+// number of BARS is what is preserved: two bars of 4/4 becomes two bars of
+// 3/4, not a 32-step pattern with bar lines every 12.
+function setMeter(beats, unit, opts){
+ opts = opts || {};
+ beats = Math.max(1, Math.min(16, beats|0));
+ unit  = ({2:2,4:4,8:8,16:16})[unit] || 4;
+ const perBar = beats * Math.max(1, Math.round(16/unit));
+ // Step counts top out at 32. A meter whose bar will not fit is refused
+ // outright rather than truncated into something that is not the meter asked
+ // for and would silently mis-bar everything downstream.
+ if(perBar > 32){
+  if(typeof showToast==='function') showToast(beats+'/'+unit+' needs '+perBar+' steps — past the 32 limit');
+  return false;
+ }
+ const oldPerBar = meterStepsPerBar();
+ const cur = (typeof window._sqSteps==='function') ? (window._sqSteps()||oldPerBar) : oldPerBar;
+ let bars = Math.max(1, Math.round(cur/oldPerBar));
+ while(perBar*bars > 32 && bars > 1) bars--;
+
+ METER = { beats, unit };
+ // The beat just changed length, so where the next click belongs has to be
+ // worked out again rather than advanced from the old grid.
+ try{ metroNextBeat = 0; }catch(e){}
+ if(opts.keepSteps !== true && typeof setSeqStepCount==='function'){
+  try{ setSeqStepCount('sq', perBar*bars); }catch(e){}
+ }
+ meterSyncUI();
+ // The bar lines are drawn from the meter, so everything that draws them has
+ // to be told. sqRender rebuilds the drum ruler; the rolls re-measure.
+ try{ if(typeof window._sqRender==='function') window._sqRender(); }catch(e){}
+ try{ if(typeof prInvalidateColW==='function') prInvalidateColW(); }catch(e){}
+ try{ if(typeof window.prRelayoutAll==='function') window.prRelayoutAll(); }catch(e){}
+ try{ if(typeof renderChartSeq==='function') renderChartSeq(); }catch(e){}
+ return true;
+}
+
+// The transport shows the meter only when there is something to say. In 4/4 it
+// is absent entirely, which is most of the time for most people; anywhere else
+// it sits beside the tempo, because they are the same decision seen twice.
+function meterSyncUI(){
+ const out=document.getElementById('ft-meter-val');
+ if(out){
+  out.textContent = meterIsCommon() ? '' : meterLabel();
+  out.style.display = meterIsCommon() ? 'none' : '';
+ }
+ document.querySelectorAll('[data-meter]').forEach(function(b){
+  b.classList.toggle('active', b.dataset.meter === meterLabel());
+ });
+}
 // The epoch itself has to sit a little PAST that, so clockAlignTo() resolves to
 // the epoch rather than rounding up to the step after it — which is what
 // "lead the epoch by more than the largest look-ahead" has always meant here.
@@ -9204,7 +9294,11 @@ function syncFeelUI(){
 }
 
 let metronomeOn=false;
+// Where the next click goes. Re-anchored rather than trusted whenever the
+// epoch moves under it — a new epoch, a tempo change, a new meter.
+let metroNextBeat=0;
 function toggleMetronome(){
+ metroNextBeat=0;
  metronomeOn=!metronomeOn;
  const b=document.getElementById('metro-btn'); if(b) b.textContent=metronomeOn?'Metro ON':'Metro OFF';
  if(metronomeOn){
@@ -9218,16 +9312,28 @@ function scheduleMetronome(){
  if(!metronomeOn) return;
  const ctx=getCtx(); if(!ctx) return;
  if(CLOCK_EPOCH<=0) return;
- const bSec=beatSec();
+ const bSec=meterBeatSec();
  const now=ctx.currentTime;
- const elapsed=now-CLOCK_EPOCH;
- let beatNum=Math.max(0,Math.floor(elapsed/bSec));
- let scheduled=0;
- while(scheduled<8){
-  const t=CLOCK_EPOCH+beatNum*bSec;
-  if(t>now+LOOK_AHEAD) break;
+ // Every other engine keeps a "next event" time and advances it; this one
+ // re-derived the current beat from the epoch on every tick and scheduled
+ // everything inside the horizon again. A beat 150 ms out is inside the
+ // horizon for six or seven consecutive ticks, so each click was being
+ // scheduled that many times over — measured at eight oscillators per click,
+ // all starting at the same instant, which is a click eight times louder than
+ // the level set for it and eight times the nodes. Tracking the next beat the
+ // way the rest of the app does means each one is scheduled once.
+ if(metroNextBeat < CLOCK_EPOCH || metroNextBeat < now - bSec){
+  const n = Math.max(0, Math.ceil((now - CLOCK_EPOCH)/bSec));
+  metroNextBeat = CLOCK_EPOCH + n*bSec;
+ }
+ let guard=0;
+ while(metroNextBeat < schedHorizon() && guard++ < 32){
+  const t=metroNextBeat;
   if(t>=now-0.005){
-   const isDownbeat=beatNum%4===0;
+   // The accent lands on the bar line, wherever the meter puts it — every
+   // third beat in 3/4, every seventh in 7/8. It was every fourth, always.
+   const beatNum=Math.round((t-CLOCK_EPOCH)/bSec);
+   const isDownbeat=(((beatNum%METER.beats)+METER.beats)%METER.beats)===0;
    const freq=isDownbeat?1760:880;
    const vol=isDownbeat?0.35:0.18;
    const g=ctx.createGain();
@@ -9238,8 +9344,9 @@ function scheduleMetronome(){
    osc.type='sine'; osc.frequency.value=freq;
    osc.connect(g);
    osc.start(t); osc.stop(t+0.04);
+   reapVoice([osc],[g],0.05);
   }
-  beatNum++; scheduled++;
+  metroNextBeat += bSec;
  }
 }
 
@@ -11685,6 +11792,10 @@ function _capSettings(){
   melModOn, melModDest, melModDepth,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
+  // Stored as a pair rather than a string so an older setup, which has
+  // neither, restores as 4/4 without needing to be parsed or migrated.
+  meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
+  meterUnit:  (typeof METER!=='undefined') ? METER.unit  : 4,
   compStyle: (typeof songCompStyle!=='undefined') ? songCompStyle : null,
   strumMode, wetDry, autoInvOn,
   // Musical/"audio" state — the structural side the dice now rolls too, so
@@ -11866,6 +11977,11 @@ function _applySettings(s){
 
  // Voicing + comping
  if(s.voicing) setVoicing(s.voicing);
+ // Before the step count is restored below, and with keepSteps so the meter
+ // does not overwrite the pattern length the setup is about to hand back.
+ if(typeof setMeter==='function' && s.meterBeats && s.meterUnit){
+  setMeter(s.meterBeats, s.meterUnit, {keepSteps:true});
+ }
  if(s.compStyle && typeof setSongCompStyle==='function') setSongCompStyle(s.compStyle);
  // Only push tempo when it actually moved — onBpmInput restarts the running
  // clock, which would put a small hiccup in playback on every undo/redo.
@@ -17425,6 +17541,10 @@ function _scheduleCompHits(slot, baseTime){
 // one of them silently used 16. Songs never actually followed the step count,
 // despite the comments saying they did. Read it through the export instead.
 function _songBarSteps(){
+ // The meter says how long a bar is. This used to return the whole pattern
+ // length, so a two-bar drum pattern made every song slot's "bar" twice as
+ // long as a bar — invisible in 4/4 at 16 steps, wrong everywhere else.
+ if(typeof meterStepsPerBar==='function') return meterStepsPerBar();
  var n = (typeof window._sqSteps==='function') ? window._sqSteps() : 16;
  return (n > 0) ? n : 16;
 }
@@ -19685,6 +19805,9 @@ if(typeof setMidiBendScope==='function') setMidiBendScope(melBendScope);
 if(typeof renderMidiCC==='function') renderMidiCC();
 if(typeof syncAutoInvUI==='function') syncAutoInvUI();
 if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,60);
+// The meter buttons and the transport readout have to agree with METER from
+// the first paint, not only after something changes it.
+if(typeof meterSyncUI==='function') meterSyncUI();
 // Both loaders are async (the codec is). Whichever one the hash matches
 // reports what it brought in, and the splash is rebuilt around it — see
 // buildUnlockChoices. Nothing here presses play; that stays the user's call.
@@ -19888,6 +20011,21 @@ function sqApplyGroove(idx){
   var r = RHYTHMS[idx]; if(!r) return;
   sqCurGroove = idx;
   var newSteps = r.pat.length;
+  // The signature printed on the groove's own button becomes the app's meter —
+  // but only where the groove's data agrees with itself. The 12/8 entries are
+  // written as twelve triplet steps rather than the twenty-four sixteenths
+  // 12/8 works out to, so their pattern length and their signature describe
+  // different bars; taking the label at face value there would draw bar lines
+  // the pattern does not have. Where the two agree, the label is the truth.
+  try{
+    var _sg = /^(\d+)\/(\d+)$/.exec(r.sig||'');
+    if(_sg && typeof setMeter==='function'){
+      var _b=+_sg[1], _u=+_sg[2];
+      if(_b*Math.round(16/_u) === newSteps && (_b!==METER.beats || _u!==METER.unit)){
+        setMeter(_b, _u, {keepSteps:true});
+      }
+    }
+  }catch(e){}
   var oldSteps = (typeof window._sqSteps==='function') ? window._sqSteps() : newSteps;
   document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:r,steps:newSteps}}));
   // The bass used to be regenerated on every groove change, on an 80ms timer.
@@ -21211,10 +21349,15 @@ function sqRenderGrid(){
   var rlbl=document.createElement('div');rlbl.className='sq-gruler-lbl';rlbl.textContent='BEAT';
   gLeft.appendChild(rlbl);
   var rrow=document.createElement('div');rrow.className='sq-grow sq-gruler';
+  // Beat numbers come from the meter: every fourth step in 4/4, every second
+  // in 7/8, and the bar mark wherever the bar actually ends rather than always
+  // at step 0 of a 16-step assumption.
+  var _bw = (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
+  var _bar = (typeof meterStepsPerBar==='function') ? meterStepsPerBar() : 16;
   for(var rs=0;rs<sqSteps;rs++){
     var rc=document.createElement('div');
-    rc.className='sq-rcell'+(rs%4===0?' b4':'')+(rs===0?' b1':'');
-    rc.textContent=(rs%4===0)?String(rs/4+1):'';
+    rc.className='sq-rcell'+(rs%_bw===0?' b4':'')+(rs%_bar===0?' b1':'');
+    rc.textContent=(rs%_bw===0)?String((rs%_bar)/_bw+1):'';
     rrow.appendChild(rc);
   }
   gInner.appendChild(rrow);
@@ -25160,8 +25303,11 @@ const PR_RULER_H = 14;
 // that tiles the roll evenly, otherwise the bar lines would land somewhere
 // different on every pass round the loop, which is worse than not drawing them.
 function prBarSteps(steps){
+ // The meter's bar, when the roll's length is a whole number of them. A roll
+ // that does not divide evenly keeps the old fallback rather than drawing a
+ // bar line partway through its last bar.
  var n = 16;
- try{ if(typeof window._sqSteps === 'function'){ var k = window._sqSteps(); if(k > 0) n = k; } }catch(e){}
+ try{ if(typeof meterStepsPerBar === 'function') n = meterStepsPerBar(); }catch(e){}
  if(!(n > 0) || steps % n !== 0) n = (steps % 16 === 0) ? 16 : steps;
  return Math.max(1, n);
 }
@@ -25369,9 +25515,10 @@ function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
  // Beats as blocks, not as columns you have to count: every other group of
  // four is washed, in a strict alternation so the eye reads a regular pulse.
  g.fillStyle = T.band;
- for(let x=0;x<steps;x+=4){
-  if(Math.floor((x % bar)/4) % 2 === 0) continue;
-  g.fillRect(x*colW, gridTop, Math.min(4, steps-x)*colW, gridH);
+ const beatW = (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
+ for(let x=0;x<steps;x+=beatW){
+  if(Math.floor((x % bar)/beatW) % 2 === 0) continue;
+  g.fillRect(x*colW, gridTop, Math.min(beatW, steps-x)*colW, gridH);
  }
  // The downbeat gets its own column rather than a wash over its whole beat —
  // washing the first group would break the alternation above and make the
