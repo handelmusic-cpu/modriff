@@ -1939,8 +1939,12 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
 }
 .ft-rate-val {
  background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
- color:var(--pg); font-size:.58rem; padding:4px 9px; min-width:52px; text-align:center;
+ color:var(--pg); font-size:.72rem; padding:3px 6px; text-align:center;
  font-family:'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; font-weight:600;
+ /* Fixed, not min-width: the labels run from one glyph to four characters, and
+    a readout that resized as you cycled would change the row's width and could
+    re-wrap the whole bar mid-tap. Wide enough for "1/32", the longest. */
+ width:38px; box-sizing:border-box; line-height:1.35;
 }
 .ft-more-wrap { position:relative; display:inline-flex; }
 /* Opens upward now — the trigger button lives in the bottom perf bar, and a
@@ -3805,14 +3809,16 @@ body.mode-free .pro-only { display:none !important; }
       readout is the control (same idea as tempo, just above), so it doesn't
       need one either, and freeing that width is what lets Song (below) fit
       on this row instead of wrapping to a third. -->
+ <!-- The caption is gone and the value is notation now. "Rate 16th" cost 79px
+      of a 430px bar for a control most people set once; a drawn note says the
+      same thing in a third of that, and the name is still on the tooltip and
+      the aria-label. This is most of what let the bar come back to two rows.
+      Fixed width, sized for the widest label, so cycling the rate cannot
+      change the row's width and re-wrap the bar under your thumb. -->
  <div class="ft-rate">
- <!-- "Rate", not "Arp": this sits immediately right of the Arp on/off layer
-      button, and two adjacent captions reading "ARP" meant two different
-      things. The aria-label on the value still says "Arp rate" in full. -->
- <span class="ft-rate-cap" aria-hidden="true">Rate</span>
  <div class="ft-rate-val" id="ft-rate-val" onclick="cycleArpRate()"
       role="button" tabindex="0" aria-label="Arp rate — tap to cycle"
-      title="Arp rate — tap to cycle">8th</div>
+      title="Arp rate — tap to cycle">♪³</div>
  </div>
  <!-- Two different recorders, which is exactly why they used to be confusing:
       one bare red dot did the first, and the second lived on another tab. They
@@ -4404,16 +4410,16 @@ body.mode-free .pro-only { display:none !important; }
       browse; it is somewhere you go to change one known thing, and a named
       pane gets you there without reading past three others. -->
  <div class="subnav" id="set-subnav" style="max-width:700px">
-  <button class="subnav-btn active" id="set-sounds-btn" onclick="setSettingsPane('sounds')">Sounds</button>
+  <button class="subnav-btn active" id="set-ui-btn" onclick="setSettingsPane('ui')">Settings</button>
+  <button class="subnav-btn" id="set-sounds-btn" onclick="setSettingsPane('sounds')">Sounds</button>
   <button class="subnav-btn" id="set-midi-btn" onclick="setSettingsPane('midi')">MIDI</button>
-  <button class="subnav-btn" id="set-playing-btn" onclick="setSettingsPane('playing')">Playing</button>
-  <button class="subnav-btn" id="set-ui-btn" onclick="setSettingsPane('ui')">Interface</button>
+  <button class="subnav-btn" id="set-playing-btn" onclick="setSettingsPane('playing')">Logic</button>
   <div class="subnav-led" id="set-subnav-led"></div>
  </div>
 
  <div style="width:100%;max-width:700px">
 
-  <div class="set-pane" id="set-pane-sounds">
+  <div class="set-pane" id="set-pane-sounds" style="display:none">
  <!-- Sound Engine -->
  <!-- What is left here reaches every part at once. The per-part voices moved
       to the bottom of the pages that play them. -->
@@ -4581,7 +4587,21 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   </div>
 
-  <div class="set-pane" id="set-pane-ui" style="display:none">
+  <div class="set-pane" id="set-pane-ui">
+ <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px">
+ <div class="panel-title"><span class="pt-icon">◈</span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
+ <div class="setup-hint">A setup is the whole app frozen exactly as it stands — tempo, key and mode, every voice and MōdSynth patch, the FX macros, the mixer, your drum, bass and melody patterns, the current chart and your whole setlist. Save one, and opening it again puts you back where you were, ready to perform.</div>
+ <div class="setup-bar">
+  <input class="song-title-input" id="setup-name" type="text" placeholder="Name this setup…">
+  <button class="sc-btn primary" onclick="setupSaveNew()" title="Save the whole rig under this name" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Save Setup</button>
+  <button class="tb" onclick="setupShare('')" title="Copy a link that recreates this exact rig" style="font-size:.44rem;padding:4px 8px">Share Link</button>
+  <button class="tb" onclick="setupExport('')" title="Download this rig as a file" style="font-size:.44rem;padding:4px 8px">Export</button>
+  <button class="tb" onclick="document.getElementById('setup-file').click()" title="Load a rig from a file" style="font-size:.44rem;padding:4px 8px">Import</button>
+  <input type="file" id="setup-file" accept=".json,application/json" style="display:none" onchange="setupImportFile(this)">
+ </div>
+ <div class="setlist" id="setups-items">
+ <div class="sl-empty">No setups saved yet.<br><span style="opacity:.75">Name one above and tap Save Setup — it stores everything exactly as it is right now.</span></div>
+ </div>
   <!-- Interface — how the app looks, not how it plays. -->
   <div class="settings-section" id="ss-ui">
    <div class="ss-hdr open" onclick="toggleSS('ui')">
@@ -4619,7 +4639,6 @@ body.mode-free .pro-only { display:none !important; }
  <button class="tb active" id="songs-build-btn" onclick="setSongsMode('build')" style="flex:1"> Build</button>
  <button class="tb" id="songs-perform-btn" onclick="setSongsMode('perform')" style="flex:1">Perform</button>
  <button class="tb" id="songs-chart-btn" onclick="setSongsMode('chart')" style="flex:1">Chart</button>
- <button class="tb" id="songs-setups-btn" onclick="setSongsMode('setups')" style="flex:1" title="Save and reload the whole app exactly as it stands">◈ Setups</button>
  </div>
  </div>
 
@@ -4872,23 +4891,10 @@ body.mode-free .pro-only { display:none !important; }
       state at all. It is the single most important thing in this tab for
       anyone who wants to play the same thing twice, so it gets its own
       sub-mode alongside Build / Perform / Chart. -->
- <div id="songs-setups-panel" style="display:none;width:100%;max-width:700px">
- <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px">
- <div class="panel-title"><span class="pt-icon">◈</span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
- <div class="setup-hint">A setup is the whole app frozen exactly as it stands — tempo, key and mode, every voice and MōdSynth patch, the FX macros, the mixer, your drum, bass and melody patterns, the current chart and your whole setlist. Save one, and opening it again puts you back where you were, ready to perform.</div>
- <div class="setup-bar">
-  <input class="song-title-input" id="setup-name" type="text" placeholder="Name this setup…">
-  <button class="sc-btn primary" onclick="setupSaveNew()" title="Save the whole rig under this name" style="font-size:.44rem;padding:4px 10px;flex-shrink:0">Save Setup</button>
-  <button class="tb" onclick="setupShare('')" title="Copy a link that recreates this exact rig" style="font-size:.44rem;padding:4px 8px">Share Link</button>
-  <button class="tb" onclick="setupExport('')" title="Download this rig as a file" style="font-size:.44rem;padding:4px 8px">Export</button>
-  <button class="tb" onclick="document.getElementById('setup-file').click()" title="Load a rig from a file" style="font-size:.44rem;padding:4px 8px">Import</button>
-  <input type="file" id="setup-file" accept=".json,application/json" style="display:none" onchange="setupImportFile(this)">
- </div>
- <div class="setlist" id="setups-items">
- <div class="sl-empty">No setups saved yet.<br><span style="opacity:.75">Name one above and tap Save Setup — it stores everything exactly as it is right now.</span></div>
- </div>
- </div>
- </div>
+ <!-- The Setups panel moved to Settings, where it is the first thing on the
+      first pane. It was four taps deep behind a Songs sub-mode nobody opened,
+      which is a poor home for the one control that saves your whole rig. -->
+</div>
 
 </div>
 
@@ -5965,17 +5971,28 @@ const FUNC_CSS = {tonic:'fc-tonic fq-tonic', subdom:'fc-subdom fq-subdom', dom:'
 const FUNC_QUAL_CSS = {tonic:'fq-tonic', subdom:'fq-subdom', dom:'fq-dom', modal:'fq-modal'};
 
 // ── Arp rate table ──
+// `label` is the written name, used anywhere there is room to read it — the
+// Arp panel, tooltips, the aria-label. `glyph` is the transport's version:
+// actual notation, because a quarter note drawn is far narrower than the words
+// "Quarter", and that width is what forced the bar onto a third row.
+//
+// Only ♩ ♪ ♫ ♬ (U+2669–U+266C) are used. The Unicode musical symbols that
+// would draw a whole or half note properly live in the supplementary plane and
+// are simply absent from the iOS system fonts, so they come out as tofu boxes
+// on the one device this app is mostly used on. Those two rates say 1/1 and
+// 1/2 instead — the notation a sequencer would use — and the triplet and
+// dotted forms modify a glyph that does render.
 const ARP_RATES = [
- {label:'Whole', div:.25}, // 0
- {label:'Half', div:.5}, // 1
- {label:'Quarter', div:1}, // 2
- {label:'Qtr-T', div:1.5}, // 3
- {label:'D.8th', div:1.333},// 4
- {label:'8th', div:2}, // 5
- {label:'8th-T', div:3}, // 6 ← default (triplets feel)
- {label:'16th', div:4}, // 7
- {label:'16th-T', div:6}, // 8
- {label:'32nd', div:8}, // 9
+ {label:'Whole', glyph:'1/1', div:.25}, // 0
+ {label:'Half', glyph:'1/2', div:.5}, // 1
+ {label:'Quarter', glyph:'\u2669', div:1}, // 2
+ {label:'Qtr-T', glyph:'\u2669\u00B3', div:1.5}, // 3
+ {label:'D.8th', glyph:'\u266A.', div:1.333},// 4
+ {label:'8th', glyph:'\u266A', div:2}, // 5
+ {label:'8th-T', glyph:'\u266A\u00B3', div:3}, // 6 ← default (triplets feel)
+ {label:'16th', glyph:'\u266C', div:4}, // 7
+ {label:'16th-T', glyph:'\u266C\u00B3', div:6}, // 8
+ {label:'32nd', glyph:'1/32', div:8}, // 9
 ];
 const ARP_RATES_SORTED = ARP_RATES; // direct — no reorder
 function safeRate(i){ return ARP_RATES[Math.max(0,Math.min(i,ARP_RATES.length-1))]; }
@@ -6428,6 +6445,21 @@ function unlockAudio(startDemo){
  // `true`/`false` still mean what they always did, so any other caller keeps
  // working; the splash passes one of the named modes.
  const mode = startDemo===true ? 'rollplay' : startDemo===false ? 'blank' : startDemo;
+ // What the app opens onto is the splash's decision, so it is made here rather
+ // than at load. Blank gets nothing: no rolled key, no opening progression, no
+ // example song in the setlist — an empty chart in C, which is what the button
+ // says. The demo paths lay in their own song and would only overwrite this,
+ // and resume/shared bring their own content, so all three skip it too.
+ if(mode!=='blank' && mode!=='rollplay' && mode!=='roll' && mode!=='resume' && mode!=='shared'){
+  try{ if(typeof seedOpeningProgression==='function') seedOpeningProgression(); }catch(e){}
+ }
+ if(mode!=='blank'){
+  // The example song in the setlist. Its one-time flag is only set when it
+  // actually seeds, so choosing Blank today does not spend it — pick a demo
+  // path later and the example still turns up.
+  try{ if(typeof seedDemoSongIfNeeded==='function'){ seedDemoSongIfNeeded();
+       setlistData=loadSLData(); if(typeof renderSetlist==='function') renderSetlist(); } }catch(e){}
+ }
  if(mode==='shared'){
   // The link's state is already applied — this just lands you on it.
   if(_sharedArrival && _sharedArrival.kind==='song'){ switchTab('songs'); setSongsMode('perform'); }
@@ -11767,7 +11799,14 @@ function cycleArpRate(){
 }
 function updateFtRateDisp(){
  const el=document.getElementById('ft-rate-val');
- if(el) el.textContent=safeRate(arpRateIdx).label;
+ if(!el) return;
+ const r=safeRate(arpRateIdx);
+ el.textContent = r.glyph || r.label;
+ // The glyph is the whole point, but it is not self-explanatory the first
+ // time, so the name it stands for goes where a screen reader and a long
+ // press can both still find it.
+ el.setAttribute('aria-label', 'Arp rate: '+r.label+' — tap to cycle');
+ el.title = 'Arp rate: '+r.label+' — tap to cycle';
 }
 // wetDry is now a binary layer switch (not a volume balance — that's the Mixer's
 // job): 0 = chord plays under the arp, 1 = arp only. Old saved fractional
@@ -16597,16 +16636,15 @@ function setSongsMode(m){
  document.getElementById('songs-build-btn')?.classList.toggle('active', m==='build');
  document.getElementById('songs-perform-btn')?.classList.toggle('active', m==='perform');
  document.getElementById('songs-chart-btn')?.classList.toggle('active', m==='chart');
- document.getElementById('songs-setups-btn')?.classList.toggle('active', m==='setups');
+
  const cp=document.getElementById('songs-chart-panel');
  if(cp) cp.style.display = m==='chart' ? '' : 'none';
  if(m==='chart') renderChordChart();
  document.getElementById('songs-build-panel').style.display = m==='build'?'':'none';
  document.getElementById('songs-perform-panel').style.display = m==='perform'?'':'none';
- const sp=document.getElementById('songs-setups-panel');
- if(sp) sp.style.display = m==='setups'?'':'none';
+ // The Setups sub-mode is gone — the panel lives in Settings now, and
+ // setSettingsPane draws it.
  if(m === 'perform') renderSongsPerformView();
- if(m === 'setups' && typeof renderSetups==='function') renderSetups();
 }
 
 // Jump straight to Setups from anywhere — wired to the transport's ⋯ menu, so
@@ -16614,8 +16652,8 @@ function setSongsMode(m){
 // the tab it happens to live on.
 function openSetups(){
  if(typeof closeFtMore==='function') closeFtMore();
- switchTab('songs');
- setSongsMode('setups');
+ switchTab('build');
+ setSettingsPane('ui');
  const el=document.getElementById('setups-panel');
  if(el){
   el.scrollIntoView({behavior:'smooth',block:'center'});
@@ -16649,10 +16687,14 @@ function positionAllSubnavLeds(){
 
 // Which pane of Settings is showing. Persisted, because you almost always come
 // back for the same one.
-const SET_PANES = ['sounds','midi','playing','ui'];
-let settingsPane = 'sounds';
+// 'ui' leads: it is the pane with Setups on it, and restoring a saved rig is
+// the most common reason to open Settings at all. The keys are unchanged even
+// though two of the labels are not — they are what a saved pane preference is
+// stored under, and renaming them would send everyone back to the first pane.
+const SET_PANES = ['ui','sounds','midi','playing'];
+let settingsPane = 'ui';
 function setSettingsPane(which){
- if(SET_PANES.indexOf(which) < 0) which = 'sounds';
+ if(SET_PANES.indexOf(which) < 0) which = 'ui';
  settingsPane = which;
  SET_PANES.forEach(k=>{
   const pane = document.getElementById('set-pane-'+k);
@@ -16665,6 +16707,10 @@ function setSettingsPane(which){
  // The MIDI pane builds its routing list lazily, and a hidden element has no
  // width to position the LED against, so both wait until the pane is up.
  if(which==='midi' && typeof renderMidiCC==='function') renderMidiCC();
+ // Same reason the MIDI list waits: the saved-setups list is drawn lazily and
+ // is now the first thing on the first pane, so it has to be built when that
+ // pane comes up rather than only when the old Songs sub-mode was opened.
+ if(which==='ui' && typeof renderSetups==='function') renderSetups();
  setTimeout(()=>positionSubnavLed('set-subnav'), 0);
 }
 window.addEventListener('resize', positionAllSubnavLeds);
@@ -20092,7 +20138,7 @@ if(typeof syncStrumUI==='function') syncStrumUI();
 if(typeof midiCCLoad==='function'){ midiCCLoad(); }
 if(typeof setSettingsPane==='function'){
  var _sp=null; try{ _sp=localStorage.getItem('modo-settings-pane'); }catch(e){}
- setSettingsPane(_sp||'sounds');
+ setSettingsPane(_sp||'ui');
 }
 if(typeof setMidiBendScope==='function') setMidiBendScope(melBendScope);
 if(typeof renderMidiCC==='function') renderMidiCC();
@@ -20132,7 +20178,13 @@ try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){
 
 // Open on a different progression every launch. Only when the chart is empty,
 // so this can never overwrite something the user built or a loaded song.
-(function seedOpeningProgression(){
+//
+// Called from the unlock choice rather than run on sight. It used to be an
+// IIFE here, which meant it had already picked a random key, a random mode and
+// a random progression before the splash was even answered — so "Start Blank"
+// opened onto someone else's chord chart, in a key that changed every launch.
+// Blank has to mean blank; every other way in still gets an opening idea.
+function seedOpeningProgression(){
  try{
   const empty = !sections.length || !sections.some(x=>x.slots && x.slots.length);
   if(!empty || curSetlistIdx>=0) return;
@@ -20148,7 +20200,7 @@ try{ if(localStorage.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){
   renderChords(); buildSectionTabs(); renderChartSeq(); renderPerfChartRow();
   if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  }catch(e){}
-})();
+}
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 restorePanelFolds();
 onArpRateSlider(7);
@@ -20156,7 +20208,7 @@ if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from th
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
 if(typeof syncMasterUI==='function') syncMasterUI();
 rhythmStepSec=rhythmStepDuration(RHYTHMS[0]);
-seedDemoSongIfNeeded();
+// seedDemoSongIfNeeded() used to run here too — see seedFirstRun().
 setlistData=loadSLData();
 renderSetlist();
 initMidi();
