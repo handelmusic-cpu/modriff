@@ -2672,6 +2672,16 @@ body.light-mode .bl-empty-hint {
 .sq-clrbtn { padding:7px 10px; border:1px solid var(--sq-red); border-radius:8px; background:none; color:var(--sq-red); font-family:'Outfit',sans-serif; font-size:.62rem; cursor:pointer; touch-action:manipulation; letter-spacing:.06em; text-transform:uppercase; }
 .sq-recbtn { padding:6px 9px; border:1px solid var(--sq-bdr); border-radius:8px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.55rem; cursor:pointer; touch-action:manipulation; letter-spacing:.06em; }
 .sq-recbtn.armed { background:rgba(229,56,79,.85); border-color:#e5384f; color:#fff; box-shadow:0 0 10px rgba(229,56,79,.4); }
+/* Armed-here banner on the Perform page — see the note at #rec-here. */
+.rec-here { display:flex; align-items:center; gap:7px; width:100%; margin-bottom:6px; padding:6px 10px;
+            border:1px solid #e5384f; border-radius:8px; background:rgba(229,56,79,.14); color:#ff8a98;
+            font-family:'Outfit',sans-serif; font-size:.55rem; letter-spacing:.07em; text-transform:uppercase;
+            cursor:pointer; touch-action:manipulation; }
+.rec-here-dot { width:7px; height:7px; border-radius:50%; background:#e5384f; flex:0 0 auto;
+                animation:recHerePulse 1.6s ease-in-out infinite; }
+.rec-here-x { margin-left:auto; color:var(--muted); letter-spacing:.06em; }
+@keyframes recHerePulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+@media (prefers-reduced-motion: reduce){ .rec-here-dot { animation:none; } }
 .sq-fxbtn { padding:5px 8px; border:1px solid var(--sq-bdr2); border-radius:6px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.6rem; cursor:pointer; touch-action:manipulation; letter-spacing:.05em; transition:all .12s; }
 .sq-fxbtn.sq-rev-lit { border-color:var(--pv); color:var(--pv); background:rgba(168,85,247,.1); }
 .sq-fxbtn.sq-del-lit { border-color:var(--pb); color:var(--pb); background:rgba(56,180,255,.1); }
@@ -4246,6 +4256,14 @@ body.mode-free .pro-only { display:none !important; }
  </div>
 
  <div class="keys-typing-hint" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
+ <!-- The keys are here on Perform; the roll they write into is over on
+      Accomp. Arming is a mode, and a mode you cannot see is one you forget
+      you are in — you come back to noodle and quietly overwrite the line you
+      just built. This says so where your hands are, and turns it off. -->
+ <button class="rec-here" id="rec-here" style="display:none" onclick="noteInputArm(noteInputTarget())"
+         title="Tap to stop recording">
+   <span class="rec-here-dot"></span><span id="rec-here-txt">Recording</span><span class="rec-here-x">Stop</span>
+ </button>
  <div class="mel-keys-wrap">
  <div class="mel-keys" id="melody-keys"></div>
  </div>
@@ -8459,6 +8477,36 @@ function playMelNote(midi,pressure,sustain,modY){
  return{oscs,g,mod};
 }
 
+// The one door every "a note was just played" path goes through, whatever
+// played it — a typed key, a key tapped on screen, the bend strip, a MIDI
+// keyboard. If a roll is armed it takes the note and we must NOT sound it
+// here as well: setAt auditions through that roll's own instrument, so
+// playMelNote would be a second copy of the note on the wrong one.
+//
+// This exists as a function rather than five copies of the same two lines
+// because five copies is how the on-screen keys got missed the first time:
+// play-in worked from the computer keyboard and from MIDI and silently did
+// nothing on a phone, where neither of those exists. A new way to play a
+// note should only have to call this.
+//
+// Force, where the gesture carries any, accents the step. A computer key has
+// none to give, so it writes plain — the same rule the drum grid uses.
+const MEL_ACCENT_AT = 0.8;
+function melPlayIn(midi, pressure, y){
+ // These are pitched keys, and a drum cell has no pitch — so an armed KIT is
+ // not theirs to write to. Left open, it would route by General MIDI drum
+ // number: a note that happened to land on 36 or 38 would write a kick or a
+ // snare while every neighbouring key wrote nothing, which reads as the
+ // keyboard randomly breaking. The kit has its own input on its own page —
+ // the grid cells, and the home row — so this just plays.
+ const armed = (typeof noteInputTarget==='function') ? noteInputTarget() : null;
+ if(armed && armed !== 'sq'
+    && typeof noteInputWrite==='function'
+    && noteInputWrite(midi, (pressure||0) >= MEL_ACCENT_AT)) return true;
+ playMelNote(midi, pressure, true, y);
+ return false;
+}
+
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(!activeMelOscs[midi]) return;
@@ -8693,7 +8741,11 @@ function initBendStrip(){
  if(midi!==bendCurrentMidi){
  if(bendCurrentMidi!==null) releaseMelNote(bendCurrentMidi);
  bendCurrentMidi=midi;
- playMelNote(midi, melPressure(touch), true, y);
+ // Written where the gesture STARTS, and only there. handleMove sounds the
+ // notes a slide crosses but writes none of them: dragging the strip is one
+ // bend, not a note per boundary, and writing each would spray a run into
+ // the roll and march the cursor with it.
+ melPlayIn(midi, melPressure(touch), y);
  }
  } else {
  // Continuous mode: every gesture *starts* snapped in-tune, like a tap.
@@ -8703,7 +8755,7 @@ function initBendStrip(){
  const idx=Math.floor(x * notes.length);
  const midi=notes[Math.min(idx, notes.length-1)];
  bendTapMidi=midi;
- playMelNote(midi, melPressure(touch), true, y);
+ melPlayIn(midi, melPressure(touch), y);
  }
  };
 
@@ -12431,7 +12483,7 @@ function buildMelodyStrip(){
   btn.classList.add('held');
   const y=melTouchY(btn,e);
   melModY=y;
-  playMelNote(midi,melPressure(e),true,y);
+  melPlayIn(midi,melPressure(e),y);
   melKeyPaintMod(btn,y);
  });
  btn.addEventListener('pointermove',e=>{
@@ -15787,8 +15839,7 @@ document.addEventListener('keydown', e => {
  // that engine's own voice, so the live melody voice would be a second copy
  // of it on the wrong instrument — writing to the bass should sound like the
  // bass.
- const _took = (typeof noteInputWrite==='function') && noteInputWrite(midi);
- if(!_took) playMelNote(midi, 0, true);
+ melPlayIn(midi, 0);
  }
  return;
  }
@@ -16383,8 +16434,7 @@ function onMidiMsg(e){
  midi = note + (root<=5?root:root-12);
  }
  const _m = midi + melOctShift;
- const _took = (typeof noteInputWrite==='function') && noteInputWrite(_m);
- if(!_took) playMelNote(_m, pressure, true);
+ melPlayIn(_m, pressure);
  } else {
  // Chord mode: map pc to chord
  const steps = (MODES[mode]||MODES.major).steps;
@@ -23542,12 +23592,15 @@ function blPrInit(){
     // Playing a note in is not tapping a cell. A tap toggles, because tapping
     // the lit cell again is how you clear it; a typed or played note has to
     // write every time, or repeating a pitch would erase the one just entered.
-    setAt: function(step, midi){
+    setAt: function(step, midi, accent){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       c.v = 1; c.usr = 1;
       c.note = ((midi%12)+12)%12;
       c.oct  = Math.floor(midi/12)-1;
+      // Only a gesture that carried force speaks to the accent. A path with
+      // none to report leaves whatever the cell already had.
+      if(accent !== undefined) c.accent = accent ? 1 : 0;
       if(typeof blPreviewNote==='function') blPreviewNote(c);
       if(typeof blUpdateEmptyHint==='function') blUpdateEmptyHint();
       if(typeof blRedraw==='function') blRedraw();
@@ -24645,12 +24698,15 @@ function mlPrInit(){
     displayMidi: function(x){ return _mlDisplayMidi(x); },
     playStep: function(){ return mlPlaying ? mlDispStep : -1; },
     // See the bass roll's setAt — typing a note writes, it does not toggle.
-    setAt: function(step, midi){
+    setAt: function(step, midi, accent){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       c.v = 1; c.usr = 1;
       c.note = ((midi%12)+12)%12;
       c.oct  = Math.floor(midi/12)-1;
+      // Only a gesture that carried force speaks to the accent. A path with
+      // none to report leaves whatever the cell already had.
+      if(accent !== undefined) c.accent = accent ? 1 : 0;
       if(typeof mlPreviewNote==='function') mlPreviewNote(c);
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
       if(typeof mlRedraw==='function') mlRedraw();
@@ -26051,6 +26107,18 @@ function noteInputSyncUI(){
   b.classList.toggle('armed', on);
   b.textContent = on ? '⏺ Recording' : '⏺ Play in';
  });
+ // …and on the Perform page, where the keys are but the roll is not.
+ const rh = document.getElementById('rec-here');
+ if(rh){
+  rh.style.display = _recArm ? 'flex' : 'none';
+  const t = document.getElementById('rec-here-txt');
+  // The kit is armed but these keys are pitched and deliberately do not feed
+  // it, so say where its input actually is rather than promising something
+  // this page will not do.
+  if(t) t.textContent = _recArm==='sq'
+    ? 'Recording → Drums · play on the Drums page'
+    : 'Recording → ' + (_recArm==='bl' ? 'Bass' : 'Melody');
+ }
  if(_recArm) _recRepaint(_recArm);
 }
 // Where the next note goes. While the transport runs that is wherever the
@@ -26118,7 +26186,7 @@ function noteInputWrite(midi, accent, vel){
  const cfg = PR_ENGINES[_recArm]; if(!cfg || typeof cfg.setAt!=='function') return false;
  const running = _recPlayStep(_recArm) >= 0;
  const step = _recStepFor(_recArm);
- cfg.setAt(step, _recFold(cfg, midi));
+ cfg.setAt(step, _recFold(cfg, midi), accent);
  // Only step entry moves a cursor. While playing, the playhead is the cursor
  // and moving anything would fight it.
  if(!running) _recAdvance(1);
