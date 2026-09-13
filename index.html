@@ -2680,6 +2680,8 @@ body.light-mode .bl-empty-hint {
 .rec-here-dot { width:7px; height:7px; border-radius:50%; background:#e5384f; flex:0 0 auto;
                 animation:recHerePulse 1.6s ease-in-out infinite; }
 .rec-here-x { margin-left:auto; color:var(--muted); letter-spacing:.06em; }
+.ss-hint { font-size:.45rem; color:var(--muted); letter-spacing:.04em; line-height:1.5; margin:4px 0 2px; }
+.ss-hint-dim { opacity:.7; margin-bottom:8px; }
 @keyframes recHerePulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 @media (prefers-reduced-motion: reduce){ .rec-here-dot { animation:none; } }
 .sq-fxbtn { padding:5px 8px; border:1px solid var(--sq-bdr2); border-radius:6px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.6rem; cursor:pointer; touch-action:manipulation; letter-spacing:.05em; transition:all .12s; }
@@ -4555,6 +4557,18 @@ body.mode-free .pro-only { display:none !important; }
      <button class="tb" id="logic-btn" onclick="toggleLogicMode()">Logic Mode (suggestions): OFF</button>
      <button class="tb" id="variants-btn" onclick="toggleVariantSystem()">Chord Variants: ON</button>
     </div>
+    <div class="ss-scope">Timing <b>delay against stability</b></div>
+    <div class="row">
+     <div class="tg" style="flex-wrap:wrap">
+      <button class="tb" data-latency="tight"     onclick="setLatencyPreset('tight')">Tight</button>
+      <button class="tb" data-latency="balanced"  onclick="setLatencyPreset('balanced')">Balanced</button>
+      <button class="tb" data-latency="phone"     onclick="setLatencyPreset('phone')">Phone</button>
+      <button class="tb" data-latency="bluetooth" onclick="setLatencyPreset('bluetooth')">Bluetooth</button>
+      <button class="tb" data-latency="solid"     onclick="setLatencyPreset('solid')">Rock Solid</button>
+     </div>
+    </div>
+    <div class="ss-hint" id="ss-latency-note"></div>
+    <div class="ss-hint ss-hint-dim">Further down the list absorbs more stutter and responds a little slower. Takes effect straight away; the audio buffer changes next time you open the app.</div>
     <div class="ss-scope">Transport <b>and the other parts</b></div>
     <div class="row">
      <button class="tb" id="metro-btn" onclick="toggleMetronome()">Metro OFF</button>
@@ -6371,7 +6385,18 @@ function buildUnlockChoices(){
 function _newAudioCtx(){
  const AC = window.AudioContext || window.webkitAudioContext;
  if(!AC) return null;
- try{ return new AC({ latencyHint: 0.02 }); }
+ // From the saved preset rather than a fixed number: this is the half of a
+ // latency preset that can only be chosen here, at construction.
+ //
+ // Guarded, because the preset table is declared a couple of thousand lines
+ // below this and a const read before its declaration runs throws rather than
+ // returning undefined. Every caller today is a user gesture, long after the
+ // script has finished — but "nothing calls it early yet" is not a thing to
+ // rely on, and the fallback is the default preset's own buffer, so an early
+ // call gets the same context it would have got before presets existed.
+ let _hint = 0.02;
+ try{ _hint = LATENCY_PRESETS[latencyPresetKey()].hint; }catch(e){}
+ try{ return new AC({ latencyHint: _hint || 0.02 }); }
  catch(e){ try{ return new AC(); }catch(e2){ return null; } }
 }
 function unlockAudio(startDemo){
@@ -8861,7 +8886,52 @@ let clockTimer=null;
 // sample-accurately — and doubles the stall the app absorbs without a trace.
 // The only thing it changes is how long a live twist of a knob takes to reach
 // the sound, which at a fifth of a second is still under what a hand notices.
-const LOOK_AHEAD=.2, SCHED_INT=25;
+// ── Latency presets ──────────────────────────────────────────────────────
+//
+// Two knobs, and they pull against each other. Naming them separately would
+// make the user solve an audio-engineering problem to stop their phone
+// stuttering, so one named choice moves both.
+//
+//   latencyHint  the OUTPUT BUFFER. This is tap-to-sound delay: the real
+//                "I hit the key and heard it late". A bigger buffer gives the
+//                audio thread more slack before it misses a deadline, which
+//                is what a dropout IS. Fixed when the AudioContext is built
+//                and cannot be changed on a live one, so it takes effect on
+//                the next launch — see setLatencyPreset.
+//   lookAhead    how far ahead the scheduler commits notes. NOT output
+//                latency: a committed note still lands sample-accurately.
+//                This is how long the MAIN thread can stall — a repaint, a
+//                garbage collection, a big canvas redraw — before a note it
+//                should have scheduled is already in the past. That is the
+//                lag on a busy phone, and this is the knob for it.
+//   schedInt     how often the scheduler wakes. Kept at or under a quarter of
+//                the look-ahead so a tick can never miss the horizon, and
+//                raised with it so a weak device does less work per second.
+//
+// So: down the list is more forgiving and less immediate. A phone with a
+// browser full of tabs wants the bottom; wired headphones on a desktop want
+// the top.
+const LATENCY_PRESETS = {
+ tight:    { label:'Tight',      hint:0.005, lookAhead:0.10, schedInt:20,
+             note:'Wired headphones on a desktop. Snappiest, least forgiving.' },
+ balanced: { label:'Balanced',   hint:0.02,  lookAhead:0.20, schedInt:25,
+             note:'A good place to start on most machines.' },
+ phone:    { label:'Phone',      hint:0.04,  lookAhead:0.30, schedInt:30,
+             note:'iPhone or Android, or a laptop with a lot else open.' },
+ bluetooth:{ label:'Bluetooth',  hint:0.08,  lookAhead:0.40, schedInt:40,
+             note:'AirPods or a wireless speaker, which add delay of their own.' },
+ solid:    { label:'Rock Solid', hint:0.14,  lookAhead:0.55, schedInt:50,
+             note:'An older device, or anything that still stutters.' }
+};
+const LATENCY_DEFAULT = 'balanced';
+function latencyPresetKey(){
+ let k=null; try{ k=localStorage.getItem('modo-latency'); }catch(e){}
+ return LATENCY_PRESETS[k] ? k : LATENCY_DEFAULT;
+}
+// let, not const: the whole point is that these move. ALIGN_LEAD has to track
+// LOOK_AHEAD exactly — see the note under it for why one number rather than
+// several — so setLatencyPreset assigns both and nothing else may.
+let LOOK_AHEAD=.2, SCHED_INT=25;
 // Where an engine puts its first note when it starts, restarts, or realigns.
 //
 // Two things depend on this being one number rather than the spread of 0.05,
@@ -8873,7 +8943,38 @@ const LOOK_AHEAD=.2, SCHED_INT=25;
 // rather than a full look-ahead, and a blocked main thread turns that straight
 // into a late note. A lead of exactly one look-ahead satisfies both: the note
 // is committed on the next tick with the full margin the horizon is for.
-const ALIGN_LEAD = LOOK_AHEAD;
+let ALIGN_LEAD = LOOK_AHEAD;
+
+// Apply a preset. The scheduler half lands immediately; the buffer half is
+// baked into the AudioContext and cannot be changed on a live one, so it
+// waits for the next launch. Saying so is better than silently doing half of
+// what the button promises — `applied` reports which half happened.
+function setLatencyPreset(key, opts){
+ const p = LATENCY_PRESETS[key] || LATENCY_PRESETS[LATENCY_DEFAULT];
+ key = LATENCY_PRESETS[key] ? key : LATENCY_DEFAULT;
+ try{ localStorage.setItem('modo-latency', key); }catch(e){}
+ LOOK_AHEAD = p.lookAhead;
+ ALIGN_LEAD = p.lookAhead;   // must equal LOOK_AHEAD — see its definition
+ SCHED_INT  = p.schedInt;
+ // A live context keeps the buffer it was built with. Only a context that
+ // does not exist yet will pick the new one up.
+ const bufferPending = !!audioCtx;
+ syncLatencyUI();
+ if(!(opts && opts.silent)){
+  showToast('Timing: ' + p.label
+    + (bufferPending ? ' — output buffer changes next time you open the app' : ''),
+    {ms: bufferPending ? 4200 : 2600});
+ }
+ return { key: key, bufferPending: bufferPending };
+}
+function syncLatencyUI(){
+ const key = latencyPresetKey();
+ document.querySelectorAll('[data-latency]').forEach(function(b){
+  b.classList.toggle('active', b.dataset.latency === key);
+ });
+ const n = document.getElementById('ss-latency-note');
+ if(n) n.textContent = (LATENCY_PRESETS[key]||{}).note || '';
+}
 
 // The longest pattern any sequencer holds, in sixteenth steps.
 //
@@ -20000,6 +20101,12 @@ if(typeof positionAllSubnavLeds==='function') setTimeout(positionAllSubnavLeds,6
 // The meter buttons and the transport readout have to agree with METER from
 // the first paint, not only after something changes it.
 if(typeof meterSyncUI==='function') meterSyncUI();
+// The saved timing preset, applied for real rather than just ticked in the UI:
+// the scheduler constants are module state and start at the default, so a
+// reload would otherwise show "Rock Solid" while running Balanced's numbers.
+// Silent — restoring what you already chose is not news, and the buffer half
+// is genuinely current here because the context is built from the same key.
+if(typeof setLatencyPreset==='function') setLatencyPreset(latencyPresetKey(), {silent:true});
 // Both loaders are async (the codec is). Whichever one the hash matches
 // reports what it brought in, and the splash is rebuilt around it — see
 // buildUnlockChoices. Nothing here presses play; that stays the user's call.
