@@ -21373,6 +21373,12 @@ function sqStart(){
   }
   var go=function(){
     sqPlaying=true;window._sqPlayingVal=true;sqSeqStep=0;sqDispStep=-1;
+    // The step cursor belongs to a stopped transport — once this runs, the
+    // playhead is where hits land. Cleared here rather than only in
+    // syncFixedTransport because the sequencer starts itself on routes that
+    // never touch the transport UI: auditioning a groove is one, and it left
+    // a stale cursor ringed down a grid that was already playing.
+    _sqCursorTransportChanged();
     sqUsingChain=sqChain.length>0;sqChainPos=0;
     if(sqUsingChain&&sqPats[sqChain[0]])sqLoadPatPlay(sqChain[0]);
     sqNextT=clockAlignTo(c, sqSd(), ALIGN_LEAD);
@@ -21442,6 +21448,8 @@ function sqPosPlayhead(ds){
 function sqStop(){
   sqPlaying=false;window._sqPlayingVal=false;
   cancelAnimationFrame(sqRafID);sqRafID=null;
+  // …and back on the way out, so the cursor returns where you left it.
+  _sqCursorTransportChanged();
   if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
   var pb=document.getElementById('sq-playBtn');
   if(pb){pb.textContent='▶ Play';pb.classList.remove('active');}
@@ -21710,6 +21718,13 @@ function _sqScrollToCursor(step){
  var W=36, x=step*W, left=b.gs.scrollLeft;
  if(x - W < left)                        b.gs.scrollLeft = Math.max(0, x - W);
  else if(x + 2*W > left + b.viewW)       b.gs.scrollLeft = x + 2*W - b.viewW;
+}
+// Called whenever this engine's own transport state flips, from either side.
+// noteInputCursorStep answers -1 while playing, so one call does both jobs:
+// clear on start, restore on stop.
+function _sqCursorTransportChanged(){
+ if(typeof noteInputCursorStep!=='function' || typeof window._sqMarkCursor!=='function') return;
+ window._sqMarkCursor(noteInputCursorStep('sq'));
 }
 
 function sqAttachStep(el,ti,s,track){
