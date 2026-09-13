@@ -2670,6 +2670,8 @@ body.light-mode .bl-empty-hint {
 .sq-playbtn.active { background:var(--sq-red); }
 .sq-stopbtn { padding:8px 12px; border:1px solid var(--sq-bdr2); border-radius:8px; background:var(--sq-sur2); color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.85rem; cursor:pointer; touch-action:manipulation; }
 .sq-clrbtn { padding:7px 10px; border:1px solid var(--sq-red); border-radius:8px; background:none; color:var(--sq-red); font-family:'Outfit',sans-serif; font-size:.62rem; cursor:pointer; touch-action:manipulation; letter-spacing:.06em; text-transform:uppercase; }
+.sq-recbtn { padding:6px 9px; border:1px solid var(--sq-bdr); border-radius:8px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.55rem; cursor:pointer; touch-action:manipulation; letter-spacing:.06em; }
+.sq-recbtn.armed { background:rgba(229,56,79,.85); border-color:#e5384f; color:#fff; box-shadow:0 0 10px rgba(229,56,79,.4); }
 .sq-fxbtn { padding:5px 8px; border:1px solid var(--sq-bdr2); border-radius:6px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.6rem; cursor:pointer; touch-action:manipulation; letter-spacing:.05em; transition:all .12s; }
 .sq-fxbtn.sq-rev-lit { border-color:var(--pv); color:var(--pv); background:rgba(168,85,247,.1); }
 .sq-fxbtn.sq-del-lit { border-color:var(--pb); color:var(--pb); background:rgba(56,180,255,.1); }
@@ -2737,6 +2739,11 @@ body.light-mode .bl-empty-hint {
 .sq-step.accent .fi { background:var(--sq-tc,#888); }
 .sq-step.accent { border-color:var(--sq-tc,#888); }
 .sq-step.head { border-color:rgba(255,255,255,.55)!important; border-width:2px!important; }
+/* Play-in cursor — the column the next hit lands on, marked down every track
+   so it reads as one column. An inset ring rather than a border colour:
+   border-color is already spoken for by on, accent and head, and the cursor
+   has to stay legible on top of all three. */
+.sq-step.sq-cursor { box-shadow: inset 0 0 0 2px rgba(229,56,79,.95); }
 .sq-step .rd { position:absolute; bottom:2px; right:2px; display:flex; gap:1px; pointer-events:none; }
 .sq-step .rd i { display:block; width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.8); font-style:normal; }
 .sq-step .ob { position:absolute; top:1px; left:2px; font-size:.3rem; color:rgba(255,220,80,.9); font-weight:700; pointer-events:none; line-height:1; }
@@ -4958,6 +4965,8 @@ body.mode-free .pro-only { display:none !important; }
     <button class="seq-rbtn" id="sq-swing16" onclick="window._sqSetSwing8(false)" title="Swing every other 16th — the tighter funk and hip-hop feel">16th</button>
     <button class="seq-rbtn active" id="sq-swing8" onclick="window._sqSetSwing8(true)" title="Swing every other 8th — the long-short feel of a jazz ride or a shuffle. This is what &quot;swing&quot; means unqualified.">8th</button>
   </div>
+  <button class="sq-recbtn" data-recarm="sq" onclick="noteInputArm('sq')"
+   title="Play the beat in yourself — the home-row keys run down the kit (A is the top track) or use a MIDI pad. Stopped, hits stack on the cursor and Space moves it on; playing, they land where the playhead is. Hold Shift for an accent.">⏺ Play in</button>
   <!-- Rev/Dly/Drv used to live here as three on/off toggles wired straight to
        SQMG. They were a one-channel version of MōdFX, they were the only
        effects in the app you could not reach from anywhere else, and they were
@@ -11552,6 +11561,13 @@ function toggleHold(){
 // ─── FIXED TRANSPORT ───────────────────────────────────────────────────────
 function syncFixedTransport(){
  if(typeof syncFeelUI==='function') syncFeelUI();
+ // The step cursor only exists while the transport is stopped — once it runs,
+ // the playhead is where the next note goes. Repainted here rather than in
+ // start/stop so it also follows the routes that move the transport without
+ // going through them.
+ if(typeof _recRepaint==='function' && typeof noteInputTarget==='function' && noteInputTarget()){
+  _recRepaint(noteInputTarget());
+ }
  const psb=document.getElementById('ft-playstop-btn');
  if(psb){
   const playing=isAnythingPlaying();
@@ -15715,9 +15731,30 @@ document.addEventListener('keydown', e => {
 
  // Step entry's two non-note keys. Guarded on there being an armed target, so
  // Space keeps whatever it does elsewhere the rest of the time.
+ // stopImmediatePropagation, not just preventDefault: Space is bound again
+ // further down this file as play/stop, and a second listener on the same
+ // node runs whether or not the first cancelled the default. Placing a rest
+ // was starting the transport underneath it — which then took the cursor
+ // away, because while it plays the playhead is the cursor. preventDefault
+ // only tells the browser to stay out of it; this is what tells the rest of
+ // the app the key is spoken for.
  if(typeof noteInputTarget==='function' && noteInputTarget()){
-  if(e.code==='Space'){ if(noteInputRest()){ e.preventDefault(); return; } }
-  if(e.code==='Backspace'){ if(noteInputBack()){ e.preventDefault(); return; } }
+  if(e.code==='Space'){ if(noteInputRest()){ e.preventDefault(); e.stopImmediatePropagation(); return; } }
+  if(e.code==='Backspace'){ if(noteInputBack()){ e.preventDefault(); e.stopImmediatePropagation(); return; } }
+ }
+ // While the kit is armed the home row IS the kit. A drum cell carries no
+ // pitch, so a key picks a track instead of a note: a is the top row, s the
+ // next, straight down the grid — what you press is where you're looking. It
+ // is the same row musical typing uses, so there is only one row to learn,
+ // and it runs out at nine, which is the biggest kit. Shift accents.
+ if(typeof noteInputTarget==='function' && noteInputTarget()==='sq'){
+  const _dti = MEL_HOME_KEYS.indexOf((e.key||'').toLowerCase());
+  const _dtc = (typeof window._sqTrackCount==='function') ? window._sqTrackCount() : 0;
+  if(_dti >= 0 && _dti < _dtc){
+   e.preventDefault(); e.stopImmediatePropagation();
+   noteInputHit(_dti, e.shiftKey);
+   return;
+  }
  }
  // Z/X octave shift for melody
  if(e.key==='z'){ shiftMelOct(-1); return; }
@@ -16313,6 +16350,18 @@ function onMidiMsg(e){
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
  const pressure = vel / 127;
+
+ // A pad controller sends General MIDI drum numbers, which are a fixed map
+ // rather than a key-relative one, so the armed kit gets the note exactly as
+ // it arrived — before Smart Keys transposes it and before the octave shift
+ // moves it, either of which would land the kick on some other pad. Ahead of
+ // the melody/chord split too: which pad you hit has nothing to do with what
+ // the keyboard half is doing. How hard you hit the pad is kept as the step's
+ // velocity, and a deliberate slam — the top sixth of the range, which is
+ // well clear of ordinary firm playing — also sets the accent.
+ if(typeof noteInputTarget==='function' && noteInputTarget()==='sq'
+    && typeof noteInputWrite==='function'
+    && noteInputWrite(note, vel >= 107, Math.round(pressure*100))) return;
 
  // Determine pitch class relative to current key
  let pc;
@@ -21498,6 +21547,12 @@ function sqRenderGrid(){
     rr.appendChild(pw);gRight.appendChild(rr);
   });
   sqRenderPageDots();
+  // Every cell is new, so a cursor drawn before this is gone with the old
+  // ones. Changing kit or step count while armed should not lose your place.
+  _sqCursorAt = -1;
+  if(typeof noteInputCursorStep==='function' && typeof window._sqMarkCursor==='function'){
+    window._sqMarkCursor(noteInputCursorStep('sq'));
+  }
 }
 
 function sqRenderPageDots(){
@@ -21561,6 +21616,100 @@ function sqRefreshStepEl(el,cell,color){
   if(cell.r>1){var nrd=document.createElement('div');nrd.className='rd';for(var i=0;i<cell.r;i++){var dot=document.createElement('i');nrd.appendChild(dot);}el.appendChild(nrd);}
   var ob=el.querySelector('.ob');if(ob)el.removeChild(ob);
   if(cell.orn>0){var nob=document.createElement('div');nob.className='ob';nob.textContent=cell.orn===1?'f':'rr';el.appendChild(nob);}
+}
+
+// ─── Playing drums in ────────────────────────────────────────────────────
+//
+// Same idea as the rolls, different mapping: a drum cell carries no pitch, so
+// a key picks a TRACK rather than a note. The home row runs down the kit in
+// the order the grid shows it — a is the top row, s the next — so what you
+// press matches what you see.
+window._sqTrackCount = function(){ return sqTc(); };
+// A pad controller sends General MIDI drum notes, and the kits already name
+// their tracks with the same two-letter shorthand, so the two can be matched
+// by name instead of by guessing at an offset. Anything unmapped falls back to
+// counting up from C1, which is where most pad banks start.
+const GM_TO_SHORT = {35:'BD',36:'BD',37:'RS',38:'SD',39:'CP',40:'SD',41:'LT',
+                     42:'CH',43:'LT',44:'CH',45:'MT',46:'OH',47:'MT',48:'HT',
+                     49:'CY',50:'HT',51:'RD',53:'RD',56:'CB',57:'CY',75:'CL'};
+window._sqTrackForMidi = function(note){
+ const tracks=(SQM[sqMach]||{tracks:[]}).tracks;
+ if(!tracks.length) return -1;
+ const want = GM_TO_SHORT[note];
+ if(want){ for(let i=0;i<tracks.length;i++) if(tracks[i].s===want) return i; }
+ const idx = note - 36;
+ return (idx>=0 && idx<tracks.length) ? idx : -1;
+};
+// Write one hit. Returns false when there is no such track, so the caller can
+// leave the key alone rather than swallowing it. vel is 1–100 and optional:
+// a pad sends how hard you hit it, and keeping that is most of the difference
+// between a groove you played and one you programmed. A key has no velocity
+// to give, so it leaves the cell's own value alone.
+window._sqPlayIn = function(ti, step, accent, vel){
+ const tracks=(SQM[sqMach]||{tracks:[]}).tracks;
+ const track=tracks[ti]; if(!track) return false;
+ if(!sqGrid[ti]){ sqGrid[ti]=[]; }
+ while(sqGrid[ti].length < sqSteps) sqGrid[ti].push(sqMkCell());
+ const n=Math.max(1,sqSteps), sIdx=((step%n)+n)%n;
+ const cell=sqGrid[ti][sIdx]; if(!cell) return false;
+ cell.v = accent ? 2 : 1;
+ if(vel > 0) cell.vel = Math.max(1, Math.min(100, Math.round(vel)));
+ const el = sqStepEls[ti] && sqStepEls[ti][sIdx];
+ if(el) sqRefreshStepEl(el, cell, track.c);
+ // Auditioned through sqHitTrack like every other path, so a muted kit stays
+ // muted while you play it in.
+ try{ sqInitFX(); sqEnsureNoise();
+      sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqMach,ti)*(cell.vel/100), cell.v===2, sqGp(sqMach,ti)); }catch(e){}
+ return true;
+};
+window._sqClearAt = function(step){
+ const n=Math.max(1,sqSteps), sIdx=((step%n)+n)%n;
+ const tracks=(SQM[sqMach]||{tracks:[]}).tracks;
+ tracks.forEach(function(tr,ti){
+  if(!sqGrid[ti]||!sqGrid[ti][sIdx]) return;
+  sqGrid[ti][sIdx].v=0;
+  const el=sqStepEls[ti] && sqStepEls[ti][sIdx];
+  if(el) sqRefreshStepEl(el, sqGrid[ti][sIdx], tr.c);
+ });
+};
+// Which step a hit played in right now would land on. Clamped, because
+// sqDispStep is -1 for the moment between the transport starting and the
+// first tick marking a cell — a sentinel for "no cell is lit as the head
+// yet", not a position. Read raw, that gap says "stopped", which puts the
+// step cursor back on a running grid and sends the first hit after Play to
+// the cursor instead of the playhead. While it plays there is always a
+// current step, and until the clock says otherwise it is the first one.
+window._sqPlayStep = function(){ return sqPlaying ? Math.max(0, sqDispStep) : -1; };
+// The column the next hit lands on, marked across every track so it reads as
+// one cursor rather than a stray lit cell. Only the two columns that change
+// are touched — a full sweep of a nine-track, 64-step grid is 576 class
+// writes, and this runs on every key you press.
+var _sqCursorAt = -1;
+window._sqMarkCursor = function(step){
+ const tracks=(SQM[sqMach]||{tracks:[]}).tracks;
+ tracks.forEach(function(tr,ti){
+  const row=sqStepEls[ti]; if(!row) return;
+  if(_sqCursorAt>=0 && row[_sqCursorAt]) row[_sqCursorAt].classList.remove('sq-cursor');
+  if(step>=0 && row[step]) row[step].classList.add('sq-cursor');
+ });
+ _sqCursorAt = step;
+ _sqScrollToCursor(step);
+};
+// A phone shows about eight of the sixteen steps, so stepping past the edge
+// of the page meant typing at a cursor you could no longer see. The grid
+// follows it instead, keeping a step of margin on the leading side so you can
+// see where you are going rather than pinning the cursor to the edge.
+//
+// Geometry comes from the playhead's cache — the same numbers, already
+// measured, already invalidated on every tab and resize that could change
+// them. Reading clientWidth here instead would flush layout on every keypress,
+// right after the class writes above dirtied it.
+function _sqScrollToCursor(step){
+ if(step < 0) return;
+ var b=_sqPhGeom(); if(!b || !b.on) return;
+ var W=36, x=step*W, left=b.gs.scrollLeft;
+ if(x - W < left)                        b.gs.scrollLeft = Math.max(0, x - W);
+ else if(x + 2*W > left + b.viewW)       b.gs.scrollLeft = x + 2*W - b.viewW;
 }
 
 function sqAttachStep(el,ti,s,track){
@@ -25851,18 +26000,35 @@ function prWire(id){
 // onto each chord exactly as it does the rest of the line. That last part is
 // worth knowing: the "keep the riff across the chord sequence" half of this
 // was already built, and it is the phrase-lock chips under the roll.
-let _recArm = null;      // 'bl' | 'ml' | null
-let _recCursor = 0;
+// var, not let, and deliberately: sqRenderGrid is defined thousands of lines
+// above this and calls noteInputCursorStep to redraw the cursor after it
+// rebuilds the grid — which it does once during page init, before execution
+// reaches this line. A let binding is in its temporal dead zone until then, so
+// that read throws, and a throw at the top level of this script aborts
+// everything after it. var hoists to undefined, which these readers already
+// handle. Any state the sequencer reads back has to be declared this way.
+var _recArm = null;      // 'bl' | 'ml' | 'sq' | null
+var _recCursor = 0;
 
 function noteInputTarget(){ return _recArm; }
 function noteInputArm(id){
  _recArm = (_recArm === id) ? null : id;
  _recCursor = 0;
  noteInputSyncUI();
- if(_recArm) showToast(
-   (_recArm==='bl'?'Bass':'Melody')+' is armed — play the keys or your MIDI keyboard'
-   + (typeof isAnythingPlaying==='function' && isAnythingPlaying() ? '' : '. Stopped, so each note takes the next step.'),
-   {ms:3500});
+ if(typeof window._sqMarkCursor==='function') window._sqMarkCursor(noteInputCursorStep('sq'));
+ if(!_recArm) return;
+ // What the keys do differs enough between a kit and a roll to be worth
+ // saying: on a roll one key is one note and the cursor walks on by itself,
+ // on a kit the home row is the tracks and hits pile onto the step you are on
+ // until you move it, because that is how you build a beat.
+ const drums = _recIsDrums(_recArm);
+ const running = typeof isAnythingPlaying==='function' && isAnythingPlaying();
+ showToast(
+   (_recArm==='bl'?'Bass':drums?'Drums':'Melody') + ' is armed — play '
+   + (drums ? 'the home row (A is the top track) or your MIDI pads' : 'the keys or your MIDI keyboard')
+   + (running ? '' : drums ? '. Stopped, so hits stack on the cursor and Space moves it on.'
+                          : '. Stopped, so each note takes the next step.'),
+   {ms:3800});
 }
 function noteInputSyncUI(){
  document.querySelectorAll('[data-recarm]').forEach(function(b){
@@ -25870,25 +26036,41 @@ function noteInputSyncUI(){
   b.classList.toggle('armed', on);
   b.textContent = on ? '⏺ Recording' : '⏺ Play in';
  });
- if(_recArm && typeof prRedraw==='function') prRedraw(_recArm);
+ if(_recArm) _recRepaint(_recArm);
 }
 // Where the next note goes. While the transport runs that is wherever the
 // playhead is, so what you hear is what you write on; stopped, it is the
 // cursor you have been advancing yourself.
+// Drums are not a piano roll, so they answer these three questions themselves
+// rather than through a PR_ENGINES entry.
+function _recIsDrums(id){ return id==='sq'; }
+function _recSteps(id){
+ if(_recIsDrums(id)) return (typeof window._sqSteps==='function') ? Math.max(1,window._sqSteps()) : 16;
+ const cfg=PR_ENGINES[id]; return cfg ? Math.max(1,cfg.steps()) : 16;
+}
+function _recPlayStep(id){
+ if(_recIsDrums(id)) return (typeof window._sqPlayStep==='function') ? window._sqPlayStep() : -1;
+ const cfg=PR_ENGINES[id];
+ return (cfg && typeof cfg.playStep==='function') ? cfg.playStep() : -1;
+}
 function _recStepFor(id){
- const cfg = PR_ENGINES[id]; if(!cfg) return 0;
- const n = Math.max(1, cfg.steps());
- if(typeof cfg.playStep === 'function'){
-  const p = cfg.playStep();
-  if(p >= 0) return ((p % n) + n) % n;
- }
+ const n = _recSteps(id);
+ const p = _recPlayStep(id);
+ if(p >= 0) return ((p % n) + n) % n;
  return ((_recCursor % n) + n) % n;
 }
+function _recRepaint(id){
+ if(_recIsDrums(id)){
+  if(typeof window._sqMarkCursor==='function') window._sqMarkCursor(noteInputCursorStep('sq'));
+  return;
+ }
+ if(typeof prRedraw==='function') prRedraw(id);
+}
 function _recAdvance(by){
- const cfg = PR_ENGINES[_recArm]; if(!cfg) return;
- const n = Math.max(1, cfg.steps());
+ if(!_recArm) return;
+ const n = _recSteps(_recArm);
  _recCursor = ((_recCursor + (by||1)) % n + n) % n;
- if(typeof prRedraw==='function') prRedraw(_recArm);
+ _recRepaint(_recArm);
 }
 // Fold a pitch into the roll's own register.
 //
@@ -25912,40 +26094,57 @@ function _recFold(cfg, midi){
 
 // Returns true when it consumed the note, so the caller knows whether the
 // live voice should also sound it.
-function noteInputWrite(midi){
+function noteInputWrite(midi, accent, vel){
  if(!_recArm) return false;
+ if(_recIsDrums(_recArm)){
+  const ti = (typeof window._sqTrackForMidi==='function') ? window._sqTrackForMidi(midi) : -1;
+  return (ti >= 0) ? noteInputHit(ti, accent, vel) : false;
+ }
  const cfg = PR_ENGINES[_recArm]; if(!cfg || typeof cfg.setAt!=='function') return false;
- const running = (typeof cfg.playStep==='function') && cfg.playStep() >= 0;
+ const running = _recPlayStep(_recArm) >= 0;
  const step = _recStepFor(_recArm);
  cfg.setAt(step, _recFold(cfg, midi));
  // Only step entry moves a cursor. While playing, the playhead is the cursor
  // and moving anything would fight it.
  if(!running) _recAdvance(1);
- else if(typeof prRedraw==='function') prRedraw(_recArm);
+ else _recRepaint(_recArm);
+ return true;
+}
+// One drum hit on the armed kit, by track index.
+function noteInputHit(ti, accent, vel){
+ if(_recArm !== 'sq' || typeof window._sqPlayIn!=='function') return false;
+ const running = _recPlayStep('sq') >= 0;
+ const step = _recStepFor('sq');
+ if(!window._sqPlayIn(ti, step, !!accent, vel)) return false;
+ // Stepping a kit is not like stepping a line: you want several drums on the
+ // same step, so the cursor only moves when you say so, with Space.
+ if(!running) _recRepaint('sq');
  return true;
 }
 function noteInputRest(){
  if(!_recArm) return false;
- const cfg = PR_ENGINES[_recArm];
- const running = cfg && typeof cfg.playStep==='function' && cfg.playStep() >= 0;
- if(running) return false;          // there is no "rest" to place while it plays
+ if(_recPlayStep(_recArm) >= 0) return false;   // no rest to place while it plays
  _recAdvance(1);
  return true;
 }
 function noteInputBack(){
  if(!_recArm) return false;
- const cfg = PR_ENGINES[_recArm];
- const running = cfg && typeof cfg.playStep==='function' && cfg.playStep() >= 0;
- if(running) return false;
+ if(_recPlayStep(_recArm) >= 0) return false;
  _recAdvance(-1);
- if(cfg && typeof cfg.clearAt==='function') cfg.clearAt(_recStepFor(_recArm));
+ const at = _recStepFor(_recArm);
+ if(_recIsDrums(_recArm)){
+  if(typeof window._sqClearAt==='function') window._sqClearAt(at);
+ } else {
+  const cfg = PR_ENGINES[_recArm];
+  if(cfg && typeof cfg.clearAt==='function') cfg.clearAt(at);
+ }
+ _recRepaint(_recArm);
  return true;
 }
 // Drawn by prDraw when its roll is the armed one and nothing is playing.
 function noteInputCursorStep(id){
  if(_recArm !== id) return -1;
- const cfg = PR_ENGINES[id]; if(!cfg) return -1;
- if(typeof cfg.playStep==='function' && cfg.playStep() >= 0) return -1;
+ if(_recPlayStep(id) >= 0) return -1;
  return _recStepFor(id);
 }
 
