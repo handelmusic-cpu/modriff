@@ -4318,10 +4318,15 @@ body.mode-free .pro-only { display:none !important; }
  </div>
  </div>
 
- <!-- Fingering chart — advanced-mode only, per instrument -->
- <div class="panel p-perform advanced-only is-ref" id="fingering-panel" style="width:100%;max-width:700px;margin-top:10px">
+ <!-- Fingering chart — off unless switched on in Settings, and no icon.
+      A raised hand next to the word "Fingering" is a joke waiting to happen in
+      front of a classroom, and the panel does not need decoration to be found
+      by someone who went looking for it. It is reference material for learning
+      an instrument's shapes: genuinely useful when you want it, and taking up
+      the page the rest of the time. Settings → Show → Instrument fingerings. -->
+ <div class="panel p-perform advanced-only is-ref" id="fingering-panel" style="display:none;width:100%;max-width:700px;margin-top:10px">
   <div class="panel-title">
-   <span class="pt-icon">✋</span> Fingering <button class="tips-btn" onclick="showTip('fingering',this)">?</button>
+   Fingering <button class="tips-btn" onclick="showTip('fingering',this)">?</button>
    <span class="pk pk-ref">Reference</span>
    <span id="fing-note-label" style="margin-left:auto"></span>
    <button class="panel-fold" data-fold="fingering-panel" onclick="togglePanelFold('fingering-panel')" aria-expanded="true" title="Hide the fingering chart">▾</button>
@@ -4639,6 +4644,12 @@ body.mode-free .pro-only { display:none !important; }
       <button class="tb" id="theme-light" onclick="setTheme('light')">Light</button>
      </div>
     </div>
+    <div class="ss-scope">Show <b>extras you can leave off</b></div>
+    <div class="row">
+     <button class="tb" data-fingtoggle onclick="toggleFingering()"
+      title="A chart of how to finger each note on a chosen instrument — trumpet valves, sax keys, guitar and bass positions. It appears under the melody strip and follows whatever note you play.">Instrument fingerings: OFF</button>
+    </div>
+    <div class="ss-hint">How to finger each note on trumpet, sax, clarinet, flute, guitar or bass. It follows the note you play, under the melody strip. Off by default — it is a reference you want while learning a set of shapes, not every day.</div>
     <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:8px;letter-spacing:.05em;line-height:1.7">
      Basic and Advanced view live in the transport's ⋯ menu, so you can change how much is on screen without leaving what you are playing.
     </div>
@@ -7384,6 +7395,39 @@ function togglePanelFold(id,force){
  });
  try{ localStorage.setItem('modo-fold-'+id, folded?'1':'0'); }catch(e){}
 }
+// Fingering is off until asked for. It is reference material for learning an
+// instrument's shapes — the sort of thing you want for a week and then never
+// again — so it is a switch rather than a panel that is simply folded: folded
+// still leaves a title bar on the page advertising itself, which is most of
+// what made it feel like it was shouting.
+//
+// Separate from the fold state, deliberately. The switch decides whether the
+// panel exists at all; the fold decides how it sits once it does, and someone
+// who turns it on after having folded it should get it back the way they left
+// it rather than reset.
+function fingeringOn(){
+ try{ return localStorage.getItem('modo-fingering-on')==='1'; }catch(e){ return false; }
+}
+function setFingeringVisible(on, opts){
+ on = !!on;
+ try{ localStorage.setItem('modo-fingering-on', on?'1':''); }catch(e){}
+ const p = document.getElementById('fingering-panel');
+ if(p) p.style.display = on ? '' : 'none';
+ document.querySelectorAll('[data-fingtoggle]').forEach(b=>{
+  b.classList.toggle('active', on);
+  b.textContent = 'Instrument fingerings: ' + (on ? 'ON' : 'OFF');
+ });
+ // Drawn on demand rather than kept current while hidden — there is no point
+ // redrawing a chart nobody can see on every note played.
+ if(on && typeof renderFingering==='function'){
+  try{ renderFingering(typeof _lastMelMidi!=='undefined' ? _lastMelMidi : null); }catch(e){}
+ }
+ if(on && !(opts&&opts.silent) && typeof showToast==='function'){
+  showToast('Fingerings on — they show under the melody strip as you play', {ms:3000});
+ }
+}
+function toggleFingering(){ setFingeringVisible(!fingeringOn()); }
+
 function restorePanelFolds(){
  ['chord-diagram-panel','fingering-panel'].forEach(id=>{
   let v=null; try{ v=localStorage.getItem('modo-fold-'+id); }catch(e){}
@@ -15398,7 +15442,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'Anything marked <strong>Reference</strong> is a readout: Chord Forms, Fingering, the Chord Chart, this guide. They sit flatter and darker, with no accent, and tapping them plays nothing.'},
  {icon:'',text:'Everything else — Setup, the Mixer, MōdSynth — is a control: it shapes what you hear without making a sound on its own.'},
  ]},
- {title:'✋ Fingering — for horn and string players', tips:[
+ {title:'Fingering — for horn and string players', tips:[
  {icon:'',text:'In <strong>Advanced</strong> view, the <strong>Fingering</strong> panel shows how to play the note you just triggered on your own instrument: trumpet, trombone, alto/tenor sax, clarinet, flute, guitar, ukulele, banjo or mandolin.'},
  {icon:'',text:'<strong>Transposition is handled for you.</strong> MōdRiff plays concert pitch; the panel shows the note as written on <em>your</em> part — concert G reads as written A on trumpet, written E on alto, written A on tenor.'},
  {icon:'',text:'<strong>Trumpet</strong> shows valve combinations, <strong>trombone</strong> slide positions, <strong>saxophone</strong> a key diagram with octave and auxiliary keys, and fretted instruments the string and fret.'},
@@ -20258,6 +20302,8 @@ function seedOpeningProgression(){
 }
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 restorePanelFolds();
+// …and whether the fingering panel is on the page at all.
+try{ setFingeringVisible(fingeringOn(), {silent:true}); }catch(e){}
 // Variants start shut. Restored rather than assumed, so someone who works with
 // them open every day is not re-opening the row each launch.
 try{ toggleVariantRow(!!localStorage.getItem('modo-variants-open')); }catch(e){ toggleVariantRow(false); }
