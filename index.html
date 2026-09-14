@@ -2686,6 +2686,20 @@ body.light-mode .bl-empty-hint {
 .rec-here-x { margin-left:auto; color:var(--muted); letter-spacing:.06em; }
 .ss-hint { font-size:.45rem; color:var(--muted); letter-spacing:.04em; line-height:1.5; margin:4px 0 2px; }
 .ss-hint-dim { opacity:.7; margin-bottom:8px; }
+/* Variants disclosure — see the note above #var-head. */
+.var-head { display:flex; align-items:center; gap:6px; width:100%; max-width:700px;
+            margin:0 auto 4px; padding:4px 8px; background:none; border:1px solid var(--border2);
+            border-radius:var(--r-sm); color:var(--muted); font-family:'Outfit',sans-serif;
+            font-size:.4rem; text-transform:uppercase; letter-spacing:.1em;
+            cursor:pointer; touch-action:manipulation; }
+.var-head-caret { display:inline-block; transition:transform .15s; font-size:.7rem; line-height:1; }
+.var-head.open .var-head-caret { transform:rotate(90deg); }
+.var-head-lbl { flex:0 0 auto; }
+/* The armed variant, pushed right. Accent-coloured only when it is something
+   other than the plain triad, so "Root" stays quiet and anything that changes
+   what you hear does not. */
+.var-head-armed { margin-left:auto; color:var(--muted); letter-spacing:.06em; text-transform:none; font-size:.46rem; }
+.var-head-armed.on { color:var(--accent); font-weight:600; }
 @keyframes recHerePulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 @media (prefers-reduced-motion: reduce){ .rec-here-dot { animation:none; } }
 .sq-fxbtn { padding:5px 8px; border:1px solid var(--sq-bdr2); border-radius:6px; background:none; color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.6rem; cursor:pointer; touch-action:manipulation; letter-spacing:.05em; transition:all .12s; }
@@ -4107,9 +4121,22 @@ body.mode-free .pro-only { display:none !important; }
       panel, not something you read, so it goes under the grid it applies to.
       See the bottom of this panel. -->
 
- <!-- Variant arm system (hidden until enabled in Settings) -->
- <div class="advanced-only" style="display:flex;align-items:center;gap:4px;width:100%;max-width:700px;justify-content:center;margin-bottom:2px"><span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Variants</span><button class="tips-btn" onclick="showTip('variants',this)">?</button></div>
- <div class="variant-arm-row advanced-only" id="variant-arm-row">
+ <!-- Variant arm system (hidden until enabled in Settings).
+      Collapsed by default: eleven buttons for a thing most people set once,
+      sitting directly above the chords they came here to press. Borrowed &
+      Modal below stays open — that is a palette you browse, this is a mode you
+      set.
+
+      The header carries the armed variant when it is shut, and has to: arming
+      sus4 and then collapsing would otherwise leave every chord you play a
+      sus4 with nothing on screen saying why. -->
+ <button class="var-head advanced-only" id="var-head" onclick="toggleVariantRow()"
+         aria-expanded="false" aria-controls="variant-arm-row">
+  <span class="var-head-caret" aria-hidden="true">›</span>
+  <span class="var-head-lbl">Variants</span>
+  <span class="var-head-armed" id="var-head-armed">Root</span>
+ </button>
+ <div class="variant-arm-row advanced-only" id="variant-arm-row" style="display:none">
  <button class="varm-btn armed" id="varm-none" data-varm="" onclick="armVariant(null)">Root</button>
  <button class="varm-btn" id="varm-sus2" data-varm="sus2" onclick="armVariant('sus2')">sus2</button>
  <button class="varm-btn" id="varm-sus4" data-varm="sus4" onclick="armVariant('sus4')">sus4</button>
@@ -15603,6 +15630,40 @@ function armVariant(v){
   b.classList.toggle('armed', (bv === undefined ? null : bv) === (v === null ? null : String(v)));
  });
  if(v === null) document.getElementById('varm-none')?.classList.add('armed');
+ syncVariantHead();
+}
+
+// The row is collapsed by default, so its header has to answer the question
+// the row would have: what is armed right now. Without this, arming sus4 and
+// collapsing leaves every chord sounding as a sus4 with nothing saying why.
+let variantRowOpen = false;
+function syncVariantHead(){
+ const el = document.getElementById('var-head-armed'); if(!el) return;
+ // The button's own label where there is one — it already reads the way a
+ // musician writes it (♭9, 13, sus4) — falling back to the raw key.
+ let lbl = 'Root';
+ if(armedVariant !== null && armedVariant !== undefined){
+  const btn = document.querySelector('.varm-btn[data-varm="'+String(armedVariant).replace(/"/g,'')+'"]');
+  lbl = (btn && btn.textContent.trim()) || String(armedVariant);
+ }
+ el.textContent = lbl;
+ el.classList.toggle('on', armedVariant !== null && armedVariant !== undefined);
+}
+function toggleVariantRow(force){
+ variantRowOpen = (force==null) ? !variantRowOpen : !!force;
+ const row = document.getElementById('variant-arm-row');
+ const head = document.getElementById('var-head');
+ if(row) row.style.display = variantRowOpen ? '' : 'none';
+ if(head){ head.classList.toggle('open', variantRowOpen);
+           head.setAttribute('aria-expanded', variantRowOpen ? 'true' : 'false'); }
+ // The extended-qualities row is a second disclosure nested in the first, so
+ // closing the outer one has to take it with it — otherwise nineteen buttons
+ // stay on screen under a header that says the section is shut.
+ if(!variantRowOpen && typeof extRowOpen !== 'undefined' && extRowOpen){
+  toggleExtRow();   // it is a straight toggle, and it is currently open
+ }
+ try{ localStorage.setItem('modo-variants-open', variantRowOpen?'1':''); }catch(e){}
+ syncVariantHead();
 }
 
 // The full chord vocabulary, live. These qualities already existed but were
@@ -20203,6 +20264,9 @@ function seedOpeningProgression(){
 }
 try{ const _cdi=localStorage.getItem('modo-chord-diagram-inst'); if(_cdi) setChordDiagramInst(_cdi); else renderChordDiagram(); }catch(e){ renderChordDiagram(); }
 restorePanelFolds();
+// Variants start shut. Restored rather than assumed, so someone who works with
+// them open every day is not re-opening the row each launch.
+try{ toggleVariantRow(!!localStorage.getItem('modo-variants-open')); }catch(e){ toggleVariantRow(false); }
 onArpRateSlider(7);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
