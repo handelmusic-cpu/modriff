@@ -6455,6 +6455,8 @@ function unlockAudio(startDemo){
  }
  const finish=()=>{
  if(typeof _watchAudioState==='function') _watchAudioState();
+ // Registered now so Record can create its tap synchronously later.
+ try{ if(typeof _ensureRecWorklet==='function') _ensureRecWorklet(audioCtx); }catch(e){}
  buildReverb();
   try{
  // Warm-up the audio pipeline with a 100ms silent buffer to prevent the first-note pop
@@ -19398,6 +19400,80 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
 // compressed webm/opus containers in Chrome — not something most DAWs or
 // simple media players open cleanly).
 var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false, _recTapNode=null;
+var _recTap=null;
+
+// ── PCM tap ────────────────────────────────────────────────────────────
+// ScriptProcessorNode has been deprecated for years and WebKit treats it that
+// way: on iOS it can keep firing onaudioprocess on schedule while handing back
+// an input buffer of pure zeros, which is indistinguishable from a bounce of a
+// silent mix. That is not theoretical — it is what produced a 3.3-second WAV
+// of 319,488 samples every one of which was exactly 0, off a session that was
+// audibly playing. An AudioWorklet runs on the audio thread and does not have
+// that failure mode, so it is what we use wherever it exists; the
+// ScriptProcessor stays as the fallback for anything too old to have one.
+var _recWorkletURL=null, _recWorkletCtx=null, _recWorkletReady=false;
+
+function _recWorkletSource(){
+ // Buffered to 4096 frames before posting, matching the ScriptProcessor block
+ // size — a message per 128-frame render quantum would be ~375 posts a second
+ // per tap, and a stem bounce runs six taps at once.
+ return "class RecTap extends AudioWorkletProcessor{"
+  +"constructor(){super();this.N=4096;this.l=new Float32Array(this.N);"
+  +"this.r=new Float32Array(this.N);this.i=0;}"
+  +"flush(){if(!this.i)return;"
+  +"this.port.postMessage({l:this.l.slice(0,this.i),r:this.r.slice(0,this.i)});this.i=0;}"
+  +"process(inputs){const inp=inputs[0];"
+  +"if(!inp||!inp.length||!inp[0]||!inp[0].length){return true;}"
+  +"const L=inp[0],R=inp.length>1?inp[1]:inp[0];"
+  +"for(let k=0;k<L.length;k++){this.l[this.i]=L[k];this.r[this.i]=R[k];this.i++;"
+  +"if(this.i>=this.N)this.flush();}return true;}}"
+  +"registerProcessor('rec-tap',RecTap);";
+}
+
+// Registered ahead of time, at unlock, so pressing Record does not have to
+// wait on an async addModule() before the first sample is captured.
+function _ensureRecWorklet(ctx){
+ try{
+  if(!ctx || !ctx.audioWorklet || typeof AudioWorkletNode!=='function') return Promise.resolve(false);
+  if(_recWorkletReady && _recWorkletCtx===ctx) return Promise.resolve(true);
+  if(!_recWorkletURL) _recWorkletURL=URL.createObjectURL(new Blob([_recWorkletSource()],{type:'text/javascript'}));
+  return ctx.audioWorklet.addModule(_recWorkletURL).then(function(){
+   _recWorkletCtx=ctx; _recWorkletReady=true; return true;
+  }).catch(function(){ _recWorkletReady=false; return false; });
+ }catch(e){ return Promise.resolve(false); }
+}
+
+// Taps `source` without altering what you hear. onBlock gets two Float32Array
+// copies (L, R). Returns a handle whose dispose() unpicks the whole thing.
+function _makePcmTap(ctx, source, onBlock){
+ var node, detach, kind;
+ if(_recWorkletReady && _recWorkletCtx===ctx){
+  kind='worklet';
+  node=new AudioWorkletNode(ctx,'rec-tap',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
+  node.port.onmessage=function(ev){ if(ev&&ev.data) onBlock(ev.data.l, ev.data.r); };
+  detach=function(){ try{ node.port.onmessage=null; }catch(e){} };
+ } else {
+  kind='scriptprocessor';
+  node=ctx.createScriptProcessor(4096,2,2);
+  node.onaudioprocess=function(e){
+   var b=e.inputBuffer;
+   onBlock(new Float32Array(b.getChannelData(0)),
+           new Float32Array(b.numberOfChannels>1?b.getChannelData(1):b.getChannelData(0)));
+  };
+  detach=function(){ node.onaudioprocess=null; };
+ }
+ // Both node types only run while they are part of a graph that reaches the
+ // destination, so the tap goes out through a zero-gain node and adds nothing
+ // to the mix.
+ var sg=ctx.createGain(); sg.gain.value=0;
+ source.connect(node); node.connect(sg); sg.connect(ctx.destination);
+ return { node:node, sg:sg, kind:kind, dispose:function(){
+  detach();
+  try{ source.disconnect(node); }catch(e){}
+  try{ node.disconnect(); }catch(e){}
+  try{ sg.disconnect(); }catch(e){}
+ }};
+}
 
 // ── Stem export ──
 // Off by default and deliberately so: a stem bounce spins up one
@@ -19434,19 +19510,9 @@ function _startStemTaps(ctx){
   var buses = _ensureAllPartBuses(ctx);
   Object.keys(STEM_LABELS).forEach(function(part){
     var node = buses[part]; if(!node) return;
-    var proc = ctx.createScriptProcessor(4096,2,2);
-    var tap = { part:part, node:node, proc:proc, L:[], R:[] };
-    proc.onaudioprocess = function(e){
-      var inBuf=e.inputBuffer;
-      tap.L.push(new Float32Array(inBuf.getChannelData(0)));
-      tap.R.push(new Float32Array(inBuf.numberOfChannels>1?inBuf.getChannelData(1):inBuf.getChannelData(0)));
-    };
-    // Same trick the master tap uses: a ScriptProcessor only runs while it is
-    // part of a graph that reaches the destination, so it goes through a
-    // zero-gain node and adds nothing to what you hear.
-    var sg=ctx.createGain(); sg.gain.value=0;
-    node.connect(proc); proc.connect(sg); sg.connect(ctx.destination);
-    tap.sg=sg;
+    var tap = { part:part, node:node, L:[], R:[] };
+    // Same helper as the master tap, so stems get the AudioWorklet too.
+    tap.pcm = _makePcmTap(ctx, node, function(L,R){ tap.L.push(L); tap.R.push(R); });
     _stemTaps.push(tap);
   });
 }
@@ -19457,10 +19523,7 @@ function _finishStemTaps(baseName, sampleRate, tags){
   var taps=_stemTaps; _stemTaps=[];
   var written=[];
   taps.forEach(function(t){
-    try{ t.node.disconnect(t.proc); }catch(e){}
-    try{ t.proc.disconnect(); }catch(e){}
-    t.proc.onaudioprocess=null;
-    try{ t.sg.disconnect(); }catch(e){}
+    if(t.pcm) t.pcm.dispose();
     var total=t.L.reduce(function(a,c){return a+c.length;},0);
     if(!total) return;
     var L=new Float32Array(total), R=new Float32Array(total), pos=0;
@@ -19673,23 +19736,13 @@ function _startRecording(){
   if(!window._masterLimiter){showToast('Start audio first');return;}
   _startMidiRecording();
   _recChunksL=[];_recChunksR=[];
-  var bufSize=4096;
-  _recProcessor=ctx.createScriptProcessor(bufSize,2,2);
-  _recProcessor.onaudioprocess=function(e){
-    var inBuf=e.inputBuffer;
-    _recChunksL.push(new Float32Array(inBuf.getChannelData(0)));
-    _recChunksR.push(new Float32Array(inBuf.numberOfChannels>1?inBuf.getChannelData(1):inBuf.getChannelData(0)));
-  };
-  // ScriptProcessorNode only fires onaudioprocess while part of a "pulled"
-  // graph reaching the destination — route through a zero-gain node so the
-  // tap doesn't also double the audible output.
-  _recSilentGain=ctx.createGain();_recSilentGain.gain.value=0;
   // Tap the final node, after Master Vol — tapping the limiter would bounce a
   // file that doesn't match what you just heard.
   _recTapNode = window._masterOut || window._masterLimiter;
-  _recTapNode.connect(_recProcessor);
-  _recProcessor.connect(_recSilentGain);
-  _recSilentGain.connect(ctx.destination);
+  _recTap = _makePcmTap(ctx, _recTapNode, function(L,R){
+    _recChunksL.push(L); _recChunksR.push(R);
+  });
+  _recProcessor=_recTap.node; _recSilentGain=_recTap.sg;
   _startStemTaps(ctx);
   _isRecording=true;_updateRecBtn();
   showToast(exportStems ? 'Recording — mix + stems…' : 'Recording…');
@@ -19780,19 +19833,39 @@ function _floatsToWavBlob(left,right,sampleRate,tags){
 }
 function _stopRecording(){
   var midiFile=_stopMidiRecording();
-  var proc=_recProcessor,sg=_recSilentGain,lim=_recTapNode||window._masterLimiter;
-  _recProcessor=null;_recSilentGain=null;_recTapNode=null;
+  var tap=_recTap;
+  _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
   // Let the final buffer flush before tearing the tap down
   setTimeout(function(){
-    if(proc){ try{lim.disconnect(proc);}catch(e){} try{proc.disconnect();}catch(e){} proc.onaudioprocess=null; }
-    if(sg){ try{sg.disconnect();}catch(e){} }
+    if(tap) tap.dispose();
     if(!_recChunksL.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
+    var base0=(document.getElementById('chart-title')?.value||'modo-session');
     var totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
     var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
     for(var i=0;i<_recChunksL.length;i++){fullL.set(_recChunksL[i],pos);fullR.set(_recChunksR[i],pos);pos+=_recChunksL[i].length;}
     _recChunksL=[];_recChunksR=[];
+    // The stem taps have always thrown away a part that never sounded; the
+    // master mix never checked, so a tap that captured nothing but zeros was
+    // written out and handed over as though it were a take. Silence here means
+    // the capture failed, not that you played nothing — say so instead of
+    // delivering a file that looks fine everywhere except in a waveform view.
+    var _peak=0;
+    for(var _pi=0;_pi<fullL.length;_pi++){
+      var _a=Math.abs(fullL[_pi]); if(_a>_peak){ _peak=_a; if(_peak>=0.0005) break; }
+    }
+    if(_peak < 0.0005){
+      _isRecording=false;_updateRecBtn();
+      // Tear the stem taps down without running them through the file writer;
+      // if the mix came back empty the stems are not worth writing either.
+      try{ _stemTaps.forEach(function(t){ if(t.pcm) t.pcm.dispose(); }); }catch(e){}
+      _stemTaps=[];
+      showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
+      try{ console.warn('[rec] capture was digitally silent',
+        {frames:totalLen, tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
+      return;
+    }
     var _sr=getCtx().sampleRate;
-    var base=(document.getElementById('chart-title')?.value||'modo-session');
+    var base=base0;
     var tags=_bounceInfoTags();
     var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
     var stems=_finishStemTaps(base,_sr,tags);
