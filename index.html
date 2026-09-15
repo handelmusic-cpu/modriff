@@ -6618,12 +6618,19 @@ function startDemoJourney(autoPlay){
 // user gesture, `go` was simply never called and pressing Play did nothing
 // at all. Now the engine starts either way and, if the context could not be
 // revived, the next tap anywhere does it.
+// `go` is handed one argument: whether the context is actually running by the
+// time it runs. It still ALWAYS runs — that is the whole point of this helper,
+// see above — but "we tried" and "there is audio" are different facts, and a
+// caller that starts a transport needs to tell them apart. Latching a playing
+// state onto a context that never woke is what left the app convinced it was
+// playing while making no sound, so that the next unrelated tap — which
+// revives the context — dropped a groove on the user out of nowhere.
 function _withAudio(ctx, go){
  ctx = ctx || audioCtx;
- if(!ctx){ if(go) go(); return; }
- if(ctx.state==='running'){ if(go) go(); return; }
+ if(!ctx){ if(go) go(false); return; }
+ if(ctx.state==='running'){ if(go) go(true); return; }
  let done=false;
- const once=()=>{ if(done) return; done=true; if(go) go(); };
+ const once=()=>{ if(done) return; done=true; if(go) go(ctx.state==='running'); };
  try{
   ctx.resume().then(once).catch(()=>{
    once();
@@ -9782,6 +9789,16 @@ tickClock = function(){
 // realigned the times of a clock that was no longer running.
 function ensureClockRunning(){
  if(!_clockShouldRun()) return;
+ // Hidden tab, suspended context: every timer here is clamped to about one
+ // second while the look-ahead only covers 0.2s, so restarting the chain
+ // schedules a fifth of a bar, goes quiet, and does it again — playback in
+ // slow motion, one stray hit per second. Nothing is audible while the
+ // context is suspended anyway, and the visibilitychange path realigns and
+ // restarts everything properly on the way back in, so leave it alone. A
+ // context that IS running while hidden (desktop keeps audible tabs alive
+ // and exempt from throttling) still gets its clock kept up.
+ if(typeof document!=='undefined' && document.hidden
+    && !(typeof audioCtx!=='undefined' && audioCtx && audioCtx.state==='running')) return;
  const gap = Date.now() - _clockLastTick;
  if(gap < SCHED_INT * 4) return;
  // A gap this long is past what the look-ahead covers, so every running
@@ -20459,21 +20476,23 @@ window._sqClearPendGroove = function(){
   if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
 };
 
-function sqLoadGroove(idx){
+// opts.autostart is set only by the groove row's own click handler — the one
+// place a groove change is unambiguously a user asking to hear it.
+function sqLoadGroove(idx, opts){
   var playing = (typeof window._sqPlaying==='function') && window._sqPlaying();
   if(playing){
     sqPendGroove = idx;
     if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
     return;
   }
-  sqApplyGroove(idx);
+  sqApplyGroove(idx, opts);
   // Applied immediately, so repaint here too — otherwise the row only picks up
   // the active groove on the paths that flush a queue, and a groove chosen
   // while stopped shows nothing at all.
   if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
 }
 
-function sqApplyGroove(idx){
+function sqApplyGroove(idx, opts){
   var r = RHYTHMS[idx]; if(!r) return;
   sqCurGroove = idx;
   var newSteps = r.pat.length;
@@ -20493,7 +20512,8 @@ function sqApplyGroove(idx){
     }
   }catch(e){}
   var oldSteps = (typeof window._sqSteps==='function') ? window._sqSteps() : newSteps;
-  document.dispatchEvent(new CustomEvent('sq-import-groove',{detail:{rhythm:r,steps:newSteps}}));
+  document.dispatchEvent(new CustomEvent('sq-import-groove',
+    {detail:{rhythm:r,steps:newSteps,autostart:!!(opts&&opts.autostart)}}));
   // The bass used to be regenerated on every groove change, on an 80ms timer.
   // That threw away a line you liked because you wanted different drums under
   // it — two separate parts, one button. It keeps grooving along now.
@@ -21686,16 +21706,38 @@ function sqDraw(){
   sqRafID=requestAnimationFrame(sqDraw);
 }
 
-function sqStart(){
+// opts.auto marks a start that no finger asked for — a groove being applied,
+// a preset landing, anything the app decided on the user's behalf. Those are
+// held to a stricter rule than the Play button: if the audio context did not
+// actually come back, they do not start at all.
+//
+// A user-pressed Play stays optimistic on purpose. It happens inside a real
+// gesture, which is exactly when iOS will honour resume(), and refusing it on
+// a context that has not flipped to 'running' yet is how Play used to appear
+// to do nothing. An automatic start has no such excuse: marking sqPlaying
+// true against a dead context starts the clock, keeps _clockShouldRun() true
+// forever, and leaves a groove armed and inaudible until some later tap
+// revives the context — at which point drums the user never asked for come
+// out of the speaker. That is the unprompted kick and snare.
+function sqStart(opts){
+  var auto = !!(opts && opts.auto);
   sqInitFX();
   sqEnsureNoise();
   var c=sqCtx();if(!c)return;
-  // Stop Vibe's simple rhythm engine directly (bypasses toggleRhythm patch)
-  if(rhythmOn){ rhythmOn=false; clearTimeout(clockTimer);
-    ['rhy-play','rhy-play2'].forEach(function(id){ var b=document.getElementById(id); if(b){ b.textContent='▶ Rhythm'; b.className='play-btn start'; } });
-    resetBeatDots();
-  }
-  var go=function(){
+  var go=function(live){
+    if(auto && !live){
+      // Say so rather than failing silently; the bar's own tap-to-resume
+      // handler is what gets the context back.
+      if(typeof _armGestureResume==='function') _armGestureResume();
+      return;
+    }
+    // Stop Vibe's simple rhythm engine directly (bypasses toggleRhythm patch).
+    // Inside go(), so a refused auto-start leaves the transport exactly as it
+    // found it instead of silently stopping the engine that WAS playing.
+    if(rhythmOn){ rhythmOn=false; clearTimeout(clockTimer);
+      ['rhy-play','rhy-play2'].forEach(function(id){ var b=document.getElementById(id); if(b){ b.textContent='▶ Rhythm'; b.className='play-btn start'; } });
+      resetBeatDots();
+    }
     sqPlaying=true;window._sqPlayingVal=true;sqSeqStep=0;sqDispStep=-1;
     // The step cursor belongs to a stopped transport — once this runs, the
     // playhead is where hits land. Cleared here rather than only in
@@ -22317,8 +22359,11 @@ function sqWire(){
     sqRender();
     // If already playing, reset step counter so new pattern starts on next cycle
     if(sqPlaying){ sqSeqStep=0; }
-    // If NOT playing, auto-start so the groove plays immediately
-    if(!sqPlaying){ sqStart(); }
+    // Auto-start ONLY when the import came from a deliberate tap on a groove
+    // button. It used to fire for every import, which meant any code path that
+    // laid in a groove — the walkthrough's opening bed among them — started
+    // the drums with nothing pressed.
+    if(!sqPlaying && e.detail && e.detail.autostart){ sqStart({auto:true}); }
   });
 
   // ── Vary: perturb the pattern instead of replacing it ──────────────────
@@ -26667,7 +26712,7 @@ function sqBuildGroovePresets(){
     // A groove that is waiting for the downbeat has to say so, or the tap
     // reads as having done nothing at all for up to a whole bar.
     if(i===sqPendGroove) b.title='Queued — starts on the next downbeat';
-    b.onclick=function(){ sqLoadGroove(i); };
+    b.onclick=function(){ sqLoadGroove(i,{autostart:true}); };
     el.appendChild(b);
   });
 }
