@@ -3542,7 +3542,30 @@ body.mode-free .pro-only { display:none !important; }
    A mixer with a limiter and no signal indication cannot answer the two
    questions it exists for: is this channel playing, and am I clipping. */
 .mix-knobrow { display:flex; align-items:flex-end; gap:4px; }
-.mix-meter { width:7px; height:38px; border-radius:3px; display:block; }
+/* ── Channel faders ───────────────────────────────────────────────────────
+   A mixer strip is a fader. The rotary encoders here were borrowed from the
+   sequencer's knob helper, where they belong — a knob is right for a value
+   with no natural top or bottom, like pitch or swing. A channel level has
+   both, and a column of faders shows the whole mix at a glance in a way a
+   row of dials cannot: you read the shape of the balance off the cap
+   positions without looking at a single number. Vertical travel also beats a
+   circular drag on a phone, where the gesture is a thumb moving up and down.
+   The knob helper is untouched and still drives the sequencer's own knobs. */
+.mix-fader { position:relative; width:30px; height:112px; flex:0 0 auto;
+  touch-action:none; cursor:pointer; border-radius:7px;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.20)); }
+.mix-fader-slot { position:absolute; left:50%; top:8px; bottom:8px; width:4px;
+  margin-left:-2px; border-radius:2px; background:rgba(0,0,0,.45);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07); }
+.mix-fader-fill { position:absolute; left:0; right:0; bottom:0; border-radius:2px; }
+.mix-fader-cap { position:absolute; left:3px; right:3px; height:13px; border-radius:3px;
+  background:linear-gradient(180deg,#f4f6ff,#b2b8da 48%,#6c729c);
+  border:1px solid rgba(0,0,0,.55); box-shadow:0 1px 3px rgba(0,0,0,.55); }
+.mix-fader-cap::after { content:''; position:absolute; left:2px; right:2px; top:50%;
+  height:1px; margin-top:-1px; background:rgba(0,0,0,.5); }
+.mix-fader:focus-visible { outline:2px solid var(--pr); outline-offset:2px; }
+.mix-faderrow { display:flex; align-items:flex-end; gap:5px; }
+.mix-meter { width:7px; height:112px; border-radius:3px; display:block; }
 .mix-meter-h { width:100%; height:9px; flex:1; }
 .mix-master-meter-row {
  display:flex; align-items:center; gap:9px; margin-top:12px;
@@ -20901,7 +20924,12 @@ function sqRenderMixer(){
 window._sqMixNodesW = window._sqMixNodesW || {};
 
 // Mixer gains live at window level so unlockAudio can init them
-window.sqMixGainsW = { chord:.75, mel:.75, drum:.55, bass:.7, melgen:.75, arp:.7 };
+// auxperc had no entry, so _cmx fell through to its `1` default and the Aux
+// strip drew itself at 100% while the audio ignored it. It sits at the Drums
+// level: the aux layer is percussion in the same mix, and with the double
+// application above removed this is also about where it has actually been
+// sounding.
+window.sqMixGainsW = { chord:.75, mel:.75, drum:.55, bass:.7, melgen:.75, arp:.7, auxperc:.55 };
 (function(){
 'use strict';
 
@@ -21571,7 +21599,7 @@ window._sqSetSwing = function(v){
 window._sqMachines = function(){ return SQM; };
 // Fire one drum voice through the real path (choke handling included) so it can
 // be measured on its own.
-window._sqHit = function(track,t,vol,ac,ps){ return sqHitTrack(track,t,vol,ac,ps); };
+window._sqHit = function(track,t,vol,ac,ps,ch){ return sqHitTrack(track,t,vol,ac,ps,ch); };
 // Choke a group without sounding anything, so the mechanism can be measured
 // without the choking voice's own sound sitting on top of the result.
 window._sqChoke = function(group,t){ return _chokeGroup(group||'hat', t); };
@@ -22662,11 +22690,28 @@ function sqMixGain(ch){ return (typeof _cmx==='function') ? _cmx(ch) : (sqMixGai
 // sqAp hoisted to global scope above
 
 
-// Patch sqHitTrack to apply drum mix gain
-var _origSqHitTrack = sqHitTrack;
-sqHitTrack = function(track,t,vol,ac,ps){
-  _origSqHitTrack(track, t, vol * sqMixGain('drum'), ac, ps);
-};
+// sqHitTrack applies the mixer channel itself — see the long note on its
+// `vol = vol * _cmx(ch||'drum')` line. A wrapper here used to do it too:
+//
+//   sqHitTrack = function(track,t,vol,ac,ps){
+//     _origSqHitTrack(track, t, vol * sqMixGain('drum'), ac, ps);
+//   };
+//
+// It predates the channel argument and did two things wrong once that
+// argument existed. It took five parameters where the real function takes
+// six, so `ch` was dropped on every single hit — the Aux Perc layer threads
+// its channel all the way down from _sqFireLayer(..., SQ_LAYER_CH[i]) and
+// then lost it on the last hop, which is why the Aux fader moved nothing and
+// the Drums fader moved the aux layer. Measured: over a playing bar the only
+// channel ever consulted was 'drum', 42 times, and 'auxperc' never once;
+// pulling the Aux fader from 100% to 0% changed the output by 1.6%, which is
+// noise.
+//
+// And it multiplied by the Drums gain a second time, on top of the one
+// inside, so the fader was squared and the kit ran about 5dB under the level
+// sqInitFX's baseline was rescaled to expect.
+//
+// Removed rather than fixed: the function it wrapped already does this job.
 
 // Patch blPlayNote to apply bass mix gain — done via blMG() vol param
 // (blScheduler already reads bl-vol input, multiply by mix gain)
@@ -25984,13 +26029,71 @@ function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _
 // Derived from PARTS — see the block above VOICE_PARTS. Adding a part there
 // gives it a mixer strip, a stem and a place in every ordered list at once.
 window.MIX_CHANNELS = PARTS.filter(p=>p.mix).map(p=>({id:p.id, label:p.label, color:p.color}));
+// Builds one fader. onInput gets 0..100. Pointer drag, tap-to-jump anywhere
+// on the track, and arrow keys, because a level control that only answers to
+// a drag is unreachable from a keyboard.
+window.attachMixFader = function(v0, color, onInput){
+ var TOP=8, BOT=8, CAP=13;
+ var el=document.createElement('div');
+ el.className='mix-fader'; el.tabIndex=0;
+ el.setAttribute('role','slider');
+ el.setAttribute('aria-valuemin','0'); el.setAttribute('aria-valuemax','100');
+ var slot=document.createElement('div'); slot.className='mix-fader-slot';
+ var fill=document.createElement('div'); fill.className='mix-fader-fill';
+ fill.style.background=color;
+ var cap=document.createElement('div'); cap.className='mix-fader-cap';
+ slot.appendChild(fill); el.appendChild(slot); el.appendChild(cap);
+ var val=v0;
+ function travel(){ return Math.max(1,(el.clientHeight||112)-TOP-BOT-CAP); }
+ function paint(){
+  var y=TOP+travel()*(1-val/100);
+  cap.style.top=y+'px';
+  // The slot is inset by TOP, so the fill's offset is measured from there.
+  fill.style.top=Math.max(0,y+CAP/2-TOP)+'px';
+  el.setAttribute('aria-valuenow',String(Math.round(val)));
+ }
+ function setVal(v,fire){
+  v=Math.max(0,Math.min(100,v));
+  if(Math.round(v)===Math.round(val)&&fire!==true){ val=v; paint(); return; }
+  val=v; paint(); if(onInput) onInput(Math.round(val));
+ }
+ function fromY(clientY){
+  var r=el.getBoundingClientRect();
+  var y=clientY-r.top-TOP-CAP/2;
+  setVal((1-y/travel())*100,true);
+ }
+ el.addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  el.focus({preventScroll:true});
+  fromY(e.clientY);
+ });
+ el.addEventListener('pointermove',function(e){
+  if(!el.hasPointerCapture||!el.hasPointerCapture(e.pointerId)) return;
+  fromY(e.clientY);
+ });
+ ['pointerup','pointercancel'].forEach(function(ev){
+  el.addEventListener(ev,function(e){ try{ el.releasePointerCapture(e.pointerId); }catch(_){} });
+ });
+ el.addEventListener('keydown',function(e){
+  var step=e.shiftKey?10:2, d=0;
+  if(e.key==='ArrowUp'||e.key==='ArrowRight') d=step;
+  else if(e.key==='ArrowDown'||e.key==='ArrowLeft') d=-step;
+  else if(e.key==='Home') { setVal(100,true); e.preventDefault(); return; }
+  else if(e.key==='End')  { setVal(0,true);   e.preventDefault(); return; }
+  else return;
+  e.preventDefault(); setVal(val+d,true);
+ });
+ paint();
+ return { el:el, set:function(v){ val=v; paint(); }, get:function(){ return val; } };
+};
+
 window.buildMixChannelsInto = function(container){
  if(!container) return;
  container.innerHTML='';
  window.MIX_CHANNELS.forEach(function(ch){
   var wrap=document.createElement('div');
   wrap.className='mix-strip';
-  var cvs=document.createElement('canvas'); cvs.width=40; cvs.height=40; cvs.style.cursor='pointer';
   var valEl=document.createElement('div');
   valEl.className='mix-val'; valEl.style.color=uiTextColor(ch.color);
   var lbl=document.createElement('div');
@@ -26007,26 +26110,24 @@ window.buildMixChannelsInto = function(container){
   var meter=document.createElement('canvas');
   meter.className='mix-meter'; meter.dataset.mixmeter=ch.id;
   meter.setAttribute('aria-hidden','true');
-  var knobRow=document.createElement('div'); knobRow.className='mix-knobrow';
-  knobRow.appendChild(cvs); knobRow.appendChild(meter);
-  wrap.appendChild(knobRow); wrap.appendChild(valEl); wrap.appendChild(lbl); wrap.appendChild(btns);
-  container.appendChild(wrap);
-
   // Read the stored level with a null check, not `|| 1`: a channel pulled to
   // 0 used to redraw at 100% every time the strip was rebuilt on a tab
-  // switch, so the knob and the audio disagreed from then on.
+  // switch, so the control and the audio disagreed from then on.
   var gains=window.sqMixGainsW||{};
   var initV=Math.round((gains[ch.id]!=null?gains[ch.id]:1)*100);
-  if(typeof sqDrawKnob==='function') sqDrawKnob(cvs,initV,0,100,ch.color);
+  var fader=window.attachMixFader(initV, ch.color, function(v){
+   if(window.sqMixGainsW) window.sqMixGainsW[ch.id]=v/100;
+   valEl.textContent=v+'%';
+   if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes(ch.id,v/100);
+  });
+  fader.el.setAttribute('aria-label',ch.label+' level');
+
+  var faderRow=document.createElement('div'); faderRow.className='mix-faderrow';
+  faderRow.appendChild(fader.el); faderRow.appendChild(meter);
+  wrap.appendChild(faderRow); wrap.appendChild(valEl); wrap.appendChild(lbl); wrap.appendChild(btns);
+  container.appendChild(wrap);
+
   valEl.textContent=initV+'%';
-  if(typeof sqAttachKnob==='function'){
-   sqAttachKnob(cvs,valEl,initV,0,100,'vol',function(v){
-    if(window.sqMixGainsW) window.sqMixGainsW[ch.id]=v/100;
-    if(typeof sqDrawKnob==='function') sqDrawKnob(cvs,v,0,100,ch.color);
-    valEl.textContent=v+'%';
-    if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes(ch.id,v/100);
-   });
-  }
  });
  sqSyncMixIndicators();
 };
