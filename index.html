@@ -9347,8 +9347,99 @@ const SCHED_LEAD = 0.08;
 function beatSec(){ return 60/parseFloat(document.getElementById('bpm').value); }
 function rootMidi(){ return 60+(root<=5?root:root-12)+octShift; }
 
+
+// ── Phantom-transport tripwire ────────────────────────────────────────────
+// Two rounds of fixes have each closed a real way for the drums to start on
+// their own, and the drums are still starting on their own. Guessing at a
+// third from here is not the way to find it — this records, on the device
+// where it actually happens, every transport start and every drum burst that
+// had no user input behind it, with the stack that scheduled it.
+//
+// The predicate is the bug, stated directly: a start with no TRUSTED input
+// event in the preceding second is a start nobody asked for. isTrusted
+// matters because the app dispatches synthetic clicks at itself in places,
+// and those are exactly the suspects.
+//
+// Off unless asked for — add ?diag=1 to the URL. When off it costs one
+// Date.now() comparison per start, and nothing at all is drawn.
+var _diagLastInput=0, _diagLog=[], _diagOn=false, _diagLastDrum=0;
+try{ _diagOn = /[?&]diag=1/.test(location.search) || localStorage.getItem('modriff-diag')==='1'; }catch(e){}
+try{ if(_diagOn) localStorage.setItem('modriff-diag','1'); }catch(e){}
+
+['pointerdown','touchstart','keydown','click'].forEach(function(ev){
+ document.addEventListener(ev,function(e){ if(e&&e.isTrusted) _diagLastInput=Date.now(); },true);
+});
+function _diagSince(){ return _diagLastInput ? (Date.now()-_diagLastInput) : -1; }
+function _diagUnprompted(){ var d=_diagSince(); return d<0 || d>1000; }
+function _diagVer(){ try{ return MODRIFF_VERSION; }catch(e){ return '?'; } }
+
+window.__diagTransport=function(what){
+ var un=_diagUnprompted();
+ if(!_diagOn && !un) return;
+ var rec={
+  t:new Date().toISOString().slice(11,23), what:what,
+  since:_diagSince(), un:un,
+  ctx:(typeof audioCtx!=='undefined'&&audioCtx)?audioCtx.state:'none',
+  hidden:!!document.hidden,
+  stack:((new Error()).stack||'').split('\n').slice(2,8)
+        .map(function(l){return l.trim().replace(/^at\s+/,'').replace(/\s*\(.*$/,'');})
+        .filter(Boolean).join(' < ')
+ };
+ _diagLog.push(rec); if(_diagLog.length>80) _diagLog.shift();
+ try{ if(un) console.warn('[modriff:diag] UNPROMPTED '+what, rec); }catch(e){}
+ _diagRender();
+};
+
+// Individual hits are far too frequent to list; what matters is the first of
+// a burst nobody asked for, and where it came from.
+window.__diagDrum=function(src){
+ if(!_diagOn && !_diagUnprompted()) return;
+ var now=Date.now();
+ if(now-_diagLastDrum < 1500) return;
+ _diagLastDrum=now;
+ window.__diagTransport('DRUM:'+src);
+};
+
+function _diagText(){
+ var h='ModRiff diag v'+_diagVer()+'  — tap to copy\n'
+  +'rhythmOn:'+(typeof rhythmOn!=='undefined'?rhythmOn:'?')
+  +'  sqPlaying:'+((typeof window._sqPlaying==='function')?window._sqPlaying():'?')
+  +'  ctx:'+((typeof audioCtx!=='undefined'&&audioCtx)?audioCtx.state:'none')+'\n';
+ if(!_diagLog.length) return h+'(nothing yet — leave this open until you hear it)';
+ return h+_diagLog.map(function(r){
+  return (r.un?'!! ':'   ')+r.t+'  '+r.what
+   +'  input:'+(r.since<0?'never':r.since+'ms')+'  ctx:'+r.ctx+(r.hidden?' HIDDEN':'')
+   +'\n      '+r.stack;
+ }).join('\n');
+}
+function _diagRender(){
+ if(!_diagOn) return;
+ var el=document.getElementById('_diag-panel');
+ if(!el){
+  el=document.createElement('div'); el.id='_diag-panel';
+  el.style.cssText='position:fixed;top:0;left:0;right:0;max-height:45vh;overflow:auto;'
+   +'background:rgba(0,0,0,.93);color:#4f4;font:10px/1.35 ui-monospace,Menlo,monospace;'
+   +'z-index:100000;padding:6px 8px;white-space:pre-wrap;border-bottom:2px solid #4f4;'
+   +'-webkit-user-select:text;user-select:text';
+  el.addEventListener('click',function(){
+   var txt=_diagText();
+   try{ navigator.clipboard.writeText(txt).then(function(){
+     if(typeof showToast==='function') showToast('Diagnostics copied');
+   }); }catch(e){}
+  });
+  document.body.appendChild(el);
+ }
+ el.textContent=_diagText();
+}
+if(_diagOn){
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_diagRender);
+ else _diagRender();
+ setInterval(_diagRender,1000);
+}
+
 function scheduleRhythm(){
  if(!rhythmOn) return;
+ try{ window.__diagDrum('rhythm'); }catch(e){}
  const ctx=getCtx(); if(!ctx) return;
  while(rhythmNextBeat<schedHorizon()){
  const r=RHYTHMS[rhythmSel], i=rhythmIdx%r.pat.length;
@@ -10320,6 +10411,7 @@ function setBeatDots(step,total,accents,src){
 function invalidateBeatDots(){ _bdCount=-1; }
 function toggleRhythm(){
  rhythmOn=!rhythmOn;
+ try{ if(rhythmOn) window.__diagTransport('toggleRhythm'); }catch(e){}
  ['rhy-play','rhy-play2'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=rhythmOn?'■ Stop':'▶ Rhythm'; b.className=rhythmOn?'play-btn stop':'play-btn start'; } });
  if(rhythmOn){ rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); const ctx=getCtx(); if(ctx){rhythmNextBeat=clockAlignTo(ctx,rhythmStepSec);rhythmIdx=0;} clearTimeout(clockTimer);tickClock(); }
  else{ clearTimeout(clockTimer); resetBeatDots(); }
@@ -18880,6 +18972,7 @@ document.addEventListener('keydown', e => {
 });
 
 function startEverything(){
+ try{ window.__diagTransport('startEverything'); }catch(e){}
  // Fresh downbeat every launch: reset the master clock epoch so the
  // sequencer, bass and song loop all align to the same beat-1. Without
  // this, a stale epoch from a previous run makes engines start on an
@@ -19735,12 +19828,20 @@ function _startRecording(){
   buildReverb();
   if(!window._masterLimiter){showToast('Start audio first');return;}
   _startMidiRecording();
-  _recChunksL=[];_recChunksR=[];
+  // Each take gets its own arrays and the tap closes over THOSE, not over the
+  // live _recChunksL. The teardown below runs 150ms after Stop so the last
+  // buffer can flush, which leaves a window where the old tap is still
+  // connected — and while it pushed to the global, a take started inside that
+  // window collected the previous take's tail as its own opening. Caught by a
+  // test that stopped and immediately restarted: the second bounce came back
+  // with audio in it that had been captured before it began.
+  var _myL=[], _myR=[];
+  _recChunksL=_myL;_recChunksR=_myR;
   // Tap the final node, after Master Vol — tapping the limiter would bounce a
   // file that doesn't match what you just heard.
   _recTapNode = window._masterOut || window._masterLimiter;
   _recTap = _makePcmTap(ctx, _recTapNode, function(L,R){
-    _recChunksL.push(L); _recChunksR.push(R);
+    _myL.push(L); _myR.push(R);
   });
   _recProcessor=_recTap.node; _recSilentGain=_recTap.sg;
   _startStemTaps(ctx);
@@ -19849,11 +19950,20 @@ function _stopRecording(){
     // written out and handed over as though it were a take. Silence here means
     // the capture failed, not that you played nothing — say so instead of
     // delivering a file that looks fine everywhere except in a waveform view.
-    var _peak=0;
+    // Peak alone is the wrong measure. A dead tap is not always a field of
+    // perfect zeros — one boundary sample, a discontinuity where a gain
+    // changed, a single denormal, and a capture that is 77,823 zeros and one
+    // spike reads as a healthy 0.02 peak. Count how much of the take is
+    // actually above the floor instead: the shortest real note anyone can
+    // play still runs to hundreds of consecutive samples at 48kHz, so 64 is
+    // far below anything genuine and far above anything accidental.
+    var _peak=0, _live=0;
     for(var _pi=0;_pi<fullL.length;_pi++){
-      var _a=Math.abs(fullL[_pi]); if(_a>_peak){ _peak=_a; if(_peak>=0.0005) break; }
+      var _a=Math.abs(fullL[_pi]);
+      if(_a>_peak) _peak=_a;
+      if(_a>=0.0005 && ++_live>=64) break;
     }
-    if(_peak < 0.0005){
+    if(_live < 64){
       _isRecording=false;_updateRecBtn();
       // Tear the stem taps down without running them through the file writer;
       // if the mix came back empty the stems are not worth writing either.
@@ -19861,7 +19971,8 @@ function _stopRecording(){
       _stemTaps=[];
       showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
       try{ console.warn('[rec] capture was digitally silent',
-        {frames:totalLen, tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
+        {frames:totalLen, liveSamples:_live, peak:_peak,
+         tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
       return;
     }
     var _sr=getCtx().sampleRate;
@@ -21628,6 +21739,7 @@ function _trackChoke(track){
 
 function sqHitTrack(track,t,vol,ac,ps,ch){
   if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
+  try{ window.__diagDrum('seq:'+(track&&track.s||'?')); }catch(e){}
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
   // The Mixer's Drums channel — level, mute AND solo — did nothing at all
@@ -21811,6 +21923,7 @@ function sqStart(opts){
       ['rhy-play','rhy-play2'].forEach(function(id){ var b=document.getElementById(id); if(b){ b.textContent='▶ Rhythm'; b.className='play-btn start'; } });
       resetBeatDots();
     }
+    try{ window.__diagTransport('sqStart'+(auto?'(auto)':'')); }catch(e){}
     sqPlaying=true;window._sqPlayingVal=true;sqSeqStep=0;sqDispStep=-1;
     // The step cursor belongs to a stopped transport — once this runs, the
     // playhead is where hits land. Cleared here rather than only in
@@ -26924,7 +27037,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.8.0';
+const MODRIFF_VERSION = '2.8.1';
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
