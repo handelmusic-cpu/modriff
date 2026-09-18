@@ -515,13 +515,32 @@ body.mode-basic #melody-voice-panel { display:none !important; }
    folds behind one button, like every other picker here. */
 body.mode-basic #fx-presets { display:none !important; }
 .fx-patch-wrap { display:none; }
-body.mode-basic .fx-patch-wrap { display:inline-flex; margin-bottom:8px; }
 
-/* The picker sitting in a surface heading, where it reads as a label with a
-   menu rather than a control you play. */
-.pf-lbl-slot { display:inline-flex; margin-left:auto; }
-.pf-lbl-slot .snd-pick-btn { font-size:.55rem; padding:4px 9px; }
-body.mode-basic .pf-surface-lbl::after { order:-1; }
+/* In Basic the pad comes first and everything that sets it up follows. The
+   panel is built in one order and reordered here rather than built twice:
+   what changes between the views is the reading order, not the contents.
+   Which channels the pad sweeps is not here at all — it is all of them, and
+   Mix is where that gets narrowed. */
+body.mode-basic #modfx-panel { display:flex; flex-direction:column; }
+body.mode-basic #modfx-panel > .fx-head     { order:0; }
+body.mode-basic #modfx-panel > .fx-padwrap  { order:1; }
+body.mode-basic #modfx-panel > .fx-axes     { order:2; }
+body.mode-basic #modfx-panel > #fx-motion   { order:3; }
+body.mode-basic #modfx-panel > .fx-sends    { order:4; }
+body.mode-basic #modfx-panel > .fx-patch-wrap { order:5; display:inline-flex; margin-top:10px; }
+body.mode-basic #fx-targets { display:none !important; }
+
+/* The two voice pickers on one row, between the surfaces they belong to. The
+   arrow is which way to look: up is the chords above, down the melody below. */
+.voice-row {
+ display:flex; align-items:center; justify-content:center; gap:10px;
+ width:100%; max-width:700px; margin:10px 0 2px;
+}
+.voice-row .snd-pick-btn { font-size:.55rem; padding:4px 10px; }
+.voice-pick-arrow { color:var(--muted); font-size:.62rem; margin-right:1px; }
+.pf-voice-slot { display:inline-flex; }
+/* The row only exists in Basic; Advanced keeps each picker in its own panel. */
+body:not(.mode-basic) .voice-row { display:none; }
 /* Stacked, the surfaces need a little air and a name each — in Advanced the
    sub-tab was the name. */
 .pf-surface-lbl { display:none; }
@@ -4291,7 +4310,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
  <!-- CHORDS SUB-PAGE -->
- <div class="pf-surface-lbl">Chords<span class="pf-lbl-slot" id="pf-slot-chords"></span></div>
+ <div class="pf-surface-lbl">Chords</div>
  <div id="pf-chords-panel">
  <!-- The MōdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
@@ -4445,8 +4464,17 @@ body.mode-free .pro-only { display:none !important; }
  <button class="fx-readout-bar pro-only" id="fx-ro-chords" onclick="fxOpenPanel('chord')" style="margin-top:10px"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
  </div><!-- /pf-chords-panel -->
 
+ <!-- Both voice pickers on one row, sitting between the two surfaces they
+      belong to. One row rather than two headings because you pick the pair
+      together — and the arrow says which way each one points: up to the chords
+      above it, down to the melody below. Filled by pfMountVoicePickers. -->
+ <div class="voice-row pf-voice-row" id="pf-voice-row">
+  <span class="pf-voice-slot" id="pf-slot-chords"></span>
+  <span class="pf-voice-slot" id="pf-slot-melody"></span>
+ </div>
+
  <!-- MELODY SUB-PAGE -->
- <div class="pf-surface-lbl">Melody<span class="pf-lbl-slot" id="pf-slot-melody"></span></div>
+ <div class="pf-surface-lbl">Melody</div>
  <div id="pf-melody-panel" style="display:none">
  <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
@@ -5667,6 +5695,11 @@ body.mode-free .pro-only { display:none !important; }
       header said about them. Filled by fxSyncUI. -->
  <div class="panel p-perform pro-only" style="width:100%;max-width:700px;margin-top:10px">
   <div class="panel-title"><span class="pt-icon"></span> MōdFX Sends</div>
+  <!-- Which channels the pad sweeps. Everything, until you say otherwise —
+       and this is where you say it, with the rest of the routing. -->
+  <div class="fx-sends-hdr">Pad affects</div>
+  <div class="fx-targets" id="fx-targets-mix" role="group" aria-label="Channels the pad affects"></div>
+  <div class="fx-sends-hdr" style="margin-top:12px">Sends — these stay put</div>
   <div class="fx-sends" id="fx-sends"></div>
   <div class="fx-note" id="fx-note"></div>
  </div>
@@ -27686,12 +27719,27 @@ function msApplyBasicGate(){
 // trigger actually travels.
 function pfMountVoicePickers(){
   var basic = document.body.classList.contains('mode-basic');
-  [['sndpick-bw-voices','pf-slot-chords'],
-   ['sndpick-melvoice-settings','pf-slot-melody']].forEach(function(pair){
-    var w = document.getElementById(pair[0]); if(!w) return;
+  [['sndpick-bw-voices','pf-slot-chords','↑'],
+   ['sndpick-melvoice-settings','pf-slot-melody','↓']].forEach(function(spec){
+    var w = document.getElementById(spec[0]); if(!w) return;
     if(!w._home) w._home = w.parentNode;
-    var target = basic ? document.getElementById(pair[1]) : w._home;
+    var target = basic ? document.getElementById(spec[1]) : w._home;
     if(target && w.parentNode !== target) target.appendChild(w);
+    // The row carries no labels, so each button says which way it points —
+    // up to the chords above the row, down to the melody below it. In a panel
+    // of its own the arrow means nothing, so it only exists in the row.
+    var btn = w.querySelector('.snd-pick-btn'); if(!btn) return;
+    var arrow = btn.querySelector('.voice-pick-arrow');
+    if(basic && !arrow){
+      arrow = document.createElement('span');
+      arrow.className = 'voice-pick-arrow';
+      arrow.setAttribute('aria-hidden','true');
+      arrow.textContent = spec[2];
+      btn.insertBefore(arrow, btn.firstChild);
+    } else if(!basic && arrow){
+      arrow.remove();
+    }
+    btn.setAttribute('aria-label', (spec[2]==='↑'?'Chord':'Melody')+' sound');
   });
 }
 
@@ -27922,7 +27970,10 @@ const fxChains = {};     // ch -> node bundle
 FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0}; });
 
 let fxPadX='cutoff', fxPadY='reverb';
-let fxTargets=['drum'];          // which channels the pad addresses
+// Every channel, not just the drums. A pad that sweeps one part is a question
+// about routing before you have played anything; one that sweeps the whole mix
+// is an effect. The chooser lives on Mix for anyone who wants to narrow it.
+let fxTargets=FX_CHANNELS.slice();
 let fxHold=false;                 // latch the pad's last position on release
 let fxEngaged=false;              // finger down, or held
 let fxPos={x:0.5,y:0.5};
@@ -28606,7 +28657,7 @@ function fxRestoreState(st){
  if(FX_PARAMS[st.x]) fxPadX=st.x;
  if(FX_PARAMS[st.y]) fxPadY=st.y;
  if(Array.isArray(st.targets)&&st.targets.length) fxTargets=st.targets.filter(c=>FX_CHANNELS.indexOf(c)>=0);
- if(!fxTargets.length) fxTargets=['drum'];
+ if(!fxTargets.length) fxTargets=FX_CHANNELS.slice();
  fxHold=!!st.hold;
  if(st.pos) fxPos={x:+st.pos.x||0.5, y:+st.pos.y||0.5};
  fxEngaged=!!st.engaged && fxHold;
@@ -28674,7 +28725,7 @@ function fxApplyPreset(i){
  // send tilt — which instruments it applies to is the user's standing choice,
  // and having it reassigned underfoot on every patch change made the targets
  // feel broken. Only fall back if nothing is selected at all.
- if(!fxTargets.length) fxTargets=['drum'];
+ if(!fxTargets.length) fxTargets=FX_CHANNELS.slice();
  // A preset's sends apply only to the channels it targets, and only the keys
  // it names — it tilts the mix rather than resetting everyone else's.
  if(p.sends) fxTargets.forEach(ch=>{
@@ -28935,10 +28986,14 @@ function fxToggleHold(){
 
 function fxSyncUI(){
  if(typeof fxSyncPatchLabel==='function') fxSyncPatchLabel();
- const t=document.getElementById('fx-targets');
- if(t) t.innerHTML=FX_CHANNELS.map(ch=>
+ // Two homes: the FX panel's own row for Advanced, and Mix, which is where
+ // Basic sends anyone who wants to narrow what the pad sweeps.
+ const tHtml = FX_CHANNELS.map(ch=>
    '<button class="fx-target'+(fxTargets.indexOf(ch)>=0?' on':'')+'" onclick="fxToggleTarget(\''+ch+'\')"'
    +' aria-pressed="'+(fxTargets.indexOf(ch)>=0)+'">'+FX_CHANNEL_LABEL[ch]+'</button>').join('');
+ ['fx-targets','fx-targets-mix'].forEach(id=>{
+  const el=document.getElementById(id); if(el) el.innerHTML=tHtml;
+ });
 
  const s=document.getElementById('fx-sends');
  // No header of its own any more: the panel it now sits in on Mix is called
