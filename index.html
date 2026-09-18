@@ -3959,6 +3959,11 @@ body.mode-free .pro-only { display:none !important; }
       so the same three parts appeared in two different orders. -->
  <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
+ <!-- Aux Perc only appears when the loaded groove actually wrote one. A switch
+      for a layer with nothing on it is a dead control that has to be explained;
+      this way its presence IS the explanation. -->
+ <button class="ft-btn arp off" id="ft-aux-btn" onclick="ftAuxClick()" style="display:none"
+   title="Aux Perc on/off — the groove's second percussion layer">Perc</button>
  <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
  <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Accomp tab, under Arp">Arp</button>
@@ -6535,6 +6540,25 @@ function ftDrumClick(){
  syncFixedTransport();
  if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
 }
+// The aux layer's own on/off. It lives in the sequencer (sqLayers[1].on) rather
+// than in a flag here, because the Accomp tab's layer row toggles the same
+// thing — two switches, one state.
+function ftAuxClick(){
+ if(typeof window._sqToggleLayer==='function') window._sqToggleLayer(1);
+ _syncAuxTransport();
+}
+// Shown only while the current groove has written something onto the second
+// layer. Called after a groove loads and whenever the transport repaints.
+function _syncAuxTransport(){
+ var b = document.getElementById('ft-aux-btn'); if(!b) return;
+ var has = (typeof window._sqAuxHasPart==='function') && window._sqAuxHasPart();
+ b.style.display = has ? '' : 'none';
+ if(has){
+  var on = (typeof window._sqLayerOn==='function') ? window._sqLayerOn(1) : true;
+  b.classList.toggle('off', !on);
+ }
+}
+window._syncAuxTransport = _syncAuxTransport;
 // Chords were the one layer with no switch of its own: you could drop the
 // drums, bass, arp or melody mid-performance but never the chords, even
 // though dropping to just bass and drums is one of the most basic moves
@@ -10582,6 +10606,39 @@ const RHYTHMS=[
          RM:[0,0,0,1,0,0,1,0,0,0,0,1,0,0,1,0],
          BD:[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0] }},
 ];
+
+// ── Aux Perc parts ──
+// Keyed by groove name, then by the Aux kit's track shortnames — the same
+// shape a jazz groove's `rows` uses, and mapped the same way, so a part whose
+// voice the second layer does not have is skipped rather than lost.
+//
+// Most grooves are NOT in here, deliberately. A second percussion layer is a
+// thing a bossa or a funk tune actually has; laying a shaker over every groove
+// in the app would just be a hi-hat with extra steps. An absent groove gets an
+// empty aux layer, and an empty aux layer is what keeps Aux Perc off the
+// transport — you only get the switch when there is something behind it.
+const AUX_PARTS = {
+ // Tambourine on the offbeat eighths, where a rock player's hand actually is:
+ // doubling the hat on the downbeats adds nothing you cannot already hear.
+ '4/4 Rock':  { TB:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0] },
+ // Straight sixteenths. The one groove busy enough to carry them.
+ '4/4 Funk':  { SH:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1] },
+ // With the backbeat, not against it.
+ 'Shuffle':   { TB:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0] },
+ '3/4 Ballad':{ TR:[1,0,0,0,0,0,0,0,0,0,0,0] },
+ '6/8 Feel':  { TB:[1,0,0,0,0,0,1,0,0,0,0,0] },
+ '12/8 Slow': { TR:[1,0,0,0,0,0,0,0,0,0,0,0] },
+ '12/8 Blues':{ TB:[0,0,0,1,0,0,0,0,0,1,0,0] },
+ // Bossa clave (3-2) — the real one, landing on the "and" of 4 rather than on
+ // 4, which is what separates it from son clave. The shaker rides eighths
+ // under it, as a cabasa would.
+ 'Bossa Nova':{ CV:[1,0,0,1,0,0,1,0,0,0,1,0,0,0,1,0],
+                SH:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] },
+ 'Jazz Bossa':{ CV:[1,0,0,1,0,0,1,0,0,0,1,0,0,0,1,0],
+                SH:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] },
+ 'Hip Hop':   { SH:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] }
+};
+
 function rhythmStepDuration(r){ return beatSec()/r.stepDiv; }
 
 // Returns the number of 16th-note steps that make up one bar in the current
@@ -12555,6 +12612,7 @@ function toggleHold(){
 
 // ─── FIXED TRANSPORT ───────────────────────────────────────────────────────
 function syncFixedTransport(){
+ if(typeof _syncAuxTransport==='function') _syncAuxTransport();
  if(typeof syncFeelUI==='function') syncFeelUI();
  // The step cursor only exists while the transport is stopped — once it runs,
  // the playhead is where the next note goes. Repainted here rather than in
@@ -22342,6 +22400,19 @@ function sqSyncLayerUI(){
 window._sqSetFocus = sqSetFocus;
 window._sqToggleLayer = sqToggleLayer;
 window._sqSyncLayerUI = sqSyncLayerUI;
+window._sqLayerOn = function(i){ return !!sqLayers[i ? 1 : 0].on; };
+// Whether the second layer has anything on it at all. The transport's Perc
+// switch appears and disappears on this, so it reads the grid rather than the
+// groove table — a part you programmed by hand counts exactly as much as one
+// that arrived with a groove.
+window._sqAuxHasPart = function(){
+  var g = sqLayers[1].grid;
+  for(var k in g){
+    var row = g[k]; if(!row) continue;
+    for(var s=0;s<row.length;s++) if(row[s] && row[s].v>0) return true;
+  }
+  return false;
+};
 function sqDoSwap(key){
   // sqGrid is ONE shared pattern across every kit — switching machines only changes
   // which synth plays each track, never the programmed steps. Track index ti keeps
@@ -23184,13 +23255,31 @@ function sqWire(){
     var steps = e.detail.steps;
     sqSteps = steps;
     var d = document.getElementById('sq-stepsDisp'); if(d) d.textContent = sqSteps;
-    // Build an empty grid first
-    sqGrid = {};
-    var n = sqTc();
-    for(var ti=0;ti<n;ti++){ sqGrid[ti]=[]; for(var s=0;s<sqSteps;s++) sqGrid[ti].push(sqMkCell()); }
+    // Both layers, each against its OWN machine. This used to fill whichever
+    // layer happened to be focused, using the focused machine's tracks — so
+    // loading a groove while looking at Aux Perc wrote the kit's kick and
+    // snare onto the congas and left the real kit untouched.
+    sqLayers[0].grid = sqGrooveGrid(sqLayers[0].mach, r, steps, false);
+    sqLayers[1].grid = sqGrooveGrid(sqLayers[1].mach, r, steps, true);
+    sqMach = sqLayers[sqFocus].mach;
+    sqGrid = sqLayers[sqFocus].grid;
+    sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
+    sqRender();
+    if(typeof sqSyncLayerUI==='function') sqSyncLayerUI();
+    if(typeof window._syncAuxTransport==='function') window._syncAuxTransport();
+    if(sqPlaying){ sqSeqStep=0; }
+    if(!sqPlaying && e.detail && e.detail.autostart){ sqStart({auto:true}); }
+  });
+
+  // One layer's worth of a groove, built against the machine that layer holds.
+  function sqGrooveGrid(machKey, r, steps, isAux){
+    var M = SQM[machKey], tracks = (M && M.tracks) ? M.tracks : [];
+    var grid = {};
+    for(var ti=0;ti<tracks.length;ti++){
+      grid[ti]=[]; for(var s=0;s<steps;s++) grid[ti].push(sqMkCell());
+    }
     // Map groove data to the correct track by shortname (s field), not by raw index.
     // Every machine has BD=kick, SD=snare, and one of CH/HH/CL/CY for the hihat/pattern part.
-    var tracks = SQM[sqMach] ? SQM[sqMach].tracks : [];
     function findTrack(shorts){
       for(var i=0;i<tracks.length;i++){
         for(var j=0;j<shorts.length;j++){
@@ -23199,6 +23288,18 @@ function sqWire(){
       }
       return -1;
     }
+    // The second layer plays only what a groove names for it, and most name
+    // nothing. Same shortname mapping, no kick/snare/hat fallbacks: a conga
+    // kit has no business receiving a backbeat it was never written.
+    if(isAux){
+      var ap = (typeof AUX_PARTS!=='undefined') ? AUX_PARTS[r.name] : null;
+      if(ap) Object.keys(ap).forEach(function(sh){
+        var row = findTrack([sh]); if(row < 0) return;
+        var pat = ap[sh];
+        for(var sa=0;sa<steps;sa++) if(pat[sa]) grid[row][sa].v=1;
+      });
+      return grid;
+    }
     var bdRow  = findTrack(['BD']);
     var sdRow  = findTrack(['SD']);
     // Hihat: prefer closed hat, fall back to open, generic HH, cymbal, percussion
@@ -23206,7 +23307,7 @@ function sqWire(){
     // kit that is the RIDE — the ride carries the time, and dropping the
     // pattern on the foot hi-hat (the first HH match) put it on the one voice
     // that should only be marking 2 and 4.
-    var patPref = (SQM[sqMach] && SQM[sqMach].patShort) ? [SQM[sqMach].patShort] : [];
+    var patPref = (M && M.patShort) ? [M.patShort] : [];
     var hhRow  = findTrack(patPref.concat(['CH','HH','OH','CY','PC']));
     if(r.rows){
       // Full per-voice pattern, addressed by track shortname. Any row whose
@@ -23224,25 +23325,17 @@ function sqWire(){
         }
         if(row < 0) return;
         var pat = r.rows[sh];
-        for(var s3=0;s3<steps;s3++) if(pat[s3]) sqGrid[row][s3].v=1;
+        for(var s3=0;s3<steps;s3++) if(pat[s3]) grid[row][s3].v=1;
       });
     } else {
       for(var s2=0;s2<steps;s2++){
-        if(r.kick  && r.kick[s2]  && bdRow>=0) { sqGrid[bdRow][s2].v=1; }
-        if(r.snare && r.snare[s2] && sdRow>=0) { sqGrid[sdRow][s2].v=1; }
-        if(r.pat   && r.pat[s2]   && hhRow>=0) { sqGrid[hhRow][s2].v=1; }
+        if(r.kick  && r.kick[s2]  && bdRow>=0) { grid[bdRow][s2].v=1; }
+        if(r.snare && r.snare[s2] && sdRow>=0) { grid[sdRow][s2].v=1; }
+        if(r.pat   && r.pat[s2]   && hhRow>=0) { grid[hhRow][s2].v=1; }
       }
     }
-    sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
-    sqRender();
-    // If already playing, reset step counter so new pattern starts on next cycle
-    if(sqPlaying){ sqSeqStep=0; }
-    // Auto-start ONLY when the import came from a deliberate tap on a groove
-    // button. It used to fire for every import, which meant any code path that
-    // laid in a groove — the walkthrough's opening bed among them — started
-    // the drums with nothing pressed.
-    if(!sqPlaying && e.detail && e.detail.autostart){ sqStart({auto:true}); }
-  });
+    return grid;
+  }
 
   // ── Vary: perturb the pattern instead of replacing it ──────────────────
   // The reason anyone opens a drum machine twice. Deliberately conservative:
