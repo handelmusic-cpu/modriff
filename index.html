@@ -423,6 +423,43 @@ input[type=range] { touch-action:none; }
 .sound-bar .tb {
  padding:5px 10px; font-size:.6rem;
 }
+
+/* ── Sound picker dropdown ──
+   Every voice row in the app is fifteen buttons wide. Under the chord grid
+   that is a wall of sounds sitting where the chords should be, and you pick a
+   tone once and then play for an hour. So the row collapses to one button
+   carrying the current sound's name, and the buttons themselves — unchanged,
+   still carrying data-wave / data-melwave / data-arpwave — move into a
+   popover that shuts as soon as you choose. Nothing is removed from the DOM,
+   so every existing sync path still finds them. */
+.snd-pick { position:relative; display:inline-flex; }
+.snd-pick-btn {
+ display:inline-flex; align-items:center; gap:6px;
+ padding:5px 10px; border-radius:var(--r-sm);
+ background:var(--surf2); color:var(--text);
+ border:1px solid var(--border2); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.6rem; letter-spacing:.04em;
+ touch-action:manipulation; transition:border-color .15s, background .15s;
+}
+.snd-pick-btn:hover { border-color:var(--accent); }
+.snd-pick.open > .snd-pick-btn { border-color:var(--accent); background:var(--surf); }
+.snd-pick-cur { font-weight:600; white-space:nowrap; }
+.snd-pick-caret { font-size:.5rem; color:var(--muted); transition:transform .15s; }
+.snd-pick.open .snd-pick-caret { transform:rotate(180deg); }
+/* The menu is display:none rather than clipped, so the buttons inside cost
+   nothing to lay out while shut. */
+.snd-pick > .snd-pick-menu { display:none; }
+.snd-pick.open > .snd-pick-menu {
+ display:flex; flex-wrap:wrap; gap:3px;
+ position:absolute; top:calc(100% + 4px); left:0; z-index:60;
+ width:max-content; max-width:min(320px, 86vw);
+ padding:7px; border-radius:var(--r-md);
+ background:var(--surf); border:1px solid var(--border2);
+ box-shadow:0 10px 28px rgba(0,0,0,.5);
+}
+.snd-pick-menu .tb { padding:5px 9px; font-size:.58rem; }
+body.light-mode .snd-pick.open > .snd-pick-menu { box-shadow:0 10px 28px rgba(20,24,50,.18); }
+
 /* ═══════════════════════════════════════
  KEY / TRANSPOSE STRIP
 ═══════════════════════════════════════ */
@@ -11755,7 +11792,98 @@ function buildVoicePickers(){
  mk('bw-voices','wave', wave, setWave);
  mk('aw-voices','arpwave', arpWave, setArpWave);
  if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
+ if(typeof sndPickInit==='function') sndPickInit();
 }
+
+// ─── Sound pickers as dropdowns ───
+// Which sound a part is playing is a thing you set once and then read; the
+// fifteen-button row was spending a chord grid's worth of screen on the
+// setting half of that. Each row is wrapped — not rebuilt — so the builders
+// above keep owning their own buttons and every [data-wave] / [data-melwave] /
+// [data-arpwave] query elsewhere still finds them. The wrapper only adds a
+// trigger that names the current sound, and shuts on a pick.
+const SND_PICK_HOSTS = ['sb-voices','bw-voices','aw-voices','melvoice-settings','melvoice-inline'];
+let _sndPickOpen = null;
+
+function sndPickClose(){
+ if(!_sndPickOpen) return;
+ _sndPickOpen.classList.remove('open');
+ _sndPickOpen.querySelector('.snd-pick-btn')?.setAttribute('aria-expanded','false');
+ _sndPickOpen = null;
+ document.removeEventListener('pointerdown', _sndPickOutside);
+}
+function _sndPickOutside(e){
+ if(_sndPickOpen && !_sndPickOpen.contains(e.target)) sndPickClose();
+}
+// A CSS-only anchor cannot know how much room the trigger has left of it:
+// left:0 ran the menu off the right edge on a phone, and flipping to right:0
+// ran it off the left instead, since these triggers sit early in their rows.
+// So it opens flush-left and is then slid back inside the viewport.
+function sndPickPlace(wrap){
+ const menu = wrap.querySelector('.snd-pick-menu'); if(!menu) return;
+ const M = 8;
+ menu.style.left = '0px';
+ const r = menu.getBoundingClientRect();
+ let shift = 0;
+ if(r.right > window.innerWidth - M) shift = (window.innerWidth - M) - r.right;
+ if(r.left + shift < M) shift = M - r.left;
+ menu.style.left = shift + 'px';
+}
+// The label is read off whichever button is .active rather than from the
+// state variables, because five different setters and the Voices dock can all
+// change a part's voice and only the buttons are guaranteed to be repainted.
+function sndPickSyncLabel(wrap){
+ const host = wrap.querySelector('.snd-pick-menu');
+ const cur  = wrap.querySelector('.snd-pick-cur');
+ if(!host || !cur) return;
+ const on = host.querySelector('.tb.active');
+ cur.textContent = on ? on.textContent : '—';
+}
+
+function sndPickInit(){
+ SND_PICK_HOSTS.forEach(id=>{
+  const host = document.getElementById(id);
+  if(!host) return;
+  let wrap = host.closest('.snd-pick');
+  if(!wrap){
+   wrap = document.createElement('div');
+   wrap.className = 'snd-pick';
+   host.parentNode.insertBefore(wrap, host);
+   const btn = document.createElement('button');
+   btn.className = 'snd-pick-btn';
+   btn.type = 'button';
+   btn.setAttribute('aria-haspopup','true');
+   btn.setAttribute('aria-expanded','false');
+   btn.setAttribute('aria-label','Choose sound');
+   btn.innerHTML = '<span class="snd-pick-cur">—</span><span class="snd-pick-caret" aria-hidden="true">▾</span>';
+   btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    const wasOpen = wrap.classList.contains('open');
+    sndPickClose();
+    if(wasOpen) return;
+    wrap.classList.add('open');
+    btn.setAttribute('aria-expanded','true');
+    _sndPickOpen = wrap;
+    sndPickPlace(wrap);
+    setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
+   });
+   wrap.appendChild(btn);
+   wrap.appendChild(host);
+   host.classList.add('snd-pick-menu');
+   // Picking is the whole point of opening it, so the menu shuts on any
+   // choice. Delegated, because the builders replace these buttons wholesale.
+   host.addEventListener('click', e=>{
+    if(e.target.closest('.tb')) sndPickClose();
+   });
+   // The active class is set by whoever changed the voice, not by this menu,
+   // so the trigger follows the buttons instead of the click.
+   new MutationObserver(()=>sndPickSyncLabel(wrap))
+    .observe(host, {subtree:true, childList:true, attributes:true, attributeFilter:['class']});
+  }
+  sndPickSyncLabel(wrap);
+ });
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') sndPickClose(); });
 
 // Sampled voices fetch as soon as they're selected, anywhere, so the first
 // note has the best chance of being the real instrument and not the fallback.
@@ -20075,7 +20203,21 @@ var GM_DRUM_MAP={
   // Found by the audit below, both pre-existing: MōdKit's Crash was unmapped
   // and exported as Hand Clap, and IDM's Zapp and Glitch shared note 70.
   'Crash':49,      // Crash Cymbal 1
-  'Zapp':75        // Claves — Glitch keeps 70, so the two stay on separate pads
+  'Zapp':75,       // Claves — Glitch keeps 70, so the two stay on separate pads
+  // Aux Perc. Every one of these was unmapped, so the whole layer exported onto
+  // note 39 and stacked on one pad — the same bug the Jazz kit had. They are
+  // also what the grid now sorts rows by, so an unmapped voice would have no
+  // place to sit on screen either.
+  'Shaker':82,
+  'Tamb':54,       // Tambourine
+  'Hi Conga':63,   // Open Hi Conga
+  'Lo Conga':64,   // Low Conga — a higher GM note than the hi conga, which is
+                   // the standard's own quirk, not a typo
+  'Clave':75,      // Claves. Shares 75 with IDM's Zapp, but they are in
+                   // different machines, and the audit only forbids a clash
+                   // inside one kit.
+  'Triangle':81,   // Open Triangle
+  'Woodblk':76     // Hi Wood Block
 };
 // Nothing may share a note within one machine, or two voices collapse onto one
 // pad on export. Checked at load rather than trusted.
@@ -22067,6 +22209,26 @@ function sqRenderMachines(){
   });
 }
 
+// Row order on screen, top to bottom, returned as a list of DATA indices. The
+// index itself never moves: sqGrid, the per-track volume and pitch stores,
+// saved patterns and the MIDI mapping are all keyed by it, so reordering the
+// tracks array would silently rewrite every pattern anyone has saved.
+//
+// Kick at the bottom and cymbals at the top is how a kit stacks in a piano
+// roll, so the rows sort by the same GM note the kit exports to — highest
+// first. That means the grid and an exported MIDI file read the same way
+// round, which is the point: the order on screen is the order on the pads.
+function sqRowOrder(tracks){
+  return tracks.map(function(_,i){ return i; }).sort(function(a,b){
+    var na = GM_DRUM_MAP[tracks[a].n], nb = GM_DRUM_MAP[tracks[b].n];
+    // An unmapped voice has no pad to sit next to, so it keeps its authored
+    // position at the bottom rather than landing somewhere arbitrary.
+    if(na==null) na = -1;
+    if(nb==null) nb = -1;
+    return (nb - na) || (a - b);
+  });
+}
+
 function sqRenderGrid(){
   var gLeft=document.getElementById('sq-gLeft');
   var gInner=document.getElementById('sq-gInner');
@@ -22093,7 +22255,8 @@ function sqRenderGrid(){
   gInner.appendChild(rrow);
   var rsp=document.createElement('div');rsp.className='sq-gspacer';gRight.appendChild(rsp);
   var tracks=(SQM[sqMach]||{tracks:[]}).tracks;
-  tracks.forEach(function(tr,ti){
+  sqRowOrder(tracks).forEach(function(ti){
+    var tr=tracks[ti];
     var color=tr.c;
     if(!sqGrid[ti]){sqGrid[ti]=[];while(sqGrid[ti].length<sqSteps)sqGrid[ti].push(sqMkCell());}
     sqStepEls[ti]={};
