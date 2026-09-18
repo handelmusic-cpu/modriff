@@ -6796,13 +6796,23 @@ function _resyncEngines(){
  if(typeof ensureClockRunning==='function') ensureClockRunning();
 }
 
-let _gestureResumeArmed=false;
+// How many taps have tried and failed to revive the context. iOS can leave an
+// AudioContext that no gesture will bring back — and nothing here ever built a
+// replacement, so the app stayed silent until it was force-quit, which is the
+// one thing that did work because it made a fresh context. Rebuilding the
+// graph in place would mean reaching into every engine's cached nodes; a
+// reload gets the same fresh context in one tap, and the session is already
+// autosaved every 20 seconds and on the way out, so the unlock screen comes
+// back offering "Pick up where I left off".
+let _gestureResumeArmed=false, _resumeFails=0, _lastResumeTry=0;
+const RESUME_FAILS_BEFORE_RELOAD = 2;
 function _armGestureResume(){
  if(_gestureResumeArmed) return;
  _gestureResumeArmed=true;
  _showAudioStalledBar(true);
  const go=()=>{
   if(!audioCtx) return _disarm();
+  if(_resumeFails >= RESUME_FAILS_BEFORE_RELOAD){ _reloadForAudio(); return; }
   audioCtx.resume().then(()=>{
    if(_audioRunning()){ _disarm(); _resyncEngines(); showToast('Audio is back'); }
   }).catch(()=>{});
@@ -6813,10 +6823,20 @@ function _armGestureResume(){
    const src=audioCtx.createBufferSource(); src.buffer=b;
    src.connect(audioCtx.destination); src.start(0);
   }catch(e){}
-  setTimeout(()=>{ if(_audioRunning()){ _disarm(); _resyncEngines(); } }, 120);
+  setTimeout(()=>{
+   if(_audioRunning()){ _disarm(); _resyncEngines(); return; }
+   // A tap reached this handler and the context still will not run, so this
+   // one is not going to come back on its own. One tap raises pointerdown and
+   // click both, and go() is bound to each so that whichever the browser gives
+   // us revives the context — but that is still one attempt, not two.
+   const now=Date.now();
+   if(now - _lastResumeTry < 600) return;
+   _lastResumeTry = now;
+   if(++_resumeFails >= RESUME_FAILS_BEFORE_RELOAD) _showAudioStalledBar(true,'reload');
+  }, 120);
  };
  function _disarm(){
-  _gestureResumeArmed=false;
+  _gestureResumeArmed=false; _resumeFails=0;
   _showAudioStalledBar(false);
   ['pointerdown','touchend','keydown','click'].forEach(ev=>
    document.removeEventListener(ev, go, true));
@@ -6828,17 +6848,27 @@ function _armGestureResume(){
  window._disarmGestureResume=_disarm;
 }
 
-function _showAudioStalledBar(show){
+// Last resort when the context is beyond reviving: save and reload, which is
+// the force-quit the user would otherwise have to do by hand.
+function _reloadForAudio(){
+ try{ if(typeof saveLastSession==='function') saveLastSession(); }catch(e){}
+ location.reload();
+}
+
+function _showAudioStalledBar(show, mode){
  let el=document.getElementById('_audio-stalled');
  if(!show){ if(el) el.classList.remove('show'); return; }
  if(!el){
   el=document.createElement('button');
   el.id='_audio-stalled'; el.type='button';
-  el.innerHTML='<span class="as-dot" aria-hidden="true"></span>'
-   +'<span>Audio paused while you were away — tap anywhere to resume</span>';
   el.addEventListener('click',()=>{});   // the capture listener does the work
   document.body.appendChild(el);
  }
+ el.innerHTML='<span class="as-dot" aria-hidden="true"></span><span>'
+  + (mode==='reload'
+     ? 'Audio didn’t come back — tap to restart (your work is saved)'
+     : 'Audio paused while you were away — tap anywhere to resume')
+  + '</span>';
  requestAnimationFrame(()=>el.classList.add('show'));
 }
 
@@ -28594,6 +28624,27 @@ function fxPaintPad(){
    grd.addColorStop(0,'hsla('+kh+',80%,60%,.30)');
    grd.addColorStop(1,'hsla('+kh+',80%,60%,0)');
    g.fillStyle=grd; g.fillRect(0,0,r.w,r.h);
+   // Crosshair. The glow alone says roughly where the finger is but not what
+   // either axis reads on its own, and under a fingertip it says nothing at
+   // all — the one place you cannot see is the place you are touching. Two
+   // full-width lines put both values out at the edges, where they stay
+   // visible, and moving with the finger is what confirms the pad is hearing
+   // the gesture at all.
+   g.strokeStyle='hsla('+kh+',85%,68%,.55)'; g.lineWidth=1;
+   g.beginPath(); g.moveTo(cx,0); g.lineTo(cx,r.h); g.stroke();
+   g.beginPath(); g.moveTo(0,cy); g.lineTo(r.w,cy); g.stroke();
+   // Edge ticks: heavier stubs where the crosshair meets the frame, so each
+   // axis has a mark you can read without hunting for the intersection.
+   g.strokeStyle='hsla('+kh+',90%,72%,.95)'; g.lineWidth=3;
+   g.beginPath(); g.moveTo(cx,0); g.lineTo(cx,7); g.stroke();
+   g.beginPath(); g.moveTo(cx,r.h-7); g.lineTo(cx,r.h); g.stroke();
+   g.beginPath(); g.moveTo(0,cy); g.lineTo(7,cy); g.stroke();
+   g.beginPath(); g.moveTo(r.w-7,cy); g.lineTo(r.w,cy); g.stroke();
+   // The handle itself, ringed so it reads against both the glow and a dark
+   // corner of the pad.
+   g.beginPath(); g.arc(cx,cy,6,0,Math.PI*2);
+   g.fillStyle='hsla('+kh+',90%,65%,.9)'; g.fill();
+   g.lineWidth=1.5; g.strokeStyle='rgba(255,255,255,.85)'; g.stroke();
   }
  }
 }
