@@ -505,6 +505,23 @@ body.mode-basic #touchmod-bar { display:none !important; }
 /* The MōdFX readout bars are a way in to a panel that, in Basic, is already
    open further down the same screen. "Open ›" to somewhere you can see. */
 body.mode-basic #page-perform .fx-readout-bar { display:none !important; }
+/* Which voice a part plays is one line of information and a menu. It does not
+   need a titled panel with its own octave stepper sitting between two playing
+   surfaces, so in Basic the panel goes and the picker moves up beside the
+   surface's own heading. */
+body.mode-basic #chord-voice-panel,
+body.mode-basic #melody-voice-panel { display:none !important; }
+/* Twenty-four patch chips above the pad is a menu drawn as a wall. In Basic it
+   folds behind one button, like every other picker here. */
+body.mode-basic #fx-presets { display:none !important; }
+.fx-patch-wrap { display:none; }
+body.mode-basic .fx-patch-wrap { display:inline-flex; margin-bottom:8px; }
+
+/* The picker sitting in a surface heading, where it reads as a label with a
+   menu rather than a control you play. */
+.pf-lbl-slot { display:inline-flex; margin-left:auto; }
+.pf-lbl-slot .snd-pick-btn { font-size:.55rem; padding:4px 9px; }
+body.mode-basic .pf-surface-lbl::after { order:-1; }
 /* Stacked, the surfaces need a little air and a name each — in Advanced the
    sub-tab was the name. */
 .pf-surface-lbl { display:none; }
@@ -4274,7 +4291,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
  <!-- CHORDS SUB-PAGE -->
- <div class="pf-surface-lbl">Chords</div>
+ <div class="pf-surface-lbl">Chords<span class="pf-lbl-slot" id="pf-slot-chords"></span></div>
  <div id="pf-chords-panel">
  <!-- The MōdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
@@ -4429,7 +4446,7 @@ body.mode-free .pro-only { display:none !important; }
  </div><!-- /pf-chords-panel -->
 
  <!-- MELODY SUB-PAGE -->
- <div class="pf-surface-lbl">Melody</div>
+ <div class="pf-surface-lbl">Melody<span class="pf-lbl-slot" id="pf-slot-melody"></span></div>
  <div id="pf-melody-panel" style="display:none">
  <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
@@ -5643,6 +5660,15 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <button class="fx-readout-bar pro-only" id="fx-ro-mix" onclick="fxOpenPanel('drum')"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
 
+ </div>
+
+ <!-- MōdFX sends. Routing belongs with the rest of the routing, not under the
+      pad: these are the levels you set once and leave, which is what their own
+      header said about them. Filled by fxSyncUI. -->
+ <div class="panel p-perform pro-only" style="width:100%;max-width:700px;margin-top:10px">
+  <div class="panel-title"><span class="pt-icon"></span> MōdFX Sends</div>
+  <div class="fx-sends" id="fx-sends"></div>
+  <div class="fx-note" id="fx-note"></div>
  </div>
 
  <div class="panel p-perform" style="width:100%;max-width:700px;margin-top:10px">
@@ -11948,7 +11974,7 @@ function cpClose(){
  if(!_cpOpen) return;
  _cpOpen.classList.remove('open');
  _cpOpen._pop.classList.remove('open');
- _cpOpen.querySelector('.chordpick-btn')?.setAttribute('aria-expanded','false');
+ (_cpOpen._btn || _cpOpen.querySelector('.chordpick-btn'))?.setAttribute('aria-expanded','false');
  _cpOpen=null;
  document.removeEventListener('pointerdown', _cpOutside);
  window.removeEventListener('scroll', _cpReflow, true);
@@ -11959,22 +11985,7 @@ function _cpOutside(e){
  if(!_cpOpen.contains(e.target) && !_cpOpen._pop.contains(e.target)) cpClose();
 }
 function _cpReflow(){ if(_cpOpen) cpPlace(_cpOpen); }
-// Same reasoning as the sound picker: every .panel is overflow:hidden, so the
-// popover lives on <body> and is positioned off the trigger's rect.
-function cpPlace(wrap){
- const pop=wrap._pop; if(!pop) return;
- const M=8, b=wrap.getBoundingClientRect();
- pop.style.maxHeight='none'; pop.style.left='0px'; pop.style.top='0px';
- const w=pop.offsetWidth, h=pop.offsetHeight;
- let x=b.left;
- if(x+w > window.innerWidth-M) x=window.innerWidth-M-w;
- if(x<M) x=M;
- const below=window.innerHeight-b.bottom-M;
- let y;
- if(h<=below || below>=b.top-M){ y=b.bottom+4; pop.style.maxHeight=below+'px'; }
- else { y=Math.max(M, b.top-4-h); pop.style.maxHeight=(b.top-M-4)+'px'; }
- pop.style.left=x+'px'; pop.style.top=y+'px'; pop.style.overflowY='auto';
-}
+function cpPlace(wrap){ popPlace(wrap, wrap._pop); }
 
 const CP_DEFS=[
  {id:'cp-borrowed', label:'Modal',     src:'borrowed'},
@@ -12209,10 +12220,12 @@ function _sndPickReflow(){ if(_sndPickOpen) sndPickPlace(_sndPickOpen); }
 // CSS-only anchor could not do this: these triggers sit early in their rows,
 // so a left edge ran off the right of a phone and a right edge ran off the
 // left.
-function sndPickPlace(wrap){
- const pop = wrap._pop; if(!pop) return;
+// Every popover in the app lives on <body> — panels are overflow:hidden for
+// their glow edges and would crop it — so they all place through here.
+function popPlace(anchor, pop){
+ if(!anchor || !pop) return;
  const M = 8;
- const b = wrap.getBoundingClientRect();
+ const b = anchor.getBoundingClientRect();
  pop.style.maxHeight = 'none';
  pop.style.left = '0px'; pop.style.top = '0px';
  const w = pop.offsetWidth, h = pop.offsetHeight;
@@ -12229,6 +12242,7 @@ function sndPickPlace(wrap){
  pop.style.top  = y + 'px';
  pop.style.overflowY = 'auto';
 }
+function sndPickPlace(wrap){ popPlace(wrap, wrap._pop); }
 // The label is read off whichever button is .active rather than from the
 // state variables, because five different setters and the Voices dock can all
 // change a part's voice and only the buttons are guaranteed to be repainted.
@@ -12317,6 +12331,7 @@ function sndPickInit(){
   }
   sndPickSyncLabel(wrap);
  });
+ if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') sndPickClose(); });
 
@@ -17806,6 +17821,9 @@ function switchTab(t){
  if(t==='songs') renderSetlistPerform();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
+  // The MōdFX sends live here now, and this is the only thing that fills
+  // them — the FX panel used to be the one place that ran on open.
+  if(typeof fxSyncUI==='function') fxSyncUI();
   if(typeof syncMasterUI==='function') syncMasterUI();
   // Only animate while the meters are actually on screen.
   if(typeof mixMetersStart==='function') mixMetersStart();
@@ -27634,6 +27652,7 @@ function setViewMode(mode){
   // Basic stacks the playing surfaces and Advanced separates them, so the Play
   // tab has to be laid out again on every switch, not just on a sub-tab tap.
   if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
+  if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
@@ -27660,6 +27679,22 @@ function msApplyBasicGate(){
 // Attack, release, reverb and strum are off the surface in Basic. This is the
 // way back to them without going to Advanced — Basic is for picking a sound and
 // playing it, but "never" and "not by default" are different promises.
+// In Basic the voice panels are gone, so their pickers move up into the
+// surface heading — one button naming the current sound, where the panel title
+// used to be. Advanced puts them back in their panels, which still hold the
+// octave and the rest. The popovers are on <body> either way, so only the
+// trigger actually travels.
+function pfMountVoicePickers(){
+  var basic = document.body.classList.contains('mode-basic');
+  [['sndpick-bw-voices','pf-slot-chords'],
+   ['sndpick-melvoice-settings','pf-slot-melody']].forEach(function(pair){
+    var w = document.getElementById(pair[0]); if(!w) return;
+    if(!w._home) w._home = w.parentNode;
+    var target = basic ? document.getElementById(pair[1]) : w._home;
+    if(target && w.parentNode !== target) target.appendChild(w);
+  });
+}
+
 function toggleToneControls(force){
   var on = (force===undefined) ? !document.body.classList.contains('show-tone') : !!force;
   document.body.classList.toggle('show-tone', on);
@@ -28780,6 +28815,7 @@ function fxBuildPanel(){
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   + '</div></div>'
+  + '<div class="fx-patch-wrap" id="fx-patch-wrap"></div>'
   + '<div class="fx-presets" id="fx-presets" role="group" aria-label="MōdFX presets"></div>'
   + '<div class="fx-targets" id="fx-targets" role="group" aria-label="Channels the pad affects"></div>'
   // Both axes in one row above the pad. A vertical <select> (writing-mode:
@@ -28810,15 +28846,82 @@ function fxBuildPanel(){
   +   '<div class="sv" id="fx-release-val">0.18s</div>'
   +  '</div>'
   + '</div>'
-  + '<div class="fx-sends" id="fx-sends"></div>'
-  + '<div class="fx-note" id="fx-note"></div>';
+  // The per-part sends and the note about them live on Mix now, in every
+  // view. They are routing you set and leave — "these stay put" was written
+  // on them — and they were sitting under a performance pad taking six rows
+  // of sliders to say so. fxSyncUI fills them by id wherever they are.
+  ;
  fxWirePad();
+ fxBuildPatchPick();
  // The panel is rebuilt on open, so the slider has to be told where the
  // stored release actually sits rather than keeping its markup default.
  const rs=document.getElementById('fx-release-sl');
  if(rs){ rs.value=fxReleaseSec; }
  fxSetRelease(fxReleaseSec);
  fxSyncUI();
+}
+
+// The patch list as one button, for Basic. The chip grid it replaces is still
+// in the DOM and still the Advanced surface — this is the same list behind a
+// name, reusing the chord catalogs' popover so there is one set of geometry in
+// the app rather than three.
+function fxBuildPatchPick(){
+ const host=document.getElementById('fx-patch-wrap'); if(!host) return;
+ host.innerHTML='';
+ const wrap=document.createElement('div');
+ wrap.className='chordpick'; wrap.id='fxpick-patch';
+ const btn=document.createElement('button');
+ btn.className='snd-pick-btn'; btn.type='button';
+ btn.setAttribute('aria-haspopup','true'); btn.setAttribute('aria-expanded','false');
+ btn.innerHTML='<span class="snd-pick-cur" id="fx-patch-cur">Patch</span>'
+   +'<span class="snd-pick-caret" aria-hidden="true">▾</span>';
+ const pop=document.createElement('div');
+ pop.className='chordpick-pop'; pop.id='fxpop-patch';
+ wrap._pop=pop; pop._wrap=wrap; wrap._btn=btn;
+ document.body.appendChild(pop);
+ wrap.appendChild(btn); host.appendChild(wrap);
+ btn.addEventListener('click', e=>{
+  e.stopPropagation();
+  const wasOpen=wrap.classList.contains('open');
+  cpClose();
+  if(wasOpen) return;
+  if(typeof sndPickClose==='function') sndPickClose();
+  fxFillPatchPick();
+  wrap.classList.add('open'); pop.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  _cpOpen=wrap;
+  popPlace(wrap,pop);
+  setTimeout(()=>document.addEventListener('pointerdown', _cpOutside), 0);
+  window.addEventListener('scroll', _cpReflow, true);
+  window.addEventListener('resize', _cpReflow);
+ });
+ fxSyncPatchLabel();
+}
+function fxFillPatchPick(){
+ const pop=document.getElementById('fxpop-patch'); if(!pop) return;
+ const all=fxAllPresets();
+ const cur=all.findIndex(x=>x.x===fxPadX&&x.y===fxPadY);
+ pop.innerHTML='';
+ all.forEach((x,i)=>{
+  const b=document.createElement('button');
+  b.className='cp-item'+(i===cur?' on':''); b.type='button';
+  b.innerHTML='<span class="cp-box">'+(i===cur?'✓':'')+'</span><span>'+x.name+'</span>';
+  b.addEventListener('click', ev=>{
+   ev.stopPropagation();
+   fxApplyPreset(i);
+   cpClose();
+   fxSyncPatchLabel();
+  });
+  pop.appendChild(b);
+ });
+}
+// The axes can also be set by hand, which matches no preset — say so rather
+// than leaving the last preset's name on a patch that is no longer it.
+function fxSyncPatchLabel(){
+ const el=document.getElementById('fx-patch-cur'); if(!el) return;
+ const all=fxAllPresets();
+ const cur=all.find(x=>x.x===fxPadX&&x.y===fxPadY);
+ el.textContent = cur ? cur.name : 'Custom';
 }
 
 function fxToggleHold(){
@@ -28831,14 +28934,17 @@ function fxToggleHold(){
 }
 
 function fxSyncUI(){
+ if(typeof fxSyncPatchLabel==='function') fxSyncPatchLabel();
  const t=document.getElementById('fx-targets');
  if(t) t.innerHTML=FX_CHANNELS.map(ch=>
    '<button class="fx-target'+(fxTargets.indexOf(ch)>=0?' on':'')+'" onclick="fxToggleTarget(\''+ch+'\')"'
    +' aria-pressed="'+(fxTargets.indexOf(ch)>=0)+'">'+FX_CHANNEL_LABEL[ch]+'</button>').join('');
 
  const s=document.getElementById('fx-sends');
- if(s) s.innerHTML='<div class="fx-sends-hdr">Sends — these stay put</div>'
-  + FX_CHANNELS.map(ch=>
+ // No header of its own any more: the panel it now sits in on Mix is called
+ // MōdFX Sends, and "these stay put" was distinguishing it from the pad above
+ // it, which is no longer above it.
+ if(s) s.innerHTML=FX_CHANNELS.map(ch=>
     '<div class="fx-send-row"><span class="fx-send-name">'+FX_CHANNEL_LABEL[ch]+'</span>'
     + ['rev','dly','drv'].map(w=>
        '<label class="fx-send-cell"><span>'+w.toUpperCase()+'</span>'
