@@ -446,19 +446,43 @@ input[type=range] { touch-action:none; }
 .snd-pick-cur { font-weight:600; white-space:nowrap; }
 .snd-pick-caret { font-size:.5rem; color:var(--muted); transition:transform .15s; }
 .snd-pick.open .snd-pick-caret { transform:rotate(180deg); }
-/* The menu is display:none rather than clipped, so the buttons inside cost
-   nothing to lay out while shut. */
-.snd-pick > .snd-pick-menu { display:none; }
-.snd-pick.open > .snd-pick-menu {
- display:flex; flex-wrap:wrap; gap:3px;
- position:absolute; top:calc(100% + 4px); left:0; z-index:60;
- width:max-content; max-width:min(320px, 86vw);
+/* The popover lives on <body>, not next to its trigger: every .panel is
+   overflow:hidden for its glow edges, which clipped the menu to the panel and
+   left a voice list two rows tall. Fixed positioning off the trigger's rect is
+   the only placement no ancestor can crop. */
+.snd-pick-pop { display:none; }
+.snd-pick-pop.open {
+ display:block;
+ position:fixed; z-index:200;
+ width:max-content; max-width:min(340px, 88vw);
  padding:7px; border-radius:var(--r-md);
  background:var(--surf); border:1px solid var(--border2);
  box-shadow:0 10px 28px rgba(0,0,0,.5);
 }
+body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); }
+.snd-pick-menu { display:flex; flex-wrap:wrap; gap:3px; }
 .snd-pick-menu .tb { padding:5px 9px; font-size:.58rem; }
-body.light-mode .snd-pick.open > .snd-pick-menu { box-shadow:0 10px 28px rgba(20,24,50,.18); }
+
+/* Second layer: how the voice is shaped, under the voice itself. Shut by
+   default — it is the half of this panel you touch least. */
+.snd-tone-head {
+ display:flex; align-items:center; gap:6px; width:100%;
+ margin-top:7px; padding:6px 4px 0; border-top:1px solid var(--border);
+ background:none; border-left:none; border-right:none; border-bottom:none;
+ color:var(--muted); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.52rem;
+ text-transform:uppercase; letter-spacing:.1em; font-weight:600;
+}
+.snd-tone-head:hover { color:var(--text); }
+.snd-tone-caret { transition:transform .15s; font-size:.5rem; }
+.snd-tone-head[aria-expanded="true"] .snd-tone-caret { transform:rotate(90deg); }
+.snd-tone-body { display:none; padding-top:6px; }
+.snd-tone-head[aria-expanded="true"] + .snd-tone-body { display:block; }
+/* Inside the drawer these are utility controls, not identity: the key hue is
+   what tells you which key you are in, and it should not also be shouting
+   from four sliders and two toggles at once. */
+.snd-tone-body .sl { color:var(--muted); }
+.snd-tone-body .sv { color:var(--text); opacity:.85; }
 
 /* ═══════════════════════════════════════
  KEY / TRANSPOSE STRIP
@@ -4283,6 +4307,11 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tb" onclick="shiftOct(+1)">Oct+</button>
    </div>
   </div>
+  <!-- How the chord voice is shaped, as opposed to which voice it is. Moved
+       into the sound dropdown's second layer by sndPickInit() — see the note
+       there. It stays here in the markup so that with JS off, or if the
+       picker ever goes away, the controls are still on the page. -->
+  <div id="chord-tone-body">
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="attack" min=".005" max=".8" step=".005" value=".025" oninput="updateSV('attack','atk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="atk-val">25ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="decay" min=".1" max="8" step=".1" value="2.2" oninput="updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="dec-val">2.2s</div></div>
@@ -4296,6 +4325,7 @@ body.mode-free .pro-only { display:none !important; }
    <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Roll the chord's notes one after another instead of striking them together">Strum: ON</button>
    <div class="sg"><div class="sl">Strum length</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
    <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="While the arp is running, also hold the full chord underneath it. With the arp off this makes no difference — the chord is already sounding.">Chord under arp: ON</button>
+  </div>
   </div>
  </div>
 
@@ -4411,6 +4441,9 @@ body.mode-free .pro-only { display:none !important; }
   <div class="row">
    <div class="tg" id="melvoice-settings" style="flex-wrap:wrap"></div>
   </div>
+  <!-- Same split as the chord voice: which voice, then how it is shaped.
+       sndPickInit() moves this into the picker's second layer. -->
+  <div id="mel-tone-body">
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="mel-attack" min=".005" max=".4" step=".005" value=".015" oninput="updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="melatk-val">15ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="mel-decay" min=".05" max="4" step=".05" value=".8" oninput="updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="meldec-val">0.8s</div></div>
@@ -4418,6 +4451,7 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <div class="row" style="margin-top:4px">
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
+  </div>
   </div>
  </div>
 
@@ -11802,38 +11836,70 @@ function buildVoicePickers(){
 // above keep owning their own buttons and every [data-wave] / [data-melwave] /
 // [data-arpwave] query elsewhere still finds them. The wrapper only adds a
 // trigger that names the current sound, and shuts on a pick.
-const SND_PICK_HOSTS = ['sb-voices','bw-voices','aw-voices','melvoice-settings','melvoice-inline'];
+// host — the button row that already exists on the page.
+// tone — an optional block of "how it is shaped" controls (envelope, reverb,
+//        strum) that becomes the picker's second layer. Only the Play tab's
+//        two voices have one; the arp's row is presets and nothing else.
+const SND_PICK_HOSTS = [
+ {host:'bw-voices',        tone:'chord-tone-body'},
+ {host:'sb-voices'},
+ {host:'melvoice-settings', tone:'mel-tone-body'},
+ {host:'aw-voices'},
+ {host:'melvoice-inline'}
+];
 let _sndPickOpen = null;
 
 function sndPickClose(){
  if(!_sndPickOpen) return;
- _sndPickOpen.classList.remove('open');
- _sndPickOpen.querySelector('.snd-pick-btn')?.setAttribute('aria-expanded','false');
+ const wrap = _sndPickOpen;
+ wrap.classList.remove('open');
+ wrap._pop.classList.remove('open');
+ wrap.querySelector('.snd-pick-btn')?.setAttribute('aria-expanded','false');
  _sndPickOpen = null;
  document.removeEventListener('pointerdown', _sndPickOutside);
+ window.removeEventListener('scroll', _sndPickReflow, true);
+ window.removeEventListener('resize', _sndPickReflow);
 }
+// The popover is no longer a descendant of its trigger, so "outside" has to
+// mean outside both of them.
 function _sndPickOutside(e){
- if(_sndPickOpen && !_sndPickOpen.contains(e.target)) sndPickClose();
+ if(!_sndPickOpen) return;
+ if(!_sndPickOpen.contains(e.target) && !_sndPickOpen._pop.contains(e.target)) sndPickClose();
 }
+function _sndPickReflow(){ if(_sndPickOpen) sndPickPlace(_sndPickOpen); }
 // A CSS-only anchor cannot know how much room the trigger has left of it:
 // left:0 ran the menu off the right edge on a phone, and flipping to right:0
 // ran it off the left instead, since these triggers sit early in their rows.
 // So it opens flush-left and is then slid back inside the viewport.
+// Anchored under the trigger and then pulled back inside the viewport. A
+// CSS-only anchor could not do this: these triggers sit early in their rows,
+// so a left edge ran off the right of a phone and a right edge ran off the
+// left.
 function sndPickPlace(wrap){
- const menu = wrap.querySelector('.snd-pick-menu'); if(!menu) return;
+ const pop = wrap._pop; if(!pop) return;
  const M = 8;
- menu.style.left = '0px';
- const r = menu.getBoundingClientRect();
- let shift = 0;
- if(r.right > window.innerWidth - M) shift = (window.innerWidth - M) - r.right;
- if(r.left + shift < M) shift = M - r.left;
- menu.style.left = shift + 'px';
+ const b = wrap.getBoundingClientRect();
+ pop.style.maxHeight = 'none';
+ pop.style.left = '0px'; pop.style.top = '0px';
+ const w = pop.offsetWidth, h = pop.offsetHeight;
+ let x = b.left;
+ if(x + w > window.innerWidth - M) x = window.innerWidth - M - w;
+ if(x < M) x = M;
+ // Below the trigger, unless there is more room above it — which is where a
+ // picker near the bottom of the page ends up.
+ const below = window.innerHeight - b.bottom - M;
+ let y;
+ if(h <= below || below >= b.top - M){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
+ else { y = Math.max(M, b.top - 4 - h); pop.style.maxHeight = (b.top - M - 4) + 'px'; }
+ pop.style.left = x + 'px';
+ pop.style.top  = y + 'px';
+ pop.style.overflowY = 'auto';
 }
 // The label is read off whichever button is .active rather than from the
 // state variables, because five different setters and the Voices dock can all
 // change a part's voice and only the buttons are guaranteed to be repainted.
 function sndPickSyncLabel(wrap){
- const host = wrap.querySelector('.snd-pick-menu');
+ const host = wrap._pop && wrap._pop.querySelector('.snd-pick-menu');
  const cur  = wrap.querySelector('.snd-pick-cur');
  if(!host || !cur) return;
  const on = host.querySelector('.tb.active');
@@ -11841,13 +11907,18 @@ function sndPickSyncLabel(wrap){
 }
 
 function sndPickInit(){
- SND_PICK_HOSTS.forEach(id=>{
-  const host = document.getElementById(id);
+ SND_PICK_HOSTS.forEach(spec=>{
+  const host = document.getElementById(spec.host);
   if(!host) return;
-  let wrap = host.closest('.snd-pick');
+  // The popover is on <body>, so the host is no longer inside its own wrapper
+  // once wired — ask the popover which wrapper owns it instead, or this builds
+  // a second picker every time the voice rows are rebuilt.
+  const existing = host.closest('.snd-pick-pop');
+  let wrap = existing && existing._wrap;
   if(!wrap){
    wrap = document.createElement('div');
    wrap.className = 'snd-pick';
+   wrap.id = 'sndpick-' + spec.host;
    host.parentNode.insertBefore(wrap, host);
    const btn = document.createElement('button');
    btn.className = 'snd-pick-btn';
@@ -11862,16 +11933,26 @@ function sndPickInit(){
     sndPickClose();
     if(wasOpen) return;
     wrap.classList.add('open');
+    pop.classList.add('open');
     btn.setAttribute('aria-expanded','true');
     _sndPickOpen = wrap;
     sndPickPlace(wrap);
     setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
+    window.addEventListener('scroll', _sndPickReflow, true);
+    window.addEventListener('resize', _sndPickReflow);
    });
+   const pop = document.createElement('div');
+   pop.className = 'snd-pick-pop';
+   pop.id = 'sndpop-' + spec.host;
+   wrap._pop = pop; pop._wrap = wrap;
+   document.body.appendChild(pop);
    wrap.appendChild(btn);
-   wrap.appendChild(host);
+   pop.appendChild(host);
    host.classList.add('snd-pick-menu');
-   // Picking is the whole point of opening it, so the menu shuts on any
-   // choice. Delegated, because the builders replace these buttons wholesale.
+   // Picking a voice is the whole point of opening this, so it shuts on a
+   // choice. Scoped to the preset row rather than to .tb, because the tone
+   // drawer below has toggles of its own that must not close it. Delegated,
+   // because the builders replace these buttons wholesale.
    host.addEventListener('click', e=>{
     if(e.target.closest('.tb')) sndPickClose();
    });
@@ -11879,6 +11960,26 @@ function sndPickInit(){
    // so the trigger follows the buttons instead of the click.
    new MutationObserver(()=>sndPickSyncLabel(wrap))
     .observe(host, {subtree:true, childList:true, attributes:true, attributeFilter:['class']});
+
+   const tone = spec.tone && document.getElementById(spec.tone);
+   if(tone){
+    const head = document.createElement('button');
+    head.className = 'snd-tone-head';
+    head.type = 'button';
+    head.setAttribute('aria-expanded','false');
+    head.innerHTML = '<span class="snd-tone-caret" aria-hidden="true">›</span>Tone';
+    head.addEventListener('click', e=>{
+     e.stopPropagation();
+     const open = head.getAttribute('aria-expanded')==='true';
+     head.setAttribute('aria-expanded', open ? 'false' : 'true');
+     // The drawer changes the popover's height, which can push it off the
+     // bottom or past the right edge it was measured against.
+     sndPickPlace(wrap);
+    });
+    pop.appendChild(head);
+    tone.classList.add('snd-tone-body');
+    pop.appendChild(tone);
+   }
   }
   sndPickSyncLabel(wrap);
  });
