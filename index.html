@@ -487,6 +487,21 @@ body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); 
    back for anyone who wants it without having to leave Basic for Advanced. */
 body.mode-basic .snd-tone-head,
 body.mode-basic .snd-tone-body { display:none !important; }
+/* Basic shows every playing surface at once, so the Part sub-tabs have nothing
+   left to switch between. */
+body.mode-basic #pf-subnav { display:none; }
+/* Stacked, the surfaces need a little air and a name each — in Advanced the
+   sub-tab was the name. */
+.pf-surface-lbl { display:none; }
+body.mode-basic .pf-surface-lbl {
+ display:flex; align-items:center; gap:8px;
+ width:100%; max-width:700px; margin:14px 0 6px;
+ color:var(--muted); font-size:.5rem; font-weight:600;
+ text-transform:uppercase; letter-spacing:.14em;
+}
+body.mode-basic .pf-surface-lbl::after {
+ content:''; flex:1; height:1px; background:var(--border);
+}
 body.mode-basic.show-tone .snd-tone-head { display:flex !important; }
 body.mode-basic.show-tone .snd-tone-head[aria-expanded="true"] + .snd-tone-body { display:block !important; }
 
@@ -4244,12 +4259,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
  <!-- CHORDS SUB-PAGE -->
- <!-- MōdFX lives beside Chords and Melody because it is a performance
-      surface, not a setting. -->
- <div id="pf-fx-panel" style="display:none;width:100%;max-width:700px">
-  <div class="panel p-perform" id="modfx-panel"></div>
- </div>
-
+ <div class="pf-surface-lbl">Chords</div>
  <div id="pf-chords-panel">
  <!-- The MōdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
@@ -4404,6 +4414,7 @@ body.mode-free .pro-only { display:none !important; }
  </div><!-- /pf-chords-panel -->
 
  <!-- MELODY SUB-PAGE -->
+ <div class="pf-surface-lbl">Melody</div>
  <div id="pf-melody-panel" style="display:none">
  <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
@@ -4526,6 +4537,14 @@ body.mode-free .pro-only { display:none !important; }
  </div>
 
  </div><!-- /pf-melody-panel -->
+
+ <!-- MōdFX sits with Chords and Melody because it is a performance surface,
+      not a setting — and last of the three, because it is what you reach for
+      after the part rather than before it. -->
+ <div class="pf-surface-lbl pro-only">MōdFX</div>
+ <div id="pf-fx-panel" style="display:none;width:100%;max-width:700px">
+  <div class="panel p-perform" id="modfx-panel"></div>
+ </div>
 
 
  <!-- Sound engine lives BELOW the chords and the melody player: you pick a
@@ -11838,24 +11857,51 @@ function makeOutBtn(label,noteN,type7,crm,func){
 // exists to avoid. So the two catalogs stay as lists you browse, and what you
 // tick out of them lands in one row of your own.
 //
-// Picks are stored per mode, because ♭VI in Dorian is not the chord ♭VI is in
-// major, and a palette that silently means something else after a mode change
-// is worse than an empty one.
-let cpPicks = {};
+// One palette, kept across modes. ♭VI in Dorian is not the chord ♭VI is in
+// major, so a pick cannot simply be carried over by name — but making you
+// rebuild it every time you change mode is worse. So what is stored is the
+// intent (which catalog, which degree, and how far above the root it sat), and
+// it is resolved against whatever mode is current: same degree if that mode
+// has it, otherwise the nearest chord by interval.
+//
+// The stored form is never rewritten by a mode change. Resolving is lossy —
+// two picks can land on one chord — and a palette that quietly degraded every
+// time you auditioned a mode would not survive the trip back.
+let cpPicks = [];
 function cpLoad(){
- try{ cpPicks = JSON.parse(localStorage.getItem('modo-chord-picks')||'{}') || {}; }
- catch(e){ cpPicks = {}; }
+ try{
+  const raw = JSON.parse(localStorage.getItem('modo-chord-palette')||'[]');
+  cpPicks = Array.isArray(raw) ? raw.filter(p=>p && p.src && p.label) : [];
+ }catch(e){ cpPicks = []; }
 }
 function cpSave(){
- try{ localStorage.setItem('modo-chord-picks', JSON.stringify(cpPicks)); }catch(e){}
+ try{ localStorage.setItem('modo-chord-palette', JSON.stringify(cpPicks)); }catch(e){}
 }
 cpLoad();
-function cpSet(){ return (cpPicks[mode] = cpPicks[mode] || []); }
-function cpKey(src,label){ return src+'|'+label; }
-function cpHas(src,label){ return cpSet().indexOf(cpKey(src,label))>=0; }
-function cpToggle(src,label){
- const set=cpSet(), k=cpKey(src,label), i=set.indexOf(k);
- if(i>=0) set.splice(i,1); else set.push(k);
+function cpKey(p){ return p.src+'|'+p.label; }
+// Distance around the twelve semitones, so ♭II and the major seventh are one
+// step apart rather than eleven.
+function cpDist(a,b){ const d=Math.abs(((a-b)%12+12)%12); return Math.min(d,12-d); }
+// Which chord in the current mode a stored pick means now. Its own catalog
+// first, and within that an exact degree beats a near interval.
+function cpResolve(pick, srcs){
+ const own = srcs[pick.src]||[], other = (pick.src==='borrowed'?srcs.secdom:srcs.borrowed)||[];
+ const exact = own.find(c=>c.label===pick.label);
+ if(exact) return exact;
+ let best=null, bestD=99;
+ own.concat(other).forEach(c=>{
+  const d=cpDist(c.semis, pick.semis);
+  if(d<bestD){ bestD=d; best=c; }
+ });
+ return best;
+}
+function cpToggle(chord){
+ const srcs=cpSources();
+ // Unticking has to remove whichever stored pick is currently showing as this
+ // chord, which after a mode change need not be the one that names it.
+ const i = cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpKey(r)===cpKey(chord); });
+ if(i>=0) cpPicks.splice(i,1);
+ else cpPicks.push({src:chord.src, label:chord.label, semis:chord.semis});
  cpSave();
  cpRenderAll();
 }
@@ -11869,11 +11915,21 @@ function cpSources(){
    ({src:'secdom', label:b.label, semis:b.semis, type7:b.type7, func:'dom'}))
  };
 }
-// Everything currently ticked, in the order it was ticked, dropped silently if
-// a mode change means the chord no longer exists.
+// The palette as it stands in this mode, in the order it was built. Two picks
+// can resolve onto one chord after a mode change, so duplicates collapse.
 function cpChosen(){
- const s=cpSources(), all=s.borrowed.concat(s.secdom);
- return cpSet().map(k=>all.find(c=>cpKey(c.src,c.label)===k)).filter(Boolean);
+ const srcs=cpSources(), seen={}, out=[];
+ cpPicks.forEach(p=>{
+  const c=cpResolve(p,srcs);
+  if(!c) return;
+  const k=cpKey(c);
+  if(seen[k]) return;
+  seen[k]=1; out.push(c);
+ });
+ return out;
+}
+function cpHas(chord){
+ return cpChosen().some(c=>cpKey(c)===cpKey(chord));
 }
 
 let _cpOpen=null;
@@ -11947,7 +12003,7 @@ function cpBuild(){
   const items = def.src==='user' ? cpChosen() : cpSources()[def.src];
   wrap.querySelector('.cp-lbl').textContent=def.label;
   const n = def.src==='user' ? items.length
-          : items.filter(c=>cpHas(c.src,c.label)).length;
+          : items.filter(c=>cpHas(c)).length;
   wrap.querySelector('.chordpick-n').textContent = def.src==='user' ? String(items.length) : (n+'/'+items.length);
   const pop=wrap._pop;
   pop.innerHTML='';
@@ -11960,13 +12016,13 @@ function cpBuild(){
    return;
   }
   items.forEach(c=>{
-   const on=cpHas(c.src,c.label);
+   const on=cpHas(c);
    const b=document.createElement('button');
    b.className='cp-item'+(on?' on':''); b.type='button';
    b.innerHTML='<span class="cp-box">'+(on?'✓':'')+'</span>'
      +'<span class="cp-deg">'+c.label+'</span>'
      +'<span class="cp-note">'+nn((root+c.semis)%12)+(SUFFIX7[c.type7]||'')+'</span>';
-   b.addEventListener('click', ev=>{ ev.stopPropagation(); cpToggle(c.src,c.label); });
+   b.addEventListener('click', ev=>{ ev.stopPropagation(); cpToggle(c); });
    pop.appendChild(b);
   });
   if(_cpOpen===wrap) cpPlace(wrap);
@@ -17444,19 +17500,34 @@ function setSettingsPane(which){
 }
 window.addEventListener('resize', positionAllSubnavLeds);
 
+function _fxAllowed(){
+ try{ return typeof fxIsAvailable!=='function' || fxIsAvailable(); }catch(e){ return false; }
+}
 function setPerformMode(m){
  // MōdFX is pro. Asking for it without the entitlement lands on Chords rather
  // than on an empty panel.
- if(m==='fx' && typeof fxIsAvailable==='function' && !fxIsAvailable()) m='chords';
+ if(m==='fx' && !_fxAllowed()) m='chords';
  performMode = m;
+ // Basic puts every playing surface on one screen. The sub-tabs put three
+ // taps between three things you use together — chords under a hand, melody
+ // under the other, MōdFX under a thumb — on the one tab whose whole job is
+ // playing them. Advanced keeps them separate, because there each one carries
+ // far more than fits beside the others.
+ const oneScreen = document.body.classList.contains('mode-basic');
+ // The tier is a `let` declared thousands of lines below this, and the view
+ // mode is restored during boot — so at that point asking whether MōdFX is
+ // allowed throws on the temporal dead zone rather than answering. Treat
+ // "cannot tell yet" as no; setModTier lays the tab out again once it knows.
+ const fxOK = _fxAllowed();
  document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-fx-btn')?.classList.toggle('active', m==='fx');
- document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
- document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+ document.getElementById('pf-chords-panel').style.display = (oneScreen || m==='chords')?'':'none';
+ document.getElementById('pf-melody-panel').style.display = (oneScreen || m==='melody')?'':'none';
  const fxp=document.getElementById('pf-fx-panel');
- if(fxp) fxp.style.display = m==='fx'?'':'none';
- if(m==='fx'){
+ const showFx = (oneScreen && fxOK) || m==='fx';
+ if(fxp) fxp.style.display = showFx?'':'none';
+ if(showFx){
   // Re-run every time: the drum bus may only have appeared since last visit.
   if(typeof fxInsertAll==='function') fxInsertAll();
   if(typeof fxBuildPanel==='function' && !document.getElementById('fx-pad')) fxBuildPanel();
@@ -27549,6 +27620,9 @@ function setViewMode(mode){
   if(btnA){ btnA.classList.toggle('active', !isBasic); }
   try{ localStorage.setItem('modo-view-mode', mode); }catch(e){}
   if(typeof msApplyBasicGate==='function') msApplyBasicGate();
+  // Basic stacks the playing surfaces and Advanced separates them, so the Play
+  // tab has to be laid out again on every switch, not just on a sub-tab tap.
+  if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
@@ -29013,6 +29087,10 @@ function setModTier(t){
   document.body.classList.toggle('mode-free', _modTier==='free');
   try{ localStorage.setItem('modo-tier', _modTier); }catch(e){}
   if(_modTier==='free' && performMode==='fx' && typeof setPerformMode==='function') setPerformMode('chords');
+  // Basic stacks MōdFX in with the other playing surfaces, so whether it is on
+  // screen at all is a tier question — and this is the first point in boot
+  // where the tier is actually known.
+  else if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
 }
