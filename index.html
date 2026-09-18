@@ -423,6 +423,153 @@ input[type=range] { touch-action:none; }
 .sound-bar .tb {
  padding:5px 10px; font-size:.6rem;
 }
+
+/* ── Sound picker dropdown ──
+   Every voice row in the app is fifteen buttons wide. Under the chord grid
+   that is a wall of sounds sitting where the chords should be, and you pick a
+   tone once and then play for an hour. So the row collapses to one button
+   carrying the current sound's name, and the buttons themselves — unchanged,
+   still carrying data-wave / data-melwave / data-arpwave — move into a
+   popover that shuts as soon as you choose. Nothing is removed from the DOM,
+   so every existing sync path still finds them. */
+.snd-pick { position:relative; display:inline-flex; }
+.snd-pick-btn {
+ display:inline-flex; align-items:center; gap:6px;
+ padding:5px 10px; border-radius:var(--r-sm);
+ background:var(--surf2); color:var(--text);
+ border:1px solid var(--border2); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.6rem; letter-spacing:.04em;
+ touch-action:manipulation; transition:border-color .15s, background .15s;
+}
+.snd-pick-btn:hover { border-color:var(--accent); }
+.snd-pick.open > .snd-pick-btn { border-color:var(--accent); background:var(--surf); }
+.snd-pick-cur { font-weight:600; white-space:nowrap; }
+.snd-pick-caret { font-size:.5rem; color:var(--muted); transition:transform .15s; }
+.snd-pick.open .snd-pick-caret { transform:rotate(180deg); }
+/* The popover lives on <body>, not next to its trigger: every .panel is
+   overflow:hidden for its glow edges, which clipped the menu to the panel and
+   left a voice list two rows tall. Fixed positioning off the trigger's rect is
+   the only placement no ancestor can crop. */
+.snd-pick-pop { display:none; }
+.snd-pick-pop.open {
+ display:block;
+ position:fixed; z-index:200;
+ width:max-content; max-width:min(340px, 88vw);
+ padding:7px; border-radius:var(--r-md);
+ background:var(--surf); border:1px solid var(--border2);
+ box-shadow:0 10px 28px rgba(0,0,0,.5);
+}
+body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); }
+.snd-pick-menu { display:flex; flex-wrap:wrap; gap:3px; }
+.snd-pick-menu .tb { padding:5px 9px; font-size:.58rem; }
+
+/* Second layer: how the voice is shaped, under the voice itself. Shut by
+   default — it is the half of this panel you touch least. */
+.snd-tone-head {
+ display:flex; align-items:center; gap:6px; width:100%;
+ margin-top:7px; padding:6px 4px 0; border-top:1px solid var(--border);
+ background:none; border-left:none; border-right:none; border-bottom:none;
+ color:var(--muted); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.52rem;
+ text-transform:uppercase; letter-spacing:.1em; font-weight:600;
+}
+.snd-tone-head:hover { color:var(--text); }
+.snd-tone-caret { transition:transform .15s; font-size:.5rem; }
+.snd-tone-head[aria-expanded="true"] .snd-tone-caret { transform:rotate(90deg); }
+.snd-tone-body { display:none; padding-top:6px; }
+.snd-tone-head[aria-expanded="true"] + .snd-tone-body { display:block; }
+/* Inside the drawer these are utility controls, not identity: the key hue is
+   what tells you which key you are in, and it should not also be shouting
+   from four sliders and two toggles at once. */
+.snd-tone-body .sl { color:var(--muted); }
+.snd-tone-body .sv { color:var(--text); opacity:.85; }
+/* Basic keeps the drawer off the surface entirely. Settings › Show puts it
+   back for anyone who wants it without having to leave Basic for Advanced. */
+body.mode-basic .snd-tone-head,
+body.mode-basic .snd-tone-body { display:none !important; }
+/* Basic shows every playing surface at once, so the Part sub-tabs have nothing
+   left to switch between. */
+body.mode-basic #pf-subnav { display:none; }
+
+/* ── Explanatory text is not a playing surface ──
+   The Play tab carried its own manual: a keyboard-mapping legend, axis
+   captions, a colour key, a "?" beside most things. Written out on screen it
+   is permanent furniture around controls you only need explained once, and it
+   reads as clutter forever after. In Basic none of it appears; Help and the
+   tips still hold every word of it, and Advanced keeps it all inline. */
+body.mode-basic .pf-info,
+body.mode-basic #page-perform .tips-btn { display:none !important; }
+/* Touch Mod is a row of destination chips and a depth slider — configuration
+   sitting between the mode buttons and the keys. Advanced Pro territory. */
+body.mode-basic #touchmod-bar { display:none !important; }
+/* The MōdFX readout bars are a way in to a panel that, in Basic, is already
+   open further down the same screen. "Open ›" to somewhere you can see. */
+body.mode-basic #page-perform .fx-readout-bar { display:none !important; }
+/* Stacked, the surfaces need a little air and a name each — in Advanced the
+   sub-tab was the name. */
+.pf-surface-lbl { display:none; }
+body.mode-basic .pf-surface-lbl {
+ display:flex; align-items:center; gap:8px;
+ width:100%; max-width:700px; margin:14px 0 6px;
+ color:var(--muted); font-size:.5rem; font-weight:600;
+ text-transform:uppercase; letter-spacing:.14em;
+}
+body.mode-basic .pf-surface-lbl::after {
+ content:''; flex:1; height:1px; background:var(--border);
+}
+body.mode-basic.show-tone .snd-tone-head { display:flex !important; }
+body.mode-basic.show-tone .snd-tone-head[aria-expanded="true"] + .snd-tone-body { display:block !important; }
+
+/* ── Chord catalogs (Basic + Pro) ──
+   Three browsable lists in one row: the two the app already knows, and the
+   palette you build out of them. Deliberately quiet — a catalog is not a
+   playing surface, so it stays in greys while the chords it produces keep the
+   function colours. */
+.chordpick-row { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0 4px; }
+.chordpick { position:relative; display:inline-flex; flex:1 1 auto; min-width:0; }
+.chordpick-btn {
+ display:inline-flex; align-items:center; gap:6px; width:100%;
+ justify-content:space-between;
+ padding:6px 10px; border-radius:var(--r-sm);
+ background:var(--surf2); color:var(--muted);
+ border:1px solid var(--border); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.5rem;
+ text-transform:uppercase; letter-spacing:.09em; font-weight:600;
+ touch-action:manipulation; transition:border-color .15s, color .15s;
+ white-space:nowrap; overflow:hidden;
+}
+.chordpick-btn:hover { color:var(--text); border-color:var(--border2); }
+.chordpick.open > .chordpick-btn { color:var(--text); border-color:var(--border2); background:var(--surf); }
+.chordpick-n {
+ font-size:.46rem; padding:1px 5px; border-radius:8px;
+ background:rgba(255,255,255,.07); color:var(--muted);
+}
+.chordpick-pop { display:none; }
+.chordpick-pop.open {
+ display:block; position:fixed; z-index:200;
+ width:max-content; max-width:min(320px, 88vw);
+ padding:6px; border-radius:var(--r-md);
+ background:var(--surf); border:1px solid var(--border2);
+ box-shadow:0 10px 28px rgba(0,0,0,.5);
+}
+body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); }
+.cp-item {
+ display:flex; align-items:center; gap:8px; width:100%;
+ padding:6px 8px; border:none; border-radius:var(--r-sm);
+ background:none; color:var(--text); cursor:pointer; text-align:left;
+ font-family:'Outfit',sans-serif; font-size:.6rem;
+}
+.cp-item:hover { background:rgba(255,255,255,.05); }
+.cp-box {
+ width:14px; height:14px; flex:none; border-radius:3px;
+ border:1px solid var(--border2); background:transparent;
+ display:flex; align-items:center; justify-content:center;
+ font-size:.5rem; color:var(--muted);
+}
+.cp-item.on .cp-box { border-color:var(--muted); color:var(--text); background:rgba(255,255,255,.10); }
+.cp-deg { color:var(--muted); font-size:.5rem; min-width:34px; }
+.cp-empty { padding:8px 10px; color:var(--muted); font-size:.55rem; max-width:210px; line-height:1.5; }
+
 /* ═══════════════════════════════════════
  KEY / TRANSPOSE STRIP
 ═══════════════════════════════════════ */
@@ -4127,12 +4274,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
 
  <!-- CHORDS SUB-PAGE -->
- <!-- MōdFX lives beside Chords and Melody because it is a performance
-      surface, not a setting. -->
- <div id="pf-fx-panel" style="display:none;width:100%;max-width:700px">
-  <div class="panel p-perform" id="modfx-panel"></div>
- </div>
-
+ <div class="pf-surface-lbl">Chords</div>
  <div id="pf-chords-panel">
  <!-- The MōdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
@@ -4198,8 +4340,22 @@ body.mode-free .pro-only { display:none !important; }
   <div class="chords-row" id="chords-secdom"></div>
  </div>
 
+ <!-- Basic + Pro: the whole modal and secondary-dominant vocabulary, browsable
+      without putting twenty more pads on the screen. Modal and Secondary are
+      catalogs you tick things out of; My Chords is what you ticked, and it is
+      the only one of the three that becomes playable pads below. -->
+ <div class="chordpick-row basic-only pro-only" id="chordpick-row">
+  <div class="chordpick" id="cp-borrowed"></div>
+  <div class="chordpick" id="cp-secdom"></div>
+  <div class="chordpick" id="cp-user"></div>
+ </div>
+ <div class="basic-only pro-only" id="chords-user-wrap" style="display:none">
+  <div class="chord-section-lbl">My Chords</div>
+  <div class="chords-row" id="chords-user"></div>
+ </div>
+
  <!-- Legend -->
- <div class="legend">
+ <div class="legend pf-info">
  <div class="li"><div class="ld" style="background:var(--tonic)"></div>Tonic</div>
  <div class="li"><div class="ld" style="background:var(--subdom)"></div>Subdominant</div>
  <div class="li"><div class="ld" style="background:var(--dom)"></div>Dominant</div>
@@ -4246,6 +4402,11 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tb" onclick="shiftOct(+1)">Oct+</button>
    </div>
   </div>
+  <!-- How the chord voice is shaped, as opposed to which voice it is. Moved
+       into the sound dropdown's second layer by sndPickInit() — see the note
+       there. It stays here in the markup so that with JS off, or if the
+       picker ever goes away, the controls are still on the page. -->
+  <div id="chord-tone-body">
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="attack" min=".005" max=".8" step=".005" value=".025" oninput="updateSV('attack','atk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="atk-val">25ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="decay" min=".1" max="8" step=".1" value="2.2" oninput="updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="dec-val">2.2s</div></div>
@@ -4260,6 +4421,7 @@ body.mode-free .pro-only { display:none !important; }
    <div class="sg"><div class="sl">Strum length</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
    <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="While the arp is running, also hold the full chord underneath it. With the arp off this makes no difference — the chord is already sounding.">Chord under arp: ON</button>
   </div>
+  </div>
  </div>
 
  <!-- Effects last, on every page: what you reach for after the part, not before it. -->
@@ -4267,6 +4429,7 @@ body.mode-free .pro-only { display:none !important; }
  </div><!-- /pf-chords-panel -->
 
  <!-- MELODY SUB-PAGE -->
+ <div class="pf-surface-lbl">Melody</div>
  <div id="pf-melody-panel" style="display:none">
  <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
@@ -4293,21 +4456,17 @@ body.mode-free .pro-only { display:none !important; }
    <input type="range" id="tmod-depth" min="0" max="1" step="0.01" value="0.5" oninput="setMelModDepth(this.value)">
    <span class="tmod-val" id="tmod-depth-val">50%</span>
   </div>
-  <div class="tmod-hint" id="tmod-hint"></div>
+  <div class="tmod-hint pf-info" id="tmod-hint"></div>
  </div>
- <!-- The melody generator's own octave used to live only on the Bass/Mel
-      tab, grouped in with Steps and Rate with nothing nearby saying
-      "melody" — easy to mix up with the strip's octave above, or miss
-      entirely. Mirrored here too, right next to the strip it's most often
-      confused with; mlShiftOct/_mlSyncOctDisp keep both copies in sync. -->
- <div class="bl-pb" style="margin-bottom:8px">
- <span class="bl-pl">Melody Seq Oct</span>
- <button class="bl-pico" onclick="mlShiftOct(-1)">−</button>
- <span class="bl-stepsdisp ml-oct-mirror" id="ml-octdisp-strip">5</span>
- <button class="bl-pico" onclick="mlShiftOct(1)">+</button>
- </div>
+ <!-- The melody generator's octave was mirrored here, beside the strip it was
+      most often confused with. It is gone: the sequencer's octave is not a
+      playing control, and sitting on Play between the mode buttons and the
+      keys it read as one — which is the confusion it was added to solve,
+      moved rather than removed. It lives with Steps and Rate on Accomp, where
+      the rest of that part is. _mlSyncOctDisp paints every .ml-oct-mirror it
+      finds, so the remaining copy needs no change. -->
 
- <div class="keys-typing-hint" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
+ <div class="keys-typing-hint pf-info" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
  <!-- The keys are here on Perform; the roll they write into is over on
       Accomp. Arming is a mode, and a mode you cannot see is one you forget
       you are in — you come back to noodle and quietly overwrite the line you
@@ -4327,7 +4486,7 @@ body.mode-free .pro-only { display:none !important; }
  <button class="tb active" id="bend-locked-btn" onclick="setBendMode('locked')">Note Lock</button>
  <button class="tb" id="bend-cont-btn" onclick="setBendMode('continuous')">Continuous</button>
  </div>
- <span style="font-size:.42rem;color:var(--muted);letter-spacing:.06em;flex:1 1 140px;min-width:0">
+ <span class="pf-info" style="font-size:.42rem;color:var(--muted);letter-spacing:.06em;flex:1 1 140px;min-width:0">
  Slide across for pitch, up and down for Touch Mod · Continuous = true bend
  </span>
  </div>
@@ -4335,7 +4494,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="bend-indicator" id="bend-indicator"></div>
  <div class="bend-mod-line" id="bend-mod-line"></div>
  <div class="bend-note-label" id="bend-note-label">—</div>
- <div class="bend-axis bend-axis-x">← pitch →</div>
+ <div class="bend-axis bend-axis-x pf-info">← pitch →</div>
  <div class="bend-axis bend-axis-y" id="bend-mod-read"></div>
  </div>
  </div>
@@ -4374,6 +4533,9 @@ body.mode-free .pro-only { display:none !important; }
   <div class="row">
    <div class="tg" id="melvoice-settings" style="flex-wrap:wrap"></div>
   </div>
+  <!-- Same split as the chord voice: which voice, then how it is shaped.
+       sndPickInit() moves this into the picker's second layer. -->
+  <div id="mel-tone-body">
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="mel-attack" min=".005" max=".4" step=".005" value=".015" oninput="updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="melatk-val">15ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="mel-decay" min=".05" max="4" step=".05" value=".8" oninput="updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="meldec-val">0.8s</div></div>
@@ -4382,9 +4544,18 @@ body.mode-free .pro-only { display:none !important; }
   <div class="row" style="margin-top:4px">
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
   </div>
+  </div>
  </div>
 
  </div><!-- /pf-melody-panel -->
+
+ <!-- MōdFX sits with Chords and Melody because it is a performance surface,
+      not a setting — and last of the three, because it is what you reach for
+      after the part rather than before it. -->
+ <div class="pf-surface-lbl pro-only">MōdFX</div>
+ <div id="pf-fx-panel" style="display:none;width:100%;max-width:700px">
+  <div class="panel p-perform" id="modfx-panel"></div>
+ </div>
 
 
  <!-- Sound engine lives BELOW the chords and the melody player: you pick a
@@ -4671,7 +4842,10 @@ body.mode-free .pro-only { display:none !important; }
     <div class="row">
      <button class="tb" data-fingtoggle onclick="toggleFingering()"
       title="A chart of how to finger each note on a chosen instrument — trumpet valves, sax keys, guitar and bass positions. It appears under the melody strip and follows whatever note you play.">Instrument fingerings: OFF</button>
+     <button class="tb" data-tonetoggle onclick="toggleToneControls()"
+      title="Attack, release, reverb and strum, inside the sound picker on the Play tab. Advanced always has them; this is how to reach them without leaving Basic.">Sound shaping: OFF</button>
     </div>
+    <div class="ss-hint">Sound shaping puts attack, release, reverb and strum back under the sound picker while you stay in Basic. Off by default — Basic is for picking a sound and playing it, not for dialling one in.</div>
     <div class="ss-hint">How to finger each note on trumpet, sax, clarinet, flute, guitar or bass. It follows the note you play, under the melody strip. Off by default — it is a reference you want while learning a set of shapes, not every day.</div>
     <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:8px;letter-spacing:.05em;line-height:1.7">
      Basic and Advanced view live in the transport's ⋯ menu, so you can change how much is on screen without leaving what you are playing.
@@ -6725,13 +6899,23 @@ function _resyncEngines(){
  if(typeof ensureClockRunning==='function') ensureClockRunning();
 }
 
-let _gestureResumeArmed=false;
+// How many taps have tried and failed to revive the context. iOS can leave an
+// AudioContext that no gesture will bring back — and nothing here ever built a
+// replacement, so the app stayed silent until it was force-quit, which is the
+// one thing that did work because it made a fresh context. Rebuilding the
+// graph in place would mean reaching into every engine's cached nodes; a
+// reload gets the same fresh context in one tap, and the session is already
+// autosaved every 20 seconds and on the way out, so the unlock screen comes
+// back offering "Pick up where I left off".
+let _gestureResumeArmed=false, _resumeFails=0, _lastResumeTry=0;
+const RESUME_FAILS_BEFORE_RELOAD = 2;
 function _armGestureResume(){
  if(_gestureResumeArmed) return;
  _gestureResumeArmed=true;
  _showAudioStalledBar(true);
  const go=()=>{
   if(!audioCtx) return _disarm();
+  if(_resumeFails >= RESUME_FAILS_BEFORE_RELOAD){ _reloadForAudio(); return; }
   audioCtx.resume().then(()=>{
    if(_audioRunning()){ _disarm(); _resyncEngines(); showToast('Audio is back'); }
   }).catch(()=>{});
@@ -6742,10 +6926,20 @@ function _armGestureResume(){
    const src=audioCtx.createBufferSource(); src.buffer=b;
    src.connect(audioCtx.destination); src.start(0);
   }catch(e){}
-  setTimeout(()=>{ if(_audioRunning()){ _disarm(); _resyncEngines(); } }, 120);
+  setTimeout(()=>{
+   if(_audioRunning()){ _disarm(); _resyncEngines(); return; }
+   // A tap reached this handler and the context still will not run, so this
+   // one is not going to come back on its own. One tap raises pointerdown and
+   // click both, and go() is bound to each so that whichever the browser gives
+   // us revives the context — but that is still one attempt, not two.
+   const now=Date.now();
+   if(now - _lastResumeTry < 600) return;
+   _lastResumeTry = now;
+   if(++_resumeFails >= RESUME_FAILS_BEFORE_RELOAD) _showAudioStalledBar(true,'reload');
+  }, 120);
  };
  function _disarm(){
-  _gestureResumeArmed=false;
+  _gestureResumeArmed=false; _resumeFails=0;
   _showAudioStalledBar(false);
   ['pointerdown','touchend','keydown','click'].forEach(ev=>
    document.removeEventListener(ev, go, true));
@@ -6757,17 +6951,27 @@ function _armGestureResume(){
  window._disarmGestureResume=_disarm;
 }
 
-function _showAudioStalledBar(show){
+// Last resort when the context is beyond reviving: save and reload, which is
+// the force-quit the user would otherwise have to do by hand.
+function _reloadForAudio(){
+ try{ if(typeof saveLastSession==='function') saveLastSession(); }catch(e){}
+ location.reload();
+}
+
+function _showAudioStalledBar(show, mode){
  let el=document.getElementById('_audio-stalled');
  if(!show){ if(el) el.classList.remove('show'); return; }
  if(!el){
   el=document.createElement('button');
   el.id='_audio-stalled'; el.type='button';
-  el.innerHTML='<span class="as-dot" aria-hidden="true"></span>'
-   +'<span>Audio paused while you were away — tap anywhere to resume</span>';
   el.addEventListener('click',()=>{});   // the capture listener does the work
   document.body.appendChild(el);
  }
+ el.innerHTML='<span class="as-dot" aria-hidden="true"></span><span>'
+  + (mode==='reload'
+     ? 'Audio didn’t come back — tap to restart (your work is saved)'
+     : 'Audio paused while you were away — tap anywhere to resume')
+  + '</span>';
  requestAnimationFrame(()=>el.classList.add('show'));
 }
 
@@ -11655,6 +11859,204 @@ function makeOutBtn(label,noteN,type7,crm,func){
 // ═══════════════════════════════════════
 // RENDER CHORDS
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// CHORD CATALOGS — Basic + Pro
+// ═══════════════════════════════════════
+// Basic shows seven diatonic pads. That is the right default and the wrong
+// ceiling: the modal and secondary-dominant vocabulary is already in the app,
+// and Advanced's answer — put all of it on screen at once — is the thing Basic
+// exists to avoid. So the two catalogs stay as lists you browse, and what you
+// tick out of them lands in one row of your own.
+//
+// One palette, kept across modes. ♭VI in Dorian is not the chord ♭VI is in
+// major, so a pick cannot simply be carried over by name — but making you
+// rebuild it every time you change mode is worse. So what is stored is the
+// intent (which catalog, which degree, and how far above the root it sat), and
+// it is resolved against whatever mode is current: same degree if that mode
+// has it, otherwise the nearest chord by interval.
+//
+// The stored form is never rewritten by a mode change. Resolving is lossy —
+// two picks can land on one chord — and a palette that quietly degraded every
+// time you auditioned a mode would not survive the trip back.
+let cpPicks = [];
+function cpLoad(){
+ try{
+  const raw = JSON.parse(localStorage.getItem('modo-chord-palette')||'[]');
+  cpPicks = Array.isArray(raw) ? raw.filter(p=>p && p.src && p.label) : [];
+ }catch(e){ cpPicks = []; }
+}
+function cpSave(){
+ try{ localStorage.setItem('modo-chord-palette', JSON.stringify(cpPicks)); }catch(e){}
+}
+cpLoad();
+function cpKey(p){ return p.src+'|'+p.label; }
+// Distance around the twelve semitones, so ♭II and the major seventh are one
+// step apart rather than eleven.
+function cpDist(a,b){ const d=Math.abs(((a-b)%12+12)%12); return Math.min(d,12-d); }
+// Which chord in the current mode a stored pick means now. Its own catalog
+// first, and within that an exact degree beats a near interval.
+function cpResolve(pick, srcs){
+ const own = srcs[pick.src]||[], other = (pick.src==='borrowed'?srcs.secdom:srcs.borrowed)||[];
+ const exact = own.find(c=>c.label===pick.label);
+ if(exact) return exact;
+ let best=null, bestD=99;
+ own.concat(other).forEach(c=>{
+  const d=cpDist(c.semis, pick.semis);
+  if(d<bestD){ bestD=d; best=c; }
+ });
+ return best;
+}
+function cpToggle(chord){
+ const srcs=cpSources();
+ // Unticking has to remove whichever stored pick is currently showing as this
+ // chord, which after a mode change need not be the one that names it.
+ const i = cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpKey(r)===cpKey(chord); });
+ if(i>=0) cpPicks.splice(i,1);
+ else cpPicks.push({src:chord.src, label:chord.label, semis:chord.semis});
+ cpSave();
+ cpRenderAll();
+}
+
+// The two source catalogs, resolved for whatever mode is current.
+function cpSources(){
+ return {
+  borrowed: (typeof getAllBorrowed==='function' ? getAllBorrowed(mode) : []).map(b=>
+   ({src:'borrowed', label:b.label, semis:b.semis, type7:b.type7, func:b.func})),
+  secdom: (typeof getSecDoms==='function' ? getSecDoms(mode) : []).map(b=>
+   ({src:'secdom', label:b.label, semis:b.semis, type7:b.type7, func:'dom'}))
+ };
+}
+// The palette as it stands in this mode, in the order it was built. Two picks
+// can resolve onto one chord after a mode change, so duplicates collapse.
+function cpChosen(){
+ const srcs=cpSources(), seen={}, out=[];
+ cpPicks.forEach(p=>{
+  const c=cpResolve(p,srcs);
+  if(!c) return;
+  const k=cpKey(c);
+  if(seen[k]) return;
+  seen[k]=1; out.push(c);
+ });
+ return out;
+}
+function cpHas(chord){
+ return cpChosen().some(c=>cpKey(c)===cpKey(chord));
+}
+
+let _cpOpen=null;
+function cpClose(){
+ if(!_cpOpen) return;
+ _cpOpen.classList.remove('open');
+ _cpOpen._pop.classList.remove('open');
+ _cpOpen.querySelector('.chordpick-btn')?.setAttribute('aria-expanded','false');
+ _cpOpen=null;
+ document.removeEventListener('pointerdown', _cpOutside);
+ window.removeEventListener('scroll', _cpReflow, true);
+ window.removeEventListener('resize', _cpReflow);
+}
+function _cpOutside(e){
+ if(!_cpOpen) return;
+ if(!_cpOpen.contains(e.target) && !_cpOpen._pop.contains(e.target)) cpClose();
+}
+function _cpReflow(){ if(_cpOpen) cpPlace(_cpOpen); }
+// Same reasoning as the sound picker: every .panel is overflow:hidden, so the
+// popover lives on <body> and is positioned off the trigger's rect.
+function cpPlace(wrap){
+ const pop=wrap._pop; if(!pop) return;
+ const M=8, b=wrap.getBoundingClientRect();
+ pop.style.maxHeight='none'; pop.style.left='0px'; pop.style.top='0px';
+ const w=pop.offsetWidth, h=pop.offsetHeight;
+ let x=b.left;
+ if(x+w > window.innerWidth-M) x=window.innerWidth-M-w;
+ if(x<M) x=M;
+ const below=window.innerHeight-b.bottom-M;
+ let y;
+ if(h<=below || below>=b.top-M){ y=b.bottom+4; pop.style.maxHeight=below+'px'; }
+ else { y=Math.max(M, b.top-4-h); pop.style.maxHeight=(b.top-M-4)+'px'; }
+ pop.style.left=x+'px'; pop.style.top=y+'px'; pop.style.overflowY='auto';
+}
+
+const CP_DEFS=[
+ {id:'cp-borrowed', label:'Modal',     src:'borrowed'},
+ {id:'cp-secdom',   label:'Secondary', src:'secdom'},
+ {id:'cp-user',     label:'My Chords', src:'user'}
+];
+
+function cpBuild(){
+ CP_DEFS.forEach(def=>{
+  const wrap=document.getElementById(def.id); if(!wrap) return;
+  if(!wrap._pop){
+   const btn=document.createElement('button');
+   btn.className='chordpick-btn'; btn.type='button';
+   btn.setAttribute('aria-haspopup','true');
+   btn.setAttribute('aria-expanded','false');
+   btn.innerHTML='<span class="cp-lbl"></span><span class="chordpick-n"></span>';
+   const pop=document.createElement('div');
+   pop.className='chordpick-pop'; pop.id='cppop-'+def.src;
+   wrap._pop=pop; pop._wrap=wrap;
+   document.body.appendChild(pop);
+   wrap.appendChild(btn);
+   btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    const wasOpen=wrap.classList.contains('open');
+    cpClose();
+    if(wasOpen) return;
+    if(typeof sndPickClose==='function') sndPickClose();
+    wrap.classList.add('open'); pop.classList.add('open');
+    btn.setAttribute('aria-expanded','true');
+    _cpOpen=wrap;
+    cpPlace(wrap);
+    setTimeout(()=>document.addEventListener('pointerdown', _cpOutside), 0);
+    window.addEventListener('scroll', _cpReflow, true);
+    window.addEventListener('resize', _cpReflow);
+   });
+  }
+  const items = def.src==='user' ? cpChosen() : cpSources()[def.src];
+  wrap.querySelector('.cp-lbl').textContent=def.label;
+  const n = def.src==='user' ? items.length
+          : items.filter(c=>cpHas(c)).length;
+  wrap.querySelector('.chordpick-n').textContent = def.src==='user' ? String(items.length) : (n+'/'+items.length);
+  const pop=wrap._pop;
+  pop.innerHTML='';
+  if(!items.length){
+   const e=document.createElement('div'); e.className='cp-empty';
+   e.textContent = def.src==='user'
+    ? 'Nothing added yet. Tick chords in Modal or Secondary and they appear here, and as pads under the grid.'
+    : 'This mode has none.';
+   pop.appendChild(e);
+   return;
+  }
+  items.forEach(c=>{
+   const on=cpHas(c);
+   const b=document.createElement('button');
+   b.className='cp-item'+(on?' on':''); b.type='button';
+   b.innerHTML='<span class="cp-box">'+(on?'✓':'')+'</span>'
+     +'<span class="cp-deg">'+c.label+'</span>'
+     +'<span class="cp-note">'+nn((root+c.semis)%12)+(SUFFIX7[c.type7]||'')+'</span>';
+   b.addEventListener('click', ev=>{ ev.stopPropagation(); cpToggle(c); });
+   pop.appendChild(b);
+  });
+  if(_cpOpen===wrap) cpPlace(wrap);
+ });
+}
+
+// The chosen chords as real pads — makeOutBtn, the same builder the Advanced
+// rows use, so they carry the 7th strip and the function colour rather than
+// being a lesser copy.
+function cpRenderUserRow(){
+ const el=document.getElementById('chords-user');
+ const wrap=document.getElementById('chords-user-wrap');
+ if(!el||!wrap) return;
+ const chosen=cpChosen();
+ wrap.style.display = chosen.length ? '' : 'none';
+ el.innerHTML='';
+ const rm=rootMidi();
+ chosen.forEach(c=>{
+  el.appendChild(makeOutBtn(c.label, nn((root+c.semis)%12), c.type7, rm+c.semis, c.func));
+ });
+}
+function cpRenderAll(){ cpBuild(); cpRenderUserRow(); }
+
 function renderChords(){
  const md=MODES[mode]||MODES.major;
  const steps=md.steps, triadQs=md.triadQ, types7=md.seventh, nums=md.nums, funcs=md.func;
@@ -11697,6 +12099,9 @@ function renderChords(){
  const noteN=nn((root+b.semis)%12);
  sEl.appendChild(makeOutBtn(b.label,noteN,b.type7,crm,'dom'));
  });
+
+ // The catalogs and My Chords follow key and mode like every other row here.
+ if(typeof cpRenderAll==='function') cpRenderAll();
 
  // Also update chart picker and mode-aware progression presets
  buildChartPicker();
@@ -11755,7 +12160,165 @@ function buildVoicePickers(){
  mk('bw-voices','wave', wave, setWave);
  mk('aw-voices','arpwave', arpWave, setArpWave);
  if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
+ if(typeof sndPickInit==='function') sndPickInit();
 }
+
+// ─── Sound pickers as dropdowns ───
+// Which sound a part is playing is a thing you set once and then read; the
+// fifteen-button row was spending a chord grid's worth of screen on the
+// setting half of that. Each row is wrapped — not rebuilt — so the builders
+// above keep owning their own buttons and every [data-wave] / [data-melwave] /
+// [data-arpwave] query elsewhere still finds them. The wrapper only adds a
+// trigger that names the current sound, and shuts on a pick.
+// host — the button row that already exists on the page.
+// tone — an optional block of "how it is shaped" controls (envelope, reverb,
+//        strum) that becomes the picker's second layer. Only the Play tab's
+//        two voices have one; the arp's row is presets and nothing else.
+const SND_PICK_HOSTS = [
+ {host:'bw-voices',        tone:'chord-tone-body'},
+ {host:'sb-voices'},
+ {host:'melvoice-settings', tone:'mel-tone-body'},
+ {host:'aw-voices'},
+ {host:'melvoice-inline'}
+];
+let _sndPickOpen = null;
+
+function sndPickClose(){
+ if(!_sndPickOpen) return;
+ const wrap = _sndPickOpen;
+ wrap.classList.remove('open');
+ wrap._pop.classList.remove('open');
+ wrap.querySelector('.snd-pick-btn')?.setAttribute('aria-expanded','false');
+ _sndPickOpen = null;
+ document.removeEventListener('pointerdown', _sndPickOutside);
+ window.removeEventListener('scroll', _sndPickReflow, true);
+ window.removeEventListener('resize', _sndPickReflow);
+}
+// The popover is no longer a descendant of its trigger, so "outside" has to
+// mean outside both of them.
+function _sndPickOutside(e){
+ if(!_sndPickOpen) return;
+ if(!_sndPickOpen.contains(e.target) && !_sndPickOpen._pop.contains(e.target)) sndPickClose();
+}
+function _sndPickReflow(){ if(_sndPickOpen) sndPickPlace(_sndPickOpen); }
+// A CSS-only anchor cannot know how much room the trigger has left of it:
+// left:0 ran the menu off the right edge on a phone, and flipping to right:0
+// ran it off the left instead, since these triggers sit early in their rows.
+// So it opens flush-left and is then slid back inside the viewport.
+// Anchored under the trigger and then pulled back inside the viewport. A
+// CSS-only anchor could not do this: these triggers sit early in their rows,
+// so a left edge ran off the right of a phone and a right edge ran off the
+// left.
+function sndPickPlace(wrap){
+ const pop = wrap._pop; if(!pop) return;
+ const M = 8;
+ const b = wrap.getBoundingClientRect();
+ pop.style.maxHeight = 'none';
+ pop.style.left = '0px'; pop.style.top = '0px';
+ const w = pop.offsetWidth, h = pop.offsetHeight;
+ let x = b.left;
+ if(x + w > window.innerWidth - M) x = window.innerWidth - M - w;
+ if(x < M) x = M;
+ // Below the trigger, unless there is more room above it — which is where a
+ // picker near the bottom of the page ends up.
+ const below = window.innerHeight - b.bottom - M;
+ let y;
+ if(h <= below || below >= b.top - M){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
+ else { y = Math.max(M, b.top - 4 - h); pop.style.maxHeight = (b.top - M - 4) + 'px'; }
+ pop.style.left = x + 'px';
+ pop.style.top  = y + 'px';
+ pop.style.overflowY = 'auto';
+}
+// The label is read off whichever button is .active rather than from the
+// state variables, because five different setters and the Voices dock can all
+// change a part's voice and only the buttons are guaranteed to be repainted.
+function sndPickSyncLabel(wrap){
+ const host = wrap._pop && wrap._pop.querySelector('.snd-pick-menu');
+ const cur  = wrap.querySelector('.snd-pick-cur');
+ if(!host || !cur) return;
+ const on = host.querySelector('.tb.active');
+ cur.textContent = on ? on.textContent : '—';
+}
+
+function sndPickInit(){
+ SND_PICK_HOSTS.forEach(spec=>{
+  const host = document.getElementById(spec.host);
+  if(!host) return;
+  // The popover is on <body>, so the host is no longer inside its own wrapper
+  // once wired — ask the popover which wrapper owns it instead, or this builds
+  // a second picker every time the voice rows are rebuilt.
+  const existing = host.closest('.snd-pick-pop');
+  let wrap = existing && existing._wrap;
+  if(!wrap){
+   wrap = document.createElement('div');
+   wrap.className = 'snd-pick';
+   wrap.id = 'sndpick-' + spec.host;
+   host.parentNode.insertBefore(wrap, host);
+   const btn = document.createElement('button');
+   btn.className = 'snd-pick-btn';
+   btn.type = 'button';
+   btn.setAttribute('aria-haspopup','true');
+   btn.setAttribute('aria-expanded','false');
+   btn.setAttribute('aria-label','Choose sound');
+   btn.innerHTML = '<span class="snd-pick-cur">—</span><span class="snd-pick-caret" aria-hidden="true">▾</span>';
+   btn.addEventListener('click', e=>{
+    e.stopPropagation();
+    const wasOpen = wrap.classList.contains('open');
+    sndPickClose();
+    if(wasOpen) return;
+    wrap.classList.add('open');
+    pop.classList.add('open');
+    btn.setAttribute('aria-expanded','true');
+    _sndPickOpen = wrap;
+    sndPickPlace(wrap);
+    setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
+    window.addEventListener('scroll', _sndPickReflow, true);
+    window.addEventListener('resize', _sndPickReflow);
+   });
+   const pop = document.createElement('div');
+   pop.className = 'snd-pick-pop';
+   pop.id = 'sndpop-' + spec.host;
+   wrap._pop = pop; pop._wrap = wrap;
+   document.body.appendChild(pop);
+   wrap.appendChild(btn);
+   pop.appendChild(host);
+   host.classList.add('snd-pick-menu');
+   // Picking a voice is the whole point of opening this, so it shuts on a
+   // choice. Scoped to the preset row rather than to .tb, because the tone
+   // drawer below has toggles of its own that must not close it. Delegated,
+   // because the builders replace these buttons wholesale.
+   host.addEventListener('click', e=>{
+    if(e.target.closest('.tb')) sndPickClose();
+   });
+   // The active class is set by whoever changed the voice, not by this menu,
+   // so the trigger follows the buttons instead of the click.
+   new MutationObserver(()=>sndPickSyncLabel(wrap))
+    .observe(host, {subtree:true, childList:true, attributes:true, attributeFilter:['class']});
+
+   const tone = spec.tone && document.getElementById(spec.tone);
+   if(tone){
+    const head = document.createElement('button');
+    head.className = 'snd-tone-head';
+    head.type = 'button';
+    head.setAttribute('aria-expanded','false');
+    head.innerHTML = '<span class="snd-tone-caret" aria-hidden="true">›</span>Tone';
+    head.addEventListener('click', e=>{
+     e.stopPropagation();
+     const open = head.getAttribute('aria-expanded')==='true';
+     head.setAttribute('aria-expanded', open ? 'false' : 'true');
+     // The drawer changes the popover's height, which can push it off the
+     // bottom or past the right edge it was measured against.
+     sndPickPlace(wrap);
+    });
+    pop.appendChild(head);
+    tone.classList.add('snd-tone-body');
+    pop.appendChild(tone);
+   }
+  }
+  sndPickSyncLabel(wrap);
+ });
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') sndPickClose(); });
 
 // Sampled voices fetch as soon as they're selected, anywhere, so the first
 // note has the best chance of being the real instrument and not the fallback.
@@ -16948,19 +17511,34 @@ function setSettingsPane(which){
 }
 window.addEventListener('resize', positionAllSubnavLeds);
 
+function _fxAllowed(){
+ try{ return typeof fxIsAvailable!=='function' || fxIsAvailable(); }catch(e){ return false; }
+}
 function setPerformMode(m){
  // MōdFX is pro. Asking for it without the entitlement lands on Chords rather
  // than on an empty panel.
- if(m==='fx' && typeof fxIsAvailable==='function' && !fxIsAvailable()) m='chords';
+ if(m==='fx' && !_fxAllowed()) m='chords';
  performMode = m;
+ // Basic puts every playing surface on one screen. The sub-tabs put three
+ // taps between three things you use together — chords under a hand, melody
+ // under the other, MōdFX under a thumb — on the one tab whose whole job is
+ // playing them. Advanced keeps them separate, because there each one carries
+ // far more than fits beside the others.
+ const oneScreen = document.body.classList.contains('mode-basic');
+ // The tier is a `let` declared thousands of lines below this, and the view
+ // mode is restored during boot — so at that point asking whether MōdFX is
+ // allowed throws on the temporal dead zone rather than answering. Treat
+ // "cannot tell yet" as no; setModTier lays the tab out again once it knows.
+ const fxOK = _fxAllowed();
  document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-fx-btn')?.classList.toggle('active', m==='fx');
- document.getElementById('pf-chords-panel').style.display = m==='chords'?'':'none';
- document.getElementById('pf-melody-panel').style.display = m==='melody'?'':'none';
+ document.getElementById('pf-chords-panel').style.display = (oneScreen || m==='chords')?'':'none';
+ document.getElementById('pf-melody-panel').style.display = (oneScreen || m==='melody')?'':'none';
  const fxp=document.getElementById('pf-fx-panel');
- if(fxp) fxp.style.display = m==='fx'?'':'none';
- if(m==='fx'){
+ const showFx = (oneScreen && fxOK) || m==='fx';
+ if(fxp) fxp.style.display = showFx?'':'none';
+ if(showFx){
   // Re-run every time: the drum bus may only have appeared since last visit.
   if(typeof fxInsertAll==='function') fxInsertAll();
   if(typeof fxBuildPanel==='function' && !document.getElementById('fx-pad')) fxBuildPanel();
@@ -20075,7 +20653,21 @@ var GM_DRUM_MAP={
   // Found by the audit below, both pre-existing: MōdKit's Crash was unmapped
   // and exported as Hand Clap, and IDM's Zapp and Glitch shared note 70.
   'Crash':49,      // Crash Cymbal 1
-  'Zapp':75        // Claves — Glitch keeps 70, so the two stay on separate pads
+  'Zapp':75,       // Claves — Glitch keeps 70, so the two stay on separate pads
+  // Aux Perc. Every one of these was unmapped, so the whole layer exported onto
+  // note 39 and stacked on one pad — the same bug the Jazz kit had. They are
+  // also what the grid now sorts rows by, so an unmapped voice would have no
+  // place to sit on screen either.
+  'Shaker':82,
+  'Tamb':54,       // Tambourine
+  'Hi Conga':63,   // Open Hi Conga
+  'Lo Conga':64,   // Low Conga — a higher GM note than the hi conga, which is
+                   // the standard's own quirk, not a typo
+  'Clave':75,      // Claves. Shares 75 with IDM's Zapp, but they are in
+                   // different machines, and the audit only forbids a clash
+                   // inside one kit.
+  'Triangle':81,   // Open Triangle
+  'Woodblk':76     // Hi Wood Block
 };
 // Nothing may share a note within one machine, or two voices collapse onto one
 // pad on export. Checked at load rather than trusted.
@@ -22067,6 +22659,26 @@ function sqRenderMachines(){
   });
 }
 
+// Row order on screen, top to bottom, returned as a list of DATA indices. The
+// index itself never moves: sqGrid, the per-track volume and pitch stores,
+// saved patterns and the MIDI mapping are all keyed by it, so reordering the
+// tracks array would silently rewrite every pattern anyone has saved.
+//
+// Kick at the bottom and cymbals at the top is how a kit stacks in a piano
+// roll, so the rows sort by the same GM note the kit exports to — highest
+// first. That means the grid and an exported MIDI file read the same way
+// round, which is the point: the order on screen is the order on the pads.
+function sqRowOrder(tracks){
+  return tracks.map(function(_,i){ return i; }).sort(function(a,b){
+    var na = GM_DRUM_MAP[tracks[a].n], nb = GM_DRUM_MAP[tracks[b].n];
+    // An unmapped voice has no pad to sit next to, so it keeps its authored
+    // position at the bottom rather than landing somewhere arbitrary.
+    if(na==null) na = -1;
+    if(nb==null) nb = -1;
+    return (nb - na) || (a - b);
+  });
+}
+
 function sqRenderGrid(){
   var gLeft=document.getElementById('sq-gLeft');
   var gInner=document.getElementById('sq-gInner');
@@ -22093,7 +22705,8 @@ function sqRenderGrid(){
   gInner.appendChild(rrow);
   var rsp=document.createElement('div');rsp.className='sq-gspacer';gRight.appendChild(rsp);
   var tracks=(SQM[sqMach]||{tracks:[]}).tracks;
-  tracks.forEach(function(tr,ti){
+  sqRowOrder(tracks).forEach(function(ti){
+    var tr=tracks[ti];
     var color=tr.c;
     if(!sqGrid[ti]){sqGrid[ti]=[];while(sqGrid[ti].length<sqSteps)sqGrid[ti].push(sqMkCell());}
     sqStepEls[ti]={};
@@ -27018,6 +27631,9 @@ function setViewMode(mode){
   if(btnA){ btnA.classList.toggle('active', !isBasic); }
   try{ localStorage.setItem('modo-view-mode', mode); }catch(e){}
   if(typeof msApplyBasicGate==='function') msApplyBasicGate();
+  // Basic stacks the playing surfaces and Advanced separates them, so the Play
+  // tab has to be laid out again on every switch, not just on a sub-tab tap.
+  if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
@@ -27041,6 +27657,24 @@ function msApplyBasicGate(){
   b.style.display = (!isBasic || b.classList.contains('active')) ? '' : 'none';
  });
 }
+// Attack, release, reverb and strum are off the surface in Basic. This is the
+// way back to them without going to Advanced — Basic is for picking a sound and
+// playing it, but "never" and "not by default" are different promises.
+function toggleToneControls(force){
+  var on = (force===undefined) ? !document.body.classList.contains('show-tone') : !!force;
+  document.body.classList.toggle('show-tone', on);
+  try{ localStorage.setItem('modo-show-tone', on?'1':'0'); }catch(e){}
+  document.querySelectorAll('[data-tonetoggle]').forEach(function(b){
+    b.textContent='Sound shaping: '+(on?'ON':'OFF');
+    b.classList.toggle('active', on);
+  });
+}
+(function(){
+  var on=false;
+  try{ on = localStorage.getItem('modo-show-tone')==='1'; }catch(e){}
+  toggleToneControls(on);
+})();
+
 // Initialize from localStorage (default: basic)
 (function(){
   var saved = 'basic';
@@ -28141,7 +28775,7 @@ function fxBuildPanel(){
  const host=document.getElementById('modfx-panel'); if(!host) return;
  host.innerHTML =
   '<div class="fx-head">'
-  + '<div class="fx-title">MōdFX<span class="fx-sub">X/Y Performance Effects</span></div>'
+  + '<div class="fx-title">MōdFX<span class="fx-sub pf-info">X/Y Performance Effects</span></div>'
   + '<div class="fx-head-btns">'
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
@@ -28330,6 +28964,27 @@ function fxPaintPad(){
    grd.addColorStop(0,'hsla('+kh+',80%,60%,.30)');
    grd.addColorStop(1,'hsla('+kh+',80%,60%,0)');
    g.fillStyle=grd; g.fillRect(0,0,r.w,r.h);
+   // Crosshair. The glow alone says roughly where the finger is but not what
+   // either axis reads on its own, and under a fingertip it says nothing at
+   // all — the one place you cannot see is the place you are touching. Two
+   // full-width lines put both values out at the edges, where they stay
+   // visible, and moving with the finger is what confirms the pad is hearing
+   // the gesture at all.
+   g.strokeStyle='hsla('+kh+',85%,68%,.55)'; g.lineWidth=1;
+   g.beginPath(); g.moveTo(cx,0); g.lineTo(cx,r.h); g.stroke();
+   g.beginPath(); g.moveTo(0,cy); g.lineTo(r.w,cy); g.stroke();
+   // Edge ticks: heavier stubs where the crosshair meets the frame, so each
+   // axis has a mark you can read without hunting for the intersection.
+   g.strokeStyle='hsla('+kh+',90%,72%,.95)'; g.lineWidth=3;
+   g.beginPath(); g.moveTo(cx,0); g.lineTo(cx,7); g.stroke();
+   g.beginPath(); g.moveTo(cx,r.h-7); g.lineTo(cx,r.h); g.stroke();
+   g.beginPath(); g.moveTo(0,cy); g.lineTo(7,cy); g.stroke();
+   g.beginPath(); g.moveTo(r.w-7,cy); g.lineTo(r.w,cy); g.stroke();
+   // The handle itself, ringed so it reads against both the glow and a dark
+   // corner of the pad.
+   g.beginPath(); g.arc(cx,cy,6,0,Math.PI*2);
+   g.fillStyle='hsla('+kh+',90%,65%,.9)'; g.fill();
+   g.lineWidth=1.5; g.strokeStyle='rgba(255,255,255,.85)'; g.stroke();
   }
  }
 }
@@ -28443,6 +29098,10 @@ function setModTier(t){
   document.body.classList.toggle('mode-free', _modTier==='free');
   try{ localStorage.setItem('modo-tier', _modTier); }catch(e){}
   if(_modTier==='free' && performMode==='fx' && typeof setPerformMode==='function') setPerformMode('chords');
+  // Basic stacks MōdFX in with the other playing surfaces, so whether it is on
+  // screen at all is a tier question — and this is the first point in boot
+  // where the tier is actually known.
+  else if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
 }
