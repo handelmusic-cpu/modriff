@@ -586,19 +586,19 @@ body.mode-basic #page-perform .mel-strip { max-width:none; }
 body.mode-basic #page-perform > #pf-fx-panel,
 body.mode-basic #page-perform > .key-strip { max-width:var(--basic-col) !important; }
 
-/* The melody keys are a horizontal scroller of fixed 44px keys — fine when the
-   strip was one of several screens, wrong when it is a third of the only one:
-   the octave ran off the edge and read as clipped rather than scrollable. They
-   grow to share the column where they fit, and hold a playable 34px where they
-   do not, at which point the strip scrolls as it always did. Filling the width
-   is worth having; fifteen 23px keys are not. */
-body.mode-basic .mel-keys { width:100%; flex:1 1 auto; gap:3px; }
-body.mode-basic .mel-key { flex:1 1 0; min-width:34px; }
-body.mode-basic .mel-btn { width:100%; min-width:34px; }
+/* The solo keys keep their size at every width. Squeezing fifteen of them into
+   a phone made each 23px — visible, and unplayable. They stay 44px and the
+   strip scrolls to reach the rest; see .mel-btn's touch-action for why that
+   scroll only half-worked before. */
 
 /* The surface heading above it already says MōdFX. */
 body.mode-basic #modfx-panel > .fx-head .fx-title { display:none; }
 body.mode-basic #modfx-panel > .fx-head { justify-content:flex-end; }
+/* Same for the solo strip: the heading says MELODY, and the panel said
+   "Melody / Solo" directly under it. The octave and Hold stay. */
+body.mode-basic #melody-panel > .panel-title > .pt-icon { display:none; }
+body.mode-basic #melody-panel > .panel-title { font-size:0; gap:6px; }
+body.mode-basic #melody-panel > .panel-title > * { font-size:.6rem; }
 
 /* The key strip wrapped to two lines because the key block, the mode buttons
    and the Basic/Advanced pill add up to more than a phone is wide. Everything
@@ -653,7 +653,11 @@ body.mode-basic.show-tone .snd-tone-head[aria-expanded="true"] + .snd-tone-body 
  border-top:1px solid hsla(var(--kh), 70%, 60%, .14);
  border-bottom:1px solid var(--mel-edge, rgba(216,227,74,.14));
 }
-.chordpick-row .chordpick-btn { font-size:.44rem; padding:6px 3px; letter-spacing:.04em; }
+.chordpick-row .chordpick-btn { font-size:.44rem; padding:6px 4px; letter-spacing:.03em; gap:3px; }
+/* When the row is tight it is the name that gives way, never the count: "SEC"
+   still reads as Secondary, while a clipped "0/" reads as nothing. */
+.chordpick-btn .cp-lbl { overflow:hidden; text-overflow:clip; white-space:nowrap; min-width:0; }
+.chordpick-btn .chordpick-n { flex:none; }
 .chordpick { position:relative; display:inline-flex; flex:1 1 auto; min-width:0; }
 .chordpick-btn {
  display:inline-flex; align-items:center; gap:6px; width:100%;
@@ -884,7 +888,10 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
    wide from having its first keys pushed off the scrollable area, where no
    amount of scrolling reaches them. */
 .mel-keys-wrap { overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch;
+                 overscroll-behavior-x:contain; scroll-behavior:smooth;
+                 scrollbar-width:none;
                  display:flex; justify-content:center; justify-content:safe center; }
+.mel-keys-wrap::-webkit-scrollbar { display:none; }
 .mel-keys { display:flex; gap:4px; flex:0 0 auto; padding:3px 3px 6px; flex-wrap:nowrap; }
 .mel-key { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
 .mel-btn {
@@ -892,7 +899,15 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
  background:var(--surf2); border:1px solid var(--border2);
  display:flex; align-items:flex-end; justify-content:center;
  padding-bottom:8px; transition:all .07s; cursor:pointer;
- position:relative; overflow:hidden; touch-action:none;
+ position:relative; overflow:hidden;
+ /* pan-x, not none. The strip has always been a horizontal scroller, but every
+    key told the browser "this gesture is mine" — so a swipe only scrolled if
+    it happened to start in the 4px gap between two keys, which is why reaching
+    the top of the range felt like it only sometimes worked. Horizontal now
+    belongs to the scroller (smooth, with momentum, for free) and vertical
+    stays ours, which is the axis Touch Mod reads. Sliding off a key cancels
+    its pointer, so the note stops as your finger leaves it. */
+ touch-action:pan-x;
  box-shadow:0 2px 8px rgba(0,0,0,.3);
 }
 .mel-btn::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--mel-c); opacity:.6; border-radius:var(--r-md) var(--r-md) 0 0; }
