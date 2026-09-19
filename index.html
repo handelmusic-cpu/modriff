@@ -1191,6 +1191,17 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 /* Same reason as the play button: --modal is the key hue, so the running step
    went red in C and matched the recorders. */
 body.mode-basic .perf-bar .beat-dot.active { background:#a855f7 !important; }
+/* beatBounce scales the whole element by 1.9. On the 5px round dot it was
+   written for that is a bounce; on a beat-wide bar it stretches sideways into
+   its neighbours, and the swelling runs along the meter as it plays. A bar
+   pops vertically instead — same accent on the hit, no width that moves. */
+body.mode-basic .perf-bar #ft-beat-dots .beat-dot.active {
+ animation:beatPop .18s cubic-bezier(.22,.68,0,1.3) forwards !important;
+}
+@keyframes beatPop {
+ 0%   { transform:scaleY(2.2); box-shadow:0 0 10px 2px #a855f7; }
+ 100% { transform:scaleY(1);   box-shadow:0 0 6px rgba(168,85,247,.45); }
+}
 .beat-dot.accent { background:var(--dom); }
 
 /* ═══════════════════════════════════════
@@ -10098,7 +10109,13 @@ function scheduleRhythm(){
  const _r3=RHYTHMS[rhythmSel];
  setBeatDots(ci,_r3.pat.length,_r3.kick,'rhy');
  // Compute isBeat from time signature step groups
- const isBeat = (rhythmIdx % _stepsPerBeat('rhy') === 0);
+ // The beat the arp snaps to is a group boundary, which in 7/8 is not a fixed
+ // number of steps apart.
+ const _g3 = _beatGroups('rhy', _r3.pat.length);
+ const _bar3 = _g3.reduce((a,b)=>a+b,0);
+ let _p3 = ((rhythmIdx % _bar3) + _bar3) % _bar3, _isB = false, _a3 = 0;
+ for(let _i3=0;_i3<_g3.length;_i3++){ if(_p3===_a3){ _isB=true; break; } _a3+=_g3[_i3]; }
+ const isBeat = _isB;
  // ── Arp phase-reset snap ──
  if(arpRestartPending){
  if(snapMode==='beat' && isBeat){
@@ -11048,21 +11065,64 @@ let _bdCount=-1, _bdSrc='';
 // scheduler; the dots have predictable ids, so remembering the last one turns
 // that search into two lookups.
 let _bdLit=-1;
-// How many of an engine's steps make one beat — and the answer is not the
-// same for both of them, which a sig test would have got wrong in compound
-// time. The sequencer and bassline run the true sixteenth grid stepsPerBar()
-// hands out, so four steps are always a beat. The legacy rhythm engine runs
-// the groove's own grid, where rhythmStepDuration is beatSec()/stepDiv — so
-// stepDiv IS its steps-per-beat, straight from the data, per groove, and it
-// cannot drift from the engine the way a second copy of the rule would.
-//   4/4  stepDiv 4, 16 steps → 4 beats      6/8  stepDiv 3, 12 steps → 4
-//   3/4  stepDiv 4, 12 steps → 3 beats     12/8  stepDiv 3, 12 steps → 4
-function _stepsPerBeat(src){
- if(src==='sq'||src==='bl'||src==='ml') return 4;
- try{
-  const d = (RHYTHMS[rhythmSel]||{}).stepDiv;
-  return d > 0 ? d : 4;
- }catch(e){ return 4; }
+// ── Where the beats fall ──────────────────────────────────────────────────
+// Not "how many steps per beat": in 5/8 and 7/8 the beats are not the same
+// length as each other, so the only honest answer is a list of groups.
+//
+// One measure of the stated signature, as lengths in engine steps:
+//   4/4  → [4,4,4,4]      3/4 → [4,4,4]       (beat = quarter)
+//   6/8  → [3,3]          9/8 → [3,3,3]       12/8 → [3,3,3,3]
+//                                             (beat = dotted quarter)
+//   7/8  → [3,2,2]        5/8 → [3,2]         (grouped in twos and threes)
+//
+// A loop can hold more than one measure — the 6/8 grooves are 12 steps, which
+// is two measures, and their kick lands on step 0 and step 6, confirming it —
+// so the meter shows one measure and cycles.
+function _sigParts(){
+ const m = /^(\d+)\/(\d+)$/.exec((RHYTHMS[rhythmSel]||{}).sig || '4/4');
+ return m ? {n:+m[1], d:+m[2]} : {n:4, d:4};
+}
+function _beatGroups(src, total){
+ // The sequencer and bassline run the straight sixteenth grid stepsPerBar()
+ // hands out — four steps to a quarter, and in compound time that grid cannot
+ // express a dotted quarter at all (6/8 is 16 sixteenths there, and 16 is not
+ // divisible by 6). So they get quarters, which is what they actually play,
+ // counted off the total so the groups always sum to the bar.
+ if(src==='sq'||src==='bl'||src==='ml'){
+  return new Array(Math.max(1, Math.round(total/4))).fill(4);
+ }
+ const sd = ((RHYTHMS[rhythmSel]||{}).stepDiv) || 4;
+ const {n,d} = _sigParts();
+ // Simple time: the beat is the quarter, and rhythmStepDuration is
+ // beatSec()/stepDiv, so a quarter is stepDiv steps.
+ if(d <= 4) return new Array(Math.max(1,n)).fill(sd);
+ // An eighth as the signature notates it. On a compound grid (stepDiv 3) one
+ // step already is one; on a sixteenth grid it is two.
+ const spe = sd===3 ? 1 : Math.max(1, sd/2);
+ // Compound: 6/8, 9/8, 12/8 — three notated eighths to a dotted-quarter beat.
+ if(n % 3 === 0 && n > 3) return new Array(n/3).fill(3*spe);
+ // Irregular: 5/8, 7/8, 11/8 — twos and threes. An odd count needs exactly
+ // one three; the rest are twos. Putting the three first gives 3+2 for 5/8
+ // and 3+2+2 for 7/8, both idiomatic (2+2+3 is equally common in 7/8 — this
+ // is a display grouping, and it does not change a note of what plays).
+ const g = [];
+ let left = n;
+ if(n % 2 === 1){ g.push(3*spe); left -= 3; }
+ while(left >= 2){ g.push(2*spe); left -= 2; }
+ if(left > 0) g.push(left*spe);
+ return g.length ? g : [sd];
+}
+// Which group a step falls in, and where each group starts. The loop may hold
+// several measures, so the position wraps within one.
+function _beatIndex(groups, step){
+ const bar = groups.reduce((a,b)=>a+b, 0);
+ if(!(bar > 0)) return 0;
+ let pos = ((step % bar) + bar) % bar, acc = 0;
+ for(let i=0;i<groups.length;i++){
+  acc += groups[i];
+  if(pos < acc) return i;
+ }
+ return groups.length - 1;
 }
 
 function setBeatDots(step,total,accents,src){
@@ -11077,21 +11137,26 @@ function setBeatDots(step,total,accents,src){
  // four, which is what a transport has always shown and what you count.
  // The engines still report in steps; the collapse happens here so neither of
  // them has to know.
- const spb   = _stepsPerBeat(src);
- const beats = Math.max(1, Math.round(total / spb));
- const cur   = Math.min(beats - 1, Math.floor(step / spb));
+ const groups = _beatGroups(src, total);
+ const beats  = groups.length;
+ const cur    = _beatIndex(groups, step);
  if(total!==_bdCount||src!==_bdSrc){
   _bdCount=total; _bdSrc=src||''; _bdLit=-1;
   ['beat-dots','ft-beat-dots'].forEach(id=>{
    const d=document.getElementById(id); if(!d) return;
    d.innerHTML='';
    const prefix=(id==='ft-beat-dots')?'ftbd-':'bd-';
+   let at=0;
    for(let i=0;i<beats;i++){
     const dot=document.createElement('div');
     // The accent is the engine's, read at the step this beat starts on, so a
     // groove that accents the downbeat still marks it.
-    dot.className='beat-dot'+((accents&&accents[i*spb])?' accent':'');
+    dot.className='beat-dot'+((accents&&accents[at])?' accent':'');
     dot.id=prefix+i;
+    // A three-group is longer than a two-group and is drawn longer, so 7/8
+    // looks like 3+2+2 rather than three equal bars.
+    dot.style.flexGrow=String(groups[i]);
+    at+=groups[i];
     d.appendChild(dot);
    }
   });
