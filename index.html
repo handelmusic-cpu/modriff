@@ -1176,9 +1176,21 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 }
 .play-btn.start:hover { background:#bf6fff; }
 .play-btn.stop { background:#130d20; border:1px solid var(--modal); color:var(--modal); }
+/* popPlace() clamps a popover to the viewport from the width it measures at
+   the moment it opens — and on iOS that measurement can be taken before the
+   webfont has swapped in, so the text reflows wider afterwards and the clamp
+   is computed against a width that no longer exists. Hence a MY CHORDS sheet
+   running off the right edge of the phone while every headless width here was
+   fine. A CSS cap cannot be out-measured: whatever the font does, the element
+   has nowhere to grow to. */
+.chordpick-pop, .snd-pick-pop { max-width:calc(100vw - 16px); box-sizing:border-box; }
+
 .beat-dots { display:flex; gap:2px; flex-wrap:nowrap; align-items:center; overflow:hidden; max-width:320px; }
 .beat-dot { width:5px; height:5px; border-radius:50%; background:var(--border2); transition:background .07s; flex-shrink:0; }
 .beat-dot.active { background:var(--modal)!important; box-shadow:0 0 6px rgba(168,85,247,.5); }
+/* Same reason as the play button: --modal is the key hue, so the running step
+   went red in C and matched the recorders. */
+body.mode-basic .perf-bar .beat-dot.active { background:#a855f7 !important; }
 .beat-dot.accent { background:var(--dom); }
 
 /* ═══════════════════════════════════════
@@ -2048,6 +2060,68 @@ body.mode-basic .perf-bar #ft-bas-btn,
 body.mode-basic .perf-bar #ft-mel-btn,
 body.mode-basic .perf-bar #ft-arp-btn { order:20; flex:1 1 0; min-width:0; max-width:92px; }
 body.mode-basic .perf-bar { gap:4px 5px; }
+
+/* ── What T2 looked like, not just how it was arranged ──
+   The first pass built T2's layout — two rows, the parts on the bar, Capture
+   and the sheet — and none of its look. The mockup's transport read as a
+   transport because of three things, and the bar shipped without all three:
+   a play button that is an object rather than a glyph, a beat meter, and the
+   handle that says the sheet pulls up. */
+
+/* Play was a bare character at 55% opacity, the same weight as the tempo and
+   lighter than any part switch — the one control you hit first and it was the
+   quietest thing on the bar. The mockup's is a filled 40px circle. Purple,
+   not green: the bar's rule is that colour means state and red is reserved
+   for the recorders, and purple is the app's own accent, which is what the
+   mockup used. */
+body.mode-basic .perf-bar #ft-playstop-btn {
+ width:36px; height:36px; flex:none; padding:0;
+ border-radius:50%;
+ /* Literal, not var(--modal): that variable is the KEY hue and follows the
+    root note, so in C it is pure red — the one colour this bar reserves for
+    the recorders. The accent purple the mockup used is fixed. */
+ background:#a855f7 !important;
+ color:#0b0c16;
+ opacity:1; font-size:.9rem;
+ filter:none;
+ display:inline-flex; align-items:center; justify-content:center;
+ box-shadow:0 2px 9px rgba(168,85,247,.32) !important;
+}
+body.mode-basic .perf-bar #ft-playstop-btn:active { transform:scale(.93); }
+/* Playing, it is the stop button, and stop is not the accent — the accent is
+   what you reach for to start. */
+body.mode-basic .perf-bar #ft-playstop-btn.tp-stop {
+ background:var(--border2) !important; color:var(--text);
+ box-shadow:none !important;
+}
+
+/* The beat meter. Both hosts for it were deleted when the bar was reworked,
+   and setBeatDots has been early-returning ever since — the painter outlived
+   its element, so this is a host coming back, not new machinery. Full width
+   on its own line between the transport row and the parts row: eight bars
+   that fill the bar the mockup drew, rather than the 5px dots the old
+   in-page version used. */
+body.mode-basic .perf-bar #ft-beat-dots {
+ order:16; flex:0 0 100%; width:100%; max-width:none;
+ gap:3px; margin:0;
+}
+body.mode-basic .perf-bar #ft-beat-dots .beat-dot {
+ flex:1 1 0; width:auto; height:4px; border-radius:2px;
+}
+#ft-beat-dots { display:none; }
+body.mode-basic .perf-bar #ft-beat-dots { display:flex; }
+
+/* "Oh I see it's almost like the drawer, slides up from the transport. Clever
+   and perfect" — and then the bar shipped with no sign that it does. */
+/* No position here: .perf-bar is position:fixed, which is already a
+   containing block for the handle below. Setting relative took the bar off
+   the bottom of the screen and dropped it into the page flow. */
+body.mode-basic .perf-bar { padding-top:8px; }
+body.mode-basic .perf-bar::before {
+ content:''; position:absolute; top:3px; left:50%; margin-left:-17px;
+ width:34px; height:4px; border-radius:2px; background:var(--border2);
+ pointer-events:none;
+}
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -4094,6 +4168,10 @@ body.mode-free .pro-only { display:none !important; }
       Chords, Drums, Bass, Melody gen, Arp. The transport used to run
       Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran Bass·Melody·Arp,
       so the same three parts appeared in two different orders. -->
+ <!-- The beat meter. setBeatDots() has been painting into nothing since this
+      element was removed in an earlier pass of the bar; it lights up again the
+      moment the host exists. -->
+ <div class="beat-dots" id="ft-beat-dots" aria-hidden="true"></div>
  <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
  <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <!-- Aux Perc only appears when the loaded groove actually wrote one. A switch
