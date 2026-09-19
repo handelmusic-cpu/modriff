@@ -553,10 +553,16 @@ body.mode-basic .fx-padwrap { height:clamp(104px, 15vh, 128px); }
 body.mode-basic #modfx-panel { flex-wrap:wrap; gap:6px 8px; align-items:center; }
 body.mode-basic #modfx-panel > .fx-head     { width:100%; }
 body.mode-basic #modfx-panel > .fx-padwrap  { width:100%; }
+/* Two clean lines, not four ragged ones: patch and the axes share the first,
+   the motion recorder and Release the second. The basis percentages are what
+   force each wrap — patch plus axes cannot fit motion beside them, and motion
+   plus Release cannot fit anything else. */
 body.mode-basic #modfx-panel > .fx-patch-wrap { order:2; flex:0 0 auto; margin-top:0; }
-body.mode-basic #modfx-panel > .fx-axes     { order:3; flex:1 1 200px; min-width:0; margin:0; }
-body.mode-basic #modfx-panel > #fx-motion   { order:4; flex:1 1 140px; min-width:0; flex-wrap:nowrap; white-space:nowrap; }
-body.mode-basic #modfx-panel > .fx-sends    { order:5; flex:1 1 120px; min-width:0; margin-top:0; padding-top:0; border-top:none; }
+body.mode-basic #modfx-panel > .fx-axes     { order:3; flex:1 1 60%; min-width:0; margin:0; }
+body.mode-basic #modfx-panel > #fx-motion   { order:4; flex:1 1 58%; min-width:0; flex-wrap:nowrap; white-space:nowrap; }
+body.mode-basic #modfx-panel > .fx-sends    { order:5; flex:1 1 28%; min-width:0; margin-top:0; padding-top:0; border-top:none;
+                                              display:flex; align-items:center; gap:6px; }
+body.mode-basic #modfx-panel > .fx-sends .fx-sends-hdr { margin:0; white-space:nowrap; }
 
 /* ── One column, every width ──
    Flattening the panels took away the boxes that had been aligning the page,
@@ -580,14 +586,15 @@ body.mode-basic #page-perform .mel-strip { max-width:none; }
 body.mode-basic #page-perform > #pf-fx-panel,
 body.mode-basic #page-perform > .key-strip { max-width:var(--basic-col) !important; }
 
-/* The melody keys are a horizontal scroller with 44px keys — fine when the
+/* The melody keys are a horizontal scroller of fixed 44px keys — fine when the
    strip was one of several screens, wrong when it is a third of the only one:
-   the octave ran off the edge and looked clipped rather than scrollable. In
-   Basic they share the column instead, so what you can see is what there is. */
-body.mode-basic .mel-keys-wrap { overflow-x:visible; }
+   the octave ran off the edge and read as clipped rather than scrollable. They
+   grow to share the column where they fit, and hold a playable 34px where they
+   do not, at which point the strip scrolls as it always did. Filling the width
+   is worth having; fifteen 23px keys are not. */
 body.mode-basic .mel-keys { width:100%; flex:1 1 auto; gap:3px; }
-body.mode-basic .mel-key { flex:1 1 0; min-width:0; }
-body.mode-basic .mel-btn { width:100%; min-width:0; }
+body.mode-basic .mel-key { flex:1 1 0; min-width:34px; }
+body.mode-basic .mel-btn { width:100%; min-width:34px; }
 
 /* The surface heading above it already says MōdFX. */
 body.mode-basic #modfx-panel > .fx-head .fx-title { display:none; }
@@ -2002,6 +2009,22 @@ body.light-mode .top-stack { background:rgba(232,234,246,.97); }
  box-shadow:0 -4px 20px rgba(0,0,0,.45);
 }
 body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
+
+/* ── The transport in Basic: two deliberate rows ──
+   Transport controls and Capture on the first, the part switches on the
+   second, and everything you touch twice a session — Bounce, Stems — moved
+   into the ⋯ sheet by ftMountSheetExtras. The bar used to wrap wherever it
+   ran out of width, which put a different set of things on each row at each
+   screen size. */
+.ft-break { display:none; }
+body.mode-basic .perf-bar .ft-break { display:block; flex-basis:100%; height:0; order:15; }
+body.mode-basic .perf-bar #ft-chd-btn,
+body.mode-basic .perf-bar #ft-drum-btn,
+body.mode-basic .perf-bar #ft-aux-btn,
+body.mode-basic .perf-bar #ft-bas-btn,
+body.mode-basic .perf-bar #ft-mel-btn,
+body.mode-basic .perf-bar #ft-arp-btn { order:20; flex:1 1 0; min-width:0; max-width:92px; }
+body.mode-basic .perf-bar { gap:4px 5px; }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -4036,6 +4059,11 @@ body.mode-free .pro-only { display:none !important; }
      competing with the tab bar for the top of the screen. It lives here now,
      with everything else you touch during a performance. -->
 <div class="perf-bar" id="perf-bar">
+ <!-- A zero-height full-width flex item: the only reliable way to force a wrap
+      at a chosen point in a flex row. In Basic it sits between the transport
+      controls and the part switches so the bar reads as two deliberate rows
+      rather than whatever happened to fit. -->
+ <div class="ft-break" aria-hidden="true"></div>
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
  <!-- Layer switches, in the same order the Mixer and the Voices dock use:
@@ -4148,7 +4176,7 @@ body.mode-free .pro-only { display:none !important; }
        so the switch belongs against it. It also lives on the Mix tab's Export
        panel; both carry data-stemtoggle and _updateStemBtn drives every one,
        so the two can never disagree. -->
-  <button class="ft-btn ft-stems off" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
+  <button class="ft-btn ft-stems off" id="ft-stems-btn" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
    title="Stems — Bounce also writes one .wav per part (Chords, Melody, Drums, Aux Perc, Bass, Melody Seq, Arp) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
  </div>
  <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
@@ -4156,6 +4184,10 @@ body.mode-free .pro-only { display:none !important; }
  <div class="ft-more-wrap">
   <button class="ft-btn" id="ft-more-btn" onclick="toggleFtMore(event)" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="More settings">⋯</button>
   <div class="ft-more-menu" id="ft-more-menu">
+   <!-- Basic parks Bounce and Stems here — see ftMountSheetExtras. They start
+        and stop a take, so you touch them twice a session; the part switches
+        you touch while playing, and the two do not belong at the same depth. -->
+   <div class="ft-more-row" id="ft-sheet-export"></div>
    <!-- Undo/redo, randomize and the bar's own "?" live in here now. None of
         them is something you reach for mid-phrase, and between them they cost
         three rows' worth of width in a bar that only has one row to give.
@@ -27858,6 +27890,7 @@ function setViewMode(mode){
   // tab has to be laid out again on every switch, not just on a sub-tab tap.
   if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
+  if(typeof ftMountSheetExtras==='function') ftMountSheetExtras();
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
@@ -27889,6 +27922,23 @@ function msApplyBasicGate(){
 // used to be. Advanced puts them back in their panels, which still hold the
 // octave and the rest. The popovers are on <body> either way, so only the
 // trigger actually travels.
+// Basic keeps the bar to the transport, Capture and the part switches, and
+// parks Bounce and Stems in the ⋯ sheet. Same trick as the voice pickers: the
+// buttons themselves move, so every handler, id and sync path still finds
+// them — nothing is duplicated and nothing can drift out of step.
+function ftMountSheetExtras(){
+  var basic = document.body.classList.contains('mode-basic');
+  var slot = document.getElementById('ft-sheet-export');
+  if(!slot) return;
+  ['ft-bounce-btn','ft-stems-btn'].forEach(function(id){
+    var b = document.getElementById(id); if(!b) return;
+    if(!b._ftHome) b._ftHome = b.parentNode;
+    var target = basic ? slot : b._ftHome;
+    if(target && b.parentNode !== target) target.appendChild(b);
+  });
+  slot.style.display = basic ? '' : 'none';
+}
+
 function pfMountVoicePickers(){
   var basic = document.body.classList.contains('mode-basic');
   [['sndpick-bw-voices','pf-slot-chords','↑'],
