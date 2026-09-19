@@ -609,6 +609,14 @@ body.mode-basic #page-perform .key-strip .tb { padding:5px 7px; font-size:.42rem
 body.mode-basic #page-perform .key-main { gap:2px; padding:3px 5px; }
 body.mode-basic #page-perform .key-name { font-size:1rem; }
 body.mode-basic #page-perform .key-mode { font-size:.36rem; }
+/* Basic reaches the modes through the dropdown, so the twelve-button row and
+   its collapse toggle come off the strip entirely. Advanced keeps both. */
+#mode-pick { display:none; }
+body.mode-basic #mode-pick { display:inline-flex; }
+body.mode-basic .key-strip > .tg { display:none !important; }
+/* The row was the only reason the church modes had a show/hide toggle. */
+body.mode-basic .church-modes-toggle { display:none !important; }
+.ss-note { font-size:.42rem; color:var(--muted); align-self:center; margin-left:8px; }
 body.mode-basic #page-perform .btn-xp { width:24px; height:24px; font-size:.7rem; }
 body.mode-basic .vmt-btn { font-size:.38rem; padding:2px 7px; }
 
@@ -4833,6 +4841,16 @@ body.mode-free .pro-only { display:none !important; }
       two copies. Basic hides the dock and sends you here. -->
  <div class="ss-scope">Voices <b>what each part plays</b></div>
  <div class="voices-grid" id="voices-grid"></div>
+ <!-- The detection on the resume path catches every dead-context case we can
+      see from JS, but a deaf audio unit is only inferable, never certain. This
+      is the certain one: the same fresh-context restart a force-quit gives,
+      without leaving the app to get it. -->
+ <div class="ss-scope">Audio <b>if the app has gone silent</b></div>
+ <div class="row" style="margin-top:2px">
+  <button class="tb" type="button" onclick="_restartAudioEngine()"
+    title="Rebuilds the audio engine. Your session is saved first and comes straight back.">↻ Restart audio</button>
+  <div class="ss-note" id="audio-state-note">—</div>
+ </div>
  <div class="ss-scope">Tone macros <b>every voice in the app</b></div>
  <div class="row" style="margin-top:2px">
  <div class="sg"><div class="sl">Tone</div><input type="range" id="fx-cutoff" min=".08" max="1" step=".01" value=".88" oninput="onFxInput()"><div class="sv" id="fxcut-val">—</div></div>
@@ -7155,7 +7173,7 @@ function _armGestureResume(){
   }, 120);
  };
  function _disarm(){
-  _gestureResumeArmed=false; _resumeFails=0;
+  _gestureResumeArmed=false; _resumeFails=0; _audioDeaf=false;
   _showAudioStalledBar(false);
   ['pointerdown','touchend','keydown','click'].forEach(ev=>
    document.removeEventListener(ev, go, true));
@@ -7166,6 +7184,24 @@ function _armGestureResume(){
   document.addEventListener(ev, go, true));
  window._disarmGestureResume=_disarm;
 }
+
+// Reached from Settings, for when the app is silent and nothing on the resume
+// path noticed. Same fresh context a force-quit would give.
+function _restartAudioEngine(){
+ try{ showToast('Restarting audio…'); }catch(e){}
+ _reloadForAudio();
+}
+// Says what the context actually thinks it is doing, so a silent app is
+// diagnosable rather than just broken.
+function _syncAudioStateNote(){
+ const el = document.getElementById('audio-state-note'); if(!el) return;
+ if(!audioCtx){ el.textContent = 'not started yet'; return; }
+ const st = audioCtx.state;
+ el.textContent = st === 'running'
+   ? (_audioDeaf ? 'says running, not sounding — restart' : 'running')
+   : st;
+}
+setInterval(_syncAudioStateNote, 2000);
 
 // Last resort when the context is beyond reviving: save and reload, which is
 // the force-quit the user would otherwise have to do by hand.
@@ -7191,9 +7227,61 @@ function _showAudioStalledBar(show, mode){
  requestAnimationFrame(()=>el.classList.add('show'));
 }
 
+// The failure this whole section was written for, and the one case it still
+// could not see: iOS hands back a context that says 'running' and is deaf.
+// The interruption ends, WebKit flips the state back, every check here is
+// satisfied — and the audio unit behind it never restarted. No statechange
+// fires, resume() resolves instantly, and the app plays a whole session into
+// a disconnected output. That is what "I can never get it to sound again
+// without force-quitting" is: force-quit worked because it built a new
+// context, and nothing short of that does.
+//
+// The tell is the clock. A context that is genuinely running advances
+// currentTime in real time; a deaf one leaves it frozen at the moment the
+// interruption started. So sample it, wait, and sample again. A quarter of a
+// second is long enough to be unambiguous — a live context moves ~0.25, a
+// dead one moves 0 — and short enough that the check is over before anyone
+// reaches for a pad.
+//
+// Deafness is not something a gesture fixes, so it does not go through the
+// arm-and-retry path. It goes straight to the offer to restart.
+const CTX_PROBE_MS = 260;
+function _ctxProbe(cb){
+ const c = audioCtx;
+ if(!c || c.state !== 'running'){ cb(false); return; }
+ const t0 = c.currentTime;
+ setTimeout(function(){
+  if(audioCtx !== c || c.state !== 'running'){ cb(false); return; }
+  cb((c.currentTime - t0) < CTX_PROBE_MS / 4000);
+ }, CTX_PROBE_MS);
+}
+
+let _audioDeaf = false;
+function _armAudioRestart(){
+ if(_audioDeaf) return;
+ _audioDeaf = true;
+ _showAudioStalledBar(true, 'reload');
+ const go = function(){
+  document.removeEventListener('pointerdown', go, true);
+  document.removeEventListener('keydown', go, true);
+  _reloadForAudio();
+ };
+ document.addEventListener('pointerdown', go, true);
+ document.addEventListener('keydown', go, true);
+}
+
 function _resumeAudioIfNeeded(){
  if(!audioCtx) return;
- if(_audioRunning()){ _showAudioStalledBar(false); return; }
+ if(_audioRunning()){
+  _showAudioStalledBar(false);
+  // Timers are frozen in a background tab, so the scheduler chain can be dead
+  // even when the context itself came back clean. Realign either way — this
+  // used to return here, and leave a transport that said it was playing with
+  // nothing re-arming the chain.
+  _resyncEngines();
+  _ctxProbe(function(frozen){ if(frozen) _armAudioRestart(); });
+  return;
+ }
  audioCtx.resume().catch(()=>{});
  // resume() resolving is not the same as the context running, and on iOS it
  // will not run at all until a gesture. Check, then fall back to one.
@@ -12311,6 +12399,9 @@ function renderChords(){
   const e=document.getElementById('bm-'+x);        if(e)  e.classList.toggle('active',x===mode);
   const es=document.getElementById('songs-bm-'+x); if(es) es.classList.toggle('active',x===mode);
  });
+ // Four of those paths never go through setMode(), so the dropdown's label is
+ // refreshed from the same place the rows are.
+ if(typeof mdPickSyncLabel==='function') mdPickSyncLabel();
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -12469,6 +12560,82 @@ function sndPickPlace(wrap){ popPlace(wrap, wrap._pop); }
 // The label is read off whichever button is .active rather than from the
 // state variables, because five different setters and the Voices dock can all
 // change a part's voice and only the buttons are guaranteed to be repainted.
+// ── Every mode and scale, in one control ──────────────────────────────────
+// The mode row is twelve buttons wide and nine of them were .advanced-only, so
+// Basic offered Major, Minor and Major Pentatonic and nothing else — Dorian,
+// the blues scale and Hijaz were Advanced-only by accident of layout, not
+// because they are advanced. They are the harmonic material the whole app is
+// built on; hiding them makes Basic a different instrument rather than a
+// simpler one.
+//
+// So Basic gets all twelve, as a dropdown, the same move the sounds and the
+// chord catalogs already made: one button wide, named for what is chosen, out
+// of the way once it is. Advanced keeps the row — there the buttons are a
+// map of what is available, and the room for it exists.
+//
+// setMode is untouched and renderChords still paints everything from `mode`;
+// this only adds a second way in and a label that follows it.
+function mdPickSyncLabel(){
+ const cur = document.getElementById('mode-pick-cur'); if(!cur) return;
+ const md = (typeof MODES!=='undefined' && MODES[mode]) || null;
+ cur.textContent = md ? md.label : 'Mode';
+ const pop = document.getElementById('mode-pick-pop');
+ if(pop) Array.prototype.forEach.call(pop.children, function(b){
+  b.classList.toggle('active', b.dataset.mode === mode);
+ });
+}
+function mdPickInit(){
+ const strip = document.querySelector('.key-strip'); if(!strip) return;
+ if(document.getElementById('mode-pick')) return;
+ const tg = strip.querySelector('.tg'); if(!tg) return;
+
+ const wrap = document.createElement('div');
+ wrap.className = 'chordpick'; wrap.id = 'mode-pick';
+ const btn = document.createElement('button');
+ btn.className = 'snd-pick-btn'; btn.type = 'button';
+ btn.setAttribute('aria-haspopup','true'); btn.setAttribute('aria-expanded','false');
+ btn.setAttribute('aria-label','Mode and scale');
+ btn.innerHTML = '<span class="snd-pick-cur" id="mode-pick-cur">Major</span>'
+   + '<span class="snd-pick-caret" aria-hidden="true">▾</span>';
+
+ const pop = document.createElement('div');
+ pop.className = 'chordpick-pop'; pop.id = 'mode-pick-pop';
+ Object.keys(MODES).forEach(function(k){
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'cp-item'; b.dataset.mode = k;
+  b.textContent = MODES[k].label;
+  b.addEventListener('click', function(e){
+   e.stopPropagation();
+   setMode(k);
+   mdPickSyncLabel();
+   cpClose();
+  });
+  pop.appendChild(b);
+ });
+
+ wrap._pop = pop; pop._wrap = wrap; wrap._btn = btn;
+ document.body.appendChild(pop);
+ wrap.appendChild(btn);
+ tg.parentNode.insertBefore(wrap, tg);
+
+ btn.addEventListener('click', function(e){
+  e.stopPropagation();
+  const wasOpen = wrap.classList.contains('open');
+  cpClose();
+  if(wasOpen) return;
+  if(typeof sndPickClose==='function') sndPickClose();
+  mdPickSyncLabel();
+  wrap.classList.add('open'); pop.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  _cpOpen = wrap;
+  popPlace(wrap, pop);
+  setTimeout(function(){ document.addEventListener('pointerdown', _cpOutside); }, 0);
+  window.addEventListener('scroll', _cpReflow, true);
+  window.addEventListener('resize', _cpReflow);
+ });
+ mdPickSyncLabel();
+}
+
 function sndPickSyncLabel(wrap){
  const host = wrap._pop && wrap._pop.querySelector('.snd-pick-menu');
  const cur  = wrap.querySelector('.snd-pick-cur');
@@ -12555,6 +12722,7 @@ function sndPickInit(){
   sndPickSyncLabel(wrap);
  });
  if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
+ if(typeof mdPickInit==='function') mdPickInit();
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') sndPickClose(); });
 
@@ -27914,6 +28082,7 @@ function setViewMode(mode){
   if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
   if(typeof ftMountSheetExtras==='function') ftMountSheetExtras();
   if(typeof fxMountRelease==='function') fxMountRelease();
+  if(typeof mdPickInit==='function'){ mdPickInit(); mdPickSyncLabel(); }
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
