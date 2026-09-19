@@ -7271,7 +7271,7 @@ function _armGestureResume(){
   if(!audioCtx) return _disarm();
   if(_resumeFails >= RESUME_FAILS_BEFORE_RELOAD){ _reloadForAudio(); return; }
   audioCtx.resume().then(()=>{
-   if(_audioRunning()){ _disarm(); _resyncEngines(); showToast('Audio is back'); }
+   if(_audioRunning()){ _disarm(); _duckAudio(false); _resyncEngines(); showToast('Audio is back'); }
   }).catch(()=>{});
   // Some WebKit builds need a real node started inside the gesture before the
   // context will leave 'interrupted'. A one-sample silent buffer is enough.
@@ -7390,10 +7390,37 @@ function _armAudioRestart(){
  document.addEventListener('keydown', go, true);
 }
 
+// Locking the screen made the app squawk — a short high-pitched burp, then
+// silence. Nothing was scheduling it: iOS suspends the context mid-render, and
+// whatever partial buffer the hardware has is what you hear, played out at
+// whatever rate the interrupted unit is left in. Any note still sounding is a
+// tone cut off mid-cycle, which is a click, and a click through a limiter that
+// is still releasing is a chirp.
+//
+// It cannot be scheduled away, because the interruption is not on our clock.
+// It can be made inaudible: visibilitychange fires before the suspend lands,
+// so drop the master to zero over 30ms and there is nothing left in the
+// buffer to mangle. Coming back fades it in over 120ms rather than snapping,
+// since the context may still be settling.
+function _duckAudio(down){
+ const d = window._masterDuck; const c = audioCtx;
+ if(!d || !c) return;
+ const t = c.currentTime;
+ try{
+  d.gain.cancelScheduledValues(t);
+  d.gain.setValueAtTime(d.gain.value, t);
+  d.gain.linearRampToValueAtTime(down ? 0.0001 : 1, t + (down ? 0.03 : 0.12));
+ }catch(e){ try{ d.gain.value = down ? 0.0001 : 1; }catch(_){ } }
+}
+document.addEventListener('visibilitychange', function(){
+ if(document.visibilityState === 'hidden') _duckAudio(true);
+});
+
 function _resumeAudioIfNeeded(){
  if(!audioCtx) return;
  if(_audioRunning()){
   _showAudioStalledBar(false);
+  _duckAudio(false);
   // Timers are frozen in a background tab, so the scheduler chain can be dead
   // even when the context itself came back clean. Realign either way — this
   // used to return here, and leave a transport that said it was playing with
@@ -7408,6 +7435,7 @@ function _resumeAudioIfNeeded(){
  setTimeout(()=>{
   if(_audioRunning()){
    if(window._disarmGestureResume) window._disarmGestureResume();
+   _duckAudio(false);
    _resyncEngines();
   } else if(_audioStalled()){
    _armGestureResume();
@@ -7658,7 +7686,15 @@ function masterDest(c){
 function buildMasterBus(){
  const c=audioCtx; if(!c || window._masterLimiter) return;
 
- const masterOut=c.createGain(); masterOut.gain.value=masterVol; masterOut.connect(c.destination);
+ const masterOut=c.createGain(); masterOut.gain.value=masterVol;
+ // A gain of its own between the mix and the speakers, for one job: falling
+ // to silence before the OS pulls the context out from under a note. Doing
+ // that on masterOut would fight the user's volume and the mixer for the same
+ // parameter; this one is nobody else's. It sits AFTER the recorder's tap on
+ // masterOut, so ducking never reaches a bounce.
+ const duck=c.createGain(); duck.gain.value=1;
+ masterOut.connect(duck); duck.connect(c.destination);
+ window._masterDuck=duck;
 
  const lim=c.createDynamicsCompressor();
  lim.threshold.value=-3; lim.knee.value=1; lim.ratio.value=20;
@@ -11101,13 +11137,14 @@ function _beatGroups(src, total){
  const spe = sd===3 ? 1 : Math.max(1, sd/2);
  // Compound: 6/8, 9/8, 12/8 — three notated eighths to a dotted-quarter beat.
  if(n % 3 === 0 && n > 3) return new Array(n/3).fill(3*spe);
- // Irregular: 5/8, 7/8, 11/8 — twos and threes. An odd count needs exactly
- // one three; the rest are twos. Putting the three first gives 3+2 for 5/8
- // and 3+2+2 for 7/8, both idiomatic (2+2+3 is equally common in 7/8 — this
- // is a display grouping, and it does not change a note of what plays).
+ // Irregular: 5/8, 7/8, 11/8. Counted as whole beats with a half beat on the
+ // end — 7/8 is 2+2+2+1, 5/8 is 2+2+1 — rather than as 3+2+2 and 3+2. Both
+ // are idiomatic; this is the one you actually count out loud, "one two three
+ // and", and the leftover eighth is a real half beat, not a long one.
+ // It needs no special case in the drawing: a bar's flex-grow IS its group
+ // length, so a group of one comes out half the width of a group of two.
  const g = [];
  let left = n;
- if(n % 2 === 1){ g.push(3*spe); left -= 3; }
  while(left >= 2){ g.push(2*spe); left -= 2; }
  if(left > 0) g.push(left*spe);
  return g.length ? g : [sd];
@@ -13134,6 +13171,7 @@ function syncFixedTransport(){
   psb.classList.toggle('tp-stop', playing);
   psb.classList.add('lit');
  }
+ if(typeof _syncLockScreen==='function') _syncLockScreen();
  document.getElementById('tab-perform')?.classList.toggle('nav-playing', isAnythingPlaying());
  // Both song controls repaint from state here, alongside the layer switches,
  // rather than only inside the toggle that changes it — anything that moves
@@ -21852,6 +21890,79 @@ function ftMelClick(){
 // The mixer now has a real home, so the transport button navigates there
 // instead of sliding a panel over whatever you were looking at.
 function ftToggleAudition(){ document.dispatchEvent(new CustomEvent('sq-toggle-audition')); }
+// ── Lock screen ───────────────────────────────────────────────────────────
+// Two separate things, and only one of them is reliable.
+//
+// The reliable one is Media Session: while the app is playing it claims the
+// now-playing slot, so the lock screen and the control centre show MōdRiff
+// with a stop button that actually stops it, rather than leaving the phone
+// with something making noise and no way to reach it.
+//
+// The other is staying alive at all. iOS grants background audio to an
+// <audio> element, not to a Web Audio graph, so a silent looping element runs
+// alongside the mix while the transport is playing — the standard trick, and
+// the only lever a web app has. Whether it keeps the AudioContext running
+// through a screen lock depends on the iOS version, and on several of them it
+// does not: the context is interrupted regardless and the app goes quiet.
+// That part is a genuine attempt, not a guarantee, which is why the duck above
+// exists either way — if it does go quiet it should do so silently.
+//
+// The element is engaged only while something is playing and released on stop,
+// so the app never sits on the now-playing slot, or interrupts music you are
+// listening to, when it has nothing to say.
+var _SILENCE_WAV = 'data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+// var, not let: syncFixedTransport runs during boot, well above this line, and
+// a let here is in its temporal dead zone at that moment — reading it throws
+// ReferenceError rather than giving undefined, and the throw takes the whole
+// transport sync with it. Same trap as _modTier.
+var _bgEl = null;
+function _bgAudio(){
+ if(_bgEl) return _bgEl;
+ try{
+  _bgEl = new Audio(_SILENCE_WAV);
+  _bgEl.loop = true;
+  _bgEl.volume = 0;                 // belt and braces: the file is silent too
+  _bgEl.setAttribute('playsinline','');
+ }catch(e){ _bgEl = null; }
+ return _bgEl;
+}
+function _syncLockScreen(){
+ const playing = (typeof isAnythingPlaying==='function') && isAnythingPlaying();
+ const el = _bgAudio();
+ if(el){
+  // play() rejects without a gesture; the only call sites are the transport,
+  // which is one.
+  if(playing && el.paused) el.play().catch(function(){});
+  else if(!playing && !el.paused){ try{ el.pause(); }catch(e){} }
+ }
+ const ms = navigator.mediaSession;
+ if(!ms) return;
+ try{
+  if(!ms._modWired){
+   ms._modWired = true;
+   const stop = function(){ if(typeof stopEverything==='function'){ stopEverything(); syncFixedTransport(); } };
+   const play = function(){ if(typeof startEverything==='function'){ startEverything(); syncFixedTransport(); } };
+   [['pause',stop],['stop',stop],['play',play]].forEach(function(pair){
+    try{ ms.setActionHandler(pair[0], pair[1]); }catch(e){}
+   });
+   // Nothing to seek or skip through — saying so removes the controls rather
+   // than leaving dead buttons on the lock screen.
+   ['previoustrack','nexttrack','seekbackward','seekforward','seekto'].forEach(function(a){
+    try{ ms.setActionHandler(a, null); }catch(e){}
+   });
+  }
+  if(playing && window.MediaMetadata && !ms.metadata){
+   ms.metadata = new MediaMetadata({
+    title: 'MōdRiff',
+    artist: 'Groovebox',
+    artwork: [{src:'./icon-192.png', sizes:'192x192', type:'image/png'},
+              {src:'./icon-512.png', sizes:'512x512', type:'image/png'}]
+   });
+  }
+  ms.playbackState = playing ? 'playing' : 'paused';
+ }catch(e){}
+}
+
 function ftPlayStop(){
  if(isAnythingPlaying()){ stopEverything(); track('stop_pressed'); }
  else { startEverything(); track('play_pressed'); }
