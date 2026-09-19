@@ -2167,6 +2167,11 @@ body.mode-basic .perf-bar { gap:4px 5px; }
  position:absolute; top:0; left:0; right:0; height:14px;
  z-index:2; cursor:grab; touch-action:none;
  display:flex; align-items:center; justify-content:center;
+ /* It is a <button>, so without this it takes the UA's chrome — which drew a
+    full-width white slab across the top of the transport, over the parts row. */
+ -webkit-appearance:none; appearance:none;
+ background:none; border:none; padding:0; margin:0; box-shadow:none;
+ color:inherit; font:inherit;
 }
 #ft-drawer-grip::before {
  content:''; width:34px; height:4px; border-radius:2px; background:var(--border2);
@@ -2383,22 +2388,60 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
 .ft-more-wrap { position:relative; display:inline-flex; }
 /* Opens upward now — the trigger button lives in the bottom perf bar, and a
    menu that dropped down from there would open off the bottom of the screen. */
+/* The sheet. It was a 130px dropdown hanging off the ⋯ button — a stack of
+   full-width buttons in no particular order, which is not what the mockup
+   drew and not what a drawer pulled up from the transport should be. It is
+   the width of the screen now, rises from the bar, and its contents are
+   grouped under labels: what you are taking, what you are exporting, what is
+   playing, and everything else. */
 .ft-more-menu {
- position:absolute; bottom:calc(100% + 6px); right:0;
- display:none; flex-direction:column; gap:6px;
- background:rgba(8,9,18,.97); border:1px solid var(--border2); border-radius:var(--r-md);
- padding:8px; box-shadow:0 -8px 24px rgba(0,0,0,.5); z-index:600; min-width:130px;
- backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+ position:fixed; left:0; right:0; bottom:var(--perfh, 60px);
+ display:none; flex-direction:column; gap:7px;
+ background:rgba(8,9,18,.985); border-top:1px solid var(--border2);
+ border-radius:14px 14px 0 0;
+ padding:12px 12px 14px; box-shadow:0 -10px 30px rgba(0,0,0,.55); z-index:600;
+ max-height:min(62vh, 520px); overflow-y:auto;
+ backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
 }
+body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
+/* A label down the left and its controls to the right, the way the mockup
+   reads — so the sheet is scannable rather than a list you have to read. */
+.ft-sheet-row { display:flex; align-items:flex-start; gap:10px; }
+.ft-sheet-lbl {
+ flex:0 0 58px; padding-top:7px;
+ font-size:.4rem; letter-spacing:.14em; text-transform:uppercase;
+ color:var(--muted); text-align:right;
+}
+.ft-sheet-items { flex:1 1 auto; display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
+.ft-sheet-items > .ft-btn { flex:0 1 auto; min-width:64px; }
+/* Export and Parts are few and wide; the icons in More want to stay small. */
+#ft-sheet-export > .ft-btn { flex:1 1 90px; }
+.ft-sheet-items > .ft-btn.ur,
+.ft-sheet-items > .ft-btn.dice { flex:0 0 auto; min-width:40px; padding-left:8px; padding-right:8px; }
+.ft-sheet-items > .tips-btn { flex:0 0 auto; }
+/* An empty group is worse than a missing one: it labels nothing. */
+.ft-sheet-row:not(:has(.ft-sheet-items > *)) { display:none; }
+.ft-sheet-sep { height:1px; background:var(--border2); opacity:.6; margin:1px 0; }
+/* The buttons already in the sheet carried this as six inline declarations
+   each. One class instead, so a new entry looks like the others without
+   anyone having to remember the recipe. */
+.ft-btn.ft-plain {
+ background:var(--surf2); border:1px solid var(--border2); color:var(--muted);
+}
+.ft-btn.ft-plain.active { border-color:var(--mel-c); color:var(--mel-c); }
+/* The sheet has its own grab handle, mirroring the bar's, so the way out is
+   the way in. */
+.ft-sheet-grip { align-self:center; width:34px; height:4px; border-radius:2px;
+                 background:var(--border2); margin:-4px 0 2px; }
 .ft-more-menu.open { display:flex; }
-.ft-more-menu .ft-btn { width:100%; }
-/* The icon row is the exception to the full-width rule above: undo, redo,
-   randomize and "?" are glyphs, and a stack of four full-width buttons
-   holding one glyph each reads as a much bigger menu than it is. */
-.ft-more-menu .ft-more-row { display:flex; gap:6px; align-items:center; justify-content:space-between; }
-.ft-more-menu .ft-more-row .ft-btn { width:auto; flex:1 1 0; display:flex; align-items:center; justify-content:center; }
-.ft-more-menu .ft-more-row .tips-btn { flex:0 0 auto; }
-body.light-mode .ft-more-menu { background:rgba(244,245,252,.98); }
+/* The full-width rule that used to live here was for the 130px dropdown, where
+   one button per line was the only thing that fit. In a screen-wide sheet it
+   turned four glyph buttons into four full rows and made the sheet three times
+   taller than it needed to be. The rows lay themselves out now. */
+.ft-more-menu .ft-btn {
+ width:auto; display:inline-flex; align-items:center; justify-content:center;
+ white-space:nowrap;
+}
 /* Starting values only — a ResizeObserver near the bottom of the script keeps
    both in sync with each bar's real (possibly multi-row) height, since they
    wrap on narrow screens and fixed values would let them cover content. */
@@ -4334,42 +4377,77 @@ body.mode-free .pro-only { display:none !important; }
   <button class="ft-btn ft-stems off" id="ft-stems-btn" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
    title="Stems — Bounce also writes one .wav per part (Chords, Melody, Drums, Aux Perc, Bass, Melody Seq, Arp) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
  </div>
- <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()" title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
  <button class="ft-btn song-off" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song</button>
  <div class="ft-more-wrap">
-  <button class="ft-btn" id="ft-more-btn" onclick="toggleFtMore(event)" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="More settings">⋯</button>
+  <button class="ft-btn ft-plain" id="ft-more-btn" onclick="toggleFtMore(event)" title="More settings">⋯</button>
   <div class="ft-more-menu" id="ft-more-menu">
-   <!-- Basic parks Bounce and Stems here — see ftMountSheetExtras. They start
-        and stop a take, so you touch them twice a session; the part switches
-        you touch while playing, and the two do not belong at the same depth. -->
-   <div class="ft-more-row" id="ft-sheet-export"></div>
-   <!-- Undo/redo, randomize and the bar's own "?" live in here now. None of
-        them is something you reach for mid-phrase, and between them they cost
-        three rows' worth of width in a bar that only has one row to give.
-        They stay icons, on one row, rather than becoming full-width entries. -->
-   <div class="ft-more-row">
-    <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
-    <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
-    <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
-    <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
+   <div class="ft-sheet-grip" aria-hidden="true"></div>
+
+   <!-- EXPORT. Bounce and Stems are MOVED here by ftMountSheetExtras in Basic
+        and live on the bar in Advanced, so this row fills or empties itself;
+        MIDI is only ever here. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">Export</div>
+    <div class="ft-sheet-items" id="ft-sheet-export">
+     <button class="ft-btn ft-plain" id="ft-midi-btn" onclick="exportMidi()"
+       title="Write the chart out as a .mid file">MIDI</button>
+    </div>
    </div>
-   <button class="ft-btn snap-on" id="ft-snap-btn" onclick="toggleSnapMode()" title="Snap: controls arp restart + song advance timing — chords always play freely">Snap: Beat</button>
-   <button class="ft-btn" id="ft-theme-btn" onclick="toggleTheme()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Toggle dark/light mode">Light</button>
-   <!-- A bare "?" next to a bare keyboard glyph gave no clue which was
-        which, and ⌨ renders as anything from a faint outline to a tofu box
-        depending on the platform — both carry a word here instead. App tour
-        (interactive walkthrough) and written Guide (reference page) are two
-        different things, kept as two entries rather than merged into one. -->
-   <button class="ft-btn" id="ft-help-btn" onclick="showTour()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Hands-on walkthrough — you play the chords, melody and drums as it goes">? Walkthrough</button>
-   <button class="ft-btn" id="ft-find-btn" onclick="openFind()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Find any control by name and jump to it (/ or Ctrl+K)">⌕ Find a control</button>
-   <!-- The one entry here that isn't help: saving where you are is something
-        you reach for mid-session, from whatever tab you happen to be on. -->
-   <button class="ft-btn" id="ft-setups-btn" onclick="openSetups()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
-   <button class="ft-btn" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
-     onclick="installApp()" title="Install MōdRiff so it opens on its own and works offline">⤓ Install app</button>
-   <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.8.0</span>
-   <button class="ft-btn" id="ft-guide-btn" onclick="openGuide()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Full written guide to every feature">Guide</button>
-   <button class="ft-btn" id="ft-keys-btn" onclick="openKbShortcuts()" style="background:var(--surf2);border:1px solid var(--border2);color:var(--muted)" title="Keyboard shortcuts">⌨ Shortcuts</button>
+
+   <!-- PARTS. The switches themselves are on the bar in both views — that is
+        what T2 is — so what belongs here is the way through to the rest of
+        the mix, which the mockup drew as the last tile in this row. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">Parts</div>
+    <div class="ft-sheet-items">
+     <button class="ft-btn ft-plain" id="ft-mix-btn" onclick="closeFtMore();switchTab('mix')"
+       title="Levels, sends and which parts MōdFX reaches">Mix ›</button>
+    </div>
+   </div>
+
+   <!-- ALSO. The three that change how a take behaves without being part of
+        it: the click, whether the chart plays itself, and how the grid sits. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">Also</div>
+    <div class="ft-sheet-items" id="ft-sheet-also">
+     <button class="ft-btn ft-plain" data-metro onclick="toggleMetronome()"
+       title="Count the bar out loud">♩ Click</button>
+     <button class="ft-btn snap-on" id="ft-snap-btn" onclick="toggleSnapMode()"
+       title="Snap: controls arp restart + song advance timing — chords always play freely">Snap: Beat</button>
+     <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()"
+       title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
+    </div>
+   </div>
+
+   <div class="ft-sheet-sep" aria-hidden="true"></div>
+
+   <!-- MORE. Undo, redo, randomize and the bar's own "?" stay icons on one
+        row: none is something you reach for mid-phrase, and between them they
+        would cost three rows' worth of width. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">More</div>
+    <div class="ft-sheet-items">
+     <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
+     <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
+     <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
+     <button class="ft-btn ft-plain" id="ft-theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">Light</button>
+     <button class="ft-btn ft-plain" id="ft-setups-btn" onclick="openSetups()" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
+     <button class="ft-btn ft-plain" id="ft-find-btn" onclick="openFind()" title="Find any control by name and jump to it (/ or Ctrl+K)">⌕ Find</button>
+     <button class="ft-btn ft-plain" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
+       onclick="installApp()" title="Install MōdRiff so it opens on its own and works offline">⤓ Install app</button>
+    </div>
+   </div>
+
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">Help</div>
+    <div class="ft-sheet-items">
+     <button class="ft-btn ft-plain" id="ft-help-btn" onclick="showTour()" title="Hands-on walkthrough — you play the chords, melody and drums as it goes">? Walkthrough</button>
+     <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
+     <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
+     <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.8.0</span>
+    </div>
+   </div>
   </div>
  </div>
 </div>
@@ -10489,6 +10567,13 @@ let metroNextBeat=0;
 function toggleMetronome(){
  metroNextBeat=0;
  metronomeOn=!metronomeOn;
+ // Every host, not just the Settings one: the sheet carries a Click button
+ // too, and a second copy of a toggle that updates only the first is how two
+ // controls for one state end up disagreeing on screen.
+ document.querySelectorAll('[data-metro]').forEach(function(b){
+  b.textContent = metronomeOn ? '♩ Click: ON' : '♩ Click';
+  b.classList.toggle('active', metronomeOn);
+ });
  const b=document.getElementById('metro-btn'); if(b) b.textContent=metronomeOn?'Metro ON':'Metro OFF';
  if(metronomeOn){
   const sqRunning=typeof window._sqPlaying==='function'&&window._sqPlaying();
@@ -28500,7 +28585,12 @@ function ftMountSheetExtras(){
     var target = basic ? slot : b._ftHome;
     if(target && b.parentNode !== target) target.appendChild(b);
   });
-  slot.style.display = basic ? '' : 'none';
+  // The slot used to be hidden wholesale in Advanced, because Bounce and Stems
+  // were the only things in it. MIDI lives here permanently now — it is only
+  // ever in the sheet — so hiding the container took MIDI with it and left
+  // Advanced with a labelled Export row holding nothing. The empty-row rule in
+  // CSS handles a group that genuinely has no children.
+  slot.style.display = '';
 }
 
 function pfMountVoicePickers(){
