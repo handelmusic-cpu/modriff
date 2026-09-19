@@ -2159,11 +2159,20 @@ body.mode-basic .perf-bar { gap:4px 5px; }
    containing block for the handle below. Setting relative took the bar off
    the bottom of the screen and dropped it into the page flow. */
 .perf-bar { padding-top:8px; }
-.perf-bar::before {
- content:''; position:absolute; top:3px; left:50%; margin-left:-17px;
- width:34px; height:4px; border-radius:2px; background:var(--border2);
- pointer-events:none;
+/* A real element, not ::before. A pseudo-element cannot take a gesture, and
+   this one has to: drawing a grab handle and then not letting anyone pull it
+   is worse than drawing nothing. Its hit area is the full width of the bar's
+   top edge, so the drag does not require finding a 34px target. */
+#ft-drawer-grip {
+ position:absolute; top:0; left:0; right:0; height:14px;
+ z-index:2; cursor:grab; touch-action:none;
+ display:flex; align-items:center; justify-content:center;
 }
+#ft-drawer-grip::before {
+ content:''; width:34px; height:4px; border-radius:2px; background:var(--border2);
+ transition:background .12s, width .12s;
+}
+#ft-drawer-grip:active::before { background:var(--text); width:44px; }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -4203,6 +4212,8 @@ body.mode-free .pro-only { display:none !important; }
       at a chosen point in a flex row. In Basic it sits between the transport
       controls and the part switches so the bar reads as two deliberate rows
       rather than whatever happened to fit. -->
+ <button type="button" id="ft-drawer-grip" aria-label="More controls"
+   aria-haspopup="true" onclick="toggleFtMore(event)"></button>
  <div class="ft-break" aria-hidden="true"></div>
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
@@ -4867,7 +4878,13 @@ body.mode-free .pro-only { display:none !important; }
       chord long before you pick a tone, so the tone controls should not sit
       between you and the grid. -->
 <!-- Inline sound selector — hidden in Basic mode -->
- <div class="sound-bar advanced-only" id="sound-bar-inline">
+ <!-- Hidden, not deleted: #sb-voices is still the row buildVoiceButtons fills
+      and syncVoiceUI reads, and half a dozen paths address it by id. What it
+      is not any more is a SECOND chord-sound dropdown sitting directly under
+      the Chord Voice panel's own — same voice, same label, same control, two
+      rows apart, which is what it looked like on screen. The panel above owns
+      this now; it also carries the octave, which this row never did. -->
+ <div class="sound-bar advanced-only" id="sound-bar-inline" style="display:none">
  <!-- This row sets the CHORD voice (sb-voices writes `wave`). The note that
       used to be here said it also appears on the Melody page under that
       panel's own picker; it does not, and has not since the melody voice moved
@@ -5115,7 +5132,12 @@ body.mode-free .pro-only { display:none !important; }
      </div>
     </div>
     <div class="ss-hint" id="ss-latency-note"></div>
-    <div class="ss-hint ss-hint-dim">Further down the list absorbs more stutter and responds a little slower. Takes effect straight away; the audio buffer changes next time you open the app.</div>
+    <div class="row" id="ss-latency-apply" style="display:none;margin-top:2px">
+     <button class="tb" type="button" onclick="_restartAudioEngine()"
+       title="Rebuilds the audio engine with the new buffer. Your session is saved and comes straight back.">↻ Apply now</button>
+     <div class="ss-note">Scheduling changed. The buffer needs a restart.</div>
+    </div>
+    <div class="ss-hint ss-hint-dim">Lower down the list is steadier and a touch slower to respond.</div>
     <div class="ss-scope">Transport <b>and the other parts</b></div>
     <div class="row">
      <button class="tb" id="metro-btn" onclick="toggleMetronome()">Metro OFF</button>
@@ -5166,11 +5188,14 @@ body.mode-free .pro-only { display:none !important; }
      <button class="tb" data-tonetoggle onclick="toggleToneControls()"
       title="Attack, release, reverb and strum, inside the sound picker on the Play tab. Advanced always has them; this is how to reach them without leaving Basic.">Sound shaping: OFF</button>
     </div>
-    <div class="ss-hint">Sound shaping puts attack, release, reverb and strum back under the sound picker while you stay in Basic. Off by default — Basic is for picking a sound and playing it, not for dialling one in.</div>
-    <div class="ss-hint">How to finger each note on trumpet, sax, clarinet, flute, guitar or bass. It follows the note you play, under the melody strip. Off by default — it is a reference you want while learning a set of shapes, not every day.</div>
-    <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:8px;letter-spacing:.05em;line-height:1.7">
-     Basic and Advanced view live in the transport's ⋯ menu, so you can change how much is on screen without leaving what you are playing.
-    </div>
+    <!-- Both of these said, at length, what the buttons' own tooltips already
+         say, in the opposite order to the buttons. One line each, matching
+         order. The centred line that used to sit under them claimed Basic and
+         Advanced live in the ⋯ menu; they do not and never have — the pill is
+         in the key strip, beside the key. A pointer to the wrong place is
+         worse than no pointer, so it is gone. -->
+    <div class="ss-hint">Fingerings: valve and key charts under the melody strip, following the note you play.</div>
+    <div class="ss-hint">Sound shaping: attack, release, reverb and strum inside the sound picker, without leaving Basic.</div>
    </div>
   </div>
   </div>
@@ -6996,7 +7021,10 @@ function _newAudioCtx(){
  // call gets the same context it would have got before presets existed.
  let _hint = 0.02;
  try{ _hint = LATENCY_PRESETS[latencyPresetKey()].hint; }catch(e){}
- try{ return new AC({ latencyHint: _hint || 0.02 }); }
+ try{
+  _latencyBuiltWith = latencyPresetKey();
+  return new AC({ latencyHint: _hint || 0.02 });
+ }
  catch(e){ try{ return new AC(); }catch(e2){ return null; } }
 }
 function unlockAudio(startDemo){
@@ -9785,7 +9813,20 @@ function syncLatencyUI(){
  });
  const n = document.getElementById('ss-latency-note');
  if(n) n.textContent = (LATENCY_PRESETS[key]||{}).note || '';
+ // Two halves to a timing preset, and they land at different times. The
+ // scheduler's look-ahead changes on the spot; latencyHint is read once, when
+ // an AudioContext is built, so the OUTPUT BUFFER — the half you actually feel
+ // as tap-to-sound delay — keeps whatever the running context started with.
+ // Telling someone in a footnote that it applies "next time you open the app"
+ // is why this reads as doing nothing: they change it, listen, and hear the
+ // old buffer. The restart is one tap and the session is saved through it.
+ const ap = document.getElementById('ss-latency-apply');
+ if(ap) ap.style.display = (typeof audioCtx!=='undefined' && audioCtx && key!==_latencyBuiltWith)
+   ? 'flex' : 'none';
 }
+// Which preset the LIVE context was actually constructed with, as opposed to
+// which one is selected. Set where the context is made.
+var _latencyBuiltWith = null;
 
 // The longest pattern any sequencer holds, in sixteenth steps.
 //
@@ -28520,6 +28561,34 @@ function toggleToneControls(force){
 })();
 
 // ── Fixed transport "more" overflow menu (Snap / Theme) ──
+// Pull the bar up to open the ⋯ drawer. The handle was drawn because the
+// mockup's sheet slides up from the transport — and then only the ⋯ button
+// opened it, so the one gesture the handle advertises did nothing. An upward
+// drag of 12px is enough; a tap works too, since a grab handle that only
+// responds to a drag is its own trap.
+(function(){
+ let y0=null, moved=false;
+ function down(e){ y0=e.clientY; moved=false; try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){} }
+ function move(e){
+  if(y0===null || moved) return;
+  if(y0 - e.clientY > 12){
+   moved=true;
+   const m=document.getElementById('ft-more-menu');
+   if(m && !m.classList.contains('open')) toggleFtMore(e);
+  }
+ }
+ function up(){ y0=null; }
+ document.addEventListener('DOMContentLoaded', function(){
+  const g=document.getElementById('ft-drawer-grip'); if(!g) return;
+  g.addEventListener('pointerdown', down);
+  g.addEventListener('pointermove', move);
+  g.addEventListener('pointerup', up);
+  g.addEventListener('pointercancel', up);
+  // A drag that opened the drawer must not also fire the click that closes it.
+  g.addEventListener('click', function(e){ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
+ });
+})();
+
 function toggleFtMore(e){
   if(e) e.stopPropagation();
   var m = document.getElementById('ft-more-menu'); if(!m) return;
