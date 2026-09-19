@@ -2158,14 +2158,19 @@ body.mode-basic .perf-bar { gap:4px 5px; }
 /* No position here: .perf-bar is position:fixed, which is already a
    containing block for the handle below. Setting relative took the bar off
    the bottom of the screen and dropped it into the page flow. */
-.perf-bar { padding-top:8px; }
+/* The handle sits on the bar's top edge, and the MōdFX patch button is the
+   last thing on the page above it — a few pixels apart, so reaching for one
+   caught the other. The bar gives the handle its own band, and the page keeps
+   clear of it. */
+.perf-bar { padding-top:20px; }
+#page-perform { margin-bottom:14px; }
 /* A real element, not ::before. A pseudo-element cannot take a gesture, and
    this one has to: drawing a grab handle and then not letting anyone pull it
    is worse than drawing nothing. Its hit area is the full width of the bar's
    top edge, so the drag does not require finding a 34px target. */
 #ft-drawer-grip {
- position:absolute; top:0; left:0; right:0; height:14px;
- z-index:2; cursor:grab; touch-action:none;
+ position:absolute; top:0; left:0; right:0; height:18px;
+ z-index:2; cursor:pointer;
  display:flex; align-items:center; justify-content:center;
  /* It is a <button>, so without this it takes the UA's chrome — which drew a
     full-width white slab across the top of the transport, over the parts row. */
@@ -2178,6 +2183,7 @@ body.mode-basic .perf-bar { gap:4px 5px; }
  transition:background .12s, width .12s;
 }
 #ft-drawer-grip:active::before { background:var(--text); width:44px; }
+#ft-more-menu.open ~ * #ft-drawer-grip::before { background:var(--text); }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -2193,7 +2199,6 @@ body.mode-basic .perf-bar { gap:4px 5px; }
 /* A single ⋯ glyph doesn't need the base .ft-btn's 12px horizontal padding —
    trimming it is what leaves Song (and this button itself) enough room to
    land on the second row instead of wrapping to a third on their own. */
-#ft-more-btn { padding:5px 7px; }
 /* Compact pill — the label used to spell out ON/OFF/HOLD, which was the
    widest thing in this row. Colour alone now carries the state (see
    .song-on/.song-off/.song-hold), so the button is just "Song" and small
@@ -4379,7 +4384,8 @@ body.mode-free .pro-only { display:none !important; }
  </div>
  <button class="ft-btn song-off" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song</button>
  <div class="ft-more-wrap">
-  <button class="ft-btn ft-plain" id="ft-more-btn" onclick="toggleFtMore(event)" title="More settings">⋯</button>
+  <!-- The ⋯ is gone. Two buttons a thumb apart that open the same sheet is one
+       too many, and the handle is the one that says what it does. -->
   <div class="ft-more-menu" id="ft-more-menu">
    <div class="ft-sheet-grip" aria-hidden="true"></div>
 
@@ -4394,17 +4400,9 @@ body.mode-free .pro-only { display:none !important; }
     </div>
    </div>
 
-   <!-- PARTS. The switches themselves are on the bar in both views — that is
-        what T2 is — so what belongs here is the way through to the rest of
-        the mix, which the mockup drew as the last tile in this row. -->
-   <div class="ft-sheet-row">
-    <div class="ft-sheet-lbl">Parts</div>
-    <div class="ft-sheet-items">
-     <button class="ft-btn ft-plain" id="ft-mix-btn" onclick="closeFtMore();switchTab('mix')"
-       title="Levels, sends and which parts MōdFX reaches">Mix ›</button>
-    </div>
-   </div>
-
+   <!-- No PARTS row. The switches are on the bar in both views, and Mix is a
+        tab at the top of the screen — a tile here was a second way to somewhere
+        already one tap away, which is what a sheet is for avoiding. -->
    <!-- ALSO. The three that change how a take behaves without being part of
         it: the click, whether the chart plays itself, and how the grid sits. -->
    <div class="ft-sheet-row">
@@ -14578,9 +14576,9 @@ function tourSteps(){
    showMe:function(){ if(typeof setAccompMode==='function') setAccompMode('arp'); if(typeof arpOn!=='undefined' && !arpOn && typeof toggleArp==='function') toggleArp(); }},
 
   {ch:4, icon:'⚄', title:'Now roll the dice', tab:'perform',
-   text:'You built a track. The <b>dice</b> in the <b>⋯</b> menu rolls the whole thing again — key, sound, groove, tempo — and <b>Undo</b> puts it back. Everything you just learned is what it is rolling.',
-   target:'ft-more-btn',
-   gate:_gClick('#ft-dice-btn, #ft-more-btn'),
+   text:'You built a track. Pull up the <b>handle</b> on the transport and the <b>dice</b> under More rolls the whole thing again — key, sound, groove, tempo — and <b>Undo</b> puts it back. Everything you just learned is what it is rolling.',
+   target:'ft-drawer-grip',
+   gate:_gClick('#ft-dice-btn, #ft-drawer-grip'),
    showMe:function(){ var m=document.getElementById('ft-more-menu'); if(m) m.classList.add('open'); }},
   ];
 }
@@ -28651,33 +28649,22 @@ function toggleToneControls(force){
 })();
 
 // ── Fixed transport "more" overflow menu (Snap / Theme) ──
-// Pull the bar up to open the ⋯ drawer. The handle was drawn because the
-// mockup's sheet slides up from the transport — and then only the ⋯ button
-// opened it, so the one gesture the handle advertises did nothing. An upward
-// drag of 12px is enough; a tap works too, since a grab handle that only
-// responds to a drag is its own trap.
-(function(){
- let y0=null, moved=false;
- function down(e){ y0=e.clientY; moved=false; try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(_){} }
- function move(e){
-  if(y0===null || moved) return;
-  if(y0 - e.clientY > 12){
-   moved=true;
-   const m=document.getElementById('ft-more-menu');
-   if(m && !m.classList.contains('open')) toggleFtMore(e);
-  }
- }
- function up(){ y0=null; }
- document.addEventListener('DOMContentLoaded', function(){
-  const g=document.getElementById('ft-drawer-grip'); if(!g) return;
-  g.addEventListener('pointerdown', down);
-  g.addEventListener('pointermove', move);
-  g.addEventListener('pointerup', up);
-  g.addEventListener('pointercancel', up);
-  // A drag that opened the drawer must not also fire the click that closes it.
-  g.addEventListener('click', function(e){ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
- });
-})();
+// The handle opens the sheet on a TAP. It was a drag, and a drag was wrong
+// twice: nobody reaches for a 12px pull when a tap is right there, and the two
+// paths fought each other — see below.
+//
+// The flicker was the real bug. _ftMoreOutsideClick listens on pointerdown and
+// closes the sheet whenever the tap lands outside .ft-more-wrap. The handle is
+// NOT inside that wrap; it is a sibling in the bar. So every tap on the handle
+// ran pointerdown → outside → close, then click → toggle → open. Opening
+// looked like a flicker and closing looked like nothing happening at all,
+// which is exactly how it was described. The opener has to count as inside.
+function _ftMoreIsOpener(t){
+ if(!t) return false;
+ const g=document.getElementById('ft-drawer-grip');
+ const m=document.getElementById('ft-more-menu');
+ return !!((g && (t===g || g.contains(t))) || (m && (t===m || m.contains(t))));
+}
 
 function toggleFtMore(e){
   if(e) e.stopPropagation();
@@ -28698,12 +28685,10 @@ function closeFtMore(){
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
 function _ftMoreOutsideClick(e){
-  var wrap = document.querySelector('.ft-more-wrap');
+  if(_ftMoreIsOpener(e.target)) return;
   var m = document.getElementById('ft-more-menu');
-  if(wrap && !wrap.contains(e.target)){
-    if(m) m.classList.remove('open');
-    document.removeEventListener('pointerdown', _ftMoreOutsideClick);
-  }
+  if(m) m.classList.remove('open');
+  document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
 
 // ── Keep the page clear of both fixed bars. Each wraps to more rows on
@@ -30593,7 +30578,7 @@ const A11Y_SLIDER = {
 // Buttons identified by id.
 const A11Y_BTN = {
  'ft-ms-led'   : 'Something is muted or soloed — clear it',
- 'ft-more-btn' : 'More settings',
+ 'ft-drawer-grip' : 'More controls',
  'bl-smclose'  : 'Close step options',
  'ml-smclose'  : 'Close step options',
  'sq-smClose'  : 'Close step options',
