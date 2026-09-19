@@ -2122,7 +2122,7 @@ body.mode-basic .perf-bar #ft-playstop-btn.tp-stop {
    in-page version used. */
 body.mode-basic .perf-bar #ft-beat-dots {
  order:16; flex:0 0 100%; width:100%; max-width:none;
- gap:3px; margin:0;
+ gap:5px; margin:0;
 }
 body.mode-basic .perf-bar #ft-beat-dots .beat-dot {
  flex:1 1 0; width:auto; height:4px; border-radius:2px;
@@ -10098,9 +10098,7 @@ function scheduleRhythm(){
  const _r3=RHYTHMS[rhythmSel];
  setBeatDots(ci,_r3.pat.length,_r3.kick,'rhy');
  // Compute isBeat from time signature step groups
- const r2=RHYTHMS[rhythmSel];
- const stepsPerBeat = r2.sig==='6/8'||r2.sig==='12/8' ? 3 : 4;
- const isBeat = (rhythmIdx % stepsPerBeat === 0);
+ const isBeat = (rhythmIdx % _stepsPerBeat('rhy') === 0);
  // ── Arp phase-reset snap ──
  if(arpRestartPending){
  if(snapMode==='beat' && isBeat){
@@ -11050,6 +11048,23 @@ let _bdCount=-1, _bdSrc='';
 // scheduler; the dots have predictable ids, so remembering the last one turns
 // that search into two lookups.
 let _bdLit=-1;
+// How many of an engine's steps make one beat — and the answer is not the
+// same for both of them, which a sig test would have got wrong in compound
+// time. The sequencer and bassline run the true sixteenth grid stepsPerBar()
+// hands out, so four steps are always a beat. The legacy rhythm engine runs
+// the groove's own grid, where rhythmStepDuration is beatSec()/stepDiv — so
+// stepDiv IS its steps-per-beat, straight from the data, per groove, and it
+// cannot drift from the engine the way a second copy of the rule would.
+//   4/4  stepDiv 4, 16 steps → 4 beats      6/8  stepDiv 3, 12 steps → 4
+//   3/4  stepDiv 4, 12 steps → 3 beats     12/8  stepDiv 3, 12 steps → 4
+function _stepsPerBeat(src){
+ if(src==='sq'||src==='bl'||src==='ml') return 4;
+ try{
+  const d = (RHYTHMS[rhythmSel]||{}).stepDiv;
+  return d > 0 ? d : 4;
+ }catch(e){ return 4; }
+}
+
 function setBeatDots(step,total,accents,src){
  if(!(total>0)) return;
  // #beat-dots and #ft-beat-dots were both removed when the transport bar was
@@ -11057,27 +11072,40 @@ function setBeatDots(step,total,accents,src){
  // back there is nothing to light, and this runs on every step of every bar,
  // so find that out in one lookup rather than four plus an array build.
  if(!document.getElementById('beat-dots') && !document.getElementById('ft-beat-dots')) return;
+ // The meter counts beats, not steps. Sixteen sixteenths across a phone is
+ // sixteen thin dashes moving too fast to read as anything — a bar of 4/4 is
+ // four, which is what a transport has always shown and what you count.
+ // The engines still report in steps; the collapse happens here so neither of
+ // them has to know.
+ const spb   = _stepsPerBeat(src);
+ const beats = Math.max(1, Math.round(total / spb));
+ const cur   = Math.min(beats - 1, Math.floor(step / spb));
  if(total!==_bdCount||src!==_bdSrc){
   _bdCount=total; _bdSrc=src||''; _bdLit=-1;
   ['beat-dots','ft-beat-dots'].forEach(id=>{
    const d=document.getElementById(id); if(!d) return;
    d.innerHTML='';
    const prefix=(id==='ft-beat-dots')?'ftbd-':'bd-';
-   for(let i=0;i<total;i++){
+   for(let i=0;i<beats;i++){
     const dot=document.createElement('div');
-    dot.className='beat-dot'+((accents&&accents[i])?' accent':'');
+    // The accent is the engine's, read at the step this beat starts on, so a
+    // groove that accents the downbeat still marks it.
+    dot.className='beat-dot'+((accents&&accents[i*spb])?' accent':'');
     dot.id=prefix+i;
     d.appendChild(dot);
    }
   });
  }
- if(_bdLit>=0 && _bdLit!==step){
+ // Only three of every four steps change nothing now, so leave early rather
+ // than touch the DOM eight-plus times a second to set a class already set.
+ if(_bdLit===cur) return;
+ if(_bdLit>=0){
   const pa=document.getElementById('bd-'+_bdLit);   if(pa) pa.classList.remove('active');
   const pb=document.getElementById('ftbd-'+_bdLit); if(pb) pb.classList.remove('active');
  }
- const a=document.getElementById('bd-'+step);   if(a) a.classList.add('active');
- const b=document.getElementById('ftbd-'+step); if(b) b.classList.add('active');
- _bdLit=step;
+ const a=document.getElementById('bd-'+cur);   if(a) a.classList.add('active');
+ const b=document.getElementById('ftbd-'+cur); if(b) b.classList.add('active');
+ _bdLit=cur;
 }
 // Force the next setBeatDots call to rebuild — used when an engine stops and
 // hands the display back to another with a different step count.
