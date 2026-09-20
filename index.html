@@ -21187,7 +21187,12 @@ async function _deliverFiles(list, opts){
   if(navigator.canShare && navigator.share && typeof File==='function'){
    const shareFiles=files.map(f=>new File([f.blob], _safeName(f.name), {type:f.blob.type||'application/octet-stream'}));
    if(navigator.canShare({files:shareFiles})){
-    await navigator.share({files:shareFiles, title:opts.title||'MōdRiff bounce'});
+    // FILES ONLY — no title, no text. iOS does not treat `title` as a label on
+    // a file share: it materialises it as a SEPARATE item, which is where the
+    // mystery 12-byte "text" file full of the session name came from. The
+    // share sheet said "2 Documents" and three things landed in Files. The
+    // file names already say what the take is.
+    await navigator.share({files:shareFiles});
     return;
    }
   }
@@ -21374,7 +21379,12 @@ function _stopRecording(){
     var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
     var stems=_finishStemTaps(base,_sr,tags);
     files=files.concat(stems);
-    if(midiFile) files.push({ name:midiFile.name, blob:midiFile.blob });
+    // One take, one name. The recorder defaulted to 'modo-performance' and the
+    // mix to 'modo-session', so an untitled bounce landed as a pair of files
+    // that did not look related — 'modo-session 2.wav' beside
+    // 'modo-performance-live.mid'. The mix's base wins; the .mid keeps only
+    // its -live suffix, which is what distinguishes it.
+    if(midiFile) files.push({ name:base+'-live.mid', blob:midiFile.blob });
     _isRecording=false;_updateRecBtn();
     // Said before handing over, not after: the share sheet takes the screen,
     // and a toast nobody can see is a toast nobody reads.
