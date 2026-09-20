@@ -24047,18 +24047,25 @@ function _sqCursorTransportChanged(){
 }
 
 function sqAttachStep(el,ti,s,track){
-  var lastTap=0,holdT=null,moved=false,dnX=0,dnY=0;
+  // held: the press already opened the step menu, so lifting the finger must
+  // not also toggle the step. Without it a long press did both — the menu
+  // came up, and the pointerup underneath it turned the step you were about
+  // to edit OFF. Ratchet and velocity then landed on a dead step and were
+  // never heard, which reads as "ratcheting is broken" and "velocity doesn't
+  // always work". The roll's prWire has always had this guard; the kit never
+  // did.
+  var lastTap=0,holdT=null,moved=false,held=false,dnX=0,dnY=0;
   el.addEventListener('pointerdown',function(e){
     sqInitFX();sqEnsureNoise();
-    moved=false;dnX=e.clientX;dnY=e.clientY;
-    holdT=setTimeout(function(){holdT=null;if(!moved)sqOpenMenu(el,ti,s,track);},450);
+    moved=false;held=false;dnX=e.clientX;dnY=e.clientY;
+    holdT=setTimeout(function(){holdT=null;if(moved)return;held=true;sqOpenMenu(el,ti,s,track);},450);
   });
   el.addEventListener('pointermove',function(e){
     if(Math.abs(e.clientX-dnX)+Math.abs(e.clientY-dnY)>10){moved=true;if(holdT){clearTimeout(holdT);holdT=null;}}
   });
   el.addEventListener('pointerup',function(){
     if(holdT){clearTimeout(holdT);holdT=null;}
-    if(moved)return;
+    if(moved||held)return;
     var now=Date.now(),cell=sqGrid[ti][s];
     if(now-lastTap<280&&cell.v>=1){cell.v=cell.v===2?1:2;}
     else if(cell.v===0){cell.v=1;}else{cell.v=0;}
@@ -24079,12 +24086,12 @@ function sqOpenMenu(el,ti,s,track){
   var cell=sqGrid[ti][s];
   if(cell.v===0){cell.v=1;sqRefreshStepEl(el,cell,track.c);}
   var menu=document.getElementById('sq-smenu');if(!menu)return;
-  var rect=el.getBoundingClientRect();
-  var top=rect.bottom+6,left=rect.left;
-  if(top+180>window.innerHeight)top=rect.top-186;
-  if(left+175>window.innerWidth)left=window.innerWidth-179;
-  if(left<4)left=4;
-  menu.style.top=top+'px';menu.style.left=left+'px';menu.style.display='flex';
+  // Measured and clamped, like the two rolls. The numbers here were 180 and
+  // 186 for a menu that measures 136, so the "does it fit below?" test was
+  // answering about a menu that does not exist, and its fallback could put
+  // this one above the top of the window.
+  var r=el.getBoundingClientRect();
+  prPlaceMenu(menu, {x:r.left+r.width/2, y:r.bottom}, el);
   sqSyncMenuUI(cell);
 }
 function sqSyncMenuUI(cell){
@@ -28026,17 +28033,16 @@ switchTab = function(t){
 // other's state, which is why this takes functions instead of data.
 const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
-// px per semitone. 15 is tall enough to letter a note name and too short to
-// hit: a fingertip covers roughly 8mm of glass, which is three of these rows,
-// so on a phone you aimed at a pitch and entered its neighbour. Touch gets a
-// taller row; a mouse, which lands where it is pointed, keeps the compact one
-// and sees more of the range at once. Set once at load — every draw reads it
-// live, but prLayout sizes the canvases from it, so changing it later would
-// need a relayout of both rolls.
-let PR_ROW_H = 15;
-try{
- if(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) PR_ROW_H = 22;
-}catch(e){}
+// px per semitone. 15 was tall enough to letter a note name and too short to
+// hit — a fingertip covers roughly 8mm of glass, which is three of those rows,
+// so you aimed at a pitch and entered its neighbour.
+//
+// One height, whatever is pointing at it. A row that changes size depending on
+// the input device is two different instruments: the line you drew with a
+// mouse sits somewhere else the moment you pick the phone up, and muscle
+// memory for either is worth nothing on the other. The mouse being precise is
+// an argument for letting it hit a small target, not for making it.
+const PR_ROW_H = 22;
 const PR_KEY_W = 52;      // the keyboard gutter
 // A beat ruler along the top. Four sixteenths is one beat and four beats is a
 // bar, and until this strip existed the only sign of either was a hairline
