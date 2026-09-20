@@ -624,7 +624,9 @@ body.mode-basic .key-strip > .tg { display:none !important; }
 body.mode-basic .church-modes-toggle { display:none !important; }
 .ss-note { font-size:.42rem; color:var(--muted); align-self:center; margin-left:8px; }
 body.mode-basic #page-perform .btn-xp { width:24px; height:24px; font-size:.7rem; }
-body.mode-basic .vmt-btn { font-size:.38rem; padding:2px 7px; }
+/* Basic used to take this down to a 6px face in a 13px box. The face can
+   stay small here — Basic is deliberately quieter — but the target cannot. */
+body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 
 /* The voice pickers ride in the chord catalog row — see .chordpick-row. This
    used to be a row of its own called .voice-row, which was also the Voices
@@ -906,6 +908,31 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
                  scrollbar-width:none;
                  display:flex; justify-content:center; justify-content:safe center; }
 .mel-keys-wrap::-webkit-scrollbar { display:none; }
+/* The strip is wider than the space it has at every width we ship — 356px of
+   notes sit off the right edge on a phone, and two keys are still hidden on a
+   1280px desktop. Its scrollbar is hidden (it would sit under your thumb on
+   the one surface you play with it), so nothing said those notes were there:
+   the range simply appeared to stop at C. This is that signal — the keys fade
+   out over an edge that has more behind it, and only over that edge, so a
+   strip you have scrolled to the end of looks ended.
+   A mask rather than a pinned overlay, because the two elements that could
+   host an overlay are both wrong: inside the scroller it would scroll away
+   from the edge it is covering, and the panel outside it is the whole melody
+   section, fades and all. A mask paints in the scroller's own border box and
+   stays put. It adds no clipping that overflow-x was not already doing. */
+@property --mel-fade-l { syntax:'<length>'; inherits:false; initial-value:0px; }
+@property --mel-fade-r { syntax:'<length>'; inherits:false; initial-value:0px; }
+.mel-keys-wrap {
+ --mel-fade-l:0px; --mel-fade-r:0px;
+ transition:--mel-fade-l .18s ease, --mel-fade-r .18s ease;
+ -webkit-mask-image:linear-gradient(to right, transparent 0,
+   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
+ mask-image:linear-gradient(to right, transparent 0,
+   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
+}
+.mel-keys-wrap.scroll-l { --mel-fade-l:30px; }
+.mel-keys-wrap.scroll-r { --mel-fade-r:30px; }
+@media (prefers-reduced-motion: reduce) { .mel-keys-wrap { transition:none; } }
 .mel-keys { display:flex; gap:4px; flex:0 0 auto; padding:3px 3px 6px; flex-wrap:nowrap; }
 .mel-key { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
 .mel-btn {
@@ -3577,6 +3604,23 @@ body {
     inset 0 1px 0 rgba(255,255,255,.15);
 }
 
+/* A .tb draws no border and no background of its own — inside a .tg the group
+   supplies both, and every .tb in the app had a group until the two Show
+   switches in Settings. Those sit on their own, so in the OFF state they had
+   neither: muted text, centred, directly above two lines of muted prose
+   explaining them. They read as the headings for that prose rather than the
+   controls it describes, and the only thing that said otherwise was the
+   cursor — which a phone does not have. .tb-solo lends a lone .tb the shape.
+   Nothing here touches the ON state: .tb.active outranks all of it. */
+.tb-solo {
+  border:1px solid var(--border2);
+  border-radius:var(--r-md);
+  background:var(--bg);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
+}
+.tb-solo:hover:not(.active) { border-color:var(--accent); }
+.tb-solo.active { border-color:transparent; }
+
 /* 11 ── Beat dots: bounce on hit */
 @keyframes beatBounce {
   0%   { transform: scale(1.9); box-shadow: 0 0 14px 4px var(--modal); }
@@ -3659,7 +3703,12 @@ body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
 
 /* 21 ── Basic / Advanced view mode toggle */
 .vmt-pill { display:flex; border:1px solid var(--border2); border-radius:20px; overflow:hidden; }
-.vmt-btn { font-size:.44rem; padding:3px 10px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
+/* min-height, because this pill was 13px tall on a phone — a third of the
+   smallest target either platform's guidelines will admit, on the control
+   that reveals or hides half the app. The type stays small (it is a mode
+   label, not a heading); it is the box around it that grew, which costs the
+   key strip nothing, as the key stepper beside it is taller still. */
+.vmt-btn { font-size:.44rem; min-height:30px; padding:3px 12px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
 .vmt-btn.active { background:var(--accent); color:#07080f; }
 body.mode-basic .advanced-only { display:none !important; }
 /* One exception: a MōdSynth voice that's already selected keeps its editor
@@ -5259,9 +5308,9 @@ body.mode-free .pro-only { display:none !important; }
     </div>
     <div class="ss-scope">Show <b>extras you can leave off</b></div>
     <div class="row">
-     <button class="tb" data-fingtoggle onclick="toggleFingering()"
+     <button class="tb tb-solo" data-fingtoggle onclick="toggleFingering()" aria-pressed="false"
       title="A chart of how to finger each note on a chosen instrument — trumpet valves, sax keys, guitar and bass positions. It appears under the melody strip and follows whatever note you play.">Instrument fingerings: OFF</button>
-     <button class="tb" data-tonetoggle onclick="toggleToneControls()"
+     <button class="tb tb-solo" data-tonetoggle onclick="toggleToneControls()" aria-pressed="false"
       title="Attack, release, reverb and strum, inside the sound picker on the Play tab. Advanced always has them; this is how to reach them without leaving Basic.">Sound shaping: OFF</button>
     </div>
     <!-- Both of these said, at length, what the buttons' own tooltips already
@@ -8227,6 +8276,7 @@ function setFingeringVisible(on, opts){
  if(p) p.style.display = on ? '' : 'none';
  document.querySelectorAll('[data-fingtoggle]').forEach(b=>{
   b.classList.toggle('active', on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
   b.textContent = 'Instrument fingerings: ' + (on ? 'ON' : 'OFF');
  });
  // Drawn on demand rather than kept current while hidden — there is no point
@@ -13221,6 +13271,9 @@ function setMelMode(m){
  const bw=document.getElementById('bend-strip-wrap');
  if(kw) kw.style.display = m==='keys' ? '' : 'none';
  if(bw) bw.classList.toggle('visible', m==='bend');
+ // The scroller has no geometry while display:none, so the cue can only be
+ // measured once it is back.
+ if(m==='keys' && typeof syncMelScrollCue==='function') syncMelScrollCue();
 }
 // ── Touch Mod controls ──
 function toggleMelMod(){
@@ -14203,7 +14256,37 @@ function buildMelodyStrip(){
  });
  updateMelOctDisp();
  updateKeysTypingHint();
+ syncMelScrollCue();
 }
+
+// Which edges of the melody strip still have notes behind them. Driven from
+// the scroller's own geometry rather than a media query, because the answer
+// depends on the mode (how many steps), the octave span and the window — and
+// it changes under your finger as you scroll.
+function syncMelScrollCue(){
+ const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ // Hidden in Bend mode, where there is no strip and so nothing to promise.
+ // A display:none element measures zero, which would otherwise read as
+ // "nothing overflows" and leave the fade off on the way back in.
+ if(wrap.style.display==='none') return;
+ const max=wrap.scrollWidth-wrap.clientWidth;
+ // A sub-pixel remainder is not a hidden note; it is a rounded layout.
+ const slack=2;
+ wrap.classList.toggle('scroll-l', wrap.scrollLeft>slack);
+ wrap.classList.toggle('scroll-r', wrap.scrollLeft<max-slack);
+}
+(function(){
+ // Bound once to the scroller, which outlives every rebuild of the keys
+ // inside it, so nothing has to be rebound when the strip is redrawn.
+ const bind=()=>{
+  const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+  wrap.addEventListener('scroll', syncMelScrollCue, {passive:true});
+  window.addEventListener('resize', syncMelScrollCue);
+  syncMelScrollCue();
+ };
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', bind);
+ else bind();
+})();
 
 function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
@@ -14278,6 +14361,15 @@ function showToast(msg, opts){
  let t=document.getElementById('_toast');
  if(!t){
   t=document.createElement('div'); t.id='_toast';
+  // The toast is this app's confirmation channel — a hundred-odd call sites
+  // acknowledge saves, clears, bounces and mode changes through it, and until
+  // now every one of them was silent to a screen reader: the div appeared
+  // with no role, so nothing was announced and an action that succeeded was
+  // indistinguishable from one that did nothing. polite, not assertive,
+  // because none of it is urgent enough to cut across what is being read.
+  t.setAttribute('role','status');
+  t.setAttribute('aria-live','polite');
+  t.setAttribute('aria-atomic','true');
   t.style.cssText='position:fixed;bottom:calc(74px + env(safe-area-inset-bottom,0px));left:50%;'
    +'transform:translateX(-50%);background:#222;color:#fff;border-radius:8px;padding:8px 14px;'
    +'font-size:.6rem;z-index:9999;transition:opacity .3s;display:flex;align-items:center;gap:12px;'
@@ -14312,6 +14404,66 @@ function showToast(msg, opts){
  // toast, read it and reach for it.
  t._to=setTimeout(()=>{ t.style.opacity='0'; t.style.pointerEvents='none'; }, opts.ms || (opts.onAction ? 7000 : 2000));
 }
+
+// ── Press and hold to read a tooltip ──────────────────────────────────────
+// There are ~143 title= tooltips in this file, and they carry a lot of what
+// the app knows about itself: what Stems taps and where, what Capture writes
+// into as against what Bounce writes to disk, which of the two recorders the
+// red dot is. A title is a hover affordance, and a phone does not hover — so
+// on the device most people meet this app on, none of that text had any way
+// to be read. Holding a control still for half a second now says it.
+//
+// Touch only. On a mouse the native tooltip already does this job better than
+// a toast can, and hijacking a press there would cost a drag its head start.
+(function(){
+ // Controls that own a drag declare it in touch-action — the melody keys are
+ // pan-x, the pad and the tempo readout are none — and on those a long press
+ // is the start of a gesture, not a question. manipulation and auto are
+ // ordinary taps, so those are the ones this listens to.
+ const GESTURE=/none|pan-/;
+ let timer=null, sx=0, sy=0, armed=null, fired=false;
+ const clear=()=>{ clearTimeout(timer); timer=null; armed=null; };
+
+ document.addEventListener('pointerdown', e=>{
+  if(e.pointerType!=='touch' || !e.isPrimary) return;
+  // Cleared here, not only by the click it swallows. A press that fires and
+  // then slides off its control before lifting produces no click at all, and
+  // a flag left standing would eat the next real tap instead.
+  fired=false;
+  const el=e.target.closest && e.target.closest('[title]');
+  if(!el) return;
+  const tip=(el.getAttribute('title')||'').trim();
+  if(!tip) return;
+  if(GESTURE.test(getComputedStyle(el).touchAction||'')) return;
+  sx=e.clientX; sy=e.clientY; armed=el;
+  clearTimeout(timer);
+  timer=setTimeout(()=>{
+   if(!armed) return;
+   fired=true; armed=null; timer=null;
+   // Scaled to the reading, with a floor: the shortest of these is three
+   // words and the longest is a paragraph.
+   showToast(tip, {ms:Math.min(9000, 2600+tip.length*32)});
+  }, 500);
+ }, {passive:true});
+
+ // A press that travels is a scroll or a drag, not a question.
+ document.addEventListener('pointermove', e=>{
+  if(!timer) return;
+  if(Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10) clear();
+ }, {passive:true});
+ document.addEventListener('pointercancel', clear, {passive:true});
+ document.addEventListener('scroll', clear, {passive:true, capture:true});
+ document.addEventListener('pointerup', clear, {passive:true});
+
+ // Reading a control's help must not also operate it. The click arrives after
+ // pointerup, so this swallows exactly the one that follows a press that
+ // fired, in the capture phase, before any onclick can see it.
+ document.addEventListener('click', e=>{
+  if(!fired) return;
+  fired=false;
+  e.preventDefault(); e.stopPropagation();
+ }, true);
+}());
 
 // Snapshot-then-act helper for the destructive buttons: run the action, then
 // offer exactly one way back.
@@ -28634,6 +28786,7 @@ function toggleToneControls(force){
   document.querySelectorAll('[data-tonetoggle]').forEach(function(b){
     b.textContent='Sound shaping: '+(on?'ON':'OFF');
     b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on?'true':'false');
   });
 }
 (function(){
