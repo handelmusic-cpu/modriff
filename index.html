@@ -1547,14 +1547,43 @@ body.light-mode .subnav { background:#e8eaf6; }
    edit. Pitch belongs on an axis. Drawn to a canvas rather than built from
    divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
    a lot of DOM to rebuild on every generate, on a phone. */
-.pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
+/* One scroller, both axes. There used to be two nested ones — .pr-wrap owning
+   the vertical and .pr-scroll owning the horizontal — and between them the
+   bottom of the roll could not be reached at all, by touch or by anything
+   else. Two separate faults, stacked:
+
+   1. .pr-scroll declared touch-action:pan-x. touch-action is intersected down
+      the ancestor chain, so that withdrew the vertical axis from every touch
+      beginning on the canvas inside it, and a drag up or down over the grid
+      moved nothing.
+   2. .pr-scroll was a flex item with no height of its own, so it stretched to
+      the CONTAINER's capped height rather than to its content, and its
+      overflow-y:hidden then clipped the grid canvas to that. Scrolling
+      .pr-wrap moved the key gutter, which is 52px of sticky canvas with a real
+      height, but the grid it labels stayed clipped where it was. Anything past
+      the fold was unreachable even with a mouse wheel.
+
+   Both go away if one element scrolls both axes: .pr-wrap does, .pr-scroll
+   stops scrolling and stops clipping, and align-items:flex-start is what lets
+   it take its content's full height instead of the container's. The gutter
+   stays pinned on the horizontal through position:sticky and now scrolls with
+   the grid on the vertical, which is the only way the two can stay in step. */
+.pr-wrap { position:relative; display:flex; align-items:flex-start; width:100%;
+           border:1px solid var(--border2);
            border-radius:var(--r-md); overflow:auto; background:var(--bg);
-           /* The full chromatic range is 25-30 rows tall. Cap it and scroll
-              vertically rather than letting the roll push the whole page down. */
-           max-height:min(46vh, 340px); }
+           -webkit-overflow-scrolling:touch;
+           /* The roll is four octaves tall. Cap it and scroll rather than
+              letting it push the whole page down. */
+           max-height:min(56vh, 420px);
+           /* Reaching an edge of the roll should stop there, not hand the rest
+              of the swipe to the page and throw you off the sequencer. */
+           overscroll-behavior:contain;
+           /* manipulation, not pan-x: both axes, plus it suppresses the
+              double-tap zoom that a quick second tap on a cell would otherwise
+              trigger — and a second tap on a cell is how you clear a note. */
+           touch-action:manipulation; }
 .pr-keys { flex:0 0 52px; position:sticky; left:0; z-index:2; }
-.pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
-             touch-action:pan-x; overscroll-behavior-x:contain; }
+.pr-scroll { flex:0 0 auto; }
 .pr-canvas { display:block; touch-action:manipulation; }
 .pr-keys-canvas { display:block; }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
@@ -13273,7 +13302,10 @@ function setMelMode(m){
  if(bw) bw.classList.toggle('visible', m==='bend');
  // The scroller has no geometry while display:none, so the cue can only be
  // measured once it is back.
- if(m==='keys' && typeof syncMelScrollCue==='function') syncMelScrollCue();
+ if(m==='keys'){
+  if(typeof melScrollToHome==='function') melScrollToHome();
+  if(typeof syncMelScrollCue==='function') syncMelScrollCue();
+ }
 }
 // ── Touch Mod controls ──
 function toggleMelMod(){
@@ -14199,8 +14231,15 @@ function buildMelodyStrip(){
  const container=document.getElementById('melody-keys'); if(!container) return; container.innerHTML='';
  const baseM=60+(root<=5?root:root-12)+melOctShift;
  const notes=[];
- for(let oct=0;oct<2;oct++) steps.forEach(s=>notes.push({midi:baseM+s+oct*12,name:nn((root+s)%12),oct:Math.floor((baseM+s+oct*12)/12)-1}));
- notes.push({midi:baseM+24,name:nn(root),oct:Math.floor((baseM+24)/12)-1});
+ // Four octaves: the two the strip has always had, plus one below and one
+ // above. The strip is a scroller and always has been, so the extra range
+ // costs nothing but swipe — and the octave below is where a bass figure or a
+ // countermelody lives, which previously meant reaching for OCT− and losing
+ // the register you were playing in to get there.
+ for(let oct=-1;oct<3;oct++) steps.forEach(s=>notes.push({midi:baseM+s+oct*12,name:nn((root+s)%12),oct:Math.floor((baseM+s+oct*12)/12)-1}));
+ notes.push({midi:baseM+36,name:nn(root),oct:Math.floor((baseM+36)/12)-1});
+ // Where the strip should be looking when it is rebuilt — see melScrollToHome.
+ _melHomeMidi = baseM; _melNeedsHome = true;
 
  notes.forEach(({midi,name,oct})=>{
  const wrap=document.createElement('div'); wrap.className='mel-key';
@@ -14259,12 +14298,50 @@ function buildMelodyStrip(){
  syncMelScrollCue();
 }
 
+// The strip runs an octave below its home note now, so left-aligning it would
+// open every session, and every key change, an octave under the notes the
+// typing keys and OCT± are talking about. This puts the home octave at the
+// left instead, with a sliver of the one below still showing — the only thing
+// that tells you the lower octave is there is seeing a piece of it.
+// var, not let: syncMelScrollCue reads _melNeedsHome and buildMelodyStrip
+// writes both, and both run during init before execution reaches this line.
+// A let binding is in its temporal dead zone until then, so that read throws
+// and takes the rest of the script with it — the same trap _recArm documents.
+var _melHomeMidi = null, _melNeedsHome = false;
+function melScrollToHome(){
+ if(!_melNeedsHome || _melHomeMidi==null) return;
+ const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ // Hidden — in Bend mode, or on a tab that is not up — measures zero, so
+ // there is nothing to aim yet. The flag stays set and the next caller with
+ // real geometry does it.
+ if(wrap.style.display==='none' || !wrap.clientWidth) return;
+ const key=document.getElementById('mel-'+_melHomeMidi); if(!key) return;
+ const host=key.parentElement||key;
+ const max=wrap.scrollWidth-wrap.clientWidth;
+ _melNeedsHome=false;
+ if(max<=0) return;
+ const off=wrap.scrollLeft + (host.getBoundingClientRect().left - wrap.getBoundingClientRect().left);
+ // scroll-behavior on this element is smooth, which is right for a swipe and
+ // wrong for a rebuild: landing, not gliding from wherever the last key left
+ // it. Suspended for the one assignment.
+ const prev=wrap.style.scrollBehavior;
+ wrap.style.scrollBehavior='auto';
+ wrap.scrollLeft=Math.max(0, Math.min(max, off-26));
+ wrap.style.scrollBehavior=prev;
+}
+
 // Which edges of the melody strip still have notes behind them. Driven from
 // the scroller's own geometry rather than a media query, because the answer
 // depends on the mode (how many steps), the octave span and the window — and
 // it changes under your finger as you scroll.
 function syncMelScrollCue(){
  const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ // The strip is built during init, before layout has given it a width to
+ // measure, so the rebuild itself often cannot aim it. This is the one
+ // function wired to every later moment it could gain geometry — a scroll, a
+ // resize, a tab or mode change — and _melNeedsHome makes it a one-shot, so
+ // the first caller with a real width does it and no later one interferes.
+ if(_melNeedsHome && typeof melScrollToHome==='function') melScrollToHome();
  // Hidden in Bend mode, where there is no strip and so nothing to promise.
  // A display:none element measures zero, which would otherwise read as
  // "nothing overflows" and leave the fade off on the way back in.
@@ -14283,6 +14360,9 @@ function syncMelScrollCue(){
   wrap.addEventListener('scroll', syncMelScrollCue, {passive:true});
   window.addEventListener('resize', syncMelScrollCue);
   syncMelScrollCue();
+  // One frame later as well: at DOMContentLoaded the strip is built but not
+  // yet laid out, and a width of zero is not something to aim by.
+  requestAnimationFrame(syncMelScrollCue);
  };
  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', bind);
  else bind();
@@ -18759,6 +18839,12 @@ function switchTab(t){
  positionAllSubnavLeds();
  if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
  if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll,0);
+ // The melody strip may have been rebuilt while this page was away, with no
+ // geometry to aim itself by at the time.
+ if(t==='perform') setTimeout(()=>{
+  if(typeof melScrollToHome==='function') melScrollToHome();
+  if(typeof syncMelScrollCue==='function') syncMelScrollCue();
+ },0);
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
@@ -25237,6 +25323,14 @@ var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk 
 // is musically useful here; it is only where an octave fold could dump a note
 // into rumble that no phone or laptop reproduces but every meter counts.
 var BL_GEN_LO = 33, BL_GEN_HI = 57;      // A1-A3 (55-220 Hz)
+// What the ROLL will show and let you edit, which is a different question from
+// where the generator writes. Generate, Arrange and the walk all keep to
+// BL_GEN_* above, so a generated line still sits in the register a bass line
+// belongs in — but a line you are editing by hand is not a generated one, and
+// a sequencer that cannot hold the note you want is not a sequencer. E1 is the
+// bottom of a four-string bass; the top is open because reaching up is the
+// thing people actually want a bass to do and could not.
+var BL_PR_LO = 28, BL_PR_HI = 76;        // E1-E5, four octaves
 
 // Called from _playLoopSlot as each chord is committed to the audio clock.
 window._blOnChord = function(slot, atTime, durSec, nextSlot, capoOverride){
@@ -25799,6 +25893,15 @@ function _blDisplayMidi(x){
     return window._followNearIn(outPc, ref, BL_LO, BL_HI);
   }
   var abs = c.note + (c.oct + 1) * 12;
+  // A note you placed by hand is drawn exactly where you placed it. The
+  // scheduler above already plays these untouched — it exempts cell.usr from
+  // Follow and hands blPlayNote the cell's own note and octave — but this fold
+  // ran on every cell regardless, so the roll and the speaker disagreed about
+  // any hand note above E3: tapping the top row of the bass roll stored and
+  // sounded A3 and drew A2, an octave down, in a row you had not touched.
+  // Generated cells keep the fold, which is what holds a generated walk in the
+  // register the walk was written for.
+  if(c.usr) return abs;
   if(abs > BL_HI) abs -= 12;
   if(abs < BL_LO) abs += 12;
   return abs;
@@ -25806,7 +25909,9 @@ function _blDisplayMidi(x){
 function blPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('bl', {
-    lo: BL_GEN_LO, hi: BL_GEN_HI, color:'#2df09a',
+    lo: BL_PR_LO, hi: BL_PR_HI, color:'#2df09a',
+    // Where to look first when the roll is empty — see prScrollToContent.
+    homeLo: BL_GEN_LO, homeHi: BL_GEN_HI,
     steps: function(){ return blSteps; },
     cell:  function(x){ return blGrid[x]; },
     // The pitch this step will actually sound as, after Follow. prDraw uses
@@ -26755,6 +26860,9 @@ var _mlGridIntvs = [0,4,7];
 // The melody had no equivalent, so its octave-lift styles could wander as far
 // as the arithmetic took them. G3-C6 is a singable melodic range.
 var ML_GEN_LO = 55, ML_GEN_HI = 84;
+// As with the bass: the generator keeps its singable G3-C6, the roll opens up
+// around it so a hand-placed line can go where the generator would not.
+var ML_PR_LO = 48, ML_PR_HI = 96;        // C3-C7, four octaves
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
 // See window._sqResync — same fix, same reason, for the melody-gen step clock.
@@ -26908,6 +27016,10 @@ function _mlDisplayMidi(x){
     return window._followNearIn(outPc, ref, ML_GEN_LO, ML_GEN_HI);
   }
   var abs = c.note + (c.oct + 1) * 12;
+  // See the bass roll's _blDisplayMidi — a hand-placed note is drawn where it
+  // was placed, and now that the roll runs C3-C7 rather than the generator's
+  // G3-C6 there is somewhere for it to be drawn.
+  if(c.usr) return abs;
   if(abs > ML_GEN_HI) abs -= 12;
   if(abs < ML_GEN_LO) abs += 12;
   return abs;
@@ -26915,7 +27027,8 @@ function _mlDisplayMidi(x){
 function mlPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('ml', {
-    lo: ML_GEN_LO, hi: ML_GEN_HI, color:'#ff8ad4',
+    lo: ML_PR_LO, hi: ML_PR_HI, color:'#ff8ad4',
+    homeLo: ML_GEN_LO, homeHi: ML_GEN_HI,
     steps: function(){ return mlSteps; },
     cell:  function(x){ return mlGrid[x]; },
     // Follow moves this line onto each chord exactly as it does the bass, so
@@ -27921,7 +28034,17 @@ switchTab = function(t){
 // other's state, which is why this takes functions instead of data.
 const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
-const PR_ROW_H = 15;      // px per semitone — tall enough to letter a note name
+// px per semitone. 15 is tall enough to letter a note name and too short to
+// hit: a fingertip covers roughly 8mm of glass, which is three of these rows,
+// so on a phone you aimed at a pitch and entered its neighbour. Touch gets a
+// taller row; a mouse, which lands where it is pointed, keeps the compact one
+// and sees more of the range at once. Set once at load — every draw reads it
+// live, but prLayout sizes the canvases from it, so changing it later would
+// need a relayout of both rolls.
+let PR_ROW_H = 15;
+try{
+ if(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) PR_ROW_H = 22;
+}catch(e){}
 const PR_KEY_W = 52;      // the keyboard gutter
 // A beat ruler along the top. Four sixteenths is one beat and four beats is a
 // bar, and until this strip existed the only sign of either was a hairline
@@ -27956,8 +28079,13 @@ let PR_COL_W = 26;
 // the measurement belongs there and the answer belongs in a cache.
 const _PR_COL_W_CACHE = {};
 function _prMeasureColW(id, steps){
- const sc = document.getElementById(id+'-pr-scroll');
- const avail = sc ? sc.clientWidth : 0;
+ // Measured off the roll, less the key gutter, rather than off .pr-scroll —
+ // which is sized by its own canvas now that it no longer scrolls, and would
+ // have been answering with the width it was last given. clientWidth also
+ // discounts a vertical scrollbar where one is shown, which is exactly the
+ // space the grid does not get.
+ const wrap = document.getElementById(id+'-pr');
+ const avail = wrap ? Math.max(0, wrap.clientWidth - PR_KEY_W) : 0;
  if(!avail || !steps) return 26;
  return Math.max(16, Math.min(46, Math.floor(avail/steps)));
 }
@@ -28103,9 +28231,45 @@ function prLayout(id){
  // Whether this roll is on screen at all. It changes only when a tab or a
  // sub-tab changes, and both of those end up here, so the one layout read it
  // costs is paid at the switch instead of on every step of every bar.
+ const wasOn = _PR_ONSCREEN[id];
  _PR_ONSCREEN[id] = cv.offsetParent !== null;
  prDrawKeys(id);
  prDraw(id);
+ // Four octaves is far more than fits, so a roll that always opened at its top
+ // row would open on empty sky a long way above anything written. Aim it as it
+ // arrives — on the way in only, never while it is already up, so it can never
+ // pull the grid out from under a finger midway through an edit.
+ if(_PR_ONSCREEN[id] && !wasOn) prScrollToContent(id);
+}
+
+// Put the written part of the roll in the middle of the view, or the register
+// the generator writes in when there is nothing written yet — which is also
+// what makes an empty roll open somewhere you would want to start tapping.
+function prScrollToContent(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const wrap = document.getElementById(id+'-pr'); if(!wrap) return;
+ const max = wrap.scrollHeight - wrap.clientHeight;
+ if(max <= 0) return;
+ let lo=null, hi=null;
+ const n = cfg.steps();
+ for(let x=0; x<n; x++){
+  const c = cfg.cell(x); if(!c || !c.v) continue;
+  // The sounding pitch, so the view lands where the notes are drawn rather
+  // than where they were authored — the two differ under Follow.
+  let m = null;
+  if(typeof cfg.displayMidi==='function'){ try{ m = cfg.displayMidi(x); }catch(e){} }
+  if(m==null) m = c.note + (c.oct+1)*12;
+  if(lo==null || m<lo) lo=m;
+  if(hi==null || m>hi) hi=m;
+ }
+ if(lo==null){
+  lo = (cfg.homeLo!=null) ? cfg.homeLo : cfg.lo;
+  hi = (cfg.homeHi!=null) ? cfg.homeHi : cfg.hi;
+ }
+ // Row 0 is cfg.hi: the roll counts downwards from its top note.
+ const topRow = cfg.hi - hi, botRow = cfg.hi - lo;
+ const mid = PR_RULER_H + ((topRow + botRow + 1) / 2) * PR_ROW_H;
+ wrap.scrollTop = Math.max(0, Math.min(max, mid - wrap.clientHeight/2));
 }
 
 // An actual keyboard, not a column of shaded strips: black keys are drawn
