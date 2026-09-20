@@ -25963,7 +25963,7 @@ function blPrInit(){
       blUpdateEmptyHint();
       blRedraw();
     },
-    openMenu: function(step, midi){
+    openMenu: function(step, midi, at){
       blEnsureGrid();
       var c = blGrid[step]; if(!c) return;
       // Same conversion as toggle: the roll hands us a SOUNDING pitch.
@@ -25971,7 +25971,7 @@ function blPrInit(){
                 c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
       var host = document.getElementById('bl-pr-canvas');
-      blOpenMenu(host, step);
+      blOpenMenu(host, step, at);
     }
   });
   if(typeof prWire==='function') prWire('bl');
@@ -26010,7 +26010,7 @@ function blPreviewNote(cell){
 }
 
 // ── step menu ──
-function blOpenMenu(el, si){
+function blOpenMenu(el, si, at){
   blMenuStep = si;
   var cell = blGrid[si];
   if(!cell.v){ cell.v = 1; blRedraw(); }
@@ -26040,13 +26040,7 @@ function blOpenMenu(el, si){
   });
   var slideBtn = document.getElementById('bl-sm-slide'); if(slideBtn){ slideBtn.classList.toggle('sel', !!cell.slide); slideBtn.onclick = function(){ cell.slide = !cell.slide; slideBtn.classList.toggle('sel', cell.slide); blRedraw(); }; }
   var accentBtn = document.getElementById('bl-sm-accent'); if(accentBtn){ accentBtn.classList.toggle('sel', !!cell.accent); accentBtn.onclick = function(){ cell.accent = !cell.accent; accentBtn.classList.toggle('sel', cell.accent); blRedraw(); }; }
-  // Position
-  var rect = el.getBoundingClientRect();
-  var top = rect.bottom + 6, left = rect.left;
-  if(top + 240 > window.innerHeight) top = rect.top - 246;
-  if(left + 200 > window.innerWidth) left = window.innerWidth - 204;
-  if(left < 4) left = 4;
-  menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.display = 'flex';
+  prPlaceMenu(menu, at, el);
 }
 function blCloseMenu(){ var m = document.getElementById('bl-smenu'); if(m) m.style.display = 'none'; blMenuStep = -1; }
 
@@ -26670,11 +26664,15 @@ document.querySelectorAll('[data-blstyle]').forEach(function(b){
 });
 
 // ── close menu on outside click ──
-var performPage = document.getElementById('page-bass');
-if(performPage) performPage.addEventListener('pointerdown', function(e){
+// On the document. This was bound to #page-bass, which does not exist and has
+// not since the parts moved onto one Accomp tab — so getElementById returned
+// null, the listener was never attached, and the only way out of the step menu
+// was the × in its corner. Paired with a menu that opened off-screen, that is
+// a long press that appears to do nothing and then swallows the next tap.
+document.addEventListener('pointerdown', function(e){
   var m = document.getElementById('bl-smenu');
-  if(m && m.style.display !== 'none' && !m.contains(e.target) && !e.target.classList.contains('bl-step')) blCloseMenu();
-});
+  if(m && m.style.display !== 'none' && !m.contains(e.target)) blCloseMenu();
+}, true);
 var smclose = document.getElementById('bl-smclose');
 if(smclose) smclose.addEventListener('click', blCloseMenu);
 
@@ -27073,13 +27071,13 @@ function mlPrInit(){
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
       if(typeof mlRenderSimpleView==='function') mlRedraw();
     },
-    openMenu: function(step, midi){
+    openMenu: function(step, midi, at){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       if(!c.v){ var raw = midi;
                 c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
       c.usr = 1;
-      if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
+      if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step, at);
     }
   });
   if(typeof prWire==='function') prWire('ml');
@@ -27186,7 +27184,7 @@ function mlPreviewNote(cell){
 }
 
 // ── step menu ──
-function mlOpenMenu(el, si){
+function mlOpenMenu(el, si, at){
   mlMenuStep = si;
   var cell = mlGrid[si];
   if(!cell.v){ cell.v = 1; mlRedraw(); }
@@ -27212,12 +27210,7 @@ function mlOpenMenu(el, si){
     b.onclick = function(){ cell.len = parseInt(b.dataset.mlsmlen); document.querySelectorAll('[data-mlsmlen]').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel'); mlRedraw(); };
   });
   var accentBtn = document.getElementById('ml-sm-accent'); if(accentBtn){ accentBtn.classList.toggle('sel', !!cell.accent); accentBtn.onclick = function(){ cell.accent = !cell.accent; accentBtn.classList.toggle('sel', cell.accent); mlRedraw(); }; }
-  var rect = el.getBoundingClientRect();
-  var top = rect.bottom + 6, left = rect.left;
-  if(top + 240 > window.innerHeight) top = rect.top - 246;
-  if(left + 200 > window.innerWidth) left = window.innerWidth - 204;
-  if(left < 4) left = 4;
-  menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.display = 'flex';
+  prPlaceMenu(menu, at, el);
 }
 function mlCloseMenu(){ var m = document.getElementById('ml-smenu'); if(m) m.style.display = 'none'; mlMenuStep = -1; }
 
@@ -27541,12 +27534,11 @@ document.querySelectorAll('[data-mlstyle]').forEach(function(b){
   });
 });
 
-// ── close menu on outside click ──
-var mlPerformPage = document.getElementById('page-bass');
-if(mlPerformPage) mlPerformPage.addEventListener('pointerdown', function(e){
+// ── close menu on outside click ── see the bass copy: same dead #page-bass.
+document.addEventListener('pointerdown', function(e){
   var m = document.getElementById('ml-smenu');
-  if(m && m.style.display !== 'none' && !m.contains(e.target) && !e.target.classList.contains('bl-step')) mlCloseMenu();
-});
+  if(m && m.style.display !== 'none' && !m.contains(e.target)) mlCloseMenu();
+}, true);
 var mlSmclose = document.getElementById('ml-smclose');
 if(mlSmclose) mlSmclose.addEventListener('click', mlCloseMenu);
 
@@ -28496,6 +28488,43 @@ function prHit(id, ev){
  return { step:x, midi: cfg.hi - i };
 }
 
+// Put a step menu where the press was, and inside the window.
+//
+// Both menus used to measure the CANVAS: open below its bottom edge, or above
+// its top when that did not fit. Neither is anywhere near the cell you pressed
+// on a roll this tall, and on a scrolled roll the top edge is usually above
+// the window — so the fallback put the menu off-screen entirely. It opened
+// every time; you just could not see it, which is indistinguishable from a
+// long press that does nothing. The height it tested against was hardcoded at
+// 240 for a menu that measures 194, so the test was wrong in both directions.
+// Measured, anchored at the finger, clamped to the window.
+function prPlaceMenu(menu, at, fallbackEl){
+ const M = 8;                       // clearance from the window edges
+ const GAP = 18;                    // clearance from the fingertip itself
+ // Laid out but not yet painted, so it can be measured before it is placed.
+ menu.style.visibility = 'hidden';
+ menu.style.display = 'flex';
+ menu.style.top = '0px'; menu.style.left = '0px';
+ const mw = menu.offsetWidth, mh = menu.offsetHeight;
+ const vw = window.innerWidth, vh = window.innerHeight;
+ let ax, ay;
+ if(at && isFinite(at.x) && isFinite(at.y)){ ax = at.x; ay = at.y; }
+ else {
+  const r = (fallbackEl && fallbackEl.getBoundingClientRect)
+    ? fallbackEl.getBoundingClientRect() : {left:M, bottom:M};
+  ax = r.left; ay = r.bottom;
+ }
+ // Below the press by default, flipped above when there is no room — and
+ // never under the hand that opened it.
+ let top = ay + GAP;
+ if(top + mh + M > vh) top = ay - GAP - mh;
+ top = Math.max(M, Math.min(vh - mh - M, top));
+ let left = Math.max(M, Math.min(vw - mw - M, ax - mw/2));
+ menu.style.top = Math.round(top) + 'px';
+ menu.style.left = Math.round(left) + 'px';
+ menu.style.visibility = '';
+}
+
 function prWire(id){
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
  let holdT=null, moved=false, dx=0, dy=0, held=false;
@@ -28509,7 +28538,9 @@ function prWire(id){
    held=true;
    // Long press opens the same per-step menu the old lane used, so length,
    // slide and accent are still reachable without inventing a second UI.
-   if(cfg.openMenu) cfg.openMenu(h.step, h.midi);
+   // Where the finger is, so the menu can open beside the cell rather than
+   // beside the canvas.
+   if(cfg.openMenu) cfg.openMenu(h.step, h.midi, {x:e.clientX, y:e.clientY});
   }, 450);
  });
  cv.addEventListener('pointermove', function(e){
