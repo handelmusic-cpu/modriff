@@ -1584,6 +1584,25 @@ body.light-mode .subnav { background:#e8eaf6; }
            touch-action:manipulation; }
 .pr-keys { flex:0 0 52px; position:sticky; left:0; z-index:2; }
 .pr-scroll { flex:0 0 auto; }
+/* The beat ruler is drawn into the top of the grid canvas, and that canvas now
+   scrolls vertically — so the moment a roll aims itself at its notes, the bar
+   numbers and beat counts it is labelled with are hundreds of pixels above the
+   view and only a manual scroll to the very top brings them back. They were
+   always visible before, because nothing could scroll vertically at all.
+   Rather than cut the ruler out of the canvas and re-lay-out every coordinate
+   that depends on it, this pins a copy over the top of the roll: the same
+   strip, blitted from the background cache prDraw already builds, translated
+   sideways to follow the horizontal scroll. At scrollTop 0 it sits exactly on
+   the one underneath, so there is nothing to see; past that it is the only one
+   left. Transform rather than a redraw, so following a scroll costs the
+   compositor and not the thread the audio clock runs on. */
+.pr-host { position:relative; }
+.pr-rulerhost {
+ position:absolute; top:1px; left:53px; right:1px; height:14px;
+ overflow:hidden; pointer-events:none; z-index:4;
+ border-top-right-radius:var(--r-md);
+}
+.pr-ruler { display:block; will-change:transform; }
 .pr-canvas { display:block; touch-action:manipulation; }
 .pr-keys-canvas { display:block; }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
@@ -4571,7 +4590,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.8.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.0.0</span>
     </div>
    </div>
   </div>
@@ -4589,7 +4608,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v2.8.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.0.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5938,6 +5957,7 @@ body.mode-free .pro-only { display:none !important; }
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
    </div>
+   <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="bl-pr-ruler"></canvas></div>
    <div class="pr-bar">
     <span class="pr-hint" id="bl-pr-hint">Tap a cell to place or clear a note · double-tap a note to edit it here</span>
     <div class="pr-insp" id="bl-pr-insp" role="group" aria-label="Selected step"></div>
@@ -6029,6 +6049,7 @@ body.mode-free .pro-only { display:none !important; }
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
    </div>
+   <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="ml-pr-ruler"></canvas></div>
    <div class="pr-bar">
     <span class="pr-hint" id="ml-pr-hint">Tap a cell to place or clear a note · double-tap a note to edit it here</span>
     <div class="pr-insp" id="ml-pr-insp" role="group" aria-label="Selected step"></div>
@@ -6209,6 +6230,16 @@ body.mode-free .pro-only { display:none !important; }
 ══════════════════════════════════════ -->
 <script>
 'use strict';
+
+// The release label, and the first thing in this script because the init code
+// several thousand lines below paints it into #unlock-ver and #ft-ver while
+// this same block is still executing. Declared at the bottom, as it was, that
+// read sat in the const's temporal dead zone and threw — into a try/catch that
+// swallowed it — so both labels silently kept whatever the markup had been
+// hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
+// Not the only release number in the repo: sw.js has its own VERSION, which is
+// a cache key rather than a label. Read the note there before bumping it.
+const MODRIFF_VERSION = '3.0.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13282,10 +13313,9 @@ function setMelMode(m){
  if(bw) bw.classList.toggle('visible', m==='bend');
  // The scroller has no geometry while display:none, so the cue can only be
  // measured once it is back.
- if(m==='keys'){
-  if(typeof melScrollToHome==='function') melScrollToHome();
-  if(typeof syncMelScrollCue==='function') syncMelScrollCue();
- }
+ // syncMelScrollCue homes the strip itself when it still needs it, so this is
+ // the one call every "the strip may have geometry now" moment makes.
+ if(m==='keys'){ invalidateMelScrollMax(); if(typeof syncMelScrollCue==='function') syncMelScrollCue(); }
 }
 // ── Touch Mod controls ──
 function toggleMelMod(){
@@ -14220,6 +14250,7 @@ function buildMelodyStrip(){
  notes.push({midi:baseM+36,name:nn(root),oct:Math.floor((baseM+36)/12)-1});
  // Where the strip should be looking when it is rebuilt — see melScrollToHome.
  _melHomeMidi = baseM; _melNeedsHome = true;
+ invalidateMelScrollMax();
 
  notes.forEach(({midi,name,oct})=>{
  const wrap=document.createElement('div'); wrap.className='mel-key';
@@ -14314,6 +14345,15 @@ function melScrollToHome(){
 // the scroller's own geometry rather than a media query, because the answer
 // depends on the mode (how many steps), the octave span and the window — and
 // it changes under your finger as you scroll.
+// scrollWidth and clientWidth only change when the strip is rebuilt or the
+// window resizes, but reading either flushes pending layout — and this runs on
+// every frame of a flick, on the thread the audio clock shares. The span is
+// cached and only scrollLeft is read while scrolling.
+// var, not let: buildMelodyStrip calls syncMelScrollCue during init, before
+// execution reaches this line, and a let binding is in its temporal dead zone
+// until then — the same trap _recArm and _melHomeMidi both document.
+var _melScrollMax = null;
+function invalidateMelScrollMax(){ _melScrollMax = null; }
 function syncMelScrollCue(){
  const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
  // The strip is built during init, before layout has given it a width to
@@ -14326,7 +14366,8 @@ function syncMelScrollCue(){
  // A display:none element measures zero, which would otherwise read as
  // "nothing overflows" and leave the fade off on the way back in.
  if(wrap.style.display==='none') return;
- const max=wrap.scrollWidth-wrap.clientWidth;
+ if(_melScrollMax===null) _melScrollMax = wrap.scrollWidth - wrap.clientWidth;
+ const max=_melScrollMax;
  // A sub-pixel remainder is not a hidden note; it is a rounded layout.
  const slack=2;
  wrap.classList.toggle('scroll-l', wrap.scrollLeft>slack);
@@ -14338,7 +14379,7 @@ function syncMelScrollCue(){
  const bind=()=>{
   const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
   wrap.addEventListener('scroll', syncMelScrollCue, {passive:true});
-  window.addEventListener('resize', syncMelScrollCue);
+  window.addEventListener('resize', ()=>{ invalidateMelScrollMax(); syncMelScrollCue(); });
   syncMelScrollCue();
   // One frame later as well: at DOMContentLoaded the strip is built but not
   // yet laid out, and a width of zero is not something to aim by.
@@ -14500,6 +14541,11 @@ function showToast(msg, opts){
   timer=setTimeout(()=>{
    if(!armed) return;
    fired=true; armed=null; timer=null;
+   // An offer of a way back outranks an explanation. showToast owns one
+   // element, so firing a tooltip over a live Undo would drop the only
+   // button that could undo what was just cleared.
+   const live=document.getElementById('_toast');
+   if(live && live.style.opacity==='1' && live.querySelector('button')) return;
    // Scaled to the reading, with a floor: the shortest of these is three
    // words and the longest is a paragraph.
    showToast(tip, {ms:Math.min(9000, 2600+tip.length*32)});
@@ -15143,7 +15189,8 @@ function tourPicker(){
 // The written guide lives on its own page that nothing ever linked to, so
 // HELP_SECTIONS was unreachable content. Reachable from the ⋯ menu now.
 function openGuide(){
- if(typeof buildHelp==='function') buildHelp();
+ // switchTab builds the page for t==='help'; building here too would render
+ // and discard the whole guide once on every press.
  switchTab('help');
  const m=document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
  // Each tab scrolls within itself now (see .tab-page's min-height fix), not
@@ -18831,7 +18878,7 @@ function switchTab(t){
  // The melody strip may have been rebuilt while this page was away, with no
  // geometry to aim itself by at the time.
  if(t==='perform') setTimeout(()=>{
-  if(typeof melScrollToHome==='function') melScrollToHome();
+  if(typeof invalidateMelScrollMax==='function') invalidateMelScrollMax();
   if(typeof syncMelScrollCue==='function') syncMelScrollCue();
  },0);
  syncFixedTransport();
@@ -24073,8 +24120,13 @@ function sqMarkSel(){
   var e=sqSelEl(); if(e) e.classList.add('sel');
 }
 function sqClearSel(){ sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp(); }
+// The kit lives in its own IIFE, and the tap-away handler that clears all
+// three selections is out with the rolls.
+window._sqClearSel = sqClearSel;
+window._sqHasSel = function(){ return sqSelTi >= 0; };
 function sqSyncInsp(){
   var host=document.getElementById('sq-insp'); if(!host) return;
+  var _focus=_prFocusKey(host);
   host.innerHTML='';
   var M=SQM[sqMach];
   var track=(M&&M.tracks)?M.tracks[sqSelTi]:null;
@@ -24137,6 +24189,7 @@ function sqSyncInsp(){
   });
   del.classList.add('pr-insp-del');
   host.appendChild(del);
+  _prKeepFocus(host, _focus);
 }
 
 function sqAttachStep(el,ti,s,track){
@@ -25985,6 +26038,10 @@ function blPrInit(){
     // Used when a double-tap puts a cleared note back: the engine owns its
     // empty state, and a restored note means the grid is no longer empty.
     refresh: function(){ blUpdateEmptyHint(); blRedraw(); },
+    // The step menu sounded a note when you moved its octave; the inspector
+    // has to as well, or a 49-row roll gives you no way to hear where you
+    // landed without starting the transport.
+    preview: function(step){ var c=blGrid[step]; if(c && typeof blPreviewNote==='function') blPreviewNote(c); },
     // Where to look first when the roll is empty — see prScrollToContent.
     homeLo: BL_GEN_LO, homeHi: BL_GEN_HI,
     steps: function(){ return blSteps; },
@@ -27047,6 +27104,7 @@ function mlPrInit(){
     lo: ML_PR_LO, hi: ML_PR_HI, color:'#ff8ad4',
     refresh: function(){ if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
                          if(typeof mlRedraw==='function') mlRedraw(); },
+    preview: function(step){ var c=mlGrid[step]; if(c && typeof mlPreviewNote==='function') mlPreviewNote(c); },
     homeLo: ML_GEN_LO, homeHi: ML_GEN_HI,
     steps: function(){ return mlSteps; },
     cell:  function(x){ return mlGrid[x]; },
@@ -28196,11 +28254,18 @@ function prLayout(id){
  kv.width = Math.round(PR_KEY_W*dpr); kv.height = Math.round(h*dpr);
  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
  kv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ const rv = document.getElementById(id+'-pr-ruler');
+ if(rv){
+  rv.style.width = w+'px'; rv.style.height = PR_RULER_H+'px';
+  rv.width = Math.round(w*dpr); rv.height = Math.round(PR_RULER_H*dpr);
+  rv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ }
  // Whether this roll is on screen at all. It changes only when a tab or a
  // sub-tab changes, and both of those end up here, so the one layout read it
  // costs is paid at the switch instead of on every step of every bar.
  const wasOn = _PR_ONSCREEN[id];
  _PR_ONSCREEN[id] = cv.offsetParent !== null;
+ _prBindRulerScroll(id);
  prDrawKeys(id);
  prDraw(id);
  // Four octaves is far more than fits, so a roll that always opened at its top
@@ -28210,6 +28275,45 @@ function prLayout(id){
  if(_PR_ONSCREEN[id] && !wasOn) prScrollToContent(id);
  prSyncInsp(id);
 }
+
+// One listener per roll, bound the first time it is laid out. The pinned ruler
+// must not scroll vertically, which is the whole point of it, but it does have
+// to track the horizontal — otherwise its bar numbers drift off the bars.
+function _prBindRulerScroll(id){
+ const wrap = document.getElementById(id+'-pr'); if(!wrap || wrap._prRulerBound) return;
+ wrap._prRulerBound = true;
+ const sync = ()=>{
+  const rv = document.getElementById(id+'-pr-ruler'); if(!rv) return;
+  rv.style.transform = 'translateX(' + (-wrap.scrollLeft) + 'px)';
+ };
+ wrap.addEventListener('scroll', sync, {passive:true});
+ sync();
+}
+
+// Tapping away puts the bar away. Removing the step menus took their
+// close-on-outside-tap with them and nothing replaced it: once a step was
+// selected the inspector stayed up until that step was cleared or another was
+// chosen, with no way to simply stop editing. One listener covers all three
+// grids, and a tap inside a grid or inside its own bar is not "away".
+(function(){
+ const inside = (t, gridSel, inspId) => {
+  const insp = document.getElementById(inspId);
+  if(insp && insp.contains(t)) return true;
+  return !!(t && t.closest && t.closest(gridSel));
+ };
+ document.addEventListener('pointerdown', function(e){
+  const t = e.target;
+  ['bl','ml'].forEach(function(id){
+   if(PR_SEL[id]==null) return;
+   if(inside(t, '#'+id+'-pr', id+'-pr-insp')) return;
+   PR_SEL[id]=null; prSyncInsp(id); prDraw(id);
+  });
+  if(typeof window._sqHasSel==='function' && window._sqHasSel() &&
+     !inside(t, '.sq-grid-wrap', 'sq-insp')){
+   window._sqClearSel();
+  }
+ }, true);
+})();
 
 // Put the written part of the roll in the middle of the view, or the register
 // the generator writes in when there is nothing written yet — which is also
@@ -28372,6 +28476,22 @@ function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
  return off;
 }
 
+// Paints the pinned ruler from the background cache prDraw has just used, so
+// the two can never draw different bar lines, and re-lays the playhead cap on
+// top of it. Cheap: one blit of a 14px strip and at most one small rect.
+function _prDrawRuler(id, W, colW, ph, T){
+ const rv = document.getElementById(id+'-pr-ruler'); if(!rv) return;
+ const bg = _PR_BG[id] && _PR_BG[id].cv; if(!bg) return;
+ const g = rv.getContext('2d');
+ g.clearRect(0,0,W,PR_RULER_H);
+ // Source rectangle in device pixels; the cache is drawn at the same dpr the
+ // live canvas uses, and drawImage's 9-arg form wants raw source pixels.
+ const sx = bg.width / Math.max(1, W);
+ g.drawImage(bg, 0, 0, Math.round(W*sx), Math.round(PR_RULER_H*sx),
+                 0, 0, W, PR_RULER_H);
+ if(ph>=0){ g.fillStyle = T.head; g.fillRect(ph*colW-2, 0, 6, 3); }
+}
+
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
@@ -28444,6 +28564,9 @@ function prDraw(id){
   // A cap in the ruler, so the playhead is findable at a glance on a long roll.
   g.fillRect(ph*colW-2,0,6,3);
  }
+ // The pinned copy of the ruler — see .pr-rulerhost. The same strip the grid
+ // carries, kept where it can be read once the roll has scrolled off it.
+ _prDrawRuler(id, W, colW, ph, T);
  // Where the next played note will land, while this roll is armed and nothing
  // is running. Deliberately not the playhead's colour — it is a place you are
  // about to write, not a place the music is.
@@ -28506,15 +28629,32 @@ function prMidiOf(cfg, step){
 function _prNoteName(midi){
  return PR_NOTE_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
 }
-function _prBtn(label, on, title, fn){
+function _prBtn(label, on, title, fn, key){
  const b=document.createElement('button');
  b.type='button'; b.className='pr-insp-btn'+(on?' on':'');
+ // A stable name for this control, so focus can be put back on the same one
+ // after the host is rebuilt — see _prKeepFocus.
+ b.dataset.k = key || (title || label);
  b.textContent=label;
  if(title){ b.title=title; b.setAttribute('aria-label', title); }
  if(on!=null) b.setAttribute('aria-pressed', on?'true':'false');
  b.addEventListener('click', fn);
  return b;
 }
+// Every press rebuilds the whole bar, which detaches the button that was
+// pressed and drops focus to <body> — so a keyboard or switch user had to
+// re-Tab to the same control after every single increment. These remember the
+// focused control by name across the rebuild.
+function _prFocusKey(host){
+ const a=document.activeElement;
+ return (a && host.contains(a) && a.dataset && a.dataset.k) ? a.dataset.k : null;
+}
+function _prKeepFocus(host, key){
+ if(!key) return;
+ const b=host.querySelector('[data-k="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');
+ if(b) try{ b.focus({preventScroll:true}); }catch(e){ b.focus(); }
+}
+
 function _prGroup(label){
  const g=document.createElement('div'); g.className='pr-insp-grp';
  if(label){ const l=document.createElement('span'); l.className='pr-insp-lbl'; l.textContent=label; g.appendChild(l); }
@@ -28525,6 +28665,7 @@ function prSyncInsp(id){
  const host = document.getElementById(id+'-pr-insp'); if(!host) return;
  const cfg = PR_ENGINES[id];
  const step = prSelStep(id);
+ const _focus = _prFocusKey(host);
  host.innerHTML='';
  // A selection that no longer has a note under it — Generate rewrote the bar,
  // the step count shrank — is not a selection.
@@ -28556,9 +28697,17 @@ function prSyncInsp(id){
  // moving a note twelve rows is a scroll and a hunt, and it was two buttons.
  const og=_prGroup('Oct');
  const octBy=(d)=>{
-  const m=prMidiOf(cfg, step); if(m==null) return;
-  const t=m+d*12; if(t<cfg.lo || t>cfg.hi) return;
-  c.note=((t%12)+12)%12; c.oct=Math.floor(t/12)-1; c.usr=1;
+  // The cell's OWN pitch, not the one on screen. For a generated note under
+  // Follow those differ: the drawn pitch is wherever this step re-roots onto
+  // the chord sounding at the moment you press, so shifting that and storing
+  // it would rebase the note onto one passing chord and lose what the
+  // generator wrote. It also must not set usr — Len and Accent do not, and
+  // pinning a note out of Follow is not something a button labelled "up an
+  // octave" should do quietly.
+  const m = c.note + (c.oct+1)*12;
+  const t = m + d*12; if(t<cfg.lo || t>cfg.hi) return;
+  c.note=((t%12)+12)%12; c.oct=Math.floor(t/12)-1;
+  if(typeof cfg.preview==='function'){ try{ cfg.preview(step); }catch(e){} }
   redraw();
  };
  og.appendChild(_prBtn('−', null, 'Down an octave', ()=>octBy(-1)));
@@ -28576,6 +28725,7 @@ function prSyncInsp(id){
  });
  del.classList.add('pr-insp-del');
  host.appendChild(del);
+ _prKeepFocus(host, _focus);
 }
 
 function prWire(id){
@@ -29183,7 +29333,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.8.1';
+// MODRIFF_VERSION is declared at the top of this script — see the note there.
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
@@ -31002,7 +31152,6 @@ const A11Y_SLIDER = {
  'ms-lfo2-rate'  : 'LFO 2 rate',
  'ms-lfo2-depth' : 'LFO 2 depth',
  'sq-swingSl'    : 'Swing amount, all parts',
- 'sq-velSl'      : 'Step velocity',
  'bl-cutoff'     : 'Bass filter cutoff',
  'bl-reso'       : 'Bass filter resonance',
  'bl-human'      : 'Bass humanize amount',
