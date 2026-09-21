@@ -5763,7 +5763,7 @@ body.mode-free .pro-only { display:none !important; }
 </div>
 <div class="sq-phbar"><div class="sq-phcur" id="sq-phcur"></div></div>
 <div class="pr-insp sq-insp" id="sq-insp" role="group" aria-label="Selected step"></div>
-<div class="pr-hint sq-insp-hint" id="sq-insp-hint">Tap a step to place it · tap any step to select it · tap the selected step to clear</div>
+<div class="pr-hint sq-insp-hint" id="sq-insp-hint">Tap a step to place or clear it · double-tap a step to edit it here</div>
 
 
 <!-- Controls row: steps + swing + FX -->
@@ -24193,7 +24193,7 @@ function sqAttachStep(el,ti,s,track){
   // never heard, which reads as "ratcheting is broken" and "velocity doesn't
   // always work". The roll's prWire has always had this guard; the kit never
   // did.
-  var holdT=null,moved=false,held=false,dnX=0,dnY=0;
+  var holdT=null,moved=false,held=false,dnX=0,dnY=0,lastTap=0,lastV=0;
   el.addEventListener('pointerdown',function(e){
     sqInitFX();sqEnsureNoise();
     moved=false;held=false;dnX=e.clientX;dnY=e.clientY;
@@ -24206,15 +24206,40 @@ function sqAttachStep(el,ti,s,track){
   el.addEventListener('pointerup',function(){
     if(holdT){clearTimeout(holdT);holdT=null;}
     if(moved||held)return;
-    var cell=sqGrid[ti][s];
-    // The same three outcomes as the rolls: an empty step is placed and
-    // selected, a lit one you have not selected is selected, and the selected
-    // one is cleared. The double-tap that used to toggle accent is gone — it
-    // collided with "tap again to clear", and accent is a button in the
-    // inspector now, where you can see whether it is on.
-    if(cell.v===0){ cell.v=1; sqSelTi=ti; sqSelS=s; }
-    else if(sqSelTi===ti && sqSelS===s){ cell.v=0; sqSelTi=-1; sqSelS=-1; }
-    else { sqSelTi=ti; sqSelS=s; }
+    var now=Date.now(), cell=sqGrid[ti][s];
+    // One tap toggles, which is what a kit is for: laying a beat down and
+    // taking bits of it out again. Making that cost two taps, the way the
+    // rolls do, taxes the commonest thing you do here to pay for the rarest.
+    //
+    // So the second tap buys the edit instead. A second tap on the SAME step
+    // inside the double-tap window means "let me edit this one", not "do that
+    // again": it puts back whatever the first tap just changed and selects the
+    // step, which fills the inspector below with velocity, ratchet, ornament
+    // and accent. Placing a step selects it too, so a new one is already
+    // under the controls without a second tap at all.
+    //
+    // This is the slot the old accent gesture used to hold, and it was barely
+    // holding it: that test required v>=1 AFTER the first tap had already set
+    // a lit step to 0, so double-tapping a lit step only ever switched it off
+    // and on again. Accent reached it on empty steps alone. It is a button in
+    // the inspector now, which is where an articulation belongs beside the
+    // other three.
+    if(now - lastTap < 300){
+      // Put back only what the first tap took away. When the pair began on an
+      // empty step the first tap PLACED it, and undoing that would leave a
+      // double-tap on an empty cell doing nothing at all — so a placement
+      // stands and only a clear is reversed. Either way the step ends up down
+      // and selected, which is what you double-tapped it for.
+      if(lastV) cell.v = lastV;
+      sqSelTi = ti; sqSelS = s;
+      lastTap = 0;
+    } else {
+      lastV = cell.v;
+      cell.v = (cell.v === 0) ? 1 : 0;
+      if(cell.v){ sqSelTi = ti; sqSelS = s; }
+      else if(sqSelTi === ti && sqSelS === s){ sqSelTi = -1; sqSelS = -1; }
+      lastTap = now;
+    }
     sqRefreshStepEl(el,cell,track.c);
     sqMarkSel(); sqSyncInsp();
     // Auditioning a step goes through the Drums channel like every other hit,
