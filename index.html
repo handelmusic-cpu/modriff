@@ -1589,6 +1589,55 @@ body.light-mode .subnav { background:#e8eaf6; }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
 .pr-hint { font-size:.46rem; color:var(--muted); letter-spacing:.05em; }
 
+/* THE STEP INSPECTOR
+   One set of controls under the grid, editing whichever step is selected —
+   the same shape the Songs chord chart already uses, where selecting a slot
+   fills one inspector under the progression rather than opening anything.
+   It exists because everything a step can be — length, accent, slide, ratchet,
+   velocity — was reachable only by pressing and holding, and a control you
+   cannot see is a control most people never find. The hold still works; it is
+   no longer the only way in.
+   Hidden until something is selected, and it replaces the hint line rather
+   than adding a row, so the grid never moves under you when it appears. */
+.pr-insp { display:none; align-items:center; gap:6px; flex-wrap:wrap; width:100%; }
+.pr-insp.open { display:flex; }
+.pr-bar:has(.pr-insp.open) .pr-hint { display:none; }
+.sq-insp-hint { display:block; margin-top:6px; }
+.sq-insp.open ~ .sq-insp-hint { display:none; }
+.pr-insp-what {
+ font-family:'Outfit',sans-serif; font-size:.5rem; font-weight:600;
+ letter-spacing:.06em; color:var(--text); white-space:nowrap;
+}
+.pr-insp-what b { color:var(--accent); font-weight:700; }
+.pr-insp-grp { display:inline-flex; align-items:center; gap:3px; }
+.pr-insp-lbl {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase;
+ letter-spacing:.07em; margin-right:1px;
+}
+/* 30px, so every one of these clears the same bar the view-mode pill had to:
+   a control that exists to save you a hidden gesture cannot itself be fiddly. */
+.pr-insp-btn {
+ min-height:30px; min-width:30px; padding:4px 9px;
+ background:var(--surf); border:1px solid var(--border2); border-radius:7px;
+ color:var(--muted); font-family:'Outfit',sans-serif; font-size:.52rem;
+ font-weight:600; cursor:pointer; touch-action:manipulation;
+ transition:border-color .12s, color .12s, background .12s;
+}
+.pr-insp-btn:hover { border-color:var(--accent); color:var(--text); }
+.pr-insp-btn.on { border-color:var(--pg); color:var(--pg); background:rgba(80,200,120,.12); }
+.pr-insp-val {
+ min-width:22px; text-align:center; font-family:'Orbitron',sans-serif;
+ font-size:.6rem; font-weight:700; color:var(--text);
+}
+.pr-insp-del { margin-left:auto; border-color:rgba(255,90,90,.45); color:#ff6b6b; }
+.pr-insp-del:hover { border-color:#ff6b6b; background:rgba(255,60,60,.12); color:#ff8f8f; }
+.pr-insp-vel { flex:1 1 90px; min-width:80px; max-width:150px; accent-color:var(--pg); }
+/* The selected kit step. A ring outside the pad, for the same reason the roll
+   draws its selection outside the note: the pad's own border already carries
+   the track colour and says the step is on. */
+.sq-step.sel { box-shadow:0 0 0 2px var(--text), 0 0 10px rgba(255,255,255,.28); z-index:2; }
+body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30,60,.22); }
+
 /* The amber reads on a dark page and washes out on a light one, so the light
    theme takes it several stops down rather than sharing one value. */
 
@@ -5713,6 +5762,8 @@ body.mode-free .pro-only { display:none !important; }
   <div class="sq-gright" id="sq-gRight"></div>
 </div>
 <div class="sq-phbar"><div class="sq-phcur" id="sq-phcur"></div></div>
+<div class="pr-insp sq-insp" id="sq-insp" role="group" aria-label="Selected step"></div>
+<div class="pr-hint sq-insp-hint" id="sq-insp-hint">Tap a step to place it · tap any step to select it · tap the selected step to clear</div>
 
 
 <!-- Controls row: steps + swing + FX -->
@@ -5887,7 +5938,8 @@ body.mode-free .pro-only { display:none !important; }
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
    </div>
    <div class="pr-bar">
-    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
+    <span class="pr-hint" id="bl-pr-hint">Tap a cell to place a note · tap any note to select it · tap the selected note to clear</span>
+    <div class="pr-insp" id="bl-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
    <div class="bl-empty-hint" id="bl-empty-hint">
@@ -6004,7 +6056,8 @@ body.mode-free .pro-only { display:none !important; }
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
    </div>
    <div class="pr-bar">
-    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
+    <span class="pr-hint" id="ml-pr-hint">Tap a cell to place a note · tap any note to select it · tap the selected note to clear</span>
+    <div class="pr-insp" id="ml-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
    <div class="bl-empty-hint" id="ml-empty-hint">
@@ -23880,6 +23933,11 @@ function sqRenderGrid(){
   if(typeof noteInputCursorStep==='function' && typeof window._sqMarkCursor==='function'){
     window._sqMarkCursor(noteInputCursorStep('sq'));
   }
+  // The elements the selection pointed at were just thrown away. sqSyncInsp
+  // drops a selection whose cell no longer carries a hit — a kit change, a
+  // shorter pattern, a loaded groove — and re-marks the one that survives.
+  if(sqSelTi >= sqTc() || sqSelS >= sqSteps){ sqSelTi=-1; sqSelS=-1; }
+  sqMarkSel(); sqSyncInsp();
 }
 
 function sqRenderPageDots(){
@@ -24046,6 +24104,87 @@ function _sqCursorTransportChanged(){
  window._sqMarkCursor(noteInputCursorStep('sq'));
 }
 
+// ── selection + the kit's step inspector ──
+// Same idea as the rolls', and the same reason: ratchet, ornament and velocity
+// were reachable only by pressing and holding. A kit cell is two-dimensional,
+// so the selection is a track and a step rather than just a step. There is no
+// length here — a drum hit has no length to set.
+var sqSelTi=-1, sqSelS=-1;
+function sqSelEl(){
+  if(sqSelTi<0) return null;
+  return (sqStepEls[sqSelTi] && sqStepEls[sqSelTi][sqSelS]) || null;
+}
+function sqMarkSel(){
+  document.querySelectorAll('.sq-step.sel').forEach(function(e){e.classList.remove('sel');});
+  var e=sqSelEl(); if(e) e.classList.add('sel');
+}
+function sqClearSel(){ sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp(); }
+function sqSyncInsp(){
+  var host=document.getElementById('sq-insp'); if(!host) return;
+  host.innerHTML='';
+  var M=SQM[sqMach];
+  var track=(M&&M.tracks)?M.tracks[sqSelTi]:null;
+  var cell=(sqSelTi>=0&&sqGrid[sqSelTi])?sqGrid[sqSelTi][sqSelS]:null;
+  if(!track||!cell||!cell.v){
+    host.classList.remove('open');
+    if(sqSelTi>=0&&(!cell||!cell.v)){ sqSelTi=-1; sqSelS=-1; sqMarkSel(); }
+    return;
+  }
+  host.classList.add('open');
+  var el=sqSelEl();
+  var redraw=function(){
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel();
+    sqSyncInsp();
+  };
+
+  var what=document.createElement('span'); what.className='pr-insp-what';
+  what.innerHTML='<b>'+(track.n||track.s||'Step')+'</b> · step '+(sqSelS+1);
+  host.appendChild(what);
+
+  // Velocity first: it is the one people reach for most, and the one that
+  // silently did nothing while a held step was switching itself off.
+  var vg=_prGroup('Vel');
+  var sl=document.createElement('input');
+  sl.type='range'; sl.min='1'; sl.max='100'; sl.className='pr-insp-vel';
+  sl.value=String(cell.vel||100);
+  sl.setAttribute('aria-label','Velocity');
+  var vv=document.createElement('span'); vv.className='pr-insp-val'; vv.textContent=String(cell.vel||100);
+  sl.addEventListener('input',function(){
+    cell.vel=parseInt(sl.value,10);
+    vv.textContent=String(cell.vel);
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel();
+  });
+  vg.appendChild(sl); vg.appendChild(vv);
+  host.appendChild(vg);
+
+  var rg=_prGroup('Ratchet');
+  rg.appendChild(_prBtn('−',null,'Fewer hits on this step',function(){ cell.r=Math.max(1,(cell.r||1)-1); redraw(); }));
+  var rv=document.createElement('span'); rv.className='pr-insp-val'; rv.textContent=String(cell.r||1);
+  rg.appendChild(rv);
+  rg.appendChild(_prBtn('+',null,'More hits on this step',function(){ cell.r=Math.min(4,(cell.r||1)+1); redraw(); }));
+  host.appendChild(rg);
+
+  var og=_prGroup('Orn');
+  [[0,'—','No ornament'],[1,'Flam','Flam'],[2,'Ruff','Ruff']].forEach(function(o){
+    og.appendChild(_prBtn(o[1],(cell.orn||0)===o[0],o[2],function(){ cell.orn=o[0]; redraw(); }));
+  });
+  host.appendChild(og);
+
+  host.appendChild(_prBtn('Accent',cell.v===2,'Accent this step',function(){
+    cell.v=(cell.v===2)?1:2; redraw();
+  }));
+
+  var del=_prBtn('✕',null,'Remove this step',function(){
+    cell.v=0;
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp();
+  });
+  del.classList.add('pr-insp-del');
+  host.appendChild(del);
+}
+
 function sqAttachStep(el,ti,s,track){
   // held: the press already opened the step menu, so lifting the finger must
   // not also toggle the step. Without it a long press did both — the menu
@@ -24054,11 +24193,12 @@ function sqAttachStep(el,ti,s,track){
   // never heard, which reads as "ratcheting is broken" and "velocity doesn't
   // always work". The roll's prWire has always had this guard; the kit never
   // did.
-  var lastTap=0,holdT=null,moved=false,held=false,dnX=0,dnY=0;
+  var holdT=null,moved=false,held=false,dnX=0,dnY=0;
   el.addEventListener('pointerdown',function(e){
     sqInitFX();sqEnsureNoise();
     moved=false;held=false;dnX=e.clientX;dnY=e.clientY;
-    holdT=setTimeout(function(){holdT=null;if(moved)return;held=true;sqOpenMenu(el,ti,s,track);},450);
+    holdT=setTimeout(function(){holdT=null;if(moved)return;held=true;
+      sqSelTi=ti;sqSelS=s;sqOpenMenu(el,ti,s,track);sqMarkSel();sqSyncInsp();},450);
   });
   el.addEventListener('pointermove',function(e){
     if(Math.abs(e.clientX-dnX)+Math.abs(e.clientY-dnY)>10){moved=true;if(holdT){clearTimeout(holdT);holdT=null;}}
@@ -24066,11 +24206,17 @@ function sqAttachStep(el,ti,s,track){
   el.addEventListener('pointerup',function(){
     if(holdT){clearTimeout(holdT);holdT=null;}
     if(moved||held)return;
-    var now=Date.now(),cell=sqGrid[ti][s];
-    if(now-lastTap<280&&cell.v>=1){cell.v=cell.v===2?1:2;}
-    else if(cell.v===0){cell.v=1;}else{cell.v=0;}
-    lastTap=now;
+    var cell=sqGrid[ti][s];
+    // The same three outcomes as the rolls: an empty step is placed and
+    // selected, a lit one you have not selected is selected, and the selected
+    // one is cleared. The double-tap that used to toggle accent is gone — it
+    // collided with "tap again to clear", and accent is a button in the
+    // inspector now, where you can see whether it is on.
+    if(cell.v===0){ cell.v=1; sqSelTi=ti; sqSelS=s; }
+    else if(sqSelTi===ti && sqSelS===s){ cell.v=0; sqSelTi=-1; sqSelS=-1; }
+    else { sqSelTi=ti; sqSelS=s; }
     sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel(); sqSyncInsp();
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
@@ -24235,7 +24381,7 @@ function sqWire(){
     b.addEventListener('click',function(){
       if(sqMenuTi<0)return;
       sqGrid[sqMenuTi][sqMenuS].r=parseInt(b.dataset.sqR);
-      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);
+      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);sqSyncInsp();
       var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
       if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
     });
@@ -24244,7 +24390,7 @@ function sqWire(){
     b.addEventListener('click',function(){
       if(sqMenuTi<0)return;
       sqGrid[sqMenuTi][sqMenuS].orn=parseInt(b.dataset.sqOrn);
-      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);
+      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);sqSyncInsp();
       var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
       if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
     });
@@ -24254,7 +24400,7 @@ function sqWire(){
     if(sqMenuTi<0)return;
     var v=parseInt(this.value);
     sqGrid[sqMenuTi][sqMenuS].vel=v;
-    var vd=document.getElementById('sq-velDisp');if(vd)vd.textContent=v;
+    var vd=document.getElementById('sq-velDisp');if(vd)vd.textContent=v;sqSyncInsp();
     var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
     if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
   });
@@ -25916,7 +26062,7 @@ function _blDisplayMidi(x){
 function blPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('bl', {
-    lo: BL_PR_LO, hi: BL_PR_HI, color:'#2df09a',
+    lo: BL_PR_LO, hi: BL_PR_HI, color:'#2df09a', hasSlide:true,
     // Where to look first when the roll is empty — see prScrollToContent.
     homeLo: BL_GEN_LO, homeHi: BL_GEN_HI,
     steps: function(){ return blSteps; },
@@ -28238,6 +28384,7 @@ function prLayout(id){
  // arrives — on the way in only, never while it is already up, so it can never
  // pull the grid out from under a finger midway through an edit.
  if(_PR_ONSCREEN[id] && !wasOn) prScrollToContent(id);
+ prSyncInsp(id);
 }
 
 // Put the written part of the roll in the middle of the view, or the register
@@ -28439,6 +28586,15 @@ function prDraw(id){
    _prRound(g, x*colW+2, y+2, w-1, PR_ROW_H-4, 2.5);
    g.stroke();
   }
+  // The selected step, which is the one the inspector under the roll is
+  // editing. Drawn as a ring OUTSIDE the note rather than another inset
+  // outline, so it cannot be mistaken for the hand-placed marking above.
+  if(PR_SEL[id] === x){
+   g.strokeStyle = T.light ? '#12203a' : '#ffffff';
+   g.lineWidth = 2;
+   _prRound(g, x*colW-0.5, y-0.5, w+4, PR_ROW_H, 4.5);
+   g.stroke();
+  }
   // Name the note on the bar itself when there is room, so you can read a
   // line without tracking back to the gutter.
   if(w > 22){
@@ -28531,6 +28687,96 @@ function prPlaceMenu(menu, at, fallbackEl){
  menu.style.visibility = '';
 }
 
+// ── SELECTION + THE STEP INSPECTOR ───────────────────────────────────────
+// A roll holds one cell per step, so a selection is just a step index. Kept
+// out here rather than in either engine, because both rolls behave the same
+// and the drum kit keeps its own (it is a two-dimensional grid).
+const PR_SEL = {};
+function prSelStep(id){ const v = PR_SEL[id]; return (v==null) ? null : v; }
+function prSetSel(id, step){ PR_SEL[id] = step; prSyncInsp(id); }
+function prClearSel(id){ if(PR_SEL[id]==null) return; PR_SEL[id]=null; prSyncInsp(id); prDraw(id); }
+
+// Is there a note on this exact row of this step? Mirrors what prDraw resolves,
+// so "the note I can see here" and "the note this reports" cannot disagree.
+function prNoteAt(cfg, step, midi){
+ const c = cfg.cell(step);
+ if(!c || !c.v) return false;
+ let cur = c.note + (c.oct+1)*12;
+ if(typeof cfg.displayMidi==='function'){
+  const dm = cfg.displayMidi(step);
+  if(dm != null) cur = dm;
+ }
+ return cur === midi;
+}
+function prMidiOf(cfg, step){
+ const c = cfg.cell(step); if(!c) return null;
+ if(typeof cfg.displayMidi==='function'){
+  const dm = cfg.displayMidi(step);
+  if(dm != null) return dm;
+ }
+ return c.note + (c.oct+1)*12;
+}
+function _prNoteName(midi){
+ return PR_NOTE_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
+}
+function _prBtn(label, on, title, fn){
+ const b=document.createElement('button');
+ b.type='button'; b.className='pr-insp-btn'+(on?' on':'');
+ b.textContent=label;
+ if(title){ b.title=title; b.setAttribute('aria-label', title); }
+ if(on!=null) b.setAttribute('aria-pressed', on?'true':'false');
+ b.addEventListener('click', fn);
+ return b;
+}
+function _prGroup(label){
+ const g=document.createElement('div'); g.className='pr-insp-grp';
+ if(label){ const l=document.createElement('span'); l.className='pr-insp-lbl'; l.textContent=label; g.appendChild(l); }
+ return g;
+}
+
+function prSyncInsp(id){
+ const host = document.getElementById(id+'-pr-insp'); if(!host) return;
+ const cfg = PR_ENGINES[id];
+ const step = prSelStep(id);
+ host.innerHTML='';
+ // A selection that no longer has a note under it — Generate rewrote the bar,
+ // the step count shrank — is not a selection.
+ const c = (cfg && step!=null) ? cfg.cell(step) : null;
+ if(!cfg || step==null || step>=cfg.steps() || !c || !c.v){
+  host.classList.remove('open');
+  if(PR_SEL[id]!=null && (!c || !c.v)) PR_SEL[id]=null;
+  return;
+ }
+ host.classList.add('open');
+ const redraw = ()=>{ prDraw(id); prSyncInsp(id); };
+
+ const what=document.createElement('span'); what.className='pr-insp-what';
+ const midi = prMidiOf(cfg, step);
+ what.innerHTML='<b>'+(midi==null?'—':_prNoteName(midi))+'</b> · step '+(step+1);
+ host.appendChild(what);
+
+ // Length. The roll already draws c.len as the bar's width, so this is the
+ // control for something you can already see.
+ const lg=_prGroup('Len');
+ lg.appendChild(_prBtn('−', null, 'Shorter', ()=>{ c.len=Math.max(1,(c.len||1)-1); redraw(); }));
+ const lv=document.createElement('span'); lv.className='pr-insp-val'; lv.textContent=String(c.len||1);
+ lg.appendChild(lv);
+ lg.appendChild(_prBtn('+', null, 'Longer', ()=>{ c.len=Math.min(16,(c.len||1)+1); redraw(); }));
+ host.appendChild(lg);
+
+ host.appendChild(_prBtn('Accent', !!c.accent, 'Accent this step', ()=>{ c.accent=c.accent?0:1; redraw(); }));
+ if(cfg.hasSlide){
+  host.appendChild(_prBtn('Slide', !!c.slide, 'Slide into the next step', ()=>{ c.slide=!c.slide; redraw(); }));
+ }
+
+ const del=_prBtn('✕', null, 'Remove this note', ()=>{
+  if(typeof cfg.clearAt==='function') cfg.clearAt(step);
+  PR_SEL[id]=null; prDraw(id); prSyncInsp(id);
+ });
+ del.classList.add('pr-insp-del');
+ host.appendChild(del);
+}
+
 function prWire(id){
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
  let holdT=null, moved=false, dx=0, dy=0, held=false;
@@ -28546,7 +28792,11 @@ function prWire(id){
    // slide and accent are still reachable without inventing a second UI.
    // Where the finger is, so the menu can open beside the cell rather than
    // beside the canvas.
+   // The hold selects as well, so the bar under the roll and the menu over it
+   // are never describing two different steps.
+   PR_SEL[id] = h.step;
    if(cfg.openMenu) cfg.openMenu(h.step, h.midi, {x:e.clientX, y:e.clientY});
+   prSyncInsp(id); prDraw(id);
   }, 450);
  });
  cv.addEventListener('pointermove', function(e){
@@ -28559,7 +28809,23 @@ function prWire(id){
   if(moved || held) return;
   const cfg = PR_ENGINES[id]; if(!cfg) return;
   const h = prHit(id,e); if(!h) return;
-  cfg.toggle(h.step, h.midi);
+  // Three outcomes from one tap, and which one you get depends only on what is
+  // already under your finger:
+  //   empty row          → place the note, and select it
+  //   a note, unselected → select it, so the inspector can edit it
+  //   a note, selected   → clear it
+  // Selecting before clearing is what makes the inspector reachable at all —
+  // a tap that always cleared left no way to point at an existing note — and
+  // it means nothing is ever removed without having been named first.
+  const hasHere = prNoteAt(cfg, h.step, h.midi);
+  if(hasHere && prSelStep(id) === h.step){
+   cfg.toggle(h.step, h.midi);
+   PR_SEL[id] = null;
+  } else {
+   if(!hasHere) cfg.toggle(h.step, h.midi);
+   PR_SEL[id] = h.step;
+  }
+  prSyncInsp(id);
   prDraw(id);
  });
  cv.addEventListener('pointercancel', function(){ if(holdT){ clearTimeout(holdT); holdT=null; } });
