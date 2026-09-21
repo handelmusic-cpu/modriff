@@ -624,7 +624,9 @@ body.mode-basic .key-strip > .tg { display:none !important; }
 body.mode-basic .church-modes-toggle { display:none !important; }
 .ss-note { font-size:.42rem; color:var(--muted); align-self:center; margin-left:8px; }
 body.mode-basic #page-perform .btn-xp { width:24px; height:24px; font-size:.7rem; }
-body.mode-basic .vmt-btn { font-size:.38rem; padding:2px 7px; }
+/* Basic used to take this down to a 6px face in a 13px box. The face can
+   stay small here — Basic is deliberately quieter — but the target cannot. */
+body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 
 /* The voice pickers ride in the chord catalog row — see .chordpick-row. This
    used to be a row of its own called .voice-row, which was also the Voices
@@ -906,6 +908,31 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
                  scrollbar-width:none;
                  display:flex; justify-content:center; justify-content:safe center; }
 .mel-keys-wrap::-webkit-scrollbar { display:none; }
+/* The strip is wider than the space it has at every width we ship — 356px of
+   notes sit off the right edge on a phone, and two keys are still hidden on a
+   1280px desktop. Its scrollbar is hidden (it would sit under your thumb on
+   the one surface you play with it), so nothing said those notes were there:
+   the range simply appeared to stop at C. This is that signal — the keys fade
+   out over an edge that has more behind it, and only over that edge, so a
+   strip you have scrolled to the end of looks ended.
+   A mask rather than a pinned overlay, because the two elements that could
+   host an overlay are both wrong: inside the scroller it would scroll away
+   from the edge it is covering, and the panel outside it is the whole melody
+   section, fades and all. A mask paints in the scroller's own border box and
+   stays put. It adds no clipping that overflow-x was not already doing. */
+@property --mel-fade-l { syntax:'<length>'; inherits:false; initial-value:0px; }
+@property --mel-fade-r { syntax:'<length>'; inherits:false; initial-value:0px; }
+.mel-keys-wrap {
+ --mel-fade-l:0px; --mel-fade-r:0px;
+ transition:--mel-fade-l .18s ease, --mel-fade-r .18s ease;
+ -webkit-mask-image:linear-gradient(to right, transparent 0,
+   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
+ mask-image:linear-gradient(to right, transparent 0,
+   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
+}
+.mel-keys-wrap.scroll-l { --mel-fade-l:30px; }
+.mel-keys-wrap.scroll-r { --mel-fade-r:30px; }
+@media (prefers-reduced-motion: reduce) { .mel-keys-wrap { transition:none; } }
 .mel-keys { display:flex; gap:4px; flex:0 0 auto; padding:3px 3px 6px; flex-wrap:nowrap; }
 .mel-key { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
 .mel-btn {
@@ -1520,18 +1547,121 @@ body.light-mode .subnav { background:#e8eaf6; }
    edit. Pitch belongs on an axis. Drawn to a canvas rather than built from
    divs: a 30-row range across 32 steps is nearly a thousand cells, and that is
    a lot of DOM to rebuild on every generate, on a phone. */
-.pr-wrap { position:relative; display:flex; width:100%; border:1px solid var(--border2);
+/* One scroller, both axes. There used to be two nested ones — .pr-wrap owning
+   the vertical and .pr-scroll owning the horizontal — and between them the
+   bottom of the roll could not be reached at all, by touch or by anything
+   else. Two separate faults, stacked:
+
+   1. .pr-scroll declared touch-action:pan-x. touch-action is intersected down
+      the ancestor chain, so that withdrew the vertical axis from every touch
+      beginning on the canvas inside it, and a drag up or down over the grid
+      moved nothing.
+   2. .pr-scroll was a flex item with no height of its own, so it stretched to
+      the CONTAINER's capped height rather than to its content, and its
+      overflow-y:hidden then clipped the grid canvas to that. Scrolling
+      .pr-wrap moved the key gutter, which is 52px of sticky canvas with a real
+      height, but the grid it labels stayed clipped where it was. Anything past
+      the fold was unreachable even with a mouse wheel.
+
+   Both go away if one element scrolls both axes: .pr-wrap does, .pr-scroll
+   stops scrolling and stops clipping, and align-items:flex-start is what lets
+   it take its content's full height instead of the container's. The gutter
+   stays pinned on the horizontal through position:sticky and now scrolls with
+   the grid on the vertical, which is the only way the two can stay in step. */
+.pr-wrap { position:relative; display:flex; align-items:flex-start; width:100%;
+           border:1px solid var(--border2);
            border-radius:var(--r-md); overflow:auto; background:var(--bg);
-           /* The full chromatic range is 25-30 rows tall. Cap it and scroll
-              vertically rather than letting the roll push the whole page down. */
-           max-height:min(46vh, 340px); }
+           -webkit-overflow-scrolling:touch;
+           /* The roll is four octaves tall. Cap it and scroll rather than
+              letting it push the whole page down. */
+           max-height:min(56vh, 420px);
+           /* Reaching an edge of the roll should stop there, not hand the rest
+              of the swipe to the page and throw you off the sequencer. */
+           overscroll-behavior:contain;
+           /* manipulation, not pan-x: both axes, plus it suppresses the
+              double-tap zoom that a quick second tap on a cell would otherwise
+              trigger — and a second tap on a cell is how you clear a note. */
+           touch-action:manipulation; }
 .pr-keys { flex:0 0 52px; position:sticky; left:0; z-index:2; }
-.pr-scroll { flex:1; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
-             touch-action:pan-x; overscroll-behavior-x:contain; }
+.pr-scroll { flex:0 0 auto; }
+/* The beat ruler is drawn into the top of the grid canvas, and that canvas now
+   scrolls vertically — so the moment a roll aims itself at its notes, the bar
+   numbers and beat counts it is labelled with are hundreds of pixels above the
+   view and only a manual scroll to the very top brings them back. They were
+   always visible before, because nothing could scroll vertically at all.
+   Rather than cut the ruler out of the canvas and re-lay-out every coordinate
+   that depends on it, this pins a copy over the top of the roll: the same
+   strip, blitted from the background cache prDraw already builds, translated
+   sideways to follow the horizontal scroll. At scrollTop 0 it sits exactly on
+   the one underneath, so there is nothing to see; past that it is the only one
+   left. Transform rather than a redraw, so following a scroll costs the
+   compositor and not the thread the audio clock runs on. */
+.pr-host { position:relative; }
+.pr-rulerhost {
+ position:absolute; top:1px; left:53px; right:1px; height:14px;
+ overflow:hidden; pointer-events:none; z-index:4;
+ border-top-right-radius:var(--r-md);
+}
+.pr-ruler { display:block; will-change:transform; }
 .pr-canvas { display:block; touch-action:manipulation; }
 .pr-keys-canvas { display:block; }
 .pr-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 2px; }
 .pr-hint { font-size:.46rem; color:var(--muted); letter-spacing:.05em; }
+
+/* THE STEP INSPECTOR
+   One set of controls under the grid, editing whichever step is selected —
+   the same shape the Songs chord chart already uses, where selecting a slot
+   fills one inspector under the progression rather than opening anything.
+   It exists because everything a step can be — length, accent, slide, ratchet,
+   velocity — was reachable only by pressing and holding, and a control you
+   cannot see is a control most people never find. The hold still works; it is
+   no longer the only way in.
+   Hidden until something is selected, and it replaces the hint line rather
+   than adding a row, so the grid never moves under you when it appears. */
+.pr-insp { display:none; align-items:center; gap:6px; flex-wrap:wrap; width:100%; }
+.pr-insp.open { display:flex; }
+.pr-bar:has(.pr-insp.open) .pr-hint { display:none; }
+/* Teach once, then stop. The gesture line under a grid is the only thing that
+   says a second tap opens the bar — worth saying, and worth saying only until
+   it has been understood. The first double-tap anywhere retires all three for
+   good; the ? beside each panel still holds the full explanation, and the bar
+   itself reappears on every selection regardless. */
+body.seq-taught .pr-hint { display:none !important; }
+.sq-insp-hint { display:block; margin-top:6px; }
+.sq-insp.open ~ .sq-insp-hint { display:none; }
+.pr-insp-what {
+ font-family:'Outfit',sans-serif; font-size:.5rem; font-weight:600;
+ letter-spacing:.06em; color:var(--text); white-space:nowrap;
+}
+.pr-insp-what b { color:var(--accent); font-weight:700; }
+.pr-insp-grp { display:inline-flex; align-items:center; gap:3px; }
+.pr-insp-lbl {
+ font-size:.42rem; color:var(--muted); text-transform:uppercase;
+ letter-spacing:.07em; margin-right:1px;
+}
+/* 30px, so every one of these clears the same bar the view-mode pill had to:
+   a control that exists to save you a hidden gesture cannot itself be fiddly. */
+.pr-insp-btn {
+ min-height:30px; min-width:30px; padding:4px 9px;
+ background:var(--surf); border:1px solid var(--border2); border-radius:7px;
+ color:var(--muted); font-family:'Outfit',sans-serif; font-size:.52rem;
+ font-weight:600; cursor:pointer; touch-action:manipulation;
+ transition:border-color .12s, color .12s, background .12s;
+}
+.pr-insp-btn:hover { border-color:var(--accent); color:var(--text); }
+.pr-insp-btn.on { border-color:var(--pg); color:var(--pg); background:rgba(80,200,120,.12); }
+.pr-insp-val {
+ min-width:22px; text-align:center; font-family:'Orbitron',sans-serif;
+ font-size:.6rem; font-weight:700; color:var(--text);
+}
+.pr-insp-del { margin-left:auto; border-color:rgba(255,90,90,.45); color:#ff6b6b; }
+.pr-insp-del:hover { border-color:#ff6b6b; background:rgba(255,60,60,.12); color:#ff8f8f; }
+.pr-insp-vel { flex:1 1 90px; min-width:80px; max-width:150px; accent-color:var(--pg); }
+/* The selected kit step. A ring outside the pad, for the same reason the roll
+   draws its selection outside the note: the pad's own border already carries
+   the track colour and says the step is on. */
+.sq-step.sel { box-shadow:0 0 0 2px var(--text), 0 0 10px rgba(255,255,255,.28); z-index:2; }
+body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30,60,.22); }
 
 /* The amber reads on a dark page and washes out on a light one, so the light
    theme takes it several stops down rather than sharing one value. */
@@ -2998,8 +3128,16 @@ body.tour-open:not(.tour-top) #_toast {
 .tips-btn, .panel-fold { position:relative; }
 
 /* Tips popup */
+ /* The long tips run to two thousand pixels — phraselocks and the bassline
+    generator both do — and this is a fixed-position box, so everything past
+    the first screenful used to be unreachable: the page could not scroll it
+    and the popup did not scroll itself. It is a column now, with the title and
+    the close bar held still and only the body moving, so the deep help is
+    actually readable without any of it being cut. */
 .tips-popup {
  position:fixed; z-index:700; width:min(320px,90vw);
+ display:flex; flex-direction:column;
+ max-height:min(72vh, 620px);
  background:var(--surf); border:1px solid var(--border2);
  border-radius:var(--r-lg); padding:16px 18px;
  box-shadow:0 12px 40px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.04);
@@ -3012,15 +3150,20 @@ body.tour-open:not(.tour-top) #_toast {
 .tips-popup-title {
  font-family:'Orbitron',sans-serif; font-size:.6rem; font-weight:700;
  color:var(--accent); letter-spacing:.12em; margin-bottom:10px;
- text-transform:uppercase;
+ text-transform:uppercase; padding-right:26px; flex:none;
 }
 .tips-popup-body {
  font-size:.6rem; color:var(--muted); line-height:1.9; letter-spacing:.04em;
+ overflow-y:auto; overscroll-behavior:contain; min-height:0;
+ /* Room for the close, which sits over the top-right corner. */
+ padding-right:2px;
 }
 .tips-popup-body strong { color:var(--text); font-weight:600; }
 .tips-popup-close {
- position:absolute; top:10px; right:12px;
- font-size:.75rem; color:var(--muted); cursor:pointer; touch-action:manipulation;
+ position:absolute; top:6px; right:8px; z-index:1;
+ min-width:30px; min-height:30px; line-height:1;
+ background:none; border:none; font-family:inherit;
+ font-size:.95rem; color:var(--muted); cursor:pointer; touch-action:manipulation;
 }
 .tips-popup-close:hover { color:var(--dom); }
 
@@ -3099,18 +3242,9 @@ body.light-mode .bl-empty-hint {
    the generator buttons' own colour. */
 .bl-genbtn.bl-recbtn.armed { background:rgba(229,56,79,.85); border-color:#e5384f; color:#fff; box-shadow:0 0 10px rgba(229,56,79,.4); }
 .bl-stepsdisp { font-size:.65rem; font-family:'Orbitron',sans-serif; color:var(--pg); min-width:24px; text-align:center; }
-/* step editor popup */
-.bl-smenu { position:fixed; z-index:650; background:var(--surf2); border:1px solid var(--border2); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px; min-width:180px; box-shadow:0 8px 32px rgba(0,0,0,.9); }
-.bl-smrow { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
-.bl-smlbl { font-size:.42rem; color:var(--muted); width:44px; flex-shrink:0; letter-spacing:.07em; text-transform:uppercase; }
 .bl-mopt { background:var(--surf); border:1px solid var(--border2); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.52rem; padding:5px 8px; cursor:pointer; border-radius:5px; touch-action:manipulation; }
 .bl-mopt.sel, .bl-mopt.active { border-color:var(--pg); color:var(--pg); background:rgba(80,200,120,.1); }
 .bl-wave-current { font-size:.42rem; color:var(--muted); align-self:center; white-space:nowrap; }
-.bl-smclose { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; align-self:flex-end; padding:0; line-height:1; }
-.bl-notepicker { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
-.bl-notepick { padding:6px 2px; background:var(--surf); border:1px solid var(--border2); color:var(--muted); font-family:'Outfit',sans-serif; font-size:.48rem; cursor:pointer; border-radius:4px; text-align:center; touch-action:manipulation; }
-.bl-notepick.black { background:#1a1a2a; }
-.bl-notepick.sel { border-color:var(--pg); color:var(--pg); background:rgba(45,240,154,.1); }
 .bl-gen-style { display:flex; gap:4px; flex-wrap:wrap; }
 .bl-gen-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:6px; background:none; color:var(--muted); font-family:'Outfit',sans-serif; font-size:.5rem; cursor:pointer; touch-action:manipulation; transition:all .12s; }
 .bl-gen-btn.active { border-color:var(--pg); color:var(--pg); background:rgba(45,240,154,.08); }
@@ -3285,17 +3419,8 @@ body.light-mode .bl-empty-hint {
 .sq-ci .rm { font-size:14px; opacity:.5; cursor:pointer; }
 .sq-status { display:flex; gap:10px; font-size:.55rem; color:var(--sq-mut); letter-spacing:.1em; padding-top:4px; border-top:1px solid var(--sq-bdr); flex-wrap:wrap; }
 .sq-sv { color:var(--sq-acc); }
-/* step popup menu */
-.sq-smenu { position:fixed; z-index:600; background:var(--sq-sur2); border:1px solid var(--sq-bdr2); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px; min-width:170px; box-shadow:0 8px 32px rgba(0,0,0,.85); }
-.sq-smrow { display:flex; gap:4px; align-items:center; }
-.sq-smlbl { font-size:.58rem; color:var(--sq-mut); width:44px; flex-shrink:0; letter-spacing:.07em; text-transform:uppercase; }
 .sq-mopt { background:var(--sq-sur); border:1px solid var(--sq-bdr2); color:var(--sq-mut); font-family:'Outfit',sans-serif; font-size:.65rem; padding:5px 8px; cursor:pointer; border-radius:5px; touch-action:manipulation; }
 .sq-mopt.sel { border-color:var(--sq-acc); color:var(--sq-acc); }
-.sq-smvel { display:flex; flex-direction:column; gap:4px; }
-.sq-vdisp { font-size:.5rem; color:var(--sq-mut); letter-spacing:.07em; }
-.sq-velsl { -webkit-appearance:none; width:100%; height:5px; background:var(--sq-bdr2); border-radius:2px; outline:none; cursor:pointer; }
-.sq-velsl::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--sq-acc); cursor:pointer; }
-.sq-smclose { background:none; border:none; color:var(--sq-mut); font-size:18px; cursor:pointer; align-self:flex-end; padding:0; line-height:1; }
 
 /* ── Sequencer portrait-mode: peek fade + rotate hint ── */
 @media (orientation:portrait) and (max-width:600px){
@@ -3577,6 +3702,23 @@ body {
     inset 0 1px 0 rgba(255,255,255,.15);
 }
 
+/* A .tb draws no border and no background of its own — inside a .tg the group
+   supplies both, and every .tb in the app had a group until the two Show
+   switches in Settings. Those sit on their own, so in the OFF state they had
+   neither: muted text, centred, directly above two lines of muted prose
+   explaining them. They read as the headings for that prose rather than the
+   controls it describes, and the only thing that said otherwise was the
+   cursor — which a phone does not have. .tb-solo lends a lone .tb the shape.
+   Nothing here touches the ON state: .tb.active outranks all of it. */
+.tb-solo {
+  border:1px solid var(--border2);
+  border-radius:var(--r-md);
+  background:var(--bg);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
+}
+.tb-solo:hover:not(.active) { border-color:var(--accent); }
+.tb-solo.active { border-color:transparent; }
+
 /* 11 ── Beat dots: bounce on hit */
 @keyframes beatBounce {
   0%   { transform: scale(1.9); box-shadow: 0 0 14px 4px var(--modal); }
@@ -3659,7 +3801,12 @@ body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
 
 /* 21 ── Basic / Advanced view mode toggle */
 .vmt-pill { display:flex; border:1px solid var(--border2); border-radius:20px; overflow:hidden; }
-.vmt-btn { font-size:.44rem; padding:3px 10px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
+/* min-height, because this pill was 13px tall on a phone — a third of the
+   smallest target either platform's guidelines will admit, on the control
+   that reveals or hides half the app. The type stays small (it is a mode
+   label, not a heading); it is the box around it that grew, which costs the
+   key strip nothing, as the key stepper beside it is taller still. */
+.vmt-btn { font-size:.44rem; min-height:30px; padding:3px 12px; border:none; background:transparent; color:var(--muted); cursor:pointer; touch-action:manipulation; font-family:'Outfit',sans-serif; letter-spacing:.06em; transition:background .15s,color .15s; }
 .vmt-btn.active { background:var(--accent); color:#07080f; }
 body.mode-basic .advanced-only { display:none !important; }
 /* One exception: a MōdSynth voice that's already selected keeps its editor
@@ -4425,8 +4572,8 @@ body.mode-free .pro-only { display:none !important; }
    <div class="ft-sheet-row">
     <div class="ft-sheet-lbl">More</div>
     <div class="ft-sheet-items">
-     <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo sound-setting change (Ctrl/⌘+Z)" aria-label="Undo sound-setting change">↶</button>
-     <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo sound-setting change (Ctrl/⌘+Shift+Z)" aria-label="Redo sound-setting change">↷</button>
+     <button class="ft-btn ur off" id="ft-undo-btn" onclick="undoSettings()" title="Undo — steps back through everything: notes, patterns, the chart, the mix and every sound setting (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
+     <button class="ft-btn ur off" id="ft-redo-btn" onclick="redoSettings()" title="Redo — puts back whatever Undo took away (Ctrl/⌘+Shift+Z)" aria-label="Redo">↷</button>
      <button class="ft-btn dice" id="ft-dice-btn" onclick="openRandomizeConfirm()" title="Randomize sound settings" aria-label="Randomize sound settings"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="7.6" cy="7.6" r="1.85" fill="currentColor"/><circle cx="16.4" cy="7.6" r="1.85" fill="currentColor"/><circle cx="12" cy="12" r="1.85" fill="currentColor"/><circle cx="7.6" cy="16.4" r="1.85" fill="currentColor"/><circle cx="16.4" cy="16.4" r="1.85" fill="currentColor"/></svg></button>
      <button class="ft-btn ft-plain" id="ft-theme-btn" onclick="toggleTheme()" title="Toggle dark/light mode">Light</button>
      <button class="ft-btn ft-plain" id="ft-setups-btn" onclick="openSetups()" title="Save or reload the whole rig — tempo, sounds, patterns, chart and setlist">◈ Setups</button>
@@ -4443,7 +4590,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v2.8.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.0.0</span>
     </div>
    </div>
   </div>
@@ -4461,7 +4608,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v2.8.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.0.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -4550,7 +4697,7 @@ body.mode-free .pro-only { display:none !important; }
   <div class="kb-sc-row"><span class="kb-key">Tab</span><span class="kb-desc">Step through the controls on screen. The section bar at the top is the first stop.</span></div>
   <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">With the section bar focused: move between Setup, Mix, Songs, Accomp and Play. Home / End jump to the first or last.</span></div>
   <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + K</span><span class="kb-desc">Find any control by name and jump straight to it. Bare <b>/</b> does the same when you are not typing.</span></div>
-  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + Z</span><span class="kb-desc">Undo a sound-setting change. Add Shift to redo.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + Z</span><span class="kb-desc">Undo — notes, patterns, the chart, the mix and every sound setting. Add Shift to redo.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -5259,9 +5406,9 @@ body.mode-free .pro-only { display:none !important; }
     </div>
     <div class="ss-scope">Show <b>extras you can leave off</b></div>
     <div class="row">
-     <button class="tb" data-fingtoggle onclick="toggleFingering()"
+     <button class="tb tb-solo" data-fingtoggle onclick="toggleFingering()" aria-pressed="false"
       title="A chart of how to finger each note on a chosen instrument — trumpet valves, sax keys, guitar and bass positions. It appears under the melody strip and follows whatever note you play.">Instrument fingerings: OFF</button>
-     <button class="tb" data-tonetoggle onclick="toggleToneControls()"
+     <button class="tb tb-solo" data-tonetoggle onclick="toggleToneControls()" aria-pressed="false"
       title="Attack, release, reverb and strum, inside the sound picker on the Play tab. Advanced always has them; this is how to reach them without leaving Basic.">Sound shaping: OFF</button>
     </div>
     <!-- Both of these said, at length, what the buttons' own tooltips already
@@ -5635,6 +5782,8 @@ body.mode-free .pro-only { display:none !important; }
   <div class="sq-gright" id="sq-gRight"></div>
 </div>
 <div class="sq-phbar"><div class="sq-phcur" id="sq-phcur"></div></div>
+<div class="pr-insp sq-insp" id="sq-insp" role="group" aria-label="Selected step"></div>
+<div class="pr-hint sq-insp-hint" id="sq-insp-hint">Tap a step to place or clear it · double-tap a step to edit it here</div>
 
 
 <!-- Controls row: steps + swing + FX -->
@@ -5776,7 +5925,7 @@ body.mode-free .pro-only { display:none !important; }
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: ON</button>
    <button class="bl-genbtn" id="bl-feel-btn" onclick="blToggleWalkFeel()" title="Four = walking quarter notes. Two = half notes on 1 and 3, the way a head is usually played">Feel: Four</button>
-   <span class="bl-pl" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Line re-roots onto each chord</span>
+   <span class="bl-pl pf-info" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Line re-roots onto each chord</span>
    <span class="bl-pl" style="margin-left:6px">Humanize</span>
    <input type="range" id="bl-human" min="0" max="1" step="0.05" value="0"
           style="-webkit-appearance:none;width:70px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer"
@@ -5808,8 +5957,10 @@ body.mode-free .pro-only { display:none !important; }
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
    </div>
+   <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="bl-pr-ruler"></canvas></div>
    <div class="pr-bar">
-    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length, slide &amp; accent</span>
+    <span class="pr-hint" id="bl-pr-hint">Tap a cell to place or clear a note · double-tap a note to edit it here</span>
+    <div class="pr-insp" id="bl-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
    <div class="bl-empty-hint" id="bl-empty-hint">
@@ -5819,34 +5970,7 @@ body.mode-free .pro-only { display:none !important; }
    </div>
   </div>
  </div>
- <!-- Bassline step popup (position:fixed, works from any tab) -->
- <div class="bl-smenu" id="bl-smenu" style="display:none">
-  <button class="bl-smclose" id="bl-smclose">×</button>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Note</span>
-   <div class="bl-notepicker" id="bl-notepicker"></div>
-  </div>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Oct</span>
-   <button class="bl-mopt" data-blsmoct="1">1</button>
-   <button class="bl-mopt" data-blsmoct="2">2</button>
-   <button class="bl-mopt" data-blsmoct="3">3</button>
-   <button class="bl-mopt" data-blsmoct="4">4</button>
-   <button class="bl-mopt" data-blsmoct="5">5</button>
-  </div>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Len</span>
-   <button class="bl-mopt" data-blsmlen="1">1</button>
-   <button class="bl-mopt" data-blsmlen="2">2</button>
-   <button class="bl-mopt" data-blsmlen="3">3</button>
-   <button class="bl-mopt" data-blsmlen="4">4</button>
-  </div>
-  <div class="bl-smrow">
-   <button class="bl-mopt" id="bl-sm-slide">Slide</button>
-   <button class="bl-mopt" id="bl-sm-accent">Accent</button>
-  </div>
- </div>
- <div class="ms-host" id="ms-host-bass"></div>
+  <div class="ms-host" id="ms-host-bass"></div>
  <!-- Effects last, on every page: what you reach for after the part, not before it. -->
  <button class="fx-readout-bar pro-only" id="fx-ro-bass" onclick="fxOpenPanel('bass')"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
  </div><!-- /bm-bass-panel -->
@@ -5907,7 +6031,7 @@ body.mode-free .pro-only { display:none !important; }
   <!-- Follow the changes -->
   <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
    <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: ON</button>
-   <span class="bl-pl" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
+   <span class="bl-pl pf-info" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- See the bass page — same row, same meaning. -->
@@ -5925,8 +6049,10 @@ body.mode-free .pro-only { display:none !important; }
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
    </div>
+   <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="ml-pr-ruler"></canvas></div>
    <div class="pr-bar">
-    <span class="pr-hint">Tap a cell to place a note · tap it again to clear · press &amp; hold for length &amp; accent</span>
+    <span class="pr-hint" id="ml-pr-hint">Tap a cell to place or clear a note · double-tap a note to edit it here</span>
+    <div class="pr-insp" id="ml-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
    <div class="bl-empty-hint" id="ml-empty-hint">
@@ -5936,33 +6062,7 @@ body.mode-free .pro-only { display:none !important; }
    </div>
   </div>
  </div>
- <!-- Melody step popup (position:fixed, works from any tab) -->
- <div class="bl-smenu" id="ml-smenu" style="display:none">
-  <button class="bl-smclose" id="ml-smclose">×</button>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Note</span>
-   <div class="bl-notepicker" id="ml-notepicker"></div>
-  </div>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Oct</span>
-   <button class="bl-mopt" data-mlsmoct="3">3</button>
-   <button class="bl-mopt" data-mlsmoct="4">4</button>
-   <button class="bl-mopt" data-mlsmoct="5">5</button>
-   <button class="bl-mopt" data-mlsmoct="6">6</button>
-   <button class="bl-mopt" data-mlsmoct="7">7</button>
-  </div>
-  <div class="bl-smrow">
-   <span class="bl-smlbl">Len</span>
-   <button class="bl-mopt" data-mlsmlen="1">1</button>
-   <button class="bl-mopt" data-mlsmlen="2">2</button>
-   <button class="bl-mopt" data-mlsmlen="3">3</button>
-   <button class="bl-mopt" data-mlsmlen="4">4</button>
-  </div>
-  <div class="bl-smrow">
-   <button class="bl-mopt" id="ml-sm-accent">Accent</button>
-  </div>
- </div>
- <div class="ms-host" id="ms-host-melgen"></div>
+  <div class="ms-host" id="ms-host-melgen"></div>
  <!-- Effects last, on every page: what you reach for after the part, not before it. -->
  <button class="fx-readout-bar pro-only" id="fx-ro-melgen" onclick="fxOpenPanel('melgen')"><span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span><span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
  </div><!-- /bm-melody-panel -->
@@ -6025,27 +6125,6 @@ body.mode-free .pro-only { display:none !important; }
 
 </div><!-- #page-bass -->
 
-<!-- Step context menu -->
-<div class="sq-smenu" id="sq-smenu" style="display:none">
-  <button class="sq-smclose" id="sq-smClose">×</button>
-  <div class="sq-smrow">
-    <span class="sq-smlbl">Ratchet</span>
-    <button class="sq-mopt" data-sq-r="1">1×</button>
-    <button class="sq-mopt" data-sq-r="2">2×</button>
-    <button class="sq-mopt" data-sq-r="3">3×</button>
-    <button class="sq-mopt" data-sq-r="4">4×</button>
-  </div>
-  <div class="sq-smrow">
-    <span class="sq-smlbl">Ornament</span>
-    <button class="sq-mopt" data-sq-orn="0">Off</button>
-    <button class="sq-mopt" data-sq-orn="1">Flam</button>
-    <button class="sq-mopt" data-sq-orn="2">Ruff</button>
-  </div>
-  <div class="sq-smvel">
-    <div class="sq-vdisp">Vel: <span id="sq-velDisp">100</span>%</div>
-    <input type="range" class="sq-velsl" id="sq-velSl" min="1" max="100" value="100">
-  </div>
-</div>
 </div>
 
 <!-- ══════════════════════════════════════
@@ -6151,6 +6230,16 @@ body.mode-free .pro-only { display:none !important; }
 ══════════════════════════════════════ -->
 <script>
 'use strict';
+
+// The release label, and the first thing in this script because the init code
+// several thousand lines below paints it into #unlock-ver and #ft-ver while
+// this same block is still executing. Declared at the bottom, as it was, that
+// read sat in the const's temporal dead zone and threw — into a try/catch that
+// swallowed it — so both labels silently kept whatever the markup had been
+// hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
+// Not the only release number in the repo: sw.js has its own VERSION, which is
+// a cache key rather than a label. Read the note there before bumping it.
+const MODRIFF_VERSION = '3.0.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -8227,6 +8316,7 @@ function setFingeringVisible(on, opts){
  if(p) p.style.display = on ? '' : 'none';
  document.querySelectorAll('[data-fingtoggle]').forEach(b=>{
   b.classList.toggle('active', on);
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
   b.textContent = 'Instrument fingerings: ' + (on ? 'ON' : 'OFF');
  });
  // Drawn on demand rather than kept current while hidden — there is no point
@@ -10433,7 +10523,7 @@ const FIND_INDEX = [
  {name:'Randomize (the dice)', where:'Transport ⋯', keys:'random randomize dice roll surprise shuffle sound new',
   go:()=>{ closeFind(); if(typeof openRandomizeConfirm==='function') openRandomizeConfirm(); }},
  {name:'Undo / redo', where:'Transport ⋯', keys:'undo redo revert back mistake ctrl z',
-  note:'Sound settings, the chart and the mixer all step back through here.',
+  note:'Notes, patterns, the chart, the mixer and every sound setting all step back through here.',
   go:()=>{ closeFind(); if(typeof toggleFtMore==='function') toggleFtMore(); }},
  {name:'Walkthrough', where:'Transport ⋯', keys:'tour walkthrough help intro onboarding show me lesson',
   go:()=>{ closeFind(); if(typeof showTour==='function') showTour(); }},
@@ -13221,6 +13311,11 @@ function setMelMode(m){
  const bw=document.getElementById('bend-strip-wrap');
  if(kw) kw.style.display = m==='keys' ? '' : 'none';
  if(bw) bw.classList.toggle('visible', m==='bend');
+ // The scroller has no geometry while display:none, so the cue can only be
+ // measured once it is back.
+ // syncMelScrollCue homes the strip itself when it still needs it, so this is
+ // the one call every "the strip may have geometry now" moment makes.
+ if(m==='keys'){ invalidateMelScrollMax(); if(typeof syncMelScrollCue==='function') syncMelScrollCue(); }
 }
 // ── Touch Mod controls ──
 function toggleMelMod(){
@@ -14112,13 +14207,13 @@ function undoSettings(){
  if(!_undoStack.length){ showToast('Nothing to undo'); return; }
  _redoStack.push(_undoCommitted);
  _undoApply(_undoStack.pop());
- showToast('Undo — sound settings');
+ showToast('Undo');
 }
 function redoSettings(){
  if(!_redoStack.length){ showToast('Nothing to redo'); return; }
  _undoStack.push(_undoCommitted);
  _undoApply(_redoStack.pop());
- showToast('Redo — sound settings');
+ showToast('Redo');
 }
 function _updateUndoUI(){
  const u=document.getElementById('ft-undo-btn');
@@ -14146,8 +14241,16 @@ function buildMelodyStrip(){
  const container=document.getElementById('melody-keys'); if(!container) return; container.innerHTML='';
  const baseM=60+(root<=5?root:root-12)+melOctShift;
  const notes=[];
- for(let oct=0;oct<2;oct++) steps.forEach(s=>notes.push({midi:baseM+s+oct*12,name:nn((root+s)%12),oct:Math.floor((baseM+s+oct*12)/12)-1}));
- notes.push({midi:baseM+24,name:nn(root),oct:Math.floor((baseM+24)/12)-1});
+ // Four octaves: the two the strip has always had, plus one below and one
+ // above. The strip is a scroller and always has been, so the extra range
+ // costs nothing but swipe — and the octave below is where a bass figure or a
+ // countermelody lives, which previously meant reaching for OCT− and losing
+ // the register you were playing in to get there.
+ for(let oct=-1;oct<3;oct++) steps.forEach(s=>notes.push({midi:baseM+s+oct*12,name:nn((root+s)%12),oct:Math.floor((baseM+s+oct*12)/12)-1}));
+ notes.push({midi:baseM+36,name:nn(root),oct:Math.floor((baseM+36)/12)-1});
+ // Where the strip should be looking when it is rebuilt — see melScrollToHome.
+ _melHomeMidi = baseM; _melNeedsHome = true;
+ invalidateMelScrollMax();
 
  notes.forEach(({midi,name,oct})=>{
  const wrap=document.createElement('div'); wrap.className='mel-key';
@@ -14203,7 +14306,88 @@ function buildMelodyStrip(){
  });
  updateMelOctDisp();
  updateKeysTypingHint();
+ syncMelScrollCue();
 }
+
+// The strip runs an octave below its home note now, so left-aligning it would
+// open every session, and every key change, an octave under the notes the
+// typing keys and OCT± are talking about. This puts the home octave at the
+// left instead, with a sliver of the one below still showing — the only thing
+// that tells you the lower octave is there is seeing a piece of it.
+// var, not let: syncMelScrollCue reads _melNeedsHome and buildMelodyStrip
+// writes both, and both run during init before execution reaches this line.
+// A let binding is in its temporal dead zone until then, so that read throws
+// and takes the rest of the script with it — the same trap _recArm documents.
+var _melHomeMidi = null, _melNeedsHome = false;
+function melScrollToHome(){
+ if(!_melNeedsHome || _melHomeMidi==null) return;
+ const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ // Hidden — in Bend mode, or on a tab that is not up — measures zero, so
+ // there is nothing to aim yet. The flag stays set and the next caller with
+ // real geometry does it.
+ if(wrap.style.display==='none' || !wrap.clientWidth) return;
+ const key=document.getElementById('mel-'+_melHomeMidi); if(!key) return;
+ const host=key.parentElement||key;
+ const max=wrap.scrollWidth-wrap.clientWidth;
+ _melNeedsHome=false;
+ if(max<=0) return;
+ const off=wrap.scrollLeft + (host.getBoundingClientRect().left - wrap.getBoundingClientRect().left);
+ // scroll-behavior on this element is smooth, which is right for a swipe and
+ // wrong for a rebuild: landing, not gliding from wherever the last key left
+ // it. Suspended for the one assignment.
+ const prev=wrap.style.scrollBehavior;
+ wrap.style.scrollBehavior='auto';
+ wrap.scrollLeft=Math.max(0, Math.min(max, off-26));
+ wrap.style.scrollBehavior=prev;
+}
+
+// Which edges of the melody strip still have notes behind them. Driven from
+// the scroller's own geometry rather than a media query, because the answer
+// depends on the mode (how many steps), the octave span and the window — and
+// it changes under your finger as you scroll.
+// scrollWidth and clientWidth only change when the strip is rebuilt or the
+// window resizes, but reading either flushes pending layout — and this runs on
+// every frame of a flick, on the thread the audio clock shares. The span is
+// cached and only scrollLeft is read while scrolling.
+// var, not let: buildMelodyStrip calls syncMelScrollCue during init, before
+// execution reaches this line, and a let binding is in its temporal dead zone
+// until then — the same trap _recArm and _melHomeMidi both document.
+var _melScrollMax = null;
+function invalidateMelScrollMax(){ _melScrollMax = null; }
+function syncMelScrollCue(){
+ const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ // The strip is built during init, before layout has given it a width to
+ // measure, so the rebuild itself often cannot aim it. This is the one
+ // function wired to every later moment it could gain geometry — a scroll, a
+ // resize, a tab or mode change — and _melNeedsHome makes it a one-shot, so
+ // the first caller with a real width does it and no later one interferes.
+ if(_melNeedsHome && typeof melScrollToHome==='function') melScrollToHome();
+ // Hidden in Bend mode, where there is no strip and so nothing to promise.
+ // A display:none element measures zero, which would otherwise read as
+ // "nothing overflows" and leave the fade off on the way back in.
+ if(wrap.style.display==='none') return;
+ if(_melScrollMax===null) _melScrollMax = wrap.scrollWidth - wrap.clientWidth;
+ const max=_melScrollMax;
+ // A sub-pixel remainder is not a hidden note; it is a rounded layout.
+ const slack=2;
+ wrap.classList.toggle('scroll-l', wrap.scrollLeft>slack);
+ wrap.classList.toggle('scroll-r', wrap.scrollLeft<max-slack);
+}
+(function(){
+ // Bound once to the scroller, which outlives every rebuild of the keys
+ // inside it, so nothing has to be rebound when the strip is redrawn.
+ const bind=()=>{
+  const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+  wrap.addEventListener('scroll', syncMelScrollCue, {passive:true});
+  window.addEventListener('resize', ()=>{ invalidateMelScrollMax(); syncMelScrollCue(); });
+  syncMelScrollCue();
+  // One frame later as well: at DOMContentLoaded the strip is built but not
+  // yet laid out, and a width of zero is not something to aim by.
+  requestAnimationFrame(syncMelScrollCue);
+ };
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', bind);
+ else bind();
+})();
 
 function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
@@ -14278,6 +14462,15 @@ function showToast(msg, opts){
  let t=document.getElementById('_toast');
  if(!t){
   t=document.createElement('div'); t.id='_toast';
+  // The toast is this app's confirmation channel — a hundred-odd call sites
+  // acknowledge saves, clears, bounces and mode changes through it, and until
+  // now every one of them was silent to a screen reader: the div appeared
+  // with no role, so nothing was announced and an action that succeeded was
+  // indistinguishable from one that did nothing. polite, not assertive,
+  // because none of it is urgent enough to cut across what is being read.
+  t.setAttribute('role','status');
+  t.setAttribute('aria-live','polite');
+  t.setAttribute('aria-atomic','true');
   t.style.cssText='position:fixed;bottom:calc(74px + env(safe-area-inset-bottom,0px));left:50%;'
    +'transform:translateX(-50%);background:#222;color:#fff;border-radius:8px;padding:8px 14px;'
    +'font-size:.6rem;z-index:9999;transition:opacity .3s;display:flex;align-items:center;gap:12px;'
@@ -14312,6 +14505,71 @@ function showToast(msg, opts){
  // toast, read it and reach for it.
  t._to=setTimeout(()=>{ t.style.opacity='0'; t.style.pointerEvents='none'; }, opts.ms || (opts.onAction ? 7000 : 2000));
 }
+
+// ── Press and hold to read a tooltip ──────────────────────────────────────
+// There are ~143 title= tooltips in this file, and they carry a lot of what
+// the app knows about itself: what Stems taps and where, what Capture writes
+// into as against what Bounce writes to disk, which of the two recorders the
+// red dot is. A title is a hover affordance, and a phone does not hover — so
+// on the device most people meet this app on, none of that text had any way
+// to be read. Holding a control still for half a second now says it.
+//
+// Touch only. On a mouse the native tooltip already does this job better than
+// a toast can, and hijacking a press there would cost a drag its head start.
+(function(){
+ // Controls that own a drag declare it in touch-action — the melody keys are
+ // pan-x, the pad and the tempo readout are none — and on those a long press
+ // is the start of a gesture, not a question. manipulation and auto are
+ // ordinary taps, so those are the ones this listens to.
+ const GESTURE=/none|pan-/;
+ let timer=null, sx=0, sy=0, armed=null, fired=false;
+ const clear=()=>{ clearTimeout(timer); timer=null; armed=null; };
+
+ document.addEventListener('pointerdown', e=>{
+  if(e.pointerType!=='touch' || !e.isPrimary) return;
+  // Cleared here, not only by the click it swallows. A press that fires and
+  // then slides off its control before lifting produces no click at all, and
+  // a flag left standing would eat the next real tap instead.
+  fired=false;
+  const el=e.target.closest && e.target.closest('[title]');
+  if(!el) return;
+  const tip=(el.getAttribute('title')||'').trim();
+  if(!tip) return;
+  if(GESTURE.test(getComputedStyle(el).touchAction||'')) return;
+  sx=e.clientX; sy=e.clientY; armed=el;
+  clearTimeout(timer);
+  timer=setTimeout(()=>{
+   if(!armed) return;
+   fired=true; armed=null; timer=null;
+   // An offer of a way back outranks an explanation. showToast owns one
+   // element, so firing a tooltip over a live Undo would drop the only
+   // button that could undo what was just cleared.
+   const live=document.getElementById('_toast');
+   if(live && live.style.opacity==='1' && live.querySelector('button')) return;
+   // Scaled to the reading, with a floor: the shortest of these is three
+   // words and the longest is a paragraph.
+   showToast(tip, {ms:Math.min(9000, 2600+tip.length*32)});
+  }, 500);
+ }, {passive:true});
+
+ // A press that travels is a scroll or a drag, not a question.
+ document.addEventListener('pointermove', e=>{
+  if(!timer) return;
+  if(Math.abs(e.clientX-sx)>10 || Math.abs(e.clientY-sy)>10) clear();
+ }, {passive:true});
+ document.addEventListener('pointercancel', clear, {passive:true});
+ document.addEventListener('scroll', clear, {passive:true, capture:true});
+ document.addEventListener('pointerup', clear, {passive:true});
+
+ // Reading a control's help must not also operate it. The click arrives after
+ // pointerup, so this swallows exactly the one that follows a press that
+ // fired, in the capture phase, before any onclick can see it.
+ document.addEventListener('click', e=>{
+  if(!fired) return;
+  fired=false;
+  e.preventDefault(); e.stopPropagation();
+ }, true);
+}());
 
 // Snapshot-then-act helper for the destructive buttons: run the action, then
 // offer exactly one way back.
@@ -14534,7 +14792,7 @@ function tourSteps(){
    showMe:function(){ var e=document.querySelector('#sq-groove-presets button'); if(e) e.click(); }},
 
   {ch:3, icon:'▦', title:'Change one hit', tab:'accomp',
-   text:'Tap any square in the grid. Every fourth square starts a new beat — those are the ones with the brighter edge. That is the moment this stops being a preset and starts being your pattern.',
+   text:'Tap any square in the grid. Every fourth square starts a new beat — those are the ones with the brighter edge. <b>Double-tap</b> a square instead and a bar opens under the grid with that hit\u2019s velocity, ratchet and accent. That is the moment this stops being a preset and starts being your pattern.',
    target:'sq-gInner',
    gate:_gPointer('#sq-gInner .sq-step'),
    showMe:function(){ var e=document.querySelector('#sq-gInner .sq-step'); if(e){ e.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); e.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); } }},
@@ -14931,7 +15189,8 @@ function tourPicker(){
 // The written guide lives on its own page that nothing ever linked to, so
 // HELP_SECTIONS was unreachable content. Reachable from the ⋯ menu now.
 function openGuide(){
- if(typeof buildHelp==='function') buildHelp();
+ // switchTab builds the page for t==='help'; building here too would render
+ // and discard the whole guide once on every press.
  switchTab('help');
  const m=document.getElementById('ft-more-menu'); if(m) m.classList.remove('open');
  // Each tab scrolls within itself now (see .tab-page's min-height fix), not
@@ -16883,11 +17142,11 @@ function printChart(){
 
 // ─── HELP CONTENT ────────────────────────────────────────────
 const HELP_SECTIONS=[
- {title:'▶ Transport — one button, four layers', tips:[
+ {title:'▶ Transport — one button, five layers', tips:[
  {icon:'▶',text:'The <strong>▶ / ■</strong> button starts and stops everything that is switched on, and turns red while playing. <strong>Spacebar</strong> does the same.'},
- {icon:'',text:'<strong>Drums · Arp · Bass · Mel</strong> are layer switches, not play buttons. Toggle them <em>while the music runs</em> to bring parts in and out — that is the core performance move.'},
- {icon:'●',text:'<strong>Record</strong> captures the chords you trigger live — mouse, computer keyboard or MIDI — into a new Song section you can edit afterwards.'},
- {icon:'',text:'<strong>↶ / ↷</strong> undo and redo sound settings (Ctrl/⌘+Z). <strong>⋯</strong> holds <strong>Snap</strong> (how strictly the song and arp wait for the beat) and the light/dark toggle.'},
+ {icon:'',text:'<strong>Chords · Drums · Bass · Mel · Arp</strong> are layer switches, not play buttons. Toggle them <em>while the music runs</em> to bring parts in and out — that is the core performance move. A <strong>Perc</strong> switch appears too whenever the loaded groove has a second percussion layer.'},
+ {icon:'◉',text:'<strong>Capture</strong> writes the chords you trigger live — mouse, computer keyboard or MIDI — into a new Song section you can edit afterwards. <strong>Bounce</strong>, beside it, is the other recorder: it writes a .wav and a .mid to disk.'},
+ {icon:'',text:'<strong>↶ / ↷</strong> undo and redo — notes, patterns, the chart, the mix and every sound setting (Ctrl/⌘+Z). The <strong>handle</strong> above the bar pulls up a sheet holding the rest: MIDI export, the click, <strong>Snap</strong> (how strictly the song and arp wait for the beat), the dice, the light/dark toggle, Setups, Find a control, and the walkthrough and guide.'},
  {icon:'',text:'<strong>Song: ON</strong> plays the chart for you; switching it off <strong>holds</strong> on the chord you are on rather than stopping the song, and switching it back on carries on from there. Beat dots follow whichever engine is running.'},
  ]},
  {title:'Play → Chords', tips:[
@@ -16912,9 +17171,15 @@ const HELP_SECTIONS=[
  {icon:'',text:'Choose what it moves: <strong>Bright</strong> opens a high shelf, <strong>Wah</strong> draws a resonant filter across the note, <strong>Vibrato</strong> shakes the pitch, <strong>Tremolo</strong> the level. <strong>Depth</strong> sets how far. It works on tapped notes and glissandi alike.'},
  {icon:'',text:'<strong>Voice</strong> sets the melody’s own sound, independent of the chord voice.'},
  ]},
+ {title:'▦ The grids — drums, bass and melody', tips:[
+ {icon:'',text:'All three sequencers work the same way. Tap a cell to place a note or a hit; tap it again to clear it.'},
+ {icon:'',text:'Double-tap a cell instead and the bar under the grid opens on that step. On the two rolls it holds length, octave, accent and slide; on the drum grid it holds velocity, ratchet, ornament and accent — a drum hit has no length to set.'},
+ {icon:'',text:'Nothing is behind a press-and-hold. Whatever that bar shows is everything a step can be.'},
+ {icon:'',text:'The rolls are four octaves tall and scroll — swipe up or down for the rest. Generate keeps to the register the part belongs in, while a note you place by hand can sit anywhere on the roll.'},
+ ]},
  {title:'↺ Nothing here is a one-way door', tips:[
  {icon:'↺',text:'Clearing a <strong>drum, bass or melody pattern</strong>, or deleting a <strong>song</strong> or a <strong>setup</strong>, offers an <strong>Undo</strong> on the message that appears. It waits a few seconds — tap it and the thing comes back exactly as it was.'},
- {icon:'↶',text:'Separately, <strong>↶ / ↷</strong> in the transport’s <strong>⋯</strong> menu (or Ctrl/⌘+Z) step back through sound settings, the chart and the mixer.'},
+ {icon:'↶',text:'Separately, <strong>↶ / ↷</strong> in the transport’s <strong>⋯</strong> menu (or Ctrl/⌘+Z) step back through everything else — notes, patterns, the chart, the mixer and every sound setting.'},
  {icon:'',text:'And the app keeps your last session, so closing the tab loses nothing — <strong>Pick up where I left off</strong> is waiting next time you open it.'},
  ]},
  {title:'⌕ Finding things — and Feel', tips:[
@@ -18593,6 +18858,9 @@ function switchTab(t){
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
  if(typeof syncTabRoving==='function') syncTabRoving();
  if(t==='songs') renderSetlistPerform();
+ // openGuide() builds this before switching; anything else reaching the page
+ // would otherwise find it empty.
+ if(t==='help' && typeof buildHelp==='function') buildHelp();
  if(t==='mix'){
   if(typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(document.getElementById('mix-tab-channels'));
   // The MōdFX sends live here now, and this is the only thing that fills
@@ -18607,6 +18875,12 @@ function switchTab(t){
  positionAllSubnavLeds();
  if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead();
  if(typeof prRelayoutAll==='function') setTimeout(prRelayoutAll,0);
+ // The melody strip may have been rebuilt while this page was away, with no
+ // geometry to aim itself by at the time.
+ if(t==='perform') setTimeout(()=>{
+  if(typeof invalidateMelScrollMax==='function') invalidateMelScrollMax();
+  if(typeof syncMelScrollCue==='function') syncMelScrollCue();
+ },0);
  syncFixedTransport();
  track('tab_viewed', {tab:t});
 }
@@ -18690,7 +18964,7 @@ The piano view lights the chord across two octaves, with <strong>R</strong> on t
  title: 'Melody / Solo',
  body: `Two modes. <strong>Keys</strong> gives you the notes of the current key as buttons. <strong>Bend</strong> is a slide strip — <strong>Note Lock</strong> snaps to the scale, <strong>Continuous</strong> is true pitch bend between notes.<br><br>
 <strong>Musical typing</strong>: the two letter rows are one long run of the current scale. <strong>A S D F G H J K L ; &#39;</strong> gives you the first eleven scale degrees, and <strong>Q W E R T Y U I O P</strong> carries straight on up from there. Every key sounds, no two keys give the same note, and the layout means the same thing in every mode. <strong>Z / X</strong> shift the octave, <strong>C / V</strong> bend a whole step down and up for the notes between.<br><br>
-<strong>Hold</strong> keeps notes ringing after you lift; tap it again to release everything. <strong>Oct− / Oct+</strong> move the range.<br><br>
+<strong>Hold</strong> keeps notes ringing after you lift; tap it again to release everything. The strip is <strong>four octaves</strong> long — swipe it sideways to reach the rest, and the keys fade at whichever edge still has notes behind it. <strong>Oct− / Oct+</strong> move the whole window.<br><br>
 <strong>Touch Mod</strong> turns the vertical half of your touch into a mod wheel for that one note. Hold a key — or the Bend strip — and slide your finger up and down: the bottom of the travel is the patch exactly as it is, and the top is full modulation. Pick what it moves — <strong>Bright</strong> (a high shelf opening up), <strong>Wah</strong> (a resonant filter drawn across the note), <strong>Vibrato</strong> (pitch) or <strong>Tremolo</strong> (level) — and set how far it goes with <strong>Depth</strong>. It works on tapped notes and on glissandi alike, and the key fills in from the bottom so you can see where you are.<br><br>
 <strong>Voice</strong> sets the melody's own sound, separate from the chords. A MIDI keyboard can play melody instead of chords — see the MIDI panel.`
  },
@@ -18712,7 +18986,9 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
   title: 'Bassline generator & Follow',
   body: `<strong>✦ Generate</strong> writes a bar of bass in the chosen style, over the chord you last played. Press it again for a different take — every style randomises.<br><br>
 <strong>The styles.</strong> <strong>Rock</strong> is roots and fifths on the quarters. <strong>Jazz</strong> walks in quarter notes with chromatic approaches. <strong>Motown</strong> is melodic eighths. <strong>Funk</strong> is syncopated sixteenths with slides. <strong>Acid</strong> is a 303 line — dense, sliding, accented. <strong>Latin</strong> gives you a tumbao, a 2–3 clave or a bolero feel. <strong>Reggae</strong> is a one drop, which leaves beat 1 empty on purpose. <strong>Pedal</strong> is straight eighths on one note. <strong>Half-Time</strong> is whole and half notes for sitting under a busy arrangement. <strong>Arpeggio</strong>, <strong>Riff</strong> and <strong>Pop Hook</strong> are the melody generator's shapes moved down into the bass register.<br><br>
-<strong>The piano roll</strong> shows pitch vertically and time horizontally, with the C of each octave labelled down the left edge. A generated line's <strong>shape</strong> is visible at a glance — where it leaps, where it walks, which octave it sits in — which the old single-row lane could not show, since pitch was a text label inside each step. <strong>Tap</strong> an empty cell to place a note, tap the same note again to clear it, and <strong>press and hold</strong> for length, slide and accent. Everything the generator writes lands here, so the next pass is yours to edit.<br><br>
+<strong>The piano roll</strong> shows pitch vertically and time horizontally, with every key named down the left edge and the octave number on each C. A line's <strong>shape</strong> is visible at a glance — where it leaps, where it walks, which octave it sits in.<br><br>
+<strong>Tap</strong> a cell to place a note, or to clear one that is already there. <strong>Double-tap</strong> it instead and the bar under the roll opens on that step, with its length, octave, accent and slide. The same two gestures work on the melody roll and the drum grid — there is nothing behind a press-and-hold anywhere.<br><br>
+<strong>The roll runs E1–E5</strong>, four octaves, wider than the register Generate writes in — so a line you edit by hand can go where a generated one would not. It scrolls vertically; a swipe up or down reaches the rest. Everything the generator writes lands here, so the next pass is yours to edit.<br><br>
 <strong>Octave</strong> defaults to <strong>2</strong> — that puts a root around 65&nbsp;Hz, where a bass actually sits. Octave 3 is the register a guitarist plays; useful for a lead-ish line, thin as a bass part.<br><br>
 <strong>Follow: ON</strong> is the difference between a loop and a bass part. With it off, the bar you generated repeats over the whole song no matter what the chords do. With it on, the line <strong>re-roots onto whichever chord the song is playing</strong>, keeping the rhythm and shape you generated — so a root–fifth–octave figure stays that figure on every chord.<br><br>
 <strong>Follow + Jazz</strong> is the walking bass. It stops using the grid's rhythm entirely and plays real quarter notes through the chart: the chord's root on beat 1, mostly stepwise motion through chord and scale tones in between, and on the last beat before a change it <strong>approaches the next chord's root</strong> from a half step or a fifth. It reads the chord that <em>is about to arrive</em>, not the one already playing, so the approach lands where a bass player would put it.<br><br>
@@ -18727,7 +19003,7 @@ Follow needs a song running to have changes to follow. With the song stopped it 
 <strong>Follow: ON</strong> is the important one. With it off, the phrase you generated is thrown away and rewritten every time the chord changes — so no melodic idea ever lasts long enough to be an idea. With it on, the phrase <strong>moves onto each new chord</strong> instead, keeping its rhythm and contour, the same way the bass does.<br><br>
 <strong>Avoid notes.</strong> On a strong beat, the generator now steers away from scale tones that sit a half step above a chord tone — the 4th over a major or dominant chord, the 6th over a minor 7th. Those are the notes that sound like a mistake on a downbeat. They're still reachable as passing tones on weak beats, where they're often the point.<br><br>
 <strong>Phrase shape.</strong> Set the step count above one bar and the closing bar is varied rather than being a copy of the first — thinned out, with its last gesture lifted — so the phrase answers itself instead of just repeating.<br><br>
-Notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it.`
+Generated notes are held to a singable range (G3–C6) so the octave-lifting styles can't wander out of it. The roll itself runs wider — C3–C7 — so a note you place by hand is free to leave that range even though Generate will not.`
  },
  'jazzkit': {
   title: 'Real instruments & the Jazz kit',
@@ -18757,7 +19033,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  },
  'mixer': {
   title: 'Mixer — levels, mute & solo',
-  body: `Seven channels — <strong>Chords, Melody, Drums, Aux Perc, Bass, Melody Seq</strong> and <strong>Arp</strong> — each with its own level. Drag a knob up or down, or scroll on it. These are the levels every engine reads, so a change lands on the very next note, and the same strips appear on Accomp › Drums: whichever one you touch, the other shows it.<br><br>
+  body: `Seven channels — <strong>Chords, Melody, Drums, Aux Perc, Bass, Melody Seq</strong> and <strong>Arp</strong> — each with its own fader. Drag it up or down, or scroll on it. These are the levels every engine reads, so a change lands on the very next note, and the same strips appear on Accomp › Drums: whichever one you touch, the other shows it.<br><br>
 <strong>M</strong> mutes a channel. <strong>S</strong> solos it — any channel soloed silences every channel that isn't, and you can solo several at once. Mute wins over solo on the same channel, the way a real desk behaves. A channel that has gone quiet because something <em>else</em> is soloed dims on its own strip, so you can always tell "I muted this" from "something else is hogging the mix".<br><br>
 Because mute and solo are easy to leave on by accident, an orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears in the transport bar wherever you are in the app — <strong>tap the badge to clear all of it at once</strong>.<br><br>
 <strong>Master Bus</strong> below is the glue on the whole mix: a compressor to sit the parts together, one shared reverb room, and a brick-wall limiter last. Bypassing it leaves Master Volume working either way.`
@@ -18765,11 +19041,11 @@ Because mute and solo are easy to leave on by accident, an orange <strong>MUTE</
  'transport': {
  title: 'Transport',
  body: `One <strong>▶ / ■</strong> button starts and stops everything that's switched on — it turns red while playing. <strong>Spacebar</strong> does the same.<br><br>
-<strong>Drums · Arp · Bass · Mel</strong> are layer switches, not separate play buttons. Flip them on and off <em>while the music runs</em> — that's the core performance move: get a song looping, then bring parts in and out.<br><br>
-<strong>●&nbsp;Record</strong> captures the chords you play — by mouse, keyboard or MIDI — into a new Song section you can edit afterwards.<br><br>
-<strong>↶ / ↷</strong> undo and redo sound settings (Ctrl/⌘+Z). The <strong>dice</strong> rerolls the whole patch character; if nothing is playing it rerolls key, mode and tempo too.<br><br>
-<strong>⋯</strong> holds <strong>Snap</strong> (how strictly the song and arp wait for the beat) and the light/dark toggle.<br><br>
-The tempo slider and <strong>Arp</strong> rate sit in this bar too — tap the rate to cycle it. <strong>⁴</strong> counts four beats in, then starts everything together on beat 1.<br><br>
+<strong>Chords · Drums · Bass · Mel · Arp</strong> are layer switches, not separate play buttons. A <strong>Perc</strong> switch joins them whenever the loaded groove has a second percussion layer to switch. Flip them on and off <em>while the music runs</em> — that's the core performance move: get a song looping, then bring parts in and out.<br><br>
+<strong>◉&nbsp;Capture</strong> writes the chords you play — by mouse, keyboard or MIDI — into a new Song section you can edit afterwards. Its <strong>◀</strong> half keeps the chords you have <em>already</em> played instead, and lights up once there is something to keep. <strong>⬤&nbsp;Bounce</strong> is the other recorder: it writes a .wav and a .mid to disk.<br><br>
+<strong>↶ / ↷</strong> undo and redo — notes, patterns, the chart, the mixer and every sound setting (Ctrl/⌘+Z). The <strong>dice</strong> rerolls the whole patch character; if nothing is playing it rerolls key, mode and tempo too.<br><br>
+The <strong>handle</strong> above the bar pulls up a sheet holding what you reach for less often: MIDI export, the click, <strong>Snap</strong> (how strictly the song and arp wait for the beat), undo and redo, the dice, the light/dark toggle, Setups, Find a control, and the walkthrough and guide.<br><br>
+<strong>Tempo</strong> is the number itself — drag it like a DAW field, or tap it once for a slider with Feel and the bar length beside it. The <strong>arp rate</strong> is the note value next to it; tap to cycle.<br><br>
 An orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears here whenever a mixer channel is muted or soloed, so you are never left wondering why something has gone quiet. Tap it to clear.<br><br>
 The row of dots shows where you are in the bar, following whichever engine is actually playing and marking its kick pattern.<br><br>
 <strong>Song: ON</strong> appears once a song is loaded; switching it off <strong>holds</strong> on the current chord instead of stopping the song. The chord keeps sounding and the arp keeps running on it, so you can take over by hand — and switching it back on carries on from that same chord rather than jumping to the top.`
@@ -18801,7 +19077,12 @@ function showTip(id, anchorEl){
  popup = document.createElement('div');
  popup.id = 'tips-popup';
  popup.className = 'tips-popup';
- popup.innerHTML = '<div class="tips-popup-close" onclick="closeTip()"></div><div class="tips-popup-title"></div><div class="tips-popup-body"></div>';
+ // The close carried no glyph, so it was an empty absolutely-positioned div
+ // with nothing to lay out and nothing to aim at. Clicking away still closed
+ // the tip, which is how it went unnoticed — but a panel that now scrolls
+ // should say how to leave it.
+ popup.innerHTML = '<button type="button" class="tips-popup-close" onclick="closeTip()" aria-label="Close">×</button>'
+   + '<div class="tips-popup-title"></div><div class="tips-popup-body"></div>';
  document.body.appendChild(popup);
  document.addEventListener('click', e => {
  if(tipPopupOpen && !popup.contains(e.target) && !e.target.classList.contains('tips-btn'))
@@ -18811,13 +19092,25 @@ function showTip(id, anchorEl){
  popup.querySelector('.tips-popup-title').textContent = tip.title;
  popup.querySelector('.tips-popup-body').innerHTML = tip.body;
 
- // Position near anchor
- const rect = anchorEl ? anchorEl.getBoundingClientRect() : {left:20,top:100,width:0};
- const left = Math.min(rect.left, window.innerWidth - 340);
- const top = rect.bottom + 8 + window.scrollY;
- popup.style.left = Math.max(8,left)+'px';
- popup.style.top = top+'px';
+ // Measured and clamped into the window. The old placement added
+ // window.scrollY to the top of a position:fixed element, which is a viewport
+ // coordinate — so on a scrolled page the tip was pushed off the bottom by
+ // however far you had scrolled, and the further down the page the control
+ // was, the further away its own explanation went.
+ const M = 8;
+ popup.style.visibility = 'hidden';
  popup.classList.add('visible');
+ popup.style.top = '0px'; popup.style.left = '0px';
+ const pw = popup.offsetWidth, ph = popup.offsetHeight;
+ const vw = window.innerWidth, vh = window.innerHeight;
+ const rect = anchorEl ? anchorEl.getBoundingClientRect() : {left:M, bottom:M, top:M};
+ let top = rect.bottom + M;
+ if(top + ph + M > vh) top = rect.top - M - ph;      // flip above
+ top = Math.max(M, Math.min(vh - ph - M, top));      // and stay inside
+ const left = Math.max(M, Math.min(vw - pw - M, rect.left));
+ popup.style.top = Math.round(top)+'px';
+ popup.style.left = Math.round(left)+'px';
+ popup.style.visibility = '';
  tipPopupOpen = true;
 }
 function closeTip(){
@@ -23103,7 +23396,6 @@ window._sqResync=function(){ var c=sqCtx(); if(c) sqNextT=clockAlignTo(c, sqSd()
 var sqPendMach=null, sqPendPat=null;
 var sqChain=[], sqChainPos=0, sqUsingChain=false;
 var sqStepEls={};
-var sqMenuTi=-1, sqMenuS=-1, sqMenuTrack=null;
 var sqAudition=false; // default off — tap steps to preview only when audition enabled
 
 function sqMkCell(){return{v:0,r:1,orn:0,vel:100};}
@@ -23642,6 +23934,11 @@ function sqRenderGrid(){
   if(typeof noteInputCursorStep==='function' && typeof window._sqMarkCursor==='function'){
     window._sqMarkCursor(noteInputCursorStep('sq'));
   }
+  // The elements the selection pointed at were just thrown away. sqSyncInsp
+  // drops a selection whose cell no longer carries a hit — a kit change, a
+  // shorter pattern, a loaded groove — and re-marks the one that survives.
+  if(sqSelTi >= sqTc() || sqSelS >= sqSteps){ sqSelTi=-1; sqSelS=-1; }
+  sqMarkSel(); sqSyncInsp();
 }
 
 function sqRenderPageDots(){
@@ -23808,54 +24105,160 @@ function _sqCursorTransportChanged(){
  window._sqMarkCursor(noteInputCursorStep('sq'));
 }
 
+// ── selection + the kit's step inspector ──
+// Same idea as the rolls', and the same reason: ratchet, ornament and velocity
+// were reachable only by pressing and holding. A kit cell is two-dimensional,
+// so the selection is a track and a step rather than just a step. There is no
+// length here — a drum hit has no length to set.
+var sqSelTi=-1, sqSelS=-1;
+function sqSelEl(){
+  if(sqSelTi<0) return null;
+  return (sqStepEls[sqSelTi] && sqStepEls[sqSelTi][sqSelS]) || null;
+}
+function sqMarkSel(){
+  document.querySelectorAll('.sq-step.sel').forEach(function(e){e.classList.remove('sel');});
+  var e=sqSelEl(); if(e) e.classList.add('sel');
+}
+function sqClearSel(){ sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp(); }
+// The kit lives in its own IIFE, and the tap-away handler that clears all
+// three selections is out with the rolls.
+window._sqClearSel = sqClearSel;
+window._sqHasSel = function(){ return sqSelTi >= 0; };
+function sqSyncInsp(){
+  var host=document.getElementById('sq-insp'); if(!host) return;
+  var _focus=_prFocusKey(host);
+  host.innerHTML='';
+  var M=SQM[sqMach];
+  var track=(M&&M.tracks)?M.tracks[sqSelTi]:null;
+  var cell=(sqSelTi>=0&&sqGrid[sqSelTi])?sqGrid[sqSelTi][sqSelS]:null;
+  if(!track||!cell||!cell.v){
+    host.classList.remove('open');
+    if(sqSelTi>=0&&(!cell||!cell.v)){ sqSelTi=-1; sqSelS=-1; sqMarkSel(); }
+    return;
+  }
+  host.classList.add('open');
+  var el=sqSelEl();
+  var redraw=function(){
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel();
+    sqSyncInsp();
+  };
+
+  var what=document.createElement('span'); what.className='pr-insp-what';
+  what.innerHTML='<b>'+(track.n||track.s||'Step')+'</b> · step '+(sqSelS+1);
+  host.appendChild(what);
+
+  // Velocity first: it is the one people reach for most, and the one that
+  // silently did nothing while a held step was switching itself off.
+  var vg=_prGroup('Vel');
+  var sl=document.createElement('input');
+  sl.type='range'; sl.min='1'; sl.max='100'; sl.className='pr-insp-vel';
+  sl.value=String(cell.vel||100);
+  sl.setAttribute('aria-label','Velocity');
+  var vv=document.createElement('span'); vv.className='pr-insp-val'; vv.textContent=String(cell.vel||100);
+  sl.addEventListener('input',function(){
+    cell.vel=parseInt(sl.value,10);
+    vv.textContent=String(cell.vel);
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel();
+  });
+  vg.appendChild(sl); vg.appendChild(vv);
+  host.appendChild(vg);
+
+  var rg=_prGroup('Ratchet');
+  rg.appendChild(_prBtn('−',null,'Fewer hits on this step',function(){ cell.r=Math.max(1,(cell.r||1)-1); redraw(); }));
+  var rv=document.createElement('span'); rv.className='pr-insp-val'; rv.textContent=String(cell.r||1);
+  rg.appendChild(rv);
+  rg.appendChild(_prBtn('+',null,'More hits on this step',function(){ cell.r=Math.min(4,(cell.r||1)+1); redraw(); }));
+  host.appendChild(rg);
+
+  var og=_prGroup('Orn');
+  [[0,'—','No ornament'],[1,'Flam','Flam'],[2,'Ruff','Ruff']].forEach(function(o){
+    og.appendChild(_prBtn(o[1],(cell.orn||0)===o[0],o[2],function(){ cell.orn=o[0]; redraw(); }));
+  });
+  host.appendChild(og);
+
+  host.appendChild(_prBtn('Accent',cell.v===2,'Accent this step',function(){
+    cell.v=(cell.v===2)?1:2; redraw();
+  }));
+
+  var del=_prBtn('✕',null,'Remove this step',function(){
+    cell.v=0;
+    if(el) sqRefreshStepEl(el,cell,track.c);
+    sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp();
+  });
+  del.classList.add('pr-insp-del');
+  host.appendChild(del);
+  _prKeepFocus(host, _focus);
+}
+
 function sqAttachStep(el,ti,s,track){
-  var lastTap=0,holdT=null,moved=false,dnX=0,dnY=0;
+  // held: the press already opened the step menu, so lifting the finger must
+  // not also toggle the step. Without it a long press did both — the menu
+  // came up, and the pointerup underneath it turned the step you were about
+  // to edit OFF. Ratchet and velocity then landed on a dead step and were
+  // never heard, which reads as "ratcheting is broken" and "velocity doesn't
+  // always work". The roll's prWire has always had this guard; the kit never
+  // did.
+  // Same vocabulary as the two rolls: tap toggles, double-tap edits, nothing
+  // is behind a press-and-hold.
+  var moved=false,dnX=0,dnY=0,lastTap=0,lastV=0;
   el.addEventListener('pointerdown',function(e){
     sqInitFX();sqEnsureNoise();
     moved=false;dnX=e.clientX;dnY=e.clientY;
-    holdT=setTimeout(function(){holdT=null;if(!moved)sqOpenMenu(el,ti,s,track);},450);
   });
   el.addEventListener('pointermove',function(e){
-    if(Math.abs(e.clientX-dnX)+Math.abs(e.clientY-dnY)>10){moved=true;if(holdT){clearTimeout(holdT);holdT=null;}}
+    if(Math.abs(e.clientX-dnX)+Math.abs(e.clientY-dnY)>10)moved=true;
   });
   el.addEventListener('pointerup',function(){
-    if(holdT){clearTimeout(holdT);holdT=null;}
     if(moved)return;
-    var now=Date.now(),cell=sqGrid[ti][s];
-    if(now-lastTap<280&&cell.v>=1){cell.v=cell.v===2?1:2;}
-    else if(cell.v===0){cell.v=1;}else{cell.v=0;}
-    lastTap=now;
+    var now=Date.now(), cell=sqGrid[ti][s];
+    // One tap toggles, which is what a kit is for: laying a beat down and
+    // taking bits of it out again. Making that cost two taps, the way the
+    // rolls do, taxes the commonest thing you do here to pay for the rarest.
+    //
+    // So the second tap buys the edit instead. A second tap on the SAME step
+    // inside the double-tap window means "let me edit this one", not "do that
+    // again": it puts back whatever the first tap just changed and selects the
+    // step, which fills the inspector below with velocity, ratchet, ornament
+    // and accent. Placing a step selects it too, so a new one is already
+    // under the controls without a second tap at all.
+    //
+    // This is the slot the old accent gesture used to hold, and it was barely
+    // holding it: that test required v>=1 AFTER the first tap had already set
+    // a lit step to 0, so double-tapping a lit step only ever switched it off
+    // and on again. Accent reached it on empty steps alone. It is a button in
+    // the inspector now, which is where an articulation belongs beside the
+    // other three.
+    if(now - lastTap < 300){
+      // Put back only what the first tap took away. When the pair began on an
+      // empty step the first tap PLACED it, and undoing that would leave a
+      // double-tap on an empty cell doing nothing at all — so a placement
+      // stands and only a clear is reversed. Either way the step ends up down
+      // and selected, which is what you double-tapped it for.
+      if(lastV) cell.v = lastV;
+      sqSelTi = ti; sqSelS = s;
+      lastTap = 0;
+      if(typeof markSeqTaught==='function') markSeqTaught();
+    } else {
+      lastV = cell.v;
+      cell.v = (cell.v === 0) ? 1 : 0;
+      if(cell.v){ sqSelTi = ti; sqSelS = s; }
+      else if(sqSelTi === ti && sqSelS === s){ sqSelTi = -1; sqSelS = -1; }
+      lastTap = now;
+    }
     sqRefreshStepEl(el,cell,track.c);
+    sqMarkSel(); sqSyncInsp();
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
     // it for every path now, so applying it again would square the fader.
     if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100),cell.v===2,sqGp(sqMach,ti));}
   });
-  el.addEventListener('pointercancel',function(){if(holdT){clearTimeout(holdT);holdT=null;}});
+  el.addEventListener('pointercancel',function(){moved=true;});
 }
 
 // ── step menu ──
-function sqOpenMenu(el,ti,s,track){
-  sqMenuTi=ti;sqMenuS=s;sqMenuTrack=track;
-  var cell=sqGrid[ti][s];
-  if(cell.v===0){cell.v=1;sqRefreshStepEl(el,cell,track.c);}
-  var menu=document.getElementById('sq-smenu');if(!menu)return;
-  var rect=el.getBoundingClientRect();
-  var top=rect.bottom+6,left=rect.left;
-  if(top+180>window.innerHeight)top=rect.top-186;
-  if(left+175>window.innerWidth)left=window.innerWidth-179;
-  if(left<4)left=4;
-  menu.style.top=top+'px';menu.style.left=left+'px';menu.style.display='flex';
-  sqSyncMenuUI(cell);
-}
-function sqSyncMenuUI(cell){
-  document.querySelectorAll('[data-sq-r]').forEach(function(b){b.classList.toggle('sel',parseInt(b.dataset.sqR)===(cell.r||1));});
-  document.querySelectorAll('[data-sq-orn]').forEach(function(b){b.classList.toggle('sel',parseInt(b.dataset.sqOrn)===(cell.orn||0));});
-  var vs=document.getElementById('sq-velSl');if(vs)vs.value=cell.vel||100;
-  var vd=document.getElementById('sq-velDisp');if(vd)vd.textContent=cell.vel||100;
-}
-function sqCloseMenu(){var m=document.getElementById('sq-smenu');if(m)m.style.display='none';sqMenuTi=-1;sqMenuS=-1;}
 
 // ── pattern slots ──
 function sqRenderPSlots(){
@@ -23971,48 +24374,9 @@ function sqWire(){
   var clrs=document.getElementById('sq-clrSongBtn');
   if(clrs)clrs.addEventListener('click',function(){sqChain=[];sqChainPos=0;sqUsingChain=false;sqRenderPSlots();sqRenderChain();sqUpdateStatus();});
 
-  var smc=document.getElementById('sq-smClose');
-  if(smc)smc.addEventListener('click',sqCloseMenu);
-
-  // scoped pointer-down to close menu (only within rhythm page)
-  var rpage=document.getElementById('ac-drums-panel');
-  if(rpage)rpage.addEventListener('pointerdown',function(e){
-    var m=document.getElementById('sq-smenu');
-    if(m&&m.style.display!=='none'&&!m.contains(e.target)&&!e.target.classList.contains('sq-step'))sqCloseMenu();
-  });
-
   // Beat pagination dots: update active dot as user scrolls
   var gsc=document.getElementById('sq-gScroll');
   if(gsc) gsc.addEventListener('scroll',sqUpdatePageDots,{passive:true});
-
-  // ratchet / ornament buttons in menu
-  document.querySelectorAll('[data-sq-r]').forEach(function(b){
-    b.addEventListener('click',function(){
-      if(sqMenuTi<0)return;
-      sqGrid[sqMenuTi][sqMenuS].r=parseInt(b.dataset.sqR);
-      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);
-      var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
-      if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
-    });
-  });
-  document.querySelectorAll('[data-sq-orn]').forEach(function(b){
-    b.addEventListener('click',function(){
-      if(sqMenuTi<0)return;
-      sqGrid[sqMenuTi][sqMenuS].orn=parseInt(b.dataset.sqOrn);
-      sqSyncMenuUI(sqGrid[sqMenuTi][sqMenuS]);
-      var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
-      if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
-    });
-  });
-  var vsl2=document.getElementById('sq-velSl');
-  if(vsl2)vsl2.addEventListener('input',function(){
-    if(sqMenuTi<0)return;
-    var v=parseInt(this.value);
-    sqGrid[sqMenuTi][sqMenuS].vel=v;
-    var vd=document.getElementById('sq-velDisp');if(vd)vd.textContent=v;
-    var e=sqStepEls[sqMenuTi]&&sqStepEls[sqMenuTi][sqMenuS];
-    if(e)sqRefreshStepEl(e,sqGrid[sqMenuTi][sqMenuS],sqMenuTrack?sqMenuTrack.c:'#fff');
-  });
 
 
   // Handle groove import from simple rhythm engine
@@ -24684,7 +25048,6 @@ var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 // The step duration the scheduler last worked out, published for blDraw() —
 // see the assignment in _blScheduler.
 var _blStepSecLive = 0;
-var blMenuStep = -1;
 // Funk out of the box rather than Rock: the eighth-note root pattern is the
 // most neutral thing the generator makes, and neutral is the one thing a
 // starting point should not be. A restored session carries its own style,
@@ -25085,6 +25448,14 @@ var BL_LO = 33, BL_HI = 52;              // A1..E3 (55-165 Hz) — where a walk 
 // is musically useful here; it is only where an octave fold could dump a note
 // into rumble that no phone or laptop reproduces but every meter counts.
 var BL_GEN_LO = 33, BL_GEN_HI = 57;      // A1-A3 (55-220 Hz)
+// What the ROLL will show and let you edit, which is a different question from
+// where the generator writes. Generate, Arrange and the walk all keep to
+// BL_GEN_* above, so a generated line still sits in the register a bass line
+// belongs in — but a line you are editing by hand is not a generated one, and
+// a sequencer that cannot hold the note you want is not a sequencer. E1 is the
+// bottom of a four-string bass; the top is open because reaching up is the
+// thing people actually want a bass to do and could not.
+var BL_PR_LO = 28, BL_PR_HI = 76;        // E1-E5, four octaves
 
 // Called from _playLoopSlot as each chord is committed to the audio clock.
 window._blOnChord = function(slot, atTime, durSec, nextSlot, capoOverride){
@@ -25647,6 +26018,15 @@ function _blDisplayMidi(x){
     return window._followNearIn(outPc, ref, BL_LO, BL_HI);
   }
   var abs = c.note + (c.oct + 1) * 12;
+  // A note you placed by hand is drawn exactly where you placed it. The
+  // scheduler above already plays these untouched — it exempts cell.usr from
+  // Follow and hands blPlayNote the cell's own note and octave — but this fold
+  // ran on every cell regardless, so the roll and the speaker disagreed about
+  // any hand note above E3: tapping the top row of the bass roll stored and
+  // sounded A3 and drew A2, an octave down, in a row you had not touched.
+  // Generated cells keep the fold, which is what holds a generated walk in the
+  // register the walk was written for.
+  if(c.usr) return abs;
   if(abs > BL_HI) abs -= 12;
   if(abs < BL_LO) abs += 12;
   return abs;
@@ -25654,7 +26034,16 @@ function _blDisplayMidi(x){
 function blPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('bl', {
-    lo: BL_GEN_LO, hi: BL_GEN_HI, color:'#2df09a',
+    lo: BL_PR_LO, hi: BL_PR_HI, color:'#2df09a', hasSlide:true,
+    // Used when a double-tap puts a cleared note back: the engine owns its
+    // empty state, and a restored note means the grid is no longer empty.
+    refresh: function(){ blUpdateEmptyHint(); blRedraw(); },
+    // The step menu sounded a note when you moved its octave; the inspector
+    // has to as well, or a 49-row roll gives you no way to hear where you
+    // landed without starting the transport.
+    preview: function(step){ var c=blGrid[step]; if(c && typeof blPreviewNote==='function') blPreviewNote(c); },
+    // Where to look first when the roll is empty — see prScrollToContent.
+    homeLo: BL_GEN_LO, homeHi: BL_GEN_HI,
     steps: function(){ return blSteps; },
     cell:  function(x){ return blGrid[x]; },
     // The pitch this step will actually sound as, after Follow. prDraw uses
@@ -25706,16 +26095,6 @@ function blPrInit(){
       blUpdateEmptyHint();
       blRedraw();
     },
-    openMenu: function(step, midi){
-      blEnsureGrid();
-      var c = blGrid[step]; if(!c) return;
-      // Same conversion as toggle: the roll hands us a SOUNDING pitch.
-      if(!c.v){ var raw = midi;   // see toggle: it is about to become yours
-                c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
-      c.usr = 1;
-      var host = document.getElementById('bl-pr-canvas');
-      blOpenMenu(host, step);
-    }
   });
   if(typeof prWire==='function') prWire('bl');
 }
@@ -25753,45 +26132,6 @@ function blPreviewNote(cell){
 }
 
 // ── step menu ──
-function blOpenMenu(el, si){
-  blMenuStep = si;
-  var cell = blGrid[si];
-  if(!cell.v){ cell.v = 1; blRedraw(); }
-  var menu = document.getElementById('bl-smenu'); if(!menu) return;
-  // Build note picker
-  var picker = document.getElementById('bl-notepicker'); if(!picker) return;
-  picker.innerHTML = '';
-  var chromatic = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  chromatic.forEach(function(n, ni){
-    var b = document.createElement('button'); b.className = 'bl-notepick' + (n.includes('#')?' black':'') + (ni===cell.note?' sel':'');
-    b.textContent = n; b.dataset.bln = ni;
-    b.addEventListener('click', function(){
-      cell.note = ni; document.querySelectorAll('.bl-notepick').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel');
-      blRedraw(); blPreviewNote(cell);
-    });
-    picker.appendChild(b);
-  });
-  // Oct buttons
-  document.querySelectorAll('[data-blsmoct]').forEach(function(b){
-    b.classList.toggle('sel', parseInt(b.dataset.blsmoct) === cell.oct);
-    b.onclick = function(){ cell.oct = parseInt(b.dataset.blsmoct); document.querySelectorAll('[data-blsmoct]').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel'); blRedraw(); blPreviewNote(cell); };
-  });
-  // Len buttons
-  document.querySelectorAll('[data-blsmlen]').forEach(function(b){
-    b.classList.toggle('sel', parseInt(b.dataset.blsmlen) === (cell.len||1));
-    b.onclick = function(){ cell.len = parseInt(b.dataset.blsmlen); document.querySelectorAll('[data-blsmlen]').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel'); blRedraw(); };
-  });
-  var slideBtn = document.getElementById('bl-sm-slide'); if(slideBtn){ slideBtn.classList.toggle('sel', !!cell.slide); slideBtn.onclick = function(){ cell.slide = !cell.slide; slideBtn.classList.toggle('sel', cell.slide); blRedraw(); }; }
-  var accentBtn = document.getElementById('bl-sm-accent'); if(accentBtn){ accentBtn.classList.toggle('sel', !!cell.accent); accentBtn.onclick = function(){ cell.accent = !cell.accent; accentBtn.classList.toggle('sel', cell.accent); blRedraw(); }; }
-  // Position
-  var rect = el.getBoundingClientRect();
-  var top = rect.bottom + 6, left = rect.left;
-  if(top + 240 > window.innerHeight) top = rect.top - 246;
-  if(left + 200 > window.innerWidth) left = window.innerWidth - 204;
-  if(left < 4) left = 4;
-  menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.display = 'flex';
-}
-function blCloseMenu(){ var m = document.getElementById('bl-smenu'); if(m) m.style.display = 'none'; blMenuStep = -1; }
 
 // ── steps / octave ──
 window._blSetStepsRaw = function(n){
@@ -26412,14 +26752,6 @@ document.querySelectorAll('[data-blstyle]').forEach(function(b){
   });
 });
 
-// ── close menu on outside click ──
-var performPage = document.getElementById('page-bass');
-if(performPage) performPage.addEventListener('pointerdown', function(e){
-  var m = document.getElementById('bl-smenu');
-  if(m && m.style.display !== 'none' && !m.contains(e.target) && !e.target.classList.contains('bl-step')) blCloseMenu();
-});
-var smclose = document.getElementById('bl-smclose');
-if(smclose) smclose.addEventListener('click', blCloseMenu);
 
 // Bass volume is controlled solely by the Mixer's Bass channel (_mxBs in
 // blPlayNote) now — BL_MG stays at its fixed baseline gain set in blMG().
@@ -26603,6 +26935,9 @@ var _mlGridIntvs = [0,4,7];
 // The melody had no equivalent, so its octave-lift styles could wander as far
 // as the arithmetic took them. G3-C6 is a singable melodic range.
 var ML_GEN_LO = 55, ML_GEN_HI = 84;
+// As with the bass: the generator keeps its singable G3-C6, the roll opens up
+// around it so a hand-placed line can go where the generator would not.
+var ML_PR_LO = 48, ML_PR_HI = 96;        // C3-C7, four octaves
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
 // See window._sqResync — same fix, same reason, for the melody-gen step clock.
@@ -26615,7 +26950,6 @@ window._mlRenderGrid = function(){ mlRenderGrid(); };
 var mlSeqStep = 0, mlNextT = 0, mlDispStep = -1, mlRafID = null;
 // As _blStepSecLive, for the melody — see the assignment in _mlScheduler.
 var _mlStepSecLive = 0;
-var mlMenuStep = -1;
 // Pop Hook rather than Arpeggio, for the same reason: an arpeggio spells the
 // chord you are already hearing, where a hook is a line of its own.
 var mlGenStyle = 'hook';
@@ -26756,6 +27090,10 @@ function _mlDisplayMidi(x){
     return window._followNearIn(outPc, ref, ML_GEN_LO, ML_GEN_HI);
   }
   var abs = c.note + (c.oct + 1) * 12;
+  // See the bass roll's _blDisplayMidi — a hand-placed note is drawn where it
+  // was placed, and now that the roll runs C3-C7 rather than the generator's
+  // G3-C6 there is somewhere for it to be drawn.
+  if(c.usr) return abs;
   if(abs > ML_GEN_HI) abs -= 12;
   if(abs < ML_GEN_LO) abs += 12;
   return abs;
@@ -26763,7 +27101,11 @@ function _mlDisplayMidi(x){
 function mlPrInit(){
   if(typeof prRegister!=='function') return;
   prRegister('ml', {
-    lo: ML_GEN_LO, hi: ML_GEN_HI, color:'#ff8ad4',
+    lo: ML_PR_LO, hi: ML_PR_HI, color:'#ff8ad4',
+    refresh: function(){ if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
+                         if(typeof mlRedraw==='function') mlRedraw(); },
+    preview: function(step){ var c=mlGrid[step]; if(c && typeof mlPreviewNote==='function') mlPreviewNote(c); },
+    homeLo: ML_GEN_LO, homeHi: ML_GEN_HI,
     steps: function(){ return mlSteps; },
     cell:  function(x){ return mlGrid[x]; },
     // Follow moves this line onto each chord exactly as it does the bass, so
@@ -26808,14 +27150,6 @@ function mlPrInit(){
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
       if(typeof mlRenderSimpleView==='function') mlRedraw();
     },
-    openMenu: function(step, midi){
-      mlEnsureGrid();
-      var c = mlGrid[step]; if(!c) return;
-      if(!c.v){ var raw = midi;
-                c.v=1; c.note=((raw%12)+12)%12; c.oct=Math.floor(raw/12)-1; }
-      c.usr = 1;
-      if(typeof mlOpenMenu==='function') mlOpenMenu(document.getElementById('ml-pr-canvas'), step);
-    }
   });
   if(typeof prWire==='function') prWire('ml');
 }
@@ -26921,40 +27255,6 @@ function mlPreviewNote(cell){
 }
 
 // ── step menu ──
-function mlOpenMenu(el, si){
-  mlMenuStep = si;
-  var cell = mlGrid[si];
-  if(!cell.v){ cell.v = 1; mlRedraw(); }
-  var menu = document.getElementById('ml-smenu'); if(!menu) return;
-  var picker = document.getElementById('ml-notepicker'); if(!picker) return;
-  picker.innerHTML = '';
-  var chromatic = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  chromatic.forEach(function(n, ni){
-    var b = document.createElement('button'); b.className = 'bl-notepick' + (n.includes('#')?' black':'') + (ni===cell.note?' sel':'');
-    b.textContent = n; b.dataset.mln = ni;
-    b.addEventListener('click', function(){
-      cell.note = ni; document.querySelectorAll('#ml-notepicker .bl-notepick').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel');
-      mlRedraw(); mlPreviewNote(cell);
-    });
-    picker.appendChild(b);
-  });
-  document.querySelectorAll('[data-mlsmoct]').forEach(function(b){
-    b.classList.toggle('sel', parseInt(b.dataset.mlsmoct) === cell.oct);
-    b.onclick = function(){ cell.oct = parseInt(b.dataset.mlsmoct); document.querySelectorAll('[data-mlsmoct]').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel'); mlRedraw(); mlPreviewNote(cell); };
-  });
-  document.querySelectorAll('[data-mlsmlen]').forEach(function(b){
-    b.classList.toggle('sel', parseInt(b.dataset.mlsmlen) === (cell.len||1));
-    b.onclick = function(){ cell.len = parseInt(b.dataset.mlsmlen); document.querySelectorAll('[data-mlsmlen]').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel'); mlRedraw(); };
-  });
-  var accentBtn = document.getElementById('ml-sm-accent'); if(accentBtn){ accentBtn.classList.toggle('sel', !!cell.accent); accentBtn.onclick = function(){ cell.accent = !cell.accent; accentBtn.classList.toggle('sel', cell.accent); mlRedraw(); }; }
-  var rect = el.getBoundingClientRect();
-  var top = rect.bottom + 6, left = rect.left;
-  if(top + 240 > window.innerHeight) top = rect.top - 246;
-  if(left + 200 > window.innerWidth) left = window.innerWidth - 204;
-  if(left < 4) left = 4;
-  menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.display = 'flex';
-}
-function mlCloseMenu(){ var m = document.getElementById('ml-smenu'); if(m) m.style.display = 'none'; mlMenuStep = -1; }
 
 // ── steps / octave ──
 window._mlSetStepsRaw = function(n){
@@ -27276,14 +27576,6 @@ document.querySelectorAll('[data-mlstyle]').forEach(function(b){
   });
 });
 
-// ── close menu on outside click ──
-var mlPerformPage = document.getElementById('page-bass');
-if(mlPerformPage) mlPerformPage.addEventListener('pointerdown', function(e){
-  var m = document.getElementById('ml-smenu');
-  if(m && m.style.display !== 'none' && !m.contains(e.target) && !e.target.classList.contains('bl-step')) mlCloseMenu();
-});
-var mlSmclose = document.getElementById('ml-smclose');
-if(mlSmclose) mlSmclose.addEventListener('click', mlCloseMenu);
 
 // Melody sequencer volume is controlled solely by the Mixer's Mel channel now (mlVol is a fixed baseline).
 
@@ -27769,7 +28061,16 @@ switchTab = function(t){
 // other's state, which is why this takes functions instead of data.
 const PR_NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PR_BLACK = {1:1,3:1,6:1,8:1,10:1};
-const PR_ROW_H = 15;      // px per semitone — tall enough to letter a note name
+// px per semitone. 15 was tall enough to letter a note name and too short to
+// hit — a fingertip covers roughly 8mm of glass, which is three of those rows,
+// so you aimed at a pitch and entered its neighbour.
+//
+// One height, whatever is pointing at it. A row that changes size depending on
+// the input device is two different instruments: the line you drew with a
+// mouse sits somewhere else the moment you pick the phone up, and muscle
+// memory for either is worth nothing on the other. The mouse being precise is
+// an argument for letting it hit a small target, not for making it.
+const PR_ROW_H = 22;
 const PR_KEY_W = 52;      // the keyboard gutter
 // A beat ruler along the top. Four sixteenths is one beat and four beats is a
 // bar, and until this strip existed the only sign of either was a hairline
@@ -27804,8 +28105,13 @@ let PR_COL_W = 26;
 // the measurement belongs there and the answer belongs in a cache.
 const _PR_COL_W_CACHE = {};
 function _prMeasureColW(id, steps){
- const sc = document.getElementById(id+'-pr-scroll');
- const avail = sc ? sc.clientWidth : 0;
+ // Measured off the roll, less the key gutter, rather than off .pr-scroll —
+ // which is sized by its own canvas now that it no longer scrolls, and would
+ // have been answering with the width it was last given. clientWidth also
+ // discounts a vertical scrollbar where one is shown, which is exactly the
+ // space the grid does not get.
+ const wrap = document.getElementById(id+'-pr');
+ const avail = wrap ? Math.max(0, wrap.clientWidth - PR_KEY_W) : 0;
  if(!avail || !steps) return 26;
  return Math.max(16, Math.min(46, Math.floor(avail/steps)));
 }
@@ -27948,12 +28254,95 @@ function prLayout(id){
  kv.width = Math.round(PR_KEY_W*dpr); kv.height = Math.round(h*dpr);
  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
  kv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ const rv = document.getElementById(id+'-pr-ruler');
+ if(rv){
+  rv.style.width = w+'px'; rv.style.height = PR_RULER_H+'px';
+  rv.width = Math.round(w*dpr); rv.height = Math.round(PR_RULER_H*dpr);
+  rv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+ }
  // Whether this roll is on screen at all. It changes only when a tab or a
  // sub-tab changes, and both of those end up here, so the one layout read it
  // costs is paid at the switch instead of on every step of every bar.
+ const wasOn = _PR_ONSCREEN[id];
  _PR_ONSCREEN[id] = cv.offsetParent !== null;
+ _prBindRulerScroll(id);
  prDrawKeys(id);
  prDraw(id);
+ // Four octaves is far more than fits, so a roll that always opened at its top
+ // row would open on empty sky a long way above anything written. Aim it as it
+ // arrives — on the way in only, never while it is already up, so it can never
+ // pull the grid out from under a finger midway through an edit.
+ if(_PR_ONSCREEN[id] && !wasOn) prScrollToContent(id);
+ prSyncInsp(id);
+}
+
+// One listener per roll, bound the first time it is laid out. The pinned ruler
+// must not scroll vertically, which is the whole point of it, but it does have
+// to track the horizontal — otherwise its bar numbers drift off the bars.
+function _prBindRulerScroll(id){
+ const wrap = document.getElementById(id+'-pr'); if(!wrap || wrap._prRulerBound) return;
+ wrap._prRulerBound = true;
+ const sync = ()=>{
+  const rv = document.getElementById(id+'-pr-ruler'); if(!rv) return;
+  rv.style.transform = 'translateX(' + (-wrap.scrollLeft) + 'px)';
+ };
+ wrap.addEventListener('scroll', sync, {passive:true});
+ sync();
+}
+
+// Tapping away puts the bar away. Removing the step menus took their
+// close-on-outside-tap with them and nothing replaced it: once a step was
+// selected the inspector stayed up until that step was cleared or another was
+// chosen, with no way to simply stop editing. One listener covers all three
+// grids, and a tap inside a grid or inside its own bar is not "away".
+(function(){
+ const inside = (t, gridSel, inspId) => {
+  const insp = document.getElementById(inspId);
+  if(insp && insp.contains(t)) return true;
+  return !!(t && t.closest && t.closest(gridSel));
+ };
+ document.addEventListener('pointerdown', function(e){
+  const t = e.target;
+  ['bl','ml'].forEach(function(id){
+   if(PR_SEL[id]==null) return;
+   if(inside(t, '#'+id+'-pr', id+'-pr-insp')) return;
+   PR_SEL[id]=null; prSyncInsp(id); prDraw(id);
+  });
+  if(typeof window._sqHasSel==='function' && window._sqHasSel() &&
+     !inside(t, '.sq-grid-wrap', 'sq-insp')){
+   window._sqClearSel();
+  }
+ }, true);
+})();
+
+// Put the written part of the roll in the middle of the view, or the register
+// the generator writes in when there is nothing written yet — which is also
+// what makes an empty roll open somewhere you would want to start tapping.
+function prScrollToContent(id){
+ const cfg = PR_ENGINES[id]; if(!cfg) return;
+ const wrap = document.getElementById(id+'-pr'); if(!wrap) return;
+ const max = wrap.scrollHeight - wrap.clientHeight;
+ if(max <= 0) return;
+ let lo=null, hi=null;
+ const n = cfg.steps();
+ for(let x=0; x<n; x++){
+  const c = cfg.cell(x); if(!c || !c.v) continue;
+  // The sounding pitch, so the view lands where the notes are drawn rather
+  // than where they were authored — the two differ under Follow.
+  let m = null;
+  if(typeof cfg.displayMidi==='function'){ try{ m = cfg.displayMidi(x); }catch(e){} }
+  if(m==null) m = c.note + (c.oct+1)*12;
+  if(lo==null || m<lo) lo=m;
+  if(hi==null || m>hi) hi=m;
+ }
+ if(lo==null){
+  lo = (cfg.homeLo!=null) ? cfg.homeLo : cfg.lo;
+  hi = (cfg.homeHi!=null) ? cfg.homeHi : cfg.hi;
+ }
+ // Row 0 is cfg.hi: the roll counts downwards from its top note.
+ const topRow = cfg.hi - hi, botRow = cfg.hi - lo;
+ const mid = PR_RULER_H + ((topRow + botRow + 1) / 2) * PR_ROW_H;
+ wrap.scrollTop = Math.max(0, Math.min(max, mid - wrap.clientHeight/2));
 }
 
 // An actual keyboard, not a column of shaded strips: black keys are drawn
@@ -28087,6 +28476,22 @@ function _prBg(id, cfg, T, sc, rows, steps, colW, W, H){
  return off;
 }
 
+// Paints the pinned ruler from the background cache prDraw has just used, so
+// the two can never draw different bar lines, and re-lays the playhead cap on
+// top of it. Cheap: one blit of a 14px strip and at most one small rect.
+function _prDrawRuler(id, W, colW, ph, T){
+ const rv = document.getElementById(id+'-pr-ruler'); if(!rv) return;
+ const bg = _PR_BG[id] && _PR_BG[id].cv; if(!bg) return;
+ const g = rv.getContext('2d');
+ g.clearRect(0,0,W,PR_RULER_H);
+ // Source rectangle in device pixels; the cache is drawn at the same dpr the
+ // live canvas uses, and drawImage's 9-arg form wants raw source pixels.
+ const sx = bg.width / Math.max(1, W);
+ g.drawImage(bg, 0, 0, Math.round(W*sx), Math.round(PR_RULER_H*sx),
+                 0, 0, W, PR_RULER_H);
+ if(ph>=0){ g.fillStyle = T.head; g.fillRect(ph*colW-2, 0, 6, 3); }
+}
+
 function prDraw(id){
  const cfg = PR_ENGINES[id]; if(!cfg) return;
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
@@ -28125,6 +28530,15 @@ function prDraw(id){
    _prRound(g, x*colW+2, y+2, w-1, PR_ROW_H-4, 2.5);
    g.stroke();
   }
+  // The selected step, which is the one the inspector under the roll is
+  // editing. Drawn as a ring OUTSIDE the note rather than another inset
+  // outline, so it cannot be mistaken for the hand-placed marking above.
+  if(PR_SEL[id] === x){
+   g.strokeStyle = T.light ? '#12203a' : '#ffffff';
+   g.lineWidth = 2;
+   _prRound(g, x*colW-0.5, y-0.5, w+4, PR_ROW_H, 4.5);
+   g.stroke();
+  }
   // Name the note on the bar itself when there is room, so you can read a
   // line without tracking back to the gutter.
   if(w > 22){
@@ -28150,6 +28564,9 @@ function prDraw(id){
   // A cap in the ruler, so the playhead is findable at a glance on a long roll.
   g.fillRect(ph*colW-2,0,6,3);
  }
+ // The pinned copy of the ruler — see .pr-rulerhost. The same strip the grid
+ // carries, kept where it can be read once the roll has scrolled off it.
+ _prDrawRuler(id, W, colW, ph, T);
  // Where the next played note will land, while this roll is armed and nothing
  // is running. Deliberately not the playhead's colour — it is a place you are
  // about to write, not a place the music is.
@@ -28180,36 +28597,197 @@ function prHit(id, ev){
  return { step:x, midi: cfg.hi - i };
 }
 
+// ── SELECTION + THE STEP INSPECTOR ───────────────────────────────────────
+// A roll holds one cell per step, so a selection is just a step index. Kept
+// out here rather than in either engine, because both rolls behave the same
+// and the drum kit keeps its own (it is a two-dimensional grid).
+const PR_SEL = {};
+// Whether the "double-tap to edit" line under the grids has done its job. var
+// and a body class rather than a per-element style, because there are three of
+// these lines on two different tabs and they all retire together.
+function seqTaught(){ try{ return localStorage.getItem('modo-seq-taught')==='1'; }catch(e){ return false; } }
+function markSeqTaught(){
+ if(seqTaught()) return;
+ try{ localStorage.setItem('modo-seq-taught','1'); }catch(e){}
+ document.body.classList.add('seq-taught');
+}
+(function(){
+ const on=()=>{ if(seqTaught()) document.body.classList.add('seq-taught'); };
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', on);
+ else on();
+})();
+function prSelStep(id){ const v = PR_SEL[id]; return (v==null) ? null : v; }
+
+function prMidiOf(cfg, step){
+ const c = cfg.cell(step); if(!c) return null;
+ if(typeof cfg.displayMidi==='function'){
+  const dm = cfg.displayMidi(step);
+  if(dm != null) return dm;
+ }
+ return c.note + (c.oct+1)*12;
+}
+function _prNoteName(midi){
+ return PR_NOTE_NAMES[((midi%12)+12)%12] + (Math.floor(midi/12)-1);
+}
+function _prBtn(label, on, title, fn, key){
+ const b=document.createElement('button');
+ b.type='button'; b.className='pr-insp-btn'+(on?' on':'');
+ // A stable name for this control, so focus can be put back on the same one
+ // after the host is rebuilt — see _prKeepFocus.
+ b.dataset.k = key || (title || label);
+ b.textContent=label;
+ if(title){ b.title=title; b.setAttribute('aria-label', title); }
+ if(on!=null) b.setAttribute('aria-pressed', on?'true':'false');
+ b.addEventListener('click', fn);
+ return b;
+}
+// Every press rebuilds the whole bar, which detaches the button that was
+// pressed and drops focus to <body> — so a keyboard or switch user had to
+// re-Tab to the same control after every single increment. These remember the
+// focused control by name across the rebuild.
+function _prFocusKey(host){
+ const a=document.activeElement;
+ return (a && host.contains(a) && a.dataset && a.dataset.k) ? a.dataset.k : null;
+}
+function _prKeepFocus(host, key){
+ if(!key) return;
+ const b=host.querySelector('[data-k="'+(window.CSS&&CSS.escape?CSS.escape(key):key)+'"]');
+ if(b) try{ b.focus({preventScroll:true}); }catch(e){ b.focus(); }
+}
+
+function _prGroup(label){
+ const g=document.createElement('div'); g.className='pr-insp-grp';
+ if(label){ const l=document.createElement('span'); l.className='pr-insp-lbl'; l.textContent=label; g.appendChild(l); }
+ return g;
+}
+
+function prSyncInsp(id){
+ const host = document.getElementById(id+'-pr-insp'); if(!host) return;
+ const cfg = PR_ENGINES[id];
+ const step = prSelStep(id);
+ const _focus = _prFocusKey(host);
+ host.innerHTML='';
+ // A selection that no longer has a note under it — Generate rewrote the bar,
+ // the step count shrank — is not a selection.
+ const c = (cfg && step!=null) ? cfg.cell(step) : null;
+ if(!cfg || step==null || step>=cfg.steps() || !c || !c.v){
+  host.classList.remove('open');
+  if(PR_SEL[id]!=null && (!c || !c.v)) PR_SEL[id]=null;
+  return;
+ }
+ host.classList.add('open');
+ const redraw = ()=>{ prDraw(id); prSyncInsp(id); };
+
+ const what=document.createElement('span'); what.className='pr-insp-what';
+ const midi = prMidiOf(cfg, step);
+ what.innerHTML='<b>'+(midi==null?'—':_prNoteName(midi))+'</b> · step '+(step+1);
+ host.appendChild(what);
+
+ // Length. The roll already draws c.len as the bar's width, so this is the
+ // control for something you can already see.
+ const lg=_prGroup('Len');
+ lg.appendChild(_prBtn('−', null, 'Shorter', ()=>{ c.len=Math.max(1,(c.len||1)-1); redraw(); }));
+ const lv=document.createElement('span'); lv.className='pr-insp-val'; lv.textContent=String(c.len||1);
+ lg.appendChild(lv);
+ lg.appendChild(_prBtn('+', null, 'Longer', ()=>{ c.len=Math.min(16,(c.len||1)+1); redraw(); }));
+ host.appendChild(lg);
+
+ // Everything the retired step menu carried is here except its chromatic note
+ // picker — which the roll itself is. Octave is the exception worth keeping:
+ // moving a note twelve rows is a scroll and a hunt, and it was two buttons.
+ const og=_prGroup('Oct');
+ const octBy=(d)=>{
+  // The cell's OWN pitch, not the one on screen. For a generated note under
+  // Follow those differ: the drawn pitch is wherever this step re-roots onto
+  // the chord sounding at the moment you press, so shifting that and storing
+  // it would rebase the note onto one passing chord and lose what the
+  // generator wrote. It also must not set usr — Len and Accent do not, and
+  // pinning a note out of Follow is not something a button labelled "up an
+  // octave" should do quietly.
+  const m = c.note + (c.oct+1)*12;
+  const t = m + d*12; if(t<cfg.lo || t>cfg.hi) return;
+  c.note=((t%12)+12)%12; c.oct=Math.floor(t/12)-1;
+  if(typeof cfg.preview==='function'){ try{ cfg.preview(step); }catch(e){} }
+  redraw();
+ };
+ og.appendChild(_prBtn('−', null, 'Down an octave', ()=>octBy(-1)));
+ og.appendChild(_prBtn('+', null, 'Up an octave', ()=>octBy(1)));
+ host.appendChild(og);
+
+ host.appendChild(_prBtn('Accent', !!c.accent, 'Accent this step', ()=>{ c.accent=c.accent?0:1; redraw(); }));
+ if(cfg.hasSlide){
+  host.appendChild(_prBtn('Slide', !!c.slide, 'Slide into the next step', ()=>{ c.slide=!c.slide; redraw(); }));
+ }
+
+ const del=_prBtn('✕', null, 'Remove this note', ()=>{
+  if(typeof cfg.clearAt==='function') cfg.clearAt(step);
+  PR_SEL[id]=null; prDraw(id); prSyncInsp(id);
+ });
+ del.classList.add('pr-insp-del');
+ host.appendChild(del);
+ _prKeepFocus(host, _focus);
+}
+
 function prWire(id){
  const cv = document.getElementById(id+'-pr-canvas'); if(!cv) return;
- let holdT=null, moved=false, dx=0, dy=0, held=false;
+ // One gesture vocabulary across all three sequencers: a tap toggles, a second
+ // tap in quick succession edits. There is no press-and-hold anywhere now —
+ // everything it used to reach is on the bar under the grid, and a hold over a
+ // scroller is unreliable anyway, because the browser cancels the pointer the
+ // moment a drag looks like a pan.
+ let moved=false, dx=0, dy=0, lastTap=0, lastStep=-1, lastMidi=-1, lastCell=null;
  cv.addEventListener('pointerdown', function(e){
-  const cfg = PR_ENGINES[id]; if(!cfg) return;
-  moved=false; held=false; dx=e.clientX; dy=e.clientY;
-  const h = prHit(id,e); if(!h) return;
-  holdT = setTimeout(function(){
-   holdT=null;
-   if(moved) return;
-   held=true;
-   // Long press opens the same per-step menu the old lane used, so length,
-   // slide and accent are still reachable without inventing a second UI.
-   if(cfg.openMenu) cfg.openMenu(h.step, h.midi);
-  }, 450);
+  moved=false; dx=e.clientX; dy=e.clientY;
  });
  cv.addEventListener('pointermove', function(e){
-  if(Math.abs(e.clientX-dx)+Math.abs(e.clientY-dy) > 8){
-   moved=true; if(holdT){ clearTimeout(holdT); holdT=null; }
-  }
+  if(Math.abs(e.clientX-dx)+Math.abs(e.clientY-dy) > 8) moved=true;
  });
  cv.addEventListener('pointerup', function(e){
-  if(holdT){ clearTimeout(holdT); holdT=null; }
-  if(moved || held) return;
+  if(moved) return;
   const cfg = PR_ENGINES[id]; if(!cfg) return;
   const h = prHit(id,e); if(!h) return;
-  cfg.toggle(h.step, h.midi);
+  const now = Date.now();
+  if(now - lastTap < 300 && lastStep === h.step && lastMidi === h.midi){
+    // The second tap of a pair means "let me edit this one", not "do that
+    // again". Put back whatever the first tap took away and select the step.
+    // Only a clear is reversed: when the pair began on an empty row the first
+    // tap PLACED the note, and undoing that would leave a double-tap doing
+    // nothing. Either way the note ends up down and selected.
+    if(lastCell && lastCell.v){
+      _prRestore(cfg, h.step, lastCell);
+      if(typeof cfg.refresh === 'function') cfg.refresh();
+    }
+    PR_SEL[id] = h.step;
+    lastTap = 0;
+    markSeqTaught();
+  } else {
+    lastCell = _prSnap(cfg, h.step);
+    cfg.toggle(h.step, h.midi);
+    const c = cfg.cell(h.step);
+    if(c && c.v) PR_SEL[id] = h.step;
+    else if(PR_SEL[id] === h.step) PR_SEL[id] = null;
+    lastTap = now; lastStep = h.step; lastMidi = h.midi;
+  }
+  prSyncInsp(id);
   prDraw(id);
  });
- cv.addEventListener('pointercancel', function(){ if(holdT){ clearTimeout(holdT); holdT=null; } });
+ cv.addEventListener('pointercancel', function(){ moved = true; });
+}
+
+// A cell is a plain record, so a copy of the fields the grid actually reads is
+// enough to put one back exactly as it was — including usr, which decides
+// whether Generate is allowed to overwrite it. Toggling twice would restore
+// the pitch but not that.
+const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide'];
+function _prSnap(cfg, step){
+ const c = cfg.cell(step); if(!c) return null;
+ const o = {};
+ _PR_CELL_KEYS.forEach(k=>{ o[k] = c[k]; });
+ return o;
+}
+function _prRestore(cfg, step, snap){
+ const c = cfg.cell(step); if(!c || !snap) return;
+ _PR_CELL_KEYS.forEach(k=>{ c[k] = snap[k]; });
 }
 
 // The playhead's way in, called by the bass and melody engines every time
@@ -28634,6 +29212,7 @@ function toggleToneControls(force){
   document.querySelectorAll('[data-tonetoggle]').forEach(function(b){
     b.textContent='Sound shaping: '+(on?'ON':'OFF');
     b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on?'true':'false');
   });
 }
 (function(){
@@ -28754,7 +29333,7 @@ function _ftMoreOutsideClick(e){
 // Hold is on. That split is why the drum toggles could be folded in without
 // losing what they did: they are the sends layer now.
 
-const MODRIFF_VERSION = '2.8.1';
+// MODRIFF_VERSION is declared at the top of this script — see the note there.
 
 // The seventh ordering, now derived like the rest. Only parts with their own
 // bus are here — Aux Perc goes through the drum bus, so MōdFX reaches it on the
@@ -30573,7 +31152,6 @@ const A11Y_SLIDER = {
  'ms-lfo2-rate'  : 'LFO 2 rate',
  'ms-lfo2-depth' : 'LFO 2 depth',
  'sq-swingSl'    : 'Swing amount, all parts',
- 'sq-velSl'      : 'Step velocity',
  'bl-cutoff'     : 'Bass filter cutoff',
  'bl-reso'       : 'Bass filter resonance',
  'bl-human'      : 'Bass humanize amount',
@@ -30589,9 +31167,6 @@ const A11Y_SLIDER = {
 const A11Y_BTN = {
  'ft-ms-led'   : 'Something is muted or soloed — clear it',
  'ft-drawer-grip' : 'More controls',
- 'bl-smclose'  : 'Close step options',
- 'ml-smclose'  : 'Close step options',
- 'sq-smClose'  : 'Close step options',
  'sq-stepsDn'  : 'One fewer step',
  'sq-stepsUp'  : 'One more step',
  'slb-key-dn'  : 'Transpose song down a semitone',
