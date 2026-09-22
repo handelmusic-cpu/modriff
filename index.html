@@ -20672,8 +20672,21 @@ function _playLoopSlot(atTime){
  // to next, so a walking line can aim its approach note at the real target
  // instead of guessing. Published here rather than from playChartSlot2
  // because only this function knows the slot's duration and what follows it.
- if(typeof window._blOnChord==='function' && atTime!=null){
-  try{ window._blOnChord(slot, atTime, slotTotalMs(slot)/1000, _songPeekNextSlot()); }catch(e){}
+ //
+ // Three callers start a chord with no scheduled time — the free-mode launch
+ // and the no-delay branch of an aligned one, and tapping a chord on the
+ // chart to jump to it. This used to skip publishing for all of them, so the
+ // bass and melody had NO chord to follow for that chord's entire length and
+ // played the bar at whatever pitch it was written over. It is the first
+ // chord of most starts, and every chord you jump to by hand. There is no
+ // reason the window needs a scheduled time: "now" is a perfectly good start
+ // for a chord that is sounding now.
+ if(typeof window._blOnChord==='function'){
+  var _ctxW = getCtx();
+  var _winT = (atTime!=null) ? atTime : (_ctxW ? _ctxW.currentTime : null);
+  if(_winT!=null){
+   try{ window._blOnChord(slot, _winT, slotTotalMs(slot)/1000, _songPeekNextSlot()); }catch(e){}
+  }
  }
  // The audio is scheduled ahead; the highlight should still land when you
  // actually hear it, so it waits out the lead rather than flashing early.
