@@ -30516,6 +30516,20 @@ function fxSetRelease(v){
 // True while the pad has just been let go and the tail is still running.
 let _fxReleasing = false;
 
+// Is the pad actually driving this parameter on this channel, right now?
+// The same condition fxValue uses to decide whether to return the pad's
+// position — which is the point: the stages below were gated on whether an
+// axis was ASSIGNED instead, and assignment outlives a gesture. For most
+// parameters that made no difference, because fxValue hands back a neutral
+// base on release. For the ones whose base is not neutral it meant the effect
+// never came off: Grain's base of 0 maps through _fxDivSec to a one-bar
+// cycle, which is a cycle, so the worklet stayed in grain mode for as long as
+// the patch was loaded. Isolate is worse — its base of 0.5 is "mid band
+// only", so choosing that patch cut the lows and highs out of every targeted
+// channel and left them cut with nothing held.
+function _fxPadDriving(ch, key){
+ return fxEngaged && fxTargets.indexOf(ch)>=0 && (fxPadX===key || fxPadY===key);
+}
 function fxApplyChannel(ch){
  const chain=fxChains[ch]; if(!chain) return;
  const c=chain.ctx, t=c.currentTime;
@@ -30526,8 +30540,8 @@ function fxApplyChannel(ch){
 
  // A ganged axis owns both the frequency and the Q of the filter it drives;
  // otherwise the separate cutoff/reso/hpf params do, exactly as before.
- const lpOn = (fxPadX==='lpsweep' || fxPadY==='lpsweep');
- const hpOn = (fxPadX==='hpsweep' || fxPadY==='hpsweep');
+ const lpOn = _fxPadDriving(ch,'lpsweep');
+ const hpOn = _fxPadDriving(ch,'hpsweep');
  const lpV = lpOn ? v('lpsweep') : v('cutoff');
  const hpV = hpOn ? v('hpsweep') : v('hpf');
  const lpHz=_fxFiltHz(lpV), hpHz=_fxHpHz(hpV);
@@ -30553,7 +30567,7 @@ function fxApplyChannel(ch){
 
  // Isolator is only in circuit when an axis is driving it — see the chain
  // comment on why it cannot simply sit there at unity.
- const isoOn = (fxPadX==='iso' || fxPadY==='iso');
+ const isoOn = _fxPadDriving(ch,'iso');
  if(chain.isoWet){
   const g = isoOn ? _fxIsoGains(v('iso')) : {lo:1,mid:1,hi:1};
   chain.isoLoG.gain.setTargetAtTime(g.lo, t, S);
@@ -30565,7 +30579,7 @@ function fxApplyChannel(ch){
 
  // Talk filter: the two formants track one axis through the vowel table, so a
  // sweep walks a–e–ɛ–i–o–u rather than moving two unrelated peaks.
- const talkOn = (fxPadX==='talk' || fxPadY==='talk');
+ const talkOn = _fxPadDriving(ch,'talk');
  if(chain.fmtWet){
   const tv = talkOn ? v('talk') : 0;
   if(talkOn && tv>0.001){
@@ -30575,6 +30589,14 @@ function fxApplyChannel(ch){
    chain.fmt1.frequency.setTargetAtTime(a[0]+(b2[0]-a[0])*fr, t, S);
    chain.fmt2.frequency.setTargetAtTime(a[1]+(b2[1]-a[1])*fr, t, S);
   }
+  else {
+   // Park them back where they started rather than leaving a swept vowel
+   // frozen on a stage that is mixed out. Inaudible either way — but a graph
+   // whose bypassed nodes still hold the last gesture's values is one you
+   // cannot check by reading it, and that is how the Grain latch above hid.
+   chain.fmt1.frequency.setTargetAtTime(FMT_VOWELS[0][0], t, S);
+   chain.fmt2.frequency.setTargetAtTime(FMT_VOWELS[0][1], t, S);
+  }
   // Ramped in rather than switched, so arriving on a vowel is a move and not
   // a jump — and 0 leaves the stage bit-identical to absent.
   chain.fmtWet.gain.setTargetAtTime(talkOn?Math.min(1,tv*1.4):0, t, S);
@@ -30583,7 +30605,7 @@ function fxApplyChannel(ch){
 
  // Rhythmic gate. The buffer runs free; the axis only picks which pattern the
  // loop points enclose and how deep it cuts.
- const gpOn = (fxPadX==='gatepat' || fxPadY==='gatepat');
+ const gpOn = _fxPadDriving(ch,'gatepat');
  if(chain.gatePat){
   const gv = gpOn ? v('gatepat') : 0;
   if(gpOn && gv>0.001){
@@ -30640,9 +30662,13 @@ function fxApplyChannel(ch){
   pr.get('crush').setValueAtTime(v('crush'), t);
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
   if(pr.get('grain')){
-   // Cycle length in seconds, so the worklet does not need the tempo.
-   const gOn = (fxPadX==='grain' || fxPadY==='grain');
-   pr.get('grain').setValueAtTime(gOn ? Math.max(0.01,_fxDivSec(v('grain'))) : 0, t);
+   // Cycle length in seconds, so the worklet does not need the tempo. Zero at
+   // the bottom of the axis like stutter and reverse, which is what the
+   // readout has always claimed ("off") and what the audio now does: the
+   // Math.max floor used to guarantee a non-zero cycle, so the one value that
+   // should have switched grain off was the one that could not.
+   const gv = _fxPadDriving(ch,'grain') ? v('grain') : 0;
+   pr.get('grain').setValueAtTime(gv<=0.001 ? 0 : Math.max(0.01,_fxDivSec(gv)), t);
    pr.get('grainlen').setValueAtTime(v('grainlen'), t);
   }
  }
