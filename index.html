@@ -5760,11 +5760,11 @@ body.mode-free .pro-only { display:none !important; }
  </div>
  <div class="ending-row">
   <span class="ms-lbl">Ending</span>
-  <button class="tb end-btn" data-ending="ritard" onclick="armEnding('ritard')" title="Ritardando — the whole band slows together while the changes keep moving, then lands on the tonic">Ritard</button>
-  <button class="tb end-btn" data-ending="tag"    onclick="armEnding('tag')"    title="Tag — hold the last chord and let the band vamp on it for two more bars, then stop clean">Tag</button>
-  <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Big finish — hit the tonic, the band drops out under it, and the chord rings out">Big Fin</button>
-  <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade the whole mix out over the final bars">Fade</button>
-  <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Everything cuts dead on the last beat of the final bar">Cold</button>
+  <button class="tb end-btn" data-ending="ritard" onclick="armEnding('ritard')" title="Ritardando — the whole band broadens together over two bars while the changes keep moving, then everyone lands on the tonic">Ritard</button>
+  <button class="tb end-btn" data-ending="tag"    onclick="armEnding('tag')"    title="Tag — the section's last two chords play again in time, then the band lands on the tonic">Tag</button>
+  <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Big finish — the whole band lands on the tonic together, kit and all, and the chord rings out">Big Fin</button>
+  <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade — the band plays on while the mix comes down evenly over four bars">Fade</button>
+  <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Cold — the final bar plays out and the whole band stops dead on the downbeat after it">Cold</button>
   <span class="ending-hint">Queues to the end of the pass</span>
  </div>
  </div>
@@ -10546,7 +10546,7 @@ function _arpSwingOffset(t, sixteenth, div){
 }
 
 function scheduleArp(){
- if(!arpOn||!arpNotes.length) return;
+ if(!_arpSounding()) return;
  const ctx=getCtx(); if(!ctx) return;
  const rate=safeRate(arpRateIdx).div;
  const stepSec=beatSec()/rate;
@@ -11991,14 +11991,29 @@ let songEnding=null;           // armed ending id
 let _endingRunning=false;
 let _endTimers=[];
 const ENDINGS={
- ritard: {label:'Ritard',  hint:'Slow down over the last bars, then rest on the tonic.'},
- tag:    {label:'Tag',     hint:'Vamp on the tonic for two more bars, then stop clean.'},
- finish: {label:'Big Fin', hint:'Land hard on the tonic and let it ring.'},
- fade:   {label:'Fade',    hint:'Fade the whole mix out over the final pass.'},
- cold:   {label:'Cold',    hint:'Everything cuts dead on the downbeat.'},
+ ritard: {label:'Ritard',  hint:'The band broadens together over two bars, then lands on the tonic.'},
+ tag:    {label:'Tag',     hint:'The last two chords again, then the landing.'},
+ finish: {label:'Big Fin', hint:'The whole band lands on the tonic and it rings out.'},
+ fade:   {label:'Fade',    hint:'Keep playing while the mix comes down over four bars.'},
+ cold:   {label:'Cold',    hint:'The final bar plays out and everything stops dead on the downbeat.'},
 };
 function _clearEndTimers(){ _endTimers.forEach(t=>clearTimeout(t)); _endTimers=[]; }
-function _endLater(fn,ms){ _endTimers.push(setTimeout(fn,ms)); }
+function _endLater(fn,ms){ _endTimers.push(setTimeout(fn,Math.max(0,ms||0))); }
+// An ending queued to fire at the NEXT pass end rather than this one — how a
+// tag gets its extra bars and still lands properly at the end of them.
+let _endQueued=null;
+// A landing waiting for a bar line. A ritardando's slowdown is a wall-clock
+// walk down a curve, and the engines it slows commit their steps a look-ahead
+// early, so over two bars the two drift apart by about a fifth of a beat —
+// enough to put the final chord audibly behind the chart's own. So the walk
+// only sets this, and tickSongLoop fires it with the bar's exact audio time.
+let _endLandPending=null;
+// What a running ending has taken and owes back: the tempo it is pulling
+// down, the master level it is pulling under. Stop, pressed in the middle of
+// one, used to walk away from both — leaving the app at half tempo, or with
+// its master pulled down to nothing, and no sign on screen of why. The
+// ending's own timers went on firing into the silence too.
+let _endRestore=null;
 
 function armEnding(id){
  if(!ENDINGS[id]) return;
@@ -12009,7 +12024,7 @@ function armEnding(id){
   showToast(ENDINGS[id].label+' armed — finishes at the end of this pass');
   // Nothing is looping, so there is no "end of pass" to wait for: run it now.
   if(typeof songLoopActive==='undefined'||!songLoopActive) _runEnding(songEnding);
- } else showToast('Ending cancelled');
+ } else { _endQueued=null; showToast('Ending cancelled'); }
 }
 function _updateEndingUI(){
  document.querySelectorAll('[data-ending]').forEach(b=>{
@@ -12020,6 +12035,46 @@ function _bpmNow(){ return parseFloat(document.getElementById('bpm')?.value)||10
 function _setBpm(v){
  const el=document.getElementById('bpm'); if(el) el.value=v;
  if(typeof onBpmInput==='function') onBpmInput(v);
+}
+// The tempo of a slowdown: the displays and every engine's step length, but
+// NOT a clock restart. onBpmInput ends with restartIfRunning(), which
+// re-epochs the grid and sets the arp back to note one — right for a tempo
+// you typed, and on every step of a ritardando it means the groove starting
+// over once per step instead of broadening once. Nothing needs the restart:
+// every engine reads its step length fresh on each step, so a new tempo
+// lands on the next note either way.
+function _setBpmGliss(v){
+ v=Math.max(40,Math.min(220,Math.round(v)));
+ ['bpm','ft-bpm-sl'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=v; });
+ ['bpm-disp','bpm-disp2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.textContent='♪='+v; });
+ const ftv=document.getElementById('ft-bpm-val');
+ if(ftv){ ftv.textContent=v; ftv.setAttribute('aria-valuenow', v); }
+ try{ rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); }catch(e){}
+ return v;
+}
+// Bars and beats as the meter actually defines them. The endings measured
+// everything in four quarter notes, so in 3/4 a "two bar" ritardando ran for
+// two and two thirds of them and landed in the middle of a bar.
+function _endBeatSec(){
+ try{ if(typeof meterBeatSec==='function') return meterBeatSec(); }catch(e){}
+ return 60/_bpmNow();
+}
+function _endBarBeats(){
+ try{ if(typeof METER!=='undefined' && METER.beats>0) return METER.beats; }catch(e){}
+ return 4;
+}
+function _endBarSec(){ return _endBeatSec()*_endBarBeats(); }
+// Beat length at an arbitrary tempo, for walking a slowdown's own curve.
+function _endBeatAt(bpm){
+ let mul=1;
+ try{ if(typeof METER!=='undefined' && METER.unit) mul=4/METER.unit; }catch(e){}
+ return (60/Math.max(1,bpm))*mul;
+}
+function _endTonicIntvs(){
+ try{
+  const md=MODES[mode]||MODES.major;
+  return getIntvs(md.triadQ[0], md.seventh[0], 'triad');
+ }catch(e){ return [0,4,7]; }
 }
 // Fires on the downbeat after the final pass.
 // An ending that lands on the tonic has to move the arp there too. The arp
@@ -12033,153 +12088,268 @@ function _setBpm(v){
 function _endingRetargetArp(intvs){
  try{ if(typeof setArpChord==='function') setArpChord(rootMidi(), intvs, 'tonic'); }catch(e){}
 }
+// The kit's biggest voice, for a landing. Not every machine has a crash —
+// the 808 and the 909 have none at all — so this walks down through ride,
+// open hat and tambourine, and plays nothing rather than something silly if
+// the kit has none of them.
+const _END_CYMBALS=['CY','RD','OH','TB','SW'];
+// The band arriving together. A final chord with no drum under it is the
+// keyboard player finishing alone after everyone else stopped a beat early,
+// which is most of what "the endings aren't musical" sounds like. Volumes go
+// through the same sqHitTrack every scheduled hit uses, so a muted or soloed
+// Drums channel is honoured here too — and nothing fires at all unless the
+// kit was actually playing.
+function _endingBandHit(at, opts){
+ opts=opts||{};
+ try{
+  if(typeof window._sqTracks!=='function' || typeof window._sqHit!=='function') return;
+  const tr=window._sqTracks()||[];
+  if(!tr.length) return;
+  const by=s=>tr.filter(t=>t&&t.s===s)[0];
+  const cym=_END_CYMBALS.map(by).filter(Boolean)[0];
+  const kick=by('BD'), snare=by('SD')||by('SN');
+  const hit=(t,v)=>{ if(t) window._sqHit(t, at, v, true, 0, 'drum'); };
+  if(kick) hit(kick, 0.92);
+  if(cym) hit(cym, opts.soft ? 0.58 : 0.92);
+  if(opts.snare && snare && snare!==cym) hit(snare, 0.8);
+ }catch(e){}
+}
+// The chord an ending lands on: the tonic triad of the key, with its own root
+// an octave underneath. A final chord with no bass in it is the bass player
+// stopping a bar early, and that thinness was half of why these landings did
+// not sound like an ending.
+function _endingLandChord(at, sustain){
+ const intvs=_endTonicIntvs();
+ const r=(typeof rootMidi==='function')?rootMidi():60;
+ _endingRetargetArp(intvs);
+ try{ playSlashChord(r, intvs, r-12, 0, !!sustain, at); }
+ catch(e){ try{ playChord(r, intvs, false, 0, !!sustain, at); }catch(_){} }
+ return _sustainId;
+}
 // Stops the band without touching whatever chord is ringing. stopEverything()
 // also calls stopAll(), which would cut the tonic an ending just landed on —
 // this is the "drop the rhythm section under it" half on its own. Chord voices
 // are not on the kill registry (only arp, bass, melody and drums are), so
 // hardKillAll() clears their look-ahead without silencing the chord.
-function _endingDropRhythm(){
+// `at` is the downbeat the band is landing on: everything already committed
+// rings right up to it and releases there, instead of the groove being cut a
+// look-ahead early and leaving a hole in front of the final hit.
+function _endingDropRhythm(at){
  try{ if(typeof stopSongLoopIfActive==='function') stopSongLoopIfActive(); }catch(e){}
  try{ if(rhythmOn){ rhythmOn=false; clearTimeout(clockTimer); if(typeof resetBeatDots==='function') resetBeatDots(); } }catch(e){}
  try{ if(typeof window._sqPlaying==='function' && window._sqPlaying()) document.dispatchEvent(new CustomEvent('sq-stop-request')); }catch(e){}
  try{ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blPlayImpl==='function') window._blPlayImpl(); }catch(e){}
  try{ if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlPlayImpl==='function') window._mlPlayImpl(); }catch(e){}
- try{ arpOn=false; }catch(e){}
+ try{ arpSounding=false; arpIdx=0; arpDir=1; arpGateIdx=0; }catch(e){}
  try{ clearTimeout(clockTimer); }catch(e){}
- try{ if(typeof hardKillAll==='function') hardKillAll(); }catch(e){}
+ try{ if(typeof hardKillAll==='function') hardKillAll(at); }catch(e){}
  try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
+}
+// Stop, pressed in the middle of an ending. Called from stopEverything(), so
+// it also covers the spacebar panic stop and a song loop ending under it.
+function _endingAbort(){
+ if(!_endRestore && !_endingRunning && !_endQueued && !_endLandPending) return;
+ _clearEndTimers();
+ const r=_endRestore;
+ _endRestore=null; _endQueued=null; _endLandPending=null; _endingRunning=false;
+ if(!r) return;
+ if(r.bpm!=null){ try{ _setBpm(r.bpm); }catch(e){} }
+ // The level comes back a moment later: everything is mid-release right now,
+ // and putting the master back in the same tick raises those tails instead of
+ // letting them go.
+ if(r.vol!=null) setTimeout(function(){
+  try{
+   masterVol=r.vol;
+   if(typeof applyMasterBus==='function') applyMasterBus();
+   if(typeof syncMasterUI==='function') syncMasterUI();
+  }catch(e){}
+ },200);
+}
+// The landing every ending except the fade shares, and the one thing they all
+// got wrong in the same way. Three steps in this order: stop scheduling new
+// groove, let what is already committed ring INTO the downbeat, and put the
+// whole band on that downbeat together. Dropping the band first and hitting
+// afterwards is what a band does; the old order stopped the drums a moment
+// before a bare triad arrived on its own.
+function _endingLand(at, opts){
+ opts=opts||{};
+ const ctx=getCtx();
+ const now=ctx?ctx.currentTime:0;
+ const t=(at!=null && isFinite(at))?Math.max(at,now):now;
+ const band=(typeof window._sqPlaying==='function' && window._sqPlaying());
+ const sustain=opts.sustain!==false;
+ _endingDropRhythm(t);
+ if(band) _endingBandHit(t, opts.hit||{});
+ const tok=_endingLandChord(t, sustain);
+ const until=()=>{ const c=getCtx(); return Math.max(0,(t-(c?c.currentTime:0))*1000); };
+ const hold=opts.holdMs||0;
+ if(!sustain){
+  // A stab: choked where it is, not left to decay.
+  _endLater(()=>_endingFinish(opts), until()+hold);
+  return;
+ }
+ _endLater(()=>{
+  try{ if(tok!==null && typeof releaseSustainedChord==='function') releaseSustainedChord(tok); }catch(e){}
+  const dec=(parseFloat(document.getElementById('decay')?.value)||2.0)*1000+140;
+  _endLater(()=>_endingFinish(opts), dec);
+ }, until()+hold);
+}
+// The last thing any ending does. Whatever it borrowed goes back here, and
+// only once everything has actually gone quiet — put the master back in the
+// same tick as the stop and a fade's still-ramping tails snap straight to
+// full, which is the full-volume chord at the end of a fade.
+function _endingFinish(opts){
+ opts=opts||{};
+ _clearEndTimers();
+ // Taken over from _endingAbort: stopEverything() runs through it, and the
+ // restore has to outlast the stop rather than happen inside it.
+ const r=_endRestore; _endRestore=null;
+ if(typeof stopEverything==='function') stopEverything();
+ _endingRunning=false; _endQueued=null; _endLandPending=null;
+ if(!r) return;
+ setTimeout(function(){
+  try{
+   if(r.bpm!=null) _setBpm(r.bpm);
+   if(r.vol!=null){
+    masterVol=r.vol;
+    if(typeof applyMasterBus==='function') applyMasterBus();
+    if(typeof syncMasterUI==='function') syncMasterUI();
+   }
+  }catch(e){}
+ }, opts.restoreMs!=null?opts.restoreMs:500);
 }
 function _runEnding(kind, atTime){
  if(_endingRunning) return;
  _endingRunning=true; songEnding=null; _updateEndingUI();
- const beatMs=60000/_bpmNow();
- const bar=beatMs*4;
- const finish=()=>{
-  _clearEndTimers();
-  if(typeof stopEverything==='function') stopEverything();
-  _endingRunning=false;
- };
+ const ctx=getCtx();
+ const now=ctx?ctx.currentTime:0;
+ // The downbeat everything lands on. A pass boundary is announced ahead of
+ // the audio clock, so this is normally a look-ahead into the future — which
+ // is what lets a landing be scheduled at an exact audio time instead of
+ // whenever a timer happens to wake up.
+ const land=(atTime!=null)?Math.max(atTime,now):now;
+ const untilLand=()=>{ const c=getCtx(); return Math.max(0,(land-(c?c.currentTime:0))*1000); };
 
  if(kind==='cold'){
-  // The ending fires on the bar boundary, which is beat 1 of the bar that
-  // would have come next — so cutting there let the whole final bar play out.
-  // Land one beat earlier instead, on the last beat of the final bar.
-  const _c=getCtx(), _beat=60/_bpmNow();
-  const cutAt=(atTime!=null) ? atTime-_beat : null;
-  const waitMs=(cutAt!=null && _c) ? Math.max(0,(cutAt-_c.currentTime)*1000) : 0;
-  if(waitMs>8) _endLater(finish, waitMs); else finish();
+  // The final bar plays in full and the whole band stops dead on the downbeat
+  // after it — a conductor's cut-off. This used to cut a beat EARLY, on the
+  // grounds that landing on the boundary "let the whole final bar play out",
+  // which is the one thing finishing at the end of a pass is for: it chopped
+  // the last bar off the song to avoid playing it.
+  // What makes it cold rather than a big finish is what comes next — the hit
+  // is choked half a beat later instead of being left to ring.
+  _endingLand(land, {sustain:false, hit:{snare:true},
+                     holdMs:_endBeatSec()*500, restoreMs:0});
   showToast('Ending: cold stop');
   return;
  }
 
- if(kind==='fade'){
-  const startVol=masterVol, steps=28, dur=bar*2;
-  for(let i=1;i<=steps;i++){
-   _endLater(()=>{
-    masterVol=Math.max(0,startVol*(1-i/steps));
-    if(typeof applyMasterBus==='function') applyMasterBus();
-    if(typeof syncMasterUI==='function') syncMasterUI();
-   }, (dur/steps)*i);
-  }
-  _endLater(()=>{
-   finish();
-   // Restore the master only once everything has actually gone quiet.
-   // Putting it back in the same tick as finish() snapped the still-ramping
-   // tails straight to full — the full-volume chord at the end of a fade.
-   setTimeout(()=>{
-    masterVol=startVol;
-    if(typeof applyMasterBus==='function') applyMasterBus();
-    if(typeof syncMasterUI==='function') syncMasterUI();
-   }, 500);
-  }, dur+90);
-  showToast('Ending: fading out');
-  return;
- }
-
  if(kind==='finish'){
-  // Hit the tonic, drop the rhythm section under it, let the chord ring — the
-  // comment always said that, but the band kept playing and then everything
-  // was cut at 1.2 bars, which is neither a beat nor the end of the ring. Now
-  // the band stops on the hit, the chord rings a whole bar, and it is released
-  // into its own decay rather than chopped.
-  let _tok=null;
-  try{
-   const md=MODES[mode]||MODES.major;
-   const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
-   stopAll();
-   _endingRetargetArp(intvs);
-   playChord(rootMidi(), intvs, false, 0, true);
-   _tok=_sustainId;
-  }catch(e){}
-  _endingDropRhythm();
-  _endLater(()=>{
-   try{ if(_tok!==null && typeof releaseSustainedChord==='function') releaseSustainedChord(_tok); }catch(e){}
-   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
-   _endLater(finish, dec*1000+120);   // after the chord's own decay, not through it
-  }, bar);
+  // The whole band lands on the tonic together and the chord rings out. It
+  // used to be the chord alone: the drums were stopped a moment BEFORE the
+  // hit and there was no bass in it, so a "big finish" was a bare triad on a
+  // synth with the band already gone. A whole bar of ring, then released into
+  // its own decay rather than chopped at a fixed fraction of a bar.
+  _endingLand(land, {hit:{snare:true}, holdMs:_endBarSec()*1000, restoreMs:0});
   showToast('Ending: big finish');
   return;
  }
 
+ if(kind==='fade'){
+  // The band plays on through a fade — that is what a fade is. This returned
+  // falsy, which stops the chart advancing, so the chords dropped out the
+  // instant the fade began: what actually faded was the drums over one
+  // hanging chord. Now the changes keep moving and the mix comes down under
+  // them, over four bars rather than two.
+  const bars=4, steps=56;
+  const dur=_endBarSec()*1000*bars;
+  const startVol=masterVol;
+  _endRestore={vol:startVol};
+  for(let i=1;i<=steps;i++){
+   _endLater(()=>{
+    // Even in decibels, not in gain. A straight line on the gain spends its
+    // first half sounding like nothing is happening and then vanishes in the
+    // last few beats; a fader is ridden on a dB scale, and this is what that
+    // sounds like — a steady disappearance across all four bars.
+    const t=i/steps;
+    masterVol=(i>=steps) ? 0 : startVol*Math.pow(10, (-48*t)/20);
+    if(typeof applyMasterBus==='function') applyMasterBus();
+    if(typeof syncMasterUI==='function') syncMasterUI();
+   }, (dur/steps)*i);
+  }
+  _endLater(()=>_endingFinish({restoreMs:600}), dur+140);
+  showToast('Ending: fading out');
+  return 'hold';
+ }
+
  if(kind==='tag'){
-  // Adds time at the end: the band stays on the final chord for two more bars
-  // at tempo, then stops clean. This is what Ritard used to do — hold the last
-  // chord and stretch it — which is a tag, not a ritardando, so it is its own
-  // button now and Ritard is free to actually slow down.
-  let _tok=null;
-  try{
-   const md=MODES[mode]||MODES.major;
-   const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
-   stopAll();
-   _endingRetargetArp(intvs);
-   playChord(rootMidi(), intvs, false, 0, true);
-   _tok=_sustainId;
-  }catch(e){}
-  // The rhythm section deliberately keeps going — that is the added time. The
-  // loop stops advancing (this returns falsy), so it vamps on the tonic rather
-  // than walking on through the chart.
-  _endLater(()=>{
-   _endingDropRhythm();
-   // Release into the chord's own decay. Letting finish() cut it at the
-   // two-bar mark chops a still-sustaining chord, which clicks.
-   try{ if(_tok!==null && typeof releaseSustainedChord==='function') releaseSustainedChord(_tok); }catch(e){}
-   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
-   _endLater(finish, dec*1000+120);
-  }, bar*2);
-  showToast('Ending: tag');
-  return;
+  // A tag is the last phrase played again — not a pad. This used to jump to
+  // the tonic and hold it for two bars over the drums, which is a fermata
+  // with a beat under it: the harmony stopped moving the moment the ending
+  // began, and then it stopped. Now it backs the chart up over its last two
+  // chords, plays them again in time, and lands with a big finish on the
+  // downbeat after them.
+  const sec=(typeof sections!=='undefined') ? sections[songLoopSection] : null;
+  const n=(sec&&sec.slots)?sec.slots.length:0;
+  if((typeof songLoopActive!=='undefined') && songLoopActive && n>=2){
+   songLoopSlot=Math.max(0,n-2);
+   _endQueued='finish';
+   _endingRunning=false;
+   showToast('Ending: tag — the last two chords again');
+   return 'hold';
+  }
+  // A one-chord section has no phrase to repeat, and neither does a stopped
+  // transport. Land instead of pretending.
+  _endingRunning=false;
+  return _runEnding('finish', atTime);
  }
 
  if(kind==='ritard'){
-  // A ritardando is the whole band slowing together while the music carries
-  // on — so this no longer jumps to the tonic and stretches it. The loop keeps
-  // running (see the return below), the changes keep moving, and the tempo
-  // curve pulls everything down underneath them. The tonic landing happens at
-  // the end of the slowdown, not instead of it.
-  const from=_bpmNow(), to=Math.max(38, from*0.5), steps=28;
-  // Bars get longer as the tempo drops, so two bars of music is more than two
-  // bars of wall clock at the starting tempo. 2.6 covers it closely enough.
-  const dur=bar*2.6;
-  for(let i=1;i<=steps;i++){
+  // A real ritardando: the whole band broadens together while the changes
+  // keep moving, and everyone lands on the tonic at the end of it. Three
+  // things were wrong with the way it did that.
+  //
+  // The curve was a quadratic in WALL CLOCK time, which is not where a
+  // ritardando lives. It is measured in beats, and its beats are getting
+  // longer as it goes — so a fixed millisecond grid runs out of curve while
+  // the music is still two thirds of the way through it. Stepping twice a
+  // beat puts the shape back in the music's own time, and the shape is the
+  // standard one: the square of the tempo falls linearly, which is the
+  // deceleration players actually produce and listeners rate as natural.
+  //
+  // Every step went through onBpmInput — see _setBpmGliss.
+  //
+  // And the landing was scheduled off the same wall clock, so it arrived a
+  // fifth of a beat behind the chart's own chord — a flam, on the one chord
+  // that has to be together. It waits for a bar line now (see tickSongLoop).
+  const from=_bpmNow();
+  const w=0.55;                                          // final tempo, as a fraction
+  // Two bars of curve, stepped twice a beat, less a beat: the walk is a
+  // wall-clock chain and the music it is slowing runs a hair ahead of it, so
+  // a curve measured to land exactly on the two-bar line lands just past it
+  // and then waits out a whole extra bar at the floor tempo for the next one.
+  // Finishing a beat early puts it reliably on the right side of that line.
+  const N=Math.max(4, Math.round(2*_endBarBeats()*2)-2);
+  const bpmAt=i=>from*Math.sqrt(1+(w*w-1)*Math.min(1,i/N));
+  _endRestore={bpm:Math.round(from)};
+  let step=0;
+  const walk=()=>{
+   step++;
+   _setBpmGliss(bpmAt(step));
+   if(step<N){ _endLater(walk, _endBeatAt(bpmAt(step))*500); return; }
+   // Curve done — hand the landing to the next bar line.
+   _endLandPending={hit:{soft:true}, restoreMs:0};
+   // Backstop for a song that has stopped announcing bar lines: land anyway
+   // rather than sitting at half tempo with nothing arriving.
    _endLater(()=>{
-    const t=i/steps;
-    _setBpm(Math.round(from+(to-from)*(t*t)));
-   }, (dur/steps)*i);
-  }
-  _endLater(()=>{
-   try{
-    const md=MODES[mode]||MODES.major;
-    const intvs=getIntvs(md.triadQ[0], md.seventh[0], 'triad');
-    stopAll();
-    _endingRetargetArp(intvs);
-    playChord(rootMidi(), intvs, false, 0, true);
-   }catch(e){}
-   _endingDropRhythm();
-   const dec=parseFloat(document.getElementById('decay')?.value)||2.0;
-   _endLater(()=>{ finish(); _setBpm(Math.round(from)); }, dec*1000+120);
-  }, dur+120);
+    if(!_endLandPending) return;
+    const o=_endLandPending; _endLandPending=null;
+    _endingLand(null, Object.assign({holdMs:_endBeatSec()*2000}, o));
+   }, _endBeatAt(from*w)*1000*(_endBarBeats()+1));
+  };
+  _endLater(walk, untilLand()+_endBeatAt(from)*500);
   showToast('Ending: ritardando');
-  return true;   // stay in the loop — the changes play on through the slowdown
+  return 'hold';   // stay in the loop — the changes play on through the slowdown
  }
  _endingRunning=false;
 }
@@ -17402,7 +17572,7 @@ const HELP_SECTIONS=[
  ]},
  {title:'Endings & count-in', tips:[
  {icon:'',text:'Stopping a loop mid-phrase is what makes a jam sound unfinished. Arm an ending and it waits for the section to finish its pass, then lands on the downbeat.'},
- {icon:'',text:'<strong>Ritard</strong> eases the tempo down and rests on the tonic. <strong>Big Fin</strong> lands hard on the tonic and lets it ring. <strong>Fade</strong> takes the whole mix down. <strong>Cold</strong> cuts everything dead.'},
+ {icon:'',text:'<strong>Ritard</strong> broadens the whole band over two bars and lands on the tonic. <strong>Tag</strong> plays the last two chords again first. <strong>Big Fin</strong> lands the band on the tonic together and lets it ring. <strong>Fade</strong> keeps playing while the mix comes down. <strong>Cold</strong> stops everything dead on the downbeat.'},
  {icon:'',text:'Tap an armed ending again to cancel it. If nothing is playing, it fires straight away.'},
  {icon:'⁴',text:'<strong>Count-in</strong> (the ⁴ button in the transport) clicks four beats in tempo, then starts everything together on beat 1.'},
  ]},
@@ -19234,7 +19404,9 @@ The song plays its chords for you, and the current one lights up green everywher
 <strong>← Prev / Next →</strong> don't jump immediately: they <em>queue</em>, so the section you're in finishes its pass before the change lands. That's what makes live section changes musical.<br><br>
 <strong>− / +</strong> transpose the whole song on the fly, like a capo, without altering the saved chart.<br><br>
 While it loops, use the <strong>Drums / Arp / Bass / Mel</strong> switches in the transport to perform — muting and unmuting parts over the top.<br><br>
-<strong>Endings</strong> solve the hardest part of a loop — stopping it musically. Arm <strong>Ritard</strong>, <strong>Big Fin</strong>, <strong>Fade</strong> or <strong>Cold</strong> and it waits for the section to finish its pass, then lands on the downbeat. Tap the armed button again to cancel. With nothing playing, it fires immediately.<br><br>
+<strong>Endings</strong> solve the hardest part of a loop — stopping it musically. Arm one and it waits for the section to finish its pass, then lands on the downbeat. Tap the armed button again to cancel. With nothing playing, it fires immediately.<br><br>
+<strong>Ritard</strong> broadens the whole band over two bars while the changes keep moving — the tempo curve is the one players actually produce, steady at first and opening out at the end — then everyone lands on the tonic and it rings. <strong>Tag</strong> backs the chart up over its last two chords and plays them again in time before landing. <strong>Big Fin</strong> lands on the downbeat with the kit: kick, cymbal and the tonic with its own root underneath, ringing for a bar and then released into its decay. <strong>Fade</strong> keeps the band playing and rides the master down evenly over four bars. <strong>Cold</strong> lets the final bar play out and stops everything dead on the downbeat after it.<br><br>
+Whatever an ending borrows — the tempo, the master level — it hands back. Pressing <strong>Stop</strong> in the middle of one gives it back straight away.<br><br>
 <strong>⁴ Count-in</strong> in the transport clicks four beats, then starts everything together on beat 1 — the other half of the problem.`
  },
  'midi': {
@@ -20536,6 +20708,13 @@ let songBeatCounter = 0;
 // Clock sources call this ahead of the boundary so there is room to schedule.
 function tickSongLoop(atTime){
  if(!songLoopActive) return;
+ // A landing left waiting by a slowdown. Taken first and with this bar's own
+ // time, so the band arrives with the bar line rather than near it.
+ if(_endLandPending){
+  const o=_endLandPending; _endLandPending=null;
+  _endingLand(atTime, Object.assign({holdMs:_endBeatSec()*2000}, o));
+  return;
+ }
  if(_songSlotNeedsTimeout) return; // setTimeout is handling this slot
  if(songWaitingForBar){
  songWaitingForBar = false;
@@ -20577,13 +20756,26 @@ function _advanceLoopSlot(atTime){
  songLoopSlot = 0;
  // An armed ending lands here, on the downbeat, rather than wherever the
  // user happened to hit stop.
- if(songEnding && typeof _runEnding==='function'){
-   // A real ritardando keeps the changes moving while the band slows, so it
-   // asks to stay in the loop. Every other ending takes the song over here.
-   const _keepLooping = _runEnding(songEnding, atTime);
+ if((songEnding || _endQueued) && typeof _runEnding==='function'){
+   // A ritardando and a fade keep the changes moving while they run, and a
+   // tag queues its own landing for the pass after the one it adds — so an
+   // ending can ask to stay in the loop. Every other one takes the song over
+   // here and this function never comes back.
+   const _endKind = songEnding || _endQueued;
+   _endQueued = null;
+   const _keepLooping = _runEnding(_endKind, atTime);
    if(!_keepLooping) return;
+   // 'hold' means it is still playing the chart but owns which part of it:
+   // a ritardando does not slow down into the bridge, and a tag has to
+   // repeat the phrase it is tagging rather than count that as a pass.
+   if(_keepLooping === 'hold'){ _playLoopSlot(atTime); return; }
  }
- if(songPendingSectionDelta !== 0){
+ // A ritardando or a fade is playing the chart while it runs, and the song
+ // stays where it is for the duration: neither one slows down into the
+ // bridge or fades out over somebody else's section.
+ if(_endingRunning || _endLandPending){
+ _updateSectionPassUI();
+ } else if(songPendingSectionDelta !== 0){
  // A Next/Prev request was queued — apply it now that the section is done.
  // A manual move always wins over the section's own setting.
  _moveToSection(songPendingSectionDelta);
@@ -20742,6 +20934,11 @@ function stopEverything(){
  // Recognised by tickClock() if this stop happens nested inside a tick that
  // is already mid-execution (the Cold-ending case) — see the comment there.
  _clockStopRequested=true;
+ // An ending caught mid-flight hands back the tempo and the master level it
+ // had taken, and its remaining timers are dropped so nothing fires into the
+ // silence afterwards. A finish() that got here on its own has already taken
+ // those over, so this finds nothing to undo.
+ if(typeof _endingAbort==='function') _endingAbort();
  stopSongLoopIfActive();
  // Stop rhythm directly without restarting arp clock
  if(rhythmOn){
