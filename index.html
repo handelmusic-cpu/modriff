@@ -4688,7 +4688,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.1</span>
     </div>
    </div>
   </div>
@@ -4706,7 +4706,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.1.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.1.1</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -6304,7 +6304,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.1.0';
+const MODRIFF_VERSION = '3.1.1';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -30516,6 +30516,20 @@ function fxSetRelease(v){
 // True while the pad has just been let go and the tail is still running.
 let _fxReleasing = false;
 
+// Is the pad actually driving this parameter on this channel, right now?
+// The same condition fxValue uses to decide whether to return the pad's
+// position — which is the point: the stages below were gated on whether an
+// axis was ASSIGNED instead, and assignment outlives a gesture. For most
+// parameters that made no difference, because fxValue hands back a neutral
+// base on release. For the ones whose base is not neutral it meant the effect
+// never came off: Grain's base of 0 maps through _fxDivSec to a one-bar
+// cycle, which is a cycle, so the worklet stayed in grain mode for as long as
+// the patch was loaded. Isolate is worse — its base of 0.5 is "mid band
+// only", so choosing that patch cut the lows and highs out of every targeted
+// channel and left them cut with nothing held.
+function _fxPadDriving(ch, key){
+ return fxEngaged && fxTargets.indexOf(ch)>=0 && (fxPadX===key || fxPadY===key);
+}
 function fxApplyChannel(ch){
  const chain=fxChains[ch]; if(!chain) return;
  const c=chain.ctx, t=c.currentTime;
@@ -30526,8 +30540,8 @@ function fxApplyChannel(ch){
 
  // A ganged axis owns both the frequency and the Q of the filter it drives;
  // otherwise the separate cutoff/reso/hpf params do, exactly as before.
- const lpOn = (fxPadX==='lpsweep' || fxPadY==='lpsweep');
- const hpOn = (fxPadX==='hpsweep' || fxPadY==='hpsweep');
+ const lpOn = _fxPadDriving(ch,'lpsweep');
+ const hpOn = _fxPadDriving(ch,'hpsweep');
  const lpV = lpOn ? v('lpsweep') : v('cutoff');
  const hpV = hpOn ? v('hpsweep') : v('hpf');
  const lpHz=_fxFiltHz(lpV), hpHz=_fxHpHz(hpV);
@@ -30553,7 +30567,7 @@ function fxApplyChannel(ch){
 
  // Isolator is only in circuit when an axis is driving it — see the chain
  // comment on why it cannot simply sit there at unity.
- const isoOn = (fxPadX==='iso' || fxPadY==='iso');
+ const isoOn = _fxPadDriving(ch,'iso');
  if(chain.isoWet){
   const g = isoOn ? _fxIsoGains(v('iso')) : {lo:1,mid:1,hi:1};
   chain.isoLoG.gain.setTargetAtTime(g.lo, t, S);
@@ -30565,7 +30579,7 @@ function fxApplyChannel(ch){
 
  // Talk filter: the two formants track one axis through the vowel table, so a
  // sweep walks a–e–ɛ–i–o–u rather than moving two unrelated peaks.
- const talkOn = (fxPadX==='talk' || fxPadY==='talk');
+ const talkOn = _fxPadDriving(ch,'talk');
  if(chain.fmtWet){
   const tv = talkOn ? v('talk') : 0;
   if(talkOn && tv>0.001){
@@ -30575,6 +30589,14 @@ function fxApplyChannel(ch){
    chain.fmt1.frequency.setTargetAtTime(a[0]+(b2[0]-a[0])*fr, t, S);
    chain.fmt2.frequency.setTargetAtTime(a[1]+(b2[1]-a[1])*fr, t, S);
   }
+  else {
+   // Park them back where they started rather than leaving a swept vowel
+   // frozen on a stage that is mixed out. Inaudible either way — but a graph
+   // whose bypassed nodes still hold the last gesture's values is one you
+   // cannot check by reading it, and that is how the Grain latch above hid.
+   chain.fmt1.frequency.setTargetAtTime(FMT_VOWELS[0][0], t, S);
+   chain.fmt2.frequency.setTargetAtTime(FMT_VOWELS[0][1], t, S);
+  }
   // Ramped in rather than switched, so arriving on a vowel is a move and not
   // a jump — and 0 leaves the stage bit-identical to absent.
   chain.fmtWet.gain.setTargetAtTime(talkOn?Math.min(1,tv*1.4):0, t, S);
@@ -30583,7 +30605,7 @@ function fxApplyChannel(ch){
 
  // Rhythmic gate. The buffer runs free; the axis only picks which pattern the
  // loop points enclose and how deep it cuts.
- const gpOn = (fxPadX==='gatepat' || fxPadY==='gatepat');
+ const gpOn = _fxPadDriving(ch,'gatepat');
  if(chain.gatePat){
   const gv = gpOn ? v('gatepat') : 0;
   if(gpOn && gv>0.001){
@@ -30640,9 +30662,13 @@ function fxApplyChannel(ch){
   pr.get('crush').setValueAtTime(v('crush'), t);
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
   if(pr.get('grain')){
-   // Cycle length in seconds, so the worklet does not need the tempo.
-   const gOn = (fxPadX==='grain' || fxPadY==='grain');
-   pr.get('grain').setValueAtTime(gOn ? Math.max(0.01,_fxDivSec(v('grain'))) : 0, t);
+   // Cycle length in seconds, so the worklet does not need the tempo. Zero at
+   // the bottom of the axis like stutter and reverse, which is what the
+   // readout has always claimed ("off") and what the audio now does: the
+   // Math.max floor used to guarantee a non-zero cycle, so the one value that
+   // should have switched grain off was the one that could not.
+   const gv = _fxPadDriving(ch,'grain') ? v('grain') : 0;
+   pr.get('grain').setValueAtTime(gv<=0.001 ? 0 : Math.max(0.01,_fxDivSec(gv)), t);
    pr.get('grainlen').setValueAtTime(v('grainlen'), t);
   }
  }
@@ -30784,27 +30810,38 @@ function fxRestoreState(st){
 // Two dropdowns and six sliders is not something you operate mid-bar. A preset
 // is one tap that sets both axes, the target channels and, optionally, the
 // sends — so a move you worked out once is a move you can reach for.
+// A patch is a pair of axes and the parts it is written for. It used to be
+// allowed to carry a `sends` tilt as well, and four of these did — which is
+// where "MōdFX latches on without hitting Hold" came from. The sends are
+// standing routing, not pad state: nothing releases them. Tapping Dub Delay
+// put 15% reverb on Chords and Arp for the rest of the session with no finger
+// ever on the pad, Lo-Fi added 25% drive to Drums and Bass on top of it, and
+// auditioning patches stacked one channel's worth of permanent effect after
+// another. Two of them wrote `dly:0`, which silently wiped a delay send the
+// user had dialled in. A patch chooses what the pad does. It does not edit
+// the mix behind you — the sends are on the mixer strips, where you set them
+// and can see them.
 const FX_FACTORY_PRESETS = [
- {name:'Filter Sweep', x:'cutoff',  y:'reso',    t:['drum','bass'], sends:null},
- {name:'Tape Stop',    x:'warp',    y:'cutoff',  t:['drum','bass','chord','arp','mel','melgen'], sends:null},
- {name:'Beat Repeat',  x:'stutter', y:'cutoff',  t:['drum'],        sends:null},
- {name:'Dub Delay',    x:'delay',   y:'feedback',t:['chord','arp'], sends:{rev:0.15}},
+ {name:'Filter Sweep', x:'cutoff',  y:'reso',    t:['drum','bass']},
+ {name:'Tape Stop',    x:'warp',    y:'cutoff',  t:['drum','bass','chord','arp','mel','melgen']},
+ {name:'Beat Repeat',  x:'stutter', y:'cutoff',  t:['drum']},
+ {name:'Dub Delay',    x:'delay',   y:'feedback',t:['chord','arp']},
  // Time against amount — the Kaoss pad's most-used pairing by a distance.
- {name:'Delay Throw',  x:'dtime',   y:'delay',   t:['chord','arp','mel','melgen'], sends:{dly:0}},
- {name:'Filter Gate',  x:'lpsweep', y:'gate',    t:['drum','bass','chord'], sends:null},
- {name:'HP Riser',     x:'hpsweep', y:'reverb',  t:['chord','arp','mel'], sends:null},
+ {name:'Delay Throw',  x:'dtime',   y:'delay',   t:['chord','arp','mel','melgen']},
+ {name:'Filter Gate',  x:'lpsweep', y:'gate',    t:['drum','bass','chord']},
+ {name:'HP Riser',     x:'hpsweep', y:'reverb',  t:['chord','arp','mel']},
  // The isolator is the one that turns a full mix into a part of itself.
- {name:'Isolator',    x:'iso',     y:'drive',   t:['drum','bass','chord','arp','mel','melgen'], sends:null},
- {name:'Iso Delay',   x:'iso',     y:'delay',   t:['drum','chord','arp'], sends:{dly:0}},
- {name:'Decimator',   x:'srate',   y:'crush',   t:['drum','bass','chord'], sends:null},
- {name:'Audio Gate',  x:'gatepat', y:'lpsweep', t:['chord','arp','mel','melgen'], sends:null},
- {name:'Gate & Verb', x:'gatepat', y:'reverb',  t:['chord','arp'], sends:null},
- {name:'Grain',       x:'grain',   y:'grainlen',t:['chord','arp','mel','melgen'], sends:null},
- {name:'Talk Box',    x:'talk',    y:'drive',   t:['chord','arp','mel'], sends:null},
- {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass'], sends:{drv:0.25}},
- {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel'], sends:null},
- {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass'],        sends:null},
- {name:'Ring Wash',    x:'ringmod', y:'reverb',  t:['mel','melgen'],sends:null}
+ {name:'Isolator',    x:'iso',     y:'drive',   t:['drum','bass','chord','arp','mel','melgen']},
+ {name:'Iso Delay',   x:'iso',     y:'delay',   t:['drum','chord','arp']},
+ {name:'Decimator',   x:'srate',   y:'crush',   t:['drum','bass','chord']},
+ {name:'Audio Gate',  x:'gatepat', y:'lpsweep', t:['chord','arp','mel','melgen']},
+ {name:'Gate & Verb', x:'gatepat', y:'reverb',  t:['chord','arp']},
+ {name:'Grain',       x:'grain',   y:'grainlen',t:['chord','arp','mel','melgen']},
+ {name:'Talk Box',    x:'talk',    y:'drive',   t:['chord','arp','mel']},
+ {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass']},
+ {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel']},
+ {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass']},
+ {name:'Ring Wash',    x:'ringmod', y:'reverb',  t:['mel','melgen']}
 ];
 const FX_PRESET_KEY='modo-fx-presets';
 let fxUserPresets=[];
@@ -30834,11 +30871,10 @@ function fxApplyPreset(i){
   if(t.length) fxTargets = t;
  }
  if(!fxTargets.length) fxTargets=FX_CHANNELS.slice();
- // A preset's sends apply only to the channels it targets, and only the keys
- // it names — it tilts the mix rather than resetting everyone else's.
- if(p.sends) fxTargets.forEach(ch=>{
-  Object.keys(p.sends).forEach(k=>{ fxSends[ch][k]=p.sends[k]; });
- });
+ // Deliberately does NOT touch fxSends — see the note on the table above. A
+ // shared link can carry someone else's presets, so ignoring the field rather
+ // than trusting it also means an imported patch cannot reach into this
+ // rig's routing.
  fxApplyAll(); fxSyncUI();
  showToast('MōdFX: '+p.name);
 }
@@ -30850,7 +30886,7 @@ function fxSaveUserPreset(){
   showToast('You already have that one saved'); return;
  }
  fxUserPresets.push({name, x:fxPadX, y:fxPadY,
-                     t:fxTargets.slice(), sends:null, user:true});
+                     t:fxTargets.slice(), user:true});
  fxSavePresets(); fxSyncUI();
  showToast('Saved as a MōdFX preset', {actionLabel:'Undo', onAction(){
   fxUserPresets.pop(); fxSavePresets(); fxSyncUI(); showToast('Removed');
