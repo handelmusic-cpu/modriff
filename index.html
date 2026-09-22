@@ -7041,6 +7041,14 @@ var blEnabled=false; // bass is enabled for next Play press (separate from blPla
 var mlEnabled=false; // melody sequencer is enabled for next Play press (separate from mlPlaying)
 let arpWave='supersaw';
 let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=7;
+// arpOn is a LAYER switch — it survives a stop on purpose, so the next Play
+// brings the arp back with everything else. This is the arp's transport: true
+// when it has a chord it should be sounding right now, false the moment
+// anything stops. Keeping the two apart is what makes Stop stick. While
+// arpOn alone counted as "something should be playing", the clock's
+// once-a-second watchdog (ensureClockRunning) saw work to do a second after
+// every stop, re-armed the tick chain, and the arp played on forever.
+var arpSounding=false;
 let _arpBounceVel=1.0;
 let arpVelShape='flat';
 let chordBeats=0;
@@ -10848,8 +10856,12 @@ let _schedHorizon=null;
 let _clockStopRequested=false;
 // Anything that should currently be producing sound. Used both to decide
 // whether the clock has work to do and to notice when it has silently stopped.
+// The arp has work only when it is switched on, has not been stopped, and
+// has a chord loaded. Every "does the clock still have a reason to tick"
+// test goes through here so they cannot drift apart again.
+function _arpSounding(){ return !!(arpOn && arpSounding && arpNotes.length); }
 function _clockShouldRun(){
- return !!(rhythmOn || arpOn || metronomeOn
+ return !!(rhythmOn || _arpSounding() || metronomeOn
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
    || (typeof window._blPlaying==='function' && window._blPlaying())
    || (typeof window._mlPlaying==='function' && window._mlPlaying()));
@@ -10863,7 +10875,7 @@ function tickClock(){
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
  var blRunning=(typeof window._blPlaying==='function'&&window._blPlaying());
  var mlRunning=(typeof window._mlPlaying==='function'&&window._mlPlaying());
- if(!rhythmOn&&!arpOn&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn) return;
+ if(!rhythmOn&&!_arpSounding()&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn) return;
  // Only run Vibe rhythm when sequencer is NOT playing (one or the other)
  if(!sqRunning) scheduleRhythm();
  scheduleArp();
@@ -10953,7 +10965,7 @@ function startClock(){
  if(arpOn){ arpNextBeat=t; arpIdx=0; arpDir=1; arpGateIdx=0; }
  clearTimeout(clockTimer); tickClock();
 }
-function restartIfRunning(){ if(rhythmOn||arpOn) startClock(); }
+function restartIfRunning(){ if(rhythmOn||_arpSounding()) startClock(); }
 
 // ─── Arp note scheduling ───
 function scheduleArpBlock(t,dur){
@@ -12523,6 +12535,9 @@ function setArpChord(rootM,intvs,func){
  if(arpOcts>=2) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+12)];
  if(arpOcts>=3) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+24)];
  arpIdx=0; arpDir=1; arpGateIdx=0;
+ // A chord arriving — pad, keyboard, MIDI or song playback — is a request to
+ // hear it, which re-arms the arp after a stop.
+ arpSounding=true;
  const txt=`<span class="arp-dot"></span>Loaded ${nn(rootM)} · ${arpNotes.length} notes`;
  ['arp-status','arp-status2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.innerHTML=txt; });
 }
@@ -12546,6 +12561,9 @@ function toggleArp(){
  ['arp-toggle','arp-toggle-p'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=arpOn?'Arp ON':'Arp OFF'; b.classList.toggle('active',arpOn); }});
  if(arpOn){
   if(!arpNotes.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc);
+  // Switching the arp on asks to hear it — the last chord played, per the
+  // help text — so it re-arms even if the transport is stopped.
+  arpSounding=true;
   var masterRunning=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
   if(masterRunning){
    const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,clockStepSec());}
@@ -12553,6 +12571,7 @@ function toggleArp(){
    clearTimeout(clockTimer);tickClock();
   }
  } else {
+  arpSounding=false;
   if(!rhythmOn&&!(typeof window._sqPlaying==='function'&&window._sqPlaying())&&!(typeof window._blPlaying==='function'&&window._blPlaying())&&!(typeof window._mlPlaying==='function'&&window._mlPlaying())) clearTimeout(clockTimer);
  }
  syncFixedTransport();
@@ -19342,6 +19361,13 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  if(snapMode === 'off' || !hasRhythm){
  // No snap or no clock running — restart arp immediately
  arpIdx=0; arpDir=1; arpGateIdx=0;
+ // Arpeggiating a held chord with the transport stopped is the arp's own
+ // live mode, and nothing on this path ever started the clock for it — it
+ // relied on the once-a-second watchdog noticing, so the first note landed
+ // up to a second after the pad. Start it here instead, but only when the
+ // arp is the only thing that needs it: startClock() resets the epoch, and
+ // a running engine must keep the downbeat it already has.
+ if(!hasRhythm && !isAnythingPlaying() && !metronomeOn) startClock();
  } else {
  // Beat/bar snap: queue arp phase-reset for the next boundary
  // The arp keeps playing but will restart cleanly on the beat/bar
@@ -20704,6 +20730,13 @@ function stopEverything(){
   window._mlPlayImpl();
  }
  // Clear clock — arp stops naturally since clock no longer ticks; arpOn stays
+ // so the next Play brings the layer back. Dropping arpSounding is what makes
+ // that true: the clock watchdog used to read the surviving arpOn as work to
+ // do and re-arm the tick chain a second later, so the arp went on playing
+ // after Stop. It has to land after stopSongLoopIfActive() above, which
+ // reloads the arp chord for the pad-press-during-a-song case.
+ arpSounding=false;
+ arpIdx=0; arpDir=1; arpGateIdx=0;
  clearTimeout(clockTimer);
  if(_isRecording) _stopRecording();
  Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
@@ -20827,6 +20860,13 @@ function startEverything(){
  // chords in it, and a demo song ships loaded, so the most common first press
  // in the app started a song nobody chose and gave no clue what had happened
  // or how to stop it. Play now starts what is lit and nothing else.
+ // The arp layer survives a stop (arpOn is left alone on purpose); this is
+ // what actually restarts it, with the last chord it was playing.
+ if(arpOn){
+  if(!arpNotes.length&&lastChordIntvs&&lastChordIntvs.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc);
+  arpSounding=!!arpNotes.length;
+  if(arpSounding&&_ctx){ arpNextBeat=CLOCK_EPOCH; arpIdx=0; arpDir=1; arpGateIdx=0; }
+ }
  if(globalSongMode&&_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
   songCurrentSection=-1; // force startSongLoop to pick the first non-empty section
   startSongLoop(true);   // aligned launch — no full-bar wait
@@ -21219,7 +21259,7 @@ function onBpmInput(v){
  if(ftv){ ftv.textContent=v; ftv.setAttribute('aria-valuenow', v); }
  rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]);
  // Restart clock immediately so new tempo takes effect now
- if(rhythmOn || arpOn) restartIfRunning();
+ restartIfRunning();
 }
 
 // ── Tempo: drag the readout, tap it for a slider ──
@@ -23948,7 +23988,7 @@ function sqStop(){
   // If Vibe's clock has nothing else to do, stop it
   var blStillOn=typeof window._blPlaying==='function'&&window._blPlaying();
   var mlStillOn=typeof window._mlPlaying==='function'&&window._mlPlaying();
-  if(!rhythmOn&&!arpOn&&!blStillOn&&!mlStillOn)clearTimeout(clockTimer);
+  if(!rhythmOn&&!_arpSounding()&&!blStillOn&&!mlStillOn)clearTimeout(clockTimer);
   sqUsingChain=false;sqDispStep=-1;sqPendPat=null;sqPendMach=null;
   if(typeof window._sqClearPendGroove==='function') window._sqClearPendGroove();
   sqUpdateStatus();sqRenderPSlots();sqRenderMachines();
@@ -26100,7 +26140,7 @@ function blStop(){
   blDispStep = -1;
   var sqStillOn = typeof window._sqPlaying==='function' && window._sqPlaying();
   var mlStillOn = typeof window._mlPlaying==='function' && window._mlPlaying();
-  if(!rhythmOn && !arpOn && !sqStillOn && !mlStillOn) clearTimeout(clockTimer);
+  if(!rhythmOn && !_arpSounding() && !sqStillOn && !mlStillOn) clearTimeout(clockTimer);
 }
 
 // ── toggle open ──
@@ -27360,7 +27400,7 @@ function mlStop(){
   mlDispStep = -1;
   var sqStillOn = typeof window._sqPlaying==='function' && window._sqPlaying();
   var blStillOn = typeof window._blPlaying==='function' && window._blPlaying();
-  if(!rhythmOn && !arpOn && !sqStillOn && !blStillOn) clearTimeout(clockTimer);
+  if(!rhythmOn && !_arpSounding() && !sqStillOn && !blStillOn) clearTimeout(clockTimer);
 }
 
 window.mlPlay = window._mlPlayImpl = mlPlay;
