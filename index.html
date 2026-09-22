@@ -26283,12 +26283,24 @@ window._blScheduler = function(){
         // chord that's actually sounding at this step's time. Intervals are
         // measured from the pitch class the grid was generated over, so a
         // root-fifth-octave figure stays a root-fifth-octave figure.
-        // ...except a note you placed by hand. Follow exists to move a
-        // GENERATED figure onto each chord; a step you drew on the roll is a
-        // specific pitch you chose, and transposing it means the roll shows one
-        // note and the speaker plays another. blGenerate already exempts these
-        // (cell.usr) when it rebuilds the grid — Follow has to as well.
-        if(wf && !cell.usr){
+        //
+        // This used to exempt `cell.usr` — a step you placed by hand —
+        // reasoning that a pitch you chose should sound as drawn. But a
+        // generated step is transposed without the roll reflecting that
+        // either, so the exemption did not avoid "the roll shows one note and
+        // the speaker plays another"; it just applied it to half the bar.
+        // What it did do was silently break Follow for anyone who wrote their
+        // line rather than generating it: measured on a three-chord song, a
+        // hand-written bar played the identical six notes over all three
+        // chords while the button said "Follow: ON" and the hint underneath
+        // said "Line re-roots onto each chord".
+        //
+        // `usr` still means what it should on the other path — blGenerate
+        // leaves your steps alone when it rebuilds the bar. Not overwriting a
+        // note and not transposing it are different promises, and one flag
+        // was serving both. Follow: OFF is the real "play it exactly as
+        // written", and it is a visible switch.
+        if(wf){
           if(wf.rest){ blNextT += stepSec; blSeqStep++;
                        if(blSeqStep >= stepCount){ blSeqStep = 0; _blPrevSlide=false; _blPrevFreq=0; _blApplyPending(); }
                        continue; }
@@ -26412,7 +26424,10 @@ window.blPlay = window._blPlayImpl = blPlay;
 function _blDisplayWindow(x){
   if(!blFollow) return null;
   var c = blGrid[x];
-  if(!c || !c.v || c.usr) return null;   // hand-drawn notes never move; nor do rests
+  // Rests have nothing to move. Hand-drawn steps used to be excluded here too,
+  // to match a scheduler that exempted them — now that Follow moves them, the
+  // roll has to draw where they will sound or the two disagree again.
+  if(!c || !c.v) return null;
   var wf = null;
   try{
     var ctx = blCtx(); if(!ctx) return null;
@@ -26448,14 +26463,14 @@ function _blDisplayMidi(x){
     return window._followNearIn(outPc, ref, BL_LO, BL_HI);
   }
   var abs = c.note + (c.oct + 1) * 12;
-  // A note you placed by hand is drawn exactly where you placed it. The
-  // scheduler above already plays these untouched — it exempts cell.usr from
-  // Follow and hands blPlayNote the cell's own note and octave — but this fold
-  // ran on every cell regardless, so the roll and the speaker disagreed about
-  // any hand note above E3: tapping the top row of the bass roll stored and
-  // sounded A3 and drew A2, an octave down, in a row you had not touched.
-  // Generated cells keep the fold, which is what holds a generated walk in the
-  // register the walk was written for.
+  // Reached only when Follow has no chord for this step — with a chord, the
+  // branch above draws where it will sound. A note you placed by hand is then
+  // drawn exactly where you placed it: this fold used to run on every cell,
+  // so the roll and the speaker disagreed about any hand note above E3 —
+  // tapping the top row of the bass roll stored and sounded A3 and drew A2,
+  // an octave down, in a row you had not touched. Generated cells keep the
+  // fold, which is what holds a generated walk in the register it was
+  // written for.
   if(c.usr) return abs;
   if(abs > BL_HI) abs -= 12;
   if(abs < BL_LO) abs += 12;
@@ -27471,8 +27486,9 @@ window._mlScheduler = function(){
       }else if(following){
         // Same re-rooting as the bass: intervals are measured from the pitch
         // class the phrase was written over, so the shape survives the move.
-        // Same exemption as the bass: hand-drawn steps sound as drawn.
-        if(wf && !cell.usr){
+        // The hand-drawn exemption is gone here for the same reason — see the
+        // long note on the bass.
+        if(wf){
           if(wf.rest) skip = true;
           else {
             var ref = pn + (po + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
@@ -27506,7 +27522,8 @@ function _mlLockFor(w){
 function _mlDisplayWindow(x){
   if(!mlFollow) return null;
   var c = mlGrid[x];
-  if(!c || !c.v || c.usr) return null;
+  // See _blDisplayWindow: the hand-drawn exclusion went with the scheduler's.
+  if(!c || !c.v) return null;
   var wf = null;
   try{
     var ctx = getCtx(); if(!ctx) return null;
