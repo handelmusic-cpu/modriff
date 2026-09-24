@@ -2646,6 +2646,54 @@ body { padding-top:52px; padding-bottom:56px; }
 /* Perform tab bottom padding bump for fixed bar */
 .tab-page { padding-top:6px; }
 .perf-chart-row { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; width:100%; max-width:700px; margin-bottom:8px; }
+
+/* ── Song position + chord step, on the Play page ──
+   The transport's ‹ Song › pair moves whole SECTIONS and queues until the
+   current pass finishes. That is the wrong grain for the common case: a
+   progression built in the Song Builder is usually one section, so those
+   arrows correctly hide themselves and the Play page is left with no way to
+   steer the chart at all — you had to leave for the Songs tab. This pair moves
+   by CHORD and moves now, and it says which chord you are on, which nothing on
+   this page did either. Only on screen while the song is actually playing. */
+.pf-songnav {
+ display:flex; align-items:center; justify-content:space-between; gap:8px;
+ width:100%; margin:0 auto 8px;
+ background:var(--surf); border:1px solid var(--border2); border-radius:var(--r-md);
+ padding:4px 5px;
+}
+/* Scoped to the page for the specificity: .tab-page > * caps every child at
+   700px, and 1060px above 1100px wide, and a bare class loses to it — the bar
+   would be 360px wider than the key strip right above it on a laptop. Basic's
+   own `body.mode-basic #page-perform > *` column rule is one step higher again,
+   so Basic keeps its 640px and this only governs Advanced. */
+#page-perform > .pf-songnav { max-width:700px; }
+.pf-songnav-arrow {
+ flex:0 0 auto; min-width:46px; min-height:38px; padding:2px 10px;
+ display:flex; align-items:center; justify-content:center;
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
+ color:var(--accent); font-size:1.15rem; line-height:1; cursor:pointer;
+ transition:background .12s, border-color .12s; touch-action:manipulation;
+}
+.pf-songnav-arrow:hover { border-color:var(--accent); background:var(--acc-dim); }
+.pf-songnav-arrow:active { filter:brightness(1.35); }
+/* The readout is the one part that must not move as the chord names change
+   width, or the arrows shuffle under your thumb mid-performance. */
+.pf-songnav-mid {
+ flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
+ align-items:center; justify-content:center; gap:1px; overflow:hidden;
+}
+.pf-songnav-sec {
+ font-size:.36rem; letter-spacing:.09em; text-transform:uppercase;
+ color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+ max-width:100%;
+}
+.pf-songnav-chord {
+ font-family:'Orbitron',sans-serif; font-size:.82rem; font-weight:700;
+ color:var(--text); line-height:1.05; white-space:nowrap;
+ overflow:hidden; text-overflow:ellipsis; max-width:100%;
+}
+.pf-songnav-chord.rest { color:var(--muted); font-size:.62rem; }
+
 .pcs {
  padding:10px 14px; background:var(--surf); border:1px solid var(--border2); border-radius:var(--r-md);
  font-family:'Orbitron',sans-serif; font-size:.78rem; font-weight:700; color:var(--text);
@@ -4691,7 +4739,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.3</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.4</span>
     </div>
    </div>
   </div>
@@ -4709,7 +4757,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.1.3</div>
+ <div class="unlock-ver" id="unlock-ver">v3.1.4</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -4906,6 +4954,29 @@ body.mode-free .pro-only { display:none !important; }
 
 
  <!-- Key mapping moved to Settings tab -->
+
+ <!-- Song position and chord step. Appears only while the song is playing,
+      because there is nothing to follow and nowhere to step otherwise. The
+      transport's ‹ Song › arrows are the other grain of the same idea —
+      sections, queued to the end of the pass — and they hide themselves when
+      the song has only one, which is most songs; these are always useful. Left
+      goes back a chord, right goes on a chord, both immediately, exactly as
+      tapping a chord on the Songs chart does. -->
+ <div class="pf-songnav" id="pf-songnav" style="display:none">
+  <button class="pf-songnav-arrow" id="pf-songnav-prev" onclick="songStepPrev()"
+    aria-label="Previous chord in the song"
+    title="Previous chord — goes straight there, no waiting for the bar. Steps back into the section before this one when you are on its first chord.">&lsaquo;</button>
+  <!-- Deliberately not aria-live: at 140bpm this changes twice a second, and a
+       screen reader announcing every chord over the music is worse than
+       silence. The arrows carry the labels; this is a readout you look at. -->
+  <div class="pf-songnav-mid">
+   <div class="pf-songnav-sec" id="pf-songnav-sec">&nbsp;</div>
+   <div class="pf-songnav-chord" id="pf-songnav-chord">&nbsp;</div>
+  </div>
+  <button class="pf-songnav-arrow" id="pf-songnav-next" onclick="songStepNext()"
+    aria-label="Next chord in the song"
+    title="Next chord — goes straight there, no waiting for the bar. Rolls into the next section when you are on the last chord.">&rsaquo;</button>
+ </div>
 
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
@@ -6307,7 +6378,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.1.3';
+const MODRIFF_VERSION = '3.1.4';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13617,6 +13688,10 @@ function transposeBy(s){
  root=((root+s)%12+12)%12;
  _prevVoices=[]; // key change — re-center voice leading
  renderChords();
+ // A live capo: the song's slots are untouched but every one of them now
+ // sounds a couple of semitones up, so Play's chord readout has to be told or
+ // it goes on naming the old key while you hear the new one.
+ if(typeof _updatePfSongNav==='function') _updatePfSongNav();
 }
 function setMelMode(m){
  melMode=m;
@@ -16508,7 +16583,8 @@ function renderChartSeq(){
  } else {
   const displayName=slot.bassNote!=null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
   btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
-  if(slot.ext&&slot.ext!=='triad') btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${slot.ext}</span>`;
+  const _sx=_slotExtSuffix(slot);
+  if(_sx) btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${_sx}</span>`;
  }
  btn.addEventListener('click',()=>{
   // A drag ends in a click on the same element; without this the chord you
@@ -17470,7 +17546,7 @@ function printChart(){
  const title=document.getElementById('chart-title').value||'Untitled';
  const win=window.open('','_blank');
  let html=`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}.sec{margin-bottom:20px;}.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}.chords{display:flex;flex-wrap:wrap;gap:8px;}.chord{padding:8px 14px;border:1px solid #ccc;border-radius:6px;font-size:18px;font-weight:bold;}</style></head><body><h1>${title}</h1><h3>${nn(root)} ${(MODES[mode]||MODES.major).label}</h3>`;
- sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${slot.ext&&slot.ext!=='triad'?'<sup>'+slot.ext+'</sup>':''}${slot.bassNote!=null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
+ sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${_slotExtSuffix(slot)?'<sup>'+_slotExtSuffix(slot)+'</sup>':''}${slot.bassNote!=null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
  html+='</body></html>';
  win.document.write(html); win.document.close(); win.print();
 }
@@ -19058,7 +19134,8 @@ function renderSongsPerformView(){
   btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">—</div><span style="color:var(--muted);font-size:.7rem">REST</span><div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
   btn.style.opacity = '.55';
  } else {
-  const extLabel = (slot.ext && slot.ext!=='triad') ? '<sup style="font-size:.5em;opacity:.7">'+slot.ext+'</sup>' : '';
+  const _ext = _slotExtSuffix(slot);
+  const extLabel = _ext ? '<sup style="font-size:.5em;opacity:.7">'+_ext+'</sup>' : '';
   const bassLabel = slot.bassNote!=null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
   const durLabel = '<div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
   btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+slot.label+extLabel+bassLabel+durLabel;
@@ -19173,6 +19250,7 @@ function transposeSong(semis){
  renderChords();
  renderSongsPerformView();
  syncSongKeyBadge();
+ if(typeof _updatePfSongNav==='function') _updatePfSongNav();
 }
 
 // ═══════════════════════════════════════
@@ -19532,6 +19610,12 @@ let songLoopSlot = 0; // current slot index within section
 let songLoopBarsLeft = 0; // bars remaining on current slot
 let songLoopTimer = null;
 let songPendingSectionDelta = 0; // queued nav: +1 next, -1 prev, 0 = none (stay on current section)
+// Whether a chord of the current run has actually reached the speakers. Audio
+// is scheduled ahead of where songCurrentSlot points, so before the first slot
+// lands that pair still holds the previous run's position. var, not let: the
+// readout is repainted from transposeBy(), which is declared thousands of lines
+// above this, and a let read from up there would be in its dead zone.
+var _songRunSounded = false;
 
 // The actual immediate chord trigger (no snap logic)
 function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, sustain) {
@@ -19943,6 +20027,12 @@ function startSongLoop(alignedStart){
   songLoopSlot = _songHeldAt.slot;
  }
  _songHeldAt = null;
+ // Nothing has sounded yet on this run, so Play's readout should show where the
+ // song is about to start rather than whatever was last heard — which, with
+ // bar snap or an aligned launch, is up to a full bar away and may be a chord
+ // from a different song entirely.
+ _songRunSounded = false;
+ _updatePfSongNav();
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(alignedStart){
  // Fresh launch: fire the first chord on the downbeat, in sync with the
@@ -19988,6 +20078,7 @@ function holdSongLoop(){
  if(!songLoopActive){ _songHeldAt = null; return; }
  _songHeldAt = { section: songLoopSection, slot: songLoopSlot };
  songLoopActive = false;
+ _songRunSounded = false;
  songWaitingForBar = false;
  _songSlotNeedsTimeout = false; // see stopSongLoop()
  songPendingSectionDelta = 0;
@@ -20003,6 +20094,7 @@ function holdSongLoop(){
 
 function stopSongLoop(){
  songLoopActive = false;
+ _songRunSounded = false;
  _songBaseRoot = -1; // clear capo
  // Chord windows are audio-time stamped, so any left over from a previous run
  // are in the past. A follow-mode bass would resolve every step against the
@@ -20859,6 +20951,7 @@ function applySongPlayingHighlights(scrollIntoView){
 }
 
 function _highlightLoopSlot(si, ci){
+ _songRunSounded = true;
  // State first, unconditionally — this used to sit behind an early return
  // when the Songs perform chart wasn't built, which meant that in Build
  // mode (the Songs tab's default) songCurrentSlot and the section banner
@@ -20867,9 +20960,10 @@ function _highlightLoopSlot(si, ci){
  songCurrentSlot = ci;
  applySongPlayingHighlights(true);
  if(typeof updateChartPlaying==='function') updateChartPlaying();
- // Update banner to show current section name
- const secEl = document.getElementById('prism-song-section');
- if(secEl) secEl.textContent = (sections[si]?.name || '') + (ci !== undefined ? ' · '+(ci+1)+'/'+(sections[si]?.slots.length||0) : '');
+ // The looping-song banner this used to write into was removed from the Play
+ // page; #pf-songnav is where the section name and slot count live now. A slot
+ // starting is also the moment a queued hand-step has landed.
+ _updatePfSongNav();
 }
 
 // Request a section change. While the loop is actively playing, this is
@@ -20899,7 +20993,107 @@ function _updateSectionNavUI(){
   const e=document.getElementById(pair[0]);
   if(e) e.classList.toggle('queued', songPendingSectionDelta === pair[1]);
  });
+ // Play's chord stepper appears and disappears with the song, and every caller
+ // that gets here is a moment the song started, stopped, held or moved.
+ _updatePfSongNav();
 }
+
+// The quality to show AFTER a slot's label, wherever a chord name is drawn —
+// the builder's strip, the Songs chart, the printable chart, Play's readout.
+// 'triad' has none, and '7th' is already baked into the label itself: the chord
+// picker's 7th half stores the seventh's full name ("Dmaj7") AND ext:'7th'
+// beside it, so appending the ext there spelled the chord "Dmaj77th".
+function _slotExtSuffix(slot){
+ const k = slot && slot.ext;
+ return (!k || k==='triad' || k==='7th') ? '' : k;
+}
+
+// What the Play page's readout says a slot is. Built from the slot rather than
+// read off the chart, because the chart is on another tab and may not even be
+// rendered — and because a live capo (you transposed while the song runs) means
+// the baked-in slot.label is no longer what you are hearing.
+function _pfSlotLabel(slot){
+ if(!slot) return '';
+ if(slot.isRest) return 'REST';
+ const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
+ let lbl = slot.label || '';
+ if(capo){
+  // Same surgery transposeSong() does: swap the leading note name and leave
+  // the quality alone. Nashville-number labels never start with A-G, so they
+  // fall through untouched — correctly, they are key-independent.
+  const m = lbl.match(/^[A-G][♯♭]?/);
+  if(m) lbl = nn(slot.rootM + capo) + lbl.slice(m[0].length);
+ }
+ lbl += _slotExtSuffix(slot);
+ if(slot.bassNote != null) lbl += '/' + nn(slot.bassNote + capo);
+ return lbl;
+}
+
+function _updatePfSongNav(){
+ const bar = document.getElementById('pf-songnav'); if(!bar) return;
+ const live = (typeof songLoopActive!=='undefined') && songLoopActive;
+ bar.style.display = live ? 'flex' : 'none';
+ if(!live) return;
+ // What is sounding once something has, where the song is aimed before that.
+ const si = _songRunSounded ? songCurrentSection : songLoopSection;
+ const ci = _songRunSounded ? songCurrentSlot    : songLoopSlot;
+ const sec = sections[si];
+ const slot = sec && sec.slots ? sec.slots[ci] : null;
+ const secEl = document.getElementById('pf-songnav-sec');
+ if(secEl){
+  const n = (sec && sec.slots) ? sec.slots.length : 0;
+  secEl.textContent = slot ? ((sec.name || 'Section') + ' · ' + (ci+1) + '/' + n) : ' ';
+ }
+ const chEl = document.getElementById('pf-songnav-chord');
+ if(chEl){
+  chEl.textContent = slot ? _pfSlotLabel(slot) : ' ';
+  chEl.classList.toggle('rest', !!(slot && slot.isRest));
+ }
+}
+
+// Step the song one CHORD, now. songGotoSection() is the coarse, queued
+// counterpart: it moves whole sections and waits for the current pass to
+// finish, which is right for arranging and useless for a one-section song.
+// Stepping off the end of a section rolls into the next playable one, and off
+// the front into the previous one's last chord, so there is always somewhere
+// to go. Immediate rather than queued to the bar, to match tapping a chord on
+// the Songs chart — the app's existing meaning for "put me on this chord".
+function songStepSlot(delta){
+ if(typeof songLoopActive==='undefined' || !songLoopActive) return;
+ const playable = [];
+ for(let i=0;i<sections.length;i++){
+  if(sections[i] && sections[i].slots && sections[i].slots.length) playable.push(i);
+ }
+ if(!playable.length) return;
+ let pi = playable.indexOf(songLoopSection);
+ if(pi < 0) pi = 0;
+ let si = playable[pi], ci = songLoopSlot + delta;
+ if(ci >= sections[si].slots.length){
+  pi = (pi + 1) % playable.length; si = playable[pi]; ci = 0;
+ } else if(ci < 0){
+  pi = (pi - 1 + playable.length) % playable.length; si = playable[pi];
+  ci = sections[si].slots.length - 1;
+ }
+ const crossed = (si !== songLoopSection);
+ clearTimeout(songLoopTimer);
+ // The slot that was waiting on a bar boundary is not the one playing now.
+ // Left set, tickSongLoop would start this chord a second time on the next bar.
+ songWaitingForBar = false;
+ // A queued section change is stale the moment you steer by hand.
+ songPendingSectionDelta = 0;
+ songLoopSection = si;
+ songLoopSlot = ci;
+ // A section gets its full pass count from the moment you land on it, however
+ // you got there — same rule as _moveToSection().
+ if(crossed){
+  songSectionPass = 0;
+  if(typeof _updateSectionPassUI==='function') _updateSectionPassUI();
+ }
+ _playLoopSlot();
+ _updateSectionNavUI();
+}
+function songStepNext(){ songStepSlot(1); }
+function songStepPrev(){ songStepSlot(-1); }
 
 // Override toggleSongAutoAdvance to connect to loop engine
 function toggleSongAutoAdvance(){
@@ -26009,11 +26203,18 @@ function _blLockFor(w){
 }
 
 function _blWindowAt(t){
+  // Windows overlap whenever a chord is cut short: stepping by hand with Play's
+  // ‹ › arrows, tapping a chord on the chart, any jump. The chord that got cut
+  // still claims the stretch of time the new one now owns, and this used to
+  // return the FIRST match — so a step off F onto G left the bass and melody
+  // following F for the rest of F's slot, the one thing a hand step must not do.
+  // The chord sounding at t is the one that started last.
+  var best = null;
   for(var i=0;i<_blChordWin.length;i++){
     var w = _blChordWin[i];
-    if(t >= w.t - 0.002 && t < w.end - 0.002) return w;
+    if(t >= w.t - 0.002 && t < w.end - 0.002 && (!best || w.t > best.t)) best = w;
   }
-  return null;
+  return best;
 }
 // The grid scheduler runs ahead of the song's committed chords, and how far
 // ahead depends on the rate: at 2x the bass burns through its bar in half the
