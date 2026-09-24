@@ -3914,8 +3914,9 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    inches above it. One encoder per send under its own fader says the same
    thing in the place you are already looking, and PAD — whether the
    performance pad sweeps this channel — is the same kind of routing, so it
-   sits with them. Aux Perc has no block: it plays through the drum bus, so
-   MōdFX reaches it as Drums.
+   sits with them. Every channel has a block, Aux Perc included — it runs on
+   the drum engine but lands on a bus of its own, so it is metered, processed
+   and bounced like anything else.
    The pad switch is labelled XY, not PAD: on a mixer strip "pad" is an
    attenuator, which is the one thing it is not. */
 .mix-fx { display:flex; flex-direction:column; gap:1px; width:100%; margin-top:2px;
@@ -4690,7 +4691,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.2</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.3</span>
     </div>
    </div>
   </div>
@@ -4708,7 +4709,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.1.2</div>
+ <div class="unlock-ver" id="unlock-ver">v3.1.3</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -6306,7 +6307,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.1.2';
+const MODRIFF_VERSION = '3.1.3';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7866,7 +7867,7 @@ function _allPartBuses(){
 // Build the ones that don't exist yet, so a stem bounce started before the
 // bass has ever played still gets a bass track instead of silently missing it.
 function _ensureAllPartBuses(ctx){
- ['chord','arp','mel'].forEach(p=>_partDest(ctx,p));
+ ['chord','arp','mel','auxperc'].forEach(p=>_partDest(ctx,p));
  try{ if(typeof window._sqEnsureBus==='function') window._sqEnsureBus(); }catch(e){}
  try{ if(typeof window._blEnsureBus==='function') window._blEnsureBus(); }catch(e){}
  try{ if(typeof window._mlEnsureBus==='function') window._mlEnsureBus(); }catch(e){}
@@ -11904,9 +11905,12 @@ const PARTS=[
  {id:'chord',  label:'Chords',     short:'CHORDS', stem:'Chords',     color:'#3ab4ff', icon:'⬢', voice:true,  layer:true,  mix:true, fx:true},
  {id:'mel',    label:'Melody',     short:'MELODY', stem:'Melody',     color:'#f0c040', icon:'〰', voice:true,  layer:false, mix:true, fx:true},
  {id:'drum',   label:'Drums',      short:'DRUMS',  stem:'Drums',      color:'#ff6b35', icon:'🥁', voice:false, layer:true,  mix:true, fx:true},
- // No fx: the aux layer plays through the drum bus, so MōdFX reaches it via
- // the Drums channel rather than owning one of its own.
- {id:'auxperc',label:'Aux Perc',   short:'AUX',    stem:'Aux Perc',   color:'#2ad4e0', icon:'✧', voice:false, layer:false, mix:true, fx:false},
+ // It plays through the drum kit's engine but lands on a bus of its own (see
+ // SQAUX), so it gets everything every other channel gets: a meter, MōdFX,
+ // and a stem. It used to share the drum bus, which meant its fader worked
+ // and nothing else did — no signal on its meter, no sends, and its stem
+ // silently never written despite being named in the Stems tooltip.
+ {id:'auxperc',label:'Aux Perc',   short:'AUX',    stem:'Aux Perc',   color:'#2ad4e0', icon:'✧', voice:false, layer:false, mix:true, fx:true},
  {id:'bass',   label:'Bass',       short:'BASS',   stem:'Bass',       color:'#a855f7', icon:'♪', voice:true,  layer:true,  mix:true, fx:true},
  {id:'melgen', label:'Melody Seq', short:'MEL SQ', stem:'Melody Seq', color:'#ff8ad4', icon:'✦', voice:true,  layer:true,  mix:true, fx:true},
  {id:'arp',    label:'Arp',        short:'ARP',    stem:'Arp',        color:'#2df09a', icon:'↺', voice:true,  layer:true,  mix:true, fx:true},
@@ -19368,7 +19372,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
   body: `Eight strips in one row: <strong>Chords, Melody, Drums, Aux Perc, Bass, Melody Seq</strong> and <strong>Arp</strong>, then the <strong>master bus</strong>. Drag a fader, tap anywhere on its track to jump there, or use the arrow keys. These are the levels every engine reads, so a change lands on the very next note.<br><br>
 <strong>M</strong> mutes a channel. <strong>S</strong> solos it — any channel soloed silences every channel that isn't, and you can solo several at once. Mute wins over solo on the same channel, the way a real desk behaves. A channel that has gone quiet because something <em>else</em> is soloed dims on its own strip, so you can always tell "I muted this" from "something else is hogging the mix". Because both are easy to leave on by accident, an orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears in the transport bar wherever you are in the app — <strong>tap the badge to clear all of it at once</strong>.<br><br>
 <strong>The meter</strong> beside each fader answers the two questions a mixer exists for: is this channel playing, and am I clipping. Peaks hold for a moment so a transient between frames still shows. <strong>CLIP</strong> on the master latches — it stays lit until you tap it, so you can leave the app running and find out afterwards whether it ever went over.<br><br>
-<strong>MōdFX per strip.</strong> Under each fader are that channel's three sends — <strong>REV</strong> reverb, <strong>DLY</strong> delay, <strong>DRV</strong> drive. Drag an encoder up or down. These stay where you put them; the performance pad on Play overrides them only while you hold it, and <strong>XY</strong> is the switch for whether that pad reaches this channel at all — it does not switch the sends off. Aux Perc has no block because it plays through the drum bus, so MōdFX reaches it as Drums.<br><br>
+<strong>MōdFX per strip.</strong> Under each fader are that channel's three sends — <strong>REV</strong> reverb, <strong>DLY</strong> delay, <strong>DRV</strong> drive. Drag an encoder up or down. These stay where you put them; the performance pad on Play overrides them only while you hold it, and <strong>XY</strong> is the switch for whether that pad reaches this channel at all — it does not switch the sends off. Every channel has them, <strong>Aux Perc</strong> included: it is played by the drum engine but it is its own channel, with its own meter, its own effects and its own stem.<br><br>
 <strong>The master strip</strong> is the end of the chain. Its fader is <strong>Master Vol</strong>, which stays live whatever else is switched off. <strong>BUS</strong> bypasses the rest: <strong>GLU</strong>, a glue compressor that rides the whole mix so the parts sit together instead of stacking up, and <strong>ROOM</strong>, one shared reverb on top of each instrument's own send. A brick-wall limiter always sits last, bypassed or not.`
  },
  'export': {
@@ -23135,6 +23139,15 @@ function sqEnsureNoise(){
 
 // ── sequencer master gain & FX chain ──
 var SQMG=null, sqFxRev=false, sqFxDel=false, sqFxDst=false;
+// The Aux Perc layer runs on the drum engine but is its own channel, so it
+// needs its own bus — a meter, a MōdFX chain and a stem are all tapped at the
+// part bus, and sharing the drums' meant it had none of the three.
+// Every voice connects through SQOUT() rather than naming SQMG, and
+// sqHitTrack points that at the layer's bus for the length of one hit. The
+// nodes are created synchronously inside track.play(), so a hit scheduled for
+// the future is still wired while this is pointed at its own layer.
+var SQAUX=null, _sqOut=null;
+function SQOUT(){ return _sqOut || SQMG; }
 var sqRevGain, sqDelayNode, sqDelayGain, sqDelayFB, sqDistNode;
 
 // Published on window like _blEnsureBus and _mlEnsureBus. It never was, so
@@ -23153,6 +23166,13 @@ function sqInitFX(){
   SQMG=c.createGain(); SQMG.gain.value=0.85/0.55;
   SQMG.connect(masterDest(c));
   window.SQMG_REF = SQMG;
+  // Same headroom trim as the kit, so moving the aux layer off the drum bus
+  // changes where it is metered and what can process it, not how loud it is.
+  SQAUX=c.createGain(); SQAUX.gain.value=SQMG.gain.value;
+  try{
+   SQAUX.connect((typeof _partDest==='function') ? _partDest(c,'auxperc') : masterDest(c));
+  }catch(e){ SQAUX.connect(masterDest(c)); }
+  window.SQAUX_REF = SQAUX;
   // MōdFX inserts a chain per part bus, and this one does not exist until now
   // — the drum engine builds it lazily. Without this the Drums channel, whose
   // Rev/Dly/Drv toggles MōdFX replaced, would be the one channel with no
@@ -23268,7 +23288,7 @@ function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var g=c.createGain();g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var chain=f;
   if(type2){var f2=c.createBiquadFilter();f2.type=type2;f2.frequency.value=freq2||freq||2000;f2.Q.value=Q2||1;f.connect(f2);chain=f2;}
-  s.connect(f);chain.connect(g);g.connect(SQMG);_sqKill(g);s.start(t);s.stop(t+dur+.05);
+  s.connect(f);chain.connect(g);g.connect(SQOUT());_sqKill(g);s.start(t);s.stop(t+dur+.05);
   if(_chokeCur) _chokeRegister(_chokeCur, g, s, t+dur);
 }
 function sqTn(t,freq,dur,vol,type,fEnd){
@@ -23277,7 +23297,7 @@ function sqTn(t,freq,dur,vol,type,fEnd){
   o.type=type||'sine';o.frequency.setValueAtTime(freq,t);
   if(fEnd)o.frequency.exponentialRampToValueAtTime(fEnd,t+dur);
   g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-  o.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+dur+.02);
+  o.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+dur+.02);
   if(_chokeCur) _chokeRegister(_chokeCur, g, o, t+dur);
 }
 function sqSemi(n){return Math.pow(2,(n||0)/12);}
@@ -23348,7 +23368,7 @@ function sqSample(name, t, vol, semi){
  if(semi) src.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, semi/12)));
  const g = c.createGain();
  g.gain.value = vol;
- src.connect(g); g.connect(SQMG); _sqKill(g);
+ src.connect(g); g.connect(SQOUT()); _sqKill(g);
  src.start(t);
  const end = t + buf.duration / (src.playbackRate.value || 1);
  src.stop(end + 0.05);
@@ -23384,7 +23404,7 @@ function sqCym(t, vol, base, dur, opts){
   var partials = opts.partials || SQ_CYM_RATIOS.length;
   var hp=c.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=opts.hp||2600;
   var body=c.createGain(); body.gain.value=1;
-  body.connect(hp); hp.connect(SQMG); _sqKill(body);
+  body.connect(hp); hp.connect(SQOUT()); _sqKill(body);
   for(var i=0;i<partials;i++){
     var r=SQ_CYM_RATIOS[i];
     // Higher modes decay faster — the whole point. The exponent sets how
@@ -23429,7 +23449,7 @@ function sqBrush(t, vol, dur, swirl){
     g.gain.setValueAtTime(vol*0.75, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
   }
-  s.connect(bp); bp.connect(g); g.connect(SQMG); _sqKill(g);
+  s.connect(bp); bp.connect(g); g.connect(SQOUT()); _sqKill(g);
   s.start(t); s.stop(t+dur+0.05);
   // A slap carries a little head tone under the wires.
   if(!swirl) sqTn(t, 210, 0.05, vol*0.18, 'triangle', 150);
@@ -23446,7 +23466,7 @@ function sqHH808(t,dur,vol,baseF){
   mix.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=6800;
   var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=10000;bp.Q.value=0.5;
-  mix.connect(hp);hp.connect(bp);bp.connect(SQMG);_sqKill(mix);
+  mix.connect(hp);hp.connect(bp);bp.connect(SQOUT());_sqKill(mix);
   var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
@@ -23469,7 +23489,7 @@ function sqHHMod(t,dur,vol,baseF){
   mix.gain.exponentialRampToValueAtTime(.0001,t+dur);
   var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=7800;
   var pk=c.createBiquadFilter();pk.type='peaking';pk.frequency.value=11500;pk.Q.value=1.1;pk.gain.value=5;
-  mix.connect(hp);hp.connect(pk);pk.connect(SQMG);_sqKill(mix);
+  mix.connect(hp);hp.connect(pk);pk.connect(SQOUT());_sqKill(mix);
   var _oscs=[];
   ratios.forEach(function(r){
     var o=c.createOscillator();o.type='square';o.frequency.value=base*r;
@@ -23488,7 +23508,7 @@ var SQM={
       var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*2.5);}dw.curve=cv;
       o.type='sine';o.frequency.setValueAtTime(160*p,t);o.frequency.exponentialRampToValueAtTime(52*p,t+.55);
       g.gain.setValueAtTime(vel*1.4,t);g.gain.linearRampToValueAtTime(vel*1.2,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+.6);
-      o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.65);
+      o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.65);
       sqNs(t,.008,120,vel*.55);
     }},
     {n:'Snare',s:'SD',c:'#ffaa00',play:function(t,v,ac,ps){
@@ -23509,7 +23529,7 @@ var SQM={
     {n:'Cowbell',s:'CB',c:'#ff9900',play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,562*p,.55,v*(ac?1.3:1)*.7,'square');sqTn(t,845*p,.55,v*.45,'square');}}
   ]},
   '909':{label:'TR-909',color:'#4a9eff',tracks:[
-    {n:'Kick',s:'BD',c:'#4a9eff',play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(35*p,t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.5);sqNs(t,.018,1000,v*.3);}},
+    {n:'Kick',s:'BD',c:'#4a9eff',play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(35*p,t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.5);sqNs(t,.018,1000,v*.3);}},
     {n:'Snare',s:'SD',c:'#6699ff',play:function(t,v,ac,ps){sqNs(t,.09,3500,v*(ac?1.3:1));sqNs(t,.22,500,v*.38);sqTn(t,220*sqSemi(ps),.06,v*.65,'sine',.5);}},
     {n:'Rimshot',s:'RS',c:'#88aaff',play:function(t,v,ac,ps){sqTn(t,1200*sqSemi(ps),.02,v*(ac?1.4:1),'square');sqNs(t,.03,4000,v*.5);}},
     {n:'Clap',s:'CP',c:'#44ccff',play:function(t,v,ac,ps){var vel=v*(ac?1.4:1);[0,.005,.010,.018].forEach(function(d){sqNs(t+d,.065,1600,vel*.88);});sqNs(t+.022,.2,1200,vel*.5);}},
@@ -23526,14 +23546,14 @@ var SQM={
       var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*3.2);}dw.curve=cv;
       o.type='sine';o.frequency.setValueAtTime(145*p,t);o.frequency.exponentialRampToValueAtTime(42*p,t+.075);o.frequency.exponentialRampToValueAtTime(38*p,t+.5);
       g.gain.setValueAtTime(vel*1.5,t);g.gain.linearRampToValueAtTime(vel*1.25,t+.003);g.gain.exponentialRampToValueAtTime(.0001,t+.62);
-      o.connect(dw);dw.connect(g);g.connect(SQMG);_sqKill(g);o.start(t);o.stop(t+.66);
+      o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.66);
       // click: a hair of bright noise right at the attack for definition
       sqNs(t,.006,3200,vel*.5,'highpass',2600,0.9);
       // sub layer: reinforces the low end a beat after the click so the transient stays sharp
       var o2=c2.createOscillator(),g2=c2.createGain();
       o2.type='sine';o2.frequency.setValueAtTime(48*p,t);o2.frequency.exponentialRampToValueAtTime(34*p,t+.4);
       g2.gain.setValueAtTime(vel*.55,t+.01);g2.gain.exponentialRampToValueAtTime(.0001,t+.5);
-      o2.connect(g2);g2.connect(SQMG);_sqKill(g2);o2.start(t+.01);o2.stop(t+.52);
+      o2.connect(g2);g2.connect(SQOUT());_sqKill(g2);o2.start(t+.01);o2.stop(t+.52);
     }},
     {n:'Snare',s:'SD',c:'#ffe08a',play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.35:1);
@@ -23992,7 +24012,10 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   // choke its own tail the instant it started.
   if(ck && ck.chokes) _chokeGroup(ck.group, t);
   _chokeCur = ck ? ck.group : null;
+  // Aux Perc's voices are the kit's, but its audio is its own channel's.
+  _sqOut = (ch==='auxperc' && SQAUX) ? SQAUX : null;
   try{track.play(t,Math.max(.001,vol),ac,ps||0);}catch(e){}
+  _sqOut = null;
   _chokeCur = null;
 }
 function sqPlayCell(track,cell,t,vol,ps,ch){
@@ -31439,7 +31462,8 @@ function fxWirePad(){
 const FX_TAB_READOUTS = [
  {host:'fx-ro-chords', ch:['chord','arp']},
  {host:'fx-ro-melody', ch:['mel']},
- {host:'fx-ro-drums',  ch:['drum']},
+ // The Drums tab carries both kit layers, so its readout covers both channels.
+ {host:'fx-ro-drums',  ch:['drum','auxperc']},
  {host:'fx-ro-bass',   ch:['bass']},
  {host:'fx-ro-melgen', ch:['melgen']},
  {host:'fx-ro-arp',    ch:['arp']}
