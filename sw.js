@@ -41,7 +41,12 @@ self.addEventListener('activate', e => {
   );
 });
 
-const isImmutable = url => /\/samples\/|\/icon-|\/og-card\.png$/.test(url);
+// samples/user/manifest.json is the one thing under /samples/ that is NOT
+// immutable: it is the list a developer edits when they deploy a new sample,
+// so caching it forever would mean the sample ships and nobody's app ever
+// learns it exists. The files it names still are immutable and still cache.
+const isImmutable = url =>
+  /\/samples\/|\/icon-|\/og-card\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
 
 self.addEventListener('fetch', e => {
   const req = e.request;
