@@ -2373,6 +2373,13 @@ body.mode-basic .perf-bar { gap:4px 5px; }
    further than that (as a previous pass did, chasing an exact two-row fit)
    made it read as missing rather than just small. */
 #ft-song-btn { padding:5px 7px; font-size:.5rem; }
+/* Carrying a chord name rather than the word Song: sentence case (Dmaj7, not
+   DMAJ7), and a floor and ceiling on the width so the two arrows either side
+   don't shuffle under your thumb every time the chord changes. */
+#ft-song-btn.chordlbl {
+ text-transform:none; letter-spacing:.01em; font-size:.6rem;
+ min-width:52px; max-width:104px; overflow:hidden; text-overflow:ellipsis;
+}
 .ft-btn {
  padding:6px 12px; border:1px solid transparent; border-radius:var(--r-sm);
  font-family:'Outfit',sans-serif; font-size:.65rem; font-weight:600;
@@ -2486,10 +2493,14 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 .ft-bpm-val.dragging { background:var(--surf2); border-color:var(--accent); }
 .ft-bpm-val.tap-flash { background:var(--accent); color:#07080f; border-color:var(--accent); }
 /* Opens upward, over the app rather than the OS chrome at the bottom edge. */
-/* The two section arrows: as narrow as a 30px target allows, since they sit on
-   a bar that already wraps to two rows on a phone. */
+/* The two chord-step arrows. 30px wide is as narrow as a target gets and the
+   bar has no width to spare — every extra pixel here wraps the Advanced bar to
+   another row. What they can afford is height: stepping a chord is a mid-phrase
+   move now, not the once-every-eight-bars section change they used to be, so
+   they stand a few pixels taller than their neighbours. Costs 6px of bar in
+   Advanced and nothing at all in Basic. */
 .ft-sect {
- min-width:30px; padding:4px 7px; font-size:.8rem; line-height:1;
+ min-width:30px; padding:7px 7px; font-size:.85rem; line-height:1;
  color:var(--pg); border-color:rgba(45,240,154,.4);
 }
 .ft-sect:hover { border-color:var(--pg); background:rgba(45,240,154,.12); }
@@ -2647,52 +2658,6 @@ body { padding-top:52px; padding-bottom:56px; }
 .tab-page { padding-top:6px; }
 .perf-chart-row { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; width:100%; max-width:700px; margin-bottom:8px; }
 
-/* ── Song position + chord step, on the Play page ──
-   The transport's ‹ Song › pair moves whole SECTIONS and queues until the
-   current pass finishes. That is the wrong grain for the common case: a
-   progression built in the Song Builder is usually one section, so those
-   arrows correctly hide themselves and the Play page is left with no way to
-   steer the chart at all — you had to leave for the Songs tab. This pair moves
-   by CHORD and moves now, and it says which chord you are on, which nothing on
-   this page did either. Only on screen while the song is actually playing. */
-.pf-songnav {
- display:flex; align-items:center; justify-content:space-between; gap:8px;
- width:100%; margin:0 auto 8px;
- background:var(--surf); border:1px solid var(--border2); border-radius:var(--r-md);
- padding:4px 5px;
-}
-/* Scoped to the page for the specificity: .tab-page > * caps every child at
-   700px, and 1060px above 1100px wide, and a bare class loses to it — the bar
-   would be 360px wider than the key strip right above it on a laptop. Basic's
-   own `body.mode-basic #page-perform > *` column rule is one step higher again,
-   so Basic keeps its 640px and this only governs Advanced. */
-#page-perform > .pf-songnav { max-width:700px; }
-.pf-songnav-arrow {
- flex:0 0 auto; min-width:46px; min-height:38px; padding:2px 10px;
- display:flex; align-items:center; justify-content:center;
- background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
- color:var(--accent); font-size:1.15rem; line-height:1; cursor:pointer;
- transition:background .12s, border-color .12s; touch-action:manipulation;
-}
-.pf-songnav-arrow:hover { border-color:var(--accent); background:var(--acc-dim); }
-.pf-songnav-arrow:active { filter:brightness(1.35); }
-/* The readout is the one part that must not move as the chord names change
-   width, or the arrows shuffle under your thumb mid-performance. */
-.pf-songnav-mid {
- flex:1 1 auto; min-width:0; display:flex; flex-direction:column;
- align-items:center; justify-content:center; gap:1px; overflow:hidden;
-}
-.pf-songnav-sec {
- font-size:.36rem; letter-spacing:.09em; text-transform:uppercase;
- color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
- max-width:100%;
-}
-.pf-songnav-chord {
- font-family:'Orbitron',sans-serif; font-size:.82rem; font-weight:700;
- color:var(--text); line-height:1.05; white-space:nowrap;
- overflow:hidden; text-overflow:ellipsis; max-width:100%;
-}
-.pf-songnav-chord.rest { color:var(--muted); font-size:.62rem; }
 
 .pcs {
  padding:10px 14px; background:var(--surf); border:1px solid var(--border2); border-radius:var(--r-md);
@@ -4648,17 +4613,27 @@ body.mode-free .pro-only { display:none !important; }
   <button class="ft-btn ft-stems off" id="ft-stems-btn" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
    title="Stems — Bounce also writes one .wav per part (Chords, Melody, Drums, Aux Perc, Bass, Melody Seq, Arp) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
  </div>
- <!-- Section navigation lives with the Song switch, in the thumb zone, so a
-      section change is reachable while performing on any tab — including
-      Basic's Play page, which had no way to it at all: you had to leave for
-      the Songs tab to move between sections. Both queue rather than jump, the
-      way the buttons on Songs > Perform do, and both appear and disappear with
-      the Song switch, since neither means anything without a chart. -->
- <button class="ft-btn ft-sect" id="ft-sect-prev" onclick="songPrevSection()" style="display:none"
-   title="Previous section — queues until the current one finishes its pass" aria-label="Previous section">&lsaquo;</button>
+ <!-- Steering the song, in the thumb zone, reachable from any tab. These used
+      to queue whole SECTION changes, and only appeared when a song had more
+      than one section to move between — so for the common case, a progression
+      written in the Song Builder as a single section, they never appeared at
+      all and there was no way to move the song from the Play page.
+
+      They step one CHORD instead, immediately, which is the grain you actually
+      reach for while playing, and stepping off the end of a section rolls into
+      the next one so there is always somewhere to go. Queued section changes
+      are still on Songs > Perform and on the N / B keys, where waiting out a
+      pass is what you want.
+
+      Song between them carries the chord you are hearing while it runs, so the
+      arrows are not blind — it costs no room, the button was there anyway. -->
+ <button class="ft-btn ft-sect" id="ft-sect-prev" onclick="songStepPrev()" style="display:none"
+   title="Previous chord — goes straight there, no waiting for the bar. Steps back into the section before this one when you are on its first chord."
+   aria-label="Previous chord in the song">&lsaquo;</button>
  <button class="ft-btn song-off" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song</button>
- <button class="ft-btn ft-sect" id="ft-sect-next" onclick="songNextSection()" style="display:none"
-   title="Next section — queues until the current one finishes its pass" aria-label="Next section">&rsaquo;</button>
+ <button class="ft-btn ft-sect" id="ft-sect-next" onclick="songStepNext()" style="display:none"
+   title="Next chord — goes straight there, no waiting for the bar. Rolls into the next section when you are on the last chord."
+   aria-label="Next chord in the song">&rsaquo;</button>
  <div class="ft-more-wrap">
   <!-- The ⋯ is gone. Two buttons a thumb apart that open the same sheet is one
        too many, and the handle is the one that says what it does. -->
@@ -4739,7 +4714,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.4</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.1.5</span>
     </div>
    </div>
   </div>
@@ -4757,7 +4732,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.1.4</div>
+ <div class="unlock-ver" id="unlock-ver">v3.1.5</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -4954,29 +4929,6 @@ body.mode-free .pro-only { display:none !important; }
 
 
  <!-- Key mapping moved to Settings tab -->
-
- <!-- Song position and chord step. Appears only while the song is playing,
-      because there is nothing to follow and nowhere to step otherwise. The
-      transport's ‹ Song › arrows are the other grain of the same idea —
-      sections, queued to the end of the pass — and they hide themselves when
-      the song has only one, which is most songs; these are always useful. Left
-      goes back a chord, right goes on a chord, both immediately, exactly as
-      tapping a chord on the Songs chart does. -->
- <div class="pf-songnav" id="pf-songnav" style="display:none">
-  <button class="pf-songnav-arrow" id="pf-songnav-prev" onclick="songStepPrev()"
-    aria-label="Previous chord in the song"
-    title="Previous chord — goes straight there, no waiting for the bar. Steps back into the section before this one when you are on its first chord.">&lsaquo;</button>
-  <!-- Deliberately not aria-live: at 140bpm this changes twice a second, and a
-       screen reader announcing every chord over the music is worse than
-       silence. The arrows carry the labels; this is a readout you look at. -->
-  <div class="pf-songnav-mid">
-   <div class="pf-songnav-sec" id="pf-songnav-sec">&nbsp;</div>
-   <div class="pf-songnav-chord" id="pf-songnav-chord">&nbsp;</div>
-  </div>
-  <button class="pf-songnav-arrow" id="pf-songnav-next" onclick="songStepNext()"
-    aria-label="Next chord in the song"
-    title="Next chord — goes straight there, no waiting for the bar. Rolls into the next section when you are on the last chord.">&rsaquo;</button>
- </div>
 
  <!-- Chart playback row (kept for arp/song slot highlighting) -->
  <div class="perf-chart-row" id="perf-chart-row" style="display:none"></div>
@@ -5815,8 +5767,8 @@ body.mode-free .pro-only { display:none !important; }
  <div class="slb-meta" id="slb-meta">Load a song from Build mode</div>
  </div>
  <div class="slb-controls">
- <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (← key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
- <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (→ key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
+ <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (B key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
+ <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (N key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
  <button class="sc-btn" id="slb-save-btn" onclick="showSongSaveDialog()" title="Save this song to the setlist — playback keeps going">&#128190; Save Song</button>
  <button class="sc-btn" onclick="updateSongPerfSettings()" title="Save current tempo/arp/rhythm to this song"> Save Settings</button>
  <div class="tg" style="align-items:center;gap:4px">
@@ -6378,7 +6330,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.1.4';
+const MODRIFF_VERSION = '3.1.5';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13691,7 +13643,7 @@ function transposeBy(s){
  // A live capo: the song's slots are untouched but every one of them now
  // sounds a couple of semitones up, so Play's chord readout has to be told or
  // it goes on naming the old key while you hear the new one.
- if(typeof _updatePfSongNav==='function') _updatePfSongNav();
+ if(typeof _updateSongBtn==='function') _updateSongBtn();
 }
 function setMelMode(m){
  melMode=m;
@@ -19250,7 +19202,7 @@ function transposeSong(semis){
  renderChords();
  renderSongsPerformView();
  syncSongKeyBadge();
- if(typeof _updatePfSongNav==='function') _updatePfSongNav();
+ if(typeof _updateSongBtn==='function') _updateSongBtn();
 }
 
 // ═══════════════════════════════════════
@@ -19479,7 +19431,7 @@ The <strong>handle</strong> above the bar pulls up a sheet holding what you reac
 <strong>Tempo</strong> is the number itself — drag it like a DAW field, or tap it once for a slider with Feel and the bar length beside it. The <strong>arp rate</strong> is the note value next to it; tap to cycle.<br><br>
 An orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears here whenever a mixer channel is muted or soloed, so you are never left wondering why something has gone quiet. Tap it to clear.<br><br>
 The row of dots shows where you are in the bar, following whichever engine is actually playing and marking its kick pattern.<br><br>
-<strong>Song: ON</strong> appears once a song is loaded; switching it off <strong>holds</strong> on the current chord instead of stopping the song. The chord keeps sounding and the arp keeps running on it, so you can take over by hand — and switching it back on carries on from that same chord rather than jumping to the top.`
+<strong>Song</strong> appears once a song is loaded, green while it plays itself; switching it off <strong>holds</strong> on the current chord instead of stopping the song. The chord keeps sounding and the arp keeps running on it, so you can take over by hand — and switching it back on carries on from that same chord rather than jumping to the top. While it runs, the button shows the chord you are hearing, and the <strong>‹ ›</strong> either side step one chord back or on, straight away. Step past the last chord of a section and you roll into the next. Whole-section changes, which queue to the end of the pass instead, are on <strong>Songs › Perform</strong> and on the <strong>N</strong> and <strong>B</strong> keys.`
  },
  'songmode': {
  title: 'Song Mode',
@@ -20022,17 +19974,25 @@ function startSongLoop(alignedStart){
  // unpredictable: whether it "worked as expected" depended entirely on
  // whether you happened to be on the first chord when you switched it off.
  songLoopSlot = 0;
- if(_songHeldAt && _songHeldAt.section===songLoopSection &&
-    sections[songLoopSection] && _songHeldAt.slot < sections[songLoopSection].slots.length){
+ const _secSlots = sections[songLoopSection] ? sections[songLoopSection].slots.length : 0;
+ if(_songHeldAt && _songHeldAt.section===songLoopSection && _songHeldAt.slot < _secSlots){
   songLoopSlot = _songHeldAt.slot;
+ } else if(songCurrentSection===songLoopSection && songCurrentSlot>=0 && songCurrentSlot<_secSlots){
+  // Or wherever the chart was last touched by hand — stepping with the
+  // transport's ‹ › while stopped, or tapping a chord on the chart. Both leave
+  // you parked on a chord and both used to be thrown away here, so Song
+  // jumped back to the top of the section and the chord you had just chosen
+  // to start from never sounded. songCurrentSlot is -1 until something picks
+  // one, so a song that has never been touched still starts at its top.
+  songLoopSlot = songCurrentSlot;
  }
  _songHeldAt = null;
- // Nothing has sounded yet on this run, so Play's readout should show where the
+ // Nothing has sounded yet on this run, so the readout should show where the
  // song is about to start rather than whatever was last heard — which, with
  // bar snap or an aligned launch, is up to a full bar away and may be a chord
  // from a different song entirely.
  _songRunSounded = false;
- _updatePfSongNav();
+ _updateSongBtn();
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(alignedStart){
  // Fresh launch: fire the first chord on the downbeat, in sync with the
@@ -20961,9 +20921,9 @@ function _highlightLoopSlot(si, ci){
  applySongPlayingHighlights(true);
  if(typeof updateChartPlaying==='function') updateChartPlaying();
  // The looping-song banner this used to write into was removed from the Play
- // page; #pf-songnav is where the section name and slot count live now. A slot
- // starting is also the moment a queued hand-step has landed.
- _updatePfSongNav();
+ // page; the transport's Song button carries the chord now. A slot starting is
+ // also the moment a hand-step has landed.
+ _updateSongBtn();
 }
 
 // Request a section change. While the loop is actively playing, this is
@@ -20988,14 +20948,16 @@ function _updateSectionNavUI(){
  // Both pairs: the ones on Songs > Perform and the ones in the transport.
  // A queued change that pulses in one place and not the other would leave the
  // copy you are actually looking at saying nothing is pending.
- [['next-section-btn',1],['prev-section-btn',-1],
-  ['ft-sect-next',1],  ['ft-sect-prev',-1]].forEach(function(pair){
+ // Only the pair on Songs > Perform: the transport's arrows step chords now and
+ // queue nothing, so pulsing them for a pending section change would be a light
+ // on a control that isn't the one you pressed.
+ [['next-section-btn',1],['prev-section-btn',-1]].forEach(function(pair){
   const e=document.getElementById(pair[0]);
   if(e) e.classList.toggle('queued', songPendingSectionDelta === pair[1]);
  });
- // Play's chord stepper appears and disappears with the song, and every caller
- // that gets here is a moment the song started, stopped, held or moved.
- _updatePfSongNav();
+ // Every caller that gets here is a moment the song started, stopped, held or
+ // moved, which is every moment the Song button's readout changes.
+ _updateSongBtn();
 }
 
 // The quality to show AFTER a slot's label, wherever a chord name is drawn —
@@ -21008,11 +20970,11 @@ function _slotExtSuffix(slot){
  return (!k || k==='triad' || k==='7th') ? '' : k;
 }
 
-// What the Play page's readout says a slot is. Built from the slot rather than
+// What a slot is called, as you are hearing it. Built from the slot rather than
 // read off the chart, because the chart is on another tab and may not even be
 // rendered — and because a live capo (you transposed while the song runs) means
 // the baked-in slot.label is no longer what you are hearing.
-function _pfSlotLabel(slot){
+function _songSlotName(slot){
  if(!slot) return '';
  if(slot.isRest) return 'REST';
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
@@ -21029,26 +20991,16 @@ function _pfSlotLabel(slot){
  return lbl;
 }
 
-function _updatePfSongNav(){
- const bar = document.getElementById('pf-songnav'); if(!bar) return;
- const live = (typeof songLoopActive!=='undefined') && songLoopActive;
- bar.style.display = live ? 'flex' : 'none';
- if(!live) return;
- // What is sounding once something has, where the song is aimed before that.
+// Where the song is right now, as {sec, slot, si, ci} — or null when nothing is
+// running. What is sounding once something has; where the song is aimed before
+// that, since audio is scheduled ahead of where songCurrentSlot points.
+function _songHere(){
+ if(typeof songLoopActive==='undefined' || !songLoopActive) return null;
  const si = _songRunSounded ? songCurrentSection : songLoopSection;
  const ci = _songRunSounded ? songCurrentSlot    : songLoopSlot;
  const sec = sections[si];
- const slot = sec && sec.slots ? sec.slots[ci] : null;
- const secEl = document.getElementById('pf-songnav-sec');
- if(secEl){
-  const n = (sec && sec.slots) ? sec.slots.length : 0;
-  secEl.textContent = slot ? ((sec.name || 'Section') + ' · ' + (ci+1) + '/' + n) : ' ';
- }
- const chEl = document.getElementById('pf-songnav-chord');
- if(chEl){
-  chEl.textContent = slot ? _pfSlotLabel(slot) : ' ';
-  chEl.classList.toggle('rest', !!(slot && slot.isRest));
- }
+ const slot = (sec && sec.slots) ? sec.slots[ci] : null;
+ return slot ? {sec:sec, slot:slot, si:si, ci:ci} : null;
 }
 
 // Step the song one CHORD, now. songGotoSection() is the coarse, queued
@@ -21059,20 +21011,39 @@ function _updatePfSongNav(){
 // to go. Immediate rather than queued to the bar, to match tapping a chord on
 // the Songs chart — the app's existing meaning for "put me on this chord".
 function songStepSlot(delta){
- if(typeof songLoopActive==='undefined' || !songLoopActive) return;
  const playable = [];
  for(let i=0;i<sections.length;i++){
   if(sections[i] && sections[i].slots && sections[i].slots.length) playable.push(i);
  }
  if(!playable.length) return;
- let pi = playable.indexOf(songLoopSection);
+ // Where we are stepping FROM. The arrows sit beside the Song switch and show
+ // whenever it does, so they have to mean something whether or not the chart
+ // is currently driving itself: the running position, the chord a hold parked
+ // on, or wherever the chart was last touched.
+ const running = (typeof songLoopActive!=='undefined') && songLoopActive;
+ const fromSec = running ? songLoopSection
+               : (_songHeldAt ? _songHeldAt.section : songCurrentSection);
+ const fromSlot = running ? songLoopSlot
+                : (_songHeldAt ? _songHeldAt.slot : songCurrentSlot);
+ let pi = playable.indexOf(fromSec);
  if(pi < 0) pi = 0;
- let si = playable[pi], ci = songLoopSlot + delta;
+ let si = playable[pi], ci = (fromSlot >= 0 ? fromSlot : 0) + delta;
  if(ci >= sections[si].slots.length){
   pi = (pi + 1) % playable.length; si = playable[pi]; ci = 0;
  } else if(ci < 0){
   pi = (pi - 1 + playable.length) % playable.length; si = playable[pi];
   ci = sections[si].slots.length - 1;
+ }
+ if(!running){
+  // Stopped or held: sound the chord and leave the song parked on it, so the
+  // Song switch carries on from where you stepped to rather than the top of a
+  // section. Same thing tapping a chord on the chart does when nothing runs.
+  playChartSlot2(si, ci);
+  songCurrentSection = si;
+  songCurrentSlot = ci;
+  if(_songHeldAt) _songHeldAt = {section:si, slot:ci};
+  if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(true);
+  return;
  }
  const crossed = (si !== songLoopSection);
  clearTimeout(songLoopTimer);
@@ -21520,12 +21491,21 @@ function _updateSongPlayBtn(){
 function _updateSongBtn(){
  const btn = document.getElementById('ft-song-btn'); if(!btn) return;
  const held = !globalSongMode && _songHeldAt != null;
- // Colour carries the state now — on/off/held read as green/red/amber — so
- // the label doesn't need to spell it out too; that's what let this button
- // shrink enough for the bar to fit in two rows instead of three.
- btn.textContent = 'Song';
- btn.title = globalSongMode
-  ? 'The song is playing itself and advancing through the chart. Switch off to hold on the current chord.'
+ // Colour carries the state — on/off/held read as green/red/amber — so the
+ // label doesn't need to spell it out too; that's what let this button shrink
+ // enough for the bar to fit in two rows instead of three. While the song runs
+ // the label has a better job: the chord you are hearing. The ‹ › either side
+ // step through the chart, and a stepper you cannot read is a stepper you have
+ // to look away from the keys to use. It costs no room — the button was
+ // already there, and it goes back to saying Song the moment the song stops.
+ const here = _songHere();
+ const name = here ? _songSlotName(here.slot) : '';
+ btn.textContent = name || 'Song';
+ btn.classList.toggle('chordlbl', !!name);
+ btn.title = here
+  ? (here.sec.name || 'Section') + ' · chord ' + (here.ci+1) + ' of ' + here.sec.slots.length
+    + ' — ' + (here.slot.isRest ? 'a rest' : name)
+    + '. The song is playing itself; switch off to hold on this chord. ‹ › step through the chart.'
   : (held
      ? 'Held on the current chord — the progression has stopped advancing. Play any chord to take over, or switch back on to carry on from here.'
      : "Play the loaded song's chart automatically");
@@ -21572,11 +21552,12 @@ function updateFtSongBtn(){
  const hasSong = (typeof sections!=='undefined') &&
                  sections.some(s => s && s.slots && s.slots.length);
  btn.style.display = hasSong ? '' : 'none';
- // The arrows only earn their width with more than one section to move
- // between.
- const multi = hasSong && sections.filter(s => s && s.slots && s.slots.length).length > 1;
+ // They appear and disappear with the Song switch. They used to need more than
+ // one section as well, back when they moved between sections — which hid them
+ // from exactly the songs that needed them most, since a progression built in
+ // the Song Builder is one section and every chord in it was unreachable.
  ['ft-sect-prev','ft-sect-next'].forEach(function(id){
-  const e=document.getElementById(id); if(e) e.style.display = multi ? '' : 'none';
+  const e=document.getElementById(id); if(e) e.style.display = hasSong ? '' : 'none';
  });
  if(typeof _updateSongBtn==='function') _updateSongBtn();
 }
