@@ -5167,7 +5167,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.10</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.11</span>
     </div>
    </div>
   </div>
@@ -5185,7 +5185,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.10</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.11</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6939,7 +6939,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.10';
+const MODRIFF_VERSION = '3.8.11';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7223,8 +7223,8 @@ const WAVE_GAIN = {
  square:.214,
  supersaw:.616,
  piano:.226,
- organ:.81,
- rhodes:.242,
+ organ:.51,   // retuned with the drawbar rework, then RMS-matched to piano in the app
+ rhodes:.217,
  pad:.597,
  modsynth:.313,
  // Sampled voices, calibrated the same way as the rest of this table — a real
@@ -11387,33 +11387,102 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  }catch(e){}
 
  } else if(wv==='organ'){
- // Hammond-style additive: fundamental + 2nd + 3rd + 4th harmonics
- const harmonics=[1,2,3,4]; const levels=[1,.6,.4,.25];
- harmonics.forEach((h,i)=>{
- const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*h;
- const g=ctx.createGain(); g.gain.value=levels[i]/harmonics.length;
- o.connect(g); g.connect(gainNode);
- o.start(t0); o.stop(t0+dur+.05); r.push(o);
+ // Drawbars, not a harmonic ramp. This used to stack harmonics 1,2,3,4 at
+ // descending levels, which is a filtered sawtooth — and a filtered sawtooth
+ // with no sub-octave and no quint does not read as an organ at all, it reads
+ // as an FM patch. What makes a Hammond is the 16' an octave BELOW the note
+ // and the 5⅓' quint a fifth above it. Those two are most of the character
+ // and neither was here.
+ //          16'   5⅓'   8'    4'    2⅔'   2'    1⅗'   1⅓'   1'
+ const FEET=[0.5,  1.5,  1,    2,    3,    4,    5,    6,    8  ];
+ // A full registration with the quint in — near 88 8600 046, which is a
+ // gospel/jazz setting rather than the flute-only 80 0000 000 that sounds
+ // like a sine with extra steps.
+ const DRAW=[0.80, 0.50, 1.00, 0.68, 0.30, 0.22, 0.00, 0.16, 0.24];
+ // A tonewheel generator's gear ratios only approximate equal temperament, so
+ // no two partials are exactly harmonic and the stack beats gently against
+ // itself. That drift is much of why a real one sounds alive where a clean
+ // additive stack sounds dead. Fixed per partial, not random per note, so a
+ // held chord is stable rather than seasick.
+ const CENTS=[-1.9, 2.8,  0.0,  1.4, -2.6,  2.1,  0.0, -1.2,  3.1];
+ let _sum=0; DRAW.forEach(d=>{ _sum+=d; });
+ const _norm=1/Math.max(0.001,_sum);
+ // Scanner vibrato — the chorale setting, shallow and slow. One LFO shared by
+ // every partial, so they move together as a tonewheel assembly does.
+ const vib=ctx.createOscillator(); vib.type='sine'; vib.frequency.value=6.4;
+ const vibG=ctx.createGain(); vibG.gain.value=3.2;   // cents
+ vib.connect(vibG);
+ vib.start(t0); vib.stop(t0+dur+.05); r.push(vib);
+ FEET.forEach((ft,i)=>{
+  if(DRAW[i]<=0) return;
+  const hz=f*ft;
+  if(hz>18000) return;                 // above hearing, and it only adds aliasing
+  const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=hz;
+  o.detune.value=CENTS[i];
+  vibG.connect(o.detune);
+  const g=ctx.createGain(); g.gain.value=DRAW[i]*_norm;
+  o.connect(g); g.connect(gainNode);
+  o.start(t0); o.stop(t0+dur+.05); r.push(o);
  });
+ // Percussion, the way the real one does it: a single fast-decaying partial
+ // at onset, on the 2⅔' drawbar, not sustained.
+ const pf=f*3;
+ if(pf<18000){
+  const po=ctx.createOscillator(); po.type='sine'; po.frequency.value=pf;
+  const pg=ctx.createGain();
+  pg.gain.setValueAtTime(0.42*_norm*4, t0);
+  pg.gain.exponentialRampToValueAtTime(0.0008, t0+0.22);
+  po.connect(pg); pg.connect(gainNode);
+  po.start(t0); po.stop(t0+0.26); r.push(po);
+ }
+ // Key click: the contacts make and break before the tone settles. A few
+ // milliseconds of filtered noise, and its absence is a big part of why an
+ // additive organ sounds like a synthesizer pretending.
+ try{
+  const kn=ctx.createBufferSource(); kn.buffer=_modSynthNoise(ctx);
+  const kf=ctx.createBiquadFilter(); kf.type='bandpass';
+  kf.frequency.value=Math.min(f*6,5200); kf.Q.value=0.8;
+  const kg=ctx.createGain();
+  kg.gain.setValueAtTime(0.16*_norm*4, t0);
+  kg.gain.exponentialRampToValueAtTime(0.0004, t0+0.028);
+  kn.connect(kf); kf.connect(kg); kg.connect(gainNode);
+  kn.start(t0); kn.stop(t0+0.05); r.push(kn);
+ }catch(e){}
 
  } else if(wv==='rhodes'){
- // Tine piano: sine + sharp attack harmonic that decays fast
+ // Tine piano: a sine body with a bell-like tine over it.
  const osc=ctx.createOscillator(); osc.type='sine'; osc.frequency.value=f;
- // Tine "click" — high freq modulator
+ // The tine, as FM. The modulation index was f*1.2 — an index above 1.0 times
+ // the carrier is a violently bright, clangy attack, which is the "too
+ // energetic" in this voice: every note arrived with a spike of inharmonic
+ // partials whatever you played. f*0.42 over a slightly longer decay is a
+ // bloom rather than a spike, and it is what the ear reads as a tine instead
+ // of as FM.
  const mod=ctx.createOscillator(); mod.type='sine'; mod.frequency.value=f*5.8;
  const modG=ctx.createGain();
- modG.gain.setValueAtTime(f*1.2,t0);
- modG.gain.exponentialRampToValueAtTime(0.001,t0+0.04);
+ modG.gain.setValueAtTime(f*0.30,t0);
+ modG.gain.exponentialRampToValueAtTime(0.001,t0+0.11);
  mod.connect(modG); modG.connect(osc.frequency);
- // Slight tremolo for Rhodes feel
- const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=5;
- const lfoG=ctx.createGain(); lfoG.gain.value=0.04;
+ // Body: the tone bar under the tine. A quiet second partial that outlasts
+ // the attack, so what is left once the tine has gone is still a Rhodes and
+ // not a sine wave.
+ const bod=ctx.createOscillator(); bod.type='sine'; bod.frequency.value=f*2;
+ const bodG=ctx.createGain();
+ bodG.gain.setValueAtTime(0.0001,t0);
+ bodG.gain.linearRampToValueAtTime(0.075,t0+0.045);
+ bodG.gain.exponentialRampToValueAtTime(0.003,t0+Math.min(dur,1.6));
+ bod.connect(bodG); bodG.connect(gainNode);
+ bod.start(t0); bod.stop(t0+dur+.05);
+ // Tremolo — a touch slower and deeper than before, which is the electric
+ // piano's own vibrato rather than a wobble.
+ const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=4.4;
+ const lfoG=ctx.createGain(); lfoG.gain.value=0.03;
  lfo.connect(lfoG); lfoG.connect(gainNode.gain);
  osc.connect(gainNode);
- mod.start(t0); mod.stop(t0+0.08);
+ mod.start(t0); mod.stop(t0+0.14);
  lfo.start(t0); lfo.stop(t0+dur+.05);
  osc.start(t0); osc.stop(t0+dur+.05);
- r.push(osc,mod,lfo);
+ r.push(osc,mod,lfo,bod);
 
  } else if(wv==='modsynth'){
  // MōdSynth — Massive/Serum-style mega voice, built from several stages
