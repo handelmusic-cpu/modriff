@@ -10,11 +10,30 @@ app pitch-shifts each sample at playback time to cover the sharps/flats in
 between, so no requested note is ever more than ~2 semitones from a real
 recording.
 
-A matching piano set was previously included and has been removed. The
-encode brickwalled at ~7.5 kHz, which costs an upright bass almost nothing
-(99% of its energy sits below 1.8 kHz) but strips a piano of the 5-15 kHz
-brilliance that makes it sound like a piano. The synthesized Piano voice is
-the better instrument at that quality level.
+A piano set from that same SoundFont library was previously included and was
+removed. The encode brickwalled at ~7.5 kHz, which costs an upright bass almost
+nothing (99% of its energy sits below 1.8 kHz) but strips a piano of the
+5-15 kHz brilliance that makes it sound like a piano.
+
+## samples/piano — "Piano ◆" (pianoreal)
+
+Supplied by the project owner from a separate source, NOT from the SoundFont
+library above. Provenance and licence are the owner's to record here.
+
+28 notes on a minor-third grid (C, D#, F#, A) covering MIDI 24-108, C1 to C8 —
+the whole keyboard. Source was 44.1 kHz 16-bit stereo WAV; shipped as stereo
+mp3 (VBR q5) with a 12 kHz cutoff, trimmed where each note decays below
+-65 dBFS with a 200 ms fade. 1.28 MB for the set.
+
+Measured -50 dB band edge: 8.2 kHz median (5.9-10.2 kHz across the set), so it
+is a dark piano — nearer a felt-damped upright than a bright grand. That is
+above the 7.5 kHz ceiling that got the old set pulled, and the rolloff varies
+per note rather than sitting at one fixed frequency, which is natural
+decay rather than a codec wall. The synthesized voice is still available as
+"Piano (synth)".
+
+D#4 is absent from the source, so the C5-F#5 gap pitch-shifts up to 3
+semitones; everywhere else the worst case is 1.5.
 
 Which instruments ship, and which SoundFont each comes from, was decided
 against that same ceiling rather than by preference.
