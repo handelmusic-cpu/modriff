@@ -32,8 +32,12 @@ per note rather than sitting at one fixed frequency, which is natural
 decay rather than a codec wall. The synthesized voice is still available as
 "Piano (synth)".
 
-D#4 is absent from the source, so the C5-F#5 gap pitch-shifts up to 3
-semitones; everywhere else the worst case is 1.5.
+The D#4 anchor was supplied separately (labelled "ModernPiano5_D4" but
+measuring 622.25 Hz, which is D#, not D). Its harmonic profile differs from its
+neighbour C4 by 7.1 dB mean across H2-H6 — less than the 13.2 dB that C4 and
+F#4 already differ from each other — so it sits inside the set's own
+note-to-note variation. With it the grid is complete: 29 anchors, and no note
+is ever pitch-shifted more than 1.5 semitones.
 
 Which instruments ship, and which SoundFont each comes from, was decided
 against that same ceiling rather than by preference.
