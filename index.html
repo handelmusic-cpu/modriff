@@ -5165,7 +5165,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.8</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.9</span>
     </div>
    </div>
   </div>
@@ -5183,7 +5183,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.8</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.9</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -6936,7 +6936,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.8';
+const MODRIFF_VERSION = '3.8.9';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7234,6 +7234,7 @@ const WAVE_GAIN = {
  nylongtr:19.1,
  tenorsax:6.9,
  mutetpt:8.0,
+ pianoreal:4.2,   // measured: RMS-matched to the synth piano on a four-note chord
  // Your own clips. Unlike the five above, whose raw level is a fixed property
  // of the sample set, a user clip is whatever it is — so it is peak-normalised
  // at playback (smpNorm) to a known 0.9 before this ever sees it, and this
@@ -7296,6 +7297,19 @@ const SAMPLE_LIBS = {
  nylongtr: {dir:'samples/nylongtr', notes:_natRange(2,5), fallbackWave:'piano'},
  tenorsax: {dir:'samples/tenorsax', notes:_natRange(3,5), fallbackWave:'organ'},
  mutetpt:  {dir:'samples/mutetpt',  notes:_natRange(3,5), fallbackWave:'organ'},
+ // A real piano, at last — see the note above about why the first attempt was
+ // removed. This set is 44.1k stereo WAV rather than the mp3s that failed, and
+ // it covers the whole keyboard, C1 to C8. It is still a DARK piano: measured
+ // -50 dB band edge is 8.2 kHz median, against the 7.5 kHz that got the old
+ // set pulled, so it reads closer to a felt-damped upright than a bright
+ // grand. That is a real instrument being a bit muted, which is a different
+ // thing from a bright instrument with its top end amputated — and it is a
+ // long way from a synthesized piano.
+ // Ds5 is absent from the source, so the gap C5..Fs5 shifts up to 3 semitones.
+ pianoreal:{dir:'samples/piano',   fallbackWave:'piano',
+            notes:['C1','Ds1','Fs1','A1','C2','Ds2','Fs2','A2','C3','Ds3','Fs3','A3',
+                   'C4','Ds4','Fs4','A4','C5','Fs5','A5','C6','Ds6','Fs6','A6',
+                   'C7','Ds7','Fs7','A7','C8']},
 };
 const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
 const SAMPLE_STATE = {};   // {piano:'idle'|'loading'|'ready'|'error', ...}
@@ -11204,7 +11218,7 @@ function releaseSustainedChord(myId){
 // reached at all — offline, or a blocked request). The fallback is deliberate:
 // selecting one of these should never produce silence.
 const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
-                        tenorsax:'tenorsax', mutetpt:'mutetpt' };
+                        tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal' };
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Your own sample, if this part has one, before anything else — a slot with
@@ -12059,7 +12073,7 @@ function melTouchY(el, src){
  return Math.max(0, Math.min(1, 1-(src.clientY-r.top)/r.height));
 }
 
-const MEL_SAMPLE_TRIM = {vibes:0.31, jazzgtr:0.19, nylongtr:0.16, tenorsax:0.30, mutetpt:0.33};
+const MEL_SAMPLE_TRIM = {vibes:0.31, jazzgtr:0.19, nylongtr:0.16, tenorsax:0.30, mutetpt:0.33, pianoreal:0.30};
 function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -12336,7 +12350,7 @@ function initBendStrip(){
  // sample buffer, not a synthesized tone). That mismatch is what made a
  // glide on any of those five voices blast out far louder than every other
  // sound. Pick the stand-in wave and its gain to match on purpose instead.
- const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt'].indexOf(melWave) >= 0;
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal'].indexOf(melWave) >= 0;
  const glideWave = isSampledMelWave ? 'sine' : melWave;
  const wg=WAVE_GAIN[glideWave]||1;
  // Same convention as every other melody surface — see melPressure.
@@ -14403,7 +14417,7 @@ function renderChordDiagram(){
 // each part holds its own independent MōdSynth patch. Parts that have
 // bespoke voices of their own (the bass's acid/upright/sampled engines) list
 // those first, then the shared palette.
-const MS_SHARED_VOICES=[['piano','Piano'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
+const MS_SHARED_VOICES=[['pianoreal','Piano ◆'],['piano','Piano (synth)'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
  ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
@@ -22705,7 +22719,7 @@ Generated notes are held to a singable range (G3–C6) so the octave-lifting sty
  'jazzkit': {
   title: 'Real instruments & the Jazz kit',
   body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
-<strong>Why these instruments.</strong> The sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why a sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br>
+<strong>Why these instruments.</strong> Most of the sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why the first sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br><strong>Piano&nbsp;◆</strong> is the exception, and it came from full-rate stereo source rather than from that mp3 library. It measures 8.2&nbsp;kHz, so it is a dark piano — nearer a felt-damped upright than a bright grand — but it is a real one, across the whole keyboard from C1 to C8. <strong>Piano (synth)</strong> is the original synthesized voice, still there.<br><br>
 <strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
 The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
 <strong>Kick</strong> is a felt beater feathering the pulse. <strong>Brush</strong> is a struck slap and <strong>Swirl</strong> is the circular sweep, which swells rather than attacks. <strong>Rim</strong> is a cross-stick — wood, not snare. <strong>Hat</strong> is the foot chick on 2 and 4. <strong>Ride</strong> keeps the time, and <strong>Bell</strong> is the same cymbal struck on the cup.<br><br>
