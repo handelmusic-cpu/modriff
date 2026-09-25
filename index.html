@@ -5167,7 +5167,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.11</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.12</span>
     </div>
    </div>
   </div>
@@ -5185,7 +5185,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.11</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.12</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6055,6 +6055,9 @@ body.mode-free .pro-only { display:none !important; }
       <button class="tb active" id="bv-close" onclick="setVoicing('close')">Close</button>
       <button class="tb" id="bv-open" onclick="setVoicing('open')">Spread</button>
      </div>
+     <span id="bv-gtr-note" style="display:none;font-size:.4rem;color:var(--muted);line-height:1.5;max-width:230px">
+      A guitar voice uses guitar shapes — R&nbsp;5&nbsp;R&nbsp;3 for a triad, R&nbsp;5&nbsp;7&nbsp;3 for a seventh — because those are what six strings can actually reach.
+     </span>
      <button class="tb active" id="auto-inv-btn" onclick="toggleAutoInv()" title="Chooses the inversion nearest the last chord, so voices move as little as possible and stay in a comfortable register. On by default.">VoiceLead: ON</button>
     </div>
     <div class="ss-scope">Chords <b>length and suggestions</b></div>
@@ -6939,7 +6942,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.11';
+const MODRIFF_VERSION = '3.8.12';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11599,7 +11602,35 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
 }
 
 // Open vs close voicing
+// A guitar cannot play a close-position triad. Six strings in fourths (with
+// one third) put the chord tones in a fixed set of shapes, and those shapes —
+// not the notes — are most of what makes a comped chord sound like a guitar
+// rather than like a piano sample of a guitar. Picking an archtop and getting
+// a piano voicing out of it was the mismatch.
+//
+//   triad   R  5  R  3     the open A / E shape: the fifth right above the
+//                          root, the third on top an octave up
+//   7th     R  5  7  3     the standard jazz comping shape, fifth kept and
+//                          the third voiced above the seventh
+//
+// Both span about an octave and a half, which is where a guitar actually
+// sounds, and neither doubles the third low down where it would muddy.
+const GUITAR_VOICED = {jazzgtr:1, nylongtr:1};
+function guitarVoicing(relIntvs){
+ if(relIntvs.length===3){
+  const [r,t,f]=relIntvs;
+  return [r, f, r+12, t+12];
+ }
+ if(relIntvs.length===4){
+  const [r,t,f,sv]=relIntvs;
+  return [r, f, sv, t+12];
+ }
+ return relIntvs;
+}
 function voiceIntervals(relIntvs){
+ // Ahead of the close/spread switch on purpose: this is not a third option in
+ // that list, it is what the instrument can physically do.
+ if(typeof wave!=='undefined' && GUITAR_VOICED[wave]) return guitarVoicing(relIntvs);
  if(voicing==='close') return relIntvs;
  // Spread voicing: root stays, then arrange chord tones compactly
  // in the middle register — root, 5th, 3rd+octave, root+octave
@@ -16172,8 +16203,22 @@ window._preloadIfSampled = function(w){
 };
 const _preloadIfSampled = window._preloadIfSampled;
 
+// Close and Spread stop applying under a guitar voice, so they stop LOOKING
+// like they apply. A control that silently does nothing is worse than one that
+// says why it cannot.
+function syncVoicingUI(){
+ var gtr = (typeof wave!=='undefined') && !!GUITAR_VOICED[wave];
+ ['bv-close','bv-open'].forEach(function(id){
+  var b=document.getElementById(id);
+  if(b){ b.disabled=gtr; b.style.opacity = gtr?'.4':''; }
+ });
+ var n=document.getElementById('bv-gtr-note');
+ if(n) n.style.display = gtr ? '' : 'none';
+}
+window.syncVoicingUI=syncVoicingUI;
 function setWave(w){
  wave=w;
+ syncVoicingUI();
  if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-wave]').forEach(b=>
   b.classList.toggle('active', b.dataset.wave===w));
