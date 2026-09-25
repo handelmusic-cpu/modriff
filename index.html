@@ -5167,7 +5167,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.1</span>
     </div>
    </div>
   </div>
@@ -5185,7 +5185,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.1</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6942,7 +6942,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.0';
+const MODRIFF_VERSION = '3.9.1';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -26620,7 +26620,6 @@ setlistData=loadSLData();
 renderSetlist();
 try{ moRestorePrefs(); }catch(e){}
 try{ restoreSubPrefs(); }catch(e){}
-try{ var _lm=localStorage.getItem('modo-fx-ladder'); if(_lm) fxSetLadder(+_lm||0); }catch(e){}
 initMidi();
 setMasterTune(440);
 syncFixedTransport();
@@ -32520,6 +32519,37 @@ function _mixBuildFx(ch, valEl){
   });
   box.appendChild(row);
  });
+ // The channel's own filter, beside its own fader, which is where a filter
+ // belongs on a desk. Same knob widget as the sends above it.
+ [['lcut','CUT','cutoff'],['lres','RES','resonance']].forEach(function(f){
+  var row=document.createElement('div'); row.className='mix-fxrow';
+  row.tabIndex=0; row.setAttribute('role','slider');
+  row.setAttribute('aria-valuemin','0'); row.setAttribute('aria-valuemax','100');
+  row.dataset.ladknob=ch.id+':'+f[0];
+  var k=document.createElement('span'); k.className='mix-fxk'; k.textContent=f[1];
+  var cv=document.createElement('canvas'); cv.className='mix-fxknob'; cv.setAttribute('aria-hidden','true');
+  row.appendChild(k); row.appendChild(cv);
+  var cur=(window.fxSends&&window.fxSends[ch.id]&&window.fxSends[ch.id][f[0]]!=null)
+          ? window.fxSends[ch.id][f[0]] : (f[0]==='lcut'?1:0);
+  var v0=Math.round(cur*100);
+  var paint=function(v){
+   _mixDrawSendKnob(cv, v, ch.color);
+   row.setAttribute('aria-valuenow',String(v));
+   row.setAttribute('aria-label',ch.label+' filter '+f[2]+' '+v+'%');
+   row.title=ch.label+' filter '+f[2]+' — '+v+'%. Only does anything once this channel has a filter mode.';
+  };
+  paint(v0); row._mixPaint=paint;
+  sqAttachKnob(row, null, v0, 0, 100, 'vol', function(v){
+   paint(v); _mixShowVal(valEl, f[1]+' '+v, true);
+   if(typeof fxSetChLadder==='function') fxSetChLadder(ch.id, f[0], v/100);
+  });
+  box.appendChild(row);
+ });
+ var lm=document.createElement('button');
+ lm.className='mix-fxpad'; lm.dataset.ladmode=ch.id; lm.textContent='Flt';
+ lm.onclick=function(){ if(typeof fxSetChLadder==='function') fxSetChLadder(ch.id,'lmode'); };
+ box.appendChild(lm);
+
  var pad=document.createElement('button');
  pad.className='mix-fxpad'; pad.textContent='XY';
  pad.dataset.fxtarget=ch.id;
@@ -32633,6 +32663,7 @@ window.buildMixChannelsInto = function(container){
  if(!container) return;
  container.innerHTML='';
  window.MIX_CHANNELS.forEach(function(ch){ container.appendChild(_mixBuildStrip(ch)); });
+ if(typeof _mixSyncLadder==='function') try{ _mixSyncLadder(); }catch(e){}
  container.appendChild(_mixBuildMaster());
  sqSyncMixIndicators();
  if(typeof syncMasterUI==='function') syncMasterUI();
@@ -34219,7 +34250,7 @@ function _fxDivSec(v){
 // live:  what the graph is actually at right now, sends plus any pad override.
 const fxSends = {};      // ch -> {rev,dly,drv}
 const fxChains = {};     // ch -> node bundle
-FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0}; });
+FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0}; });
 // The mixer strips carry one encoder per send and a pad-target switch, and
 // they are built thousands of lines above this block — naming fxSends or
 // fxTargets from up there reads a const inside its temporal dead zone, which
@@ -34460,18 +34491,54 @@ registerProcessor('modfx-proc', ModFxProc);
 // 0 off, 1 Moog ladder, 2 MS-20. Off by default and costs nothing there: the
 // processor skips the whole block, so nobody pays for a filter they have not
 // asked for. `var` — fxApplyAll reads it from a different region.
-var fxLadderMode=0;
+// Was one global switch for the whole desk. It is per channel now — a filter
+// belongs to an instrument, not to the room — and these buttons set it on the
+// channels the pad is currently pointed at.
 function fxSetLadder(m){
- fxLadderMode=(m|0)||0;
- try{ localStorage.setItem('modo-fx-ladder', String(fxLadderMode)); }catch(e){}
- ['0','1','2'].forEach(function(k){
-  var b=document.getElementById('fx-lad-'+k);
-  if(b) b.classList.toggle('on', String(fxLadderMode)===k);
- });
+ var mode=(m|0)||0;
+ var list=(typeof fxTargets!=='undefined' && fxTargets.length) ? fxTargets : FX_CHANNELS;
+ list.forEach(function(ch){ if(fxSends[ch]) fxSends[ch].lmode=mode; });
  if(typeof fxApplyAll==='function') try{ fxApplyAll(); }catch(e){}
  if(typeof fxSyncUI==='function') try{ fxSyncUI(); }catch(e){}
+ if(typeof buildMixChannelsInto==='function') try{ _mixSyncLadder(); }catch(e){}
 }
-window.fxSetLadder=fxSetLadder;
+// What the head buttons should light: the mode shared by the targeted
+// channels, or none if they disagree.
+function fxLadderShown(){
+ var list=(typeof fxTargets!=='undefined' && fxTargets.length) ? fxTargets : FX_CHANNELS;
+ var m=null;
+ for(var i=0;i<list.length;i++){
+  var v=(fxSends[list[i]]||{}).lmode||0;
+  if(m===null) m=v; else if(m!==v) return -1;
+ }
+ return m===null?0:m;
+}
+function _mixSyncLadder(){
+ var shown=fxLadderShown();
+ ['0','1','2'].forEach(function(k){
+  var b=document.getElementById('fx-lad-'+k);
+  if(b) b.classList.toggle('on', String(shown)===k);
+ });
+ document.querySelectorAll('[data-ladmode]').forEach(function(b){
+  var ch=b.dataset.ladmode, L=fxSends[ch]||{};
+  var m=L.lmode||0;
+  b.textContent = m===0?'Flt':(m===1?'Moog':'MS20');
+  b.classList.toggle('on', m>0);
+  b.title = (m===0 ? 'No filter on this channel. Tap to cycle: Moog ladder, MS-20, off.'
+                   : (m===1?'Four-pole Moog ladder':'Two-pole MS-20')) + ' — tap to cycle.';
+ });
+}
+window.fxSetLadder=fxSetLadder; window._mixSyncLadder=_mixSyncLadder;
+// One channel's filter, from the mixer strip.
+function fxSetChLadder(ch, field, val){
+ if(!fxSends[ch]) return;
+ if(field==='lmode') fxSends[ch].lmode=((fxSends[ch].lmode||0)+1)%3;
+ else fxSends[ch][field]=Math.max(0,Math.min(1,val));
+ fxApplyChannel(ch);
+ _mixSyncLadder();
+ if(typeof fxSyncUI==='function') try{ fxSyncUI(); }catch(e){}
+}
+window.fxSetChLadder=fxSetChLadder;
 let _fxWorkletReady=false, _fxWorkletFailed=false, _fxWorkletPromise=null;
 function fxEnsureWorklet(ctx){
  if(_fxWorkletReady || _fxWorkletFailed) return _fxWorkletPromise || Promise.resolve();
@@ -34953,10 +35020,13 @@ function fxApplyChannel(ch){
   pr.get('warp').setValueAtTime(_fxWarpRate(v('warp')), t);
   pr.get('crush').setValueAtTime(v('crush'), t);
   if(pr.get('fltmode')){
-   pr.get('fltmode').setValueAtTime(fxLadderMode, t);
-   pr.get('fltcut').setValueAtTime(v('ladder'), t);
-   pr.get('fltres').setValueAtTime(v('ladres'), t);
-   pr.get('fltdrv').setValueAtTime(v('laddrv'), t);
+   // The channel's own filter is the floor; an engaged pad axis overrides it
+   // on the channels the pad is pointed at, exactly as the sends behave.
+   const L=fxSends[ch]||{};
+   pr.get('fltmode').setValueAtTime(L.lmode||0, t);
+   pr.get('fltcut').setValueAtTime(_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut), t);
+   pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
+   pr.get('fltdrv').setValueAtTime(_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0), t);
   }
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
   if(pr.get('grain')){
@@ -35044,7 +35114,7 @@ function fxToggleTarget(ch){
  if(typeof fxSyncUI==='function') fxSyncUI();
 }
 function fxClearAll(){
- FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0}; });
+ FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0}; });
  fxEngaged=false; fxHold=false; fxPos={x:0.5,y:0.5};
  // Clear means everything, including the clip the pad is holding — leaving it
  // loaded made "no sample" a state you could not get back to. The clip itself
@@ -35091,7 +35161,7 @@ function fxRestoreState(st){
  if(!st||!st.sends) return false;
  // Setups saved before the release existed simply keep the current one.
  if(typeof st.release==='number' && typeof fxSetRelease==='function') fxSetRelease(st.release);
- FX_CHANNELS.forEach(ch=>{ if(st.sends[ch]) fxSends[ch]=Object.assign({rev:0,dly:0,drv:0},st.sends[ch]); });
+ FX_CHANNELS.forEach(ch=>{ if(st.sends[ch]) fxSends[ch]=Object.assign({rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0},st.sends[ch]); });
  if(FX_PARAMS[st.x]) fxPadX=st.x;
  if(FX_PARAMS[st.y]) fxPadY=st.y;
  if(Array.isArray(st.targets)&&st.targets.length) fxTargets=st.targets.filter(c=>FX_CHANNELS.indexOf(c)>=0);
@@ -35607,15 +35677,22 @@ function fxSmpStart(){
  fxSmpStop();
  var slot=SMP_SLOTS.fxpad, buf=SMP_BUF[slot.id];
  var mx=(typeof _cmx==='function') ? _cmx('sampler') : 1;
- if(!(mx>0)) return;
  var dest=(typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination;
  var out=ctx.createGain();
- out.gain.value = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) * mx * 0.62;
+ // The clip's OWN level, kept apart from the channel's. Every other part in
+ // the app builds a short voice per note and so reads _cmx fresh each time,
+ // which is why their faders appear to work; this player is one node that can
+ // run for minutes, so baking the channel gain into it here meant the strip
+ // was frozen at whatever it read the moment you pressed the pad. The meter
+ // taps the bus downstream of this node, so it showed signal the whole time —
+ // a channel that looked wired and answered to nothing.
+ var base = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) * 0.62;
+ out.gain.value = base * mx;
  out.connect(dest);
  var a=Math.max(0, Math.min(0.999, +slot.start||0));
  var b=Math.max(a+0.002, Math.min(1, slot.end==null?1:+slot.end));
  _fxGrain = {
-  ctx:ctx, buf:buf, out:out,
+  ctx:ctx, buf:buf, out:out, base:base,
   a:a*buf.duration, b:b*buf.duration,     // the trimmed window, in seconds
   head:a*buf.duration,                     // where the read head is now
   next:ctx.currentTime+0.01,               // when the next grain fires
@@ -35656,6 +35733,12 @@ function _fxGrainTick(){
  // forgets costs 25 ms of audio rather than the rest of the session.
  if(!fxEngaged || !fxSmpOn() || G.ctx.state==='closed'){ fxSmpStop(); return; }
  var ctx=G.ctx, horizon=ctx.currentTime+FX_GRAIN_AHEAD;
+ // Follow the Sampler strip live — fader, mute and solo, since _cmx folds all
+ // three into one number. setTargetAtTime rather than an assignment so a
+ // fader drag is a ramp and a mute is not a click.
+ if(G.base!=null && typeof _cmx==='function'){
+  try{ G.out.gain.setTargetAtTime(G.base*_cmx('sampler'), ctx.currentTime, 0.015); }catch(e){}
+ }
  var guard=0;
  while(G.next < horizon && guard++ < 64){
   var rate = Math.pow(2, _fxSmpSemis(_fxSrcVal('smppitch'))/12);
