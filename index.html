@@ -5167,7 +5167,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.12</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.0</span>
     </div>
    </div>
   </div>
@@ -5185,7 +5185,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.12</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.0</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6942,7 +6942,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.12';
+const MODRIFF_VERSION = '3.9.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -26620,6 +26620,7 @@ setlistData=loadSLData();
 renderSetlist();
 try{ moRestorePrefs(); }catch(e){}
 try{ restoreSubPrefs(); }catch(e){}
+try{ var _lm=localStorage.getItem('modo-fx-ladder'); if(_lm) fxSetLadder(+_lm||0); }catch(e){}
 initMidi();
 setMasterTune(440);
 syncFixedTransport();
@@ -34097,6 +34098,16 @@ const FX_PARAMS = {
   feedback:{ label:'Feedback',    short:'FB',  unit:'pct', base:0.35, fmt:v=>Math.round(v*88)+'%' },
   reverb:  { label:'Reverb',      short:'REV', unit:'pct', base:null, send:'rev', fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
   crush:   { label:'Crush',       short:'CRU', unit:'bit', base:0,   fmt:v=>v<=0.001?'off':(16-Math.round(v*13))+' bit' },
+  // The ladder's own cutoff and resonance, separate from `cutoff`/`reso`
+  // above: those drive the biquad cascade and are unchanged. This is a second
+  // filter, off unless you pick a mode for it, with a character the biquads
+  // cannot produce — the four-pole loop and the saturation inside it.
+  ladder:  { label:'Ladder cutoff', short:'LAD', unit:'hz', base:1,
+             fmt:v=>_fxHzFmt(20*Math.pow(900, v<0?0:v>1?1:v)) },
+  ladres:  { label:'Ladder reso',   short:'LRS', unit:'pct', base:0,
+             fmt:v=>v<=0.001?'off':Math.round(v*100)+'%' },
+  laddrv:  { label:'Ladder drive',  short:'LDR', unit:'pct', base:0,
+             fmt:v=>v<=0.001?'clean':Math.round(v*100)+'%' },
   stutter: { label:'Stutter',     short:'STU', unit:'div', base:0,   fmt:v=>v<=0.001?'off':_fxDivLabel(v) },
   reverse: { label:'Reverse',     short:'REV↺',unit:'div', base:0,   fmt:v=>v<=0.001?'off':_fxDivLabel(v) },
   warp:    { label:'Time warp',   short:'WRP', unit:'x',   base:0.5, fmt:v=>(_fxWarpRate(v)).toFixed(2)+'×' },
@@ -34247,7 +34258,11 @@ class ModFxProc extends AudioWorkletProcessor {
     {name:'crush',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
     {name:'srate',   defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
     {name:'grain',   defaultValue:0, minValue:0, maxValue:4, automationRate:'k-rate'},
-    {name:'grainlen',defaultValue:0.5, minValue:0, maxValue:1, automationRate:'k-rate'}
+    {name:'grainlen',defaultValue:0.5, minValue:0, maxValue:1, automationRate:'k-rate'},
+    {name:'fltmode', defaultValue:0, minValue:0, maxValue:2, automationRate:'k-rate'},
+    {name:'fltcut',  defaultValue:1, minValue:0, maxValue:1, automationRate:'k-rate'},
+    {name:'fltres',  defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'},
+    {name:'fltdrv',  defaultValue:0, minValue:0, maxValue:1, automationRate:'k-rate'}
   ]; }
   constructor(){
     super();
@@ -34260,6 +34275,49 @@ class ModFxProc extends AudioWorkletProcessor {
     this.gCycle = 0; this.gPos = 0; this.gStart = 0;   // grain shifter state
     this.mode = 'thru'; this.pos = 0;
     this.xf = 0;                           // crossfade in/out of an effect
+    // Ladder state: four one-pole integrators per channel, plus the previous
+    // input each channel needs to interpolate its oversampled midpoint.
+    this.fs = [new Float64Array(4), new Float64Array(4)];
+    this.fz = [0,0];
+    this.fg = 0; this.fk = 0; this.fdrv = 1; this.fmode = 0;
+  }
+  // One TPT one-pole, written out rather than called, because at two passes
+  // times four stages times two channels this runs eight times per sample and
+  // a call per stage is measurable.
+  //
+  // Zero-delay feedback: the loop is solved within the sample instead of being
+  // broken with a z^-1. A direct-form design with a one-sample delay in the
+  // feedback path detunes as the cutoff moves and blows up at high resonance,
+  // which is exactly the sweep this is for.
+  _ladder(c, x){
+    const S=this.fs[c], G=this.fg, k=this.fk, drv=this.fdrv, a=1-G;
+    if(this.fmode===2){
+      // Two-pole Sallen-Key, MS-20 flavour. The clip sits in the RESONANCE
+      // path rather than the signal path, which is why the real one screams
+      // where a Moog politely peaks.
+      const G2=G*G;
+      const S1=S[0]*a, S2=S[1]*a;
+      const y2e=(G2*x + G*S1 + S2)/(1 + k*G2 + 1e-9);
+      const t=k*y2e, ax=t<-3?-1:t>3?1:(t*(27+t*t)/(27+9*t*t));
+      const u=x - ax;
+      let v=(u-S[0])*G, y=v+S[0]; S[0]=y+v; const o1=y;
+      v=(o1-S[1])*G; y=v+S[1]; S[1]=y+v;
+      return y;
+    }
+    // Moog ladder: four poles inside one feedback loop, saturating at the
+    // loop input. Resonance pulls the low end out as it climbs, which is the
+    // behaviour people recognise.
+    const G2=G*G, G3=G2*G, G4=G3*G;
+    const S1=S[0]*a, S2=S[1]*a, S3=S[2]*a, S4=S[3]*a;
+    const d=drv*x, xd = d<-3?-1:d>3?1:(d*(27+d*d)/(27+9*d*d));
+    const Sig = G3*S1 + G2*S2 + G*S3 + S4;
+    const y4 = (G4*xd + Sig)/(1 + k*G4);
+    const u = xd - k*y4;
+    let v=(u-S[0])*G, y=v+S[0]; S[0]=y+v; const o1=y;
+    v=(o1-S[1])*G; y=v+S[1]; S[1]=y+v; const o2=y;
+    v=(o2-S[2])*G; y=v+S[2]; S[2]=y+v; const o3=y;
+    v=(o3-S[3])*G; y=v+S[3]; S[3]=y+v;
+    return y;
   }
   process(inputs, outputs, params){
     const inp = inputs[0], out = outputs[0];
@@ -34354,12 +34412,66 @@ class ModFxProc extends AudioWorkletProcessor {
       if(c===chn-1){ this.w = w; this.rd = rd; this.pos = pos; this.xf = xf; }
       else { this.gPos=_gPos0; this.gCycle=_gCyc0; this.gStart=_gSt0; }
     }
+    // ── Ladder, after the mangle, because a filter belongs at the end of the
+    // chain and because nothing above it has to know it exists. Costs nothing
+    // at all while the mode is off, which is the default.
+    const fmode = params.fltmode[0]|0;
+    if(fmode>0){
+      const cut=params.fltcut[0], res=params.fltres[0], drv=params.fltdrv[0];
+      // 20 Hz to 18 kHz over the travel, exponential, because a filter sweep
+      // is heard in octaves and a linear one spends most of its range doing
+      // nothing audible.
+      let fc = 20*Math.pow(900, cut<0?0:cut>1?1:cut);
+      const OS = 2, fsOS = sampleRate*OS;
+      if(fc > fsOS*0.45) fc = fsOS*0.45;
+      this.fg = Math.tan(Math.PI*fc/fsOS)/(1+Math.tan(Math.PI*fc/fsOS));
+      // Moog self-oscillates near k=4; stop just short so a parked axis rings
+      // rather than runs away.
+      this.fk = fmode===2 ? res*1.85 : res*3.85;
+      this.fdrv = 1 + drv*7;
+      this.fmode = fmode;
+      const norm = 1/(1 + drv*1.6);        // drive makes up level; take it back
+      for(let c=0;c<chn;c++){
+        const o=out[c];
+        let z=this.fz[c];
+        for(let k2=0;k2<n;k2++){
+          const xc=o[k2];
+          // 2x oversampled: the tanh is what generates harmonics above
+          // Nyquist, so it runs at double rate and the pair is averaged back
+          // down. Not a half-band, but it is the difference between a sweep
+          // that sings and one that buzzes.
+          const y1=this._ladder(c,(z+xc)*0.5);
+          const y2=this._ladder(c,xc);
+          z=xc;
+          o[k2]=(y1+y2)*0.5*norm;
+        }
+        this.fz[c]=z;
+      }
+    } else if(this.fmode!==0){
+      this.fmode=0;
+      this.fs[0].fill(0); this.fs[1].fill(0); this.fz[0]=0; this.fz[1]=0;
+    }
     return true;
   }
 }
 registerProcessor('modfx-proc', ModFxProc);
 `;
 
+// 0 off, 1 Moog ladder, 2 MS-20. Off by default and costs nothing there: the
+// processor skips the whole block, so nobody pays for a filter they have not
+// asked for. `var` — fxApplyAll reads it from a different region.
+var fxLadderMode=0;
+function fxSetLadder(m){
+ fxLadderMode=(m|0)||0;
+ try{ localStorage.setItem('modo-fx-ladder', String(fxLadderMode)); }catch(e){}
+ ['0','1','2'].forEach(function(k){
+  var b=document.getElementById('fx-lad-'+k);
+  if(b) b.classList.toggle('on', String(fxLadderMode)===k);
+ });
+ if(typeof fxApplyAll==='function') try{ fxApplyAll(); }catch(e){}
+ if(typeof fxSyncUI==='function') try{ fxSyncUI(); }catch(e){}
+}
+window.fxSetLadder=fxSetLadder;
 let _fxWorkletReady=false, _fxWorkletFailed=false, _fxWorkletPromise=null;
 function fxEnsureWorklet(ctx){
  if(_fxWorkletReady || _fxWorkletFailed) return _fxWorkletPromise || Promise.resolve();
@@ -34840,6 +34952,12 @@ function fxApplyChannel(ch){
   pr.get('reverse').setValueAtTime(rv<=0.001?0:Math.min(0.99,_fxDivSec(rv)/4), t);
   pr.get('warp').setValueAtTime(_fxWarpRate(v('warp')), t);
   pr.get('crush').setValueAtTime(v('crush'), t);
+  if(pr.get('fltmode')){
+   pr.get('fltmode').setValueAtTime(fxLadderMode, t);
+   pr.get('fltcut').setValueAtTime(v('ladder'), t);
+   pr.get('fltres').setValueAtTime(v('ladres'), t);
+   pr.get('fltdrv').setValueAtTime(v('laddrv'), t);
+  }
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
   if(pr.get('grain')){
    // Cycle length in seconds, so the worklet does not need the tempo. Zero at
@@ -35220,6 +35338,9 @@ function fxBuildPanel(){
   +  '<button class="fx-hold" id="fx-smp-pwr" onclick="fxSmpToggle()" style="display:none" aria-pressed="true">On</button>'
   +  '<button class="fx-clear" id="fx-smp-eject" onclick="fxSmpEject()" style="display:none" title="Take the clip off the pad. It stays in your library." aria-label="Eject sample">✕</button>'
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
+  +  '<button class="fx-hold" id="fx-lad-0" onclick="fxSetLadder(0)" title="No ladder — the pad\'s own biquad filter only">Flt: Off</button>'
+  +  '<button class="fx-hold" id="fx-lad-1" onclick="fxSetLadder(1)" title="Four-pole ladder with saturation inside the loop. Resonance thins the low end as it climbs.">Moog</button>'
+  +  '<button class="fx-hold" id="fx-lad-2" onclick="fxSetLadder(2)" title="Two-pole Sallen-Key with the clip in the resonance path — screams rather than peaks.">MS-20</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   +  '<button class="tips-btn" onclick="showTip(\'modfx\',this)" aria-label="About MōdFX">?</button>'
   + '</div></div>'
