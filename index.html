@@ -5087,7 +5087,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.7.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.0</span>
     </div>
    </div>
   </div>
@@ -5105,7 +5105,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.7.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5878,9 +5878,20 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tb" id="midi-smart-btn" onclick="setMidiKeyMap('smart')" title="C is always chord I, whatever key you are in">Smart Keys (C=I)</button>
    </div>
   </div>
-  <div class="midi-panel-row" style="margin-top:6px">
-   <span class="midi-panel-lbl">Ports:</span>
-   <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
+  <div class="midi-panel-row" style="margin-top:6px;flex-direction:column;align-items:stretch;gap:4px">
+   <div style="display:flex;gap:6px;align-items:baseline">
+    <span class="midi-panel-lbl">Ports:</span>
+    <span id="midi-port-list" style="font-size:.44rem;color:var(--muted);flex:1;line-height:1.6">—</span>
+    <button class="tb" id="midi-rescan" onclick="midiRescan()" style="flex:0 0 auto"
+     title="Ask the browser to enumerate MIDI ports again. A controller plugged in after the page loaded, or one the OS was still setting up, appears here.">Rescan</button>
+   </div>
+   <div id="midi-why" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6"></div>
+   <div style="font-size:.44rem;color:var(--muted);line-height:1.6">
+    Last message in: <span id="midi-monitor" data-selectable>nothing yet</span>
+   </div>
+   <div style="font-size:.44rem;color:var(--muted);line-height:1.6">
+    Missing a controller? Play a key on it. If a message appears, the port works and is listed above — possibly under a name you would not recognise. If nothing appears and <strong>Rescan</strong> does not find it, the port is not reaching the browser at all: a controller already open in a DAW cannot be opened twice on Windows, and a charge-only cable or an unpowered hub will do the same on any OS.
+   </div>
   </div>
   <div id="midi-dupe-warn" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6;margin-top:4px">
    More than one input port is connected. If that's one physical keyboard listed twice, every key press arrives twice — disable the extra port in your OS MIDI setup. Note that Web MIDI also reaches every open tab of this app, so a second tab will double what you hear.
@@ -5892,6 +5903,27 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tb active" id="midi-bend-all" onclick="setMidiBendScope('all')" title="The pitch wheel bends everything sounding, chords included — the whole triad slides">Melody + Chords</button>
    </div>
   </div>
+  <div class="midi-panel-row" style="margin-top:10px;flex-direction:column;align-items:stretch;gap:6px;border-top:1px solid var(--border2);padding-top:10px">
+   <span class="midi-panel-lbl" style="min-width:0">MIDI out — play another instrument from MōdRiff</span>
+   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <select id="midi-out-dest" style="flex:1;min-width:150px" onchange="moSetPort(this.value)"></select>
+    <button class="tb" id="midi-out-panic" onclick="moAllOff()" style="flex:0 0 auto"
+     title="Note-off on every channel, plus All Notes Off. Use it if an external instrument is left holding a note.">Panic</button>
+   </div>
+   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="midi-panel-lbl" style="min-width:0">Send:</span>
+    <div id="midi-out-lanes" style="display:flex;gap:4px;flex-wrap:wrap;flex:1"></div>
+   </div>
+   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="midi-panel-lbl" style="min-width:0">Local sound:</span>
+    <div class="tg">
+     <button class="tb active" id="midi-local-on" onclick="moSetLocal(true)" title="MōdRiff plays the lanes it sends, alongside the external instrument">On</button>
+     <button class="tb" id="midi-local-off" onclick="moSetLocal(false)" title="Only the external instrument plays the lanes above. MōdRiff stays quiet on them — the keys still light and the roll still draws.">Off</button>
+    </div>
+   </div>
+   <div id="midi-out-note" style="font-size:.44rem;color:var(--muted);line-height:1.6"></div>
+  </div>
+
   <div class="midi-panel-row" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:6px">
    <span class="midi-panel-lbl" style="min-width:0">Knobs &amp; sliders:</span>
    <div id="midi-cc-rows"></div>
@@ -6797,7 +6829,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.7.0';
+const MODRIFF_VERSION = '3.8.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11307,7 +11339,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  // Layer switch and mixer mute share one gate: both mean "this part should
  // not sound right now", and both leave the previous chord's release to the
  // stopAll() just above rather than cutting it dead.
- if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)) return;
+ if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)
+    || (typeof moSilences==='function' && moSilences('chord'))) return;
 
  // Bass — sine always
  const bg=ctx.createGain();
@@ -11385,7 +11418,8 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  // Layer switch and mixer mute share one gate: both mean "this part should
  // not sound right now", and both leave the previous chord's release to the
  // stopAll() just above rather than cutting it dead.
- if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)) return;
+ if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)
+    || (typeof moSilences==='function' && moSilences('chord'))) return;
 
  const bg=ctx.createGain();
  const _tr=fxTrim;
@@ -11652,8 +11686,10 @@ function playMelNote(midi,pressure,sustain,modY){
  // Same class of fix as the chord engine: a muted or zeroed Mel channel
  // still built the voice and ramped toward a hardcoded .0001 floor. The key
  // still lights (you can see what you played, same as a muted MIDI
- // controller's LEDs), but nothing gets synthesized.
- if(!(_mxMel>0)) return;
+ // controller's LEDs), but nothing gets synthesized. A lane sent to an
+ // external synth with local sound off wants precisely that: the key lights,
+ // the fingering draws, and the note is somebody else's to make.
+ if(!(_mxMel>0) || (typeof moSilences==='function' && moSilences('melody'))) return;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
  g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
@@ -11909,7 +11945,7 @@ function initBendStrip(){
  bendStopContinuous();
  // Same guard as playMelNote — a muted or zeroed Mel channel shouldn't start
  // a new glide at all, not build one and ramp it toward an inaudible floor.
- if(!(_mxMel>0)) return;
+ if(!(_mxMel>0) || (typeof moSilences==='function' && moSilences('melody'))) return;
  bendContGain=ctx.createGain();
  bendContGain.gain.setValueAtTime(0, now);
  // Same sustain level and character chain as a held note (playMelNote) — a
@@ -13084,7 +13120,7 @@ function scheduleArpBlock(t,dur){
  const ctx=getCtx(); if(!ctx||!arpNotes.length) return;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
  const _mxArp=_cmx('arp');
- if(!(_mxArp>0)) return;
+ if(!(_mxArp>0) || (typeof moSilences==='function' && moSilences('arp'))) return;
  const wg = WAVE_GAIN[arpWave] || 1;
  const revMix = parseFloat(document.getElementById('rev-mix')?.value || '0.25');
  arpNotes.forEach((midi,idx)=>{
@@ -13136,7 +13172,7 @@ function scheduleArpNote(midi,t,dur){
  // Gate-pattern position (arpGateIdx) has already advanced above regardless,
  // same as when the gate itself is closed — muting shouldn't desync the
  // pattern from where it'd be if the channel were live.
- if(!(_mxArp>0)) return;
+ if(!(_mxArp>0) || (typeof moSilences==='function' && moSilences('arp'))) return;
  const _pk=vol*.55*wg*velMult*humanVel*bounceV*velShapeMult*_mxArp*fxTrim;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
@@ -16870,17 +16906,53 @@ const KEY_MAP={'1':0,'2':1,'3':2,'4':3,'5':4,'6':5,'7':6};
 // ═══════════════════════════════════════
 // MIDI
 // ═══════════════════════════════════════
-function initMidi(){
- if(!navigator.requestMIDIAccess) return;
- navigator.requestMIDIAccess().then(acc=>{
- midiAccess=acc; updateMidiBadge();
- acc.inputs.forEach(inp=>inp.onmidimessage=onMidiMsg);
- acc.onstatechange=e=>{ if(e.port.type==='input'){ e.port.onmidimessage=onMidiMsg; updateMidiBadge(); } };
- }).catch(()=>{});
+// Why this is no longer three lines: on a real desk, "the app can't see my
+// controller" has at least five different causes, and the old version rendered
+// every one of them as the words "none connected" —
+//   · the browser has no Web MIDI at all. Safari has never shipped it, over
+//     fingerprinting concerns, and every browser on iOS and iPadOS runs
+//     Safari's engine, so it is missing there too. That is a standing
+//     platform decision, not a version away.
+//   · the permission prompt was dismissed, or the origin is blocked
+//   · the OS had not finished enumerating USB when the page loaded
+//   · the port exists but another app holds it open — on Windows a controller
+//     already open in a DAW cannot be opened a second time
+//   · the port is listed, under a name nobody would recognise as their keyboard
+// Each one needs something different done about it, so the pane names which.
+var _midiErr='';        // why there is no access, in words the pane can show
+var _midiLastMsg='';    // the last message that arrived, and which port sent it
+function _midiWireAll(){
+ if(!midiAccess) return;
+ // Every input, on every state change — not just the port whose state moved.
+ // Assigning onmidimessage is what opens a port, and a port that was still
+ // being enumerated when access resolved, or whose assignment threw, used to
+ // stay deaf for the rest of the session with nothing to say about it.
+ try{ midiAccess.inputs.forEach(function(inp){ try{ inp.onmidimessage=onMidiMsg; }catch(e){} }); }catch(e){}
 }
+function initMidi(rescan){
+ if(!navigator.requestMIDIAccess){ _midiErr='no-api'; updateMidiBadge(); return; }
+ navigator.requestMIDIAccess().then(acc=>{
+ midiAccess=acc; _midiErr='';
+ _midiWireAll();
+ acc.onstatechange=e=>{ _midiWireAll(); updateMidiBadge(); if(typeof moSyncUI==='function') moSyncUI(); };
+ updateMidiBadge();
+ if(typeof moSyncUI==='function') moSyncUI();
+ if(rescan){
+  var n=0; try{ n=[...acc.inputs.values()].length; }catch(e){}
+  try{ showToast(n===1?'1 MIDI input found':(n+' MIDI inputs found')); }catch(e){}
+ }
+ }).catch(err=>{
+ // Swallowing this was why a blocked origin and an empty desk looked identical.
+ _midiErr = (err&&err.name==='SecurityError') ? 'blocked'
+          : ('failed — '+((err&&err.message)||String(err)));
+ updateMidiBadge();
+ });
+}
+function midiRescan(){ initMidi(true); }
 function updateMidiBadge(){
  const ins=midiAccess?[...midiAccess.inputs.values()]:[];
  const cnt=ins.length;
+ _midiPaintWhy(ins);
  // The two MIDI badges are gone: one was removed with the Perform header, the
  // other was a button at the bottom of the chord sound settings whose only job
  // was to open a panel that is now a Settings pane of its own. The count they
@@ -16888,10 +16960,58 @@ function updateMidiBadge(){
  // Name the ports so a controller the OS has enumerated twice is visible
  // rather than something you can only infer from the sound.
  const list=document.getElementById('midi-port-list');
- if(list) list.textContent = cnt ? ins.map(i=>i.name||'Unnamed').join(' · ') : 'none connected';
+ // The maker and the connection state are part of identifying a port you did
+ // not expect to see — two ports both called "USB MIDI" are told apart by
+ // their manufacturer, and a port listed but never opened is a different
+ // problem from a port that is absent.
+ if(list) list.textContent = cnt
+   ? ins.map(function(i){
+       var bits=[i.name||'Unnamed'];
+       if(i.manufacturer) bits.push(i.manufacturer);
+       if(i.connection && i.connection!=='open') bits.push(i.connection);
+       if(i.state && i.state!=='connected') bits.push(i.state);
+       return bits.join(', ');
+     }).join('  ·  ')
+   : (_midiErr ? '—' : 'none connected');
  const warn=document.getElementById('midi-dupe-warn');
  if(warn) warn.style.display = cnt>1 ? '' : 'none';
  if(typeof syncSSPreviews==='function') syncSSPreviews();
+}
+function _midiPaintWhy(ins){
+ var el=document.getElementById('midi-why'); if(!el) return;
+ var msg='';
+ if(_midiErr==='no-api'){
+  msg='This browser has no Web MIDI, so no controller can reach MōdRiff and MōdRiff cannot play anything else. Safari has never shipped it, and every browser on iOS and iPadOS uses Safari\u2019s engine \u2014 so this is every browser on an iPhone or iPad. Chrome, Edge or Opera on a desktop will see your ports.';
+ } else if(_midiErr==='blocked'){
+  msg='The browser refused MIDI access for this page. Allow MIDI in the site settings (the icon at the left of the address bar), then hit Rescan.';
+ } else if(_midiErr){
+  msg='MIDI access '+_midiErr+'. Rescan to try again.';
+ } else if(!(ins&&ins.length)){
+  msg='Access was granted but no input ports were reported. Plug the controller in, then hit Rescan \u2014 a device the OS was still setting up when the page loaded will not appear on its own.';
+ }
+ el.textContent=msg;
+ el.style.display = msg ? '' : 'none';
+}
+// Painted at most every 120 ms: a pitch wheel or a knob sends a message every
+// few milliseconds, and repainting per message on a sustained sweep is the
+// kind of thing that shows up as dropped notes elsewhere.
+var _midiMonDirty=false;
+function _midiMonPaint(){
+ var el=document.getElementById('midi-monitor');
+ if(el) el.textContent=_midiLastMsg||'nothing yet';
+}
+function _midiMonLog(e){
+ try{
+  var d=e.data, st=d[0]&0xf0, ch=(d[0]&0x0f)+1, what;
+  if(st===0x90&&d[2]>0) what='note on '+d[1]+', velocity '+d[2];
+  else if(st===0x80||st===0x90) what='note off '+d[1];
+  else if(st===0xb0) what='CC '+d[1]+' = '+d[2];
+  else if(st===0xe0) what='pitch bend';
+  else if(st===0xa0||st===0xd0) what='pressure';
+  else what='status 0x'+d[0].toString(16);
+  _midiLastMsg=((e.target&&e.target.name)||'unnamed port')+'  \u2014  channel '+ch+', '+what;
+  if(!_midiMonDirty){ _midiMonDirty=true; setTimeout(function(){ _midiMonDirty=false; _midiMonPaint(); },120); }
+ }catch(_){}
 }
 // onMidiMsg now defined in MIDI ROUTING section
 
@@ -20805,6 +20925,8 @@ function melBendWheel(norm){
  // Wheels rarely return to exactly centre; without a dead zone the melody
  // sits permanently a few cents sharp after one nudge.
  melBendWheelCents = Math.abs(v) < 0.02 ? 0 : v * MEL_BEND_RANGE_CENTS;
+ // The wheel bends whatever is listening, which now includes an external synth.
+ if(typeof moBend==='function') moBend('melody', v);
  _melBendApply();
 }
 // Melody, or melody and chords together. A wheel on a real keyboard bends
@@ -21522,6 +21644,7 @@ function renderMidiCC(){
 }
 
 function onMidiMsg(e){
+ _midiMonLog(e);
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
  const pressure = vel / 127;
@@ -23946,6 +24069,10 @@ function isAnythingPlaying(){
 // bassline, song loop, and any held melody notes.
 // arpOn and blEnabled flags are preserved so next Play restores them.
 function stopEverything(){
+ // An external instrument holding a note is the one stuck sound in this app the
+ // user cannot escape by closing the tab, so Stop releases it first — before
+ // anything below can throw and skip it.
+ try{ if(typeof moAllOff==='function') moAllOff(); }catch(e){}
  // Stop means stop, including anything the MōdFX pad is sounding — that is
  // the button someone reaches for when they want silence.
  try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){}
@@ -25281,13 +25408,7 @@ function _buildMidiRecording(){
     function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
     function u16(n){return[(n>>8)&0xff,n&0xff];}
     function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
-    var LANES=[
-      {key:'melody',name:'Melody',   ch:0},
-      {key:'chord', name:'Chords',   ch:1},
-      {key:'bass',  name:'Bassline', ch:2},
-      {key:'arp',   name:'Arpeggio', ch:3},
-      {key:'drum',  name:'Percussion',ch:9}
-    ];
+    var LANES=MIDI_LANES; // one lane→channel map for the file and for MIDI out
     var byLane={};
     _midiRecNotes.forEach(function(n){ (byLane[n.lane]=byLane[n.lane]||[]).push(n); });
     function buildTrack(notes,ch,name){
@@ -25369,23 +25490,251 @@ function _buildMidiRecording(){
 // Global hooks called from inside the bass/drum IIFEs (their state isn't
 // reachable from out here) — see blPlayNote() and sqHitTrack().
 window._midiRecLogBass=function(note,oct,t,dur,vol,accent){
-  if(!_midiRecOn) return;
-  try{
-    var midi=Math.max(0,Math.min(127,Math.round(note+(oct+1)*12)));
+  var midi=Math.max(0,Math.min(127,Math.round(note+(oct+1)*12)));
+  var vel=Math.max(1,Math.min(127,Math.round((vol||0.6)*100)+(accent?15:0)));
+  try{ if(typeof moHit==='function') moHit('bass',midi,vel,t,Math.max(30,(dur||0.3)*1000*0.92)); }catch(e){}
+  if(_midiRecOn) try{
     var tOn=_midiCtxNow(t);
-    var vel=Math.round((vol||0.6)*100)+(accent?15:0);
-    _midiRecNotes.push({lane:'bass',note:midi,vel:Math.max(1,Math.min(127,vel)),tOn:tOn,tOff:tOn+Math.max(30,(dur||0.3)*1000*0.92)});
+    _midiRecNotes.push({lane:'bass',note:midi,vel:vel,tOn:tOn,tOff:tOn+Math.max(30,(dur||0.3)*1000*0.92)});
   }catch(e){}
+  try{ return (typeof moSilences==='function') && moSilences('bass'); }catch(e){ return false; }
 };
 window._midiRecLogDrum=function(trackName,t,vol,accent){
-  if(!_midiRecOn) return;
-  try{
-    var note=GM_DRUM_MAP[trackName]||39;
+  var note=GM_DRUM_MAP[trackName]||39;
+  var vel=Math.max(1,Math.min(127,Math.round((vol||0.6)*100)+(accent?15:0)));
+  try{ if(typeof moHit==='function') moHit('drum',note,vel,t,60); }catch(e){}
+  if(_midiRecOn) try{
     var tOn=_midiCtxNow(t);
-    var vel=Math.round((vol||0.6)*100)+(accent?15:0);
-    _midiRecNotes.push({lane:'drum',note:note,vel:Math.max(1,Math.min(127,vel)),tOn:tOn,tOff:tOn+60});
+    _midiRecNotes.push({lane:'drum',note:note,vel:vel,tOn:tOn,tOff:tOn+60});
   }catch(e){}
+  try{ return (typeof moSilences==='function') && moSilences('drum'); }catch(e){ return false; }
 };
+// ═══════════════════════════════════════
+// MIDI OUT — playing something else with MōdRiff
+// ═══════════════════════════════════════
+// The recorder above already taps every note this app makes, on every surface,
+// with velocity and — for the sequenced parts — the AudioContext time the note
+// is due. MIDI out hangs off those same taps instead of growing a second set,
+// so a lane that reaches the .mid file reaches an external synth too and a new
+// sound source only ever has to be wired once.
+//
+// The lane→channel map was a local inside the .mid exporter. It is the same map
+// either way: a bassline that exports on channel 3 should arrive on channel 3.
+var MIDI_LANES=[
+  {key:'melody',name:'Melody',    ch:0},
+  {key:'chord', name:'Chords',    ch:1},
+  {key:'bass',  name:'Bassline',  ch:2},
+  {key:'arp',   name:'Arpeggio',  ch:3},
+  {key:'drum',  name:'Percussion',ch:9}
+];
+// Read from the wrap layer below, from the five mute gates thousands of lines
+// above, and from the settings pane — all of which run long before this point
+// in the file. `var`, not `let`: see the temporal dead zone note in CLAUDE.md.
+var _moPort=null;                                                  // chosen MIDIOutput, or null for off
+var _moLanes={melody:true,chord:true,bass:true,arp:true,drum:true}; // which lanes go out
+var _moLocal=true;                                                  // does MōdRiff still sound what it sends?
+var _moHeld={};                                                     // 'ch:note' -> 1, for the panic that matters
+var _moHeldChord=[];                                                // notes of the chord currently sustaining
+var _moLastErr='';
+
+function _moCh(lane){
+  for(var i=0;i<MIDI_LANES.length;i++) if(MIDI_LANES[i].key===lane) return MIDI_LANES[i].ch;
+  return 0;
+}
+// One answer to "is this lane going out right now", because five mute gates and
+// six tap sites all ask it.
+function moLive(lane){
+  if(!_moPort) return false;
+  return lane ? !!_moLanes[lane] : true;
+}
+// True when MōdRiff should stay quiet on a lane because something else is
+// playing it. Local-off with no destination selected would just be silence, so
+// this is deliberately built on moLive rather than on _moLocal alone.
+function moSilences(lane){ return moLive(lane) && !_moLocal; }
+window.moLive=moLive; window.moSilences=moSilences;
+
+// AudioContext time → the performance.now() domain MIDIOutput.send() wants.
+// getOutputTimestamp pairs the two clocks properly; deriving the offset from
+// currentTime alone lets them drift, and a sequenced bassline then arrives
+// progressively early. A time already past returns 0, which send() reads as
+// "now" — that is the right answer for a hit whose slot we have just missed.
+function _moWhen(t){
+  if(!(t>0)) return 0;
+  var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return 0;
+  var cNow=ctx.currentTime, pNow=performance.now();
+  try{
+    var ts=ctx.getOutputTimestamp&&ctx.getOutputTimestamp();
+    if(ts&&ts.contextTime&&ts.performanceTime){ cNow=ts.contextTime; pNow=ts.performanceTime; }
+  }catch(e){}
+  var when=pNow+(t-cNow)*1000;
+  return when>performance.now()?when:0;
+}
+function _moRaw(bytes,when){
+  if(!_moPort) return false;
+  try{ _moPort.send(bytes,when||0); return true; }
+  catch(e){ _moLastErr=String((e&&e.message)||e); return false; }
+}
+function moNoteOn(lane,note,vel,t){
+  if(!moLive(lane)) return false;
+  var n=Math.round(note); if(!isFinite(n)) return false;
+  n=Math.max(0,Math.min(127,n));
+  var ch=_moCh(lane);
+  _moHeld[ch+':'+n]=1;
+  return _moRaw([0x90|ch,n,Math.max(1,Math.min(127,Math.round(vel||90)))],_moWhen(t));
+}
+function moNoteOff(lane,note,t){
+  // Deliberately NOT gated on the lane. A lane switched off, or a destination
+  // changed, while a key was down still owes that key its note-off — and an
+  // external synth that never gets one drones until you power it off. Closing
+  // the browser does not stop it, which makes this the one stuck-note bug in
+  // the app that the user cannot get out of.
+  if(!_moPort) return false;
+  var n=Math.round(note); if(!isFinite(n)) return false;
+  n=Math.max(0,Math.min(127,n));
+  var ch=_moCh(lane);
+  delete _moHeld[ch+':'+n];
+  return _moRaw([0x80|ch,n,0],_moWhen(t));
+}
+// A one-shot: note-on now, note-off after `ms`. Drums and the sequenced parts
+// have no release of their own to hang a note-off on.
+function moHit(lane,note,vel,t,ms){
+  if(!moLive(lane)) return false;
+  if(!moNoteOn(lane,note,vel,t)) return false;
+  var tOff=(t>0)?(t+Math.max(0.02,(ms||60)/1000)):0;
+  if(tOff>0) return moNoteOff(lane,note,tOff);
+  var n=Math.max(0,Math.min(127,Math.round(note)));
+  setTimeout(function(){ moNoteOff(lane,n,0); }, Math.max(20,ms||60));
+  return true;
+}
+function moBend(lane,norm){
+  if(!moLive(lane)) return false;
+  // Same 0.02 dead zone melBendWheel uses — a wheel that never quite recentres
+  // would otherwise leave the external synth permanently a few cents sharp.
+  var v=Math.max(-1,Math.min(1,norm||0)); if(Math.abs(v)<0.02) v=0;
+  var raw=Math.round(8192+v*8191);
+  raw=Math.max(0,Math.min(16383,raw));
+  return _moRaw([0xe0|_moCh(lane),raw&0x7f,(raw>>7)&0x7f],0);
+}
+// Every note we know we started, then All Notes Off and All Sound Off per
+// channel as a second pass. The explicit note-offs are the load-bearing part —
+// CC123 is widely but not universally honoured — and the CCs catch anything we
+// lost track of. Same lesson as the granular player: a sound you cannot stop is
+// worse than a sound that never started.
+function moAllOff(){
+  if(!_moPort) return;
+  Object.keys(_moHeld).forEach(function(k){
+    var p=k.split(':'); _moRaw([0x80|(+p[0]),+p[1],0],0);
+  });
+  _moHeld={}; _moHeldChord=[];
+  var seen={};
+  MIDI_LANES.forEach(function(l){
+    if(seen[l.ch]) return; seen[l.ch]=1;
+    _moRaw([0xb0|l.ch,123,0],0);
+    _moRaw([0xb0|l.ch,120,0],0);
+  });
+}
+window.moAllOff=moAllOff;
+
+// Choosing a destination always silences the old one first: switching ports
+// with a key down otherwise leaves the note hanging on a port nothing will
+// ever send to again.
+function moSetPort(id){
+  if(_moPort) moAllOff();
+  _moPort=null; _moLastErr='';
+  if(id && typeof midiAccess!=='undefined' && midiAccess){
+    try{ midiAccess.outputs.forEach(function(o){ if(o.id===id) _moPort=o; }); }catch(e){}
+    if(!_moPort) _moLastErr='that port is no longer connected';
+  }
+  try{ localStorage.setItem('modo-midi-out', _moPort?id:''); }catch(e){}
+  if(typeof moSyncUI==='function') moSyncUI();
+}
+function moSetLane(lane,on){
+  // Turning a lane off mid-note: note-offs first, or the synth holds it for ever.
+  if(!on && _moPort) Object.keys(_moHeld).forEach(function(k){
+    if(+k.split(':')[0]===_moCh(lane)){ var p=k.split(':'); _moRaw([0x80|(+p[0]),+p[1],0],0); delete _moHeld[k]; }
+  });
+  _moLanes[lane]=!!on;
+  try{ localStorage.setItem('modo-midi-out-lanes', JSON.stringify(_moLanes)); }catch(e){}
+  if(typeof moSyncUI==='function') moSyncUI();
+}
+function moSetLocal(on){
+  _moLocal=!!on;
+  try{ localStorage.setItem('modo-midi-out-local', _moLocal?'1':''); }catch(e){}
+  if(typeof moSyncUI==='function') moSyncUI();
+}
+// Paints the whole output section from the engine's own state, so there is one
+// description of what is going out and the buttons cannot drift from it.
+function moSyncUI(){
+  var outs=[];
+  try{ if(typeof midiAccess!=='undefined' && midiAccess) midiAccess.outputs.forEach(function(o){ outs.push(o); }); }catch(e){}
+  // A destination saved last session means nothing until the browser has
+  // enumerated the ports again, so it is matched here rather than at load.
+  if(!_moPort && outs.length){
+    var want=''; try{ want=localStorage.getItem('modo-midi-out')||''; }catch(e){}
+    if(want) outs.forEach(function(o){ if(o.id===want) _moPort=o; });
+  }
+  if(_moPort && !outs.some(function(o){ return o.id===_moPort.id; })){
+    // The port went away underneath us. Nothing to send note-offs to.
+    _moPort=null; _moHeld={}; _moHeldChord=[];
+  }
+  var sel=document.getElementById('midi-out-dest');
+  if(sel){
+    var cur=_moPort?_moPort.id:'';
+    sel.innerHTML='';
+    var o0=document.createElement('option'); o0.value=''; o0.textContent=outs.length?'Off':'no outputs available';
+    sel.appendChild(o0);
+    outs.forEach(function(o){
+      var op=document.createElement('option'); op.value=o.id;
+      op.textContent=(o.name||'Unnamed')+(o.manufacturer?(' — '+o.manufacturer):'');
+      sel.appendChild(op);
+    });
+    sel.value=cur; sel.disabled=!outs.length;
+  }
+  var lanes=document.getElementById('midi-out-lanes');
+  if(lanes){
+    lanes.innerHTML='';
+    MIDI_LANES.forEach(function(l){
+      var b=document.createElement('button');
+      b.className='tb'+(_moLanes[l.key]?' active':'');
+      b.textContent=l.name;
+      b.title=l.name+' goes out on MIDI channel '+(l.ch+1);
+      b.onclick=function(){ moSetLane(l.key,!_moLanes[l.key]); };
+      lanes.appendChild(b);
+    });
+  }
+  var on=document.getElementById('midi-local-on'), off=document.getElementById('midi-local-off');
+  if(on) on.classList.toggle('active',_moLocal);
+  if(off) off.classList.toggle('active',!_moLocal);
+  var note=document.getElementById('midi-out-note');
+  if(note){
+    var txt;
+    if(_midiErr==='no-api'){
+      // The honest version of "can I play my hardware from here", in the place
+      // somebody goes looking for it.
+      txt='This browser has no Web MIDI, so there is nothing to send to. On iPhone and iPad that is every browser, since they all use Safari\u2019s engine. Reaching another app on iOS \u2014 an AUv3 instrument in AUM or Loopy Pro, say \u2014 needs the native build of MōdRiff, which can publish a CoreMIDI port that other apps see. On a desktop, Chrome, Edge or Opera will list your ports here, and a virtual port (the IAC bus on macOS, loopMIDI on Windows) carries MōdRiff into a DAW.';
+    } else if(!outs.length){
+      txt='No MIDI outputs found. A hardware synth needs to be connected; to reach another app on the same machine, route through a virtual port \u2014 the IAC bus on macOS, loopMIDI on Windows.';
+    } else if(!_moPort){
+      txt='Pick a destination and the lanes above are played by whatever is on the other end. Channels: '+MIDI_LANES.map(function(l){ return l.name+' '+(l.ch+1); }).join(', ')+'.';
+    } else {
+      var live=MIDI_LANES.filter(function(l){ return _moLanes[l.key]; }).map(function(l){ return l.name; });
+      txt=(live.length?live.join(', '):'nothing')+' \u2192 '+((_moPort.name)||'the selected port')
+         +(_moLocal?', and MōdRiff plays them too.':', and MōdRiff stays quiet on them.')
+         +(_moLastErr?('  Last send failed: '+_moLastErr):'');
+    }
+    note.textContent=txt;
+  }
+}
+function moRestorePrefs(){
+  try{
+    var l=localStorage.getItem('modo-midi-out-lanes');
+    if(l){ var o=JSON.parse(l); Object.keys(_moLanes).forEach(function(k){ if(k in o) _moLanes[k]=!!o[k]; }); }
+  }catch(e){}
+  try{ var lo=localStorage.getItem('modo-midi-out-local'); if(lo!==null) _moLocal=!!lo; }catch(e){}
+  // The port itself is restored by moSyncUI once midiAccess exists, since a
+  // saved id means nothing until the browser has enumerated the ports again.
+}
+
 // Wrap chord/melody/arp playback to log note on/off events while recording.
 (function(){
   function chordEventNotes(rootM,relIntvs,bassMidi){
@@ -25407,35 +25756,60 @@ window._midiRecLogDrum=function(trackName,t,vol,accent){
       }
     }catch(e){}
   }
+  // Both the recorder and MIDI out want the same note list, velocity and
+  // sustain flag, so they are fed from one place.
+  function moChordPlay(notes,pressure,sustain){
+    if(!moLive('chord')) return;
+    // A new chord always cuts the last one, exactly as the audio engine does —
+    // without this, held notes from four chords ago are still sounding.
+    moChordRelease();
+    var vel=Math.round((pressure||0.8)*100)+20;
+    notes.forEach(function(n){ moNoteOn('chord',n,vel,0); });
+    if(sustain) _moHeldChord=notes.slice();
+  }
+  function moChordRelease(){
+    if(!_moHeldChord.length) return;
+    _moHeldChord.forEach(function(n){ moNoteOff('chord',n,0); });
+    _moHeldChord=[];
+  }
+  window._moChordRelease=moChordRelease;
   var _origPlayChord=playChord;
   playChord=function(rootM,relIntvs,skipStop,pressure,sustain){
     var r=_origPlayChord.apply(this,arguments);
-    logChordPlay(chordEventNotes(rootM,relIntvs,rootM-12),pressure,sustain);
+    var _n=chordEventNotes(rootM,relIntvs,rootM-12);
+    logChordPlay(_n,pressure,sustain);
+    moChordPlay(_n,pressure,sustain);
     return r;
   };
   var _origPlaySlashChord=playSlashChord;
   playSlashChord=function(rootM,relIntvs,bassNote,pressure,sustain){
     var r=_origPlaySlashChord.apply(this,arguments);
-    logChordPlay(chordEventNotes(rootM,relIntvs,bassNote),pressure,sustain);
+    var _n=chordEventNotes(rootM,relIntvs,bassNote);
+    logChordPlay(_n,pressure,sustain);
+    moChordPlay(_n,pressure,sustain);
     return r;
   };
   var _origStopAll=stopAll;
   stopAll=function(){
     if(_midiRecOn) _closePendingChord(_midiNow());
+    moChordRelease();
     return _origStopAll.apply(this,arguments);
   };
   var _origRSC=releaseSustainedChord;
   releaseSustainedChord=function(myId){
     if(_midiRecOn) _closePendingChord(_midiNow());
+    moChordRelease();
     return _origRSC.apply(this,arguments);
   };
   var _origPMN=playMelNote;
   playMelNote=function(midi,pressure){
     if(_midiRecOn){ _midiRecActiveMel[midi]={vel:Math.round((pressure||0.8)*100)+20,tOn:_midiNow()}; }
+    moNoteOn('melody',midi,Math.round((pressure||0.8)*100)+20,0);
     return _origPMN.apply(this,arguments);
   };
   var _origRMN=releaseMelNote;
   releaseMelNote=function(midi){
+    moNoteOff('melody',midi,0);
     if(_midiRecOn && _midiRecActiveMel[midi]){
       var e=_midiRecActiveMel[midi];
       _midiRecNotes.push({lane:'melody',note:midi,vel:e.vel,tOn:e.tOn,tOff:Math.max(e.tOn+20,_midiNow())});
@@ -25445,6 +25819,7 @@ window._midiRecLogDrum=function(trackName,t,vol,accent){
   };
   var _origSAN=scheduleArpNote;
   scheduleArpNote=function(midi,t,dur){
+    if(midi!==null && midi!==undefined) moHit('arp',midi,90,t,Math.max(30,(dur||0.3)*1000*0.9));
     if(_midiRecOn && midi!==null && midi!==undefined){
       try{
         var tOn=_midiCtxNow(t);
@@ -25455,6 +25830,10 @@ window._midiRecLogDrum=function(trackName,t,vol,accent){
   };
   var _origSAB=scheduleArpBlock;
   scheduleArpBlock=function(t,dur){
+    if(moLive('arp') && typeof arpNotes!=='undefined' && arpNotes.length){
+      // The block strums, so each note is offset the same 12 ms the recorder uses.
+      arpNotes.forEach(function(m,idx){ moHit('arp',m,85,(t>0?t+idx*0.012:0),Math.max(30,(dur||0.3)*1000*0.85)); });
+    }
     if(_midiRecOn && typeof arpNotes!=='undefined' && arpNotes.length){
       try{
         var tOn=_midiCtxNow(t);
@@ -25681,6 +26060,7 @@ rhythmStepSec=rhythmStepDuration(RHYTHMS[0]);
 // seedDemoSongIfNeeded() used to run here too — see seedFirstRun().
 setlistData=loadSLData();
 renderSetlist();
+try{ moRestorePrefs(); }catch(e){}
 initMidi();
 setMasterTune(440);
 syncFixedTransport();
@@ -27032,7 +27412,8 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   (function(){ var _c=sqCtx(); if(_c && (t==null || !isFinite(t) || t < _c.currentTime)) t=_c.currentTime; })();
   try{ window.__diagDrum('seq:'+(track&&track.s||'?')); }catch(e){}
   if(!sqCtx()||!SQMG||!track||!track.play)return;
-  if(typeof window._midiRecLogDrum==='function') window._midiRecLogDrum(track.n,t,vol,ac);
+  var _moTookDrum = (typeof window._midiRecLogDrum==='function')
+    ? (window._midiRecLogDrum(track.n,t,vol,ac)===true) : false;
   // The Mixer's Drums channel — level, mute AND solo — did nothing at all
   // while the sequencer was running. _cmx('drum') was applied on exactly one
   // path: auditioning a step by clicking it in the grid. Every scheduled hit
@@ -27053,7 +27434,7 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   // compressor with nothing else to work on pulls -60 dB back up into
   // earshot. Muting the Drums channel left a quiet hi-hat ticking away.
   // It also saves scheduling dozens of inaudible oscillators per bar.
-  if(!(vol>0)) return;
+  if(!(vol>0) || _moTookDrum) return;
   var ck=_trackChoke(track);
   // Cut the group BEFORE this voice registers itself, or a closed hat would
   // choke its own tail the instant it started.
@@ -28674,7 +29055,8 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // jump rather than ramp, and a jump is a click.
   if(t==null || !isFinite(t) || t < ctx.currentTime) t = ctx.currentTime;
   var mg = blMG(); if(!mg) return;
-  if(typeof window._midiRecLogBass==='function') window._midiRecLogBass(note,oct,t,dur,vol,accent);
+  var _moTook = (typeof window._midiRecLogBass==='function')
+    ? (window._midiRecLogBass(note,oct,t,dur,vol,accent)===true) : false;
   var freq = blFreq(note, oct);
   var _mxBs = typeof _cmx === 'function' ? _cmx('bass') : 1;
   // Same class of fix as drums/chords: a muted or zeroed Bass channel still
@@ -28682,7 +29064,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // wouldn't throw — audible once the bus compressor pulled that floor back
   // up with nothing else in the mix. Slide state still updates so the next
   // real note picks up cleanly once the channel comes back.
-  if(!(_mxBs>0)){ _blPrevFreq=freq; _blPrevSlide=slide; return; }
+  if(!(_mxBs>0) || _moTook){ _blPrevFreq=freq; _blPrevSlide=slide; return; }
 
   // A real bass is monophonic — a new pluck always cuts the previous note
   // off, never rings on top of it. Step patterns are supposed to leave a
@@ -30547,7 +30929,15 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   var midi = note + (oct+1)*12;
   // Its own channel, not shared with the melody strip — see MIX_CHANNELS.
   var _mxMel = typeof _cmx === 'function' ? _cmx('melgen') : 1;
-  if(!(_mxMel>0)) return;
+  // The roll shares the melody lane rather than claiming a channel of its own:
+  // adding a lane here would add a track to every .mid export too, and that is
+  // a separate decision from where the sound comes out.
+  var _moTookMel=false;
+  try{
+    if(typeof moHit==='function') moHit('melody',midi,Math.max(1,Math.min(127,Math.round((vol||0.7)*100)+(accent?15:0))),t,Math.max(30,(dur||0.3)*1000*0.9));
+    _moTookMel = (typeof moSilences==='function') && moSilences('melody');
+  }catch(e){}
+  if(!(_mxMel>0) || _moTookMel) return;
   var wg = (typeof WAVE_GAIN !== 'undefined' && WAVE_GAIN[mlWave]) ? WAVE_GAIN[mlWave] : 1;
   var g = ctx.createGain();
   // Floored above 0: exponentialRampToValueAtTime throws if it ramps from a
@@ -35475,10 +35865,20 @@ window.addEventListener('pagehide', _seqAutosave);
 // walked away from is the worst version of this bug, because a reload does
 // not obviously end it.
 ['pagehide','beforeunload'].forEach(function(ev){
- window.addEventListener(ev, function(){ try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){} });
+ window.addEventListener(ev, function(){
+  try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){}
+  // Leaving the page with a note out to a hardware synth leaves it sounding
+  // for ever: nothing will ever send the note-off, and the browser being gone
+  // is exactly why.
+  try{ if(typeof window.moAllOff==='function') window.moAllOff(); }catch(e){}
+ });
 });
 document.addEventListener('visibilitychange', function(){
  if(document.visibilityState==='hidden'){ try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){} }
+ // Deliberately no moAllOff here. Backgrounding the tab is the normal thing to
+ // do while driving something else with it — you switch to the synth's own
+ // window — and cutting every note at that moment would make the feature
+ // useless. pagehide covers actually leaving.
 });
 // Both stem toggles are painted from the live flag on load, so the transport
 // switch and the Export panel's can never start out disagreeing.
