@@ -5042,7 +5042,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.5.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.6.0</span>
     </div>
    </div>
   </div>
@@ -5060,7 +5060,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.5.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.6.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -6750,7 +6750,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.5.0';
+const MODRIFF_VERSION = '3.6.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -22027,7 +22027,9 @@ Clarinet and flute currently show the correctly transposed written note without 
 <strong>1-Shot or Loop.</strong> A one-shot plays the trimmed window once — which means a note gets <em>shorter</em> the higher up the keyboard you play it, because pitching a sample up speeds it up. <strong>Loop</strong> is the fix, and it is a proper sustain loop: the attack sounds <em>once</em>, and then a region inside the clip repeats for as long as you hold the note. Record a flute and you can hold it as long as you like, at any pitch.<br><br>
 The loop region is the green band on the waveform, placed for you past the attack and snapped to zero crossings so the join does not tick. Drag its two markers to move it — a longer loop keeps more of the note's movement, a shorter one is steadier.<br><br>
 <strong>Volume, Pitch, Fine</strong> trim the clip where it sits. <strong>Root</strong> is the note the clip already sounds at, so the keyboard plays it in tune; a drum lane has no keyboard and only uses Pitch.<br><br>
-<strong>On the MōdFX pad.</strong> Give the pad a clip with its <strong>◈ Sample</strong> button and holding the pad plays it, through the Sampler channel — so the two axes you have already chosen shape it as you move. That makes the pad an instrument as well as an effect, and everything on it (the axis pickers, the targets, the presets, Hold) works on your clip exactly as it works on the band.<br><br>
+<strong>On the MōdFX pad.</strong> Give the pad a clip with its <strong>◈ Sample</strong> button and holding the pad plays it, through the Sampler channel — so every axis you already have shapes it as you move. That makes the pad an instrument as well as an effect, and everything on it (the axis pickers, the targets, the presets, Hold, the motion recorder) works on your clip exactly as it works on the band.<br><br>
+A clip on the pad also unlocks five axes that only mean anything when the pad is the <em>source</em>. <strong>Sample stretch</strong> is speed and direction on one axis: centre is frozen, right runs forward, left runs backwards, and the ends are double speed either way — and it does not change the pitch. <strong>Sample pitch</strong> moves the pitch an octave either way without changing the speed, which is the thing a tape machine cannot do. <strong>Sample scan</strong> pins the playhead to your finger, so you scrub. <strong>Sample grain</strong> goes from 15 ms (robotic) to 300 ms (smooth). <strong>Sample loop</strong> pens the playhead into a window from the whole clip down to 30 ms, which is the stutter.<br><br>
+Six patches pair them up: <strong>Sample Scrub</strong>, <strong>Time Stretch</strong>, <strong>Reverse Sweep</strong>, <strong>Grain Freeze</strong>, <strong>Stutter Loop</strong> and <strong>Glitch Grain</strong>. They are greyed out until the pad has a clip, because without one there is nothing for them to move through.<br><br>
 <strong>Where they live.</strong> On this device, in the browser's own storage — they come back when you reload and they work offline, and nothing is ever uploaded. <strong>⤒ Export set</strong> writes one .zip with the whole rig, your songs and every clip's audio: that is how you move a kit to another phone, and how you get it back if site data is ever cleared.`
  },
  'builder': {
@@ -33069,6 +33071,29 @@ const FX_PARAMS = {
              fmt:v=>{ const g=_fxIsoGains(v);
                       const on=[['Low',g.lo],['Mid',g.mid],['Hi',g.hi]].filter(x=>x[1]>0.02);
                       return on.length?on.map(x=>x[0]).join('+'):'silent'; } },
+  // ── Sample source ──────────────────────────────────────────────────
+  // These four plus Scan are the ones a Kaoss pad has and an effects-only pad
+  // cannot: they move the read head through your clip instead of processing
+  // something already playing. They do nothing until the pad has a clip on
+  // it — see fxAxisMenu, which greys them out until it does.
+  //
+  // Stretch is one axis rather than three because reverse, freeze and
+  // double-speed are the same control to a granular head: centre is frozen,
+  // right runs forward, left runs backwards, and the ends are twice speed
+  // either way. Pitch is separate from all of it, which is the thing a tape
+  // machine cannot do.
+  smpstretch:{ label:'Sample stretch', short:'STR', unit:'x', base:0.75, src:true,
+               fmt:v=>{ var r=_fxStretch(v);
+                        return r===0 ? 'frozen'
+                             : (r<0?'◀ ':'▶ ')+Math.abs(r).toFixed(2)+'×'; } },
+  smppitch:  { label:'Sample pitch',   short:'SPT', unit:'st', base:0.5, src:true,
+               fmt:v=>{ var n=_fxSmpSemis(v); return n===0?'0':(n>0?'+':'')+n+' st'; } },
+  smpscan:   { label:'Sample scan',    short:'SCN', unit:'pct',base:0,   src:true,
+               fmt:v=>Math.round(v*100)+'%' },
+  smpsize:   { label:'Sample grain',   short:'SGR', unit:'ms', base:0.62, src:true,
+               fmt:v=>Math.round(_fxGrainSec(v)*1000)+' ms' },
+  smpwin:    { label:'Sample loop',    short:'SLP', unit:'ms', base:1,   src:true,
+               fmt:v=>v>=0.999?'whole clip':Math.round(_fxWinSec(v)*1000)+' ms' },
   lpsweep: { label:'LP sweep',    short:'LP↓', unit:'hz',  base:1,   gang:'lp',
              fmt:v=>_fxHzFmt(_fxFiltHz(v))+' · Q'+(0.7+_fxGangQ(v)*28).toFixed(0) },
   hpsweep: { label:'HP sweep',    short:'HP↑', unit:'hz',  base:0,   gang:'hp',
@@ -33934,6 +33959,14 @@ const FX_FACTORY_PRESETS = [
  {name:'Gate & Verb', x:'gatepat', y:'reverb',  t:['chord','arp']},
  {name:'Grain',       x:'grain',   y:'grainlen',t:['chord','arp','mel','melgen']},
  {name:'Talk Box',    x:'talk',    y:'drive',   t:['chord','arp','mel']},
+ // ── Sample patches. These need a clip on the pad (its ◈ Sample button);
+ // without one the pad has nothing to move a read head through.
+ {name:'Sample Scrub',  x:'smpscan',    y:'smppitch', t:['sampler']},
+ {name:'Time Stretch',  x:'smpstretch', y:'smppitch', t:['sampler']},
+ {name:'Reverse Sweep', x:'smpstretch', y:'lpsweep',  t:['sampler']},
+ {name:'Grain Freeze',  x:'smpsize',    y:'smpstretch',t:['sampler']},
+ {name:'Stutter Loop',  x:'smpwin',     y:'smpscan',  t:['sampler']},
+ {name:'Glitch Grain',  x:'smpsize',    y:'smpwin',   t:['sampler']},
  {name:'Lo-Fi',        x:'crush',   y:'hpf',     t:['drum','bass']},
  {name:'Riser',        x:'hpf',     y:'reverb',  t:['chord','arp','mel']},
  {name:'Wobble',       x:'tremrate',y:'tremolo', t:['bass']},
@@ -34094,6 +34127,9 @@ function fxAxisMenu(which){
  return FX_AXIS_KEYS.map(k=>
   '<option value="'+k+'"'+(k===cur?' selected':'')+
   (FX_PARAMS[k].buffer && !fxBufferEffectsAvailable() ? ' disabled':'')+
+  // A source axis with no clip on the pad would look like a control that does
+  // nothing, which is worse than one that says why it cannot.
+  (FX_PARAMS[k].src && !(typeof fxSmpOn==='function' && fxSmpOn()) ? ' disabled':'')+
   '>'+FX_PARAMS[k].label+'</option>').join('');
 }
 
@@ -34254,52 +34290,210 @@ function fxToggleHold(){
 }
 
 // ── Playing a clip FROM the pad ──────────────────────────────────────────
-// The MōdFX pad is already a Kaoss-pad-style effects instrument: twenty-six
-// parameters on two axes, aimed at whichever channels you pick. The one thing
-// it could not do was be the SOURCE as well — every one of those effects
-// needed something else to already be playing.
+// The MōdFX pad was already a Kaoss-pad-style effects instrument: two axes
+// over twenty-six parameters, aimed at whichever channels you pick. The one
+// thing it could not do was be the SOURCE as well — every one of those
+// effects needed something else to already be playing.
 //
-// Sample mode is that missing half. Hold the pad and your clip plays through
-// the Sampler channel; the axes you already have do the mangling. It is not a
-// second pad and not a second set of controls — the pad, the axis pickers,
-// the targets and the presets are the ones that were already there.
-var _fxSmpVoice = null;
+// Sample mode is that missing half, and it brings the five axes that only
+// mean anything when the pad IS the source: stretch, pitch, scan, grain and
+// loop length. Everything else on the pad — the other axes, the targets, the
+// presets, Hold, the motion recorder — works on a clip exactly as it works on
+// the band, because the clip goes out through the Sampler channel like any
+// other part.
+//
+// ── Why a granular read head ────────────────────────────────────────────
+// A plain AudioBufferSourceNode can only change speed and pitch together, the
+// way a tape machine does. Stretching time while holding pitch, freezing on a
+// spot, running backwards and scrubbing by hand are four different things and
+// a buffer source can do none of them. They are all the same thing to a
+// granular player, which is why the engine is built that way rather than four
+// ways:
+//
+//   the read head moves through the buffer at its own rate, and short
+//   overlapping grains are fired FROM wherever it currently is.
+//
+//   · head rate 1  → normal speed          · head rate 0  → frozen
+//   · head rate −1 → backwards             · head rate 2  → twice as fast
+//   · grain pitch is separate from all of that
+//   · pin the head to a finger → scrubbing
+//   · pen the head into a short window → stutter
+//
+// At the neutral settings the axes start from, this is transparent: grains
+// fire every H seconds, last 2H, and the head advances H, so consecutive
+// grains read exactly the same material at exactly the same moment and the
+// Hann windows sum to one. Overlap-add reconstructs the signal, so a clip
+// with no axis on it sounds like the clip.
+var _fxGrain = null;          // the running voice, while the pad is held
 function fxSmpOn(){ return !!(SMP_SLOTS.fxpad && SMP_SLOTS.fxpad.id && SMP_BUF[SMP_SLOTS.fxpad.id]); }
 
-// Held, not triggered: the pad's own gesture is press-and-hold, so the clip
-// loops under your finger for as long as it is down and stops when you lift.
-// A one-shot that ran out halfway through a sweep would leave the axes
-// working on silence, which is the one thing a Kaoss pad never does.
+// Two Hann windows overlapped by half sum to exactly one, which is what makes
+// the neutral case transparent and every other case free of the per-grain
+// clicking a rectangular window would give. Built once.
+var _fxHann = null;
+function _fxHannCurve(){
+ if(_fxHann) return _fxHann;
+ var N=96, c=new Float32Array(N);
+ for(var i=0;i<N;i++) c[i]=0.5*(1-Math.cos(2*Math.PI*i/(N-1)));
+ _fxHann=c; return c;
+}
+// Axis mappings. Each is the whole range of the control, so a finger from one
+// edge to the other covers everything the parameter can do.
+function _fxStretch(v){                     // −2×…+2×, frozen in the middle
+ var r=(Math.max(0,Math.min(1,v))-0.5)*4;
+ return Math.abs(r)<0.06 ? 0 : r;           // a dead zone you can actually stop in
+}
+function _fxSmpSemis(v){ return Math.round((Math.max(0,Math.min(1,v))-0.5)*24); }
+function _fxGrainSec(v){ return 0.015*Math.pow(20, Math.max(0,Math.min(1,v))); }   // 15…300 ms
+function _fxWinSec(v){   return 0.03 *Math.pow(60, Math.max(0,Math.min(1,v))); }   // 30ms…1.8s
+
+// A source parameter's live value. Unlike fxValue it has no channel: the pad
+// drives the player directly, so being on an axis is the only thing that
+// makes one of these move.
+function _fxSrcDriving(key){ return fxEngaged && (fxPadX===key || fxPadY===key); }
+function _fxSrcVal(key){
+ var p=FX_PARAMS[key]; if(!p) return 0;
+ if(fxEngaged){
+  if(key===fxPadX) return fxPos.x;
+  if(key===fxPadY) return fxPos.y;
+ }
+ return p.base;
+}
+
+// Held, not triggered: the pad's gesture is press-and-hold, so the clip runs
+// under your finger for as long as it is down. A one-shot that ran out halfway
+// through a sweep would leave the axes working on silence, which is the one
+// thing a real unit never does.
 function fxSmpStart(){
  if(!fxSmpOn()) return;
  var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return;
- fxSmpStop(ctx.currentTime);
- var slot=SMP_SLOTS.fxpad;
- var held=Object.assign({}, slot, {loop:true});
- // Whatever the clip is, holding the pad should keep sounding. A slot with no
- // loop points of its own gets them from smpAutoLoop like any other.
+ fxSmpStop();
+ var slot=SMP_SLOTS.fxpad, buf=SMP_BUF[slot.id];
  var mx=(typeof _cmx==='function') ? _cmx('sampler') : 1;
  if(!(mx>0)) return;
  var dest=(typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination;
- // 30 seconds is not a limit you can reach with a finger; it is there so a
- // pointer lost to a crashed gesture cannot leave a note on forever.
- var v=smpVoice(ctx, held, dest, ctx.currentTime+0.005, 30, null, mx*0.62);
- if(v) _fxSmpVoice=v;
+ var out=ctx.createGain();
+ out.gain.value = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) * mx * 0.62;
+ out.connect(dest);
+ var a=Math.max(0, Math.min(0.999, +slot.start||0));
+ var b=Math.max(a+0.002, Math.min(1, slot.end==null?1:+slot.end));
+ _fxGrain = {
+  ctx:ctx, buf:buf, out:out,
+  a:a*buf.duration, b:b*buf.duration,     // the trimmed window, in seconds
+  head:a*buf.duration,                     // where the read head is now
+  next:ctx.currentTime+0.01,               // when the next grain fires
+  timer:null, stopping:false
+ };
+ _fxGrainTick();
 }
-function fxSmpStop(at){
- var v=_fxSmpVoice; if(!v) return;
- _fxSmpVoice=null;
- var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return;
- var t=(at==null)?ctx.currentTime:at;
+function fxSmpStop(){
+ var G=_fxGrain; if(!G) return;
+ _fxGrain=null;
+ clearTimeout(G.timer);
+ var t=G.ctx.currentTime;
  try{
-  v.gain.gain.cancelScheduledValues(t);
-  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
-  v.gain.gain.linearRampToValueAtTime(0, t+0.012);
-  v.src.stop(t+0.05);
+  // The grains already scheduled are left to ring out under a fade rather
+  // than cut, so releasing the pad sounds like letting go of a note.
+  G.out.gain.cancelScheduledValues(t);
+  G.out.gain.setValueAtTime(G.out.gain.value, t);
+  G.out.gain.linearRampToValueAtTime(0, t+0.05);
+  setTimeout(function(){ try{ G.out.disconnect(); }catch(e){} }, 400);
  }catch(e){}
 }
 window.fxSmpStart = fxSmpStart;
 window.fxSmpStop  = fxSmpStop;
+window._fxGrainState = function(){
+ var G=_fxGrain;
+ return G ? {head:G.head, a:G.a, b:G.b, grains:G.fired||0} : null;
+};
+
+// The scheduler. Reads the axes on every grain, so the sound follows the
+// finger rather than the finger setting it up beforehand.
+var FX_GRAIN_AHEAD = 0.12;      // seconds scheduled ahead of the clock
+function _fxGrainTick(){
+ var G=_fxGrain; if(!G) return;
+ var ctx=G.ctx, horizon=ctx.currentTime+FX_GRAIN_AHEAD;
+ var guard=0;
+ while(G.next < horizon && guard++ < 64){
+  var rate = Math.pow(2, _fxSmpSemis(_fxSrcVal('smppitch'))/12);
+  var str  = _fxStretch(_fxSrcVal('smpstretch'));
+  // The stretch <-> pitch split is the whole point of the granular head: the
+  // grain reads at `rate` (pitch) while the head advances at `str` (time),
+  // and neither knows about the other.
+  var lo=G.a, hi=G.b;
+  // Loop length pens the head into a window that starts wherever Scan says,
+  // or wherever the head already is. Closing it down to tens of milliseconds
+  // is the stutter.
+  var wsec=_fxWinSec(_fxSrcVal('smpwin'));
+  var scanOn=_fxSrcDriving('smpscan');
+  if(scanOn){
+   // Scrubbing: the head IS the finger, so it is set rather than advanced.
+   G.head = G.a + (G.b-G.a)*Math.max(0,Math.min(1,_fxSrcVal('smpscan')));
+  }
+  if(wsec < (G.b-G.a)){
+   var anchor = scanOn ? G.head : Math.max(G.a, Math.min(G.b-wsec, G.winAt==null?G.a:G.winAt));
+   if(!scanOn && G.winAt==null) G.winAt=G.a;
+   lo = Math.max(G.a, Math.min(G.b-wsec, anchor));
+   hi = lo + wsec;
+  } else { G.winAt=null; }
+  if(G.head < lo || G.head > hi) G.head = (str<0) ? hi : lo;
+  // A grain longer than the loop it is reading from cannot overlap-add
+  // cleanly: the head wraps back to the start partway through every grain, so
+  // the seam is a large fraction of the sound rather than a join inside it.
+  // Measured at 300ms grains on a 1s clip that was 8.4dB of pumping; holding
+  // a grain to a third of its window brings it to 0.6dB, which is the same
+  // ripple the short grains already had.
+  var gs   = Math.max(0.008, Math.min(_fxGrainSec(_fxSrcVal('smpsize')), (hi-lo)/3));
+  var hop  = gs/2;                                  // 50% overlap
+
+  // The grain itself. `duration` is in buffer seconds, so a grain that has to
+  // last `gs` in real time at playback rate `rate` consumes gs*rate of buffer.
+  var take = gs*rate;
+  var off  = Math.max(0, Math.min(G.buf.duration-0.001, G.head));
+  try{
+   var src=ctx.createBufferSource();
+   src.buffer=G.buf;
+   src.playbackRate.value=rate;
+   var gn=ctx.createGain();
+   gn.gain.setValueAtTime(0, G.next);
+   gn.gain.setValueCurveAtTime(_fxHannCurve(), G.next, gs);
+   src.connect(gn); gn.connect(G.out);
+   src.start(G.next, off, take+0.005);
+   src.stop(G.next+gs+0.01);
+   G.fired=(G.fired||0)+1;
+  }catch(e){}
+
+  // Advance. A frozen head (stretch 0) does not move, which is what makes a
+  // held spot a drone rather than a very slow playback.
+  if(!scanOn) G.head += hop*str;
+  // Wrap inside whichever window is in force, in whichever direction the head
+  // is travelling, so neither end is ever a dead stop.
+  //
+  // The head stops STARTING grains one grain-length short of the end, and
+  // that is the whole trick. A grain is one buffer source reading forward, so
+  // it cannot span the wrap; the two ways of pretending otherwise both fail
+  // audibly, and both were tried. Sliding a late grain back so it fits makes
+  // two overlapping grains read the SAME material at different times, and two
+  // copies of a tone half a cycle apart cancel — 8.4 dB of wobble. Shortening
+  // it instead pairs a short Hann with a full one, so the windows no longer
+  // sum to one and the seam becomes a hole — 35 dB, worse. Keeping every
+  // grain whole and simply not starting one that would not fit costs nothing:
+  // a grain beginning at the last legal position still reads all the way to
+  // the end, so no part of the clip goes unheard.
+  var top = (hi-lo > take) ? hi-take : lo;
+  if(hi>lo && top>lo){
+   while(G.head >= top) G.head -= (top-lo);
+   while(G.head <  lo)  G.head += (top-lo);
+  } else {
+   G.head = lo;
+  }
+  G.next += hop;
+ }
+ // If the clock ran away (a backgrounded tab), start again from now rather
+ // than firing sixty-four grains to catch up.
+ if(G.next < ctx.currentTime) G.next = ctx.currentTime + 0.01;
+ G.timer=setTimeout(_fxGrainTick, 25);
+}
 
 // The pad's Sample button: names the clip, opens the library to change it.
 function fxSmpSync(){
@@ -34317,8 +34511,14 @@ function fxSmpSync(){
  // Sampler unticked would play completely dry and look broken.
  if(on && typeof fxTargets!=='undefined' && fxTargets.indexOf('sampler')<0){
   fxTargets.push('sampler');
-  if(typeof fxSyncUI==='function') fxSyncUI();
  }
+ // The source axes are only selectable once there is a clip, so the two
+ // pickers have to be rebuilt when one arrives or goes.
+ ['x','y'].forEach(function(ax){
+  var sel=document.getElementById('fx-axis-'+ax);
+  if(sel) sel.innerHTML=fxAxisMenu(ax);
+ });
+ if(typeof fxSyncUI==='function') fxSyncUI();
 }
 window.fxSmpSync = fxSmpSync;
 
