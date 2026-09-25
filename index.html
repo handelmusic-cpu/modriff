@@ -145,7 +145,7 @@ body {
    that starts a text selection: handles appear around whatever word you were
    pressing and a Copy / Look Up / Translate bar drops over the keyboard you
    were about to play. It lands on chord pads, drum steps, the melody keys and
-   the chop pad too, so it is not a corner case — it is the app's own gesture
+   the MōdFX pad too, so it is not a corner case — it is the app's own gesture
    losing to the OS's.
 
    Two properties, and neither implies the other: user-select stops the
@@ -2390,27 +2390,10 @@ body.mode-basic .ms-stub { display:none; }
  .lib-rowchords { display:none; }
 }
 
-/* Play › Sampler — the chop pad, the loop deck and the storage note. */
-.smp-deckrow { display:flex; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
-.smp-pick {
- flex:1 1 140px; min-width:0; display:flex; align-items:center; gap:8px;
- padding:9px 12px; border-radius:var(--r-md); cursor:pointer; touch-action:manipulation;
- border:1px solid var(--border2); background:var(--surf2); color:var(--text);
- font-family:'Outfit',sans-serif; font-size:.62rem; text-align:left;
- white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.smp-pick:hover { border-color:var(--accent); }
-.smp-pick-ic { flex-shrink:0; color:var(--accent); font-size:.72rem; line-height:1; }
+/* The sampler's storage note, in the clip library. */
 /* Tall enough to aim at with a thumb and wide enough that sixteen slices are
    still separate targets — the pad is the one control on this page you play
    rather than set. */
-.smp-pad {
- width:100%; height:180px; display:block; touch-action:none; cursor:crosshair;
- border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2);
- margin-bottom:8px;
-}
-.smp-pad:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.smp-loop-note { font-size:.48rem; color:var(--muted); letter-spacing:.05em; margin-top:4px; }
 .smp-b.on { border-color:var(--accent); color:var(--accent); background:rgba(240,192,64,.12); }
 .smp-store { font-size:.52rem; color:var(--muted); line-height:1.7; }
 .smp-store b { color:var(--text); }
@@ -2419,7 +2402,6 @@ body.mode-basic .ms-stub { display:none; }
  overflow:hidden; margin:7px 0 5px;
 }
 .smp-store .smp-store-bar i { display:block; height:100%; background:var(--accent); }
-@media (max-width:420px){ .smp-pad { height:150px; } }
 
 /* Sampler sheet.
    Taller than the other sheets and scrollable, because it is the one that
@@ -5004,8 +4986,8 @@ body.mode-free .pro-only { display:none !important; }
        title="Record from the microphone straight into your clip library">● Rec sample</button>
      <button class="ft-btn ft-plain" onclick="ftSmpResample()"
        title="Record whatever MōdRiff is playing right now, straight into your clip library">◉ Resample</button>
-     <button class="ft-btn ft-plain" onclick="ftGo(function(){ switchTab('perform'); setPerformMode('sampler'); })"
-       title="The chop pad and the loop deck">◈ Sampler</button>
+     <button class="ft-btn ft-plain" onclick="ftGo(function(){ smpOpenLibrary(); })"
+       title="Your clips, and where each one plays">◈ Clips</button>
     </div>
    </div>
 
@@ -5060,7 +5042,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.4.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.5.0</span>
     </div>
    </div>
   </div>
@@ -5078,7 +5060,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.4.1</div>
+ <div class="unlock-ver" id="unlock-ver">v3.5.0</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5266,6 +5248,13 @@ body.mode-free .pro-only { display:none !important; }
   <div class="smp-sec">Clips</div>
   <div id="smp-lib"></div>
   <div class="smp-store" data-smpstore style="margin-top:10px">—</div>
+  <div class="smp-src" style="margin-top:8px">
+   <button type="button" onclick="smpExportSet()"
+     title="One file with everything: the rig, your songs and every clip's audio">⤒ Export set</button>
+   <button type="button" onclick="document.getElementById('smp-setfile').click()"
+     title="Load a set exported from this or another device">⤓ Import set</button>
+   <input type="file" id="smp-setfile" accept=".zip,.modriff" style="display:none">
+  </div>
  </div>
 </div>
 
@@ -5311,12 +5300,6 @@ body.mode-free .pro-only { display:none !important; }
  <button class="subnav-btn" id="pf-melody-btn" onclick="setPerformMode('melody')">Melody</button>
  <button class="subnav-btn pro-only" id="pf-fx-btn" onclick="setPerformMode('fx')"
    aria-label="MōdFX — X/Y performance effects">FX</button>
- <!-- The sampler was reachable only from a button in Settings and from a ◈ on
-      each voice row and drum lane. Those are where you go to SET it up; this
-      is where you go to play it, and it is the one place the pad and the loop
-      deck can live. -->
- <button class="subnav-btn" id="pf-smp-btn" onclick="setPerformMode('sampler')"
-   aria-label="Sampler — chop pad and loop deck">Sampler</button>
  <div class="subnav-led" id="pf-subnav-led"></div>
  </div>
 
@@ -5655,61 +5638,6 @@ body.mode-free .pro-only { display:none !important; }
  <div id="pf-fx-panel" style="display:none;width:100%;max-width:700px">
   <div class="panel p-perform" id="modfx-panel"></div>
  </div>
-
- <!-- SAMPLER — playing your own clips with your hands, as against the ◈
-      sampler, which puts one on a part for the sequencer to trigger. Both
-      read the same clips and the same slots, so a sound recorded for a drum
-      lane is already here, trimmed the way you trimmed it. -->
- <div class="pf-surface-lbl" id="pf-smp-surface-lbl">Sampler</div>
- <div id="pf-smp-panel" style="display:none;width:100%;max-width:700px">
-  <div class="panel p-perform">
-   <div class="panel-title"><span class="pt-icon">◈</span> Chop Pad
-    <button class="tips-btn" onclick="showTip('sampler',this)" aria-label="About the sampler">?</button>
-   </div>
-   <div class="smp-deckrow">
-    <button class="smp-pick" onclick="smpOpenPadPick()"
-      title="Choose which clip the pad plays — or record a new one">
-     <span class="smp-pick-ic" aria-hidden="true">◈</span><span id="smp-pad-name">Pick a clip</span>
-    </button>
-    <button class="smp-b" onclick="smpRecStart('mic')" title="Record straight onto the pad">● Rec</button>
-    <button class="smp-b" onclick="smpOpenLibrary()" title="All your clips, and where they can go">Clips</button>
-   </div>
-   <canvas id="smp-pad-cv" class="smp-pad"
-     aria-label="Chop pad. Touch or drag across it to play slices of the clip."></canvas>
-   <div id="smp-pad-ctl"></div>
-  </div>
-
-  <div class="panel p-perform">
-   <div class="panel-title"><span class="pt-icon">⟳</span> Loop Deck</div>
-   <!-- The ◈ sampler's Loop means "while the note is held" on a part and
-        "until the next hit" on a drum lane. Neither is what you want when you
-        drop in a two-bar break, and this is that: armed to the transport,
-        started with it, stretched to the bar count you ask for. -->
-   <div class="smp-deckrow">
-    <button class="smp-pick" onclick="smpOpenLoopPick()"
-      title="Choose the clip the loop deck plays">
-     <span class="smp-pick-ic" aria-hidden="true">⟳</span><span id="smp-loop-name">no clip</span>
-    </button>
-    <button class="smp-b" id="smp-loop-btn" onclick="smpLoopToggle()"
-      title="Starts now, and from then on it runs with the transport">⟳ Play loop</button>
-   </div>
-   <div id="smp-loop-ctl"></div>
-   <div class="smp-loop-note" id="smp-loop-rate">free — plays at the speed it was recorded</div>
-  </div>
-
-  <div class="panel p-perform">
-   <div class="panel-title"><span class="pt-icon">🗄</span> Clips on this device</div>
-   <div class="smp-store" data-smpstore>—</div>
-   <div class="smp-deckrow" style="margin-top:8px">
-    <button class="smp-b" onclick="smpExportSet()"
-      title="One file with everything: the rig, the songs and every clip's audio">⤒ Export set</button>
-    <button class="smp-b" onclick="document.getElementById('smp-setfile').click()"
-      title="Load a set exported from this or another device">⤓ Import set</button>
-    <input type="file" id="smp-setfile" accept=".zip,.modriff" style="display:none">
-   </div>
-  </div>
- </div>
-
 
  <!-- Sound engine lives BELOW the chords and the melody player: you pick a
       chord long before you pick a tone, so the tone controls should not sit
@@ -6822,7 +6750,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.4.1';
+const MODRIFF_VERSION = '3.5.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7312,7 +7240,11 @@ function smpNewSlot(){
  // root 60 = C4. A clip you recorded by singing has no "real" pitch, so the
  // honest default is "plays back untransposed at middle C" and a Root control
  // to correct it once you know.
- return {id:null, start:0, end:1, gain:1, loop:false, tune:0, fine:0, root:60};
+ // loopA/loopB are the sustain loop, as fractions of the whole clip like
+ // start and end. null means "not placed yet" — smpAutoLoop works them out on
+ // the way in, and a slot that has never looped carries none.
+ return {id:null, start:0, end:1, gain:1, loop:false, loopA:null, loopB:null,
+         tune:0, fine:0, root:60};
 }
 function smpSlot(key, create){
  var s = SMP_SLOTS[key];
@@ -7371,7 +7303,26 @@ function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  // win/rate and not win — an octave up is half as long, the same way a tape
  // machine works.
  var hold = slot.loop ? Math.max(0.02, dur||0.25) : win/rate;
- if(slot.loop){ src.loop=true; src.loopStart=off; src.loopEnd=off+win; }
+ // A SUSTAIN loop, which is the only kind worth having on a sampled
+ // instrument. Looping the whole window is what the first version did, and it
+ // re-articulates: a recorded flute note comes back as breath-tone-breath-
+ // tone, which is not a held note, it is a stutter. The loop region sits
+ // INSIDE the window, past the attack — so the attack plays once and then the
+ // steady part of the note repeats for as long as the key is down.
+ //
+ // Web Audio does this natively: with loop set and a start offset before
+ // loopStart, playback runs from the offset and wraps to loopStart the first
+ // time it reaches loopEnd. So the attack is simply the part of the window
+ // ahead of the loop.
+ //
+ // It is also what makes a sampled instrument playable up the keyboard at
+ // all. A one-shot gets shorter the higher you play it — win/rate — so a
+ // flute sampled for two seconds is half a second two octaves up. A held
+ // looping note lasts exactly as long as you hold it, whatever the pitch.
+ if(slot.loop){
+  var L = smpLoopWin(slot, buf);
+  src.loop=true; src.loopStart=L[0]; src.loopEnd=L[1];
+ }
  // Trimming into the middle of a waveform means starting mid-cycle, and a
  // signal that jumps from silence to mid-cycle is a click. Four milliseconds
  // at each edge is shorter than a 64th note at any tempo this app reaches and
@@ -7387,6 +7338,56 @@ function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  return {src:src, gain:g, end:t0+hold};
 }
 window.smpVoice = smpVoice;
+
+// The loop region in seconds, clamped inside the trimmed window. A slot with
+// no loop points of its own gets them worked out now rather than looping the
+// whole window, which is the behaviour this replaced.
+// Both are fractions of the WHOLE clip, the same coordinates start and end
+// use, so a loop point does not move when the trim does.
+function smpLoopWin(slot, buf){
+ var a = Math.max(0, Math.min(0.999, +slot.start||0));
+ var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
+ var la = slot.loopA, lb = slot.loopB;
+ if(!(la>=0) || !(lb>la)){ var g=smpAutoLoop(slot.id, a, b); la=g.loopA; lb=g.loopB; }
+ la = Math.max(a, Math.min(b-0.0005, la));
+ lb = Math.max(la+0.0005, Math.min(b, lb));
+ return [la*buf.duration, lb*buf.duration];
+}
+
+// Where to loop a note nobody has told us about. Two decisions:
+//
+//  · WHERE — past the attack and before the release. A third of the way in
+//    clears the attack of anything played or blown; nine tenths leaves the
+//    release out of the loop, so the note does not breathe out in the middle
+//    of being held.
+//  · EXACTLY where — snapped to rising zero crossings. This is the whole
+//    difference between a loop and a loop with a tick on every cycle: the
+//    splice joins the signal to itself, and joining it at two points that are
+//    both crossing zero upwards makes it continuous in value AND, on anything
+//    periodic, in phase — two rising crossings are always a whole number of
+//    periods apart.
+function smpAutoLoop(id, a, b){
+ var buf = SMP_BUF[id];
+ var fall = {loopA:a+(b-a)*0.35, loopB:a+(b-a)*0.9};
+ if(!buf) return fall;
+ var d = buf.getChannelData(0), n = d.length;
+ // Rising zero crossing at or after i, searching forward, giving up rather
+ // than wandering out of the region it was asked about.
+ var rise = function(i, stop){
+  for(var k=Math.max(1,i|0); k<stop && k<n; k++) if(d[k-1]<=0 && d[k]>0) return k;
+  return -1;
+ };
+ var lo = Math.floor(fall.loopA*n), hi = Math.floor(fall.loopB*n);
+ var span = Math.max(1, hi-lo);
+ var s1 = rise(lo, lo+span);
+ // The end crossing is hunted backwards from the target so the loop keeps as
+ // much of the note as it can rather than collapsing toward the start.
+ var s2 = -1;
+ for(var k=Math.min(n-1,hi); k>lo; k--) if(d[k-1]<=0 && d[k]>0){ s2=k; break; }
+ if(s1<0 || s2<0 || s2<=s1) return fall;   // silence, or nothing periodic in it
+ return {loopA:s1/n, loopB:s2/n};
+}
+window.smpAutoLoop = smpAutoLoop;
 
 // A pitched part's slot, played from makeVoice(). Separate from smpVoice only
 // so the wave-name lookup lives in one place rather than at five call sites.
@@ -7602,12 +7603,9 @@ function smpAttach(key, clipId){
  // disagree with.
  var t=smpAutoTrim(clipId);
  s.start=t.start; s.end=t.end;
+ s.loopA=null; s.loopB=null;      // a new clip gets its own loop, not the last one's
  if(key.charAt(0)==='v') smpSelectVoice(key.slice(2));
- // The loop deck is the one slot that is also a running voice, so pointing it
- // at a different clip has to swap what is playing rather than just what is
- // named.
- if(key==='loop' && typeof smpLoopArm==='function') smpLoopArm(clipId);
- if(key==='pad'  && typeof smpSyncPadPage==='function') smpSyncPadPage();
+ if(key==='fxpad' && typeof fxSmpSync==='function') fxSmpSync();
  return s;
 }
 
@@ -8102,7 +8100,6 @@ function smpImportSetFile(file){
     var ti=document.getElementById('chart-title');
     if(ti && o.set.title) ti.value=o.set.title;
     smpRenderAll();
-    if(typeof smpSyncPadPage==='function') smpSyncPadPage();
     showToast('Set loaded — '+(o.set.clips||[]).length+' clips');
    });
   });
@@ -8139,529 +8136,6 @@ function smpFillLanes(ids){
 }
 window.smpFillLanes = smpFillLanes;
 
-// ═══════════════════════════════════════
-// SAMPLER · PERFORMANCE — the chop pad and the loop deck
-// ═══════════════════════════════════════
-// The ◈ sampler puts a clip on a part and lets the sequencer trigger it. This
-// is the other half: playing a clip with your hands. Both read the same clips
-// and the same slot shape, so a sound you recorded for a drum lane is already
-// on the pad, trimmed the way you trimmed it.
-//
-// Everything here goes out through the 'sampler' part bus, so it has a fader,
-// a mute, a solo, MōdFX sends and a stem for free — see PARTS.
-
-// The pad's own slot. Same fields as any other, plus the three the pad adds.
-var SMP_PAD = {
- id:null, start:0, end:1, gain:1, loop:false, tune:0, fine:0, root:60,
- chops:8,            // slices the window is cut into; 1 means scrub, not chop
- dir:'fwd',          // 'fwd' | 'rev' | 'ping' — ping alternates per trigger
- yAxis:'pitch',      // what the vertical axis does
- _pingBack:false     // ping-pong's state, flipped by each trigger
-};
-var SMP_PAD_Y = [
- ['pitch', 'Pitch',  'Up an octave at the top, down an octave at the bottom'],
- ['filter','Filter', 'Opens a lowpass as you move up'],
- ['level', 'Level',  'Quiet at the bottom, full at the top'],
- ['gate',  'Gate',   'How much of the slice sounds — clipped at the bottom, all of it at the top']
-];
-var SMP_CHOP_OPTS = [1,2,4,8,16];
-
-// A reversed copy of a clip, built once and kept. AudioBufferSourceNode has no
-// reverse and a negative playbackRate is not allowed, so reverse genuinely
-// means a second buffer — which is also why it is built lazily rather than for
-// every clip on import.
-var SMP_REV = {};
-function smpReversed(ctx, id){
- if(SMP_REV[id]) return SMP_REV[id];
- var src=SMP_BUF[id]; if(!src||!ctx) return null;
- var out=ctx.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
- for(var c=0;c<src.numberOfChannels;c++){
-  var i=src.getChannelData(c), o=out.getChannelData(c), n=src.length;
-  for(var k=0;k<n;k++) o[k]=i[n-1-k];
- }
- SMP_REV[id]=out;
- return out;
-}
-// Reversing the audio also reverses the window: what was 20%–60% from the
-// start is 40%–80% from the end. Without this a reversed slice plays from the
-// wrong part of the clip, which reads as the trim being ignored.
-function _smpFlipWin(a,b){ return [1-b, 1-a]; }
-
-// Which slice of the window a position along the pad lands in, and where that
-// slice sits in the clip. x is 0..1 across the pad.
-function smpSlice(slot, x){
- var n=Math.max(1, slot.chops|0);
- var a=Math.max(0,Math.min(0.999, slot.start||0));
- var b=Math.max(a+0.001, Math.min(1, slot.end==null?1:slot.end));
- var span=(b-a)/n;
- var i=Math.max(0, Math.min(n-1, Math.floor(x*n)));
- // With one chop the pad is a scrub bar, not a slice picker: you start from
- // wherever you touched and play to the end of the window.
- if(n===1) return {i:0, n:1, start:a+(b-a)*Math.max(0,Math.min(0.999,x)), end:b};
- return {i:i, n:n, start:a+i*span, end:a+(i+1)*span};
-}
-
-// One hit from the pad. Builds a throwaway slot for the slice so it can go
-// through smpVoice() — the one place a slot turns into sound — rather than
-// growing a second playback path that could drift from it.
-var _smpPadVoice = null;
-function smpPadHit(x, y, holdSec){
- var ctx=(typeof getCtx==='function')?getCtx():null;
- if(!ctx || !SMP_PAD.id || !SMP_BUF[SMP_PAD.id]) return null;
- var sl=smpSlice(SMP_PAD, x);
- var back = SMP_PAD.dir==='rev' || (SMP_PAD.dir==='ping' && SMP_PAD._pingBack);
- if(SMP_PAD.dir==='ping') SMP_PAD._pingBack=!SMP_PAD._pingBack;
- var a=sl.start, b=sl.end, buf=SMP_BUF[SMP_PAD.id];
- if(back){
-  buf = smpReversed(ctx, SMP_PAD.id) || buf;
-  var f=_smpFlipWin(a,b); a=f[0]; b=f[1];
- }
- var v = Math.max(0, Math.min(1, y));
- var shot = {
-  id:SMP_PAD.id, start:a, end:b, gain:SMP_PAD.gain, loop:SMP_PAD.loop,
-  tune:SMP_PAD.tune, fine:SMP_PAD.fine, root:SMP_PAD.root
- };
- var lvl=1;
- if(SMP_PAD.yAxis==='pitch')      shot.tune = (SMP_PAD.tune||0) + Math.round((v-0.5)*24);
- else if(SMP_PAD.yAxis==='level') lvl = 0.08 + 0.92*v;
- else if(SMP_PAD.yAxis==='gate'){
-  // Shortens the slice from its end, so the bottom of the pad is a stutter and
-  // the top is the whole slice.
-  var keep=0.08+0.92*v;
-  shot.end = shot.start + (shot.end-shot.start)*keep;
- }
- _smpPadStop(ctx, ctx.currentTime);
- var dest=(typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination;
- var out=dest, filt=null;
- if(SMP_PAD.yAxis==='filter'){
-  filt=ctx.createBiquadFilter(); filt.type='lowpass';
-  // Exponential, so the bottom half of the pad is where the sweep is audible
-  // rather than everything happening in the last 10%.
-  filt.frequency.value = 180*Math.pow(100, v);
-  filt.Q.value=0.8;
-  filt.connect(dest); out=filt;
- }
- // The pad is a performance surface: the channel fader, its mute and a solo
- // elsewhere all have to reach it, the same way they reach a drum hit.
- var mx=(typeof _cmx==='function') ? _cmx('sampler') : 1;
- if(!(mx>0)) return null;
- var vv=smpVoice(ctx, shot, out, ctx.currentTime+0.005,
-                 SMP_PAD.loop ? (holdSec||4) : 0, null, lvl*mx*SMP_PAD_TRIM);
- if(!vv) return null;
- _smpPadVoice={ctx:ctx, src:vv.src, gain:vv.gain, filt:filt, end:vv.end, slice:sl.i};
- if(typeof smpPadPaint==='function') smpPadPaint();
- return _smpPadVoice;
-}
-// A buffer normalised to 0.9 straight into a part bus is louder than any synth
-// voice on the same fader. Measured against a drum lane's sampled hit at the
-// same fader position and matched.
-var SMP_PAD_TRIM = 0.62;
-function _smpPadStop(ctx, t){
- var v=_smpPadVoice; if(!v) return;
- _smpPadVoice=null;
- try{
-  v.gain.gain.cancelScheduledValues(t);
-  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
-  v.gain.gain.linearRampToValueAtTime(0, t+0.008);
-  v.src.stop(t+0.03);
- }catch(e){}
-}
-function smpPadRelease(){
- var ctx=(typeof getCtx==='function')?getCtx():null;
- if(ctx) _smpPadStop(ctx, ctx.currentTime);
- if(typeof smpPadPaint==='function') smpPadPaint();
-}
-window.smpPadHit = smpPadHit;
-window.smpPadRelease = smpPadRelease;
-
-// ── The loop deck ────────────────────────────────────────────────────────
-// A clip that just runs. The ◈ sampler's Loop means "hold this open while the
-// note is" on a part and "until the next hit" on a drum lane, both of which
-// are the right answer there and neither of which is what you want when you
-// drop in a two-bar break. This is that: armed to the transport, started with
-// it, looping until you stop it.
-//
-// Its own scheduling is one looping AudioBufferSourceNode rather than a note
-// per bar. A looping source keeps sample-accurate time on the audio clock
-// forever; re-triggering it every bar from a JS timer would drift and would
-// put a seam on every loop point.
-var SMP_LOOP = Object.assign(smpNewSlot(), {
- bars:0,        // 0 = play at its own speed; 1/2/4/8 = stretch to fit that many bars
- on:false       // armed: starts with the transport
-});
-var _smpLoopNode = null;
-
-// Both of these ARE slots — same shape, same editor, same snapshot — so they
-// are registered in the one map rather than kept beside it. That is what lets
-// the library sheet target them, smpForget() clear them when a clip is
-// deleted, and the setup snapshot carry them, without any of those learning
-// about two new kinds of thing.
-SMP_SLOTS.pad  = SMP_PAD;
-SMP_SLOTS.loop = SMP_LOOP;
-
-function smpLoopBarsSec(bars){
- var bpm=parseFloat((document.getElementById('bpm')||{}).value)||100;
- // A bar is however many sixteenths the sequencer is running, not four beats —
- // the same rule _scheduleCompHits uses, so a 3/4 or 5/4 song loops in ITS bar.
- var steps=(typeof window._sqSteps==='function' && window._sqSteps()) || 16;
- return steps*(60/bpm/4)*bars;
-}
-// What playbackRate makes the clip's window last `bars` bars. Returns 1 when
-// the deck is set to Free, which is "play it at the speed it was recorded".
-function smpLoopRate(){
- if(!SMP_LOOP.bars || !SMP_LOOP.id) return 1;
- var buf=SMP_BUF[SMP_LOOP.id]; if(!buf) return 1;
- var c=smpClip(SMP_LOOP.id);
- var w=_smpLoopWin(c);
- var natural=(w[1]-w[0])*buf.duration;
- var want=smpLoopBarsSec(SMP_LOOP.bars);
- if(!(natural>0) || !(want>0)) return 1;
- return Math.max(1/32, Math.min(32, natural/want));
-}
-function _smpLoopWin(clip){
- var a=Math.max(0,Math.min(0.999,SMP_LOOP.start||0));
- var b=Math.max(a+0.001,Math.min(1,SMP_LOOP.end==null?1:SMP_LOOP.end));
- return [a,b];
-}
-function smpLoopPlaying(){ return !!_smpLoopNode; }
-window.smpLoopPlaying = smpLoopPlaying;
-
-function smpLoopStart(){
- smpLoopStop();
- if(!SMP_LOOP.on || !SMP_LOOP.id) return;
- var ctx=(typeof getCtx==='function')?getCtx():null;
- var buf=ctx && SMP_BUF[SMP_LOOP.id]; if(!buf) return;
- var clip=smpClip(SMP_LOOP.id);
- var w=_smpLoopWin(clip);
- var off=w[0]*buf.duration, len=(w[1]-w[0])*buf.duration;
- if(!(len>0.01)) return;
- var src=ctx.createBufferSource();
- src.buffer=buf;
- src.loop=true; src.loopStart=off; src.loopEnd=off+len;
- src.playbackRate.value=smpLoopRate();
- var g=ctx.createGain();
- var lvl=Math.max(0,SMP_LOOP.gain)*smpNorm(clip)*SMP_PAD_TRIM;
- // A loop that snaps on clicks as loudly as one that snaps off. Eight
- // milliseconds is inaudible as a fade and completely removes both.
- var t0=ctx.currentTime+0.02;
- g.gain.setValueAtTime(0,t0);
- g.gain.linearRampToValueAtTime(lvl,t0+0.008);
- src.connect(g);
- g.connect((typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination);
- src.start(t0, off);
- _smpLoopNode={ctx:ctx, src:src, gain:g, lvl:lvl};
- smpLoopSync();
-}
-function smpLoopStop(){
- var n=_smpLoopNode; if(!n) return;
- _smpLoopNode=null;
- try{
-  var t=n.ctx.currentTime;
-  n.gain.gain.cancelScheduledValues(t);
-  n.gain.gain.setValueAtTime(n.gain.gain.value,t);
-  n.gain.gain.linearRampToValueAtTime(0,t+0.012);
-  n.src.stop(t+0.05);
- }catch(e){}
- smpLoopSync();
-}
-// Tempo moved, or the mixer did. Changing playbackRate on a running source is
-// sample-accurate and seamless, so a tempo change does not have to restart the
-// loop and put a seam in it.
-function smpLoopRetune(){
- var n=_smpLoopNode; if(!n) return;
- try{ n.src.playbackRate.setTargetAtTime(smpLoopRate(), n.ctx.currentTime, 0.02); }catch(e){}
-}
-window.smpLoopRetune = smpLoopRetune;
-// Called from startEverything/stopEverything so the deck runs with the band
-// rather than needing its own transport.
-window.smpLoopTransport = function(on){
- if(on){ if(SMP_LOOP.on && SMP_LOOP.id) smpLoopStart(); }
- else smpLoopStop();
-};
-function smpLoopArm(id){
- SMP_LOOP.id=id||null;
- SMP_LOOP.on=!!id;
- if(_smpLoopNode) smpLoopStart();        // swap what is playing, in place
- else if(SMP_LOOP.on && typeof window._sqPlaying==='function' && window._sqPlaying()) smpLoopStart();
- smpLoopSync();
-}
-window.smpLoopArm = smpLoopArm;
-function smpLoopToggle(){
- if(_smpLoopNode){ SMP_LOOP.on=false; smpLoopStop(); return; }
- if(!SMP_LOOP.id){ showToast('Pick a clip for the loop deck first'); return; }
- SMP_LOOP.on=true;
- smpLoopStart();
- smpLoopSync();
-}
-window.smpLoopToggle = smpLoopToggle;
-function smpLoopSetBars(b){
- SMP_LOOP.bars=b|0;
- smpLoopRetune();
- smpLoopSync();
-}
-
-// ── The pad surface ──────────────────────────────────────────────────────
-// Slice lanes drawn over the clip's own waveform, so you can see where the
-// chops fall in the sound rather than having to remember. Dragging across it
-// retriggers as you cross into a new lane — which is the gesture, not a side
-// effect of one.
-var _smpPadDown = false, _smpPadLane = -1;
-function smpPadPaint(){
- var cv=document.getElementById('smp-pad-cv'); if(!cv) return;
- var dpr=Math.min(2, window.devicePixelRatio||1);
- var w=cv.clientWidth||300, h=cv.clientHeight||150;
- if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){
-  cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr);
- }
- var g=cv.getContext('2d');
- g.setTransform(dpr,0,0,dpr,0,0);
- g.clearRect(0,0,w,h);
- var cs=getComputedStyle(document.documentElement);
- var accent=(cs.getPropertyValue('--accent')||'#f0c040').trim();
- var muted=(cs.getPropertyValue('--muted')||'#7a7f95').trim();
- if(!SMP_PAD.id || !SMP_BUF[SMP_PAD.id]){
-  g.fillStyle=muted; g.font='12px sans-serif'; g.textAlign='center';
-  g.fillText('Pick a clip', w/2, h/2);
-  return;
- }
- var pk=smpPeaks(SMP_PAD.id);
- var a=Math.max(0,Math.min(0.999,SMP_PAD.start||0));
- var b=Math.max(a+0.001,Math.min(1,SMP_PAD.end==null?1:SMP_PAD.end));
- // The waveform, stretched so the trimmed window fills the pad — the pad IS
- // the window, so drawing the untrimmed clip behind it would be a second
- // coordinate system on the same surface.
- if(pk){
-  var mid=h/2, amp=h/2-8;
-  g.fillStyle=muted; g.globalAlpha=.34;
-  for(var x=0;x<w;x++){
-   var f=a+(b-a)*(x/w);
-   var c=Math.min(SMP_PEAK_N-1, Math.floor(f*SMP_PEAK_N));
-   var mn=pk[c*2], mx=pk[c*2+1];
-   g.fillRect(x, mid-mx*amp, 1, Math.max(1,(mx-mn)*amp));
-  }
-  g.globalAlpha=1;
- }
- var n=Math.max(1, SMP_PAD.chops|0);
- if(n>1){
-  g.strokeStyle=muted; g.globalAlpha=.55; g.lineWidth=1;
-  for(var i=1;i<n;i++){
-   var px=Math.round(i*w/n)+0.5;
-   g.beginPath(); g.moveTo(px,0); g.lineTo(px,h); g.stroke();
-  }
-  g.globalAlpha=1;
-  g.fillStyle=muted; g.font='9px sans-serif'; g.textAlign='left';
-  for(var j=0;j<n;j++) g.fillText(String(j+1), j*w/n+3, h-4);
- }
- // The lane currently sounding.
- if(_smpPadVoice && _smpPadVoice.ctx.currentTime < _smpPadVoice.end){
-  var li=_smpPadVoice.slice;
-  g.fillStyle=accent; g.globalAlpha=.16;
-  g.fillRect(li*w/n, 0, w/n, h);
-  g.globalAlpha=1;
-  requestAnimationFrame(smpPadPaint);
- }
- // The Y axis, named on the surface it belongs to.
- var ylab=(SMP_PAD_Y.find(function(o){return o[0]===SMP_PAD.yAxis;})||[,'Y'])[1];
- g.fillStyle=muted; g.font='9px sans-serif'; g.textAlign='right';
- g.fillText(ylab+' ↑', w-5, 12);
- if(SMP_PAD.dir!=='fwd'){
-  g.textAlign='left';
-  g.fillText(SMP_PAD.dir==='rev'?'◀ reverse':'⇄ ping-pong', 5, 12);
- }
-}
-window.smpPadPaint = smpPadPaint;
-
-function smpPadPointer(ev){
- var cv=document.getElementById('smp-pad-cv'); if(!cv) return;
- if(!SMP_PAD.id){ if(typeof smpOpenPadPick==='function') smpOpenPadPick(); return; }
- ev.preventDefault();
- try{ cv.setPointerCapture(ev.pointerId); }catch(e){}
- var rect=cv.getBoundingClientRect();
- var at=function(e){
-  return { x:Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)),
-           y:Math.max(0,Math.min(1,1-(e.clientY-rect.top)/rect.height)) };
- };
- var fire=function(e){
-  var p=at(e);
-  var lane=smpSlice(SMP_PAD,p.x).i;
-  // With one chop the pad scrubs, so every move is a new start point; with
-  // chops it retriggers only when you cross into another lane, which is what
-  // makes a drag across it sound like playing rather than like a machine gun.
-  if(SMP_PAD.chops>1 && lane===_smpPadLane && _smpPadVoice) return;
-  _smpPadLane=lane;
-  smpPadHit(p.x, p.y);
- };
- var move=function(e){ if(_smpPadDown) fire(e); };
- var up=function(){
-  _smpPadDown=false; _smpPadLane=-1;
-  window.removeEventListener('pointermove',move);
-  window.removeEventListener('pointerup',up);
-  window.removeEventListener('pointercancel',up);
-  // A one-shot is allowed to ring out; a looping pad stops when you let go,
-  // because a loop you cannot stop by lifting your finger is a stuck note.
-  if(SMP_PAD.loop) smpPadRelease();
- };
- _smpPadDown=true;
- window.addEventListener('pointermove',move,{passive:false});
- window.addEventListener('pointerup',up);
- window.addEventListener('pointercancel',up);
- fire(ev);
-}
-window.smpPadPointer = smpPadPointer;
-
-// ── The Play › Sampler panel ─────────────────────────────────────────────
-function smpBuildPad(){
- var host=document.getElementById('smp-pad-ctl'); if(!host) return;
- host.innerHTML='';
- var seg=function(label, opts, isOn, pick, title){
-  var row=document.createElement('div'); row.className='ci-row';
-  var lb=document.createElement('div'); lb.className='ci-lbl'; lb.textContent=label;
-  if(title) lb.title=title;
-  row.appendChild(lb);
-  var s=document.createElement('div'); s.className='ci-seg';
-  opts.forEach(function(o){
-   var b=document.createElement('button'); b.type='button'; b.textContent=o[1];
-   if(o[2]) b.title=o[2];
-   if(isOn(o[0])) b.className='on';
-   b.addEventListener('click',function(){ pick(o[0]); });
-   s.appendChild(b);
-  });
-  row.appendChild(s);
-  host.appendChild(row);
- };
- seg('Chops', SMP_CHOP_OPTS.map(function(n){ return [n, n===1?'Scrub':String(n)]; }),
-   function(n){ return (SMP_PAD.chops|0)===n; },
-   function(n){ SMP_PAD.chops=n; smpBuildPad(); smpPadPaint(); },
-   'How many slices the pad is cut into. Scrub plays from wherever you touch.');
- seg('Direction', [['fwd','▶ Fwd','Plays each slice forwards'],
-                   ['rev','◀ Rev','Plays each slice backwards'],
-                   ['ping','⇄ Ping','Alternates forwards and backwards on every hit']],
-   function(d){ return SMP_PAD.dir===d; },
-   function(d){ SMP_PAD.dir=d; SMP_PAD._pingBack=false; smpBuildPad(); smpPadPaint(); });
- seg('Y axis', SMP_PAD_Y.map(function(o){ return [o[0],o[1],o[2]]; }),
-   function(k){ return SMP_PAD.yAxis===k; },
-   function(k){ SMP_PAD.yAxis=k; smpBuildPad(); smpPadPaint(); });
- var row=document.createElement('div'); row.className='ci-row';
- var lb=document.createElement('div'); lb.className='ci-lbl'; lb.textContent='Hold';
- row.appendChild(lb);
- var s2=document.createElement('div'); s2.className='ci-seg';
- var lp=document.createElement('button'); lp.type='button';
- lp.textContent=SMP_PAD.loop?'Loop while held':'One-shot';
- lp.title='One-shot lets a slice ring out. Loop repeats it for as long as your finger is down.';
- if(SMP_PAD.loop) lp.className='on';
- lp.addEventListener('click',function(){ SMP_PAD.loop=!SMP_PAD.loop; smpBuildPad(); });
- s2.appendChild(lp);
- var sl=document.createElement('button'); sl.type='button'; sl.textContent='✂ Slice to lanes';
- sl.title='Cuts the clip into its slices and puts one on each lane of the kit you are on, in order.';
- sl.addEventListener('click', smpSliceToLanes);
- s2.appendChild(sl);
- row.appendChild(s2);
- host.appendChild(row);
-}
-
-// ── Slice to lanes ───────────────────────────────────────────────────────
-// The breakbeat move: cut a bar of drums into eight and lay the pieces across
-// the kit so the sequencer can put them back in a different order. Each lane
-// gets a slot whose window is that slice of the same clip — no audio is
-// copied, which is why sixteen slices cost nothing.
-function smpSliceToLanes(){
- if(!SMP_PAD.id || !SMP_BUF[SMP_PAD.id]) return showToast('Pick a clip first');
- var mach=(typeof window._sqMach==='function') ? window._sqMach() : null;
- var tracks=(typeof window._sqTracks==='function') ? window._sqTracks(mach) : [];
- if(!mach || !tracks.length) return showToast('No drum kit to slice onto');
- var n=Math.min(SMP_PAD.chops|0, tracks.length);
- if(n<2) return showToast('Set Chops to 2 or more first');
- var before={};
- for(var i=0;i<tracks.length;i++){
-  var k=smpKeyDrum(mach,i);
-  if(SMP_SLOTS[k]) before[k]=Object.assign({},SMP_SLOTS[k]);
- }
- for(var j=0;j<n;j++){
-  var sl=smpSlice(SMP_PAD, (j+0.5)/ (SMP_PAD.chops|0));
-  var key=smpKeyDrum(mach,j);
-  SMP_SLOTS[key]=Object.assign(smpNewSlot(), {id:SMP_PAD.id, start:sl.start, end:sl.end});
- }
- if(typeof window._sqRenderGrid==='function') window._sqRenderGrid();
- smpSyncBadges();
- showToast(n+' slices across '+(tracks[0]._m||mach), {actionLabel:'Undo', onAction:function(){
-  for(var i=0;i<tracks.length;i++){
-   var k=smpKeyDrum(mach,i);
-   if(before[k]) SMP_SLOTS[k]=before[k]; else delete SMP_SLOTS[k];
-  }
-  if(typeof window._sqRenderGrid==='function') window._sqRenderGrid();
-  smpSyncBadges();
- }});
-}
-window.smpSliceToLanes = smpSliceToLanes;
-
-// ── The loop deck's controls ─────────────────────────────────────────────
-function smpLoopSync(){
- var b=document.getElementById('smp-loop-btn');
- if(b){
-  var on=smpLoopPlaying();
-  b.classList.toggle('on', on);
-  b.textContent = on ? '■ Stop loop' : '⟳ Play loop';
- }
- var nm=document.getElementById('smp-loop-name');
- if(nm){
-  var c=SMP_LOOP.id?smpClip(SMP_LOOP.id):null;
-  nm.textContent = c ? c.name : 'no clip';
- }
- document.querySelectorAll('[data-loopbars]').forEach(function(el){
-  el.classList.toggle('on', (+el.dataset.loopbars)===(SMP_LOOP.bars|0));
- });
- var r=document.getElementById('smp-loop-rate');
- if(r){
-  var rate=smpLoopRate();
-  r.textContent = SMP_LOOP.bars
-   ? (Math.abs(rate-1)<0.005 ? 'at its own speed' : (rate>1?'sped up ':'slowed ')+'×'+rate.toFixed(2))
-   : 'free — plays at the speed it was recorded';
- }
-}
-window.smpLoopSync = smpLoopSync;
-
-function smpBuildLoopDeck(){
- var host=document.getElementById('smp-loop-ctl'); if(!host) return;
- host.innerHTML='';
- var row=document.createElement('div'); row.className='ci-row';
- var lb=document.createElement('div'); lb.className='ci-lbl'; lb.textContent='Fit';
- lb.title='Stretch the clip so it lasts this many bars at the current tempo. Free leaves it alone.';
- row.appendChild(lb);
- var seg=document.createElement('div'); seg.className='ci-seg';
- [[0,'Free'],[1,'1 bar'],[2,'2'],[4,'4'],[8,'8']].forEach(function(o){
-  var b=document.createElement('button'); b.type='button'; b.textContent=o[1];
-  b.dataset.loopbars=o[0];
-  if((SMP_LOOP.bars|0)===o[0]) b.className='on';
-  b.addEventListener('click',function(){ smpLoopSetBars(o[0]); smpBuildLoopDeck(); });
-  seg.appendChild(b);
- });
- row.appendChild(seg);
- host.appendChild(row);
- smpLoopSync();
-}
-window.smpBuildLoopDeck = smpBuildLoopDeck;
-
-// Opens the library with the pad as its destination, so picking a clip lands
-// it here rather than on a part.
-function smpOpenPadPick(){ smpOpenSlot('pad'); }
-window.smpOpenPadPick = smpOpenPadPick;
-function smpOpenLoopPick(){ smpOpenSlot('loop'); }
-window.smpOpenLoopPick = smpOpenLoopPick;
-
-// Everything the Play › Sampler page shows, repainted from state.
-function smpSyncPadPage(){
- var nm=document.getElementById('smp-pad-name');
- if(nm){
-  var c=SMP_PAD.id?smpClip(SMP_PAD.id):null;
-  nm.textContent=c?c.name:'Pick a clip';
- }
- smpBuildPad();
- smpBuildLoopDeck();
- smpPadPaint();
- smpStorageSync();
-}
-window.smpSyncPadPage = smpSyncPadPage;
-
 // ── The panel ────────────────────────────────────────────────────────────
 // One sheet, two faces. LIBRARY is the clips themselves — record, import,
 // rename, delete, and "put this one on…". EDITOR is a single slot: the clip
@@ -8675,8 +8149,7 @@ var _smpPrev = null;      // the preview voice, so a second tap can stop it
 
 function smpSlotLabel(key){
  if(!key) return '';
- if(key==='pad')  return 'Chop pad';
- if(key==='loop') return 'Loop deck';
+ if(key==='fxpad') return 'MōdFX pad';
  if(key.charAt(0)==='v'){
   var p = (typeof partById==='function') ? partById(key.slice(2)) : null;
   return p ? p.label : key.slice(2);
@@ -8812,6 +8285,14 @@ function smpRenderEditor(){
   var lp=document.getElementById('smp-loop');
   lp.classList.toggle('active', !!slot.loop);
   lp.textContent = slot.loop ? 'Loop' : '1-Shot';
+  if(buf && slot.loop){
+   var LW=smpLoopWin(slot, buf);
+   lp.title='Holds the note for as long as you play it: the attack sounds once, '
+    +'then '+(LW[0]).toFixed(2)+'s–'+(LW[1]).toFixed(2)+'s repeats. Drag the green '
+    +'markers to move it.';
+  } else {
+   lp.title='One-shot plays the trimmed window once and stops, so a note gets shorter the higher you play it. Loop holds it instead.';
+  }
   if(pitched) document.getElementById('smp-root-v').textContent=_smpNoteName(slot.root==null?60:slot.root);
   var tw=document.getElementById('smp-trim-v');
   if(tw && buf) tw.textContent=(slot.start*buf.duration).toFixed(2)+'s – '+(slot.end*buf.duration).toFixed(2)+'s';
@@ -8836,13 +8317,14 @@ function smpRenderDest(){
  var h=document.createElement('div'); h.className='smp-sec'; h.textContent='Place “'+(smpClip(_smpSelId)||{}).name+'” on';
  host.appendChild(h);
  var row=document.createElement('div'); row.className='smp-chips';
- [['pad','◈ Chop pad','#ffd54a'],['loop','⟳ Loop deck','#2df09a']].forEach(function(o){
+ (function(){
   var b=document.createElement('button');
-  b.type='button'; b.className='smp-chip'; b.textContent=o[1];
-  b.style.setProperty('--smp-c', o[2]);
-  b.onclick=function(){ smpAssignTo(o[0]); };
+  b.type='button'; b.className='smp-chip'; b.textContent='◈ MōdFX pad';
+  b.style.setProperty('--smp-c','#ffd54a');
+  b.title='Hold the MōdFX pad to play this clip, with the pad\u2019s own axes on it';
+  b.onclick=function(){ smpAssignTo('fxpad'); };
   row.appendChild(b);
- });
+ })();
  (typeof PARTS!=='undefined'?PARTS:[]).filter(function(p){ return p.voice; }).forEach(function(p){
   var b=document.createElement('button');
   b.type='button'; b.className='smp-chip'; b.textContent=p.icon+' '+p.label;
@@ -9010,6 +8492,19 @@ function smpDrawWave(){
  g.fillStyle=accent;
  g.fillRect(a-1,0,2,h); g.fillRect(b-1,0,2,h);
  g.fillRect(a-1,0,9,7);  g.fillRect(b-8,h-7,9,7);
+ // The sustain loop, when there is one. Drawn inside the window because that
+ // is where it lives: everything left of it is the attack, which plays once.
+ if(slot.loop){
+  var L=smpLoopWin(slot, buf);
+  var la=Math.round(L[0]/buf.duration*w), lb=Math.round(L[1]/buf.duration*w);
+  var green=(cs.getPropertyValue('--pg')||'#2df09a').trim();
+  g.fillStyle=green; g.globalAlpha=.16; g.fillRect(la, 0, Math.max(1,lb-la), h);
+  g.globalAlpha=1;
+  g.fillRect(la-1, 0, 2, h); g.fillRect(lb-1, 0, 2, h);
+  // Tabs on the inside edges, so they read as a pair facing each other and
+  // never sit under the trim tabs at the corners.
+  g.fillRect(la, h/2-5, 7, 10); g.fillRect(lb-7, h/2-5, 7, 10);
+ }
  // Where the preview has got to. Setting a start point by ear needs to know
  // which part of the drawing you are hearing.
  if(_smpPrev && _smpPrev.slot && _smpPrev.slot.id===slot.id){
@@ -9030,16 +8525,37 @@ function smpDrawWave(){
 function smpWaveDrag(ev){
  var cv=document.getElementById('smp-wave'); if(!cv) return;
  var slot=_smpOpenKey?smpSlot(_smpOpenKey,true):null; if(!slot||!slot.id) return;
+ var buf0=SMP_BUF[slot.id];
  var r=cv.getBoundingClientRect();
  var at=function(e){ return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)); };
  var p=at(ev);
- var edge=(Math.abs(p-slot.start)<=Math.abs(p-slot.end))?'start':'end';
+ // Four points when the slot loops, two when it does not, and the nearest one
+ // moves — the same "whichever edge you landed nearer" rule the trim already
+ // used, extended rather than replaced, so there is still nothing to hit
+ // precisely on a phone.
+ var pts=[['start',slot.start],['end',slot.end]];
+ if(slot.loop && buf0){
+  var L=smpLoopWin(slot, buf0);
+  if(slot.loopA==null) slot.loopA=L[0]/buf0.duration;
+  if(slot.loopB==null) slot.loopB=L[1]/buf0.duration;
+  pts.push(['loopA',slot.loopA],['loopB',slot.loopB]);
+ }
+ var edge=pts.reduce(function(best,o){
+  return Math.abs(p-o[1]) < Math.abs(p-best[1]) ? o : best;
+ })[0];
  var move=function(e){
   e.preventDefault();
   var q=at(e);
-  if(edge==='start') slot.start=Math.min(q, slot.end-0.002);
-  else               slot.end  =Math.max(q, slot.start+0.002);
+  if(edge==='start')      slot.start=Math.min(q, slot.end-0.002);
+  else if(edge==='end')   slot.end  =Math.max(q, slot.start+0.002);
+  else if(edge==='loopA') slot.loopA=Math.max(slot.start, Math.min(q, (slot.loopB==null?slot.end:slot.loopB)-0.002));
+  else                    slot.loopB=Math.min(slot.end,   Math.max(q, (slot.loopA==null?slot.start:slot.loopA)+0.002));
   slot.start=Math.max(0,slot.start); slot.end=Math.min(1,slot.end);
+  // The loop has to stay inside the window it lives in, so pulling a trim
+  // handle past a loop point drags that point along rather than leaving it
+  // stranded outside.
+  if(slot.loopA!=null) slot.loopA=Math.max(slot.start, Math.min(slot.end-0.001, slot.loopA));
+  if(slot.loopB!=null) slot.loopB=Math.max((slot.loopA==null?slot.start:slot.loopA)+0.001, Math.min(slot.end, slot.loopB));
   smpDrawWave();
   var buf=SMP_BUF[slot.id], tw=document.getElementById('smp-trim-v');
   if(tw&&buf) tw.textContent=(slot.start*buf.duration).toFixed(2)+'s – '+(slot.end*buf.duration).toFixed(2)+'s';
@@ -9063,9 +8579,19 @@ function smpEdit(field, v){
  else if(field==='tune') s.tune=Math.max(-24,Math.min(24,Math.round(+v||0)));
  else if(field==='fine') s.fine=Math.max(-100,Math.min(100,Math.round(+v||0)));
  else if(field==='root') s.root=Math.max(12,Math.min(108,(s.root==null?60:s.root)+(+v||0)));
- else if(field==='loop') s.loop=!s.loop;
- else if(field==='whole'){ s.start=0; s.end=1; }
- else if(field==='trim'){ var t=smpAutoTrim(s.id); s.start=t.start; s.end=t.end; }
+ else if(field==='loop'){
+  s.loop=!s.loop;
+  // Placed on the way in, past the attack and snapped to zero crossings, so
+  // switching Loop on gives a usable held note rather than a region to go and
+  // find. Only when the slot has none — yours are never overwritten.
+  if(s.loop && s.id && (s.loopA==null || s.loopB==null)){
+   var g2=smpAutoLoop(s.id, s.start||0, s.end==null?1:s.end);
+   s.loopA=g2.loopA; s.loopB=g2.loopB;
+  }
+ }
+ else if(field==='whole'){ s.start=0; s.end=1; s.loopA=null; s.loopB=null; }
+ else if(field==='trim'){ var t=smpAutoTrim(s.id); s.start=t.start; s.end=t.end;
+                          s.loopA=null; s.loopB=null; }
  else if(field==='clear'){
   s.id=null;
   // makeVoice falls back to piano with nothing assigned, so leaving the part
@@ -9119,44 +8645,21 @@ function smpCaptureState(){
  Object.keys(SMP_SLOTS).forEach(function(k){
   var s=SMP_SLOTS[k];
   if(!s || !s.id) return;
-  var o={id:s.id,start:s.start,end:s.end,gain:s.gain,loop:!!s.loop,
-         tune:s.tune,fine:s.fine,root:s.root};
-  // The pad and the deck carry three fields each that no other slot has, and
-  // a rig that comes back with the clip but not the chop count or the bar fit
-  // is not the rig that was saved.
-  if(k==='pad'){ o.chops=s.chops; o.dir=s.dir; o.yAxis=s.yAxis; }
-  if(k==='loop'){ o.bars=s.bars; o.on=!!s.on; }
-  out[k]=o;
+  out[k]={id:s.id,start:s.start,end:s.end,gain:s.gain,loop:!!s.loop,
+          loopA:s.loopA, loopB:s.loopB,
+          tune:s.tune,fine:s.fine,root:s.root};
  });
  return out;
 }
 window.smpCaptureState = smpCaptureState;
 function smpApplyState(st){
- var wasLoop = (typeof smpLoopPlaying==='function') && smpLoopPlaying();
  SMP_SLOTS={};
- // The chop pad and the loop deck are module-level objects that other code
- // holds a reference to, so they are emptied and refilled in place — replacing
- // them with fresh objects of the same shape would leave the pad editing a
- // slot nothing plays.
- if(typeof SMP_PAD!=='undefined'){
-  Object.assign(SMP_PAD, smpNewSlot(), {chops:8, dir:'fwd', yAxis:'pitch', _pingBack:false});
-  SMP_SLOTS.pad=SMP_PAD;
- }
- if(typeof SMP_LOOP!=='undefined'){
-  Object.assign(SMP_LOOP, smpNewSlot(), {bars:0, on:false});
-  SMP_SLOTS.loop=SMP_LOOP;
- }
  if(st && typeof st==='object'){
   Object.keys(st).forEach(function(k){
-   if(SMP_SLOTS[k]) Object.assign(SMP_SLOTS[k], st[k]);
-   else SMP_SLOTS[k]=Object.assign(smpNewSlot(), st[k]);
+   SMP_SLOTS[k]=Object.assign(smpNewSlot(), st[k]);
   });
  }
- if(typeof smpLoopStop==='function'){
-  smpLoopStop();
-  if(wasLoop && SMP_LOOP.on && SMP_LOOP.id) smpLoopStart();
- }
- if(typeof smpSyncPadPage==='function') smpSyncPadPage();
+ if(typeof fxSmpSync==='function') fxSmpSync();
  smpRenderAll();
 }
 window.smpApplyState = smpApplyState;
@@ -9180,8 +8683,6 @@ function smpInit(){
   else smpImportFiles(audio);
   dir.value='';
  });
- var pad=document.getElementById('smp-pad-cv');
- if(pad) pad.addEventListener('pointerdown', smpPadPointer);
  var ov=document.getElementById('smp-modal');
  if(ov) ov.addEventListener('click', function(e){ if(e.target===ov) smpClose(); });
  document.addEventListener('keydown', function(e){
@@ -9189,7 +8690,7 @@ function smpInit(){
   var o=document.getElementById('smp-modal');
   if(o && o.classList.contains('visible')) smpClose();
  });
- window.addEventListener('resize', function(){ smpDrawWave(); smpPadPaint(); });
+ window.addEventListener('resize', function(){ smpDrawWave(); });
  smpLoadLibrary().then(function(){ smpStorageSync(); });
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', smpInit);
@@ -13093,22 +12594,14 @@ const FIND_INDEX = [
                   el:'song-swing-btn'})},
  // The progressions and the standards were two <select>s with no entry here
  // at all, which is a fair description of how findable they were.
- {name:'Sampler — record your own sounds', where:'Play › Sampler',
-  keys:'sample sampler record recording mic microphone resample clip audio import wav mp3 one-shot oneshot own sound',
-  note:'Record from the mic, resample what the app is playing, or import files — then put a clip on any part, any drum lane, the chop pad or the loop deck.',
-  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('sampler')})},
- {name:'Chop pad — play a sample by hand', where:'Play › Sampler',
-  keys:'chop chopping slice slicing pad xy x/y stutter scrub reverse backwards direction ping pong breakbeat mangle',
-  note:'Cuts a clip into slices across a pad. Forwards, reverse or ping-pong, with pitch, filter, level or gate on the vertical.',
-  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('sampler'), el:'smp-pad-cv'})},
- {name:'Loop deck — run a sample under the song', where:'Play › Sampler',
-  keys:'loop looping break beat breakbeat bar sync stretch tempo run under song sample loop',
-  note:'Arms a clip to the transport and stretches it to 1, 2, 4 or 8 bars at your tempo.',
-  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('sampler'), el:'smp-loop-btn'})},
- {name:'Export / import the whole set', where:'Play › Sampler',
+ {name:'Sampler — record your own sounds', where:'Anywhere · the ◈ buttons',
+  keys:'sample sampler record recording mic microphone resample clip audio import wav mp3 one-shot oneshot own sound flute loop sustain',
+  note:'Record from the mic, resample what the app is playing, or import files — then put a clip on any part or any drum lane with its ◈.',
+  go:()=>{ closeFind(); if(typeof smpOpenLibrary==='function') smpOpenLibrary(); }},
+ {name:'Export / import the whole set', where:'Sampler › Clips',
   keys:'export import set backup zip save everything clips audio move device transfer restore',
   note:'One .zip with the rig, the songs and every clip\u2019s audio — for moving to another device or putting back after clearing site data.',
-  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('sampler')})},
+  go:()=>{ closeFind(); if(typeof smpOpenLibrary==='function') smpOpenLibrary(); }},
  {name:'Library — progressions, standards, your songs', where:'Songs › Build',
   keys:'library progression standard standards jazz real book common preset blues turnaround ii-v-i doo-wop song load add section browse',
   note:'Common progressions in your key, the jazz and public-domain standards, and everything you have saved — with a preview on every row.',
@@ -14428,14 +13921,14 @@ const PARTS=[
  {id:'bass',   label:'Bass',       short:'BASS',   stem:'Bass',       color:'#a855f7', icon:'♪', voice:true,  layer:true,  mix:true, fx:true},
  {id:'melgen', label:'Melody Seq', short:'MEL SQ', stem:'Melody Seq', color:'#ff8ad4', icon:'✦', voice:true,  layer:true,  mix:true, fx:true},
  {id:'arp',    label:'Arp',        short:'ARP',    stem:'Arp',        color:'#2df09a', icon:'↺', voice:true,  layer:true,  mix:true, fx:true},
- // Your own recordings, played as a performance instrument rather than as one
- // part's voice: the chop pad and the loop deck on Play › Sampler. A part of
- // its own because a loop running under the song is a thing you mix, send to
- // MōdFX and bounce as a stem like anything else — and because `mix:true`
- // here is the only place that has to be said for all three to happen.
+ // Where a clip sounds when it is played from the MōdFX pad rather than from
+ // a part. It needs a channel of its own because the pad's axes are aimed at
+ // channels — without one there is nothing for the pad to apply itself to —
+ // and `mix:true` here is the only place that has to be said for the fader,
+ // the mute, the solo, the meter, the sends and the stem to all appear.
  // `voice:false`: it is not something a part can be switched to. Putting a
- // clip ON a part is the ◈ sampler, and that plays through that part's own
- // channel, which is the honest place for it.
+ // clip ON a part is the ◈ beside that part, and it plays through that part's
+ // own channel, which is the honest place for it.
  {id:'sampler',label:'Sampler',    short:'SMPL',   stem:'Sampler',    color:'#ffd54a', icon:'◈', voice:false, layer:false, mix:true, fx:true},
 ];
 const PART_ORDER = PARTS.map(p=>p.id);
@@ -22117,7 +21610,6 @@ window.addEventListener('resize', positionAllSubnavLeds);
 function _fxAllowed(){
  try{ return typeof fxIsAvailable!=='function' || fxIsAvailable(); }catch(e){ return false; }
 }
-var _pfSmpOpen = false;
 function setPerformMode(m){
  // MōdFX is pro. Asking for it without the entitlement lands on Chords rather
  // than on an empty panel.
@@ -22137,32 +21629,8 @@ function setPerformMode(m){
  document.getElementById('pf-chords-btn')?.classList.toggle('active', m==='chords');
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-fx-btn')?.classList.toggle('active', m==='fx');
- document.getElementById('pf-smp-btn')?.classList.toggle('active', m==='sampler');
- // Basic has no sub-nav — that is the point of it — so in Basic the sampler
- // cannot be an exclusive pane: switching to it would hide Chords and Melody
- // with nothing on screen to switch back with. It is ADDITIVE there instead:
- // asking for it appends it to the one screen and leaves everything else
- // where it was, which is what Basic means. It stays for the session because
- // scrolling is already how you get between things in Basic.
- // It is also not shown until asked for, so the Play page does not grow a pad
- // and a loop deck for someone who never opens either.
- if(m==='sampler') _pfSmpOpen = true;
- const smpOn = _pfSmpOpen && (oneScreen || m==='sampler');
  document.getElementById('pf-chords-panel').style.display = (oneScreen || m==='chords')?'':'none';
  document.getElementById('pf-melody-panel').style.display = (oneScreen || m==='melody')?'':'none';
- const smpp=document.getElementById('pf-smp-panel');
- if(smpp) smpp.style.display = smpOn?'':'none';
- const smpl=document.getElementById('pf-smp-surface-lbl');
- if(smpl) smpl.style.display = smpOn?'':'none';
- if(smpOn){
-  // The clips need a context to decode into, and arriving here is a gesture.
-  if(typeof smpDecodeAll==='function') smpDecodeAll();
-  if(typeof smpSyncPadPage==='function') setTimeout(smpSyncPadPage,0);
-  // In Basic the panel is appended rather than switched to, so the tap has to
-  // take you to it or nothing appears to have happened.
-  if(oneScreen && m==='sampler' && smpp)
-   setTimeout(function(){ try{ smpp.scrollIntoView({behavior:'smooth', block:'start'}); }catch(e){} }, 60);
- }
  const fxp=document.getElementById('pf-fx-panel');
  const showFx = (oneScreen && fxOK) || m==='fx';
  if(fxp) fxp.style.display = showFx?'':'none';
@@ -22553,12 +22021,13 @@ Clarinet and flute currently show the correctly transposed written note without 
  },
  'sampler': {
   title: 'Sampler',
-  body: `<strong>Two halves.</strong> The <strong>◈</strong> beside any voice, and on every drum lane, puts one of your clips on that part so the sequencer plays it. <strong>This page</strong> is the other half: playing a clip with your hands.<br><br>
-<strong>Getting a sound in.</strong> <strong>● Rec</strong> takes the microphone. <strong>◉ Resample</strong> records whatever MōdRiff itself is playing — a chord you liked, a fill, the whole mix — and puts it straight back in the library. <strong>⤓ Import</strong> takes files, and <strong>🗀 Folder</strong> takes all of them at once, in name order; pick several and you are offered to lay them straight across the drum lanes.<br><br>
-<strong>The chop pad.</strong> <strong>Chops</strong> cuts the clip into that many slices, drawn as lanes over its own waveform. Touch a lane to fire it; drag across and it retriggers as you cross into the next one. <strong>Scrub</strong> is the one-slice case: it plays from wherever you touch to the end.<br><br>
-<strong>Direction</strong> is forwards, reverse, or ping-pong — which alternates on every hit. <strong>Y axis</strong> decides what up and down do: pitch (an octave either way), a lowpass filter, level, or gate, which shortens the slice from its end so the bottom of the pad stutters.<br><br>
-<strong>✂ Slice to lanes</strong> cuts the clip into its slices and puts one on each lane of the kit you are on, in order — a bar of drums across eight lanes, for the sequencer to put back in a different order.<br><br>
-<strong>The loop deck</strong> is for a clip that should just run. Arm it and it starts and stops with the transport. <strong>Fit</strong> stretches it so it lasts 1, 2, 4 or 8 bars at your tempo; <strong>Free</strong> plays it at the speed it was recorded. Change the tempo and a fitted loop follows without a seam.<br><br>
+  body: `<strong>Your own sounds, anywhere.</strong> The <strong>◈</strong> beside any voice, and on every drum lane, puts one of your clips on that part. The MōdFX pad has one too — see below.<br><br>
+<strong>Getting a sound in.</strong> <strong>● Record</strong> takes the microphone. <strong>◉ Resample</strong> records whatever MōdRiff itself is playing — a chord you liked, a fill, the whole mix — and puts it straight back in the library. <strong>⤓ Import</strong> takes files and <strong>🗀 Folder</strong> takes all of them at once, in name order; pick several and you are offered to lay them straight across the drum lanes. All three are also on the transport's <strong>⋯</strong> sheet, so you can grab a sound without leaving what you are playing.<br><br>
+<strong>Trimming.</strong> Drag the ends of the waveform to set where the clip starts and stops. <strong>Trim</strong> cuts the silence off both ends, <strong>Whole</strong> puts it back.<br><br>
+<strong>1-Shot or Loop.</strong> A one-shot plays the trimmed window once — which means a note gets <em>shorter</em> the higher up the keyboard you play it, because pitching a sample up speeds it up. <strong>Loop</strong> is the fix, and it is a proper sustain loop: the attack sounds <em>once</em>, and then a region inside the clip repeats for as long as you hold the note. Record a flute and you can hold it as long as you like, at any pitch.<br><br>
+The loop region is the green band on the waveform, placed for you past the attack and snapped to zero crossings so the join does not tick. Drag its two markers to move it — a longer loop keeps more of the note's movement, a shorter one is steadier.<br><br>
+<strong>Volume, Pitch, Fine</strong> trim the clip where it sits. <strong>Root</strong> is the note the clip already sounds at, so the keyboard plays it in tune; a drum lane has no keyboard and only uses Pitch.<br><br>
+<strong>On the MōdFX pad.</strong> Give the pad a clip with its <strong>◈ Sample</strong> button and holding the pad plays it, through the Sampler channel — so the two axes you have already chosen shape it as you move. That makes the pad an instrument as well as an effect, and everything on it (the axis pickers, the targets, the presets, Hold) works on your clip exactly as it works on the band.<br><br>
 <strong>Where they live.</strong> On this device, in the browser's own storage — they come back when you reload and they work offline, and nothing is ever uploaded. <strong>⤒ Export set</strong> writes one .zip with the whole rig, your songs and every clip's audio: that is how you move a kit to another phone, and how you get it back if site data is ever cleared.`
  },
  'builder': {
@@ -24376,9 +23845,6 @@ function isAnythingPlaying(){
 // bassline, song loop, and any held melody notes.
 // arpOn and blEnabled flags are preserved so next Play restores them.
 function stopEverything(){
- // The loop deck runs with the band rather than having a transport of its
- // own, so it starts and stops where everything else does.
- try{ if(typeof window.smpLoopTransport==='function') window.smpLoopTransport(false); }catch(e){}
  // Recognised by tickClock() if this stop happens nested inside a tick that
  // is already mid-execution (the Cold-ending case) — see the comment there.
  _clockStopRequested=true;
@@ -24514,8 +23980,6 @@ function startEverything(){
   CLOCK_EPOCH = _ctx.currentTime + EPOCH_LEAD;
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
  }
- // An armed loop deck comes in on the downbeat with everything else.
- try{ if(typeof window.smpLoopTransport==='function') window.smpLoopTransport(true); }catch(e){}
 
  // Any song with programmed chords counts — not just setlist-loaded ones.
  var _hasSong=sections.length>0&&sections.some(s=>s.slots&&s.slots.length);
@@ -24970,10 +24434,6 @@ function onBpmInput(v){
  const ftv=document.getElementById('ft-bpm-val');
  if(ftv){ ftv.textContent=v; ftv.setAttribute('aria-valuenow', v); }
  rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]);
- // A loop deck fitted to a bar count has to follow the tempo. Changing
- // playbackRate on a running source is sample-accurate, so the loop bends to
- // the new tempo without a restart and without a seam at the loop point.
- try{ if(typeof window.smpLoopRetune==='function') window.smpLoopRetune(); }catch(e){}
  // Restart clock immediately so new tempo takes effect now
  restartIfRunning();
 }
@@ -34332,6 +33792,12 @@ function fxEngage(on){
  // between a stab and a setting.
  if(on){ fxEngaged=true; _fxReleasing=false; }
  else if(!fxHold){ fxEngaged=false; _fxReleasing = fxReleaseSec>0.02; }
+ // Sample mode rides the pad's own lifecycle rather than owning one: Hold
+ // keeps a clip sounding exactly as it keeps a filter sweep parked, and
+ // lifting off ends both.
+ if(typeof fxSmpOn==='function' && fxSmpOn()){
+  if(fxEngaged) fxSmpStart(); else fxSmpStop();
+ }
  fxApplyAll();
  // The tail is a one-shot: the next application is back to normal smoothing,
  // or a parameter moved during the tail would inherit the slow glide.
@@ -34637,6 +34103,7 @@ function fxBuildPanel(){
   '<div class="fx-head">'
   + '<div class="fx-title">MōdFX<span class="fx-sub pf-info">X/Y Performance Effects</span></div>'
   + '<div class="fx-head-btns">'
+  +  '<button class="fx-hold" id="fx-smp-btn" onclick="smpOpenSlot(\'fxpad\')">◈ Sample</button>'
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   +  '<button class="tips-btn" onclick="showTip(\'modfx\',this)" aria-label="About MōdFX">?</button>'
@@ -34680,6 +34147,7 @@ function fxBuildPanel(){
   ;
  fxWirePad();
  fxBuildPatchPick();
+ fxSmpSync();
  // The panel is rebuilt on open, so the slider has to be told where the
  // stored release actually sits rather than keeping its markup default.
  const rs=document.getElementById('fx-release-sl');
@@ -34784,6 +34252,75 @@ function fxToggleHold(){
  showToast(fxHold ? 'Hold on — the pad stays where you leave it'
                   : 'Hold off — the pad springs back on release');
 }
+
+// ── Playing a clip FROM the pad ──────────────────────────────────────────
+// The MōdFX pad is already a Kaoss-pad-style effects instrument: twenty-six
+// parameters on two axes, aimed at whichever channels you pick. The one thing
+// it could not do was be the SOURCE as well — every one of those effects
+// needed something else to already be playing.
+//
+// Sample mode is that missing half. Hold the pad and your clip plays through
+// the Sampler channel; the axes you already have do the mangling. It is not a
+// second pad and not a second set of controls — the pad, the axis pickers,
+// the targets and the presets are the ones that were already there.
+var _fxSmpVoice = null;
+function fxSmpOn(){ return !!(SMP_SLOTS.fxpad && SMP_SLOTS.fxpad.id && SMP_BUF[SMP_SLOTS.fxpad.id]); }
+
+// Held, not triggered: the pad's own gesture is press-and-hold, so the clip
+// loops under your finger for as long as it is down and stops when you lift.
+// A one-shot that ran out halfway through a sweep would leave the axes
+// working on silence, which is the one thing a Kaoss pad never does.
+function fxSmpStart(){
+ if(!fxSmpOn()) return;
+ var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return;
+ fxSmpStop(ctx.currentTime);
+ var slot=SMP_SLOTS.fxpad;
+ var held=Object.assign({}, slot, {loop:true});
+ // Whatever the clip is, holding the pad should keep sounding. A slot with no
+ // loop points of its own gets them from smpAutoLoop like any other.
+ var mx=(typeof _cmx==='function') ? _cmx('sampler') : 1;
+ if(!(mx>0)) return;
+ var dest=(typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination;
+ // 30 seconds is not a limit you can reach with a finger; it is there so a
+ // pointer lost to a crashed gesture cannot leave a note on forever.
+ var v=smpVoice(ctx, held, dest, ctx.currentTime+0.005, 30, null, mx*0.62);
+ if(v) _fxSmpVoice=v;
+}
+function fxSmpStop(at){
+ var v=_fxSmpVoice; if(!v) return;
+ _fxSmpVoice=null;
+ var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return;
+ var t=(at==null)?ctx.currentTime:at;
+ try{
+  v.gain.gain.cancelScheduledValues(t);
+  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+  v.gain.gain.linearRampToValueAtTime(0, t+0.012);
+  v.src.stop(t+0.05);
+ }catch(e){}
+}
+window.fxSmpStart = fxSmpStart;
+window.fxSmpStop  = fxSmpStop;
+
+// The pad's Sample button: names the clip, opens the library to change it.
+function fxSmpSync(){
+ var b=document.getElementById('fx-smp-btn'); if(!b) return;
+ var on=fxSmpOn();
+ var c=on?smpClip(SMP_SLOTS.fxpad.id):null;
+ b.classList.toggle('on', on);
+ b.textContent = c ? ('◈ '+c.name) : '◈ Sample';
+ b.title = c
+  ? 'The pad plays “'+c.name+'” while you hold it, through the Sampler channel — '
+    +'so the axes above work on it. Tap to change the clip.'
+  : 'Give the pad a clip of your own to play. Holding the pad then sounds it '
+    +'through the Sampler channel, and the axes above shape it.';
+ // The axes only reach the channels that are armed, so a clip on the pad with
+ // Sampler unticked would play completely dry and look broken.
+ if(on && typeof fxTargets!=='undefined' && fxTargets.indexOf('sampler')<0){
+  fxTargets.push('sampler');
+  if(typeof fxSyncUI==='function') fxSyncUI();
+ }
+}
+window.fxSmpSync = fxSmpSync;
 
 function fxSyncUI(){
  if(typeof fxSyncPatchLabel==='function') fxSyncPatchLabel();
