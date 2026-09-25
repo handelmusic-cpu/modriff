@@ -5151,7 +5151,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.6</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.7</span>
     </div>
    </div>
   </div>
@@ -5169,7 +5169,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.6</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.7</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5605,6 +5605,19 @@ body.mode-free .pro-only { display:none !important; }
   <!-- Strum is one control in two parts: whether the chord rolls, and how far.
        The length slider is dead while the toggle is off, rather than silently
        doing nothing. -->
+  <!-- The sub is the octave below the chord root that plays under whatever
+       voice you picked. It used to be a sine at full level with no switch. -->
+  <div class="row" style="align-items:flex-end">
+   <button class="tb active" id="sub-on-btn" onclick="setChordSub(!chordSubOn)"
+     title="The octave below the chord root, underneath whichever voice you picked. Turn it off for a cleaner acoustic sound; leave it on for weight.">Sub: ON</button>
+   <div class="tg">
+    <button class="tb" id="sub-w-sine" onclick="setChordSubWave('sine')" title="Pure — the most synthetic, and the most weight">Sine</button>
+    <button class="tb active" id="sub-w-triangle" onclick="setChordSubWave('triangle')" title="A few odd harmonics, so it sits under an acoustic voice rather than beside it">Warm</button>
+   </div>
+   <div class="sg"><div class="sl">Sub level</div>
+    <input type="range" id="sub-level" min="0" max="140" step="1" value="62" oninput="setChordSubLevel(this.value)">
+    <div class="sv" id="sub-level-val">62%</div></div>
+  </div>
   <div class="row" style="align-items:flex-end">
    <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Roll the chord's notes one after another instead of striking them together">Strum: ON</button>
    <div class="sg"><div class="sl">Strum length</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
@@ -6906,7 +6919,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.6';
+const MODRIFF_VERSION = '3.8.7';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -9294,6 +9307,55 @@ let _arpBounceVel=1.0;
 let arpVelShape='flat';
 let chordBeats=0;
 let wetDry=.5;
+// ── CHORD SUB ────────────────────────────────────────────────────────────
+// An octave below the chord root, under every voice. It was a pure sine at the
+// same level as the chord itself, wired straight to master, with no way to
+// turn it off — so a piano or guitar patch always had a synthesizer playing
+// underneath it at equal volume. That is most of why the chords read as
+// synthetic. Now: switchable, level-able, and it can be a triangle, which has
+// enough odd harmonics to sit under an acoustic voice instead of beside it.
+// `var`: playChord reads these and the Chord Voice panel writes them, and the
+// two are thousands of lines apart. See CLAUDE.md.
+var chordSubOn=true;
+var chordSubLevel=0.62;    // was an implicit 1.0, which put it level with the chord
+var chordSubWave='triangle';
+function setChordSub(on){
+ chordSubOn=!!on;
+ try{ localStorage.setItem('modo-sub-on', chordSubOn?'1':''); }catch(e){}
+ syncSubUI();
+}
+function setChordSubWave(w){
+ chordSubWave = (w==='sine'||w==='triangle') ? w : 'triangle';
+ try{ localStorage.setItem('modo-sub-wave', chordSubWave); }catch(e){}
+ syncSubUI();
+}
+function setChordSubLevel(v){
+ chordSubLevel=Math.max(0,Math.min(1.4,(+v||0)/100));
+ try{ localStorage.setItem('modo-sub-lvl', String(chordSubLevel)); }catch(e){}
+ var l=document.getElementById('sub-level-val');
+ if(l) l.textContent=Math.round(chordSubLevel*100)+'%';
+}
+function syncSubUI(){
+ var b=document.getElementById('sub-on-btn');
+ if(b){ b.classList.toggle('active',chordSubOn); b.textContent='Sub: '+(chordSubOn?'ON':'OFF');
+        b.setAttribute('aria-pressed',chordSubOn?'true':'false'); }
+ ['sine','triangle'].forEach(function(w){
+  var e=document.getElementById('sub-w-'+w);
+  if(e) e.classList.toggle('active', chordSubWave===w);
+ });
+ var sl=document.getElementById('sub-level');
+ if(sl){ sl.value=Math.round(chordSubLevel*100); sl.disabled=!chordSubOn; }
+ var lv=document.getElementById('sub-level-val');
+ if(lv){ lv.textContent=Math.round(chordSubLevel*100)+'%'; }
+}
+function restoreSubPrefs(){
+ try{
+  var o=localStorage.getItem('modo-sub-on'); if(o!==null) chordSubOn=!!o;
+  var w=localStorage.getItem('modo-sub-wave'); if(w) chordSubWave=(w==='sine')?'sine':'triangle';
+  var l=localStorage.getItem('modo-sub-lvl'); if(l!=null && l!=='') chordSubLevel=Math.max(0,Math.min(1.4,+l||0));
+ }catch(e){}
+ syncSubUI();
+}
 let strumMode=true; // plucked/strummed chord character — quicker decay, settles after the hit — vs a sustained pad
 function toggleStrumMode(){
  strumMode=!strumMode;
@@ -10569,11 +10631,52 @@ function msSet(k,v){
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
  syncModSynthUI();
 }
+// Every LFO node currently attached to a sounding voice. Entries go stale on
+// their own — the oscillator is stopped at endsAt — so they are pruned lazily
+// rather than tracked through voice teardown, which would mean a hook in every
+// path that ends a note.
+var _msLfoLive=[];
+// Rate, depth and shape all reach a live voice. Destination does not: routing
+// is a connection into an AudioParam, and rewiring one under a sounding note
+// means rebuilding the voice. That one waits for the next note, which is the
+// one case where waiting is honest.
+function msApplyLfoLive(n){
+ var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return 0;
+ var L=modSynthParams['lfo'+n]; if(!L) return 0;
+ var now=ctx.currentTime, hit=0;
+ _msLfoLive=_msLfoLive.filter(function(e){ return e.endsAt>now-0.25; });
+ _msLfoLive.forEach(function(e){
+  if(e.n!==n) return;
+  try{
+   // setTargetAtTime, not .value: a rate yanked across while the wave is
+   // mid-cycle is a click, and a 20ms approach is inaudible as a glide.
+   e.lfo.frequency.setTargetAtTime(Math.max(.05,+L.rate||1), now, 0.02);
+   if(L.shape && e.lfo.type!==L.shape) e.lfo.type=L.shape;
+   var d=+L.depth||0;
+   if(e.dest==='pitch')       e.amt.gain.setTargetAtTime(d*120, now, 0.02);
+   else if(e.dest==='filter') e.amt.gain.setTargetAtTime(d*Math.min(e.cutHz*0.9,6000), now, 0.02);
+   else if(e.dest==='amp'){
+    var dd=Math.min(.95,d);
+    e.amt.gain.setTargetAtTime(dd/2, now, 0.02);
+    if(e.ampMod) e.ampMod.gain.setTargetAtTime(1-dd/2, now, 0.02);
+   }
+   hit++;
+  }catch(_){}
+ });
+ return hit;
+}
+window.msApplyLfoLive=msApplyLfoLive;
+window._msLfoLiveCount=function(){
+ var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return 0;
+ var now=ctx.currentTime;
+ return _msLfoLive.filter(function(e){ return e.endsAt>now; }).length;
+};
 function msSetLfo(n,field,v){
  const L=modSynthParams['lfo'+n]; if(!L) return;
  L[field]=(field==='rate'||field==='depth')?parseFloat(v):v;
  modSynthPreset='custom';
  document.querySelectorAll('[data-msp]').forEach(b=>b.classList.remove('active'));
+ msApplyLfoLive(n);
  syncModSynthUI();
 }
 function syncModSynthUI(){
@@ -11209,7 +11312,7 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Routed by connecting the LFO into an AudioParam. Note this means the
  // target's .value no longer tells you anything — an audio-rate connection
  // is summed on top of it and is invisible to a param read.
- [P.lfo1,P.lfo2].forEach(L=>{
+ [P.lfo1,P.lfo2].forEach((L,_li)=>{
   if(!L||L.dest==='off'||!L.depth) return;
   const lfo=ctx.createOscillator();
   lfo.type=L.shape||'sine';
@@ -11232,6 +11335,13 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
    amt.connect(ampMod.gain);
   }
   lfo.start(t0); lfo.stop(t0+dur+.1); r.push(lfo);
+  // Registered so the panel can reach a note that is ALREADY sounding. Moving
+  // an LFO's rate and hearing nothing until you replay the note is the one
+  // edit where waiting makes no sense: the whole point of a rate is the speed
+  // you are listening to while you drag it.
+  _msLfoLive.push({ n:_li+1, lfo:lfo, amt:amt, ampMod:ampMod, dest:L.dest,
+                    cutHz:cutHz, endsAt:t0+dur+.1 });
+  if(_msLfoLive.length>240) _msLfoLive=_msLfoLive.slice(-160);
  });
 
  if(P.sub>0){
@@ -11486,23 +11596,31 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  if(!(_mxCh>0) || (typeof chordsEnabled!=='undefined' && !chordsEnabled)
     || (typeof moSilences==='function' && moSilences('chord'))) return;
 
- // Bass — sine always
- const bg=ctx.createGain();
+ // fxTrim is read by the chord voices further down too, so it stays outside
+ // the sub's block — inside it, `const` made it invisible to the rest of the
+ // function and every chord threw.
  const _tr=fxTrim;
- bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk);
+ // Sub — see CHORD SUB below (chordSubOn / chordSubLevel / chordSubWave)
+ if(chordSubOn){
+ const bg=ctx.createGain();
+ bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(vol*.38*vsc*_mxCh*_tr*chordSubLevel,now+atk);
  if(sustain){
- bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk+.01);
- if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.38*vsc*_mxCh*_tr*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr*chordSubLevel,now+atk+.01);
+ if(strumMode){ bg.gain.exponentialRampToValueAtTime(vol*.38*vsc*_mxCh*_tr*chordSubLevel*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
- bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
+ bg.gain.setValueAtTime(vol*.38*vsc*_mxCh*_tr*chordSubLevel,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
- const bo=ctx.createOscillator(); bo.type='sine';
+ const bo=ctx.createOscillator(); bo.type=chordSubWave;
  bo.frequency.value=masterTune*Math.pow(2,(rootM-12-69)/12);
- bo.connect(bg); bg.connect(masterDest(ctx));
+ // Through the chord's own bus, not straight to master. On master it was the
+ // one part of the chord MōdFX never touched and the chord meter never showed
+ // — a channel's sends and its meter are supposed to see everything on it.
+ bo.connect(bg); bg.connect(_partDest(ctx,'chord'));
  const _bgRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
- activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.38*vsc*_mxCh*_tr});
+ activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.38*vsc*_mxCh*_tr*chordSubLevel});
  reapVoice([bo],[bg,_bgRev],atk+dec);
+ }
 
  // Chord tones
  const offsets=strumOffsets(intvs.length);
@@ -11574,9 +11692,9 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  } else {
  bg.gain.setValueAtTime(vol*.42*vsc*_mxCh*_tr,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
- const bo=ctx.createOscillator(); bo.type='sine';
+ const bo=ctx.createOscillator(); bo.type=chordSubWave;
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
- bo.connect(bg); bg.connect(masterDest(ctx));
+ bo.connect(bg); bg.connect(_partDest(ctx,'chord'));
  const _sbRev=feedRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.42*vsc*_mxCh*_tr});
@@ -26222,6 +26340,7 @@ rhythmStepSec=rhythmStepDuration(RHYTHMS[0]);
 setlistData=loadSLData();
 renderSetlist();
 try{ moRestorePrefs(); }catch(e){}
+try{ restoreSubPrefs(); }catch(e){}
 initMidi();
 setMasterTune(440);
 syncFixedTransport();
