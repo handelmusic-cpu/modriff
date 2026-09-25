@@ -4249,6 +4249,47 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 /* 22 ── Bass tab page wrapper */
 .bl-page-wrap { width:100%; max-width:700px; }
 
+/* ── Accomp: one vertical order for every part ──────────────────────────────
+   The four panels were built at different times and drifted apart, so a control
+   that exists on more than one of them was in a different place depending on
+   which part you had open: bass carried its voice buttons on the Steps row
+   while melody gave them a row of their own, drums put Steps BELOW its grid
+   while bass and melody put them above, and the MōdFX bar sat wedged mid-row on
+   drums and at the foot of the other three.
+
+   The order is declared here rather than by rearranging the markup, so every
+   id, every parent and every scroll container stays exactly where the script
+   expects to find it — the grid's scroller, the roll's grid areas and the
+   canvas sizing all read their own offsetParent.
+
+   Reading down a panel: what it sounds like, then how the part gets written,
+   then how it behaves, then the grid and its timing, then the extras. Blocks
+   sharing a slot keep their document order, which is what holds the page dots
+   above the grid and the playhead below it. */
+.bl-page-wrap { display:flex; flex-direction:column; }
+[data-acrow="voice"]  { order:1; }
+[data-acrow="tone"]   { order:2; }
+[data-acrow="write"]  { order:3; }
+[data-acrow="behave"] { order:4; }
+[data-acrow="chips"]  { order:5; }
+[data-acrow="timing"] { order:6; }
+[data-acrow="roll"]   { order:7; }
+[data-acrow="extra"]  { order:8; }
+[data-acrow="status"] { order:9; }
+[data-acrow="synth"]  { order:10; }
+[data-acrow="fx"]     { order:11; }
+
+/* The three labelled rows (Voice, Filter, Style, Follow) were four copies of
+   the same inline style attribute, which is why they had drifted to three
+   different gaps. One rule, one gap. */
+.ac-inline-row, .bl-voice-row {
+  display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;
+}
+.ac-rowlbl {
+  font-size:.4rem; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.1em; flex:0 0 auto; min-width:42px;
+}
+
 /* 26 ── Sequencer link row (step count / rate locks) */
 .seq-link-row { display:flex; align-items:center; gap:3px; flex-wrap:wrap; margin-top:5px; }
 .seq-link-lbl { font-size:.4rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-right:2px; }
@@ -5087,7 +5128,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.5</span>
     </div>
    </div>
   </div>
@@ -5105,7 +5146,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.0</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.5</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5255,8 +5296,9 @@ body.mode-free .pro-only { display:none !important; }
    <canvas id="smp-wave" aria-label="Waveform — drag to set where the sample starts and ends"></canvas>
    <div class="smp-wrow">
     <button class="smp-b" onclick="smpPreviewSlot()">▶ Preview</button>
-    <button class="smp-b" onclick="smpEdit('trim')" title="Cut the silence off both ends">Trim</button>
-    <button class="smp-b" onclick="smpEdit('whole')" title="Back to the whole clip">Whole</button>
+    <button class="smp-b" onclick="smpTrimToClip()" title="Make a new sample out of just the part between the handles — the original is left alone">✂ Trim</button>
+    <button class="smp-b" onclick="smpEdit('trim')" title="Move the handles past the silence at each end, without making a new sample">⇥ Silence</button>
+    <button class="smp-b" onclick="smpEdit('whole')" title="Handles back to the whole clip">Whole</button>
     <span class="smp-trim" id="smp-trim-v"></span>
    </div>
    <div id="smp-ctl">
@@ -5910,8 +5952,9 @@ body.mode-free .pro-only { display:none !important; }
     <button class="tb" id="midi-out-panic" onclick="moAllOff()" style="flex:0 0 auto"
      title="Note-off on every channel, plus All Notes Off. Use it if an external instrument is left holding a note.">Panic</button>
    </div>
-   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-    <span class="midi-panel-lbl" style="min-width:0">Send:</span>
+   <div id="midi-out-pending" style="display:flex;flex-direction:column;gap:6px;transition:opacity .15s">
+   <div style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+    <span class="midi-panel-lbl" style="min-width:0;padding-top:5px">Send:</span>
     <div id="midi-out-lanes" style="display:flex;gap:4px;flex-wrap:wrap;flex:1"></div>
    </div>
    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5920,6 +5963,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="tb active" id="midi-local-on" onclick="moSetLocal(true)" title="MōdRiff plays the lanes it sends, alongside the external instrument">On</button>
      <button class="tb" id="midi-local-off" onclick="moSetLocal(false)" title="Only the external instrument plays the lanes above. MōdRiff stays quiet on them — the keys still light and the roll still draws.">Off</button>
     </div>
+   </div>
    </div>
    <div id="midi-out-note" style="font-size:.44rem;color:var(--muted);line-height:1.6"></div>
   </div>
@@ -6348,6 +6392,12 @@ body.mode-free .pro-only { display:none !important; }
   <span class="seq-link-lbl">Sync</span>
   <button class="seq-lockbtn active" data-steplock onclick="toggleStepCountLock()" title="Keep step count the same across drums, bass and melody">🔒 Steps Linked</button>
   <button class="seq-lockbtn active" data-ratelock onclick="toggleStepRateLock()" title="Keep step rate the same across drums, bass and melody">🔒 Rate Linked</button>
+  <span class="seq-link-lbl" style="margin-left:10px">Humanize</span>
+  <input type="range" id="bl-human" min="0" max="1" step="0.05" value="0"
+         style="-webkit-appearance:none;width:70px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer"
+         title="Loosens timing and velocity for everything this tab writes — bass, melody and arp. Off by default: at 0 every note is exactly on the grid."
+         oninput="window.setHumanize&&window.setHumanize(this.value)">
+  <span class="bl-pl" id="bl-human-val" style="min-width:22px">off</span>
  </div>
  <div class="subnav" id="bm-subnav" style="max-width:700px">
  <span class="subnav-lbl">Part</span>
@@ -6372,7 +6422,7 @@ body.mode-free .pro-only { display:none !important; }
      themselves are kept — the transport dice still rolls a whole setup. -->
 
 <!-- Groove presets row -->
-<div class="sq-song" style="margin-bottom:0">
+<div class="sq-song" style="margin-bottom:0" data-acrow="voice">
   <div class="sq-songhdr" style="margin-bottom:6px">
     <span class="sq-songtitle" style="font-size:.55rem">Load Groove</span>
     <button class="tips-btn" onclick="showTip('jazzkit',this)" title="Real instruments and the synthesized Jazz kit">?</button>
@@ -6395,7 +6445,7 @@ body.mode-free .pro-only { display:none !important; }
 
 <!-- Removed separate machine row — now unified above -->
 
-<div class="sq-rule"></div>
+<div class="sq-rule" data-acrow="voice"></div>
 
 <!-- Step grid -->
 <!-- Beat pagination dots (portrait-only, hidden in landscape via CSS).
@@ -6403,21 +6453,21 @@ body.mode-free .pro-only { display:none !important; }
      fold on a phone: at rest you saw a grid cut off at beat 3 and no sign
      that anything paged it, and only scrolling to the bottom of the tab
      revealed the control for the thing you had already scrolled past. -->
-<div class="sq-page-dots" id="sq-page-dots"></div>
-<div class="sq-grid-wrap">
+<div class="sq-page-dots" id="sq-page-dots" data-acrow="roll"></div>
+<div class="sq-grid-wrap" data-acrow="roll">
   <div class="sq-gleft" id="sq-gLeft"></div>
   <div class="sq-gscroll" id="sq-gScroll">
     <div class="sq-ginner" id="sq-gInner"></div>
   </div>
   <div class="sq-gright" id="sq-gRight"></div>
 </div>
-<div class="sq-phbar"><div class="sq-phcur" id="sq-phcur"></div></div>
-<div class="pr-insp sq-insp" id="sq-insp" role="group" aria-label="Selected step"></div>
-<div class="pr-hint sq-insp-hint" id="sq-insp-hint">Tap a step to place or clear it · double-tap a step to edit it here</div>
+<div class="sq-phbar" data-acrow="roll"><div class="sq-phcur" id="sq-phcur"></div></div>
+<div class="pr-insp sq-insp" id="sq-insp" role="group" aria-label="Selected step" data-acrow="roll"></div>
+<div class="pr-hint sq-insp-hint" id="sq-insp-hint" data-acrow="roll">Tap a step to place or clear it · double-tap a step to edit it here</div>
 
 
 <!-- Controls row: steps + swing + FX -->
-<div class="sq-trow" style="flex-wrap:wrap;gap:6px">
+<div class="sq-trow" style="flex-wrap:wrap;gap:6px" data-acrow="timing">
   <div class="sq-pb">
     <span class="sq-pl" style="font-size:.5rem">Steps</span>
     <button class="sq-pico" id="sq-stepsDn">−</button>
@@ -6441,14 +6491,14 @@ body.mode-free .pro-only { display:none !important; }
        never written into a setup or a shared link — so they were forgotten on
        this tab and lost on reload. The readout below reflects the drum
        channel's real state and opens the panel that owns it. -->
-  <button class="fx-readout-bar pro-only" id="fx-ro-drums" onclick="fxOpenPanel('drum')">
-    <span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span>
-    <span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
   <button class="sq-clrbtn" id="sq-clearBtn">CLR</button>
 </div>
+<button class="fx-readout-bar pro-only" id="fx-ro-drums" data-acrow="fx" onclick="fxOpenPanel('drum')">
+  <span class="fx-ro-tag">MōdFX</span><span class="fx-ro-val">No effects</span>
+  <span class="fx-ro-go" aria-hidden="true">Open ›</span></button>
 
 <!-- Patterns -->
-<div class="sq-song">
+<div class="sq-song" data-acrow="extra">
   <div class="sq-songhdr">
     <span class="sq-songtitle" style="font-size:.55rem">Drum Patterns</span>
     <div style="display:flex;gap:5px">
@@ -6464,7 +6514,7 @@ body.mode-free .pro-only { display:none !important; }
 
 
 <!-- Portrait rotate hint (only visible in portrait via CSS) -->
-<div class="sq-landscape-hint">
+<div class="sq-landscape-hint" data-acrow="extra">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <rect x="2" y="7" width="10" height="15" rx="2"/>
     <rect x="12" y="2" width="15" height="10" rx="2" opacity=".4"/>
@@ -6474,7 +6524,7 @@ body.mode-free .pro-only { display:none !important; }
 </div>
 
 <!-- Status -->
-<div class="sq-status" style="font-size:.48rem">
+<div class="sq-status" style="font-size:.48rem" data-acrow="status">
   <span>Step <span class="sq-sv" id="sq-sStep">--</span></span>
   <span>Bar <span class="sq-sv" id="sq-sBar">--</span></span>
   <span>Pat <span class="sq-sv" id="sq-sPat">P1</span></span>
@@ -6489,8 +6539,10 @@ body.mode-free .pro-only { display:none !important; }
  <div id="bm-bass-panel" style="display:none">
 
  <div class="bl-page-wrap">
-  <!-- Transport: Steps/Oct/Vol/Sound — play is in header transport -->
-  <div class="bl-transport">
+  <!-- Steps / Rate / Oct. Ordered to sit directly above the roll, because the
+       step count describes the grid you are looking at — see the accomp order
+       block in the CSS. -->
+  <div class="bl-transport" data-acrow="timing">
    <div class="bl-pb advanced-only">
      <span class="bl-pl">Steps</span>
      <button class="bl-pico" onclick="blSetSteps(-1)">−</button>
@@ -6504,8 +6556,14 @@ body.mode-free .pro-only { display:none !important; }
      <span class="bl-stepsdisp" id="bl-octdisp">2</span>
      <button class="bl-pico" onclick="blShiftOct(1)">+</button>
    </div>
-   <div class="bl-pb" style="margin-left:auto">
-     <span class="bl-pl">Sound</span>
+  </div>
+  <!-- Voice row — the same shape melody uses, so the instrument palette is in
+       the same place whichever part is open. It used to ride on the Steps row
+       with margin-left:auto, which put it on the far right on a wide screen and
+       wrapped it under Steps on a narrow one. -->
+  <div class="bl-voice-row" data-acrow="voice">
+   <span class="ac-rowlbl">Voice:</span>
+   <div class="bl-pb">
      <button class="bl-mopt" id="blw-saw" onclick="setBlWave('sawtooth')">Acid</button>
      <button class="bl-mopt" id="blw-sqr" onclick="setBlWave('square')">Sqr</button>
      <button class="bl-mopt" id="blw-tri" onclick="setBlWave('triangle')">Tri</button>
@@ -6521,15 +6579,15 @@ body.mode-free .pro-only { display:none !important; }
    </div>
   </div>
   <!-- Filter controls row -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
-   <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Filter:</span>
+  <div class="ac-inline-row" data-acrow="tone">
+   <span class="ac-rowlbl">Filter:</span>
    <span class="bl-pl">Cutoff</span>
    <input type="range" id="bl-cutoff" min="80" max="4000" step="10" value="600" style="-webkit-appearance:none;width:80px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetCutoff&&window.blSetCutoff(this.value)">
    <span class="bl-pl" style="margin-left:4px">Reso</span>
    <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetResonance&&window.blSetResonance(this.value)">
   </div>
   <!-- Style + generate: always visible -->
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+  <div class="ac-inline-row" data-acrow="write">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Style:</span>
    <div class="bl-gen-style" id="bl-gen-style">
      <button class="bl-gen-btn" data-blstyle="rock">Rock</button>
@@ -6552,23 +6610,17 @@ body.mode-free .pro-only { display:none !important; }
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+  <div class="ac-inline-row" data-acrow="behave">
    <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: ON</button>
    <button class="bl-genbtn" id="bl-feel-btn" onclick="blToggleWalkFeel()" title="Four = walking quarter notes. Two = half notes on 1 and 3, the way a head is usually played">Feel: Four</button>
    <span class="bl-pl pf-info" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Line re-roots onto each chord</span>
-   <span class="bl-pl" style="margin-left:6px">Humanize</span>
-   <input type="range" id="bl-human" min="0" max="1" step="0.05" value="0"
-          style="-webkit-appearance:none;width:70px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer"
-          title="Loosens timing and velocity. Off by default — at 0 every note is exactly on the grid."
-          oninput="window.setHumanize&&window.setHumanize(this.value)">
-   <span class="bl-pl" id="bl-human-val" style="min-width:22px">off</span>
    <button class="tips-btn" onclick="showTip('bassgen',this)">?</button>
   </div>
   <!-- Per-chord lines: one chip per distinct chord in the chart. ✦ means
        Arrange wrote it, 🔒 means you froze it yourself, ↺ opens it in the roll.
        Pro only — Generate and Follow stay in the free tier, this is the
        arranging tool on top of them. -->
-  <div class="pl-row pro-only">
+  <div class="pl-row pro-only" data-acrow="chips">
    <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="bl-lock-chips"></div>
    <button class="pl-clr" id="bl-lock-clr" style="display:none"
@@ -6582,7 +6634,7 @@ body.mode-free .pro-only { display:none !important; }
        the sequencer simply looked missing. -->
   <!-- pr-host is the positioning context for the empty state, which sits ON
        the roll rather than under it — see .bl-empty-hint. -->
-  <div class="pr-host">
+  <div class="pr-host" data-acrow="roll">
    <div class="pr-wrap" id="bl-pr">
     <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
     <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
@@ -6593,7 +6645,7 @@ body.mode-free .pro-only { display:none !important; }
     <div class="pr-insp" id="bl-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
-   <div class="bl-empty-hint" id="bl-empty-hint">
+   <div class="bl-empty-hint" id="bl-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No bassline yet</div>
     <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
@@ -6609,8 +6661,10 @@ body.mode-free .pro-only { display:none !important; }
  <div id="bm-melody-panel" style="display:none">
 
  <div class="bl-page-wrap">
-  <!-- Transport: Steps/Oct/Vol/Sound — play is in header transport -->
-  <div class="bl-transport">
+  <!-- Steps / Rate / Oct. Ordered to sit directly above the roll, because the
+       step count describes the grid you are looking at — see the accomp order
+       block in the CSS. -->
+  <div class="bl-transport" data-acrow="timing">
    <div class="bl-pb advanced-only">
      <span class="bl-pl">Steps</span>
      <button class="bl-pico" onclick="mlSetSteps(-1)">−</button>
@@ -6625,9 +6679,10 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-pico" onclick="mlShiftOct(1)">+</button>
    </div>
   </div>
-  <!-- Voice row — same instrument palette as chords/melody strip -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
-   <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Voice:</span>
+  <!-- Voice row — same instrument palette as chords/melody strip, and the same
+       row shape bass now uses. -->
+  <div class="bl-voice-row" data-acrow="voice">
+   <span class="ac-rowlbl">Voice:</span>
    <div style="display:flex;gap:4px;flex-wrap:wrap">
      <button class="bl-mopt" id="mlw-sine" onclick="setMlWave('sine')">Sine</button>
      <button class="bl-mopt" id="mlw-saw" onclick="setMlWave('sawtooth')">Saw</button>
@@ -6643,7 +6698,7 @@ body.mode-free .pro-only { display:none !important; }
    <span class="bl-wave-current" id="ml-wave-current"></span>
   </div>
   <!-- Style + generate: always visible -->
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+  <div class="ac-inline-row" data-acrow="write">
    <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Pattern:</span>
    <div class="bl-gen-style" id="ml-gen-style">
      <button class="bl-gen-btn" data-mlstyle="arpeggio">Arpeggio</button>
@@ -6653,19 +6708,19 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-mlstyle="callresponse">Call &amp; Response</button>
    </div>
    <button class="bl-genbtn" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
    <button class="bl-genbtn bl-recbtn" data-recarm="ml" onclick="noteInputArm('ml')"
     title="Play the phrase in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">⏺ Play in</button>
-   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
    <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+  <div class="ac-inline-row" data-acrow="behave">
    <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: ON</button>
    <span class="bl-pl pf-info" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- See the bass page — same row, same meaning. -->
-  <div class="pl-row pro-only">
+  <div class="pl-row pro-only" data-acrow="chips">
    <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="ml-lock-chips"></div>
    <button class="pl-clr" id="ml-lock-clr" style="display:none"
@@ -6674,7 +6729,7 @@ body.mode-free .pro-only { display:none !important; }
   </div>
   <!-- Basic mode: single-line step dots -->
   <!-- Same as the bass page: the roll shows in Basic too. -->
-  <div class="pr-host">
+  <div class="pr-host" data-acrow="roll">
    <div class="pr-wrap" id="ml-pr">
     <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
     <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
@@ -6685,7 +6740,7 @@ body.mode-free .pro-only { display:none !important; }
     <div class="pr-insp" id="ml-pr-insp" role="group" aria-label="Selected step"></div>
    </div>
    <!-- Empty state: shown when no steps are active -->
-   <div class="bl-empty-hint" id="ml-empty-hint">
+   <div class="bl-empty-hint" id="ml-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No melody yet</div>
     <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
@@ -6811,7 +6866,6 @@ body.mode-free .pro-only { display:none !important; }
  <div id="rhythm-grid"></div>
  <div id="arp-status2"></div>
  <div id="arp-rate-disp"></div>
- <div id="humanize-btn"></div>
  <div id="gate-val"></div>
 </div>
 
@@ -6829,7 +6883,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.0';
+const MODRIFF_VERSION = '3.8.5';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7932,6 +7986,70 @@ function smpAutoTrim(id){
  var pad=Math.round(buf.sampleRate*0.004);
  a=Math.max(0,a-pad); b=Math.min(n-1,b+pad);
  return {start:a/n, end:b/n};
+}
+
+// ── Trim as a verb, not a guess ──────────────────────────────────────────
+// "Trim" used to run smpAutoTrim and write its answer over start/end, which
+// threw away whatever window had just been dragged by hand. On a clip with no
+// leading silence auto-trim returns the whole thing, so the button read as
+// doing nothing at all — or worse, as undoing your drag.
+//
+// Dragging a start point and pressing Trim means "give me a sample that starts
+// here". That has to be a NEW clip: the original may still be assigned to other
+// parts and other lanes, and rewriting it underneath them would change sounds
+// nobody touched. Auto-trim is still here, on its own button, described as what
+// it does — move the handles.
+function smpTrimName(base){
+ base=String(base||'Sample').replace(/\s+—\s+trimmed(\s+\d+)?$/,'');  // trimming a trim doesn't stack the word
+ var n=base+' — trimmed', i=2;
+ while(SMP_LIB.some(function(c){ return c.name===n; })) n=base+' — trimmed '+(i++);
+ return n.slice(0,40);
+}
+function smpTrimToClip(){
+ var key=_smpOpenKey;
+ var s=key?SMP_SLOTS[key]:null;
+ if(!s||!s.id){ showToast('Load a sample into this slot first'); return; }
+ var buf=SMP_BUF[s.id], c=smpClip(s.id);
+ if(!buf||!c){ showToast('That clip is still loading'); return; }
+ var ctx=getCtx(); if(!ctx){ showToast('Tap the page first so there is an audio engine'); return; }
+ var a=Math.max(0,Math.min(1,s.start||0));
+ var b=Math.max(0,Math.min(1,s.end==null?1:s.end));
+ var i0=Math.round(a*buf.length), i1=Math.round(b*buf.length), n=i1-i0;
+ if(i0<=0 && i1>=buf.length){
+  showToast('That is already the whole clip — drag a handle on the waveform first');
+  return;
+ }
+ // A zero-length buffer throws, and anything under ~20 ms is a click rather
+ // than a sample.
+ if(n < Math.round(buf.sampleRate*0.02)){ showToast('That window is too short to keep'); return; }
+ var src0=buf.getChannelData(0);
+ var src1=buf.numberOfChannels>1?buf.getChannelData(1):src0;
+ var L=new Float32Array(n), R=new Float32Array(n);
+ L.set(src0.subarray(i0,i1)); R.set(src1.subarray(i0,i1));
+ var nb=ctx.createBuffer(2,n,buf.sampleRate);
+ nb.copyToChannel(L,0); nb.copyToChannel(R,1);
+ var before=Object.assign({}, s), prevSel=_smpSelId;
+ _floatsToWavBlob(L,R,buf.sampleRate,null).arrayBuffer().then(function(bytes){
+  var clip=smpAddClip({name:smpTrimName(c.name), src:'trim'}, nb, bytes, 'audio/wav');
+  // The window IS the clip now, so the handles open wide. Deliberately not
+  // smpAttach: that auto-trims, and auto-trimming a window somebody just chose
+  // by hand is the exact bug this function exists to fix.
+  s.id=clip.id; s.start=0; s.end=1; s.loopA=null; s.loopB=null;
+  if(key==='fxpad' && typeof fxSmpSync==='function') try{ fxSmpSync(); }catch(e){}
+  _smpSelId=clip.id;
+  smpRenderAll();
+  showToast('“'+clip.name+'” — '+nb.duration.toFixed(2)+'s, from '+(i0/buf.sampleRate).toFixed(2)+'s in',
+   {actionLabel:'Undo', onAction:function(){
+    // Quietly, without smpDeleteClip's own Deleted-with-Undo toast: one undo
+    // offering another undo is not a thing anybody can follow.
+    SMP_SLOTS[key]=before; _smpSelId=prevSel;
+    SMP_LIB=SMP_LIB.filter(function(x){ return x.id!==clip.id; });
+    delete SMP_BUF[clip.id]; delete SMP_PEAKS[clip.id];
+    try{ smpDbDel(clip.id); }catch(e){}
+    if(key==='fxpad' && typeof fxSmpSync==='function') try{ fxSmpSync(); }catch(e){}
+    smpRenderAll();
+   }});
+ }).catch(function(){ showToast('Could not build the trimmed sample'); });
 }
 
 // ═══════════════════════════════════════
@@ -9136,7 +9254,7 @@ let root=0, mode='major', wave='piano', voicing='close', octShift=0;
 let masterTune=440; // A4 reference pitch — change for 432Hz etc.
 let nashMode=false, showRelMinors=true;
 let melWave='sine', melOctShift=12, melMode='keys', holdMode=false;
-let arpOn=false, arpPat='up', arpOcts=1, arpGatePat=0, humanizeOn=false;
+let arpOn=false, arpPat='up', arpOcts=1, arpGatePat=0;
 var blEnabled=false; // bass is enabled for next Play press (separate from blPlaying)
 var mlEnabled=false; // melody sequencer is enabled for next Play press (separate from mlPlaying)
 let arpWave='supersaw';
@@ -11292,7 +11410,10 @@ function setMasterTune(hz){
 function velScale(pressure){
  const vs=parseFloat(document.getElementById('vel-sense').value)||.5;
  if(pressure>0) return .5+(pressure*vs*.5);
- if(humanizeOn) return .75+(Math.random()*.25);
+ // A note with no pressure behind it plays at full scale. There used to be a
+ // humanize branch here, gated on a flag nothing ever set; it is gone rather
+ // than rewired, because these are hand-played notes and the Accomp tab's
+ // Humanize is about what the generators write.
  return 1.0;
 }
 
@@ -13148,8 +13269,11 @@ function scheduleArpNote(midi,t,dur){
  const stepInPat=arpGateIdx%pat.gates.length;
  const isAccent=pat.accents.includes(stepInPat);
  const velMult=isAccent?1.0:.7;
- const humanOff=humanizeOn?(Math.random()-.5)*.02:0;
- const humanVel=humanizeOn?.8+(Math.random()*.2):1;
+ // Was gated on humanizeOn, which nothing ever set — the arp could not
+ // humanize at all. Same helpers as bass and melody, so one slider means one
+ // amount of looseness across the whole tab.
+ const humanOff=(typeof _humanT==='function')?_humanT(stepInPat===0):0;
+ const humanVel=(typeof _humanV==='function')?_humanV(isAccent):1;
  // Velocity shape across the note span
  const velShapeLen=Math.max(1,arpNotes.length);
  const shapeP=velShapeLen>1?(arpGateIdx%velShapeLen)/(velShapeLen-1):0.5;
@@ -16930,7 +17054,12 @@ function _midiWireAll(){
  try{ midiAccess.inputs.forEach(function(inp){ try{ inp.onmidimessage=onMidiMsg; }catch(e){} }); }catch(e){}
 }
 function initMidi(rescan){
- if(!navigator.requestMIDIAccess){ _midiErr='no-api'; updateMidiBadge(); return; }
+ if(!navigator.requestMIDIAccess){ _midiErr='no-api'; updateMidiBadge(); moSyncUI(); return; }
+ // Paint BEFORE asking. requestMIDIAccess does not settle while the browser's
+ // permission prompt is open — and if nobody ever answers it, it never settles
+ // at all — so a pane that only drew on resolution sat at a bare "—" with an
+ // empty output section and nothing to say for itself.
+ _midiErr='pending'; updateMidiBadge(); moSyncUI();
  navigator.requestMIDIAccess().then(acc=>{
  midiAccess=acc; _midiErr='';
  _midiWireAll();
@@ -16972,7 +17101,7 @@ function updateMidiBadge(){
        if(i.state && i.state!=='connected') bits.push(i.state);
        return bits.join(', ');
      }).join('  ·  ')
-   : (_midiErr ? '—' : 'none connected');
+   : (_midiErr==='pending' ? 'asking the browser…' : (_midiErr ? '—' : 'none connected'));
  const warn=document.getElementById('midi-dupe-warn');
  if(warn) warn.style.display = cnt>1 ? '' : 'none';
  if(typeof syncSSPreviews==='function') syncSSPreviews();
@@ -16984,6 +17113,8 @@ function _midiPaintWhy(ins){
   msg='This browser has no Web MIDI, so no controller can reach MōdRiff and MōdRiff cannot play anything else. Safari has never shipped it, and every browser on iOS and iPadOS uses Safari\u2019s engine \u2014 so this is every browser on an iPhone or iPad. Chrome, Edge or Opera on a desktop will see your ports.';
  } else if(_midiErr==='blocked'){
   msg='The browser refused MIDI access for this page. Allow MIDI in the site settings (the icon at the left of the address bar), then hit Rescan.';
+ } else if(_midiErr==='pending'){
+  msg='Waiting for permission to use MIDI devices — allow it in the browser prompt. If you dismissed it, hit Rescan.';
  } else if(_midiErr){
   msg='MIDI access '+_midiErr+'. Rescan to try again.';
  } else if(!(ins&&ins.length)){
@@ -25702,13 +25833,17 @@ function moSyncUI(){
       lanes.appendChild(b);
     });
   }
+  var pending=document.getElementById('midi-out-pending');
+  if(pending) pending.style.opacity = _moPort ? '1' : '.45';
   var on=document.getElementById('midi-local-on'), off=document.getElementById('midi-local-off');
   if(on) on.classList.toggle('active',_moLocal);
   if(off) off.classList.toggle('active',!_moLocal);
   var note=document.getElementById('midi-out-note');
   if(note){
     var txt;
-    if(_midiErr==='no-api'){
+    if(_midiErr==='pending'){
+      txt='Waiting for the browser to grant MIDI access. Destinations appear here once it does.';
+    } else if(_midiErr==='no-api'){
       // The honest version of "can I play my hardware from here", in the place
       // somebody goes looking for it.
       txt='This browser has no Web MIDI, so there is nothing to send to. On iPhone and iPad that is every browser, since they all use Safari\u2019s engine. Reaching another app on iOS \u2014 an AUv3 instrument in AUM or Loopy Pro, say \u2014 needs the native build of MōdRiff, which can publish a CoreMIDI port that other apps see. On a desktop, Chrome, Edge or Opera will list your ports here, and a virtual port (the IAC bus on macOS, loopMIDI on Windows) carries MōdRiff into a DAW.';
