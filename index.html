@@ -2968,7 +2968,15 @@ body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
 /* A label down the left and its controls to the right, the way the mockup
    reads — so the sheet is scannable rather than a list you have to read. */
 .ft-sheet-row { display:flex; align-items:flex-start; gap:10px; }
-.ft-sheet-lbl {
+/* The chart-only MIDI export. A link, not a tile: see the markup. */
+.ft-midi-link {
+  background:none; border:none; padding:2px 0; cursor:pointer;
+  font-family:inherit; font-size:.44rem; letter-spacing:.04em;
+  color:var(--muted); text-decoration:underline; text-underline-offset:3px;
+  text-decoration-color:var(--border2);
+}
+.ft-midi-link:hover, .ft-midi-link:focus-visible { color:var(--text); text-decoration-color:var(--accent); }
+.fx-readout-bar {
  flex:0 0 58px; padding-top:7px;
  font-size:.4rem; letter-spacing:.14em; text-transform:uppercase;
  color:var(--muted); text-align:right;
@@ -5103,8 +5111,14 @@ body.mode-free .pro-only { display:none !important; }
    <div class="ft-sheet-row">
     <div class="ft-sheet-lbl">Export</div>
     <div class="ft-sheet-items" id="ft-sheet-export">
-     <button class="ft-btn ft-plain" id="ft-midi-btn" onclick="exportMidi()"
-       title="Write the chart out as a .mid file">MIDI</button>
+     <!-- Deliberately not a tile. Bounce is the export people mean: it
+          captures what you actually played, across every lane, as audio AND
+          as a .mid. This one writes the chart's chords out without anyone
+          having performed them, which is a narrower thing than its old
+          full-size button suggested. -->
+     <button class="ft-midi-link" id="ft-midi-btn" onclick="exportMidi()"
+       title="Write just the chart's chords out as a .mid file. To export everything you played — melody, bass, drums, arp and the roll, each on its own track — use Bounce.">
+       Chart chords → .mid</button>
     </div>
    </div>
 
@@ -5151,7 +5165,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.7</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.8.8</span>
     </div>
    </div>
   </div>
@@ -5169,7 +5183,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.8.7</div>
+ <div class="unlock-ver" id="unlock-ver">v3.8.8</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
       here. Static markup is the no-JS fallback. -->
@@ -5322,6 +5336,9 @@ body.mode-free .pro-only { display:none !important; }
     <button class="smp-b" onclick="smpTrimToClip()" title="Make a new sample out of just the part between the handles — the original is left alone">✂ Trim</button>
     <button class="smp-b" onclick="smpEdit('trim')" title="Move the handles past the silence at each end, without making a new sample">⇥ Silence</button>
     <button class="smp-b" onclick="smpEdit('whole')" title="Handles back to the whole clip">Whole</button>
+    <button class="smp-b" id="smp-undo" onclick="smpUndo()" aria-label="Undo">↶</button>
+    <button class="smp-b" id="smp-redo" onclick="smpRedo()" aria-label="Redo">↷</button>
+    <button class="smp-b" id="smp-save" onclick="smpSaveEdits()" aria-label="Save these settings on the clip">✓ Save</button>
     <span class="smp-trim" id="smp-trim-v"></span>
    </div>
    <div id="smp-ctl">
@@ -6919,7 +6936,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.8.7';
+const MODRIFF_VERSION = '3.8.8';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7766,13 +7783,26 @@ function smpDeleteClip(id){
 function smpAttach(key, clipId){
  var s=smpSlot(key, true);
  s.id=clipId;
- // A recording opens with the moment before you played and ends with the
- // moment after. Trimming that by hand every single time is the tax that stops
- // people sampling, so it arrives trimmed and the handles are there to
- // disagree with.
- var t=smpAutoTrim(clipId);
- s.start=t.start; s.end=t.end;
- s.loopA=null; s.loopB=null;      // a new clip gets its own loop, not the last one's
+ // Settings saved with the clip win: that is the whole point of saving them,
+ // and a clip you already trimmed and tuned should not be auto-trimmed back to
+ // somebody else's guess every time you load it onto another lane.
+ var c=smpClip(clipId), e=c&&c.edit;
+ if(e){
+  s.start=e.start; s.end=e.end;
+  s.loop=!!e.loop; s.loopA=e.loopA; s.loopB=e.loopB;
+  if(e.gain!=null) s.gain=e.gain;
+  if(e.tune!=null) s.tune=e.tune;
+  if(e.fine!=null) s.fine=e.fine;
+  if(e.root!=null) s.root=e.root;
+ } else {
+  // A recording opens with the moment before you played and ends with the
+  // moment after. Trimming that by hand every single time is the tax that
+  // stops people sampling, so it arrives trimmed and the handles are there to
+  // disagree with.
+  var t=smpAutoTrim(clipId);
+  s.start=t.start; s.end=t.end;
+  s.loopA=null; s.loopB=null;     // a new clip gets its own loop, not the last one's
+ }
  if(key.charAt(0)==='v') smpSelectVoice(key.slice(2));
  if(key==='fxpad' && typeof fxSmpSync==='function') fxSmpSync();
  return s;
@@ -7814,7 +7844,7 @@ function smpLoadLibrary(){
    recs.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
    recs.forEach(function(r){
     if(smpClip(r.id)) return;
-    SMP_LIB.push({id:r.id,name:r.name,src:r.src,dur:r.dur,sr:r.sr,ch:r.ch,peak:r.peak,ts:r.ts});
+    SMP_LIB.push({id:r.id,name:r.name,src:r.src,dur:r.dur,sr:r.sr,ch:r.ch,peak:r.peak,ts:r.ts,edit:r.edit});
    });
   }).catch(function(){}),
   // Samples the DEVELOPER deploys. Drop files in samples/user/ and name them
@@ -8767,6 +8797,9 @@ function smpDrawWave(){
 function smpWaveDrag(ev){
  var cv=document.getElementById('smp-wave'); if(!cv) return;
  var slot=_smpOpenKey?smpSlot(_smpOpenKey,true):null; if(!slot||!slot.id) return;
+ // One entry for the whole drag: the handle moves on every pointermove and
+ // sixty undos to get back across one gesture is not an undo.
+ if(typeof smpPushHist==='function') smpPushHist(false);
  var buf0=SMP_BUF[slot.id];
  var r=cv.getBoundingClientRect();
  var at=function(e){ return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)); };
@@ -8815,8 +8848,115 @@ function smpWaveDrag(ev){
 window.smpWaveDrag = smpWaveDrag;
 
 // ── Control handlers ─────────────────────────────────────────────────────
+var _smpHist={};      // key -> {past:[], future:[]}
+var _smpHistKey=null; // which slot the stack belongs to
+var _smpHistCoalesce=0, _smpHistCoalesceKey=null;
+function _smpHistFor(key){
+ if(_smpHistKey!==key){ _smpHistKey=key; _smpHist={past:[],future:[]}; }
+ return _smpHist;
+}
+function smpSnap(slot){
+ return {start:slot.start, end:slot.end, gain:slot.gain, loop:slot.loop,
+         loopA:slot.loopA, loopB:slot.loopB, tune:slot.tune, fine:slot.fine,
+         root:slot.root, id:slot.id};
+}
+function _smpSame(a,b){
+ if(!a||!b) return false;
+ return Object.keys(a).every(function(k){ return a[k]===b[k]; });
+}
+// `coalesce` is the name of the control being moved, or a falsy value for a
+// discrete action. A run of moves of the SAME control folds into one entry —
+// dragging Volume from 100 to 30 is one undo, not seventy — but moving a
+// different control always starts a new one, or three quick edits to three
+// different sliders collapsed into a single step that undid all of them.
+function smpPushHist(coalesce){
+ var key=_smpOpenKey; if(!key) return;
+ var slot=SMP_SLOTS[key]; if(!slot) return;
+ var H=_smpHistFor(key), snap=smpSnap(slot), now=Date.now();
+ if(H.past.length && _smpSame(H.past[H.past.length-1], snap)) return;
+ if(coalesce && coalesce===_smpHistCoalesceKey && now-_smpHistCoalesce < 400 && H.past.length){
+  _smpHistCoalesce=now; return;
+ }
+ _smpHistCoalesce = coalesce ? now : 0;
+ _smpHistCoalesceKey = coalesce || null;
+ H.past.push(snap);
+ if(H.past.length>60) H.past.shift();
+ H.future.length=0;
+ smpSyncHistUI();
+}
+function _smpRestore(snap){
+ var slot=SMP_SLOTS[_smpOpenKey]; if(!slot||!snap) return;
+ Object.keys(snap).forEach(function(k){ slot[k]=snap[k]; });
+ if(_smpOpenKey==='fxpad' && typeof fxSmpSync==='function') try{ fxSmpSync(); }catch(e){}
+ smpRenderEditor(); smpSyncBadges(); smpSyncHistUI();
+ if(typeof window._sqRenderGrid==='function') try{ window._sqRenderGrid(); }catch(e){}
+}
+function smpUndo(){
+ var key=_smpOpenKey; if(!key) return;
+ var H=_smpHistFor(key); if(!H.past.length) return;
+ var slot=SMP_SLOTS[key]; if(!slot) return;
+ H.future.push(smpSnap(slot));
+ _smpRestore(H.past.pop());
+}
+function smpRedo(){
+ var key=_smpOpenKey; if(!key) return;
+ var H=_smpHistFor(key); if(!H.future.length) return;
+ var slot=SMP_SLOTS[key]; if(!slot) return;
+ H.past.push(smpSnap(slot));
+ _smpRestore(H.future.pop());
+}
+function smpSyncHistUI(){
+ var H=_smpHistKey===_smpOpenKey ? _smpHist : {past:[],future:[]};
+ var u=document.getElementById('smp-undo'), r=document.getElementById('smp-redo');
+ if(u){ u.disabled=!(H.past&&H.past.length); u.title=u.disabled?'Nothing to undo':('Undo ('+H.past.length+')'); }
+ if(r){ r.disabled=!(H.future&&H.future.length); r.title=r.disabled?'Nothing to redo':('Redo ('+H.future.length+')'); }
+ var sv=document.getElementById('smp-save');
+ if(sv){
+  var slot=_smpOpenKey?SMP_SLOTS[_smpOpenKey]:null;
+  var c=slot&&slot.id?smpClip(slot.id):null;
+  var dirty = !!(c && !_smpSame(smpSnap(slot), Object.assign({id:slot.id}, c.edit||{})));
+  sv.disabled = !c;
+  sv.classList.toggle('on', dirty);
+  sv.title = c ? 'Store these settings on “'+c.name+'” so every lane you load it onto starts here'
+               : 'Nothing loaded';
+ }
+}
+// The editor's settings, stored ON the clip. Loading that clip anywhere then
+// starts from the work you did rather than from auto-trim.
+function smpSaveEdits(){
+ var key=_smpOpenKey, slot=key?SMP_SLOTS[key]:null;
+ if(!slot||!slot.id) return;
+ var c=smpClip(slot.id); if(!c) return;
+ var before=c.edit?Object.assign({},c.edit):null;
+ var e=smpSnap(slot); delete e.id;
+ c.edit=e;
+ if(c.src!=='dev'){
+  _smpStore('readwrite').then(function(st){
+   if(!st) return;
+   var rq=st.get(c.id);
+   rq.onsuccess=function(){ var r=rq.result; if(r){ r.edit=e; st.put(r); } };
+  });
+ }
+ smpSyncHistUI();
+ showToast('Saved with “'+c.name+'”', {actionLabel:'Undo', onAction:function(){
+  if(before) c.edit=before; else delete c.edit;
+  if(c.src!=='dev'){
+   _smpStore('readwrite').then(function(st){
+    if(!st) return;
+    var rq=st.get(c.id);
+    rq.onsuccess=function(){ var r=rq.result; if(r){ if(before) r.edit=before; else delete r.edit; st.put(r); } };
+   });
+  }
+  smpSyncHistUI();
+ }});
+}
+window.smpUndo=smpUndo; window.smpRedo=smpRedo; window.smpSaveEdits=smpSaveEdits;
+
 function smpEdit(field, v){
  var s=_smpOpenKey?smpSlot(_smpOpenKey,true):null; if(!s) return;
+ // Before the change, so undo lands on what it looked like a moment ago. The
+ // three continuous controls coalesce; a button press is its own step.
+ smpPushHist((field==='gain'||field==='fine'||field==='tune') ? field : null);
  if(field==='gain') s.gain=Math.max(0,Math.min(3,(+v||0)/100));
  else if(field==='tune') s.tune=Math.max(-24,Math.min(24,Math.round(+v||0)));
  else if(field==='fine') s.fine=Math.max(-100,Math.min(100,Math.round(+v||0)));
@@ -8864,6 +9004,7 @@ function smpEdit(field, v){
  }
  smpRenderEditor();
  smpSyncBadges();
+ smpSyncHistUI();
 }
 window.smpEdit = smpEdit;
 // Every lane of the kit you are looking at, in one go. Undoable, because a
@@ -25800,6 +25941,7 @@ var MIDI_LANES=[
   {key:'chord', name:'Chords',    ch:1},
   {key:'bass',  name:'Bassline',  ch:2},
   {key:'arp',   name:'Arpeggio',  ch:3},
+  {key:'melgen',name:'Melody Seq', ch:4},
   {key:'drum',  name:'Percussion',ch:9}
 ];
 // Read from the wrap layer below, from the five mute gates thousands of lines
@@ -31209,13 +31351,22 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
   var midi = note + (oct+1)*12;
   // Its own channel, not shared with the melody strip — see MIX_CHANNELS.
   var _mxMel = typeof _cmx === 'function' ? _cmx('melgen') : 1;
-  // The roll shares the melody lane rather than claiming a channel of its own:
-  // adding a lane here would add a track to every .mid export too, and that is
-  // a separate decision from where the sound comes out.
+  // Its own lane, not the strip's. They are separate parts with separate
+  // channels and separate voices, and merging them onto one track hands a DAW
+  // a melody that is two instruments at once. This is also the tap the .mid
+  // recorder never had: every other sound source in the app reached the
+  // exported file and the roll silently did not.
   var _moTookMel=false;
+  var _mlVel=Math.max(1,Math.min(127,Math.round((vol||0.7)*100)+(accent?15:0)));
+  var _mlMidi=Math.max(0,Math.min(127,Math.round(midi)));
+  var _mlDur=Math.max(30,(dur||0.3)*1000*0.9);
   try{
-    if(typeof moHit==='function') moHit('melody',midi,Math.max(1,Math.min(127,Math.round((vol||0.7)*100)+(accent?15:0))),t,Math.max(30,(dur||0.3)*1000*0.9));
-    _moTookMel = (typeof moSilences==='function') && moSilences('melody');
+    if(typeof moHit==='function') moHit('melgen',_mlMidi,_mlVel,t,_mlDur);
+    _moTookMel = (typeof moSilences==='function') && moSilences('melgen');
+  }catch(e){}
+  if(typeof _midiRecOn!=='undefined' && _midiRecOn) try{
+    var _mlOn=_midiCtxNow(t);
+    _midiRecNotes.push({lane:'melgen',note:_mlMidi,vel:_mlVel,tOn:_mlOn,tOff:_mlOn+_mlDur});
   }catch(e){}
   if(!(_mxMel>0) || _moTookMel) return;
   var wg = (typeof WAVE_GAIN !== 'undefined' && WAVE_GAIN[mlWave]) ? WAVE_GAIN[mlWave] : 1;
