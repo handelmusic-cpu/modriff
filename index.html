@@ -5179,7 +5179,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.7</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.8</span>
     </div>
    </div>
   </div>
@@ -5197,7 +5197,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.7</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.8</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6965,7 +6965,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.7';
+const MODRIFF_VERSION = '3.9.8';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -10181,6 +10181,39 @@ function _duckAudio(down){
 }
 document.addEventListener('visibilitychange', function(){
  if(document.visibilityState === 'hidden') _duckAudio(true);
+});
+
+// Switching away from the app on iOS while it played came back as a glitch —
+// a stutter on the way out, stray or doubled notes on the way back. Nothing
+// here can keep playing in an iOS background: every note is scheduled by a
+// JavaScript timer a look-ahead in front of the audio, WebKit freezes those
+// timers the moment the page is hidden, and the context itself is suspended a
+// beat later. What sounded in between was the tail of the look-ahead and
+// whatever the realignment on return made of a clock that had stopped mid-bar.
+//
+// So on iOS, leaving is a pause: everything stops cleanly under the duck
+// above, the song remembers the chord it was on, and coming back offers to
+// carry on from there. Desktop and Android keep an audible tab running in the
+// background, so they are left alone. The iOS test is repeated here rather
+// than reusing _isIOS, a const declared much further down the file.
+var _bgPauseIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+               || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+var _bgPaused = false;
+document.addEventListener('visibilitychange', function(){
+ if(!_bgPauseIOS) return;
+ if(document.visibilityState === 'hidden'){
+  if(typeof isAnythingPlaying!=='function' || !isAnythingPlaying()) return;
+  _bgPaused = true;
+  try{ if(songLoopActive && typeof _songCueAt==='function') _songCueAt(songLoopSection, songLoopSlot); }catch(e){}
+  try{ stopEverything(); }catch(e){}
+  try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
+ } else if(document.visibilityState === 'visible' && _bgPaused){
+  _bgPaused = false;
+  if(typeof showToast==='function') showToast('Paused while you were away', {
+   actionLabel:'▶ Resume', ms:8000,
+   onAction:function(){ if(!isAnythingPlaying()){ startEverything(); if(typeof syncFixedTransport==='function') syncFixedTransport(); } }
+  });
+ }
 });
 
 function _resumeAudioIfNeeded(){
