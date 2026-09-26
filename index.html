@@ -527,6 +527,11 @@ body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); 
 /* The synth filter block — see synthFilterBuild. On a voice without one it
    shows a line saying which voices have it rather than a dead control. */
 .sf-block { width:100%; margin-bottom:8px; }
+.snd-smp-edit {
+ display:block; width:100%; margin-top:8px; padding:9px 10px; border-radius:8px;
+ border:1px solid rgba(255,213,74,.5); background:rgba(255,213,74,.08); color:#ffd54a;
+ font-family:'Outfit',sans-serif; font-size:.56rem; font-weight:600; cursor:pointer; touch-action:manipulation;
+}
 .sf-block .sf-off { display:none; font-size:.46rem; color:var(--muted); line-height:1.5; }
 .sf-block.sf-na .sf-on { display:none; }
 .sf-block.sf-na .sf-off { display:block; }
@@ -5195,7 +5200,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.11</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.12</span>
     </div>
    </div>
   </div>
@@ -5213,7 +5218,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.11</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.12</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6681,6 +6686,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
           seven quick buttons above (piano, vibes, modsynth, ...), so the
           current bass sound is never unclear. -->
      <span class="bl-wave-current" id="bl-wave-current"></span>
+     <button class="bl-mopt smp-edit-btn" data-smppart="bass" style="display:none" onclick="smpOpenVoice('bass')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
    </div>
   </div>
   <!-- Filter controls row -->
@@ -6804,6 +6810,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    <!-- Covers any voice picked via the Voices drawer that isn't one of the
         eight quick buttons above (vibes, modsynth, ...). -->
    <span class="bl-wave-current" id="ml-wave-current"></span>
+   <button class="bl-mopt smp-edit-btn" data-smppart="melgen" style="display:none" onclick="smpOpenVoice('melgen')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
   </div>
   <!-- The synth voices' filter, in the same slot as the bass's Filter row. -->
   <div class="ac-inline-row" data-acrow="tone" id="sf-host-melgen"></div>
@@ -6996,7 +7003,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.11';
+const MODRIFF_VERSION = '3.9.12';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -15049,7 +15056,10 @@ function buildVoicesPanel(){
    p.opts.forEach(([v,lab])=>{
     const o=document.createElement('option'); o.value=v; o.textContent=lab; sel.appendChild(o);
    });
-   sel.addEventListener('change',()=>{ try{ p.set(sel.value); }catch(e){} syncVoicesPanel(); });
+   sel.addEventListener('change',()=>{
+    try{ p.set(sel.value); }catch(e){} syncVoicesPanel();
+    if(sel.value==='sampler' && typeof window.smpOpenVoice==='function') window.smpOpenVoice(p.k);
+   });
    row.innerHTML='<span class="voice-ic">'+p.icon+'</span><span class="voice-lbl">'+p.label+'</span>';
    row.appendChild(sel);
    // The way into the sampler for this part. It lives on the row rather than
@@ -15087,7 +15097,23 @@ function syncVoicesPanel(){
  if(typeof window.smpSyncBadges==='function') window.smpSyncBadges();
  if(typeof msSyncHost==='function') msSyncHost();
  if(typeof synthFilterVoiceChanged==='function') synthFilterVoiceChanged();
+ if(typeof smpEditSync==='function') smpEditSync();
 }
+// Every "Edit sample" way in, shown only while its part plays the Sampler.
+function smpEditSync(){
+ document.querySelectorAll('[data-smppart]').forEach(function(b){
+  var on=false; try{ on = _partVoice(b.dataset.smppart)==='sampler'; }catch(e){}
+  b.style.display = on ? '' : 'none';
+ });
+}
+// Picking Sampler from any sound menu opens that part's sample in the editor,
+// after the menu's own handler has set the voice and closed.
+document.addEventListener('click', function(e){
+ var b=e.target.closest && e.target.closest('[data-wave="sampler"],[data-melwave="sampler"],[data-arpwave="sampler"]');
+ if(!b) return;
+ var part = b.dataset.wave ? 'chord' : (b.dataset.melwave ? 'mel' : 'arp');
+ setTimeout(function(){ if(window.smpOpenVoice) window.smpOpenVoice(part); }, 60);
+});
 
 // ═══════════════════════════════════════
 // ENDING ENGINE
@@ -16390,10 +16416,10 @@ function buildVoicePickers(){
 //        strum) that becomes the picker's second layer. Only the Play tab's
 //        two voices have one; the arp's row is presets and nothing else.
 const SND_PICK_HOSTS = [
- {host:'bw-voices',        tone:'chord-tone-body', toneLbl:'Shape it — filter, attack, release, reverb, sub, strum'},
- {host:'sb-voices'},
- {host:'melvoice-settings', tone:'mel-tone-body', toneLbl:'Shape it — filter, attack, release, reverb'},
- {host:'aw-voices'},
+ {host:'bw-voices',        part:'chord', tone:'chord-tone-body', toneLbl:'Shape it — filter, attack, release, reverb, sub, strum'},
+ {host:'sb-voices', part:'chord'},
+ {host:'melvoice-settings', part:'mel', tone:'mel-tone-body', toneLbl:'Shape it — filter, attack, release, reverb'},
+ {host:'aw-voices', part:'arp'},
  {host:'melvoice-inline'}
 ];
 let _sndPickOpen = null;
@@ -16589,6 +16615,18 @@ function sndPickInit(){
    new MutationObserver(()=>sndPickSyncLabel(wrap))
     .observe(host, {subtree:true, childList:true, attributes:true, attributeFilter:['class']});
 
+   // Choosing Sampler here used to be a dead end: the menu could name the
+   // voice but not reach the clip behind it, and the only way into the
+   // editor was the ◈ on the Voices drawer. While the part is on Sampler the
+   // menu carries the way in; choosing it opens the editor straight away.
+   if(spec.part){
+    const ed=document.createElement('button');
+    ed.type='button'; ed.className='snd-smp-edit'; ed.dataset.smppart=spec.part;
+    ed.textContent='◈ Edit sample — pick, record or trim';
+    ed.style.display='none';
+    ed.addEventListener('click', e=>{ e.stopPropagation(); sndPickClose(); if(window.smpOpenVoice) window.smpOpenVoice(spec.part); });
+    pop.appendChild(ed);
+   }
    const tone = spec.tone && document.getElementById(spec.tone);
    if(tone){
     const head = document.createElement('button');
@@ -16615,6 +16653,7 @@ function sndPickInit(){
  });
  if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
  if(typeof mdPickInit==='function') mdPickInit();
+ if(typeof smpEditSync==='function') smpEditSync();
 }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') sndPickClose(); });
 
