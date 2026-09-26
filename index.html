@@ -3683,6 +3683,11 @@ body.light-mode .bl-empty-hint {
 .bl-mopt.sel, .bl-mopt.active { border-color:var(--pg); color:var(--pg); background:rgba(80,200,120,.1); }
 .bl-wave-current { font-size:.42rem; color:var(--muted); align-self:center; white-space:nowrap; }
 .bl-gen-style { display:flex; gap:4px; flex-wrap:wrap; }
+/* The one row on the panel that writes the part, so it reads as the primary
+   action: Generate filled, the rest outlined beside it. */
+.ac-gen-row { gap:6px; margin-bottom:8px; }
+.ac-gen-row .bl-genbtn { padding:9px 14px; font-size:.62rem; font-weight:600; }
+.ac-gen-row .bl-genbtn.ac-gen-primary { background:var(--pg); color:#06140d; border-color:var(--pg); }
 .bl-gen-btn { padding:5px 10px; border:1px solid var(--border2); border-radius:6px; background:none; color:var(--muted); font-family:'Outfit',sans-serif; font-size:.5rem; cursor:pointer; touch-action:manipulation; transition:all .12s; }
 .bl-gen-btn.active { border-color:var(--pg); color:var(--pg); background:rgba(45,240,154,.08); }
 /* Bass simple-view (basic mode only) */
@@ -4277,9 +4282,16 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
    sharing a slot keep their document order, which is what holds the page dots
    above the grid and the playhead below it. */
 .bl-page-wrap { display:flex; flex-direction:column; }
+/* Generate first, and its style chips straight under it, on bass and melody
+   alike. It was the third row down, under Voice and Filter — and those two rows
+   are different heights on the two panels (eight voice buttons against eight
+   longer ones, and a Filter row melody does not have), so the most-used button
+   in the tab sat at a different height depending on the part, and on a phone
+   under the fold on one of them. Nothing above it now but the Part switcher. */
+[data-acrow="gen"]    { order:0; }
+[data-acrow="write"]  { order:0; }
 [data-acrow="voice"]  { order:1; }
 [data-acrow="tone"]   { order:2; }
-[data-acrow="write"]  { order:3; }
 [data-acrow="behave"] { order:4; }
 [data-acrow="chips"]  { order:5; }
 [data-acrow="timing"] { order:6; }
@@ -5136,8 +5148,6 @@ body.mode-free .pro-only { display:none !important; }
        title="Count the bar out loud">♩ Click</button>
      <button class="ft-btn snap-on" id="ft-snap-btn" onclick="toggleSnapMode()"
        title="Snap: controls arp restart + song advance timing — chords always play freely">Snap: Beat</button>
-     <button class="ft-btn" id="ft-aud-btn" onclick="ftToggleAudition()"
-       title="Sequencer audition (hear steps as you tap)" style="display:none">Aud: OFF</button>
     </div>
    </div>
 
@@ -5167,7 +5177,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.4</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.5</span>
     </div>
    </div>
   </div>
@@ -5185,7 +5195,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.4</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.5</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6542,6 +6552,12 @@ body.mode-free .pro-only { display:none !important; }
     <button class="seq-rbtn" id="sq-swing16" onclick="window._sqSetSwing8(false)" title="Swing every other 16th — the tighter funk and hip-hop feel">16th</button>
     <button class="seq-rbtn active" id="sq-swing8" onclick="window._sqSetSwing8(true)" title="Swing every other 8th — the long-short feel of a jazz ride or a shuffle. This is what &quot;swing&quot; means unqualified.">8th</button>
   </div>
+  <!-- Audition lives beside the grid it applies to. It was a transport-sheet
+       button that only appeared while the drums were open, labelled "Aud" —
+       two taps from the grid and invisible from everywhere else, which is
+       how it came to be searched for and never found. -->
+  <button class="seq-rbtn" id="sq-aud-btn" data-aud onclick="ftToggleAudition()" aria-pressed="false"
+   title="Audition: hear each step as you tap it into the grid">🔈 Audition: Off</button>
   <button class="sq-recbtn" data-recarm="sq" onclick="noteInputArm('sq')"
    title="Play the beat in yourself — the home-row keys run down the kit (A is the top track) or use a MIDI pad. Stopped, hits stack on the cursor and Space moves it on; playing, they land where the playhead is. Hold Shift for an accent.">⏺ Play in</button>
   <!-- Rev/Dly/Drv used to live here as three on/off toggles wired straight to
@@ -6645,9 +6661,17 @@ body.mode-free .pro-only { display:none !important; }
    <span class="bl-pl" style="margin-left:4px">Reso</span>
    <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetResonance&&window.blSetResonance(this.value)">
   </div>
-  <!-- Style + generate: always visible -->
+  <!-- Generate: the first thing on the panel, at the same height as melody's.
+       See the accomp order block in the CSS. -->
+  <div class="ac-inline-row ac-gen-row" data-acrow="gen">
+   <button class="bl-genbtn ac-gen-primary" id="bl-gen-go" onclick="blGenerateAndArm()" title="Write one line in the style below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn" id="bl-arr-go" onclick="blArrange()" title="Write a different line for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
+   <button class="bl-genbtn bl-recbtn" data-recarm="bl" onclick="noteInputArm('bl')"
+    title="Play the line in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">⏺ Play in</button>
+   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
+  </div>
   <div class="ac-inline-row" data-acrow="write">
-   <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Style:</span>
+   <span class="ac-rowlbl">Style:</span>
    <div class="bl-gen-style" id="bl-gen-style">
      <button class="bl-gen-btn" data-blstyle="rock">Rock</button>
      <button class="bl-gen-btn" data-blstyle="jazz">Jazz</button>
@@ -6662,11 +6686,6 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn" data-blstyle="riff">Riff</button>
      <button class="bl-gen-btn" data-blstyle="hook">Pop Hook</button>
    </div>
-   <button class="bl-genbtn" id="bl-gen-go" onclick="blGenerateAndArm()" title="Write one line in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
-   <button class="bl-genbtn" id="bl-arr-go" onclick="blArrange()" title="Write a different line for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
-   <button class="bl-genbtn bl-recbtn" data-recarm="bl" onclick="noteInputArm('bl')"
-    title="Play the line in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">⏺ Play in</button>
-   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
   <div class="ac-inline-row" data-acrow="behave">
@@ -6707,7 +6726,7 @@ body.mode-free .pro-only { display:none !important; }
    <div class="bl-empty-hint" id="bl-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No bassline yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> at the top for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -6756,9 +6775,16 @@ body.mode-free .pro-only { display:none !important; }
         eight quick buttons above (vibes, modsynth, ...). -->
    <span class="bl-wave-current" id="ml-wave-current"></span>
   </div>
-  <!-- Style + generate: always visible -->
+  <!-- Generate: first on the panel, same place as bass. -->
+  <div class="ac-inline-row ac-gen-row" data-acrow="gen">
+   <button class="bl-genbtn ac-gen-primary" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in the pattern below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
+   <button class="bl-genbtn bl-recbtn" data-recarm="ml" onclick="noteInputArm('ml')"
+    title="Play the phrase in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">⏺ Play in</button>
+   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
+  </div>
   <div class="ac-inline-row" data-acrow="write">
-   <span style="font-size:.4rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">Pattern:</span>
+   <span class="ac-rowlbl">Pattern:</span>
    <div class="bl-gen-style" id="ml-gen-style">
      <button class="bl-gen-btn" data-mlstyle="arpeggio">Arpeggio</button>
      <button class="bl-gen-btn" data-mlstyle="scalerun">Scale Run</button>
@@ -6766,11 +6792,6 @@ body.mode-free .pro-only { display:none !important; }
      <button class="bl-gen-btn active" data-mlstyle="hook">Pop Hook</button>
      <button class="bl-gen-btn" data-mlstyle="callresponse">Call &amp; Response</button>
    </div>
-   <button class="bl-genbtn" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in this style. Follow moves it onto each chord as the song plays.">✦ Generate</button>
-   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
-   <button class="bl-genbtn bl-recbtn" data-recarm="ml" onclick="noteInputArm('ml')"
-    title="Play the phrase in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">⏺ Play in</button>
-   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
   </div>
   <!-- Follow the changes -->
   <div class="ac-inline-row" data-acrow="behave">
@@ -6802,7 +6823,7 @@ body.mode-free .pro-only { display:none !important; }
    <div class="bl-empty-hint" id="ml-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No melody yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> at the top for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -6942,7 +6963,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.4';
+const MODRIFF_VERSION = '3.9.5';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -22433,9 +22454,6 @@ function setAccompMode(m){
  document.getElementById('bm-bass-panel').style.display = m==='bass'?'':'none';
  document.getElementById('bm-melody-panel').style.display = m==='melody'?'':'none';
  document.getElementById('bm-arp-panel').style.display = m==='arp'?'':'none';
- // The audition toggle belongs to the drum grid, so it follows the sub-tab.
- var _aud=document.getElementById('ft-aud-btn');
- if(_aud) _aud.style.display = m==='drums' ? '' : 'none';
  if(m === 'drums'){
    if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
    if(typeof sqRender==='function') sqRender();
@@ -29036,8 +29054,11 @@ function sqWire(){
   // sq-toggle-audition
   document.addEventListener('sq-toggle-audition', function(){
     sqAudition = !sqAudition;
-    var btn = document.getElementById('ft-aud-btn');
-    if(btn){ btn.textContent = sqAudition ? 'Aud: ON' : 'Aud: OFF'; btn.classList.toggle('active', sqAudition); }
+    document.querySelectorAll('[data-aud]').forEach(function(btn){
+      btn.textContent = sqAudition ? '🔈 Audition: On' : '🔈 Audition: Off';
+      btn.classList.toggle('active', sqAudition);
+      btn.setAttribute('aria-pressed', String(sqAudition));
+    });
   });
   // sq-set-kit: legacy event from old kit buttons — route through sqSwitchMach
   document.addEventListener('sq-set-kit', function(e){
@@ -32323,11 +32344,10 @@ setTimeout(mlPrInit, 0);
 
 
 
-// ─── audition toggle (shown only on rhythm tab) ───
+// ─── audition toggle (on the drum grid's own row) ───
 function ftToggleAudition(){
+  // State and label are updated inside the sequencer IIFE via the event.
   document.dispatchEvent(new CustomEvent('sq-toggle-audition'));
-  var btn = document.getElementById('ft-aud-btn');
-  // state updated inside IIFE via event
 }
 
 // Channel strips are built by one function so the Mix tab and the slide-up
@@ -32869,12 +32889,10 @@ function showSeqRotatePopup(){
   }, 1200);
 }
 
-// ─── switchTab: show/hide Aud button ───
+// ─── switchTab: refresh the accomp tab on arrival ───
 var _origSwitchTab = switchTab;
 switchTab = function(t){
   _origSwitchTab(t);
-  var audBtn = document.getElementById('ft-aud-btn');
-  if(audBtn) audBtn.style.display = (t==='accomp' && accompMode==='drums') ? '' : 'none';
   if(t==='accomp'){
     if(typeof sqBuildGroovePresets==='function') sqBuildGroovePresets();
     sqRenderMixer();
@@ -34554,7 +34572,14 @@ class ModFxProc extends AudioWorkletProcessor {
       this.fk = fmode===2 ? res*1.85 : res*3.85;
       this.fdrv = 1 + drv*7;
       this.fmode = fmode;
-      const norm = 1/(1 + drv*1.6);        // drive makes up level; take it back
+      // Drive makes up level, so take that back. Resonance does the opposite:
+      // both topologies feed -k·y back, so the passband sits at 1/(1+k) — at
+      // the pad's typical k≈2 that is 9dB down, and touching the pad read as
+      // "quieter" rather than "filtered". Half of it is made back, which keeps
+      // the Moog's thinning-as-it-rings (the thing people recognise) without
+      // the level dive; full compensation would put the resonant peak 9dB
+      // over the dry signal at the top of the travel.
+      const norm = (1 + this.fk*(fmode===2?0.6:0.5))/(1 + drv*1.6);
       for(let c=0;c<chn;c++){
         const o=out[c];
         let z=this.fz[c];
@@ -34581,37 +34606,37 @@ class ModFxProc extends AudioWorkletProcessor {
 registerProcessor('modfx-proc', ModFxProc);
 `;
 
-// 0 off, 1 Moog ladder, 2 MS-20. Off by default and costs nothing there: the
-// processor skips the whole block, so nobody pays for a filter they have not
-// asked for. `var` — fxApplyAll reads it from a different region.
-// Was one global switch for the whole desk. It is per channel now — a filter
-// belongs to an instrument, not to the room — and these buttons set it on the
-// channels the pad is currently pointed at.
-function fxSetLadder(m){
- var mode=(m|0)||0;
- var list=(typeof fxTargets!=='undefined' && fxTargets.length) ? fxTargets : FX_CHANNELS;
- list.forEach(function(ch){ if(fxSends[ch]) fxSends[ch].lmode=mode; });
+// The character of the pad's OWN filter: 0 the clean biquad cascade, 1 Moog
+// ladder, 2 MS-20. When it is not clean, whatever the pad does to the lowpass
+// — Cutoff, Resonance, LP sweep — goes to the ladder instead, and the biquads
+// stand open.
+//
+// This replaced three head buttons that set each targeted channel's own
+// ladder mode. Those did two useless things: they never lit (the sync behind
+// them was guarded by a name that only exists on window, so it never ran),
+// and a ladder switched on at its default cutoff is wide open, so picking
+// Moog or MS-20 changed nothing you could hear until you went to the mixer
+// and turned a knob there. The filter on a channel is still per channel, on
+// its strip. This is the pad's.
+//
+// `var`: fxApplyChannel reads it, and runs from init well before here.
+var fxPadFlt = 0;
+var FX_PAD_FLT_NAMES = ['Clean','Moog','MS-20'];
+try{ var _pf=parseInt(localStorage.getItem('modo-fx-padflt'),10); if(_pf>=0&&_pf<=2) fxPadFlt=_pf; }catch(e){}
+function fxSetPadFlt(m){
+ fxPadFlt = (m==null ? (fxPadFlt+1)%3 : Math.max(0,Math.min(2,m|0)));
+ try{ localStorage.setItem('modo-fx-padflt', String(fxPadFlt)); }catch(e){}
  if(typeof fxApplyAll==='function') try{ fxApplyAll(); }catch(e){}
- if(typeof fxSyncUI==='function') try{ fxSyncUI(); }catch(e){}
- if(typeof buildMixChannelsInto==='function') try{ _mixSyncLadder(); }catch(e){}
+ _fxSyncPadFltBtn();
 }
-// What the head buttons should light: the mode shared by the targeted
-// channels, or none if they disagree.
-function fxLadderShown(){
- var list=(typeof fxTargets!=='undefined' && fxTargets.length) ? fxTargets : FX_CHANNELS;
- var m=null;
- for(var i=0;i<list.length;i++){
-  var v=(fxSends[list[i]]||{}).lmode||0;
-  if(m===null) m=v; else if(m!==v) return -1;
- }
- return m===null?0:m;
+function _fxSyncPadFltBtn(){
+ var b=document.getElementById('fx-flt-btn'); if(!b) return;
+ b.textContent='Filter: '+FX_PAD_FLT_NAMES[fxPadFlt];
+ b.classList.toggle('on', fxPadFlt>0);
+ b.setAttribute('aria-label','Pad filter character: '+FX_PAD_FLT_NAMES[fxPadFlt]+'. Tap to change.');
 }
+window.fxSetPadFlt=fxSetPadFlt;
 function _mixSyncLadder(){
- var shown=fxLadderShown();
- ['0','1','2'].forEach(function(k){
-  var b=document.getElementById('fx-lad-'+k);
-  if(b) b.classList.toggle('on', String(shown)===k);
- });
  document.querySelectorAll('[data-ladmode]').forEach(function(b){
   var ch=b.dataset.ladmode, L=fxSends[ch]||{};
   var m=L.lmode||0;
@@ -34621,7 +34646,7 @@ function _mixSyncLadder(){
                    : (m===1?'Four-pole Moog ladder':'Two-pole MS-20')) + ' — tap to cycle.';
  });
 }
-window.fxSetLadder=fxSetLadder; window._mixSyncLadder=_mixSyncLadder;
+window._mixSyncLadder=_mixSyncLadder;
 // One channel's filter, from the mixer strip.
 function fxSetChLadder(ch, field, val){
  if(!fxSends[ch]) return;
@@ -34996,9 +35021,16 @@ function fxApplyChannel(ch){
  const hpOn = _fxPadDriving(ch,'hpsweep');
  const lpV = lpOn ? v('lpsweep') : v('cutoff');
  const hpV = hpOn ? v('hpsweep') : v('hpf');
- const lpHz=_fxFiltHz(lpV), hpHz=_fxHpHz(hpV);
+ // With a Moog or MS-20 picked for the pad, a lowpass move on this channel
+ // is the ladder's to make, and the biquads open right up so the two are not
+ // stacked. Only while the pad is actually driving the lowpass here: at rest
+ // the channel's own strip filter is back in charge, same as the sends.
+ const padLad = fxPadFlt>0 && !!(chain.worklet && chain.worklet.parameters.get('fltmode'))
+   && (lpOn || _fxPadDriving(ch,'cutoff') || _fxPadDriving(ch,'reso'));
+ const lpSweepHz=_fxFiltHz(lpV);
+ const lpHz=padLad ? _fxFiltHz(1) : lpSweepHz, hpHz=_fxHpHz(hpV);
  chain.filt.frequency.setTargetAtTime(lpHz, t, S);
- chain.filt.Q.setTargetAtTime(0.7 + (lpOn ? _fxGangQ(lpV) : v('reso'))*28, t, S);
+ chain.filt.Q.setTargetAtTime(padLad ? 0.7 : 0.7 + (lpOn ? _fxGangQ(lpV) : v('reso'))*28, t, S);
  chain.hp.frequency.setTargetAtTime(hpHz, t, S);
  if(chain.hp.Q) chain.hp.Q.setTargetAtTime(0.7 + (hpOn ? _fxGangQ(1-hpV) : 0)*20, t, S);
  // The second stage of each cascade tracks the first at a flat Q, so the pair
@@ -35116,9 +35148,19 @@ function fxApplyChannel(ch){
    // The channel's own filter is the floor; an engaged pad axis overrides it
    // on the channels the pad is pointed at, exactly as the sends behave.
    const L=fxSends[ch]||{};
-   pr.get('fltmode').setValueAtTime(L.lmode||0, t);
-   pr.get('fltcut').setValueAtTime(_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut), t);
-   pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
+   if(padLad){
+    // The same frequency the biquad would have gone to, re-expressed on the
+    // ladder's 20Hz·900^x travel, so switching character does not move the
+    // sweep. The ganged resonance profile is scaled to stay under the
+    // ladder's own self-oscillation (k≈4 Moog, ≈2 MS-20).
+    pr.get('fltmode').setValueAtTime(fxPadFlt, t);
+    pr.get('fltcut').setValueAtTime(Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))), t);
+    pr.get('fltres').setValueAtTime(lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95, t);
+   } else {
+    pr.get('fltmode').setValueAtTime(L.lmode||0, t);
+    pr.get('fltcut').setValueAtTime(_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut), t);
+    pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
+   }
    pr.get('fltdrv').setValueAtTime(_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0), t);
   }
   if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
@@ -35245,6 +35287,7 @@ function fxCaptureState(){
           // localStorage, so a setup carried everything about the pad except
           // how it lets go.
           release: fxReleaseSec,
+          padFlt: fxPadFlt,
           // Your own presets and a recorded move are part of the performance,
           // so they travel with it rather than being stranded in localStorage.
           presets: fxUserPresets.map(x=>({...x})),
@@ -35254,6 +35297,7 @@ function fxRestoreState(st){
  if(!st||!st.sends) return false;
  // Setups saved before the release existed simply keep the current one.
  if(typeof st.release==='number' && typeof fxSetRelease==='function') fxSetRelease(st.release);
+ if(typeof st.padFlt==='number' && st.padFlt>=0 && st.padFlt<=2) fxPadFlt=st.padFlt|0;
  FX_CHANNELS.forEach(ch=>{ if(st.sends[ch]) fxSends[ch]=Object.assign({rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0},st.sends[ch]); });
  if(FX_PARAMS[st.x]) fxPadX=st.x;
  if(FX_PARAMS[st.y]) fxPadY=st.y;
@@ -35501,9 +35545,7 @@ function fxBuildPanel(){
   +  '<button class="fx-hold" id="fx-smp-pwr" onclick="fxSmpToggle()" style="display:none" aria-pressed="true">On</button>'
   +  '<button class="fx-clear" id="fx-smp-eject" onclick="fxSmpEject()" style="display:none" title="Take the clip off the pad. It stays in your library." aria-label="Eject sample">✕</button>'
   +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
-  +  '<button class="fx-hold" id="fx-lad-0" onclick="fxSetLadder(0)" title="No ladder — the pad\'s own biquad filter only">Flt: Off</button>'
-  +  '<button class="fx-hold" id="fx-lad-1" onclick="fxSetLadder(1)" title="Four-pole ladder with saturation inside the loop. Resonance thins the low end as it climbs.">Moog</button>'
-  +  '<button class="fx-hold" id="fx-lad-2" onclick="fxSetLadder(2)" title="Two-pole Sallen-Key with the clip in the resonance path — screams rather than peaks.">MS-20</button>'
+  +  '<button class="fx-hold" id="fx-flt-btn" onclick="fxSetPadFlt()" title="The pad\'s filter: Clean, Moog (four-pole ladder, saturation in the loop) or MS-20 (two-pole, screams rather than peaks). Used by Cutoff, Resonance and LP sweep.">Filter: Clean</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   +  '<button class="tips-btn" onclick="showTip(\'modfx\',this)" aria-label="About MōdFX">?</button>'
   + '</div></div>'
@@ -36000,6 +36042,7 @@ function fxSyncUI(){
 
  const h=document.getElementById('fx-hold-btn');
  if(h){ h.classList.toggle('on',fxHold); h.setAttribute('aria-pressed',String(fxHold)); }
+ _fxSyncPadFltBtn();
  const xs=document.getElementById('fx-axis-x'); if(xs) xs.value=fxPadX;
  const ys=document.getElementById('fx-axis-y'); if(ys) ys.value=fxPadY;
 
