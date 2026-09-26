@@ -1192,6 +1192,8 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
  30%     { box-shadow:0 0 0 3px rgba(139,92,246,.55), 0 0 26px rgba(139,92,246,.35); }
 }
 .panel-flash { animation:panelFlash 1.4s ease-out; }
+/* A single button is a much smaller target than a panel; flash it twice. */
+.panel-flash.find-hit { animation:panelFlash 1.05s ease-out 2; }
 @media (prefers-reduced-motion: reduce) { .panel-flash { animation:none; } }
 
 /* Touch Mod bar */
@@ -5177,7 +5179,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.5</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.6</span>
     </div>
    </div>
   </div>
@@ -5195,7 +5197,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.5</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.6</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6963,7 +6965,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.5';
+const MODRIFF_VERSION = '3.9.6';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13240,10 +13242,47 @@ function scheduleArp(){
 // already worked.
 //
 // `where` is what the row shows; `go` performs the navigation. Keep `keys`
-// generous — it is matched as plain substrings, and the whole point is that
-// the word someone reaches for ("shuffle", "loop", "save") need not be the
-// word on the button.
+// generous — the whole point is that the word someone reaches for ("shuffle",
+// "loop", "save") need not be the word on the button. Matching forgives typos
+// and knows synonyms (FIND_SYNONYMS), and every labelled control on every tab
+// is swept in behind these (_findHarvestAll), so this list is for ranking the
+// things people most often look for at the top, not for being complete.
 const FIND_INDEX = [
+ {name:'Audition — hear drum steps as you tap them', where:'Accomp › Drums',
+  keys:'audition preview hear listen monitor sound tap step play back playback aud test',
+  note:'On the row above the drum grid. Off means tapping a step only places it.',
+  go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('drums'), el:'sq-aud-btn'})},
+ {name:'Generate a bassline', where:'Accomp › Bass', keys:'generate generator create make auto write bass line bassline idea new style',
+  note:'The first row of the Bass panel. Pick a style under it.',
+  go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('bass'), el:'bl-gen-go'})},
+ {name:'Generate a melody', where:'Accomp › Melody', keys:'generate generator create make auto write melody phrase lead tune idea new pattern',
+  note:'The first row of the Melody panel. Pick a pattern under it.',
+  go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('melody'), el:'ml-gen-go'})},
+ {name:'MōdFX filter — Clean, Moog, MS-20', where:'Play › MōdFX', keys:'filter moog ms20 ms-20 ladder cutoff resonance lowpass character modfx pad kaoss',
+  note:'The Filter button in the pad\u2019s header flips its character. Each channel also has its own filter on its mixer strip.',
+  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('fx'), el:'fx-flt-btn'})},
+ {name:'Metronome (Click)', where:'Transport sheet', keys:'metronome click count beat time tick',
+  note:'♩ Click in the sheet under the transport bar.',
+  go:()=>{ closeFind(); if(typeof toggleFtMore==='function') toggleFtMore(); }},
+ {name:'Reverb, delay and drive', where:'Mix · each strip', keys:'reverb delay echo drive distortion send rev dly drv space effect wet',
+  note:'REV, DLY and DRV under every channel\u2019s fader. MōdFX takes them over while you hold the pad.',
+  go:()=>_findGo({tab:'mix'})},
+ {name:'Sub under the chords', where:'Play › Chords', keys:'sub bass subbass octave below chord root weight low end bottom',
+  note:'Sub: ON / OFF, its wave and level. Off for a cleaner acoustic sound.',
+  go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('chords'), el:'sub-on-btn'})},
+ {name:'Trim or edit a sample', where:'Sampler', keys:'trim edit crop cut start end sample clip silence fade normalize reverse undo',
+  note:'Open a clip in the sampler, drag its start and end, then Trim to keep it as a new clip.',
+  go:()=>{ closeFind(); if(typeof smpOpenLibrary==='function') smpOpenLibrary(); }},
+ {name:'MIDI out — play an external synth', where:'Settings › MIDI', keys:'midi out output external synth hardware moog modular send port channel lane',
+  go:()=>_findGo({tab:'build', sub:()=>setSettingsPane('midi'), el:'midi-out-dest'})},
+ {name:'MIDI in — keyboards and controllers', where:'Settings › MIDI', keys:'midi in input controller keyboard usb device port rescan not showing missing',
+  go:()=>_findGo({tab:'build', sub:()=>setSettingsPane('midi'), el:'midi-rescan'})},
+ {name:'Voices — change a part\u2019s sound', where:'Voices drawer', keys:'voice sound instrument patch change timbre piano organ rhodes synth guitar',
+  note:'The Voices tab at the foot of the screen assigns an instrument to every part.',
+  go:()=>{ closeFind(); if(typeof toggleVoicesDock==='function') toggleVoicesDock(); }},
+ {name:'Channel filter (per instrument)', where:'Mix', keys:'filter moog ms20 ladder cutoff resonance channel instrument voice strip flt',
+  note:'Flt on each strip cycles Moog, MS-20, off; CUT and RES beside it.',
+  go:()=>_findGo({tab:'mix'})},
  {name:'Swing / Feel', where:'Transport', keys:'swing feel shuffle groove straight triplet jazz 8th 16th',
   note:'How hard the off-beats lean. Drums, bass, melody and arp together.',
   go:()=>{ _findOpenBpmPop(); }},
@@ -13355,8 +13394,8 @@ function _findGo(o){
     const el=document.getElementById(o.el);
     if(!el) return;
     el.scrollIntoView({behavior:'smooth', block:'center'});
-    el.classList.add('panel-flash');
-    setTimeout(()=>el.classList.remove('panel-flash'),1400);
+    el.classList.add('panel-flash','find-hit');
+    setTimeout(()=>el.classList.remove('panel-flash','find-hit'),2200);
    },60);
   }
  }catch(e){}
@@ -13370,20 +13409,292 @@ function openFind(){
  const i=document.getElementById('find-input');
  if(i){ i.value=''; setTimeout(()=>i.focus(),30); }
  _findSel=0;
+ // Swept fresh each time the sheet opens: strips, chips and panels are
+ // rebuilt as you work, and a stale sweep points at detached buttons.
+ _findHarvestCache=null;
+ // The mixer strips are built the first time Mix is opened, so until then
+ // every send, filter and mute on them is missing from the sweep.
+ try{
+  const mx=document.getElementById('mix-tab-channels');
+  if(mx && !mx.children.length && typeof window.buildMixChannelsInto==='function') window.buildMixChannelsInto(mx);
+ }catch(e){}
  renderFind();
 }
 function closeFind(){ const m=document.getElementById('find-modal'); if(m) m.classList.remove('visible'); }
-function _findMatches(){
- const q=(document.getElementById('find-input')?.value||'').trim().toLowerCase();
- if(!q) return FIND_INDEX;
- // Every whitespace-separated word has to appear somewhere in the entry, so
- // "bass swing" narrows rather than widening the way an OR would.
- const words=q.split(/\s+/);
- return FIND_INDEX.filter(e=>{
-  const hay=(e.name+' '+e.where+' '+e.keys+' '+(e.note||'')).toLowerCase();
-  return words.every(w=>hay.indexOf(w)>=0);
- });
+
+// ── Matching ─────────────────────────────────────────────────────────
+// It was: every typed word must appear verbatim as a substring. So a word the
+// app happens not to use, or one letter out, found nothing at all — "audtion"
+// and "preview" both came back empty for a control that was there. Now each
+// word is scored against each entry — exact, prefix, substring, one or two
+// letters out, or a synonym — and entries are ranked by how many of the words
+// they answer, then by how well. Nothing is filtered on a word it cannot
+// place; it just ranks lower.
+//
+// Groups of words that mean the same control to someone looking for it. Any
+// member finds entries that use any other. `var` — read only at search time,
+// but this file has been bitten by dead zones often enough.
+var FIND_SYNONYMS = [
+ ['audition','preview','hear','listen','monitor','playback','aud','test'],
+ ['record','capture','rec','take','arm','tape','recording'],
+ ['clear','delete','remove','erase','clr','reset','wipe','trash','empty'],
+ ['volume','level','gain','loud','louder','quiet','quieter','fader','soft'],
+ ['tempo','bpm','speed','fast','slow','faster','slower'],
+ ['voice','sound','patch','instrument','tone','timbre','program','preset','wave'],
+ ['filter','cutoff','lowpass','resonance','reso','moog','ms20','ladder','flt'],
+ ['delay','echo','dly'],
+ ['reverb','verb','space','room','hall','rev'],
+ ['drive','distortion','overdrive','saturation','fuzz','crunch','drv','dirt'],
+ ['generate','generator','create','make','auto','compose','idea','write','gen'],
+ ['save','store','keep','backup'],
+ ['load','open','import','restore'],
+ ['export','download','file','bounce','render','mixdown','stems','wav'],
+ ['metronome','click','count','countin'],
+ ['chord','chords','harmony','progression','changes'],
+ ['drums','drum','beat','rhythm','groove','percussion','perc','kit'],
+ ['bass','bassline'],
+ ['melody','lead','tune','solo','riff'],
+ ['loop','repeat','cycle','again'],
+ ['quantize','quantise','snap','align','tighten'],
+ ['transpose','key','shift'],
+ ['mute','silence','solo'],
+ ['sample','sampler','clip','audio','mic','microphone'],
+ ['midi','controller','usb','external'],
+ ['effects','effect','fx','modfx','kaoss','xy','pad'],
+ ['trim','crop','chop','cut','edit','start','end'],
+ ['undo','redo','mistake','revert'],
+ ['help','tutorial','walkthrough','tour','guide','lesson','learn','how'],
+ ['swing','shuffle','feel','humanize'],
+ ['octave','oct','register','higher','lower'],
+ ['steps','length','bars','long'],
+ ['arp','arpeggio','arpeggiator','arpeggiate'],
+ ['share','link','send','url'],
+ ['theme','dark','light','colour','color'],
+ ['sub','subbass','bottom','low','lows'],
+ ['bend','pitch','glide','slide','portamento'],
+ ['mixer','mix','balance','levels','channels']
+];
+var _findSynMap=null;
+function _findSyn(){
+ if(_findSynMap) return _findSynMap;
+ const m={};
+ FIND_SYNONYMS.forEach(g=>g.forEach(w=>{ m[w]=m[w]||new Set(); g.forEach(x=>{ if(x!==w) m[w].add(x); }); }));
+ return (_findSynMap=m);
 }
+// Words that carry no meaning in a search for a control. "where is the
+// audition button" is a sentence people actually type.
+var FIND_STOP = {the:1,a:1,an:1,to:1,of:1,for:1,my:1,where:1,is:1,how:1,do:1,i:1,button:1,btn:1,find:1,
+ control:1,and:1,with:1,on:1,in:1,it:1,can:1,change:1,set:1,setting:1,settings:1,turn:1,use:1,want:1,
+ which:1,what:1,thing:1,one:1,this:1,that:1,me:1,show:1};
+function _findTok(t){
+ return String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .split(/[^a-z0-9]+/).filter(Boolean);
+}
+// Optimal-string-alignment distance, bailing as soon as it cannot come in
+// under `max` — this runs against every token of every entry per keystroke.
+function _findEdit(a,b,max){
+ if(Math.abs(a.length-b.length)>max) return false;
+ let prev2=null, prev=new Array(b.length+1);
+ for(let j=0;j<=b.length;j++) prev[j]=j;
+ for(let i=1;i<=a.length;i++){
+  const cur=new Array(b.length+1); cur[0]=i; let rowMin=i;
+  for(let j=1;j<=b.length;j++){
+   const c=a[i-1]===b[j-1]?0:1;
+   let v=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+c);
+   if(prev2 && i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1]) v=Math.min(v, prev2[j-2]+1);
+   cur[j]=v; if(v<rowMin) rowMin=v;
+  }
+  if(rowMin>max) return false;
+  prev2=prev; prev=cur;
+ }
+ return prev[b.length]<=max;
+}
+function _findWordVsTok(w,t){
+ if(t===w) return 3;
+ if(w.length>=2 && t.startsWith(w)) return 2.4;
+ if(t.length>=4 && w.startsWith(t)) return 1.9;      // "auditions" → audition
+ if(w.length>=3 && t.indexOf(w)>=0) return 1.6;
+ if(w.length>=4 && t.length>=3 && _findEdit(w,t,w.length>=7?2:1)) return 1.4;
+ return 0;
+}
+// Everything a word could be standing for: itself, its synonyms, and — so a
+// misspelt synonym still expands — the synonyms of any group word it is one
+// letter away from.
+function _findExpand(w){
+ const m=_findSyn(), out=new Set();
+ const add=k=>{ if(m[k]) m[k].forEach(x=>out.add(x)); };
+ add(w);
+ // Only a word the table does not know is treated as a possible typo of one
+ // it does. "reverb" is spelt right; letting it also stand for "revert" (one
+ // letter away) pulled in Undo and its whole group.
+ if(!m[w] && w.length>=4) Object.keys(m).forEach(k=>{ if(k!==w && k.length>=4 && _findEdit(w,k,w.length>=7?2:1)){ out.add(k); add(k); } });
+ out.delete(w);
+ return Array.from(out);
+}
+function _findScoreToks(w, syns, toks){
+ let best=0;
+ for(let i=0;i<toks.length;i++){
+  const t=toks[i];
+  let s=_findWordVsTok(w,t);
+  if(s<3) for(let j=0;j<syns.length;j++){
+   const y=syns[j];
+   // Synonyms only count exactly or as a prefix, and a prefix only from four
+   // letters: fuzzy on top of a synonym is how "mix" ends up finding "max",
+   // and a three-letter prefix is how "rev" (reverb) found "revert".
+   const v = t===y ? 2 : (y.length>=4 && t.startsWith(y) ? 1.5 : 0);
+   if(v>s) s=v;
+  }
+  if(s>best){ best=s; if(best===3) break; }
+ }
+ return best;
+}
+function _findPrep(e){
+ if(!e._tk) e._tk={ n:_findTok(e.name), w:_findTok(e.where), r:_findTok(e.keys+' '+(e.note||'')) };
+ return e._tk;
+}
+function _findMatches(){
+ const q=(document.getElementById('find-input')?.value||'').trim();
+ if(!q) return FIND_INDEX;
+ // A misspelt filler word is still filler: "chnage sound" is about sound.
+ const stopKeys=Object.keys(FIND_STOP).filter(k=>k.length>=5);
+ const isStop=w=>FIND_STOP[w] || (w.length>=5 && stopKeys.some(k=>_findEdit(w,k,1)));
+ let words=_findTok(q).filter(w=>!isStop(w));
+ if(!words.length) words=_findTok(q);
+ if(!words.length) return FIND_INDEX;
+ const exp=words.map(_findExpand);
+ const pool=FIND_INDEX.concat(_findHarvestAll());
+ const scored=[];
+ pool.forEach(e=>{
+  const tk=_findPrep(e);
+  let matched=0, total=0;
+  words.forEach((w,i)=>{
+   const s=Math.max(_findScoreToks(w,exp[i],tk.n)*1.3, _findScoreToks(w,exp[i],tk.w)*0.8, _findScoreToks(w,exp[i],tk.r));
+   if(s>0){ matched++; total+=s; }
+  });
+  if(!matched) return;
+  // A hand-written entry is one somebody decided people look for; on a tie
+  // it goes first — unless all it has is a typo-distance match, which is how
+  // "reverb" put Undo ("revert") above the reverb sends.
+  if(!e.harvested && total>=1.5*matched) total+=0.6;
+  scored.push({e, matched, total});
+ });
+ scored.sort((a,b)=> b.matched-a.matched || b.total-a.total);
+ // Once something answers every word, the ones answering fewer are noise.
+ const top=scored.length?scored[0].matched:0;
+ return scored.filter(x=>x.matched>=Math.max(1, top-(words.length>2?1:0))).slice(0,30).map(x=>x.e);
+}
+
+// ── Every other control ──────────────────────────────────────────────
+// Read off the page rather than listed: a control added next month is
+// findable the day it ships, labelled by what it already says on the button
+// and its tooltip, and placed by where it lives in the DOM.
+var FIND_TAB_NAMES = {perform:'Play', build:'Settings', songs:'Songs', accomp:'Accomp', mix:'Mix', help:'Guide'};
+var FIND_SUBS = [
+ ['pf-chords-panel','Chords',   ()=>setPerformMode('chords')],
+ ['pf-melody-panel','Melody',   ()=>setPerformMode('melody')],
+ ['pf-fx-panel',    'MōdFX',    ()=>setPerformMode('fx')],
+ ['set-pane-ui',    '',         ()=>setSettingsPane('ui')],
+ ['set-pane-sounds','Sounds',   ()=>setSettingsPane('sounds')],
+ ['set-pane-midi',  'MIDI',     ()=>setSettingsPane('midi')],
+ ['set-pane-playing','Logic',   ()=>setSettingsPane('playing')],
+ ['songs-build-panel','Build',  ()=>setSongsMode('build')],
+ ['songs-perform-panel','Perform',()=>setSongsMode('perform')],
+ ['songs-chart-panel','Chart',  ()=>setSongsMode('chart')],
+ ['ac-drums-panel', 'Drums',    ()=>setAccompMode('drums')],
+ ['bm-bass-panel',  'Bass',     ()=>setAccompMode('bass')],
+ ['bm-melody-panel','Melody',   ()=>setAccompMode('melody')],
+ ['bm-arp-panel',   'Arp',      ()=>setAccompMode('arp')]
+];
+function _findClean(t){ return String(t||'').replace(/\s+/g,' ').trim(); }
+// The label a row gives the control: "Style", "Steps", "Rate", "Voice".
+function _findRowLabel(el){
+ let n=el.parentElement;
+ for(let d=0; n && d<3; d++, n=n.parentElement){
+  const l=n.querySelector(':scope > .ac-rowlbl, :scope > .bl-pl, :scope > .sq-pl, :scope > .seq-link-lbl, :scope > .ft-sheet-lbl, :scope > .pl-lbl, :scope > .ss-scope, :scope > label, :scope > .sq-songtitle');
+  if(l && l!==el && !l.contains(el)){
+   // Child by child, spaced: "Swing<span>all parts</span>" is two words.
+   const t=_findClean(Array.from(l.childNodes).map(x=>x.textContent).join(' ')).replace(/:$/,'');
+   if(t && t.length<=24 && /[a-z]/i.test(t)) return t;
+  }
+ }
+ return '';
+}
+// The section heading above it: a settings group or a panel title.
+function _findSection(el){
+ const ss=el.closest('.settings-section');
+ if(ss){ const h=ss.querySelector('.ss-hdr > span'); if(h) return _findClean(h.textContent).replace(/^[^A-Za-z]+/,''); }
+ const pn=el.closest('.panel');
+ if(pn){ const h=pn.querySelector('.panel-title'); if(h) return _findClean(h.textContent).replace(/^[^A-Za-z]+/,'').replace(/\s*\?$/,''); }
+ return '';
+}
+function _findElName(el, row){
+ const aria=el.getAttribute('aria-label')||'', title=el.getAttribute('title')||'';
+ let t='';
+ if(el.tagName==='SELECT'||el.tagName==='INPUT') t=aria||row||title;
+ else {
+  t=_findClean(el.textContent);
+  // Icons, single letters, "?" and long composite readouts say nothing on
+  // their own; the aria-label or tooltip does.
+  if(!/[a-z]{2}/i.test(t) || t.length>34) t=aria||title||'';
+ }
+ t=_findClean(t).split(/ — | – |\. |; /)[0];
+ if(t.length>48) t=t.slice(0,46)+'…';
+ return /[a-z]{2}/i.test(t)?t:'';
+}
+var _findHarvestCache=null;
+function _findHarvestAll(){
+ if(_findHarvestCache) return _findHarvestCache;
+ const out=[], seen=new Set();
+ const sel='button, select, input[type=range], input[type=checkbox], [role=slider], [role=button], [role=switch]';
+ document.querySelectorAll('#perf-bar, .tab-page').forEach(root=>{
+  root.querySelectorAll(sel).forEach(el=>{
+   if(el.closest('#find-modal') || el.classList.contains('tips-btn')) return;
+   const row=_findRowLabel(el);
+   const name=_findElName(el,row); if(!name) return;
+   const page=el.closest('.tab-page');
+   const tab=page ? page.id.replace(/^page-/,'') : null;
+   let sub=null;
+   for(let i=0;i<FIND_SUBS.length;i++){ const s=FIND_SUBS[i]; const h=document.getElementById(s[0]); if(h && h.contains(el)){ sub=s; break; } }
+   const inSheet=!!el.closest('#ft-more-menu');
+   const sect=_findSection(el);
+   const parts=[tab ? FIND_TAB_NAMES[tab]||tab : (inSheet ? 'Transport sheet' : 'Transport')];
+   if(sub && sub[1]) parts.push(sub[1]);
+   const ctx = row && row.toLowerCase()!==name.toLowerCase() ? row : sect;
+   if(ctx && parts.indexOf(ctx)<0) parts.push(ctx);
+   const adv=!!el.closest('.advanced-only');
+   const where=parts.join(' › ')+(adv?' · Advanced':'');
+   const key=where+'|'+name.toLowerCase();
+   if(seen.has(key)) return; seen.add(key);
+   const title=_findClean(el.getAttribute('title'));
+   out.push({ name, where, harvested:true, el, tab, sub, inSheet, adv,
+     keys:[el.getAttribute('aria-label')||'', title, row, sect, el.id.replace(/[-_]/g,' ')].join(' '),
+     note: title && title.toLowerCase()!==name.toLowerCase() ? (title.length>120?title.slice(0,118)+'…':title) : '',
+     go:null });
+  });
+ });
+ return (_findHarvestCache=out);
+}
+function _findGoEl(e){
+ closeFind();
+ try{
+  // A control that only exists in Advanced is still the answer; saying where
+  // it is and leaving you on a screen without it is not.
+  if(e.adv && document.body.classList.contains('mode-basic') && typeof setViewMode==='function') setViewMode('advanced');
+  if(e.tab) switchTab(e.tab);
+  if(e.sub) e.sub[2]();
+  if(e.inSheet){ const m=document.getElementById('ft-more-menu'); if(m && !m.classList.contains('open') && typeof toggleFtMore==='function') toggleFtMore(); }
+  const ss=e.el.closest('.ss-body');
+  if(ss && !ss.classList.contains('open') && typeof toggleSS==='function') toggleSS(ss.id.replace(/^ss-/,'').replace(/-body$/,''));
+  setTimeout(()=>{
+   const el=e.el;
+   if(!el.isConnected || !el.getClientRects().length) return;
+   el.scrollIntoView({behavior:'smooth', block:'center'});
+   el.classList.add('panel-flash','find-hit');
+   setTimeout(()=>el.classList.remove('panel-flash','find-hit'),2200);
+  },90);
+ }catch(err){}
+}
+
 function renderFind(){
  const box=document.getElementById('find-list'); if(!box) return;
  const list=_findMatches();
@@ -13400,7 +13711,9 @@ function renderFind(){
 function runFind(i){
  const list=_findMatches();
  const e=list[i];
- if(e && typeof e.go==='function'){ try{ e.go(); }catch(err){ closeFind(); } }
+ if(!e) return;
+ if(e.harvested){ _findGoEl(e); return; }
+ if(typeof e.go==='function'){ try{ e.go(); }catch(err){ closeFind(); } }
 }
 function findKey(ev){
  const list=_findMatches();
