@@ -5179,7 +5179,7 @@ body.mode-free .pro-only { display:none !important; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.6</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.7</span>
     </div>
    </div>
   </div>
@@ -5197,7 +5197,7 @@ body.mode-free .pro-only { display:none !important; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.6</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.7</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6965,7 +6965,7 @@ body.mode-free .pro-only { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.6';
+const MODRIFF_VERSION = '3.9.7';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -12913,7 +12913,23 @@ function meterSyncUI(){
 // The epoch itself has to sit a little PAST that, so clockAlignTo() resolves to
 // the epoch rather than rounding up to the step after it — which is what
 // "lead the epoch by more than the largest look-ahead" has always meant here.
-const EPOCH_LEAD = LOOK_AHEAD + 0.05;
+//
+// A function, not the constant it was. `const EPOCH_LEAD = LOOK_AHEAD + 0.05`
+// was worked out once at load, from the default 0.2, and the Timing setting
+// moves LOOK_AHEAD afterwards. On Phone (0.30), Bluetooth and Rock Solid the
+// epoch therefore landed INSIDE the engines' look-ahead: the drums started one
+// to three sixteenths after beat 1 while the song's first chord sat on it, and
+// the bass and melody — which wait for a bar line once they have missed one —
+// came in a whole bar late on every start. Measured before the change.
+//
+// _clockTightStart is the one exception to the full lead: a Capture closing
+// its loop from silence, where the moment you ended the take IS the downbeat
+// and a quarter of a second of lead is a quarter of a second of dead air at
+// the loop point. The engines align with the same short lead while it is set,
+// so they still agree on beat 1. `var` — read by engines in other regions.
+var _clockTightStart = false;
+function _epochLead(){ return _clockTightStart ? 0.05 : ALIGN_LEAD + 0.05; }
+function _alignLead(){ return _clockTightStart ? 0.02 : ALIGN_LEAD; }
 
 // A tempo read for DRAWING only — never for scheduling a note.
 //
@@ -12943,7 +12959,7 @@ function clockStepSec(){ return 60/(parseFloat(document.getElementById('bpm')?.v
 
 // Call this when the FIRST engine starts — or when tempo changes significantly
 function clockSetEpoch(ctx){
-  CLOCK_EPOCH = ctx.currentTime + EPOCH_LEAD;
+  CLOCK_EPOCH = ctx.currentTime + _epochLead();
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
 }
 
@@ -13147,7 +13163,7 @@ function scheduleRhythm(){
  // Announced here, with the look-ahead still in hand, rather than from the
  // display timer below — that timer fires at the downbeat, leaving no room
  // to schedule anything ahead of it.
- if(isBar && typeof tickSongLoop==='function') tickSongLoop(t);
+ if(isBar){ window._barAnnouncedT=t; if(typeof tickSongLoop==='function') tickSongLoop(t); }
  setTimeout(()=>{
  const _r3=RHYTHMS[rhythmSel];
  setBeatDots(ci,_r3.pat.length,_r3.kick,'rhy');
@@ -19300,7 +19316,7 @@ function buildSectionTabs(){
  const cnt=document.createElement('span');
  cnt.className='sec-count'; cnt.textContent='('+s.slots.length+')';
  b.appendChild(cnt);
- b.onclick=()=>{ curSection=i; buildSectionTabs(); renderChartSeq(); renderSectionPlays(); };
+ b.onclick=()=>{ curSection=i; _songCueAt(i,-1); buildSectionTabs(); renderChartSeq(); renderSectionPlays(); };
  // Renaming was a 600ms press-and-hold and nothing else — no affordance, and
  // on a mouse nobody holds a button down to find out what happens. The
  // selected section carries a visible pencil, a double-click works, and the
@@ -23234,7 +23250,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
 <strong>Chords · Drums · Bass · Mel · Arp</strong> are layer switches, not separate play buttons. A <strong>Perc</strong> switch joins them whenever the loaded groove has a second percussion layer to switch. Flip them on and off <em>while the music runs</em> — that's the core performance move: get a song looping, then bring parts in and out.<br><br>
 <strong>⬤&nbsp;Bounce</strong> records what you hear to a .wav and what you played to a .mid, both downloaded when you stop. <strong>Stems</strong> beside it adds one file per part.<br><br>
 <strong>↶ / ↷</strong> undo and redo — notes, patterns, the chart, the mixer and every sound setting (Ctrl/⌘+Z). The <strong>dice</strong> rerolls the whole patch character; if nothing is playing it rerolls key, mode and tempo too.<br><br>
-The <strong>handle</strong> above the bar pulls up a sheet holding what you reach for less often. <strong>◉&nbsp;Capture</strong> is there: it writes the chords you play — by mouse, keyboard or MIDI — into a new Song section you can edit afterwards, and a <strong>◀</strong> appears beside it whenever there are chords you have <em>already</em> played that it could keep instead. Then MIDI export, the click, <strong>Snap</strong> (how strictly the song and arp wait for the beat), undo and redo, the dice, the light/dark toggle, Setups, Find a control, and the walkthrough and guide.<br><br>
+The <strong>handle</strong> above the bar pulls up a sheet holding what you reach for less often. <strong>◉&nbsp;Capture</strong> is there: it writes the chords you play — by mouse, keyboard or MIDI — into a new Song section you can edit afterwards, and a <strong>◀</strong> appears beside it whenever there are chords you have <em>already</em> played that it could keep instead. Either way the take becomes a loop and starts playing in time: tap Capture again on the downbeat where the loop should come round. With the drums going, the changes snap to the beat; played free, the take is fitted to whole bars and the tempo follows yours. Played round more than once, ◀ keeps one pass. Then MIDI export, the click, <strong>Snap</strong> (how strictly the song and arp wait for the beat), undo and redo, the dice, the light/dark toggle, Setups, Find a control, and the walkthrough and guide.<br><br>
 <strong>Tempo</strong> is the number itself — drag it like a DAW field, or tap it once for a slider with Feel and the bar length beside it. The <strong>arp rate</strong> is the note value next to it; tap to cycle.<br><br>
 An orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears here whenever a mixer channel is muted or soloed, so you are never left wondering why something has gone quiet. Tap it to clear.<br><br>
 The row of dots shows where you are in the bar, following whichever engine is actually playing and marking its kick pattern.<br><br>
@@ -23453,6 +23469,10 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
 let songRecActive = false;
 let songRecSectionIdx = -1;
 let songRecPending = null; // {label,numeral,rootM,triadQ,type7,func,ext,bassNote,startT}
+// Every chord of the take with its raw audio time and the clock it was played
+// against, so the take can be fitted as a whole when it ends — see _capFit.
+// The slots written while it runs are only the live preview on the chart.
+var songRecEvents = [];
 
 function _chordLabelFromData(rootM, triadQ, type7, ext, bassOverride){
  const noteN = nn(((rootM%12)+12)%12);
@@ -23492,46 +23512,166 @@ function startSongRecord(){
  curSection = songRecSectionIdx;
  songRecActive = true;
  songRecPending = null;
+ songRecEvents = [];
  buildSectionTabs(); renderChartSeq();
  _updateSongRecUI();
  showToast('Recording to "'+base+' '+n+'" — play some chords');
 }
 
-// Total length of a captured section, in eighths — the unit the recorder
-// already stores durations in.
-function _songSectionEighths(sec){
- if(!sec || !sec.slots) return 0;
- const eighthsPerBar = _songBarSteps()/2;
- return sec.slots.reduce((a,sl)=>
-   a + (sl.bars||0)*eighthsPerBar + (sl.beats||0)*2 + (sl.eighths||0), 0);
-}
-
-// A capture ends when you stop playing, which is almost never on a bar line.
-// The section was left exactly as long as you happened to take, so looping it
-// put its first chord wherever the drums happened to be — a few eighths adrift
-// on every pass, compounding. It sounded like the chords were late.
+// ─── Fitting a take to the bar ────────────────────────────────────────────
+// Both halves of Capture used to write each chord as long as it happened to
+// last, rounded to an eighth, and then pad the section out to the bar line
+// with a rest. Played against nothing, that rest was dead air on every pass:
+// stop a hair after the downbeat and the loop sat silent for most of a bar
+// before coming round. Played against the drums, the first chord landed
+// wherever you had hit it rather than on the bar it belonged to, and the loop
+// started the instant you pressed stop, mid-bar, so every change after it was
+// off the drums. And ◀ let the last chord run until the moment you pressed
+// it, however long after you had stopped playing.
 //
-// The last slot is padded out with a rest instead, so the section is a whole
-// number of bars and the loop comes back around on the downbeat. A rest rather
-// than stretching the final chord: the silence is what you actually played,
-// and it stays editable in the chart either way.
-function _songRecPadToBar(sec){
- if(!sec || !sec.slots || !sec.slots.length) return 0;
- const eighthsPerBar = _songBarSteps()/2;
- if(!(eighthsPerBar > 0)) return 0;
- const total = _songSectionEighths(sec);
- const rem = total % eighthsPerBar;
- if(rem === 0) return 0;
- const pad = eighthsPerBar - rem;
- sec.slots.push({
-  label:'', numeral:'', rootM:null, triadQ:null, type7:null,
-  func:null, ext:'triad', bassNote:null,
-  bars:Math.floor(pad/eighthsPerBar),
-  beats:Math.floor((pad%eighthsPerBar)/2),
-  eighths:pad%2,
-  isRest:true
+// A take is a loop now. With the clock running, every change snaps to the
+// grid it was played against, and the loop is the bars from the first chord's
+// bar line to the one nearest where you stopped — which is also where it
+// comes back in. Played free, the take is fitted to a whole number of bars
+// (two, four, eight, preferring those), and if that says you were playing at
+// a different tempo from the one set, the tempo follows you, so the loop comes
+// round exactly when you would have played the first chord again.
+function _capBeatE(){
+ const u=(typeof METER!=='undefined'&&METER.unit)||4, b=(typeof METER!=='undefined'&&METER.beats)||4;
+ if(u===8) return b%3===0 ? 3 : 1;
+ return Math.max(1, Math.round(8/u));
+}
+// The grid a chord was played against: the sequencer is the master clock and
+// runs whenever anything does, so "is it playing" is "is there a grid".
+function _capClock(){
+ const on = typeof window._sqPlaying==='function' && window._sqPlaying();
+ return (on && CLOCK_EPOCH>0) ? {epoch:CLOCK_EPOCH, bpm:parseFloat(document.getElementById('bpm')?.value)||120} : null;
+}
+function _capMedian(a){
+ if(!a.length) return 0;
+ const s=a.slice().sort((x,y)=>x-y), m=s.length>>1;
+ return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+}
+// evs: chord events in order, each {label,…,t,clk}. opts.endT is when the
+// take ends (null: infer it — the last chord gets the typical length of the
+// others); opts.liberal quantises to the half bar where every chord is long
+// enough to take it; opts.adapt lets a free take move the tempo.
+function _capFit(evs, opts){
+ opts=opts||{};
+ const n=evs.length;
+ const E=Math.max(1, Math.round(_songBarSteps()/2));          // eighths per bar
+ const beatE=_capBeatE();
+ const halfE=(E%(2*beatE)===0) ? E/2 : 0;
+ const bpm0=parseFloat(document.getElementById('bpm')?.value)||100;
+ const c0=evs[0].clk;
+ const grid=!!c0 && evs.every(e=>e.clk && Math.abs(e.clk.epoch-c0.epoch)<1e-4);
+ const eighth=30/(grid ? c0.bpm : bpm0);
+ const zero=grid ? c0.epoch : evs[0].t;
+ const pos=evs.map(e=>(e.t-zero)/eighth);
+ const raw=pos.slice(1).map((p,i)=>p-pos[i]);
+ const endPos=(opts.endT!=null) ? (opts.endT-zero)/eighth
+            : pos[n-1] + (raw.length ? _capMedian(raw) : E);
+ let bpm=grid ? c0.bpm : bpm0, start, end, scale=1;
+ if(grid){
+  start=Math.round(pos[0]/E)*E;
+  end=Math.round(endPos/E)*E;
+ } else {
+  const N0=Math.max(0.01, endPos/E);
+  // Which whole number of bars the take was. Closeness to the set tempo alone
+  // is not enough: four chords a bar each, played at 75 against a setting of
+  // 100, are five and a third bars at 100 — nearer six than four — and six
+  // puts every change mid-bar. So a count is also marked down for how far its
+  // changes fall from its bar lines, and for being an unusual length — a
+  // little for 3, 6, 12, more for 5 or 7, which still win when that is
+  // plainly what was played at the tempo that is set.
+  let N=1, best=1e9;
+  for(let k=1;k<=32;k++){
+   let off=0;
+   pos.forEach(x=>{ const b=x*k/endPos, f=b-Math.floor(b); off+=Math.min(f,1-f); });
+   const odd=(k&(k-1))===0 ? 0 : ((k%3===0 && ((k/3)&(k/3-1))===0) ? 0.12 : 0.25);
+   const d=Math.abs(Math.log(k/N0)) + odd + off/n;
+   if(d<best){ best=d; N=k; }
+  }
+  const fit=bpm0*N*E/endPos;
+  // Within 4% of the set tempo is just how people play; keep the tempo and
+  // fit the take to it. Past that, follow the player if we may and the result
+  // is a tempo anyone would set.
+  if(Math.abs(fit/bpm0-1)>0.04){
+   if(opts.adapt && fit>=50 && fit<=220) bpm=Math.round(fit);
+   else N=Math.max(1, Math.round(N0));
+  }
+  scale=N*E/endPos;
+  start=0; end=N*E;
+ }
+ const P=grid ? pos : pos.map(x=>x*scale);
+ const rawS=grid ? raw : raw.map(d=>d*scale);
+ let g=beatE;
+ if(opts.liberal && halfE && (rawS.length ? Math.min.apply(null,rawS) : E) >= 0.75*halfE) g=halfE;
+ let q;
+ for(;;){
+  q=P.map(x=>Math.round(x/g)*g);
+  q[0]=start;
+  for(let i=1;i<n;i++) if(q[i]<q[i-1]+g) q[i]=q[i-1]+g;
+  if(q[n-1]+g <= end) break;
+  // More changes than the grid holds: a finer grid before a longer loop.
+  if(g>1){ g = g>beatE ? beatE : 1; continue; }
+  end=Math.ceil((q[n-1]+g)/E)*E; break;
+ }
+ if(end<=start) end=start+E;
+ const slots=evs.map((ev,i)=>{
+  const d=(i+1<n ? q[i+1] : end) - q[i];
+  return { label:ev.label, numeral:ev.numeral, rootM:ev.rootM, triadQ:ev.triadQ,
+   type7:ev.type7, func:ev.func, ext:ev.ext, bassNote:ev.bassNote,
+   bars:Math.floor(d/E), beats:Math.floor((d%E)/2), eighths:(d%E)%2, isRest:false };
  });
- return pad;
+ return { slots, bars:Math.round((end-start)/E), bpm, bpmChanged: !grid && bpm!==bpm0, grid,
+          clk: grid ? c0 : null, loopTopT: grid ? zero+end*eighth : null, gridE:g };
+}
+// A take played round more than once is one loop played several times, and
+// the second time round says exactly how long the first one was: the loop
+// closes where its first chord comes back. The last complete cycle that has
+// that next downbeat after it is the one kept.
+function _capOneCycle(run){
+ const n=run.length;
+ for(let p=1;p*2<=n;p++){
+  let ok=true;
+  for(let i=0;i+p<n;i++) if(run[i].label!==run[i+p].label){ ok=false; break; }
+  if(!ok) continue;
+  const st=Math.floor((n-1-p)/p)*p;
+  return { evs:run.slice(st, st+p), endT:run[st+p].t, passes:Math.floor(n/p) };
+ }
+ return { evs:run, endT:null, passes:1 };
+}
+// Start the loop that was just captured, in time. With the grid running it
+// comes in on the bar the fit named (or the next bar, if the take was not on
+// this grid); from silence the whole transport starts now — the moment you
+// ended the take is the top of the loop.
+function _capLaunch(idx, fit){
+ _songCueAt(idx, -1);
+ curSection = idx;
+ songCurrentSection = idx; songCurrentSlot = -1; _songHeldAt = null;
+ globalSongMode = true;
+ const clk=_capClock(), ctx=getCtx();
+ if(clk && ctx){
+  const barSec=(_songBarSteps()/2)*30/clk.bpm;
+  let top=(fit.grid && fit.clk && Math.abs(fit.clk.epoch-clk.epoch)<1e-4) ? fit.loopTopT : null;
+  if(top==null) top=clk.epoch + Math.ceil((ctx.currentTime+SCHED_LEAD-clk.epoch)/barSec)*barSec;
+  startSongLoop(true, top);
+ } else {
+  if(fit.bpmChanged) _setBpm(fit.bpm);
+  _clockTightStart = true;
+  try{ startEverything(); } finally { _clockTightStart = false; }
+ }
+ if(typeof updatePrismSongBanner==='function') updatePrismSongBanner();
+ const banner=document.getElementById('prism-song-banner');
+ if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
+ if(typeof _updateSongBtn==='function') _updateSongBtn();
+ if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
+ if(typeof syncFixedTransport==='function') syncFixedTransport();
+}
+function _capSummary(fit){
+ return fit.bars+' bar'+(fit.bars===1?'':'s')
+  + (fit.bpmChanged ? ' at ♩='+fit.bpm+' (your tempo)' : '');
 }
 
 function stopSongRecord(){
@@ -23541,31 +23681,25 @@ function stopSongRecord(){
  songRecActive = false;
  const recordedIdx = songRecSectionIdx;
  const sec = sections[recordedIdx];
- // Counted before padding: the rest that fills out the bar is not a chord you
- // played, and reporting it as one would be off by one on every capture.
- const count = sec ? sec.slots.length : 0;
- const _padded = _songRecPadToBar(sec);
+ const evs = songRecEvents.slice(); songRecEvents = [];
+ const count = evs.length;
+ let fit=null;
+ if(sec && count && ctx){
+  // Liberal only when there was no grid to play against: with the drums
+  // going, where you put a change is the part, and the beat grid keeps it.
+  const running=!!_capClock();
+  fit=_capFit(evs, {endT:ctx.currentTime, liberal:!running, adapt:!running});
+  sec.slots=fit.slots;
+ }
  songRecSectionIdx = -1;
  _updateSongRecUI();
  renderChartSeq(); buildSectionTabs();
  if(typeof renderSetlist==='function') renderSetlist();
  // This is meant to work like a loop pedal — hit the button, play whatever
  // you want, hit it again and it's already looping what you just played.
- // Previously the second press only stopped capture and left you to go find
- // Song: ON yourself, so what you'd just played fell silent right when you
- // wanted to hear it back.
- if(count>0){
-  songCurrentSection = recordedIdx;
-  _songHeldAt = null; // a fresh recording shouldn't resume an unrelated hold
-  globalSongMode = true;
-  startSongLoop(true); // aligned start — first chord lands on the downbeat
-  if(typeof updatePrismSongBanner==='function') updatePrismSongBanner();
-  const banner=document.getElementById('prism-song-banner');
-  if(banner) banner.style.display = curSetlistIdx>=0 ? 'flex' : 'none';
-  if(typeof _updateSongBtn==='function') _updateSongBtn();
-  if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
-  showToast('Recorded '+count+' chord'+(count===1?'':'s')
-   + (_padded ? ' + a rest to finish the bar' : '')
+ if(fit){
+  _capLaunch(recordedIdx, fit);
+  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' · '+_capSummary(fit)
    + ' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
@@ -23615,7 +23749,7 @@ function _chordRingPush(rootM, triadQ, type7, ext, func, bassOverride){
   rootM, triadQ, type7, func, ext,
   // Same octave compensation as the forward path — see _songRecCapture.
   bassNote: bassOverride!==null ? bassOverride+12 : null,
-  t: ctx.currentTime
+  t: ctx.currentTime, clk: _capClock()
  });
  _chordRingTrim();
  _updateSongRecUI();
@@ -23644,36 +23778,17 @@ function captureBack(){
  const run=_chordRingRun();
  if(!ctx || !run.length){ showToast('Play some chords first'); return; }
 
+ const cyc=_capOneCycle(run);
+ const fit=_capFit(cyc.evs, {endT:cyc.endT, liberal:true, adapt:!_capClock()});
  stopSongLoopIfActive();
- const bpm = parseFloat(document.getElementById('bpm')?.value||100);
- const stepsPerBar = _songBarSteps();
- const eighthsPerBar = stepsPerBar/2;
- const eighthSec = (60/bpm)*0.5;
 
  const base='Captured';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
- const sec={name:base+' '+n, slots:[], plays:0, follow:'repeat'};
-
- run.forEach((ev,i)=>{
-  // A chord lasts until the next one starts; the last one lasts until now.
-  const endT = (i+1<run.length) ? run[i+1].t : ctx.currentTime;
-  let totalEighths = Math.round(Math.max(0, endT-ev.t)/eighthSec);
-  if(totalEighths < 1) totalEighths = 1;
-  const bars = Math.floor(totalEighths/eighthsPerBar);
-  const rem  = totalEighths%eighthsPerBar;
-  sec.slots.push({
-   label:ev.label, numeral:ev.numeral, rootM:ev.rootM, triadQ:ev.triadQ,
-   type7:ev.type7, func:ev.func, ext:ev.ext, bassNote:ev.bassNote,
-   bars, beats:Math.floor(rem/2), eighths:rem%2, isRest:false
-  });
- });
+ const sec={name:base+' '+n, slots:fit.slots, plays:0, follow:'repeat'};
 
  sections.push(sec);
  const idx = sections.length-1;
  curSection = idx;
- // Same tidy-up the forward path does, so a capture that stopped mid-bar
- // still loops on the bar line.
- if(typeof _songRecPadToBar==='function') _songRecPadToBar(sec);
  buildSectionTabs(); renderChartSeq();
  if(typeof renderSetlist==='function') renderSetlist();
  _updateSongRecUI();
@@ -23684,11 +23799,20 @@ function captureBack(){
  _chordRingTrim();
  _updateSongRecUI();
 
- showToast('Kept '+run.length+' chord'+(run.length>1?'s':'')+' as "'+sec.name+'"', {
+ // Same as the forward half: what you keep, you hear, looping and in time.
+ const bpmBefore=parseFloat(document.getElementById('bpm')?.value)||100;
+ _capLaunch(idx, fit);
+
+ const kept=cyc.evs.length;
+ showToast('Kept '+kept+' chord'+(kept>1?'s':'')+' · '+_capSummary(fit)
+  + (cyc.passes>1 ? ' (one of '+cyc.passes+' passes)' : '')+' as "'+sec.name+'"', {
   actionLabel:'Undo', ms:7000,
   onAction:function(){
    const at=sections.indexOf(sec);
-   if(at>=0) sections.splice(at,1);
+   if(at<0) return;
+   if(songLoopActive && songLoopSection===at) stopEverything();
+   if(fit.bpmChanged) _setBpm(bpmBefore);
+   sections.splice(at,1);
    if(curSection>=sections.length) curSection=Math.max(0,sections.length-1);
    buildSectionTabs(); renderChartSeq();
    if(typeof renderSetlist==='function') renderSetlist();
@@ -23713,6 +23837,7 @@ function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride){
  bassNote: bassOverride!==null ? bassOverride+12 : null,
  startT: now
  };
+ songRecEvents.push(Object.assign({}, songRecPending, {t:now, clk:_capClock()}));
  const btn=document.getElementById('ft-rec-btn');
  if(btn){ const sec=sections[songRecSectionIdx]; btn.title='Recording — '+(sec?sec.slots.length+1:1)+' chord(s) captured'; }
 }
@@ -23761,7 +23886,9 @@ function _updateSongRecUI(){
  }
 }
 
-function startSongLoop(alignedStart){
+// atTime: a caller that has already worked out which bar line the song should
+// come in on (a capture closing its loop) passes it; see the branch below.
+function startSongLoop(alignedStart, atTime){
  // Always stop any existing loop first
  stopSongLoop();
  if(!sections.length || !sections.some(s=>s.slots&&s.slots.length)) return;
@@ -23801,6 +23928,32 @@ function startSongLoop(alignedStart){
  _songRunSounded = false;
  _updateSectionNavUI();
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
+ if(atTime!=null){
+  var _c=getCtx(), _lead=_c ? atTime-_c.currentTime : 0;
+  if(_lead <= SCHED_LEAD*0.5){
+   // That bar line has just gone by — you ended the take a little after the
+   // downbeat. Now is already inside the first chord, so it starts now and the
+   // bar count carries on from the line it belongs to.
+   _playLoopSlot();
+  } else if((rhythmOn || sqOn) && !((window._barAnnouncedT||0) >= atTime-0.002)){
+   // The clock announces its own bar lines ahead of time, with the exact time
+   // attached, and this one has not gone out yet. Waiting on it rather than a
+   // timer keeps a timer-started chord from being counted as a bar already
+   // gone by the tick that arrives just before it.
+   songWaitingForBar = true;
+  } else if(rhythmOn || sqOn){
+   // Announced already — the clock runs a look-ahead ahead of the audio, so
+   // a take ended just before the downbeat is ended after its tick. Waiting
+   // would be a whole bar of silence; schedule it onto the line directly. The
+   // next announcement is the bar after, which is the first one it counts.
+   _playLoopSlot(atTime);
+  } else {
+   clearTimeout(songLoopTimer);
+   songLoopTimer = setTimeout(function(){ if(songLoopActive) _playLoopSlot(atTime); },
+                              Math.max(0, (_lead - SCHED_LEAD)*1000));
+  }
+  return;
+ }
  if(alignedStart){
  // Fresh launch: fire the first chord on the downbeat, in sync with the
  // sequencer's step 0, instead of waiting a full bar.
@@ -23809,7 +23962,12 @@ function startSongLoop(alignedStart){
  if(ctx && typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > ctx.currentTime){
  delayMs = (CLOCK_EPOCH - ctx.currentTime) * 1000;
  }
- if(delayMs > 5){
+ if(delayMs > 5 && delayMs <= SCHED_LEAD*1000){
+ // Already inside the scheduling lead: schedule it now, onto the downbeat.
+ // A zero-length timer would run after everything else this launch does,
+ // and with a short lead that can be after the downbeat itself.
+ _playLoopSlot(CLOCK_EPOCH);
+ } else if(delayMs > 5){
  clearTimeout(songLoopTimer);
  // Wake early and hand the exact epoch time down, so the very first chord
  // is scheduled onto the downbeat rather than played when the timer lands.
@@ -23833,6 +23991,32 @@ function startSongLoop(alignedStart){
 // Where a hold froze the progression, so switching Song back on picks up from
 // that chord instead of the top of the section.
 let _songHeldAt = null;
+
+// ─── Where ▶ starts the song ────────────────────────────────────────────
+// Play used to throw the song back to its first section every time, which
+// after a Capture meant the loop you had just recorded was not what Play
+// played — the song's opening section was. And the other start paths resumed
+// from whichever chord happened to be sounding when you last stopped.
+//
+// It works the way a DAW's return-to-start does now: ▶ starts where the last
+// run started, unless you have since said somewhere else — tapped a section
+// tab, stepped or tapped to a chord while stopped, or captured a new section.
+// A new song (the sections array replaced) starts at its top. `var` because
+// the transport and the chart both reach these from far away.
+var _songCue = null;       // {arr, section, slot} — chosen since the last run
+var _songRunStart = null;  // {arr, section} — where the last run started
+function _songCueAt(section, slot){ _songCue={arr:sections, section:section, slot:(slot==null?-1:slot)}; }
+function _songStartCue(){
+ const ok=i=>i>=0 && sections[i] && sections[i].slots && sections[i].slots.length;
+ let out=null;
+ if(_songCue && _songCue.arr===sections && ok(_songCue.section)) out={section:_songCue.section, slot:_songCue.slot};
+ else if(_songRunStart && _songRunStart.arr===sections && ok(_songRunStart.section)) out={section:_songRunStart.section, slot:-1};
+ else out={section:-1, slot:-1};   // startSongLoop picks the first non-empty section
+ _songCue=null;
+ if(out.section<0){ for(let i=0;i<sections.length;i++) if(ok(i)){ out.section=i; break; } }
+ _songRunStart={arr:sections, section:out.section};
+ return out;
+}
 
 // Song: HOLD — freeze the progression without tearing the performance down.
 // The chord that is sounding stays sounding, the arp keeps running on it, the
@@ -24866,6 +25050,7 @@ function songStepSlot(delta){
   playChartSlot2(si, ci);
   songCurrentSection = si;
   songCurrentSlot = ci;
+  _songCueAt(si, ci);
   if(_songHeldAt) _songHeldAt = {section:si, slot:ci};
   if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(true);
   return;
@@ -24931,6 +25116,8 @@ function songChartTap(si, ci){
  // Highlight
  const chart=document.getElementById('songs-full-chart');
  if(chart){ chart.querySelectorAll('.songs-chord-btn').forEach(b=>b.classList.remove('active')); }
+ // Tapped while stopped: this is where you want ▶ to start.
+ _songCueAt(si, ci);
  }
  songCurrentSection = si;
  songCurrentSlot = ci;
@@ -25100,7 +25287,7 @@ function startEverything(){
   // against a look-ahead described as 0.10 — correct then, and silently wrong
   // the moment either number moved, which is why both now come from the same
   // place.
-  CLOCK_EPOCH = _ctx.currentTime + EPOCH_LEAD;
+  CLOCK_EPOCH = _ctx.currentTime + _epochLead();
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
  }
 
@@ -25135,9 +25322,14 @@ function startEverything(){
   if(arpSounding&&_ctx){ arpNextBeat=CLOCK_EPOCH; arpIdx=0; arpDir=1; arpGateIdx=0; }
  }
  if(globalSongMode&&_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
-  songCurrentSection=-1; // force startSongLoop to pick the first non-empty section
+  const c=_songStartCue();
+  songCurrentSection=c.section; songCurrentSlot=c.slot;
+  _songHeldAt=null;
   startSongLoop(true);   // aligned launch — no full-bar wait
  }
+ // Every engine above started synchronously and has taken its alignment; the
+ // short lead was for this launch only.
+ _clockTightStart=false;
  syncFixedTransport();
 }
 
@@ -28493,6 +28685,9 @@ window._sqScheduler=function(){
       // scheduled at an exact future time — sample-accurate, the same way the
       // drums are — instead of playing at whatever currentTime happened to be
       // when a setTimeout woke up.
+      // Kept whether or not a song is running: a song about to start on this
+      // bar line needs to know whether the line has already been announced.
+      window._barAnnouncedT=_stepT+sqSd();
       if(typeof tickSongLoop==='function' && typeof songLoopActive!=='undefined' && songLoopActive){
         tickSongLoop(_stepT+sqSd());
       }
@@ -28598,10 +28793,10 @@ function sqStart(opts){
     _sqCursorTransportChanged();
     sqUsingChain=sqChain.length>0;sqChainPos=0;
     if(sqUsingChain&&sqPats[sqChain[0]])sqLoadPatPlay(sqChain[0]);
-    sqNextT=clockAlignTo(c, sqSd(), ALIGN_LEAD);
+    sqNextT=clockAlignTo(c, sqSd(), _alignLead());
     // Also re-align arp and rhythm to same epoch if they're running
-    if(arpOn) arpNextBeat=clockAlignTo(c, clockStepSec(), ALIGN_LEAD);
-    if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), ALIGN_LEAD); rhythmIdx=0; }
+    if(arpOn) arpNextBeat=clockAlignTo(c, clockStepSec(), _alignLead());
+    if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), _alignLead()); rhythmIdx=0; }
     sqApplyFX();
     // Always kick clock so arp/bass scheduling runs alongside sequencer
     clearTimeout(clockTimer);tickClock();
@@ -30857,7 +31052,7 @@ function blPlay(){
     // sqSeqStep, which the sequencer's look-ahead has usually already advanced
     // past 0) keeps the bass locked to the sequencer at launch AND mid-stream.
     if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
-      var _firstStep = clockAlignTo(ctx, _blStepSec, ALIGN_LEAD); // next 16th aligned to epoch
+      var _firstStep = clockAlignTo(ctx, _blStepSec, _alignLead()); // next 16th aligned to epoch
       // Same trap, and this one mattered more: the fallback hardcoded 16, so
       // the bass aligned its launch to a 4/4 bar even in 5/4 or 3/4.
       var _sqN2 = (typeof window._sqSteps==='function') ? window._sqSteps() : 0;
@@ -32159,7 +32354,7 @@ function mlPlay(){
     // Align to the next bar boundary from the shared CLOCK_EPOCH, same as bass,
     // so melody always lands on beat 1 alongside sequencer/bass/song.
     if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
-      var _firstStep = clockAlignTo(ctx, _mlStepSec, ALIGN_LEAD);
+      var _firstStep = clockAlignTo(ctx, _mlStepSec, _alignLead());
       var _barSteps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
       var _fromEpoch = Math.round((_firstStep - CLOCK_EPOCH) / _mlStepSec);
       var _intoBar = ((_fromEpoch % _barSteps) + _barSteps) % _barSteps;
