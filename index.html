@@ -1264,6 +1264,13 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 /* The one the finger is driving. Dimmed rather than disabled: it still shows
    the value the gesture runs UP TO, so it is information, not a dead control
    — and on the Depth axis that number is exactly what full slide reaches. */
+.mel-scale-row { flex-wrap:wrap; }
+/* Twelve equal buttons filling the row. Left at their natural width they
+   stopped two thirds of the way across and the group's own background ran on
+   past them, which reads as a control that failed to finish drawing. */
+.mel-scale-row .mel-deg { padding:4px 4px; font-size:.5rem; min-width:26px; flex:1 1 0; }
+.mel-scale-count { margin-left:auto; color:var(--mel-c); font-weight:600;
+                   letter-spacing:.04em; text-transform:none; font-size:.5rem; }
 .tmod-driven { opacity:.55; }
 .tmod-driven .tmod-lbl::after { content:' ↕'; color:var(--mel-c); opacity:.9; }
 .tmod-lbl { font-size:.45rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
@@ -5229,7 +5236,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.13</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.14</span>
     </div>
    </div>
   </div>
@@ -5247,7 +5254,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.13</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.14</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -5778,6 +5785,27 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
       the rest of that part is. _mlSyncOctDisp paints every .ml-oct-mirror it
       finds, so the remaining copy needs no change. -->
 
+ <!-- WHICH NOTES ARE ON THE STRIP — the twelve chromatic degrees from the key
+      root, with the ones the mode uses lit. The strip was the mode's seven and
+      nothing else, so a blue note or a chromatic approach meant changing key.
+      Collapsed by default: the mode's own notes are still the answer most of
+      the time, and this is the way to disagree with it. -->
+ <button type="button" class="pf-shape-head" id="mel-scale-head" aria-expanded="false"
+   onclick="melScaleHeadToggle(this)">
+   <span class="pf-shape-caret" aria-hidden="true">›</span>Notes on the strip
+   <span class="mel-scale-count" id="mel-scale-count"></span></button>
+ <div class="pf-shape-body" id="mel-scale-body">
+  <div class="tg mel-scale-row" id="mel-scale-row"></div>
+  <div class="tg" style="margin-top:5px">
+   <button class="tb" type="button" id="mel-scale-mode" onclick="melScalePreset('mode')"
+     title="Back to the notes this mode is built from — what the strip has always shown">Mode</button>
+   <button class="tb" type="button" id="mel-scale-penta" onclick="melScalePreset('penta')"
+     title="Degrees 1 2 3 5 6 of this mode — major pentatonic in a major mode, minor in a minor one">Pentatonic</button>
+   <button class="tb" type="button" id="mel-scale-chromatic" onclick="melScalePreset('chromatic')"
+     title="All twelve. Every note is playable and nothing is out of key, because the key stops deciding.">Chromatic</button>
+  </div>
+  <div class="tmod-hint pf-info">Tap a degree to put it on the strip or take it off. These are counted from the key root, so they follow a transpose.</div>
+ </div>
  <div class="keys-typing-hint pf-info" id="keys-typing-hint">A=Do W=Do# S=Re E=Re# D=Mi F=Fa T=Fa# G=Sol Y=Sol# H=La U=La# J=Ti K=Do' · Z=Oct− X=Oct+ · C=Bend− V=Bend+</div>
  <!-- The keys are here on Perform; the roll they write into is over on
       Accomp. Arming is a mode, and a mode you cannot see is one you forget
@@ -7054,7 +7082,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.13';
+const MODRIFF_VERSION = '3.9.14';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -12775,7 +12803,10 @@ function initBendStrip(){
 
  // Build note list for current key/octave
  const getSteps=()=>{
- const steps=(MODES[mode]||MODES.major).steps;
+ // The same list the keys are built from, so the bend strip and the strip you
+ // tap never offer different notes — see melScaleSteps.
+ const steps=(typeof melScaleSteps==='function')
+   ? melScaleSteps() : (MODES[mode]||MODES.major).steps;
  const baseM=60+(root<=5?root:root-12)+melOctShift;
  const notes=[];
  for(let oct=0;oct<2;oct++) steps.forEach(s=>notes.push(baseM+s+oct*12));
@@ -16644,6 +16675,9 @@ function renderChords(){
  renderPerfChartRow();
  updateOct();
  buildMelodyStrip();
+ // The degree row names its notes in the current key ("♭3 — E♭ in this key"),
+ // and the count says which mode it is following, so both move with the key.
+ if(typeof syncMelScaleUI==='function') syncMelScaleUI();
 }
 
 // ═══════════════════════════════════════
@@ -17351,7 +17385,7 @@ function openKbShortcuts(){
  if(live){
   try{
    const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
-   const n = ((MODES[mode]||MODES.major).steps||[]).length || 7;
+   const n = ((typeof melScaleSteps==='function' ? melScaleSteps() : (MODES[mode]||MODES.major).steps)||[]).length || 7;
    const map = (typeof _buildMusicalKeysMap==='function') ? _buildMusicalKeysMap() : {};
    const parts = [];
    MEL_HOME_KEYS.slice(0,n).forEach((k,i)=>{
@@ -17585,6 +17619,9 @@ function _capSettings(){
   // melModDepth above stays in the snapshot so a setup saved here still
   // opens in a build that predates this.
   melModAxis, melModCfg: JSON.parse(JSON.stringify(melModCfg)),
+  // Which notes the strip offers. null means "follow the mode", so a setup
+  // saved without one restores to the mode rather than to an empty strip.
+  melScaleSet: melScaleSet ? melScaleSet.slice() : null,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   // Stored as a pair rather than a string so an older setup, which has
@@ -17772,6 +17809,14 @@ function _applySettings(s){
  }
  melModPull();
  if(typeof syncMelModUI==='function') try{ syncMelModUI(); }catch(e){}
+ // `undefined` is "this setup predates the strip note picker" and must leave
+ // the current choice alone; an explicit null is "follow the mode".
+ if(s.melScaleSet!==undefined){
+  melScaleSet = Array.isArray(s.melScaleSet) && s.melScaleSet.length
+    ? s.melScaleSet.filter(function(n){ return n>=0 && n<12; }) : null;
+  if(typeof buildMelodyStrip==='function') try{ buildMelodyStrip(); }catch(e){}
+  if(typeof syncMelScaleUI==='function') try{ syncMelScaleUI(); }catch(e){}
+ }
  if(typeof syncMelModUI==='function') syncMelModUI();
 
  // Character macros — write the state, mirror it onto the sliders, then let
@@ -18117,9 +18162,135 @@ function melKeyPaintMod(btn,y){
  btn.classList.add('modding');
 }
 
+// ── Which notes the strip offers ─────────────────────────────────────────
+// The strip was the mode's seven degrees and nothing else, so a chromatic
+// passing note, a blue note or a plain pentatonic simplification meant
+// changing key — the one thing this app is built not to make you do.
+//
+// null means "whatever the mode says", which is the default and is exactly the
+// behaviour this replaced. Anything else is a list of pitch classes measured
+// from the ROOT, not from C: it survives a transpose, the same way every other
+// chord and scale decision in this app does.
+//
+// `var`: the strip builder and the bend strip both read this and both run from
+// far above this line. See CLAUDE.md.
+var melScaleSet = null;
+// One place that answers "what is on the strip right now", so the keys, the
+// bend strip and the typing hints cannot drift apart.
+function melScaleSteps(){
+ if(melScaleSet && melScaleSet.length) return melScaleSet;
+ return (MODES[mode]||MODES.major).steps;
+}
+window.melScaleSteps = melScaleSteps;
+// Degree names from the root. Sharps or flats is not a real question here —
+// these label a chromatic row, not a key signature — so it uses the spelling
+// that reads fastest against a mode's own numerals.
+var MEL_DEG_LBL = ['1','\u266d2','2','\u266d3','3','4','\u266f4','5','\u266d6','6','\u266d7','7'];
+function melScaleSet_(list){
+ if(!list){ melScaleSet = null; }
+ else {
+  var u = list.filter(function(n){ return n>=0 && n<12; })
+              .map(Number).sort(function(a,b){ return a-b; })
+              .filter(function(n,i,a){ return i===0 || n!==a[i-1]; });
+  // An empty strip is not a choice anyone means to make, so the last note
+  // cannot be taken off — the toggle simply refuses rather than leaving a
+  // surface with nothing on it.
+  melScaleSet = u.length ? u : null;
+ }
+ try{
+  localStorage.setItem('modo-mel-scale', melScaleSet ? JSON.stringify(melScaleSet) : '');
+ }catch(e){}
+ buildMelodyStrip();
+ if(typeof updateKeysTypingHint==='function') try{ updateKeysTypingHint(); }catch(e){}
+ syncMelScaleUI();
+}
+// The heading is markup rather than built by pfMountToneBodies, so it carries
+// its own open/close. Remembered for the same reason the Shape drawer is: this
+// is a decision you make once and then play against.
+function melScaleHeadToggle(head){
+ var open = head.getAttribute('aria-expanded')==='true';
+ head.setAttribute('aria-expanded', open ? 'false' : 'true');
+ try{ localStorage.setItem('modo-mel-scale-open', open ? '' : '1'); }catch(e){}
+}
+window.melScaleHeadToggle = melScaleHeadToggle;
+function melScaleToggle(pc){
+ var cur = melScaleSteps().slice();
+ var i = cur.indexOf(pc);
+ if(i>=0){ if(cur.length<=1) return; cur.splice(i,1); }
+ else cur.push(pc);
+ melScaleSet_(cur);
+}
+function melScalePreset(which){
+ var md = MODES[mode] || MODES.major;
+ if(which==='mode'){ melScaleSet_(null); return; }
+ if(which==='chromatic'){ melScaleSet_([0,1,2,3,4,5,6,7,8,9,10,11]); return; }
+ if(which==='penta'){
+  // A pentatonic drops the two degrees that make semitone clashes with the
+  // chord tones, and WHICH two depends on the third — so it is read off the
+  // mode rather than hardcoded per mode name.
+  //   major third  -> drop 4 and 7   (C major -> C D E G A)
+  //   minor third  -> drop 2 and 6   (A minor -> A C D E G)
+  // Taking degrees 1 2 3 5 6 regardless, which is what this did first, gives
+  // 1 2 ♭3 5 ♭6 in a minor mode: a scale with a ♭6 and no ♭7, which is not the
+  // minor pentatonic anyone means and clashes with the v chord.
+  var st=md.steps;
+  // Only a seven-note mode has two degrees to give up. MODES also carries
+  // scales that are already five or six notes — Major Pent, Minor Pent, Blues
+  // — and indexing the same positions in those drops the notes that define
+  // them: it took the fifth out of Major Pentatonic and the ♭3 out of Minor.
+  // For those the mode IS the pentatonic, so this is simply its own steps.
+  if(st.length < 7){ melScaleSet_(st.slice()); return; }
+  var keep = (st[2]-st[0])===4 ? [0,1,2,4,5] : [0,2,3,4,6];
+  melScaleSet_(keep.map(function(i){ return st[i]; })
+                   .filter(function(x){ return x!=null; }));
+  return;
+ }
+}
+window.melScaleToggle = melScaleToggle;
+window.melScalePreset = melScalePreset;
+function syncMelScaleUI(){
+ var host=document.getElementById('mel-scale-row'); if(!host) return;
+ var on = melScaleSteps();
+ if(!host.children.length){
+  host.innerHTML = MEL_DEG_LBL.map(function(l,i){
+   return '<button class="tb mel-deg" type="button" data-deg="'+i+'" onclick="melScaleToggle('+i+')">'+l+'</button>';
+  }).join('');
+ }
+ host.querySelectorAll('[data-deg]').forEach(function(b){
+  var pc=+b.dataset.deg, lit=on.indexOf(pc)>=0;
+  b.classList.toggle('active', lit);
+  b.title = (lit?'On the strip':'Not on the strip')+' — '+MEL_DEG_LBL[pc]
+          + ' (' + nn((root+pc)%12) + ' in this key)';
+ });
+ var c=document.getElementById('mel-scale-count');
+ if(c) c.textContent = melScaleSet ? (on.length+' of 12') : ((MODES[mode]||MODES.major).label+' \u00b7 '+on.length);
+ ['mode','penta','chromatic'].forEach(function(k){
+  var b=document.getElementById('mel-scale-'+k); if(!b) return;
+  var isMode = (k==='mode' && !melScaleSet);
+  var isChr  = (k==='chromatic' && melScaleSet && melScaleSet.length===12);
+  b.classList.toggle('active', isMode || isChr);
+ });
+}
+window.syncMelScaleUI = syncMelScaleUI;
+(function(){
+ try{
+  var raw=localStorage.getItem('modo-mel-scale');
+  if(raw){
+   var a=JSON.parse(raw);
+   if(Array.isArray(a) && a.length) melScaleSet=a.filter(function(n){ return n>=0&&n<12; });
+  }
+  if(localStorage.getItem('modo-mel-scale-open')==='1'){
+   document.addEventListener('DOMContentLoaded', function(){
+    var h=document.getElementById('mel-scale-head');
+    if(h) h.setAttribute('aria-expanded','true');
+   });
+  }
+ }catch(e){}
+})();
+
 function buildMelodyStrip(){
  const md = MODES[mode] || MODES.major;
- const steps = md.steps;
+ const steps = melScaleSteps();
  const container=document.getElementById('melody-keys'); if(!container) return; container.innerHTML='';
  const baseM=60+(root<=5?root:root-12)+melOctShift;
  const notes=[];
@@ -18278,7 +18449,7 @@ function syncMelScrollCue(){
 function updateKeysTypingHint(){
  const hint = document.getElementById('keys-typing-hint'); if(!hint) return;
  const sol = (typeof SOLFEGE_BY_MODE!=='undefined' && SOLFEGE_BY_MODE[mode]) || (typeof SOLFEGE_MAJ!=='undefined' ? SOLFEGE_MAJ : ['Do','Re','Mi','Fa','Sol','La','Ti']);
- const n = ((MODES[mode]||MODES.major).steps||[]).length || 7;
+ const n = ((typeof melScaleSteps==='function' ? melScaleSteps() : (MODES[mode]||MODES.major).steps)||[]).length || 7;
  // Spell the two rows the way they're actually laid out — home key, then the
  // in-between key above it when this mode leaves a gap there. Naming only the
  // upper keys that sound keeps the hint honest about the dead ones.
@@ -21809,6 +21980,11 @@ function solfegeLabel(semisFromRoot){
  const steps = (MODES[mode]||MODES.major).steps;
  const sol = SOLFEGE_BY_MODE[mode]||SOLFEGE_MAJ;
  const idx = steps.indexOf(((semisFromRoot%12)+12)%12);
+ // null for a note the mode has no syllable for, which is any of the five a
+ // chromatic strip carries that the mode does not. Every caller already reads
+ // it as `solfegeLabel(..) || name`, so those keys show their note name rather
+ // than going blank — which matters far more now that they can be on the strip
+ // at all.
  return idx >= 0 ? sol[idx] : null;
 }
 
