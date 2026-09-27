@@ -5272,7 +5272,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.15</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.16</span>
     </div>
    </div>
   </div>
@@ -5290,7 +5290,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.15</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.16</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7125,7 +7125,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.15';
+const MODRIFF_VERSION = '3.9.16';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7411,7 +7411,13 @@ const WAVE_GAIN = {
  piano:.226,
  organ:.51,   // retuned with the drawbar rework, then RMS-matched to piano in the app
  rhodes:.217,
- pad:.597,
+ // Was .597, which measured 1.6 dB under the other synth voices on a chord and
+ // 4.8-6.1 dB under them on the melody strip. Most of the strip's share was the
+ // voice's own inner swell rather than this number — see the pad branch in
+ // makeVoice — and the rest is here. At .925 the three surfaces land within
+ // 2.3 dB of the reference, which is inside the 2.2-4.0 dB spread the five
+ // reference voices already have between themselves.
+ pad:.925,
  modsynth:.313,
  // Sampled voices, calibrated the same way as the rest of this table — a real
  // four-note chord, measured in the running app, matched on RMS.
@@ -11579,9 +11585,35 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  const tG=ctx.createGain(); tG.gain.value=0.38; tOsc.connect(tG); tG.connect(ss.out);
  const padFilt=ctx.createBiquadFilter(); padFilt.type='lowpass';
  padFilt.frequency.value=Math.min(f*3.5,3200); padFilt.Q.value=0.7;
- // Inner gain creates slow attack regardless of outer envelope
+ // The slow swell is what makes this a pad rather than a supersaw, so it is
+ // still 320ms on anything long enough to have 320ms to spare. What it is no
+ // longer is 320ms on a note that does not last that long.
+ //
+ // It used to be fixed "regardless of outer envelope", which on the surfaces
+ // that play SHORT notes meant the voice never arrived: a melody note at the
+ // default release is 815ms, an arp sixteenth at 120bpm is 125ms, and a note
+ // that spends its whole life ramping up is one you can barely hear. Measured
+ // against the other synth voices on the melody strip, this voice read -9.5 dB
+ // at a 250ms note and -4.6 dB at 2s — the deficit shrinking with length is
+ // what identified the attack rather than the gain as the cause.
+ //
+ // A sixth of the note, capped at the original 320ms. A chord (2.2s) and a
+ // held note both still get the full 320ms, so neither changes at all; only
+ // notes shorter than ~2s move, which are exactly the ones that were broken.
+ //
+ // A sixth rather than a third because the two envelopes MULTIPLY: the outer
+ // one is already decaying from 15ms in, so a swell taking a third of the note
+ // arrives at a note that has mostly gone. At a third this voice still read
+ // -11.6 dB on a default melody note.
+ // Floored at 60ms as well as capped at 320ms. Without the floor an arp
+ // sixteenth (120ms) got a 19ms swell, which is not a pad at all — it is a
+ // filtered supersaw, and with the gain below it measured 5.4 dB OVER the
+ // reference on the arp while the other surfaces were 2 dB under. 60ms is
+ // still soft by any measure (a piano attack is nearer 5ms) and it keeps a
+ // short note honest about how much of itself it spends arriving.
+ const padAtk = Math.max(0.06, Math.min(0.32, (dur||0.3)*0.16));
  const innerG=ctx.createGain();
- innerG.gain.setValueAtTime(0,t0); innerG.gain.linearRampToValueAtTime(1,t0+0.32);
+ innerG.gain.setValueAtTime(0,t0); innerG.gain.linearRampToValueAtTime(1,t0+padAtk);
  ss.out.connect(padFilt); padFilt.connect(innerG); innerG.connect(gainNode);
  ss.oscs.forEach(o=>{o.start(t0);o.stop(t0+dur+.5);r.push(o);});
  tOsc.start(t0); tOsc.stop(t0+dur+.5); r.push(tOsc);
