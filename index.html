@@ -1264,6 +1264,42 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 /* The one the finger is driving. Dimmed rather than disabled: it still shows
    the value the gesture runs UP TO, so it is information, not a dead control
    — and on the Depth axis that number is exactly what full slide reaches. */
+/* ── Chord bank ───────────────────────────────────────────────────────── */
+/* Each catalog line is now a pair: the tick, and a + that opens the variant
+   sheet for that chord. */
+.cp-row { display:flex; align-items:stretch; gap:4px; }
+.cp-row .cp-item { flex:1; min-width:0; }
+.cp-plus {
+ flex:none; width:30px; border:1px solid var(--line); border-radius:7px;
+ background:var(--surf); color:var(--muted); font-size:.8rem; line-height:1;
+ cursor:pointer; padding:0;
+}
+.cp-plus:hover { border-color:var(--accent); color:var(--accent); }
+.chordpick-build {
+ flex:none; padding:6px 11px; border:1px solid var(--line); border-radius:9px;
+ background:var(--surf); color:var(--muted); font:inherit; font-size:.52rem;
+ font-weight:600; letter-spacing:.06em; text-transform:uppercase; cursor:pointer;
+}
+.chordpick-build:hover { border-color:var(--accent); color:var(--accent); }
+/* The variant sheet and the builder share a box — same decisions, one at a
+   time in the first and all at once in the second. */
+.cp-var-box { max-width:520px; width:100%; max-height:86vh; overflow:auto; }
+.cp-var-sec {
+ margin:10px 0 4px; color:var(--muted); font-size:.5rem; font-weight:600;
+ letter-spacing:.1em; text-transform:uppercase;
+}
+.cp-var-grid { flex-wrap:wrap; }
+.cp-var-grid .tb { font-size:.52rem; padding:5px 9px; }
+/* A root that is in the current key, so the twelve do not read as equally
+   likely when seven of them are the ones you probably want. */
+.cp-b-in { border-color:var(--accent) !important; }
+.cp-b-deg { display:block; font-style:normal; font-size:.42rem; opacity:.65; }
+.cp-var-preview {
+ margin-top:10px; padding:8px; border:1px solid var(--line); border-radius:8px;
+ background:var(--bg); color:var(--accent); text-align:center;
+ font-family:'Orbitron',sans-serif; font-size:.62rem; letter-spacing:.04em;
+}
+.cp-var-actions { margin-top:10px; flex-wrap:wrap; }
 .mel-scale-row { flex-wrap:wrap; }
 /* Twelve equal buttons filling the row. Left at their natural width they
    stopped two thirds of the way across and the group's own background ran on
@@ -5236,7 +5272,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.14</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.15</span>
     </div>
    </div>
   </div>
@@ -5254,7 +5290,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.14</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.15</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -5629,12 +5665,19 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
       without putting twenty more pads on the screen. Modal and Secondary are
       catalogs you tick things out of; My Chords is what you ticked, and it is
       the only one of the three that becomes playable pads below. -->
- <div class="chordpick-row basic-only pro-only" id="chordpick-row">
+ <!-- Both modes, not Basic only. Advanced already lists the catalogs as full
+      rows, but My Chords is the only place a PINNED variant can live — a pad
+      that is always IVmaj9 or always V/3 — and Build is the only way to reach
+      a chord no catalog in this key offers. Neither has anywhere else to be. -->
+ <div class="chordpick-row pro-only" id="chordpick-row">
+  <div class="chordpick" id="cp-diatonic"></div>
   <div class="chordpick" id="cp-borrowed"></div>
   <div class="chordpick" id="cp-secdom"></div>
   <div class="chordpick" id="cp-user"></div>
+  <button class="chordpick-build" type="button" id="cp-build-btn" onclick="cpOpenBuilder()"
+    title="Any root, any quality — including chords this key does not offer">+ Build</button>
  </div>
- <div class="basic-only pro-only" id="chords-user-wrap" style="display:none">
+ <div class="pro-only" id="chords-user-wrap" style="display:none">
   <div class="chord-section-lbl">My Chords</div>
   <div class="chords-row" id="chords-user"></div>
  </div>
@@ -7082,7 +7125,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.14';
+const MODRIFF_VERSION = '3.9.15';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -16393,7 +16436,12 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  return wrap;
 }
 
-function makeOutBtn(label,noteN,type7,crm,func){
+// `pin` is a pinned variant: {ext, bass}. It makes both halves of the button
+// sound that chord instead of the plain degree, and puts the quality and the
+// slash bass into the name. Everything else about the button is unchanged, so
+// a pinned pad is the same pad with a fixed variant on it rather than a second
+// kind of control.
+function makeOutBtn(label,noteN,type7,crm,func,pin){
  const fcMap={tonic:'var(--tonic)',subdom:'var(--subdom)',dom:'var(--dom)',modal:'var(--modal)'};
  const fcCssMap={tonic:'fc-tonic',subdom:'fc-subdom',dom:'fc-dom',modal:'fc-modal'};
  // Derive triad quality from type7 (same logic as makeSplitBtn)
@@ -16406,14 +16454,38 @@ function makeOutBtn(label,noteN,type7,crm,func){
  wrap.setAttribute('data-degree','-1');
  wrap.setAttribute('data-modal-label', label);
 
+ // A pinned variant's bass rides in on armedVariant, which is the one path
+ // _triggerChordImmediate already reads a slash off — and it clears it again
+ // on the way out, so nothing stays armed afterwards. Only set when the pin
+ // actually has a bass: otherwise a variant the player armed by hand must
+ // still reach a pinned pad.
+ const _pinExt  = pin && pin.ext ? pin.ext : null;
+ const _pinBass = pin && pin.bass ? pin.bass : null;
+ const _fire = (extForThisHalf)=>{
+  if(_pinBass){ try{ armVariant(_pinBass); }catch(_){ armedVariant=_pinBass; } }
+  return _triggerChordImmediate(crm, triadQ, type7, func, 0, extForThisHalf, true);
+ };
+ // What the extension adds to the name: "maj9", "13", "sus4" …
+ const _sfx  = _pinExt ? cpExtLabel(_pinExt) : '';
+ // …and the slash bass, spelled as a note because that is how a slash chord
+ // is written and read.
+ const _bassPc = pin ? cpBassPc({semis:crm-rootMidi(), bass:_pinBass}) : null;
+ const _slash = _bassPc!=null ? '/'+nn(_bassPc) : '';
+
  // ── Top strip: 7th / extension ──
  const sevDiv=document.createElement('div');
  sevDiv.className='btn-sev';
- const ext7Name = nashMode ? label+(SUFFIX7[type7]||'') : noteN+(SUFFIX7[type7]||'');
- sevDiv.innerHTML=`<span class="sl-name">${ext7Name}</span><span class="sl-qual">${QLABEL[type7]||''}</span>`;
+ // A pin already says what quality this chord is, so the top strip plays that
+ // rather than overriding it with a plain 7th — otherwise the two halves of a
+ // pinned 13th pad would be a 13th and a 7th, and only one of them the chord
+ // you pinned.
+ const ext7Name = _pinExt
+   ? ((nashMode ? label : noteN) + _sfx + _slash)
+   : ((nashMode ? label+(SUFFIX7[type7]||'') : noteN+(SUFFIX7[type7]||'')) + _slash);
+ sevDiv.innerHTML=`<span class="sl-name">${ext7Name}</span><span class="sl-qual">${_pinExt?_sfx:(QLABEL[type7]||'')}</span>`;
  _wireChordHold(sevDiv, ()=>{
  autoStartIfNeeded(); stopSongLoopIfActive();
- const tok=_triggerChordImmediate(crm, triadQ, type7, func, 0, '7th', true);
+ const tok=_fire(_pinExt || '7th');
  applyLogicHighlights(-1,label);
  return tok;
  });
@@ -16421,10 +16493,11 @@ function makeOutBtn(label,noteN,type7,crm,func){
  // ── Bottom: triad ──
  const trDiv=document.createElement('div');
  trDiv.className='btn-tri';
- const tName = nashMode ? label : noteN+(triadQ===1?'m':triadQ===2?'°':triadQ===3?'+':'');
- trDiv.innerHTML=`<span class="cnum">${label}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${QLABEL[triadQ]||''}</span>`;
+ const tName = (nashMode ? label : noteN+(triadQ===1?'m':triadQ===2?'°':triadQ===3?'+':'')) + _sfx + _slash;
+ trDiv.innerHTML=`<span class="cnum">${label+_sfx+_slash}</span><span class="cname">${tName}</span><span class="cqual ${FUNC_QUAL_CSS[func]||''}">${_pinExt?_sfx:(QLABEL[triadQ]||'')}</span>`;
  _wireChordHold(trDiv, ()=>{
- const tok=triggerChordWithVariant(crm,triadQ,type7,func,0,undefined,true);
+ const tok = pin ? (autoStartIfNeeded(), stopSongLoopIfActive(), _fire(_pinExt || undefined))
+                 : triggerChordWithVariant(crm,triadQ,type7,func,0,undefined,true);
  applyLogicHighlights(-1,label);
  return tok;
  });
@@ -16466,6 +16539,9 @@ function cpSave(){
  try{ localStorage.setItem('modo-chord-palette', JSON.stringify(cpPicks)); }catch(e){}
 }
 cpLoad();
+// The chord's identity WITHOUT its variant — what "is this the same degree"
+// means when resolving a pick against a mode. cpVarKey is the one that tells
+// two variants of the same degree apart.
 function cpKey(p){ return p.src+'|'+p.label; }
 // Distance around the twelve semitones, so ♭II and the major seventh are one
 // step apart rather than eleven.
@@ -16473,35 +16549,129 @@ function cpDist(a,b){ const d=Math.abs(((a-b)%12+12)%12); return Math.min(d,12-d
 // Which chord in the current mode a stored pick means now. Its own catalog
 // first, and within that an exact degree beats a near interval.
 function cpResolve(pick, srcs){
+ // A chromatic pick names a chord no catalog has, so there is nothing to
+ // resolve it against: it carries its own quality and only its ROOT follows
+ // the key, which semis already expresses.
+ if(pick.src==='chrom'){
+  return {src:'chrom', label:pick.label, semis:pick.semis,
+          type7:pick.type7, triadQ:pick.triadQ, func:pick.func||'modal',
+          ext:pick.ext||null, bass:pick.bass||null};
+ }
  const own = srcs[pick.src]||[], other = (pick.src==='borrowed'?srcs.secdom:srcs.borrowed)||[];
  const exact = own.find(c=>c.label===pick.label);
- if(exact) return exact;
+ // The variant travels with the resolved chord — resolving decides WHICH
+ // degree, the pick decides what is played on it.
+ const wear = c => Object.assign({}, c, {ext:pick.ext||null, bass:pick.bass||null});
+ if(exact) return wear(exact);
  let best=null, bestD=99;
  own.concat(other).forEach(c=>{
   const d=cpDist(c.semis, pick.semis);
   if(d<bestD){ bestD=d; best=c; }
  });
- return best;
+ return best ? wear(best) : null;
 }
 function cpToggle(chord){
  const srcs=cpSources();
  // Unticking has to remove whichever stored pick is currently showing as this
  // chord, which after a mode change need not be the one that names it.
- const i = cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpKey(r)===cpKey(chord); });
+ // Matched on the FULL identity: ticking the plain ii off must not also take
+ // away the ii9 sitting beside it.
+ const want = cpVarKey(Object.assign({ext:null,bass:null}, chord));
+ const i = cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpVarKey(r)===want; });
  if(i>=0) cpPicks.splice(i,1);
- else cpPicks.push({src:chord.src, label:chord.label, semis:chord.semis});
+ else cpPicks.push(cpPickOf(chord));
  cpSave();
  cpRenderAll();
 }
+// The stored form of a chord, variant included. Chromatic picks keep their own
+// quality because no catalog can give it back to them.
+function cpPickOf(chord){
+ const p={src:chord.src, label:chord.label, semis:chord.semis};
+ if(chord.ext)  p.ext=chord.ext;
+ if(chord.bass) p.bass=chord.bass;
+ if(chord.src==='chrom'){
+  p.type7=chord.type7; p.triadQ=chord.triadQ; p.func=chord.func||'modal';
+ }
+ return p;
+}
+// Pin a variant of a chord that is already on screen. Additive: it never
+// replaces the plain chord, because wanting IVmaj9 on a pad is not a statement
+// about wanting IV gone.
+function cpAddVariant(chord, ext, bass){
+ const c=Object.assign({}, chord, {ext:ext||null, bass:bass||null});
+ const srcs=cpSources(), want=cpVarKey(c);
+ const i=cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpVarKey(r)===want; });
+ if(i>=0){ cpPicks.splice(i,1); }
+ else cpPicks.push(cpPickOf(c));
+ cpSave(); cpRenderAll();
+ return i<0;
+}
+window.cpAddVariant = cpAddVariant;
 
-// The two source catalogs, resolved for whatever mode is current.
+// The source catalogs, resolved for whatever mode is current. Diatonic is here
+// too now: a variant of ii or V is the one people actually want pinned, and
+// leaving the seven degrees out meant the bank could hold a borrowed ♭VI but
+// not a IVmaj9.
 function cpSources(){
+ const md = MODES[mode] || MODES.major;
  return {
+  diatonic: md.steps.map((s,i)=>
+   ({src:'diatonic', label:md.nums[i], semis:s, type7:md.seventh[i],
+     triadQ:md.triadQ[i], func:md.func[i]})),
   borrowed: (typeof getAllBorrowed==='function' ? getAllBorrowed(mode) : []).map(b=>
    ({src:'borrowed', label:b.label, semis:b.semis, type7:b.type7, func:b.func})),
   secdom: (typeof getSecDoms==='function' ? getSecDoms(mode) : []).map(b=>
    ({src:'secdom', label:b.label, semis:b.semis, type7:b.type7, func:'dom'}))
  };
+}
+// ── Pinned variants ──────────────────────────────────────────────────────
+// A pick may now carry a quality and a bass note on top of the chord it names:
+//   ext  — an EXT_CATALOG key ('9th', 'sus4', '13th', 'alt' …), or null for
+//          whatever the chord's own degree gives it
+//   bass — one of the slash intervals below, or null for root position
+// Both are stored ON the pick, so a chord that used to need the variant row
+// armed before every press is now its own button that always sounds that way.
+//
+// Stored against the DEGREE, not the key: semis is measured from the root, and
+// the quality is re-read from the current mode, so "IV as maj9" re-spells
+// itself as A♭maj9 the moment you transpose to E♭. That is what every other
+// chord decision in this app does, and a bank that did otherwise would go out
+// of key the first time the song moved.
+var CP_SLASH = {'/5':7, '/b6':8, '/6':9, '/b7':10, '/7':11};
+var CP_SLASH_LBL = {'/5':'5th', '/b6':'♭6th', '/6':'6th', '/b7':'♭7th', '/7':'7th'};
+// How a pinned variant spells itself on the button. The extension's own label
+// from EXT_CATALOG where there is one, because that already reads the way a
+// musician writes it.
+// EXT_CATALOG's labels are written for a PICKER, where "7th" and "9th" read
+// correctly as the names of choices. Stuck on the end of a chord they do not:
+// the chord is D♭9, not D♭9th. Those three are the only ones that differ —
+// "6", "13", "maj9", "sus4", "♭9" and the rest are already how the chord is
+// spelled — so this overrides them rather than duplicating the catalog.
+var CP_EXT_SFX = {triad:'', '7th':'7', '9th':'9'};
+function cpExtLabel(k){
+ if(!k || k==='triad') return '';
+ if(CP_EXT_SFX[k]!=null) return CP_EXT_SFX[k];
+ try{
+  const e=EXT_CATALOG.find(x=>x.k===k);
+  if(e) return e.label;
+ }catch(_){}
+ return k;
+}
+// Degrees as roman numerals for the chord builder. MEL_DEG_LBL spells them as
+// arabic numbers, which is right for a scale degree on the melody strip and
+// wrong here twice over: chords in this app are named with numerals
+// everywhere else, and "♭2" with a ninth on it renders as "♭29".
+var CP_DEG_ROMAN = ['I','\u266dII','II','\u266dIII','III','IV','\u266fIV','V',
+                    '\u266dVI','VI','\u266dVII','VII'];
+// The bass note's pitch class, given the chord's root pitch class.
+function cpBassPc(c){
+ if(!c || !c.bass || CP_SLASH[c.bass]==null) return null;
+ return ((root + c.semis + CP_SLASH[c.bass]) % 12 + 12) % 12;
+}
+// One identity for a pinned chord, so the same degree at two different
+// qualities are two buttons rather than one that overwrites the other.
+function cpVarKey(c){
+ return c.src+'|'+c.label+'|'+(c.ext||'')+'|'+(c.bass||'');
 }
 // The palette as it stands in this mode, in the order it was built. Two picks
 // can resolve onto one chord after a mode change, so duplicates collapse.
@@ -16510,14 +16680,17 @@ function cpChosen(){
  cpPicks.forEach(p=>{
   const c=cpResolve(p,srcs);
   if(!c) return;
-  const k=cpKey(c);
+  const k=cpVarKey(c);
   if(seen[k]) return;
   seen[k]=1; out.push(c);
  });
  return out;
 }
+// "Is the PLAIN chord ticked" — what the catalog checkboxes ask. A pinned
+// variant of the same degree is a different button and must not tick it.
 function cpHas(chord){
- return cpChosen().some(c=>cpKey(c)===cpKey(chord));
+ const want=cpVarKey(Object.assign({ext:null,bass:null}, chord));
+ return cpChosen().some(c=>cpVarKey(c)===want);
 }
 
 let _cpOpen=null;
@@ -16538,7 +16711,189 @@ function _cpOutside(e){
 function _cpReflow(){ if(_cpOpen) cpPlace(_cpOpen); }
 function cpPlace(wrap){ popPlace(wrap, wrap._pop); }
 
+// ── The variant sheet ────────────────────────────────────────────────────
+// Opened from the + on any chord in a catalog list. Quality on the left, bass
+// on the right, and the two are independent: a 13th over its own fifth is one
+// button, and so is a plain triad over a ♭7.
+function cpOpenVariant(chord){
+ const cur = {ext:null, bass:null};
+ const ov=document.createElement('div');
+ ov.className='cp-var-ov';
+ ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;'
+   +'display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.className='dur-picker-box cp-var-box';
+ const head = chord.label+' \u2014 '+nn((root+chord.semis)%12);
+ const pro = (typeof modAllows!=='function') || modAllows('pro');
+ const exts = EXT_CATALOG.filter(e=>pro || !e.pro);
+ box.innerHTML =
+   '<div class="dur-picker-title">Pin a variant</div>'
+  +'<div class="dur-picker-sub">A pad that always plays <b>'+head+'</b> this way. '
+  +'It follows the key, so it re-spells itself when you transpose.</div>'
+  +'<div class="cp-var-sec">Quality</div>'
+  +'<div class="tg cp-var-grid" id="cp-var-ext">'
+  + exts.map(e=>'<button class="tb" type="button" data-ext="'+e.k+'" title="'+e.note+'">'
+      +e.label+'</button>').join('')
+  +'</div>'
+  +'<div class="cp-var-sec">Bass note</div>'
+  +'<div class="tg cp-var-grid" id="cp-var-bass">'
+  +'<button class="tb active" type="button" data-bass="">Root</button>'
+  + Object.keys(CP_SLASH).map(k=>'<button class="tb" type="button" data-bass="'+k+'">'
+      +CP_SLASH_LBL[k]+'</button>').join('')
+  +'</div>'
+  +'<div class="cp-var-preview" id="cp-var-prev"></div>'
+  +'<div class="tg cp-var-actions">'
+  +'<button class="tb" type="button" id="cp-var-hear">\u25b6 Hear it</button>'
+  +'<button class="tb active" type="button" id="cp-var-add">Add to My Chords</button>'
+  +'<button class="tb" type="button" id="cp-var-cancel">Cancel</button>'
+  +'</div>';
+ ov.appendChild(box);
+ document.body.appendChild(ov);
+ const close=()=>{ try{ ov.remove(); }catch(_){} };
+ ov.addEventListener('pointerdown', e=>{ if(e.target===ov) close(); });
+
+ const prev=box.querySelector('#cp-var-prev');
+ const paint=()=>{
+  box.querySelectorAll('[data-ext]').forEach(b=>
+    b.classList.toggle('active', (b.dataset.ext||null)===cur.ext));
+  box.querySelectorAll('[data-bass]').forEach(b=>
+    b.classList.toggle('active', (b.dataset.bass||null)===cur.bass));
+  const bp=cpBassPc({semis:chord.semis, bass:cur.bass});
+  prev.textContent = nn((root+chord.semis)%12) + cpExtLabel(cur.ext)
+    + (bp!=null ? '/'+nn(bp) : '')
+    + '     \u00b7     ' + chord.label + cpExtLabel(cur.ext)
+    + (cur.bass ? cur.bass : '');
+ };
+ box.querySelector('#cp-var-ext').addEventListener('click', e=>{
+  const b=e.target.closest('[data-ext]'); if(!b) return;
+  // Tapping the armed quality again clears it, so "no extension, just a
+  // different bass" is reachable without a second button for it.
+  cur.ext = (cur.ext===b.dataset.ext) ? null : b.dataset.ext;
+  paint();
+ });
+ box.querySelector('#cp-var-bass').addEventListener('click', e=>{
+  const b=e.target.closest('[data-bass]'); if(!b) return;
+  cur.bass = b.dataset.bass || null;
+  paint();
+ });
+ box.querySelector('#cp-var-hear').addEventListener('click', ()=>{
+  const q = chord.triadQ!=null ? chord.triadQ
+          : ((chord.type7==='min7'||chord.type7==='minMaj7') ? 1
+            : (chord.type7==='halfdim'||chord.type7==='dim7') ? 2 : 0);
+  if(cur.bass){ try{ armVariant(cur.bass); }catch(_){ armedVariant=cur.bass; } }
+  try{
+   _triggerChordImmediate(rootMidi()+chord.semis, q, chord.type7,
+                          chord.func||'modal', 0, cur.ext||undefined, false);
+  }catch(_){}
+ });
+ box.querySelector('#cp-var-add').addEventListener('click', ()=>{
+  if(!cur.ext && !cur.bass){
+   // Nothing chosen is the plain chord, and that is what the tick box does.
+   cpToggle(chord);
+  } else {
+   cpAddVariant(chord, cur.ext, cur.bass);
+  }
+  close();
+ });
+ box.querySelector('#cp-var-cancel').addEventListener('click', close);
+ paint();
+}
+window.cpOpenVariant = cpOpenVariant;
+
+// ── The chromatic builder ────────────────────────────────────────────────
+// Any of the twelve roots, any quality, any bass — for the chords no catalog
+// in this app offers, which is most of them once you leave the key. The root
+// is stored as a distance from the key root, so these follow a transpose too:
+// a chord built on \u266f IV stays on \u266f IV.
+function cpOpenBuilder(){
+ const cur={semis:0, q:0, ext:null, bass:null};
+ const QNAMES=[['maj7',0,'maj7'],['min7',1,'m7'],['dom7',0,'7'],
+               ['halfdim',2,'m7\u266d5'],['dim7',2,'\u00b07'],['minMaj7',1,'mMaj7']];
+ const ov=document.createElement('div');
+ ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;'
+   +'display:flex;align-items:center;justify-content:center;padding:16px;';
+ const box=document.createElement('div');
+ box.className='dur-picker-box cp-var-box';
+ const pro=(typeof modAllows!=='function') || modAllows('pro');
+ const exts=EXT_CATALOG.filter(e=>pro || !e.pro);
+ box.innerHTML =
+   '<div class="dur-picker-title">Build a chord</div>'
+  +'<div class="dur-picker-sub">Any root, any quality \u2014 including the ones this key '
+  +'does not offer. Stored as a distance from the key root, so it moves with a transpose.</div>'
+  +'<div class="cp-var-sec">Root</div>'
+  +'<div class="tg cp-var-grid" id="cp-b-root"></div>'
+  +'<div class="cp-var-sec">Quality</div>'
+  +'<div class="tg cp-var-grid" id="cp-b-q">'
+  + QNAMES.map((n,i)=>'<button class="tb'+(i===0?' active':'')+'" type="button" data-q="'+i+'">'
+      +n[2]+'</button>').join('')
+  +'</div>'
+  +'<div class="cp-var-sec">Extension</div>'
+  +'<div class="tg cp-var-grid" id="cp-b-ext">'
+  + exts.map(e=>'<button class="tb" type="button" data-ext="'+e.k+'" title="'+e.note+'">'
+      +e.label+'</button>').join('')
+  +'</div>'
+  +'<div class="cp-var-sec">Bass note</div>'
+  +'<div class="tg cp-var-grid" id="cp-b-bass">'
+  +'<button class="tb active" type="button" data-bass="">Root</button>'
+  + Object.keys(CP_SLASH).map(k=>'<button class="tb" type="button" data-bass="'+k+'">'
+      +CP_SLASH_LBL[k]+'</button>').join('')
+  +'</div>'
+  +'<div class="cp-var-preview" id="cp-b-prev"></div>'
+  +'<div class="tg cp-var-actions">'
+  +'<button class="tb" type="button" id="cp-b-hear">\u25b6 Hear it</button>'
+  +'<button class="tb active" type="button" id="cp-b-add">Add to My Chords</button>'
+  +'<button class="tb" type="button" id="cp-b-cancel">Cancel</button>'
+  +'</div>';
+ ov.appendChild(box); document.body.appendChild(ov);
+ const close=()=>{ try{ ov.remove(); }catch(_){} };
+ ov.addEventListener('pointerdown', e=>{ if(e.target===ov) close(); });
+
+ const rootRow=box.querySelector('#cp-b-root');
+ const inMode=new Set((MODES[mode]||MODES.major).steps);
+ rootRow.innerHTML = CP_DEG_ROMAN.map((l,i)=>
+   '<button class="tb'+(i===0?' active':'')+(inMode.has(i)?' cp-b-in':'')+'" type="button" data-r="'+i+'">'
+   + nn((root+i)%12) + '<i class="cp-b-deg">'+l+'</i></button>').join('');
+ const prev=box.querySelector('#cp-b-prev');
+ const paint=()=>{
+  rootRow.querySelectorAll('[data-r]').forEach(b=>b.classList.toggle('active', +b.dataset.r===cur.semis));
+  box.querySelectorAll('[data-q]').forEach(b=>b.classList.toggle('active', +b.dataset.q===cur.q));
+  box.querySelectorAll('[data-ext]').forEach(b=>b.classList.toggle('active',(b.dataset.ext||null)===cur.ext));
+  box.querySelectorAll('[data-bass]').forEach(b=>b.classList.toggle('active',(b.dataset.bass||null)===cur.bass));
+  const bp=cpBassPc({semis:cur.semis, bass:cur.bass});
+  prev.textContent = nn((root+cur.semis)%12)
+    + (cur.ext ? cpExtLabel(cur.ext) : QNAMES[cur.q][2])
+    + (bp!=null ? '/'+nn(bp) : '')
+    + '     \u00b7     ' + CP_DEG_ROMAN[cur.semis] + ' of ' + nn(root);
+ };
+ rootRow.addEventListener('click', e=>{ const b=e.target.closest('[data-r]'); if(!b) return;
+   cur.semis=+b.dataset.r; paint(); });
+ box.querySelector('#cp-b-q').addEventListener('click', e=>{ const b=e.target.closest('[data-q]'); if(!b) return;
+   cur.q=+b.dataset.q; paint(); });
+ box.querySelector('#cp-b-ext').addEventListener('click', e=>{ const b=e.target.closest('[data-ext]'); if(!b) return;
+   cur.ext=(cur.ext===b.dataset.ext)?null:b.dataset.ext; paint(); });
+ box.querySelector('#cp-b-bass').addEventListener('click', e=>{ const b=e.target.closest('[data-bass]'); if(!b) return;
+   cur.bass=b.dataset.bass||null; paint(); });
+ const mk=()=>({src:'chrom', label:CP_DEG_ROMAN[cur.semis], semis:cur.semis,
+                type7:QNAMES[cur.q][0], triadQ:QNAMES[cur.q][1], func:'modal',
+                ext:cur.ext, bass:cur.bass});
+ box.querySelector('#cp-b-hear').addEventListener('click', ()=>{
+  const c=mk();
+  if(c.bass){ try{ armVariant(c.bass); }catch(_){ armedVariant=c.bass; } }
+  try{ _triggerChordImmediate(rootMidi()+c.semis, c.triadQ, c.type7, c.func, 0,
+                              c.ext||undefined, false); }catch(_){}
+ });
+ box.querySelector('#cp-b-add').addEventListener('click', ()=>{
+  const c=mk();
+  cpAddVariant(c, c.ext, c.bass);
+  close();
+ });
+ box.querySelector('#cp-b-cancel').addEventListener('click', close);
+ paint();
+}
+window.cpOpenBuilder = cpOpenBuilder;
+
 const CP_DEFS=[
+ {id:'cp-diatonic', label:'Diatonic',  src:'diatonic'},
  {id:'cp-borrowed', label:'Modal',     src:'borrowed'},
  {id:'cp-secdom',   label:'Secondary', src:'secdom'},
  {id:'cp-user',     label:'My Chords', src:'user'}
@@ -16583,20 +16938,43 @@ function cpBuild(){
   if(!items.length){
    const e=document.createElement('div'); e.className='cp-empty';
    e.textContent = def.src==='user'
-    ? 'Nothing added yet. Tick chords in Modal or Secondary and they appear here, and as pads under the grid.'
+    ? 'Nothing added yet. Tick a chord in Diatonic, Modal or Secondary — or use + beside one to pin a version with its own quality or bass — and it appears here, and as a pad under the grid.'
     : 'This mode has none.';
    pop.appendChild(e);
    return;
   }
   items.forEach(c=>{
-   const on=cpHas(c);
+   const isVar = !!(c.ext || c.bass);
+   const on = def.src==='user' ? true : cpHas(c);
+   const row=document.createElement('div'); row.className='cp-row';
    const b=document.createElement('button');
    b.className='cp-item'+(on?' on':''); b.type='button';
+   const bp=cpBassPc(c);
+   const sfx=cpExtLabel(c.ext)+(bp!=null?'/'+nn(bp):'');
    b.innerHTML='<span class="cp-box">'+(on?'✓':'')+'</span>'
-     +'<span class="cp-deg">'+c.label+'</span>'
-     +'<span class="cp-note">'+nn((root+c.semis)%12)+(SUFFIX7[c.type7]||'')+'</span>';
-   b.addEventListener('click', ev=>{ ev.stopPropagation(); cpToggle(c); });
-   pop.appendChild(b);
+     +'<span class="cp-deg">'+c.label+sfx+'</span>'
+     +'<span class="cp-note">'+nn((root+c.semis)%12)
+       +(c.ext?cpExtLabel(c.ext):(SUFFIX7[c.type7]||''))
+       +(bp!=null?'/'+nn(bp):'')+'</span>';
+   // In My Chords the tick takes the chord back off; in a catalog it puts the
+   // plain chord on. A pinned variant only ever appears in My Chords, and
+   // there the same tick removes it — cpToggle matches the full identity.
+   b.addEventListener('click', ev=>{ ev.stopPropagation();
+     if(isVar) cpAddVariant(c, c.ext, c.bass); else cpToggle(c); });
+   row.appendChild(b);
+   // The way in to a variant of this chord. Not offered on a pinned variant —
+   // that one already IS the answer, and stacking a second quality onto it
+   // would just be building a different chord, which Build is for.
+   if(!isVar){
+    const plus=document.createElement('button');
+    plus.className='cp-plus'; plus.type='button';
+    plus.textContent='+';
+    plus.title='Pin a version of '+c.label+' with its own quality or bass note';
+    plus.setAttribute('aria-label','Pin a variant of '+c.label);
+    plus.addEventListener('click', ev=>{ ev.stopPropagation(); cpClose(); cpOpenVariant(c); });
+    row.appendChild(plus);
+   }
+   pop.appendChild(row);
   });
   if(_cpOpen===wrap) cpPlace(wrap);
  });
@@ -16614,7 +16992,8 @@ function cpRenderUserRow(){
  el.innerHTML='';
  const rm=rootMidi();
  chosen.forEach(c=>{
-  el.appendChild(makeOutBtn(c.label, nn((root+c.semis)%12), c.type7, rm+c.semis, c.func));
+  el.appendChild(makeOutBtn(c.label, nn((root+c.semis)%12), c.type7, rm+c.semis, c.func,
+                            (c.ext||c.bass) ? {ext:c.ext, bass:c.bass} : null));
  });
 }
 function cpRenderAll(){ cpBuild(); cpRenderUserRow(); }
