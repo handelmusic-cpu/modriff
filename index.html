@@ -715,6 +715,30 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 /* Advanced's melody picker lives in the Melody / Solo title now, so the panel
    that used to hold it has nothing left in it. */
 body:not(.mode-basic) #melody-voice-panel { display:none !important; }
+
+/* ── Shape it, on the panel ────────────────────────────────────────────────
+   In Advanced the tone controls — filter, envelope, reverb, and for the chords
+   the sub and the strum — stay on the surface that plays them instead of being
+   moved into the voice dropdown's second layer. Buried there they were three
+   taps and a scroll from the thing they change (open the picker, find the
+   drawer, expand it), and reported as missing: the chord sub is on this page,
+   and the only "sub" anyone could find on it was Subdominant.
+   Basic keeps the drawer in the popover — there the point is one sound and one
+   button, and the picker is already the surface's heading. */
+.pf-shape-head {
+ display:flex; align-items:center; gap:6px; width:100%;
+ margin-top:8px; padding:7px 2px 0; border:0; border-top:1px solid var(--line);
+ background:none; color:var(--muted); font:inherit; font-size:.52rem;
+ font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+ cursor:pointer; text-align:left;
+}
+.pf-shape-head:hover { color:var(--text); }
+.pf-shape-caret { font-size:.5rem; transition:transform .15s; display:inline-block; }
+.pf-shape-head[aria-expanded="true"] { color:var(--text); }
+.pf-shape-head[aria-expanded="true"] .pf-shape-caret { transform:rotate(90deg); }
+.pf-shape-body { display:none; padding-top:6px; }
+.pf-shape-head[aria-expanded="true"] + .pf-shape-body { display:block; }
+.pf-shape-body .sl { color:var(--muted); }
 /* Stacked, the surfaces need a little air and a name each — in Advanced the
    sub-tab was the name. */
 .pf-surface-lbl { display:none; }
@@ -1237,6 +1261,11 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 .tmod-dests .tb { font-size:.48rem; padding:4px 9px; }
 .tmod-depth { display:flex; align-items:center; gap:6px; flex:1 1 150px; min-width:150px; }
 .tmod-depth input[type=range] { flex:1; min-width:70px; }
+/* The one the finger is driving. Dimmed rather than disabled: it still shows
+   the value the gesture runs UP TO, so it is information, not a dead control
+   — and on the Depth axis that number is exactly what full slide reaches. */
+.tmod-driven { opacity:.55; }
+.tmod-driven .tmod-lbl::after { content:' ↕'; color:var(--mel-c); opacity:.9; }
 .tmod-lbl { font-size:.45rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
 .tmod-val { font-size:.5rem; color:var(--mel-c); font-family:'Orbitron',sans-serif; min-width:34px; text-align:right; }
 .tmod-hint { flex:1 1 100%; font-size:.45rem; color:var(--muted); letter-spacing:.04em; }
@@ -5200,7 +5229,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.12</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.13</span>
     </div>
    </div>
   </div>
@@ -5218,7 +5247,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.12</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.13</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -5387,6 +5416,15 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
     <div class="smp-ctl-row"><label for="smp-fine">Fine</label>
      <input type="range" id="smp-fine" min="-100" max="100" step="1" value="0"
             oninput="smpEdit('fine',this.value)"><div class="smp-v" id="smp-fine-v">+0¢</div></div>
+    <!-- The cleanup high-pass. On the clip, not on the channel, because what
+         it removes belongs to the recording — and because smpNorm lifts a
+         quiet take's room by as much as it lifts the take. -->
+    <div class="smp-ctl-row" id="smp-hp-row">
+     <button class="smp-b" id="smp-hp" onclick="smpEdit('hp')"
+       title="Rolls off what is under the sound you recorded — traffic, air conditioning, a desk thump. Most room noise is below 150Hz.">HP: OFF</button>
+     <input type="range" id="smp-hp-hz" min="0" max="100" step="1" value="50"
+            aria-label="High-pass cutoff"
+            oninput="smpEdit('hphz',this.value)"><div class="smp-v" id="smp-hp-v">90Hz</div></div>
     <!-- Only a pitched part has a root: it is the note the clip already sounds
          at, so the keyboard can play it in tune. A drum lane has no keyboard
          to be in tune with and only ever uses Pitch. -->
@@ -5712,10 +5750,23 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <button class="tmod-toggle" id="tmod-toggle" onclick="toggleMelMod()"
    title="Vertical finger position on a key or the bend strip modulates that note">↕ Touch Mod</button>
   <div class="tg tmod-dests" id="tmod-dests"></div>
-  <div class="tmod-depth">
+  <div class="tmod-depth" id="tmod-depth-wrap">
    <span class="tmod-lbl">Depth</span>
    <input type="range" id="tmod-depth" min="0" max="1" step="0.01" value="0.5" oninput="setMelModDepth(this.value)">
    <span class="tmod-val" id="tmod-depth-val">50%</span>
+  </div>
+  <!-- Speed is the effect's own LFO rate. It is a real control for Vibrato and
+       Tremolo, which are LFO effects; for Wah and Bright it starts at off,
+       where they follow the finger and nothing else, and turning it up makes
+       them auto-wah and shimmer. -->
+  <div class="tmod-depth" id="tmod-rate-wrap">
+   <span class="tmod-lbl">Speed</span>
+   <input type="range" id="tmod-rate" min="0" max="12" step="0.05" value="0" oninput="setMelModRate(this.value)">
+   <span class="tmod-val" id="tmod-rate-val">off</span>
+  </div>
+  <!-- Which of the two the gesture drives. The other stays where its slider
+       is, so the pair is always "one played, one set". -->
+  <button class="tmod-toggle" id="tmod-axis" onclick="setMelModAxis(melModAxis==='speed'?'depth':'speed')">Slide: Depth</button>
   </div>
   <div class="tmod-hint pf-info" id="tmod-hint"></div>
  </div>
@@ -7003,7 +7054,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.12';
+const MODRIFF_VERSION = '3.9.13';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7292,16 +7343,37 @@ const WAVE_GAIN = {
  pad:.597,
  modsynth:.313,
  // Sampled voices, calibrated the same way as the rest of this table — a real
- // four-note chord rendered offline, matched on RMS.
+ // four-note chord, measured in the running app, matched on RMS.
  // These are large because they scale a raw sample buffer rather than a
- // synthesized voice normalised to roughly unity — measured, then matched to
- // the ~0.31 post-gain RMS the rest of this table lands on.
- vibes:16.0,
- jazzgtr:7.9,
- nylongtr:19.1,
- tenorsax:6.9,
- mutetpt:8.0,
- pianoreal:4.2,   // measured: RMS-matched to the synth piano on a four-note chord
+ // synthesized voice normalised to roughly unity.
+ //
+ // These six were ALL too hot, and a recorded instrument is exactly where that
+ // hurts most: a struck piano's peak-to-RMS ratio is several times a sustained
+ // synth's, so matching RMS by ear or against the wrong reference leaves the
+ // transient far above everything else in the table. Measured on a C major 7 at
+ // the chord bus, against the six synthesized voices (mean RMS 0.0270):
+ //
+ //   pianoreal +9.4 dB · nylongtr +7.1 · vibes +6.4 · jazzgtr +6.0
+ //   tenorsax  +1.8 dB · mutetpt  +0.7
+ //
+ // +9.4 dB is not a balance problem, it is a clipping problem. The master
+ // WaveShaper CLAMPS its input to ±1 before the limiter ever sees it (see
+ // _driveCurve), so a part that crosses 1.0 there is hard-clipped, not limited
+ // — square edges, not gain reduction. One pianoreal chord peaked 0.887 with
+ // the mixer at default, leaving 1.1 dB of headroom for the entire rest of the
+ // mix; three overlapping chords, which is just comping, peaked 1.416 and hard-
+ // clipped 91 samples. That is the "distortion city" this table caused.
+ //
+ // Retuned so each lands on the synth mean. Verified after: every sampled
+ // voice within 0.5 dB of the reference, and none peaking above the loudest
+ // synthesized voice, so a sampled part now has the same headroom as a
+ // synthesized one rather than eating the mix's.
+ vibes:7.65,
+ jazzgtr:3.94,
+ nylongtr:8.40,
+ tenorsax:5.59,
+ mutetpt:7.37,
+ pianoreal:1.42,  // was 4.2 — 9.4 dB hot, the worst of the six
  // Your own clips. Unlike the five above, whose raw level is a fixed property
  // of the sample set, a user clip is whatever it is — so it is peak-normalised
  // at playback (smpNorm) to a known 0.9 before this ever sees it, and this
@@ -7501,6 +7573,55 @@ function smpNewId(){
  return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 }
 
+// ── Cleanup high-pass ────────────────────────────────────────────────────
+// What a recording made on a phone in a room has under it that a synthesized
+// voice does not: traffic, a fridge, air handling, handling noise, a desk
+// thump. All of it below roughly 150 Hz, and none of it part of the sound you
+// were recording.
+//
+// It matters more here than the same filter would on a mixer, because of what
+// smpNorm does on the way in: a quiet take is peak-normalised by up to 8x, and
+// that lifts the room by the same 18 dB it lifts the take. The quieter the
+// recording, the louder its room — which is why a clip that sounded fine while
+// you recorded it can arrive sounding dirty, and why the fix belongs on the
+// clip rather than on the channel.
+//
+// 20 Hz to 2 kHz rather than the 8 kHz the MoedFX high-pass reaches: this one
+// is for removing what you did not mean to record, not for playing sweeps.
+var SMP_HP_MIN = 20, SMP_HP_MAX = 2000, SMP_HP_DEF = 90;
+function smpHpHz(slot){
+ var h = slot && slot.hpHz;
+ h = (h==null) ? SMP_HP_DEF : +h;
+ if(!isFinite(h)) h = SMP_HP_DEF;
+ return Math.max(SMP_HP_MIN, Math.min(SMP_HP_MAX, h));
+}
+// Slider position (0-100) <-> Hz, logarithmically: an octave is the same
+// distance anywhere on the travel, so the useful 40-200 Hz region is not
+// squeezed into the first tenth of the slider the way a linear one puts it.
+function smpHpToSlider(hz){
+ return Math.round(100*Math.log(Math.max(SMP_HP_MIN,Math.min(SMP_HP_MAX,hz))/SMP_HP_MIN)/Math.log(SMP_HP_MAX/SMP_HP_MIN));
+}
+function smpHpFromSlider(v){
+ var t=Math.max(0,Math.min(100,+v||0))/100;
+ return Math.round(SMP_HP_MIN*Math.pow(SMP_HP_MAX/SMP_HP_MIN, t));
+}
+// Two stages, not one. A single biquad is 12 dB/octave, and at 12 dB/octave a
+// filter set high enough to actually remove a 50 Hz rumble is also audibly
+// thinning the instrument an octave above it. 24 dB/octave lets the cutoff sit
+// just under the sound and still put the room 30 dB down.
+//
+// Returns null when the filter is off, and the caller then wires exactly what
+// it wired before — the cheap path stays as cheap as it was, which on a phone
+// is the difference between a chord and a dropout.
+function smpHpChain(ctx, slot){
+ if(!ctx || !slot || !slot.hp) return null;
+ var hz = smpHpHz(slot);
+ var a = ctx.createBiquadFilter(); a.type='highpass'; a.frequency.value=hz; a.Q.value=0.707;
+ var b = ctx.createBiquadFilter(); b.type='highpass'; b.frequency.value=hz; b.Q.value=0.707;
+ a.connect(b);
+ return {head:a, tail:b};
+}
+
 // ── Slots ────────────────────────────────────────────────────────────────
 function smpKeyVoice(part){ return 'v:'+part; }
 function smpKeyDrum(mach,ti){ return 'd:'+mach+':'+ti; }
@@ -7511,8 +7632,10 @@ function smpNewSlot(){
  // loopA/loopB are the sustain loop, as fractions of the whole clip like
  // start and end. null means "not placed yet" — smpAutoLoop works them out on
  // the way in, and a slot that has never looped carries none.
+ // hp/hpHz are the cleanup high-pass — off by default, because a filter that
+ // is on without being asked for is a filter nobody can hear the effect of.
  return {id:null, start:0, end:1, gain:1, loop:false, loopA:null, loopB:null,
-         tune:0, fine:0, root:60};
+         tune:0, fine:0, root:60, hp:false, hpHz:SMP_HP_DEF};
 }
 function smpSlot(key, create){
  var s = SMP_SLOTS[key];
@@ -7565,7 +7688,15 @@ function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  src.buffer = buf;
  src.playbackRate.value = rate;
  var g = ctx.createGain();
- src.connect(g); g.connect(dest);
+ // The cleanup high-pass goes BEFORE the envelope gain, so the filter sees the
+ // clip at a constant level rather than one being faded in and out under it.
+ // A highpass is a differentiator at heart and settles over a few cycles; fed
+ // a signal that starts at zero it rings its own transient into the attack,
+ // which at 90 Hz is a 30 ms thump — the exact noise it is there to remove.
+ var _hp = smpHpChain(ctx, slot);
+ if(_hp){ src.connect(_hp.head); _hp.tail.connect(g); }
+ else src.connect(g);
+ g.connect(dest);
  var off  = a*buf.duration;
  // Pitching a sample up shortens it, which is why the one-shot length is
  // win/rate and not win — an octave up is half as long, the same way a tape
@@ -8636,6 +8767,20 @@ function smpRenderEditor(){
   document.getElementById('smp-gain-v').textContent=Math.round((slot.gain==null?1:slot.gain)*100)+'%';
   document.getElementById('smp-tune-v').textContent=((slot.tune||0)>=0?'+':'')+(slot.tune||0);
   document.getElementById('smp-fine-v').textContent=((slot.fine||0)>=0?'+':'')+(slot.fine||0)+'¢';
+  var hpB=document.getElementById('smp-hp'), hpS=document.getElementById('smp-hp-hz'),
+      hpV=document.getElementById('smp-hp-v');
+  if(hpB){
+   var _hz=smpHpHz(slot);
+   hpB.classList.toggle('active', !!slot.hp);
+   hpB.textContent='HP: '+(slot.hp?'ON':'OFF');
+   hpB.setAttribute('aria-pressed', slot.hp?'true':'false');
+   _smpSet('smp-hp-hz', smpHpToSlider(_hz));
+   if(hpS) hpS.disabled=false;
+   if(hpV){
+    hpV.textContent = slot.hp ? (_hz>=1000?(_hz/1000).toFixed(1)+'k':_hz+'Hz') : 'off';
+    hpV.style.opacity = slot.hp ? '' : '.5';
+   }
+  }
   var lp=document.getElementById('smp-loop');
   lp.classList.toggle('active', !!slot.loop);
   lp.textContent = slot.loop ? 'Loop' : '1-Shot';
@@ -9038,11 +9183,17 @@ function smpEdit(field, v){
  var s=_smpOpenKey?smpSlot(_smpOpenKey,true):null; if(!s) return;
  // Before the change, so undo lands on what it looked like a moment ago. The
  // three continuous controls coalesce; a button press is its own step.
- smpPushHist((field==='gain'||field==='fine'||field==='tune') ? field : null);
+ smpPushHist((field==='gain'||field==='fine'||field==='tune'||field==='hphz') ? field : null);
  if(field==='gain') s.gain=Math.max(0,Math.min(3,(+v||0)/100));
  else if(field==='tune') s.tune=Math.max(-24,Math.min(24,Math.round(+v||0)));
  else if(field==='fine') s.fine=Math.max(-100,Math.min(100,Math.round(+v||0)));
  else if(field==='root') s.root=Math.max(12,Math.min(108,(s.root==null?60:s.root)+(+v||0)));
+ else if(field==='hp') s.hp=!s.hp;
+ // Moving the cutoff turns the filter on. Dragging a slider that does nothing
+ // because a separate button is off is the kind of control people conclude is
+ // broken, and there is no reading of "moved the high-pass" that means "leave
+ // it bypassed".
+ else if(field==='hphz'){ s.hpHz=smpHpFromSlider(v); s.hp=true; }
  else if(field==='loop'){
   s.loop=!s.loop;
   // Placed on the way in, past the attack and snapped to zero crossings, so
@@ -12138,13 +12289,67 @@ function melPressure(src){
 // Anyone who wants the old behaviour has the same toggle, and it is saved.
 let melModOn = true;
 let melModDest = 'wah';          // 'bright' | 'wah' | 'vib' | 'trem'
-let melModDepth = 0.5;            // 0–1
+let melModDepth = 0.5;            // 0–1 — the CURRENT destination's depth
+let melModRate = 0;               // Hz  — the CURRENT destination's speed
+// What sliding up a key does: 'depth' or 'speed'. One gesture, two things it
+// could mean, and which one it should mean depends entirely on the sound you
+// are after — riding a vibrato's depth and sweeping its rate are different
+// performances, and neither is the obvious default. So it is a switch.
+// `var`: the melody strip's touch handlers read this and they run from far
+// above this line. See CLAUDE.md.
+var melModAxis = 'depth';
 const MEL_MOD_DESTS = {
  bright: {label:'Bright',  hint:'Slide up to open a high shelf — air and presence.'},
  wah:    {label:'Wah',     hint:'Slide up to draw a resonant filter down across the note.'},
  vib:    {label:'Vibrato', hint:'Slide up to fade in pitch vibrato.'},
  trem:   {label:'Tremolo', hint:'Slide up to fade in amplitude tremolo.'}
 };
+// Per destination, not one pair shared by all four. A vibrato you want at 30%
+// and a wah you want wide open are not the same number, and a single Depth
+// slider meant picking up a different effect always brought the last one's
+// setting with it — so every switch needed a re-dial before it was playable.
+//
+// `rate` is what Speed sets, and it means the same thing everywhere it does
+// anything: the frequency of that effect's LFO.
+//
+//  · Vibrato and Tremolo ARE LFO effects, so rate is simply their speed. The
+//    defaults are what MEL_MOD_LFO_HZ and its 0.86 tremolo factor used to
+//    hardcode, so an untouched patch sounds exactly as it did.
+//  · Wah and Bright follow your finger and have no oscillator of their own.
+//    Rate 0 — their default — is precisely the old behaviour, nothing added.
+//    Above 0 an LFO moves the filter around wherever the finger has put it,
+//    which is an auto-wah and a shimmer respectively: the thing people reach
+//    for a wah pedal's own rate knob to get.
+// `var` for the same reason as melModAxis.
+var MEL_MOD_RANGE = {min:0.15, max:12};
+var MEL_MOD_CFG_DEF = {
+ bright:{depth:0.5, rate:0},
+ wah:   {depth:0.5, rate:0},
+ vib:   {depth:0.5, rate:5.4},
+ trem:  {depth:0.5, rate:4.64}
+};
+var melModCfg = {
+ bright:{depth:0.5, rate:0},
+ wah:   {depth:0.5, rate:0},
+ vib:   {depth:0.5, rate:5.4},
+ trem:  {depth:0.5, rate:4.64}
+};
+// The two live values above are a cache of "whatever the selected destination
+// holds", so that every existing reader of melModDepth keeps working unchanged
+// and there is still only one place the number really lives.
+function melModPull(){
+ var c = melModCfg[melModDest] || melModCfg.wah;
+ melModDepth = Math.max(0, Math.min(1, c.depth));
+ melModRate  = Math.max(0, Math.min(MEL_MOD_RANGE.max, c.rate));
+}
+// Rate 0 means "no LFO" for Wah and Bright. Vibrato and Tremolo have nothing
+// left if their oscillator stops, so theirs is floored rather than allowed to
+// reach zero — a vibrato at 0 Hz is a detune, not a vibrato.
+function melModHz(dest, r){
+ var lfoOnly = (dest==='vib' || dest==='trem');
+ if(!(r>0)) return lfoOnly ? MEL_MOD_RANGE.min : 0;
+ return Math.max(lfoOnly ? MEL_MOD_RANGE.min : 0, Math.min(MEL_MOD_RANGE.max, r));
+}
 const MEL_MOD_LFO_HZ = 5.4;
 // Where a freshly struck note starts. Whatever gesture triggers the note sets
 // this first, so a key hit near the top opens straight away instead of always
@@ -12169,6 +12374,20 @@ function _melModRamp(param, v, when){
 function buildMelMod(ctx, t0){
  if(!melModOn || !(melModDepth>0)) return null;
  const d=Math.max(0,Math.min(1,melModDepth));
+ // What the finger drives. On the Speed axis the depth is whatever the slider
+ // says and stays there, so the gesture changes the movement and not the
+ // amount — which is the point of being able to choose.
+ const onSpeed = (melModAxis==='speed');
+ const baseHz = melModHz(melModDest, melModRate);
+ // Sliding up on the Speed axis runs from the slowest usable rate to the
+ // fastest, rather than from wherever the slider happens to sit: a gesture
+ // that only covers the top of the range is not a sweep.
+ const _hzAt = y => onSpeed
+   ? MEL_MOD_RANGE.min + Math.max(0,Math.min(1,y))*(MEL_MOD_RANGE.max-MEL_MOD_RANGE.min)
+   : baseHz;
+ // The amount, given where the finger is. On the Depth axis this is the old
+ // y*d. On the Speed axis the finger is busy elsewhere, so it is just d.
+ const _amt = y => onSpeed ? d : Math.max(0,Math.min(1,y*d));
  const input=ctx.createGain(); input.gain.value=1;
  let tail=input, vibAmt=null, apply=null;
  const lfos=[], nodes=[input];
@@ -12198,21 +12417,52 @@ function buildMelMod(ctx, t0){
   // rides in with the sweep, the way the pedal's own amplifier does.
   const mk=ctx.createGain(); mk.gain.value=1;
   tail.connect(mk); tail=mk; nodes.push(mk);
+  // The auto-wah. Speed 0 leaves this disconnected and the filter is driven by
+  // the finger alone, exactly as before; above 0 an LFO rocks the cutoff
+  // around wherever the finger has put it. It modulates in the SAME curved
+  // units the finger does — a fixed number of Hz would be an enormous move at
+  // the bottom of the sweep and inaudible at the top.
+  let wahLfo=null, wahAmt=null;
+  if(baseHz>0 || onSpeed){
+   wahLfo=ctx.createOscillator(); wahLfo.type='sine';
+   wahLfo.frequency.value=Math.max(0.01,_hzAt(0));
+   wahAmt=ctx.createGain(); wahAmt.gain.value=0;
+   // Wired straight onto the cutoff here and only here. Re-connecting it from
+   // inside apply() would re-run on every pointermove — sixty times a second
+   // of disconnect/connect on a live AudioParam, for a graph that never
+   // changes shape.
+   wahLfo.connect(wahAmt); wahAmt.connect(f.frequency); wahLfo.start(t0);
+   lfos.push(wahLfo); nodes.push(wahAmt);
+  }
+  const _wahAt=a=>({hz:18000*Math.pow(200/18000, Math.pow(a,0.55)), q:0.7+Math.pow(a,0.7)*13});
   apply=(y,when)=>{
-   const a=Math.max(0,Math.min(1,y*d));
-   _melModRamp(f.frequency, 18000*Math.pow(200/18000, Math.pow(a,0.55)), when);
-   _melModRamp(f.Q, 0.7+Math.pow(a,0.7)*13, when);
+   const a=_amt(y);
+   const at=_wahAt(a);
+   _melModRamp(f.frequency, at.hz, when);
+   _melModRamp(f.Q, at.q, when);
    _melModRamp(mk.gain, 1+a*0.9, when);
+   if(wahLfo){
+    _melModRamp(wahLfo.frequency, Math.max(0.01,_hzAt(y)), when);
+    // Swing half way back toward open, so the sweep is a movement around the
+    // finger's position rather than a second filter fighting it.
+    const swing=Math.abs(_wahAt(Math.max(0,a-0.35)).hz - at.hz)*0.5;
+    _melModRamp(wahAmt.gain, a>0.02 ? swing : 0, when);
+   }
   };
 
  } else if(melModDest==='vib'){
-  const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=MEL_MOD_LFO_HZ;
+  const lfo=ctx.createOscillator(); lfo.type='sine';
+  lfo.frequency.value=Math.max(0.01, _hzAt(0));
   vibAmt=ctx.createGain(); vibAmt.gain.value=0;
   lfo.connect(vibAmt); lfo.start(t0); lfos.push(lfo); nodes.push(vibAmt);
-  apply=(y,when)=>_melModRamp(vibAmt.gain, y*d*130, when);  // cents of swing
+  apply=(y,when)=>{
+   _melModRamp(vibAmt.gain, _amt(y)*130, when);             // cents of swing
+   _melModRamp(lfo.frequency, Math.max(0.01,_hzAt(y)), when);
+  };
 
  } else if(melModDest==='trem'){
-  const lfo=ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=MEL_MOD_LFO_HZ*0.86;
+  const lfo=ctx.createOscillator(); lfo.type='sine';
+  lfo.frequency.value=Math.max(0.01, _hzAt(0));
   const amt=ctx.createGain(); amt.gain.value=0;
   const vca=ctx.createGain(); vca.gain.value=1;
   lfo.connect(amt); amt.connect(vca.gain);
@@ -12220,7 +12470,11 @@ function buildMelMod(ctx, t0){
   tail.connect(vca); tail=vca;
   // Centred on the swing rather than added on top of it, so deep tremolo
   // dips below the note's level instead of just making it louder.
-  apply=(y,when)=>{ const a=y*d*0.72; _melModRamp(vca.gain,1-a,when); _melModRamp(amt.gain,a,when); };
+  apply=(y,when)=>{
+   const a=_amt(y)*0.72;
+   _melModRamp(vca.gain,1-a,when); _melModRamp(amt.gain,a,when);
+   _melModRamp(lfo.frequency, Math.max(0.01,_hzAt(y)), when);
+  };
 
  } else {
   const sh=ctx.createBiquadFilter();
@@ -12229,9 +12483,24 @@ function buildMelMod(ctx, t0){
   // back out: sliding up should read as the note opening, not turning up.
   const mk=ctx.createGain(); mk.gain.value=1;
   tail.connect(sh); sh.connect(mk); tail=mk; nodes.push(sh,mk);
+  // Same opt-in LFO as the wah: Speed 0 is the untouched behaviour, above 0 the
+  // shelf breathes around where the finger left it.
+  let shLfo=null, shAmt=null;
+  if(baseHz>0 || onSpeed){
+   shLfo=ctx.createOscillator(); shLfo.type='sine';
+   shLfo.frequency.value=Math.max(0.01,_hzAt(0));
+   shAmt=ctx.createGain(); shAmt.gain.value=0;
+   shLfo.connect(shAmt); shAmt.connect(sh.gain); shLfo.start(t0);
+   lfos.push(shLfo); nodes.push(shAmt);
+  }
   apply=(y,when)=>{
-   _melModRamp(sh.gain, y*d*20, when);
-   _melModRamp(mk.gain, 1/(1+0.6*y*d), when);
+   const a=_amt(y);
+   _melModRamp(sh.gain, a*20, when);
+   _melModRamp(mk.gain, 1/(1+0.6*a), when);
+   if(shLfo){
+    _melModRamp(shLfo.frequency, Math.max(0.01,_hzAt(y)), when);
+    _melModRamp(shAmt.gain, a>0.02 ? a*7 : 0, when);
+   }
   };
  }
 
@@ -12266,7 +12535,21 @@ function melTouchY(el, src){
  return Math.max(0, Math.min(1, 1-(src.clientY-r.top)/r.height));
 }
 
-const MEL_SAMPLE_TRIM = {vibes:0.31, jazzgtr:0.19, nylongtr:0.16, tenorsax:0.30, mutetpt:0.33, pianoreal:0.30};
+// The melody strip's own correction on top of WAVE_GAIN, for sampled voices
+// only. It exists because one held note and a four-note chord do not present
+// the same signal even at the same per-voice gain: the strip's envelope is
+// longer and there is nothing else on the channel, so a recorded instrument
+// — whose level lives in a sharp attack rather than a sustain — reads
+// differently here than it does under playChord.
+//
+// Recalibrated with WAVE_GAIN above: the old values were matched against the
+// old, too-hot gains, and four of them overcorrected badly. Measured on the
+// strip against the synthesized voices there, the old table left jazzgtr
+// -6.6 dB, nylongtr -5.5, tenorsax -7.5 and mutetpt -8.6 — inaudible next to
+// a synth patch — while pianoreal was still +4.1 dB hot. Picking a sampled
+// melody voice changed the volume more than the tone, in whichever direction
+// that voice happened to be wrong.
+const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55};
 function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -13463,6 +13746,16 @@ const FIND_INDEX = [
 function _findOpenShape(){
  switchTab('perform'); if(typeof setPerformMode==='function') setPerformMode('chords');
  setTimeout(()=>{
+  // Advanced keeps these on the panel, Basic in the voice dropdown, so Find
+  // has to open whichever one is actually holding them — see pfMountToneBodies.
+  const panelHead=document.querySelector('[data-pfshape="chord-tone-body"]');
+  if(panelHead && panelHead.style.display!=='none'){
+   panelHead.scrollIntoView({block:'center'});
+   if(panelHead.getAttribute('aria-expanded')!=='true') panelHead.click();
+   const body=document.getElementById('chord-tone-body');
+   if(body){ body.classList.add('panel-flash'); setTimeout(()=>body.classList.remove('panel-flash'),1400); }
+   return;
+  }
   const b=document.querySelector('#sndpick-bw-voices .snd-pick-btn');
   if(!b) return;
   b.scrollIntoView({block:'center'});
@@ -16652,6 +16945,9 @@ function sndPickInit(){
   sndPickSyncLabel(wrap);
  });
  if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
+ // After the pickers: this reads where sndPickInit just put each tone body,
+ // so it has to run once that has happened.
+ if(typeof pfMountToneBodies==='function') pfMountToneBodies();
  if(typeof mdPickInit==='function') mdPickInit();
  if(typeof smpEditSync==='function') smpEditSync();
 }
@@ -16812,13 +17108,48 @@ function toggleMelMod(){
 function setMelModDest(d){
  if(!MEL_MOD_DESTS[d]) return;
  melModDest=d;
+ // Each destination brings its own pair back with it, rather than inheriting
+ // whatever the last one was set to.
+ melModPull();
  syncMelModUI();
  try{ localStorage.setItem('modo-melmod-dest',d); }catch(e){}
 }
 function setMelModDepth(v){
- melModDepth=Math.max(0,Math.min(1,parseFloat(v)||0));
+ var c = melModCfg[melModDest] || (melModCfg[melModDest]={depth:0.5,rate:0});
+ c.depth = Math.max(0,Math.min(1,parseFloat(v)||0));
+ melModPull();
  syncMelModUI();
- try{ localStorage.setItem('modo-melmod-depth',String(melModDepth)); }catch(e){}
+ _melModSave();
+}
+function setMelModRate(v){
+ var c = melModCfg[melModDest] || (melModCfg[melModDest]={depth:0.5,rate:0});
+ c.rate = Math.max(0,Math.min(MEL_MOD_RANGE.max, parseFloat(v)||0));
+ melModPull();
+ syncMelModUI();
+ _melModSave();
+}
+// Which of the two the finger drives. Not per destination: it is a statement
+// about how you want to play, and having it silently change under you when you
+// switched effect would be worse than one switch that stays put.
+function setMelModAxis(a){
+ melModAxis = (a==='speed') ? 'speed' : 'depth';
+ syncMelModUI();
+ try{ localStorage.setItem('modo-melmod-axis', melModAxis); }catch(e){}
+}
+function _melModSave(){
+ try{
+  localStorage.setItem('modo-melmod-cfg', JSON.stringify(melModCfg));
+  // Still written so a downgrade finds something it understands.
+  localStorage.setItem('modo-melmod-depth', String(melModDepth));
+ }catch(e){}
+}
+window.setMelModRate = setMelModRate;
+window.setMelModAxis = setMelModAxis;
+// How Speed reads. Below the floor there is no LFO at all for the two effects
+// that can do without one, and saying "off" is the only honest label for that.
+function _melModRateLabel(){
+ if(!(melModRate>0) && melModDest!=='vib' && melModDest!=='trem') return 'off';
+ return melModHz(melModDest, melModRate).toFixed(melModRate<1?2:1)+'Hz';
 }
 function syncMelModUI(){
  const bar=document.getElementById('touchmod-bar');
@@ -16833,24 +17164,68 @@ function syncMelModUI(){
   }
   box.querySelectorAll('[data-tmod]').forEach(b=>b.classList.toggle('active',b.dataset.tmod===melModDest));
  }
- const d=document.getElementById('tmod-depth'); if(d) d.value=melModDepth;
+ const d=document.getElementById('tmod-depth'); if(d && document.activeElement!==d) d.value=melModDepth;
  const dv=document.getElementById('tmod-depth-val'); if(dv) dv.textContent=Math.round(melModDepth*100)+'%';
+ const r=document.getElementById('tmod-rate'); if(r && document.activeElement!==r) r.value=melModRate;
+ const rv=document.getElementById('tmod-rate-val'); if(rv) rv.textContent=_melModRateLabel();
+ // The slider the finger is driving is the one that cannot be dialled in, so
+ // it says so rather than sitting there looking settable.
+ ['depth','rate'].forEach(function(k){
+  var driven = (melModAxis==='speed') ? (k==='rate') : (k==='depth');
+  var wrap=document.getElementById('tmod-'+k+'-wrap');
+  if(wrap) wrap.classList.toggle('tmod-driven', driven);
+  var inp=document.getElementById('tmod-'+k);
+  if(inp) inp.title = driven
+   ? 'Your finger sets this while a note is held — sliding up a key runs it '
+     +'from nothing to full. Switch the Slide control to set it here instead.'
+   : 'Sets this for every note. Sliding up a key moves the other one.';
+ });
+ const ax=document.getElementById('tmod-axis');
+ if(ax){
+  ax.textContent='Slide: '+(melModAxis==='speed'?'Speed':'Depth');
+  ax.classList.toggle('active', melModAxis==='speed');
+  ax.setAttribute('aria-label','Sliding up a key controls '+(melModAxis==='speed'?'speed':'depth')+'. Tap to swap.');
+  ax.title=melModAxis==='speed'
+   ? 'Sliding up a key sweeps the SPEED, and Depth stays where you set it. Tap for the other way round.'
+   : 'Sliding up a key brings in the DEPTH, and Speed stays where you set it. Tap to sweep the speed instead.';
+ }
  const h=document.getElementById('tmod-hint');
  if(h) h.textContent = melModOn
   ? (MEL_MOD_DESTS[melModDest]||MEL_MOD_DESTS.bright).hint+' Hold a key or the bend strip and move your finger up or down.'
   : 'Off — notes play flat, with no vertical movement.';
 }
-// Restore the three Touch Mod settings before the first sync so the panel
-// comes up showing what the engine will actually do.
+// Restore the Touch Mod settings before the first sync so the panel comes up
+// showing what the engine will actually do.
 (function(){
  try{
   const on=localStorage.getItem('modo-melmod-on');
   if(on!==null) melModOn = on==='1';
   const dst=localStorage.getItem('modo-melmod-dest');
   if(dst && MEL_MOD_DESTS[dst]) melModDest=dst;
-  const dep=parseFloat(localStorage.getItem('modo-melmod-depth'));
-  if(isFinite(dep)) melModDepth=Math.max(0,Math.min(1,dep));
+  const ax=localStorage.getItem('modo-melmod-axis');
+  if(ax==='speed'||ax==='depth') melModAxis=ax;
+  // The per-destination table, with the single shared Depth that preceded it
+  // as the fallback: someone who had set 30% before this existed should find
+  // 30% after it, on the effect they had selected.
+  let got=false;
+  const raw=localStorage.getItem('modo-melmod-cfg');
+  if(raw){
+   const o=JSON.parse(raw);
+   if(o && typeof o==='object'){
+    Object.keys(melModCfg).forEach(function(k){
+     if(!o[k]) return;
+     if(isFinite(o[k].depth)) melModCfg[k].depth=Math.max(0,Math.min(1,+o[k].depth));
+     if(isFinite(o[k].rate))  melModCfg[k].rate =Math.max(0,Math.min(MEL_MOD_RANGE.max,+o[k].rate));
+    });
+    got=true;
+   }
+  }
+  if(!got){
+   const dep=parseFloat(localStorage.getItem('modo-melmod-depth'));
+   if(isFinite(dep) && melModCfg[melModDest]) melModCfg[melModDest].depth=Math.max(0,Math.min(1,dep));
+  }
  }catch(e){}
+ melModPull();
 })();
 
 function shiftMelOct(d){
@@ -17206,6 +17581,10 @@ function _capSettings(){
   // Touch Mod — part of how the melody plays, so a setup that recreates a
   // performance has to bring it back with everything else.
   melModOn, melModDest, melModDepth,
+  // The per-destination pairs and which one the gesture drives. The flat
+  // melModDepth above stays in the snapshot so a setup saved here still
+  // opens in a build that predates this.
+  melModAxis, melModCfg: JSON.parse(JSON.stringify(melModCfg)),
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
   // Stored as a pair rather than a string so an older setup, which has
@@ -17379,6 +17758,20 @@ function _applySettings(s){
  if(typeof s.melModOn==='boolean') melModOn=s.melModOn;
  if(s.melModDest && MEL_MOD_DESTS[s.melModDest]) melModDest=s.melModDest;
  if(typeof s.melModDepth==='number') melModDepth=Math.max(0,Math.min(1,s.melModDepth));
+ if(s.melModAxis==='speed'||s.melModAxis==='depth') melModAxis=s.melModAxis;
+ if(s.melModCfg && typeof s.melModCfg==='object'){
+  Object.keys(melModCfg).forEach(function(k){
+   var o=s.melModCfg[k]; if(!o) return;
+   if(isFinite(o.depth)) melModCfg[k].depth=Math.max(0,Math.min(1,+o.depth));
+   if(isFinite(o.rate))  melModCfg[k].rate =Math.max(0,Math.min(MEL_MOD_RANGE.max,+o.rate));
+  });
+ } else if(typeof s.melModDepth==='number' && melModCfg[melModDest]){
+  // An older setup carries one shared Depth and no rates. Put it on the
+  // destination it was saved with rather than dropping it.
+  melModCfg[melModDest].depth=Math.max(0,Math.min(1,s.melModDepth));
+ }
+ melModPull();
+ if(typeof syncMelModUI==='function') try{ syncMelModUI(); }catch(e){}
  if(typeof syncMelModUI==='function') syncMelModUI();
 
  // Character macros — write the state, mirror it onto the sliders, then let
@@ -34365,6 +34758,7 @@ function setViewMode(mode){
   // tab has to be laid out again on every switch, not just on a sub-tab tap.
   if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof pfMountVoicePickers==='function') pfMountVoicePickers();
+  if(typeof pfMountToneBodies==='function') pfMountToneBodies();
   if(typeof ftMountSheetExtras==='function') ftMountSheetExtras();
   if(typeof mdPickInit==='function'){ mdPickInit(); mdPickSyncLabel(); }
 }
@@ -34419,6 +34813,81 @@ function ftMountSheetExtras(){
   // CSS handles a group that genuinely has no children.
   slot.style.display = '';
 }
+
+// ── Where the tone controls live ─────────────────────────────────────────
+// One body per surface, two possible homes, and it is a MOVE rather than two
+// copies: #chord-tone-body holds the only sub switch, the only chord filter
+// and the only strum controls in the app, so a second copy would be two sets
+// of controls writing one set of variables, and whichever you touched second
+// would be the one that looked wrong.
+//
+// Advanced: on the panel, behind a heading you can see. Basic: in the voice
+// dropdown's second layer, where it was.
+//
+// The table is built inside the function, not beside it. setViewMode runs from
+// the init block well above this line and calls straight in here, so a
+// module-scope `var` is hoisted-but-unassigned at that moment and a `const` is
+// in its dead zone — the sixth time this file has been bitten. See CLAUDE.md.
+//
+// [body, panel home, what the heading says]
+function pfMountToneBodies(){
+ var homes = [
+  ['chord-tone-body', 'chord-voice-panel', 'Shape it — filter, envelope, reverb, sub, strum'],
+  ['mel-tone-body',   'melody-panel',      'Shape it — filter, envelope, reverb']
+ ];
+ var basic = document.body.classList.contains('mode-basic');
+ homes.forEach(function(spec){
+  var body = document.getElementById(spec[0]); if(!body) return;
+  var panel = document.getElementById(spec[1]); if(!panel) return;
+  // The popover home is wherever sndPickInit put it, and it is only knowable
+  // once that has run — so it is recorded the first time we see the body
+  // inside a popover rather than assumed.
+  var pop = body.closest('.snd-pick-pop');
+  if(pop && !body._popHome) body._popHome = pop;
+
+  var head = panel.querySelector('[data-pfshape="'+spec[0]+'"]');
+  if(!head){
+   head = document.createElement('button');
+   head.type = 'button';
+   head.className = 'pf-shape-head';
+   head.dataset.pfshape = spec[0];
+   head.innerHTML = '<span class="pf-shape-caret" aria-hidden="true">\u203a</span>'+spec[2];
+   var openKey = 'modo-shape-'+spec[0];
+   var wasOpen = false;
+   try{ wasOpen = localStorage.getItem(openKey)==='1'; }catch(e){}
+   head.setAttribute('aria-expanded', wasOpen ? 'true' : 'false');
+   head.addEventListener('click', function(e){
+    e.stopPropagation();
+    var open = head.getAttribute('aria-expanded')==='true';
+    head.setAttribute('aria-expanded', open ? 'false' : 'true');
+    // Remembered, because this is a drawer you open once and then want open:
+    // someone shaping a sound is going to touch more than one control.
+    try{ localStorage.setItem(openKey, open ? '' : '1'); }catch(e){}
+   });
+   panel.appendChild(head);
+  }
+  head.style.display = basic ? 'none' : '';
+
+  if(basic){
+   if(body._popHome && body.parentNode !== body._popHome){
+    body._popHome.appendChild(body);
+   }
+   body.classList.add('snd-tone-body');
+   body.classList.remove('pf-shape-body');
+  } else {
+   // After the heading, so the CSS adjacency that shows and hides it holds.
+   if(body.previousElementSibling !== head) panel.insertBefore(body, head.nextSibling);
+   body.classList.remove('snd-tone-body');
+   body.classList.add('pf-shape-body');
+  }
+ });
+ // The popover's own drawer heading is the Basic one. With the body gone it
+ // would sit there opening nothing.
+ document.querySelectorAll('.snd-tone-head').forEach(function(h){
+  h.style.display = basic ? '' : 'none';
+ });
+}
+window.pfMountToneBodies = pfMountToneBodies;
 
 function pfMountVoicePickers(){
   var basic = document.body.classList.contains('mode-basic');
@@ -36217,7 +36686,19 @@ function fxSmpStart(){
  // a channel that looked wired and answered to nothing.
  var base = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) * 0.62;
  out.gain.value = base * mx;
- out.connect(dest);
+ // The pad is the one player that does not go through smpVoice, so the slot's
+ // high-pass has to be wired here too or the setting would silently mean
+ // nothing on the one surface that needs it most: the pad HOLDS the clip, so
+ // its room noise is a continuous drone rather than something you hear for a
+ // moment between notes.
+ //
+ // On the sum of the grains rather than on each one: a grain is 25-300 ms and
+ // a new pair starts every hop, so a filter per grain would pay its settling
+ // transient eighty times a second — audible as a buzz at the grain rate,
+ // which is precisely what the Hann overlap exists to avoid.
+ var _padHp = smpHpChain(ctx, slot);
+ if(_padHp){ out.connect(_padHp.head); _padHp.tail.connect(dest); }
+ else out.connect(dest);
  var a=Math.max(0, Math.min(0.999, +slot.start||0));
  var b=Math.max(a+0.002, Math.min(1, slot.end==null?1:+slot.end));
  _fxGrain = {
