@@ -69,6 +69,47 @@ were going to produce and they arrive intact -- which is exactly what the piano
 could not do. Tenor sax, nylon guitar and Rhodes would also fit comfortably and
 are the obvious next additions.
 
+## samples/violin — "Violin ◆" (violin)
+
+**Versilian Studios Chamber Orchestra 2, Community Edition (VSCO-2 CE)** — released
+by Versilian Studios as **CC0 / public domain**. Obtained through
+[tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments)
+(Nicholas Brosowsky), which redistributes it under
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) and states VSO2 as the
+source in its `sample-source-info.txt`. Attributed here under the stricter of
+the two terms.
+
+The only set in this library that is a real chamber recording rather than a
+SoundFont render, and it is here because the SoundFont violins are not usable.
+Measured against the same test that got the first piano pulled:
+
+| source | f95 | f99 | varies with register? |
+|---|---|---|---|
+| FluidR3_GM violin  | — | ~3.6 kHz at every pitch | no — a codec wall |
+| MusyngKite violin  | — | ~3.5 kHz at every pitch | no — a codec wall |
+| **VSCO-2 CE**      | 0.8–6.6 kHz | **3.2 kHz at C4 → 10.7 kHz at E6** | yes |
+
+A flat ceiling at every pitch is the encoder. A ceiling that climbs with the
+register is the instrument, which is what a violin actually does — most of its
+energy sits under 5 kHz, with the bridge hill around 2–3 kHz.
+
+15 anchors, C E G A per octave across the violin's own range, G3 to C7. No note
+is ever pitch-shifted more than 2 semitones, and every note has at least two
+real takes within 3 — which is what the round robin spends (see `_rrSample`).
+Pitch verified by autocorrelation against each file's name: all 15 within
+±23 cents, no octave errors.
+
+Source was 44.1 kHz mono mp3, 11–17 s of continuous bowed tone. Shipped trimmed
+to 3.2 s with a 300 ms fade and a 45 Hz high-pass, mono, LAME VBR q4 — 528 KB
+for the set, 35 KB a note. The trim is the app's own budget: `playSampleVoice`
+is a one-shot with no loop, so no sampled voice in this app sustains past its
+buffer. Re-encoding cost nothing measurable — E6's f99 moved 10746 → 10716 Hz.
+
+Level: `WAVE_GAIN.violin` is 1.03, found by rendering one note offline through
+the app's own gain path and matching RMS against tenor sax. A file-level
+estimate said 1.59 and rendered 3.8 dB hot — a loudest-window reading flatters
+a decaying sax against a violin that holds its level for the whole note.
+
 Cymbals (`samples/drums/`) are the **FluidR3_GM percussion bank**, as published
 by [WebAudioFont](https://github.com/surikov/webaudiofontdata) — the same
 SoundFont as the upright bass and jazz guitar above, so the same CC BY 3.0
