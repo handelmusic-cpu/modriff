@@ -237,7 +237,7 @@ input, textarea, [contenteditable]:not([contenteditable="false"]),
  display:flex;
  position:relative; z-index:520;
  background:var(--surf2);
- border-bottom:1px solid var(--border2);
+ border-top:1px solid var(--border2);
 }
 .tab-btn {
  flex:1; padding:9px 2px 8px;
@@ -2035,7 +2035,7 @@ body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30
     the inset is 0 the double-count was invisible, which is why it shipped. */
  /* The fallback is the only value used before that measurement lands, so it
     is the one place the inset still has to be added by hand. */
- bottom:var(--perfh, calc(56px + env(safe-area-inset-bottom,0px)));
+ bottom:var(--botstack, calc(104px + env(safe-area-inset-bottom,0px)));
  pointer-events:none;
 }
 .voices-dock-tab {
@@ -2752,13 +2752,26 @@ body.mode-basic .ms-stub { display:none; }
 /* The top stack holds navigation and setup controls: tabs first, then the
    things you set once (tempo, arp rate, undo, snap). What you touch while
    actually playing lives at the bottom instead — see .perf-bar. */
+/* ── Navigation lives at the bottom, on the transport ──────────────────────
+   The tab bar's own comment has said "on a phone the top edge is the one
+   place a thumb can't reach, and this is the control you hit most" since it
+   was written, and then it sat at the top anyway. The transport moved down
+   here to be "with everything else you touch during a performance"; getting
+   between parts is that too, and it was the one journey still asking for a
+   reach to the far edge of the screen.
+   It stacks ON the transport rather than under it: the transport is what you
+   touch mid-bar, so it keeps the thumb's own corner, and the tabs sit one row
+   up. --perfh is the transport alone (the Voices dock sits on that); --botstack
+   is both, for anything that has to clear the whole bottom of the screen. */
 .top-stack {
- position:fixed; top:0; left:0; right:0; z-index:520;
- padding-top:env(safe-area-inset-top,0px);
+ position:fixed; bottom:var(--perfh, calc(56px + env(safe-area-inset-bottom,0px)));
+ left:0; right:0; z-index:519;
  background:rgba(5,6,12,.92);
  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
- box-shadow:0 2px 20px rgba(0,0,0,.5);
+ box-shadow:0 -2px 20px rgba(0,0,0,.5);
 }
+/* Nothing is pinned to the top any more, so the notch is the page's to clear. */
+body { padding-top:env(safe-area-inset-top,0px); }
 body.light-mode .top-stack { background:rgba(232,234,246,.97); }
 /* Performance bar — thumb zone. Now everything you'd touch during a
    performance, not just transport/layers/record/dice — help, shortcuts,
@@ -3138,7 +3151,7 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
    grouped under labels: what you are taking, what you are exporting, what is
    playing, and everything else. */
 .ft-more-menu {
- position:fixed; left:0; right:0; bottom:var(--perfh, 60px);
+ position:fixed; left:0; right:0; bottom:var(--botstack, 104px);
  display:none; flex-direction:column; gap:7px;
  background:rgba(8,9,18,.985); border-top:1px solid var(--border2);
  border-radius:14px 14px 0 0;
@@ -3193,10 +3206,13 @@ body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
  width:auto; display:inline-flex; align-items:center; justify-content:center;
  white-space:nowrap;
 }
-/* Starting values only — a ResizeObserver near the bottom of the script keeps
-   both in sync with each bar's real (possibly multi-row) height, since they
-   wrap on narrow screens and fixed values would let them cover content. */
-body { padding-top:52px; padding-bottom:56px; }
+/* A starting value only — a ResizeObserver near the bottom of the script keeps
+   it in sync with the two bars' real (possibly multi-row) height, since they
+   wrap on narrow screens and a fixed value would let them cover content.
+   There is no top padding here any more: both bars are at the BOTTOM now, and
+   this rule outlives the cascade over the one above that clears the notch, so
+   leaving it in put 52px of nothing at the top of every page. */
+body { padding-bottom:104px; }
 
 
 
@@ -4342,7 +4358,8 @@ body {
   background: rgba(4,5,10,.96) !important;
   backdrop-filter: blur(20px) saturate(1.8) !important;
   -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
-  box-shadow: 0 4px 32px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.04) !important;
+  /* Cast upward, onto the page it now sits under. */
+  box-shadow: 0 -4px 32px rgba(0,0,0,.7), 0 -1px 0 rgba(255,255,255,.04) !important;
 }
 body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
 
@@ -5040,7 +5057,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    a context without a gesture, so this says which gesture. */
 #_audio-stalled {
  position:fixed; left:50%; transform:translateX(-50%) translateY(-14px);
- bottom:calc(var(--perfh,60px) + 12px + env(safe-area-inset-bottom,0px));
+ bottom:calc(var(--botstack,104px) + 12px);
  z-index:9500; display:none; align-items:center; gap:9px;
  padding:10px 16px; border-radius:22px;
  background:#e5384f; color:#fff; border:none;
@@ -5369,7 +5386,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.20</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.21</span>
     </div>
    </div>
   </div>
@@ -5387,7 +5404,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.20</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.21</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7231,7 +7248,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.20';
+const MODRIFF_VERSION = '3.9.21';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -19481,8 +19498,11 @@ function _tourTopEdge(){
 }
 // The notch and the home indicator: the card keeps out of both.
 function _tourSafe(){
-  var ts = document.getElementById('top-stack'), pb = document.getElementById('perf-bar');
-  var t = ts ? (parseFloat(getComputedStyle(ts).paddingTop) || 0) : 0;
+  var pb = document.getElementById('perf-bar');
+  // The notch used to be padding on #top-stack. That stack is at the bottom of
+  // the screen now, so the inset is on <body> and this reads it there — off the
+  // old element it measured 0 and put the card under the notch.
+  var t = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
   var b = pb ? Math.max(0, (parseFloat(getComputedStyle(pb).paddingBottom) || 0) - 6) : 0;
   return {top:t, bottom:b};
 }
@@ -35772,11 +35792,18 @@ function _ftMoreOutsideClick(e){
   var perf = document.getElementById('perf-bar');
   if(!top && !perf) return;
   function sync(){
-    if(top)  document.body.style.paddingTop = top.offsetHeight + 'px';
-    if(perf){
-      document.body.style.paddingBottom = perf.offsetHeight + 'px';
-      document.documentElement.style.setProperty('--perfh', perf.offsetHeight + 'px');
-    }
+    // Both bars are at the bottom of the screen now, stacked: the transport on
+    // the floor, the tabs on top of it. The page clears the pair; the notch is
+    // handled by body's own padding-top in CSS, which is why nothing sets it
+    // here any more.
+    var tabH  = top  ? top.offsetHeight  : 0;
+    var perfH = perf ? perf.offsetHeight : 0;
+    document.body.style.paddingBottom = (tabH + perfH) + 'px';
+    var st = document.documentElement.style;
+    // --perfh is the transport alone: the tab bar sits on exactly that.
+    st.setProperty('--perfh', perfH + 'px');
+    // --botstack is both, for anything that has to clear the whole bottom.
+    st.setProperty('--botstack', (tabH + perfH) + 'px');
   }
   sync();
   if(typeof ResizeObserver !== 'undefined'){
