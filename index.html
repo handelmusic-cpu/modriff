@@ -4618,7 +4618,14 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 .mix-strip {
  flex:none; min-width:0; max-width:none; width:100%;
  display:grid; align-items:center; gap:2px 7px;
- grid-template-columns:minmax(44px,auto) 1fr auto auto;
+ /* The readout column is a fixed width, not `auto`. It shares its row with
+    the fader, which is the 1fr — so an `auto` column meant the fader grew and
+    shrank as the number beside it changed width, and the travel moved under
+    your finger mid-drag. Measured: dragging to the same pixel gave 70.5% or
+    71.2% depending on whether the readout happened to be showing "0.0 dB" or
+    "-18.1 dB" at the time. Wide enough for the longest thing that lands here,
+    which is a send's "REV 100" rather than any level. */
+ grid-template-columns:minmax(44px,auto) 1fr 44px auto;
  /* The label sits on the fader's row only. Spanning it down past the sends
     made the grid centre it across both, so every channel's name printed
     beside its REV/DLY/DRV block instead of beside the fader it names. */
@@ -4637,7 +4644,9 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 .mix-strip > .mix-ms       { grid-area:ms; }
 .mix-strip > .mix-fx       { grid-area:fx; }
 .mix-val { font-size:.46rem; text-align:right; min-height:11px; line-height:1.1;
- white-space:nowrap; min-width:30px; }
+ white-space:nowrap; width:44px;
+ /* Tabular figures so the number does not shuffle sideways as it counts. */
+ font-variant-numeric:tabular-nums; }
 .mix-lbl { font-size:.5rem; font-weight:700; color:var(--text); text-transform:uppercase;
  letter-spacing:.04em; text-align:left; white-space:nowrap; line-height:1.1;
  opacity:.92; text-shadow:0 1px 2px rgba(0,0,0,.6); }
@@ -5525,7 +5534,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.30</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.31</span>
     </div>
    </div>
   </div>
@@ -5543,7 +5552,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.30</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.31</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7449,7 +7458,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.30';
+const MODRIFF_VERSION = '3.9.31';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11284,7 +11293,7 @@ function onMasterInput(){
 }
 function syncMasterUI(){
  const set=(id,t)=>{ const e=document.getElementById(id); if(e) e.textContent=t; };
- set('mb-vol-val',Math.round(masterVol*100)+'%');
+ set('mb-vol-val',(typeof mixGainLabel==='function')?mixGainLabel(masterVol):Math.round(masterVol*100)+'%');
  set('mb-comp-val',Math.round(masterCompAmt*100)+'%');
  set('mb-rev-val',Math.round(masterRevAmt*100)+'%');
  // Two shapes of the same switch: the strip's three-letter button on Mix,
@@ -24067,8 +24076,11 @@ function _midiCCApply(d, norm){
   return;
  }
  if(d.mix){
-  if(window.sqMixGainsW) window.sqMixGainsW[d.mix] = norm;
-  if(typeof sqApplyMixToNodes === 'function') sqApplyMixToNodes(d.mix, norm);
+  // Through the same law as the on-screen fader: a hardware fader mapped
+  // linearly onto gain feels exactly as dead as the one on the glass did.
+  const mg = (typeof mixPosToGain==='function') ? mixPosToGain(norm) : norm;
+  if(window.sqMixGainsW) window.sqMixGainsW[d.mix] = mg;
+  if(typeof sqApplyMixToNodes === 'function') sqApplyMixToNodes(d.mix, mg);
   if(typeof sqSyncMixIndicators === 'function') sqSyncMixIndicators();
   if(typeof sqRenderMixer === 'function') sqRenderMixer();
   return;
@@ -24854,7 +24866,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  },
  'mixer': {
   title: 'Mixer',
-  body: `Eight strips in one row: <strong>Chords, Melody, Drums, Aux Perc, Bass, Melody Seq</strong> and <strong>Arp</strong>, then the <strong>master bus</strong>. Drag a fader, tap anywhere on its track to jump there, or use the arrow keys. These are the levels every engine reads, so a change lands on the very next note.<br><br>
+  body: `Eight strips in one row: <strong>Chords, Melody, Drums, Aux Perc, Bass, Melody Seq</strong> and <strong>Arp</strong>, then the <strong>master bus</strong>. Drag a fader, tap anywhere on its track to jump there, or use the arrow keys. These are the levels every engine reads, so a change lands on the very next note. The number beside each one reads in <strong>dB</strong>, 0.0 at the top of the throw, and the travel is tapered the way a fader is: halfway along is 18dB down, not half the level. A linear throw spends four fifths of its length inside the top 14dB, which is why one feels like it is doing nothing until it suddenly does everything.<br><br>
 <strong>M</strong> mutes a channel. <strong>S</strong> solos it — any channel soloed silences every channel that isn't, and you can solo several at once. Mute wins over solo on the same channel, the way a real desk behaves. A channel that has gone quiet because something <em>else</em> is soloed dims on its own strip, so you can always tell "I muted this" from "something else is hogging the mix". Because both are easy to leave on by accident, an orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears in the transport bar wherever you are in the app — <strong>tap the badge to clear all of it at once</strong>.<br><br>
 <strong>The meter</strong> beside each fader answers the two questions a mixer exists for: is this channel playing, and am I clipping. Peaks hold for a moment so a transient between frames still shows. <strong>CLIP</strong> on the master latches — it stays lit until you tap it, so you can leave the app running and find out afterwards whether it ever went over.<br><br>
 <strong>MōdFX per strip.</strong> Under each fader are that channel's three sends — <strong>REV</strong> reverb, <strong>DLY</strong> delay, <strong>DRV</strong> drive. Drag an encoder up or down. These stay where you put them; the performance pad on Play overrides them only while you hold it, and <strong>XY</strong> is the switch for whether that pad reaches this channel at all — it does not switch the sends off. Every channel has them, <strong>Aux Perc</strong> included: it is played by the drum engine but it is its own channel, with its own meter, its own effects and its own stem.<br><br>
@@ -35196,7 +35208,41 @@ function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _
 // Derived from PARTS — see the block above VOICE_PARTS. Adding a part there
 // gives it a mixer strip, a stem and a place in every ordered list at once.
 window.MIX_CHANNELS = PARTS.filter(p=>p.mix).map(p=>({id:p.id, label:p.label, short:p.short||p.label, color:p.color, fx:!!p.fx}));
-// Builds one fader. onInput gets 0..100. Pointer drag, tap-to-jump anywhere
+// ── Fader law ────────────────────────────────────────────────────────────
+// The travel used to be mapped straight onto gain: half the throw meant 0.5,
+// which is only 6dB down. That is why these did not feel like faders. On a
+// real one, half the travel is fifteen to twenty dB down; map it linearly and
+// four fifths of the throw is spent inside the top 14dB while every quieter
+// setting is crammed into the last fifth — so you push it most of the way down
+// before much happens, and then it falls off a cliff.
+//
+// Cube law, which is the usual audio taper and what the Web Audio spec itself
+// suggests for a volume control. Against the travel:
+//
+//   travel   100%    90%    75%    50%    25%    10%     0
+//   gain     1.00   0.73   0.42   0.125  0.016  0.001    0
+//   dB        0.0   -2.7   -7.5  -18.1  -36.1  -60.0   -inf
+//
+// The top of the throw is worth 2.7dB where it was worth 0.9, and the lower
+// half covers 18dB where it covered 6.
+//
+// What is STORED stays a gain — that is what every engine multiplies by and
+// what a saved setup carries — so nothing about the mix moves. Only where the
+// cap sits for a given gain changes: a channel at 0.75 still sounds at 0.75,
+// its cap now sits at the 2.5dB-down mark instead of three quarters along.
+// The readout says dB for the same reason: "75%" of a cube-law travel is not
+// a number anyone can act on, and dB is what a fader has always been labelled
+// in.
+const MIX_LAW=3;
+function mixPosToGain(p){ p=Math.max(0,Math.min(1,p)); return Math.pow(p,MIX_LAW); }
+function mixGainToPos(g){ g=Math.max(0,Math.min(1,g)); return Math.pow(g,1/MIX_LAW); }
+function mixGainLabel(g){
+ if(g<=0.0004) return '\u2212\u221e dB';
+ var db=20*Math.log10(g);
+ return (db>=-0.05 ? '0.0' : '\u2212'+Math.abs(db).toFixed(1))+' dB';
+}
+// Builds one fader. onInput gets 0..100 — a POSITION on the travel, not a
+// gain; mixPosToGain is what turns it into one. Pointer drag, tap-to-jump anywhere
 // on the track, and arrow keys, because a level control that only answers to
 // a drag is unreachable from a keyboard.
 // Horizontal. The cap travels left to right, the fill runs from the left edge
@@ -35218,11 +35264,21 @@ window.attachMixFader = function(v0, color, onInput){
  slot.appendChild(fill); el.appendChild(slot); el.appendChild(cap);
  var val=v0;
  function travel(){ return Math.max(1,(el.clientWidth||180)-TOP-BOT-CAP); }
+ // Positioned with calc(), not measured pixels. paint() runs once at
+ // construction — before the strip is in the document, where clientWidth is 0
+ // and travel() falls back to a guessed 180px. On the real 512px fader that
+ // put the cap at 30% of the way along while the readout said 75%: the control
+ // disagreed with itself until the first drag made it repaint at the true
+ // width, and a fader whose handle is nowhere near its value is a fader that
+ // feels like it is not doing anything. A percentage needs no measurement and
+ // is right at every width, including after a rotation or a tab switch.
  function paint(){
-  var x=TOP+travel()*(val/100);
-  cap.style.left=x+'px';
-  // The slot is inset by TOP, so the fill's width is measured from there.
-  fill.style.width=Math.max(0,x+CAP/2-TOP)+'px';
+  var f=Math.max(0,Math.min(1,val/100));
+  cap.style.left='calc('+TOP+'px + (100% - '+(TOP+BOT+CAP)+'px) * '+f+')';
+  // The slot is inset by TOP each side, so its own 100% is the fader's width
+  // less 2*TOP — which is why this subtracts CAP where the cap subtracts
+  // TOP+BOT+CAP, and lands on the same pixel either way.
+  fill.style.width='calc((100% - '+CAP+'px) * '+f+' + '+(CAP/2)+'px)';
   el.setAttribute('aria-valuenow',String(Math.round(val)));
  }
  function setVal(v,fire){
@@ -35369,18 +35425,21 @@ function _mixBuildStrip(ch){
  // 0 used to redraw at 100% every time the strip was rebuilt on a tab
  // switch, so the control and the audio disagreed from then on.
  var gains=window.sqMixGainsW||{};
- var initV=Math.round((gains[ch.id]!=null?gains[ch.id]:1)*100);
- var fader=window.attachMixFader(initV, ch.color, function(v){
-  if(window.sqMixGainsW) window.sqMixGainsW[ch.id]=v/100;
-  _mixShowVal(valEl, v+'%');
-  if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes(ch.id,v/100);
+ var initG=(gains[ch.id]!=null?gains[ch.id]:1);
+ var fader=window.attachMixFader(Math.round(mixGainToPos(initG)*100), ch.color, function(v){
+  var g=mixPosToGain(v/100);
+  if(window.sqMixGainsW) window.sqMixGainsW[ch.id]=g;
+  _mixShowVal(valEl, mixGainLabel(g));
+  fader.el.setAttribute('aria-valuetext', mixGainLabel(g));
+  if(typeof sqApplyMixToNodes==='function') sqApplyMixToNodes(ch.id,g);
  });
  fader.el.setAttribute('aria-label',ch.label+' level');
+ fader.el.setAttribute('aria-valuetext', mixGainLabel(initG));
  var faderRow=document.createElement('div'); faderRow.className='mix-faderrow';
  faderRow.appendChild(fader.el); faderRow.appendChild(meter);
  wrap.appendChild(faderRow); wrap.appendChild(valEl); wrap.appendChild(lbl); wrap.appendChild(btns);
  if(ch.fx) wrap.appendChild(_mixBuildFx(ch, valEl));
- _mixShowVal(valEl, initV+'%');
+ _mixShowVal(valEl, mixGainLabel(initG));
  return wrap;
 }
 // The end of the chain, in the same row and the same shape as what feeds it.
@@ -35394,12 +35453,14 @@ function _mixBuildMaster(){
  var meter=document.createElement('canvas');
  meter.className='mix-meter'; meter.dataset.mixmeter='__master';
  meter.setAttribute('aria-hidden','true');
- var fader=window.attachMixFader(Math.round(masterVol*100), 'var(--muted)', function(v){
-  masterVol=v/100;
-  _mixShowVal(valEl, v+'%');
+ var fader=window.attachMixFader(Math.round(mixGainToPos(masterVol)*100), 'var(--muted)', function(v){
+  masterVol=mixPosToGain(v/100);
+  _mixShowVal(valEl, mixGainLabel(masterVol));
+  fader.el.setAttribute('aria-valuetext', mixGainLabel(masterVol));
   applyMasterBus();
  });
  fader.el.setAttribute('aria-label','Master volume');
+ fader.el.setAttribute('aria-valuetext', mixGainLabel(masterVol));
  var faderRow=document.createElement('div'); faderRow.className='mix-faderrow';
  faderRow.appendChild(fader.el); faderRow.appendChild(meter);
  var lbl=document.createElement('div'); lbl.className='mix-lbl'; lbl.textContent='MASTER';
@@ -35442,7 +35503,7 @@ function _mixBuildMaster(){
  });
  wrap.appendChild(faderRow); wrap.appendChild(valEl); wrap.appendChild(lbl);
  wrap.appendChild(btns); wrap.appendChild(fx);
- _mixShowVal(valEl, Math.round(masterVol*100)+'%');
+ _mixShowVal(valEl, mixGainLabel(masterVol));
  return wrap;
 }
 window.buildMixChannelsInto = function(container){
@@ -37514,6 +37575,14 @@ function fxEnsureWorklet(ctx){
 }
 function fxBufferEffectsAvailable(){ return _fxWorkletReady; }
 
+// 3.4s of room, and a return hot enough that the send reads as an effect
+// rather than an ambience. Named up here rather than beside _fxRoomIRShared
+// because fxBuildChain below reads them, and a const declared after its reader
+// is the temporal dead zone this file keeps walking into — see CLAUDE.md. The
+// gate needs the length too: it has to know how long the tail takes to decay
+// before it may cut the return loose.
+const FX_REV_SEC=3.4, FX_REV_RET=2.2;
+
 // ── Build one channel's insert chain ──
 function fxBuildChain(ctx, ch){
  if(fxChains[ch] && fxChains[ch].ctx===ctx) return fxChains[ch];
@@ -37553,7 +37622,7 @@ function fxBuildChain(ctx, ch){
  hp2.connect(drvIn); drvIn.connect(shaper); shaper.connect(drvWet);
  drvIn.connect(drvDry);
  const postDrive=ctx.createGain();
- drvWet.connect(postDrive); drvDry.connect(postDrive);
+ drvDry.connect(postDrive);          // drvWet joins when there is drive — see _fxGateBranch
 
  // ── 3-band isolator ──────────────────────────────────────────────────
  // The most drastic thing a Kaoss pad does, and the reason its filter section
@@ -37580,7 +37649,7 @@ function fxBuildChain(ctx, ch){
  isoIn.connect(isoMidA); isoMidA.connect(isoMidB); isoMidB.connect(isoMidG); isoMidG.connect(isoWet);
  isoIn.connect(isoHi);   isoHi.connect(isoHiG);   isoHiG.connect(isoWet);
  postDrive.connect(isoDry);
- isoWet.connect(postIso); isoDry.connect(postIso);
+ isoDry.connect(postIso);            // isoWet joins when an axis drives it
 
  // ── Talk filter ──────────────────────────────────────────────────────
  // Two resonant bandpasses in parallel is the whole trick behind a vowel
@@ -37600,7 +37669,7 @@ function fxBuildChain(ctx, ch){
  fmtIn.connect(fmt1); fmt1.connect(fmt1G); fmt1G.connect(fmtWet);
  fmtIn.connect(fmt2); fmt2.connect(fmt2G); fmt2G.connect(fmtWet);
  postIso.connect(fmtDry);
- fmtWet.connect(postFmt); fmtDry.connect(postFmt);
+ fmtDry.connect(postFmt);            // fmtWet joins when an axis drives it
 
  const gate=ctx.createGain(); gate.gain.value=1;
  postFmt.connect(gate);
@@ -37644,7 +37713,7 @@ function fxBuildChain(ctx, ch){
  try{ ringOsc.start(); }catch(e){}
  panTail.connect(ringWet); panTail.connect(ringDry);
  const postRing=ctx.createGain();
- ringWet.connect(ringAmt); ringAmt.connect(postRing); ringDry.connect(postRing);
+ ringWet.connect(ringAmt); ringDry.connect(postRing);   // ringAmt joins when ringmod is up
 
  // Sends
  const dly=ctx.createDelay(4);  dly.delayTime.value=0.25;
@@ -37652,14 +37721,19 @@ function fxBuildChain(ctx, ch){
  const dlySend=ctx.createGain();dlySend.gain.value=0;
  const dlyRet=ctx.createGain(); dlyRet.gain.value=1;
  postRing.connect(dlySend); dlySend.connect(dly); dly.connect(dlyFb); dlyFb.connect(dly);
- dly.connect(dlyRet); dlyRet.connect(out);
+ dly.connect(dlyRet);                // dlyRet joins when there is delay
 
  // A bigger room with a return stage: the send alone could not make the tail
  // loud enough to read as an effect rather than an ambience.
- const rev=ctx.createConvolver(); rev.buffer=_fxRoomIR(ctx,3.4);
+ //
+ // The convolver arrives with the first reverb anyone asks for on this
+ // channel. Eight of them used to exist from unlock, one per channel, for a
+ // send every channel had at zero — and a convolver the browser can reach
+ // from the destination is rendered every block whether or not anything feeds
+ // it. Measured, that was 0.35 of a CPU core doing nothing audible.
  const revSend=ctx.createGain(); revSend.gain.value=0;
- const revRet=ctx.createGain(); revRet.gain.value=2.2;
- postRing.connect(revSend); revSend.connect(rev); rev.connect(revRet); revRet.connect(out);
+ const revRet=ctx.createGain(); revRet.gain.value=FX_REV_RET;
+ postRing.connect(revSend);          // revSend -> rev -> revRet -> out, on demand
 
  // The dry path is a gain, not a hard wire. It used to be wired straight to
  // the output at unity, so delay and reverb were sends ADDED to a full-level
@@ -37669,10 +37743,14 @@ function fxBuildChain(ctx, ch){
  postRing.connect(dry); dry.connect(out);
  out.connect(dest);
 
- const bundle={ctx,io,out,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev,revSend,
-               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,
+ const bundle={ctx,io,out,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev:null,revSend,
+               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
                isoLoG,isoMidG,isoHiG,isoWet,isoDry,
-               fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt};
+               fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt,
+               // The far side of each optional branch, so _fxGateBranch has
+               // something to connect it back to.
+               postDrive,postIso,postFmt,postRing,
+               _live:{},_relT:{}};
  fxChains[ch]=bundle;
  return bundle;
 }
@@ -37777,6 +37855,16 @@ function _fxRoomIR(ctx,sec){
  }
  return b;
 }
+// One impulse for every channel's reverb, the same way one gate-pattern buffer
+// feeds every channel's gate. An AudioBuffer is read-only and can feed any
+// number of convolvers, so eight private copies of the same 3.4s stereo room
+// were 9.6MB of heap and 220ms of main thread spent generating identical noise.
+let _fxIR=null, _fxIRCtx=null, _fxIRSec=0;
+function _fxRoomIRShared(ctx,sec){
+ if(_fxIR && _fxIRCtx===ctx && _fxIRSec===sec) return _fxIR;
+ _fxIR=_fxRoomIR(ctx,sec); _fxIRCtx=ctx; _fxIRSec=sec;
+ return _fxIR;
+}
 
 // ── Insert every chain between its part bus and the master ──
 // The part buses already exist for the mixer and stem export; this re-points
@@ -37850,6 +37938,73 @@ let _fxReleasing = false;
 // channel and left them cut with nothing held.
 function _fxPadDriving(ch, key){
  return fxEngaged && fxTargets.indexOf(ch)>=0 && (fxPadX===key || fxPadY===key);
+}
+
+// ── An idle branch leaves the graph ──────────────────────────────────────
+// Every optional stage in this chain is built wet/dry so that "off" is
+// bit-identical to absent. Bit-identical is not cost-identical: a browser
+// renders every node it can reach from the destination, 128 samples at a time,
+// whether or not the gain feeding it is zero. All eight of these chains sat in
+// the graph complete from the moment audio unlocked — eight 3.4s convolvers,
+// eight delay lines inside feedback loops, 88 biquads, a 2x-oversampled
+// waveshaper each — for effects every channel had switched off.
+//
+// Measured by rendering the real chains into an OfflineAudioContext at 44.1kHz:
+// 0.53 of a CPU core for eight chains with everything at its default. With a
+// SILENT input, 0.53 again — the delay's feedback cycle and the worklet have
+// infinite tail time by definition, so the browser's silence optimisation
+// never gets a chance and the bill arrives before a note is played. Add a
+// laptop's browser and UI and it underruns, which is what it did: 296 dropped
+// 512-frame buffers in a 42-second recording, one every 69ms.
+//
+// So the gate is the connection, not the gain. The gains still do exactly what
+// they did — they are what makes an engage or a release smooth — and what
+// comes and goes is the branch's last hop into the chain. Cutting a branch
+// that is still ringing is the one thing here that can click, so a branch
+// stays wired for its own decay first, and a fixed return (reverb, delay) is
+// faded over the final 100ms before the edge goes. Same chain, same sound,
+// 0.13 of a core instead of 0.53.
+function _fxGateBranch(chain, name, from, to, want, tail, retG){
+ if(!from || !to) return;
+ const L=chain._live, T=chain._relT, c=chain.ctx;
+ if(want){
+  if(T[name]){
+   clearTimeout(T[name]); T[name]=null;
+   // A return that had already started fading comes back up rather than
+   // reconnecting at whatever level the fade had reached.
+   if(retG!=null && L[name]){ try{ from.gain.setTargetAtTime(retG, c.currentTime, 0.03); }catch(e){} }
+  }
+  if(!L[name]){
+   if(retG!=null){ try{ from.gain.value=retG; }catch(e){} }
+   try{ from.connect(to); }catch(e){}
+   L[name]=true;
+  }
+  return;
+ }
+ if(!L[name] || T[name]) return;             // already out, or already on its way
+ T[name]=setTimeout(function(){
+  T[name]=null;
+  if(!L[name]) return;
+  if(retG==null){ try{ from.disconnect(to); }catch(e){} L[name]=false; return; }
+  try{ from.gain.setTargetAtTime(0, c.currentTime, 0.03); }catch(e){}
+  T[name]=setTimeout(function(){
+   T[name]=null;
+   if(!L[name]) return;
+   try{ from.disconnect(to); }catch(e){} L[name]=false;
+  }, 140);
+ }, Math.max(80, tail*1000));
+}
+// Built on first use, shared impulse, wired straight into the return the
+// build left waiting.
+function _fxNeedRev(chain){
+ if(chain.rev) return true;
+ const c=chain.ctx; if(!c) return false;
+ try{
+  const cv=c.createConvolver(); cv.buffer=_fxRoomIRShared(c, FX_REV_SEC);
+  chain.revSend.connect(cv); cv.connect(chain.revRet);
+  chain.rev=cv;
+  return true;
+ }catch(e){ return false; }
 }
 function fxApplyChannel(ch){
  const chain=fxChains[ch]; if(!chain) return;
@@ -38020,6 +38175,31 @@ function fxApplyChannel(ch){
    pr.get('grainlen').setValueAtTime(v('grainlen'), t);
   }
  }
+
+ // ── Which branches are earning their keep ────────────────────────────
+ // Last, because every gain above has just been pointed at its new target and
+ // a branch coming back should already be ramping before its edge lands.
+ // Every wait allows for the release ramp finishing first: setTargetAtTime
+ // approaches its target and never arrives, so cutting an edge the moment the
+ // number reaches zero would truncate the glide and click.
+ // Three time constants of the release glide is 95%, which still leaves a
+ // -30dB step at the moment the edge goes. Nine is -78dB, i.e. nothing.
+ const settle=Math.max(0.5, fxReleaseSec*3+0.2);
+ const revWant=revAmt>0.0005;
+ if(revWant) _fxNeedRev(chain);
+ _fxGateBranch(chain,'rev',chain.revRet,chain.out, revWant && !!chain.rev,
+               settle+FX_REV_SEC+0.2, FX_REV_RET);
+ // A dub delay at 0.95 feedback takes forty repeats to fall out of earshot,
+ // and the repeat length is itself a parameter, so the wait is computed from
+ // both rather than guessed at.
+ const fbv=Math.min(0.95, v('feedback')*0.95);
+ const reps=fbv<=0.02 ? 2 : Math.min(40, Math.log(0.002)/Math.log(fbv));
+ _fxGateBranch(chain,'dly',chain.dlyRet,chain.out, dlyAmt>0.0005,
+               Math.min(14, Math.min(3.9,_fxDivSec(v('dtime')))*reps+0.3+settle), 1);
+ _fxGateBranch(chain,'drv',chain.drvWet,chain.postDrive, drv>0.0005, settle+0.08);
+ _fxGateBranch(chain,'iso',chain.isoWet,chain.postIso,  isoOn,          settle+0.08);
+ _fxGateBranch(chain,'fmt',chain.fmtWet,chain.postFmt,  talkOn,         settle+0.08);
+ _fxGateBranch(chain,'ring',chain.ringAmt,chain.postRing, rng>0.001,    settle+0.08);
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
 
