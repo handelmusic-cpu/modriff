@@ -617,7 +617,7 @@ body.mode-basic #modfx-panel > .fx-head     { order:0; }
 body.mode-basic #modfx-panel > .fx-padwrap  { order:1; }
 body.mode-basic #modfx-panel > .fx-axes     { order:2; }
 body.mode-basic #modfx-panel > #fx-motion   { order:3; }
-body.mode-basic #modfx-panel > .fx-presets { order:2; width:100%; margin:4px 0 2px; }
+body.mode-basic #modfx-panel > .fx-presets { order:3; width:100%; margin:4px 0 2px; }
 body.mode-basic #modfx-panel > #fx-release-wrap { order:5; width:100%; }
 body.mode-basic #fx-targets { display:none !important; }
 
@@ -645,9 +645,73 @@ body.mode-basic .fx-padwrap { height:clamp(132px, 22vh, 200px); }
 body.mode-basic #modfx-panel { flex-wrap:wrap; gap:6px 8px; align-items:center; }
 body.mode-basic #modfx-panel > .fx-head     { width:100%; }
 body.mode-basic #modfx-panel > .fx-padwrap  { width:100%; }
-/* Under the patches: the axes, then the motion recorder, then Release. */
-body.mode-basic #modfx-panel > .fx-axes     { order:3; flex:1 1 100%; min-width:0; margin:0; }
+/* The axes ride WITH the pad, then the patches, then the motion recorder, then
+   Release. They used to sit under the 253px preset library, which meant the two
+   lines telling you what X and Y currently do were a scroll away from the pad
+   they describe — on a phone the pad was on screen and unlabelled. Order 2, not
+   3: whatever else scrolls, the pad and its own labels stay together. */
+body.mode-basic #modfx-panel > .fx-axes     { order:2; flex:1 1 100%; min-width:0; margin:0; }
 body.mode-basic #modfx-panel > #fx-motion   { order:4; flex:1 1 100%; min-width:0; flex-wrap:nowrap; white-space:nowrap; }
+
+/* ── Short phones: the surfaces give ground, nothing hides ──────────────────
+   Live has five things you have to be able to reach without scrolling: the key
+   strip, the chord pads, the melody keys, the pad, and the two lines saying
+   what the pad's X and Y do. Measured on a 667px screen, the last of them
+   ended 134px past the tab bar — the fixed heights simply do not add up, and
+   no amount of margin-trimming closes that.
+
+   So on a short screen the surfaces shrink instead of falling off the bottom.
+   Only sizes change: nothing is hidden and nothing moves, because a control
+   you cannot find is worse than one that is twelve pixels shorter. The keys
+   lose the most because they have the most to give — 88px was chosen for Touch
+   Mod's vertical travel, and 68 is still more travel than the 66 they had
+   before that change.
+
+   Two steps rather than a vh formula: a formula would keep shrinking past the
+   point where a target stops being hittable, and 44px is the floor for that. */
+@media (max-height: 820px) {
+ body.mode-basic .mel-btn { height:68px; }
+ body.mode-basic .btn-tri { min-height:44px; padding:6px 3px 5px; }
+ body.mode-basic .btn-sev { padding:3px 3px 2px; }
+ body.mode-basic .fx-padwrap { height:clamp(112px, 19vh, 200px); }
+ body.mode-basic .key-strip { --ks-pad:5px; }
+}
+@media (max-height: 700px) {
+ body.mode-basic .mel-btn { height:56px; }
+ body.mode-basic .btn-tri { min-height:34px; padding:4px 3px 3px; }
+ /* 15vh, not 16. At 667px the pad cleared the tab bar by three pixels, and a
+    real phone's chrome is not the emulator's to the pixel — three is not a
+    margin, it is a coin toss. */
+ body.mode-basic .fx-padwrap { height:clamp(96px, 15vh, 200px); }
+ /* The typing hint under the keys is for a computer keyboard, and a 667px
+    screen is a phone. It is the one thing here that costs a row and cannot be
+    used on the device that is short of rows. */
+ body.mode-basic .keys-typing-hint { display:none; }
+ /* The surface headings are 26px each and almost none of it is the heading —
+    the sound picker's padding sets that height. Shrink the button, not the
+    word, so "Chords" and "Melody" still name what they sit over. */
+ body.mode-basic .pf-surface-lbl { margin:1px 0; }
+ body.mode-basic .pf-surface-lbl .snd-pick-btn { padding:3px 9px; font-size:.52rem; }
+ body.mode-basic .mel-ctl-row .tb,
+ body.mode-basic .mel-ctl-row .hold-btn { padding-top:5px; padding-bottom:5px; }
+}
+/* The last step down, for a 640px screen. 48px keys still clear the 44px a
+   finger needs; below this the surfaces would start costing accuracy to buy
+   height, which is a bad trade on the one screen where every tap is already
+   tight. A 568px phone — an SE 1 or a 5s — does not fit the pad at any size
+   worth touching, and scrolls for it. */
+@media (max-height: 660px) {
+ body.mode-basic .mel-btn { height:48px; }
+ body.mode-basic .fx-padwrap { height:clamp(88px, 14vh, 200px); }
+ body.mode-basic .btn-tri { min-height:32px; padding:3px 3px 2px; }
+ body.mode-basic .btn-sev { padding:2px 3px 1px; }
+ /* The key strip GROWS on a narrow screen — the mode buttons wrap to a second
+    line at 360px, so it is 46px there and 40px at 375. Shrinking the buttons
+    is what shortens the wrapped line; padding on the strip is not the height. */
+ body.mode-basic .key-strip .tb { padding-top:4px; padding-bottom:4px; }
+ body.mode-basic .key-strip { margin-bottom:4px !important; margin-top:2px !important; }
+ body.mode-basic #touchmod-bar { margin-bottom:0; }
+}
 
 /* ── One column, every width ──
    Flattening the panels took away the boxes that had been aligning the page,
@@ -681,8 +745,11 @@ body.mode-basic #page-perform > .key-strip { max-width:var(--basic-col) !importa
    of their own under it. The panel's head already puts them beside the title,
    so that is the one that stays, dressed as the surface heading it replaces. */
 body.mode-basic #pf-fx-surface-lbl { display:none !important; }
+/* margin-bottom:0, not 6 — #modfx-panel is a flex row with a 6px row gap, so a
+   margin here stacks on top of that and the heading sat 12px off its own pad.
+   The gap alone is the spacing. */
 body.mode-basic #modfx-panel > .fx-head {
- align-items:center; gap:8px; margin-bottom:6px;
+ align-items:center; gap:8px; margin-bottom:0;
 }
 body.mode-basic #modfx-panel > .fx-head .fx-title {
  display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0;
@@ -774,9 +841,12 @@ body:not(.mode-basic) #melody-voice-panel { display:none !important; }
    sub-tab was the name. */
 .pf-surface-lbl { display:none; }
 body.mode-basic .basic-hide { display:none !important; }
+/* Two of these on the Play tab, and each was spending 9px of margin to hold a
+   10px word. Tightened rather than dropped: they are the only thing naming the
+   surfaces in Live, and the sound picker rides on them. */
 body.mode-basic .pf-surface-lbl {
  display:flex; align-items:center; gap:8px;
- width:100%; max-width:700px; margin:6px 0 3px;
+ width:100%; max-width:700px; margin:3px 0 2px;
  color:var(--muted); font-size:.5rem; font-weight:600;
  text-transform:uppercase; letter-spacing:.14em;
 }
@@ -5455,7 +5525,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.29</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.30</span>
     </div>
    </div>
   </div>
@@ -5473,7 +5543,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.29</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.30</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -5852,36 +5922,44 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <div class="chords-row" id="chords-secdom"></div>
  </div>
 
- <!-- Basic + Pro: the whole modal and secondary-dominant vocabulary, browsable
-      without putting twenty more pads on the screen. Modal and Secondary are
-      catalogs you tick things out of; My Chords is what you ticked, and it is
-      the only one of the three that becomes playable pads below. -->
- <!-- Both modes, not Basic only. Advanced already lists the catalogs as full
-      rows, but My Chords is the only place a PINNED variant can live — a pad
-      that is always IVmaj9 or always V/3 — and Build is the only way to reach
-      a chord no catalog in this key offers. Neither has anywhere else to be. -->
- <div class="chordpick-row pro-only" id="chordpick-row">
-  <div class="chordpick" id="cp-diatonic"></div>
-  <div class="chordpick" id="cp-borrowed"></div>
-  <div class="chordpick" id="cp-secdom"></div>
-  <div class="chordpick" id="cp-user"></div>
-  <button class="chordpick-build" type="button" id="cp-build-btn" onclick="cpOpenBuilder()"
-    title="Any root, any quality — including chords this key does not offer">+ Build</button>
- </div>
  <!-- WHICH ROOTS ARE ON THE GRID — the same control the melody strip has, for
       chords. Twelve chromatic degrees from the key root, with the ones the
-      mode uses lit. The catalogs above are browsable lists; this is the fast
-      way to say "give me a chord on the ♭VI" without knowing that is what the
-      Modal list calls it.
+      mode uses lit. The catalogs inside are browsable lists; the degree row is
+      the fast way to say "give me a chord on the ♭VI" without knowing that is
+      what the Modal list calls it.
       Both drive the same cpPicks, so a root ticked here shows as ticked in the
       catalog it came from and the counts move together — see cpDegChord, which
       resolves a degree to the best chord any catalog already knows for it
-      before inventing a chromatic one. -->
+      before inventing a chromatic one.
+
+      The catalog strip USED TO BE OUT HERE, a permanent 45px lane between the
+      chord pads and the melody strip. On an 844px phone the Play tab is 553px
+      taller than the screen and the FX pad was being clipped by the tab bar,
+      so every always-visible lane was costing something you play. These are
+      the same question the head already answers — what is on the grid, and the
+      count is right there — so they moved inside it. Nothing is gone; it is
+      one tap, next to the degree row that does the same job faster. -->
  <button type="button" class="pf-shape-head" id="cp-deg-head" aria-expanded="false"
    onclick="cpDegHeadToggle(this)">
    <span class="pf-shape-caret" aria-hidden="true">›</span><span class="cp-deg-lbl">Chords on the grid</span>
    <span class="cp-deg-count" id="cp-deg-count"></span></button>
  <div class="pf-shape-body" id="cp-deg-body">
+  <!-- Basic + Pro: the whole modal and secondary-dominant vocabulary, browsable
+       without putting twenty more pads on the screen. Modal and Secondary are
+       catalogs you tick things out of; My Chords is what you ticked, and it is
+       the only one of the three that becomes playable pads below.
+       Both modes, not Basic only. Advanced already lists the catalogs as full
+       rows, but My Chords is the only place a PINNED variant can live — a pad
+       that is always IVmaj9 or always V/3 — and Build is the only way to reach
+       a chord no catalog in this key offers. Neither has anywhere else to be. -->
+  <div class="chordpick-row pro-only" id="chordpick-row">
+   <div class="chordpick" id="cp-diatonic"></div>
+   <div class="chordpick" id="cp-borrowed"></div>
+   <div class="chordpick" id="cp-secdom"></div>
+   <div class="chordpick" id="cp-user"></div>
+   <button class="chordpick-build" type="button" id="cp-build-btn" onclick="cpOpenBuilder()"
+     title="Any root, any quality — including chords this key does not offer">+ Build</button>
+  </div>
   <div class="tg cp-deg-row" id="cp-deg-row"></div>
   <div class="tg" style="margin-top:5px">
    <button class="tb" type="button" id="cp-deg-mode" onclick="cpDegPreset('mode')"
@@ -7371,7 +7449,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.29';
+const MODRIFF_VERSION = '3.9.30';
 
 'use strict';
 // ═══════════════════════════════════════
