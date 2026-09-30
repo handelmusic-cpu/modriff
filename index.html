@@ -1391,6 +1391,20 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 .mel-scale-row .mel-deg { padding:4px 4px; font-size:.5rem; min-width:26px; flex:1 1 0; }
 .mel-scale-count { margin-left:auto; color:var(--mel-c); font-weight:600;
                    letter-spacing:.04em; text-transform:none; font-size:.5rem; }
+/* ── Chords on the grid ──
+   The melody strip's degree row, for chord roots. Same sizing, so the two read
+   as one control in two places; the colour is the chord accent rather than the
+   melody's, because that is what these put on the screen. */
+.cp-deg-row { flex-wrap:wrap; }
+.cp-deg-row .cp-degb { padding:4px 4px; font-size:.5rem; min-width:26px; flex:1 1 0; }
+/* The mode's own seven are the grid itself and cannot be taken off. Marked
+   rather than disabled: a dead-looking button in a row of live ones reads as
+   broken, and tapping one still says why. */
+.cp-deg-row .cp-degb.cp-deg-key.active { background:var(--tonic); color:#07080f; }
+.cp-deg-row .cp-degb.cp-deg-key.active::after { content:''; }
+.cp-deg-count { margin-left:auto; color:var(--accent); font-weight:600;
+                letter-spacing:.04em; text-transform:none; font-size:.5rem; }
+.cp-deg-lbl { white-space:nowrap; }
 .tmod-driven { opacity:.55; }
 .tmod-driven .tmod-lbl::after { content:' ↕'; color:var(--mel-c); opacity:.9; }
 .tmod-lbl { font-size:.45rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
@@ -5386,7 +5400,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.21</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.22</span>
     </div>
    </div>
   </div>
@@ -5404,7 +5418,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.21</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.22</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -5694,8 +5708,16 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
       status light; the same one is in Settings, next to the MIDI panel it
       opens. Both were taking header room the mode buttons needed. -->
  <div class="vmt-pill" style="margin-left:auto">
-  <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')">Basic</button>
-  <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')">Advanced</button>
+  <!-- Live and Studio, not Basic and Advanced. "Basic" undersold the view it
+       names — it is the one that puts every playing surface on one screen and
+       gets the furniture out of the way, which is the better instrument, not
+       the lesser one. The stored value stays 'basic' and the body class stays
+       .mode-basic: hundreds of rules key off that name, and renaming a CSS
+       class is not what was wrong with the words on the button. -->
+  <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')"
+    title="Live — every playing surface on one screen, nothing between you and it">Live</button>
+  <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')"
+    title="Studio — the whole rig: church modes, borrowed chords, MōdSynth, the variants row and the fingering charts">Studio</button>
  </div>
  </div>
 
@@ -5790,6 +5812,31 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <div class="chordpick" id="cp-user"></div>
   <button class="chordpick-build" type="button" id="cp-build-btn" onclick="cpOpenBuilder()"
     title="Any root, any quality — including chords this key does not offer">+ Build</button>
+ </div>
+ <!-- WHICH ROOTS ARE ON THE GRID — the same control the melody strip has, for
+      chords. Twelve chromatic degrees from the key root, with the ones the
+      mode uses lit. The catalogs above are browsable lists; this is the fast
+      way to say "give me a chord on the ♭VI" without knowing that is what the
+      Modal list calls it.
+      Both drive the same cpPicks, so a root ticked here shows as ticked in the
+      catalog it came from and the counts move together — see cpDegChord, which
+      resolves a degree to the best chord any catalog already knows for it
+      before inventing a chromatic one. -->
+ <button type="button" class="pf-shape-head" id="cp-deg-head" aria-expanded="false"
+   onclick="cpDegHeadToggle(this)">
+   <span class="pf-shape-caret" aria-hidden="true">›</span><span class="cp-deg-lbl">Chords on the grid</span>
+   <span class="cp-deg-count" id="cp-deg-count"></span></button>
+ <div class="pf-shape-body" id="cp-deg-body">
+  <div class="tg cp-deg-row" id="cp-deg-row"></div>
+  <div class="tg" style="margin-top:5px">
+   <button class="tb" type="button" id="cp-deg-mode" onclick="cpDegPreset('mode')"
+     title="Just the mode's own chords — the seven on the grid and nothing added">Mode</button>
+   <button class="tb" type="button" id="cp-deg-modal" onclick="cpDegPreset('modal')"
+     title="The mode's seven plus every borrowed chord this key offers">+ Modal</button>
+   <button class="tb" type="button" id="cp-deg-chromatic" onclick="cpDegPreset('chromatic')"
+     title="A chord on all twelve roots. Nothing is out of key, because the key stops deciding.">All 12</button>
+  </div>
+  <div class="tmod-hint pf-info">Tap a degree to put a chord on that root or take it off. The mode's own seven are always on the grid — they are the grid. Counted from the key root, so they follow a transpose.</div>
  </div>
  <div class="pro-only" id="chords-user-wrap" style="display:none">
   <div class="chord-section-lbl">My Chords</div>
@@ -7248,7 +7295,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.21';
+const MODRIFF_VERSION = '3.9.22';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -17195,7 +17242,115 @@ function cpRenderUserRow(){
                             (c.ext||c.bass) ? {ext:c.ext, bass:c.bass} : null));
  });
 }
-function cpRenderAll(){ cpBuild(); cpRenderUserRow(); }
+// ── Chords on the grid: twelve roots ─────────────────────────────────────
+// The melody strip's scale picker, for chords. A degree is a pitch class from
+// the key root; this answers "what chord goes there", preferring one a catalog
+// already knows — diatonic, then borrowed, then a secondary dominant — so a
+// root ticked here is the SAME pick the catalog would have made and the two
+// surfaces stay one state. Only a root no catalog covers gets a chromatic
+// chord invented for it, and the quality follows what this app already does
+// with colour chords: a major seventh on it, sitting outside the functions.
+function cpDegChord(pc){
+ pc = ((pc % 12) + 12) % 12;
+ const srcs = cpSources();
+ for(const k of ['diatonic','borrowed','secdom']){
+  const hit = (srcs[k]||[]).find(c => (((c.semis % 12)+12)%12) === pc);
+  if(hit) return hit;
+ }
+ return {src:'chrom', label:CP_DEG_ROMAN[pc], semis:pc,
+         type7:'maj7', triadQ:'maj', func:'modal'};
+}
+// Is this root on the grid right now? The mode's own seven always are — they
+// ARE the grid, built by renderChords straight from the mode — so they read as
+// on and cannot be taken off. Everything else is a pick in My Chords.
+function cpDegDiatonic(pc){
+ pc = ((pc % 12) + 12) % 12;
+ return (cpSources().diatonic||[]).some(c => (((c.semis % 12)+12)%12) === pc);
+}
+function cpDegOn(pc){
+ if(cpDegDiatonic(pc)) return true;
+ return cpChosen().some(c => (((c.semis % 12)+12)%12) === ((pc%12)+12)%12);
+}
+function cpDegToggle(pc){
+ if(cpDegDiatonic(pc)){
+  showToast('The mode\u2019s own chords are always on the grid \u2014 change the key or the mode to move them');
+  return;
+ }
+ pc = ((pc % 12) + 12) % 12;
+ // Taking a root off removes every pad sitting on it, pinned variants
+ // included: the question this row asks is about the ROOT, and leaving a
+ // IV\u266f9 behind after its root was unticked would be answering a different one.
+ const on = cpChosen().filter(c => (((c.semis % 12)+12)%12) === pc);
+ if(on.length){ on.forEach(c => cpToggle(c)); return; }
+ cpToggle(cpDegChord(pc));
+}
+function cpDegPreset(which){
+ const srcs = cpSources();
+ // Always from a clean slate, so a preset means the same thing whatever was
+ // on before it. Pinned variants are picks like any other and go too.
+ cpChosen().slice().forEach(c => cpToggle(c));
+ if(which === 'mode') return;
+ if(which === 'modal'){
+  (srcs.borrowed||[]).forEach(c => { if(!cpDegDiatonic(c.semis)) cpToggle(c); });
+  return;
+ }
+ if(which === 'chromatic'){
+  for(let pc=0; pc<12; pc++) if(!cpDegDiatonic(pc)) cpToggle(cpDegChord(pc));
+ }
+}
+window.cpDegToggle = cpDegToggle;
+window.cpDegPreset = cpDegPreset;
+// Same shape as melScaleHeadToggle, and remembered for the same reason: this
+// is a decision you make once and then play against.
+function cpDegHeadToggle(head){
+ const open = head.getAttribute('aria-expanded')==='true';
+ head.setAttribute('aria-expanded', open ? 'false' : 'true');
+ try{ localStorage.setItem('modo-cp-deg-open', open ? '' : '1'); }catch(e){}
+}
+window.cpDegHeadToggle = cpDegHeadToggle;
+function cpRenderDegRow(){
+ const host=document.getElementById('cp-deg-row'); if(!host) return;
+ if(!host.children.length){
+  host.innerHTML = CP_DEG_ROMAN.map((l,i)=>
+   '<button class="tb cp-degb" type="button" data-cpdeg="'+i+'" onclick="cpDegToggle('+i+')">'+l+'</button>'
+  ).join('');
+ }
+ let extra=0, dia=0;
+ host.querySelectorAll('[data-cpdeg]').forEach(b=>{
+  const pc=+b.dataset.cpdeg, inKey=cpDegDiatonic(pc), on=cpDegOn(pc);
+  if(inKey) dia++; else if(on) extra++;
+  b.classList.toggle('active', on);
+  b.classList.toggle('cp-deg-key', inKey);
+  const c=cpDegChord(pc);
+  b.title = (inKey ? 'In the key \u2014 always on the grid'
+                   : (on ? 'On the grid \u2014 tap to take it off'
+                         : 'Tap to put a chord on this root'))
+          + ' \u2014 ' + c.label + ' (' + nn((root+pc)%12) + ')';
+ });
+ const cnt=document.getElementById('cp-deg-count');
+ if(cnt) cnt.textContent = (MODES[mode]||MODES.major).label + ' \u00b7 ' + dia
+                         + (extra ? ' + ' + extra : '');
+ ['mode','modal','chromatic'].forEach(k=>{
+  const b=document.getElementById('cp-deg-'+k); if(!b) return;
+  const chosen=cpChosen();
+  const isMode = (k==='mode' && !chosen.length);
+  const isChr  = (k==='chromatic' && dia+extra===12);
+  b.classList.toggle('active', isMode || isChr);
+ });
+}
+window.cpRenderDegRow = cpRenderDegRow;
+(function(){
+ try{
+  if(localStorage.getItem('modo-cp-deg-open')==='1'){
+   document.addEventListener('DOMContentLoaded', function(){
+    const h=document.getElementById('cp-deg-head');
+    if(h) h.setAttribute('aria-expanded','true');
+   });
+  }
+ }catch(e){}
+})();
+
+function cpRenderAll(){ cpBuild(); cpRenderUserRow(); cpRenderDegRow(); }
 
 function renderChords(){
  const md=MODES[mode]||MODES.major;
@@ -22328,7 +22483,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'A <strong>green glow</strong> marks the chord sounding right now — including while a song plays itself, so you can follow along hands-free.'},
  {icon:'',text:'Colours show harmonic function: <strong>blue = tonic, amber = subdominant, red = dominant, purple = modal/borrowed</strong>.'},
  {icon:'⌨️',text:'<strong>Keys 1–7</strong> play the diatonic chords, <strong>Shift + 1–7</strong> their 7ths. ↑/↓ transpose, ←/→ change mode.'},
- {icon:'',text:'<strong>Advanced</strong> view adds <strong>Borrowed &amp; Modal</strong> chords, <strong>Secondary Dominants</strong>, and the <strong>Variants</strong> row (sus2/sus4/add9 and slash chords) — arm one and the next chord you play uses it, then snaps back.'},
+ {icon:'',text:'<strong>Studio</strong> adds <strong>Borrowed &amp; Modal</strong> chords, <strong>Secondary Dominants</strong>, and the <strong>Variants</strong> row (sus2/sus4/add9 and slash chords) — arm one and the next chord you play uses it, then snaps back.'},
  ]},
  {title:'▦ Chord Forms — play along on a real instrument', tips:[
  {icon:'',text:'Under the chord grid, <strong>Chord Forms</strong> shows how to play the current chord on <strong>Guitar</strong>, <strong>Ukulele</strong> or <strong>Piano</strong>. Your choice is remembered.'},
@@ -22367,14 +22522,14 @@ const HELP_SECTIONS=[
  {icon:'',text:'Everything else — Setup, the Mixer, MōdSynth — is a control: it shapes what you hear without making a sound on its own.'},
  ]},
  {title:'Fingering — for horn and string players', tips:[
- {icon:'',text:'In <strong>Advanced</strong> view, the <strong>Fingering</strong> panel shows how to play the note you just triggered on your own instrument: trumpet, trombone, alto/tenor sax, clarinet, flute, guitar, ukulele, banjo or mandolin.'},
+ {icon:'',text:'In <strong>Studio</strong>, the <strong>Fingering</strong> panel shows how to play the note you just triggered on your own instrument: trumpet, trombone, alto/tenor sax, clarinet, flute, guitar, ukulele, banjo or mandolin.'},
  {icon:'',text:'<strong>Transposition is handled for you.</strong> MōdRiff plays concert pitch; the panel shows the note as written on <em>your</em> part — concert G reads as written A on trumpet, written E on alto, written A on tenor.'},
  {icon:'',text:'<strong>Trumpet</strong> shows valve combinations, <strong>trombone</strong> slide positions, <strong>saxophone</strong> a key diagram with octave and auxiliary keys, and fretted instruments the string and fret.'},
  {icon:'',text:'Clarinet and flute currently show the correctly transposed written note without a key diagram.'},
  ]},
  {title:'Sound Engine & MōdSynth', tips:[
- {icon:'',text:'<strong>Voices</strong>: Sine, Saw, Square, Tri, SuperSaw, Piano, Organ, Rhodes, Pad and <strong>MōdSynth</strong> — and in Advanced view every part can use any of them.'},
- {icon:'',text:'<strong>MōdSynth</strong> (Advanced) is the deep voice — stacked unison with its own sub, attack transient, filter sweep and saturation.'},
+ {icon:'',text:'<strong>Voices</strong>: Sine, Saw, Square, Tri, SuperSaw, Piano, Organ, Rhodes, Pad and <strong>MōdSynth</strong> — and in Studio every part can use any of them.'},
+ {icon:'',text:'<strong>MōdSynth</strong> (Studio) is the deep voice — stacked unison with its own sub, attack transient, filter sweep and saturation.'},
  {icon:'',text:'Selecting it reveals a <strong>preset row</strong>: <strong>Mega</strong> is the full stacked voice, <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches, and <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick persists.'},
  {icon:'',text:'The <strong>Tone / Reso / Sweep / Drive / Width / Drift</strong> macros in Setup shape whichever voice is loaded — that is the real sound-design surface.'},
  {icon:'⏱',text:'<strong>Attack</strong> is how fast notes fade in, <strong>Release</strong> how long they ring. <strong>Chord Layer</strong> plays the sustained chord underneath the arp; <strong>Strum</strong> gives chords a plucked character.'},
@@ -22435,7 +22590,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'<strong>Mix</strong> is one row of strips: every channel and the master bus, each with its fader, meter, mute, solo and MōdFX sends — plus the WAV/MIDI exporter.'},
  {icon:'◎',text:'<strong>Circle of Keys</strong> (Setup): tap any segment to set key and mode together. Segments use Scriabin’s pitch-to-colour mapping.'},
  {icon:'〜',text:'<strong>Master tune</strong>: 440 Hz standard, 432 Hz warmer, 444 Hz brighter, or any reference from 415–466 Hz. Everything retunes instantly.'},
- {icon:'',text:'<strong>Basic vs Advanced</strong> view: Basic keeps things simple; Advanced unlocks church modes, extra chords, MōdSynth, the variants row and the fingering charts.'},
+ {icon:'',text:'<strong>Live vs Studio</strong>: Live puts every playing surface on one screen and clears the furniture off it. Studio adds the church modes, the borrowed and secondary chords, MōdSynth, the variants row and the fingering charts — everything at once.'},
  ]},
  {title:'A good way to start', tips:[
  {icon:'🥁',text:'Start with <strong>Drums</strong> — pick a groove, hit ▶.'},
@@ -24119,7 +24274,7 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
  'key': {
  title: 'Key & Mode',
  body: `<strong>− / +</strong> transpose the key a semitone at a time. Every chord, the melody strip and the fingering charts follow instantly.<br><br>
-<strong>Maj / Min</strong> are always available. <strong>Advanced</strong> view adds the church modes — Dorian, Phrygian, Lydian, Mixolydian, Locrian and Harmonic Minor — which you can fold away again with the <strong>− Modes</strong> button.<br><br>
+<strong>Maj / Min</strong> are always available. <strong>Studio</strong> adds the church modes — Dorian, Phrygian, Lydian, Mixolydian, Locrian and Harmonic Minor — which you can fold away again with the <strong>− Modes</strong> button.<br><br>
 <strong>Numbers</strong> switches chord names to Nashville / Roman numerals (I, ii, iii, IV, V, vi, vii°) so the relationships stay readable in any key. Reference pitch is standard A=440 unless you change it under <strong>Settings › Master tune</strong> (432 / 442 / 444 / 528, or anything from 415–466 Hz).<br><br>
 <strong>Arrow keys</strong> on the Play tab: ↑ / ↓ transpose, ← / → step through modes. You can also tap any segment of the Circle of Keys in <strong>Setup</strong> to set key and mode together.`
  },
@@ -24130,7 +24285,7 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
 <strong>Colours</strong> show harmonic function: <strong style="color:var(--tonic)">Blue = Tonic</strong>, <strong style="color:var(--subdom)">Amber = Subdominant</strong>, <strong style="color:var(--dom)">Red = Dominant</strong>, <strong style="color:var(--modal)">Purple = Modal / Borrowed</strong>.<br><br>
 <strong>A green glow</strong> marks the chord sounding right now — including while a song plays itself, so you can follow along without touching anything.<br><br>
 <strong>Logic Mode</strong> pulses the chords most likely to come next, based on common progressions. Toggle it in Setup.<br><br>
-<strong>Advanced</strong> view adds <strong>Borrowed &amp; Modal</strong> chords (from the parallel key) and <strong>Secondary Dominants</strong> (V7 chords that tonicise each degree).<br><br>
+<strong>Studio</strong> adds <strong>Borrowed &amp; Modal</strong> chords (from the parallel key) and <strong>Secondary Dominants</strong> (V7 chords that tonicise each degree).<br><br>
 <strong>Keys 1–7</strong> play the diatonic chords; <strong>Shift + 1–7</strong> plays their 7ths.`
  },
  'variants': {
@@ -24140,12 +24295,12 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
 <strong>/5 · /b6 · /6 · /b7 · /7</strong> — slash chords: the same chord over a different bass note.<br><br>
 <strong>+ More qualities</strong> opens the rest of the vocabulary — 6, 6/9, maj9, 11, ♯11, 13, ♭9, ♯9, ♭13, alt, 7sus4, °7 and +. These are the same qualities the song chart's picker offers, so anything you can write into a chart you can also play by hand. They are collapsed by default because nineteen more buttons above the grid would push the chords off a small screen.<br><br>
 A slash chord also drops its bass note a full octave below the chord, so the new bass sits genuinely underneath rather than inside the voicing.<br><br>
-The arpeggiator and the bass follow the armed voicing too, and the Chord Forms diagrams switch to the slash shape. Advanced view only; you can hide the row entirely in Setup.`
+The arpeggiator and the bass follow the armed voicing too, and the Chord Forms diagrams switch to the slash shape. Studio only; you can hide the row entirely in Setup.`
  },
  'sound': {
  title: 'Chord Voice & MōdSynth',
- body: `Pick the voice each part plays through — in Advanced view every part offers the same list. <strong>Every part has its own MōdSynth patch</strong>, and the panel follows you: it appears on the page that owns the part you're editing — Chords and Melody on Play, and Drums, Bass, Melody and Arp on Accomp. If a part is on some other voice, that page offers a one-line way in instead.<br><br>
-<strong>MōdSynth</strong> (Advanced) is the deep voice — a stacked unison synth with its own sub, attack transient, filter sweep and saturation. Selecting it reveals a <strong>preset row</strong>:<br><br>
+ body: `Pick the voice each part plays through — in Studio every part offers the same list. <strong>Every part has its own MōdSynth patch</strong>, and the panel follows you: it appears on the page that owns the part you're editing — Chords and Melody on Play, and Drums, Bass, Melody and Arp on Accomp. If a part is on some other voice, that page offers a one-line way in instead.<br><br>
+<strong>MōdSynth</strong> (Studio) is the deep voice — a stacked unison synth with its own sub, attack transient, filter sweep and saturation. Selecting it reveals a <strong>preset row</strong>:<br><br>
 <strong>Mega</strong> is the full stacked voice. <strong>Sine / Saw / Square / Tri</strong> are plain single-oscillator patches. <strong>S·Saw</strong>, <strong>Sub</strong> and <strong>Pluck</strong> sit in between. Your pick is remembered between visits.<br><br>
 Presets are a starting point, not a limit: <strong>Unison, Detune, Sub, Attack, Cutoff, Sweep, Reso</strong> and <strong>Drive</strong> are all live, and the wave switches underneath. <strong>Cutoff</strong> is the filter's resting frequency and <strong>Sweep</strong> is how far the filter envelope opens above it and closes below it on every note — at 0 the filter just sits where you left it. Move anything and the patch becomes <strong>Custom</strong>. The scope at the top traces the actual output, so you can see what each control does.<br><br>
 The <strong>Tone / Reso / Sweep / Drive / Width / Drift</strong> macros in <strong>Setup → Sound Engine</strong> shape whichever voice is loaded — that's the real sound-design surface. The <strong>dice</strong> in the transport rerolls all of it at once.`
@@ -35532,7 +35687,11 @@ function sqBuildGroovePresets(){
 
 // sqSetKit is defined as stub above, this is an alias
 
-// ── Basic / Advanced view mode ──
+// ── Live / Studio view mode ──
+// The two views are called Live and Studio on the button. Everything under the
+// hood still says basic/advanced — the body class, the stored preference, the
+// .advanced-only and body.mode-basic selectors, and a few hundred rules keyed
+// off them. That is deliberate: the words were wrong, the plumbing was not.
 function setViewMode(mode){
   var isBasic = mode === 'basic';
   document.body.classList.toggle('mode-basic', isBasic);
