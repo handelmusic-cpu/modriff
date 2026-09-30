@@ -110,6 +110,38 @@ the app's own gain path and matching RMS against tenor sax. A file-level
 estimate said 1.59 and rendered 3.8 dB hot — a loudest-window reading flatters
 a decaying sax against a violin that holds its level for the whole note.
 
+## samples/clarinet, samples/flute — "Clarinet ◆", "Flute ◆"
+
+Same **VSCO-2 Community Edition** set as the violin above, same route, same
+terms. Trimmed and encoded identically: 3.2 s, 300 ms fade, 45 Hz high-pass,
+mono, LAME VBR q4. Clarinet 392 KB for 11 notes, flute 336 KB for 9.
+
+Clarinet: D F A♯ per octave, D3 to F6. Flute: C E A per octave, C4 (its real
+bottom) to A6. Nothing is pitch-shifted more than 2 semitones in either.
+
+Pitch verified by harmonic product spectrum rather than autocorrelation —
+a flute tone is close enough to a sine that autocorrelation locks onto the
+octave below and reports every high note an octave flat. All within ±12 cents
+with one exception: **the source's `Fs6.mp3` for clarinet measures 1399 Hz,
+which is F6, not F♯6** — 97 cents flat of its own name. It is a good recording
+with a wrong label, so it ships here as `F6.mp3` and the grid treats it as F6.
+Shipped as named it would have put every note above D6 a semitone sharp.
+
+Neither gets a round robin, and the violin does. Their grids are minor thirds
+and wider, so a second take is four semitones away, and four semitones on a
+clarinet can cross the register break between the chalumeau and the clarion —
+two takes that are not the same instrument's colour. The violin's C E G A grid
+keeps inside three.
+
+Level, found the same way as the rest of the table — rendered through the app's
+own gain path and matched on RMS against tenor sax. Raw, the clarinet was
+10.3 dB hot and the flute 3.4, so `WAVE_GAIN` is 0.36 and 0.80. Both land at
++0.0 dB against the reference.
+
+Both are dark by nature and arrive intact: f99 runs 1.3–3.7 kHz on the clarinet
+and 1.8–3.1 kHz on the flute, with essentially nothing above 8 kHz, and it
+climbs with the register the way the violin's does.
+
 Cymbals (`samples/drums/`) are the **FluidR3_GM percussion bank**, as published
 by [WebAudioFont](https://github.com/surikov/webaudiofontdata) — the same
 SoundFont as the upright bass and jazz guitar above, so the same CC BY 3.0
