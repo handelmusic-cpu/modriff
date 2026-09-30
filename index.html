@@ -5364,7 +5364,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.18</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.19</span>
     </div>
    </div>
   </div>
@@ -5382,7 +5382,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.18</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.19</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7226,7 +7226,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.18';
+const MODRIFF_VERSION = '3.9.19';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -9919,18 +9919,46 @@ let rhythmOn=false, rhythmIdx=0, rhythmSel=0;
 // Drums get a transport toggle like Arp/Bass/Mel — but it mutes rather than
 // stops, because the drum sequencer is the master clock the other engines
 // align to. The playhead keeps running; you just stop hearing it.
+//
+// It is the same state as the Kit layer's mute dot on Accomp, the way the Perc
+// switch below is the same state as the Aux Perc dot. It was not: this was a
+// second, independent flag, and the two could not see each other. Drop the
+// drums here, then tap the Kit dot looking for the percussion, and turning
+// this back on did nothing at all — sqLayers[0].on was still false, the switch
+// said the drums were playing, and the only way back was a dot on another tab.
+// Measured: 13 kit hits a bar, then 0 with the switch reading ON, through
+// three more presses of it.
+//
+// So the layer owns the state and this flag mirrors it. Everything that reads
+// drumsEnabled — scheduleDrum's own voices, the snapshot's `armed` block —
+// keeps reading a plain boolean; everything that WRITES it goes through
+// setDrumsEnabled, which is the same call the dot makes.
 let drumsEnabled = true;
+// Called by the sequencer whenever a layer's on/off moves, from either switch
+// or from a restore.
+window._syncLayerTransport = function(){
+ if(typeof window._sqLayerOn==='function') drumsEnabled = window._sqLayerOn(0);
+ if(typeof syncFixedTransport==='function') syncFixedTransport();
+ _syncAuxTransport();
+};
+// The one writer. The fallback is for the window where this runs before the
+// sequencer IIFE has installed its hooks — a restore can land there.
+function setDrumsEnabled(on){
+ on = !!on;
+ if(typeof window._sqSetLayerOn==='function'){ window._sqSetLayerOn(0, on); return; }
+ drumsEnabled = on;
+ if(typeof syncFixedTransport==='function') syncFixedTransport();
+}
 function ftDrumClick(){
- drumsEnabled=!drumsEnabled;
- syncFixedTransport();
+ setDrumsEnabled(!drumsEnabled);
  if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
 }
 // The aux layer's own on/off. It lives in the sequencer (sqLayers[1].on) rather
 // than in a flag here, because the Accomp tab's layer row toggles the same
-// thing — two switches, one state.
+// thing — two switches, one state. _sqToggleLayer repaints this switch on its
+// way back out, so there is nothing to do here afterwards.
 function ftAuxClick(){
  if(typeof window._sqToggleLayer==='function') window._sqToggleLayer(1);
- _syncAuxTransport();
 }
 // Shown only while the current groove has written something onto the second
 // layer. Called after a groove loads and whenever the transport repaints.
@@ -18370,7 +18398,10 @@ function _applySettings(s){
  // snapshot can never start music on its own. The arp is a live toggle rather
  // than a plain flag, so it goes through toggleArp() when it differs.
  if(s.armed && typeof s.armed==='object'){
-  if(typeof s.armed.drums ==='boolean' && typeof drumsEnabled!=='undefined') drumsEnabled = s.armed.drums;
+  // Through setDrumsEnabled, not straight at the flag: the Kit layer is the
+  // same state, and a snapshot that set only one of the two was how a
+  // restored rig came back with its Drums switch lit and no kit under it.
+  if(typeof s.armed.drums ==='boolean' && typeof setDrumsEnabled==='function') setDrumsEnabled(s.armed.drums);
   if(typeof s.armed.bass  ==='boolean' && typeof blEnabled   !=='undefined') blEnabled    = s.armed.bass;
   if(typeof s.armed.melgen==='boolean' && typeof mlEnabled   !=='undefined') mlEnabled    = s.armed.melgen;
   if(typeof s.armed.arp   ==='boolean' && typeof arpOn!=='undefined'
@@ -19362,7 +19393,7 @@ function tourLayBed(){
     for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name==='4/4 Rock'){ sqLoadGroove(i); break; }
   });
   _tourSet(function(){
-    if(typeof drumsEnabled!=='undefined') drumsEnabled = true;
+    if(typeof setDrumsEnabled==='function') setDrumsEnabled(true);
     if(typeof blEnabled!=='undefined') blEnabled = false;
     if(typeof mlEnabled!=='undefined') mlEnabled = false;
     if(typeof arpOn!=='undefined' && arpOn && typeof toggleArp==='function') toggleArp();
@@ -26247,9 +26278,11 @@ function startEverything(){
  var _hasSong=sections.length>0&&sections.some(s=>s.slots&&s.slots.length);
 
  // The sequencer is the master clock every other engine aligns to, so it runs
- // whenever anything does. Whether you HEAR drums is drumsEnabled, checked in
- // sqHitTrack — switching Drums off gives you silence over a running clock,
- // which is what "chords and bass, no drums" needs.
+ // whenever anything does. Whether you HEAR drums is the Kit layer's on/off —
+ // sqFireStep skips a muted layer, and sqHitTrack gates the kit's channel for
+ // the paths that reach it directly. Either way the clock keeps running, which
+ // is what "chords and bass, no drums" needs. Aux Perc is a layer of its own
+ // and is untouched by it.
  if(!(typeof window._sqPlaying==='function'&&window._sqPlaying())){
   document.dispatchEvent(new CustomEvent('sq-start-request'));
  }
@@ -29453,10 +29486,19 @@ function sqSetFocus(f){
   sqSyncLayerUI();
 }
 // Each layer plays or does not, independently of which one is being edited.
+// Layer 0 is also the transport's Drums switch and layer 1 its Perc switch —
+// one state each, reachable from two places. That is why every change goes
+// through sqSetLayerOn: it repaints the layer row AND tells the transport, so
+// the two can never come to say different things about the same layer.
 function sqToggleLayer(i){
   i = i ? 1 : 0;
-  sqLayers[i].on = !sqLayers[i].on;
+  sqSetLayerOn(i, !sqLayers[i].on);
+}
+function sqSetLayerOn(i, on){
+  i = i ? 1 : 0;
+  sqLayers[i].on = !!on;
   sqSyncLayerUI();
+  if(typeof window._syncLayerTransport==='function') window._syncLayerTransport();
 }
 function sqSyncLayerUI(){
   var lay = document.getElementById('sq-layerRow'); if(!lay) return;
@@ -29472,6 +29514,7 @@ function sqSyncLayerUI(){
 }
 window._sqSetFocus = sqSetFocus;
 window._sqToggleLayer = sqToggleLayer;
+window._sqSetLayerOn = sqSetLayerOn;
 window._sqSyncLayerUI = sqSyncLayerUI;
 window._sqLayerOn = function(i){ return !!sqLayers[i ? 1 : 0].on; };
 // Whether the second layer has anything on it at all. The transport's Perc
@@ -29553,7 +29596,13 @@ function _trackChoke(track){
 }
 
 function sqHitTrack(track,t,vol,ac,ps,ch){
-  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
+  // The Drums switch is the KIT's switch. Aux Perc plays through these same
+  // voices, but it is its own layer on its own channel with its own switch —
+  // so gating every hit on drumsEnabled silenced the percussion too the
+  // moment you dropped the drums, with the Perc switch still lit beside it
+  // saying it was playing. Measured: 13 kit hits and 4 aux hits a bar became
+  // 0 and 0. Scoped to the kit's channel, the aux layer keeps its four.
+  if(ch!=='auxperc' && typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
   // See playChord: a hit scheduled in the past has its envelope collapsed to a
   // step by the time it is applied, and on a transient-heavy voice that reads
   // as a crack rather than a drum.
@@ -30729,6 +30778,11 @@ window._sqRestoreState = function(st){
  sqEnsureGrid();
  sqSyncUI(); sqRenderGrid();
  sqSyncLayerUI();
+ // A restore writes both layers' on/off straight into sqLayers, so the
+ // transport hears about it here the way it does from a toggle. Without this
+ // a rig restored with the kit muted came back with the Drums switch lit and
+ // no drums under it.
+ if(typeof window._syncLayerTransport==='function') window._syncLayerTransport();
 };
 
 })(); // end IIFE
