@@ -5400,7 +5400,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.26</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.27</span>
     </div>
    </div>
   </div>
@@ -5418,7 +5418,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.26</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.27</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7295,7 +7295,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.26';
+const MODRIFF_VERSION = '3.9.27';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13710,6 +13710,17 @@ function clockStepSec(){ return 60/(parseFloat(document.getElementById('bpm')?.v
 function clockSetEpoch(ctx){
   CLOCK_EPOCH = ctx.currentTime + _epochLead();
   CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
+  // Moving the epoch moves the grid, and every engine re-anchors to it when it
+  // starts. The metronome is the one consumer that reads the epoch LAZILY — it
+  // recomputes its next beat only once it has fallen behind — so a click that
+  // was already running carried on from the OLD epoch while everything that
+  // started after the move landed on the new one. Start a click on its own,
+  // then press Play, and the band came in on a different grid from the click:
+  // measured up to half a beat out, constant, with both sides rigid.
+  // Zeroing it is how setMeter already asks for the same recompute, and it has
+  // to happen here rather than at the call sites, because there are three of
+  // them and the next one will not remember either.
+  try{ metroNextBeat = 0; }catch(e){}
 }
 
 // Given a step duration, return the next aligned start time >= currentTime+lookahead
@@ -26571,8 +26582,10 @@ function startEverything(){
   // against a look-ahead described as 0.10 — correct then, and silently wrong
   // the moment either number moved, which is why both now come from the same
   // place.
-  CLOCK_EPOCH = _ctx.currentTime + _epochLead();
-  CLOCK_EPOCH_BPM = parseFloat(document.getElementById('bpm')?.value)||120;
+  // Through clockSetEpoch, not a second copy of its two lines: moving the
+  // epoch also has to invalidate what derives from it, and only that function
+  // knows what. This copy is how a running metronome got left behind.
+  clockSetEpoch(_ctx);
  }
 
  // Any song with programmed chords counts — not just setlist-loaded ones.
