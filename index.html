@@ -5400,7 +5400,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.24</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.25</span>
     </div>
    </div>
   </div>
@@ -5418,7 +5418,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.24</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.25</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7295,7 +7295,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.24';
+const MODRIFF_VERSION = '3.9.25';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7628,6 +7628,10 @@ const WAVE_GAIN = {
  // — a loudest-window reading flatters a decaying sax against a violin that
  // holds its level for the whole note, so the render is the one to trust.
  violin:1.03,
+ // Same method: rendered through the app's own gain path and matched on RMS
+ // against tenor sax. Raw, the clarinet came in 10.3 dB hot and the flute 3.4.
+ clarinet:0.36,
+ flute:0.80,
  pianoreal:1.42,  // was 4.2 — 9.4 dB hot, the worst of the six
  // Your own clips. Unlike the five above, whose raw level is a fixed property
  // of the sample set, a user clip is whatever it is — so it is peak-normalised
@@ -7699,6 +7703,16 @@ const SAMPLE_LIBS = {
  // Measured f99 runs 3.2 kHz at C4 up to 10.7 kHz at E6: the rolloff MOVES
  // with the register, which is an instrument rather than a codec wall. The
  // SoundFont violins were a flat 3.5 kHz at every pitch and were not shipped.
+ // Both from the same VSCO-2 chamber set as the violin. No `rr`: their grids
+ // are minor thirds and wider, so a round robin would have to reach four
+ // semitones to find a second take, and four semitones on a clarinet can cross
+ // the register break between the chalumeau and the clarion — two takes that
+ // are not the same instrument's colour. The violin's C E G A grid keeps
+ // inside three, which is why it gets one and these do not.
+ clarinet: {dir:'samples/clarinet', fallbackWave:'organ',
+            notes:['D3','F3','As3','D4','F4','As4','D5','F5','As5','D6','F6']},
+ flute:    {dir:'samples/flute',    fallbackWave:'pad',
+            notes:['C4','E4','A4','C5','E5','A5','C6','E6','A6']},
  violin:   {dir:'samples/violin',   fallbackWave:'pad', rr:3,
             notes:['G3','A3','C4','E4','G4','A4','C5','E5','G5','A5',
                    'C6','E6','G6','A6','C7']},
@@ -11805,7 +11819,7 @@ function releaseSustainedChord(myId){
 // selecting one of these should never produce silence.
 const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
                         tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal',
-                        violin:'violin' };
+                        violin:'violin', clarinet:'clarinet', flute:'flute' };
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Your own sample, if this part has one, before anything else — a slot with
@@ -12915,7 +12929,7 @@ function melTouchY(el, src){
 // a synth patch — while pianoreal was still +4.1 dB hot. Picking a sampled
 // melody voice changed the volume more than the tone, in whichever direction
 // that voice happened to be wrong.
-const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, violin:0.85};
+const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, violin:0.85, clarinet:0.85, flute:0.85};
 function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -15624,7 +15638,7 @@ function renderChordDiagram(){
 // those first, then the shared palette.
 const MS_SHARED_VOICES=[['pianoreal','Piano ◆'],['piano','Piano (synth)'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
- ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],['violin','Violin ◆'],
+ ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],['violin','Violin ◆'],['clarinet','Clarinet ◆'],['flute','Flute ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth'],
  // Last, and reached the same way as any other voice: picking it here is how
@@ -32368,7 +32382,15 @@ function blPlay(){
     // bassline always comes in on beat 1. Using the epoch (rather than the live
     // sqSeqStep, which the sequencer's look-ahead has usually already advanced
     // past 0) keeps the bass locked to the sequencer at launch AND mid-stream.
-    if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
+    // clockAlignTo ESTABLISHES the epoch when there isn't one yet — that is the
+    // first thing it does — so guarding the call on CLOCK_EPOCH > 0 meant the
+    // one case that needed it most fell through to the ungridded branch below.
+    // Start this engine before anything else and the epoch is still 0, so it
+    // anchored to "now plus a lead": an arbitrary moment on no grid at all.
+    // Whatever started next called clockAlignTo, set the epoch, and landed on
+    // it — leaving the two rigid, never drifting, and permanently apart.
+    // Measured 58 ms that way, which is a flam you cannot play through.
+    if (typeof CLOCK_EPOCH !== 'undefined' && typeof clockAlignTo === 'function') {
       var _firstStep = clockAlignTo(ctx, _blStepSec, _alignLead()); // next 16th aligned to epoch
       // Same trap, and this one mattered more: the fallback hardcoded 16, so
       // the bass aligned its launch to a 4/4 bar even in 5/4 or 3/4.
@@ -32380,6 +32402,8 @@ function blPlay(){
       blNextT = _firstStep + _toBar * _blStepSec;
       blSeqStep = 0;
     } else {
+      // Only reachable if the clock helper is missing entirely. Ungridded, and
+      // that is the point: there is no grid to be on.
       blNextT = ctx.currentTime + ALIGN_LEAD;
       blSeqStep = 0;
     }
@@ -33670,7 +33694,15 @@ function mlPlay(){
     var _mlStepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
     // Align to the next bar boundary from the shared CLOCK_EPOCH, same as bass,
     // so melody always lands on beat 1 alongside sequencer/bass/song.
-    if (typeof CLOCK_EPOCH !== 'undefined' && CLOCK_EPOCH > 0 && typeof clockAlignTo === 'function') {
+    // clockAlignTo ESTABLISHES the epoch when there isn't one yet — that is the
+    // first thing it does — so guarding the call on CLOCK_EPOCH > 0 meant the
+    // one case that needed it most fell through to the ungridded branch below.
+    // Start this engine before anything else and the epoch is still 0, so it
+    // anchored to "now plus a lead": an arbitrary moment on no grid at all.
+    // Whatever started next called clockAlignTo, set the epoch, and landed on
+    // it — leaving the two rigid, never drifting, and permanently apart.
+    // Measured 58 ms that way, which is a flam you cannot play through.
+    if (typeof CLOCK_EPOCH !== 'undefined' && typeof clockAlignTo === 'function') {
       var _firstStep = clockAlignTo(ctx, _mlStepSec, _alignLead());
       var _barSteps = (typeof sqSteps !== 'undefined' && sqSteps > 0) ? sqSteps : 16;
       var _fromEpoch = Math.round((_firstStep - CLOCK_EPOCH) / _mlStepSec);
@@ -33679,6 +33711,7 @@ function mlPlay(){
       mlNextT = _firstStep + _toBar * _mlStepSec;
       mlSeqStep = 0;
     } else {
+      // See the bass: only reachable with no clock helper at all.
       mlNextT = ctx.currentTime + 0.05;
       mlSeqStep = 0;
     }
