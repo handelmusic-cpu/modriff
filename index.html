@@ -5400,7 +5400,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.22</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.23</span>
     </div>
    </div>
   </div>
@@ -5418,7 +5418,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.22</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.23</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7295,7 +7295,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.22';
+const MODRIFF_VERSION = '3.9.23';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -7620,6 +7620,14 @@ const WAVE_GAIN = {
  nylongtr:8.40,
  tenorsax:5.59,
  mutetpt:7.37,
+ // A bowed note is a sustain rather than a transient, and this set arrives
+ // peak-normalised at -3 dBFS, so it is the hottest raw material in the
+ // library. Picked the way the rest of this table was: rendered offline
+ // through the app's own gain path and matched on RMS against tenor sax.
+ // The file-level estimate said 1.59, and rendered that measured +3.8 dB hot
+ // — a loudest-window reading flatters a decaying sax against a violin that
+ // holds its level for the whole note, so the render is the one to trust.
+ violin:1.03,
  pianoreal:1.42,  // was 4.2 — 9.4 dB hot, the worst of the six
  // Your own clips. Unlike the five above, whose raw level is a fixed property
  // of the sample set, a user clip is whatever it is — so it is peak-normalised
@@ -7683,6 +7691,17 @@ const SAMPLE_LIBS = {
  nylongtr: {dir:'samples/nylongtr', notes:_natRange(2,5), fallbackWave:'piano'},
  tenorsax: {dir:'samples/tenorsax', notes:_natRange(3,5), fallbackWave:'organ'},
  mutetpt:  {dir:'samples/mutetpt',  notes:_natRange(3,5), fallbackWave:'organ'},
+ // The one set in here that is a real chamber recording rather than a
+ // SoundFont render — VSCO-2 Community Edition, CC0 (see samples/CREDITS.md).
+ // Its anchors are C E G A per octave across the violin's own range, G3 to C7,
+ // so nothing is ever shifted more than two semitones and every note has at
+ // least two real recordings within three, which is what rr below spends.
+ // Measured f99 runs 3.2 kHz at C4 up to 10.7 kHz at E6: the rolloff MOVES
+ // with the register, which is an instrument rather than a codec wall. The
+ // SoundFont violins were a flat 3.5 kHz at every pitch and were not shipped.
+ violin:   {dir:'samples/violin',   fallbackWave:'pad', rr:3,
+            notes:['G3','A3','C4','E4','G4','A4','C5','E5','G5','A5',
+                   'C6','E6','G6','A6','C7']},
  // A real piano, at last — see the note above about why the first attempt was
  // removed. This set is 44.1k stereo WAV rather than the mp3s that failed, and
  // it covers the whole keyboard, C1 to C8. It is still a DARK piano: measured
@@ -7751,10 +7770,55 @@ function _nearestSample(key, midi){
  return best;
 }
 
+// ── Round robin ───────────────────────────────────────────────────────────
+// A sampled instrument that plays the same file every time it plays the same
+// note is a machine gun: repeat a pitch and it is bit-identical, which is the
+// one thing a real player never does. Bowed strings give it away fastest,
+// because a repeated note IS a second bow stroke.
+//
+// The variation here is real recordings, not a detune: the anchors within a
+// few semitones of the note wanted are separate takes of the same instrument,
+// and the sampler was always going to pitch-shift one of them anyway. Playing
+// a different one is the same operation with a different source, so it costs
+// nothing and no asset has to be added. `rr` on the library is how far, in
+// semitones, that is allowed to reach past the nearest anchor; a set without
+// it is untouched and keeps picking the single nearest, which is what the
+// piano's minor-third grid wants.
+//
+// Never the same take twice running on one note. Two candidates is the common
+// case, so a plain random pick repeats half the time and the effect is mostly
+// lost — this keeps the last one used and chooses from the rest.
+var _rrLast = {};
+function _rrSample(key, midi){
+ const lib=SAMPLE_LIBS[key], bufs=SAMPLE_BUFFERS[key];
+ if(!lib||!bufs||!lib.rr) return _nearestSample(key, midi);
+ const cands=[];
+ let nearest=Infinity;
+ lib.notes.forEach(n=>{
+  if(!bufs[n]) return;
+  const nm=_sampleNoteToMidi(n), d=Math.abs(nm-midi);
+  if(d<nearest) nearest=d;
+  cands.push({midi:nm, buffer:bufs[n], d:d});
+ });
+ // `rr` is an absolute ceiling on the shift, not a margin on top of the
+ // nearest anchor: written as `nearest + rr` it let D4 — which sits two
+ // semitones from C4 — reach A3 and G4, five semitones away, and five
+ // semitones down stretches a bow stroke by a third and darkens it audibly.
+ // The Math.max keeps a note whose nearest take is already further than the
+ // ceiling (nothing in this set, but a sparser one later) from losing it.
+ const pool=cands.filter(c=>c.d <= Math.max(nearest, lib.rr));
+ if(pool.length<2) return _nearestSample(key, midi);
+ const k=key+'|'+midi, prev=_rrLast[k];
+ const fresh=pool.filter(c=>c.midi!==prev);
+ const pick=(fresh.length?fresh:pool)[Math.floor(Math.random()*(fresh.length?fresh.length:pool.length))];
+ _rrLast[k]=pick.midi;
+ return pick;
+}
+
 // Same envelope contract as makeVoice() — plays into an already-configured gain
 // node over [t0, t0+dur] so every caller (chord/arp/melody/bass) works unchanged.
 function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
- const s=_nearestSample(key, midi); if(!s) return null;
+ const s=_rrSample(key, midi); if(!s) return null;
  const src=ctx.createBufferSource();
  src.buffer=s.buffer;
  src.playbackRate.value=Math.max(0.25, Math.min(4, Math.pow(2,(midi-s.midi)/12)));
@@ -11740,7 +11804,8 @@ function releaseSustainedChord(myId){
 // reached at all — offline, or a blocked request). The fallback is deliberate:
 // selecting one of these should never produce silence.
 const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
-                        tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal' };
+                        tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal',
+                        violin:'violin' };
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Your own sample, if this part has one, before anything else — a slot with
@@ -12850,7 +12915,7 @@ function melTouchY(el, src){
 // a synth patch — while pianoreal was still +4.1 dB hot. Picking a sampled
 // melody voice changed the volume more than the tone, in whichever direction
 // that voice happened to be wrong.
-const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55};
+const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, violin:0.85};
 function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -15559,7 +15624,7 @@ function renderChordDiagram(){
 // those first, then the shared palette.
 const MS_SHARED_VOICES=[['pianoreal','Piano ◆'],['piano','Piano (synth)'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['vibes','Vibes ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
- ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],
+ ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],['violin','Violin ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','MōdSynth'],
  // Last, and reached the same way as any other voice: picking it here is how
