@@ -5098,19 +5098,24 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 <div class="top-stack" id="top-stack">
 <!-- A real ARIA tablist. Left/Right/Home/End move between tabs while the bar
      has focus, which is the standard pattern and, more to the point, is what
-     lets Tab go back to doing its own job — see the tabBarKey handler. -->
+     lets Tab go back to doing its own job — see the tabBarKey handler.
+     The order is distance from playing: Play at the thumb end, then the parts
+     that back it, then the rig, then setup. Mix and Songs were the other way
+     round, which put the mixer three tabs from Play behind a chart you open
+     once a session — and during a jam Mix is where you go constantly and
+     Songs is not. -->
 <nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
  <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
    role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
  <span class="tab-icon" aria-hidden="true">⚙</span>Settings
  </button>
- <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
-   role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">🎚</span>Mix
- </button>
  <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')"
    role="tab" aria-selected="false" aria-controls="page-songs" tabindex="-1">
  <span class="tab-icon" aria-hidden="true">📄</span>Songs
+ </button>
+ <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
+   role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
+ <span class="tab-icon" aria-hidden="true">🎚</span>Mix
  </button>
  <button class="tab-btn" id="tab-accomp" onclick="switchTab('accomp')"
    role="tab" aria-selected="false" aria-controls="page-accomp" tabindex="-1">
@@ -5364,7 +5369,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.19</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.20</span>
     </div>
    </div>
   </div>
@@ -5382,7 +5387,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.19</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.20</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7226,7 +7231,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.19';
+const MODRIFF_VERSION = '3.9.20';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -14487,6 +14492,14 @@ let _clockStopRequested=false;
 // has a chord loaded. Every "does the clock still have a reason to tick"
 // test goes through here so they cannot drift apart again.
 function _arpSounding(){ return !!(arpOn && arpSounding && arpNotes.length); }
+// Is the transport actually running? The master clock is the drum sequencer,
+// or the old rhythm engine when that is what is driving. Deliberately does NOT
+// count the arp: the arp is the thing this answers for, and asking "should the
+// arp play" with "is the arp playing" in the test is how it used to keep
+// itself alive with the transport stopped.
+function _transportRunning(){
+ return !!(rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying()));
+}
 function _clockShouldRun(){
  return !!(rhythmOn || _arpSounding() || metronomeOn
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
@@ -16384,9 +16397,15 @@ function setArpChord(rootM,intvs,func){
  if(arpOcts>=2) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+12)];
  if(arpOcts>=3) arpNotes=[...arpNotes,...intvs.map(s=>rootM+s+24)];
  arpIdx=0; arpDir=1; arpGateIdx=0;
- // A chord arriving — pad, keyboard, MIDI or song playback — is a request to
- // hear it, which re-arms the arp after a stop.
- arpSounding=true;
+ // A chord arriving — pad, keyboard, MIDI or song playback — re-arms the arp,
+ // but only while the transport is running. This used to be an unconditional
+ // true, and it is how the arp played with the transport off: Stop clears
+ // arpSounding, then the next tap on a chord pad set it straight back, the
+ // clock watchdog read that as work to do, and the arp ran on over a stopped
+ // transport. Playing a chord by hand is a request to hear THE CHORD; the arp
+ // is a transport layer like the bass and the drums, and starts when they do.
+ // startEverything re-arms it from lastChordIntvs on the next Play.
+ arpSounding=_transportRunning();
  const txt=`<span class="arp-dot"></span>Loaded ${nn(rootM)} · ${arpNotes.length} notes`;
  ['arp-status','arp-status2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.innerHTML=txt; });
 }
@@ -16410,10 +16429,12 @@ function toggleArp(){
  ['arp-toggle','arp-toggle-p'].forEach(id=>{ const b=document.getElementById(id); if(b){ b.textContent=arpOn?'Arp ON':'Arp OFF'; b.classList.toggle('active',arpOn); }});
  if(arpOn){
   if(!arpNotes.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc);
-  // Switching the arp on asks to hear it — the last chord played, per the
-  // help text — so it re-arms even if the transport is stopped.
-  arpSounding=true;
-  var masterRunning=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
+  // Arming, not sounding. Switching the arp on used to start it over a
+  // stopped transport — the one layer in the app that would play without the
+  // transport, which reads as the app having got stuck rather than as a
+  // feature. It lights now and waits for Play, the way Bass, Mel and Drums do.
+  var masterRunning=_transportRunning();
+  arpSounding=masterRunning;
   if(masterRunning){
    const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,clockStepSec());}
    arpIdx=0;arpDir=1;arpGateIdx=0;
