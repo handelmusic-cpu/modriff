@@ -5400,7 +5400,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.23</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.24</span>
     </div>
    </div>
   </div>
@@ -5418,7 +5418,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.23</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.24</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7295,7 +7295,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.23';
+const MODRIFF_VERSION = '3.9.24';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -27697,7 +27697,16 @@ setTimeout(function _auditDrumMap(){
     });
   }catch(e){}
 }, 1200);
-function _midiNow(){ return performance.now()-_midiRecStart; }
+// Everything in the recorder is on the AudioContext's clock, including "now".
+// performance.now() and ctx.currentTime are different oscillators and they
+// drift apart: measured across one take, the chord lane — the only one timed
+// off performance.now() — ran 119 ms away from the drums, which were timed off
+// the audio clock. Nothing was late; the two rulers disagreed. Mixing them in
+// one file guarantees that, however short the take.
+function _midiNow(){
+  var c=(typeof getCtx==='function') ? getCtx() : null;
+  return c ? _midiCtxNow(c.currentTime) : (performance.now()-_midiRecStart);
+}
 function _midiCtxNow(t){ return (t-_midiRecCtxEpoch)*1000; } // AudioContext time -> ms since rec start
 function _startMidiRecording(){
   _midiRecNotes=[]; _midiRecPendingChord=null; _midiRecActiveMel={};
@@ -28106,11 +28115,19 @@ function moRestorePrefs(){
     notes.unshift(bassMidi);
     return notes.map(function(n){ return Math.max(0,Math.min(127,Math.round(n))); });
   }
-  function logChordPlay(notes,pressure,sustain){
+  // atTime is playChord's sixth argument: the exact AudioContext time a
+  // scheduled chord is due. The taps below used to declare five parameters and
+  // drop it, so every chord in a recording was stamped with the moment the
+  // SCHEDULER RAN — up to SCHED_LEAD (80 ms) before the chord sounds, plus
+  // whatever the main thread was busy with. The bass, drum and arp lanes have
+  // always logged their scheduled time, which is why a take came out with those
+  // three sample-locked to each other and the chords wandering between them.
+  // The audio was never wrong: playChord has used atTime all along.
+  function logChordPlay(notes,pressure,sustain,atTime){
     if(!_midiRecOn) return;
     try{
       var vel=Math.round((pressure||0.8)*100)+20;
-      var tOn=_midiNow();
+      var tOn=(atTime!=null) ? _midiCtxNow(atTime) : _midiNow();
       _closePendingChord(tOn); // a new chord always cuts off whatever was sustaining before it
       if(sustain){
         _midiRecPendingChord={notes:notes,vel:vel,tOn:tOn};
@@ -28122,13 +28139,17 @@ function moRestorePrefs(){
   }
   // Both the recorder and MIDI out want the same note list, velocity and
   // sustain flag, so they are fed from one place.
-  function moChordPlay(notes,pressure,sustain){
+  function moChordPlay(notes,pressure,sustain,atTime){
     if(!moLive('chord')) return;
     // A new chord always cuts the last one, exactly as the audio engine does —
     // without this, held notes from four chords ago are still sounding.
     moChordRelease();
     var vel=Math.round((pressure||0.8)*100)+20;
-    notes.forEach(function(n){ moNoteOn('chord',n,vel,0); });
+    // _moWhen() is the same AudioContext-time conversion the bass, drum and arp
+    // lanes already send through, so an external synth gets the chord on the
+    // beat rather than whenever the scheduler happened to wake.
+    var _w=(atTime!=null)?atTime:0;
+    notes.forEach(function(n){ moNoteOn('chord',n,vel,_w); });
     if(sustain) _moHeldChord=notes.slice();
   }
   function moChordRelease(){
@@ -28138,19 +28159,19 @@ function moRestorePrefs(){
   }
   window._moChordRelease=moChordRelease;
   var _origPlayChord=playChord;
-  playChord=function(rootM,relIntvs,skipStop,pressure,sustain){
+  playChord=function(rootM,relIntvs,skipStop,pressure,sustain,atTime){
     var r=_origPlayChord.apply(this,arguments);
     var _n=chordEventNotes(rootM,relIntvs,rootM-12);
-    logChordPlay(_n,pressure,sustain);
-    moChordPlay(_n,pressure,sustain);
+    logChordPlay(_n,pressure,sustain,atTime);
+    moChordPlay(_n,pressure,sustain,atTime);
     return r;
   };
   var _origPlaySlashChord=playSlashChord;
-  playSlashChord=function(rootM,relIntvs,bassNote,pressure,sustain){
+  playSlashChord=function(rootM,relIntvs,bassNote,pressure,sustain,atTime){
     var r=_origPlaySlashChord.apply(this,arguments);
     var _n=chordEventNotes(rootM,relIntvs,bassNote);
-    logChordPlay(_n,pressure,sustain);
-    moChordPlay(_n,pressure,sustain);
+    logChordPlay(_n,pressure,sustain,atTime);
+    moChordPlay(_n,pressure,sustain,atTime);
     return r;
   };
   var _origStopAll=stopAll;
