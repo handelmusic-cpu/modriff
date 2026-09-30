@@ -170,3 +170,43 @@ synthesized version if the fetch fails, so the kit is never silent.
 
 Track names map to standard GM percussion notes, so an exported MIDI file lands
 on the right pads in Ableton Live, Battery or any GM kit without remapping.
+
+---
+
+## Fingering charts — flute and clarinet
+
+Not samples, but the same question applies: where did the data come from, and
+why should anyone believe it?
+
+The flute and clarinet charts in `index.html` (`FLUTE_FING`, `CLAR_FING`) come
+from **[@pepperhorn/fingering-components](https://github.com/pepperhorn/fingering-components)**
+(MIT, © Shaun Evans), which publishes woodwind fingerings as plain JSON. Its
+flute chart is standard Boehm, written C4–C7; its clarinet is a 17-key Boehm
+maker's chart, written E3–A6. Both are re-encoded here into the compact form
+the app keeps inline — the app is one file, so a runtime dependency was not an
+option — with the key names preserved.
+
+These two instruments shipped the written note and no chart at all for a long
+time, deliberately: a fingering chart that is *wrong* is worse than no chart,
+because someone learning takes it on trust and drills the mistake. So the data
+was audited before it was brought in, on the properties a real chart must have
+and a mistyped one would not:
+
+- chromatic and complete over the stated range — no gaps, no duplicate notes;
+- every flute note E4–C♯5 repeats **unchanged** an octave up, because the second
+  register is the first one overblown;
+- every clarinet clarion note is its chalumeau fingering **plus the register
+  key** a twelfth below — twelve of twelve;
+- no register key anywhere in the chalumeau;
+- in the bottom register, going up a semitone never covers *more* holes;
+- landmark notes checked by hand: flute low C on both foot keys, D on all six
+  with no pinky, C♯5 with everything off; clarinet written G3 on all six, throat
+  B♭ on the register and A keys with the thumb hole open.
+
+One thing the audit found and the app does not hide: above the clarion, a single
+clarinet fingering speaks more than one partial — D♯6 and G♯6 share their short
+fingering here — which is why each of those carries its long alternate in the
+panel.
+
+The saxophone table above them is older and hand-written, and carries no such
+citation. It covers written B♭3–F6 and has not been re-sourced.
