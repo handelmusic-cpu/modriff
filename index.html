@@ -240,13 +240,22 @@ input, textarea, [contenteditable]:not([contenteditable="false"]),
  border-top:1px solid var(--border2);
 }
 .tab-btn {
- flex:1; padding:9px 2px 8px;
+ /* One line, no glyph. The emoji above each label was 23px of a 56px button —
+    on a 568px phone that is 4% of the screen spent on five pictures that say
+    nothing the word under them does not already say, and the Play tab's
+    surfaces were being cut off at the bottom. Dropping them takes the bar from
+    57px to 38px.
+    The padding is not simply the old 9/8: with the glyph gone the label IS the
+    tab, so it gets a little more size and a little more room rather than
+    collapsing the bar to 31px. 38px across a 72px-wide button is a target a
+    thumb finds; 31px with a 9px label is not. */
+ flex:1; padding:11px 2px 10px;
  background:none; border:none;
  /* Inactive tabs used to be --muted, which on this background is barely
     legible. --text at 78% keeps the active tab clearly dominant while
     leaving the others actually readable. */
  color:color-mix(in srgb, var(--text) 78%, transparent);
- font-family:'Outfit',sans-serif; font-size:.56rem;
+ font-family:'Outfit',sans-serif; font-size:.62rem;
  letter-spacing:.06em; text-transform:uppercase;
  cursor:pointer; transition:color .15s, background .15s;
  display:flex; flex-direction:column; align-items:center; gap:2px;
@@ -254,7 +263,6 @@ input, textarea, [contenteditable]:not([contenteditable="false"]),
  font-weight:600; position:relative; min-width:0;
  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
 }
-.tab-btn .tab-icon { font-size:.95rem; transition:filter .2s; }
 /* Each tab keeps one signal color — pulled from the same key-relative
    palette the chord grid already uses (--pb/--pv/--pr/--pg/--po) — so the
    dock reads as a legend instead of six identical grey labels, and still
@@ -288,14 +296,17 @@ input, textarea, [contenteditable]:not([contenteditable="false"]),
  pointer-events:none;
 }
 /* Play tab breathes when something is actually sounding, so the dock
-   reflects state instead of looking identical whether silent or playing. */
+   reflects state instead of looking identical whether silent or playing.
+   This used to animate a drop-shadow on the tab's emoji. With the emoji gone
+   the signal would have gone with it, so it is a text-shadow on the label
+   instead — the same pulse, on the thing that is still there. */
 @keyframes tabNowPlaying {
- 0%,100% { filter:drop-shadow(0 0 0 transparent); }
- 50%     { filter:drop-shadow(0 0 6px var(--tab-c, var(--pg))); }
+ 0%,100% { text-shadow:none; }
+ 50%     { text-shadow:0 0 7px var(--tab-c, var(--pg)); }
 }
-.tab-btn.nav-playing .tab-icon { animation:tabNowPlaying 1.6s ease-in-out infinite; }
+.tab-btn.nav-playing { animation:tabNowPlaying 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
- .tab-btn.nav-playing .tab-icon { animation:none; }
+ .tab-btn.nav-playing { animation:none; }
 }
 /* Fallback for engines without color-mix */
 @supports not (color: color-mix(in srgb, red, blue)) {
@@ -712,6 +723,19 @@ body.mode-basic #modfx-panel > #fx-motion   { order:4; flex:1 1 100%; min-width:
  body.mode-basic .key-strip { margin-bottom:4px !important; margin-top:2px !important; }
  body.mode-basic #touchmod-bar { margin-bottom:0; }
 }
+/* The shortest screen anyone still plays this on — an SE 1 or a 5s at 320x568.
+   After the degree editors moved to Studio and the tab bar lost its emoji this
+   was 13px short of fitting the pad, which is close enough to be worth one
+   more step rather than leaving the one surface you sweep half off the screen.
+   The 13px comes off the pad's floor and the two surface captions, NOT off
+   anything you tap: the melody keys stay at the 48px floor, because a 44px
+   finger starts missing below that, and the pad is a surface you drag across
+   rather than a target you hit, so 76px still works. */
+@media (max-height: 600px) {
+ body.mode-basic .fx-padwrap { height:clamp(76px, 13vh, 200px); }
+ body.mode-basic .pf-surface-lbl { margin:0; }
+ body.mode-basic .key-strip { margin-bottom:2px !important; margin-top:0 !important; }
+}
 
 /* ── One column, every width ──
    Flattening the panels took away the boxes that had been aligning the page,
@@ -912,6 +936,26 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
  font-family:'Outfit',sans-serif; font-size:.6rem;
 }
 .cp-item:hover { background:rgba(255,255,255,.05); }
+/* The mode menu carries modes AND layouts now, so it needs to say which is
+   which. A label, not a button: nothing here is tappable. */
+.cp-sect { padding:7px 8px 3px; font-size:.44rem; letter-spacing:.1em;
+ text-transform:uppercase; color:var(--muted); font-weight:600;
+ border-top:1px solid var(--border); margin-top:4px; }
+.cp-sect:first-child { border-top:0; margin-top:0; }
+/* The two editors were built for Play's 640px column and sat in rows that did
+   not need to wrap. Studio's pane is narrower, and without this the preset
+   rows run off the right edge — "Match strip" read as "MATCH STR" and the
+   catalogs as "DIAT 0/7". They are the same rows, so they wrap here rather
+   than being rebuilt narrower. */
+#layout-host-chords .tg,
+#layout-host-strip .tg,
+#layout-host-chords .chordpick-row { flex-wrap:wrap; }
+#layout-host-chords .chordpick,
+#layout-host-chords .chordpick > .snd-pick-btn { max-width:100%; }
+/* The degree rows are twelve fixed cells; let them share the width evenly
+   rather than letting the wider labels (♭VII, ♯IV) push the row over. */
+#layout-host-chords .cp-deg-row .tb,
+#layout-host-strip #mel-scale-row .tb { flex:1 1 auto; min-width:0; }
 .cp-box {
  width:14px; height:14px; flex:none; border-radius:3px;
  border:1px solid var(--border2); background:transparent;
@@ -5260,23 +5304,23 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 <nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
  <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
    role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">⚙</span>Settings
+ Settings
  </button>
  <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')"
    role="tab" aria-selected="false" aria-controls="page-songs" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">📄</span>Songs
+ Songs
  </button>
  <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
    role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">🎚</span>Mix
+ Mix
  </button>
  <button class="tab-btn" id="tab-accomp" onclick="switchTab('accomp')"
    role="tab" aria-selected="false" aria-controls="page-accomp" tabindex="-1">
- <span class="tab-icon" aria-hidden="true">🎸</span>Accomp
+ Accomp
  </button>
  <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')"
    role="tab" aria-selected="true" aria-controls="page-perform">
- <span class="tab-icon" aria-hidden="true">🎹</span>Play
+ Play
  </button>
  <div class="tab-led" id="tab-led" aria-hidden="true"></div>
 </nav>
@@ -5534,7 +5578,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.31</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.32</span>
     </div>
    </div>
   </div>
@@ -5552,7 +5596,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.31</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.32</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6527,6 +6571,44 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   </div>
 
   <div class="set-pane" id="set-pane-playing" style="display:none">
+
+  <!-- Scales & layouts.
+       Which roots the chord grid offers and which notes the strip offers are
+       two twelve-button editors. They used to live on Play, as disclosures
+       under the surfaces they govern, which read well — they were right next
+       to the thing they changed — but Play is the screen you perform on and
+       they are the screen you set up on. Shut they cost 33px of it; open, 152.
+       Deciding your scale is something you do once and then play against, so
+       it belongs here, and Play keeps only the things you touch while playing.
+       The two editors themselves are MOVED, not copied: layoutEditorsMount()
+       relocates the same nodes, so every id, every cpPicks write and the whole
+       of renderChords keeps working, and there is still one of each. -->
+  <div class="settings-section" id="ss-layouts">
+   <div class="ss-hdr open" onclick="toggleSS('layouts')">
+    <span>▶ Scales &amp; layouts</span>
+    <div class="ss-preview" id="ss-layouts-preview"></div>
+    <span class="ss-arrow">›</span>
+   </div>
+   <div class="ss-body open" id="ss-layouts-body">
+    <div class="ss-scope">Chords <b>which roots the grid offers</b></div>
+    <div id="layout-host-chords"></div>
+    <div class="ss-scope">Melody <b>which notes the strip offers</b></div>
+    <div id="layout-host-strip"></div>
+    <!-- Save what you built, so it is one pick on Play afterwards. -->
+    <div class="ss-scope">Your setups <b>saved, and listed in the mode menu on Play</b></div>
+    <div class="row" style="gap:6px;flex-wrap:wrap">
+     <input type="text" id="layout-name" maxlength="28" placeholder="Name this setup"
+            style="flex:1 1 150px;min-width:0" aria-label="Name for this scale setup">
+     <button class="tb" id="layout-save" onclick="layoutSaveCurrent()"
+       title="Stores the grid and the strip exactly as they are now. It appears in the mode dropdown on Play.">✚ Save</button>
+    </div>
+    <div class="tg" id="layout-list" style="flex-wrap:wrap;margin-top:6px"></div>
+    <div class="ss-note" id="layout-empty" style="font-size:.42rem;color:var(--muted);margin-top:4px">
+      Nothing saved yet. Set the grid and the strip above, name it, and it joins Major, Minor and the modes in the dropdown on Play.
+    </div>
+   </div>
+  </div>
+
   <!-- Playing — how the instrument behaves when you play it. These used to be
        mixed in with the theme switch under "Display & Logic", which named the
        one thing in it that was not a musical decision. -->
@@ -7242,23 +7324,19 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="bl-pico" onclick="mlShiftOct(1)">+</button>
    </div>
   </div>
-  <!-- Voice row — same instrument palette as chords/melody strip, and the same
-       row shape bass now uses. -->
+  <!-- Voice row. This used to be eight hardcoded buttons — sine, saw, square,
+       supersaw, piano, organ, rhodes, pad — with a label beside them to name
+       whatever ELSE had been picked from the Voices drawer, because the row
+       could not offer it. The comment here claimed "same instrument palette as
+       chords/melody strip" and it was not: of the twenty in MS_SHARED_VOICES it
+       had eight, and none of the sampled instruments. So the one part of the app
+       whose whole job is to play a written melody could not play it on the real
+       piano, the sax, the flute, the violin or either guitar.
+       Now it is the shared host, built from the one list and wrapped by
+       sndPickInit into the same dropdown the chords and the melody strip use. -->
   <div class="bl-voice-row" data-acrow="voice">
    <span class="ac-rowlbl">Voice:</span>
-   <div style="display:flex;gap:4px;flex-wrap:wrap">
-     <button class="bl-mopt" id="mlw-sine" onclick="setMlWave('sine')">Sine</button>
-     <button class="bl-mopt" id="mlw-saw" onclick="setMlWave('sawtooth')">Saw</button>
-     <button class="bl-mopt" id="mlw-sqr" onclick="setMlWave('square')">Sqr</button>
-     <button class="bl-mopt" id="mlw-ssaw" onclick="setMlWave('supersaw')">S·Saw</button>
-     <button class="bl-mopt active" id="mlw-piano" onclick="setMlWave('piano')">Piano</button>
-     <button class="bl-mopt" id="mlw-organ" onclick="setMlWave('organ')">Organ</button>
-     <button class="bl-mopt" id="mlw-rhodes" onclick="setMlWave('rhodes')">Rhodes</button>
-     <button class="bl-mopt" id="mlw-pad" onclick="setMlWave('pad')">Pad</button>
-   </div>
-   <!-- Covers any voice picked via the Voices drawer that isn't one of the
-        eight quick buttons above (vibes, modsynth, ...). -->
-   <span class="bl-wave-current" id="ml-wave-current"></span>
+   <div class="tg" id="mlvoice-settings" style="flex-wrap:wrap"></div>
    <button class="bl-mopt smp-edit-btn" data-smppart="melgen" style="display:none" onclick="smpOpenVoice('melgen')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
   </div>
   <!-- The synth voices' filter, in the same slot as the bass's Filter row. -->
@@ -7458,7 +7536,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.31';
+const MODRIFF_VERSION = '3.9.32';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -17909,6 +17987,13 @@ function buildVoicePickers(){
  mk('sb-voices','wave', wave, setWave);
  mk('bw-voices','wave', wave, setWave);
  mk('aw-voices','arpwave', arpWave, setArpWave);
+ // The melody sequencer. Its wave lives inside the melody engine's IIFE, so
+ // it is read through the exposed snapshot and written through window — and
+ // the setter is looked up at click time, because this builder can run before
+ // that IIFE has assigned it.
+ let _mlCur='piano';
+ try{ _mlCur = window._mlCaptureState().wave || 'piano'; }catch(e){}
+ mk('mlvoice-settings','mlwave', _mlCur, v=>{ if(window.setMlWave) window.setMlWave(v); });
  if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
  if(typeof sndPickInit==='function') sndPickInit();
 }
@@ -17929,6 +18014,7 @@ const SND_PICK_HOSTS = [
  {host:'sb-voices', part:'chord'},
  {host:'melvoice-settings', part:'mel', tone:'mel-tone-body', toneLbl:'Shape it — filter, attack, release, reverb'},
  {host:'aw-voices', part:'arp'},
+ {host:'mlvoice-settings', part:'melgen'},
  {host:'melvoice-inline'}
 ];
 let _sndPickOpen = null;
@@ -18003,12 +18089,63 @@ function sndPickPlace(wrap){ popPlace(wrap, wrap._pop); }
 function mdPickSyncLabel(){
  const cur = document.getElementById('mode-pick-cur'); if(!cur) return;
  const md = (typeof MODES!=='undefined' && MODES[mode]) || null;
- cur.textContent = md ? md.label : 'Mode';
+ // With the two degree editors moved to Studio, this trigger is the only
+ // thing on Play that can report a non-mode scale. Twelve lit chords with
+ // "Major" beside them reads as a bug; "Major · All 12" reads as a setting.
+ const lay = (typeof layoutActiveName==='function') ? layoutActiveName() : null;
+ cur.textContent = (md ? md.label : 'Mode') + (lay ? ' \u00b7 ' + lay : '');
  const pop = document.getElementById('mode-pick-pop');
  if(pop) Array.prototype.forEach.call(pop.children, function(b){
-  b.classList.toggle('active', b.dataset.mode === mode);
+  // Only the mode entries follow `mode`; the layout entries below them are
+  // marked active by mdPickLayouts against what is actually on the grid.
+  if(b.dataset.mode!==undefined) b.classList.toggle('active', b.dataset.mode === mode);
  });
+ if(typeof mdPickLayouts==='function') mdPickLayouts();
 }
+// The layout entries, rebuilt rather than patched: there are only a handful
+// and they change whenever a setup is saved or deleted.
+function mdPickLayouts(){
+ const pop = document.getElementById('mode-pick-pop'); if(!pop) return;
+ Array.prototype.slice.call(pop.querySelectorAll('[data-layoutrow]'))
+   .forEach(function(n){ n.remove(); });
+ const head = document.createElement('div');
+ head.className = 'cp-sect'; head.dataset.layoutrow = '1';
+ head.textContent = 'Scale';
+ pop.appendChild(head);
+ const active = (typeof layoutActiveName==='function') ? layoutActiveName() : null;
+ const add = (label, title, isOn, fn) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'cp-item' + (isOn ? ' active' : '');
+  b.dataset.layoutrow = '1';
+  b.textContent = label; b.title = title;
+  b.addEventListener('click', function(e){
+   e.stopPropagation(); fn();
+   if(typeof mdPickSyncLabel==='function') mdPickSyncLabel();
+   cpClose();
+  });
+  pop.appendChild(b);
+  return b;
+ };
+ add("The mode's own notes", 'Back to the seven this mode is built from, on the grid and on the strip',
+     !active, function(){ layoutApply({grid:[], strip:null}); });
+ add('All 12 — chromatic', 'A chord on all twelve roots and all twelve notes on the strip. Nothing is out of key, because the key stops deciding.',
+     active==='All 12', function(){
+      layoutApply({grid:[0,1,2,3,4,5,6,7,8,9,10,11], strip:[0,1,2,3,4,5,6,7,8,9,10,11]});
+     });
+ (typeof layoutsLoad==='function' ? layoutsLoad() : []).forEach(function(l){
+  add(l.name, 'Your setup — ' + (l.grid||[]).length + ' chord roots, '
+      + (l.strip ? l.strip.length + ' strip notes' : "the mode's own notes on the strip"),
+      active===l.name, function(){ layoutApply(l); });
+ });
+ const foot = document.createElement('div');
+ foot.className = 'cp-sect'; foot.dataset.layoutrow = '1';
+ foot.style.borderTop = '0'; foot.style.textTransform = 'none';
+ foot.style.letterSpacing = '0';
+ foot.textContent = 'Build and save your own in Studio \u203a Logic \u203a Scales & layouts';
+ pop.appendChild(foot);
+}
+window.mdPickLayouts = mdPickLayouts;
+
 function mdPickInit(){
  const strip = document.querySelector('.key-strip'); if(!strip) return;
  if(document.getElementById('mode-pick')) return;
@@ -18025,6 +18162,9 @@ function mdPickInit(){
 
  const pop = document.createElement('div');
  pop.className = 'chordpick-pop'; pop.id = 'mode-pick-pop';
+ const mhead = document.createElement('div');
+ mhead.className = 'cp-sect'; mhead.textContent = 'Mode';
+ pop.appendChild(mhead);
  Object.keys(MODES).forEach(function(k){
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'cp-item'; b.dataset.mode = k;
@@ -18164,6 +18304,8 @@ function sndPickInit(){
  // After the pickers: this reads where sndPickInit just put each tone body,
  // so it has to run once that has happened.
  if(typeof pfMountToneBodies==='function') pfMountToneBodies();
+ // Before mdPickInit, so the saved setups exist when the menu first builds.
+ if(typeof layoutEditorsMount==='function') layoutEditorsMount();
  if(typeof mdPickInit==='function') mdPickInit();
  if(typeof smpEditSync==='function') smpEditSync();
 }
@@ -19476,6 +19618,141 @@ function syncMelScaleUI(){
  });
 }
 window.syncMelScaleUI = syncMelScaleUI;
+
+// ── Scale setups ─────────────────────────────────────────────────────────
+// A "layout" is the pair of decisions above: which of the twelve roots the
+// chord grid offers, and which of the twelve notes the strip offers. They stay
+// two separate decisions — you can play a blues scale over three chords, and
+// nothing here links them — but you make them together and you want them back
+// together, so one saved setup carries both.
+//
+// Stored as pitch classes from the key root, exactly as the two editors think
+// of them, which is why a setup survives a transpose: it is "the flat seventh",
+// not "B flat".
+//
+// Placed down here rather than beside the mode dropdown that lists them,
+// because it reads melScaleSet and calls melScaleSet_, both of which are
+// declared above this line and neither of which exists yet further up.
+function layoutSnapshot(){
+ var grid=[];
+ for(var pc=0; pc<12; pc++) if(typeof cpDegOn==='function' && cpDegOn(pc)) grid.push(pc);
+ return { grid: grid, strip: melScaleSet ? melScaleSet.slice() : null };
+}
+function layoutApply(l){
+ if(!l) return;
+ // The grid back to the mode's own seven first, so applying a setup means the
+ // same thing whatever was on before it — the same reason cpDegPreset does.
+ if(typeof cpDegPreset==='function') cpDegPreset('mode');
+ (l.grid||[]).forEach(function(pc){
+  if(typeof cpDegOn==='function' && !cpDegOn(pc) && typeof cpToggle==='function'
+     && typeof cpDegChord==='function') cpToggle(cpDegChord(pc));
+ });
+ melScaleSet_(l.strip && l.strip.length ? l.strip.slice() : null);
+ if(typeof mdPickSyncLabel==='function') mdPickSyncLabel();
+}
+var LAYOUT_KEY='modo-layouts';
+function layoutsLoad(){
+ try{
+  var a=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'[]');
+  return Array.isArray(a) ? a.filter(function(l){ return l && l.name; }) : [];
+ }catch(e){ return []; }
+}
+function layoutsStore(a){
+ try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(a)); }catch(e){}
+ layoutRenderList();
+ if(typeof mdPickLayouts==='function') mdPickLayouts();
+}
+function layoutSaveCurrent(){
+ var inp=document.getElementById('layout-name');
+ var name=(inp && inp.value || '').trim();
+ if(!name){
+  if(typeof showToast==='function') showToast('Give the setup a name first');
+  if(inp) inp.focus();
+  return;
+ }
+ var a=layoutsLoad(), snap=layoutSnapshot();
+ // Same name overwrites rather than making a second entry with the same label,
+ // which would be unpickable in the dropdown.
+ var at=a.findIndex(function(l){ return l.name.toLowerCase()===name.toLowerCase(); });
+ var rec={ name:name, grid:snap.grid, strip:snap.strip };
+ if(at>=0) a[at]=rec; else a.push(rec);
+ layoutsStore(a);
+ if(inp) inp.value='';
+ if(typeof showToast==='function'){
+  showToast('Saved "'+name+'" — it is in the mode dropdown on Play'
+    + (at>=0 ? ' (replaced the old one)' : ''));
+ }
+}
+function layoutDelete(name){
+ var a=layoutsLoad().filter(function(l){ return l.name!==name; });
+ layoutsStore(a);
+ if(typeof showToast==='function') showToast('Deleted "'+name+'"');
+}
+function layoutRenderList(){
+ var host=document.getElementById('layout-list'); if(!host) return;
+ var a=layoutsLoad();
+ var empty=document.getElementById('layout-empty');
+ if(empty) empty.style.display = a.length ? 'none' : '';
+ host.innerHTML='';
+ a.forEach(function(l){
+  var b=document.createElement('button');
+  b.className='tb'; b.type='button';
+  b.textContent=l.name+'  ('+(l.grid||[]).length+'/'+(l.strip?l.strip.length:7)+')';
+  b.title='Apply this setup — '+(l.grid||[]).length+' chord roots, '
+        + (l.strip ? l.strip.length+' strip notes' : 'the mode\u2019s own notes on the strip');
+  b.addEventListener('click', function(){ layoutApply(l); });
+  var x=document.createElement('button');
+  x.className='tb'; x.type='button'; x.textContent='\u00d7';
+  x.style.marginLeft='-2px'; x.style.color='var(--muted)';
+  x.title='Delete "'+l.name+'"';
+  x.addEventListener('click', function(e){ e.stopPropagation(); layoutDelete(l.name); });
+  host.appendChild(b); host.appendChild(x);
+ });
+}
+window.layoutSaveCurrent = layoutSaveCurrent;
+window.layoutApply = layoutApply;
+window.layoutRenderList = layoutRenderList;
+
+// What the mode dropdown's trigger should say the scale is. With the editors
+// over in Studio, the dropdown is the only thing on Play that can tell you the
+// key has stopped deciding — so it has to say so, or twelve lit chords look
+// like a bug.
+function layoutActiveName(){
+ var snap=layoutSnapshot();
+ var chrGrid = snap.grid.length===12, chrStrip = !!(snap.strip && snap.strip.length===12);
+ if(chrGrid && chrStrip) return 'All 12';
+ var hit=layoutsLoad().find(function(l){
+  return (l.grid||[]).slice().sort().join()===snap.grid.slice().sort().join()
+      && (l.strip?l.strip.slice().sort().join():'') === (snap.strip?snap.strip.slice().sort().join():'');
+ });
+ if(hit) return hit.name;
+ // "Custom" only once something is actually off the mode: the grid carries the
+ // mode's own seven by construction, so seven and a null strip IS the mode.
+ if(snap.grid.length>7 || snap.strip) return 'Custom';
+ return null;
+}
+
+// Both editors move here from Play. The nodes are relocated rather than
+// rebuilt, so cpPicks, renderChords, syncMelScaleUI and every id they use are
+// untouched — there is still exactly one of each in the document.
+function layoutEditorsMount(){
+ var pairs=[['layout-host-chords','cp-deg-head','cp-deg-body'],
+            ['layout-host-strip','mel-scale-head','mel-scale-body']];
+ var moved=0;
+ pairs.forEach(function(t){
+  var host=document.getElementById(t[0]); if(!host) return;
+  [t[1],t[2]].forEach(function(id){
+   var el=document.getElementById(id);
+   if(el && el.parentNode!==host){ host.appendChild(el); moved++; }
+  });
+ });
+ // The markup ships this section open, and ssOpen starts empty — so without
+ // this the first tap on the header would set the flag true and leave it open.
+ if(typeof ssOpen==='object' && ssOpen) ssOpen.layouts=true;
+ layoutRenderList();
+ return moved;
+}
+window.layoutEditorsMount = layoutEditorsMount;
 (function(){
  try{
   var raw=localStorage.getItem('modo-mel-scale');
@@ -34920,13 +35197,14 @@ window.mlClear = function(){
 window.setMlWave = function(w){
   mlWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
-  var map = {sine:'mlw-sine', sawtooth:'mlw-saw', square:'mlw-sqr', supersaw:'mlw-ssaw', piano:'mlw-piano', organ:'mlw-organ', rhodes:'mlw-rhodes', pad:'mlw-pad'};
-  Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
-  var e = document.getElementById(map[w]); if(e) e.classList.add('active');
-  // Covers voices reached through the Voices drawer that aren't one of the
-  // quick buttons above — the label is the only indication then.
-  var cur=document.getElementById('ml-wave-current');
-  if(cur) cur.textContent = e ? '' : (typeof _sharedVoiceLabel==='function' ? _sharedVoiceLabel(w) : w);
+  // One sweep of the data attribute, the way every other voice row syncs.
+  // This was a map of eight element ids, which is why a voice outside those
+  // eight left every button unlit and needed a label beside the row to say
+  // what was actually playing. The dropdown's trigger reads the lit button, so
+  // there is nothing left to caption.
+  document.querySelectorAll('[data-mlwave]').forEach(function(b){
+    b.classList.toggle('active', b.dataset.mlwave===w);
+  });
   if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
 
