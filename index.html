@@ -1815,6 +1815,24 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
  margin-bottom:12px; gap:2px;
  background:var(--bg);
 }
+/* Docked above the tab bar. The inline version is a sticky header with a rule
+   under it and a 12px gap below; down here it is the opposite — a rule on top,
+   no gap, and nothing sticky, because the whole stack is already fixed. */
+.subnav-dock:empty { display:none; }
+.subnav-dock .subnav {
+ position:static; margin:0; border-bottom:0;
+ border-top:1px solid var(--border2);
+ max-width:none !important; padding:0 4px;
+}
+.subnav-dock .subnav[hidden] { display:none; }
+.subnav-dock .subnav::before { display:none; }
+.subnav-dock .subnav-btn { padding-top:7px; padding-bottom:7px; }
+/* The "Part" caption was being squeezed to zero width by the four buttons
+   sharing the row — rendered, measured at 0px, and invisible. Hidden on
+   purpose instead, because a row sitting directly above the section tabs does
+   not need to announce that it is a row of sub-tabs. It survives as the
+   group's accessible name, set when the row is docked. */
+.subnav-dock .subnav-lbl { display:none; }
 .subnav::before {
  content:''; position:absolute; inset:0; z-index:-1;
  background:linear-gradient(180deg, transparent 55%, rgba(255,255,255,.025) 100%);
@@ -5284,6 +5302,13 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 <body>
 
 <div class="top-stack" id="top-stack">
+<!-- Where a tab's own sub-tabs live: directly above the main tab bar, so all
+     the navigation in the app is in one place and under a thumb. Filled by
+     subnavDockMount(), which MOVES the real rows here rather than copying
+     them — every id, every LED and every setAccompMode handler is untouched.
+     Only the active tab's row is shown, and a tab without sub-tabs shows
+     nothing at all, so the dock costs the Play screen no height. -->
+<div class="subnav-dock" id="subnav-dock"></div>
 <!-- A real ARIA tablist. Left/Right/Home/End move between tabs while the bar
      has focus, which is the standard pattern and, more to the point, is what
      lets Tab go back to doing its own job — see the tabBarKey handler.
@@ -5569,7 +5594,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.36</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.37</span>
     </div>
    </div>
   </div>
@@ -5587,7 +5612,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.36</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.37</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7528,7 +7553,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.36';
+const MODRIFF_VERSION = '3.9.37';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -18298,6 +18323,13 @@ function sndPickInit(){
  if(typeof pfMountToneBodies==='function') pfMountToneBodies();
  // Before mdPickInit, so the saved setups exist when the menu first builds.
  if(typeof layoutEditorsMount==='function') layoutEditorsMount();
+ // The sub-tab rows move into the bottom stack here, and the row for whatever
+ // tab is already open is shown straight away.
+ if(typeof subnavDockMount==='function'){
+  subnavDockMount();
+  var _open=document.querySelector('.tab-page.active');
+  if(_open && typeof subnavDockSync==='function') subnavDockSync(_open.id.replace('page-',''));
+ }
  if(typeof mdPickInit==='function') mdPickInit();
  if(typeof smpEditSync==='function') smpEditSync();
 }
@@ -24918,6 +24950,39 @@ function transposeSong(semis){
 // ═══════════════════════════════════════
 // SWITCHTAB — updated for new structure
 // ═══════════════════════════════════════
+// The sub-tab rows for Accomp and Settings live in the bottom stack rather
+// than at the top of their own page. The top of a tall phone is the one place
+// a thumb cannot reach, and on Accomp the Part switcher is the control you
+// reach for most — it was pinned to the top of a 1467px page.
+//
+// Play keeps its own row inline: it is hidden in Live anyway, and in Studio it
+// sits with the surfaces it switches between.
+function subnavDockMount(){
+ var dock=document.getElementById('subnav-dock'); if(!dock) return;
+ ['bm-subnav','set-subnav'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(el && el.parentNode!==dock){
+   // The visible caption is hidden down here, so it becomes the group's name.
+   var lbl=el.querySelector('.subnav-lbl');
+   el.setAttribute('role','group');
+   el.setAttribute('aria-label', (lbl && lbl.textContent.trim()) || 'Section');
+   el.hidden=true; dock.appendChild(el);
+  }
+ });
+}
+// Which one belongs to the tab now open. A tab with no row shows none, and the
+// dock collapses to nothing rather than leaving a bar of empty chrome.
+var SUBNAV_FOR={accomp:'bm-subnav', build:'set-subnav'};
+function subnavDockSync(t){
+ var dock=document.getElementById('subnav-dock'); if(!dock) return;
+ var want=SUBNAV_FOR[t]||null;
+ Array.prototype.forEach.call(dock.children, function(el){ el.hidden = (el.id!==want); });
+ // The LED under the active sub-tab is positioned from a measurement, so it
+ // has to be told once the row it sits in is actually on screen.
+ if(want && typeof positionSubnavLed==='function'){
+  requestAnimationFrame(function(){ try{ positionSubnavLed(want); }catch(e){} });
+ }
+}
 function switchTab(t){
  // A falsy target (e.g. the onboarding tour's intro step, which wants to
  // show its card over whatever tab is already open) must be a no-op —
@@ -24933,6 +24998,7 @@ function switchTab(t){
  const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
  if(typeof syncTabRoving==='function') syncTabRoving();
+ subnavDockSync(t);
  if(t==='songs') renderSetlistPerform();
  // openGuide() builds this before switching; anything else reaching the page
  // would otherwise find it empty.
