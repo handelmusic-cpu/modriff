@@ -5583,7 +5583,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.33</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.34</span>
     </div>
    </div>
   </div>
@@ -5601,7 +5601,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.33</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.34</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7545,7 +7545,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.33';
+const MODRIFF_VERSION = '3.9.34';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -39766,6 +39766,26 @@ try{ setModTier(localStorage.getItem('modo-tier')||'pro'); }catch(e){ setModTier
 if('serviceWorker' in navigator && location.protocol!=='file:'){
  window.addEventListener('load', ()=>{
   navigator.serviceWorker.register('sw.js').catch(e=>console.warn('offline unavailable',e));
+ });
+ // The worker serves the cached shell first so the app opens at once, and
+ // fetches the current one behind it. When what it banks turns out to be a
+ // different build from the one running, that is worth saying out loud.
+ // Without this, a phone on a slow connection sits a version behind with no
+ // sign of it — the way this was found was a bug report about a control that
+ // had moved three releases earlier.
+ //
+ // Listening immediately rather than inside the load handler above: the
+ // message arrives whenever a 2MB fetch finishes, and there is no reason to
+ // assume that is after load.
+ navigator.serviceWorker.addEventListener('message', ev=>{
+  const d = ev && ev.data;
+  if(!d || d.type!=='modriff-shell' || !d.version) return;
+  if(d.version === MODRIFF_VERSION || window._mrUpdateShown) return;
+  window._mrUpdateShown = true;
+  // Long enough to read and reach for. It is not urgent — what you are running
+  // still works — but it is the only chance the app gets to mention it.
+  showToast('MōdRiff '+d.version+' is ready. You are running '+MODRIFF_VERSION+'.',
+            { actionLabel:'Reload', ms:30000, onAction:()=>location.reload() });
  });
 }
 
