@@ -5569,7 +5569,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.35</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.36</span>
     </div>
    </div>
   </div>
@@ -5587,7 +5587,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.35</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.36</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7528,7 +7528,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.35';
+const MODRIFF_VERSION = '3.9.36';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -28619,7 +28619,8 @@ var GM_DRUM_MAP={
   // that is a naming artifact of the standard, not what this kit puts there.)
   'Brush':40,      // brush strike — second snare pad
   'Swirl':39,      // sustained brush sweep — third snare pad
-  'Hat':44,        // Pedal Hi-Hat — the foot chick, not a stick hat
+  'Foot':44,       // Pedal Hi-Hat — the foot chick. 'Cl Hat' and 'Op Hat' in
+                   // this kit take 42 and 46 from the shared names above.
   'Bell':53,       // Ride Bell
   // Found by the audit below, both pre-existing: MōdKit's Crash was unmapped
   // and exported as Hand Clap, and IDM's Zapp and Glitch shared note 70.
@@ -30209,6 +30210,14 @@ function sqCym(t, vol, base, dur, opts){
   var hp=c.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=opts.hp||2600;
   var body=c.createGain(); body.gain.value=1;
   body.connect(hp); hp.connect(SQOUT()); _sqKill(body);
+  // Every mode runs through this one gain, so registering it is what makes a
+  // cymbal chokeable at all. It was never registered — sqTn, sqNs, sqModal and
+  // sqSample all do it, and this one did not — which meant nothing built with
+  // sqCym could ever be cut off. The jazz hat has carried a choke group since
+  // it was written and it has never once choked anything; the ping and the
+  // wash stopped, because those go through sqNs, and the modal body rang on
+  // underneath. An open hat lane is pointless without this.
+  if(_chokeCur) _chokeRegister(_chokeCur, body, null, t+dur);
   for(var i=0;i<partials;i++){
     var r=SQ_CYM_RATIOS[i];
     // Higher modes decay faster — the whole point. The exponent sets how
@@ -30587,10 +30596,21 @@ var SQM={
     // own cymbals. These are cut to sit right in the steady state instead:
     // ride −7 dB, bell −5.4 dB, hats −5.3 dB. Synth fallbacks move with them
     // so the balance holds whether or not the samples have loaded.
-    {n:'Hat',s:'HH',c:'#a8b8c8',play:function(t,v,ac,ps){
-      if(sqSample('hatpedal', t, v*(ac?1.15:1)*0.30, ps)) return;
-      sqCym(t, v*(ac?1.2:1)*0.19, 520*sqSemi(ps), 0.16,
-            {partials:6, damp:1.3, hp:5200, pingLvl:0.3, washLvl:0.05});
+    // This lane was the foot chick — GM 44, the sound of the pedal closing,
+    // which in this kit is what lands on 2 and 4 and nothing else. There was no
+    // stick hat in the kit at all, and hatclosed.mp3 was being downloaded on
+    // every launch and never played by anything. It is the closed hat now, and
+    // because it carries s:'CH' it chokes the hat group, so an open hat shuts
+    // the moment one lands.
+    //
+    // Renamed in place rather than reordered: a groove finds its lane by this
+    // short name, but a pattern you saved finds it by index, so inserting the
+    // open hat beside this one would have played your ride on it. The open hat
+    // and the foot are appended at the end instead.
+    {n:'Cl Hat',s:'CH',c:'#a8b8c8',play:function(t,v,ac,ps){
+      if(sqSample('hatclosed', t, v*(ac?1.2:1)*0.30, ps)) return;
+      sqCym(t, v*(ac?1.2:1)*0.19, 520*sqSemi(ps), 0.14,
+            {partials:6, damp:1.4, hp:5600, pingLvl:0.32, washLvl:0.04});
     }},
     {n:'Ride',s:'RD',c:'#e0b070',play:function(t,v,ac,ps){
       if(sqSample('ride', t, v*(ac?1.15:1)*0.38, ps)) return;
@@ -30601,6 +30621,23 @@ var SQM={
       if(sqSample('ridebell', t, v*(ac?1.15:1)*0.34, ps)) return;
       sqCym(t, v*(ac?1.3:1)*0.28, 640*sqSemi(ps), 1.5,
             {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
+    }},
+    // No sample for an open hat, so synthesized: the same cymbal left to ring,
+    // with the wash up and the damping down, because an open hat is mostly
+    // wash. s:'OH' puts it in the hat choke group WITHOUT choking — it rings
+    // until a closed hat or the foot lands on it, which is the articulation
+    // this whole lane exists for.
+    {n:'Op Hat',s:'OH',c:'#c8d8e8',play:function(t,v,ac,ps){
+      sqCym(t, v*(ac?1.15:1)*0.17, 500*sqSemi(ps), 0.9,
+            {partials:8, damp:0.9, hp:4200, pingLvl:0.22, washF:9000, washLvl:0.16});
+    }},
+    // The foot chick keeps its own lane rather than being replaced: it is a
+    // real jazz articulation, and hatpedal.mp3 is already downloaded. Closing
+    // the pedal shuts an open hat, so it chokes the group too.
+    {n:'Foot',s:'FT',c:'#8898a8',play:function(t,v,ac,ps){
+      if(sqSample('hatpedal', t, v*(ac?1.15:1)*0.28, ps)) return;
+      sqCym(t, v*(ac?1.15:1)*0.16, 520*sqSemi(ps), 0.12,
+            {partials:5, damp:1.6, hp:5000, pingLvl:0.25, washLvl:0.03});
     }}
   ]},
   'BRS':{label:'Brush',color:'#88aacc',tracks:[
@@ -30965,7 +31002,10 @@ function sqSd(){return 60/sqBpm()/4*(typeof sqRateMul!=='undefined'?sqRateMul:1)
 // chokes; an open hat only rings.
 function _trackChoke(track){
   var s = track && track.s;
-  if(s==='CH' || s==='HH' || s==='OH') return {group:'hat', chokes:(s!=='OH')};
+  // FT is the hi-hat pedal. Closing it shuts whatever the hat was doing, so it
+  // belongs in the group and it chokes — the one articulation an open hat lane
+  // is useless without.
+  if(s==='CH' || s==='HH' || s==='OH' || s==='FT') return {group:'hat', chokes:(s!=='OH')};
   return null;
 }
 
@@ -31002,22 +31042,17 @@ function _trackChoke(track){
 // off them and gave some of the level straight back. These are measured from
 // the result, not computed from the intent.
 var SQ_TRIM = {
-  '808':  {CH:0.285, OH:0.22,  CB:0.052},
-  '909':  {CH:0.385, OH:0.21,  RS:0.238},
-  '606':  {CY:0.13},
-  'MOD':  {CH:0.213, OH:0.169, CY:0.163},
-  'LIN':  {CH:4.10},
-  'IDM':  {MT:0.148, HH:5.10},
-  'JAZZ': {RD:0.64,  BL:0.43,  HH:0.61, RM:0.55},
-  'BRS':  {RD:0.21},
-  'PERC': {SH:3.55, TB:0.87, CG:0.89, CV:0.42, CB:0.152, TR:0.095, WB:0.37},
-  // The two new kits, measured the same way. Acoustic came out balanced
-  // everywhere except its cymbals, which is the same story as every other kit
-  // here. CR-78's bongos were the loudest thing in it by 11dB, and the box as
-  // a whole sat quiet enough that switching to it read as a level drop rather
-  // than a change of instrument, so its kick and snare come up a little.
-  'ACU':  {OH:0.71, RD:0.58, CY:0.86},
-  'CR78': {BD:1.38, SD:1.28, RS:0.61, CH:1.55, HB:0.39, LB:0.53}
+  '808':  {HT:0.645, CH:0.227, OH:0.132, CB:0.0263},
+  '909':  {RS:0.0915, CH:0.300, OH:0.128, HT:0.692, LT:1.14},
+  '606':  {BD:2.16,  CH:0.895, OH:0.488, T1:0.872, CY:0.0798},
+  'CR78': {BD:2.48,  RS:0.178, CH:1.58,  OH:0.741, HB:0.116, LB:0.163},
+  'MOD':  {LT:1.17,  HT:0.676, CH:0.164, OH:0.102, CY:0.0705},
+  'LIN':  {BD:4.00,  CH:3.50,  OH:0.514},
+  'IDM':  {BD:1.71,  HH:4.09,  MT:0.0781},
+  'ACU':  {BD:1.81,  HT:0.689, CH:0.672, OH:0.423, RD:0.279, CY:0.380},
+  'JAZZ': {BD:4.50,  TM:1.41,  CH:0.302, OH:0.669, FT:0.310, RD:0.329, BL:0.250},
+  'BRS':  {BD:2.35,  CH:0.862, OH:0.826, RD:0.117, TM:1.30},
+  'PERC': {SH:1.07, TB:0.322, CG:0.309, CL:0.543, CV:0.135, CB:0.0403, TR:0.0235, WB:0.121}
 };
 function sqTrim(track){
   var m = track && track._m, k = track && track.s;
