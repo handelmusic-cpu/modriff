@@ -48,6 +48,21 @@ self.addEventListener('activate', e => {
 const isImmutable = url =>
   /\/samples\/|\/icon-|\/og-card\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
 
+// What version did the copy we just banked turn out to be? The page knows what
+// IT is running, so it can decide whether the difference matters. Read it out of
+// the cache rather than trusting ETag or Last-Modified: not every host sends
+// them, and neither says anything about what actually changed.
+async function announceShell(cache) {
+  try {
+    const r = await cache.match('./index.html');
+    if (!r) return;
+    const m = (await r.text()).match(/MODRIFF_VERSION\s*=\s*'([^']+)'/);
+    if (!m) return;
+    const cs = await self.clients.matchAll({ type: 'window' });
+    cs.forEach(c => c.postMessage({ type: 'modriff-shell', version: m[1] }));
+  } catch (err) {}
+}
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -66,21 +81,49 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Network-first, but not network-at-any-cost. The shell is a 1.4 MB HTML
-  // file, and waiting for all of it before painting anything is the difference
-  // between an app that opens and an app that hangs — on a phone, on a bad
-  // connection, which is exactly where someone opens a groovebox. A plain
-  // network-first only reaches the cache when the request FAILS, so a slow
-  // network is worse than no network at all: an outright failure falls back in
-  // milliseconds, a crawling one keeps the screen blank for as long as it
-  // crawls.
+  // ── Navigations: the cached shell first, the network behind it ──────────
   //
-  // So the network still wins whenever it can answer promptly — a deploy
-  // reaches people on their next online launch, which is the whole point of
-  // network-first here and is unchanged. It just stops being allowed to hold
-  // the app hostage: past the deadline the cached copy is served, and the
-  // response still in flight is banked for next time.
-  const NET_DEADLINE = 1500;
+  // This used to race the network against a 1500ms deadline and serve the
+  // cache if the network lost. That was meant to stop a slow connection
+  // holding the app hostage, and it did — but it also meant that on a slow
+  // connection you ALWAYS lost the race, so you always got the cached copy and
+  // the fresh one was merely banked for next time. On a connection reliably
+  // slower than the deadline that is not "one launch behind, once": it is one
+  // launch behind forever, silently, because the next launch loses the race
+  // too and serves the copy banked the time before.
+  //
+  // Measured: the shell is 2.1 MB, about 665 KB gzipped, which on a mediocre
+  // LTE cell is comfortably past 1500ms — and it grows with every release, so
+  // the deadline was going to be lost by more people over time, not fewer. It
+  // surfaced as a bug report about a control that had moved three releases
+  // earlier, with the giveaway sitting in the screenshot: a tab bar whose
+  // icons had been removed in the version the reporter could not see.
+  //
+  // So: serve the cache at once when it is warm, which is what the deadline
+  // was protecting; always revalidate behind it; and when the copy that lands
+  // is a different build, SAY SO. A stale app you are told about is a
+  // different thing from a stale app you are not.
+  if (req.mode === 'navigate') {
+    e.respondWith((async () => {
+      const cache = await caches.open(SHELL);
+      const hit = await cache.match('./index.html');
+      const bank = fetch(req).then(async res => {
+        if (res.ok) {
+          await cache.put('./index.html', res.clone());
+          // Only worth announcing when something was already being served from
+          // the cache — on a first visit the fresh copy IS what is running.
+          if (hit) await announceShell(cache);
+        }
+        return res;
+      });
+      e.waitUntil(bank.catch(() => {}));
+      if (hit) return hit;
+      return bank.catch(() => cache.match('./index.html').then(h => h || Response.error()));
+    })());
+    return;
+  }
+
+  // Everything else of ours stays network-first with a cache fallback.
   const fromNet = fetch(req).then(res => {
     if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
     return res;
@@ -89,19 +132,5 @@ self.addEventListener('fetch', e => {
   // the browser's dinosaur.
   const cached = () => caches.match(req).then(hit =>
     hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined));
-  const netThenCache = () => fromNet.catch(() => cached().then(hit => hit || Response.error()));
-
-  // Only a navigation is worth racing. It is the request a person is actually
-  // waiting on, and the only one where a slightly stale answer beats a late
-  // one; everything else keeps plain network-first. A cache miss falls back to
-  // whatever the network eventually says, so racing can never make a first
-  // visit worse.
-  e.respondWith(
-    req.mode !== 'navigate' ? netThenCache() : Promise.race([
-      netThenCache(),
-      new Promise(resolve => setTimeout(resolve, NET_DEADLINE))
-        .then(() => cached())
-        .then(hit => hit || netThenCache())
-    ])
-  );
+  e.respondWith(fromNet.catch(() => cached().then(hit => hit || Response.error())));
 });
