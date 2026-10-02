@@ -5594,7 +5594,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.42</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.43</span>
     </div>
    </div>
   </div>
@@ -5612,7 +5612,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.42</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.43</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7570,7 +7570,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.42';
+const MODRIFF_VERSION = '3.9.43';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -18133,6 +18133,14 @@ function renderChords(){
 // CONTROLS
 // ═══════════════════════════════════════
 function setMode(m){
+ // Four paths reach the mode without a button — the opening seed, a setlist
+ // song, a jazz standard and a restored setup — and a shared link is a fifth.
+ // Hiding the buttons stops none of them, which is why the tier is refused
+ // here as well as painted there.
+ if(typeof freeAllowsMode==='function' && !freeAllowsMode(m)){
+  freeBlocked((MODES[m]||{}).label || 'That scale');
+  return;
+ }
  mode=m;
  // The roll shades in-key rows, so a mode change has to repaint it.
  if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
@@ -19075,6 +19083,7 @@ function _rndModePool(){
  // Expanded into a weighted bag so _rndPick stays a plain uniform draw.
  const bag=[];
  Object.keys(MODES).forEach(function(m){
+  if(typeof freeAllowsMode==='function' && !freeAllowsMode(m)) return;
   const w = RND_MODE_WEIGHTS[m] != null ? RND_MODE_WEIGHTS[m] : 8;
   for(let i=0;i<w;i++) bag.push(m);
  });
@@ -27824,10 +27833,16 @@ document.addEventListener('keydown', e => {
  e.preventDefault();
  if(e.code==='ArrowUp'){ transposeBy(1); return; }
  if(e.code==='ArrowDown'){ transposeBy(-1); return; }
- const curIdx = MODE_CYCLE_ORDER.indexOf(mode);
  const dir = e.code==='ArrowRight' ? 1 : -1;
- const nextIdx = ((curIdx<0?0:curIdx)+dir+MODE_CYCLE_ORDER.length)%MODE_CYCLE_ORDER.length;
- setMode(MODE_CYCLE_ORDER[nextIdx]);
+ let idx = MODE_CYCLE_ORDER.indexOf(mode); if(idx<0) idx=0;
+ // Step over anything this tier cannot have, rather than setMode refusing and
+ // the key appearing to do nothing. Bounded by the list length, so a tier that
+ // allowed none of them would stop rather than spin.
+ for(let n=0;n<MODE_CYCLE_ORDER.length;n++){
+  idx = (idx+dir+MODE_CYCLE_ORDER.length)%MODE_CYCLE_ORDER.length;
+  const cand = MODE_CYCLE_ORDER[idx];
+  if(typeof freeAllowsMode!=='function' || freeAllowsMode(cand)){ setMode(cand); break; }
+ }
 });
 
 // ═══════════════════════════════════════
@@ -40011,6 +40026,14 @@ const FREE_LIMITS = {
   // whole pitch is the sound; a free tier that only has synth voices sells
   // the wrong first impression.
   freeVoices:   ['pianoreal','vibes'],
+  // The seven church modes — Ionian through Locrian, major and minor among
+  // them. That is one COMPLETE system: every rotation of the same parent
+  // scale, so free is still a whole modal instrument and "every part, always
+  // in key" still means what it says. Pro adds the other harmonic worlds,
+  // which are different systems rather than more of this one: harmonic
+  // minor's raised seventh, Hijaz's augmented second, the pentatonics' five
+  // notes, the blues ♭5.
+  freeModes:    ['major','minor','dorian','phrygian','lydian','mixolydian','locrian'],
   sampler:      false,   // recording/importing your OWN clips
   modsynth:     false,   // sound design, as opposed to picking a sound
   gridEditors:  false,   // "Chords on the grid", "Notes on the strip", saved layouts
@@ -40284,6 +40307,10 @@ function freeAllowsSteps(n){
  const l=_freeList('stepCounts'); if(modTier()!=='free'||!l) return true;
  return l.indexOf(+n)>=0;
 }
+function freeAllowsMode(m){
+ const l=_freeList('freeModes'); if(modTier()!=='free'||!l) return true;
+ return l.indexOf(String(m))>=0;
+}
 function freeAllowsVoice(w){
  if(modTier()!=='free') return true;
  if(w==='modsynth') return modAllows('modsynth');
@@ -40323,6 +40350,14 @@ function freeApplyLimits(){
   document.querySelectorAll('[data-blstyle]').forEach(b=>{
    b.classList.toggle('tier-locked', free && !freeAllowsStyle(b.dataset.blstyle));
   });
+  // Modes, in both rows. renderChords paints these from `mode`; this is the
+  // only thing that says whether they can be reached at all.
+  if(typeof MODES!=='undefined') Object.keys(MODES).forEach(m=>{
+   const lock = free && !freeAllowsMode(m);
+   ['bm-','songs-bm-'].forEach(pre=>{
+    const e=document.getElementById(pre+m); if(e) e.classList.toggle('tier-locked', lock);
+   });
+  });
   // Voices free cannot pick — the sampled ◆ ones outside freeVoices, plus
   // MōdSynth. Everywhere a voice is chosen, from one predicate.
   const sampled = (typeof SAMPLED_WAVES!=='undefined') ? Object.keys(SAMPLED_WAVES) : [];
@@ -40355,6 +40390,11 @@ function freeApplyLimits(){
    }
    if(!modAllows('stemExport') && typeof exportStems!=='undefined' && exportStems){
     try{ toggleStemExport(); }catch(e){}
+   }
+   // A pro mode left lit when the tier drops — from a setup, a link, or the
+   // dev switch — has to land somewhere free can actually be.
+   if(typeof mode!=='undefined' && !freeAllowsMode(mode)){
+    try{ mode = (_freeList('freeModes')||['major'])[0]; renderChords(); }catch(e){}
    }
    if(typeof wave!=='undefined' && !freeAllowsVoice(wave)){
     try{
