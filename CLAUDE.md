@@ -88,4 +88,24 @@ the code — usually by naming the bug the current shape prevents. Match that.
 A comment that restates the line below it is noise; one that says "this used
 to do X, which broke Y" is why the next person doesn't undo it.
 
-Don't put model names or session identifiers in anything that gets pushed.
+## Attribution on commits
+
+Never put a model name — "Opus", "Sonnet", a `claude-*` id — in a comment, a
+commit, a PR or anything else that gets pushed. It dates the work and says
+nothing useful about it. This has leaked once, at v3.9.15, because the default
+attribution Claude Code offers is `Co-Authored-By: Claude Opus 5`; the name is
+plain `Claude`.
+
+The two lines at the bottom of a commit are wanted, exactly as every commit
+since has them:
+
+```
+Claude-Session: https://claude.ai/code/session_<id>
+
+Co-authored-by: Claude <noreply@anthropic.com>
+```
+
+The session link is the only way back from a commit to the conversation that
+produced it, which is worth more than the noise of one extra line. An earlier
+version of this note banned "session identifiers" alongside model names, which
+read as forbidding that link while every commit in the history carried one.
