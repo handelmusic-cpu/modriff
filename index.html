@@ -5594,7 +5594,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.40</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v3.9.41</span>
     </div>
    </div>
   </div>
@@ -5612,7 +5612,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v3.9.40</div>
+ <div class="unlock-ver" id="unlock-ver">v3.9.41</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7570,7 +7570,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '3.9.40';
+const MODRIFF_VERSION = '3.9.41';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -17664,7 +17664,7 @@ function cpOpenVariant(chord){
  const box=document.createElement('div');
  box.className='dur-picker-box cp-var-box';
  const head = chord.label+' \u2014 '+nn((root+chord.semis)%12);
- const pro = (typeof modAllows!=='function') || modAllows('pro');
+ const pro = (typeof modAllows!=='function') || modAllows('chordExtensions');
  const exts = EXT_CATALOG.filter(e=>pro || !e.pro);
  box.innerHTML =
    '<div class="dur-picker-title">Pin a variant</div>'
@@ -17754,7 +17754,7 @@ function cpOpenBuilder(){
    +'display:flex;align-items:center;justify-content:center;padding:16px;';
  const box=document.createElement('div');
  box.className='dur-picker-box cp-var-box';
- const pro=(typeof modAllows!=='function') || modAllows('pro');
+ const pro=(typeof modAllows!=='function') || modAllows('chordExtensions');
  const exts=EXT_CATALOG.filter(e=>pro || !e.pro);
  box.innerHTML =
    '<div class="dur-picker-title">Build a chord</div>'
@@ -24872,7 +24872,12 @@ function setPerformMode(m){
  // latched, which is the user saying "keep going". Same call as switchTab.
  if(!showFx && !fxHold){ try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){} }
  if(fxp) fxp.style.display = showFx?'':'none';
- if(showFx){
+ // _fxReady, not typeof: boot reaches this through setViewMode long before the
+ // MōdFX module below has run, and every one of these four touches state that
+ // is still in its temporal dead zone — where typeof throws rather than
+ // guarding. Declining costs nothing, because this block runs again on the
+ // first real visit to the pane, by which point the module exists.
+ if(showFx && _fxReady){
   // Re-run every time: the drum bus may only have appeared since last visit.
   if(typeof fxInsertAll==='function') fxInsertAll();
   if(typeof fxBuildPanel==='function' && !document.getElementById('fx-pad')) fxBuildPanel();
@@ -37915,6 +37920,10 @@ window.fxSendsAPI = {
 };
 
 let fxPadX='cutoff', fxPadY='reverb';
+// Everything above this line is what fxBuildPanel needs; see _fxReady's use in
+// fxBuildPanel for why it is a var and why it is set here rather than declared
+// at the top of the file.
+var _fxReady = true;
 // Every channel, not just the drums. A pad that sweeps one part is a question
 // about routing before you have played anything; one that sweeps the whole mix
 // is an effect. The chooser lives on Mix for anyone who wants to narrow it.
@@ -39316,6 +39325,11 @@ function fxAxisMenu(which){
 }
 
 function fxBuildPanel(){
+ // Boot calls this through setViewMode → setPerformMode before any of the
+ // MōdFX state below exists, and reading fxPadX in its dead zone throws.
+ // Nothing is lost by declining: setPerformMode rebuilds the panel the moment
+ // the pane is actually opened, which is after this file has finished running.
+ if(!_fxReady) return;
  const host=document.getElementById('modfx-panel'); if(!host) return;
  host.innerHTML =
   '<div class="fx-head">'
@@ -39981,12 +39995,59 @@ const FREE_LIMITS = {
   arpRates:     ['8th','16th'],
   drumPresets:  6
 };
-let _modTier = 'pro';                       // 'free' | 'pro'
+// The entitlement is ASKED FOR, never stored. It used to be the string
+// localStorage['modo-tier'], which cannot hold a purchase for two reasons: a
+// line of devtools rewrites it, and — the one that would actually have cost
+// money — Safari's tracking prevention evicts site storage after about seven
+// days of non-use, so a customer who paid and came back a fortnight later
+// would have found their purchase gone, on the platform we are shipping to
+// first. The record belongs with whoever took the payment.
+//
+// So: one provider, hung on window.* because the call sites are thousands of
+// lines from here and some of them run before this does (see the temporal
+// dead zone note in CLAUDE.md). A wrapper replaces window.modBilling before
+// the app script runs; nothing below this line knows which one it got.
+//
+//   isPro()    synchronous, called on every render — must never block
+//   refresh()  re-ask the store; resolves to the new isPro()
+//   purchase() open the store sheet
+//   restore()  Apple REQUIRES this as a visible control (3.1.1)
+//   provider   'web' | 'ios' | 'android', for diagnostics
+//
+// The web provider below is the fallback and the one the browser build uses.
+// It grants Pro, because the browser app has always been the whole app and
+// taking features off it now would be a worse change than shipping a store
+// build that charges for them.
+var _modTier = 'pro';                       // 'free' | 'pro'; var, read from far away
 function modTier(){ return _modTier; }
-function setModTier(t){
-  _modTier = (t==='free') ? 'free' : 'pro';
+
+if(!window.modBilling){
+ window.modBilling = {
+  provider: 'web',
+  // Dev override, deliberately an in-memory flag rather than anything
+  // persisted: the point of this rewrite is that nothing on the device
+  // decides this. setModTier('free') in the console to see the free build.
+  _dev: null,
+  isPro: function(){ return this._dev == null ? true : this._dev === 'pro'; },
+  refresh: function(){ return Promise.resolve(this.isPro()); },
+  purchase: function(){
+    if(typeof showToast==='function') showToast('Purchases are only available in the App Store build');
+    return Promise.resolve(false);
+  },
+  restore: function(){
+    if(typeof showToast==='function') showToast('Purchases are only available in the App Store build');
+    return Promise.resolve(false);
+  }
+ };
+}
+
+// Paints whatever the provider last said. Separate from asking, so a provider
+// that answers slowly (a receipt check is a network call) never blocks a render.
+function _applyTier(){
+  var pro = true;
+  try{ pro = !!window.modBilling.isPro(); }catch(e){ pro = true; }
+  _modTier = pro ? 'pro' : 'free';
   document.body.classList.toggle('mode-free', _modTier==='free');
-  try{ localStorage.setItem('modo-tier', _modTier); }catch(e){}
   if(_modTier==='free' && performMode==='fx' && typeof setPerformMode==='function') setPerformMode('chords');
   // Basic stacks MōdFX in with the other playing surfaces, so whether it is on
   // screen at all is a tier question — and this is the first point in boot
@@ -39995,13 +40056,25 @@ function setModTier(t){
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
 }
+// What a wrapper calls after a purchase, a restore, or an entitlement change
+// it was pushed. Re-asks, then repaints every gated surface.
+window.modBillingChanged = function(){
+  try{ return Promise.resolve(window.modBilling.refresh()).then(function(){ _applyTier(); return _modTier; }); }
+  catch(e){ _applyTier(); return Promise.resolve(_modTier); }
+};
+// Kept as the console handle it has always been, now driving the dev override
+// rather than writing a tier anybody could forge.
+function setModTier(t){
+  try{ if(window.modBilling.provider==='web') window.modBilling._dev = (t==='free') ? 'free' : 'pro'; }catch(e){}
+  _applyTier();
+}
 function modAllows(feature){
   if(_modTier!=='free') return true;
   const v=FREE_LIMITS[feature];
   return v===undefined ? true : (v===true);
 }
 function fxIsAvailable(){ return modAllows('modfx'); }
-try{ setModTier(localStorage.getItem('modo-tier')||'pro'); }catch(e){ setModTier('pro'); }
+_applyTier();
 
 
 
