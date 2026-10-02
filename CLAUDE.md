@@ -81,6 +81,23 @@ surfaces.
 - `_slotExtSuffix(slot)` — how a chord's quality is spelled, everywhere a chord
   name is drawn.
 
+## The `modo-` storage keys are load-bearing
+
+Every saved preference, every autosave and the whole session restore live under
+`localStorage` keys prefixed `modo-` — 48 of them — plus a few older strata
+(`prism-theme`, `mv-theme`, `modriff-diag`). The app was called Modo once. It is
+not called that now, it is not going to be (Modo Hue was checked and is blocked
+on trademark), and the keys stay exactly as they are regardless.
+
+They are invisible to users and renaming them buys nothing. What it costs is
+every existing user's saved state: their setups, their setlist, their patterns,
+their theme, where they left off. A rename is a silent wipe that looks like a
+tidy-up in the diff and like data loss on the device.
+
+So: a `modo-` key is never renamed to match whatever the app is called. If a
+key ever genuinely has to move, it is a read-old-write-new migration, not a
+find-and-replace.
+
 ## Comments
 
 The codebase explains *why*, at length, wherever the reason isn't obvious from
