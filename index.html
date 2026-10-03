@@ -1167,6 +1167,8 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
  display:flex; align-items:center; justify-content:center;
  gap:8px; flex-wrap:wrap; margin-bottom:10px;
 }
+/* In a Live slot the key strip carries its own ⋯, at the far end. */
+.lv-slot > .key-strip > .lv-ctl { margin-left:auto; }
 .key-main {
  display:flex; align-items:center; gap:8px;
  background:var(--surf2); border:1px solid var(--border2);
@@ -1293,9 +1295,18 @@ body:not(.mode-basic) .mel-row2 > #touchmod-bar { flex:1 1 100%; }
  display:flex; align-items:center; gap:8px;
 }
 .chords-grid {
- display:grid; grid-template-columns:repeat(7,1fr);
+ display:grid; grid-template-columns:repeat(var(--chord-cols, 7), minmax(0, 1fr));
  gap:5px; width:100%; max-width:700px; margin-bottom:4px;
 }
+/* Eight to ten across (see chordGridFit): the same buttons, lettered a size
+   down so a 32px button on a phone still shows its whole name. */
+.chords-grid.dense { gap:4px; }
+.chords-grid.dense .btn-sev .sl-name { font-size:.44rem; }
+.chords-grid.dense .btn-sev .sl-qual { font-size:.38rem; letter-spacing:0; }
+.chords-grid.dense .cname { font-size:.62rem; }
+.chords-grid.dense .cnum { font-size:.48rem; }
+.chords-grid.dense .cqual { font-size:.42rem; letter-spacing:0; }
+.chords-grid.dense .btn-sev, .chords-grid.dense .btn-tri { padding-left:1px; padding-right:1px; }
 .chords-row {
  display:flex; flex-wrap:wrap; gap:5px;
  width:100%; max-width:700px; margin-bottom:4px;
@@ -12078,10 +12089,11 @@ function psPatAnim(){
 // borrows the real thing; the grids go back to Accomp — to the exact place they
 // came from, marked with a comment node — whenever Play stops being the Live
 // page you are looking at: another tab, or Studio.
-var LV_MAX = 4;
-var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq'];
-var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'MōdFX',
+var LV_MAX = 4;              // instruments; the key strip does not count
+var LV_ORDER = ['key','chords','melody','pads','fx','drums','bass','melseq'];
+var LV_NAME = {key:'Key', chords:'Chords', melody:'Melody', pads:'Sampler', fx:'MōdFX',
                drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid'};
+var LV_STD = ['key','chords','melody','fx'];
 var LV_GATE = {pads:'sampler', fx:'modfx'};
 // var: setPerformMode reads this during boot, long before this line runs in
 // file order would matter for a let. See CLAUDE.md.
@@ -12089,16 +12101,31 @@ var LV = { slots:null };
 (function(){
  var s = null;
  try{ s = JSON.parse(localStorage.getItem('modo-live-slots')||'null'); }catch(e){}
- if(Array.isArray(s)) s = s.filter(function(m,i){ return LV_NAME[m] && s.indexOf(m)===i; }).slice(0, LV_MAX);
+ if(Array.isArray(s)) s = lvClamp(s.filter(function(m,i){ return LV_NAME[m] && s.indexOf(m)===i; }));
  if(!s || !s.length){
   // The layout Live always had, with the pads where the first look put them
   // if they had been swapped in.
   var pads = false; try{ pads = (JSON.parse(localStorage.getItem('modo-ps')||'{}')||{}).slot==='pads'; }catch(e){}
-  s = ['chords', pads ? 'pads' : 'melody', 'fx'];
+  s = ['key', 'chords', pads ? 'pads' : 'melody', 'fx'];
+ }
+ // The key strip became a slot in v4.0.3. A layout saved before then has no
+ // 'key' in it, and that must not read as "taken off": it goes in once, at
+ // the top, where it always was — and after that it stays wherever it is put,
+ // including nowhere.
+ var seen = false; try{ seen = localStorage.getItem('modo-live-key')==='1'; }catch(e){}
+ if(!seen){
+  if(s.indexOf('key') < 0) s.unshift('key');
+  try{ localStorage.setItem('modo-live-key','1'); }catch(e){}
  }
  LV.slots = s;
 })();
 function lvSave(){ try{ localStorage.setItem('modo-live-slots', JSON.stringify(LV.slots)); }catch(e){} }
+// Up to four instruments, plus the key if it is on the page.
+function lvCount(s){ return (s||LV.slots).filter(function(m){ return m!=='key'; }).length; }
+function lvClamp(s){
+ var n=0;
+ return s.filter(function(m){ if(m==='key') return true; return ++n <= LV_MAX; });
+}
 function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
 function lvAllowed(m){ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g); }
 function lvActive(){
@@ -12129,6 +12156,7 @@ function lvNodes(m){
  else if(m==='drums') out = [lvLabel('drums'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
  else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
  else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
+ else if(m==='key') out = [q('#page-perform > .key-strip')];
  out = (out||[]).filter(Boolean);
  if(out.length) _lvNodes[m] = out;
  return out;
@@ -12186,12 +12214,12 @@ function lvMount(){
   cont.appendChild(slot);
  });
  // Instruments not in a slot are off the Live page, including their headings.
- ['chords','melody','pads','fx'].forEach(function(m){
+ ['key','chords','melody','pads','fx'].forEach(function(m){
   if(!lvHas(m) || !lvAllowed(m)) lvNodes(m).forEach(function(n){ n.classList.add('lv-off'); });
  });
- if(LV.slots.length < LV_MAX){
+ if(lvCount() < LV_MAX || !lvHas('key')){
   var add = document.createElement('button');
-  add.type = 'button'; add.className = 'lv-add'; add.textContent = '+ Add instrument';
+  add.type = 'button'; add.className = 'lv-add'; add.textContent = lvCount() < LV_MAX ? '+ Add instrument' : '+ Add the key';
   add.title = 'Up to four instruments on this page — any of them, in any order';
   add.addEventListener('click', function(){ lvAddMenu(add); });
   cont.appendChild(add);
@@ -12222,11 +12250,13 @@ function lvSlotMenu(i, anchor){
  LV_ORDER.forEach(function(m){
   if(m===cur) return;
   var j = LV.slots.indexOf(m);
+  // The key's slot cannot become a fifth instrument; it can swap with one.
+  if(cur==='key' && j<0 && lvCount()>=LV_MAX) return;
   items.push({ label: '⇄  '+LV_NAME[m] + (j>=0 ? '  (swap with slot '+(j+1)+')' : '') + (lvAllowed(m)?'':'  · Pro'),
                fn: function(){ lvPick(i, m); } });
  });
  // A way all the way back, whatever has been added, moved or swapped.
- items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(['chords','melody','fx']); } });
+ items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(LV_STD); } });
  gridClipMenu(anchor, 'Slot '+(i+1)+' · '+LV_NAME[cur], items);
 }
 // Things that have to happen once the instruments are where they will be.
@@ -12236,7 +12266,7 @@ function lvAfter(){
  try{ if(typeof msSyncHost==='function') msSyncHost(); }catch(e){}
 }
 function lvSet(slots){
- LV.slots = slots.slice(0, LV_MAX);
+ LV.slots = lvClamp(slots.slice());
  lvSave();
  if(typeof setPerformMode==='function') setPerformMode(typeof performMode!=='undefined' ? performMode : 'chords');
  else lvMount();
@@ -12263,11 +12293,15 @@ function lvPick(i, m){
  lvSet(s);
 }
 function lvAddMenu(anchor){
- var free = LV_ORDER.filter(function(m){ return !lvHas(m); });
+ var full = lvCount() >= LV_MAX;
+ var free = LV_ORDER.filter(function(m){ return !lvHas(m) && (m==='key' || !full); });
  var items = free.map(function(m){
-  return { label: LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'), fn: function(){ lvPick(LV.slots.length, m); } };
+  // The key goes back on top, where you would look for it; an instrument goes
+  // on the end.
+  return { label: LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'),
+           fn: function(){ if(m==='key') lvSet(['key'].concat(LV.slots)); else lvPick(LV.slots.length, m); } };
  });
- items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(['chords','melody','fx']); } });
+ items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(LV_STD); } });
  gridClipMenu(anchor, 'Add to the Live page', items);
 }
 window.lvMount = lvMount; window.lvSet = lvSet; window.lvHas = lvHas;
@@ -20327,18 +20361,36 @@ function cpBuild(){
 // The chosen chords as real pads — makeOutBtn, the same builder the Advanced
 // rows use, so they carry the 7th strip and the function colour rather than
 // being a lesser copy.
+//
+// In Live they join the key's own row instead, up to ten across: Live is one
+// screen of things to play, and a chord you added is one more of them, not a
+// second shelf under a heading. Studio keeps My Chords as its own row.
 function cpRenderUserRow(){
  const el=document.getElementById('chords-user');
  const wrap=document.getElementById('chords-user-wrap');
+ const dia=document.getElementById('chords-diatonic');
  if(!el||!wrap) return;
  const chosen=cpChosen();
- wrap.style.display = chosen.length ? '' : 'none';
+ const inRow=document.body.classList.contains('mode-basic') && !!dia;
+ wrap.style.display = (chosen.length && !inRow) ? '' : 'none';
  el.innerHTML='';
+ if(dia) dia.querySelectorAll('.cp-inrow').forEach(n=>n.remove());
  const rm=rootMidi();
  chosen.forEach(c=>{
-  el.appendChild(makeOutBtn(c.label, nn((root+c.semis)%12), c.type7, rm+c.semis, c.func,
-                            (c.ext||c.bass) ? {ext:c.ext, bass:c.bass} : null));
+  const b=makeOutBtn(c.label, nn((root+c.semis)%12), c.type7, rm+c.semis, c.func,
+                     (c.ext||c.bass) ? {ext:c.ext, bass:c.bass} : null);
+  if(inRow){ b.classList.add('cp-inrow'); dia.appendChild(b); } else el.appendChild(b);
  });
+ chordGridFit();
+}
+// As many columns as there are chords, from seven to ten; past ten the row
+// wraps at ten. Seven is the floor so a five-note scale keeps the same button
+// size rather than stretching five buttons across the whole width.
+function chordGridFit(){
+ const dia=document.getElementById('chords-diatonic'); if(!dia) return;
+ const n=dia.children.length, cols=Math.max(7, Math.min(10, n));
+ dia.style.setProperty('--chord-cols', String(cols));
+ dia.classList.toggle('dense', cols > 7);
 }
 // ── Chords on the grid: twelve roots ─────────────────────────────────────
 // The melody strip's scale picker, for chords. A degree is a pitch class from
@@ -40302,6 +40354,8 @@ function setViewMode(mode){
   if(typeof pfMountToneBodies==='function') pfMountToneBodies();
   if(typeof ftMountSheetExtras==='function') ftMountSheetExtras();
   if(typeof mdPickInit==='function'){ mdPickInit(); mdPickSyncLabel(); }
+  // My Chords sit in the key's row in Live and on their own row in Studio.
+  try{ if(typeof cpRenderUserRow==='function') cpRenderUserRow(); }catch(e){}
 }
 
 // Basic mode hides everything marked .advanced-only, and the MōdSynth editor
