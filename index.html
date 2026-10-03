@@ -5830,7 +5830,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.2</span>
     </div>
    </div>
   </div>
@@ -5848,7 +5848,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.2</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7818,7 +7818,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.1';
+const MODRIFF_VERSION = '4.0.2';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11272,6 +11272,14 @@ var _psBuilt = false;
 var PS_MODES = [['oneshot','One-shot','Plays to the end of the sample'],
                 ['gate','Gate','Plays while held'],
                 ['loop','Loop','Tap to start, tap again to stop']];
+// The Sampler channel's MōdFX settings, or null if MōdFX has not been set up
+// yet. try/catch, not typeof: fxSends is a `let` thirty thousand lines below,
+// and this is reached during boot — the Live page draws the pads when a slot
+// holds them — while that binding is still in its temporal dead zone, where
+// typeof throws. It did, at the top level of the script, and everything after
+// it never ran: with Pads in a Live slot, the app came up dead on the next
+// load. See CLAUDE.md.
+function psSends(){ try{ return (fxSends && fxSends.sampler) || null; }catch(e){ return null; } }
 function psEl(tag, cls, txt){ var e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 function psBtn(cls, txt, title, fn){
  var b=psEl('button', cls, txt); b.type='button';
@@ -11509,7 +11517,7 @@ function psRenderDeck(keepKnobs){
  document.querySelectorAll('#ps-panel [data-psmode]').forEach(function(b){ b.classList.toggle('active', b.dataset.psmode===ps.mode); b.disabled=!clip; });
  document.querySelectorAll('#ps-panel [data-pstog]').forEach(function(b){ var on=!!ps[b.dataset.pstog]; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); b.disabled=!clip; });
  document.querySelectorAll('#ps-panel [data-pschoke]').forEach(function(b){ b.classList.toggle('active', +b.dataset.pschoke===(ps.choke|0)); b.disabled=!clip; });
- var L=(typeof fxSends!=='undefined' && fxSends.sampler) ? fxSends.sampler : {};
+ var L=psSends() || {};
  document.querySelectorAll('#ps-panel [data-psfx]').forEach(function(b){
   var k=b.dataset.psfx, on = k==='filter' ? (L.lmode>0) : (L[k]>0.001);
   b.classList.toggle('active', !!on); b.setAttribute('aria-pressed', on?'true':'false');
@@ -11523,7 +11531,7 @@ function psRenderDeck(keepKnobs){
 // jump the moment you touched it.
 function psRenderKnobs(s){
  var deck=document.getElementById('ps-deck'); if(!deck) return;
- var L=(typeof fxSends!=='undefined' && fxSends.sampler) ? fxSends.sampler : {lcut:1,lres:0,ldrv:0};
+ var L=psSends() || {lcut:1,lres:0,ldrv:0};
  var has=!!(s&&s.id);
  var specs=[
   {lbl:'Level', v:has?Math.round((s.gain==null?1:s.gain)*100):100, min:0, max:200, def:100, dis:!has,
@@ -11579,7 +11587,7 @@ function psFilt(field, v){
  psRenderDeck(true);
 }
 function psFx(which){
- var L=(typeof fxSends!=='undefined' && fxSends.sampler) ? fxSends.sampler : null;
+ var L=psSends();
  if(!L) return;
  if(which==='filter'){
   if(typeof synthFilterSet==='function') synthFilterSet('sampler','lmode', L.lmode>0 ? 0 : 1);
@@ -11990,6 +11998,8 @@ function lvSlotMenu(i, anchor){
   items.push({ label: '⇄  '+LV_NAME[m] + (j>=0 ? '  (swap with slot '+(j+1)+')' : '') + (lvAllowed(m)?'':'  · Pro'),
                fn: function(){ lvPick(i, m); } });
  });
+ // A way all the way back, whatever has been added, moved or swapped.
+ items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(['chords','melody','fx']); } });
  gridClipMenu(anchor, 'Slot '+(i+1)+' · '+LV_NAME[cur], items);
 }
 // Things that have to happen once the instruments are where they will be.
@@ -12027,9 +12037,11 @@ function lvPick(i, m){
 }
 function lvAddMenu(anchor){
  var free = LV_ORDER.filter(function(m){ return !lvHas(m); });
- gridClipMenu(anchor, 'Add to the Live page', free.map(function(m){
+ var items = free.map(function(m){
   return { label: LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'), fn: function(){ lvPick(LV.slots.length, m); } };
- }));
+ });
+ items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(['chords','melody','fx']); } });
+ gridClipMenu(anchor, 'Add to the Live page', items);
 }
 window.lvMount = lvMount; window.lvSet = lvSet; window.lvHas = lvHas;
 
@@ -27052,7 +27064,9 @@ function setPerformMode(m){
  document.getElementById('pf-melody-panel').style.display = (lv ? lvHas('melody') : m==='melody')?'':'none';
  const _pp = document.getElementById('pf-pads-panel');
  if(_pp) _pp.style.display = showPads ? '' : 'none';
- if(showPads && typeof psShow==='function') psShow();
+ // Never allowed to throw out of here: setPerformMode runs during boot, and an
+ // exception from the pad screen took the rest of the script with it.
+ if(showPads && typeof psShow==='function'){ try{ psShow(); }catch(e){ try{ console.error('psShow', e); }catch(_){} } }
  const fxp=document.getElementById('pf-fx-panel');
  const showFx = (lv ? (lvHas('fx') && fxOK) : m==='fx');
  // Walking away from the pad ends what it was sounding — unless Hold has it
@@ -27072,7 +27086,7 @@ function setPerformMode(m){
   if(typeof fxPaintPad==='function') setTimeout(fxPaintPad,0);
  }
  positionSubnavLed('pf-subnav');
- if(typeof lvMount==='function') lvMount();
+ if(typeof lvMount==='function'){ try{ lvMount(); }catch(e){ try{ console.error('lvMount', e); }catch(_){} } }
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -39581,6 +39595,10 @@ function gridClipMenu(anchor, heading, items){
   m.appendChild(b);
  });
  document.body.appendChild(m);
+ // The visible height, not 100vh: on an iPhone 100vh is the height with the
+ // toolbars hidden, so a long menu ran under Safari's bar and its last items —
+ // the swaps on the Live page's slot menu — could not be reached.
+ m.style.maxHeight = Math.max(160, (window.innerHeight||600) - 24) + 'px';
  let x, y;
  if(anchor && anchor.getBoundingClientRect){
   const r = anchor.getBoundingClientRect(); x = r.left; y = r.bottom + 4;
@@ -41197,6 +41215,17 @@ function _fxRoomIRShared(ctx,sec){
 const _fxInserted=new Set();
 function fxInsertAll(){
  const ctx=getCtx(); if(!ctx) return;
+ // A chain built before the worklet has loaded is built without its buffer
+ // stage and never gets one — no ladder filter, stutter, crush or warp on that
+ // channel for the rest of the session. fxBoot waited for it; the other
+ // callers (the drum bus coming up, a synth filter being touched, the pads
+ // being shown) did not, and on a phone the worklet can easily lose that race.
+ // So everyone waits here: the chains come up when the module settles, either
+ // way, with whatever the sends hold by then.
+ if(!_fxWorkletReady && !_fxWorkletFailed){
+  fxEnsureWorklet(ctx).then(function(){ fxInsertAll(); });
+  return;
+ }
  if(typeof _ensureAllPartBuses==='function'){ try{ _ensureAllPartBuses(ctx); }catch(e){} }
  const buses=(typeof _allPartBuses==='function') ? _allPartBuses() : {};
  FX_CHANNELS.forEach(ch=>{
@@ -41449,7 +41478,12 @@ function fxApplyChannel(ch){
  const dlyAmt=v('delay'), revAmt=v('reverb');
  chain.dlySend.gain.setTargetAtTime(dlyAmt*1.15, t, S);
  chain.dly.delayTime.setTargetAtTime(Math.min(3.9,_fxDivSec(v('dtime'))), t, S);
- chain.dlyFb.gain.setTargetAtTime(Math.min(0.95, v('feedback')*0.95), t, S);
+ // A send turned all the way down is off. The feedback used to stay up, so the
+ // echoes already in the line went on repeating — at a long delay time, for
+ // seconds — and turning the knob to zero read as "the delay will not turn
+ // off" (reported on the Sampler channel). With the send at zero the loop is
+ // emptied too: what is already in flight plays once, and nothing repeats.
+ chain.dlyFb.gain.setTargetAtTime(dlyAmt>0.0005 ? Math.min(0.95, v('feedback')*0.95) : 0, t, S);
  chain.revSend.gain.setTargetAtTime(revAmt*1.25, t, S);
  const wet=Math.max(dlyAmt, revAmt);
  if(chain.dry) chain.dry.gain.setTargetAtTime(1-0.88*wet, t, S);
