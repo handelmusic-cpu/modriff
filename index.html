@@ -10315,7 +10315,10 @@ var PS_QUANT_LABEL = {0:'Off', 1:'1/16', 2:'1/8', 4:'1/4', bar:'Bar'};
 
 function psKey(b,i){ return 'p:'+PS_BANKS[b]+':'+i; }
 function psCurKey(i){ return psKey(PS.bank, i); }
-function psDefaults(){ return {mode:'oneshot', choke:0, rev:false, sync:false, keyf:false}; }
+function psDefaults(){ return {mode:'oneshot', choke:0, rev:false, sync:false, keyf:false, warp:false}; }
+// A strike waiting on its Warp render, by pad. Cleared by a stop, a release or
+// another strike, so a render that lands late cannot start a sound nobody wants.
+var PS_PEND = {};
 function psSlot(key, create){
  var s = smpSlot(key, create);
  if(s && !s.ps) s.ps = psDefaults();
@@ -10383,38 +10386,16 @@ function psKeyPc(slot, clip){
 }
 var PS_NOTE_NAMES = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
 function psNoteName(m){ return PS_NOTE_NAMES[((m%12)+12)%12] + (Math.floor(m/12)-1); }
-// Playback rate from the pad's pitch, key follow and sync.
-function psRate(slot, clip, win){
- var semis = (+slot.tune||0) + (+slot.fine||0)/100;
- var ps = slot.ps || {};
- var kpc = psKeyPc(slot, clip);
- if(ps.keyf && kpc!=null && typeof root!=='undefined'){
-  // Nearest way round the circle, so a phrase in C goes up five or down six
-  // rather than up eleven.
-  var d = (((root - kpc) % 12) + 12) % 12; if(d > 6) d -= 12;
-  semis += d;
- }
- var rate = Math.pow(2, semis/12);
- if(ps.sync){
-  if(clip && clip.bpm > 0){
-   rate *= psBpm() / clip.bpm;
-  } else if(win > 0.05){
-   // Fit the window to the nearest whole number of bars — 1, 2, 4 or 8, the
-   // lengths a phrase actually comes in — and play it at whatever speed that
-   // takes.
-   var bs = psBarSec(), bars = win / rate / bs, best = 1;
-   [1,2,4,8].forEach(function(n){ if(Math.abs(Math.log(bars/n)) < Math.abs(Math.log(bars/best))) best = n; });
-   rate = win / (best * bs);
-  }
- }
- return Math.max(1/16, Math.min(16, rate));
-}
+// Playback rate for a strike — see psPlan, which also decides on Warp.
+function psRate(slot, clip, win){ return psPlan(slot, clip, win).rate; }
 function psSyncBars(slot){
  var clip = slot && smpClip(slot.id), buf = slot && SMP_BUF[slot.id];
  if(!slot || !slot.ps || !slot.ps.sync || !buf) return null;
  var a=+slot.start||0, b=slot.end==null?1:+slot.end;
- var win=(b-a)*buf.duration;
- return Math.round(win / psRate(slot, clip, win) / psBarSec() * 4) / 4;
+ var win=(b-a)*buf.duration, pl=psPlan(slot, clip, win);
+ // Warped, only tempo changes the length; re-pitched, pitch does too.
+ var len = slot.ps.warp ? win/pl.t : win/(pl.p*pl.t);
+ return Math.round(len / psBarSec() * 4) / 4;
 }
 
 function psFade(v, t, sec){
@@ -10426,6 +10407,7 @@ function psFade(v, t, sec){
  }catch(e){}
 }
 function psStop(key, t){
+ delete PS_PEND[key];
  var v = PS_LIVE[key]; if(!v) return;
  var ctx = psCtx(); if(!ctx) return;
  psFade(v, Math.max(ctx.currentTime, t||0));
@@ -10451,6 +10433,24 @@ function psStart(key, t){
  if(ps.rev){ var a2 = 1-b; b = 1-a; a = a2; }
  var win = (b-a)*buf.duration;
  if(!(win > 0.002)) return null;
+ var plan = psPlan(slot, clip, win);
+ if(plan.stretch){
+  var wb = psWarpGet(slot.id, !!ps.rev, plan.S);
+  if(!wb){
+   // Not rendered yet — the first strike after a new tempo, key or pitch.
+   // Render, then strike, on the grid if there is one; meanwhile nothing,
+   // rather than a strike at the wrong pitch or tempo.
+   var tok = {t:t}; PS_PEND[key] = tok;
+   psWarpRequest(ctx, slot.id, !!ps.rev, plan.S).then(function(r){
+    if(PS_PEND[key]!==tok || !r) return;
+    delete PS_PEND[key];
+    psStart(key, Math.max(t, psWhen(ctx)));
+   });
+   return null;
+  }
+  // The same window, in the stretched clip's own seconds.
+  buf = wb; win = (b-a)*buf.duration;
+ }
  var mx = (typeof _cmx==='function') ? _cmx('sampler') : 1;
  var lvl = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(clip) * mx;
  if(!(lvl > 0)) return null;
@@ -10462,7 +10462,7 @@ function psStart(key, t){
    if(o && o.ps && o.ps.choke===ps.choke) psStop(k, t);
   });
  }
- var rate = psRate(slot, clip, win);
+ var rate = plan.rate;
  var src = ctx.createBufferSource();
  src.buffer = buf;
  src.playbackRate.value = rate;
@@ -10487,6 +10487,7 @@ function psStart(key, t){
  src.start(t, a*buf.duration);
  if(end!=null) src.stop(end + 0.02);
  var v = {src:src, gain:g, end:end, mode:ps.mode, t0:t};
+ delete PS_PEND[key];
  PS_LIVE[key] = v;
  PS_LAST = key;
  src.onended = function(){ if(PS_LIVE[key]===v){ delete PS_LIVE[key]; psLit(key,false); } };
@@ -10507,6 +10508,7 @@ function psPress(i){
  var ctx = psCtx(); if(!ctx) return;
  var mode = (slot.ps && slot.ps.mode) || 'oneshot';
  var live = PS_LIVE[key];
+ if(!live && PS_PEND[key] && (mode==='loop' || (mode==='gate' && PS.hold))){ delete PS_PEND[key]; psRenderDeck(); return; }
  // A second tap ends a loop, and with Hold on it ends a gate as well — the
  // two latched states. Under quantize the stop waits for the grid too.
  if(live && (mode==='loop' || (mode==='gate' && PS.hold))){
@@ -10518,6 +10520,7 @@ function psPress(i){
 }
 function psRelease(i){
  var key = psCurKey(i), slot = SMP_SLOTS[key], v = PS_LIVE[key];
+ if(!v && PS_PEND[key] && slot && slot.ps && slot.ps.mode==='gate' && !PS.hold){ delete PS_PEND[key]; return; }
  if(!v || !slot || !slot.ps || slot.ps.mode!=='gate' || PS.hold) return;
  var ctx = psCtx(); if(!ctx) return;
  // Released before a quantized start has even sounded: let the note have a
@@ -10549,7 +10552,7 @@ function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
 
 function psSetBank(b){
  PS.bank = Math.max(0, Math.min(3, b|0));
- psSavePrefs(); psRender();
+ psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
  PS.quant = PS_QUANTS.indexOf(q)>=0 ? q : 0;
@@ -10573,7 +10576,12 @@ function psSet(field, val){
  var ps = slot.ps;
  if(field==='mode') ps.mode = val;
  else if(field==='choke') ps.choke = val|0;
- else if(field==='rev' || field==='sync' || field==='keyf') ps[field] = !ps[field];
+ else if(field==='rev' || field==='sync' || field==='keyf' || field==='warp'){
+  ps[field] = !ps[field];
+  // Following the tempo is what Warp is for; a loop synced without it goes up
+  // in pitch as the tempo goes up. Warp can still be turned off after.
+  if(field==='sync' && ps.sync) ps.warp = true;
+ }
  else if(field==='tune') slot.tune = Math.max(-24, Math.min(24, (+slot.tune||0) + (val|0)));
  else if(field==='gain') slot.gain = Math.max(0, Math.min(2, +val));
  // A loop that stops being a loop would otherwise run forever.
@@ -10581,6 +10589,7 @@ function psSet(field, val){
  // Level comes from a knob that is being dragged; everything else changes
  // what the pad says about itself, which is drawn on the pad.
  if(field==='gain') psRenderDeck(true); else psRender();
+ if(field!=='gain' && field!=='choke' && field!=='mode') psWarpPrime();
 }
 function psClearPad(){
  var key = psCurKey(PS.sel), before = SMP_SLOTS[key] ? Object.assign({}, SMP_SLOTS[key]) : null;
@@ -10709,8 +10718,9 @@ function psLoadClip(i, clipId, quiet){
  }
  s.ps = Object.assign(psDefaults(), {keyf:pitched});
  // A clip that knows its tempo is a loop; play it as one.
- if(clip && clip.bpm){ s.ps.mode='loop'; s.ps.sync=true; }
+ if(clip && clip.bpm){ s.ps.mode='loop'; s.ps.sync=true; s.ps.warp=true; }
  PS.sel = i;
+ psWarpPrime();
  if(!quiet){
   psCloseLoader();
   var ctx=psCtx(); if(ctx) psStart(key, ctx.currentTime+0.01);
@@ -10754,6 +10764,209 @@ window.psLoadClip=psLoadClip; window.psImportFiles=psImportFiles;
 window.psPress=psPress; window.psRelease=psRelease; window.psSubPress=psSubPress; window.psRollStop=psRollStop;
 window.psSetBank=psSetBank; window.psSetQuant=psSetQuant; window.psToggleHold=psToggleHold;
 window.psSet=psSet; window.psClearPad=psClearPad; window.psOpenPad=psOpenPad;
+
+
+// ── Warp ─────────────────────────────────────────────────────────────────
+// Tempo and pitch as two separate things, the way Ableton's Warp has them:
+// a loop follows the song's tempo without going up a fifth, and a pad
+// transposed by Key or Pitch keeps its length. Off is Re-Pitch — the
+// turntable, where faster is higher — and is still the right sound for a
+// single drum hit or a note played like a sampler.
+//
+// How: the clip is time-stretched by S = pitch / tempo with WSOLA (waveform
+// similarity overlap-add), then played at the pitch ratio. Stretching by S and
+// resampling by p gives length / tempo and pitch p, so one stretch serves both.
+// WSOLA rather than a phase vocoder because it keeps transients — drums and
+// plucks are most of what a pad holds — and it is cheap enough to run off the
+// main thread in a few tens of milliseconds a clip.
+//
+// The stretch is rendered, not run live: a pad's clip is stretched once for a
+// given ratio, cached, and replayed; a tempo or key change re-renders in the
+// background and a looping pad crosses to the new render on the next bar line.
+var PS_WARP = {};          // cache key -> AudioBuffer
+var PS_WARP_ORDER = [];    // least recently used first
+var PS_WARP_PEND = {};     // cache key -> Promise
+var PS_WARP_MAX = 24;
+var _psWarpWorker = null, _psWarpSeq = 0, _psWarpCb = {};
+
+// The stretch itself. Plain function so it runs the same in the worker and,
+// if a worker cannot be made, on the main thread.
+function _psWsola(chans, S, sr){
+ var W = Math.max(256, Math.round(sr*0.046/2)*2), Hs = W/2, Ha = Hs/S;
+ var tol = Math.round(sr*0.012), L = Hs;
+ var N = chans[0].length, C = chans.length;
+ var outLen = Math.max(1, Math.ceil(N*S));
+ var win = new Float32Array(W);
+ for(var i=0;i<W;i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/W);   // periodic Hann: sums to 1 at 50%
+ // Mono, padded, for the similarity search.
+ var M = new Float32Array(N + W + tol*2 + 8);
+ for(var c=0;c<C;c++){ var x=chans[c]; for(var j=0;j<N;j++) M[j] += x[j]/C; }
+ var outs = []; for(c=0;c<C;c++) outs.push(new Float32Array(outLen + W));
+ var wsum = new Float32Array(outLen + W);
+ // No grain may start later than one full window before the end: past that
+ // it reads into silence, and a stretched clip's last 40 ms dropped to a
+ // third of its level. Held there instead, the tail sustains.
+ var prev = 0, maxPos = Math.max(0, N - W);
+ for(var k=0; k*Hs < outLen; k++){
+  var pos;
+  if(k===0){ pos = 0; }
+  else {
+   var nominal = Math.round(k*Ha), target = prev + Hs;
+   var lo = Math.max(0, nominal - tol), hi = Math.min(maxPos, nominal + tol);
+   if(hi < lo){ pos = Math.min(maxPos, Math.max(0, nominal)); }
+   else {
+    // Coarse: every 4th offset, every 4th sample. Then ±4 at full resolution.
+    var best = lo, bv = -Infinity, o, s2, v;
+    for(o=lo; o<=hi; o+=4){
+     v = 0; for(s2=0; s2<L; s2+=4) v += M[o+s2]*M[target+s2];
+     if(v > bv){ bv=v; best=o; }
+    }
+    var f0 = Math.max(lo, best-4), f1 = Math.min(hi, best+4);
+    bv = -Infinity;
+    for(o=f0; o<=f1; o++){
+     v = 0; for(s2=0; s2<L; s2+=2) v += M[o+s2]*M[target+s2];
+     if(v > bv){ bv=v; pos=o; }
+    }
+    if(pos==null) pos = best;
+   }
+  }
+  var at = k*Hs;
+  for(i=0;i<W;i++) wsum[at+i] += win[i];
+  for(c=0;c<C;c++){
+   var src = chans[c], dst = outs[c];
+   for(i=0;i<W;i++){ var si = pos+i; if(si<N) dst[at+i] += src[si]*win[i]; }
+  }
+  prev = pos;
+ }
+ // Divide out the windows actually laid down. In the middle they sum to one;
+ // at the two ends there is only half a pair, and without this a pad would
+ // fade in and a loop would dip at its seam every time round.
+ for(c=0;c<C;c++){ var d=outs[c]; for(i=0;i<outLen;i++){ var w=wsum[i]; if(w>0.05 && w!==1) d[i] /= w; } }
+ return outs.map(function(d){ return d.subarray(0, outLen).slice(); });
+}
+
+function _psWarpWorkerGet(){
+ if(_psWarpWorker!==null) return _psWarpWorker;
+ try{
+  var src = 'var _psWsola=' + _psWsola.toString() + ';\n'
+   + 'onmessage=function(e){var d=e.data;var out=_psWsola(d.chans,d.S,d.sr);'
+   + 'postMessage({id:d.id,chans:out},out.map(function(a){return a.buffer;}));};';
+  var url = URL.createObjectURL(new Blob([src], {type:'text/javascript'}));
+  _psWarpWorker = new Worker(url);
+  _psWarpWorker.onmessage = function(e){ var cb=_psWarpCb[e.data.id]; delete _psWarpCb[e.data.id]; if(cb) cb(e.data.chans); };
+  _psWarpWorker.onerror = function(){ _psWarpWorker = false; };
+ }catch(e){ _psWarpWorker = false; }
+ return _psWarpWorker;
+}
+function _psWarpRun(chans, S, sr){
+ var w = _psWarpWorkerGet();
+ if(!w) return new Promise(function(res){ setTimeout(function(){ res(_psWsola(chans, S, sr)); }, 0); });
+ return new Promise(function(res){
+  var id = ++_psWarpSeq; _psWarpCb[id] = res;
+  w.postMessage({id:id, chans:chans, S:S, sr:sr}, chans.map(function(a){ return a.buffer; }));
+ });
+}
+function psWarpKey(id, rev, S){ return id+'|'+(rev?1:0)+'|'+S.toFixed(3); }
+function psWarpGet(id, rev, S){
+ var k = psWarpKey(id, rev, S), b = PS_WARP[k];
+ if(b){ var ix=PS_WARP_ORDER.indexOf(k); if(ix>=0){ PS_WARP_ORDER.splice(ix,1); PS_WARP_ORDER.push(k); } }
+ return b || null;
+}
+function psWarpRequest(ctx, id, rev, S){
+ var k = psWarpKey(id, rev, S);
+ if(PS_WARP[k]) return Promise.resolve(PS_WARP[k]);
+ if(PS_WARP_PEND[k]) return PS_WARP_PEND[k];
+ var src = rev ? psRevBuf(ctx, id) : SMP_BUF[id];
+ if(!src) return Promise.resolve(null);
+ var chans = []; for(var c=0;c<src.numberOfChannels;c++) chans.push(src.getChannelData(c).slice());
+ var sr = src.sampleRate;
+ PS_WARP_PEND[k] = _psWarpRun(chans, +S.toFixed(3), sr).then(function(out){
+  delete PS_WARP_PEND[k];
+  if(!out || !out.length) return null;
+  var b = ctx.createBuffer(out.length, out[0].length, sr);
+  for(var c2=0;c2<out.length;c2++) b.copyToChannel(out[c2], c2);
+  PS_WARP[k] = b; PS_WARP_ORDER.push(k);
+  while(PS_WARP_ORDER.length > PS_WARP_MAX){ delete PS_WARP[PS_WARP_ORDER.shift()]; }
+  return b;
+ }, function(){ delete PS_WARP_PEND[k]; return null; });
+ return PS_WARP_PEND[k];
+}
+
+// What a strike on this pad needs: the pitch ratio p, the tempo ratio t, and
+// whether that means a stretched render (warp, and p/t not 1).
+function psPlan(slot, clip, win){
+ var ps = slot.ps || {};
+ var semis = (+slot.tune||0) + (+slot.fine||0)/100;
+ var kpc = psKeyPc(slot, clip);
+ if(ps.keyf && kpc!=null && typeof root!=='undefined'){
+  var d = (((root - kpc) % 12) + 12) % 12; if(d > 6) d -= 12;
+  semis += d;
+ }
+ var p = Math.pow(2, semis/12), t = 1;
+ if(ps.sync){
+  if(clip && clip.bpm > 0) t = psBpm() / clip.bpm;
+  else if(win > 0.05){
+   // The window, at its own pitch, fitted to the nearest 1, 2, 4 or 8 bars.
+   var bs = psBarSec(), bars = win / bs, best = 1;
+   [1,2,4,8].forEach(function(n){ if(Math.abs(Math.log(bars/n)) < Math.abs(Math.log(bars/best))) best = n; });
+   t = win / (best * bs);
+  }
+ }
+ var S = ps.warp ? p / t : 1;
+ var stretch = !!ps.warp && Math.abs(S - 1) > 0.003;
+ return { p:p, t:t, S:Math.max(0.25, Math.min(4, S)), stretch:stretch,
+          rate: Math.max(1/16, Math.min(16, ps.warp ? p : p*t)) };
+}
+
+// Get every pad that will want a render its render now, rather than at the
+// strike: the current bank and anything sounding.
+function psWarpPrime(){
+ var ctx = psCtx(); if(!ctx) return;
+ var keys = {};
+ for(var i=0;i<PS_N;i++) keys[psCurKey(i)] = 1;
+ Object.keys(PS_LIVE).forEach(function(k){ keys[k]=1; });
+ Object.keys(keys).forEach(function(k){
+  var s = SMP_SLOTS[k]; if(!s || !s.id || !SMP_BUF[s.id] || !s.ps || !s.ps.warp) return;
+  var buf = SMP_BUF[s.id], a=+s.start||0, b=s.end==null?1:+s.end;
+  var pl = psPlan(s, smpClip(s.id), (b-a)*buf.duration);
+  if(pl.stretch) psWarpRequest(ctx, s.id, !!s.ps.rev, pl.S);
+ });
+}
+// Tempo and key are watched rather than hooked: both have several writers,
+// and a missed one would leave a pad playing at yesterday's tempo. Twice a
+// second is plenty to notice; the re-render is debounced behind it so a
+// tempo slider being dragged renders once, where it stops.
+var _psWarpSeen = '', _psWarpT = null;
+setInterval(function(){
+ if(!psCtx()) return;
+ var sig = Math.round(psBpm()*10)+'|'+(typeof root!=='undefined'?root:0);
+ if(sig === _psWarpSeen) return;
+ var first = !_psWarpSeen; _psWarpSeen = sig;
+ if(first) return;
+ clearTimeout(_psWarpT);
+ _psWarpT = setTimeout(psWarpRetune, 300);
+}, 500);
+// After a tempo or key change: render, then move every playing loop onto its
+// new render at the next bar line, so it is back in time and in key.
+function psWarpRetune(){
+ psWarpPrime();
+ var ctx = psCtx(); if(!ctx) return;
+ Object.keys(PS_LIVE).forEach(function(k){
+  var v = PS_LIVE[k], s = SMP_SLOTS[k];
+  if(!v || v.mode!=='loop' || !s || !s.ps) return;
+  var buf = SMP_BUF[s.id]; if(!buf) return;
+  var a=+s.start||0, b=s.end==null?1:+s.end;
+  var pl = psPlan(s, smpClip(s.id), (b-a)*buf.duration);
+  var go = function(){
+   if(PS_LIVE[k]!==v) return;          // stopped, or struck again, meanwhile
+   var save = PS.quant; PS.quant = 'bar';
+   var t = psWhen(ctx); PS.quant = save;
+   psStart(k, t);
+  };
+  if(pl.stretch) psWarpRequest(ctx, s.id, !!s.ps.rev, pl.S).then(go); else go();
+ });
+}
+window.psWarpPrime = psWarpPrime;
 
 // ── The factory kit ──────────────────────────────────────────────────────
 // What is on the pads before you load anything. Rendered here, at start-up,
@@ -10898,7 +11111,7 @@ var PS_FACTORY_KIT = [
  {pad:'A1', id:'rim',    name:'Rim',           drum:'side'},
  {pad:'A2', id:'hat',    name:'Hat',           drum:'hat',  ps:{choke:1}},
  {pad:'A3', id:'ride',   name:'Ride',          drum:'ride', ps:{choke:1}},
- {pad:'A4', id:'vibes',  name:'Vibes Run',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true},
+ {pad:'A4', id:'vibes',  name:'Vibes Run',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
   phrase:{loop:true, bars:1, notes:[['vibes','C4',0,.5,.7,-.2],['vibes','E4',.5,.5,.65,-.1],['vibes','G4',1,.5,.7,0],['vibes','B4',1.5,.5,.65,.1],
                                      ['vibes','C5',2,.5,.75,.2],['vibes','B4',2.5,.5,.6,.1],['vibes','G4',3,.5,.65,0],['vibes','E4',3.5,.5,.6,-.1]]}},
  {pad:'A5', id:'sax',    name:'Sax Lick',      key:0, ps:{keyf:true},
@@ -10908,12 +11121,12 @@ var PS_FACTORY_KIT = [
  {pad:'A7', id:'strum',  name:'Nylon Strum',   key:0, ps:{keyf:true, choke:2},
   phrase:{secs:3.0, rel:0.4, notes:[['nylon','C3',0,3,.7,-.3],['nylon','G3',.03,3,.6,-.15],['nylon','C4',.06,3,.6,0],
                                     ['nylon','E4',.09,3,.6,.15],['nylon','G4',.12,3,.55,.3]]}},
- {pad:'A8', id:'bass',   name:'Bass Riff',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true},
+ {pad:'A8', id:'bass',   name:'Bass Riff',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
   phrase:{loop:true, bars:1, rel:0.03, notes:[['bass','C2',0,.4,.9],['bass','C2',.75,.2,.7],['bass','G2',1.5,.3,.8],['bass','C2',2,.4,.9],
                                               ['bass','Bb1',2.5,.3,.8],['bass','G1',3,.4,.85],['bass','Bb1',3.5,.3,.75]]}},
  {pad:'A9', id:'flute',  name:'Flute Line',    key:0, ps:{keyf:true},
   phrase:{secs:3.0, notes:[['flute','E5',0,.5,.6],['flute','D5',.5,.5,.55],['flute','C5',1,.5,.6],['flute','A4',1.5,.5,.55],['flute','C5',2,1.8,.65]]}},
- {pad:'A10', id:'riser', name:'Riser',         bpm:PS_FACTORY_BPM, synth:'riser', ps:{sync:true}},
+ {pad:'A10', id:'riser', name:'Riser',         bpm:PS_FACTORY_BPM, synth:'riser', ps:{sync:true, warp:true}},
  {pad:'A11', id:'drop',  name:'Sub Drop',      key:0, synth:'drop', ps:{keyf:true}},
  // Not seeded onto pads — in the load screen's Built in list, for any pad.
  {id:'pedal', name:'Pedal Hat',   drum:'pedal'},
@@ -10930,13 +11143,13 @@ var PS_FACTORY_KIT = [
  {id:'n-violin', name:'Violin · C5',      file:'samples/violin/C5.mp3',   key:0},
  {id:'n-bass',   name:'Upright Bass · C2',file:'samples/bass/C2.mp3',     key:0},
  // Bank B — loops to play over.
- {pad:'B0', id:'boombap', name:'Boom Bap',     bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3},
+ {pad:'B0', id:'boombap', name:'Boom Bap',     bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
   beat:{swing:.18, hits:[['kick',0,.9],['hat',0,.5],['hat',2,.4],['side',4,.8],['hat',4,.5],['hat',6,.4],['kick',7,.7],
                          ['hat',8,.5],['kick',10,.8],['hat',10,.4],['side',12,.8],['hat',12,.5],['hat',14,.4]]}},
- {pad:'B1', id:'ridepat', name:'Ride Swing',   bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3},
+ {pad:'B1', id:'ridepat', name:'Ride Swing',   bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
   beat:{swing:.33, hits:[['ride',0,.7],['ride',4,.6],['ride',7,.45],['ride',8,.65],['ride',12,.6],['ride',15,.45],
                          ['pedal',4,.6],['pedal',12,.6],['kick',0,.35]]}},
- {pad:'B2', id:'tomfill', name:'Tom Fill',     bpm:PS_FACTORY_BPM, ps:{sync:true},
+ {pad:'B2', id:'tomfill', name:'Tom Fill',     bpm:PS_FACTORY_BPM, ps:{sync:true, warp:true},
   beat:{hits:[['tom',0,.8,1.25],['tom',1,.75,1.25],['tom',2,.8,1.12],['tom',3,.75,1.12],['tom',4,.85,1],['tom',5,.8,1],['tom',6,.9,.9],['kick',7,.9],['bell',8,.7]], oneshot:true}}
 ];
 
@@ -10980,6 +11193,7 @@ function psFactoryEnsure(){
  }).then(function(){
   psSeedIfEmpty();
   psRender();
+  psWarpPrime();
   if(typeof smpRenderAll==='function') smpRenderAll();
   return true;
  });
@@ -11066,8 +11280,9 @@ function psBuild(){
  });
  mg.appendChild(seg); md.appendChild(mg);
  [['rev','Reverse','Play the sample backwards'],
-  ['sync','Sync','Varispeed to the tempo — faster is higher, like a turntable'],
-  ['keyf','Key','Transpose with the song’s key']].forEach(function(t){
+  ['sync','Sync','Follow the song’s tempo — with Warp on the pitch stays put'],
+  ['keyf','Key','Transpose with the song’s key'],
+  ['warp','Warp','Tempo and pitch move independently, like Ableton’s Warp. Off is Re-Pitch: faster is higher, like a turntable']].forEach(function(t){
   var b=psBtn('ps-chip', t[1], t[2], function(){ psSet(t[0]); });
   b.dataset.pstog=t[0]; tg.appendChild(b);
  });
@@ -11184,6 +11399,7 @@ function psRender(){
    if(ps.mode==='loop') tags.push('LOOP'); else if(ps.mode==='gate') tags.push('GATE');
    if(ps.rev) tags.push('REV');
    if(ps.sync) tags.push('SYNC');
+   if(ps.warp) tags.push('WARP');
    if(ps.keyf) tags.push('KEY');
    if(ps.choke) tags.push('M'+ps.choke);
    if(clip.key==null && s.rootAuto && s.root!=null) tags.push('♪'+psNoteName(s.root));
@@ -11326,6 +11542,7 @@ function psShow(){
   try{ _partDest(ctx,'sampler'); }catch(e){}
   if(_fxReady && typeof fxInsertAll==='function'){ try{ fxInsertAll(); }catch(e){} }
   psFactoryEnsure();
+  psWarpPrime();
  }
  psRender();
 }
