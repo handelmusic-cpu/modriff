@@ -965,6 +965,38 @@ body.mode-basic .ps-head .ps-title { display:none; }
 .ps-swap-btn + .ps-swap-btn { border-left:1px solid var(--border2); }
 .ps-swap-btn.active { background:var(--acc-dim); color:var(--text); }
 #pf-mel-lbl.ps-on #pf-slot-melody { display:none; }
+/* The pad load screen. A list, not an editor: tap a sound and it is on the
+   pad. Built in first, yours next, Files above both because it is the one
+   people reach for first. */
+.ps-load-sheet { max-width:560px; width:calc(100% - 24px); max-height:86vh; display:flex; flex-direction:column; gap:10px; }
+.ps-load-top { display:flex; align-items:center; justify-content:space-between; }
+.ps-load-title { font-size:.62rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text); }
+.ps-load-x { background:none; border:1px solid var(--border2); color:var(--muted); border-radius:var(--r-sm); padding:6px 10px; font-family:'Outfit',sans-serif; font-size:.52rem; cursor:pointer; }
+.ps-load-acts { display:flex; gap:8px; }
+.ps-load-files, .ps-load-rec {
+ flex:1; min-height:44px; border-radius:var(--r-md); cursor:pointer;
+ font-family:'Outfit',sans-serif; font-size:.62rem; font-weight:700; letter-spacing:.04em;
+}
+.ps-load-files { background:var(--accent); border:1px solid var(--accent); color:#07080f; box-shadow:0 0 14px var(--glow); }
+.ps-load-rec { background:var(--surf2); border:1px solid var(--border2); color:var(--text); }
+.ps-load-hint { font-size:.48rem; color:var(--muted); line-height:1.4; }
+.ps-load-list { overflow-y:auto; -webkit-overflow-scrolling:touch; padding-right:2px; }
+.ps-load-sec { font-size:.48rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin:10px 0 6px; }
+.ps-load-empty { font-size:.52rem; color:var(--muted); padding:6px 0; }
+.ps-load-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
+.ps-load-item { display:flex; border:1px solid var(--border2); border-radius:var(--r-sm); overflow:hidden; background:var(--surf2); }
+.ps-load-item.cur { border-color:var(--accent); box-shadow:0 0 10px var(--glow); }
+.ps-load-pick {
+ flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px;
+ padding:8px 10px; background:none; border:0; color:var(--text); text-align:left; cursor:pointer;
+ font-family:'Outfit',sans-serif;
+}
+.ps-load-name { font-size:.58rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.ps-load-meta { font-size:.44rem; color:var(--muted); letter-spacing:.04em; }
+.ps-load-pv { width:40px; flex:none; border:0; border-left:1px solid var(--border2); background:none; color:var(--muted); cursor:pointer; font-size:.6rem; }
+.ps-load-pv:hover, .ps-load-pick:hover { background:var(--acc-dim); }
+.ps-pad.drop { outline:2px dashed var(--accent); outline-offset:2px; }
+
 @media (max-width:420px){
  .ps-grid { gap:6px; }
  .ps-pad { padding:6px; min-height:58px; }
@@ -10340,14 +10372,26 @@ function psRevBuf(ctx, id){
  return (PS_REVBUF[id]=out);
 }
 
+// The pitch class a pad's clip is in: what the factory kit was rendered in,
+// or what the detector heard when the clip was put on the pad (smpAttach sets
+// root and rootAuto, and tunes the leftover cents out with fine). A clip with
+// neither has no key to follow.
+function psKeyPc(slot, clip){
+ if(clip && clip.key!=null) return clip.key;
+ if(slot && slot.rootAuto && slot.root!=null) return ((slot.root % 12) + 12) % 12;
+ return null;
+}
+var PS_NOTE_NAMES = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+function psNoteName(m){ return PS_NOTE_NAMES[((m%12)+12)%12] + (Math.floor(m/12)-1); }
 // Playback rate from the pad's pitch, key follow and sync.
 function psRate(slot, clip, win){
  var semis = (+slot.tune||0) + (+slot.fine||0)/100;
  var ps = slot.ps || {};
- if(ps.keyf && clip && clip.key!=null && typeof root!=='undefined'){
+ var kpc = psKeyPc(slot, clip);
+ if(ps.keyf && kpc!=null && typeof root!=='undefined'){
   // Nearest way round the circle, so a phrase in C goes up five or down six
   // rather than up eleven.
-  var d = (((root - clip.key) % 12) + 12) % 12; if(d > 6) d -= 12;
+  var d = (((root - kpc) % 12) + 12) % 12; if(d > 6) d -= 12;
   semis += d;
  }
  var rate = Math.pow(2, semis/12);
@@ -10458,7 +10502,7 @@ function psPress(i){
  var key = psCurKey(i);
  PS.sel = i;
  var slot = SMP_SLOTS[key];
- if(!slot || !slot.id){ psRenderDeck(); psOpenPad(i); return; }
+ if(!slot || !slot.id){ psRenderDeck(); psOpenLoader(i); return; }
  if(!SMP_BUF[slot.id]){ if(typeof smpDecodeAll==='function') smpDecodeAll(); showToast('Still loading that pad'); return; }
  var ctx = psCtx(); if(!ctx) return;
  var mode = (slot.ps && slot.ps.mode) || 'oneshot';
@@ -10556,6 +10600,157 @@ function psOpenPad(i){
  psSlot(key, true);
  smpOpenSlot(key);
 }
+// ── Loading a pad ────────────────────────────────────────────────────────
+// Tap an empty pad and this opens: the built-in sounds, then yours, then the
+// file picker — tap one and it is on the pad and playing. It replaces sending
+// you into the full sampler sheet, which is an editor: right for trimming a
+// sample, wrong as the first thing between an empty pad and a sound.
+var _psLoadPad = 0;
+function psLoadEl(){
+ var ov = document.getElementById('ps-load');
+ if(ov) return ov;
+ ov = document.createElement('div');
+ ov.className = 'modal-overlay ps-load'; ov.id = 'ps-load';
+ ov.innerHTML =
+  '<div class="modal-sheet ps-load-sheet" role="dialog" aria-modal="true" aria-labelledby="ps-load-title">'
+  + '<div class="ps-load-top"><div class="ps-load-title" id="ps-load-title">Load pad</div>'
+  + '<button type="button" class="ps-load-x" id="ps-load-x">Close</button></div>'
+  + '<div class="ps-load-acts">'
+  +  '<button type="button" class="ps-load-files" id="ps-load-files">📁 From Files…</button>'
+  +  '<button type="button" class="ps-load-rec" id="ps-load-rec">● Record or trim…</button>'
+  + '</div>'
+  + '<input type="file" id="ps-load-file" accept="audio/*" multiple style="display:none">'
+  + '<div class="ps-load-hint">Several files at once fill this pad and the empty pads after it. On a computer you can also drop files straight onto a pad.</div>'
+  + '<div class="ps-load-list" id="ps-load-list"></div>'
+  + '</div>';
+ document.body.appendChild(ov);
+ // The pad opens this on pointerdown, so the same tap's click arrives after
+ // the sheet is up — on the backdrop, which closed it again at once, or on
+ // whichever sound happened to be under the finger, which loaded it. A click
+ // in the first moments after opening belongs to the tap that opened it.
+ ov.addEventListener('click', function(e){
+  if(Date.now() - (ov._openedAt||0) < 450){ e.stopPropagation(); e.preventDefault(); }
+ }, true);
+ ov.addEventListener('click', function(e){ if(e.target===ov) psCloseLoader(); });
+ ov.querySelector('#ps-load-x').addEventListener('click', psCloseLoader);
+ ov.querySelector('#ps-load-rec').addEventListener('click', psLoaderToSheet);
+ var inp = ov.querySelector('#ps-load-file');
+ ov.querySelector('#ps-load-files').addEventListener('click', function(){ inp.click(); });
+ inp.addEventListener('change', function(){
+  var f=this.files; var list=[].slice.call(f||[]); this.value='';
+  psImportFiles(list, _psLoadPad);
+ });
+ return ov;
+}
+function psOpenLoader(i){
+ if(typeof modAllows==='function' && !modAllows('sampler')) return freeBlocked('The phrase sampler');
+ _psLoadPad = (i==null) ? PS.sel : i;
+ var ov = psLoadEl();
+ if(typeof smpLoadLibrary==='function') smpLoadLibrary().then(psRenderLoader);
+ if(typeof smpDecodeAll==='function') smpDecodeAll();
+ psFactoryEnsure();
+ psRenderLoader();
+ ov._openedAt = Date.now();
+ ov.classList.add('visible');
+}
+function psCloseLoader(){
+ var ov=document.getElementById('ps-load'); if(ov) ov.classList.remove('visible');
+ if(typeof smpStopPreview==='function') smpStopPreview();
+}
+function psLoaderToSheet(){
+ psCloseLoader();
+ var key = psCurKey(_psLoadPad); psSlot(key, true);
+ smpOpenSlot(key);
+}
+function psRenderLoader(){
+ var ov=document.getElementById('ps-load'); if(!ov || !ov.classList) return;
+ var key=psCurKey(_psLoadPad), cur=SMP_SLOTS[key]&&SMP_SLOTS[key].id;
+ ov.querySelector('#ps-load-title').textContent = 'Load pad '+PS_BANKS[PS.bank]+(_psLoadPad+1);
+ var list=ov.querySelector('#ps-load-list'); list.innerHTML='';
+ var built = SMP_LIB.filter(function(c){ return smpBuiltIn(c); });
+ // The kit in its own order, so the drums sit together and the notes after.
+ var order = {}; PS_FACTORY_KIT.forEach(function(k,ix){ order['factory:'+k.id]=ix; });
+ built.sort(function(a,b){ return (order[a.id]==null?999:order[a.id]) - (order[b.id]==null?999:order[b.id]); });
+ var mine = SMP_LIB.filter(function(c){ return !smpBuiltIn(c); });
+ var section = function(title, clips, empty){
+  list.appendChild(psEl('div','ps-load-sec', title));
+  if(!clips.length){ list.appendChild(psEl('div','ps-load-empty', empty)); return; }
+  var grid=psEl('div','ps-load-grid');
+  clips.forEach(function(c){
+   var row=psEl('div','ps-load-item'+(c.id===cur?' cur':''));
+   var b=psBtn('ps-load-pick', '', 'Put “'+c.name+'” on this pad', function(){ psLoadClip(_psLoadPad, c.id); });
+   b.appendChild(psEl('span','ps-load-name', c.name));
+   b.appendChild(psEl('span','ps-load-meta', (c.dur? c.dur.toFixed(1)+'s' : (SMP_BUF[c.id]?'':'loading…'))
+     + (c.bpm ? ' · loop' : '') + (c.key!=null ? ' · '+PS_NOTE_NAMES[c.key] : '')));
+   var pv=psBtn('ps-load-pv', '▶', 'Listen', function(){ if(typeof smpPreview==='function') smpPreview(c.id); });
+   pv.setAttribute('aria-label','Listen to '+c.name);
+   row.appendChild(b); row.appendChild(pv);
+   grid.appendChild(row);
+  });
+  list.appendChild(grid);
+ };
+ section('Built in', built, 'Getting the built-in sounds ready…');
+ section('Yours', mine, 'Nothing recorded or imported yet — record one, or bring one in from Files.');
+}
+// Put a clip on a pad, the way every route in here does it: through
+// smpAttach, which auto-trims a recording and asks the pitch detector — and
+// then let the pad act on what it heard.
+function psLoadClip(i, clipId, quiet){
+ var key = psCurKey(i), s = psSlot(key, true);
+ psStop(key);
+ smpAttach(key, clipId);
+ var clip = smpClip(clipId);
+ var pitched = !!(clip && clip.key!=null);
+ if(!pitched && s.rootAuto){
+  var r = (typeof smpClipPitch==='function') ? smpClipPitch(clipId) : null;
+  // Only a confident reading turns Key on by itself: a drum loop the detector
+  // half-believes is a pitch must not start following the chords.
+  pitched = !!(r && r.conf >= 0.7);
+ }
+ s.ps = Object.assign(psDefaults(), {keyf:pitched});
+ // A clip that knows its tempo is a loop; play it as one.
+ if(clip && clip.bpm){ s.ps.mode='loop'; s.ps.sync=true; }
+ PS.sel = i;
+ if(!quiet){
+  psCloseLoader();
+  var ctx=psCtx(); if(ctx) psStart(key, ctx.currentTime+0.01);
+  showToast((clip?clip.name:'Sample')+' → pad '+PS_BANKS[PS.bank]+(i+1)
+    + (s.rootAuto && s.root!=null ? ' · heard '+psNoteName(s.root)+(pitched?', Key on':'') : ''));
+ }
+ psRender();
+}
+// Files: the first onto pad i, the rest onto the next empty pads in the bank.
+function psImportFiles(files, i){
+ var ctx = psCtx(); if(!ctx){ showToast('Start audio first'); return; }
+ var list=[].slice.call(files||[]); if(!list.length) return;
+ list.sort(function(a,b){ return String(a.name).localeCompare(String(b.name), undefined, {numeric:true}); });
+ var targets=[i];
+ for(var k=i+1; k<PS_N && targets.length<list.length; k++){ var sl=SMP_SLOTS[psCurKey(k)]; if(!sl||!sl.id) targets.push(k); }
+ if(list.length > targets.length) showToast('Only '+targets.length+' empty pad'+(targets.length===1?'':'s')+' from here — the rest were left out');
+ list = list.slice(0, targets.length);
+ var done=[], left=list.length;
+ list.forEach(function(f, n){
+  f.arrayBuffer().then(function(bytes){
+   return ctx.decodeAudioData(bytes.slice(0)).then(function(buf){
+    if(buf.duration > 120) throw new Error('long');
+    var clip = smpAddClip({name:f.name.replace(/\.[^.]+$/,''), src:'file'}, buf, bytes, f.type||'audio/wav');
+    psLoadClip(targets[n], clip.id, list.length>1);
+    done.push(PS_BANKS[PS.bank]+(targets[n]+1));
+   });
+  }).catch(function(e){
+   showToast(String(e&&e.message)==='long' ? f.name+' is over two minutes' : 'Could not read '+f.name);
+  }).then(function(){
+   if(--left>0) return;
+   if(list.length>1){
+    psCloseLoader();
+    if(done.length) showToast(done.length+' sample'+(done.length===1?'':'s')+' loaded onto '+done.join(', '));
+   }
+   psRender();
+  });
+ });
+}
+window.psOpenLoader=psOpenLoader; window.psCloseLoader=psCloseLoader; window.psLoaderToSheet=psLoaderToSheet;
+window.psLoadClip=psLoadClip; window.psImportFiles=psImportFiles;
 window.psPress=psPress; window.psRelease=psRelease; window.psSubPress=psSubPress; window.psRollStop=psRollStop;
 window.psSetBank=psSetBank; window.psSetQuant=psSetQuant; window.psToggleHold=psToggleHold;
 window.psSet=psSet; window.psClearPad=psClearPad; window.psOpenPad=psOpenPad;
@@ -10720,6 +10915,20 @@ var PS_FACTORY_KIT = [
   phrase:{secs:3.0, notes:[['flute','E5',0,.5,.6],['flute','D5',.5,.5,.55],['flute','C5',1,.5,.6],['flute','A4',1.5,.5,.55],['flute','C5',2,1.8,.65]]}},
  {pad:'A10', id:'riser', name:'Riser',         bpm:PS_FACTORY_BPM, synth:'riser', ps:{sync:true}},
  {pad:'A11', id:'drop',  name:'Sub Drop',      key:0, synth:'drop', ps:{keyf:true}},
+ // Not seeded onto pads — in the load screen's Built in list, for any pad.
+ {id:'pedal', name:'Pedal Hat',   drum:'pedal'},
+ {id:'bell',  name:'Ride Bell',   drum:'bell'},
+ {id:'tom',   name:'Tom',         drum:'tom'},
+ {id:'n-piano',  name:'Piano · C4',       file:'samples/piano/C4.mp3',    key:0},
+ {id:'n-vibes',  name:'Vibes · C4',       file:'samples/vibes/C4.mp3',    key:0},
+ {id:'n-nylon',  name:'Nylon Guitar · C3',file:'samples/nylongtr/C3.mp3', key:0},
+ {id:'n-jazzg',  name:'Jazz Guitar · C3', file:'samples/jazzgtr/C3.mp3',  key:0},
+ {id:'n-sax',    name:'Tenor Sax · C4',   file:'samples/tenorsax/C4.mp3', key:0},
+ {id:'n-tpt',    name:'Muted Trumpet · C5', file:'samples/mutetpt/C5.mp3', key:0},
+ {id:'n-flute',  name:'Flute · C5',       file:'samples/flute/C5.mp3',    key:0},
+ {id:'n-clar',   name:'Clarinet · D4',    file:'samples/clarinet/D4.mp3', key:2},
+ {id:'n-violin', name:'Violin · C5',      file:'samples/violin/C5.mp3',   key:0},
+ {id:'n-bass',   name:'Upright Bass · C2',file:'samples/bass/C2.mp3',     key:0},
  // Bank B — loops to play over.
  {pad:'B0', id:'boombap', name:'Boom Bap',     bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3},
   beat:{swing:.18, hits:[['kick',0,.9],['hat',0,.5],['hat',2,.4],['side',4,.8],['hat',4,.5],['hat',6,.4],['kick',7,.7],
@@ -10737,6 +10946,7 @@ function psFactoryEnsure(){
  var files = {};
  PS_FACTORY_KIT.forEach(function(k){
   if(k.drum) files[PS_DRUM[k.drum]] = 1;
+  if(k.file) files[k.file] = 1;
   if(k.beat) k.beat.hits.forEach(function(h){ files[PS_DRUM[h[0]]] = 1; });
   if(k.phrase) k.phrase.notes.forEach(function(n){
    var inst=PS_INST[n[0]], f=_psNoteFile(inst.dir, inst.have, _psMidi(n[1])); files[f.file]=1;
@@ -10748,6 +10958,7 @@ function psFactoryEnsure(){
  })).then(function(){
   return Promise.all(PS_FACTORY_KIT.map(function(k){
    var job = k.drum ? Promise.resolve(bufs[PS_DRUM[k.drum]] || null)
+     : k.file ? Promise.resolve(bufs[k.file] || null)
      : k.phrase ? _psRenderPhrase(ctx, bufs, k.phrase)
      : k.beat ? _psRenderBeat(ctx, bufs, k.beat)
      : k.synth==='riser' ? _psRenderRiser(ctx) : _psRenderSubDrop(ctx);
@@ -10783,7 +10994,7 @@ function psSeedIfEmpty(){
  var seeded = false; try{ seeded = localStorage.getItem('modo-ps-seeded')==='1'; }catch(e){}
  if(seeded) return;
  PS_FACTORY_KIT.forEach(function(k){
-  var id = 'factory:'+k.id; if(!SMP_BUF[id]) return;
+  var id = 'factory:'+k.id; if(!k.pad || !SMP_BUF[id]) return;
   var key = 'p:'+k.pad.charAt(0)+':'+k.pad.slice(1);
   var s = SMP_SLOTS[key] = smpNewSlot();
   s.id = id; s.ps = Object.assign(psDefaults(), k.ps||{});
@@ -10906,9 +11117,10 @@ function psBuild(){
  var subUp=function(){ sub.classList.remove('down'); psRollStop(); };
  sub.addEventListener('pointerup', subUp); sub.addEventListener('pointercancel', subUp);
  var stop=psBtn('ps-big', 'Stop', 'Stop every pad', psStopAll);
- var edit=psBtn('ps-big ps-edit', '◈ Sample', 'Load, record or trim the selected pad’s sample', function(){ psOpenPad(PS.sel); });
+ var edit=psBtn('ps-big ps-edit', '◈ Load', 'Put a sample on the selected pad — built in, yours, or from Files', function(){ psOpenLoader(PS.sel); });
+ var trim=psBtn('ps-big ps-edit ps-studio', 'Trim…', 'Record, trim or tune the selected pad’s sample in the sampler', function(){ psOpenPad(PS.sel); });
  var clr=psBtn('ps-big ps-studio', 'Clear', 'Empty the selected pad', psClearPad);
- [hold,sub,stop,edit,clr].forEach(function(b){ bot.appendChild(b); });
+ [hold,sub,stop,edit,trim,clr].forEach(function(b){ bot.appendChild(b); });
  host.appendChild(bot);
 }
 
@@ -10933,6 +11145,17 @@ function psMakePad(i){
  p.addEventListener('keyup', function(e){ if(e.key==='Enter'||e.key===' ') up(); });
  // A context menu on a long press would cover the pads mid-performance.
  p.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+ // Files dropped on a pad land on it (and the empty pads after it).
+ p.addEventListener('dragover', function(e){
+  if(e.dataTransfer && [].indexOf.call(e.dataTransfer.types||[], 'Files')>=0){ e.preventDefault(); p.classList.add('drop'); }
+ });
+ p.addEventListener('dragleave', function(){ p.classList.remove('drop'); });
+ p.addEventListener('drop', function(e){
+  p.classList.remove('drop');
+  if(!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  psImportFiles(e.dataTransfer.files, i);
+ });
  return p;
 }
 
@@ -10963,6 +11186,7 @@ function psRender(){
    if(ps.sync) tags.push('SYNC');
    if(ps.keyf) tags.push('KEY');
    if(ps.choke) tags.push('M'+ps.choke);
+   if(clip.key==null && s.rootAuto && s.root!=null) tags.push('♪'+psNoteName(s.root));
   }
   p.querySelector('.ps-tags').textContent = tags.join(' · ');
   p.setAttribute('aria-label', 'Pad '+PS_BANKS[PS.bank]+(i+1)+(clip?' — '+clip.name:' — empty, tap to load'));
@@ -10988,6 +11212,8 @@ function psRenderDeck(keepKnobs){
    sub.push(PS_MODES.filter(function(m){ return m[0]===ps.mode; })[0][1]);
    if(ps.sync){ var bars=psSyncBars(s); if(bars) sub.push('sync '+bars+' bar'+(bars===1?'':'s')); }
    if(+s.tune) sub.push((s.tune>0?'+':'')+s.tune+' st');
+   if(clip.key!=null) sub.push('in '+PS_NOTE_NAMES[clip.key]);
+   else if(s.rootAuto && s.root!=null) sub.push('heard '+psNoteName(s.root));
   }
   sub.push(Math.round(psBpm())+' BPM');
   e('ps-lcd-sub').textContent = sub.join(' · ');
@@ -26390,7 +26616,12 @@ function transposeSong(semis){
 // sits with the surfaces it switches between.
 function subnavDockMount(){
  var dock=document.getElementById('subnav-dock'); if(!dock) return;
- ['bm-subnav','set-subnav'].forEach(function(id){
+ // pf-subnav is the Play tab's Chords / Melody / Pads / FX row. It was the
+ // one sub-tab row left at the top of its page, under a finger's reach on a
+ // phone and above the key — docked with the others now, where the thumb is.
+ // Live hides it (every surface is on one screen there), so it only shows in
+ // Studio.
+ ['pf-subnav','bm-subnav','set-subnav'].forEach(function(id){
   var el=document.getElementById(id);
   if(el && el.parentNode!==dock){
    // The visible caption is hidden down here, so it becomes the group's name.
@@ -26403,7 +26634,7 @@ function subnavDockMount(){
 }
 // Which one belongs to the tab now open. A tab with no row shows none, and the
 // dock collapses to nothing rather than leaving a bar of empty chrome.
-var SUBNAV_FOR={accomp:'bm-subnav', build:'set-subnav'};
+var SUBNAV_FOR={perform:'pf-subnav', accomp:'bm-subnav', build:'set-subnav'};
 function subnavDockSync(t){
  var dock=document.getElementById('subnav-dock'); if(!dock) return;
  var want=SUBNAV_FOR[t]||null;
