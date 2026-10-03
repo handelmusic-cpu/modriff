@@ -996,6 +996,29 @@ body.mode-basic .ps-head .ps-title { display:none; }
 .ps-load-pv { width:40px; flex:none; border:0; border-left:1px solid var(--border2); background:none; color:var(--muted); cursor:pointer; font-size:.6rem; }
 .ps-load-pv:hover, .ps-load-pick:hover { background:var(--acc-dim); }
 .ps-pad.drop { outline:2px dashed var(--accent); outline-offset:2px; }
+/* ── Live slots ── one column of up to four instruments, each under its own
+   heading with the slot controls at the right end of it. */
+#lv-slots { display:flex; flex-direction:column; gap:4px; }
+.lv-slot { display:flex; flex-direction:column; width:100%; min-width:0; }
+.lv-slot > * { max-width:none !important; }
+body.mode-basic .lv-off { display:none !important; }
+.lv-ctl { order:3; display:inline-flex; gap:3px; flex:none; margin-left:2px; }
+.lv-cb {
+ min-width:28px; height:26px; padding:0 6px; border:1px solid var(--border2); border-radius:var(--r-sm);
+ background:none; color:var(--muted); font-family:'Outfit',sans-serif; font-size:.6rem; line-height:1;
+ cursor:pointer; touch-action:manipulation; text-transform:none; letter-spacing:0;
+}
+.lv-cb:hover:not(:disabled) { color:var(--text); border-color:var(--accent); }
+.lv-cb:disabled { opacity:.3; cursor:default; }
+.lv-add {
+ margin:6px 0 4px; min-height:40px; border:1px dashed var(--border2); border-radius:var(--r-md);
+ background:none; color:var(--muted); font-family:'Outfit',sans-serif; font-size:.56rem; font-weight:600;
+ letter-spacing:.12em; text-transform:uppercase; cursor:pointer; touch-action:manipulation;
+}
+.lv-add:hover { color:var(--text); border-color:var(--accent); }
+/* The grids brought over from Accomp sit in a slot of the Play column. */
+.lv-slot .sq-grid-wrap, .lv-slot .pr-host { width:100%; }
+
 
 @media (max-width:420px){
  .ps-grid { gap:6px; }
@@ -4292,6 +4315,7 @@ body.light-mode .bl-empty-hint {
 .sq-tlbl[role="button"]:hover { text-decoration:underline; text-underline-offset:2px; }
 .gclip-menu {
  position:fixed; z-index:9000; min-width:150px; padding:6px;
+ max-height:calc(100vh - 24px); overflow-y:auto;
  display:flex; flex-direction:column; gap:2px;
  background:var(--surf); border:1px solid var(--border2); border-radius:var(--r-md);
  box-shadow:0 10px 30px rgba(0,0,0,.45);
@@ -6124,7 +6148,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <!-- The sub's switch rides on the Live heading beside the sound, because that
       is where the sound is chosen and the sub is part of how it sounds. The
       full controls (wave, level) are under the Studio panel's Shape it. -->
- <div class="pf-surface-lbl">Chords <button class="pf-sub-chip" id="pf-sub-chip" type="button" onclick="toggleChordSub()" aria-pressed="false" aria-label="Chord sub">Sub</button><span class="pf-voice-slot" id="pf-slot-chords"></span></div>
+ <div class="pf-surface-lbl" id="pf-chords-lbl">Chords <button class="pf-sub-chip" id="pf-sub-chip" type="button" onclick="toggleChordSub()" aria-pressed="false" aria-label="Chord sub">Sub</button><span class="pf-voice-slot" id="pf-slot-chords"></span></div>
  <div id="pf-chords-panel">
  <!-- The MōdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
@@ -6339,10 +6363,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 
 
  <!-- MELODY SUB-PAGE -->
- <!-- Melody or Pads: the phrase sampler takes the melody's place on the Live
-      screen, swapped here. The Sound picker belongs to the melody and goes
-      with it. -->
- <div class="pf-surface-lbl" id="pf-mel-lbl"><span class="ps-swap" role="tablist" aria-label="Melody or pads"><button type="button" class="ps-swap-btn active" role="tab" data-psslot="melody" onclick="psSetSlot('melody')">Melody</button><button type="button" class="ps-swap-btn" role="tab" data-psslot="pads" onclick="psSetSlot('pads')">Pads</button></span><span class="pf-voice-slot" id="pf-slot-melody"></span></div>
+ <div class="pf-surface-lbl" id="pf-mel-lbl">Melody <span class="pf-voice-slot" id="pf-slot-melody"></span></div>
  <div id="pf-melody-panel" style="display:none">
  <!-- MōdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
@@ -6517,7 +6538,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  </div><!-- /pf-melody-panel -->
 
  <!-- PADS — the phrase sampler. Built by psBuild(); Live shows the pads in the
-      melody's place, Studio gives them their own sub-tab with the full deck. -->
+      Live page's slots (see LIVE SLOTS), Studio gives them their own sub-tab
+      with the full deck. -->
+ <div class="pf-surface-lbl" id="pf-pads-lbl">Pads</div>
  <div id="pf-pads-panel" style="display:none">
   <div class="panel p-perform is-play ps-panel" id="ps-panel" style="width:100%;max-width:700px"></div>
  </div>
@@ -11517,22 +11540,6 @@ function psFx(which){
  psRenderDeck();
 }
 
-// Where the pads are. Live: in the melody's place on the one-screen Play tab,
-// swapped with the switch on that heading. Studio: a sub-tab of their own.
-function psSetSlot(s){
- PS.slot = (s==='pads') ? 'pads' : 'melody';
- if(PS.slot==='pads' && typeof modAllows==='function' && !modAllows('sampler')){
-  PS.slot='melody'; freeBlocked('The phrase sampler');
- }
- psSavePrefs();
- if(typeof setPerformMode==='function') setPerformMode(typeof performMode!=='undefined' ? performMode : 'chords');
-}
-function psSyncSlotUI(){
- document.querySelectorAll('[data-psslot]').forEach(function(b){
-  var on=b.dataset.psslot===PS.slot; b.classList.toggle('active', on); b.setAttribute('aria-selected', on?'true':'false');
- });
- var l=document.getElementById('pf-mel-lbl'); if(l) l.classList.toggle('ps-on', PS.slot==='pads');
-}
 // The panel came on screen: build it, make sure the factory kit and the
 // Sampler channel's effects chain exist, and draw.
 function psShow(){
@@ -11546,7 +11553,212 @@ function psShow(){
  }
  psRender();
 }
-window.psSetSlot=psSetSlot; window.psShow=psShow; window.psRender=psRender;
+window.psShow=psShow; window.psRender=psRender;
+// ═══════════════════════════════════════
+// LIVE SLOTS — up to four instruments, any of them, in any order
+// ═══════════════════════════════════════
+// The Live view of Play used to be fixed: chords, melody, MōdFX. Now it is
+// up to four slots, and each holds any of seven instruments — the three
+// playing surfaces, the MōdFX pad, the phrase sampler's pads, and the drum,
+// bass and melody grids from Accomp.
+//
+// The instruments are MOVED into their slots, not copied. Every one of them is
+// a large piece of live UI bound to its element ids (the drum grid's step
+// elements, a roll's canvas, the MōdFX pad), and a second copy would be a
+// second set of ids and a second set of state to keep in step. So a slot
+// borrows the real thing; the grids go back to Accomp — to the exact place they
+// came from, marked with a comment node — whenever Play stops being the Live
+// page you are looking at: another tab, or Studio.
+var LV_MAX = 4;
+var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq'];
+var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Pads', fx:'MōdFX',
+               drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid'};
+var LV_GATE = {pads:'sampler', fx:'modfx'};
+// var: setPerformMode reads this during boot, long before this line runs in
+// file order would matter for a let. See CLAUDE.md.
+var LV = { slots:null };
+(function(){
+ var s = null;
+ try{ s = JSON.parse(localStorage.getItem('modo-live-slots')||'null'); }catch(e){}
+ if(Array.isArray(s)) s = s.filter(function(m,i){ return LV_NAME[m] && s.indexOf(m)===i; }).slice(0, LV_MAX);
+ if(!s || !s.length){
+  // The layout Live always had, with the pads where the first look put them
+  // if they had been swapped in.
+  var pads = false; try{ pads = (JSON.parse(localStorage.getItem('modo-ps')||'{}')||{}).slot==='pads'; }catch(e){}
+  s = ['chords', pads ? 'pads' : 'melody', 'fx'];
+ }
+ LV.slots = s;
+})();
+function lvSave(){ try{ localStorage.setItem('modo-live-slots', JSON.stringify(LV.slots)); }catch(e){} }
+function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
+function lvAllowed(m){ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g); }
+function lvActive(){
+ var pg = document.getElementById('page-perform');
+ return document.body.classList.contains('mode-basic') && !!pg && pg.classList.contains('active');
+}
+
+// A heading for the instruments that do not bring one. Same element the Live
+// view already uses to name a surface, so they all read alike.
+var _lvLbl = {};
+function lvLabel(m){
+ if(_lvLbl[m]) return _lvLbl[m];
+ var d = document.createElement('div');
+ d.className = 'pf-surface-lbl lv-lbl'; d.id = 'lv-lbl-'+m;
+ d.appendChild(document.createTextNode(LV_NAME[m]));
+ return (_lvLbl[m] = d);
+}
+// The elements each instrument is made of, in order. Looked up once and
+// remembered: after a move, the selectors that found them in Accomp would not.
+var _lvNodes = {};
+function lvNodes(m){
+ if(_lvNodes[m]) return _lvNodes[m];
+ var q = function(sel){ return document.querySelector(sel); }, out = null;
+ if(m==='chords') out = [q('#pf-chords-lbl'), q('#pf-chords-panel')];
+ else if(m==='melody') out = [q('#pf-mel-lbl'), q('#pf-melody-panel')];
+ else if(m==='pads') out = [q('#pf-pads-lbl'), q('#pf-pads-panel')];
+ else if(m==='fx') out = [q('#pf-fx-panel')];
+ else if(m==='drums') out = [lvLabel('drums'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
+ else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
+ else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
+ out = (out||[]).filter(Boolean);
+ if(out.length) _lvNodes[m] = out;
+ return out;
+}
+// Where the heading's slot controls go. MōdFX names itself in its own head row.
+function lvHead(m){
+ if(m==='fx') return document.querySelector('#modfx-panel > .fx-head');
+ return lvNodes(m)[0] || null;
+}
+// Remember where a node lives before the first move, so it can go back.
+function lvMark(n){
+ // The headings made here have no home to go back to — off the page, they
+ // are simply detached.
+ if(n._lvHome || !n.parentNode || (n.classList && n.classList.contains('lv-lbl'))) return;
+ var c = document.createComment('lv-home');
+ n.parentNode.insertBefore(c, n);
+ n._lvHome = c;
+}
+function lvHome(n){
+ if(n._lvHome && n._lvHome.parentNode){ n._lvHome.parentNode.insertBefore(n, n._lvHome); }
+ else if(n.classList && n.classList.contains('lv-lbl') && n.parentNode){ n.parentNode.removeChild(n); }
+}
+function lvContainer(){
+ var c = document.getElementById('lv-slots');
+ if(c) return c;
+ var pg = document.getElementById('page-perform'); if(!pg) return null;
+ c = document.createElement('div'); c.id = 'lv-slots';
+ var after = document.getElementById('perf-chart-row') || pg.querySelector('.key-strip');
+ if(after && after.parentNode===pg) pg.insertBefore(c, after.nextSibling); else pg.appendChild(c);
+ return c;
+}
+
+function lvMount(){
+ var on = lvActive();
+ var cont = lvContainer(); if(!cont) return;
+ // Everything home first; what belongs in a slot is then moved back out. Two
+ // passes rather than diffing, because the order of the slots is itself the
+ // state, and appending in order is the simplest way to get it right.
+ LV_ORDER.forEach(function(m){
+  lvNodes(m).forEach(function(n){ lvMark(n); lvHome(n); n.classList && n.classList.remove('lv-off'); });
+  // Cleared through the heading itself, not a document query: a detached
+  // heading still carries its old ⋯, and a query of the document cannot see
+  // it — so it kept its old slot number and moved the wrong slot.
+  var h = lvHead(m); if(h) h.querySelectorAll('.lv-ctl').forEach(function(e){ e.remove(); });
+ });
+ cont.innerHTML = '';
+ if(!on){ cont.style.display='none'; lvAfter(); return; }
+ cont.style.display = '';
+ LV.slots.forEach(function(m, i){
+  if(!lvAllowed(m)) return;
+  var slot = document.createElement('section');
+  slot.className = 'lv-slot'; slot.dataset.mod = m; slot.dataset.i = String(i);
+  slot.setAttribute('aria-label', LV_NAME[m]);
+  lvNodes(m).forEach(function(n){ slot.appendChild(n); });
+  cont.appendChild(slot);
+ });
+ // Instruments not in a slot are off the Live page, including their headings.
+ ['chords','melody','pads','fx'].forEach(function(m){
+  if(!lvHas(m) || !lvAllowed(m)) lvNodes(m).forEach(function(n){ n.classList.add('lv-off'); });
+ });
+ if(LV.slots.length < LV_MAX){
+  var add = document.createElement('button');
+  add.type = 'button'; add.className = 'lv-add'; add.textContent = '+ Add instrument';
+  add.title = 'Up to four instruments on this page — any of them, in any order';
+  add.addEventListener('click', function(){ lvAddMenu(add); });
+  cont.appendChild(add);
+ }
+ lvDecorate();
+ lvAfter();
+}
+// The slot control, on each heading: one ⋯ that opens everything you can do
+// to the slot — what is in it, where it sits, whether it is here at all. Four
+// separate buttons did not fit: on a phone the Chords heading already carries
+// the Sub switch and the Sound picker, and the last of them fell off the edge.
+function lvDecorate(){
+ LV.slots.forEach(function(m, i){
+  var h = lvHead(m); if(!h || h.querySelector('.lv-ctl')) return;
+  var c = document.createElement('span'); c.className = 'lv-ctl';
+  var x = document.createElement('button'); x.type='button'; x.className='lv-cb';
+  x.textContent='⋯'; x.title='Slot '+(i+1)+': swap, move or remove'; x.setAttribute('aria-label', x.title);
+  x.addEventListener('click', function(e){ e.stopPropagation(); lvSlotMenu(i, x); });
+  c.appendChild(x);
+  h.appendChild(c);
+ });
+}
+function lvSlotMenu(i, anchor){
+ var cur = LV.slots[i], n = LV.slots.length, items = [];
+ if(i>0) items.push({label:'↑  Move up', fn:function(){ lvMove(i,-1); }});
+ if(i<n-1) items.push({label:'↓  Move down', fn:function(){ lvMove(i,+1); }});
+ if(n>1) items.push({label:'✕  Take off the Live page', fn:function(){ lvRemove(i); }});
+ LV_ORDER.forEach(function(m){
+  if(m===cur) return;
+  var j = LV.slots.indexOf(m);
+  items.push({ label: '⇄  '+LV_NAME[m] + (j>=0 ? '  (swap with slot '+(j+1)+')' : '') + (lvAllowed(m)?'':'  · Pro'),
+               fn: function(){ lvPick(i, m); } });
+ });
+ gridClipMenu(anchor, 'Slot '+(i+1)+' · '+LV_NAME[cur], items);
+}
+// Things that have to happen once the instruments are where they will be.
+function lvAfter(){
+ try{ if(typeof prRelayout==='function'){ prRelayout('bl'); prRelayout('ml'); } }catch(e){}
+ try{ if(typeof window._sqRenderGrid==='function' && lvHas('drums') && lvActive()) window._sqRenderGrid(); }catch(e){}
+ try{ if(typeof msSyncHost==='function') msSyncHost(); }catch(e){}
+}
+function lvSet(slots){
+ LV.slots = slots.slice(0, LV_MAX);
+ lvSave();
+ if(typeof setPerformMode==='function') setPerformMode(typeof performMode!=='undefined' ? performMode : 'chords');
+ else lvMount();
+}
+function lvMove(i, d){
+ var j = i + d; if(j < 0 || j >= LV.slots.length) return;
+ var s = LV.slots.slice(); var t = s[i]; s[i] = s[j]; s[j] = t; lvSet(s);
+}
+function lvRemove(i){
+ if(LV.slots.length <= 1) return;
+ var s = LV.slots.slice(); var gone = s.splice(i, 1)[0];
+ lvSet(s);
+ showToast(LV_NAME[gone]+' off the Live page', {actionLabel:'Undo', onAction:function(){
+  var r = LV.slots.slice(); r.splice(Math.min(i, r.length), 0, gone); lvSet(r);
+ }});
+}
+function lvPick(i, m){
+ if(!lvAllowed(m)){ if(typeof freeBlocked==='function') freeBlocked(LV_NAME[m]); return; }
+ var s = LV.slots.slice(), j = s.indexOf(m);
+ // An instrument already in another slot swaps places with this one: it can
+ // only be in one place, and asking for it here means here.
+ if(j >= 0){ s[j] = s[i]; }
+ if(i >= s.length) s.push(m); else s[i] = m;
+ lvSet(s);
+}
+function lvAddMenu(anchor){
+ var free = LV_ORDER.filter(function(m){ return !lvHas(m); });
+ gridClipMenu(anchor, 'Add to the Live page', free.map(function(m){
+  return { label: LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'), fn: function(){ lvPick(LV.slots.length, m); } };
+ }));
+}
+window.lvMount = lvMount; window.lvSet = lvSet; window.lvHas = lvHas;
+
 
 // ── Wiring ───────────────────────────────────────────────────────────────
 function smpInit(){
@@ -26554,18 +26766,16 @@ function setPerformMode(m){
  document.getElementById('pf-melody-btn')?.classList.toggle('active', m==='melody');
  document.getElementById('pf-fx-btn')?.classList.toggle('active', m==='fx');
  document.getElementById('pf-pads-btn')?.classList.toggle('active', m==='pads');
- document.getElementById('pf-chords-panel').style.display = (oneScreen || m==='chords')?'':'none';
- // The pads share the melody's place: one or the other on the Live screen,
- // chosen on the Melody heading; their own sub-tab in Studio.
- const padsLive = oneScreen && PS.slot==='pads';
- const showPads = oneScreen ? padsLive : m==='pads';
- document.getElementById('pf-melody-panel').style.display = (oneScreen ? !padsLive : m==='melody')?'':'none';
+ // Live is whatever is in its slots (see LIVE SLOTS); Studio is the sub-tab.
+ const lv = oneScreen && typeof lvHas==='function';
+ const showPads = lv ? lvHas('pads') : m==='pads';
+ document.getElementById('pf-chords-panel').style.display = (lv ? lvHas('chords') : m==='chords')?'':'none';
+ document.getElementById('pf-melody-panel').style.display = (lv ? lvHas('melody') : m==='melody')?'':'none';
  const _pp = document.getElementById('pf-pads-panel');
  if(_pp) _pp.style.display = showPads ? '' : 'none';
- if(typeof psSyncSlotUI==='function') psSyncSlotUI();
  if(showPads && typeof psShow==='function') psShow();
  const fxp=document.getElementById('pf-fx-panel');
- const showFx = (oneScreen && fxOK) || m==='fx';
+ const showFx = (lv ? (lvHas('fx') && fxOK) : m==='fx');
  // Walking away from the pad ends what it was sounding — unless Hold has it
  // latched, which is the user saying "keep going". Same call as switchTab.
  if(!showFx && !fxHold){ try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){} }
@@ -26583,6 +26793,7 @@ function setPerformMode(m){
   if(typeof fxPaintPad==='function') setTimeout(fxPaintPad,0);
  }
  positionSubnavLed('pf-subnav');
+ if(typeof lvMount==='function') lvMount();
  if(typeof msSyncHost==='function') msSyncHost();
 }
 
@@ -26878,6 +27089,8 @@ function switchTab(t){
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
  if(typeof syncTabRoving==='function') syncTabRoving();
  subnavDockSync(t);
+ // Live's slots borrow the Accomp grids; leaving Play gives them back.
+ if(typeof lvMount==='function') lvMount();
  if(t==='songs') renderSetlistPerform();
  // openGuide() builds this before switching; anything else reaching the page
  // would otherwise find it empty.
