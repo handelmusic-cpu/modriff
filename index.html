@@ -996,6 +996,26 @@ body.mode-basic .ps-head .ps-title { display:none; }
 .ps-load-pv { width:40px; flex:none; border:0; border-left:1px solid var(--border2); background:none; color:var(--muted); cursor:pointer; font-size:.6rem; }
 .ps-load-pv:hover, .ps-load-pick:hover { background:var(--acc-dim); }
 .ps-pad.drop { outline:2px dashed var(--accent); outline-offset:2px; }
+
+/* Pattern row. A lit number has something in it; the ring is the one
+   selected; it pulses while it plays; a queued one blinks until it takes
+   over at the loop's end. Rec is red, the one red thing on the deck. */
+.ps-pats .ps-segb { min-width:28px; padding:6px 0; }
+.ps-pats .ps-segb.has { color:var(--text); }
+.ps-pats .ps-segb.has::after { content:''; display:block; width:4px; height:4px; margin:2px auto 0; border-radius:50%; background:var(--accent); }
+.ps-pats .ps-segb.active { background:var(--acc-dim); color:var(--text); box-shadow:inset 0 0 0 1px var(--accent); }
+.ps-pats .ps-segb.playing { background:var(--accent); color:#07080f; }
+.ps-pats .ps-segb.playing::after { background:#07080f; }
+.ps-pats .ps-segb.queued { animation:ps-q .5s steps(2) infinite; }
+@keyframes ps-q { 50% { background:var(--acc-dim); color:var(--text); } }
+.ps-rec.active { background:#e5484d; border-color:#e5484d; color:#fff; box-shadow:0 0 12px rgba(229,72,77,.55); animation:ps-q-rec 1s ease-in-out infinite; }
+@keyframes ps-q-rec { 50% { box-shadow:0 0 4px rgba(229,72,77,.3); } }
+.ps-patplay { min-width:40px; }
+.ps-patplay.active { background:var(--accent); border-color:var(--accent); color:#07080f; }
+.ps-patbar { height:3px; border-radius:2px; background:var(--border); overflow:hidden; margin-top:-4px; }
+.ps-patbar > i { display:block; height:100%; width:0; background:var(--accent); }
+.ps-patbar.rec > i { background:#e5484d; }
+@media (prefers-reduced-motion: reduce){ .ps-pats .ps-segb.queued, .ps-rec.active { animation:none; } }
 /* ── Live slots ── one column of up to four instruments, each under its own
    heading with the slot controls at the right end of it. */
 #lv-slots { display:flex; flex-direction:column; gap:4px; }
@@ -10534,10 +10554,11 @@ function psPress(i){
  if(!live && PS_PEND[key] && (mode==='loop' || (mode==='gate' && PS.hold))){ delete PS_PEND[key]; psRenderDeck(); return; }
  // A second tap ends a loop, and with Hold on it ends a gate as well — the
  // two latched states. Under quantize the stop waits for the grid too.
+ var at = psWhen(ctx);
  if(live && (mode==='loop' || (mode==='gate' && PS.hold))){
-  psStop(key, psWhen(ctx));
+  psStop(key, at); psRecEv(key, at, false);
  } else {
-  psStart(key, psWhen(ctx));
+  psStart(key, at); psRecEv(key, at, true);
  }
  psRenderDeck();
 }
@@ -10550,6 +10571,7 @@ function psRelease(i){
  // sixteenth rather than nothing at all.
  var t = Math.max(ctx.currentTime, v.t0 + 0.06);
  psFade(v, t, 0.015);
+ psRecEv(key, t, false);
  delete PS_LIVE[key];
  setTimeout(function(){ psLit(key,false); }, Math.max(0,(t-ctx.currentTime)*1000));
 }
@@ -10564,11 +10586,11 @@ function psSubPress(){
  var step = (PS.quant && PS.quant!=='bar') ? PS.quant : 1;
  var dt = 60/psBpm()/4*step;
  var next = psWhen(ctx);
- psStart(key, next); next += dt;
+ psStart(key, next); psRecEv(key, next, true); next += dt;
  psRollStop();
  _psRoll = setInterval(function(){
   var c=psCtx(); if(!c) return;
-  while(next < c.currentTime + 0.12){ psStart(key, Math.max(next, c.currentTime+0.005)); next += dt; }
+  while(next < c.currentTime + 0.12){ var tt=Math.max(next, c.currentTime+0.005); psStart(key, tt); psRecEv(key, tt, true); next += dt; }
  }, 25);
 }
 function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
@@ -11340,6 +11362,32 @@ function psBuild(){
  g2.appendChild(qs); bq.appendChild(g2);
  host.appendChild(bq);
 
+ // Patterns: P1-P8, ● and ▶ in both views; length, undo and clear in Studio.
+ var pr=psEl('div','ps-row ps-patrow');
+ var pg1=psEl('span','ps-grp'); pg1.appendChild(psEl('span','ps-lbl','Pattern'));
+ var ps8=psEl('div','ps-seg ps-pats');
+ for(var pi=0; pi<8; pi++){ (function(n){
+  var x=psBtn('ps-segb', String(n+1), 'Pattern '+(n+1), function(){ psPatSelect(n); });
+  x.dataset.pspat=String(n); ps8.appendChild(x);
+ })(pi); }
+ pg1.appendChild(ps8); pr.appendChild(pg1);
+ var pg2=psEl('span','ps-grp');
+ var recb=psBtn('ps-chip ps-rec', '● Rec', 'Record pad hits into this pattern — on the next bar line, or straight away onto a pattern already playing (overdub). Again to stop.', psRecToggle);
+ recb.id='ps-rec';
+ var plb=psBtn('ps-chip ps-patplay', '▶', 'Play the pattern', psPatToggle); plb.id='ps-patplay';
+ pg2.appendChild(recb); pg2.appendChild(plb); pr.appendChild(pg2);
+ var pg3=psEl('span','ps-grp ps-studio'); pg3.appendChild(psEl('span','ps-lbl','Len'));
+ var lseg=psEl('div','ps-seg');
+ PS_PAT_LENS.forEach(function(n){ var x=psBtn('ps-segb', String(n), n+' bar'+(n===1?'':'s')+' — a longer length repeats what is there', function(){ psPatSetLen(n); }); x.dataset.pslen=String(n); lseg.appendChild(x); });
+ pg3.appendChild(lseg);
+ var unb=psBtn('ps-chip', 'Undo', 'Undo the last take', psUndoTake); unb.id='ps-undo';
+ pg3.appendChild(unb);
+ pg3.appendChild(psBtn('ps-chip', 'Clear', 'Empty this pattern', psPatClear));
+ pr.appendChild(pg3);
+ host.appendChild(pr);
+ var pbar=psEl('div','ps-patbar'); pbar.id='ps-patbar'; pbar.appendChild(psEl('i'));
+ host.appendChild(pbar);
+
  // The pads.
  var grid=psEl('div','ps-grid'); grid.id='ps-grid';
  for(var i=0;i<PS_N;i++) grid.appendChild(psMakePad(i));
@@ -11434,6 +11482,7 @@ function psRender(){
  document.querySelectorAll('#ps-panel [data-psq]').forEach(function(b){ b.classList.toggle('active', b.dataset.psq===String(PS.quant)); });
  var h=document.getElementById('ps-hold'); if(h){ h.classList.toggle('active', PS.hold); h.setAttribute('aria-pressed', PS.hold?'true':'false'); }
  psRenderDeck();
+ psPatRender();
 }
 
 // LCD, the mode row and the knobs — everything about the selected pad.
@@ -11554,6 +11603,231 @@ function psShow(){
  psRender();
 }
 window.psShow=psShow; window.psRender=psRender;
+// ── Pattern sequencer ────────────────────────────────────────────────────
+// The SP-404's pattern sequencer: arm REC, play the pads, and what you played
+// loops back. Eight patterns of 1, 2, 4 or 8 bars. A pattern stores pad
+// strikes, not audio — {s: position in sixteenths (fractional, so an
+// unquantized take keeps its feel), k: pad key, on: strike or release} — so it
+// plays whatever is on those pads now, across banks, and costs a few hundred
+// bytes in a saved session.
+//
+// It runs on the band's clock: the drum sequencer is the master clock every
+// engine aligns to and it runs whenever anything plays (see startEverything),
+// so a pattern starts on the drums' bar line and stays there. Quantize on the
+// pads is the record quantize too — a strike that lands on the grid is
+// recorded on the grid.
+var PS_PATS = [null,null,null,null,null,null,null,null];
+var PS_PAT_LENS = [1,2,4,8];
+PS.pat = 0; PS.patOn = false; PS.patNext = null; PS.recLen = 2; PS.rec = null;
+var _psPat = { nextT:0, step:0, loopT:0, iter:0 };
+var _psUndoTake = null;
+
+function psBarSteps(){ return (typeof meterStepsPerBar==='function') ? meterStepsPerBar() : 16; }
+function psSd(){ return 60/psBpm()/4; }
+function psPatLen(p){ return (p && p.bars ? p.bars : PS.recLen) * psBarSteps(); }
+
+// Where in the playing pattern a moment falls: {s, iter}. The scheduler runs
+// ahead of the audio clock, so its current loop may already be the next one —
+// a strike before that loop's start belongs to the end of the one before.
+function psPatPosAt(t){
+ var len = psPatLen(PS_PATS[PS.pat]), s = (t - _psPat.loopT) / psSd(), it = _psPat.iter;
+ while(s < 0){ s += len; it--; }
+ while(s >= len){ s -= len; it++; }
+ return {s:s, iter:it};
+}
+// One recorded strike or release.
+function psRecEv(key, t, on){
+ if(!PS.rec || !PS.patOn || !_psPat.loopT) return;
+ if(t < PS.rec.t0 - 0.002) return;          // the count-in is not the take
+ var p = PS_PATS[PS.pat]; if(!p) return;
+ if(p.ev.length >= 512) return;
+ var at = psPatPosAt(t);
+ var ev = {s: Math.round(at.s*1000)/1000, k:key, on:!!on};
+ // Not yet reached by the scheduler on this pass: it would be scheduled again
+ // on top of the strike you just played. It sounds from the next pass on.
+ if(at.iter > _psPat.iter || (at.iter===_psPat.iter && ev.s >= _psPat.step)) ev.skip = at.iter;
+ p.ev.push(ev);
+ PS.rec.n++;
+}
+
+// Called from tickClock with the rest of the engines.
+window._psScheduler = function(){
+ var ctx = psCtx(); if(!ctx || !PS.patOn) return;
+ if(!(typeof window._sqPlaying==='function' && window._sqPlaying())) return;
+ var horizon = (typeof schedHorizon==='function') ? schedHorizon() : ctx.currentTime + 0.2;
+ if(!_psPat.nextT || _psPat.nextT < ctx.currentTime - 0.05){
+  // Start, or come back after the clock stopped: on the drums' next bar line.
+  var b = (typeof window._sqNextBar==='function') ? window._sqNextBar() : null;
+  if(!b) return;
+  _psPat.nextT = _psPat.loopT = b.t; _psPat.step = 0; _psPat.iter++;
+  if(PS.rec && !PS.rec.t0) PS.rec.t0 = b.t;
+ }
+ var guard = 0;
+ while(_psPat.nextT < horizon && guard++ < 256){
+  var p = PS_PATS[PS.pat], len = psPatLen(p), sd = psSd();
+  var st = _psPat.step, it = _psPat.iter, t0 = _psPat.nextT;
+  if(p) p.ev.forEach(function(ev){
+   if(ev.s < st || ev.s >= st+1 || ev.skip===it) return;
+   var t = t0 + (ev.s - st)*sd;
+   if(ev.on){ var v = psStart(ev.k, Math.max(t, ctx.currentTime)); if(v) v.byPat = true; }
+   else psStop(ev.k, Math.max(t, ctx.currentTime));
+  });
+  _psPat.nextT += sd; _psPat.step++;
+  if(_psPat.step >= len){
+   _psPat.step = 0; _psPat.loopT = _psPat.nextT; _psPat.iter++;
+   // A pattern picked while another plays takes over at the loop's end.
+   if(PS.patNext!=null){ PS.pat = PS.patNext; PS.patNext = null; setTimeout(psPatRender, Math.max(0,(_psPat.loopT-ctx.currentTime)*1000)); }
+  }
+ }
+};
+
+function psEnsureTransport(){
+ if(typeof window._sqPlaying==='function' && window._sqPlaying()) return;
+ if(typeof startEverything==='function') startEverything();
+ if(typeof syncFixedTransport==='function') syncFixedTransport();
+}
+// ▶ / ■ for the pattern.
+function psPatToggle(){
+ if(PS.patOn){ psPatStop(); return; }
+ if(!PS_PATS[PS.pat] || !PS_PATS[PS.pat].ev.length){ showToast('Nothing in P'+(PS.pat+1)+' yet — press ● to record it'); return; }
+ PS.patOn = true; _psPat.nextT = 0;
+ psEnsureTransport();
+ psPatRender();
+}
+function psPatStop(){
+ PS.patOn = false; PS.patNext = null; _psPat.nextT = 0;
+ if(PS.rec) psRecStop();
+ // What the pattern was holding open goes with it; one-shots ring out.
+ Object.keys(PS_LIVE).forEach(function(k){ var v=PS_LIVE[k]; if(v && v.byPat && v.mode!=='oneshot') psStop(k); });
+ psPatRender();
+}
+function psPatSelect(i){
+ if(PS.rec){ showToast('Stop recording first'); return; }
+ if(PS.patOn && i!==PS.pat){ PS.patNext = i; psPatRender(); return; }
+ PS.pat = i; psPatRender();
+}
+function psPatSetLen(n){
+ if(PS_PAT_LENS.indexOf(n)<0) return;
+ var p = PS_PATS[PS.pat];
+ if(p && p.ev.length){
+  // Lengthening repeats what is there; shortening keeps what fits.
+  var oldLen = p.bars*psBarSteps(), newLen = n*psBarSteps();
+  if(newLen > oldLen){ var src = p.ev.slice(); for(var off=oldLen; off<newLen; off+=oldLen) src.forEach(function(e){ if(e.s+off < newLen) p.ev.push({s:e.s+off, k:e.k, on:e.on}); }); }
+  else p.ev = p.ev.filter(function(e){ return e.s < newLen; });
+  p.bars = n;
+ } else if(p){ p.bars = n; }
+ PS.recLen = n;
+ psPatRender();
+}
+// ● — arm, record, and again to stop. Overdubs onto what is already there.
+function psRecToggle(){
+ if(PS.rec){ psRecStop(); return; }
+ var i = PS.pat;
+ if(!PS_PATS[i]) PS_PATS[i] = {bars:PS.recLen, ev:[]};
+ var p = PS_PATS[i];
+ _psUndoTake = {i:i, ev:p.ev.slice(), bars:p.bars};
+ var running = PS.patOn && _psPat.nextT && typeof window._sqPlaying==='function' && window._sqPlaying();
+ // Already looping: recording starts now, onto the pass in progress. Not:
+ // it starts with the pattern, on the next bar line, and anything before
+ // that is the count-in.
+ PS.rec = {t0: running ? psCtx().currentTime : 0, n:0};
+ if(!PS.patOn){ PS.patOn = true; _psPat.nextT = 0; }
+ psEnsureTransport();
+ psPatRender();
+}
+function psRecStop(){
+ var r = PS.rec; PS.rec = null;
+ var p = PS_PATS[PS.pat];
+ if(p) p.ev.forEach(function(e){ delete e.skip; });
+ if(p && !p.ev.length && _psUndoTake && !_psUndoTake.ev.length){ PS_PATS[PS.pat] = null; PS.patOn = false; }
+ if(r) showToast(r.n ? 'Recorded '+r.n+' hit'+(r.n===1?'':'s')+' into P'+(PS.pat+1) : 'Nothing recorded',
+   r.n ? {actionLabel:'Undo', onAction:psUndoTake} : null);
+ psPatRender();
+}
+function psUndoTake(){
+ var u = _psUndoTake; if(!u) return;
+ if(PS.rec) PS.rec = null;
+ PS_PATS[u.i] = u.ev.length ? {bars:u.bars, ev:u.ev} : null;
+ if(!PS_PATS[PS.pat]) PS.patOn = false;
+ _psUndoTake = null;
+ psPatRender();
+}
+function psPatClear(){
+ var i = PS.pat, before = PS_PATS[i]; if(!before) return;
+ if(PS.rec) PS.rec = null;
+ PS_PATS[i] = null; PS.patOn = false;
+ psPatRender();
+ showToast('P'+(i+1)+' cleared', {actionLabel:'Undo', onAction:function(){ PS_PATS[i] = before; psPatRender(); }});
+}
+// Transport stop: the next Play starts the pattern from its top, on the bar.
+function psPatOnStop(){ _psPat.nextT = 0; if(PS.rec) psRecStop(); }
+
+// In a saved session and a share link: the patterns and which one is up.
+function psPatCapture(){
+ return { cur:PS.pat, len:PS.recLen, pats:PS_PATS.map(function(p){
+  return p ? {bars:p.bars, ev:p.ev.map(function(e){ return {s:e.s, k:e.k, on:e.on}; })} : null; }) };
+}
+function psPatApply(st){
+ if(!st || !Array.isArray(st.pats)) return;
+ PS_PATS = st.pats.slice(0,8).map(function(p){
+  return (p && Array.isArray(p.ev)) ? {bars: PS_PAT_LENS.indexOf(p.bars)>=0 ? p.bars : 2,
+    ev: p.ev.filter(function(e){ return e && typeof e.k==='string' && isFinite(e.s); }).map(function(e){ return {s:+e.s, k:e.k, on:e.on!==false}; })} : null;
+ });
+ while(PS_PATS.length < 8) PS_PATS.push(null);
+ PS.pat = (st.cur>=0 && st.cur<8) ? st.cur|0 : 0;
+ if(PS_PAT_LENS.indexOf(st.len)>=0) PS.recLen = st.len;
+ PS.patOn = false; PS.rec = null;
+ psPatRender();
+}
+window.psPatToggle=psPatToggle; window.psPatSelect=psPatSelect; window.psRecToggle=psRecToggle;
+window.psPatSetLen=psPatSetLen; window.psPatClear=psPatClear; window.psUndoTake=psUndoTake;
+window.psPatCapture=psPatCapture; window.psPatApply=psPatApply; window.psPatOnStop=psPatOnStop;
+
+// The pattern row: P1-P8, record, play, and in Studio the length, undo and
+// clear. Lit = has something in it; ring = selected; pulsing = playing; a
+// pattern queued to take over blinks until it does.
+function psPatRender(){
+ if(!_psBuilt) return;
+ document.querySelectorAll('#ps-panel [data-pspat]').forEach(function(b){
+  var i=+b.dataset.pspat, p=PS_PATS[i];
+  b.classList.toggle('has', !!(p && p.ev.length));
+  b.classList.toggle('active', i===PS.pat);
+  b.classList.toggle('playing', i===PS.pat && PS.patOn);
+  b.classList.toggle('queued', i===PS.patNext);
+ });
+ var p = PS_PATS[PS.pat];
+ document.querySelectorAll('#ps-panel [data-pslen]').forEach(function(b){ b.classList.toggle('active', +b.dataset.pslen===(p?p.bars:PS.recLen)); });
+ var rec=document.getElementById('ps-rec'); if(rec){ rec.classList.toggle('active', !!PS.rec); rec.setAttribute('aria-pressed', PS.rec?'true':'false'); }
+ var pl=document.getElementById('ps-patplay'); if(pl){ pl.classList.toggle('active', PS.patOn); pl.textContent = PS.patOn ? '■' : '▶'; pl.title = PS.patOn ? 'Stop the pattern' : 'Play the pattern'; }
+ var un=document.getElementById('ps-undo'); if(un) un.disabled = !_psUndoTake;
+ psPatAnim();
+}
+// The pattern's playhead: a bar under the row, filling across the loop.
+var _psPatRaf = null;
+function psPatAnim(){
+ if(_psPatRaf) return;
+ var bar = document.getElementById('ps-patbar'); if(!bar) return;
+ var fill = bar.firstChild, lcd = null;
+ var tick = function(){
+  _psPatRaf = null;
+  var ctx = psCtx();
+  if(!PS.patOn || !ctx || !bar.offsetParent){ fill.style.width='0'; bar.classList.remove('rec'); return; }
+  if(!_psPat.loopT){ fill.style.width='0'; _psPatRaf = requestAnimationFrame(tick); return; }
+  var at = psPatPosAt(ctx.currentTime), len = psPatLen(PS_PATS[PS.pat]);
+  var counting = PS.rec && PS.rec.t0 && ctx.currentTime < PS.rec.t0;
+  fill.style.width = counting ? '0' : (100*at.s/len).toFixed(1)+'%';
+  bar.classList.toggle('rec', !!PS.rec);
+  var sub = document.getElementById('ps-lcd-sub');
+  if(PS.rec && sub){
+   var bs = psBarSteps();
+   sub.textContent = counting ? '● REC P'+(PS.pat+1)+' — count-in'
+     : '● REC P'+(PS.pat+1)+' — bar '+(Math.floor(at.s/bs)+1)+' of '+Math.round(len/bs)+' · '+PS.rec.n+' hits';
+  }
+  _psPatRaf = requestAnimationFrame(tick);
+ };
+ _psPatRaf = requestAnimationFrame(tick);
+}
+
 // ═══════════════════════════════════════
 // LIVE SLOTS — up to four instruments, any of them, in any order
 // ═══════════════════════════════════════
@@ -16991,6 +17265,8 @@ function tickClock(){
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
+ // The pads' pattern sequencer rides the drum clock, so it runs when it does.
+ if(sqRunning && typeof window._psScheduler==='function') window._psScheduler();
  _schedHorizon=null;
  // A song loop finishing its pass mid-tick (window._sqScheduler above, which
  // announces the bar boundary SYNCHRONOUSLY via tickSongLoop) can run all the
@@ -21099,6 +21375,8 @@ function _capSettings(){
   // and looped. A few hundred bytes of references — the audio itself lives in
   // IndexedDB and never rides in a snapshot or a share link.
   smpSlots: (typeof window.smpCaptureState==='function') ? window.smpCaptureState() : null,
+  // The pads' recorded patterns — strikes, not audio.
+  psPats: (typeof window.psPatCapture==='function') ? window.psPatCapture() : null,
 
   // Which parts are armed for the next Play. The snapshot restored every
   // bassline, melody line and arp setting but not whether those parts were
@@ -21168,6 +21446,7 @@ function _applySettings(s){
  // Undefined means the snapshot predates the sampler and has nothing to say
  // about it; an empty object means it does, and every slot really is empty.
  if(s.smpSlots!==undefined && typeof window.smpApplyState==='function'){ try{ window.smpApplyState(s.smpSlots); }catch(e){} }
+ if(s.psPats && typeof window.psPatApply==='function'){ try{ window.psPatApply(s.psPats); }catch(e){} }
  else if(s.melgenWave && typeof window.setMlWave==='function'){ setMlWave(s.melgenWave); }
  // The song chart — sections, chords, repeat/advance. Re-render whatever's
  // currently on screen so an undone edit is visible immediately rather than
@@ -29521,6 +29800,7 @@ function stopEverything(){
  try{ if(typeof window.fxSmpStop==='function') window.fxSmpStop(); }catch(e){}
  // And the pads — a latched loop is exactly the sound Stop is for.
  try{ if(typeof window.psStopAll==='function') window.psStopAll(); }catch(e){}
+ try{ if(typeof window.psPatOnStop==='function') window.psPatOnStop(); }catch(e){}
  // Recognised by tickClock() if this stop happens nested inside a tick that
  // is already mid-execution (the Cold-ending case) — see the comment there.
  _clockStopRequested=true;
