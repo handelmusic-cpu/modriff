@@ -859,8 +859,12 @@ body.mode-basic #page-perform .key-name { font-size:1rem; }
 body.mode-basic #page-perform .key-mode { font-size:.36rem; }
 /* Basic reaches the modes through the dropdown, so the twelve-button row and
    its collapse toggle come off the strip entirely. Advanced keeps both. */
-#mode-pick { display:none; }
-body.mode-basic #mode-pick { display:inline-flex; }
+/* Live has only this; Studio has it beside the row of buttons, which shows
+   the twelve it always had — the dropdown is where the other twenty-eight
+   are, by family. */
+#mode-pick { display:inline-flex; }
+.md-fam { display:grid; grid-template-columns:1fr 1fr; gap:0 4px; }
+.md-fam .cp-item { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 body.mode-basic .key-strip > .tg { display:none !important; }
 /* The row was the only reason the church modes had a show/hide toggle. */
 body.mode-basic .church-modes-toggle { display:none !important; }
@@ -2813,7 +2817,8 @@ body.mode-basic .ms-stub { display:none; }
 .sb-menu-danger { color:var(--dom) !important; }
 .sb-menu-danger:hover { background:rgba(255,68,68,.12) !important; color:var(--dom) !important; }
 .sb-menu-sep { height:1px; margin:4px 6px; background:var(--border2); }
-.sb-menu-modes { min-width:150px; }
+.sb-menu-modes { min-width:150px; max-height:min(70vh,520px); overflow-y:auto; }
+.sb-menu-fam { font-size:.42rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:8px 2px 2px; }
 .sb-menu-modes .tb { display:block; width:100%; margin:2px 0; text-align:left; }
 .sb-menu .sec-ctrls { display:flex; flex-direction:column; gap:2px; margin:0; }
 
@@ -6019,7 +6024,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.7</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.8</span>
     </div>
    </div>
   </div>
@@ -6037,7 +6042,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.7</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.8</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6140,7 +6145,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Key &amp; Mode — Play tab only</div>
   <div class="kb-sc-row"><span class="kb-key">↑ / ↓</span><span class="kb-desc">Transpose the key up / down a semitone.</span></div>
-  <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">Step through every mode and scale, in the order the buttons are drawn: Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Locrian, Harmonic Minor, Hijaz, Major Pentatonic, Minor Pentatonic, Blues — then round again.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">Step through every mode and scale, family by family in the order the Mode menu lists them — the seven modes and harmonic minor, then Hijaz through Blues, the East Asian pentatonics, the rāgas, the hexatonics and the rest of the world — then round again.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -7981,7 +7986,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.7';
+const MODRIFF_VERSION = '4.0.8';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -8169,7 +8174,9 @@ const MODES = {
 const TRIAD = { 0:[0,4,7], 1:[0,3,7], 2:[0,3,6], 3:[0,4,8] }; // 3=augmented
 const SEVENTH = {
  maj7:[0,4,7,11], min7:[0,3,7,10], dom7:[0,4,7,10],
- halfdim:[0,3,6,10], dim7:[0,3,6,9], minMaj7:[0,3,7,11], augMaj7:[0,4,8,11]
+ halfdim:[0,3,6,10], dim7:[0,3,6,9], minMaj7:[0,3,7,11], augMaj7:[0,4,8,11],
+ // The whole-tone scale's own seventh: an augmented triad and a ♭7.
+ aug7:[0,4,8,10]
 };
 // Extensions beyond 7th
 const EXTS = {
@@ -8201,8 +8208,175 @@ const EXTS = {
  // underlying degree is major, minor or diminished.
  power: ()=>[0,7],
 };
-const SUFFIX7 = {maj7:'maj7',min7:'m7',dom7:'7',halfdim:'ø7',dim7:'°7',minMaj7:'mM7',augMaj7:'+M7'};
-const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'dom7',halfdim:'ø7',dim7:'dim7',minMaj7:'mMaj7',augMaj7:'augMaj7'};
+const SUFFIX7 = {maj7:'maj7',min7:'m7',dom7:'7',halfdim:'ø7',dim7:'°7',minMaj7:'mM7',augMaj7:'+M7',aug7:'+7'};
+const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'dom7',halfdim:'ø7',dim7:'dim7',minMaj7:'mMaj7',augMaj7:'augMaj7',aug7:'aug7'};
+
+// ── The wider world of scales ────────────────────────────────────────────
+// Everything above was harmonised by hand, one table per mode. These are
+// written as what a scale IS — its degrees, spelled the way the tradition
+// spells them — and their chord tables are worked out from that, by the rules
+// the hand-written ones follow:
+//
+//  · A seven-note scale stacks its own thirds, which is how every mode above
+//    was derived (Hijaz's comment says so; the arithmetic is the same).
+//  · A five- or six-note scale cannot: stack a pentatonic's "thirds" and C
+//    major pentatonic's first chord is C–E–A. Like the pentatonics above it
+//    is harmonised from a PARENT seven-note scale — the one it is usually
+//    heard as part of (Hirajōshi from natural minor, the In scale from
+//    Phrygian, Prometheus from Lydian dominant).
+//  · A symmetrical scale has no parent and does not need one: every other
+//    note of a whole-tone scale is an augmented triad, every other note of a
+//    diminished scale a diminished seventh, so stacking its own alternate
+//    notes is exactly right.
+//  · A degree that the parent does not contain (the eight-note Spanish
+//    scale's ♭3 and ♭5) takes the first major, minor, diminished or augmented
+//    triad that lies wholly inside the scale itself.
+//
+// Some names in the list are the same notes under another tradition's name —
+// Gong is the major pentatonic, Rāg Kāfī is Dorian, the Algerian scale is the
+// Hungarian minor. Those are `same:` entries: a scale of their own in the
+// picker, under their own name and family, sharing the chords and
+// progressions of the one they are.
+const SCALE_DEGREE_SEMIS = {'1':0,'b2':1,'2':2,'#2':3,'b3':3,'3':4,'4':5,'#4':6,'b5':6,'5':7,'#5':8,'b6':8,'6':9,'#6':10,'b7':10,'7':11};
+const SCALE_SOLFEGE = {'1':'Do','b2':'Ra','2':'Re','#2':'Ri','b3':'Me','3':'Mi','4':'Fa','#4':'Fi','b5':'Se','5':'Sol','#5':'Si','b6':'Le','6':'La','#6':'Li','b7':'Te','7':'Ti'};
+const _ROMAN = ['I','II','III','IV','V','VI','VII'];
+const PARENT_STEPS = {
+ major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10], dorian:[0,2,3,5,7,9,10],
+ phrygian:[0,1,3,5,7,8,10], hijaz:[0,1,4,5,7,8,10], lydian_dom:[0,2,4,6,7,9,10]
+};
+const EXTRA_SCALES = [
+ // Western & symmetrical
+ {id:'double_harmonic', label:'Double Harmonic', deg:'1 b2 3 4 5 b6 7',
+  tip:'Double harmonic (Byzantine, “gypsy major”) — Hijaz with a major seventh: two augmented seconds.'},
+ {id:'whole_tone', label:'Whole Tone', deg:'1 2 3 #4 #5 #6', self:true,
+  tip:'Whole tone — six equal steps. Every chord on it is augmented; Debussy’s dream sequence.'},
+ {id:'diminished', label:'Diminished (W–H)', deg:'1 2 b3 4 b5 b6 6 7', self:true,
+  tip:'Diminished, whole–half — eight notes, alternating steps. Diminished chords on every degree.'},
+ // East Asian pentatonics
+ {id:'gong', label:'Gong (Chinese Major)', same:'major_pent', tip:'Gōng mode — the Chinese major pentatonic.'},
+ {id:'yu', label:'Yu (Chinese Minor)', same:'minor_pent', tip:'Yǔ mode — the Chinese minor pentatonic.'},
+ {id:'hirajoshi', label:'Hirajōshi', deg:'1 2 b3 5 b6', parent:'minor',
+  tip:'Hirajōshi — the Japanese koto tuning. Five notes, harmonised from natural minor.'},
+ {id:'in_scale', label:'In (Miyako-bushi)', deg:'1 b2 4 5 b6', parent:'phrygian',
+  tip:'In scale (Miyako-bushi) — Japanese, with the ♭2 of Phrygian. Harmonised from Phrygian.'},
+ // Indian rāgas (equal-tempered)
+ {id:'bhairav', label:'Rāg Bhairav', same:'double_harmonic', tip:'Rāg Bhairav — a morning rāga; the same notes as the double harmonic scale.'},
+ {id:'todi', label:'Rāg Todi', deg:'1 b2 b3 #4 5 b6 7',
+  tip:'Rāg Todi (Miyan ki Todi) — ♭2, ♭3, ♯4 and ♭6 around a natural 7.'},
+ {id:'yaman', label:'Rāg Yaman', same:'lydian', tip:'Rāg Yaman — an evening rāga; the same notes as Lydian.'},
+ {id:'kafi', label:'Rāg Kāfī', same:'dorian', tip:'Rāg Kāfī — the same notes as Dorian.'},
+ {id:'asavari', label:'Rāg Āsāvarī', same:'minor', tip:'Rāg Āsāvarī — the same notes as natural minor.'},
+ {id:'shivaranjani', label:'Rāg Shivranjani', deg:'1 2 b3 5 6', parent:'dorian',
+  tip:'Rāg Shivranjani — minor pentatonic with a major sixth. Harmonised from Dorian.'},
+ // Hexatonic
+ {id:'african_hex', label:'African Hexatonic', deg:'1 b2 3 4 5 b6', parent:'hijaz',
+  tip:'A six-note scale from the Phrygian-dominant family. Harmonised from Hijaz.'},
+ {id:'prometheus', label:'Prometheus', deg:'1 2 3 #4 5 b7', parent:'lydian_dom',
+  tip:'Prometheus — Scriabin’s mystic chord as a scale. Harmonised from Lydian dominant.'},
+ {id:'aug_hex', label:'Augmented', deg:'1 b3 3 5 #5 7', self:true,
+  tip:'Augmented — two augmented triads a minor third apart. Symmetrical.'},
+ // More of the world
+ {id:'persian', label:'Persian', deg:'1 b2 3 4 b5 b6 7',
+  tip:'Persian — ♭2 and ♭5 against a major third and major seventh.'},
+ {id:'egyptian', label:'Egyptian', deg:'1 2 4 5 b7', parent:'dorian',
+  tip:'Egyptian — the suspended pentatonic: no third at all. Harmonised from Dorian.'},
+ {id:'pelog', label:'Pelog', deg:'1 b2 b3 5 b6', parent:'phrygian',
+  tip:'Pelog — an equal-tempered stand-in for the Javanese gamelan scale. Harmonised from Phrygian.'},
+ {id:'hungarian_minor', label:'Hungarian Minor', deg:'1 2 b3 #4 5 b6 7',
+  tip:'Hungarian (gypsy) minor — harmonic minor with a raised fourth.'},
+ {id:'romanian_minor', label:'Romanian Minor', deg:'1 2 b3 #4 5 6 b7',
+  tip:'Romanian minor (Ukrainian Dorian) — Dorian with a raised fourth.'},
+ {id:'algerian', label:'Algerian', same:'hungarian_minor', tip:'Algerian — the same notes as the Hungarian minor.'},
+ {id:'enigmatic', label:'Enigmatic', deg:'1 b2 3 #4 #5 #6 7',
+  tip:'Enigmatic — Verdi’s puzzle scale (scala enigmatica).'},
+ {id:'spanish8', label:'Spanish 8-Tone', deg:'1 b2 b3 3 4 b5 b6 b7', parent:'hijaz',
+  tip:'Spanish eight-tone — Phrygian with both thirds and a ♭5: flamenco’s full palette.'},
+];
+// Which family each scale is listed under, in the picker and the Songs menu.
+// The first group is the one the app always had.
+const MODE_FAMILIES = [
+ {name:'Modes',                   ids:['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor']},
+ {name:'Western & symmetrical',   ids:['hijaz','double_harmonic','whole_tone','diminished','major_pent','minor_pent','blues']},
+ {name:'East Asian pentatonic',   ids:['gong','yu','hirajoshi','in_scale']},
+ {name:'Indian rāga',             ids:['bhairav','todi','yaman','kafi','asavari','shivaranjani']},
+ {name:'Hexatonic',               ids:['african_hex','prometheus','aug_hex']},
+ {name:'Around the world',        ids:['persian','egyptian','pelog','hungarian_minor','romanian_minor','algerian','enigmatic','spanish8']}
+];
+const SCALE_TIPS = {};
+const SOLFEGE_BY_MODE_EXTRA = {};   // SOLFEGE_BY_MODE is far below this line; see solfegeLabel
+const SCALE_SAME = {};    // alias id -> the scale it shares notes with
+(function buildExtraScales(){
+ const TRI = [[4,7,0],[3,7,1],[3,6,2],[4,8,3]];   // third, fifth, quality
+ const inSet = (set, x) => set.indexOf(((x%12)+12)%12) >= 0;
+ const seventhFor = (q, s7) => {
+  const t = {0:{11:'maj7',10:'dom7'}, 1:{10:'min7',11:'minMaj7'}, 2:{10:'halfdim',9:'dim7'}, 3:{11:'augMaj7',10:'aug7'}}[q];
+  return (s7!=null && t[s7]) || null;
+ };
+ const defaultSeventh = {0:'maj7',1:'min7',2:'halfdim',3:'augMaj7'};
+ // The first triad, in order of preference, whose notes are all in `set`.
+ const searchTriad = (set, r) => {
+  for(const t of TRI) if(inSet(set, r+t[0]) && inSet(set, r+t[1])) return t;
+  return null;
+ };
+ const searchSeventh = (set, r, q) => {
+  for(const s of [10, 11, 9]){ const n = seventhFor(q, s); if(n && inSet(set, r+s)) return n; }
+  return defaultSeventh[q];
+ };
+ const degNum = d => parseInt(d.replace(/[b#]/g,''), 10);
+ EXTRA_SCALES.forEach(function(sc){
+  SCALE_TIPS[sc.id] = sc.tip;
+  if(sc.same){
+   SCALE_SAME[sc.id] = sc.same;
+   return;      // filled in below, once every source exists
+  }
+  const degs = sc.deg.split(' ');
+  const steps = degs.map(d => SCALE_DEGREE_SEMIS[d]);
+  const harm = sc.self ? steps : (sc.parent ? PARENT_STEPS[sc.parent] : steps);
+  const triadQ = [], seventh = [], nums = [], func = [];
+  degs.forEach(function(d, i){
+   const r = steps[i];
+   let q = null, t7 = null;
+   const hi = harm.indexOf(r);
+   if(hi >= 0){
+    // Stack the harmony scale's own thirds — or, for a symmetrical scale,
+    // its own alternate notes, which is the same instruction.
+    const n = harm.length;
+    const iv = k => ((harm[(hi + k) % n] - r) % 12 + 12) % 12;
+    const th = iv(2), fi = iv(4), se = iv(6);
+    const hit = TRI.find(t => t[0]===th && t[1]===fi);
+    if(hit){ q = hit[2]; t7 = seventhFor(q, n >= 7 ? se : null); }
+   }
+   if(q == null){
+    // Wholly in the scale if one is; otherwise the triad with the most of
+    // its notes in it — Hungarian minor's ♯4 has neither A♯ nor C♯, but it
+    // does have the C of a diminished triad, which is how it is played.
+    let t = searchTriad(steps, r);
+    if(!t){
+     let best = -1;
+     TRI.forEach(function(c){
+      const n = (inSet(steps, r+c[0])?1:0) + (inSet(steps, r+c[1])?1:0);
+      if(n > best){ best = n; t = c; }
+     });
+    }
+    q = t[2];
+   }
+   if(!t7) t7 = searchSeventh(sc.self || hi < 0 ? steps : harm, r, q);
+   const acc = d.charAt(0)==='b' ? '♭' : d.charAt(0)==='#' ? '♯' : '';
+   const R = _ROMAN[degNum(d) - 1];
+   nums.push(acc + ((q===0||q===3) ? R : R.toLowerCase()) + (q===2 ? '°' : q===3 ? '+' : ''));
+   triadQ.push(q); seventh.push(t7);
+   const dn = degNum(d);
+   func.push(i===0 ? 'tonic' : (dn===5 || (dn===7 && !acc) || dn===2 && acc) ? 'dom' : (dn===4 || dn===2) ? 'subdom' : 'modal');
+  });
+  MODES[sc.id] = {steps:steps, triadQ:triadQ, seventh:seventh, nums:nums, func:func, label:sc.label, family:true, deg:degs};
+  SOLFEGE_BY_MODE_EXTRA[sc.id] = degs.map(d => SCALE_SOLFEGE[d] || '');
+ });
+ EXTRA_SCALES.forEach(function(sc){
+  if(!sc.same || !MODES[sc.same]) return;
+  MODES[sc.id] = Object.assign({}, MODES[sc.same], {label:sc.label});
+ });
+})();
+
 // Voice gain compensation (perceived loudness equalization)
 // Per-voice makeup gain so every instrument reads at roughly the same
 // perceived loudness. Calibrated from actual OfflineAudioContext RMS/peak
@@ -13082,6 +13256,29 @@ const MODE_PROG_PRESETS = {
     {degrees:[0,1,5,0]},      // I–♭III–♭VII–I
   ],
 };
+// The scales from EXTRA_SCALES. One that shares its notes with a scale above
+// shares its progressions; the rest get the common moves their own degrees
+// allow — I–IV–V–I needs a 4 and a 5, the Phrygian cadence needs a ♭2 — so a
+// five-note scale is only ever offered chords it has.
+(function(){
+ const T = [['1','4','5','1'],['1','b2','1'],['1','2','5','1'],['1','6','4','5'],['1','b6','b7','1'],
+            ['1','b7','1'],['4','5','1'],['1','b6','b2','1'],['1','3','4','1'],['1','5','1'],['1','#4','5','1'],['1','2','1']];
+ EXTRA_SCALES.forEach(function(sc){
+  if(MODE_PROG_PRESETS[sc.id]) return;
+  if(sc.same){ if(MODE_PROG_PRESETS[sc.same]) MODE_PROG_PRESETS[sc.id] = MODE_PROG_PRESETS[sc.same]; return; }
+  const degs = (MODES[sc.id] && MODES[sc.id].deg) || [];
+  const out = [];
+  T.forEach(function(t){
+   if(out.length >= 6) return;
+   const ix = t.map(d => degs.indexOf(d));
+   if(ix.indexOf(-1) < 0) out.push({degrees:ix});
+  });
+  // A scale with almost none of those (whole tone, augmented) still gets a
+  // vamp from its tonic out and back along its own degrees.
+  for(let k=1; out.length < 3 && k < degs.length; k++) out.push({degrees:[0,k,0]});
+  MODE_PROG_PRESETS[sc.id] = out;
+ });
+})();
 
 // ── Blues forms ──
 // Everything in MODE_PROG_PRESETS is indexed by scale degree, which works
@@ -21301,10 +21498,10 @@ function mdPickSyncLabel(){
  const lay = (typeof layoutActiveName==='function') ? layoutActiveName() : null;
  cur.textContent = (md ? md.label : 'Mode') + (lay ? ' \u00b7 ' + lay : '');
  const pop = document.getElementById('mode-pick-pop');
- if(pop) Array.prototype.forEach.call(pop.children, function(b){
-  // Only the mode entries follow `mode`; the layout entries below them are
-  // marked active by mdPickLayouts against what is actually on the grid.
-  if(b.dataset.mode!==undefined) b.classList.toggle('active', b.dataset.mode === mode);
+ // Only the mode entries follow `mode`; the layout entries below them are
+ // marked active by mdPickLayouts against what is actually on the grid.
+ if(pop) pop.querySelectorAll('[data-mode]').forEach(function(b){
+  b.classList.toggle('active', b.dataset.mode === mode);
  });
  if(typeof mdPickLayouts==='function') mdPickLayouts();
 }
@@ -21352,7 +21549,28 @@ function mdPickLayouts(){
 }
 window.mdPickLayouts = mdPickLayouts;
 
+// The Songs tab's Mode ▾ menu: its hand-written buttons are the twelve the
+// app always had; the rest are added here under their family names, with the
+// same songs-bm- ids renderChords lights from `mode`.
+function sbModeMenuExtras(){
+ const menu = document.getElementById('sb-mode-menu'); if(!menu || menu._extras) return;
+ menu._extras = true;
+ MODE_FAMILIES.forEach(function(fam){
+  const ids = fam.ids.filter(k => MODES[k] && !document.getElementById('songs-bm-'+k));
+  if(!ids.length) return;
+  const h = document.createElement('div'); h.className = 'sb-menu-fam'; h.textContent = fam.name;
+  menu.appendChild(h);
+  ids.forEach(function(k){
+   const b = document.createElement('button');
+   b.type = 'button'; b.className = 'tb purple church-mode-btn'; b.id = 'songs-bm-'+k;
+   b.textContent = MODES[k].label; if(SCALE_TIPS[k]) b.title = SCALE_TIPS[k];
+   b.addEventListener('click', function(){ setMode(k); });
+   menu.appendChild(b);
+  });
+ });
+}
 function mdPickInit(){
+ sbModeMenuExtras();
  const strip = document.querySelector('.key-strip'); if(!strip) return;
  if(document.getElementById('mode-pick')) return;
  const tg = strip.querySelector('.tg'); if(!tg) return;
@@ -21368,20 +21586,29 @@ function mdPickInit(){
 
  const pop = document.createElement('div');
  pop.className = 'chordpick-pop'; pop.id = 'mode-pick-pop';
- const mhead = document.createElement('div');
- mhead.className = 'cp-sect'; mhead.textContent = 'Mode';
- pop.appendChild(mhead);
- Object.keys(MODES).forEach(function(k){
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = 'cp-item'; b.dataset.mode = k;
-  b.textContent = MODES[k].label;
-  b.addEventListener('click', function(e){
-   e.stopPropagation();
-   setMode(k);
-   mdPickSyncLabel();
-   cpClose();
+ // Forty scales as one list was a long scroll with nothing to steer by, so
+ // they go by family (MODE_FAMILIES), two to a row.
+ MODE_FAMILIES.forEach(function(fam){
+  const head = document.createElement('div');
+  head.className = 'cp-sect'; head.textContent = fam.name;
+  pop.appendChild(head);
+  const grid = document.createElement('div');
+  grid.className = 'md-fam';
+  fam.ids.forEach(function(k){
+   if(!MODES[k]) return;
+   const b = document.createElement('button');
+   b.type = 'button'; b.className = 'cp-item'; b.dataset.mode = k;
+   b.textContent = MODES[k].label;
+   if(SCALE_TIPS[k]) b.title = SCALE_TIPS[k];
+   b.addEventListener('click', function(e){
+    e.stopPropagation();
+    setMode(k);
+    mdPickSyncLabel();
+    cpClose();
+   });
+   grid.appendChild(b);
   });
-  pop.appendChild(b);
+  pop.appendChild(grid);
  });
 
  wrap._pop = pop; pop._wrap = wrap; wrap._btn = btn;
@@ -22100,7 +22327,9 @@ function _rndModePool(){
  const bag=[];
  Object.keys(MODES).forEach(function(m){
   if(typeof freeAllowsMode==='function' && !freeAllowsMode(m)) return;
-  const w = RND_MODE_WEIGHTS[m] != null ? RND_MODE_WEIGHTS[m] : 8;
+  // The scales from other traditions are reachable, rarely: a dice roll that
+  // lands on the Enigmatic scale one time in four is not a useful roll.
+  const w = RND_MODE_WEIGHTS[m] != null ? RND_MODE_WEIGHTS[m] : (SCALE_TIPS[m] ? 1 : 8);
   for(let i=0;i<w;i++) bag.push(m);
  });
  return bag;
@@ -26743,7 +26972,8 @@ function toggleSolfege(){
 }
 function solfegeLabel(semisFromRoot){
  const steps = (MODES[mode]||MODES.major).steps;
- const sol = SOLFEGE_BY_MODE[mode]||SOLFEGE_MAJ;
+ const sol = SOLFEGE_BY_MODE[mode] || SOLFEGE_BY_MODE_EXTRA[mode]
+   || SOLFEGE_BY_MODE[SCALE_SAME[mode]] || SOLFEGE_BY_MODE_EXTRA[SCALE_SAME[mode]] || SOLFEGE_MAJ;
  const idx = steps.indexOf(((semisFromRoot%12)+12)%12);
  // null for a note the mode has no syllable for, which is any of the five a
  // chromatic strip carries that the mode does not. Every caller already reads
@@ -30926,7 +31156,8 @@ document.addEventListener('keydown', e => {
 // ARROW KEYS (Perform tab only) — Up/Down transpose the key by a
 // semitone, Left/Right cycle through modes in the on-screen button order.
 // ═══════════════════════════════════════
-const MODE_CYCLE_ORDER = ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor','hijaz','major_pent','minor_pent','blues'];
+// Every mode, family by family — the order the picker draws them in.
+const MODE_CYCLE_ORDER = MODE_FAMILIES.reduce((a,f)=>a.concat(f.ids), []).filter(m=>MODES[m]);
 document.addEventListener('keydown', e => {
  if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
  if(_focusOwnsKey(e)) return;
