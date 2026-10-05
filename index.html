@@ -6043,7 +6043,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.9</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.10</span>
     </div>
    </div>
   </div>
@@ -6061,7 +6061,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.9</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.10</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8005,7 +8005,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.9';
+const MODRIFF_VERSION = '4.0.10';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -27310,7 +27310,13 @@ function _logicNorm(n){ return String(n||'').replace(/7$/, ''); }
 function logicNextTiers(curNum){
  const md = MODES[mode]||MODES.major, cur = _logicNorm(curNum);
  const trad = new Set(), beyond = new Set();
+ // The blues forms are whole 12-bar songs, in every mode's list for the
+ // Common menu; read as next-chord advice they had major's I lighting the jazz
+ // blues' borrowed v as a traditional move. Only the blues scales take them.
+ const bluesNames = new Set(BLUES_FORMS.map(f=>f.name));
+ const bluesOk = {blues:1, minor_pent:1, major_pent:1, gong:1, yu:1}[mode];
  _progPresetsFor(mode).forEach(function(pp){
+  if(!bluesOk && bluesNames.has(pp.name)) return;
   const seq = pp.chords ? pp.chords.map(c=>_logicNorm(c.num))
                         : pp.degrees.map(d=>_logicNorm(md.nums[d]));
   for(let i=0;i<seq.length;i++){
@@ -27347,7 +27353,20 @@ function applyLogicHighlights(deg,modalLabel){
   (rule.spicyDeg||[]).forEach(n=>addDeg(tiers.beyond, n));
   (rule.spicyLbl||[]).forEach(l=>tiers.beyond.add(_logicNorm(l)));
  }
+ // A secondary dominant goes where its name says: V/x resolves to x. That
+ // was only written down for four of them, in major (LOGIC_MODAL), so V/iii,
+ // and every V/ in every other mode, lit nothing at all.
+ if(modalLabel && /^V\//.test(modalLabel)){
+  const tgt = modalLabel.slice(2);
+  md.nums.forEach(function(num, d){ if(num.replace(/[°+]/g,'')===tgt) tiers.trad.add(_logicNorm(num)); });
+ }
+ // Studio: chords from outside the key, as the second tier. Live keeps to the
+ // key — its surfaces only carry the diatonic chords anyway.
+ if(!document.body.classList.contains('mode-basic')){
+  logicOutside(cur, tiers).forEach(n=>{ if(!tiers.trad.has(n)) tiers.beyond.add(n); });
+ }
  tiers.trad.forEach(n=>tiers.beyond.delete(n));
+ tiers.beyond.delete(_logicNorm(cur));
  const light = (n, cls)=>{
   md.nums.forEach(function(num, d){
    if(_logicNorm(num)!==n) return;
@@ -27360,10 +27379,55 @@ function applyLogicHighlights(deg,modalLabel){
  };
  tiers.trad.forEach(n=>light(n,'logic-suggest'));
  tiers.beyond.forEach(n=>light(n,'logic-spicy'));
- // From the tonic, the secondary dominants are always a second-tier option.
- if(deg===0 && !modalLabel){
-  document.querySelectorAll('[data-modal-label^="V/"]').forEach(e=>{ if(!e.classList.contains('logic-suggest')) e.classList.add('logic-spicy'); });
- }
+}
+
+// Chords from outside the key that lead somewhere from here — the second
+// tier of Logic Mode in Studio. Each is a move with a name, aimed at a chord
+// the first tier already suggests, so they read as routes to the same place
+// rather than as a list of everything non-diatonic:
+//
+//   secondary dominant  V/x before any suggested x — tonicize where you go
+//   modal interchange   a borrowed chord with the same function as a
+//                       suggested one (iv for IV, ♭VII for V)
+//   tritone sub         ♭II7 in place of a suggested V
+//   backdoor            ♭VII7 into a suggested I
+//   fifth down          a borrowed chord a fourth above this one, the
+//                       strongest root motion there is
+//
+// Labels come from the Borrowed and Secondary dominant rows themselves
+// (getAllBorrowed, getSecDoms), so only chords that are on screen are named.
+function logicOutside(cur, tiers){
+ const md = MODES[mode]||MODES.major;
+ const bor = (typeof getAllBorrowed==='function' ? getAllBorrowed(mode) : []) || [];
+ const sec = (typeof getSecDoms==='function' ? getSecDoms(mode) : []) || [];
+ const pc = x => ((x%12)+12)%12;
+ // Root and function of any numeral the pads can show.
+ const info = n => {
+  n = _logicNorm(n);
+  const d = md.nums.findIndex(x => _logicNorm(x)===n);
+  if(d >= 0) return {semis:pc(md.steps[d]), func:md.func[d], dia:true};
+  const b = bor.find(x => _logicNorm(x.label)===n);
+  if(b) return {semis:pc(b.semis), func:b.func};
+  const s2 = sec.find(x => _logicNorm(x.label)===n);
+  if(s2) return {semis:pc(s2.semis), func:'dom'};
+  return null;
+ };
+ const here = info(cur);
+ const out = new Set();
+ const targets = [];
+ tiers.trad.forEach(n => { const i = info(n); if(i) targets.push(Object.assign({n:n}, i)); });
+ targets.forEach(function(t){
+  // V/x — the label getSecDoms gives the chord a fifth above x.
+  const v = sec.find(x => pc(x.semis)===pc(t.semis+7));
+  if(v) out.add(_logicNorm(v.label));
+  bor.forEach(function(b){
+   if(b.func===t.func && pc(b.semis)!==t.semis) out.add(_logicNorm(b.label));      // interchange
+   if(t.semis===7 && pc(b.semis)===1) out.add(_logicNorm(b.label));                // tritone sub
+   if(t.semis===0 && pc(b.semis)===10) out.add(_logicNorm(b.label));               // backdoor
+  });
+ });
+ if(here) bor.forEach(function(b){ if(pc(b.semis)===pc(here.semis+5)) out.add(_logicNorm(b.label)); });
+ return out;
 }
 
 // ═══════════════════════════════════════
