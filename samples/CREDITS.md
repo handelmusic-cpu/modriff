@@ -224,3 +224,41 @@ downloaded.
 Each player's tone (Jamerson's muted flatwound P-bass, McCartney's picked
 Höfner, a scooped slap) is applied by the app when the notes load — see
 `_sampleShape` in index.html — so the files themselves are unprocessed.
+
+## samples/808 — the phrase sampler's TR-808
+
+From **Michael Fischer's Roland TR-808 sample set** (Technopolis, 1994),
+recorded from the individual outputs of a real TR-808 (serial 103852) and given
+away with no licensing restrictions — the text file that came with it calls
+them "ABSOLUTELY FREE". Taken from the copy packaged on npm as
+`@fluid-music/tr-808` (ISC), which documents the source at
+machines.hyperreal.org. Fourteen of the 116 files, converted to mono MP3 and
+trimmed of trailing silence, otherwise as recorded:
+
+| file | original | | file | original |
+|---|---|---|---|---|
+| kick | BD2575 | | cowbell | CB |
+| snare | SD5050 | | conga | HC50 |
+| clap | CP | | tom | MT50 |
+| hat | CH | | lotom | LT50 |
+| open | OH25 | | clave | CL |
+| rim | RS | | maracas | MA |
+| crash | CY5050 | | bass | BD2510, tuned to G1 (fluid-music's `BDTuned`) |
+
+## samples/sfx — the phrase sampler's FX bank
+
+- **coin, laser, jump, powerup, explosion, gameover** — rendered from
+  [ZzFX](https://github.com/KilledByAPixel/ZzFX) (Frank Force, MIT), a small
+  sound-effect synthesizer: each file is one ZzFX parameter set, rendered
+  offline. Game Over is one of the example sounds in ZzFX's README.
+- **levelup, scan, achieve** — from [uisfx](https://github.com/romainsimon/uisfx)
+  0.4.0, whose audio is dedicated to the public domain (**CC0 1.0**): the
+  arcade pack's `level-up` and `achievement` and the sci-fi pack's `scanning`,
+  re-encoded only.
+- **airhorn, siren, scratch, tapestop** — made for this app. The horn and
+  siren are synthesized; the scratch is the tenor sax C4 above, moved back and
+  forth under a virtual hand; the tape stop is a bar of the 808 above, slowed
+  to a stop.
+
+All are peak-normalised to −1 dBFS; their relative levels on the pads are set
+by `gain` in `PS_FACTORY_KIT`.
