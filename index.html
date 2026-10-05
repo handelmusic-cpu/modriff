@@ -26119,11 +26119,69 @@ function importSetlist(e){
  reader.readAsText(file);
 }
 
+// The chart on paper: the chord names, and under each one a piano shape — two
+// octaves from C, the chord's keys shaded, R on the root. Black on white,
+// because it is going to a printer; the app's own diagram (_svgPiano) is
+// drawn in the theme's colours and would print as grey mush. A slash chord
+// puts its bass note in the lower octave (B) and the chord in the upper one,
+// which is how it is played; anything else is shown in both octaves, as on
+// the Play tab.
+function _svgPianoPrint(pcs, rootPc, bassPc){
+ const WHITE=[0,2,4,5,7,9,11], BLACK={1:0,3:1,6:3,8:4,10:5};
+ const kw=12, kh=46, n=14, w=n*kw, h=kh+2;
+ const lit=(pc,oct)=> bassPc!=null ? (oct===0 ? pc===bassPc : pcs.includes(pc)) : pcs.includes(pc);
+ const mark=(pc,oct)=> (bassPc!=null && oct===0) ? 'B' : (pc===rootPc ? 'R' : '');
+ let s='<svg viewBox="0 0 '+w+' '+h+'" width="'+(w*1.25)+'" height="'+(h*1.25)+'" role="img" aria-label="Piano shape">';
+ for(let i=0;i<n;i++){
+  const pc=WHITE[i%7], oct=Math.floor(i/7), on=lit(pc,oct), m=on?mark(pc,oct):'';
+  s+='<rect x="'+(i*kw+0.5)+'" y="0.5" width="'+(kw-1)+'" height="'+kh+'" rx="1.5" fill="'+(on?(m?'#444':'#b8b8b8'):'#fff')+'" stroke="#222" stroke-width="0.8"/>';
+  if(m) s+='<text x="'+(i*kw+kw/2)+'" y="'+(kh-5)+'" font-size="7" font-weight="700" fill="#fff" text-anchor="middle" font-family="sans-serif">'+m+'</text>';
+ }
+ for(let i=0;i<n;i++){
+  const oct=Math.floor(i/7), idx=i%7;
+  Object.keys(BLACK).forEach(bp=>{
+   if(BLACK[bp]!==idx) return;
+   const pc=+bp, on=lit(pc,oct), m=on?mark(pc,oct):'';
+   const x=(oct*7+idx)*kw+kw-3.8;
+   s+='<rect x="'+x+'" y="0.5" width="7.6" height="'+(kh*0.6)+'" rx="1" fill="'+(on?(m?'#666':'#8a8a8a'):'#111')+'" stroke="#111" stroke-width="0.6"/>';
+   if(m) s+='<text x="'+(x+3.8)+'" y="'+(kh*0.6-3)+'" font-size="5.5" font-weight="700" fill="#fff" text-anchor="middle" font-family="sans-serif">'+m+'</text>';
+  });
+ }
+ return s+'</svg>';
+}
 function printChart(){
  const title=document.getElementById('chart-title').value||'Untitled';
  const win=window.open('','_blank');
- let html=`<html><head><title>${title}</title><style>body{font-family:sans-serif;padding:20px;}.sec{margin-bottom:20px;}.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}.chords{display:flex;flex-wrap:wrap;gap:8px;}.chord{padding:8px 14px;border:1px solid #ccc;border-radius:6px;font-size:18px;font-weight:bold;}</style></head><body><h1>${title}</h1><h3>${nn(root)} ${(MODES[mode]||MODES.major).label}</h3>`;
- sections.forEach(s=>{ html+=`<div class="sec"><div class="sec-name">${s.name}</div><div class="chords">`; s.slots.forEach(slot=>{ html+=`<div class="chord">${slot.label}${_slotExtSuffix(slot)?'<sup>'+_slotExtSuffix(slot)+'</sup>':''}${slot.bassNote!=null?'/'+nn(slot.bassNote%12):''}</div>`; }); html+='</div></div>'; });
+ const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ let html='<html><head><title>'+esc(title)+'</title><style>'
+  +'body{font-family:sans-serif;padding:20px;color:#000;background:#fff;}'
+  +'.sec{margin-bottom:22px;break-inside:avoid;}'
+  +'.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}'
+  +'.chords{display:flex;flex-wrap:wrap;gap:10px;}'
+  +'.chord{padding:8px 10px 6px;border:1px solid #ccc;border-radius:6px;text-align:center;break-inside:avoid;}'
+  +'.cname{font-size:18px;font-weight:bold;margin-bottom:6px;}'
+  +'.cdur{font-size:10px;color:#666;margin-top:3px;}'
+  +'@media print{ .chord{border-color:#999;} }'
+  +'</style></head><body><h1>'+esc(title)+'</h1><h3>'+nn(root)+' '+(MODES[mode]||MODES.major).label+'</h3>';
+ sections.forEach(sec=>{
+  if(!sec.slots||!sec.slots.length) return;
+  html+='<div class="sec"><div class="sec-name">'+esc(sec.name)+'</div><div class="chords">';
+  sec.slots.forEach(slot=>{
+   if(!slot || slot.isRest){ html+='<div class="chord"><div class="cname">Rest</div></div>'; return; }
+   const rootPc=((slot.rootM%12)+12)%12;
+   const intvs=(typeof getIntvs==='function')?getIntvs(slot.triadQ,slot.type7,slot.ext||'triad'):[0,4,7];
+   const pcs=[...new Set(intvs.map(i=>(((rootPc+i)%12)+12)%12))];
+   const bassPc=slot.bassNote!=null?((slot.bassNote%12)+12)%12:null;
+   // The Chart tab's name for it (G7, Dm7/C), not the slot's short label,
+   // which drops the seventh — the shape underneath showed four notes under
+   // a name that promised three.
+   const name=esc((typeof _chartEntry==='function' && _chartEntry(slot).name) || slot.label);
+   const dur=(typeof _slotDurLabel==='function')?_slotDurLabel(slot):'';
+   html+='<div class="chord"><div class="cname">'+name+'</div>'+_svgPianoPrint(pcs, rootPc, bassPc)
+     +(dur?'<div class="cdur">'+esc(dur)+'</div>':'')+'</div>';
+  });
+  html+='</div></div>';
+ });
  html+='</body></html>';
  win.document.write(html); win.document.close(); win.print();
 }
