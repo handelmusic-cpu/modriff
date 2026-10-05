@@ -893,6 +893,7 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 .ps-grp { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
 .ps-lbl { font-size:.46rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
 .ps-lbl-gap { margin-left:6px; }
+.ps-bank-nm { font-size:.62rem; color:var(--muted); margin-left:6px; letter-spacing:.04em; }
 .ps-seg { display:inline-flex; border:1px solid var(--border2); border-radius:var(--r-sm); overflow:hidden; }
 .ps-segb {
  padding:6px 9px; min-height:30px; border:0; background:none; color:var(--muted);
@@ -954,6 +955,7 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
  letter-spacing:.1em; text-transform:uppercase; cursor:pointer; touch-action:none;
 }
 .ps-big.active, .ps-big.down { background:var(--accent); border-color:var(--accent); color:#07080f; box-shadow:0 0 12px var(--glow); }
+.ps-big:disabled { opacity:.35; cursor:default; }
 .ps-edit { text-transform:none; letter-spacing:.04em; }
 
 /* The Live heading's pad count and Controls switch (see psLiveHead). */
@@ -5949,7 +5951,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.5</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.6</span>
     </div>
    </div>
   </div>
@@ -5967,7 +5969,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.5</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.6</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7911,7 +7913,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.5';
+const MODRIFF_VERSION = '4.0.6';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -10589,6 +10591,9 @@ function smpCaptureState(){
  Object.keys(SMP_SLOTS).forEach(function(k){
   var s=SMP_SLOTS[k];
   if(!s || !s.id) return;
+  // The preset banks are the app's, rebuilt from PS_PRESETS — saving them
+  // would freeze today's presets into every setup and share link.
+  if(psIsPresetKey(k)) return;
   out[k]={id:s.id,start:s.start,end:s.end,gain:s.gain,loop:!!s.loop,
           loopA:s.loopA, loopB:s.loopB,
           tune:s.tune,fine:s.fine,root:s.root};
@@ -10604,19 +10609,22 @@ function smpApplyState(st){
  SMP_SLOTS={};
  if(st && typeof st==='object'){
   Object.keys(st).forEach(function(k){
+   if(psIsPresetKey(k)) return;
    SMP_SLOTS[k]=Object.assign(smpNewSlot(), st[k]);
   });
  }
+ psPresetInstall();
  if(typeof fxSmpSync==='function') fxSmpSync();
  smpRenderAll();
 }
 window.smpApplyState = smpApplyState;
 
 // ═══════════════════════════════════════
-// PHRASE SAMPLER — twelve pads, four banks
+// PHRASE SAMPLER — twelve pads, four Preset banks and four User banks
 // ═══════════════════════════════════════
 // An SP-404 in the shape of this app. Every pad is a sampler SLOT like the
-// voiced parts and the drum lanes ('p:A:0' … 'p:D:11'), so a pad's clip, its
+// voiced parts and the drum lanes ('p:A:0' … 'p:D:11' for the User banks,
+// 'p:PA:0' … 'p:PD:11' for the presets), so a pad's clip, its
 // window, its level and its pitch are edited in the same sheet and saved in
 // the same snapshot as every other slot; nothing about the audio is new. What
 // is new is how a pad PLAYS — the part a phrase sampler is actually about:
@@ -10639,11 +10647,23 @@ window.smpApplyState = smpApplyState;
 // its meter, its MōdFX chain and its stem all see the pads with nothing
 // added. The pad screen's effect buttons and CTRL knobs are MōdFX on that
 // channel — see psFx.
-var PS_BANKS = ['A','B','C','D'];
+// Banks 0-3 are the User banks — the four this sampler always had, so a saved
+// bank number and every 'p:A:…' slot mean what they meant. 4-7 are the Preset
+// banks, the app's own (see PS_PRESETS).
+var PS_BANKS = ['A','B','C','D','PA','PB','PC','PD'];
 var PS_N = 12;
+function psBankIsPreset(b){ return b>=4; }
+function psOnPreset(){ return psBankIsPreset(PS.bank); }
+// 'A1' on a User bank, 'PA1' on a Preset one: short enough for a pad label,
+// and never the same name for two pads.
+function psPadName(i){ return PS_BANKS[PS.bank]+(i+1); }
+function psPresetBlocked(){
+ showToast('Preset pads stay as they are — Copy to User to change one', {actionLabel:'Copy…', onAction:psOpenCopy});
+}
 // var, not let: read from setPerformMode, stopEverything and the sampler sheet,
 // all of which are thousands of lines away and can run first. See CLAUDE.md.
-var PS = { bank:0, quant:0, slot:'melody', sel:0, hold:false, liveN:12, liveCtl:true };
+// A first run opens on Preset A, the bank with something on every pad.
+var PS = { bank:4, quant:0, slot:'melody', sel:0, hold:false, liveN:12, liveCtl:true };
 var PS_LIVE = {};          // pad key -> {src, gain, end, mode, t0}
 var PS_LAST = null;        // last pad struck, for Roll
 var PS_REVBUF = {};        // clip id -> reversed AudioBuffer
@@ -10668,7 +10688,7 @@ function psSavePrefs(){
  try{
   var o = JSON.parse(localStorage.getItem('modo-ps')||'null');
   if(o){
-   if(o.bank>=0 && o.bank<4) PS.bank = o.bank|0;
+   if(o.bank>=0 && o.bank<PS_BANKS.length) PS.bank = o.bank|0;
    if(PS_QUANTS.indexOf(o.quant)>=0) PS.quant = o.quant;
    if(o.slot==='pads' || o.slot==='melody') PS.slot = o.slot;
    if(o.liveN>=1 && o.liveN<=12) PS.liveN = o.liveN|0;
@@ -10833,7 +10853,10 @@ function psPress(i){
  var key = psCurKey(i);
  PS.sel = i;
  var slot = SMP_SLOTS[key];
- if(!slot || !slot.id){ psRenderDeck(); psOpenLoader(i); return; }
+ if(!slot || !slot.id){
+  if(psOnPreset()){ psPresetInstall(); psRender(); return; }
+  psRenderDeck(); psOpenLoader(i); return;
+ }
  if(!SMP_BUF[slot.id]){ if(typeof smpDecodeAll==='function') smpDecodeAll(); showToast('Still loading that pad'); return; }
  var ctx = psCtx(); if(!ctx) return;
  var mode = (slot.ps && slot.ps.mode) || 'oneshot';
@@ -10883,7 +10906,7 @@ function psSubPress(){
 function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
 
 function psSetBank(b){
- PS.bank = Math.max(0, Math.min(3, b|0));
+ PS.bank = Math.max(0, Math.min(PS_BANKS.length-1, b|0));
  psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
@@ -10903,6 +10926,7 @@ function psToggleHold(){
 }
 // Edit the selected pad.
 function psSet(field, val){
+ if(psOnPreset()){ psPresetBlocked(); return; }
  var key = psCurKey(PS.sel), slot = psSlot(key, false);
  if(!slot){ showToast('Load a sample on this pad first'); return; }
  var ps = slot.ps;
@@ -10924,12 +10948,13 @@ function psSet(field, val){
  if(field!=='gain' && field!=='choke' && field!=='mode') psWarpPrime();
 }
 function psClearPad(){
+ if(psOnPreset()){ psPresetBlocked(); return; }
  var key = psCurKey(PS.sel), before = SMP_SLOTS[key] ? Object.assign({}, SMP_SLOTS[key]) : null;
  if(!before || !before.id) return;
  psStop(key);
  delete SMP_SLOTS[key];
  psRender();
- showToast('Pad '+PS_BANKS[PS.bank]+(PS.sel+1)+' cleared', {actionLabel:'Undo', onAction:function(){
+ showToast('Pad '+psPadName(PS.sel)+' cleared', {actionLabel:'Undo', onAction:function(){
   SMP_SLOTS[key] = before; psRender();
  }});
 }
@@ -10937,6 +10962,7 @@ function psClearPad(){
 // import a file, trim. It is the same sheet every other slot uses.
 function psOpenPad(i){
  if(typeof modAllows==='function' && !modAllows('sampler')) return freeBlocked('The phrase sampler');
+ if(psOnPreset()){ psPresetBlocked(); return; }
  var key = psCurKey(i==null ? PS.sel : i);
  psSlot(key, true);
  smpOpenSlot(key);
@@ -10985,6 +11011,7 @@ function psLoadEl(){
 }
 function psOpenLoader(i){
  if(typeof modAllows==='function' && !modAllows('sampler')) return freeBlocked('The phrase sampler');
+ if(psOnPreset()){ psPresetBlocked(); return; }
  _psLoadPad = (i==null) ? PS.sel : i;
  var ov = psLoadEl();
  if(typeof smpLoadLibrary==='function') smpLoadLibrary().then(psRenderLoader);
@@ -10998,6 +11025,65 @@ function psCloseLoader(){
  var ov=document.getElementById('ps-load'); if(ov) ov.classList.remove('visible');
  if(typeof smpStopPreview==='function') smpStopPreview();
 }
+// ── Copy a preset bank to a User bank ────────────────────────────────────
+// The way a preset becomes yours: all twelve pads, as they are set, onto one
+// of your banks — where Load, Trim, Clear and every knob work. Twelve pads
+// rather than one because a preset bank is a set that was put together to
+// play together; take the set, then change what you like. Undo puts the User
+// bank back exactly as it was.
+function psCopyEl(){
+ var ov=document.getElementById('ps-copy');
+ if(ov) return ov;
+ ov=document.createElement('div');
+ ov.className='modal-overlay ps-load'; ov.id='ps-copy';
+ ov.innerHTML =
+  '<div class="modal-sheet ps-load-sheet" role="dialog" aria-modal="true" aria-labelledby="ps-copy-title">'
+  + '<div class="ps-load-top"><div class="ps-load-title" id="ps-copy-title">Copy to User</div>'
+  + '<button type="button" class="ps-load-x" id="ps-copy-x">Close</button></div>'
+  + '<div class="ps-load-hint">All twelve pads go onto the bank you pick, replacing what is there. On a User bank every pad can be loaded, trimmed and changed.</div>'
+  + '<div class="ps-load-grid" id="ps-copy-list"></div>'
+  + '</div>';
+ document.body.appendChild(ov);
+ ov.addEventListener('click', function(e){ if(e.target===ov) psCloseCopy(); });
+ ov.querySelector('#ps-copy-x').addEventListener('click', psCloseCopy);
+ return ov;
+}
+function psOpenCopy(){
+ if(!psOnPreset()) return;
+ var ov=psCopyEl(), from=PS_BANKS[PS.bank];
+ ov.querySelector('#ps-copy-title').textContent = 'Copy Preset '+from.charAt(1)+' · '+PS_PRESET_NAMES[from]+' to…';
+ var list=ov.querySelector('#ps-copy-list'); list.innerHTML='';
+ for(var u=0; u<4; u++){ (function(u){
+  var n=0;
+  for(var i=0;i<PS_N;i++){ var sl=SMP_SLOTS[psKey(u,i)]; if(sl && sl.id) n++; }
+  var row=psEl('div','ps-load-item');
+  var b=psBtn('ps-load-pick', '', 'Copy onto User '+PS_BANKS[u], function(){ psCopyTo(u); });
+  b.appendChild(psEl('span','ps-load-name', 'User '+PS_BANKS[u]));
+  b.appendChild(psEl('span','ps-load-meta', n ? n+' pad'+(n===1?'':'s')+' — replaced' : 'empty'));
+  row.appendChild(b); list.appendChild(row);
+ })(u); }
+ ov.classList.add('visible');
+}
+function psCloseCopy(){ var ov=document.getElementById('ps-copy'); if(ov) ov.classList.remove('visible'); }
+function psCopyTo(u){
+ var from=PS_BANKS[PS.bank], ids=PS_PRESETS[from]; if(!ids) return;
+ var fromBank=PS.bank, before={};
+ for(var i=0;i<PS_N;i++){
+  var key=psKey(u,i);
+  before[key] = SMP_SLOTS[key] ? JSON.parse(JSON.stringify(SMP_SLOTS[key])) : null;
+  psStop(key);
+  // From the table, not from the preset slot: a fresh object each, so the
+  // User pad and the preset pad never share one.
+  if(ids[i]) SMP_SLOTS[key] = psPresetSlot(ids[i]); else delete SMP_SLOTS[key];
+ }
+ PS.bank = u;
+ psSavePrefs(); psCloseCopy(); psRender(); psWarpPrime();
+ showToast('Preset '+from.charAt(1)+' copied to User '+PS_BANKS[u], {actionLabel:'Undo', onAction:function(){
+  Object.keys(before).forEach(function(k){ psStop(k); if(before[k]) SMP_SLOTS[k]=before[k]; else delete SMP_SLOTS[k]; });
+  PS.bank = fromBank; psSavePrefs(); psRender();
+ }});
+}
+window.psOpenCopy = psOpenCopy;
 function psLoaderToSheet(){
  psCloseLoader();
  var key = psCurKey(_psLoadPad); psSlot(key, true);
@@ -11006,7 +11092,7 @@ function psLoaderToSheet(){
 function psRenderLoader(){
  var ov=document.getElementById('ps-load'); if(!ov || !ov.classList) return;
  var key=psCurKey(_psLoadPad), cur=SMP_SLOTS[key]&&SMP_SLOTS[key].id;
- ov.querySelector('#ps-load-title').textContent = 'Load pad '+PS_BANKS[PS.bank]+(_psLoadPad+1);
+ ov.querySelector('#ps-load-title').textContent = 'Load pad '+psPadName(_psLoadPad);
  var list=ov.querySelector('#ps-load-list'); list.innerHTML='';
  var built = SMP_LIB.filter(function(c){ return smpBuiltIn(c); });
  // The kit in its own order, so the drums sit together and the notes after.
@@ -11030,7 +11116,16 @@ function psRenderLoader(){
   });
   list.appendChild(grid);
  };
- section('Built in', built, 'Getting the built-in sounds ready…');
+ // Built in, by kind — fifty-odd sounds as one list was a scroll to find
+ // anything in.
+ var cats=[['drums','Drums & loops'],['phrases','Phrases'],['fx','FX'],['notes','Single notes']];
+ if(!built.length) section('Built in', built, 'Getting the built-in sounds ready…');
+ cats.forEach(function(c){
+  var these=built.filter(function(cl){ var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')]; return (k && k.cat)===c[0]; });
+  if(these.length) section(c[1], these, '');
+ });
+ var other=built.filter(function(cl){ var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')]; return !k || !k.cat; });
+ if(other.length && built.length) section('Built in', other, '');
  section('Yours', mine, 'Nothing recorded or imported yet — record one, or bring one in from Files.');
 }
 // Put a clip on a pad, the way every route in here does it: through
@@ -11047,7 +11142,7 @@ function psLoadClip(i, clipId, quiet){
  if(!quiet){
   psCloseLoader();
   var ctx=psCtx(); if(ctx) psStart(key, ctx.currentTime+0.01);
-  showToast((clip?clip.name:'Sample')+' → pad '+PS_BANKS[PS.bank]+(i+1)
+  showToast((clip?clip.name:'Sample')+' → pad '+psPadName(i)
     + (s.rootAuto && s.root!=null ? ' · heard '+psNoteName(s.root)+(pitched?', Key on':'') : ''));
  }
  psRender();
@@ -11072,6 +11167,7 @@ function psAfterAttach(key, clipId){
 }
 // Files: the first onto pad i, the rest onto the next empty pads in the bank.
 function psImportFiles(files, i){
+ if(psOnPreset()){ psPresetBlocked(); return; }
  var ctx = psCtx(); if(!ctx){ showToast('Start audio first'); return; }
  var list=[].slice.call(files||[]); if(!list.length) return;
  list.sort(function(a,b){ return String(a.name).localeCompare(String(b.name), undefined, {numeric:true}); });
@@ -11086,7 +11182,7 @@ function psImportFiles(files, i){
     if(buf.duration > 120) throw new Error('long');
     var clip = smpAddClip({name:f.name.replace(/\.[^.]+$/,''), src:'file'}, buf, bytes, f.type||'audio/wav');
     psLoadClip(targets[n], clip.id, list.length>1);
-    done.push(PS_BANKS[PS.bank]+(targets[n]+1));
+    done.push(psPadName(targets[n]));
    });
   }).catch(function(e){
    showToast(String(e&&e.message)==='long' ? f.name+' is over two minutes' : 'Could not read '+f.name);
@@ -11347,11 +11443,28 @@ var PS_INST = {
  tpt:    {dir:'samples/mutetpt',  have:_psNames([3,4,5])},
  nylon:  {dir:'samples/nylongtr', have:_psNames([2,3,4,5])},
  bass:   {dir:'samples/bass',     have:_psNames([1,2,3,4])},
- flute:  {dir:'samples/flute',    have:_psNames([4,5,6],'CEA')}
+ flute:  {dir:'samples/flute',    have:_psNames([4,5,6],'CEA')},
+ // The piano set is in minor thirds (C, D♯, F♯, A) and names the sharps
+ // 'Ds'; only C and A are read here, which is never more than three
+ // semitones from any note.
+ piano:  {dir:'samples/piano',    have:_psNames([1,2,3,4,5,6,7],'CA')},
+ jazzg:  {dir:'samples/jazzgtr',  have:_psNames([2,3,4,5])},
+ clar:   {dir:'samples/clarinet', have:_psNames([3,4,5,6],'DF')},
+ violin: {dir:'samples/violin',   have:_psNames([4,5,6],'CEGA')},
+ // One sample, retuned: the 808's long bass drum, tuned to G1 when it was
+ // recorded.
+ b808:   {one:{file:'samples/808/bass.mp3', midi:31}}
 };
+function _psInstFile(inst, midi){ return inst.one || _psNoteFile(inst.dir, inst.have, midi); }
 var PS_DRUM = { kick:'samples/drums/kick.mp3', side:'samples/drums/sidestick.mp3',
                 hat:'samples/drums/hatclosed.mp3', pedal:'samples/drums/hatpedal.mp3',
-                ride:'samples/drums/ride.mp3', bell:'samples/drums/ridebell.mp3', tom:'samples/drums/tom.mp3' };
+                ride:'samples/drums/ride.mp3', bell:'samples/drums/ridebell.mp3', tom:'samples/drums/tom.mp3',
+                // The TR-808, from Michael Fischer's 1994 sample set — see samples/CREDITS.md.
+                k8:'samples/808/kick.mp3', s8:'samples/808/snare.mp3', c8:'samples/808/clap.mp3',
+                h8:'samples/808/hat.mp3', o8:'samples/808/open.mp3', r8:'samples/808/rim.mp3',
+                cb8:'samples/808/cowbell.mp3', cg8:'samples/808/conga.mp3', t8:'samples/808/tom.mp3',
+                lt8:'samples/808/lotom.mp3', cl8:'samples/808/clave.mp3', ma8:'samples/808/maracas.mp3',
+                cy8:'samples/808/crash.mp3' };
 function _psMidi(n){ var m=n.match(/^([A-G])(b?)(\d)$/); return _PS_NOTE[m[1]] - (m[2]?1:0) + (parseInt(m[3],10)+1)*12; }
 
 // One phrase = a list of [instrument, note, beat, beats long, level]. Rendered
@@ -11364,7 +11477,7 @@ function _psRenderPhrase(ctx, bufs, spec){
  var oc = new OfflineAudioContext(2, Math.ceil((len+tail)*sr), sr);
  spec.notes.forEach(function(n){
   var inst = PS_INST[n[0]], midi = _psMidi(n[1]);
-  var f = _psNoteFile(inst.dir, inst.have, midi), buf = bufs[f.file]; if(!buf) return;
+  var f = _psInstFile(inst, midi), buf = bufs[f.file]; if(!buf) return;
   var t = n[2]*beat, dur = n[3]*beat;
   var s = oc.createBufferSource(); s.buffer = buf;
   s.playbackRate.value = Math.pow(2, (midi-f.midi)/12);
@@ -11444,55 +11557,154 @@ function _psRenderSubDrop(ctx){
  return oc.startRendering();
 }
 
-// The kit. key:0 = rendered in C; bpm = rendered at 100; ps = how the pad
-// plays it when it is seeded onto a pad.
+// The kit. key:0 = rendered in C; bpm = rendered at 100; ps = how a pad
+// plays it; gain = the pad's level, where a clip normalised to its peak would
+// be far louder than the rest (a square-wave game sound against a snare);
+// cat = its section in the load screen. Where each one sits on the preset
+// pads is PS_PRESETS, below.
 var PS_FACTORY_KIT = [
- // Bank A — one of each kind of thing a pad is for.
- {pad:'A0', id:'kick',   name:'Kick',          drum:'kick', ps:{choke:0}},
- {pad:'A1', id:'rim',    name:'Rim',           drum:'side'},
- {pad:'A2', id:'hat',    name:'Hat',           drum:'hat',  ps:{choke:1}},
- {pad:'A3', id:'ride',   name:'Ride',          drum:'ride', ps:{choke:1}},
- {pad:'A4', id:'vibes',  name:'Vibes Run',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
-  phrase:{loop:true, bars:1, notes:[['vibes','C4',0,.5,.7,-.2],['vibes','E4',.5,.5,.65,-.1],['vibes','G4',1,.5,.7,0],['vibes','B4',1.5,.5,.65,.1],
-                                     ['vibes','C5',2,.5,.75,.2],['vibes','B4',2.5,.5,.6,.1],['vibes','G4',3,.5,.65,0],['vibes','E4',3.5,.5,.6,-.1]]}},
- {pad:'A5', id:'sax',    name:'Sax Lick',      key:0, ps:{keyf:true},
-  phrase:{secs:2.2, notes:[['sax','G4',0,.25,.75],['sax','A4',.25,.25,.7],['sax','C5',.5,.25,.8],['sax','D5',.75,.25,.75],['sax','E5',1,1.6,.85]]}},
- {pad:'A6', id:'brass',  name:'Brass Stab',    key:0, ps:{keyf:true, choke:2},
-  phrase:{secs:0.9, rel:0.05, notes:[['tpt','E4',0,.35,.6,-.3],['tpt','G4',0,.35,.6,.3],['tpt','C5',0,.35,.7,0]]}},
- {pad:'A7', id:'strum',  name:'Nylon Strum',   key:0, ps:{keyf:true, choke:2},
-  phrase:{secs:3.0, rel:0.4, notes:[['nylon','C3',0,3,.7,-.3],['nylon','G3',.03,3,.6,-.15],['nylon','C4',.06,3,.6,0],
-                                    ['nylon','E4',.09,3,.6,.15],['nylon','G4',.12,3,.55,.3]]}},
- {pad:'A8', id:'bass',   name:'Bass Riff',     key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
-  phrase:{loop:true, bars:1, rel:0.03, notes:[['bass','C2',0,.4,.9],['bass','C2',.75,.2,.7],['bass','G2',1.5,.3,.8],['bass','C2',2,.4,.9],
-                                              ['bass','Bb1',2.5,.3,.8],['bass','G1',3,.4,.85],['bass','Bb1',3.5,.3,.75]]}},
- {pad:'A9', id:'flute',  name:'Flute Line',    key:0, ps:{keyf:true},
-  phrase:{secs:3.0, notes:[['flute','E5',0,.5,.6],['flute','D5',.5,.5,.55],['flute','C5',1,.5,.6],['flute','A4',1.5,.5,.55],['flute','C5',2,1.8,.65]]}},
- {pad:'A10', id:'riser', name:'Riser',         bpm:PS_FACTORY_BPM, synth:'riser', ps:{sync:true, warp:true}},
- {pad:'A11', id:'drop',  name:'Sub Drop',      key:0, synth:'drop', ps:{keyf:true}},
- // Not seeded onto pads — in the load screen's Built in list, for any pad.
- {id:'pedal', name:'Pedal Hat',   drum:'pedal'},
- {id:'bell',  name:'Ride Bell',   drum:'bell'},
- {id:'tom',   name:'Tom',         drum:'tom'},
- {id:'n-piano',  name:'Piano · C4',       file:'samples/piano/C4.mp3',    key:0},
- {id:'n-vibes',  name:'Vibes · C4',       file:'samples/vibes/C4.mp3',    key:0},
- {id:'n-nylon',  name:'Nylon Guitar · C3',file:'samples/nylongtr/C3.mp3', key:0},
- {id:'n-jazzg',  name:'Jazz Guitar · C3', file:'samples/jazzgtr/C3.mp3',  key:0},
- {id:'n-sax',    name:'Tenor Sax · C4',   file:'samples/tenorsax/C4.mp3', key:0},
- {id:'n-tpt',    name:'Muted Trumpet · C5', file:'samples/mutetpt/C5.mp3', key:0},
- {id:'n-flute',  name:'Flute · C5',       file:'samples/flute/C5.mp3',    key:0},
- {id:'n-clar',   name:'Clarinet · D4',    file:'samples/clarinet/D4.mp3', key:2},
- {id:'n-violin', name:'Violin · C5',      file:'samples/violin/C5.mp3',   key:0},
- {id:'n-bass',   name:'Upright Bass · C2',file:'samples/bass/C2.mp3',     key:0},
- // Bank B — loops to play over.
- {pad:'B0', id:'boombap', name:'Boom Bap',     bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
+ // ── Drums ──
+ {id:'kick',   name:'Kick',          cat:'drums', drum:'kick'},
+ {id:'rim',    name:'Rim',           cat:'drums', drum:'side'},
+ {id:'hat',    name:'Hat',           cat:'drums', drum:'hat',  ps:{choke:1}},
+ {id:'ride',   name:'Ride',          cat:'drums', drum:'ride', ps:{choke:1}},
+ {id:'pedal',  name:'Pedal Hat',     cat:'drums', drum:'pedal', ps:{choke:1}},
+ {id:'bell',   name:'Ride Bell',     cat:'drums', drum:'bell'},
+ {id:'tom',    name:'Tom',           cat:'drums', drum:'tom'},
+ {id:'k808',   name:'808 Kick',      cat:'drums', drum:'k8'},
+ {id:'s808',   name:'808 Snare',     cat:'drums', drum:'s8'},
+ {id:'c808',   name:'808 Clap',      cat:'drums', drum:'c8'},
+ {id:'h808',   name:'808 Hat',       cat:'drums', drum:'h8', ps:{choke:1}},
+ {id:'o808',   name:'808 Open Hat',  cat:'drums', drum:'o8', ps:{choke:1}},
+ {id:'r808',   name:'808 Rim',       cat:'drums', drum:'r8'},
+ {id:'cb808',  name:'808 Cowbell',   cat:'drums', drum:'cb8'},
+ {id:'cg808',  name:'808 Conga',     cat:'drums', drum:'cg8'},
+ {id:'t808',   name:'808 Tom',       cat:'drums', drum:'t8'},
+ {id:'lt808',  name:'808 Low Tom',   cat:'drums', drum:'lt8'},
+ {id:'cl808',  name:'808 Clave',     cat:'drums', drum:'cl8'},
+ {id:'ma808',  name:'808 Maracas',   cat:'drums', drum:'ma8'},
+ {id:'cy808',  name:'808 Cymbal',    cat:'drums', drum:'cy8'},
+ {id:'boombap', name:'Boom Bap',     cat:'drums', bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
   beat:{swing:.18, hits:[['kick',0,.9],['hat',0,.5],['hat',2,.4],['side',4,.8],['hat',4,.5],['hat',6,.4],['kick',7,.7],
                          ['hat',8,.5],['kick',10,.8],['hat',10,.4],['side',12,.8],['hat',12,.5],['hat',14,.4]]}},
- {pad:'B1', id:'ridepat', name:'Ride Swing',   bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
+ {id:'ridepat', name:'Ride Swing',   cat:'drums', bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
   beat:{swing:.33, hits:[['ride',0,.7],['ride',4,.6],['ride',7,.45],['ride',8,.65],['ride',12,.6],['ride',15,.45],
                          ['pedal',4,.6],['pedal',12,.6],['kick',0,.35]]}},
- {pad:'B2', id:'tomfill', name:'Tom Fill',     bpm:PS_FACTORY_BPM, ps:{sync:true, warp:true},
-  beat:{hits:[['tom',0,.8,1.25],['tom',1,.75,1.25],['tom',2,.8,1.12],['tom',3,.75,1.12],['tom',4,.85,1],['tom',5,.8,1],['tom',6,.9,.9],['kick',7,.9],['bell',8,.7]], oneshot:true}}
+ {id:'groove808', name:'808 Groove', cat:'drums', bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
+  beat:{hits:[['k8',0,.95],['h8',0,.45],['h8',2,.35],['c8',4,.7],['s8',4,.5],['h8',4,.45],['h8',6,.35],['k8',6,.7],
+              ['h8',8,.45],['k8',10,.85],['h8',10,.35],['c8',12,.7],['s8',12,.5],['h8',12,.45],['cb8',13,.25],['o8',14,.4]]}},
+ {id:'tomfill', name:'Tom Fill',     cat:'drums', bpm:PS_FACTORY_BPM, ps:{sync:true, warp:true},
+  beat:{hits:[['tom',0,.8,1.25],['tom',1,.75,1.25],['tom',2,.8,1.12],['tom',3,.75,1.12],['tom',4,.85,1],['tom',5,.8,1],['tom',6,.9,.9],['kick',7,.9],['bell',8,.7]], oneshot:true}},
+ // ── Phrases ──
+ {id:'vibes',  name:'Vibes Run',     cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
+  phrase:{loop:true, bars:1, notes:[['vibes','C4',0,.5,.7,-.2],['vibes','E4',.5,.5,.65,-.1],['vibes','G4',1,.5,.7,0],['vibes','B4',1.5,.5,.65,.1],
+                                     ['vibes','C5',2,.5,.75,.2],['vibes','B4',2.5,.5,.6,.1],['vibes','G4',3,.5,.65,0],['vibes','E4',3.5,.5,.6,-.1]]}},
+ {id:'sax',    name:'Sax Lick',      cat:'phrases', key:0, ps:{keyf:true},
+  phrase:{secs:2.2, notes:[['sax','G4',0,.25,.75],['sax','A4',.25,.25,.7],['sax','C5',.5,.25,.8],['sax','D5',.75,.25,.75],['sax','E5',1,1.6,.85]]}},
+ {id:'brass',  name:'Brass Stab',    cat:'phrases', key:0, ps:{keyf:true, choke:2},
+  phrase:{secs:0.9, rel:0.05, notes:[['tpt','E4',0,.35,.6,-.3],['tpt','G4',0,.35,.6,.3],['tpt','C5',0,.35,.7,0]]}},
+ {id:'strum',  name:'Nylon Strum',   cat:'phrases', key:0, ps:{keyf:true, choke:2},
+  phrase:{secs:3.0, rel:0.4, notes:[['nylon','C3',0,3,.7,-.3],['nylon','G3',.03,3,.6,-.15],['nylon','C4',.06,3,.6,0],
+                                    ['nylon','E4',.09,3,.6,.15],['nylon','G4',.12,3,.55,.3]]}},
+ {id:'bass',   name:'Bass Riff',     cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
+  phrase:{loop:true, bars:1, rel:0.03, notes:[['bass','C2',0,.4,.9],['bass','C2',.75,.2,.7],['bass','G2',1.5,.3,.8],['bass','C2',2,.4,.9],
+                                              ['bass','Bb1',2.5,.3,.8],['bass','G1',3,.4,.85],['bass','Bb1',3.5,.3,.75]]}},
+ {id:'flute',  name:'Flute Line',    cat:'phrases', key:0, ps:{keyf:true},
+  phrase:{secs:3.0, notes:[['flute','E5',0,.5,.6],['flute','D5',.5,.5,.55],['flute','C5',1,.5,.6],['flute','A4',1.5,.5,.55],['flute','C5',2,1.8,.65]]}},
+ {id:'keys',   name:'Piano Comp',    cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
+  phrase:{loop:true, bars:1, rel:0.12, notes:[['piano','C2',0,.9,.55],
+   ['piano','E3',0,.9,.45,-.15],['piano','G3',0,.9,.42,-.05],['piano','B3',0,.9,.42,.05],['piano','D4',0,.9,.45,.15],
+   ['piano','E3',1.5,.4,.38,-.15],['piano','G3',1.5,.4,.35,-.05],['piano','B3',1.5,.4,.35,.05],['piano','D4',1.5,.4,.38,.15],
+   ['piano','A2',2.5,.9,.45],['piano','E3',2.5,.4,.4,-.15],['piano','A3',2.5,.4,.38,-.05],['piano','C4',2.5,.4,.38,.05],['piano','D4',2.5,.4,.4,.15],
+   ['piano','E3',3.25,.6,.35,-.15],['piano','A3',3.25,.6,.32,-.05],['piano','C4',3.25,.6,.32,.05],['piano','D4',3.25,.6,.35,.15]]}},
+ {id:'gtrcomp', name:'Jazz Guitar Comp', cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
+  phrase:{loop:true, bars:1, rel:0.05, notes:[].concat.apply([], [0,1,2,3].map(function(b){
+   var v = (b%2) ? .6 : .45;   // two and four leaned on, the way a rhythm guitarist does
+   return [['jazzg','C3',b,.42,v,-.2],['jazzg','G3',b+.01,.42,v*.9,-.05],['jazzg','B3',b+.02,.42,v*.9,.05],['jazzg','E4',b+.03,.42,v*.85,.2]];
+  }))}},
+ {id:'bass808', name:'808 Bass',     cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
+  phrase:{loop:true, bars:1, rel:0.05, notes:[['b808','C2',0,1.4,.9],['b808','C2',1.75,.6,.8],['b808','Eb2',2.5,.45,.8],['b808','G1',3,.9,.85]]}},
+ {id:'tptline', name:'Trumpet Line', cat:'phrases', key:0, ps:{keyf:true},
+  phrase:{secs:2.9, notes:[['tpt','G4',0,.25,.6],['tpt','A4',.25,.25,.55],['tpt','Bb4',.5,.25,.6],['tpt','B4',.75,.25,.6],
+                           ['tpt','C5',1,.5,.7],['tpt','E5',1.5,.25,.65],['tpt','D5',1.75,.25,.6],['tpt','C5',2,1.3,.7]]}},
+ {id:'clarline', name:'Clarinet Line', cat:'phrases', key:0, ps:{keyf:true},
+  phrase:{secs:2.8, notes:[['clar','C5',0,.5,.6],['clar','D5',.5,.5,.55],['clar','E5',1,.5,.6],['clar','G5',1.5,.5,.6],['clar','E5',2,1.6,.65]]}},
+ {id:'violin', name:'Violin Phrase', cat:'phrases', key:0, ps:{keyf:true},
+  phrase:{secs:3.6, rel:0.25, notes:[['violin','G4',0,1,.55],['violin','C5',1,1,.6],['violin','B4',2,.5,.55],['violin','C5',2.5,2,.6]]}},
+ // ── FX ──
+ {id:'riser',  name:'Riser',         cat:'fx', bpm:PS_FACTORY_BPM, synth:'riser', ps:{sync:true, warp:true}},
+ {id:'drop',   name:'Sub Drop',      cat:'fx', key:0, synth:'drop', ps:{keyf:true}, gain:.6},
+ // Rendered for the app (see samples/CREDITS.md): the horn, siren, scratch
+ // and tape stop here; the game sounds from ZzFX's synth; Level Up, Scanner
+ // and Achievement from the uisfx library (CC0).
+ {id:'airhorn',  name:'Air Horn',    cat:'fx', file:'samples/sfx/airhorn.mp3',   gain:.5},
+ {id:'siren',    name:'Dub Siren',   cat:'fx', file:'samples/sfx/siren.mp3',     gain:.6},
+ {id:'laser',    name:'Laser',       cat:'fx', file:'samples/sfx/laser.mp3',     gain:.55},
+ {id:'scratch',  name:'Scratch',     cat:'fx', file:'samples/sfx/scratch.mp3'},
+ {id:'tapestop', name:'Tape Stop',   cat:'fx', file:'samples/sfx/tapestop.mp3'},
+ {id:'boom',     name:'Explosion',   cat:'fx', file:'samples/sfx/explosion.mp3', gain:.8},
+ {id:'coin',     name:'Coin',        cat:'fx', file:'samples/sfx/coin.mp3',      gain:.6},
+ {id:'levelup',  name:'Level Up',    cat:'fx', file:'samples/sfx/levelup.mp3',   gain:.5},
+ {id:'jump',     name:'Jump',        cat:'fx', file:'samples/sfx/jump.mp3',      gain:.5},
+ {id:'gameover', name:'Game Over',   cat:'fx', file:'samples/sfx/gameover.mp3',  gain:.35},
+ {id:'scan',     name:'Scanner',     cat:'fx', file:'samples/sfx/scan.mp3'},
+ {id:'powerup',  name:'Power Up',    cat:'fx', file:'samples/sfx/powerup.mp3',   gain:.4},
+ {id:'achieve',  name:'Achievement', cat:'fx', file:'samples/sfx/achieve.mp3',   gain:.5},
+ // ── Single notes, for building your own ──
+ {id:'n-piano',  name:'Piano · C4',       cat:'notes', file:'samples/piano/C4.mp3',    key:0},
+ {id:'n-vibes',  name:'Vibes · C4',       cat:'notes', file:'samples/vibes/C4.mp3',    key:0},
+ {id:'n-nylon',  name:'Nylon Guitar · C3',cat:'notes', file:'samples/nylongtr/C3.mp3', key:0},
+ {id:'n-jazzg',  name:'Jazz Guitar · C3', cat:'notes', file:'samples/jazzgtr/C3.mp3',  key:0},
+ {id:'n-sax',    name:'Tenor Sax · C4',   cat:'notes', file:'samples/tenorsax/C4.mp3', key:0},
+ {id:'n-tpt',    name:'Muted Trumpet · C5', cat:'notes', file:'samples/mutetpt/C5.mp3', key:0},
+ {id:'n-flute',  name:'Flute · C5',       cat:'notes', file:'samples/flute/C5.mp3',    key:0},
+ {id:'n-clar',   name:'Clarinet · D4',    cat:'notes', file:'samples/clarinet/D4.mp3', key:2},
+ {id:'n-violin', name:'Violin · C5',      cat:'notes', file:'samples/violin/C5.mp3',   key:0},
+ {id:'n-bass',   name:'Upright Bass · C2',cat:'notes', file:'samples/bass/C2.mp3',     key:0},
+ {id:'n-808',    name:'808 Bass · G1',    cat:'notes', file:'samples/808/bass.mp3',    key:7}
 ];
+var PS_KIT_BY_ID = {};
+PS_FACTORY_KIT.forEach(function(k){ PS_KIT_BY_ID[k.id] = k; });
+
+// ── Preset banks ─────────────────────────────────────────────────────────
+// Four banks that come with the app, beside the four that are yours — the
+// way a hardware sampler has its factory banks and its user banks. A preset
+// pad plays exactly like any other but is not edited in place: changing one
+// is a copy to a User bank first, so the presets are always there to go back
+// to, on every device, and an update that improves one reaches everybody.
+//
+// They are slots like any pad ('p:PA:0' …) so that everything that plays a
+// pad — patterns, Roll, choke, Warp — needs nothing new. What is different is
+// that they are rebuilt from this table rather than saved: smpCaptureState
+// leaves them out, and psPresetInstall puts them back after anything that
+// replaces SMP_SLOTS wholesale (a restore, an undo, a shared link).
+var PS_PRESETS = {
+ PA: ['k808','s808','c808','hat','boombap','vibes','sax','brass','strum','bass','flute','riser'],   // a bit of everything
+ PB: ['k808','s808','c808','h808','o808','r808','cb808','cg808','boombap','groove808','ridepat','tomfill'],
+ PC: ['vibes','keys','gtrcomp','bass','bass808','strum','sax','brass','tptline','clarline','violin','flute'],
+ PD: ['airhorn','siren','laser','scratch','tapestop','drop','boom','coin','levelup','jump','gameover','scan']
+};
+var PS_PRESET_NAMES = {PA:'Mix', PB:'Drums', PC:'Phrases', PD:'FX'};
+function psIsPresetKey(k){ return typeof k==='string' && k.slice(0,3)==='p:P'; }
+function psPresetSlot(kitId){
+ var k = PS_KIT_BY_ID[kitId], s = smpNewSlot();
+ s.id = 'factory:'+kitId;
+ s.ps = Object.assign(psDefaults(), (k && k.ps) || {});
+ if(k && k.gain!=null) s.gain = k.gain;
+ return s;
+}
+function psPresetInstall(){
+ // Reachable from smpApplyState, which a restore can run before this part of
+ // the script has: the vars exist by then but are still undefined.
+ if(!PS_PRESETS || !PS_KIT_BY_ID) return;
+ Object.keys(PS_PRESETS).forEach(function(b){
+  PS_PRESETS[b].forEach(function(id, i){
+   var key = 'p:'+b+':'+i, cur = SMP_SLOTS[key];
+   if(!cur || cur.id!=='factory:'+id) SMP_SLOTS[key] = psPresetSlot(id);
+  });
+ });
+}
+window.psPresetInstall = psPresetInstall;
 
 function psFactoryEnsure(){
  if(_psFactory) return _psFactory;
@@ -11503,7 +11715,7 @@ function psFactoryEnsure(){
   if(k.file) files[k.file] = 1;
   if(k.beat) k.beat.hits.forEach(function(h){ files[PS_DRUM[h[0]]] = 1; });
   if(k.phrase) k.phrase.notes.forEach(function(n){
-   var inst=PS_INST[n[0]], f=_psNoteFile(inst.dir, inst.have, _psMidi(n[1])); files[f.file]=1;
+   var f=_psInstFile(PS_INST[n[0]], _psMidi(n[1])); files[f.file]=1;
   });
  });
  var bufs = {};
@@ -11532,29 +11744,13 @@ function psFactoryEnsure(){
    }).catch(function(){});
   }));
  }).then(function(){
-  psSeedIfEmpty();
+  psPresetInstall();
   psRender();
   psWarpPrime();
   if(typeof smpRenderAll==='function') smpRenderAll();
   return true;
  });
  return _psFactory;
-}
-// The first time the pads are ever used — no pad slot anywhere in the session
-// — they come loaded. Never again after that: an empty pad you cleared on
-// purpose stays empty.
-function psSeedIfEmpty(){
- var any = Object.keys(SMP_SLOTS).some(function(k){ return k.slice(0,2)==='p:'; });
- if(any) return;
- var seeded = false; try{ seeded = localStorage.getItem('modo-ps-seeded')==='1'; }catch(e){}
- if(seeded) return;
- PS_FACTORY_KIT.forEach(function(k){
-  var id = 'factory:'+k.id; if(!k.pad || !SMP_BUF[id]) return;
-  var key = 'p:'+k.pad.charAt(0)+':'+k.pad.slice(1);
-  var s = SMP_SLOTS[key] = smpNewSlot();
-  s.id = id; s.ps = Object.assign(psDefaults(), k.ps||{});
- });
- try{ localStorage.setItem('modo-ps-seeded','1'); }catch(e){}
 }
 window.psFactoryEnsure = psFactoryEnsure;
 
@@ -11587,6 +11783,7 @@ function psBtn(cls, txt, title, fn){
 function psBuild(){
  var host=document.getElementById('ps-panel'); if(!host || _psBuilt) return;
  _psBuilt = true;
+ psPresetInstall();
  host.innerHTML='';
 
  // The pads first, in both views. Studio used to stack an LCD, the knobs, the
@@ -11610,9 +11807,16 @@ function psBuild(){
  var rollUp=function(){ roll.classList.remove('down'); psRollStop(); };
  roll.addEventListener('pointerup', rollUp); roll.addEventListener('pointercancel', rollUp);
  var stop=psBtn('ps-big', 'Stop', 'Stop every pad', psStopAll);
- var edit=psBtn('ps-big ps-edit', '◈ Load', 'Put a sample on the selected pad — built in, yours, or from Files', function(){ psOpenLoader(PS.sel); });
+ // On a Preset bank this is the way to change one: copy the bank to a User
+ // bank. Same place, so there is always one button for "I want something
+ // else here".
+ var edit=psBtn('ps-big ps-edit', '◈ Load', 'Put a sample on the selected pad — built in, yours, or from Files', function(){
+  if(psOnPreset()) psOpenCopy(); else psOpenLoader(PS.sel);
+ });
+ edit.id='ps-loadbtn';
  var trim=psBtn('ps-big ps-edit ps-studio', 'Trim…', 'Record, trim or tune the selected pad’s sample in the sampler', function(){ psOpenPad(PS.sel); });
  var clr=psBtn('ps-big ps-studio', 'Clear', 'Empty the selected pad', psClearPad);
+ trim.id='ps-trim'; clr.id='ps-clear';
  [hold,roll,stop,edit,trim,clr].forEach(function(b){ bot.appendChild(b); });
  host.appendChild(bot);
 
@@ -11622,12 +11826,23 @@ function psBuild(){
  // two groups, never between a label and what it labels.
  var g1=psEl('span','ps-grp'), g2=psEl('span','ps-grp');
  g1.appendChild(psEl('span','ps-lbl','Bank'));
- var bs=psEl('div','ps-seg ps-bank');
- PS_BANKS.forEach(function(nm,b){
-  var x=psBtn('ps-segb', nm, 'Bank '+nm, function(){ psSetBank(b); });
-  x.dataset.psbank=String(b); bs.appendChild(x);
+ // Preset | User, then A-D: eight banks as two short rows of choices rather
+ // than one row of eight that would not fit beside quantize on a phone. The
+ // letter is kept across the switch, so Preset B → User is User B.
+ var side=psEl('div','ps-seg ps-side');
+ [['preset','Preset','The banks that come with the app'],['user','User','Your own four banks']].forEach(function(o){
+  var x=psBtn('ps-segb', o[1], o[2], function(){ psSetBank((PS.bank%4) + (o[0]==='preset'?4:0)); });
+  x.dataset.psside=o[0]; side.appendChild(x);
  });
- g1.appendChild(bs); bq.appendChild(g1);
+ g1.appendChild(side);
+ var bs=psEl('div','ps-seg ps-bank');
+ ['A','B','C','D'].forEach(function(nm,b){
+  var x=psBtn('ps-segb', nm, 'Bank '+nm, function(){ psSetBank(b + (psOnPreset()?4:0)); });
+  x.dataset.psletter=String(b); bs.appendChild(x);
+ });
+ g1.appendChild(bs);
+ var bn=psEl('span','ps-bank-nm'); bn.id='ps-bank-nm'; g1.appendChild(bn);
+ bq.appendChild(g1);
  g2.appendChild(psEl('span','ps-lbl','Qtz'));
  var qs=psEl('div','ps-seg');
  PS_QUANTS.forEach(function(q){
@@ -11825,9 +12040,22 @@ function psRender(){
    if(clip.key==null && s.rootAuto && s.root!=null) tags.push('♪'+psNoteName(s.root));
   }
   p.querySelector('.ps-tags').textContent = tags.join(' · ');
-  p.setAttribute('aria-label', 'Pad '+PS_BANKS[PS.bank]+(i+1)+(clip?' — '+clip.name:' — empty, tap to load'));
+  p.setAttribute('aria-label', 'Pad '+psPadName(i)+(clip?' — '+clip.name:' — empty, tap to load'));
  }
- document.querySelectorAll('#ps-panel [data-psbank]').forEach(function(b){ b.classList.toggle('active', +b.dataset.psbank===PS.bank); });
+ var pre=psOnPreset();
+ document.querySelectorAll('#ps-panel [data-psside]').forEach(function(b){ b.classList.toggle('active', (b.dataset.psside==='preset')===pre); });
+ document.querySelectorAll('#ps-panel [data-psletter]').forEach(function(b){
+  b.classList.toggle('active', +b.dataset.psletter===PS.bank%4);
+  var pk='P'+'ABCD'.charAt(+b.dataset.psletter);
+  b.title = pre ? 'Preset '+'ABCD'.charAt(+b.dataset.psletter)+' — '+PS_PRESET_NAMES[pk] : 'User bank '+'ABCD'.charAt(+b.dataset.psletter);
+ });
+ var bnm=document.getElementById('ps-bank-nm'); if(bnm) bnm.textContent = pre ? PS_PRESET_NAMES[PS_BANKS[PS.bank]] : '';
+ var panel=document.getElementById('ps-panel'); if(panel) panel.classList.toggle('ps-on-preset', pre);
+ var lb=document.getElementById('ps-loadbtn');
+ if(lb){
+  lb.textContent = pre ? '⧉ Copy to User' : '◈ Load';
+  lb.title = pre ? 'Copy this preset bank to one of your User banks, where every pad can be changed' : 'Put a sample on the selected pad — built in, yours, or from Files';
+ }
  document.querySelectorAll('#ps-panel [data-psq]').forEach(function(b){ b.classList.toggle('active', b.dataset.psq===String(PS.quant)); });
  var h=document.getElementById('ps-hold'); if(h){ h.classList.toggle('active', PS.hold); h.setAttribute('aria-pressed', PS.hold?'true':'false'); }
  psRenderDeck();
@@ -11842,12 +12070,15 @@ function psRenderDeck(keepKnobs){
  var key=psCurKey(PS.sel), s=SMP_SLOTS[key], clip=s&&s.id?smpClip(s.id):null, ps=(s&&s.ps)||psDefaults();
  var dl=document.getElementById('ps-deck-pad');
  if(dl){
-  dl.firstChild.textContent = PS_BANKS[PS.bank]+(PS.sel+1);
+  dl.firstChild.textContent = psPadName(PS.sel);
   dl.lastChild.textContent = clip ? clip.name : 'Empty';
  }
- document.querySelectorAll('#ps-panel [data-psmode]').forEach(function(b){ b.classList.toggle('active', b.dataset.psmode===ps.mode); b.disabled=!clip; });
- document.querySelectorAll('#ps-panel [data-pstog]').forEach(function(b){ var on=!!ps[b.dataset.pstog]; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); b.disabled=!clip; });
- document.querySelectorAll('#ps-panel [data-pschoke]').forEach(function(b){ b.classList.toggle('active', +b.dataset.pschoke===(ps.choke|0)); b.disabled=!clip; });
+ // A preset pad shows how it is set but is not changed here — see PS_PRESETS.
+ var fixed = !clip || psOnPreset();
+ document.querySelectorAll('#ps-panel [data-psmode]').forEach(function(b){ b.classList.toggle('active', b.dataset.psmode===ps.mode); b.disabled=fixed; });
+ document.querySelectorAll('#ps-panel [data-pstog]').forEach(function(b){ var on=!!ps[b.dataset.pstog]; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); b.disabled=fixed; });
+ document.querySelectorAll('#ps-panel [data-pschoke]').forEach(function(b){ b.classList.toggle('active', +b.dataset.pschoke===(ps.choke|0)); b.disabled=fixed; });
+ ['ps-trim','ps-clear'].forEach(function(id){ var b=document.getElementById(id); if(b) b.disabled=psOnPreset(); });
  var L=psSends() || {};
  document.querySelectorAll('#ps-panel [data-psfx]').forEach(function(b){
   var k=b.dataset.psfx, on = k==='filter' ? (L.lmode>0) : (L[k]>0.001);
@@ -11868,12 +12099,13 @@ function psRenderKnobs(s){
  // Which pad these are for — a label, not a display: two words beside the
  // knobs so a knob is never turned for the wrong pad.
  var dl=psEl('div','ps-deck-pad'); dl.id='ps-deck-pad';
- dl.appendChild(psEl('span','ps-deck-id', PS_BANKS[PS.bank]+(PS.sel+1)));
+ dl.appendChild(psEl('span','ps-deck-id', psPadName(PS.sel)));
  dl.appendChild(psEl('span','ps-deck-nm', clip ? clip.name : 'Empty'));
  deck.appendChild(dl);
- deck.appendChild(psKnob({lbl:'Level', v:has?Math.round((s.gain==null?1:s.gain)*100):100, min:0, max:200, def:100, dis:!has,
+ var fixed = !has || psOnPreset();
+ deck.appendChild(psKnob({lbl:'Level', v:has?Math.round((s.gain==null?1:s.gain)*100):100, min:0, max:200, def:100, dis:fixed,
    fmt:function(v){ return v+'%'; }, set:function(v){ psSet('gain', v/100); }}));
- deck.appendChild(psStepper({lbl:'Pitch', v:has?(+s.tune||0):0, min:-24, max:24, def:0, dis:!has,
+ deck.appendChild(psStepper({lbl:'Pitch', v:has?(+s.tune||0):0, min:-24, max:24, def:0, dis:fixed,
    fmt:function(v){ return (v>0?'+':v<0?'−':'')+Math.abs(v)+' st'; },
    set:function(v){ var sl=SMP_SLOTS[psCurKey(PS.sel)]; if(sl){ sl.tune=v; psRetunePad(psCurKey(PS.sel)); psRenderDeck(true); } }}));
  deck.appendChild(psKnob({lbl:'Filter', v:Math.round((L.lmode>0 ? (L.lcut==null?1:L.lcut) : 1)*100), min:0, max:100, def:100,
