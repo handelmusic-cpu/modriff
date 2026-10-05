@@ -210,3 +210,17 @@ panel.
 
 The saxophone table above them is older and hand-written, and carries no such
 citation. It covers written B♭3–F6 and has not been re-sourced.
+
+## samples/bassfinger, samples/basspick, samples/bassslap — "Motown", "Höfner", "Slap"
+
+From the same midi-js-soundfonts project as the upright (CC BY 3.0 / the
+SoundFonts' own terms, as above): `electric_bass_finger` and
+`electric_bass_pick` from **FluidR3_GM**, `slap_bass_1` from **MusyngKite**.
+Chosen by measuring both libraries: MusyngKite's fingered and picked sets sit
+9-17 cents out of tune, FluidR3's within 4; for slap both are in tune and
+MusyngKite's attack is sharper. Natural notes C1-B4, 28 per set, shipped as
+downloaded.
+
+Each player's tone (Jamerson's muted flatwound P-bass, McCartney's picked
+Höfner, a scooped slap) is applied by the app when the notes load — see
+`_sampleShape` in index.html — so the files themselves are unprocessed.

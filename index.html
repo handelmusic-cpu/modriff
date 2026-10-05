@@ -7551,6 +7551,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
      <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
+     <button class="bl-mopt" id="blw-motown" onclick="setBlWave('bass_motown')" title="Motown — fingered P-bass, flatwounds, foam mute: the deep, dead thump under a Jamerson line">Motown</button>
+     <button class="bl-mopt" id="blw-hofner" onclick="setBlWave('bass_hofner')" title="Höfner — picked violin bass: woody, round, short — the 60s McCartney sound">Höfner</button>
+     <button class="bl-mopt" id="blw-slap" onclick="setBlWave('bass_slap')" title="Slap — thumb and pop, mids scooped, sub and top pushed">Slap</button>
      <button class="bl-mopt" id="blw-303" onclick="setBlWave('acid303')" title="The TB-303 voice the drum tab used to carry — its own filter and resonance, so the Cutoff and Reso sliders do not apply">303</button>
      <!-- Covers any voice picked via the Voices drawer that isn't one of the
           seven quick buttons above (piano, vibes, modsynth, ...), so the
@@ -8236,7 +8239,22 @@ const WAVE_GAIN = {
 // voice's sustained additive-oscillator stack, even at the same envelope.
 // This is an estimate in the same spirit as the table above rather than a
 // measured match — retune it if "Real" still sits off the other bass voices.
-const BASS_SAMPLE_GAIN = 4.5;
+//
+// Measured in v4.0.5, playing the same four-note line on each voice into the
+// bass bus: Electric (synth) -25.2 dB RMS, Real at 4.5 here -35.1 — ten dB
+// under the voice beside it, which is a lot of "something missing". Every
+// sampled bass is set to about -27 now: a couple of dB under the synths,
+// because a plucked recording decays where the synth stack holds.
+const BASS_SAMPLE_GAIN = 11.4;
+// The sampled bass voices, by wave id: which library, and the gain that puts
+// it at that level (same measurement; at 4.5 Motown read -38.5, Höfner
+// -36.8, Slap -44.1 — slap is spiky, all transient and little body).
+var BASS_SAMPLED = {
+ upright_real:{lib:'bass',       gain:BASS_SAMPLE_GAIN},
+ bass_motown: {lib:'bassmotown', gain:16.9},
+ bass_hofner: {lib:'basshofner', gain:13.9},
+ bass_slap:   {lib:'bassslap',   gain:32}
+};
 
 // ═══════════════════════════════════════
 // SAMPLE ENGINE — real instrument samples (progressive enhancement)
@@ -8255,6 +8273,14 @@ function _natRange(octLo,octHi){
 }
 const SAMPLE_LIBS = {
  bass:    {dir:'samples/bass',    notes:_natRange(1,4), fallbackWave:'upright'},
+ // Three electric basses (v4.0.5), each a real recorded set with one player's
+ // tone baked in when it loads — see _sampleShape. The recordings are the
+ // same SoundFont libraries as the upright: fingered and picked from
+ // FluidR3_GM, slap from MusyngKite, chosen by measuring both — MusyngKite's
+ // fingered and picked sets sit 9-17 cents out of tune, FluidR3's within 4.
+ bassmotown: {dir:'samples/bassfinger', notes:_natRange(1,4), fallbackWave:'electric', shape:'motown'},
+ basshofner: {dir:'samples/basspick',   notes:_natRange(1,4), fallbackWave:'electric', shape:'hofner'},
+ bassslap:   {dir:'samples/bassslap',   notes:_natRange(1,4), fallbackWave:'electric', shape:'slap'},
  // Two real jazz comping instruments. Which ones was decided by measurement,
  // not taste: these sample sets are mp3s that brickwall around 7.5 kHz, which
  // is why the piano set that used to ship here was removed — a piano without
@@ -8348,12 +8374,91 @@ function preloadSampleInstrument(key){
  const loads=lib.notes.map(n=>fetch(lib.dir+'/'+n+'.mp3')
   .then(r=>{ if(!r.ok) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
   .then(buf=>ctx.decodeAudioData(buf))
+  .then(audioBuf=>lib.shape ? _sampleShape(lib.shape, audioBuf, ctx) : audioBuf)
   .then(audioBuf=>{ SAMPLE_BUFFERS[key][n]=audioBuf; })
   .catch(()=>{})); // one missing/blocked note shouldn't sink the whole instrument
  Promise.all(loads).then(()=>{
   SAMPLE_STATE[key] = Object.keys(SAMPLE_BUFFERS[key]).length ? 'ready' : 'error';
   _sampleStateChanged(key);
  });
+}
+
+// ── A player's tone, baked into the recording ─────────────────────────────
+// Each note is rendered once, when it loads, through the chain that makes a
+// plain electric bass sound like one player's: an OfflineAudioContext the
+// length of the note, the result kept in place of the original. Playing it
+// then costs what any sample costs — one buffer source — rather than six
+// filters, a compressor and a shaper per note, which is the difference
+// between a bass line and a dropout on a slow machine.
+//
+// After notes from the project owner on each player's sound:
+//   motown — Jamerson: P-bass, flatwounds, foam mute, one finger. Everything
+//            over 1 kHz gone within ~50 ms, a steep roll-off from 2 kHz, the
+//            100-200 Hz thump pushed, and a short muted sustain.
+//   hofner — McCartney: Höfner violin bass, flatwounds, pick. A hollow-body
+//            bump at 100-180 Hz, the box taken out at 400 Hz, rolled off from
+//            1.5 kHz, levelled by a fast compressor (the RS124 role) and
+//            warmed with a gentle tanh. Short-scale, so it dies sooner.
+//   slap   — Marcus Miller / Flea: the scoop (400-800 Hz down), sub and top
+//            shelves up, and a fast compressor holding the slap's spike down
+//            so the tail comes up.
+function _sampleShape(kind, buf, ctx){
+ try{
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if(!OAC) return Promise.resolve(buf);
+  const sr=buf.sampleRate, len=buf.length, ch=buf.numberOfChannels;
+  const oc=new OAC(ch, len, sr);
+  const src=oc.createBufferSource(); src.buffer=buf;
+  let head=src;
+  const add=n=>{ head.connect(n); head=n; return n; };
+  const bq=(type, f, q, g)=>{ const b=oc.createBiquadFilter(); b.type=type; b.frequency.value=f; if(q!=null) b.Q.value=q; if(g!=null) b.gain.value=g; return add(b); };
+  const env=oc.createGain();
+  const hp=bq('highpass', 32, 0.7);
+  if(kind==='motown'){
+   bq('peaking', 150, 0.8, 4.5);
+   // The mute: the top closes almost at once and keeps closing.
+   const lp=bq('lowpass', 2600, 0.5);
+   lp.frequency.setValueAtTime(2600, 0);
+   lp.frequency.setTargetAtTime(750, 0.012, 0.035);
+   bq('lowpass', 2000, 0.7);
+   add(env);
+   env.gain.setValueAtTime(1, 0);
+   env.gain.setTargetAtTime(0, 0.09, 0.55);           // foam under the bridge cover
+  } else if(kind==='hofner'){
+   bq('peaking', 140, 0.9, 6);
+   bq('peaking', 400, 1.0, -3);
+   bq('lowpass', 1500, 0.54);
+   bq('lowpass', 1500, 1.31);                           // 24 dB/oct, Butterworth pair
+   const cmp=oc.createDynamicsCompressor();
+   cmp.threshold.value=-24; cmp.ratio.value=4; cmp.attack.value=0.002; cmp.release.value=0.15; cmp.knee.value=6;
+   add(cmp);
+   const ws=oc.createWaveShaper(); const cv=new Float32Array(1025);
+   for(let i=0;i<cv.length;i++){ const x=(i/(cv.length-1))*2-1; cv[i]=Math.tanh(x*1.15)/Math.tanh(1.15); }
+   ws.curve=cv; add(ws);
+   add(env);
+   env.gain.setValueAtTime(1, 0);
+   env.gain.setTargetAtTime(0, 0.12, 0.9);            // short scale, flatwounds
+  } else if(kind==='slap'){
+   const cmp=oc.createDynamicsCompressor();
+   cmp.threshold.value=-22; cmp.ratio.value=5; cmp.attack.value=0.0015; cmp.release.value=0.12; cmp.knee.value=4;
+   add(cmp);
+   bq('peaking', 600, 0.7, -7.5);
+   bq('lowshelf', 80, null, 4);
+   bq('highshelf', 4000, null, 4);
+   add(env);
+  } else return Promise.resolve(buf);
+  head.connect(oc.destination);
+  src.start(0);
+  return oc.startRendering().then(out=>{
+   // Same peak as it came in: the shaping is tone, not level. Level per voice
+   // is set where every other sampled bass's is (BASS_SAMPLE_GAINS).
+   let pi=0, po=0;
+   for(let c=0;c<ch;c++){ const a=buf.getChannelData(c), b=out.getChannelData(c);
+    for(let i=0;i<len;i++){ const x=a[i]<0?-a[i]:a[i]; if(x>pi) pi=x; const y=b[i]<0?-b[i]:b[i]; if(y>po) po=y; } }
+   if(po>0 && pi>0){ const k=pi/po; for(let c=0;c<ch;c++){ const b=out.getChannelData(c); for(let i=0;i<len;i++) b[i]*=k; } }
+   return out;
+  }, ()=>buf);
+ }catch(e){ return Promise.resolve(buf); }
 }
 
 // Nearest loaded sample to a target MIDI note, for pitch-shifting
@@ -18698,7 +18803,8 @@ const MS_SHARED_VOICES=[['pianoreal','Piano ◆'],['piano','Piano (synth)'],['rh
 // way "Acid" does. Anything picked for bass that ISN'T one of these seven —
 // i.e. a shared voice reached through the Voices drawer — falls back to the
 // shared catalog's label so the current sound is never unlabeled.
-const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Real Upright'};
+const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Real Upright',
+                        bass_motown:'Motown',bass_hofner:'Höfner',bass_slap:'Slap'};
 function _sharedVoiceLabel(w){
  const m=MS_SHARED_VOICES.find(o=>o[0]===w);
  return m?m[1]:w;
@@ -18766,6 +18872,7 @@ const VOICE_PARTS=sortByPart([
   get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
   opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
+        ['bass_motown','Motown'],['bass_hofner','Höfner'],['bass_slap','Slap'],
         ['sawtooth','Acid'],['acid303','303'],['square','Square'],['triangle','Tri'],['sine','Sub']]
        .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
  {k:'melgen', icon:'✦', label:'Melody Seq', hint:'the generated melody line',
@@ -35900,7 +36007,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   // that was struck and is dying away. The shelf stays for the voices that are
   // genuinely sustained (sub, square, triangle, the acid saws, which shape
   // themselves with their filter instead).
-  var _plucked = (blWave === 'electric' || blWave === 'upright' || blWave === 'upright_real');
+  var _plucked = (blWave === 'electric' || blWave === 'upright' || !!BASS_SAMPLED[blWave]);
   // No makeup for the decay below. There WAS a 1.25 boost here on the reasoning
   // that the new envelope averages lower than the old shelf; it was arithmetic
   // rather than a measurement, and this part is already documented as carrying
@@ -36065,22 +36172,24 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     o.start(t); o2.start(t); o3.start(t); ck.start(t);
     o.stop(stopT); o2.stop(stopT); o3.stop(t+0.3); ck.stop(t+0.05);
 
-  } else if(blWave === 'upright_real'){
-    // Sampled upright bass — falls back to the synthesized 'upright' voice until loaded
+  } else if(BASS_SAMPLED[blWave]){
+    // A sampled bass — the upright, or one of the three electrics. Falls back
+    // to the matching synthesized voice until its notes have loaded.
+    var _sb = BASS_SAMPLED[blWave], _sk = _sb.lib;
     var _bmidi = note + (oct+1)*12;
     var src = null;
-    if(SAMPLE_STATE.bass === 'ready'){
+    if(SAMPLE_STATE[_sk] === 'ready'){
       // playSampleVoice() connects the raw buffer straight through with no
       // level compensation — see BASS_SAMPLE_GAIN above — so boost it into
       // its own gain stage ahead of the shared envelope node rather than
       // feeding the buffer into g directly.
-      var sg = ctx.createGain(); sg.gain.value = BASS_SAMPLE_GAIN; sg.connect(g);
-      src = playSampleVoice(ctx, 'bass', _bmidi, sg, t, dur);
+      var sg = ctx.createGain(); sg.gain.value = _sb.gain; sg.connect(g);
+      src = playSampleVoice(ctx, _sk, _bmidi, sg, t, dur);
     }
     if(!src){
-      if(SAMPLE_STATE.bass !== 'ready') preloadSampleInstrument('bass');
+      if(SAMPLE_STATE[_sk] !== 'ready') preloadSampleInstrument(_sk);
       var _sw = blWave;
-      try{ blWave = 'upright'; blPlayNote(t, note, oct, dur, vol, accent, slide); }
+      try{ blWave = (SAMPLE_LIBS[_sk] && SAMPLE_LIBS[_sk].fallbackWave) || 'upright'; blPlayNote(t, note, oct, dur, vol, accent, slide); }
       finally{ blWave = _sw; }
     }
   } else {
@@ -37523,14 +37632,15 @@ window.blSyncFollowUI = function(){
 window.setBlWave = function(w){
   blWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
-  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal', acid303:'blw-303'};
+  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal',
+             bass_motown:'blw-motown', bass_hofner:'blw-hofner', bass_slap:'blw-slap', acid303:'blw-303'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
   // Covers voices reached through the Voices drawer that aren't one of the
   // quick buttons above — the label is the only indication then.
   var cur=document.getElementById('bl-wave-current');
   if(cur) cur.textContent = e ? '' : (typeof _blWaveLabel==='function' ? _blWaveLabel(w) : w);
-  if(w==='upright_real') preloadSampleInstrument('bass');
+  if(BASS_SAMPLED[w]) preloadSampleInstrument(BASS_SAMPLED[w].lib);
   if(typeof syncVoicesPanel==='function') syncVoicesPanel();
 };
 
