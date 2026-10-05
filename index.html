@@ -6043,7 +6043,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.10</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.11</span>
     </div>
    </div>
   </div>
@@ -6061,7 +6061,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.10</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.11</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6574,6 +6574,22 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Roll the chord's notes one after another instead of striking them together">Strum: ON</button>
    <div class="sg"><div class="sl">Strum length</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
    <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="While the arp is running, also hold the full chord underneath it. With the arp off this makes no difference — the chord is already sounding.">Chord under arp: ON</button>
+  </div>
+  <!-- Glide (portamento): each voice of the next chord slides in from the
+       matching voice of the last one. And the voicing, beside it: the two are
+       how one chord turns into the next. -->
+  <div class="row" style="align-items:flex-end">
+   <button class="tb" id="glide-btn" onclick="toggleChordGlide()" title="Portamento: every note of the next chord slides in from the matching note of the last one">Glide: OFF</button>
+   <div class="sg"><div class="sl">Glide time</div><input type="range" id="glide-time" min="10" max="1000" step="10" value="150" disabled oninput="setChordGlideTime(this.value)"><div class="sv" id="glide-val">150ms</div></div>
+  </div>
+  <div class="row" style="align-items:center;gap:6px">
+   <span class="sl">Voicing</span>
+   <div class="tg" style="flex-wrap:wrap;max-width:100%" title="How the chord is stacked">
+    <button class="tb active" data-voicing="close" onclick="setVoicing('close')">Close</button>
+    <button class="tb" data-voicing="open" onclick="setVoicing('open')">Spread</button>
+    <button class="tb" data-voicing="rnb" onclick="setVoicing('rnb')" title="Soul / R&amp;B ninth-chord voicings">Soul/R&amp;B</button>
+    <button class="tb" data-voicing="neosoul" onclick="setVoicing('neosoul')" title="Neo-soul Rhodes voicings">Neo-soul</button>
+   </div>
   </div>
   </div>
  </div>
@@ -7090,11 +7106,13 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
     <div class="ss-scope">Voicing <b>how chords are stacked</b></div>
     <div class="row">
      <div class="tg">
-      <button class="tb active" id="bv-close" onclick="setVoicing('close')">Close</button>
-      <button class="tb" id="bv-open" onclick="setVoicing('open')">Spread</button>
+      <button class="tb active" id="bv-close" data-voicing="close" onclick="setVoicing('close')">Close</button>
+      <button class="tb" id="bv-open" data-voicing="open" onclick="setVoicing('open')">Spread</button>
+      <button class="tb" id="bv-rnb" data-voicing="rnb" onclick="setVoicing('rnb')" title="Soul / R&amp;B — ninth chords, the extensions taken from the key: R 7 9 3 5, and R ♭7 9 3 13 on a dominant">Soul/R&amp;B</button>
+      <button class="tb" id="bv-neosoul" data-voicing="neosoul" onclick="setVoicing('neosoul')" title="Neo-soul — Rhodes voicings: the minor-eleventh cluster, maj13, the 9sus dominant">Neo-soul</button>
      </div>
      <span id="bv-gtr-note" style="display:none;font-size:.4rem;color:var(--muted);line-height:1.5;max-width:230px">
-      A guitar voice uses guitar shapes — R&nbsp;5&nbsp;R&nbsp;3 for a triad, R&nbsp;5&nbsp;7&nbsp;3 for a seventh — because those are what six strings can actually reach.
+      A guitar voice plays real guitar grips — found on six strings in standard tuning, root on the lowest string — whichever voicing is chosen here; Soul/R&amp;B and Neo-soul pick the grip for their extended chord.
      </span>
      <button class="tb active" id="auto-inv-btn" onclick="toggleAutoInv()" title="Chooses the inversion nearest the last chord, so voices move as little as possible and stay in a comfortable register. On by default.">VoiceLead: ON</button>
     </div>
@@ -8005,7 +8023,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.10';
+const MODRIFF_VERSION = '4.0.11';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -15824,6 +15842,234 @@ function voiceIntervals(relIntvs){
  return relIntvs.map((s,i)=>i>0&&i%2===1?s+12:s);
 }
 
+// ── Guitar grips ─────────────────────────────────────────────────────────
+// The fixed shapes above were right on paper and wrong in practice. Voice
+// leading (smartVoiceLead) runs first and hands over an inversion, and the
+// shapes were written for root position, so a jazz-guitar F came out
+// F4 C4 F5 A5 — a 13-semitone hole in the middle, and an octave above where a
+// guitar plays chords at all.
+//
+// So a guitar voice now plays a chord the way a guitarist finds one: on six
+// strings in standard tuning, a fret window at most four wide, open strings
+// where they ring true, the root on the lowest string that sounds, at most one
+// muted string inside the grip. Every grip that covers the chord is scored —
+// more strings, lower position, no doubled third, the fifth if there is room —
+// and, with VoiceLead on, the one closest to the last grip wins, which is how
+// a player moves up the neck instead of jumping back to the nut every chord.
+// Pitches are the guitar's own: an open E is E2.
+var GTR_TUNING = [40, 45, 50, 55, 59, 64];
+var _gtrCache = {};
+var _gtrPrev = null;
+// Searched for the real root, not found once for C and transposed: moving a
+// grip up the neck turns its open strings into notes no hand can reach.
+function _gtrCandidates(rootPc, pcsRel){
+ var key = rootPc+':'+pcsRel.slice().sort(function(a,b){return a-b;}).join(',');
+ if(_gtrCache[key]) return _gtrCache[key];
+ var has = {}; pcsRel.forEach(function(p){ has[p]=1; });
+ var rel = function(m){ return (((m - rootPc) % 12) + 12) % 12; };
+ var third = has[4] ? 4 : has[3] ? 3 : null;
+ var fifth = has[7] ? 7 : null;
+ // Everything but a plain perfect fifth has to sound: the fifth is the note a
+ // guitarist drops first when a chord has more tones than fingers.
+ var need = pcsRel.filter(function(p){ return !(p===7 && pcsRel.length>3); });
+ var out = [];
+ for(var w=0; w<=9; w++){
+  var lo = Math.max(1, w), hi = w + 3;
+  // Each string: muted (null) or a fret whose note is in the chord. Pitch
+  // classes are relative to the chord root at pc 0; the caller shifts by the
+  // root, so these are computed for a root of C and moved later.
+  var opts = GTR_TUNING.map(function(t){
+   var o = [null];
+   for(var f=0; f<=hi; f++){
+    if(f!==0 && f<lo) continue;
+    if(has[rel(t+f)]) o.push(f);
+   }
+   return o;
+  });
+  (function walk(si, frets){
+   if(si===6){
+    var sounding = [];
+    frets.forEach(function(f,i){ if(f!=null) sounding.push(i); });
+    if(sounding.length < 3) return;
+    var first = sounding[0], last = sounding[sounding.length-1];
+    if(first > 2) return;                                    // root on E, A or D
+    if(rel(GTR_TUNING[first]+frets[first]) !== 0) return;   // ...and it is the root
+    var gaps = (last-first+1) - sounding.length;
+    if(gaps > 1) return;
+    var midi = sounding.map(function(i){ return GTR_TUNING[i]+frets[i]; });
+    var pcs = {}; midi.forEach(function(m){ var q=rel(m); pcs[q]=(pcs[q]||0)+1; });
+    if(!need.every(function(p){ return pcs[p]; })) return;
+    var fretted = sounding.map(function(i){ return frets[i]; }).filter(function(f){ return f>0; });
+    var minF = fretted.length ? Math.min.apply(null,fretted) : 0;
+    var maxF = fretted.length ? Math.max.apply(null,fretted) : 0;
+    // Four fingers: everything at the lowest fret can be one barre, the rest
+    // a finger each. A grip that needs a fifth is not a grip.
+    var atMin = fretted.filter(function(f){ return f===minF; }).length;
+    if(fretted.length - atMin + (atMin ? 1 : 0) > 4) return;
+    var score = 0;
+    score -= (sounding.length - fretted.length) * 0.15;      // open strings ring
+    score += (maxF - minF) * 0.15;                            // stretch
+    for(var u=1; u<midi.length; u++) if(midi[u]===midi[u-1]) score += 0.6;   // unisons
+    score += (6 - sounding.length) * 0.5;
+    score += minF * 0.18;
+    score += gaps * 0.9;
+    if(third!=null && pcs[third] > 1) score += 0.9;
+    if(fifth!=null && !pcs[fifth]) score += 0.35;
+    if(midi[midi.length-1] > 76) score += 1.5;
+    out.push({midi:midi, score:score});
+    return;
+   }
+   opts[si].forEach(function(f){ frets.push(f); walk(si+1, frets); frets.pop(); });
+  })(0, []);
+ }
+ // Each window rediscovers the open-string grips; keep one of each.
+ var seen = {};
+ out = out.filter(function(g){ var k=g.midi.join(); if(seen[k]) return false; seen[k]=1; return true; });
+ out.sort(function(a,b){ return a.score-b.score; });
+ return (_gtrCache[key] = out.slice(0, 40));
+}
+function guitarGrip(rootM, relIntvs){
+ var rootPc = ((rootM%12)+12)%12;
+ var pcsRel = [];
+ relIntvs.forEach(function(s){ var p=((s%12)+12)%12; if(pcsRel.indexOf(p)<0) pcsRel.push(p); });
+ if(pcsRel.indexOf(0)<0) pcsRel.push(0);
+ var cands = _gtrCandidates(rootPc, pcsRel);
+ if(!cands.length) return null;
+ var best = null, bestCost = Infinity;
+ cands.forEach(function(c){
+  var midi = c.midi;
+  var cost = c.score;
+  if(autoInvOn && _gtrPrev){
+   var mv = 0;
+   midi.forEach(function(m){ var d=99; _gtrPrev.forEach(function(p){ d=Math.min(d, Math.abs(m-p)); }); mv += d; });
+   cost += mv * 0.12 + Math.abs(midi[midi.length-1] - _gtrPrev[_gtrPrev.length-1]) * 0.08;
+  }
+  if(cost < bestCost){ bestCost = cost; best = midi; }
+ });
+ if(!best) return null;
+ _gtrPrev = best;
+ return best.map(function(m){ return m - rootM; });
+}
+
+// ── Soul / R&B and neo-soul ───────────────────────────────────────────────
+// Two more ways to stack a chord, beside Close and Spread. Both always play
+// an extended chord — that is the sound — and take each extension from the
+// KEY, so the IV in C gets a maj7 and the V a ♭7 without the chord having to
+// say so, and a ninth that is not in the scale is left out rather than played
+// wrong. Shapes:
+//
+//   Soul/R&B   maj  R 7 9 3 5    min  R ♭7 9 ♭3 5    dom  R ♭7 9 3 13
+//              — the ninth chords of Motown and 70s soul, root under a
+//                spread upper structure
+//   Neo-soul   maj  R 7 9 3 13   min  R ♭7 9 ♭3 11   dom  R ♭7 9 11 13
+//              — the Rhodes voicings: the minor-eleventh cluster (9 ♭3 11
+//                a whole and a half step apart), the 9sus dominant
+//
+// A chromatic chord (borrowed, secondary dominant) has no key to ask, and
+// takes the conventional extension for its quality instead.
+var _styledPrevTop = null;
+function styledVoicing(rootM, relIntvs, style){
+ var pc = function(x){ return ((x%12)+12)%12; };
+ var rel = []; relIntvs.forEach(function(s){ var p=pc(s); if(rel.indexOf(p)<0) rel.push(p); });
+ var third = rel.indexOf(4)>=0 ? 4 : rel.indexOf(3)>=0 ? 3 : null;
+ var fifth = rel.indexOf(7)>=0 ? 7 : rel.indexOf(6)>=0 ? 6 : rel.indexOf(8)>=0 ? 8 : 7;
+ if(third==null) return null;                        // sus and power chords keep their shape
+ var md = (typeof MODES!=='undefined' && MODES[mode]) || null;
+ var keyPcs = md ? md.steps.map(function(s){ return pc(root + s); }) : [];
+ var rpc = pc(rootM);
+ var inKey = function(semi){ return keyPcs.indexOf(pc(rpc + semi)) >= 0; };
+ var diatonic = keyPcs.indexOf(rpc)>=0 && inKey(third) && inKey(fifth);
+ // The seventh the chord already names wins; otherwise the key's.
+ var sev = rel.indexOf(11)>=0 ? 11 : rel.indexOf(10)>=0 ? 10 : (rel.indexOf(9)>=0 && fifth===6) ? 9 : null;
+ if(sev==null){
+  if(diatonic) sev = inKey(11) ? 11 : inKey(10) ? 10 : (fifth===6 && inKey(9)) ? 9 : null;
+  if(sev==null) sev = (third===4 && fifth===7) ? (rel.length===3 && !diatonic ? 10 : 11) : third===3 && fifth===7 ? 10 : fifth===6 ? 10 : 11;
+ }
+ var ok = function(semi){ return !diatonic || inKey(semi); };
+ var dom = third===4 && sev===10;
+ var nine = ok(14) ? 14 : (dom && ok(13) ? 13 : null);
+ var v;
+ if(fifth===6 || fifth===8){
+  v = [0, sev, third+12, fifth+12];                     // half-dim, dim, aug: keep them plain
+  if(fifth===6 && sev===10 && nine!=null && ok(14)) v.splice(2,0,14);
+ } else if(style==='neosoul'){
+  if(dom)              v = [0, 10, nine||14, 17, ok(21)?21:19];
+  else if(third===3)   v = [0, sev, nine, 15, ok(17)?17:19];
+  else                 v = [0, sev, nine, 16, ok(21)?21:19];
+ } else {
+  if(dom)              v = [0, 10, nine, 16, ok(21)?21:19];
+  else                 v = [0, sev, nine, third+12, 19];
+ }
+ v = v.filter(function(x){ return x!=null; });
+ // Register: the whole voicing moves by octaves to sit around E4, and keeps
+ // its top voice near the last one so the line on top does not leap.
+ var best = v, bc = Infinity;
+ [-24,-12,0,12].forEach(function(sh){
+  var top = rootM + sh + v[v.length-1], low = rootM + sh;
+  if(low < 40 || top > 84) return;
+  var mean = v.reduce(function(a,x){ return a+x; },0)/v.length + rootM + sh;
+  var c = Math.abs(mean - 63) + (_styledPrevTop!=null && autoInvOn ? Math.abs(top - _styledPrevTop)*0.6 : 0);
+  if(c < bc){ bc = c; best = v.map(function(x){ return x + sh; }); }
+ });
+ _styledPrevTop = rootM + best[best.length-1];
+ return best;
+}
+// What playChord and playSlashChord voice with: a guitar plays a guitar grip
+// (of the styled chord, if a style is on — R&B and neo-soul grips are real
+// grips too), a style its own shape, and otherwise Close or Spread.
+function chordVoicing(rootM, relIntvs){
+ var styled = (voicing==='rnb' || voicing==='neosoul') ? styledVoicing(rootM, relIntvs, voicing) : null;
+ if(typeof wave!=='undefined' && GUITAR_VOICED[wave]){
+  var g = guitarGrip(rootM, styled || relIntvs);
+  if(g) return g;
+ }
+ if(styled) return styled;
+ return voiceIntervals(relIntvs);
+}
+
+// ── Glide ────────────────────────────────────────────────────────────────
+// Portamento between chords: each voice of the new chord starts at the pitch
+// of the matching voice of the last one — lowest to lowest, highest to
+// highest — and slides to its own over the glide time. Done on .detune, which
+// oscillators and sample players both have, so it works on every voice
+// including the sampled ones (a piano that slides is a strange and lovely
+// thing). Only from a chord that is still recent; a glide out of silence has
+// nothing to come from.
+var chordGlideOn = false, chordGlideTime = 0.15;
+var _glidePrev = null, _glidePrevT = 0;
+function glideApply(nodes, midi, voiceIdx, voiceCount, t0){
+ if(!chordGlideOn || !_glidePrev || !_glidePrev.length) return;
+ var n = _glidePrev.length;
+ var j = voiceCount > 1 ? Math.round(voiceIdx * (n-1) / (voiceCount-1)) : 0;
+ var from = _glidePrev[Math.max(0, Math.min(n-1, j))];
+ var cents = (from - midi) * 100;
+ if(!cents || Math.abs(cents) > 2400) return;
+ (nodes||[]).forEach(function(nd){
+  if(!nd || !nd.detune) return;
+  // Leave the LFOs alone: an oscillator below 20 Hz is a modulator, and
+  // sliding its rate is not portamento.
+  if(nd.frequency && nd.frequency.value < 20) return;
+  try{
+   var base = nd.detune.value;
+   nd.detune.setValueAtTime(base + cents, t0);
+   nd.detune.linearRampToValueAtTime(base, t0 + chordGlideTime);
+  }catch(e){}
+ });
+}
+// Kept for the NEXT chord; the one sounding now has already read its own.
+var _glideNext = null, _glideNextT = 0;
+function glideRemember(midiList, t){
+ _glideNext = midiList.slice().sort(function(a,b){return a-b;});
+ _glideNextT = t;
+}
+function glideBegin(){
+ // The chord about to sound reads the previous one; stale (more than six
+ // seconds ago) counts as nothing to glide from.
+ var ctx = getCtx();
+ if(_glideNext && ctx && (ctx.currentTime - _glideNextT) < 6){ _glidePrev = _glideNext; _glidePrevT = _glideNextT; }
+ else _glidePrev = null;
+}
+
 // ── Smart auto-inversion ──────────────────────────────────────────
 // On by default. Measured across five standards it is both smoother and lower
 // than root position: average voice movement per chord drops from 4.4-5.7
@@ -16017,7 +16263,11 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  // always clamped for this reason; the chord, slash, bass and drum paths did
  // not. A note a few milliseconds late is inaudible. The click is not.
  const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + (skipStop ? 0 : FADE_OUT));
- const intvs=voiceIntervals(relIntvs);
+ const intvs=chordVoicing(rootM, relIntvs);
+ glideBegin();
+ const _gOrder = intvs.map((s,i)=>i).sort((a,b)=>intvs[a]-intvs[b]);
+ glideRemember(intvs.map(s=>rootM+s), now);
+ window._lastVoiced = {rel:relIntvs, midi:intvs.map(s=>rootM+s)};
 
  if(!skipStop) stopAll(atTime);
  // A muted or zeroed Chord channel used to still build every voice — the
@@ -16078,7 +16328,9 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const _strumLead=(atTime!=null && offsets.length>1) ? offsets[offsets.length-1]*0.4 : 0;
  intvs.forEach((s,i)=>{
  const t0=now-_strumLead+offsets[i];
- const vl=i===0?1.0:i===intvs.length-1?.62:.78;
+ // Five- and six-note chords (a guitar grip, a neo-soul stack) are scaled
+ // back to the loudness of a four-note one, by power — every voice adds.
+ const vl=(i===0?1.0:i===intvs.length-1?.62:.78) * (intvs.length>4 ? Math.sqrt(4/intvs.length) : 1);
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk);
  if(sustain){
@@ -16094,6 +16346,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  g.connect(fx.head);
  const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
+ glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
  });
@@ -16145,13 +16398,17 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.42*vsc*_mxCh*_tr});
  reapVoice([bo],[bg,_sbRev],atk+dec);
 
- const slashIntvs=voiceIntervals(relIntvs);
+ const slashIntvs=chordVoicing(rootM, relIntvs);
+ glideBegin();
+ const _gOrder2 = slashIntvs.map((s,i)=>i).sort((a,b)=>slashIntvs[a]-slashIntvs[b]);
+ glideRemember(slashIntvs.map(s=>rootM+s), now);
+ window._lastVoiced = {rel:relIntvs, midi:slashIntvs.map(s=>rootM+s)};
  const offsets=strumOffsets(slashIntvs.length);
  // Same straddle as playChord — see the note there.
  const _strumLead=(atTime!=null && offsets.length>1) ? offsets[offsets.length-1]*0.4 : 0;
  slashIntvs.forEach((s,i)=>{
  const t0=now-_strumLead+offsets[i];
- const vl=i===0?1.0:i===slashIntvs.length-1?.62:.78;
+ const vl=(i===0?1.0:i===slashIntvs.length-1?.62:.78) * (slashIntvs.length>4 ? Math.sqrt(4/slashIntvs.length) : 1);
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.22*vl*wg*vsc*_mxCh*_tr,t0+atk);
  if(sustain){
@@ -16165,6 +16422,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  g.connect(fx.head);
  const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
  const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
+ glideApply(_os2, rootM+s, _gOrder2.indexOf(i), slashIntvs.length, t0);
  activeOscs.push({oscs:_os2, gain:g, t0:t0, peak:vol*.22*vl*wg*vsc*_mxCh*_tr});
  reapVoice(_os2,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv2],atk+dec);
  });
@@ -21980,9 +22238,27 @@ function buildModSynthPresets(){
  syncModSynthUI();
 }
 function setVoicing(v){
- voicing=v;
+ voicing = ['close','open','rnb','neosoul'].indexOf(v)>=0 ? v : 'close';
+ _styledPrevTop = null;
  if(typeof syncSSPreviews==='function') syncSSPreviews();
- ['close','open'].forEach(x=>{ const e=document.getElementById('bv-'+x); if(e) e.classList.toggle('active',x===v); });
+ document.querySelectorAll('[data-voicing]').forEach(e=>e.classList.toggle('active', e.dataset.voicing===voicing));
+}
+// Glide: the switch and its time. The time slider is dead while Glide is off,
+// the way Strum's length is.
+function toggleChordGlide(){
+ chordGlideOn = !chordGlideOn;
+ syncGlideUI();
+}
+function setChordGlideTime(v){
+ chordGlideTime = Math.max(0.01, Math.min(1.5, (+v||150)/1000));
+ syncGlideUI();
+}
+function syncGlideUI(){
+ const b=document.getElementById('glide-btn');
+ if(b){ b.textContent='Glide: '+(chordGlideOn?'ON':'OFF'); b.classList.toggle('active', chordGlideOn); }
+ const sl=document.getElementById('glide-time');
+ if(sl){ sl.value=Math.round(chordGlideTime*1000); sl.disabled=!chordGlideOn; }
+ const lv=document.getElementById('glide-val'); if(lv) lv.textContent=Math.round(chordGlideTime*1000)+'ms';
 }
 function shiftOct(d){
  const n=octShift+d*12; if(n<-24||n>24) return;
@@ -22528,6 +22804,7 @@ function _capSettings(){
   melScaleSet: melScaleSet ? melScaleSet.slice() : null,
   // musical context + character toggles
   root, mode, voicing, bpm:_sv('bpm'),
+  glideOn: chordGlideOn, glideT: chordGlideTime,
   // Stored as a pair rather than a string so an older setup, which has
   // neither, restores as 4/4 without needing to be parsed or migrated.
   meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
@@ -22692,6 +22969,7 @@ function _applySettings(s){
  _setSlider('decay',s.dec,()=>updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s'));
  _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
  _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
+ if(s.glideOn!=null){ chordGlideOn=!!s.glideOn; if(s.glideT>0) chordGlideTime=+s.glideT; syncGlideUI(); }
 
  // Melody envelope + FX
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
@@ -32917,7 +33195,11 @@ function moRestorePrefs(){
 // Wrap chord/melody/arp playback to log note on/off events while recording.
 (function(){
   function chordEventNotes(rootM,relIntvs,bassMidi){
-    var notes=voiceIntervals(relIntvs).map(function(s){ return rootM+s; });
+    // What was actually voiced — a guitar grip or a neo-soul stack is not what
+    // the close/spread table would say, and voicing it a second time here would
+    // also move the guitar's position on the neck.
+    var lv=window._lastVoiced;
+    var notes=(lv && lv.rel===relIntvs) ? lv.midi.slice() : voiceIntervals(relIntvs).map(function(s){ return rootM+s; });
     notes.unshift(bassMidi);
     return notes.map(function(n){ return Math.max(0,Math.min(127,Math.round(n))); });
   }
