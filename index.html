@@ -9,6 +9,42 @@
      per-element. Blocking it cost the one route to bigger text on the device
      where the text is smallest. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<script>
+'use strict';
+// ── Fit the app to a tablet ─────────────────────────────────────────────
+// The layout is a phone's, capped at 700px wide, and an iPad drew it at
+// phone size in the middle of a 1024px screen with the rest empty. Rather
+// than a second layout, a tablet is told it is a large phone: the viewport is
+// set to about 720px across and the browser scales that up to fill the glass.
+// The browser's own zoom, not CSS zoom — every coordinate a touch handler or
+// a canvas reads stays in the same CSS pixels it always did.
+// On its side the scale stops where the page would drop under 1100px, which
+// is where the two-column layouts begin. Phones (under 740px on the short
+// side), Split View windows and anything with a mouse are left alone.
+(function(){
+  var meta = document.querySelector('meta[name="viewport"]');
+  if(!meta) return;
+  var base = meta.getAttribute('content');
+  function fit(){
+    var coarse = false;
+    try{ coarse = matchMedia('(pointer:coarse)').matches; }catch(e){}
+    var w = window.outerWidth || screen.width, h = window.outerHeight || screen.height;
+    var s = 1;
+    if(coarse){
+      var shortSide = Math.min(w, h), longSide = Math.max(w, h);
+      s = Math.min(1.45, shortSide / 720);
+      if(w > h) s = Math.min(s, longSide / 1100);
+    }
+    var want = (s < 1.06) ? base
+      : 'width=' + Math.round(w / s) + ', initial-scale=' + s.toFixed(3) + ', viewport-fit=cover';
+    if(meta.getAttribute('content') !== want) meta.setAttribute('content', want);
+    document.documentElement.dataset.fit = s < 1.06 ? '1' : s.toFixed(2);
+  }
+  fit();
+  window.addEventListener('orientationchange', function(){ setTimeout(fit, 60); });
+  window.addEventListener('resize', fit);
+})();
+</script>
 <title>MōdRiff</title>
 
 <!-- Link previews. The whole way this app travels is #prog= and #setup= links
@@ -5555,6 +5591,38 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   #pf-melody-panel > * { max-width: 1180px !important; }
 }
 
+/* ══ Short screens: a phone on its side ═════════════════════════
+   The bottom of the screen carries four rows — sub-tabs, section tabs, the
+   transport and the part switches — sized for a phone held upright, where
+   they cost 20% of an 844px screen. Turned sideways the same rows took 182px
+   of an iPhone SE's 375: half the screen, with a sliver of the page between
+   them and the top. Below 520px tall they fold to two rows: the section tabs
+   and the sub-tabs side by side, and the transport and parts on one line,
+   with the beat strip drawn along the handle instead of on its own row. */
+@media (orientation:landscape) and (max-height:520px) {
+  .top-stack { display:flex; align-items:stretch; }
+  .top-stack > .tab-bar { flex:1 1 0; min-width:0; order:1; border-top:0; }
+  .top-stack > .subnav-dock:not(:empty) { flex:1 1 0; min-width:0; order:2; display:flex; }
+  .subnav-dock .subnav { border-top:0; border-left:1px solid var(--border2); flex:1; align-items:stretch; }
+  .subnav-dock .subnav-btn { padding-top:3px; padding-bottom:3px; font-size:.5rem; }
+  .tab-btn { padding:8px 2px 7px; font-size:.5rem; }
+
+  .perf-bar { padding-top:14px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
+  #ft-drawer-grip { height:11px; }
+  #ft-drawer-grip::before { height:3px; }
+  body.mode-basic .perf-bar .ft-break { display:none; }
+  .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; top:10px; order:0; height:3px; gap:3px; pointer-events:none; }
+  .perf-bar #ft-beat-dots .beat-dot { height:3px; }
+  .perf-bar #ft-playstop-btn { width:32px; height:32px; }
+  body.mode-basic .perf-bar #ft-chd-btn, body.mode-basic .perf-bar #ft-drum-btn,
+  body.mode-basic .perf-bar #ft-aux-btn, body.mode-basic .perf-bar #ft-bas-btn,
+  body.mode-basic .perf-bar #ft-mel-btn, body.mode-basic .perf-bar #ft-arp-btn,
+  body.mode-basic .perf-bar #ft-smp-btn { max-width:110px; }
+  .perf-bar .ft-btn.arp { padding:5px 7px; font-size:.52rem; }
+  .perf-bar .ft-vmt .vmt-btn { min-height:26px; }
+  .perf-bar .ft-bounce, .perf-bar .ft-stems { padding:5px 8px; font-size:.5rem; }
+}
+
 /* ── Song Builder: one inspector instead of eight control stacks ── */
 .chart-inspector { display:none; }
 .chart-inspector.has-slot {
@@ -5951,7 +6019,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.6</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.7</span>
     </div>
    </div>
   </div>
@@ -5969,7 +6037,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.6</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.7</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7913,7 +7981,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.6';
+const MODRIFF_VERSION = '4.0.7';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -36717,7 +36785,10 @@ function _blNear(pc, refMidi){
   return best == null ? BL_LO + pc : best;
 }
 
-var _blWalkPrev = 0, _blWalkNextT = 0, _blWalkWin = null;
+// _blWalkLastT, the last beat the walk fired, is deliberately NOT reset with
+// the others: a new chord clears the windows and restarts the walk, and
+// without it the restart re-fired the beat already queued — two notes at once.
+var _blWalkPrev = 0, _blWalkNextT = 0, _blWalkWin = null, _blWalkLastT = 0;
 // One quarter-note of a walking line. Beat 1 is the chord's own root; the beat
 // before a change approaches the next root from a half step or a fifth; the
 // beats between move by step through chord and scale tones, aimed at whatever
@@ -36894,10 +36965,30 @@ window._blScheduler = function(){
     // new chord's downbeat, which makes beat 1 land with the chord however
     // playback was started.
     var beatSec = stepSec * 4;
+    // The beat grid the walk sits on: the drums' own bar line while they run,
+    // the chord's downbeat when they do not. Every walk time is snapped UP onto
+    // it (never back — a rewind would re-fire committed notes).
+    // The start used to be "now": switch the bass on mid-song and the walk ran
+    // a beat apart from wherever the press fell, and because the chord re-anchor
+    // below only reaches back half a beat, it stayed there for good. Measured:
+    // 144, 52 and -223 ms off the drums' beat, every note, depending on when
+    // Bass was tapped.
+    var walkSnap = function(t, wAnchor){
+      var nb = (typeof window._sqNextBar==='function') ? window._sqNextBar() : null;
+      var a = nb ? nb.t : wAnchor;
+      if(a == null) return t;
+      var out = a + Math.ceil((t - a) / beatSec - 0.02) * beatSec;
+      // A chord tapped just after a beat pulls the walk back to the tap, and
+      // the snap would land it on that same beat again: two notes at once.
+      while(_blWalkLastT && out < _blWalkLastT + beatSec*0.5) out += beatSec;
+      return out;
+    };
     if(_blWalkNextT && _blWalkNextT < ctx.currentTime - beatSec) _blWalkNextT = 0;
     if(!_blWalkNextT){
       var w0 = _blChordWin[0];
       _blWalkNextT = (w0 && w0.t > ctx.currentTime) ? w0.t : ctx.currentTime;
+      var wNow = _blWindowAt(_blWalkNextT);
+      _blWalkNextT = walkSnap(_blWalkNextT, wNow ? wNow.t : (w0 ? w0.t : null));
     }
     var guard = 0;
     while(_blWalkNextT < horizon && guard++ < 256){
@@ -36910,6 +37001,9 @@ window._blScheduler = function(){
         // Only ever nudge forward, or back by less than half a beat — a bigger
         // rewind would re-fire notes already committed to the audio clock.
         if(wq.t >= _blWalkNextT - beatSec*0.5) _blWalkNextT = wq.t;
+        // A chord played by hand starts when it was tapped, not on a beat.
+        var snapped = walkSnap(_blWalkNextT, wq.t);
+        if(Math.abs(snapped - _blWalkNextT) > 0.001){ _blWalkNextT = snapped; continue; }
       }
       if(_blWalkNextT >= horizon) break;
       // A beat whose time already passed while we were waiting for its chord
@@ -36938,6 +37032,7 @@ window._blScheduler = function(){
                      stepSec * Math.max(1, lc.len || 1) * 0.92,
                      _humanV(lc.accent), lc.accent, lc.slide);
         }
+        _blWalkLastT = _blWalkNextT;
         _blWalkNextT += beatSec;
         continue;
       }
@@ -36951,6 +37046,7 @@ window._blScheduler = function(){
         var beatsLeft = Math.max(1, Math.round((wq.end - _blWalkNextT) / beatSec));
         var midi = _blWalkNote(wq, beatIdx, beatsLeft, scalePcs);
         var wDur = (blWalkFeel === 'two') ? beatSec * 1.88 : beatSec * 0.92;
+        _blWalkLastT = _blWalkNextT;
         blPlayNote(_blWalkNextT + _humanT(beatIdx===0), ((midi % 12) + 12) % 12,
                    Math.floor(midi / 12) - 1, wDur, _humanV(beatIdx===0), beatIdx === 0, false);
       }
