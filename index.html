@@ -5884,7 +5884,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.3</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.4</span>
     </div>
    </div>
   </div>
@@ -5902,7 +5902,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.3</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.4</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7843,7 +7843,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.3';
+const MODRIFF_VERSION = '4.0.4';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -40921,6 +40921,7 @@ class ModFxProc extends AudioWorkletProcessor {
     this.gCycle = 0; this.gPos = 0; this.gStart = 0;   // grain shifter state
     this.mode = 'thru'; this.pos = 0;
     this.xf = 0;                           // crossfade in/out of an effect
+    this.valid = 0;                        // samples of real input in the ring since it last went quiet
     // Ladder state: four one-pole integrators per channel, plus the previous
     // input each channel needs to interpolate its oversampled midpoint.
     this.fs = [new Float64Array(4), new Float64Array(4)];
@@ -40970,6 +40971,14 @@ class ModFxProc extends AudioWorkletProcessor {
     if(!out || !out.length) return true;
     const n = out[0].length;
     const chn = out.length;
+    // Nothing coming in: the channel is bypassed (see _fxSetActive) or simply
+    // silent. Silence out, and no ring to keep — the history it would have
+    // held is silence, and valid=0 is how a stutter knows not to loop it.
+    if(!inp || !inp.length){
+      for(let c=0;c<chn;c++) out[c].fill(0);
+      this.valid = 0;
+      return true;
+    }
     const stut = params.stutter[0], rev = params.reverse[0];
     const warp = params.warp[0],    crush = params.crush[0];
     const srate = params.srate[0];
@@ -40984,17 +40993,26 @@ class ModFxProc extends AudioWorkletProcessor {
                    : Math.abs(warp-1)>0.001 ? 'warp' : 'thru';
     if(wantMode !== this.mode){
       // Entering an effect captures a fresh slice from where we are now.
+      let go = true;
       if(wantMode==='stutter' || wantMode==='reverse'){
-        const want = Math.max(256, Math.floor((wantMode==='stutter'?stut:rev) * this.N));
-        this.sliceLen = Math.min(want, this.N-1);
-        this.sliceStart = (this.w - this.sliceLen + this.N) % this.N;
-        this.pos = 0;
+        const want = Math.min(Math.max(256, Math.floor((wantMode==='stutter'?stut:rev) * this.N)), this.N-1);
+        // A slice is the audio just played, and a channel that has only just
+        // been plugged back in has not heard that much yet — its ring holds
+        // whatever was there before, or nothing. Pass through until it has,
+        // then capture: the first repeat comes one slice late rather than as
+        // a loop of silence.
+        if(this.valid < want) go = false;
+        else {
+          this.sliceLen = want;
+          this.sliceStart = (this.w - this.sliceLen + this.N) % this.N;
+          this.pos = 0;
+        }
       } else if(wantMode==='warp'){
         this.rd = this.w;
       } else if(wantMode==='grain'){
         this.gCycle = 0; this.gPos = 0; this.gStart = this.w;
       }
-      this.mode = wantMode; this.xf = 0;
+      if(go){ this.mode = wantMode; this.xf = 0; }
     }
     // Grain shifter: every cycle, grab a fresh slice from the live input and
     // repeat it for the rest of the cycle. Short grains stutter the sound into
@@ -41004,6 +41022,21 @@ class ModFxProc extends AudioWorkletProcessor {
     const gCycleN = Math.max(64, Math.floor(grainSec * sampleRate));
     const gLenN   = Math.max(32, Math.floor(gCycleN * (0.06 + grainLen*0.94)));
     const bits = crush>0.001 ? Math.pow(2, 16 - crush*13) : 0;
+    this.valid = Math.min(this.N, (this.valid||0) + n);
+    if(this.mode==='thru' && holdN===1 && bits===0 && this.xf>=1){
+      // Nothing to do but listen: two block copies per channel instead of a
+      // per-sample loop. This is where a playing channel spends nearly all of
+      // its time, and in Safari and Firefox a JavaScript loop per sample per
+      // channel was a large part of the audio thread's whole budget.
+      const w0 = this.w, first = Math.min(n, this.N - w0);
+      for(let c=0;c<chn;c++){
+        const o = out[c], i = inp[c] || inp[0], b = this.buf[Math.min(c, this.buf.length-1)];
+        o.set(i);
+        b.set(first===n ? i : i.subarray(0, first), w0);
+        if(first < n) b.set(i.subarray(first), 0);
+      }
+      this.w = (w0 + n) % this.N;
+    } else
     for(let c=0;c<chn;c++){
       const o = out[c];
       const i = (inp && inp[c]) ? inp[c] : (inp && inp[0]) ? inp[0] : null;
@@ -41435,8 +41468,12 @@ function fxBuildChain(ctx, ch){
  const dry=ctx.createGain(); dry.gain.value=1;
  postRing.connect(dry); dry.connect(out);
  out.connect(dest);
+ // The way round all of it, for while the channel has nothing for the chain
+ // to do. Fed from the part bus by fxInsertAll; see _fxSetActive.
+ const byp=ctx.createGain(); byp.gain.value=0;
+ byp.connect(out);
 
- const bundle={ctx,io,out,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev:null,revSend,
+ const bundle={ctx,io,out,byp,active:true,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev:null,revSend,
                trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
                isoLoG,isoMidG,isoHiG,isoWet,isoDry,
                fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt,
@@ -41589,6 +41626,8 @@ function fxInsertAll(){
   const chain=fxBuildChain(ctx,ch);
   try{ bus.disconnect(); }catch(e){}
   bus.connect(chain.io);
+  bus.connect(chain.byp);
+  chain.bus=bus;
   _fxInserted.add(ch);
  });
  fxApplyAll();
@@ -41668,6 +41707,79 @@ function _fxPadDriving(ch, key){
 // stays wired for its own decay first, and a fixed return (reverb, delay) is
 // faded over the final 100ms before the edge goes. Same chain, same sound,
 // 0.13 of a core instead of 0.53.
+// ── A whole chain leaves the graph ───────────────────────────────────────
+// Gating the branches took the idle chains from 0.53 of a core to 0.13 —
+// measured again in v4.0.4 and still about 2.4 seconds of rendering per 20
+// seconds of audio for eight chains doing nothing, against 0.1 without them:
+// the worklet, four biquads, the drive's dry path, the tremolo, the panner and
+// the gate are all still in line with every note. Chrome absorbs that on a
+// Mac. Firefox and Safari did not — reported as Firefox "clipping" (no sample
+// near full scale in the recording: the hash was the audio thread falling
+// behind, smeared through the resampler) and Safari "struggling to keep up"
+// (207 gaps of 256 frames in 11 seconds).
+//
+// So a channel with nothing for its chain to do goes round it. Nothing to do
+// means: no send, no filter of its own, the pad not on it, no release still
+// gliding home, and every branch's tail already gone (_fxGateBranch has let
+// go of them all). The bus feeds both io and byp; the two crossfade in 15ms,
+// and then the chain's input and its dry exit are unplugged, so nothing pulls
+// it. Anything that needs it plugs it straight back in.
+function _fxSetActive(chain, on, now){
+ if(!chain || !chain.byp || !chain.bus) return;
+ const c=chain.ctx, t=c.currentTime;
+ clearTimeout(chain._bypT); chain._bypT=null;
+ if(on){
+  if(chain.active) return;
+  try{ chain.bus.connect(chain.io); }catch(e){}
+  try{ chain.dry.connect(chain.out); }catch(e){}
+  chain.io.gain.cancelScheduledValues(t); chain.io.gain.setValueAtTime(0, t);
+  chain.io.gain.setTargetAtTime(1, t, 0.005);
+  chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(0, t, 0.005);
+  chain.active=true;
+  return;
+ }
+ if(!chain.active) return;
+ chain.active=false;
+ const cut=function(){
+  if(chain.active) return;
+  try{ chain.bus.disconnect(chain.io); }catch(e){}
+  try{ chain.dry.disconnect(chain.out); }catch(e){}
+ };
+ if(now){ chain.io.gain.value=0; chain.byp.gain.value=1; cut(); return; }
+ chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(1, t, 0.005);
+ chain.io.gain.cancelScheduledValues(t); chain.io.gain.setTargetAtTime(0, t, 0.005);
+ chain._bypT=setTimeout(cut, 80);
+}
+function _fxChainIdle(ch, chain){
+ const L=fxSends[ch]||{};
+ if(L.rev>0.0005 || L.dly>0.0005 || L.drv>0.0005 || L.lmode>0) return false;
+ if(fxTargets.indexOf(ch)>=0 && (fxEngaged || _fxReleasing)) return false;
+ const live=chain._live||{}, rel=chain._relT||{};
+ for(const k in live) if(live[k]) return false;
+ for(const k in rel) if(rel[k]) return false;
+ return true;
+}
+// Called after every apply. Busy: in now. Idle: out, once it has stayed idle
+// for a moment — a send dragged through zero should not unplug and replug the
+// chain on the way. A branch tail still ringing makes it look again later.
+function _fxIdleCheck(ch){
+ const chain=fxChains[ch]; if(!chain || !chain.byp || !chain.bus) return;
+ if(!_fxChainIdle(ch, chain)){
+  clearTimeout(chain._idleT); chain._idleT=null;
+  if(!chain.active) _fxSetActive(chain, true);
+  // Still settling (a tail, a release): look again when it may be done.
+  if(chain.active && !(fxSends[ch].rev>0.0005 || fxSends[ch].dly>0.0005 || fxSends[ch].drv>0.0005 || fxSends[ch].lmode>0)
+     && !(fxEngaged && fxTargets.indexOf(ch)>=0)){
+   chain._idleT=setTimeout(function(){ chain._idleT=null; _fxIdleCheck(ch); }, 1000);
+  }
+  return;
+ }
+ if(!chain.active || chain._idleT) return;
+ chain._idleT=setTimeout(function(){
+  chain._idleT=null;
+  if(_fxChainIdle(ch, chain)) _fxSetActive(chain, false); else _fxIdleCheck(ch);
+ }, 400);
+}
 function _fxGateBranch(chain, name, from, to, want, tail, retG){
  if(!from || !to) return;
  const L=chain._live, T=chain._relT, c=chain.ctx;
@@ -41712,6 +41824,7 @@ function _fxNeedRev(chain){
 }
 function fxApplyChannel(ch){
  const chain=fxChains[ch]; if(!chain) return;
+ if(!chain.active && !_fxChainIdle(ch, chain)) _fxSetActive(chain, true);
  const c=chain.ctx, t=c.currentTime;
  // setTargetAtTime reaches ~95% in three time constants, so the tau is a
  // third of the release the user asked for.
@@ -41909,6 +42022,7 @@ function fxApplyChannel(ch){
  _fxGateBranch(chain,'iso',chain.isoWet,chain.postIso,  isoOn,          settle+0.08);
  _fxGateBranch(chain,'fmt',chain.fmtWet,chain.postFmt,  talkOn,         settle+0.08);
  _fxGateBranch(chain,'ring',chain.ringAmt,chain.postRing, rng>0.001,    settle+0.08);
+ _fxIdleCheck(ch);
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
 
