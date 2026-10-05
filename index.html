@@ -1977,7 +1977,6 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
 .chart-chord-btn.playing {
  border-color:var(--pg);
  box-shadow:0 0 16px hsla(145,80%,55%,.45), inset 0 0 0 1px var(--pg);
- animation:now-playing-pulse 1s ease-in-out infinite;
 }
 .slot-cnum { font-size:.44rem; color:var(--muted); letter-spacing:.04em; }
 .chart-chord-btn.seq-active .slot-cnum { color:rgba(7,8,15,.6); }
@@ -2367,7 +2366,8 @@ body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30
  background:linear-gradient(90deg,var(--pb),var(--pv),var(--pr),var(--po),var(--py),var(--pg),var(--pb));
  background-size:400%; -webkit-background-clip:text; -webkit-text-fill-color:transparent;
  background-clip:text; animation:gshift 6s linear infinite;
- filter:drop-shadow(0 0 30px hsla(var(--kh), var(--ks), var(--kl), .4));
+ /* No drop-shadow filter: under the moving gradient it had to be re-blurred
+    — 30px across the whole logo — on every frame. */
 }
 @keyframes gshift{0%{background-position:0%}100%{background-position:400%}}
 /* The line that says what this is, in words someone who has never opened a
@@ -2408,6 +2408,14 @@ body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30
 /* Ambient canvas tease behind the unlock content — the tap unlocks audio,
    it shouldn't feel like it's summoning the app from a dead standstill. */
 .unlock-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
+/* The splash bars (see the unlock-bars IIFE): a row along 60% of the height,
+   each bar a fixed gradient scaled vertically from its foot. */
+.unlock-bars { position:absolute; left:0; right:0; top:40%; height:20%; z-index:0; display:flex; align-items:flex-end; pointer-events:none; }
+.unlock-bars > i { flex:1; margin:0 1.4%; height:100%; border-radius:999px 999px 0 0; opacity:.5;
+ transform-origin:50% 100%; transform:scaleY(.2); animation:unlockBar 4s ease-in-out infinite alternate; will-change:transform; }
+@keyframes unlockBar { 0% { transform:scaleY(.2); } 100% { transform:scaleY(1); } }
+.unlock-bars.stopped > i, #audio-unlock[style*="none"] .unlock-bars > i { animation:none; }
+@media (prefers-reduced-motion: reduce){ .unlock-bars > i { animation:none; transform:scaleY(.5); } }
 .unlock-logo, .unlock-sub, .unlock-sub2, .unlock-choices, .unlock-note { position:relative; z-index:1; }
 
 /* ═══════════════════════════════════════
@@ -3871,7 +3879,9 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .songs-chord-btn.logic-suggest {
  box-shadow:0 0 14px 3px var(--accent), 0 0 0 2px var(--accent);
  filter:brightness(1.35);
- animation:logic-pulse 1.2s ease-in-out infinite;
+ /* Lit, not pulsing. An animated box-shadow is a repaint every frame, and
+    these sit on the chord pads for as long as a suggestion stands — measured
+    at 5K, the pulses were most of what the page cost while nothing played. */
  border-color:var(--accent) !important;
 }
 
@@ -3886,7 +3896,7 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
 .chord-split.now-playing,
 .chord-out.now-playing {
  box-shadow:0 0 20px 5px var(--pg), 0 0 0 2px var(--pg);
- animation:now-playing-pulse 1s ease-in-out infinite;
+ /* Lit, not pulsing — see .logic-suggest above. */
  border-color:var(--pg) !important;
  z-index:1;
 }
@@ -4632,7 +4642,10 @@ body::before {
     rgba(0,0,0,.10) 3px,
     rgba(0,0,0,.10) 4px
   );
-  mix-blend-mode: overlay;
+  /* No mix-blend-mode. It was overlay, on a fixed layer the size of the
+     window: Safari blends the whole page against it again whenever anything
+     under it repaints, which on a 5K display was a large part of every frame.
+     At 10% black on this background, plain alpha is the same lines. */
 }
 /* Light mode: scanlines should be even more subtle */
 body.light-mode::before {
@@ -4651,8 +4664,12 @@ body.light-mode::before {
   50%  { background-size: 120% 120%, 110% 110%; }
   100% { background-size: 100% 100%, 100% 100%; }
 }
+/* Painted once. It used to breathe — background-size animated on two
+   full-window gradients, forever — and an animated background is a repaint of
+   every pixel of the window on every frame, for the whole session. Chrome
+   largely absorbed it; Safari on a 5K iMac did not: it lagged even on the
+   splash, before a note was played (reported v4.0.4). */
 body {
-  animation: ambientBreath 10s ease-in-out infinite;
   background-image:
     radial-gradient(ellipse 110% 55% at 50% -10%,
       hsla(var(--kh), var(--ks), var(--kl), .14) 0%, transparent 70%),
@@ -4683,8 +4700,11 @@ body {
   50%       { text-shadow: 0 0 28px hsla(var(--kh), var(--ks), var(--kl), .95),
                            0 0 70px hsla(var(--kh), var(--ks), var(--kl), .5); }
 }
+/* Lit, not pulsing: a 70px text-shadow animated forever is a re-blur of the
+   key on every frame, on screen for the whole of Live. */
 .key-name {
-  animation: keyNamePulse 3s ease-in-out infinite;
+  text-shadow: 0 0 18px hsla(var(--kh), var(--ks), var(--kl), .7),
+               0 0 50px hsla(var(--kh), var(--ks), var(--kl), .35);
   font-size: clamp(1.7rem, 5vw, 2.6rem);
   letter-spacing: .06em;
 }
@@ -4786,8 +4806,11 @@ body {
 /* 12 ── Top stack: stronger frosted-glass */
 .top-stack {
   background: rgba(4,5,10,.96) !important;
-  backdrop-filter: blur(20px) saturate(1.8) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  /* No backdrop blur. The stack is 96% opaque, so the blur behind it was all
+     but invisible — and it is fixed across the full width of the window,
+     where Safari re-blurs whatever is under it each time that repaints. */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   /* Cast upward, onto the page it now sits under. */
   box-shadow: 0 -4px 32px rgba(0,0,0,.7), 0 -1px 0 rgba(255,255,255,.04) !important;
 }
@@ -4819,8 +4842,14 @@ body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
       hsla(calc(var(--kh)+120), var(--ks), var(--kl), .06) 0%, transparent 70%),
     radial-gradient(ellipse 25% 20% at 50% 90%,
       hsla(calc(var(--kh)+240), var(--ks), var(--kl), .07) 0%, transparent 70%);
-  animation: ambientBreath 7s ease-in-out infinite alternate;
+  /* Breathes by scaling, which the compositor does without repainting —
+     the background-size animation it replaces repainted the whole splash
+     every frame (see body, above). */
+  animation: ambientScale 7s ease-in-out infinite alternate;
+  will-change: transform;
 }
+@keyframes ambientScale { 0% { transform:scale(1); } 100% { transform:scale(1.15); } }
+@media (prefers-reduced-motion: reduce){ #audio-unlock::after { animation:none; } }
 
 /* 16 ── Playhead dots (sequencer / bassline): glow trail */
 .sq-phcur, .bl-phcur {
@@ -5920,7 +5949,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.4</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.5</span>
     </div>
    </div>
   </div>
@@ -5938,7 +5967,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.4</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.5</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7882,7 +7911,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.4';
+const MODRIFF_VERSION = '4.0.5';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13304,55 +13333,28 @@ function startDemoJourney(autoPlay){
 // that's one tap away, so the launch screen doesn't read as a dead
 // standstill before the app "starts". Purely decorative: no real audio
 // can play before the unlock gesture, so this never claims otherwise.
+//
+// Twenty-two bars that the compositor stretches (transform: scaleY), not a
+// canvas redrawn by script. The canvas was the splash's main cost: measured
+// at a 5K window, a third of the main thread at 30 fps and 1x — and on
+// Safari on an Intel iMac, the splash visibly stuttered. A transform
+// animation is done on the GPU without repainting anything, and the bars
+// look the same: a gradient each, rising and falling out of phase.
 (function(){
  const canvas=document.getElementById('unlock-canvas'); if(!canvas) return;
- const ctx=canvas.getContext('2d');
- const dpr=Math.min(window.devicePixelRatio||1,2);
- function size(){ canvas.width=canvas.clientWidth*dpr; canvas.height=canvas.clientHeight*dpr; }
- size(); window.addEventListener('resize',size);
- const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
- const barCount=22, phases=[];
- for(let i=0;i<barCount;i++) phases.push(Math.random()*Math.PI*2);
- function roundRect(x,y,w,h,r){
- ctx.beginPath();
- ctx.moveTo(x+r,y);
- ctx.arcTo(x+w,y,x+w,y+h,r);
- ctx.arcTo(x+w,y+h,x,y+h,r);
- ctx.arcTo(x,y+h,x,y,r);
- ctx.arcTo(x,y,x+w,y,r);
- ctx.closePath();
- }
- // Resolved once. getComputedStyle forces a style pass, and this was calling it
- // sixty times a second for four custom properties that cannot change while
- // the splash is the only thing on screen.
+ const host=document.createElement('div'); host.className='unlock-bars'; host.setAttribute('aria-hidden','true');
  const _cs=getComputedStyle(document.documentElement);
  const hues=['--pb','--pv','--pr','--pg'].map(v=>(_cs.getPropertyValue(v)||'').trim()||'#4fd6ff');
- function draw(t){
- const w=canvas.width, h=canvas.height;
- ctx.clearRect(0,0,w,h);
- const gap=w/barCount, baseY=h*0.6;
- for(let i=0;i<barCount;i++){
- const speed = reduce?0:0.0014;
- const amp=(Math.sin(t*speed*(1+(i%5)*0.1)+phases[i])*0.5+0.5);
- const barH=(h*0.04)+amp*(h*0.16);
- const x=i*gap+gap*0.3, bw=gap*0.4;
- const grad=ctx.createLinearGradient(0,baseY-barH,0,baseY);
- grad.addColorStop(0,hues[i%hues.length]);
- grad.addColorStop(1,'rgba(10,11,22,0)');
- ctx.fillStyle=grad; ctx.globalAlpha=0.5;
- roundRect(x,baseY-barH,bw,barH,bw*0.5);
- ctx.fill();
+ const N=22;
+ for(let i=0;i<N;i++){
+  const b=document.createElement('i');
+  b.style.background='linear-gradient(to top, rgba(10,11,22,0), '+hues[i%hues.length]+')';
+  b.style.animationDuration=(4.2/(1+(i%5)*0.1)).toFixed(2)+'s';
+  b.style.animationDelay=(-Math.random()*4).toFixed(2)+'s';
+  host.appendChild(b);
  }
- ctx.globalAlpha=1;
- }
- let raf=null;
- if(reduce){
- draw(0);
- } else {
- const loop=(t)=>{ draw(t); raf=requestAnimationFrame(loop); };
- raf=requestAnimationFrame(loop);
- }
- window._stopUnlockAnim=()=>{ if(raf) cancelAnimationFrame(raf); window.removeEventListener('resize',size); };
+ canvas.replaceWith(host);
+ window._stopUnlockAnim=()=>{ host.classList.add('stopped'); };
 })();
 
 // Every engine's way into a running context. Three things it fixes over a
