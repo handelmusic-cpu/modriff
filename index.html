@@ -3011,6 +3011,8 @@ body.mode-basic .ms-stub { display:none; }
 .lib-play:hover { border-color:var(--accent); color:var(--accent); }
 .lib-play.on { background:var(--accent); border-color:var(--accent); color:#0a0a12; }
 .lib-empty { padding:24px 8px; text-align:center; font-size:.56rem; color:var(--muted); line-height:1.7; }
+.lib-group { font-size:.44rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:10px 2px 4px; }
+.lib-group:first-child { margin-top:2px; }
 .lib-note { padding:8px 4px 2px; text-align:center; font-size:.46rem; color:var(--muted); }
 
 /* The load dialog. Every library row arrives here, so "replace" and "add"
@@ -3917,7 +3919,12 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
  50% { box-shadow:0 0 18px 4px var(--accent), 0 0 0 2px var(--accent); }
  100% { box-shadow:0 0 8px 2px var(--accent), 0 0 0 2px var(--accent); }
 }
-.chord-split.logic-suggest .btn-tri,
+/* On the card, not inside it. The card is overflow:hidden (it clips the
+   split between its two halves), and this glow used to be set on the inner
+   .btn-tri — so it was clipped to nothing and Logic Mode lit no chord at all.
+   .cpick-split is the Song Builder's card, which had no rule here either. */
+.chord-split.logic-suggest,
+.cpick-split.logic-suggest,
 .chord-out.logic-suggest,
 .songs-chord-btn.logic-suggest {
  box-shadow:0 0 14px 3px var(--accent), 0 0 0 2px var(--accent);
@@ -3926,6 +3933,18 @@ body.light-mode .tb.active.amber  { background:var(--subdom) !important; border-
     these sit on the chord pads for as long as a suggestion stands — measured
     at 5K, the pulses were most of what the page cost while nothing played. */
  border-color:var(--accent) !important;
+}
+
+/* The second tier of Logic Mode: chords that work after this one but are not
+   what the tradition does. A dashed ring and no glow, so the lit chords still
+   read as the first suggestion. This class was applied for a long time with
+   no rule behind it at all, so the second tier never showed. */
+.chord-split.logic-spicy,
+.cpick-split.logic-spicy,
+.chord-out.logic-spicy,
+.songs-chord-btn.logic-spicy {
+ outline:2px dashed color-mix(in srgb, var(--accent) 80%, transparent);
+ outline-offset:2px;
 }
 
 /* Currently-sounding chord — lit up while a chord is actively playing,
@@ -6024,7 +6043,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.8</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.9</span>
     </div>
    </div>
   </div>
@@ -6042,7 +6061,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.8</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.9</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7986,7 +8005,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.8';
+const MODRIFF_VERSION = '4.0.9';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13256,27 +13275,119 @@ const MODE_PROG_PRESETS = {
     {degrees:[0,1,5,0]},      // I–♭III–♭VII–I
   ],
 };
-// The scales from EXTRA_SCALES. One that shares its notes with a scale above
-// shares its progressions; the rest get the common moves their own degrees
-// allow — I–IV–V–I needs a 4 and a 5, the Phrygian cadence needs a ♭2 — so a
-// five-note scale is only ever offered chords it has.
+// ── Traditional first, then the rest ─────────────────────────────────────
+// Every suggestion the app makes — the Common progressions list, and the next
+// chords Logic Mode lights — comes in two tiers. TRADITIONAL is what the
+// music this scale comes from actually does with it; NON-TRADITIONAL is what
+// works on it but is not that: borrowed chords, other modes' cadences, and
+// for the scales from other traditions, Western functional moves applied to
+// them. MODE_PROG_PRESETS is the traditional list (the hand-written tables
+// above were always idiomatic ones); MODE_PROG_BEYOND is the second list.
+//
+// Many of these traditions do not move through chords at all — a rāga is sung
+// over a drone of Sa and Pa, gagaku and koto music are melodic — so their
+// "traditional" entries are drone-and-neighbour moves: the tonic held, a step
+// to the chord the tradition leans on (Bhairav's komal Re, the In scale's ♭2,
+// Yaman's sharp Ma) and home. The functional progressions a film score would
+// put under the same notes are offered too, in the second tier, labelled as
+// what they are.
+//
+// Written as degree spellings ('b2', '#4'), turned into each scale's own
+// degree indices below, so the same line means the same chord in any key.
+const TRAD_PROGS = {
+ double_harmonic: [['1','b2','1'], ['1','4','b2','1'], ['1','b6','b2','1'], ['1','b2','7','1']],
+ whole_tone:      [['1','2','1'], ['1','2','3','#4'], ['1','#4','1']],
+ diminished:      [['1','b3','b5','6'], ['1','2','1'], ['1','b3','1']],
+ hirajoshi:       [['1','b6','1'], ['1','5','1'], ['1','b6','5','1']],
+ in_scale:        [['1','b2','1'], ['1','4','1'], ['1','b6','5','1']],
+ bhairav:         [['1','b2','1'], ['1','4','b2','1'], ['1','5','1']],
+ todi:            [['1','b2','1'], ['1','b6','5','1'], ['1','b3','b2','1']],
+ yaman:           [['1','2','1'], ['1','5','1'], ['1','#4','5','1']],
+ kafi:            [['1','4','1'], ['1','b7','1'], ['1','b3','4','1']],
+ asavari:         [['1','b6','5','1'], ['1','4','1'], ['1','b7','1']],
+ shivaranjani:    [['1','5','1'], ['1','2','1'], ['1','b3','2','1']],
+ african_hex:     [['1','b2','1'], ['1','4','1'], ['1','b6','b2','1']],
+ prometheus:      [['1','2','1'], ['1','b7','1'], ['1','#4','1']],
+ aug_hex:         [['1','3','1'], ['1','b3','1'], ['1','3','#5','1']],
+ persian:         [['1','b2','1'], ['1','b6','b2','1'], ['1','4','1']],
+ egyptian:        [['1','b7','1'], ['1','4','1'], ['1','b7','4','1']],
+ pelog:           [['1','b2','1'], ['1','b6','1'], ['1','5','1']],
+ hungarian_minor: [['1','5','1'], ['1','b6','5','1'], ['1','#4','5','1'], ['1','2','5','1']],
+ romanian_minor:  [['1','2','1'], ['1','b7','1'], ['1','2','b7','1']],
+ algerian:        [['1','5','1'], ['1','b6','5','1'], ['1','#4','5','1']],
+ enigmatic:       [['1','b2','1'], ['1','7','1'], ['1','#5','#6','7','1']],
+ spanish8:        [['4','b3','b2','1'], ['1','b2','1'], ['b6','b2','1']]
+};
+// The second tier for the modes the app always had: one chord from outside
+// the mode each, written chromatically (semitones from the tonic, quality
+// stated) like the blues forms, because a borrowed chord has no degree here.
+// The numerals are the Borrowed row's own, so Logic Mode can light that pad.
+const _c = (s,q,num,func) => ({s:s, q:q, t7:null, num:num, func:func||'modal', ext:'triad'});
+const BEYOND_CHROMATIC = {
+ major: [
+  {name:'I – ♭VII – IV – I (Mixolydian ♭VII)', chords:[_c(0,0,'I','tonic'),_c(10,0,'♭VII'),_c(5,0,'IV','subdom'),_c(0,0,'I','tonic')]},
+  {name:'I – iv – I (minor plagal)',           chords:[_c(0,0,'I','tonic'),_c(5,1,'iv','subdom'),_c(0,0,'I','tonic')]},
+  {name:'I – ♭VI – ♭VII – I',                  chords:[_c(0,0,'I','tonic'),_c(8,0,'♭VI'),_c(10,0,'♭VII'),_c(0,0,'I','tonic')]},
+  {name:'I – ♭III – IV – I',                   chords:[_c(0,0,'I','tonic'),_c(3,0,'♭III'),_c(5,0,'IV','subdom'),_c(0,0,'I','tonic')]}
+ ],
+ minor: [
+  {name:'i – iv – V – i (raised leading tone)', chords:[_c(0,1,'i','tonic'),_c(5,1,'iv','subdom'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]},
+  {name:'i – IV – i (Dorian IV)',               chords:[_c(0,1,'i','tonic'),_c(5,0,'IV','subdom'),_c(0,1,'i','tonic')]},
+  {name:'i – ♭VI – V – i',                      chords:[_c(0,1,'i','tonic'),_c(8,0,'♭VI'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]}
+ ],
+ dorian:     [{name:'i – ♭VI – ♭VII – i', chords:[_c(0,1,'i','tonic'),_c(8,0,'♭VI'),_c(10,0,'♭VII'),_c(0,1,'i','tonic')]},
+              {name:'i – IV – V – i',      chords:[_c(0,1,'i','tonic'),_c(5,0,'IV','subdom'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]}],
+ phrygian:   [{name:'I – ♭II – I (major tonic)', chords:[_c(0,0,'I','tonic'),_c(1,0,'♭II'),_c(0,0,'I','tonic')]},
+              {name:'i – ♭II – V – i',           chords:[_c(0,1,'i','tonic'),_c(1,0,'♭II'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]}],
+ lydian:     [{name:'I – iv – I',      chords:[_c(0,0,'I','tonic'),_c(5,1,'iv','subdom'),_c(0,0,'I','tonic')]},
+              {name:'I – ♭VII – I',    chords:[_c(0,0,'I','tonic'),_c(10,0,'♭VII'),_c(0,0,'I','tonic')]}],
+ mixolydian: [{name:'I – ♭VI – ♭VII – I', chords:[_c(0,0,'I','tonic'),_c(8,0,'♭VI'),_c(10,0,'♭VII'),_c(0,0,'I','tonic')]},
+              {name:'I – V – I (major V)', chords:[_c(0,0,'I','tonic'),_c(7,0,'V','dom'),_c(0,0,'I','tonic')]}],
+ locrian:    [{name:'i – ♭II – i (minor tonic)', chords:[_c(0,1,'i','tonic'),_c(1,0,'♭II'),_c(0,1,'i','tonic')]}],
+ harmonic_minor: [{name:'i – IV – V – i (melodic minor)', chords:[_c(0,1,'i','tonic'),_c(5,0,'IV','subdom'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]},
+                  {name:'i – ♭II – V – i (Neapolitan)',   chords:[_c(0,1,'i','tonic'),_c(1,0,'♭II'),_c(7,0,'V','dom'),_c(0,1,'i','tonic')]}],
+ hijaz:      [{name:'i – ♭II – I (minor into Hijaz)', chords:[_c(0,1,'i','tonic'),_c(1,0,'♭II'),_c(0,0,'I','tonic')]},
+              {name:'I – ♭II – V – I',                chords:[_c(0,0,'I','tonic'),_c(1,0,'♭II'),_c(7,0,'V','dom'),_c(0,0,'I','tonic')]}],
+ major_pent: [{name:'I – IV – I',           chords:[_c(0,0,'I','tonic'),_c(5,0,'IV','subdom'),_c(0,0,'I','tonic')]},
+              {name:'I – ♭VII – IV – I',    chords:[_c(0,0,'I','tonic'),_c(10,0,'♭VII'),_c(5,0,'IV','subdom'),_c(0,0,'I','tonic')]}],
+ minor_pent: [{name:'i – IV – i',           chords:[_c(0,1,'i','tonic'),_c(5,0,'IV','subdom'),_c(0,1,'i','tonic')]},
+              {name:'i – ♭VI – ♭VII – i',   chords:[_c(0,1,'i','tonic'),_c(8,0,'♭VI'),_c(10,0,'♭VII'),_c(0,1,'i','tonic')]}],
+ blues:      [{name:'I7 – ♭VI7 – V7 – I7', chords:[Object.assign(_c(0,0,'I7','tonic'),{t7:'dom7',ext:'7th'}),Object.assign(_c(8,0,'♭VI7'),{t7:'dom7',ext:'7th'}),
+                                                    Object.assign(_c(7,0,'V7','dom'),{t7:'dom7',ext:'7th'}),Object.assign(_c(0,0,'I7','tonic'),{t7:'dom7',ext:'7th'})]}]
+};
+const MODE_PROG_BEYOND = {};
 (function(){
+ const idxIn = (m, tok) => (MODES[m] ? MODES[m].steps.indexOf(SCALE_DEGREE_SEMIS[tok]) : -1);
+ const fromToks = (m, list) => (list||[]).map(t => t.map(d => idxIn(m, d)))
+   .filter(ix => ix.length && ix.indexOf(-1) < 0).map(ix => ({degrees:ix}));
+ // The generic moves: I–IV–V–I needs a 4 and a 5, the Phrygian cadence a ♭2.
+ // Traditional for none of the scales below, so they are their second tier.
  const T = [['1','4','5','1'],['1','b2','1'],['1','2','5','1'],['1','6','4','5'],['1','b6','b7','1'],
             ['1','b7','1'],['4','5','1'],['1','b6','b2','1'],['1','3','4','1'],['1','5','1'],['1','#4','5','1'],['1','2','1']];
+ const sameDeg = (a, b) => a.degrees.join() === b.degrees.join();
+ Object.keys(BEYOND_CHROMATIC).forEach(m => { MODE_PROG_BEYOND[m] = BEYOND_CHROMATIC[m].slice(); });
  EXTRA_SCALES.forEach(function(sc){
-  if(MODE_PROG_PRESETS[sc.id]) return;
-  if(sc.same){ if(MODE_PROG_PRESETS[sc.same]) MODE_PROG_PRESETS[sc.id] = MODE_PROG_PRESETS[sc.same]; return; }
-  const degs = (MODES[sc.id] && MODES[sc.id].deg) || [];
-  const out = [];
+  const src = sc.same || sc.id;
+  const trad = fromToks(sc.id, TRAD_PROGS[sc.id]);
+  // A name for the same notes as a mode the app had (Gong, Yu, Kāfī…) keeps
+  // that mode's traditional list under its own tradition's moves.
+  const inherited = sc.same ? (MODE_PROG_PRESETS[sc.same] || []) : [];
+  const generic = [];
   T.forEach(function(t){
-   if(out.length >= 6) return;
-   const ix = t.map(d => degs.indexOf(d));
-   if(ix.indexOf(-1) < 0) out.push({degrees:ix});
+   const ix = t.map(d => idxIn(sc.id, d));
+   if(ix.indexOf(-1) < 0) generic.push({degrees:ix});
   });
-  // A scale with almost none of those (whole tone, augmented) still gets a
-  // vamp from its tonic out and back along its own degrees.
-  for(let k=1; out.length < 3 && k < degs.length; k++) out.push({degrees:[0,k,0]});
-  MODE_PROG_PRESETS[sc.id] = out;
+  if(trad.length){
+   MODE_PROG_PRESETS[sc.id] = trad;
+   // Whatever the source mode calls traditional is the second tier here: Kāfī
+   // is Dorian's notes, but Dorian's rock vamps are not Kāfī.
+   MODE_PROG_BEYOND[sc.id] = inherited.concat(generic, MODE_PROG_BEYOND[src] || [])
+     .filter((p, i, a) => !p.degrees || (!trad.some(t => sameDeg(t, p)) && a.findIndex(q => q.degrees && sameDeg(q, p)) === i))
+     .slice(0, 8);
+  } else {
+   MODE_PROG_PRESETS[sc.id] = inherited;
+   MODE_PROG_BEYOND[sc.id] = (MODE_PROG_BEYOND[src] || []).slice();
+  }
  });
 })();
 
@@ -13351,8 +13462,22 @@ const BLUES_FORMS = [
 // One list, built once, so the dropdown's option indices and the loader's
 // lookup can never drift apart — which they would the moment two call sites
 // each did their own concatenation.
+// Traditional first, then non-traditional — each entry carries its tier, for
+// the headers in the list. The blues forms are traditional where the blues is
+// (the blues scale, the pentatonics, Mixolydian, major) and a second-tier
+// idea everywhere else.
+// A form is only traditional where its tonic is the mode's: the minor blues
+// in a minor key, the others in a major one.
+const BLUES_HOME = {blues:1, major_pent:1, minor_pent:1, mixolydian:1, major:1, minor:1, dorian:1, gong:1, yu:1};
 function _progPresetsFor(m){
- return (MODE_PROG_PRESETS[m]||MODE_PROG_PRESETS.major).concat(BLUES_FORMS);
+ const tag = (list, tier) => list.map(p => Object.assign({}, p, {tier:tier}));
+ const trad = tag(MODE_PROG_PRESETS[m] || MODE_PROG_PRESETS.major, 'trad');
+ const beyond = tag(MODE_PROG_BEYOND[m] || [], 'beyond');
+ const tq = ((MODES[m]||MODES.major).triadQ||[0])[0];
+ const home = f => !!BLUES_HOME[m] && f.chords[0].q === tq;
+ const bluesT = tag(BLUES_FORMS.filter(home), 'trad');
+ const bluesB = tag(BLUES_FORMS.filter(f => !home(f)), 'beyond');
+ return trad.concat(bluesT, beyond, bluesB);
 }
 
 
@@ -24863,13 +24988,16 @@ function buildProgPresets(){
  // Keep the placeholder option, clear the rest
  while(sel.options.length > 1) sel.remove(1);
  const md=MODES[mode]||MODES.major;
+ const groups={};
  _progPresetsFor(mode).forEach((pp,i)=>{
   // A degree preset names itself from its numerals; a blues form is twelve
   // bars long and would spell out to something unreadable, so it carries its
   // own name.
   const name = pp.name || pp.degrees.map(d=>md.nums[d]).join(' – ');
   const opt=document.createElement('option'); opt.value=i; opt.textContent=name;
-  sel.appendChild(opt);
+  let g=groups[pp.tier];
+  if(!g){ g=groups[pp.tier]=document.createElement('optgroup'); g.label = pp.tier==='trad' ? 'Traditional' : 'Non-traditional'; sel.appendChild(g); }
+  g.appendChild(opt);
  });
  sel.value='-1';
 }
@@ -25545,7 +25673,7 @@ function _libCommonItems(){
     : pp.degrees.map(function(d){ return md.nums[d]; }).join(' · ');
   var slots=_progSlots(pp);
   return {
-   kind:'prog', id:'p'+i, pp:pp,
+   kind:'prog', id:'p'+i, pp:pp, tier:pp.tier,
    name: pp.name || pp.degrees.map(function(d){ return md.nums[d]; }).join(' – '),
    sub: numerals,
    chords: slots.slice(0,6).map(function(s){ return s.label; }).join(' ')
@@ -25633,7 +25761,19 @@ function libRender(){
                        : 'Nothing here.');
   list.appendChild(e);
  } else {
-  items.forEach(function(it){ list.appendChild(_libRow(it)); });
+  var lastTier=null;
+  items.forEach(function(it){
+   // Common progressions come traditional first, then the rest; each group
+   // says which it is.
+   if(it.tier && it.tier!==lastTier){
+    lastTier=it.tier;
+    var g=document.createElement('div'); g.className='lib-group';
+    g.textContent = it.tier==='trad' ? 'Traditional in '+((MODES[mode]||MODES.major).label)
+                                     : 'Non-traditional — borrowed and from elsewhere';
+    list.appendChild(g);
+   }
+   list.appendChild(_libRow(it));
+  });
   if(note){ var n=document.createElement('div'); n.className='lib-note'; n.textContent=note; list.appendChild(n); }
  }
  host.appendChild(list);
@@ -27111,7 +27251,7 @@ function toggleLogicMode(){
  btn?.classList.toggle('active', logicModeOn);
  if(btn2){
  btn2.textContent = logicModeOn
- ? 'Logic ON — next chord suggestions active'
+ ? 'Logic ON — lit: traditional next chords · dashed: non-traditional'
  : 'Logic OFF';
  btn2.classList.toggle('off', !logicModeOn);
  }
@@ -27153,38 +27293,77 @@ function setNowPlayingPad(deg,modalLabel){
  }
 }
 
+// What follows the chord just played, in two tiers. Read off the mode's own
+// progression lists (_progPresetsFor), which already say which moves are
+// traditional and which are not, so the two places the app suggests chords —
+// the Common list and these highlights — cannot disagree. Every move in every
+// progression counts, including the turn from its last chord back to its
+// first, because these loop.
+//
+// The old fixed table (LOGIC_DIATONIC) was written for major: degree 3 went to
+// 4 or 0, whatever the mode — which in a five-note scale named chords that do
+// not exist, and in Hijaz suggested functional moves the scale is not about.
+// It survives as part of the traditional tier for major and minor, where it is
+// exactly that, and as a fallback for a seven-note mode whose lists say nothing
+// about the chord just played.
+function _logicNorm(n){ return String(n||'').replace(/7$/, ''); }
+function logicNextTiers(curNum){
+ const md = MODES[mode]||MODES.major, cur = _logicNorm(curNum);
+ const trad = new Set(), beyond = new Set();
+ _progPresetsFor(mode).forEach(function(pp){
+  const seq = pp.chords ? pp.chords.map(c=>_logicNorm(c.num))
+                        : pp.degrees.map(d=>_logicNorm(md.nums[d]));
+  for(let i=0;i<seq.length;i++){
+   if(seq[i]!==cur) continue;
+   const nx = seq[(i+1)%seq.length];
+   if(!nx || nx===cur) continue;
+   (pp.tier==='trad' ? trad : beyond).add(nx);
+  }
+ });
+ trad.forEach(n=>beyond.delete(n));
+ return {trad:trad, beyond:beyond};
+}
 function applyLogicHighlights(deg,modalLabel){
  lastTriggeredDegree=deg; lastTriggeredLabel=modalLabel||null;
  setNowPlayingPad(deg,modalLabel);
  document.querySelectorAll('.logic-suggest').forEach(e=>e.classList.remove('logic-suggest'));
+ document.querySelectorAll('.logic-spicy').forEach(e=>e.classList.remove('logic-spicy'));
  if(!logicModeOn) return;
-   const addSuggest = (el) => { if(el) el.classList.add('logic-suggest'); };
-  const addSpicy   = (el) => { if(el) el.classList.add('logic-spicy'); };
-  if(deg>=0&&!modalLabel){
-    (LOGIC_DIATONIC[deg]||[]).forEach(n=>{
-      document.querySelectorAll('[data-degree="'+n+'"]').forEach(addSuggest);
-      addSuggest(document.getElementById('cs-'+n));
-    });
-    if(deg===0){
-      document.querySelectorAll('[data-modal-label^="V/"]').forEach(addSpicy);
-    }
-  } else if(modalLabel&&LOGIC_MODAL[modalLabel]){
-    const rule=LOGIC_MODAL[modalLabel];
-    (rule.degrees||[]).forEach(n=>{
-      document.querySelectorAll('[data-degree="'+n+'"]').forEach(addSuggest);
-      addSuggest(document.getElementById('cs-'+n));
-    });
-    (rule.labels||[]).forEach(lbl=>{
-      document.querySelectorAll('[data-modal-label="'+lbl+'"]').forEach(addSuggest);
-    });
-    (rule.spicyDeg||[]).forEach(n=>{
-      document.querySelectorAll('[data-degree="'+n+'"]').forEach(addSpicy);
-      addSpicy(document.getElementById('cs-'+n));
-    });
-    (rule.spicyLbl||[]).forEach(lbl=>{
-      document.querySelectorAll('[data-modal-label="'+lbl+'"]').forEach(addSpicy);
-    });
-  }
+ const md = MODES[mode]||MODES.major;
+ const cur = (deg>=0 && !modalLabel) ? md.nums[deg] : modalLabel;
+ if(cur==null) return;
+ const tiers = logicNextTiers(cur);
+ const sevenNote = md.steps.length===7;
+ // The old rules, folded in: as the traditional tier for major and minor,
+ // and for any seven-note mode whose lists have nothing from this chord.
+ const addDeg = (set, n)=>{ if(md.nums[n]!=null) set.add(_logicNorm(md.nums[n])); };
+ if(deg>=0 && !modalLabel && sevenNote && (mode==='major' || mode==='minor' || !tiers.trad.size)){
+  (LOGIC_DIATONIC[deg]||[]).forEach(n=>addDeg(tiers.trad, n));
+ }
+ if(modalLabel && LOGIC_MODAL[modalLabel]){
+  const rule=LOGIC_MODAL[modalLabel];
+  (rule.degrees||[]).forEach(n=>addDeg(tiers.trad, n));
+  (rule.labels||[]).forEach(l=>tiers.trad.add(_logicNorm(l)));
+  (rule.spicyDeg||[]).forEach(n=>addDeg(tiers.beyond, n));
+  (rule.spicyLbl||[]).forEach(l=>tiers.beyond.add(_logicNorm(l)));
+ }
+ tiers.trad.forEach(n=>tiers.beyond.delete(n));
+ const light = (n, cls)=>{
+  md.nums.forEach(function(num, d){
+   if(_logicNorm(num)!==n) return;
+   document.querySelectorAll('[data-degree="'+d+'"]').forEach(e=>e.classList.add(cls));
+   const cs=document.getElementById('cs-'+d); if(cs) cs.classList.add(cls);
+  });
+  document.querySelectorAll('[data-modal-label]').forEach(function(e){
+   if(_logicNorm(e.getAttribute('data-modal-label'))===n) e.classList.add(cls);
+  });
+ };
+ tiers.trad.forEach(n=>light(n,'logic-suggest'));
+ tiers.beyond.forEach(n=>light(n,'logic-spicy'));
+ // From the tonic, the secondary dominants are always a second-tier option.
+ if(deg===0 && !modalLabel){
+  document.querySelectorAll('[data-modal-label^="V/"]').forEach(e=>{ if(!e.classList.contains('logic-suggest')) e.classList.add('logic-spicy'); });
+ }
 }
 
 // ═══════════════════════════════════════
