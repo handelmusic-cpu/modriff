@@ -46,7 +46,7 @@ self.addEventListener('activate', e => {
 // so caching it forever would mean the sample ships and nobody's app ever
 // learns it exists. The files it names still are immutable and still cache.
 const isImmutable = url =>
-  /\/samples\/|\/icon-|\/og-card\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
+  /\/samples\/|\/fonts\/|\/icon-|\/og-card\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
 
 // What version did the copy we just banked turn out to be? The page knows what
 // IT is running, so it can decide whether the difference matters. Read it out of
@@ -67,8 +67,9 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Never touch anything off-origin: the analytics beacons and the Google
-  // Fonts stylesheet are not ours to cache or to fail.
+  // Never touch anything off-origin. There is nothing off-origin any more —
+  // the analytics and the Google Fonts stylesheet are both gone — but a
+  // request this worker did not make is still not its to cache or to fail.
   if (url.origin !== self.location.origin) return;
 
   if (isImmutable(url.pathname)) {
