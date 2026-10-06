@@ -26,6 +26,16 @@ The version string lives in three places and they must agree: `#ft-ver`,
 `#unlock-ver`, and `MODRIFF_VERSION`. `VERSION` in `sw.js` is a cache key for
 immutable assets, **not** a release number — leave it alone.
 
+### Numbering
+
+No part of the version goes past 9. After `4.1.9` comes `4.2.0`, not
+`4.1.10`; after `4.9.9`, `5.0.0`. A change that is a small follow-up to the
+release just out — a fix to what it shipped, a tweak to the same feature —
+adds a fourth part instead of using up the third: `4.1.0` → `4.1.0.1` →
+`4.1.0.2`. A batch of new features is the next third-part number (or the next
+minor, if that would pass 9). The 4.0.x run went to 4.0.21 before this rule
+existed and was renumbered 4.1.0.
+
 ## After every edit
 
 ```sh
