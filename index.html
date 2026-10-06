@@ -933,6 +933,11 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 .ps-grp { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
 .ps-lbl { font-size:.46rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
 .ps-lbl-gap { margin-left:6px; }
+/* Erase: the pads read as targets while ✕ Clear is held or latched. */
+#ps-panel.ps-erasing .ps-pad:not(.empty) { box-shadow:inset 0 0 0 2px rgba(255,90,110,.7); }
+#ps-panel.ps-erasing .ps-pad.empty { opacity:.45; }
+.ps-chip.ps-patclr.dim:not(.active) { opacity:.55; }
+.ps-chip.ps-patclr.active { background:#e5384f; border-color:#e5384f; color:#fff; }
 .ps-bank-nm { font-size:.62rem; color:var(--muted); margin-left:6px; letter-spacing:.04em; }
 .ps-seg { display:inline-flex; border:1px solid var(--border2); border-radius:var(--r-sm); overflow:hidden; }
 .ps-segb {
@@ -6059,7 +6064,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.12</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.13</span>
     </div>
    </div>
   </div>
@@ -6077,7 +6082,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.12</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.13</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8039,7 +8044,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.12';
+const MODRIFF_VERSION = '4.0.13';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11242,14 +11247,15 @@ function psSet(field, val){
  if(field==='gain') psRenderDeck(true); else psRender();
  if(field!=='gain' && field!=='choke' && field!=='mode') psWarpPrime();
 }
-function psClearPad(){
+function psClearPad(i){
  if(psOnPreset()){ psPresetBlocked(); return; }
- var key = psCurKey(PS.sel), before = SMP_SLOTS[key] ? Object.assign({}, SMP_SLOTS[key]) : null;
+ if(typeof i!=='number') i = PS.sel;      // the Clear button passes its click event
+ var key = psCurKey(i), before = SMP_SLOTS[key] ? Object.assign({}, SMP_SLOTS[key]) : null;
  if(!before || !before.id) return;
  psStop(key);
  delete SMP_SLOTS[key];
  psRender();
- showToast('Pad '+psPadName(PS.sel)+' cleared', {actionLabel:'Undo', onAction:function(){
+ showToast('Pad '+psPadName(i)+' cleared', {actionLabel:'Undo', onAction:function(){
   SMP_SLOTS[key] = before; psRender();
  }});
 }
@@ -12169,8 +12175,14 @@ function psBuild(){
  var plb=psBtn('ps-chip ps-patplay', '▶', 'Play the pattern', psPatToggle); plb.id='ps-patplay';
  // Clear sits with Rec and Play, in Live as well as Studio: it was a Studio
  // button at the end of the Len row, so in Live a take could not be deleted.
- var clb=psBtn('ps-chip ps-patclr', '✕ Clear', 'Delete what this pattern recorded (Undo in the message that follows). Hold a pattern number to clear that one.', function(){ psPatClear(); });
+ var clb=psBtn('ps-chip ps-patclr', '✕ Clear', 'Tap: delete what this pattern recorded. Hold, and tap pads: erase each pad\u2019s hits from the pattern, or empty a pad with none. Hold a pattern number to clear that one.', function(){
+  if(clb._swallow){ clb._swallow=false; return; }   // that press was a hold, not a tap
+  if(PS.erasing){ psEraseMode(false); return; }      // tapping again ends a latched erase
+  if(!psPatHas(PS.pat)){ showToast('Nothing recorded in pattern '+(PS.pat+1)+' — hold ✕ Clear and tap a pad to erase it'); return; }
+  psPatClear();
+ });
  clb.id='ps-patclr';
+ psEraseWire(clb);
  pg2.appendChild(recb); pg2.appendChild(plb); pg2.appendChild(clb); pr.appendChild(pg2);
  var pg3=psEl('span','ps-grp ps-studio'); pg3.appendChild(psEl('span','ps-lbl','Len'));
  var lseg=psEl('div','ps-seg');
@@ -12287,6 +12299,9 @@ function psMakePad(i){
  // the finger slides off.
  p.addEventListener('pointerdown', function(e){
   e.preventDefault();
+  // With ✕ Clear held (or latched), a tap on a pad erases instead of playing
+  // — see psErasePad. Nothing sounds, and the release has nothing to end.
+  if(PS.erasing){ psErasePad(i); return; }
   try{ p.setPointerCapture(e.pointerId); }catch(_){}
   p.classList.add('down');
   psPress(i);
@@ -12295,7 +12310,7 @@ function psMakePad(i){
  p.addEventListener('pointerup', up);
  p.addEventListener('pointercancel', up);
  p.addEventListener('keydown', function(e){
-  if((e.key==='Enter'||e.key===' ') && !e.repeat){ e.preventDefault(); p.classList.add('down'); psPress(i); }
+  if((e.key==='Enter'||e.key===' ') && !e.repeat){ e.preventDefault(); if(PS.erasing){ psErasePad(i); return; } p.classList.add('down'); psPress(i); }
  });
  p.addEventListener('keyup', function(e){ if(e.key==='Enter'||e.key===' ') up(); });
  // A context menu on a long press would cover the pads mid-performance.
@@ -12735,6 +12750,68 @@ function psPatClear(i){
  psPatRender();
  showToast('Pattern '+(i+1)+' cleared', {actionLabel:'Undo', onAction:function(){ PS_PATS[i] = before; psPatRender(); }});
 }
+// ── Erase: hold ✕ Clear, tap a pad ───────────────────────────────────────
+// A pad held down is a pad being played — a gate sounds for exactly as long
+// as it is held, a long one-shot rings out — so a long press on the pad itself
+// could never safely mean "delete". The modifier is the Clear button instead,
+// the way an MPC's Erase is a button you hold while you hit pads:
+//
+//   hold ✕ Clear + tap a pad   that pad's hits leave the current pattern; a
+//                              pad with no hits in it is emptied instead
+//   long-press ✕ Clear, let go  erase stays on (for a mouse, which has one
+//                              pointer) until ✕ Clear is tapped again
+//
+// Every erase has Undo. Preset pads are never emptied — only their hits.
+var _psEraseT = null, _psErasedSome = false;
+function psEraseMode(on, latched){
+ PS.erasing = !!on;
+ PS.eraseLatched = !!(on && latched);
+ var host=document.getElementById('ps-panel'); if(host) host.classList.toggle('ps-erasing', PS.erasing);
+ var b=document.getElementById('ps-patclr');
+ if(b){ b.classList.toggle('active', PS.erasing); b.textContent = PS.eraseLatched ? '✓ Done' : '✕ Clear'; }
+}
+function psEraseWire(b){
+ b.addEventListener('pointerdown', function(e){
+  if(PS.eraseLatched) return;                 // the click will end it
+  _psErasedSome = false;
+  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  clearTimeout(_psEraseT);
+  // A short delay before arming, so a quick tap stays "clear the pattern".
+  _psEraseT = setTimeout(function(){ psEraseMode(true); showToast('Tap pads to erase them — hits first, then the sample'); }, 250);
+ });
+ var up=function(){
+  clearTimeout(_psEraseT);
+  if(!PS.erasing || PS.eraseLatched) return;
+  b._swallow = true;
+  // Held and let go without erasing anything: that was a request to stay in
+  // erase mode, for a mouse that cannot hold this and tap a pad at once.
+  if(!_psErasedSome) psEraseMode(true, true);
+  else psEraseMode(false);
+ };
+ b.addEventListener('pointerup', up);
+ b.addEventListener('pointercancel', up);
+}
+function psErasePad(i){
+ _psErasedSome = true;
+ var key = psCurKey(i), pi = PS.pat, pat = PS_PATS[pi];
+ var hits = pat ? pat.ev.filter(function(e){ return e.k===key; }) : [];
+ PS.sel = i;
+ if(hits.length){
+  var before = {bars:pat.bars, ev:pat.ev.slice()};
+  pat.ev = pat.ev.filter(function(e){ return e.k!==key; });
+  if(!pat.ev.length){ PS_PATS[pi] = null; PS.patOn = false; }
+  if(PS_LIVE[key] && PS_LIVE[key].byPat) psStop(key);
+  psPatRender(); psRenderDeck();
+  showToast('Pad '+psPadName(i)+': '+hits.filter(function(e){ return e.on; }).length+' hit'+(hits.filter(function(e){ return e.on; }).length===1?'':'s')+' erased from pattern '+(pi+1),
+   {actionLabel:'Undo', onAction:function(){ PS_PATS[pi] = before; psPatRender(); }});
+  return;
+ }
+ if(psOnPreset()){ showToast('Pad '+psPadName(i)+' has no hits in pattern '+(pi+1)+' — preset pads themselves stay'); return; }
+ var slot = SMP_SLOTS[key];
+ if(!slot || !slot.id){ showToast('Pad '+psPadName(i)+' is already empty'); return; }
+ psClearPad(i);
+}
+
 // Transport stop: the next Play starts the pattern from its top, on the bar.
 function psPatOnStop(){ _psPat.nextT = 0; if(PS.rec) psRecStop(); }
 
@@ -12790,7 +12867,9 @@ function psPatRender(){
   pl.title = sounding ? 'Stop the pattern — the band plays on' : (PS.patOn ? 'Play — the pattern is on, and starts with the band' : 'Play the pattern, with the band');
  }
  var un=document.getElementById('ps-undo'); if(un) un.disabled = !_psUndoTake;
- var cl=document.getElementById('ps-patclr'); if(cl) cl.disabled = !(p && p.ev.length);
+ // Never disabled: with an empty pattern it is still the erase modifier for
+ // emptying pads. It reads dimmer instead, so a take still shows it can go.
+ var cl=document.getElementById('ps-patclr'); if(cl) cl.classList.toggle('dim', !(p && p.ev.length));
  psPatAnim();
 }
 // The pattern's playhead: a bar under the row, filling across the loop.
