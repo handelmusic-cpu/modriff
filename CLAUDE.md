@@ -29,7 +29,11 @@ immutable assets, **not** a release number — leave it alone.
 ### Numbering
 
 No part of the version goes past 9. After `4.1.9` comes `4.2.0`, not
-`4.1.10`; after `4.9.9`, `5.0.0`. A change that is a small follow-up to the
+`4.1.10`; after `4.9.9`, `5.0.0`.
+
+**Never move to a new major version (`4.x.x` → `5.0.0`) without asking the
+user first** — even when the numbering rule says it is next. That is theirs
+to call; stop and ask before the bump, not after. A change that is a small follow-up to the
 release just out — a fix to what it shipped, a tweak to the same feature —
 adds a fourth part instead of using up the third: `4.1.0` → `4.1.0.1` →
 `4.1.0.2`. A batch of new features is the next third-part number (or the next
