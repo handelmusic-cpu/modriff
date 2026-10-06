@@ -3376,12 +3376,20 @@ body.mode-basic .perf-bar { gap:4px 5px; }
  background:none; border:none; padding:0; margin:0; box-shadow:none;
  color:inherit; font:inherit;
 }
+/* A wide, flat triangle rather than a grey bar: a bar says "grab here" only to
+   someone who already knows the convention, and at --border2 it was barely
+   there at all. The triangle points at what it does — up to pull the sheet
+   open, down (same place) to put it away — and is drawn at 70% of the text
+   colour so it reads on both themes. :has() follows the sheet's own .open,
+   which half a dozen places in the app set and clear. */
 #ft-drawer-grip::before {
- content:''; width:34px; height:4px; border-radius:2px; background:var(--border2);
- transition:background .12s, width .12s;
+ content:''; width:30px; height:9px;
+ background:color-mix(in srgb, var(--text) 70%, transparent);
+ clip-path:polygon(50% 0, 100% 100%, 0 100%);
+ transition:transform .18s ease, background .12s;
 }
-#ft-drawer-grip:active::before { background:var(--text); width:44px; }
-#ft-more-menu.open ~ * #ft-drawer-grip::before { background:var(--text); }
+#ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { background:var(--text); }
+body:has(#ft-more-menu.open) #ft-drawer-grip::before { transform:rotate(180deg); background:var(--text); }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -3666,10 +3674,9 @@ body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
  background:var(--surf2); border:1px solid var(--border2); color:var(--muted);
 }
 .ft-btn.ft-plain.active { border-color:var(--mel-c); color:var(--mel-c); }
-/* The sheet has its own grab handle, mirroring the bar's, so the way out is
-   the way in. */
-.ft-sheet-grip { align-self:center; width:34px; height:4px; border-radius:2px;
-                 background:var(--border2); margin:-4px 0 2px; }
+/* No second handle inside the open sheet: the triangle on the bar flips to
+   point down while the sheet is open, so the way out is the way in, in the
+   same place. */
 .ft-more-menu.open { display:flex; }
 /* The full-width rule that used to live here was for the 130px dropdown, where
    one button per line was the only thing that fit. In a screen-wide sheet it
@@ -5659,7 +5666,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 
   .perf-bar { padding-top:14px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
   #ft-drawer-grip { height:11px; }
-  #ft-drawer-grip::before { height:3px; }
+  #ft-drawer-grip::before { height:6px; width:24px; }
   body.mode-basic .perf-bar .ft-break { display:none; }
   .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; top:10px; order:0; height:3px; gap:3px; pointer-events:none; }
   .perf-bar #ft-beat-dots .beat-dot { height:3px; }
@@ -5961,7 +5968,6 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <!-- The ⋯ is gone. Two buttons a thumb apart that open the same sheet is one
        too many, and the handle is the one that says what it does. -->
   <div class="ft-more-menu" id="ft-more-menu">
-   <div class="ft-sheet-grip" aria-hidden="true"></div>
 
    <!-- CAPTURE. Both recorders that write back INTO the app rather than out to
         disk, side by side, because they are the same gesture aimed at different
@@ -6071,7 +6077,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.19</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.20</span>
     </div>
    </div>
   </div>
@@ -6089,7 +6095,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.19</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.20</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8104,7 +8110,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.19';
+const MODRIFF_VERSION = '4.0.20';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -9801,12 +9807,28 @@ function smpRecStart(kind){
  // tail of anything quiet, and echo cancellation will duck the mic whenever
  // the app itself is playing — which is exactly when you are sampling along
  // with it.
+ _micGraceUntil = Date.now() + 15000;          // the permission sheet can sit there a while
  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
                                              autoGainControl:false}})
   .then(function(stream){
-   _smpBeginTap(ctx, ctx.createMediaStreamSource(stream), 'mic', stream);
+   _micGraceUntil = Date.now() + 4000;
+   // Start the take only once the context's clock is moving again — a tap on
+   // a frozen context records nothing — resuming it while we wait. If it never
+   // moves, the normal recovery takes over once the grace runs out.
+   var t0 = Date.now(), last = ctx.currentTime;
+   (function wait(){
+    if(ctx.state !== 'running'){ try{ ctx.resume().catch(function(){}); }catch(e){} }
+    var moving = ctx.state === 'running' && ctx.currentTime > last;
+    last = ctx.currentTime;
+    if(moving || Date.now() - t0 > 3000){
+     _micGraceUntil = Date.now() + 1500;
+     _smpBeginTap(ctx, ctx.createMediaStreamSource(stream), 'mic', stream);
+     return;
+    }
+    setTimeout(wait, 80);
+   })();
   })
-  .catch(function(){ showToast('Microphone blocked — allow it in your browser'); });
+  .catch(function(){ _micGraceUntil = 0; showToast('Microphone blocked — allow it in your browser'); });
 }
 function _smpBeginTap(ctx, node, kind, stream){
  var L=[], R=[], peak=0, frames=0;
@@ -9832,7 +9854,13 @@ function smpRecStop(){
  // waits, and for the same reason: tearing it down now truncates the take.
  setTimeout(function(){
   try{ rec.tap.dispose(); }catch(e){}
-  if(rec.stream) try{ rec.stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  // Closing the mic hands the session back to playback, which on iOS is the
+  // same interruption as opening it — same grace, and a resume once it is done.
+  if(rec.stream){
+   _micGraceUntil = Date.now() + 4000;
+   try{ rec.stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+   setTimeout(function(){ try{ if(audioCtx && audioCtx.state!=='running') audioCtx.resume().catch(function(){}); }catch(e){} }, 300);
+  }
   var n=0, i;
   for(i=0;i<rec.L.length;i++) n+=rec.L[i].length;
   if(n < rec.ctx.sampleRate*0.05){ showToast('Too short to keep'); smpRenderAll(); return; }
@@ -14313,7 +14341,7 @@ function _armGestureResume(){
  _showAudioStalledBar(true);
  const go=()=>{
   if(!audioCtx) return _disarm();
-  if(_resumeFails >= RESUME_FAILS_BEFORE_RELOAD){ _reloadForAudio(); return; }
+  if(_resumeFails >= RESUME_FAILS_BEFORE_RELOAD && !_inMicGrace()){ _reloadForAudio(); return; }
   audioCtx.resume().then(()=>{
    if(_audioRunning()){ _disarm(); _duckAudio(false); _resyncEngines(); showToast('Audio is back'); }
   }).catch(()=>{});
@@ -14333,6 +14361,7 @@ function _armGestureResume(){
    const now=Date.now();
    if(now - _lastResumeTry < 600) return;
    _lastResumeTry = now;
+   if(_inMicGrace()) return;      // a mic opening, not a dead context
    if(++_resumeFails >= RESUME_FAILS_BEFORE_RELOAD) _showAudioStalledBar(true,'reload');
   }, 120);
  };
@@ -14421,8 +14450,19 @@ function _ctxProbe(cb){
 }
 
 let _audioDeaf = false;
+// Opening the microphone is not a dead context. iOS answers getUserMedia by
+// moving the audio session to play-and-record: the permission sheet takes
+// focus, and the page comes back with the context interrupted or its clock
+// frozen for a moment while the input starts. The focus/visibility checks saw
+// exactly that, judged the context dead, armed a restart — and the next tap
+// reloaded the app onto its splash screen, mid-recording. For the few seconds
+// a mic is being opened none of that runs; smpRecStart waits for the clock to
+// move again itself.
+var _micGraceUntil = 0;
+function _inMicGrace(){ return Date.now() < _micGraceUntil; }
 function _armAudioRestart(){
  if(_audioDeaf) return;
+ if(_inMicGrace()) return;
  _audioDeaf = true;
  _showAudioStalledBar(true, 'reload');
  const go = function(){
@@ -14495,6 +14535,7 @@ document.addEventListener('visibilitychange', function(){
 
 function _resumeAudioIfNeeded(){
  if(!audioCtx) return;
+ if(_inMicGrace()){ try{ audioCtx.resume().catch(()=>{}); }catch(e){} return; }
  if(_audioRunning()){
   _showAudioStalledBar(false);
   _duckAudio(false);
