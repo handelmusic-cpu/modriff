@@ -937,6 +937,9 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 /* Erase: the pads read as targets while ✕ Clear is held or latched. */
 #ps-panel.ps-erasing .ps-pad:not(.empty) { box-shadow:inset 0 0 0 2px rgba(255,90,110,.7); }
 #ps-panel.ps-erasing .ps-pad.empty { opacity:.45; }
+/* Held one-shot eating its hits as the playhead passes. */
+.ps-pad.ps-holderase { box-shadow:inset 0 0 0 3px rgba(255,90,110,.95); background:color-mix(in srgb, rgba(255,90,110,.28) 100%, transparent); }
+#ps-cap.active { background:rgba(255,90,110,.22); border-color:rgba(255,90,110,.75); }
 .ps-chip.ps-patclr.dim:not(.active) { opacity:.55; }
 .ps-chip.ps-patclr.active { background:#e5384f; border-color:#e5384f; color:#fff; }
 #midi-panel .tg { flex-wrap:wrap; max-width:100%; }
@@ -5998,7 +6001,14 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
       <button class="ft-btn ft-cap off" id="ft-melcap-btn" onclick="melCaptureToggle()" aria-label="Capture the melody you play into the melody roll"
        title="Capture melody — the notes you play on the melody strip (touch, keys or MIDI) are quantized and written into the melody sequencer's roll, replacing what is in it. Nothing is saved to disk.">◉&nbsp;Melody</button>
       <button class="ft-btn ft-cap off" id="ft-blcap-btn" onclick="blCaptureToggle()" aria-pressed="false" aria-label="Capture the bass you play live into the bass grid"
-        title="Capture bass (⌥B): play the bass live — a controller routed to Bass, or Caps Lock set to Bass — then tap again to write it into the bass grid">◉&nbsp;Bass</button>
+        title="Capture bass (⌥B): play the bass live — the melody strip, a controller routed to Bass, or Caps Lock set to Bass — then tap again to write it into the bass grid">◉&nbsp;Bass</button>
+     </div>
+     <div class="ft-cap-split">
+      <button class="ft-btn ft-cap-back empty" id="ft-pscap-back" onclick="psCaptureBack()"
+       aria-label="Keep the sampler pads just played as a pattern"
+       title="Keep what you just played on the sampler pads — the last run becomes a pattern.">◀</button>
+      <button class="ft-btn ft-cap off" id="ft-pscap-btn" onclick="psCaptureToggle()" aria-pressed="false" aria-label="Capture the sampler pads you play into a pattern"
+       title="Capture pads (⌥P): play the sampler pads — touch, keyboard or MIDI — then tap again, and the hits become a sampler pattern fitted to the bar.">◉&nbsp;Pads</button>
      </div>
     </div>
    </div>
@@ -6077,7 +6087,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.20</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.21</span>
     </div>
    </div>
   </div>
@@ -6095,7 +6105,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.20</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.21</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6197,7 +6207,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <div class="kb-sc-row"><span class="kb-key">⌥ ← / →</span><span class="kb-desc">Previous / next sub-tab — Drums, Bass, Melody, Arp and the rest. Tab does the same while nothing on the page has focus.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ ↑ / ↓</span><span class="kb-desc">Tempo up / down 1 BPM; with Shift, 5.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ L</span><span class="kb-desc">Switch Live ⇄ Studio.</span></div>
-  <div class="kb-sc-row"><span class="kb-key">⌥ R · ⌥ M · ⌥ B</span><span class="kb-desc">Chord capture (into the song) · melody capture · bass capture, on and off.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌥ R · ⌥ M · ⌥ B · ⌥ P</span><span class="kb-desc">Chord capture (into the song) · melody capture · bass capture · sampler pad capture, on and off.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -8110,7 +8120,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.20';
+const MODRIFF_VERSION = '4.0.21';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11274,6 +11284,7 @@ function psStart(key, t){
 function psPress(i){
  var key = psCurKey(i);
  PS.sel = i;
+ psHoldEnd(key, true);
  var slot = SMP_SLOTS[key];
  if(!slot || !slot.id){
   if(psOnPreset()){ psPresetInstall(); psRender(); return; }
@@ -11291,11 +11302,13 @@ function psPress(i){
   psStop(key, at); psRecEv(key, at, false);
  } else {
   psStart(key, at); psRecEv(key, at, true);
+  if(mode==='oneshot') psHoldArm(i, key);
  }
  psRenderDeck();
 }
 function psRelease(i){
  var key = psCurKey(i), slot = SMP_SLOTS[key], v = PS_LIVE[key];
+ psHoldEnd(key);
  if(!v && PS_PEND[key] && slot && slot.ps && slot.ps.mode==='gate' && !PS.hold){ delete PS_PEND[key]; return; }
  if(!v || !slot || !slot.ps || slot.ps.mode!=='gate' || PS.hold) return;
  var ctx = psCtx(); if(!ctx) return;
@@ -12294,18 +12307,28 @@ function psBuild(){
  var pg2=psEl('span','ps-grp');
  var recb=psBtn('ps-chip ps-rec', '● Rec', 'Record pad hits into this pattern — on the next bar line, or straight away onto a pattern already playing (overdub). Again to stop.', psRecToggle);
  recb.id='ps-rec';
+ var capb=psBtn('ps-chip ps-cap', '◉ Cap', 'Capture: tap, play the pads freely, tap again — what you played becomes a pattern, fitted to the bar. No count-in, nothing has to be running.', psCaptureToggle);
+ capb.id='ps-cap';
  var plb=psBtn('ps-chip ps-patplay', '▶', 'Play the pattern', psPatToggle); plb.id='ps-patplay';
  // Clear sits with Rec and Play, in Live as well as Studio: it was a Studio
  // button at the end of the Len row, so in Live a take could not be deleted.
- var clb=psBtn('ps-chip ps-patclr', '✕ Clear', 'Tap: delete what this pattern recorded. Hold, and tap pads: erase each pad\u2019s hits from the pattern, or empty a pad with none. Hold a pattern number to clear that one.', function(){
+ // A tap is "erase mode on": then tap the pads to clear, silently, and ✓ Done.
+ // It used to wipe the whole pattern, which meant the way to clear one pad was
+ // to hold this with one finger and tap with another — and a single tap, the
+ // obvious thing to try, cleared the take and then *played* the pad you meant
+ // to clear. The whole pattern is the toast's button now (and a held pattern
+ // number, as before).
+ var clb=psBtn('ps-chip ps-patclr', '✕ Clear', 'Tap, then tap pads to clear them without playing them: a pad\u2019s hits go first, then its sample. ✓ Done when finished. Hold a pattern number to clear the whole pattern.', function(){
   if(clb._swallow){ clb._swallow=false; return; }   // that press was a hold, not a tap
   if(PS.erasing){ psEraseMode(false); return; }      // tapping again ends a latched erase
-  if(!psPatHas(PS.pat)){ showToast('Nothing recorded in pattern '+(PS.pat+1)+' — hold ✕ Clear and tap a pad to erase it'); return; }
-  psPatClear();
+  psEraseMode(true, true);
+  var pi=PS.pat;
+  showToast('Tap pads to clear them — hits first, then the sample. ✓ Done to finish',
+   psPatHas(pi) ? {actionLabel:'Clear P'+(pi+1), onAction:function(){ psEraseMode(false); psPatClear(pi); }} : null);
  });
  clb.id='ps-patclr';
  psEraseWire(clb);
- pg2.appendChild(recb); pg2.appendChild(plb); pg2.appendChild(clb); pr.appendChild(pg2);
+ pg2.appendChild(recb); pg2.appendChild(capb); pg2.appendChild(plb); pg2.appendChild(clb); pr.appendChild(pg2);
  var pg3=psEl('span','ps-grp ps-studio'); pg3.appendChild(psEl('span','ps-lbl','Len'));
  var lseg=psEl('div','ps-seg');
  PS_PAT_LENS.forEach(function(n){ var x=psBtn('ps-segb', String(n), n+' bar'+(n===1?'':'s')+' — a longer length repeats what is there', function(){ psPatSetLen(n); }); x.dataset.pslen=String(n); lseg.appendChild(x); });
@@ -12726,6 +12749,7 @@ function psPatPosAt(t){
 }
 // One recorded strike or release.
 function psRecEv(key, t, on){
+ psCapLog(key, t, on);
  if(!PS.rec || !PS.patOn || !_psPat.loopT) return;
  if(t < PS.rec.t0 - 0.002) return;          // the count-in is not the take
  var p = PS_PATS[PS.pat]; if(!p) return;
@@ -12755,12 +12779,15 @@ window._psScheduler = function(){
  while(_psPat.nextT < horizon && guard++ < 256){
   var p = PS_PATS[PS.pat], len = psPatLen(p), sd = psSd();
   var st = _psPat.step, it = _psPat.iter, t0 = _psPat.nextT;
+  var ate = 0;
   if(p) p.ev.forEach(function(ev){
    if(ev.s < st || ev.s >= st+1 || ev.skip===it) return;
    var t = t0 + (ev.s - st)*sd;
+   if(ev.on && psHoldEats(ev.k, t)){ ev._del = true; ate++; return; }
    if(ev.on){ var v = psStart(ev.k, Math.max(t, ctx.currentTime)); if(v) v.byPat = true; }
    else psStop(ev.k, Math.max(t, ctx.currentTime));
   });
+  if(ate) p.ev = p.ev.filter(function(ev){ return !ev._del; });
   _psPat.nextT += sd; _psPat.step++;
   if(_psPat.step >= len){
    _psPat.step = 0; _psPat.loopT = _psPat.nextT; _psPat.iter++;
@@ -12899,7 +12926,7 @@ function psEraseWire(b){
   try{ b.setPointerCapture(e.pointerId); }catch(_){}
   clearTimeout(_psEraseT);
   // A short delay before arming, so a quick tap stays "clear the pattern".
-  _psEraseT = setTimeout(function(){ psEraseMode(true); showToast('Tap pads to erase them — hits first, then the sample'); }, 250);
+  _psEraseT = setTimeout(function(){ psEraseMode(true); showToast('Tap pads to clear them — hits first, then the sample'); }, 250);
  });
  var up=function(){
   clearTimeout(_psEraseT);
@@ -12933,6 +12960,162 @@ function psErasePad(i){
  if(!slot || !slot.id){ showToast('Pad '+psPadName(i)+' is already empty'); return; }
  psClearPad(i);
 }
+
+// ── Hold a one-shot pad: erase its hits as they come round ───────────────
+// The MPC way to take single hits out of a beat: with the pattern playing,
+// hold the pad, and each of its hits the playhead reaches while you hold is
+// deleted instead of played; let go and the rest stay. One-shots only — a
+// held gate is a note being sustained and a loop is latched, so for those a
+// long press already means something. It arms after a moment (a tap is still
+// a tap), and only while this pattern is playing and has hits on this pad.
+var _psHold = {};
+function psHoldArm(i, key){
+ var h = {i:i, on:false};
+ _psHold[key] = h;
+ h.timer = setTimeout(function(){
+  if(_psHold[key]!==h) return;
+  var pat = PS_PATS[PS.pat], ctx = psCtx();
+  if(!ctx || !PS.patOn || !psTransportOn() || !pat || !pat.ev.some(function(e){ return e.k===key && e.on; })) return;
+  h.on = true; h.pi = PS.pat; h.since = ctx.currentTime; h.n = 0;
+  h.before = {bars:pat.bars, ev:pat.ev.slice()};
+  var el = document.querySelector('#ps-grid .ps-pad[data-i="'+i+'"]'); if(el) el.classList.add('ps-holderase');
+ }, 350);
+}
+// Asked by the scheduler of every hit it is about to play.
+function psHoldEats(key, t){
+ var h = _psHold[key];
+ if(!h || !h.on || PS.pat!==h.pi || t < h.since - 0.01) return false;
+ h.n++;
+ return true;
+}
+// quiet: a new strike on the same pad ends the last hold without a toast.
+function psHoldEnd(key, quiet){
+ var h = _psHold[key]; if(!h) return;
+ delete _psHold[key];
+ clearTimeout(h.timer);
+ document.querySelectorAll('#ps-grid .ps-pad.ps-holderase').forEach(function(el){ if(+el.dataset.i===h.i) el.classList.remove('ps-holderase'); });
+ if(!h.on || !h.n) return;
+ var pi = h.pi, pat = PS_PATS[pi], before = h.before;
+ if(pat && !pat.ev.length){ PS_PATS[pi] = null; if(pi===PS.pat) PS.patOn = false; }
+ psPatRender();
+ if(!quiet) showToast('Pad '+psPadName(h.i)+': '+h.n+' hit'+(h.n===1?'':'s')+' erased from P'+(pi+1),
+  {actionLabel:'Undo', onAction:function(){ PS_PATS[pi] = before; psPatRender(); }});
+}
+
+// ── Capture: keep what you played on the pads ───────────────────────────
+// The melody and chord captures, for the sampler: tap ◉ Pads, play, tap
+// again, and the hits become a pattern — no count-in, no pattern running.
+// ◀ keeps the run you just played without having armed anything. Both fit to
+// the band's bar lines when it is playing and start at your first hit when
+// it is not; hits snap to sixteenths and the length to the pattern lengths
+// (1, 2, 4 or 8 bars). The take goes into the pattern that is up when that
+// is empty, else the first empty one, else over the one that is up — with
+// Undo either way.
+var PS_RING_SEC = 90;
+var _psRing = [];           // {t, k, on, clk} — every strike and release
+PS.cap = null;               // {t0, ev:[]} while capturing
+function psCapLog(key, t, on){
+ var ev = {t:t, k:key, on:!!on, clk:(typeof _capClock==='function') ? _capClock() : null};
+ _psRing.push(ev);
+ var cut = t - PS_RING_SEC, j = 0;
+ while(j < _psRing.length && _psRing[j].t < cut) j++;
+ if(j) _psRing.splice(0, j);
+ if(PS.cap) PS.cap.ev.push(ev);
+ if(_psRing.length===1 || PS.cap) psCapUI();
+}
+function psCapFit(evs, endT){
+ var sd = psSd(), bar = psBarSteps();
+ var c0 = evs[0].clk;
+ var grid = !!c0 && evs.every(function(e){ return e.clk && Math.abs(e.clk.epoch-c0.epoch)<1e-4; });
+ var zero = grid ? c0.epoch : evs[0].t;
+ var pos = evs.map(function(e){ return (e.t-zero)/sd; });
+ var start = grid ? Math.round(pos[0]/bar)*bar : 0;
+ var end = (endT!=null ? (endT-zero)/sd : pos[pos.length-1]+1) - start;
+ var want = Math.max(1, Math.round(end/bar));
+ var bars = 8;
+ for(var li=0; li<PS_PAT_LENS.length; li++) if(PS_PAT_LENS[li] >= want){ bars = PS_PAT_LENS[li]; break; }
+ var len = bars*bar, out = [], dropped = 0, lastOn = {};
+ evs.forEach(function(e, n){
+  var x = pos[n] - start;
+  if(x >= len + 0.5){ dropped++; return; }
+  // A hit just ahead of the first bar line was a pickup: it wraps round to
+  // the end of the loop rather than piling onto step one.
+  var q = Math.round(x); q = ((q % len) + len) % len;
+  if(e.on) lastOn[e.k] = q;
+  else if(lastOn[e.k]!=null && q <= lastOn[e.k]) q = Math.min(len-0.01, lastOn[e.k]+0.5);   // a gate keeps some length
+  out.push({s:q, k:e.k, on:e.on});
+ });
+ out.sort(function(a,b){ return a.s-b.s; });
+ return {bars:bars, ev:out.slice(0,512), hits:out.filter(function(e){ return e.on; }).length, dropped:dropped};
+}
+function psCapWrite(evs, endT, verb){
+ // A release with no strike in the take is the tail of a note held from before.
+ var open = {};
+ evs = evs.filter(function(e){ if(e.on){ open[e.k]=1; return true; } return !!open[e.k]; });
+ if(!evs.some(function(e){ return e.on; })){ showToast('Nothing to keep — play some pads first'); return; }
+ var fit = psCapFit(evs, endT);
+ var pi = PS.pat;
+ if(psPatHas(pi)){ for(var j=0;j<PS_PATS.length;j++) if(!psPatHas(j)){ pi = j; break; } }
+ var before = PS_PATS[pi], wasPat = PS.pat;
+ PS_PATS[pi] = {bars:fit.bars, ev:fit.ev};
+ if(PS.patOn && psTransportOn() && pi!==PS.pat) PS.patNext = pi;
+ else { PS.pat = pi; PS.recLen = fit.bars; }
+ // Same as the melody capture switching its roll on: you should hear what
+ // you just played without hunting for the button that plays it.
+ if(!PS.patOn){ PS.patOn = true; _psPat.nextT = 0; }
+ psEnsureTransport();
+ psPatRender();
+ showToast(verb+' '+fit.hits+' hit'+(fit.hits===1?'':'s')+' → P'+(pi+1)+', '+fit.bars+' bar'+(fit.bars===1?'':'s')
+   + (fit.dropped ? ' · '+fit.dropped+' past 8 bars dropped' : ''),
+  {actionLabel:'Undo', onAction:function(){
+   PS_PATS[pi] = before;
+   if(PS.patNext===pi) PS.patNext = null;
+   if(!psPatHas(PS.pat)){ PS.pat = wasPat; if(!psPatHas(PS.pat)) PS.patOn = false; }
+   psPatRender();
+  }});
+ _psRing = []; psCapUI();
+}
+function psCaptureToggle(){
+ var ctx = psCtx();
+ if(!PS.cap){
+  if(PS.rec){ showToast('Stop ● Rec first'); return; }
+  PS.cap = {ev:[]};
+  psCapUI();
+  showToast('Capturing pads — play, then tap ◉ again to keep it as a pattern');
+  return;
+ }
+ var evs = PS.cap.ev; PS.cap = null;
+ psCapUI();
+ if(!evs.length){ showToast('Captured 0 hits — nothing written'); return; }
+ psCapWrite(evs, ctx ? ctx.currentTime : null, 'Captured');
+}
+// The run you just played: back from the last hit to the first two-bar gap.
+function psRingRun(){
+ if(!_psRing.length) return [];
+ var gap = 2*psBarSteps()*psSd(), a = _psRing.length-1;
+ while(a > 0 && _psRing[a].t - _psRing[a-1].t <= gap) a--;
+ return _psRing.slice(a);
+}
+function psCaptureBack(){
+ if(PS.cap){ showToast('Already capturing — tap ◉ to stop'); return; }
+ var run = psRingRun();
+ if(!run.length){ showToast('Play some pads first'); return; }
+ var last = run[run.length-1], ctx = psCtx();
+ // The take ends a sixteenth after the last thing played, not now — "now" is
+ // however long you took to reach for ◀.
+ psCapWrite(run, last.t + psSd(), 'Kept');
+}
+function psCapUI(){
+ var on = !!PS.cap;
+ ['ft-pscap-btn','ps-cap'].forEach(function(id){
+  var b = document.getElementById(id); if(!b) return;
+  b.classList.toggle('off', !on); b.classList.toggle('rec', on); b.classList.toggle('active', on);
+  b.setAttribute('aria-pressed', on?'true':'false');
+ });
+ var back = document.getElementById('ft-pscap-back');
+ if(back) back.classList.toggle('empty', on || !_psRing.length);
+}
+window.psCaptureToggle = psCaptureToggle; window.psCaptureBack = psCaptureBack; window.psCapUI = psCapUI;
 
 // Transport stop: the next Play starts the pattern from its top, on the bar.
 function psPatOnStop(){ _psPat.nextT = 0; if(PS.rec) psRecStop(); }
@@ -12991,7 +13174,8 @@ function psPatRender(){
  var un=document.getElementById('ps-undo'); if(un) un.disabled = !_psUndoTake;
  // Never disabled: with an empty pattern it is still the erase modifier for
  // emptying pads. It reads dimmer instead, so a take still shows it can go.
- var cl=document.getElementById('ps-patclr'); if(cl) cl.classList.toggle('dim', !(p && p.ev.length));
+ // Never dimmed now: with no take it still clears pads.
+ var cl=document.getElementById('ps-patclr'); if(cl) cl.classList.remove('dim');
  psPatAnim();
 }
 // The pattern's playhead: a bar under the row, filling across the loop.
@@ -17185,6 +17369,11 @@ function melPlayIn(midi, pressure, y){
  // snare while every neighbouring key wrote nothing, which reads as the
  // keyboard randomly breaking. The kit has its own input on its own page —
  // the grid cells, and the home row — so this just plays.
+ // Bass capture armed: the strip is the bass's keyboard until it stops — you
+ // hear the bass synth, an octave or two down, and Capture logs it there.
+ // Before this the only ways to play the bass live were a MIDI controller or
+ // Caps Lock, so on a phone a bass line could not be captured at all.
+ if(typeof window._blStripTakes==='function' && window._blStripTakes(midi, pressure)) return false;
  const armed = (typeof noteInputTarget==='function') ? noteInputTarget() : null;
  if(armed && armed !== 'sq'
     && typeof noteInputWrite==='function'
@@ -17199,6 +17388,7 @@ function melPlayIn(midi, pressure, y){
 
 function releaseMelNote(midi){
  markMelKeyOff(midi);
+ if(typeof window._blStripLets==='function' && window._blStripLets(midi)) return;
  // Before the early return below: a note whose voice has already been reaped
  // still has to close its captured length, or a held note comes back as a
  // sixteenth.
@@ -28470,6 +28660,7 @@ document.addEventListener('keyup', e => {
 //        ⌥L       Live ⇄ Studio
 //        ⌥R       chord capture on/off (into the song)
 //        ⌥M       melody capture on/off
+//        ⌥P       sampler pad capture on/off
 //        Esc      silence everything — when no sheet is open to close
 //        Tab      next sub-tab — only while nothing on the page has focus, so
 //                 Tab still walks the controls the moment you are using them
@@ -28547,6 +28738,7 @@ document.addEventListener('keydown', function(e){
   if(code==='KeyR'){ claim(); if(typeof toggleSongRecord==='function') toggleSongRecord(); return; }
   if(code==='KeyM'){ claim(); if(typeof melCaptureToggle==='function') melCaptureToggle(); return; }
   if(code==='KeyB'){ claim(); if(typeof blCaptureToggle==='function') blCaptureToggle(); return; }
+  if(code==='KeyP'){ claim(); if(typeof window.psCaptureToggle==='function') window.psCaptureToggle(); return; }
  }
  if(e.metaKey || e.ctrlKey || e.altKey) return;
  if(code==='Escape' && !_kbAnyModalOpen()){
@@ -30964,7 +31156,7 @@ function blCaptureToggle(){
  if(!blCapActive){
   blCapActive = true; blCapEvents = [];
   _updateBlCapUI();
-  showToast('Capturing bass — play it, then tap Capture bass (or ⌥B) to keep it');
+  showToast('Capturing bass — play the melody strip (or a controller), then tap ◉ Bass (⌥B) to keep it');
   return;
  }
  const ctx=getCtx();
@@ -30972,7 +31164,7 @@ function blCaptureToggle(){
  blCapActive = false;
  const evs = blCapEvents.slice(); blCapEvents = [];
  _updateBlCapUI();
- if(!evs.length){ showToast('Captured 0 bass notes — route your controller (or Caps Lock) to Bass first'); return; }
+ if(!evs.length){ showToast('Captured 0 bass notes — play the melody strip while ◉ Bass is lit'); return; }
  const running = !!_capClock();
  const rng = (typeof window._blRollRange==='function') ? window._blRollRange() : {lo:28, hi:64};
  const fit = _melCapFit(evs, {endT: ctx ? ctx.currentTime : null, adapt:!running, range:rng});
@@ -30990,6 +31182,29 @@ function blCaptureToggle(){
   });
 }
 window.blCaptureToggle = blCaptureToggle;
+// The melody strip, routed to the bass while bass capture runs. Folded into
+// the bass's register for the sound (the fit folds it again for the grid);
+// remembered per strip note, so the release ends the note that was started
+// even if capture stopped in between.
+var _blStripMap = {};
+window._blStripTakes = function(midi, pressure){
+ if(!blCapActive || typeof window._blLiveOn!=='function') return false;
+ const rng = (typeof window._blRollRange==='function') ? window._blRollRange() : {lo:28, hi:64};
+ let m = midi;
+ while(m > Math.min(rng.hi, 55)) m -= 12;
+ while(m < rng.lo) m += 12;
+ _blStripMap[midi] = m;
+ if(typeof markMelKeyOn==='function') markMelKeyOn(midi);     // the key you pressed still lights
+ window._blLiveOn(m, pressure==null ? 0.8 : Math.max(0.5, pressure));
+ return true;
+};
+window._blStripLets = function(midi){
+ const m = _blStripMap[midi]; if(m==null) return false;
+ delete _blStripMap[midi];
+ if(typeof markMelKeyOff==='function') markMelKeyOff(midi);
+ window._blLiveOff(m);
+ return true;
+};
 function _updateBlCapUI(){
  const b=document.getElementById('ft-blcap-btn'); if(!b) return;
  b.classList.toggle('off', !blCapActive); b.classList.toggle('rec', blCapActive);
