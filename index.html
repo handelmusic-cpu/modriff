@@ -863,6 +863,7 @@ body.mode-basic #page-perform .key-mode { font-size:.36rem; }
    the twelve it always had — the dropdown is where the other twenty-eight
    are, by family. */
 #mode-pick { display:inline-flex; }
+.key-strip .tg .md-off { display:none !important; }
 .md-fam { display:grid; grid-template-columns:1fr 1fr; gap:0 4px; }
 .md-fam .cp-item { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 body.mode-basic .key-strip > .tg { display:none !important; }
@@ -6064,7 +6065,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.15</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.16</span>
     </div>
    </div>
   </div>
@@ -6082,7 +6083,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.15</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.16</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8048,7 +8049,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.15';
+const MODRIFF_VERSION = '4.0.16';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -21933,6 +21934,7 @@ function renderChords(){
  // Four of those paths never go through setMode(), so the dropdown's label is
  // refreshed from the same place the rows are.
  if(typeof mdPickSyncLabel==='function') mdPickSyncLabel();
+ if(typeof modeRowSync==='function') modeRowSync();
 
  // Diatonic row
  const dEl=document.getElementById('chords-diatonic'); if(!dEl) return; dEl.innerHTML='';
@@ -22125,6 +22127,55 @@ function sndPickPlace(wrap){ popPlace(wrap, wrap._pop); }
 //
 // setMode is untouched and renderChords still paints everything from `mode`;
 // this only adds a second way in and a label that follows it.
+// ── The Studio mode row follows the family ───────────────────────────────
+// The row of buttons used to be the twelve the app started with, whatever the
+// dropdown beside it had been used to choose — pick Hirajōshi and the row still
+// offered Dorian and Locrian, with nothing lit. Now it is always Major, Minor
+// and the two pentatonics (the ones reached for most, and what the arrow keys
+// start from), then the rest of the family the current scale belongs to.
+// Buttons are made on demand with the same bm- ids, so renderChords lights
+// them exactly as it lights the old ones.
+const MODE_ROW_FIXED = ['major','minor','major_pent','minor_pent'];
+function modeFamilyOf(m){
+ const f = MODE_FAMILIES.find(x => x.ids.indexOf(m) >= 0);
+ return f || MODE_FAMILIES[0];
+}
+// The family is sticky across the four fixed buttons: stepping from the In
+// scale onto Major must not swap the row back to the church modes under you.
+var _modeRowFam = null;
+function modeRowFamily(){
+ if(MODE_ROW_FIXED.indexOf(mode) < 0 || !_modeRowFam) _modeRowFam = modeFamilyOf(mode);
+ return _modeRowFam;
+}
+function modeRowIds(){
+ const fam = modeRowFamily();
+ return MODE_ROW_FIXED.concat(fam.ids.filter(k => MODES[k] && MODE_ROW_FIXED.indexOf(k) < 0));
+}
+function modeRowSync(){
+ const strip = document.querySelector('.key-strip'); if(!strip) return;
+ const tg = strip.querySelector('.tg'); if(!tg) return;
+ const ids = modeRowIds();
+ const toggle = document.getElementById('church-modes-toggle');
+ ids.forEach(function(k){
+  let b = document.getElementById('bm-'+k);
+  if(!b){
+   b = document.createElement('button');
+   b.className = 'tb purple advanced-only church-mode-btn'; b.id = 'bm-'+k;
+   b.textContent = MODES[k].label; if(SCALE_TIPS[k]) b.title = SCALE_TIPS[k];
+   b.onclick = function(){ setMode(k); };
+  }
+  // In row order, ahead of the − Modes fold.
+  tg.insertBefore(b, toggle || null);
+  b.classList.remove('md-off');
+  b.classList.toggle('active', k === mode);
+ });
+ tg.querySelectorAll('[id^="bm-"]').forEach(function(b){
+  if(ids.indexOf(b.id.slice(3)) < 0) b.classList.add('md-off');
+ });
+ const fam = modeRowFamily();
+ if(toggle) toggle.title = 'Fold away everything but Maj, Min and the pentatonics — the ' + fam.name + ' scales come back with + Modes';
+}
+window.modeRowSync = modeRowSync;
 function mdPickSyncLabel(){
  const cur = document.getElementById('mode-pick-cur'); if(!cur) return;
  const md = (typeof MODES!=='undefined' && MODES[mode]) || null;
@@ -31943,22 +31994,28 @@ document.addEventListener('keydown', e => {
 // Every mode, family by family — the order the picker draws them in.
 const MODE_CYCLE_ORDER = MODE_FAMILIES.reduce((a,f)=>a.concat(f.ids), []).filter(m=>MODES[m]);
 document.addEventListener('keydown', e => {
- if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey) return;
+ if(e.repeat||e.ctrlKey||e.metaKey||e.altKey) return;
  if(_focusOwnsKey(e)) return;
  if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) return;
+ // Shift is only for ←/→ (every scale, not just the row).
+ if(e.shiftKey && (e.code==='ArrowUp' || e.code==='ArrowDown')) return;
  const perfTab = document.getElementById('page-perform');
  if(!perfTab || !perfTab.classList.contains('active')) return;
  e.preventDefault();
  if(e.code==='ArrowUp'){ transposeBy(1); return; }
  if(e.code==='ArrowDown'){ transposeBy(-1); return; }
  const dir = e.code==='ArrowRight' ? 1 : -1;
- let idx = MODE_CYCLE_ORDER.indexOf(mode); if(idx<0) idx=0;
+ // Through the row as it is drawn — Maj, Min, the pentatonics, then this
+ // family — so the keys and the buttons agree. With Shift, through every scale
+ // in the app, family by family (the order the dropdown lists them).
+ const order = e.shiftKey ? MODE_CYCLE_ORDER : modeRowIds();
+ let idx = order.indexOf(mode); if(idx<0) idx=0;
  // Step over anything this tier cannot have, rather than setMode refusing and
  // the key appearing to do nothing. Bounded by the list length, so a tier that
  // allowed none of them would stop rather than spin.
- for(let n=0;n<MODE_CYCLE_ORDER.length;n++){
-  idx = (idx+dir+MODE_CYCLE_ORDER.length)%MODE_CYCLE_ORDER.length;
-  const cand = MODE_CYCLE_ORDER[idx];
+ for(let n=0;n<order.length;n++){
+  idx = (idx+dir+order.length)%order.length;
+  const cand = order[idx];
   if(typeof freeAllowsMode!=='function' || freeAllowsMode(cand)){ setMode(cand); break; }
  }
 });
