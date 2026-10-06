@@ -939,6 +939,10 @@ body.mode-basic .vmt-btn { font-size:.4rem; min-height:28px; padding:2px 10px; }
 #ps-panel.ps-erasing .ps-pad.empty { opacity:.45; }
 .ps-chip.ps-patclr.dim:not(.active) { opacity:.55; }
 .ps-chip.ps-patclr.active { background:#e5384f; border-color:#e5384f; color:#fff; }
+#midi-panel .tg { flex-wrap:wrap; max-width:100%; }
+.midi-help { display:block; font-size:.5rem; color:var(--muted); line-height:1.6; margin:8px 0; }
+.midi-help b { color:var(--text); font-weight:600; }
+.midi-port-tgt { margin-left:6px; font-size:.5rem; background:var(--surf2); color:var(--text); border:1px solid var(--border2); border-radius:6px; padding:2px 4px; }
 .ps-bank-nm { font-size:.62rem; color:var(--muted); margin-left:6px; letter-spacing:.04em; }
 .ps-seg { display:inline-flex; border:1px solid var(--border2); border-radius:var(--r-sm); overflow:hidden; }
 .ps-segb {
@@ -5987,6 +5991,8 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
        title="Keep what you just played — the notes from the last run are written into the melody sequencer's roll.">◀</button>
       <button class="ft-btn ft-cap off" id="ft-melcap-btn" onclick="melCaptureToggle()" aria-label="Capture the melody you play into the melody roll"
        title="Capture melody — the notes you play on the melody strip (touch, keys or MIDI) are quantized and written into the melody sequencer's roll, replacing what is in it. Nothing is saved to disk.">◉&nbsp;Melody</button>
+      <button class="ft-btn ft-cap off" id="ft-blcap-btn" onclick="blCaptureToggle()" aria-pressed="false" aria-label="Capture the bass you play live into the bass grid"
+        title="Capture bass (⌥B): play the bass live — a controller routed to Bass, or Caps Lock set to Bass — then tap again to write it into the bass grid">◉&nbsp;Bass</button>
      </div>
     </div>
    </div>
@@ -6065,7 +6071,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.17</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.18</span>
     </div>
    </div>
   </div>
@@ -6083,7 +6089,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.17</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.18</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6185,7 +6191,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <div class="kb-sc-row"><span class="kb-key">⌥ ← / →</span><span class="kb-desc">Previous / next sub-tab — Drums, Bass, Melody, Arp and the rest. Tab does the same while nothing on the page has focus.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ ↑ / ↓</span><span class="kb-desc">Tempo up / down 1 BPM; with Shift, 5.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ L</span><span class="kb-desc">Switch Live ⇄ Studio.</span></div>
-  <div class="kb-sc-row"><span class="kb-key">⌥ R · ⌥ M</span><span class="kb-desc">Chord capture (into the song) · melody capture, on and off.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌥ R · ⌥ M · ⌥ B</span><span class="kb-desc">Chord capture (into the song) · melody capture · bass capture, on and off.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -7019,6 +7025,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    <div class="tg">
     <button class="tb" data-kbpref="caps:pads" onclick="kbSetPref('caps','pads')" title="Q W E R / A S D F / Z X C V play the twelve pads">Sampler pads</button>
     <button class="tb" data-kbpref="caps:drums" onclick="kbSetPref('caps','drums')" title="A S D F G H J K L play the drum kit, top lane first; Shift accents">Drum kit</button>
+    <button class="tb" data-kbpref="caps:bass" onclick="kbSetPref('caps','bass')" title="The letters play the bass synth, laid out like the melody keys (the home row is the scale); ◉ Bass or ⌥B captures it">Bass</button>
     <button class="tb" data-kbpref="caps:off" onclick="kbSetPref('caps','off')" title="Caps Lock changes nothing; the letters stay the melody">Off — melody</button>
    </div>
   </div>
@@ -7026,8 +7033,26 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   <div class="midi-panel-row">
    <span class="midi-panel-lbl">MIDI input plays:</span><button class="tips-btn" onclick="showTip('midi',this)">?</button>
    <div class="tg">
-    <button class="tb active" id="midi-chord-btn" onclick="setMidiMode('chord')">Chords</button>
-    <button class="tb" id="midi-melody-btn" onclick="setMidiMode('melody')">Melody</button>
+    <button class="tb active" id="midi-chord-btn" data-midimode="chord" onclick="setMidiMode('chord')">Chords</button>
+    <button class="tb" id="midi-melody-btn" data-midimode="melody" onclick="setMidiMode('melody')">Melody</button>
+    <button class="tb" data-midimode="bass" onclick="setMidiMode('bass')" title="Play the bass synth live; ◉ Bass in the transport sheet (or ⌥B) captures it into the bass grid">Bass</button>
+    <button class="tb" data-midimode="drums" onclick="setMidiMode('drums')" title="Notes play the drum kit by General MIDI number">Drums</button>
+    <button class="tb" data-midimode="pads" onclick="setMidiMode('pads')" title="Notes 36-47 (C1-B1) play the sampler's twelve pads, and every octave repeats them">Sampler pads</button>
+   </div>
+  </div>
+  <div class="midi-help">
+   Each port below can play a different part. <b>Auto</b> knows these controllers by name:
+   <b>Ableton Push 1/2</b> (press <i>User</i>): the bottom-left 4×3 pads are the sampler, the bottom-right 4×3 the drums, the top five rows the scale — to Melody, or Bass if the port is set to Bass; encoders 1–6 are the part levels, the tempo encoder is BPM, Play and Record work.
+   <b>Pad boxes</b> (MPD, LPD, Maschine, BeatStep…) play the sampler pads.
+   <b>Keys + pads</b> (MPK, Launchkey, MiniLab, KeyLab, Oxygen…): keys go to the default below, the pads (channel 10) to the setting under it.
+   <b>nanoKONTROL</b>: faders 1–6 are the part levels, Play / Stop / Rec work.
+  </div>
+  <div class="midi-panel-row">
+   <span class="midi-panel-lbl">Channel 10</span>
+   <div class="tg">
+    <button class="tb" data-midich10="pads" onclick="setMidiCh10('pads')" title="The pad half of a keyboard controller (MPK, Launchkey, MiniLab…) sends on channel 10: play the sampler pads with it">Sampler pads</button>
+    <button class="tb" data-midich10="drums" onclick="setMidiCh10('drums')" title="Channel 10 plays the drum kit, General MIDI style">Drums</button>
+    <button class="tb" data-midich10="auto" onclick="setMidiCh10('auto')" title="Channel 10 is nothing special: it goes where every other channel goes">Like the rest</button>
    </div>
   </div>
   <div class="midi-panel-row">
@@ -8079,7 +8104,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.17';
+const MODRIFF_VERSION = '4.0.18';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -24212,9 +24237,18 @@ function updateMidiBadge(){
     if(i.manufacturer) bits.push(i.manufacturer);
     if(i.connection && i.connection!=='open') bits.push(i.connection);
     if(i.state && i.state!=='connected') bits.push(i.state);
+    // Each port: what it was recognised as, and where its notes go.
+    var prof = (typeof midiProfileFor==='function') ? midiProfileFor(i.name) : null;
+    var cur = (typeof midiPortTargets!=='undefined' && midiPortTargets[i.name]) || 'auto';
+    var sel = '<select class="midi-port-tgt" aria-label="Where '+esc(i.name||'this port')+' plays" data-portname="'+esc(i.name||'')+'">'
+      + ['auto'].concat(MIDI_TARGETS).map(function(t){ return '<option value="'+t+'"'+(t===cur?' selected':'')+'>'+esc(t==='auto' ? 'Auto'+(prof?' — '+prof.name:'') : MIDI_TARGET_LABEL[t])+'</option>'; }).join('')
+      + '</select>';
     return '<div class="midi-port" data-portid="'+esc(i.id)+'"><span class="midi-dot" aria-hidden="true"></span>'
-      +'<b>'+esc(i.name||'Unnamed')+'</b>'+(bits.length?' <i>'+esc(bits.join(' · '))+'</i>':'')+'</div>';
+      +'<b>'+esc(i.name||'Unnamed')+'</b>'+(bits.length?' <i>'+esc(bits.join(' · '))+'</i>':'')+' '+sel+'</div>';
    }).join('');
+   list.querySelectorAll('.midi-port-tgt').forEach(function(se){
+    se.addEventListener('change', function(){ setMidiPortTarget(se.dataset.portname, se.value); });
+   });
   } else {
    list.textContent = _midiErr==='pending' ? 'asking the browser…' : (_midiErr ? '—' : 'none connected');
   }
@@ -28397,7 +28431,7 @@ var KB_PREFS = { numpad:'pads', caps:'pads' };
 try{
  var _kbp = JSON.parse(localStorage.getItem('modo-kb-prefs')||'null');
  if(_kbp){ if(_kbp.numpad==='pads'||_kbp.numpad==='chords') KB_PREFS.numpad=_kbp.numpad;
-           if(['pads','drums','off'].indexOf(_kbp.caps)>=0) KB_PREFS.caps=_kbp.caps; }
+           if(['pads','drums','bass','off'].indexOf(_kbp.caps)>=0) KB_PREFS.caps=_kbp.caps; }
 }catch(e){}
 function kbSetPref(k, v){
  KB_PREFS[k]=v;
@@ -28466,6 +28500,7 @@ document.addEventListener('keydown', function(e){
   if(code==='KeyL'){ claim(); setViewMode(document.body.classList.contains('mode-basic') ? 'advanced' : 'basic'); return; }
   if(code==='KeyR'){ claim(); if(typeof toggleSongRecord==='function') toggleSongRecord(); return; }
   if(code==='KeyM'){ claim(); if(typeof melCaptureToggle==='function') melCaptureToggle(); return; }
+  if(code==='KeyB'){ claim(); if(typeof blCaptureToggle==='function') blCaptureToggle(); return; }
  }
  if(e.metaKey || e.ctrlKey || e.altKey) return;
  if(code==='Escape' && !_kbAnyModalOpen()){
@@ -28505,18 +28540,30 @@ document.addEventListener('keydown', function(e){
    if(di>=0) kbDrumHit(di, e.shiftKey);
    return;
   }
+  if(KB_PREFS.caps==='bass'){
+   // The melody's own key layout (the home row is the scale), two octaves
+   // down, on the bass synth — held as long as the key is.
+   claim();
+   var bo = _buildMusicalKeysMap()[(e.key||'').toLowerCase()];
+   if(bo!==undefined){
+    var bm = 36 + (root<=5?root:root-12) + bo;
+    _kbPadHeld[code] = {bass:bm};
+    window._blLiveOn(bm, e.shiftKey ? 1 : 0.8);
+   }
+   return;
+  }
  }
 }, true);
 document.addEventListener('keyup', function(e){
  var h = _kbPadHeld[e.code];
  if(h==null) return;
  delete _kbPadHeld[e.code];
- if(h==='roll') psRollStop(); else kbPadUp(h);
+ if(h==='roll') psRollStop(); else if(h && h.bass!=null) window._blLiveOff(h.bass); else kbPadUp(h);
  e.stopImmediatePropagation();
 }, true);
 kbSyncUI();
 window.addEventListener('blur', function(){
- Object.keys(_kbPadHeld).forEach(function(c){ var h=_kbPadHeld[c]; if(h==='roll') psRollStop(); else kbPadUp(h); });
+ Object.keys(_kbPadHeld).forEach(function(c){ var h=_kbPadHeld[c]; if(h==='roll') psRollStop(); else if(h && h.bass!=null) window._blLiveOff(h.bass); else kbPadUp(h); });
  _kbPadHeld = {};
 });
 
@@ -28559,8 +28606,8 @@ function toggleMidiPanel(){
 function setMidiMode(m){
  midiMode = m;
  if(typeof syncSSPreviews==='function') syncSSPreviews();
- document.getElementById('midi-chord-btn')?.classList.toggle('active', m==='chord');
- document.getElementById('midi-melody-btn')?.classList.toggle('active', m==='melody');
+ document.querySelectorAll('[data-midimode]').forEach(b=>b.classList.toggle('active', b.dataset.midimode===m));
+ if(typeof midiRoutesSave==='function') midiRoutesSave();
 }
 function setMidiKeyMap(k){
  midiKeyMap = k;
@@ -29018,10 +29065,7 @@ function renderMidiCC(){
  }).join('');
 }
 
-function onMidiMsg(e){
- // MōdRiff's own MIDI out, arriving back through a loopback bus — see moIsEcho.
- if(typeof moIsEcho==='function' && moIsEcho(e)) return;
- _midiMonLog(e);
+function _onMidiCore(e, mm){
  const [st, note, vel] = e.data, type = st & 0xf0;
  if(type === 0x90 && vel > 0){
  const pressure = vel / 127;
@@ -29048,7 +29092,7 @@ function onMidiMsg(e){
  pc = note % 12;
  }
 
- if(midiMode === 'melody'){
+ if(mm === 'melody'){
  // Melody mode: play note literally (movable) or transposed (smart)
  let midi;
  if(midiKeyMap === 'movable'){
@@ -29083,7 +29127,7 @@ function onMidiMsg(e){
  }
  } else if(type === 0x80 || (type === 0x90 && vel === 0)){
  const n = e.data[1];
- if(midiMode === 'melody'){
+ if(mm === 'melody'){
  let midi = midiKeyMap==='movable' ? n : n+(root<=5?root:root-12);
  releaseMelNote(midi + melOctShift);
  } else if(midiChordTokens[n]!==undefined){
@@ -29102,6 +29146,191 @@ function onMidiMsg(e){
  midiCCOnMessage(e.data[1], vel);
  }
 }
+
+// ── MIDI routing: any controller to any part ─────────────────────────────
+// MIDI used to have two destinations, Chords or Melody, for every port and
+// every channel at once. Now each message is routed — by the port it came in
+// on, its channel, and what the controller is — to one of:
+//
+//   chord · melody · bass (the bass synth, live, with Capture) ·
+//   drums (the kit, by GM note) · pads (the sampler's twelve) · off
+//
+// In order: the port's own setting in Settings › MIDI (if not "Auto"); then
+// the controller's profile, which knows the hardware (a Push's grid is split
+// into pads, drums and a scale; a pad box is pads); then channel 10, which is
+// drums on every General MIDI device and is sent by the pad half of most
+// keyboard controllers (MPK, Launchkey, MiniLab, KeyLab…); then the default.
+//
+// Profiles are free — they are only a note and CC layout read off the port
+// name. Nothing here talks SysEx, so no device is put into a mode: a Push
+// wants its User button pressed, a Launchpad its Programmer mode.
+var MIDI_TARGETS = ['chord','melody','bass','drums','pads','off'];
+var MIDI_TARGET_LABEL = {auto:'Auto', chord:'Chords', melody:'Melody', bass:'Bass', drums:'Drums', pads:'Sampler pads', off:'Off'};
+var midiPortTargets = {}, midiCh10 = 'pads';
+try{
+ var _mpt = JSON.parse(localStorage.getItem('modo-midi-routes')||'null');
+ if(_mpt){ if(_mpt.ports) midiPortTargets = _mpt.ports; if(MIDI_TARGETS.indexOf(_mpt.ch10)>=0) midiCh10 = _mpt.ch10;
+           if(MIDI_TARGETS.indexOf(_mpt.mode)>=0 && _mpt.mode!=='off') midiMode = _mpt.mode; }
+}catch(e){}
+function midiRoutesSave(){
+ try{ localStorage.setItem('modo-midi-routes', JSON.stringify({ports:midiPortTargets, ch10:midiCh10, mode:midiMode})); }catch(e){}
+}
+// Push 2 / Push 1 in User mode: an 8×8 grid on notes 36-99, bottom-left 36.
+//   rows 1-3, left half   the sampler's twelve pads, laid out as on screen
+//   rows 1-3, right half  twelve drum lanes, kick bottom-left
+//   rows 4-8              the current scale, Push's "in key" layout: each row
+//                         a fourth (three scale steps) above the last — played
+//                         to the port's note target, Melody unless set to Bass
+//   encoders 1-8          the part levels (relative); tempo encoder → BPM
+//   Play / Record         transport / capture
+var _pushGrid = function(note){
+ var n = note - 36; if(n < 0 || n > 63) return null;
+ var r = Math.floor(n / 8), c = n % 8;
+ if(r < 3 && c < 4) return {t:'pads', i:(2 - r) * 4 + c};
+ // Drum-rack order: the first lane (the kick) bottom-left, as on every pad
+ // controller — the sampler pads above keep the screen's own order instead.
+ if(r < 3)          return {t:'drums', i:r * 4 + (c - 4)};
+ var md = MODES[mode] || MODES.major, st = md.steps, L = st.length;
+ var deg = (r - 3) * 3 + c;
+ var midi = 48 + root + st[deg % L] + 12 * Math.floor(deg / L);
+ return {t:'notes', midi:midi};
+};
+var MIDI_PROFILES = [
+ { id:'push', name:'Ableton Push', match:/\bpush\b/i, grid:_pushGrid,
+   relative:{14:'tempo', 71:'mix:chord', 72:'mix:mel', 73:'mix:bass', 74:'mix:drum', 75:'mix:melgen', 76:'mix:arp'},
+   buttons:{85:'play', 86:'rec'} },
+ { id:'pads', name:'Pad controller', match:/\b(mpd|lpd|mpc|maschine|beatstep|padkontrol|nanopad|drum|mpx)/i, target:'pads' },
+ { id:'keys', name:'Keys + pads', match:/\b(mpk|launchkey|minilab|keylab|komplete|oxygen|keystep|impulse|nektar|arturia|microlab|code)/i, ch10:'pads' },
+ { id:'nanok', name:'nanoKONTROL', match:/nanokontrol/i,
+   absolute:{0:'mix:chord', 1:'mix:mel', 2:'mix:bass', 3:'mix:drum', 4:'mix:melgen', 5:'mix:arp'},
+   buttons:{41:'play', 42:'stop', 45:'rec'} }
+];
+function midiProfileFor(name){
+ name = name || '';
+ for(var i=0;i<MIDI_PROFILES.length;i++) if(MIDI_PROFILES[i].match.test(name)) return MIDI_PROFILES[i];
+ return null;
+}
+function _midiPortName(e){ try{ return (e.target && e.target.name) || ''; }catch(_){ return ''; } }
+// A port's chosen target for its plain notes: its own setting, else its
+// profile's, else the default.
+function midiNoteTarget(name){
+ var t = midiPortTargets[name];
+ if(t && t !== 'auto') return t;
+ var p = midiProfileFor(name);
+ if(p && p.target) return p.target;
+ return midiMode;
+}
+var _midiHeld = {};   // "port|note" -> {t, i|midi}
+function _midiMixNudge(part, d){
+ if(!window.sqMixGainsW) return;
+ var g = window.sqMixGainsW[part]; if(g == null) g = 0.75;
+ var pos = Math.max(0, Math.min(1, mixGainToPos(g) + d));
+ midiCCApply('mix_'+part, pos);
+}
+function _midiAction(a){
+ if(a==='play'){ if(window._sqPlaying && window._sqPlaying()) stopEverything(); else startEverything(); }
+ else if(a==='stop'){ stopEverything(); }
+ else if(a==='rec'){ if(midiMode==='bass') blCaptureToggle(); else if(typeof melCaptureToggle==='function') melCaptureToggle(); }
+}
+function _midiPlay(tg, vel, key){
+ var pressure = vel/127;
+ if(tg.t==='pads'){ if(typeof kbPadDown==='function'){ kbPadDown(tg.i); } return true; }
+ if(tg.t==='drums'){
+  if(typeof noteInputTarget==='function' && noteInputTarget()==='sq'){ noteInputHit(tg.i, vel>=107, Math.round(pressure*100)); return true; }
+  if(typeof kbDrumHit==='function') kbDrumHit(tg.i, vel>=107);
+  return true;
+ }
+ if(tg.t==='bass'){
+  // An armed bass roll takes the note as a step, exactly as the keys do.
+  if(typeof noteInputTarget==='function' && noteInputTarget()==='bl' && typeof noteInputWrite==='function'
+     && noteInputWrite(tg.midi, vel>=107, Math.round(pressure*100))) return true;
+  window._blLiveOn(tg.midi, pressure);
+  return true;
+ }
+ return false;
+}
+function _midiStop(tg){
+ if(tg.t==='pads'){ if(typeof kbPadUp==='function') kbPadUp(tg.i); }
+ else if(tg.t==='bass'){ window._blLiveOff(tg.midi); }
+}
+function onMidiMsg(e){
+ // MōdRiff's own MIDI out, arriving back through a loopback bus — see moIsEcho.
+ if(typeof moIsEcho==='function' && moIsEcho(e)) return;
+ _midiMonLog(e);
+ var d = e.data, st = d[0], type = st & 0xf0, ch = st & 0x0f, note = d[1], vel = d[2];
+ var name = _midiPortName(e), prof = midiProfileFor(name);
+ var portT = midiPortTargets[name];
+ var key = name+'|'+note;
+ // CCs a profile knows: relative encoders, absolute faders, buttons.
+ if(type === 0xB0 && prof && (!portT || portT==='auto')){
+  var rel = prof.relative && prof.relative[note], ab = prof.absolute && prof.absolute[note], bt = prof.buttons && prof.buttons[note];
+  if(rel){
+   var delta = vel < 64 ? vel : vel - 128;           // two's complement, as Push sends
+   if(rel==='tempo') nudgeBpm(delta);
+   else if(rel.indexOf('mix:')===0) _midiMixNudge(rel.slice(4), delta/100);
+   return;
+  }
+  if(ab && ab.indexOf('mix:')===0){ midiCCApply('mix_'+ab.slice(4), vel/127); return; }
+  if(bt){ if(vel > 0) _midiAction(bt); return; }
+ }
+ if(type === 0x90 && vel > 0){
+  if(portT === 'off') return;
+  var tg = null;
+  // The kit armed for recording takes pad-controller notes as they are.
+  var armedKit = typeof noteInputTarget==='function' && noteInputTarget()==='sq';
+  if((!portT || portT==='auto') && prof && prof.grid){
+   var gtg = prof.grid(note);
+   if(gtg) tg = gtg.t==='notes' ? {t:'notes', midi:gtg.midi} : gtg;
+  }
+  if(!tg && (!portT || portT==='auto') && ch === 9){
+   var c10 = (prof && prof.ch10) || midiCh10;
+   if(c10==='pads') tg = {t:'pads', i:((note-36)%12+12)%12};
+   else if(c10==='drums') tg = {t:'drums', i:(typeof window._sqTrackForMidi==='function' ? Math.max(0, window._sqTrackForMidi(note)) : ((note-36)%12+12)%12)};
+  }
+  if(!tg){
+   var nt = midiNoteTarget(name);
+   if(nt==='off') return;
+   if(nt==='pads') tg = {t:'pads', i:((note-36)%12+12)%12};
+   else if(nt==='drums') tg = armedKit ? null : {t:'drums', i:(typeof window._sqTrackForMidi==='function' ? Math.max(0, window._sqTrackForMidi(note)) : ((note-36)%12+12)%12)};
+   else if(nt==='bass') tg = {t:'bass', midi: midiKeyMap==='movable' ? note : note + (root<=5?root:root-12)};
+   else tg = {t:'core', mode:nt};
+  }
+  // A Push's scale rows go to the port's note target: Melody, or Bass.
+  if(tg && tg.t==='notes'){
+   var nt2 = midiNoteTarget(name);
+   tg = nt2==='bass' ? {t:'bass', midi:tg.midi - 12} : {t:'core', mode:'melody', midi:tg.midi};
+  }
+  if(tg && tg.t==='core'){
+   _midiHeld[key] = tg;
+   if(tg.midi != null){ melPlayIn(tg.midi + melOctShift, vel/127); return; }
+   return _onMidiCore(e, tg.mode);
+  }
+  if(tg && _midiPlay(tg, vel, key)){ _midiHeld[key] = tg; return; }
+  return _onMidiCore(e, midiMode);
+ }
+ if(type === 0x80 || (type === 0x90 && vel === 0)){
+  var h = _midiHeld[key]; delete _midiHeld[key];
+  if(h){
+   if(h.t==='core'){
+    if(h.midi != null){ releaseMelNote(h.midi + melOctShift); return; }
+    return _onMidiCore(e, h.mode);
+   }
+   _midiStop(h); return;
+  }
+  return _onMidiCore(e, midiMode);
+ }
+ return _onMidiCore(e, midiMode);
+}
+function setMidiPortTarget(name, t){
+ if(t==='auto') delete midiPortTargets[name]; else midiPortTargets[name] = t;
+ midiRoutesSave();
+ if(typeof updateMidiBadge==='function') updateMidiBadge();
+}
+function setMidiCh10(t){
+ midiCh10 = t; midiRoutesSave();
+ document.querySelectorAll('[data-midich10]').forEach(function(b){ b.classList.toggle('active', b.dataset.midich10===t); });
+}
+window.setMidiPortTarget = setMidiPortTarget; window.setMidiCh10 = setMidiCh10;
 
 // ═══════════════════════════════════════
 // SONGS MODE (Build / Perform)
@@ -30586,7 +30815,8 @@ function _melCapFit(evs, opts){
  let dropped = 0;
  // Fold into the roll's own register rather than the generator's narrower
  // singable one — a line you played by hand may well want the top octave.
- const rng = (typeof window._mlRollRange==='function') ? window._mlRollRange() : {lo:48, hi:96};
+ // The bass capture passes its own roll's range; the melody uses the melody's.
+ const rng = opts.range || ((typeof window._mlRollRange==='function') ? window._mlRollRange() : {lo:48, hi:96});
  for(let i=0;i<n;i++){
   if(q[i] >= len){ dropped++; continue; }
   let m = evs[i].midi;
@@ -30664,6 +30894,60 @@ function stopMelCapture(){
  _melCapApply(_melCapFit(evs, {endT: ctx ? ctx.currentTime : null, adapt:!running}), 'Captured');
  // Spent, so ◀ cannot hand you the same notes a second time.
  _melRing = []; _melRingTrim(); _updateMelCapUI();
+}
+
+// ── Bass capture ─────────────────────────────────────────────────────────
+// The melody capture, for the bass: play the bass synth live (from a MIDI
+// controller routed to Bass, or Caps Lock set to Bass), tap Capture, play,
+// tap again — and what you played is the bass line, fitted to the grid by the
+// same _melCapFit the melody uses, in the bass's own register. ⌥B toggles it.
+var blCapActive = false, blCapEvents = [], _blCapOpenEv = null;
+window._blCapNote = function(midi, accent){
+ const ctx=getCtx(); if(!ctx) return;
+ const t = ctx.currentTime;
+ if(_blCapOpenEv && _blCapOpenEv.endT==null) _blCapOpenEv.endT = t;    // monophonic
+ const ev = { midi:midi, accent:!!accent, t:t, endT:null, clk:_capClock(), rootM:lastChordRoot, intvs:lastChordIntvs };
+ _blCapOpenEv = ev;
+ if(blCapActive) blCapEvents.push(ev);
+};
+window._blCapRelease = function(midi){
+ const ctx=getCtx(); if(!ctx) return;
+ if(_blCapOpenEv && _blCapOpenEv.midi===midi && _blCapOpenEv.endT==null){ _blCapOpenEv.endT = ctx.currentTime; _blCapOpenEv = null; }
+};
+function blCaptureToggle(){
+ if(!blCapActive){
+  blCapActive = true; blCapEvents = [];
+  _updateBlCapUI();
+  showToast('Capturing bass — play it, then tap Capture bass (or ⌥B) to keep it');
+  return;
+ }
+ const ctx=getCtx();
+ if(ctx && _blCapOpenEv && _blCapOpenEv.endT==null) _blCapOpenEv.endT = ctx.currentTime;
+ blCapActive = false;
+ const evs = blCapEvents.slice(); blCapEvents = [];
+ _updateBlCapUI();
+ if(!evs.length){ showToast('Captured 0 bass notes — route your controller (or Caps Lock) to Bass first'); return; }
+ const running = !!_capClock();
+ const rng = (typeof window._blRollRange==='function') ? window._blRollRange() : {lo:28, hi:64};
+ const fit = _melCapFit(evs, {endT: ctx ? ctx.currentTime : null, adapt:!running, range:rng});
+ if(!fit.cells.length){ showToast('Nothing to write — that take had no notes in range'); return; }
+ const first = {rootM:evs[0].rootM, intvs:evs[0].intvs};
+ const bpmBefore = parseFloat(document.getElementById('bpm')?.value)||100;
+ withUndo('Captured '+fit.cells.length+' bass note'+(fit.cells.length===1?'':'s')+' → '+fit.bars+' bar'+(fit.bars===1?'':'s')
+    + (fit.bpmChanged ? ' at ♩='+fit.bpm : ''),
+  function(){ return { st: JSON.parse(JSON.stringify(window._blCaptureState())), bpm:bpmBefore }; },
+  function(b){ if(fit.bpmChanged && typeof _setBpm==='function') _setBpm(b.bpm); window._blRestoreState(b.st); },
+  function(){
+   if(fit.bpmChanged && typeof _setBpm==='function') _setBpm(fit.bpm);
+   window._blWriteCapture(fit.cells, fit.steps, first.rootM, first.intvs);
+   if(typeof blEnabled!=='undefined' && !blEnabled && typeof ftBassClick==='function') ftBassClick();
+  });
+}
+window.blCaptureToggle = blCaptureToggle;
+function _updateBlCapUI(){
+ const b=document.getElementById('ft-blcap-btn'); if(!b) return;
+ b.classList.toggle('off', !blCapActive); b.classList.toggle('rec', blCapActive);
+ b.setAttribute('aria-pressed', blCapActive?'true':'false');
 }
 
 // The notes you already played. Same seam as _chordRingRun: two bars of
@@ -33975,6 +34259,7 @@ if(typeof buildVoicePickers==='function') buildVoicePickers();
 if(typeof syncSSPreviews==='function') syncSSPreviews();
 if(typeof syncStrumUI==='function') syncStrumUI();
 if(typeof midiCCLoad==='function'){ midiCCLoad(); }
+try{ setMidiMode(midiMode); setMidiCh10(midiCh10); }catch(e){}
 if(typeof setSettingsPane==='function'){
  var _sp=null; try{ _sp=localStorage.getItem('modo-settings-pane'); }catch(e){}
  setSettingsPane(_sp||'ui');
@@ -37509,6 +37794,53 @@ window._blResync = function(){
   blNextT = clockAlignTo(c, 60/bpmNow/4*(typeof blRateMul!=='undefined'?blRateMul:1), ALIGN_LEAD);
 };
 window._blEnsureGrid = function(){ blEnsureGrid(); };
+// ── Playing the bass by hand ──
+// The bass had no live voice: blPlayNote is a scheduled, fixed-length pluck,
+// and the only way to hear the bass synth from a key was to write a step and
+// audition it. These hold a note for as long as the key is down — the voice
+// is monophonic like a real bass, so a new note cuts the last and, played
+// legato, slides into it — and log it for Capture (window._blCapNote).
+var _blLiveMidi = null;
+window._blLiveOn = function(midi, vel){
+  var ctx = blCtx(); if(!ctx) return;
+  var legato = _blLiveMidi != null;
+  var v = Math.max(0.35, Math.min(1, vel==null ? 0.8 : vel));
+  blPlayNote(ctx.currentTime + 0.005, ((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1, 8, v, v > 0.85, legato);
+  _blLiveMidi = midi;
+  if(typeof window._blCapNote === 'function') window._blCapNote(midi, v > 0.85);
+};
+window._blLiveOff = function(midi){
+  if(typeof window._blCapRelease === 'function') window._blCapRelease(midi);
+  if(_blLiveMidi !== midi) return;      // a newer note already cut this one
+  _blLiveMidi = null;
+  var ctx = blCtx(); if(!ctx || !_blPrevGain) return;
+  var t = ctx.currentTime;
+  try{
+    _blPrevGain.gain.cancelScheduledValues(t);
+    _blPrevGain.gain.setValueAtTime(Math.max(0.0001, _blPrevGain.gain.value), t);
+    _blPrevGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  }catch(e){}
+  _blPrevEnd = t;
+};
+// A captured take, written into the bass grid — the bass's twin of
+// window._mlWriteCapture. Cells are hand-placed (usr:1): Generate fills
+// around them rather than over what you played.
+window._blWriteCapture = function(cells, steps, rootM, intvs){
+  if(steps && steps !== blSteps && typeof setSeqStepCount==='function') setSeqStepCount('bl', steps);
+  blEnsureGrid();
+  for(var s=0; s<blSteps; s++) blGrid[s] = blMkCell();
+  (cells||[]).forEach(function(c){
+    if(c.step < 0 || c.step >= blSteps) return;
+    var cell = blGrid[c.step];
+    cell.v = 1; cell.note = ((c.note % 12) + 12) % 12; cell.oct = c.oct;
+    cell.len = Math.max(1, Math.min(blSteps - c.step, c.len || 1));
+    cell.accent = !!c.accent; cell.usr = 1;
+  });
+  if(rootM != null) _blGridRootPc = ((rootM % 12) + 12) % 12;
+  if(intvs && intvs.length) _blGridIntvs = intvs.slice();
+  blRenderGrid();
+};
+window._blRollRange = function(){ return {lo: BL_PR_LO, hi: BL_PR_HI - 12}; };
 window._blRenderGrid = function(){ blRenderGrid(); };
 var blSeqStep = 0, blNextT = 0, blDispStep = -1, blRafID = null;
 // The step duration the scheduler last worked out, published for blDraw() —
