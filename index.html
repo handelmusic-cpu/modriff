@@ -6064,7 +6064,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.13</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.14</span>
     </div>
    </div>
   </div>
@@ -6082,7 +6082,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.13</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.14</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8044,7 +8044,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.13';
+const MODRIFF_VERSION = '4.0.14';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -8852,13 +8852,47 @@ function _rrSample(key, midi){
 
 // Same envelope contract as makeVoice() — plays into an already-configured gain
 // node over [t0, t0+dur] so every caller (chord/arp/melody/bass) works unchanged.
+// Where a recording actually starts, per buffer. The VSCO clarinet and flute
+// spend 150-190 ms swelling up to their body (a real breath onset), and every
+// file carries 25-35 ms of silence ahead of it. An arp sixteenth is ~120 ms
+// under an envelope already falling from its first millisecond, so a
+// clarinet arp note ended before the clarinet had spoken: measured on the arp,
+// the voice was all but silent while every other set was fine — tenor sax,
+// muted trumpet, vibes and the guitars are at full level within 20 ms.
+//
+//   sil   first sample above -40 dB of the peak, less 3 ms   — every note
+//   body  first 10 ms window within -12 dB of the loudest,
+//         less 25 ms of its own approach                     — short notes
+//
+// Every note starts at the body. Keeping the breath for long notes was tried
+// and measured worse: a chord's and a melody note's own envelope peak at the
+// Attack setting and then fall, so a 150 ms swell inside them is spent while
+// the envelope is at its loudest — clarinet chords read 13 dB under the sax
+// and violin that way. The app's Attack is the attack; the recording's own
+// approach would be a second one.
+const _smpOnset = new WeakMap();
+function _sampleOnset(buf){
+ let o = _smpOnset.get(buf); if(o) return o;
+ const d = buf.getChannelData(0), sr = buf.sampleRate, n = d.length;
+ let pk = 0; for(let i=0;i<n;i++){ const a=d[i]<0?-d[i]:d[i]; if(a>pk) pk=a; }
+ let sil = 0; for(let i=0;i<n;i++){ if((d[i]<0?-d[i]:d[i]) > pk*0.01){ sil=i; break; } }
+ const W = Math.max(1, Math.round(sr*0.01)), rms = [];
+ let mx = 0;
+ for(let i=0;i+W<=n && rms.length<400;i+=W){ let q=0; for(let j=i;j<i+W;j++) q+=d[j]*d[j]; const r=Math.sqrt(q/W); rms.push(r); if(r>mx) mx=r; }
+ let body = 0; for(let k=0;k<rms.length;k++){ if(rms[k] > mx*0.25){ body=k*W; break; } }
+ o = { sil: Math.max(0, sil/sr - 0.003), body: Math.max(0, body/sr - 0.025) };
+ if(o.body < o.sil) o.body = o.sil;
+ _smpOnset.set(buf, o);
+ return o;
+}
 function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
  const s=_rrSample(key, midi); if(!s) return null;
  const src=ctx.createBufferSource();
  src.buffer=s.buffer;
  src.playbackRate.value=Math.max(0.25, Math.min(4, Math.pow(2,(midi-s.midi)/12)));
  src.connect(gainNode);
- src.start(t0);
+ const on=_sampleOnset(s.buffer);
+ src.start(t0, on.body);
  src.stop(t0+dur+0.05);
  return src;
 }
@@ -16366,7 +16400,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  // did nothing at all.
  if(strumMode && !sustain && !(chordBeats>0)) dec=Math.min(dec,0.7);
  const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
- const wg=WAVE_GAIN[wave]||1;
+ const wg=(WAVE_GAIN[wave]||1)*((window.CHORD_SAMPLE_GAIN||{})[wave]||1);   // defined with the arp, further down
  const vsc=velScale(pressure||0);
  const _mxCh=_cmx('chord');
  // atTime is an exact AudioContext time supplied by a scheduler (song loop,
@@ -16484,7 +16518,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  if(strumMode && !sustain && !(chordBeats>0)) dec=Math.min(dec,0.7);
  const revMix=parseFloat(document.getElementById('rev-mix').value);
  const _mxCh=_cmx('chord');
- const wg=WAVE_GAIN[wave]||1;
+ const wg=(WAVE_GAIN[wave]||1)*((window.CHORD_SAMPLE_GAIN||{})[wave]||1);   // defined with the arp, further down
  const vsc=velScale(pressure||0);
  // See playChord: a start time already behind currentTime turns the attack
  // ramp into a step.
@@ -18902,7 +18936,7 @@ function scheduleArpBlock(t,dur){
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
  const _mxArp=_cmx('arp');
  if(!(_mxArp>0) || (typeof moSilences==='function' && moSilences('arp'))) return;
- const wg = WAVE_GAIN[arpWave] || 1;
+ const wg = (WAVE_GAIN[arpWave] || 1) * (ARP_SAMPLE_GAIN[arpWave] || 1);
  const revMix = parseFloat(document.getElementById('rev-mix')?.value || '0.25');
  arpNotes.forEach((midi,idx)=>{
  const strumT = t + idx * 0.012;
@@ -18917,11 +18951,21 @@ function scheduleArpBlock(t,dur){
  });
 }
 
+// The bowed and blown sets are levelled in WAVE_GAIN against a held chord,
+// where their slow swell has time to arrive. An arp step does not give it that
+// time even started at the body (see _sampleOnset), so they came out 7-14 dB
+// under every other arp voice. Measured on the arp bus against sine, piano and
+// muted trumpet at -38 dB: these bring them back in line.
+const ARP_SAMPLE_GAIN = {clarinet:4.2, flute:3.8, violin:2.2, tenorsax:2.4};
+// The same shortfall on a chord, smaller because a chord note is long enough
+// for most of the swell: measured -45/-44 dB for clarinet and flute against
+// -36 to -40 for the rest on C-E-G at the default envelope.
+var CHORD_SAMPLE_GAIN = {clarinet:2.0, flute:1.8};
 function scheduleArpNote(midi,t,dur){
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
  const atk=parseFloat(document.getElementById('attack').value);
- const wg=WAVE_GAIN[arpWave]||1;
+ const wg=(WAVE_GAIN[arpWave]||1)*(ARP_SAMPLE_GAIN[arpWave]||1);
  const revMix=parseFloat(document.getElementById('rev-mix').value);
 
  // Gate pattern
