@@ -6064,7 +6064,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.14</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.0.15</span>
     </div>
    </div>
   </div>
@@ -6082,7 +6082,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.0.14</div>
+ <div class="unlock-ver" id="unlock-ver">v4.0.15</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -6608,6 +6608,8 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    <div class="tg" style="flex-wrap:wrap;max-width:100%" title="How the chord is stacked">
     <button class="tb active" data-voicing="close" onclick="setVoicing('close')">Close</button>
     <button class="tb" data-voicing="open" onclick="setVoicing('open')">Spread</button>
+    <button class="tb" data-voicing="drop2" onclick="setVoicing('drop2')" title="Jazz Drop 2, extensions on top, voice-led">Drop 2</button>
+    <button class="tb" data-voicing="drop3" onclick="setVoicing('drop3')" title="Jazz Drop 3, extensions on top, voice-led">Drop 3</button>
     <button class="tb" data-voicing="rnb" onclick="setVoicing('rnb')" title="Soul / R&amp;B ninth-chord voicings">Soul/R&amp;B</button>
     <button class="tb" data-voicing="neosoul" onclick="setVoicing('neosoul')" title="Neo-soul Rhodes voicings">Neo-soul</button>
    </div>
@@ -7129,6 +7131,8 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      <div class="tg">
       <button class="tb active" id="bv-close" data-voicing="close" onclick="setVoicing('close')">Close</button>
       <button class="tb" id="bv-open" data-voicing="open" onclick="setVoicing('open')">Spread</button>
+ <button class="tb" id="bv-drop2" data-voicing="drop2" onclick="setVoicing('drop2')" title="Jazz Drop 2 — four-note chords with the extension on top (maj9, m9, 13, alt), the second voice from the top dropped an octave, voice-led">Drop 2</button>
+      <button class="tb" id="bv-drop3" data-voicing="drop3" onclick="setVoicing('drop3')" title="Jazz Drop 3 — the same chords with the third voice from the top dropped: wider, the classic guitar spread">Drop 3</button>
       <button class="tb" id="bv-rnb" data-voicing="rnb" onclick="setVoicing('rnb')" title="Soul / R&amp;B — ninth chords, the extensions taken from the key: R 7 9 3 5, and R ♭7 9 3 13 on a dominant">Soul/R&amp;B</button>
       <button class="tb" id="bv-neosoul" data-voicing="neosoul" onclick="setVoicing('neosoul')" title="Neo-soul — Rhodes voicings: the minor-eleventh cluster, maj13, the 9sus dominant">Neo-soul</button>
      </div>
@@ -8044,7 +8048,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.0.14';
+const MODRIFF_VERSION = '4.0.15';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -16137,17 +16141,23 @@ function styledVoicing(rootM, relIntvs, style){
  }
  var ok = function(semi){ return !diatonic || inKey(semi); };
  var dom = third===4 && sev===10;
- var nine = ok(14) ? 14 : (dom && ok(13) ? 13 : null);
+ // A dominant takes its colour from the key wherever the key has one, in
+ // or out of it: V7 in a minor key is ♭9/♭13 (G13 in C minor named two notes
+ // the key does not have), V/ii in major is A7♭13. Natural only when the key
+ // offers neither.
+ var keyPick = function(){ for(var a=0;a<arguments.length;a++) if(inKey(arguments[a])) return arguments[a]; return arguments[0]; };
+ var nine = dom ? keyPick(14, 13, 15) : (ok(14) ? 14 : null);
+ var thirteen = dom ? keyPick(21, 20) : (ok(21) ? 21 : null);
  var v;
  if(fifth===6 || fifth===8){
   v = [0, sev, third+12, fifth+12];                     // half-dim, dim, aug: keep them plain
   if(fifth===6 && sev===10 && nine!=null && ok(14)) v.splice(2,0,14);
  } else if(style==='neosoul'){
-  if(dom)              v = [0, 10, nine||14, 17, ok(21)?21:19];
+  if(dom)              v = [0, 10, nine, 17, thirteen];
   else if(third===3)   v = [0, sev, nine, 15, ok(17)?17:19];
   else                 v = [0, sev, nine, 16, ok(21)?21:19];
  } else {
-  if(dom)              v = [0, 10, nine, 16, ok(21)?21:19];
+  if(dom)              v = [0, 10, nine, 16, thirteen];
   else                 v = [0, sev, nine, third+12, 19];
  }
  v = v.filter(function(x){ return x!=null; });
@@ -16164,11 +16174,94 @@ function styledVoicing(rootM, relIntvs, style){
  _styledPrevTop = rootM + best[best.length-1];
  return best;
 }
+// ── Jazz: Drop 2 and Drop 3 ──────────────────────────────────────────────
+// A jazz pianist's (and guitarist's) chord is four notes with the root left
+// to the bass, and the note that would have doubled the root spent on an
+// extension instead — the "seventh" on top becomes a ninth, a thirteenth, a
+// sharp nine. Then it is DROPPED: the second (Drop 2) or third (Drop 3) voice
+// from the top goes down an octave, which opens the close stack into the
+// spread a hand or six strings actually plays.
+//
+//   maj      3 5 7 9         maj6 on a tonic triad: 3 5 6 9
+//   min      ♭3 5 ♭7 9       (11 for the 9 where the key has no ninth)
+//   dom      3 13 ♭7 9       in the key; the key's ♭9/♭13 where it has them
+//   dom alt  3 ♭7 ♯9 ♭13     a dominant from outside the key — a secondary
+//                            dominant, a tritone sub — gets the altered colour
+//   ø        ♭3 ♭5 ♭7 11     dim7 and aug as they are
+//
+// Every inversion of that four-note stack is tried, dropped, and the one
+// nearest the last chord wins (VoiceLead), so the top line moves by step the
+// way a comping part does. The root is played underneath, below the drop.
+var _jazzPrev = null;
+function jazzVoicing(rootM, relIntvs, drop){
+ var pc = function(x){ return ((x%12)+12)%12; };
+ var rel = []; relIntvs.forEach(function(s){ var p=pc(s); if(rel.indexOf(p)<0) rel.push(p); });
+ var third = rel.indexOf(4)>=0 ? 4 : rel.indexOf(3)>=0 ? 3 : null;
+ if(third==null) return null;
+ var fifth = rel.indexOf(7)>=0 ? 7 : rel.indexOf(6)>=0 ? 6 : rel.indexOf(8)>=0 ? 8 : 7;
+ var md = (typeof MODES!=='undefined' && MODES[mode]) || null;
+ var keyPcs = md ? md.steps.map(function(s){ return pc(root + s); }) : [];
+ var rpc = pc(rootM);
+ var inKey = function(semi){ return keyPcs.indexOf(pc(rpc + semi)) >= 0; };
+ var diatonic = keyPcs.indexOf(rpc)>=0 && inKey(third) && inKey(fifth);
+ var sev = rel.indexOf(11)>=0 ? 11 : rel.indexOf(10)>=0 ? 10 : (rel.indexOf(9)>=0 && fifth===6) ? 9 : null;
+ if(sev==null){
+  if(diatonic) sev = inKey(11) ? 11 : inKey(10) ? 10 : (fifth===6 && inKey(9)) ? 9 : null;
+  if(sev==null) sev = (third===4 && fifth===7) ? (diatonic ? 11 : 10) : (third===3 && fifth===7) ? 10 : fifth===6 ? 10 : 11;
+ }
+ var up;
+ if(fifth===6 && sev===9)        up = [3, 6, 9, 0];                     // dim7
+ else if(fifth===6)              up = [3, 6, 10, 5];                    // ø: ♭3 ♭5 ♭7 11
+ else if(fifth===8)              up = [4, 8, sev, 2];                   // aug
+ else if(third===4 && sev===10){                                        // dominant
+  if(!diatonic)                  up = [4, 10, 3, 8];                    // 3 ♭7 ♯9 ♭13
+  else up = [4, inKey(9)?9:8, 10, inKey(2)?2:1];                        // 3 13 ♭7 9, or the key's ♭13/♭9
+ }
+ else if(third===4)              up = (sev===11) ? [4, 7, 11, 2] : [4, 7, 9, 2];
+ else                            up = [3, 7, sev, (!diatonic || inKey(2)) ? 2 : 5];
+ // Every rotation of the close stack, each dropped, at every octave that
+ // keeps the top voice between E4 and G5.
+ var cands = [];
+ for(var r=0; r<4; r++){
+  var order = up.slice(r).concat(up.slice(0,r));
+  var close = [], prev = -1;
+  order.forEach(function(p){ var v = pc(p); while(v <= prev) v += 12; close.push(v); prev = v; });
+  var dropped = close.slice();
+  var di = drop===3 ? 1 : 2;                       // index of the 2nd / 3rd voice from the top, in a 4-voice stack
+  dropped[di] -= 12;
+  dropped.sort(function(a,b){ return a-b; });
+  for(var oct=3; oct<=6; oct++){
+   var base = rpc + oct*12;
+   var v = dropped.map(function(x){ return base + x; });
+   var top = v[v.length-1];
+   if(top < 64 || top > 79 || v[0] < 45) continue;
+   cands.push(v);
+  }
+ }
+ if(!cands.length) return null;
+ var best = null, bc = Infinity;
+ cands.forEach(function(v){
+  var c;
+  if(autoInvOn && _jazzPrev){
+   c = 0;
+   v.forEach(function(m, i){ c += Math.abs(m - _jazzPrev[i]); });
+   c += Math.abs(v[3] - _jazzPrev[3]) * 0.5;       // the top line most of all
+  } else c = Math.abs(v[3] - 72);
+  if(c < bc){ bc = c; best = v; }
+ });
+ _jazzPrev = best;
+ // The root, under the drop: an octave or two down, at least a fourth below
+ // the lowest voice.
+ var bass = rpc + 36; while(bass + 12 <= best[0] - 5) bass += 12; while(bass > best[0] - 5) bass -= 12;
+ return [bass].concat(best).map(function(m){ return m - rootM; });
+}
+
 // What playChord and playSlashChord voice with: a guitar plays a guitar grip
 // (of the styled chord, if a style is on — R&B and neo-soul grips are real
 // grips too), a style its own shape, and otherwise Close or Spread.
 function chordVoicing(rootM, relIntvs){
- var styled = (voicing==='rnb' || voicing==='neosoul') ? styledVoicing(rootM, relIntvs, voicing) : null;
+ var styled = (voicing==='rnb' || voicing==='neosoul') ? styledVoicing(rootM, relIntvs, voicing)
+            : (voicing==='drop2' || voicing==='drop3') ? jazzVoicing(rootM, relIntvs, voicing==='drop3' ? 3 : 2) : null;
  if(typeof wave!=='undefined' && GUITAR_VOICED[wave]){
   var g = guitarGrip(rootM, styled || relIntvs);
   if(g) return g;
@@ -22398,8 +22491,8 @@ function buildModSynthPresets(){
  syncModSynthUI();
 }
 function setVoicing(v){
- voicing = ['close','open','rnb','neosoul'].indexOf(v)>=0 ? v : 'close';
- _styledPrevTop = null;
+ voicing = ['close','open','drop2','drop3','rnb','neosoul'].indexOf(v)>=0 ? v : 'close';
+ _styledPrevTop = null; _jazzPrev = null;
  if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-voicing]').forEach(e=>e.classList.toggle('active', e.dataset.voicing===voicing));
 }
