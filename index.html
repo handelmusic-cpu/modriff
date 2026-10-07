@@ -6166,7 +6166,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.1.1</span>
     </div>
    </div>
   </div>
@@ -6184,7 +6184,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.1.1</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8194,7 +8194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.1';
+const MODRIFF_VERSION = '4.2.1.1';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -36304,6 +36304,10 @@ function sqColMenu(step, anchor){
     function(){ tracks.forEach(function(tr,ti){ if(sqGrid[ti]) sqGrid[ti][step]=sqMkCell(); }); sqAfterClip(); }));
 }
 function sqTc(){var M=SQM[sqMach];return M?M.tracks.length:0;}
+// Lane volume and pitch are stored per kit — and, since 4.2.1.1, per layer:
+// Aux's live under 'aux:'+kit. With both layers on the same kit they shared
+// one store, so turning Aux's kick down turned the Kit's kick down too.
+function sqLK(m,layer){ return layer===1 ? 'aux:'+m : m; }
 function sqGv(m,ti){if(!sqVols[m])sqVols[m]={};if(sqVols[m][ti]===undefined)sqVols[m][ti]=.8;return sqVols[m][ti];}
 function sqSv(m,ti,v){if(!sqVols[m])sqVols[m]={};sqVols[m][ti]=Math.max(0,Math.min(1,v));}
 function sqGp(m,ti){if(!sqPitches[m])sqPitches[m]={};if(sqPitches[m][ti]===undefined)sqPitches[m][ti]=0;return sqPitches[m][ti];}
@@ -36403,8 +36407,8 @@ function sqSavePat(idx){
   var p=sqPats[idx]||{};
   p.steps=sqSteps;p.swing=sqSwing;p.mach=sqMach;
   p.grid=JSON.parse(JSON.stringify(sqGrid));
-  p.vols=JSON.parse(JSON.stringify(sqVols[sqMach]||{}));
-  p.pitches=JSON.parse(JSON.stringify(sqPitches[sqMach]||{}));
+  p.vols=JSON.parse(JSON.stringify(sqVols[sqLK(sqMach,sqFocus)]||{}));
+  p.pitches=JSON.parse(JSON.stringify(sqPitches[sqLK(sqMach,sqFocus)]||{}));
   var mg={};Object.keys(sqMachGrids).forEach(function(k){mg[k]=JSON.parse(JSON.stringify(sqMachGrids[k]));});
   p.machGrids=mg;sqPats[idx]=p;
 }
@@ -36412,8 +36416,8 @@ function sqLoadPatEd(idx){
   var p=sqPats[idx];if(!p)return;
   sqSteps=p.steps||16;sqSwing=p.swing||0;sqMach=p.mach||'808';
   sqGrid=JSON.parse(JSON.stringify(p.grid));
-  sqVols[sqMach]=JSON.parse(JSON.stringify(p.vols||{}));
-  sqPitches[sqMach]=JSON.parse(JSON.stringify(p.pitches||{}));
+  sqVols[sqLK(sqMach,sqFocus)]=JSON.parse(JSON.stringify(p.vols||{}));
+  sqPitches[sqLK(sqMach,sqFocus)]=JSON.parse(JSON.stringify(p.pitches||{}));
   if(p.machGrids)Object.assign(sqMachGrids,JSON.parse(JSON.stringify(p.machGrids)));
   sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid));
   sqEnsureGrid();sqSyncUI();
@@ -36422,8 +36426,8 @@ function sqLoadPatPlay(idx){
   var p=sqPats[idx];if(!p)return false;
   sqSteps=p.steps||16;sqSwing=p.swing||0;sqMach=p.mach||'808';
   sqGrid=JSON.parse(JSON.stringify(p.grid));
-  sqVols[sqMach]=JSON.parse(JSON.stringify(p.vols||{}));
-  sqPitches[sqMach]=JSON.parse(JSON.stringify(p.pitches||{}));
+  sqVols[sqLK(sqMach,sqFocus)]=JSON.parse(JSON.stringify(p.vols||{}));
+  sqPitches[sqLK(sqMach,sqFocus)]=JSON.parse(JSON.stringify(p.pitches||{}));
   if(p.machGrids)Object.assign(sqMachGrids,JSON.parse(JSON.stringify(p.machGrids)));
   sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid));
   sqCurPat=idx;sqEnsureGrid();sqSyncUI();sqRenderGrid();return true;
@@ -36609,9 +36613,10 @@ function sqPlayCell(track,cell,t,vol,ps,ch){
 // the swing — they are two voices of one part, not two sequencers.
 function _sqFireLayer(mach, grid, s, at, ch){
   var M=SQM[mach]; if(!M) return;
+  var lk=sqLK(mach, ch==='auxperc' ? 1 : 0);
   M.tracks.forEach(function(track,ti){
     var cell=grid[ti]&&grid[ti][s];
-    if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(mach,ti),sqGp(mach,ti),ch);
+    if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(lk,ti),sqGp(lk,ti),ch);
   });
 }
 function sqFireStep(s,t){
@@ -36940,10 +36945,10 @@ function sqRenderGrid(){
     var vVal=document.createElement('div');vVal.className='sq-kval';
     var vlb=document.createElement('div');vlb.className='sq-klbl';vlb.textContent='VOL';
     vw.appendChild(vCvs);vw.appendChild(vVal);vw.appendChild(vlb);
-    var vInit=Math.round(sqGv(sqMach,ti)*100);
+    var vInit=Math.round(sqGv(sqLK(sqMach,sqFocus),ti)*100);
     sqDrawKnob(vCvs, vInit, 0, 100, '#a855f7');
     vVal.textContent=vInit+'%';
-    sqAttachKnob(vCvs, vVal, vInit, 0, 100, 'vol', function(v){ sqSv(sqMach,ti,v/100); sqDrawKnob(vCvs,v,0,100,'#a855f7'); vVal.textContent=v+'%'; });
+    sqAttachKnob(vCvs, vVal, vInit, 0, 100, 'vol', function(v){ sqSv(sqLK(sqMach,sqFocus),ti,v/100); sqDrawKnob(vCvs,v,0,100,'#a855f7'); vVal.textContent=v+'%'; });
     lr.appendChild(vw);
     var lbl=document.createElement('div');
     lbl.className='sq-tlbl';lbl.style.color=uiTextColor(tr.c);lbl.innerHTML=tr.n+'<small>'+tr.s+'</small>';
@@ -36984,10 +36989,10 @@ function sqRenderGrid(){
     var pVal=document.createElement('div');pVal.className='sq-pkval';
     var plb=document.createElement('div');plb.className='sq-klbl';plb.style.color='var(--sq-acc2)';plb.textContent='PCH';
     pw.appendChild(pCvs);pw.appendChild(pVal);pw.appendChild(plb);
-    var pInit=sqGp(sqMach,ti);
+    var pInit=sqGp(sqLK(sqMach,sqFocus),ti);
     sqDrawKnob(pCvs, pInit, -24, 24, '#2df09a');
     pVal.textContent=(pInit>=0?'+':'')+pInit;
-    sqAttachKnob(pCvs, pVal, pInit, -24, 24, 'pitch', function(v){ sqSp(sqMach,ti,v); sqDrawKnob(pCvs,v,-24,24,'#2df09a'); pVal.textContent=(v>=0?'+':'')+v; });
+    sqAttachKnob(pCvs, pVal, pInit, -24, 24, 'pitch', function(v){ sqSp(sqLK(sqMach,sqFocus),ti,v); sqDrawKnob(pCvs,v,-24,24,'#2df09a'); pVal.textContent=(v>=0?'+':'')+v; });
     rr.appendChild(pw);gRight.appendChild(rr);
   });
   sqRenderPageDots();
@@ -37111,7 +37116,7 @@ window._sqPlayIn = function(ti, step, accent, vel){
  // Auditioned through sqHitTrack like every other path, so a muted kit stays
  // muted while you play it in.
  try{ sqInitFX(); sqEnsureNoise();
-      sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqMach,ti)*(cell.vel/100), cell.v===2, sqGp(sqMach,ti)); }catch(e){}
+      sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqLK(sqMach,sqFocus),ti)*(cell.vel/100), cell.v===2, sqGp(sqLK(sqMach,sqFocus),ti)); }catch(e){}
  return true;
 };
 window._sqClearAt = function(step){
@@ -37251,7 +37256,7 @@ function sqSyncInsp(){
   var pSet=function(d){
     cell.p=Math.max(-24,Math.min(24,(cell.p||0)+d)); pShow();
     if(el) sqRefreshStepEl(el,cell,track.c);
-    try{ sqInitFX(); sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqMach,sqSelTi)*((cell.vel||100)/100), cell.v===2, sqGp(sqMach,sqSelTi)+(cell.p||0)); }catch(e){}
+    try{ sqInitFX(); sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqLK(sqMach,sqFocus),sqSelTi)*((cell.vel||100)/100), cell.v===2, sqGp(sqLK(sqMach,sqFocus),sqSelTi)+(cell.p||0)); }catch(e){}
   };
   pShow();
   pg.appendChild(_prBtn('−',null,'Down a semitone',function(){ pSet(-1); }));
@@ -37342,7 +37347,7 @@ function sqAttachStep(el,ti,s,track){
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
     // it for every path now, so applying it again would square the fader.
-    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqMach,ti)*(cell.vel/100),cell.v===2,sqGp(sqMach,ti));}
+    if(sqAudition&&cell.v>0){sqInitFX();sqEnsureNoise();sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqLK(sqMach,sqFocus),ti)*(cell.vel/100),cell.v===2,sqGp(sqLK(sqMach,sqFocus),ti));}
   });
   el.addEventListener('pointercancel',function(){moved=true;});
 }
@@ -37649,8 +37654,8 @@ if(_seqAutosaveData && _seqAutosaveData.rhythm){
   if(_rs.mach) sqMach = _rs.mach;
   if(_rs.grid) sqGrid = _rs.grid;
   if(_rs.machGrids) Object.assign(sqMachGrids, _rs.machGrids);
-  if(_rs.vols) sqVols[sqMach] = _rs.vols;
-  if(_rs.pitches) sqPitches[sqMach] = _rs.pitches;
+  if(_rs.vols) sqVols[sqLK(sqMach,sqFocus)] = _rs.vols;
+  if(_rs.pitches) sqPitches[sqLK(sqMach,sqFocus)] = _rs.pitches;
  })();
 }
 
@@ -37737,7 +37742,8 @@ window._sqCaptureState = function(){
   pitches: sqPitches[K.mach] || {},
   machGrids: sqMachGrids,
   kitOn: K.on !== false,
-  aux: { mach: A.mach, grid: A.grid, on: A.on !== false }
+  aux: { mach: A.mach, grid: A.grid, on: A.on !== false,
+         vols: sqVols[sqLK(A.mach,1)] || {}, pitches: sqPitches[sqLK(A.mach,1)] || {} }
  };
 };
 // The counterpart _sqCaptureState never had: two call sites (song load, and
@@ -37783,6 +37789,10 @@ window._sqRestoreState = function(st){
        grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
        on: st.aux.on !== false }
    : { mach:'PERC', grid:{}, on:true };
+ if(st.aux && SQM[st.aux.mach]){
+  if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
+  if(st.aux.pitches) sqPitches[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.pitches));
+ }
  sqEnsureGrid();
  sqSyncUI(); sqRenderGrid();
  sqSyncLayerUI();
