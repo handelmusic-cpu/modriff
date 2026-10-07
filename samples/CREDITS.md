@@ -282,3 +282,11 @@ mp3 VBR q5, peak-limited to -1 dBFS):
   Claps, Snare 2 cross-stick as rim, Shaker (small) and Tambourine 1.
 
 180 KB for both kits. They load only when the kit is picked.
+
+## samples/beatbox — the Beatbox kit
+
+The project owner's own beatboxing: one phone recording, sliced into eight
+hits by onset and spectrum, high-passed at 40 Hz, lightly compressed,
+peak-limited to -1 dBFS, mono mp3 VBR q5. Times are in the original take:
+kick 2.86 s, kick 2 1.25 s, snare 6.00 s, snare 2 33.27 s, closed hat
+19.06 s, open hat 4.45 s, rim 42.59 s, tom 8.95 s. 44 KB.
