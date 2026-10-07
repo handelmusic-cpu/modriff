@@ -1051,6 +1051,9 @@ body.mode-basic .ps-panel { gap:8px; }
 .ps-load-hint { font-size:.48rem; color:var(--muted); line-height:1.4; }
 .ps-load-list { overflow-y:auto; -webkit-overflow-scrolling:touch; padding-right:2px; }
 .ps-load-sec { font-size:.48rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin:10px 0 6px; }
+.ps-load-sec { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ps-load-sec .ps-load-kit { letter-spacing:.06em; padding:4px 10px; }
+.ps-load-item:has(.ps-load-across) .ps-load-name { white-space:normal; overflow:visible; }
 .ps-load-empty { font-size:.52rem; color:var(--muted); padding:6px 0; }
 .ps-load-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
 .ps-load-item { display:flex; border:1px solid var(--border2); border-radius:var(--r-sm); overflow:hidden; background:var(--surf2); }
@@ -6166,7 +6169,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.2</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.3</span>
     </div>
    </div>
   </div>
@@ -6184,7 +6187,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.2</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.3</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8194,7 +8197,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.2';
+const MODRIFF_VERSION = '4.2.3';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -10412,6 +10415,10 @@ function smpOpenSlot(key){
  if(ov) ov.classList.add('visible');
  smpDecodeAll();
  smpLoadLibrary().then(smpRenderAll);
+ // The built-in sounds (kit pieces included) are made by the sampler on first
+ // use; from an Accomp lane the sampler may never have run, and the list
+ // showed only your own clips. Build them here too.
+ if(typeof psFactoryEnsure==='function'){ try{ var _pf=psFactoryEnsure(); if(_pf && _pf.then) _pf.then(smpRenderAll); }catch(e){} }
  smpRenderAll();
 }
 window.smpOpenSlot = smpOpenSlot;
@@ -11495,11 +11502,10 @@ function psLoadEl(){
   + '<div class="ps-load-top"><div class="ps-load-title" id="ps-load-title">Load pad</div>'
   + '<button type="button" class="ps-load-x" id="ps-load-x">Close</button></div>'
   + '<div class="ps-load-acts">'
-  +  '<button type="button" class="ps-load-files" id="ps-load-files">📁 From Files…</button>'
+  +  '<button type="button" class="ps-load-files" id="ps-load-files" title="Several files at once fill this pad and the empty pads after it. On a computer you can also drop files straight onto a pad.">📁 From Files…</button>'
   +  '<button type="button" class="ps-load-rec" id="ps-load-rec">● Record or trim…</button>'
   + '</div>'
   + '<input type="file" id="ps-load-file" accept="audio/*" multiple style="display:none">'
-  + '<div class="ps-load-hint">Several files at once fill this pad and the empty pads after it. On a computer you can also drop files straight onto a pad.</div>'
   + '<div class="ps-load-list" id="ps-load-list"></div>'
   + '</div>';
  document.body.appendChild(ov);
@@ -11611,8 +11617,10 @@ function psRenderLoader(){
  var order = {}; PS_FACTORY_KIT.forEach(function(k,ix){ order['factory:'+k.id]=ix; });
  built.sort(function(a,b){ return (order[a.id]==null?999:order[a.id]) - (order[b.id]==null?999:order[b.id]); });
  var mine = SMP_LIB.filter(function(c){ return !smpBuiltIn(c); });
- var section = function(title, clips, empty){
-  list.appendChild(psEl('div','ps-load-sec', title));
+ var section = function(title, clips, empty, act){
+  var hd=psEl('div','ps-load-sec', title);
+  if(act){ hd.appendChild(act); }
+  list.appendChild(hd);
   if(!clips.length){ list.appendChild(psEl('div','ps-load-empty', empty)); return; }
   var grid=psEl('div','ps-load-grid');
   clips.forEach(function(c){
@@ -11624,6 +11632,13 @@ function psRenderLoader(){
    var pv=psBtn('ps-load-pv', '▶', 'Listen', function(){ if(typeof smpPreview==='function') smpPreview(c.id); });
    pv.setAttribute('aria-label','Listen to '+c.name);
    row.appendChild(b); row.appendChild(pv);
+   var kk=PS_KIT_BY_ID[c.id.replace(/^factory:/,'')];
+   if(kk && kk.cat==='notes'){
+    var ac=psBtn('ps-load-pv ps-load-across', '⇉', 'Play it across the pads — one note of the scale per pad, from this pad on',
+      function(){ psLoadAcross(_psLoadPad, c.id); });
+    ac.setAttribute('aria-label','Spread '+c.name+' across the pads');
+    row.appendChild(ac);
+   }
    grid.appendChild(row);
   });
   list.appendChild(grid);
@@ -11634,11 +11649,54 @@ function psRenderLoader(){
  if(!built.length) section('Built in', built, 'Getting the built-in sounds ready…');
  cats.forEach(function(c){
   var these=built.filter(function(cl){ var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')]; return (k && k.cat)===c[0]; });
-  if(these.length) section(c[1], these, '');
+  if(!these.length) return;
+  if(c[0]!=='drums'){ section(c[1], these, ''); return; }
+  // Drums by kit, each with a button that puts the whole kit on the pads.
+  var kits=[], byKit={};
+  these.forEach(function(cl){
+   var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')], n=k.kit||'Loops';
+   if(!byKit[n]){ byKit[n]=[]; kits.push(n); } byKit[n].push(cl);
+  });
+  kits.forEach(function(n){
+   var act = n==='Loops' ? null : psBtn('ps-chip ps-load-kit', 'Whole kit', 'Put every '+n+' sound on the pads, from this pad on',
+     function(){ psLoadKit(_psLoadPad, byKit[n].map(function(cl){ return cl.id; }), n); });
+   section(n==='Loops' ? 'Drum loops' : n+' kit', byKit[n], '', act);
+  });
  });
  var other=built.filter(function(cl){ var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')]; return !k || !k.cat; });
  if(other.length && built.length) section('Built in', other, '');
  section('Yours', mine, 'Nothing recorded or imported yet — record one, or bring one in from Files.');
+}
+// A whole kit onto consecutive pads, from pad i — overwriting what is there,
+// because a kit is a set and half of one is not what was asked for. Live
+// shows more pads if the kit would run past the ones on screen.
+function psLoadKit(i, ids, name){
+ var n=Math.min(ids.length, PS_N-i);
+ for(var k=0;k<n;k++) psLoadClip(i+k, ids[k], true);
+ if(PS.liveN < i+n) psSetLiveN(i+n);
+ psCloseLoader(); psRender();
+ showToast(name+' kit → pads '+psPadName(i)+'–'+psPadName(i+n-1));
+}
+// One sampled note across the pads as a playable scale: pad i is the key's
+// root, each pad after it the next degree of the current mode, up through
+// the octaves. Tuned by the pad's own Pitch (±24 st), so the clip is shared
+// and each pad stays editable. Key-follow is off — these are fixed notes, in
+// the key that was set when they were laid out.
+function psLoadAcross(i, clipId){
+ var clip=smpClip(clipId); if(!clip) return;
+ var steps=(MODES[mode]||MODES.major).steps, len=steps.length;
+ var from=((root-(clip.key||0))%12+12)%12; if(from>6) from-=12;
+ var vis=document.body.classList.contains('mode-basic') ? PS.liveN : Math.max(12, PS.liveN);
+ var n=Math.max(len+1, vis-i); n=Math.min(n, PS_N-i);
+ for(var k=0;k<n;k++){
+  psLoadClip(i+k, clipId, true);
+  var sl=psSlot(psCurKey(i+k), true);
+  sl.tune=Math.max(-24,Math.min(24, from + steps[k%len] + 12*Math.floor(k/len)));
+  sl.ps.keyf=false; sl.rootAuto=false;
+ }
+ if(PS.liveN < i+n) psSetLiveN(i+n);
+ psCloseLoader(); psRender();
+ showToast(clip.name+' across pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
 // Put a clip on a pad, the way every route in here does it: through
 // smpAttach, which auto-trims a recording and asks the pitch detector — and
@@ -11709,7 +11767,7 @@ function psImportFiles(files, i){
  });
 }
 window.psOpenLoader=psOpenLoader; window.psCloseLoader=psCloseLoader; window.psLoaderToSheet=psLoaderToSheet;
-window.psLoadClip=psLoadClip; window.psImportFiles=psImportFiles;
+window.psLoadClip=psLoadClip; window.psImportFiles=psImportFiles; window.psLoadKit=psLoadKit; window.psLoadAcross=psLoadAcross;
 window.psPress=psPress; window.psRelease=psRelease; window.psSubPress=psSubPress; window.psRollStop=psRollStop;
 window.psSetBank=psSetBank; window.psSetQuant=psSetQuant; window.psToggleHold=psToggleHold;
 window.psSet=psSet; window.psClearPad=psClearPad; window.psOpenPad=psOpenPad;
@@ -11976,7 +12034,14 @@ var PS_DRUM = { kick:'samples/drums/kick.mp3', side:'samples/drums/sidestick.mp3
                 h8:'samples/808/hat.mp3', o8:'samples/808/open.mp3', r8:'samples/808/rim.mp3',
                 cb8:'samples/808/cowbell.mp3', cg8:'samples/808/conga.mp3', t8:'samples/808/tom.mp3',
                 lt8:'samples/808/lotom.mp3', cl8:'samples/808/clave.mp3', ma8:'samples/808/maracas.mp3',
-                cy8:'samples/808/crash.mp3' };
+                cy8:'samples/808/crash.mp3',
+                // Rock and Hip-Hop (VCSL, CC0) — the same files the Accomp kits play.
+                rk_k:'samples/rock/kick.mp3', rk_s:'samples/rock/snare.mp3', rk_h:'samples/rock/hat.mp3',
+                rk_o:'samples/rock/open.mp3', rk_th:'samples/rock/tomhi.mp3', rk_tl:'samples/rock/tomlo.mp3',
+                rk_c:'samples/rock/crash.mp3', rk_r:'samples/rock/ride.mp3',
+                hh_k:'samples/hiphop/kick.mp3', hh_s:'samples/hiphop/snare.mp3', hh_c:'samples/hiphop/clap.mp3',
+                hh_r:'samples/hiphop/rim.mp3', hh_h:'samples/hiphop/hat.mp3', hh_o:'samples/hiphop/open.mp3',
+                hh_sh:'samples/hiphop/shaker.mp3', hh_t:'samples/hiphop/tamb.mp3' };
 function _psMidi(n){ var m=n.match(/^([A-G])(b?)(\d)$/); return _PS_NOTE[m[1]] - (m[2]?1:0) + (parseInt(m[3],10)+1)*12; }
 
 // One phrase = a list of [instrument, note, beat, beats long, level]. Rendered
@@ -12076,26 +12141,44 @@ function _psRenderSubDrop(ctx){
 // pads is PS_PRESETS, below.
 var PS_FACTORY_KIT = [
  // ── Drums ──
- {id:'kick',   name:'Kick',          cat:'drums', drum:'kick'},
- {id:'rim',    name:'Rim',           cat:'drums', drum:'side'},
- {id:'hat',    name:'Hat',           cat:'drums', drum:'hat',  ps:{choke:1}},
- {id:'ride',   name:'Ride',          cat:'drums', drum:'ride', ps:{choke:1}},
- {id:'pedal',  name:'Pedal Hat',     cat:'drums', drum:'pedal', ps:{choke:1}},
- {id:'bell',   name:'Ride Bell',     cat:'drums', drum:'bell'},
- {id:'tom',    name:'Tom',           cat:'drums', drum:'tom'},
- {id:'k808',   name:'808 Kick',      cat:'drums', drum:'k8'},
- {id:'s808',   name:'808 Snare',     cat:'drums', drum:'s8'},
- {id:'c808',   name:'808 Clap',      cat:'drums', drum:'c8'},
- {id:'h808',   name:'808 Hat',       cat:'drums', drum:'h8', ps:{choke:1}},
- {id:'o808',   name:'808 Open Hat',  cat:'drums', drum:'o8', ps:{choke:1}},
- {id:'r808',   name:'808 Rim',       cat:'drums', drum:'r8'},
- {id:'cb808',  name:'808 Cowbell',   cat:'drums', drum:'cb8'},
- {id:'cg808',  name:'808 Conga',     cat:'drums', drum:'cg8'},
- {id:'t808',   name:'808 Tom',       cat:'drums', drum:'t8'},
- {id:'lt808',  name:'808 Low Tom',   cat:'drums', drum:'lt8'},
- {id:'cl808',  name:'808 Clave',     cat:'drums', drum:'cl8'},
- {id:'ma808',  name:'808 Maracas',   cat:'drums', drum:'ma8'},
- {id:'cy808',  name:'808 Cymbal',    cat:'drums', drum:'cy8'},
+ {id:'kick',   name:'Kick',          cat:'drums', kit:'Acoustic', drum:'kick'},
+ {id:'rim',    name:'Rim',           cat:'drums', kit:'Acoustic', drum:'side'},
+ {id:'hat',    name:'Hat',           cat:'drums', kit:'Acoustic', drum:'hat',  ps:{choke:1}},
+ {id:'ride',   name:'Ride',          cat:'drums', kit:'Acoustic', drum:'ride', ps:{choke:1}},
+ {id:'pedal',  name:'Pedal Hat',     cat:'drums', kit:'Acoustic', drum:'pedal', ps:{choke:1}},
+ {id:'bell',   name:'Ride Bell',     cat:'drums', kit:'Acoustic', drum:'bell'},
+ {id:'tom',    name:'Tom',           cat:'drums', kit:'Acoustic', drum:'tom'},
+ {id:'k808',   name:'808 Kick',      cat:'drums', kit:'808', drum:'k8'},
+ {id:'s808',   name:'808 Snare',     cat:'drums', kit:'808', drum:'s8'},
+ {id:'c808',   name:'808 Clap',      cat:'drums', kit:'808', drum:'c8'},
+ {id:'h808',   name:'808 Hat',       cat:'drums', kit:'808', drum:'h8', ps:{choke:1}},
+ {id:'o808',   name:'808 Open Hat',  cat:'drums', kit:'808', drum:'o8', ps:{choke:1}},
+ {id:'r808',   name:'808 Rim',       cat:'drums', kit:'808', drum:'r8'},
+ {id:'cb808',  name:'808 Cowbell',   cat:'drums', kit:'808', drum:'cb8'},
+ {id:'cg808',  name:'808 Conga',     cat:'drums', kit:'808', drum:'cg8'},
+ {id:'t808',   name:'808 Tom',       cat:'drums', kit:'808', drum:'t8'},
+ {id:'lt808',  name:'808 Low Tom',   cat:'drums', kit:'808', drum:'lt8'},
+ {id:'cl808',  name:'808 Clave',     cat:'drums', kit:'808', drum:'cl8'},
+ {id:'ma808',  name:'808 Maracas',   cat:'drums', kit:'808', drum:'ma8'},
+ {id:'cy808',  name:'808 Cymbal',    cat:'drums', kit:'808', drum:'cy8'},
+ // Kit pieces — kit names the group the Load sheet draws them in, and what
+ // its "Whole kit" button puts on the pads, in this order.
+ {id:'rk-kick',  name:'Rock Kick',     cat:'drums', kit:'Rock', drum:'rk_k'},
+ {id:'rk-snare', name:'Rock Snare',    cat:'drums', kit:'Rock', drum:'rk_s'},
+ {id:'rk-hat',   name:'Rock Hat',      cat:'drums', kit:'Rock', drum:'rk_h', ps:{choke:1}},
+ {id:'rk-open',  name:'Rock Open Hat', cat:'drums', kit:'Rock', drum:'rk_o', ps:{choke:1}},
+ {id:'rk-tomhi', name:'Rock Hi Tom',   cat:'drums', kit:'Rock', drum:'rk_th'},
+ {id:'rk-tomlo', name:'Rock Lo Tom',   cat:'drums', kit:'Rock', drum:'rk_tl'},
+ {id:'rk-crash', name:'Rock Crash',    cat:'drums', kit:'Rock', drum:'rk_c'},
+ {id:'rk-ride',  name:'Rock Ride',     cat:'drums', kit:'Rock', drum:'rk_r'},
+ {id:'hh-kick',  name:'Hip-Hop Kick',  cat:'drums', kit:'Hip-Hop', drum:'hh_k'},
+ {id:'hh-snare', name:'Hip-Hop Snare', cat:'drums', kit:'Hip-Hop', drum:'hh_s'},
+ {id:'hh-clap',  name:'Hip-Hop Clap',  cat:'drums', kit:'Hip-Hop', drum:'hh_c'},
+ {id:'hh-rim',   name:'Hip-Hop Rim',   cat:'drums', kit:'Hip-Hop', drum:'hh_r'},
+ {id:'hh-hat',   name:'Hip-Hop Hat',   cat:'drums', kit:'Hip-Hop', drum:'hh_h', ps:{choke:1}},
+ {id:'hh-open',  name:'Hip-Hop Open Hat', cat:'drums', kit:'Hip-Hop', drum:'hh_o', ps:{choke:1}},
+ {id:'hh-shaker',name:'Hip-Hop Shaker',cat:'drums', kit:'Hip-Hop', drum:'hh_sh'},
+ {id:'hh-tamb',  name:'Hip-Hop Tamb',  cat:'drums', kit:'Hip-Hop', drum:'hh_t'},
  {id:'boombap', name:'Boom Bap',     cat:'drums', bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, choke:3, warp:true},
   beat:{swing:.18, hits:[['kick',0,.9],['hat',0,.5],['hat',2,.4],['side',4,.8],['hat',4,.5],['hat',6,.4],['kick',7,.7],
                          ['hat',8,.5],['kick',10,.8],['hat',10,.4],['side',12,.8],['hat',12,.5],['hat',14,.4]]}},
