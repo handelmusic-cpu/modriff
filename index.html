@@ -6166,7 +6166,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.1.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.2</span>
     </div>
    </div>
   </div>
@@ -6184,7 +6184,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.1.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.2</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8194,7 +8194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.1.1';
+const MODRIFF_VERSION = '4.2.2';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -35437,6 +35437,37 @@ const DRUM_SAMPLES = {
  ride:     'samples/drums/ride.mp3',      // GM 51 Ride Cymbal 1
  ridebell: 'samples/drums/ridebell.mp3'   // GM 53 Ride Bell
 };
+// The Rock and Hip-Hop kits (4.2.2). Built from the Versilian Community Sample
+// Library, which is CC0 — see samples/CREDITS.md. Not in DRUM_SAMPLES because
+// that set is fetched on every launch; these load when their kit is picked
+// (sqPreloadKit) or the first time a lane asks for one (sqSample), so nobody
+// downloads a kit they never use.
+const DRUM_SAMPLES_LAZY = {
+ rk_kick:'samples/rock/kick.mp3', rk_snare:'samples/rock/snare.mp3',
+ rk_hat:'samples/rock/hat.mp3', rk_open:'samples/rock/open.mp3',
+ rk_tomhi:'samples/rock/tomhi.mp3', rk_tomlo:'samples/rock/tomlo.mp3',
+ rk_crash:'samples/rock/crash.mp3', rk_ride:'samples/rock/ride.mp3',
+ hh_kick:'samples/hiphop/kick.mp3', hh_snare:'samples/hiphop/snare.mp3',
+ hh_hat:'samples/hiphop/hat.mp3', hh_open:'samples/hiphop/open.mp3',
+ hh_clap:'samples/hiphop/clap.mp3', hh_rim:'samples/hiphop/rim.mp3',
+ hh_shaker:'samples/hiphop/shaker.mp3', hh_tamb:'samples/hiphop/tamb.mp3'
+};
+var _drumLazyPending = {};
+function _drumLoadOne(name){
+ if(DRUM_BUFFERS[name] || _drumLazyPending[name] || !DRUM_SAMPLES_LAZY[name]) return;
+ const ctx = (typeof getCtx==='function') ? getCtx() : null;
+ if(!ctx) return;
+ _drumLazyPending[name] = 1;
+ fetch(DRUM_SAMPLES_LAZY[name])
+  .then(r=>{ if(!r.ok) throw new Error('drum fetch '+name); return r.arrayBuffer(); })
+  .then(a=>ctx.decodeAudioData(a))
+  .then(buf=>{ DRUM_BUFFERS[name]=buf; })
+  .catch(()=>{ delete _drumLazyPending[name]; });
+}
+function sqPreloadKit(mach){
+ var M = SQM[mach]; if(!M || !M.samples) return;
+ M.samples.forEach(_drumLoadOne);
+}
 const DRUM_BUFFERS = {};
 let _drumLoadState = 'idle';
 function preloadDrumSamples(){
@@ -35463,7 +35494,7 @@ window._drumBuffers = function(){ return DRUM_BUFFERS; };
 // Returns true if it played, false if the caller should fall back to synthesis.
 function sqSample(name, t, vol, semi){
  const buf = DRUM_BUFFERS[name];
- if(!buf) { preloadDrumSamples(); return false; }
+ if(!buf) { if(DRUM_SAMPLES_LAZY[name]) _drumLoadOne(name); else preloadDrumSamples(); return false; }
  const c = sqCtx(); if(!c || !SQMG) return false;
  const src = c.createBufferSource(); src.buffer = buf;
  if(semi) src.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, semi/12)));
@@ -35609,6 +35640,16 @@ function sqHHMod(t,dur,vol,baseF){
 
 // ── drum machines ──
 var NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+// A lane that plays a one-shot from DRUM_BUFFERS, or `fb` (a synth stand-in,
+// called with time, level and pitch ratio) until the sample has loaded.
+// Accent and pitch behave as on every other lane.
+function sqSmpTrack(n, s, c, name, gain, fb){
+  return {n:n, s:s, c:c, play:function(t,v,ac,ps){
+    var vel = v*(ac?1.25:1);
+    if(sqSample(name, t, vel*gain, ps)) return;
+    try{ fb(t, vel, sqSemi(ps)); }catch(e){}
+  }};
+}
 var SQM={
   '808':{label:'TR-808',color:'#ff6b35',tracks:[
     {n:'Kick',s:'BD',c:'#ff6b35',play:function(t,v,ac,ps){
@@ -35955,6 +35996,35 @@ var SQM={
             {damp:0.85, hp:2800, pingF:5000, pingLvl:0.35, washF:8200, washLvl:0.13});
     }},
     {n:'Tom',s:'TM',c:'#99bbdd',play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.2:1)*.6,'sine',60*sqSemi(ps));}}
+  ]},
+  // Rock and Hip-Hop: real recordings (VCSL, CC0), processed per kit — Rock
+  // tightened and EQ'd as a close-miked kit, Hip-Hop pitched down, saturated,
+  // squashed and low-passed. Each lane falls back to a plain synth voice until
+  // its sample has loaded, so the first bar after picking the kit is never
+  // silent. `samples` is what sqPreloadKit fetches when the kit is chosen.
+  'ROCK':{label:'Rock',color:'#e0603a',
+    samples:['rk_kick','rk_snare','rk_hat','rk_open','rk_tomhi','rk_tomlo','rk_crash','rk_ride'],
+    tracks:[
+    sqSmpTrack('Kick','BD','#e0603a','rk_kick',.9,  function(t,v,p){ sqTn(t,110*p,.09,v*.8,'sine',50*p); }),
+    sqSmpTrack('Snare','SD','#ee8a5a','rk_snare',.75,function(t,v,p){ sqTn(t,190*p,.08,v*.4,'sine'); sqNs(t,.16,3000,v*.5); }),
+    sqSmpTrack('Cl Hat','CH','#f2b38a','rk_hat',.32,function(t,v){ sqNs(t,.05,7000,v*.3,'highpass',6000,0.7); }),
+    sqSmpTrack('Op Hat','OH','#f5c9a8','rk_open',.28,function(t,v){ sqNs(t,.4,6500,v*.25,'highpass',5500,0.7); }),
+    sqSmpTrack('Hi Tom','HT','#d9744a','rk_tomhi',.65,function(t,v,p){ sqTn(t,200*p,.25,v*.6,'sine',120*p); }),
+    sqSmpTrack('Lo Tom','LT','#c4583a','rk_tomlo',.7, function(t,v,p){ sqTn(t,120*p,.32,v*.65,'sine',75*p); }),
+    sqSmpTrack('Crash','CY','#ffd0a0','rk_crash',.3,function(t,v){ sqNs(t,1.4,6000,v*.22,'highpass',3500,0.6); }),
+    sqSmpTrack('Ride','RD','#e8c098','rk_ride',.34, function(t,v){ sqNs(t,.9,8000,v*.16,'highpass',5000,0.6); })
+  ]},
+  'HIPHOP':{label:'Hip-Hop',color:'#c8a050',
+    samples:['hh_kick','hh_snare','hh_hat','hh_open','hh_clap','hh_rim','hh_shaker','hh_tamb'],
+    tracks:[
+    sqSmpTrack('Kick','BD','#c8a050','hh_kick',.85, function(t,v,p){ sqTn(t,90*p,.2,v*.9,'sine',45*p); }),
+    sqSmpTrack('Snare','SD','#dab870','hh_snare',.7,function(t,v,p){ sqTn(t,170*p,.07,v*.4,'sine'); sqNs(t,.14,2600,v*.5); }),
+    sqSmpTrack('Clap','CP','#e8c888','hh_clap',.6,  function(t,v){ sqNs(t,.12,1800,v*.5); }),
+    sqSmpTrack('Rimshot','RS','#b08840','hh_rim',.5,function(t,v,p){ sqTn(t,800*p,.03,v*.4,'triangle'); }),
+    sqSmpTrack('Cl Hat','CH','#f0dca8','hh_hat',.3, function(t,v){ sqNs(t,.04,7000,v*.3,'highpass',6000,0.7); }),
+    sqSmpTrack('Op Hat','OH','#f4e4bc','hh_open',.26,function(t,v){ sqNs(t,.3,6500,v*.25,'highpass',5500,0.7); }),
+    sqSmpTrack('Shaker','SH','#a89060','hh_shaker',.34,function(t,v){ sqNs(t,.05,9000,v*.3,'highpass',6500,0.8); }),
+    sqSmpTrack('Tamb','TB','#98804c','hh_tamb',.3,  function(t,v){ sqNs(t,.09,8000,v*.28,'highpass',5200,0.6); })
   ]},
   // Aux Perc — the second layer's default kit. Deliberately has no kick and no
   // snare: with nothing to fight the main kit with, it cannot turn a groove
@@ -36342,6 +36412,7 @@ function sqSetFocus(f){
   sqStashFocused();
   sqFocus = f;
   sqMach = sqLayers[f].mach; sqGrid = sqLayers[f].grid;
+  sqPreloadKit(sqMach);
   sqEnsureGrid(); sqRender();
   sqSyncLayerUI();
 }
@@ -36398,6 +36469,7 @@ function sqDoSwap(key){
   // back to a kit with more tracks. sqSteps/sqSwing are never touched here, so step
   // count and duration always stay exactly as they were before the swap.
   sqMach=key;
+  sqPreloadKit(key);
   sqEnsureGrid();
   sqPendMach=null;sqRender();
 }
@@ -37789,6 +37861,7 @@ window._sqRestoreState = function(st){
        grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
        on: st.aux.on !== false }
    : { mach:'PERC', grid:{}, on:true };
+ sqPreloadKit(sqLayers[0].mach); sqPreloadKit(sqLayers[1].mach);
  if(st.aux && SQM[st.aux.mach]){
   if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
   if(st.aux.pitches) sqPitches[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.pitches));

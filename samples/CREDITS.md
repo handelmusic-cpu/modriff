@@ -262,3 +262,23 @@ trimmed of trailing silence, otherwise as recorded:
 
 All are peak-normalised to −1 dBFS; their relative levels on the pads are set
 by `gain` in `PS_FACTORY_KIT`.
+
+## samples/rock and samples/hiphop — the Rock and Hip-Hop kits
+
+Both are built from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL)
+(Versilian Studios / Sam Gossner), released under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — no attribution
+required; credited here anyway.
+
+Same recordings, two treatments (the ffmpeg chain is per file; mono, 44.1 kHz,
+mp3 VBR q5, peak-limited to -1 dBFS):
+
+- **Rock** — close-kit cleanup: Bass Drum 1 (v7) with the boom cut at 400 Hz
+  and a 3.5 kHz beater lift, Snare Drum Modern 1 (snares on), Hi-Hat closed and
+  open, Tom 1 / Tom 2 (stick), Suspended Cymbal 1 as crash (hit) and ride
+  (stick). Lightly compressed, tails trimmed.
+- **Hip-Hop** — the kick pitched down ~3 st, Snare Drum Modern 2 down ~2 st,
+  both saturated (tanh), hard-compressed and low-passed (7–9 kHz); short hats,
+  Claps, Snare 2 cross-stick as rim, Shaker (small) and Tambourine 1.
+
+180 KB for both kits. They load only when the kit is picked.
