@@ -5839,6 +5839,12 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
    Live/Studio switch — and everything else — jumped to a different spot the
    moment you pressed it. The two-row rules above now apply to both, and
    Bounce and Stems live in the sheet in both (ftMountSheetExtras). */
+.tut-list { display:flex; flex-direction:column; gap:6px; margin:4px 0 10px; }
+.tut-item { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text); font-family:'Outfit',sans-serif; font-size:.62rem; font-weight:600; cursor:pointer; text-align:left; }
+.tut-item.done { color:var(--muted); }
+.tut-entry { width:100%; margin:0 0 12px; }
+.tut-mark { color:var(--muted); font-size:.55rem; }
+.tut-item.done .tut-mark { color:var(--pg); }
 /* The short-landscape layout above sets its own tighter tabs; keep them. */
 @media (orientation:landscape) and (max-height:520px) {
  .subnav-dock .subnav-btn { padding-top:3px; padding-bottom:3px; font-size:.5rem; }
@@ -6165,11 +6171,11 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
    <div class="ft-sheet-row">
     <div class="ft-sheet-lbl">Help</div>
     <div class="ft-sheet-items">
-     <button class="ft-btn ft-plain" id="ft-help-btn" onclick="showTour()" title="Hands-on walkthrough — you play chords and a tune over a beat, about a minute">? Walkthrough</button>
+     <button class="ft-btn ft-plain" id="ft-help-btn" onclick="openTutorials()" title="Short tutorials, one topic each — plus the one-minute play-along">? Tutorials</button>
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.3</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.4</span>
     </div>
    </div>
   </div>
@@ -6187,7 +6193,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.3</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.4</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7235,6 +7241,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
   </div>
 
   <div class="set-pane" id="set-pane-ui">
+   <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
  <div class="panel p-songs" id="setups-panel" style="width:100%;max-width:700px">
  <div class="panel-title"><span class="pt-icon">◈</span> Setups <button class="tips-btn" onclick="showTip('setups',this)">?</button></div>
  <div class="setup-bar">
@@ -8197,7 +8204,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.3';
+const MODRIFF_VERSION = '4.2.4';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -14387,23 +14394,25 @@ function buildUnlockChoices(){
  // with a dice roll meant the app's opening move was "here are some sounds you
  // did not choose", which is the least interesting thing it does. Anyone who
  // has been here before keeps the old splash exactly.
- const firstTime = !hasLastSession() && !tourChapterDone(1);
+ const firstTime = !hasLastSession() && !tourChapterDone(1)
+   && !(typeof tutDoneSet==='function' && tutDoneSet().length);
  if(firstTime){
   html+=btn('', 'learn', '▶ Start here — 1 minute walkthrough');
   html+=btn('ghost','rollplay','⚄ Randomize &amp; Play');
   html+=btn('ghost','blank','Start Blank');
   box.innerHTML=html;
-  if(note) note.textContent = 'The walkthrough is hands-on: you play chords and a tune over a beat, four steps, about a minute. Randomize skips it and rolls a jam instead.';
+  if(note) note.textContent = '';
   return;
  }
+ // Someone part-way through the tutorials gets a way back into them.
+ var _tn = (typeof tutNextUndone==='function' && typeof tutDoneSet==='function' && tutDoneSet().length) ? tutNextUndone() : null;
+ if(_tn) html+=btn('ghost', 'tutorials', '▶ Continue tutorials · '+_tn.name);
  if(hasLastSession()) html+=btn('', 'resume', '▶ Pick up where I left off');
  html+=btn(hasLastSession()?'ghost':'', 'rollplay', '⚄ Randomize &amp; Play');
  html+=btn('ghost','roll','⚄ Randomize');
  html+=btn('ghost','blank','Start Blank');
  box.innerHTML=html;
- if(note) note.textContent = hasLastSession()
-  ? 'Pick up where you left off restores your last session — sounds, patterns, chart and all. Randomize rolls a fresh key, groove and sound; & Play starts it going. Blank opens silent.'
-  : 'Randomize rolls the dice for a fresh key, groove and sound — a different jam every time. & Play starts it going straight away. Blank opens silent.';
+ if(note) note.textContent = '';
 }
 
 // How much output buffer to ask the browser for. The default an
@@ -14517,6 +14526,11 @@ function unlockAudio(startDemo){
   startDemoJourney(true);
  } else if(mode==='roll'){
   startDemoJourney(false);
+ } else if(mode==='tutorials'){
+  // Your last session first, if there is one, so the tutorial points at your
+  // own setup rather than an empty one.
+  if(hasLastSession()) restoreLastSession();
+  setTimeout(function(){ var n=tutNextUndone(); if(n) runTutorial(n.id); }, 350);
  } else if(mode==='learn'){
   // The walkthrough lays its own bed, so nothing is rolled first.
   setTimeout(function(){
@@ -25199,6 +25213,217 @@ function showTour(){
   if(_tourClose) _tourClose(false);
   playOnboardingDemo({replay:true});
 }
+
+// ═══════════════════════════════════════
+// TUTORIALS — short, one topic each (4.2.4)
+// ═══════════════════════════════════════
+// The walkthrough above is one hands-on minute. These are the rest of the app
+// in bite-sized pieces: each lights one control at a time with a line under
+// it, Back / Next / ✕, and at the end offers the next topic. Reached from the
+// transport sheet's Help row, from Settings, and from the splash ("Continue
+// tutorials") once one has been started. Steps whose control is not on
+// screen (a different view, an older layout) are skipped, never shown empty.
+//
+// Each step: t title, x one line, el a selector (or a function returning an
+// element), go a function that brings that control on screen first.
+// `var`, not `let`: the splash reads TUT_LIST from far above this line.
+var TUT_DONE_KEY = 'modo-tut-done';
+function _tutSheet(on){
+ var m=document.getElementById('ft-more-menu'); if(!m) return;
+ if(m.classList.contains('open') !== !!on) toggleFtMore();
+}
+function _tutTab(t){ _tutSheet(false); if(typeof switchTab==='function') switchTab(t); }
+function _tutView(v){ var b=document.body.classList.contains('mode-basic'); if((v==='basic')!==b && typeof setViewMode==='function') setViewMode(v==='basic'?'basic':'advanced'); }
+var TUT_LIST = [
+ {id:'nav', name:'Getting around', steps:[
+  {t:'Tabs', x:'Play, Accomp, Mix, Songs, Settings. Play is where you perform.', el:'.tab-bar', go:function(){ _tutTab('perform'); }},
+  {t:'Play / Stop', x:'Starts and stops everything. Space bar too.', el:'#ft-playstop-btn'},
+  {t:'Part switches', x:'Bring each part in or out — while it plays.', el:'#ft-chd-btn'},
+  {t:'The sheet', x:'Pull up for capture, export, setups and help.', el:'#ft-drawer-grip'},
+  {t:'Find', x:'Jumps to any control by name.', el:'#ft-find-btn', go:function(){ _tutSheet(true); }}
+ ]},
+ {id:'views', name:'Live & Studio', steps:[
+  {t:'Two views', x:'Live: a stage with big targets. Studio: every control.', el:'#ft-vmt', go:function(){ _tutTab('perform'); }},
+  {t:'Live slots', x:'Up to four instruments. Add one here; ⋯ moves or swaps it.', el:'.lv-add', go:function(){ _tutView('basic'); _tutTab('perform'); }},
+  {t:'Studio pages', x:'Sub-tabs switch instruments.', el:'#pf-subnav', go:function(){ _tutView('advanced'); _tutTab('perform'); }}
+ ]},
+ {id:'sampler', name:'Sampler', steps:[
+  {t:'Pads', x:'Tap to play. An empty pad opens the sound list.', el:'#ps-grid', go:function(){ _tutView('advanced'); _tutTab('perform'); setPerformMode('pads'); }},
+  {t:'Bank', x:'Preset banks to play, User banks to fill.', el:'#ps-panel .ps-seg'},
+  {t:'Record', x:'Rec records your pad hits into a pattern.', el:'#ps-rec'},
+  {t:'Pattern', x:'Plays it with the band.', el:'#ps-patplay'},
+  {t:'On the bar', x:'Smp switches the pattern in and out.', el:'#ft-smp-btn'}
+ ]},
+ {id:'fx', name:'MōdFX', steps:[
+  {t:'The pad', x:'Drag to sculpt the sound. Two effects, one per axis.', el:'#fx-pad', go:function(){ _tutView('advanced'); _tutTab('perform'); setPerformMode('fx'); }},
+  {t:'Hold', x:'Keeps the effect where you let go.', el:'#fx-hold-btn'},
+  {t:'Sample', x:'Run a clip through it instead of the band.', el:'#fx-smp-btn'}
+ ]},
+ {id:'song', name:'Song mode', steps:[
+  {t:'Songs', x:'Build a chart, perform it, read it.', el:'#songs-subnav', go:function(){ _tutTab('songs'); setSongsMode('build'); }},
+  {t:'Sections', x:'Verse, chorus… each repeats as set, then moves on.', el:'#section-tabs'},
+  {t:'Library', x:'Common progressions and standards to start from.', el:'#sb-file-btn'}
+ ]},
+ {id:'accomp', name:'Accomp & Generate', steps:[
+  {t:'The band', x:'Drums, bass, melody and arp play along with you.', el:'#bm-subnav', go:function(){ _tutTab('accomp'); setAccompMode('drums'); }},
+  {t:'Grooves', x:'Pick one to start from.', el:'#sq-groove-presets'},
+  {t:'Generate', x:'Writes a bass line that follows your chords.', el:'#bl-gen-go', go:function(){ setAccompMode('bass'); }},
+  {t:'Melody too', x:'Same idea, for a melody.', el:'#ml-gen-go', go:function(){ setAccompMode('melody'); }}
+ ]},
+ {id:'steps', name:'Steps, ratchet & locks', steps:[
+  {t:'Length', x:'How many steps the pattern runs.', el:'#sq-stepsDisp', go:function(){ _tutTab('accomp'); setAccompMode('drums'); }},
+  {t:'Locks', x:'Locked: drums, bass and melody share length and rate.', el:'[data-steplock]'},
+  {t:'Steps', x:'Tap to place a hit. Double-tap for velocity, ratchet and pitch.', el:function(){ return [].find.call(document.querySelectorAll('.sq-step'), function(e){ return e.offsetParent; }); }},
+  {t:'Ratchet', x:'Repeats a hit 2–4 times inside its step.', el:'#sq-insp-hint'}
+ ]},
+ {id:'aux', name:'Aux drums', steps:[
+  {t:'Aux', x:'A second drum layer: own kit, own grid, own fader.', el:'[data-sqlayer="1"]', go:function(){ _tutTab('accomp'); setAccompMode('drums'); }},
+  {t:'Any kit', x:'Even the same kit as the main one.', el:'#sq-machineRow'},
+  {t:'Mute', x:'Here, or with Aux on the transport.', el:'[data-sqlayeron="1"]'}
+ ]},
+ {id:'levels', name:'Levels', steps:[
+  {t:'Mixer', x:'A fader, mute and solo for every part.', el:'#page-mix .mix-strip', go:function(){ _tutTab('mix'); }},
+  {t:'Sends', x:'REV, DLY and DRV under each fader feed the effects.', el:'#page-mix .mix-strip .mix-faderrow'}
+ ]},
+ {id:'settings', name:'Settings', steps:[
+  {t:'Three pages', x:'General, Sounds and MIDI.', el:'#set-subnav', go:function(){ _tutTab('build'); setSettingsPane('ui'); }},
+  {t:'Setups', x:'Save everything under a name.', el:'#setups-panel'},
+  {t:'Chords & timing', x:'Voicing, chord length and the click.', el:'#ss-playing'}
+ ]},
+ {id:'save', name:'Saving & sharing', steps:[
+  {t:'Save', x:'Name it and Save Setup.', el:'#setup-name', go:function(){ _tutTab('build'); setSettingsPane('ui'); }},
+  {t:'Share', x:'A link that opens your setup for anyone.', el:'#setups-panel'},
+  {t:'Autosave', x:'Your session keeps itself. The splash picks up where you left off.', el:'#ft-setups-btn', go:function(){ _tutSheet(true); }}
+ ]},
+ {id:'export', name:'Export & stems', steps:[
+  {t:'Bounce', x:'Records what you hear: a .wav and a .mid.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
+  {t:'Stems', x:'Adds one .wav per part.', el:'#ft-stems-btn'},
+  {t:'Capture', x:'Turns what you just played into chart, melody or pattern.', el:'#ft-rec-btn'}
+ ]},
+ {id:'tempo', name:'Timing & tempo', steps:[
+  {t:'Tempo', x:'Drag, tap four times, or tap once for a slider.', el:'#ft-bpm-wrap', go:function(){ _tutSheet(false); }},
+  {t:'Arp rate', x:'Tap to cycle.', el:'#ft-rate-val'},
+  {t:'Swing', x:'In the tempo pop-up, for every part at once.', el:'#ft-bpm-wrap'},
+  {t:'Snap', x:'When a tapped chord lands: now, the beat, or the bar.', el:'#ft-snap-btn', go:function(){ _tutSheet(true); }}
+ ]}
+];
+function tutDoneSet(){ try{ return JSON.parse(localStorage.getItem(TUT_DONE_KEY)||'[]')||[]; }catch(e){ return []; } }
+function tutMarkDone(id){ var d=tutDoneSet(); if(d.indexOf(id)<0){ d.push(id); try{ localStorage.setItem(TUT_DONE_KEY, JSON.stringify(d)); }catch(e){} } }
+function tutNextUndone(){ var d=tutDoneSet(); return TUT_LIST.filter(function(t){ return d.indexOf(t.id)<0; })[0] || null; }
+window.tutNextUndone = tutNextUndone; window.tutDoneSet = tutDoneSet;
+
+function openTutorials(){
+ _tutSheet(false);
+ if(typeof _sbSheet!=='function') return;
+ var box=_sbSheet('Tutorials'), d=tutDoneSet();
+ var list=document.createElement('div'); list.className='tut-list';
+ var first=document.createElement('button'); first.type='button'; first.className='tut-item';
+ first.innerHTML='<span>First minute — play along</span><span class="tut-mark">'+(tourChapterDone(1)?'✓':'')+'</span>';
+ first.onclick=function(){ box.close(); showTour(); };
+ list.appendChild(first);
+ TUT_LIST.forEach(function(t){
+  var b=document.createElement('button'); b.type='button'; b.className='tut-item'+(d.indexOf(t.id)>=0?' done':'');
+  b.innerHTML='<span>'+t.name+'</span><span class="tut-mark">'+(d.indexOf(t.id)>=0?'✓':t.steps.length)+'</span>';
+  b.title=t.steps.map(function(s){ return s.t; }).join(' · ');
+  b.onclick=function(){ box.close(); runTutorial(t.id); };
+  list.appendChild(b);
+ });
+ box.body.appendChild(list);
+ box.addCancel('Close');
+}
+window.openTutorials = openTutorials;
+
+var _tutClose = null;
+function runTutorial(id){
+ if(_tutClose) _tutClose();
+ if(typeof _tourClose==='function' && _tourClose) _tourClose(false);
+ var T=TUT_LIST.filter(function(t){ return t.id===id; })[0]; if(!T) return;
+ var dim=document.createElement('div'); dim.className='tour-dim';
+ var wrap=document.createElement('div'); wrap.className='tour-wrap';
+ var card=document.createElement('div'); card.className='tour-card'; card.setAttribute('role','dialog'); card.setAttribute('aria-label',T.name);
+ var ring=document.createElement('div'); ring.className='tour-ring';
+ wrap.appendChild(card); document.body.appendChild(dim); document.body.appendChild(ring); document.body.appendChild(wrap);
+ document.body.classList.add('tour-open');
+ var i=-1, el=null, raf=0, dir=1;
+ function find(st){
+  var e = typeof st.el==='function' ? st.el() : document.querySelector(st.el);
+  if(!e || !e.getBoundingClientRect) return null;
+  var r=e.getBoundingClientRect();
+  return (r.width>0 && r.height>0) ? e : null;
+ }
+ function paint(){
+  raf=requestAnimationFrame(paint);
+  var W=innerWidth, H=innerHeight, d='M0 0H'+W+'V'+H+'H0Z', h=null;
+  if(el){ var r=el.getBoundingClientRect(), p=6;
+   h={x:Math.max(2,r.left-p), y:Math.max(2,r.top-p), w:Math.min(W-4,r.width+2*p), h:Math.min(H-4,r.height+2*p)};
+   d+=' M'+h.x+' '+h.y+'h'+h.w+'v'+h.h+'h'+(-h.w)+'Z'; }
+  var cp='path(evenodd, "'+d+'")';
+  if(dim._cp!==cp){ dim._cp=cp; dim.style.clipPath=cp; dim.style.webkitClipPath=cp; }
+  ring.style.display=h?'block':'none';
+  if(h){ ring.style.left=h.x+'px'; ring.style.top=h.y+'px'; ring.style.width=h.w+'px'; ring.style.height=h.h+'px'; }
+  var ch=card.offsetHeight, top;
+  if(!h) top=(H-ch)/2;
+  else if(H-(h.y+h.h)-12 >= ch+8) top=h.y+h.h+10;
+  else if(h.y-12 >= ch+8) top=h.y-10-ch;
+  else top=12;
+  top=Math.round(Math.max(8,Math.min(H-ch-8,top)));
+  if(card._top!==top){ card._top=top; card.style.top=top+'px'; }
+ }
+ function dots(){ return '<div class="tour-dots" aria-hidden="true">'+T.steps.map(function(_,k){ return '<span class="tour-dot'+(k===i?' on':(k<i?' done':''))+'"></span>'; }).join('')+'</div>'; }
+ function show(k){
+  // Walk in the direction of travel past any step whose control is not on screen.
+  while(k>=0 && k<T.steps.length){
+   var st=T.steps[k];
+   try{ if(st.go) st.go(); }catch(e){}
+   var e=find(st);
+   if(e){ i=k; el=e; break; }
+   k+=dir;
+  }
+  if(k<0){ k=0; }
+  if(k>=T.steps.length) return end();
+  var s=T.steps[i];
+  try{ el.scrollIntoView({block:'center', behavior:'smooth'}); }catch(_){}
+  card.innerHTML='<div class="tour-card-head">'+dots()+'<button class="tour-x" aria-label="Close the tutorial">✕</button></div>'
+   +'<div class="tour-title">'+s.t+'</div><div class="tour-text">'+s.x+'</div>'
+   +'<div class="tour-foot">'+(i>0?'<button class="tour-btn" data-b="back">Back</button>':'')
+   +'<button class="tour-btn go" data-b="next">'+(i===T.steps.length-1?'Done':'Next')+'</button></div>';
+  bind();
+ }
+ function end(){
+  tutMarkDone(T.id); el=null;
+  var nx=tutNextUndone();
+  card.innerHTML='<div class="tour-card-head">'+dots().replace(/ on"/g,' done"')+'<button class="tour-x" aria-label="Close the tutorial">✕</button></div>'
+   +'<div class="tour-title">'+T.name+' ✓</div>'
+   +'<div class="tour-foot"><button class="tour-btn" data-b="list">All tutorials</button>'
+   +(nx?'<button class="tour-btn go" data-b="more">Next: '+nx.name+'</button>':'<button class="tour-btn go" data-b="x">Done</button>')+'</div>';
+  bind(nx);
+ }
+ function bind(nx){
+  card.querySelector('.tour-x').onclick=close;
+  [].forEach.call(card.querySelectorAll('[data-b]'), function(b){
+   b.onclick=function(){
+    var a=b.dataset.b;
+    if(a==='next'){ dir=1; show(i+1); }
+    else if(a==='back'){ dir=-1; show(i-1); }
+    else if(a==='list'){ close(); openTutorials(); }
+    else if(a==='more'){ close(); runTutorial(nx.id); }
+    else close();
+   };
+  });
+ }
+ function esc(e){ if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); close(); } }
+ function close(){
+  cancelAnimationFrame(raf); document.removeEventListener('keydown', esc, true);
+  dim.remove(); ring.remove(); wrap.remove(); document.body.classList.remove('tour-open');
+  _tutClose=null;
+  if(typeof buildUnlockChoices==='function') try{ buildUnlockChoices(); }catch(_){}
+ }
+ document.addEventListener('keydown', esc, true);
+ _tutClose=close;
+ paint(); show(0);
+ if(typeof track==='function') track('tutorial_start',{id:id});
+}
+window.runTutorial = runTutorial;
 
 // The written guide lives on its own page that nothing ever linked to, so
 // HELP_SECTIONS was unreachable content. Reachable from the transport sheet now.
