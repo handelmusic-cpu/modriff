@@ -6194,7 +6194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.3.0</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.3.0.1</span>
     </div>
    </div>
   </div>
@@ -6212,7 +6212,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.3.0</div>
+ <div class="unlock-ver" id="unlock-ver">v4.3.0.1</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8223,7 +8223,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.3.0';
+const MODRIFF_VERSION = '4.3.0.1';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -11857,6 +11857,29 @@ window.psAcrossFollow=psAcrossFollow;
 // Put a clip on a pad, the way every route in here does it: through
 // smpAttach, which auto-trims a recording and asks the pitch detector — and
 // then let the pad act on what it heard.
+// Instruments that sound one note at a time (4.3.0.1): a bass, a wind, a
+// bowed string — and the guitars, where two strings could ring together but
+// chords come from the chord grid and a melody on the pads should not smear.
+// Every pad holding one of these shares a mute group, so a new note cuts the
+// last one, like a player's. Piano, vibes and marimba stay polyphonic.
+var PS_MONO = {'n-bass':1, 'n-upright2':1, 'n-808':1, 'n-sax':1, 'n-tpt':1, 'n-flute':1,
+               'n-clar':1, 'n-violin':1, 'n-nylon':1, 'n-jazzg':1};
+// The group for instrument `kid` on this pad's bank: the one its other pads
+// already use, else the lowest group no other sound in the bank is using
+// (hats take 1 on the presets), else 4.
+function psMonoGroup(key, kid){
+ var parts = String(key).split(':'), bank = parts.slice(0, parts.length-1).join(':');
+ var used = {};
+ for(var i=0;i<PS_N;i++){
+  var k2 = bank+':'+i; if(k2===key) continue;
+  var sl = SMP_SLOTS[k2]; if(!sl || !sl.id || !sl.ps || !sl.ps.choke) continue;
+  var src = String((sl.across && sl.across.src) || sl.id).replace(/^factory:/,'');
+  if(src===kid) return sl.ps.choke;
+  used[sl.ps.choke] = 1;
+ }
+ for(var g=1; g<=4; g++) if(!used[g]) return g;
+ return 4;
+}
 function psLoadClip(i, clipId, quiet){
  var key = psCurKey(i), s = psSlot(key, true);
  psStop(key);
@@ -11889,6 +11912,13 @@ function psAfterAttach(key, clipId){
   pitched = !!(r && r.conf >= 0.7);
  }
  s.ps = Object.assign(psDefaults(), {keyf:pitched});
+ // A built-in sound arrives with its own pad settings (a hat's mute group
+ // was only ever applied on the preset banks, not when loaded by hand), and
+ // an instrument that plays one note at a time gets a mute group shared by
+ // every pad holding it — see psMonoGroup.
+ var _kid = String(clipId).replace(/^factory:/,''), _kk = (typeof PS_KIT_BY_ID!=='undefined') ? PS_KIT_BY_ID[_kid] : null;
+ if(_kk && _kk.ps){ var _kp = Object.assign({}, _kk.ps); delete _kp.mode; delete _kp.sync; delete _kp.warp; Object.assign(s.ps, _kp); }
+ if(PS_MONO[_kid]) s.ps.choke = psMonoGroup(key, _kid);
  // A clip that knows its tempo is a loop; play it as one.
  if(clip && clip.bpm){ s.ps.mode='loop'; s.ps.sync=true; s.ps.warp=true; }
  return pitched;
