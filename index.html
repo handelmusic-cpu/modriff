@@ -333,16 +333,18 @@ input, textarea, [contenteditable]:not([contenteditable="false"]),
  transition:left .28s cubic-bezier(.22,.7,.2,1), width .28s cubic-bezier(.22,.7,.2,1), background .2s;
  pointer-events:none;
 }
-/* Play tab breathes when something is actually sounding, so the dock
-   reflects state instead of looking identical whether silent or playing.
-   This used to animate a drop-shadow on the tab's emoji. With the emoji gone
-   the signal would have gone with it, so it is a text-shadow on the label
-   instead — the same pulse, on the thing that is still there. */
-@keyframes tabNowPlaying {
- 0%,100% { text-shadow:none; }
- 50%     { text-shadow:0 0 7px var(--tab-c, var(--pg)); }
+
+/* 4.2.6: the pulse is an opacity fade on a small dot, not a text-shadow on
+   the label. text-shadow is not compositable, so the old one forced a style
+   recalc and a repaint of the tab bar on every frame for as long as anything
+   played — the one animation that never stopped. Opacity runs on the
+   compositor and costs the main thread nothing. */
+.tab-btn.nav-playing::after {
+ content:''; position:absolute; top:7px; right:9px; width:5px; height:5px; border-radius:50%;
+ background:var(--tab-c, var(--pg)); box-shadow:0 0 6px var(--tab-c, var(--pg));
+ animation:tabNowPlayingDot 1.6s ease-in-out infinite; will-change:opacity; pointer-events:none;
 }
-.tab-btn.nav-playing { animation:tabNowPlaying 1.6s ease-in-out infinite; }
+@keyframes tabNowPlayingDot { 0%,100% { opacity:.25; } 50% { opacity:1; } }
 @media (prefers-reduced-motion: reduce) {
  .tab-btn.nav-playing { animation:none; }
 }
@@ -1900,10 +1902,13 @@ body.light-mode :focus-visible { outline-color:#5b3ec8; }
    pops vertically instead — same accent on the hit, no width that moves. */
 .perf-bar #ft-beat-dots .beat-dot.active {
  animation:beatPop .18s cubic-bezier(.22,.68,0,1.3) forwards !important;
+ box-shadow:0 0 6px rgba(168,85,247,.45);
 }
+/* Transform only (4.2.6): the glow is static on .active. Animating
+   box-shadow repainted the meter for 180 ms of every beat. */
 @keyframes beatPop {
- 0%   { transform:scaleY(2.2); box-shadow:0 0 10px 2px #a855f7; }
- 100% { transform:scaleY(1);   box-shadow:0 0 6px rgba(168,85,247,.45); }
+ 0%   { transform:scaleY(2.2); }
+ 100% { transform:scaleY(1); }
 }
 .beat-dot.accent { background:var(--dom); }
 /* Bars and beats: a bar's first beat is brighter, and a new bar starts after a
@@ -6189,7 +6194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.5.2</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.6</span>
     </div>
    </div>
   </div>
@@ -6207,7 +6212,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.5.2</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.6</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8217,7 +8222,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.5.2';
+const MODRIFF_VERSION = '4.2.6';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -25500,6 +25505,14 @@ window.runTutorial = runTutorial;
 // on any matching control that has no title of its own. A control's own
 // title always wins — this only fills gaps. Two general rules after the
 // table: an aria-label becomes the title, and a slider takes its label.
+// True when a batch of mutations added at least one element. A label or a
+// readout changing its text is a childList mutation too (#audio-state-note
+// does it every couple of seconds), and it used to set off a whole-page
+// accessibility, tier-lock and tooltip pass each time, during playback.
+function _mutAddsElement(rs){
+ for(var i=0;i<rs.length;i++){ var a=rs[i].addedNodes; for(var j=0;j<a.length;j++) if(a[j].nodeType===1) return true; }
+ return false;
+}
 var CTRL_TIPS = [
  ['#tab-build','Settings — sounds, timing, setups, MIDI'],
  ['#tab-songs','Songs — build, perform and print charts'],
@@ -25590,7 +25603,7 @@ window.applyTips = applyTips;
  // Idle time, not the next frame: a pass is ~7 ms on a laptop and more on a
  // phone, and it must never land in the middle of a busy frame.
  function q(){ if(!queued){ queued=true; (window.requestIdleCallback ? requestIdleCallback(run,{timeout:800}) : setTimeout(run,200)); } }
- try{ new MutationObserver(q).observe(document.body, {childList:true, subtree:true}); }catch(e){}
+ try{ new MutationObserver(function(rs){ if(_mutAddsElement(rs)) q(); }).observe(document.body, {childList:true, subtree:true}); }catch(e){}
  q();
 })();
 
@@ -44088,7 +44101,10 @@ window.fxSendsAPI = {
  padToggle: function(ch){ fxToggleTarget(ch); }
 };
 
-let fxPadX='cutoff', fxPadY='reverb';
+// Cutoff × Resonance by default (4.2.6): the lightest pairing — two filter
+// params on biquads that already run — where Reverb built a convolver on
+// first touch. Saved setups keep the patch they were saved with.
+let fxPadX='cutoff', fxPadY='reso';
 // Everything above this line is what fxBuildPanel needs; see _fxReady's use in
 // fxBuildPanel for why it is a var and why it is set here rather than declared
 // at the top of the file.
@@ -46994,7 +47010,7 @@ a11yPass();
 // playback moves classes rather than nodes, so the hot path never wakes this.
 (function(){
  let t=null;
- const obs=new MutationObserver(()=>{ clearTimeout(t); t=setTimeout(()=>{
+ const obs=new MutationObserver(rs=>{ if(!_mutAddsElement(rs)) return; clearTimeout(t); t=setTimeout(()=>{
   a11yPass();
   // Tier limits ride the same debounce: kit rows, style rows and voice
   // pickers are all rebuilt on tab switches and would come back unlocked.
