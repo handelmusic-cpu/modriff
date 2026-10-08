@@ -283,10 +283,21 @@ mp3 VBR q5, peak-limited to -1 dBFS):
 
 180 KB for both kits. They load only when the kit is picked.
 
-## samples/beatbox — the Beatbox kit
+## samples/beatbox-g — the Beatbox kit
 
-The project owner's own beatboxing: one phone recording, sliced into eight
-hits by onset and spectrum, high-passed at 40 Hz, lightly compressed,
-peak-limited to -1 dBFS, mono mp3 VBR q5. Times are in the original take:
-kick 2.86 s, kick 2 1.25 s, snare 6.00 s, snare 2 33.27 s, closed hat
-19.06 s, open hat 4.45 s, rim 42.59 s, tom 8.95 s. 44 KB.
+"Beatbox samples" by **giddster** (https://freesound.org/people/giddster/,
+pack https://freesound.org/people/giddster/packs/24693/), recorded on a RØDE
+NT2-A, released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+Lightly processed: mono, 30 Hz high-pass, lead-in and trailing silence
+trimmed, peak-levelled to -1 dBFS, no compression; mp3 VBR q4. 56 KB.
+
+kick ← beat-box-kick-1 (434920) · kick2 ← kick-4 (434923) ·
+snare ← snare-1 (434927) · snare2 ← snare-3 (434929) ·
+hat ← hi-hat-4 (434921) · open ← hi-hat-3 (434922) ·
+rim ← click (434918) · tom ← tom-2 (434928)
+
+This replaces the first Beatbox kit (4.2.5), sliced from the project owner's
+own phone recording. New folder rather than new files under the old one:
+the service worker caches samples by URL for good, so the same names would
+have kept playing the old take on any device that had loaded it.
