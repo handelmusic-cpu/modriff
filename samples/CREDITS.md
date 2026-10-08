@@ -290,12 +290,19 @@ pack https://freesound.org/people/giddster/packs/24693/), recorded on a RØDE
 NT2-A, released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
 
 Lightly processed: mono, 30 Hz high-pass, lead-in and trailing silence
-trimmed, peak-levelled to -1 dBFS, no compression; mp3 VBR q4. 56 KB.
+trimmed, peak-levelled to -1 dBFS, no compression; mp3 VBR q4.
 
 kick ← beat-box-kick-1 (434920) · kick2 ← kick-4 (434923) ·
 snare ← snare-1 (434927) · snare2 ← snare-3 (434929) ·
 hat ← hi-hat-4 (434921) · open ← hi-hat-3 (434922) ·
 rim ← click (434918) · tom ← tom-2 (434928)
+
+Beatbox 2 (sampler only, the rest of the pack): kick3 ← kick-2 (434919) ·
+kick4 ← kick-3 (434924) · snare3 ← snare-2 (434925) · snare4 ← snare-4
+(434934) · snare5 ← snare-5 (434931) · hat3 ← hi-hat-1 (434916) · hat4 ←
+hi-hat-2 (434915) · tom2 ← tom-1 (434932, cut to 1.5 s of its 7.9) · tom3 ←
+tom-3 (434930) · tom4 ← tom-4 (434926) · tom5 ← tom-5 (434933) · droplet ←
+droplet (434917). 132 KB for all twenty.
 
 This replaces the first Beatbox kit (4.2.5), sliced from the project owner's
 own phone recording. New folder rather than new files under the old one:
