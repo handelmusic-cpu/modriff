@@ -328,3 +328,31 @@ that sat under the upper notes. 416 KB.
 
 Sits beside Upright 1 (samples/bass, the FluidR3_GM SoundFont set above), not
 in place of it.
+
+## samples/piano2 — "Piano 2 ◆"
+
+"88 piano keys, long reverb" by **TEDAgame** (https://freesound.org/people/TEDAgame/,
+pack https://freesound.org/people/TEDAgame/packs/25405/), released under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). An old upright
+recorded with its room, up to 13 s a note.
+
+The piano is far out of tune (keys up to ±50 cents) and the pack's names do
+not reliably say which pitch a file is, so every file was measured with a
+harmonic comb (eight partials, a little inharmonicity allowed). On a
+whole-tone grid A0, B0, C#1 … B7, plus C8 — 45 notes — the recording nearest
+each point was kept and resampled to exactly that pitch. Measured after:
+median 0, worst 10 cents; no note is shifted more than a semitone at playback.
+
+Mono, 44.1 kHz, mp3 VBR q6, 5 s with a 1.5 s fade (the room is kept, the
+13 s tails are not), peaks -1.5 dBFS. 1.1 MB.
+
+## samples/marimba — "Marimba ◆"
+
+"Mallet Percussion" by **joesh2** (https://freesound.org/people/joesh2/, pack
+https://freesound.org/people/joesh2/packs/32432/), released under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+The pack says only "mallet"; it is a marimba by its bars' tuned 4th harmonic
+(-16 to -24 dB below the fundamental) and ~1 s ring. Naturals C2–C4, 15 notes,
+each 4–15 cents sharp as recorded and resampled to within ±2. Mono, 2 s, mp3
+VBR q6, 184 KB.
