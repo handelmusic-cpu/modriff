@@ -6194,7 +6194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.9</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.3.0</span>
     </div>
    </div>
   </div>
@@ -6212,7 +6212,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.9</div>
+ <div class="unlock-ver" id="unlock-ver">v4.3.0</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8223,7 +8223,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.9';
+const MODRIFF_VERSION = '4.3.0';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -10726,6 +10726,7 @@ function smpRenderLib(){
  }
  var slot=_smpOpenKey?smpSlot(_smpOpenKey,true):null;
  SMP_LIB.forEach(function(c){
+  if(c.hidden) return;   // a spread pad's per-note clip — see psAcrossApply
   var row=document.createElement('div');
   row.className='smp-row'+((slot&&slot.id===c.id)||(!slot&&_smpSelId===c.id)?' sel':'');
   var play=document.createElement('button');
@@ -11169,6 +11170,7 @@ function smpCaptureState(){
           loopA:s.loopA, loopB:s.loopB,
           tune:s.tune,fine:s.fine,root:s.root};
   if(s.edited) out[k].edited = true;
+  if(s.across){ out[k].across = Object.assign({}, s.across); out[k].label = s.label; out[k].id = s.across.src; }
   // A pad's mode, mute group and switches — the part of a pad kit that is
   // not the audio. Without it a restored session had the right samples on
   // the pads playing every one as a one-shot.
@@ -11186,6 +11188,9 @@ function smpApplyState(st){
   });
  }
  psPresetInstall();
+ // Spread pads are saved by their source and degree; their per-note clips are
+ // rebuilt for the key in force.
+ setTimeout(function(){ try{ psAcrossFollow(true); }catch(e){} }, 0);
  if(typeof fxSmpSync==='function') fxSmpSync();
  smpRenderAll();
 }
@@ -11401,8 +11406,14 @@ function psStart(key, t){
  g.gain.setValueAtTime(0, t);
  g.gain.linearRampToValueAtTime(lvl, t+FD);
  var end = null;
+ // A clip with a sustain loop set (the ◈ sampler's Loop, loopA–loopB) holds
+ // on it for as long as the pad is held, in One-shot and Gate alike, and
+ // lets go on release (4.3.0). It used to play straight through and stop.
+ var holdLoop = ps.mode!=='loop' && !ps.rev && !!slot.loop && slot.loopB > slot.loopA && slot.loopB <= 1;
  if(ps.mode==='loop'){
   src.loop = true; src.loopStart = a*buf.duration; src.loopEnd = b*buf.duration;
+ } else if(holdLoop){
+  src.loop = true; src.loopStart = slot.loopA*buf.duration; src.loopEnd = slot.loopB*buf.duration;
  } else {
   // One-shot and gate both end at the window's end; a gate can end sooner,
   // on release.
@@ -11414,7 +11425,7 @@ function psStart(key, t){
  // started throws, and the strike is lost.
  src.start(t, a*buf.duration);
  if(end!=null) src.stop(end + 0.02);
- var v = {src:src, gain:g, end:end, mode:ps.mode, t0:t};
+ var v = {src:src, gain:g, end:end, mode:ps.mode, t0:t, holdLoop:holdLoop};
  delete PS_PEND[key];
  PS_LIVE[key] = v;
  PS_LAST = key;
@@ -11456,7 +11467,8 @@ function psRelease(i){
  var key = psCurKey(i), slot = SMP_SLOTS[key], v = PS_LIVE[key];
  psHoldEnd(key);
  if(!v && PS_PEND[key] && slot && slot.ps && slot.ps.mode==='gate' && !PS.hold){ delete PS_PEND[key]; return; }
- if(!v || !slot || !slot.ps || slot.ps.mode!=='gate' || PS.hold) return;
+ if(!v || !slot || !slot.ps || PS.hold) return;
+ if(slot.ps.mode!=='gate' && !v.holdLoop) return;
  var ctx = psCtx(); if(!ctx) return;
  // Released before a quantized start has even sounded: let the note have a
  // sixteenth rather than nothing at all.
@@ -11519,7 +11531,7 @@ function psSet(field, val){
   // in pitch as the tempo goes up. Warp can still be turned off after.
   if(field==='sync' && ps.sync) ps.warp = true;
  }
- else if(field==='tune') slot.tune = Math.max(-24, Math.min(24, (+slot.tune||0) + (val|0)));
+ else if(field==='tune'){ slot.tune = Math.max(-24, Math.min(24, (+slot.tune||0) + (val|0))); slot.across = null; }
  else if(field==='gain') slot.gain = Math.max(0, Math.min(2, +val));
  // A loop that stops being a loop would otherwise run forever.
  if(field==='mode' && PS_LIVE[key] && val!=='loop') psStop(key);
@@ -11679,7 +11691,7 @@ function psRenderLoader(){
  var key=psCurKey(_psLoadPad), cur=SMP_SLOTS[key]&&SMP_SLOTS[key].id;
  ov.querySelector('#ps-load-title').textContent = 'Load pad '+psPadName(_psLoadPad);
  var list=ov.querySelector('#ps-load-list'); list.innerHTML='';
- var built = SMP_LIB.filter(function(c){ return smpBuiltIn(c); });
+ var built = SMP_LIB.filter(function(c){ return smpBuiltIn(c) && !c.hidden; });
  // The kit in its own order, so the drums sit together and the notes after.
  var order = {}; PS_FACTORY_KIT.forEach(function(k,ix){ order['factory:'+k.id]=ix; });
  built.sort(function(a,b){ return (order[a.id]==null?999:order[a.id]) - (order[b.id]==null?999:order[b.id]); });
@@ -11699,9 +11711,10 @@ function psRenderLoader(){
    var pv=psBtn('ps-load-pv', '▶', 'Listen', function(){ if(typeof smpPreview==='function') smpPreview(c.id); });
    pv.setAttribute('aria-label','Listen to '+c.name);
    row.appendChild(b); row.appendChild(pv);
-   var kk=PS_KIT_BY_ID[c.id.replace(/^factory:/,'')];
-   if(kk && kk.cat==='notes'){
-    var ac=psBtn('ps-load-pv ps-load-across', '⇉', 'Play it across the pads — one note of the scale per pad, from this pad on',
+   // ⇉ on every sound (4.3.0): a kick or a clap spread across the pads is a
+   // tuned drum, and it follows the key like the instruments do.
+   {
+    var ac=psBtn('ps-load-pv ps-load-across', '⇉', 'Across the pads — one note of the scale per pad, from this pad on, following the key',
       function(){ psLoadAcross(_psLoadPad, c.id); });
     ac.setAttribute('aria-label','Spread '+c.name+' across the pads');
     row.appendChild(ac);
@@ -11744,27 +11757,103 @@ function psLoadKit(i, ids, name){
  psCloseLoader(); psRender();
  showToast(name+' kit → pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
-// One sampled note across the pads as a playable scale: pad i is the key's
-// root, each pad after it the next degree of the current mode, up through
-// the octaves. Tuned by the pad's own Pitch (±24 st), so the clip is shared
-// and each pad stays editable. Key-follow is off — these are fixed notes, in
-// the key that was set when they were laid out.
+// ⇉ — a sound across the pads as a playable scale (rebuilt 4.3.0).
+//
+// Pad i is the key's root, each pad after it the next degree of the current
+// mode, up through the octaves. Three things changed from the first version:
+//  · An instrument the app has a multi-sampled set for (Piano, Vibes, the
+//    uprights…) uses the NEAREST real recording on every pad, shifted at most
+//    a semitone or two, instead of one note stretched across two octaves —
+//    which you could hear.
+//  · Each pad says its note ("Piano 2 · E4").
+//  · The pads follow the key and the mode: a pad remembers its scale degree
+//    (slot.across), and psAcrossFollow — called from renderChords, which runs
+//    on every key or mode change — moves every spread pad to the new scale,
+//    by the smallest step, so a change of key does not jump an octave.
+// Any sound can be spread: a kick or a clap with no pitch of its own starts
+// at its own sound on the root and is retuned from there.
+var PS_NOTE_LIBS = {'n-piano':'pianoreal','n-piano2':'pianoreal2','n-vibes':'vibes','n-nylon':'nylongtr',
+ 'n-jazzg':'jazzgtr','n-sax':'tenorsax','n-tpt':'mutetpt','n-flute':'flute','n-clar':'clarinet',
+ 'n-violin':'violin','n-bass':'bass','n-upright2':'bassup2','n-marimba':'marimba'};
+function _psFileMidi(file){ var m=/\/([A-G])(s?)(\d)\.mp3$/.exec(file||''); return m ? _sampleNoteToMidi(m[1]+m[2]+m[3]) : null; }
 function psLoadAcross(i, clipId){
  var clip=smpClip(clipId); if(!clip) return;
- var steps=(MODES[mode]||MODES.major).steps, len=steps.length;
- var from=((root-(clip.key||0))%12+12)%12; if(from>6) from-=12;
- var vis=PS.liveN;
- var n=Math.max(len+1, vis-i); n=Math.min(n, PS_N-i);
+ var kid=String(clipId).replace(/^factory:/,''), kk=PS_KIT_BY_ID[kid], lib=PS_NOTE_LIBS[kid]||null;
+ var ref = kk && kk.midi!=null ? kk.midi : (kk && kk.file ? _psFileMidi(kk.file) : null);
+ if(ref==null && clip.key!=null) ref = 60 + clip.key;
+ var unp = (ref==null), rm0;
+ if(unp) rm0 = 60 + root;
+ else { var d=((root-ref)%12+12)%12; if(d>6) d-=12; rm0 = ref + d; }
+ var base = lib ? clip.name.split(' · ')[0] : clip.name;
+ var len=(MODES[mode]||MODES.major).steps.length;
+ var n=Math.max(len+1, PS.liveN-i); n=Math.min(n, PS_N-i);
  for(var k=0;k<n;k++){
+  var key=psCurKey(i+k);
   psLoadClip(i+k, clipId, true);
-  var sl=psSlot(psCurKey(i+k), true);
-  sl.tune=Math.max(-24,Math.min(24, from + steps[k%len] + 12*Math.floor(k/len)));
+  var sl=psSlot(key, true);
   sl.ps.keyf=false; sl.rootAuto=false;
+  sl.across={src:clipId, lib:lib, k:k, r0:root, rm0:rm0, ref:ref, unp:unp, name:base};
+  psAcrossApply(key);
  }
+ if(lib) _psAcrossNeedLib(lib);
  if(PS.liveN < i+n) psSetLiveN(i+n);
  psCloseLoader(); psRender();
- showToast(clip.name+' across pads '+psPadName(i)+'–'+psPadName(i+n-1));
+ showToast(base+' across pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
+// Where a spread pad's note is now, for the key and mode in force.
+function _psAcrossTarget(A){
+ var st=(MODES[mode]||MODES.major).steps, len=st.length;
+ var d=((root-A.r0)%12+12)%12; if(d>6) d-=12;
+ return A.rm0 + d + st[A.k%len] + 12*Math.floor(A.k/len);
+}
+function psAcrossApply(key){
+ var sl=SMP_SLOTS[key], A=sl && sl.across; if(!A) return;
+ var target=_psAcrossTarget(A), done=false;
+ var lib=A.lib && SAMPLE_LIBS[A.lib], bufs=A.lib && SAMPLE_BUFFERS[A.lib];
+ if(lib && bufs){
+  var best=null, bd=99;
+  lib.notes.forEach(function(nm){ if(!bufs[nm]) return; var m=_sampleNoteToMidi(nm), dd=Math.abs(m-target); if(dd<bd){ bd=dd; best={nm:nm, m:m}; } });
+  if(best){
+   var id='factory:lib:'+A.lib+':'+best.nm;
+   if(!SMP_BUF[id]){
+    var b=bufs[best.nm]; SMP_BUF[id]=b;
+    if(!smpClip(id)) SMP_LIB.push({id:id, name:A.name+' · '+best.nm.replace('s','♯'), src:'factory', hidden:true, ts:0,
+      dur:b.duration, sr:b.sampleRate, ch:b.numberOfChannels, peak:smpPeakOf(b), pending:false});
+   }
+   sl.id=id; sl.start=0; sl.end=1; sl.tune=target-best.m; done=true;
+  }
+ }
+ if(!done){
+  sl.id=A.src; sl.start=0; sl.end=1;
+  var t=target-(A.unp ? A.rm0 : A.ref);
+  while(t>24) t-=12; while(t<-24) t+=12;
+  sl.tune=t;
+ }
+ sl.label = A.name+' · '+(A.unp ? PS_NOTE_NAMES[((target%12)+12)%12] : psNoteName(target));
+}
+var _psAcrossSig=null, _psAcrossLibWait={};
+function _psAcrossNeedLib(lib){
+ if(SAMPLE_STATE[lib]==='ready' || _psAcrossLibWait[lib]) return;
+ _psAcrossLibWait[lib]=true;
+ preloadSampleInstrument(lib);
+ _sampleWatchers.push(function(k, st){
+  if(k!==lib || st!=='ready') return;
+  Object.keys(SMP_SLOTS).forEach(function(key){ var A=SMP_SLOTS[key]&&SMP_SLOTS[key].across; if(A && A.lib===lib) psAcrossApply(key); });
+  psRender();
+ });
+}
+// Every spread pad to the key and mode in force. Cheap when nothing changed.
+function psAcrossFollow(force){
+ if(typeof SMP_SLOTS==='undefined' || !SMP_SLOTS) return;
+ var sig=root+':'+mode; if(!force && sig===_psAcrossSig) return; _psAcrossSig=sig;
+ var any=false;
+ Object.keys(SMP_SLOTS).forEach(function(key){
+  var A=SMP_SLOTS[key] && SMP_SLOTS[key].across; if(!A) return;
+  any=true; psAcrossApply(key); if(A.lib) _psAcrossNeedLib(A.lib);
+ });
+ if(any){ try{ psWarpPrime(); }catch(e){} psRender(); }
+}
+window.psAcrossFollow=psAcrossFollow;
 // Put a clip on a pad, the way every route in here does it: through
 // smpAttach, which auto-trims a recording and asks the pitch detector — and
 // then let the pad act on what it heard.
@@ -11789,6 +11878,7 @@ function psLoadClip(i, clipId, quiet){
 // loader, Files, a drop, a take recorded in the sampler sheet — ends the same.
 function psAfterAttach(key, clipId){
  var s = SMP_SLOTS[key]; if(!s) return false;
+ s.across = null; s.label = null;      // a clip put on by hand is not part of a spread
  psMarkEdited(key);
  var clip = smpClip(clipId);
  var pitched = !!(clip && clip.key!=null);
@@ -12357,7 +12447,7 @@ var PS_FACTORY_KIT = [
  {id:'n-clar',   name:'Clarinet · D4',    cat:'notes', file:'samples/clarinet/D4.mp3', key:2},
  {id:'n-violin', name:'Violin · C5',      cat:'notes', file:'samples/violin/C5.mp3',   key:0},
  {id:'n-bass',   name:'Upright Bass · C2',cat:'notes', file:'samples/bass/C2.mp3',     key:0},
- {id:'n-808',    name:'808 Bass · G1',    cat:'notes', file:'samples/808/bass.mp3',    key:7}
+ {id:'n-808',    name:'808 Bass · G1',    cat:'notes', file:'samples/808/bass.mp3',    key:7, midi:31}
 ];
 var PS_KIT_BY_ID = {};
 PS_FACTORY_KIT.forEach(function(k){ PS_KIT_BY_ID[k.id] = k; });
@@ -12795,7 +12885,7 @@ function psRender(){
   p.classList.toggle('sel', i===PS.sel);
   p.classList.toggle('live', !!PS_LIVE[key]);
   p.dataset.mode = ps.mode;
-  p.querySelector('.ps-name').textContent = clip ? clip.name : (s&&s.id ? 'loading…' : '+');
+  p.querySelector('.ps-name').textContent = (s && s.id && s.label) ? s.label : (clip ? clip.name : (s&&s.id ? 'loading…' : '+'));
   var tags=[];
   if(clip){
    if(ps.mode==='loop') tags.push('LOOP'); else if(ps.mode==='gate') tags.push('GATE');
@@ -15093,6 +15183,25 @@ function buildReverb(){
  reverbNode=audioCtx.createConvolver();
  reverbNode.buffer=buf;
  reverbNode.connect(masterDest(audioCtx));
+ // The chords' pair: the same impulse twice, A and B. Chord tones and the
+ // chord channel's room send feed whichever is current; at a change of chord
+ // the other one takes the new chord and the old one's output is faded in
+ // ~150 ms — the damper coming down on the old chord's tail while the new
+ // chord's reverb is untouched. See _chordDamp.
+ const ac=audioCtx, feed=ac.createGain(); feed.gain.value=1;
+ const pair=[0,1].map(function(i){
+  const inG=ac.createGain(), cv=ac.createConvolver(), outG=ac.createGain();
+  inG.gain.value = i===0 ? 1 : 0; outG.gain.value = i===0 ? 1 : 0;
+  cv.buffer=buf; feed.connect(inG); inG.connect(cv); cv.connect(outG);
+  // To the glue, after the chord drive — into _chordMasterIn it would feed
+  // its own room send and ring forever.
+  outG.connect(window._masterComp || masterDest(ac));
+  return {inG:inG, cv:cv, outG:outG};
+ });
+ if(window._chordRoomFeedOld){ try{ window._chordRoomSend.disconnect(window._chordRoomFeedOld); }catch(e){} }
+ if(window._chordRoomSend) window._chordRoomSend.connect(feed);
+ window._chordRoomFeedOld=feed;
+ window._chordRevFeed=feed; window._chordRevPair=pair; window._chordRevCur=0;
 }
 // ═══════════════════════════════════════
 // CHARACTER / FX ENGINE
@@ -15170,6 +15279,11 @@ function applyDrive(){
  if(!window._driveShaper) return;
  const curve=_driveCurve(fxDrive, DRIVE_SPAN);
  window._driveShaper.curve=curve;
+ if(window._chordDriveShaper){
+  window._chordDriveShaper.curve=curve;
+  try{ window._chordDriveShaper.oversample = fxDrive>0.05 ? '2x' : 'none'; }catch(e){}
+  if(window._chordDriveIn) window._chordDriveIn.gain.value = 1/DRIVE_SPAN;
+ }
  // In at 1/span so the curve's ±span lands on the shaper's ±1; the span is
  // given back on the way out along with the makeup.
  if(window._driveIn) window._driveIn.gain.value = 1/DRIVE_SPAN;
@@ -15184,6 +15298,7 @@ function applyDrive(){
  if(window._driveOut){
   const g=_curveRmsGain(curve,DRIVE_PROBE_AMP,DRIVE_SPAN);
   window._driveOut.gain.value = (g>0.001 ? 1/g : 1) * DRIVE_SPAN;
+  if(window._chordDriveOut) window._chordDriveOut.gain.value = window._driveOut.gain.value;
  }
 }
 
@@ -15206,7 +15321,7 @@ function _partDest(ctx, part){
  if(!b || b.context!==ctx){
   b = ctx.createGain();
   b.gain.value = 1;      // a tap point, not a level — the Mixer sets levels
-  b.connect(master);
+  b.connect(part==='chord' && window._chordMasterIn && window._chordMasterIn.context===ctx ? window._chordMasterIn : master);
   window._partBuses[part] = b;
  }
  return b;
@@ -15309,6 +15424,7 @@ function syncFxLabels(){
 // 7th held, was -5.1 dBFS at the speaker with the limiter reporting 0 dB of
 // gain reduction — so this is headroom for the ear, not for the meter.
 let masterBusOn=true, masterVol=.72, masterCompAmt=.35, masterRevAmt=.18;
+var CHORD_ROOM_K = 3;
 
 // Single source of truth for "where does audio go". Building the bus on demand
 // closes an ordering race: anything created before buildMasterBus() ran used to
@@ -15352,12 +15468,31 @@ function buildMasterBus(){
  const revConv=c.createConvolver();
  revConv.buffer=_makeRoomIR(c,2.4);
  busIn.connect(comp);                       // dry
- busIn.connect(revSend); revSend.connect(revConv); revConv.connect(comp); // wet
+ // The wet return has its own gain so the chord damper can lift it off a
+ // chord change (see _chordDamp); the send stays the user's bus-reverb amount.
+ const revRet=c.createGain(); revRet.gain.value=1;
+ busIn.connect(revSend); revSend.connect(revConv); revConv.connect(revRet); revRet.connect(comp); // wet
+ window._masterRevRet=revRet;
 
  const drvIn=c.createGain();
  const shaper=c.createWaveShaper(); shaper.oversample='2x';
  const drvOut=c.createGain();
  drvIn.connect(shaper); shaper.connect(drvOut); drvOut.connect(busIn);
+
+ // The chords' own way in (4.3.0): the same drive, mirrored by applyDrive,
+ // then straight to the glue — not through the shared room above. A chord's
+ // room comes from its own pair of reverbs instead (see buildReverb), which
+ // can drop the old chord's tail at a change; a shared convolver cannot.
+ const cDrvIn=c.createGain(), cShaper=c.createWaveShaper(), cDrvOut=c.createGain();
+ cShaper.oversample='2x';
+ cDrvIn.connect(cShaper); cShaper.connect(cDrvOut); cDrvOut.connect(comp);
+ // CHORD_ROOM_K: the pair runs the chord reverb's own impulse, not the 2.4 s
+ // room, so the same send level leaves less tail. Matched by measurement —
+ // the master's RMS over 0.8 s after a released C major, against 4.2.9.
+ const cRoomSend=c.createGain(); cRoomSend.gain.value=masterRevAmt*CHORD_ROOM_K;
+ cDrvOut.connect(cRoomSend);
+ window._chordMasterIn=cDrvIn; window._chordDriveShaper=cShaper; window._chordDriveIn=cDrvIn;
+ window._chordDriveOut=cDrvOut; window._chordRoomSend=cRoomSend;
 
  window._masterLimiter=lim; window._masterOut=masterOut; window._masterComp=comp;
  window._busIn=busIn; window._masterRevSend=revSend; window._masterRevConv=revConv;
@@ -15397,6 +15532,7 @@ function applyMasterBus(){
   cm.ratio.value     = on ? (1.5 + masterCompAmt*5) : 1;
  }
  if(window._masterRevSend) window._masterRevSend.gain.value = on ? masterRevAmt : 0;
+ if(window._chordRoomSend) window._chordRoomSend.gain.value = on ? masterRevAmt*CHORD_ROOM_K : 0;
  if(window._masterLimiter){
   const l=window._masterLimiter;
   l.threshold.value = on ? -3 : 0;
@@ -15433,6 +15569,14 @@ document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 
 // Returns the send gain so the caller can reap it — otherwise every note
 // leaves one more node wired into the reverb for the rest of the session.
+// Chord tones' reverb goes to the chords' own pair, not the shared one.
+function feedChordRev(node,mix){
+ if(!window._chordRevFeed) return feedRev(node,mix);
+ if(mix<.01) return null;
+ const g=audioCtx.createGain(); g.gain.value=mix;
+ node.connect(g); g.connect(window._chordRevFeed);
+ return g;
+}
 function feedRev(node,mix){
  if(!reverbNode||mix<.01) return null;
  const g=audioCtx.createGain(); g.gain.value=mix;
@@ -17074,6 +17218,37 @@ function velScale(pressure){
 // releaseSustainedChord(), this is just a safety ceiling on a stuck finger.
 const SUSTAIN_DUR = 30;
 
+// The sustain pedal coming up as the chord changes (4.3.0). The voices of the
+// old chord were already cut in 22 ms (stopAll), but every reverb they fed —
+// the voice reverb and the master bus's room — went on ringing them for a
+// second or more under the new chord: measured on the master output, C major's
+// own notes still only 4–5 dB down 400 ms into an F# major, 11–13 dB at 800.
+// A tail cannot be taken out of a convolver note by note, so chords have
+// their own two (buildReverb) and their own way into the master that skips
+// the shared room (buildMasterBus): on a CHANGE of chord the other reverb
+// takes the new chord and the old one fades in ~150 ms. A re-strike of the
+// same chord (a comp pattern, a held loop) keeps the same reverb — nothing
+// clashes, and a fresh room every beat would sound dry.
+var _chordDampKey = null;
+function _chordDamp(t, midis){
+ var key = midis.slice().sort(function(a,b){return a-b;}).join(',');
+ if(key === _chordDampKey) return;
+ var first = (_chordDampKey === null);
+ _chordDampKey = key;
+ if(first) return;
+ var P = window._chordRevPair; if(!P) return;
+ var old = P[window._chordRevCur], nu = P[1 - window._chordRevCur];
+ window._chordRevCur = 1 - window._chordRevCur;
+ try{
+  // The new chord's tones start at t: its reverb is open from then, and the
+  // old one stops taking input and fades out its tail.
+  [old.inG.gain, old.outG.gain, nu.inG.gain, nu.outG.gain].forEach(function(a){ a.cancelScheduledValues(t); a.setValueAtTime(a.value, t); });
+  old.inG.gain.setTargetAtTime(0, t, 0.004);
+  old.outG.gain.setTargetAtTime(0, t, 0.05);
+  nu.inG.gain.setValueAtTime(1, t);
+  nu.outG.gain.setValueAtTime(1, t);
+ }catch(e){}
+}
 function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
@@ -17106,7 +17281,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  glideRemember(intvs.map(s=>rootM+s), now);
  window._lastVoiced = {rel:relIntvs, midi:intvs.map(s=>rootM+s)};
 
- if(!skipStop) stopAll(atTime);
+ if(!skipStop){ stopAll(atTime); _chordDamp(now, intvs.map(s=>rootM+s)); }
  // A muted or zeroed Chord channel used to still build every voice — the
  // sustain+strum path even threw (an exponentialRampToValueAtTime target of
  // exactly 0 is invalid), and the tap path ramped toward a hardcoded .0001
@@ -17181,7 +17356,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime){
  const pan = intvs.length>1 ? (i/(intvs.length-1))*2-1 : 0;
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan,'chord');
  g.connect(fx.head);
- const _rv=feedRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
+ const _rv=feedChordRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
  glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
@@ -17210,6 +17385,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  // See playChord: a start time already behind currentTime turns the attack
  // ramp into a step.
  const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + FADE_OUT);
+ _chordDamp(now, relIntvs.map(s=>rootM+s).concat([bassNote]));
  // Same reasoning as playChord — see the comment there. stopAll() already
  // ran at the top of this function, so the previous chord is still silenced.
  // Layer switch and mixer mute share one gate: both mean "this part should
@@ -17230,7 +17406,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  const bo=ctx.createOscillator(); bo.type=chordSubWave;
  bo.frequency.value=masterTune*Math.pow(2,(bassNote-69)/12);
  bo.connect(bg); bg.connect(_partDest(ctx,'chord'));
- const _sbRev=feedRev(bg,revMix);
+ const _sbRev=feedChordRev(bg,revMix);
  bo.start(now); bo.stop(now+atk+dec);
  activeOscs.push({oscs:[bo], gain:bg, t0:now, peak:vol*.42*vsc*_mxCh*_tr});
  reapVoice([bo],[bg,_sbRev],atk+dec);
@@ -17257,7 +17433,7 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
  const pan = slashIntvs.length>1 ? (i/(slashIntvs.length-1))*2-1 : 0;
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan,'chord');
  g.connect(fx.head);
- const _rv2=feedRev(fx.plain?g:fx.tail,revMix);
+ const _rv2=feedChordRev(fx.plain?g:fx.tail,revMix);
  const _os2=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
  glideApply(_os2, rootM+s, _gOrder2.indexOf(i), slashIntvs.length, t0);
  activeOscs.push({oscs:_os2, gain:g, t0:t0, peak:vol*.22*vl*wg*vsc*_mxCh*_tr});
@@ -22541,6 +22717,7 @@ window.cpRenderDegRow = cpRenderDegRow;
 function cpRenderAll(){ cpBuild(); cpRenderUserRow(); cpRenderDegRow(); }
 
 function renderChords(){
+ try{ if(typeof psAcrossFollow==='function') psAcrossFollow(); }catch(e){}
  const md=MODES[mode]||MODES.major;
  const steps=md.steps, triadQs=md.triadQ, types7=md.seventh, nums=md.nums, funcs=md.func;
  const rm=rootMidi();
@@ -44632,7 +44809,9 @@ const FX_REV_SEC=3.4, FX_REV_RET=2.2;
 // ── Build one channel's insert chain ──
 function fxBuildChain(ctx, ch){
  if(fxChains[ch] && fxChains[ch].ctx===ctx) return fxChains[ch];
- const dest = masterDest(ctx);
+ masterDest(ctx);
+ // Chords keep their own way into the master — see buildMasterBus.
+ const dest = (ch==='chord' && window._chordMasterIn && window._chordMasterIn.context===ctx) ? window._chordMasterIn : masterDest(ctx);
  const io = ctx.createGain();          // chain input
  const out = ctx.createGain();         // chain output
 
