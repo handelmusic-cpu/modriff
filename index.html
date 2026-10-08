@@ -6194,7 +6194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.7.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.8</span>
     </div>
    </div>
   </div>
@@ -6212,7 +6212,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.7.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.8</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -7890,7 +7890,8 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="bl-mopt" id="blw-sin" onclick="setBlWave('sine')">Sub</button>
      <button class="bl-mopt active" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
      <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
-     <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Real recorded upright bass samples (loads online, falls back to synth Uprt offline)">Real</button>
+     <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Upright 1 ◆ — recorded upright bass (SoundFont set). Falls back to the synth Uprt offline">Up 1</button>
+     <button class="bl-mopt" id="blw-upright2" onclick="setBlWave('upright2')" title="Upright 2 ◆ — recorded double bass, every semitone from E1 (pjcohen, CC0). Falls back to the synth Uprt offline">Up 2</button>
      <button class="bl-mopt" id="blw-motown" onclick="setBlWave('bass_motown')" title="Motown — fingered P-bass, flatwounds, foam mute: the deep, dead thump under a Jamerson line">Motown</button>
      <button class="bl-mopt" id="blw-hofner" onclick="setBlWave('bass_hofner')" title="Höfner — picked violin bass: woody, round, short — the 60s McCartney sound">Höfner</button>
      <button class="bl-mopt" id="blw-slap" onclick="setBlWave('bass_slap')" title="Slap — thumb and pop, mids scooped, sub and top pushed">Slap</button>
@@ -8222,7 +8223,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.7.1';
+const MODRIFF_VERSION = '4.2.8';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -8760,6 +8761,10 @@ const BASS_SAMPLE_GAIN = 11.4;
 // -36.8, Slap -44.1 — slap is spiky, all transient and little body).
 var BASS_SAMPLED = {
  upright_real:{lib:'bass',       gain:BASS_SAMPLE_GAIN},
+ // Measured (4.2.8), same generated line soloed into the bass bus: at 11.4
+ // Upright 2 read -8.7 dB RMS against Upright 1's -26.8 — its notes sustain
+ // and were peak-matched hotter. 11.4 × 10^(-18.1/20) puts it level.
+ upright2:    {lib:'bassup2',    gain:1.42},
  bass_motown: {lib:'bassmotown', gain:16.9},
  bass_hofner: {lib:'basshofner', gain:13.9},
  bass_slap:   {lib:'bassslap',   gain:32}
@@ -8782,6 +8787,16 @@ function _natRange(octLo,octHi){
 }
 const SAMPLE_LIBS = {
  bass:    {dir:'samples/bass',    notes:_natRange(1,4), fallbackWave:'upright'},
+ // Upright 2 (4.2.8): pjcohen's CC0 double bass, recorded note by note — 37
+ // notes, chromatic E1 to F#4 except A#1 and A#2, so nothing is shifted more
+ // than a semitone. The pack names each sharp after the natural below it
+ // ("f1" twice); every file was placed by measured pitch, not by its name.
+ // Beside Upright 1 (the SoundFont set above), not instead of it.
+ bassup2: {dir:'samples/upright', fallbackWave:'upright',
+           notes:['E1','F1','Fs1','G1','Gs1','A1','B1',
+                  'C2','Cs2','D2','Ds2','E2','F2','Fs2','G2','Gs2','A2','B2',
+                  'C3','Cs3','D3','Ds3','E3','F3','Fs3','G3','Gs3','A3','As3','B3',
+                  'C4','Cs4','D4','Ds4','E4','F4','Fs4']},
  // Three electric basses (v4.0.5), each a real recorded set with one player's
  // tone baked in when it loads — see _sampleShape. The recordings are the
  // same SoundFont libraries as the upright: fingered and picked from
@@ -20532,7 +20547,7 @@ const MS_SHARED_VOICES=[['pianoreal','Piano ◆'],['piano','Piano (synth)'],['rh
 // way "Acid" does. Anything picked for bass that ISN'T one of these seven —
 // i.e. a shared voice reached through the Voices drawer — falls back to the
 // shared catalog's label so the current sound is never unlabeled.
-const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Real Upright',
+const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Upright 1 ◆',upright2:'Upright 2 ◆',
                         bass_motown:'Motown',bass_hofner:'Höfner',bass_slap:'Slap'};
 function _sharedVoiceLabel(w){
  const m=MS_SHARED_VOICES.find(o=>o[0]===w);
@@ -20600,7 +20615,7 @@ const VOICE_PARTS=sortByPart([
  {k:'bass', icon:'♪', label:'Bass', hint:'the bass sequencer',
   get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
-  opts:[['electric','Electric'],['upright','Upright'],['upright_real','Real Upright'],
+  opts:[['electric','Electric'],['upright','Upright'],['upright_real','Upright 1 ◆'],['upright2','Upright 2 ◆'],
         ['bass_motown','Motown'],['bass_hofner','Höfner'],['bass_slap','Slap'],
         ['sawtooth','Acid'],['acid303','303'],['square','Square'],['triangle','Tri'],['sine','Sub']]
        .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
@@ -23585,7 +23600,7 @@ const PATCH_ARCHETYPES = [
  // the kit. Use the Jazz button for the full rig.
  { name:'Jazz Room', trim:1.0,
    waves:['jazzgtr','vibes','rhodes','piano'], arpWaves:['vibes','rhodes','sine'],
-   melWaves:['tenorsax','mutetpt','vibes'], bassWaves:['upright_real','upright','electric'],
+   melWaves:['tenorsax','mutetpt','vibes'], bassWaves:['upright_real','upright2','upright','electric'],
    cut:[.5,.7], reso:[0,.1], env:[.1,.3], drive:[.02,.14], width:[.35,.6], drift:[.2,.45],
    atk:[.008,.03], dec:[1.8,3.2], rev:[.2,.4], strum:[.08,.2],
    mAtk:[.015,.05], mDec:[.8,1.6], mRev:[.15,.32],
@@ -24896,7 +24911,12 @@ function showToast(msg, opts){
   t.setAttribute('role','status');
   t.setAttribute('aria-live','polite');
   t.setAttribute('aria-atomic','true');
-  t.style.cssText='position:fixed;bottom:calc(74px + env(safe-area-inset-bottom,0px));left:50%;'
+  // At the top of the screen since 4.2.8. It used to float 74px up from the
+  // bottom — over the transport and the sheet's grip, where an Undo toast
+  // (tappable for seven seconds) caught the swipe meant to open or close the
+  // sheet. The bottom is where every control lives now; the top edge, under
+  // the notch, has nothing pinned to it.
+  t.style.cssText='position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;'
    +'transform:translateX(-50%);background:#222;color:#fff;border-radius:8px;padding:8px 14px;'
    +'font-size:.6rem;z-index:9999;transition:opacity .3s;display:flex;align-items:center;gap:12px;'
    +'max-width:calc(100vw - 24px);box-shadow:0 6px 22px rgba(0,0,0,.5)';
@@ -30822,7 +30842,7 @@ Generated notes are held to a singable range (G3–C6) so the octave-lifting sty
  },
  'jazzkit': {
   title: 'Real instruments & the Jazz kit',
-  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Real Upright</strong> on the bass. The <strong>Rock&nbsp;◆</strong> and <strong>Hip-Hop&nbsp;◆</strong> drum kits are recorded too. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
+  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Upright 1</strong> and <strong>Upright 2</strong> on the bass. The <strong>Rock&nbsp;◆</strong> and <strong>Hip-Hop&nbsp;◆</strong> drum kits are recorded too. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> Most of the sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why the first sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br><strong>Piano&nbsp;◆</strong> is the exception, and it came from full-rate stereo source rather than from that mp3 library. It measures 8.2&nbsp;kHz, so it is a dark piano — nearer a felt-damped upright than a bright grand — but it is a real one, across the whole keyboard from C1 to C8. <strong>Piano (synth)</strong> is the original synthesized voice, still there.<br><br>
 <strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
 The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
@@ -40661,7 +40681,7 @@ window.blSyncFollowUI = function(){
 window.setBlWave = function(w){
   blWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
-  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal',
+  var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal', upright2:'blw-upright2',
              bass_motown:'blw-motown', bass_hofner:'blw-hofner', bass_slap:'blw-slap', acid303:'blw-303'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');

@@ -308,3 +308,23 @@ This replaces the first Beatbox kit (4.2.5), sliced from the project owner's
 own phone recording. New folder rather than new files under the old one:
 the service worker caches samples by URL for good, so the same names would
 have kept playing the old take on any device that had loaded it.
+
+## samples/upright — "Upright 2 ◆" (bass sequencer)
+
+"Standup Upright Acoustic Double Bass" by **pjcohen**
+(https://freesound.org/people/pjcohen/, pack
+https://freesound.org/people/pjcohen/packs/21521/), released under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+
+37 notes, E1 to F#4, chromatic except A#1 and A#2, so no note is shifted more
+than a semitone. The pack names a sharp after the natural below it (two files
+called "f1", the second actually F#1 at 46.1 Hz), so every file was placed by
+measured pitch, not by name; all land within ±7 cents.
+
+Mono, 44.1 kHz, mp3 VBR q6. Trimmed to the attack, capped at 2.2 s with a
+0.7 s fade, peaks matched to -1.5 dBFS across the set. A two-pole high-pass at
+0.6 × each note's fundamental (28–140 Hz) takes out a low hum (≈59/67/100 Hz)
+that sat under the upper notes. 416 KB.
+
+Sits beside Upright 1 (samples/bass, the FluidR3_GM SoundFont set above), not
+in place of it.
