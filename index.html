@@ -6194,7 +6194,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.6</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.7</span>
     </div>
    </div>
   </div>
@@ -6212,7 +6212,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.6</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.7</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8222,7 +8222,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.6';
+const MODRIFF_VERSION = '4.2.7';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -12076,9 +12076,9 @@ var PS_DRUM = { kick:'samples/drums/kick.mp3', side:'samples/drums/sidestick.mp3
                 hh_k:'samples/hiphop/kick.mp3', hh_s:'samples/hiphop/snare.mp3', hh_c:'samples/hiphop/clap.mp3',
                 hh_r:'samples/hiphop/rim.mp3', hh_h:'samples/hiphop/hat.mp3', hh_o:'samples/hiphop/open.mp3',
                 hh_sh:'samples/hiphop/shaker.mp3', hh_t:'samples/hiphop/tamb.mp3',
-                bb_k:'samples/beatbox/kick.mp3', bb_k2:'samples/beatbox/kick2.mp3', bb_s:'samples/beatbox/snare.mp3',
-                bb_s2:'samples/beatbox/snare2.mp3', bb_h:'samples/beatbox/hat.mp3', bb_o:'samples/beatbox/open.mp3',
-                bb_r:'samples/beatbox/rim.mp3', bb_t:'samples/beatbox/tom.mp3' };
+                bb_k:'samples/beatbox-g/kick.mp3', bb_k2:'samples/beatbox-g/kick2.mp3', bb_s:'samples/beatbox-g/snare.mp3',
+                bb_s2:'samples/beatbox-g/snare2.mp3', bb_h:'samples/beatbox-g/hat.mp3', bb_o:'samples/beatbox-g/open.mp3',
+                bb_r:'samples/beatbox-g/rim.mp3', bb_t:'samples/beatbox-g/tom.mp3' };
 function _psMidi(n){ var m=n.match(/^([A-G])(b?)(\d)$/); return _PS_NOTE[m[1]] - (m[2]?1:0) + (parseInt(m[3],10)+1)*12; }
 
 // One phrase = a list of [instrument, note, beat, beats long, level]. Rendered
@@ -14512,6 +14512,8 @@ function _newAudioCtx(){
  try{ _hint = LATENCY_PRESETS[latencyPresetKey()].hint; }catch(e){}
  try{
   _latencyBuiltWith = latencyPresetKey();
+  // The dropout watchdog reads audioCtx, which the caller assigns from this.
+  setTimeout(function(){ try{ _latDropWatch(); }catch(e){} }, 0);
   return new AC({ latencyHint: _hint || 0.02 });
  }
  catch(e){ try{ return new AC(); }catch(e2){ return null; } }
@@ -18176,6 +18178,33 @@ var _latStalls = [];
 function _latNoteGap(ms){
  if(!(ms > LOOK_AHEAD*1000*0.75) || ms > 3000) return;          // fine, or a frozen tab
  if(typeof document!=='undefined' && document.hidden) return;   // timers clamped, not a stall
+ _latEvidence();
+}
+// Auto's second witness (4.2.7): the AUDIO thread missing its deadlines —
+// real dropouts — which the scheduler gap above cannot see. When the render
+// thread falls behind, the audio clock falls behind the wall clock, and
+// getOutputTimestamp (Safari 14.1+, Chrome) reports both. Measured with a
+// deliberately overloaded worklet: 2094 ms of audio in 2988 ms of wall time,
+// against an exact match normally. A window losing more than 25 ms in a
+// second is a dropout, and counts toward the same two-in-twenty-seconds rule.
+var _latDropT = null, _latDropLast = null;
+function _latDropTick(){
+ var c = (typeof audioCtx!=='undefined') ? audioCtx : null;
+ if(!c || c.state!=='running' || !c.getOutputTimestamp || document.hidden){ _latDropLast=null; return; }
+ var ts = c.getOutputTimestamp();
+ if(!ts || !ts.performanceTime){ _latDropLast=null; return; }   // Safari reports 0 until output starts
+ if(_latDropLast){
+  var wall = ts.performanceTime - _latDropLast.performanceTime;
+  var aud = (ts.contextTime - _latDropLast.contextTime)*1000;
+  if(wall > 500 && wall < 3000 && wall - aud > 25){
+   window._latDropouts = (window._latDropouts||0) + 1;
+   _latEvidence();
+  }
+ }
+ _latDropLast = {performanceTime:ts.performanceTime, contextTime:ts.contextTime};
+}
+function _latDropWatch(){ if(!_latDropT) _latDropT = setInterval(_latDropTick, 1000); }
+function _latEvidence(){
  if(!latencyIsAuto()) return;
  const now = Date.now();
  _latStalls = _latStalls.filter(function(t){ return now - t < 20000; });
@@ -35946,11 +35975,11 @@ const DRUM_SAMPLES_LAZY = {
  hh_hat:'samples/hiphop/hat.mp3', hh_open:'samples/hiphop/open.mp3',
  hh_clap:'samples/hiphop/clap.mp3', hh_rim:'samples/hiphop/rim.mp3',
  hh_shaker:'samples/hiphop/shaker.mp3', hh_tamb:'samples/hiphop/tamb.mp3',
- // Beatbox (4.2.5): the project owner's own voice, sliced from one take.
- bb_kick:'samples/beatbox/kick.mp3', bb_kick2:'samples/beatbox/kick2.mp3',
- bb_snare:'samples/beatbox/snare.mp3', bb_snare2:'samples/beatbox/snare2.mp3',
- bb_hat:'samples/beatbox/hat.mp3', bb_open:'samples/beatbox/open.mp3',
- bb_rim:'samples/beatbox/rim.mp3', bb_tom:'samples/beatbox/tom.mp3'
+ // Beatbox: giddster's CC0 beatbox pack from Freesound (since 4.2.7).
+ bb_kick:'samples/beatbox-g/kick.mp3', bb_kick2:'samples/beatbox-g/kick2.mp3',
+ bb_snare:'samples/beatbox-g/snare.mp3', bb_snare2:'samples/beatbox-g/snare2.mp3',
+ bb_hat:'samples/beatbox-g/hat.mp3', bb_open:'samples/beatbox-g/open.mp3',
+ bb_rim:'samples/beatbox-g/rim.mp3', bb_tom:'samples/beatbox-g/tom.mp3'
 };
 var _drumLazyPending = {};
 function _drumLoadOne(name){
@@ -36526,10 +36555,9 @@ var SQM={
     sqSmpTrack('Shaker','SH','#a89060','hh_shaker',.34,function(t,v){ sqNs(t,.05,9000,v*.3,'highpass',6500,0.8); }),
     sqSmpTrack('Tamb','TB','#98804c','hh_tamb',.3,  function(t,v){ sqNs(t,.09,8000,v*.28,'highpass',5200,0.6); })
   ]},
-  // Beatbox: one take of the project owner's own beatboxing, sliced into
-  // eight hits (samples/CREDITS.md says which moment each came from). A phone
-  // mic, so the kicks are mouth "B"s rather than sub — they sit best layered
-  // under another kit's kick on Aux, or on their own for the human sound.
+  // Beatbox: giddster's CC0 pack (Freesound pack 24693), recorded on a studio
+  // condenser — which file is which lane is in samples/CREDITS.md. Replaced
+  // the first version, a phone take that was not good enough.
   'BEATBOX':{label:'Beatbox ◆',color:'#ff7ac8',
     samples:['bb_kick','bb_kick2','bb_snare','bb_snare2','bb_hat','bb_open','bb_rim','bb_tom'],
     tracks:[
@@ -44981,10 +45009,46 @@ function _fxSetActive(chain, on, now){
  chain.io.gain.cancelScheduledValues(t); chain.io.gain.setTargetAtTime(0, t, 0.005);
  chain._bypT=setTimeout(cut, 80);
 }
+// The pad only lights the chains of parts that are actually sounding (4.2.7).
+// It targets all eight by default, and engaging it switched on eight full
+// insert chains — worklet, four biquads, an oversampled shaper, the isolator —
+// including the ones for parts with nothing playing. Measured on the audio
+// thread: 5% with the pad off, 20% with it on across all eight, 7.6% on one.
+// A part counts as sounding if its own bus (before the chain, so the chain
+// does not hear itself) has carried signal in the last 1.5 s; a poll every
+// 250 ms while the pad is held brings a part that starts mid-gesture in.
+var _fxHearAn = {}, _fxHeardAt = {}, _fxHearT = null, _fxHearBuf = null;
+function _fxHearPoll(){
+ if(!(fxEngaged || _fxReleasing)){ clearInterval(_fxHearT); _fxHearT=null; return; }
+ var buses = (typeof _allPartBuses==='function') ? _allPartBuses() : {};
+ var now = performance.now();
+ fxTargets.forEach(function(ch){
+  var bus = buses[ch]; if(!bus || !bus.context) return;
+  var an = _fxHearAn[ch];
+  if(!an || an.context!==bus.context){
+   try{ an = bus.context.createAnalyser(); an.fftSize = 2048; bus.connect(an); _fxHearAn[ch] = an; _fxHeardAt[ch] = now; }catch(e){ return; }
+  }
+  if(!_fxHearBuf) _fxHearBuf = new Float32Array(2048);
+  an.getFloatTimeDomainData(_fxHearBuf);
+  // 46 ms of each 250: long enough that a hat or a rim between polls is
+  // still caught on most of them, and 1.5 s of grace covers the rest.
+  var pk = 0; for(var i=0;i<_fxHearBuf.length;i++){ var v=_fxHearBuf[i]; if(v>pk) pk=v; else if(-v>pk) pk=-v; }
+  if(pk > 0.001) _fxHeardAt[ch] = now;
+  var chain = fxChains[ch];
+  if(chain && chain.active === _fxChainIdle(ch, chain)) _fxIdleCheck(ch);
+ });
+}
+function _fxPartHeard(ch){
+ if(!_fxHearT && (fxEngaged || _fxReleasing)){ _fxHearT = setInterval(_fxHearPoll, 250); _fxHearPoll(); }
+ // No reading yet (the poll has not run, or there is no bus to read): assume
+ // it is sounding — engaging the pad must never make something go dry.
+ if(!_fxHearAn[ch]) return true;
+ return (performance.now() - (_fxHeardAt[ch]||0)) < 1500;
+}
 function _fxChainIdle(ch, chain){
  const L=fxSends[ch]||{};
  if(L.rev>0.0005 || L.dly>0.0005 || L.drv>0.0005 || L.lmode>0) return false;
- if(fxTargets.indexOf(ch)>=0 && (fxEngaged || _fxReleasing)) return false;
+ if(fxTargets.indexOf(ch)>=0 && (fxEngaged || _fxReleasing) && _fxPartHeard(ch)) return false;
  const live=chain._live||{}, rel=chain._relT||{};
  for(const k in live) if(live[k]) return false;
  for(const k in rel) if(rel[k]) return false;
