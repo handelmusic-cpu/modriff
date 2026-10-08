@@ -5944,7 +5944,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Accomp tab, under Arp">Arp</button>
  <!-- The sampler's pattern, as a part. Like Perc it appears only once there is
       one to switch: a pattern recorded on the pads. -->
- <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftSmpClick()"
+ <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftSmpClick()" style="display:none"
    title="Sampler on/off — the pattern you record on the pads plays with the band">Smp</button>
  <!-- The 80px range input that used to sit inline here was permanent transport
       real estate for a value most people set once a session, and a miserable
@@ -6189,7 +6189,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.5.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.2.5.2</span>
     </div>
    </div>
   </div>
@@ -6207,7 +6207,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.2.5.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.2.5.2</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8217,7 +8217,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.2.5.1';
+const MODRIFF_VERSION = '4.2.5.2';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -13389,8 +13389,9 @@ function psPatRender(){
  var sounding = PS.patOn && psTransportOn();
  var fb=document.getElementById('ft-smp-btn');
  if(fb){
-  // Always on the bar since 4.2.0, like every other part, and never dimmed.
-  fb.style.display = '';
+  // Like Aux: on the bar once there is something to switch — a recorded
+  // pattern — or while it is on. Never dimmed.
+  fb.style.display = (PS.patOn || PS_PATS.some(function(p){ return p && p.ev.length; })) ? '' : 'none';
   fb.classList.toggle('off', !PS.patOn);
  }
  if(!_psBuilt) return;
@@ -25317,7 +25318,7 @@ var TUT_LIST = [
   {t:'Bank', x:'Preset banks to play, User banks to fill.', el:'#ps-panel .ps-seg'},
   {t:'Record', x:'Rec records your pad hits into a pattern.', el:'#ps-rec'},
   {t:'Pattern', x:'Plays it with the band.', el:'#ps-patplay'},
-  {t:'On the bar', x:'Smp switches the pattern in and out.', el:'#ft-smp-btn'}
+  {t:'On the bar', x:'Once a pattern is recorded, Smp switches it in and out.', el:'#ft-smp-btn'}
  ]},
  {id:'fx', name:'MōdFX', steps:[
   {t:'The pad', x:'Drag to sculpt the sound. Two effects, one per axis.', el:'#fx-pad', go:function(){ _tutView('advanced'); _tutTab('perform'); setPerformMode('fx'); }},
@@ -42237,7 +42238,27 @@ window.mixSyncFx = function(){
 // Mute/solo state is global, but the strips exist in two places (the Mix tab
 // and the sequencer's inline mixer) and the transport shows a summary, so one
 // function repaints all of them from the single source of truth.
+// Mute and solo at the part's own bus as well (4.2.5.2). _cmx is read when a
+// note STARTS, so a sample or a held chord already sounding played on to its
+// end after Mute — a desk's mute is instant. Each bus is ramped to 0 in ~5 ms
+// (a click-free cut) and back to the level it was built with. Effect tails
+// already past the bus ring out, as on a desk.
+function _mixGateBuses(){
+ try{
+  if(typeof _allPartBuses!=='function') return;
+  var B=_allPartBuses(), anySolo=sqAnySolo();
+  Object.keys(B).forEach(function(ch){
+   var bus=B[ch]; if(!bus || !bus.gain || !bus.context) return;
+   if(bus._mixBase==null) bus._mixBase = bus.gain.value;
+   var off = !!(window.sqMixMute && window.sqMixMute[ch]) || (anySolo && !(window.sqMixSolo && window.sqMixSolo[ch]));
+   var t=bus.context.currentTime, g=bus.gain;
+   g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+   g.setTargetAtTime(off ? 0 : bus._mixBase, t, 0.005);
+  });
+ }catch(e){}
+}
 function sqSyncMixIndicators(){
+ _mixGateBuses();
  var anySolo=(typeof sqAnySolo==='function') && sqAnySolo();
  var anyMute=false;
  (window.MIX_CHANNELS||[]).forEach(function(ch){
