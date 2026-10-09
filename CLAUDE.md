@@ -84,10 +84,10 @@ functions declared thousands of lines earlier are routinely called first.
 Several tables drive many surfaces at once. Change the table, not the
 surfaces.
 
-- `PARTS` — mix strips, MōdFX channels, stem labels, voice and layer
+- `PARTS` — mix strips, mõdFX channels, stem labels, voice and layer
   membership. `MIX_CHANNELS`, `FX_CHANNELS` and `STEM_LABELS` are all derived
   from it.
-- `_partBuses` / `_partDest(ctx, part)` — every part's own bus. Meters, MōdFX
+- `_partBuses` / `_partDest(ctx, part)` — every part's own bus. Meters, mõdFX
   chains and stems all tap it, so a part with no bus silently has none of the
   three.
 - `_blChordWin` + `window._blOnChord` — the chord timeline. Bass *and* melody
