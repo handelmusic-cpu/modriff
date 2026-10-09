@@ -5149,11 +5149,28 @@ body.mode-basic .lv-tri > span {
  clip-path:polygon(50% 0, 100% 100%, 0 100%);
  background:linear-gradient(0deg, color-mix(in srgb, var(--tc) 30%, #6b6f86), color-mix(in srgb, var(--tc) 82%, #b4b8cc));
 }
-body.mode-basic .lv-folded > .lv-tri > span {
+body.mode-basic .lv-folded .lv-tri > span {
  clip-path:polygon(0 0, 100% 0, 50% 100%);
  background:linear-gradient(180deg, color-mix(in srgb, var(--tc) 30%, #6b6f86), color-mix(in srgb, var(--tc) 82%, #b4b8cc));
 }
 .lv-tri:focus-visible { outline:2px solid var(--tc); outline-offset:-2px; border-radius:8px; }
+/* The triangle and its record dot share the row; the dot sits just right of
+   the triangle, a 36px target around a 14px mark. */
+.lv-foot { position:relative; }
+.lv-rec { display:none; }
+body.mode-basic .lv-rec {
+ display:flex; align-items:center; justify-content:center; position:absolute; top:-1px;
+ left:calc(50% + 34px); width:36px; height:32px; padding:0; border:none; background:none; cursor:pointer;
+ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+}
+body.mode-basic .lv-rec > span {
+ width:14px; height:14px; border-radius:50%; box-sizing:border-box;
+ border:2px solid #e5384f; background:rgba(229,56,79,.18);
+}
+body.mode-basic .lv-rec.on > span { background:#e5384f; box-shadow:0 0 8px rgba(229,56,79,.7); animation:recBlink 1s ease-in-out infinite; }
+body.mode-basic .lv-rec.armed > span { animation:recBlink 1s ease-in-out infinite; }
+.lv-rec:focus-visible { outline:2px solid #e5384f; outline-offset:-4px; border-radius:8px; }
+@media (prefers-reduced-motion: reduce){ body.mode-basic .lv-rec > span { animation:none !important; } }
 /* The MōdFX pad is the surface you play; with its settings folded away it
    gets the room they had. Its height is the wrapper's (.fx-padwrap), which the
    short-screen rules above already shrink by viewport height — so this only
@@ -6404,7 +6421,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.3.1</span>
+     <span class="ft-ver" id="ft-ver" title="MōdRiff version">v4.3.1.1</span>
     </div>
    </div>
   </div>
@@ -6422,7 +6439,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
  <div class="unlock-logo">MōdRiff</div>
  <div class="unlock-sub">Every part, always in key</div>
  <div class="unlock-sub2">Chromatic Modal Groovebox</div>
- <div class="unlock-ver" id="unlock-ver">v4.3.1</div>
+ <div class="unlock-ver" id="unlock-ver">v4.3.1.1</div>
  <div class="unlock-by">by Ben Handel</div>
  <!-- Built by buildUnlockChoices(): what's on offer depends on whether there
       is a session to come back to, and on whether a shared link brought you
@@ -8433,7 +8450,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.3.1';
+const MODRIFF_VERSION = '4.3.1.1';
 
 'use strict';
 // ═══════════════════════════════════════
@@ -14041,6 +14058,7 @@ function lvAddTri(slot, m){
   b.title = (o ? 'Hide ' : 'Show ') + name + ' settings';
  };
  b.appendChild(document.createElement('span'));
+ lvAddRecDot(slot, m, b);
  b.addEventListener('click', function(){
   slot.classList.toggle('lv-folded');
   LV_OPEN[m] = !slot.classList.contains('lv-folded');
@@ -14048,7 +14066,53 @@ function lvAddTri(slot, m){
   sync();
  });
  sync();
- slot.appendChild(b);
+ if(!b.parentNode) slot.appendChild(b);
+}
+// ── A record dot beside each triangle ──
+// One tap to capture what you are playing on that row, without opening the
+// sheet: Chords, Melody and the Sampler pads are the sheet's own Capture
+// buttons (the dot clicks the real one, so the section, the roll, the ◀ keep
+// and every toast behave exactly as they do from there); MōdFX's is the motion
+// recorder's Rec. The dot reads its state off the button it stands for, so it
+// can never disagree with it: a red ring at rest, filled and pulsing while it
+// records, a pulsing ring while MōdFX is armed and waiting for a touch.
+var _lvRecObs = {};
+function lvRecPaintFx(){
+ var d = document.querySelector('.lv-slot[data-mod="fx"] .lv-rec');
+ if(!d || !d._paint) return;
+ try{ d._paint(fxMotion.recording, fxMotion.armed); }catch(e){ d._paint(false, false); }
+}
+function lvAddRecDot(slot, m, tri){
+ var SRC = { chords:'ft-rec-btn', melody:'ft-melcap-btn', pads:'ft-pscap-btn' };
+ if(!(m in SRC) && m!=='fx') return;
+ var foot = document.createElement('div'); foot.className = 'lv-foot';
+ var d = document.createElement('button'); d.type = 'button'; d.className = 'lv-rec';
+ d.appendChild(document.createElement('span'));
+ var name = LV_NAME[m];
+ var paint = function(on, armed){
+  d.classList.toggle('on', !!on); d.classList.toggle('armed', !on && !!armed);
+  d.setAttribute('aria-pressed', on ? 'true' : 'false');
+  var t = on ? 'Stop capturing '+name : armed ? 'Armed — touch the pad to record; tap to cancel'
+        : (m==='fx' ? 'Record a pad move' : 'Capture what you play on '+name);
+  d.title = t; d.setAttribute('aria-label', t);
+ };
+ if(m==='fx'){
+  d.addEventListener('click', function(){ if(typeof fxMotionRecord==='function') fxMotionRecord(); });
+  // Painted by fxSyncUI itself (lvRecPaintFx), the one place every change to
+  // the recorder already goes through. Watching #fx-motion for mutations did
+  // not see the arm: the folded row is not re-rendered the way this assumed.
+  d._paint = paint;
+  lvRecPaintFx();
+ } else {
+  var src = document.getElementById(SRC[m]);
+  d.addEventListener('click', function(){ var s2=document.getElementById(SRC[m]); if(s2) s2.click(); });
+  var read = function(){ var s2=document.getElementById(SRC[m]); paint(!!s2 && !s2.classList.contains('off'), false); };
+  if(_lvRecObs[m]) _lvRecObs[m].disconnect();
+  if(src){ _lvRecObs[m] = new MutationObserver(read); _lvRecObs[m].observe(src, {attributes:true, attributeFilter:['class']}); }
+  read();
+ }
+ foot.appendChild(tri); foot.appendChild(d);
+ slot.appendChild(foot);
 }
 function lvDecorate(){
  LV.slots.forEach(function(m, i){
@@ -46862,6 +46926,7 @@ function fxSyncUI(){
    +'<button class="fx-preset add" onclick="fxSaveUserPreset()" aria-label="Save the current axes and channels as a preset">+ Save</button></div></div>';
  }
 
+ if(typeof lvRecPaintFx==='function') lvRecPaintFx();
  const mo=document.getElementById('fx-motion');
  if(mo){
   const has=fxMotionHas();
