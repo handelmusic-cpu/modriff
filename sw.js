@@ -25,7 +25,7 @@ const VERSION   = 'modriff-2.0.1';
 const SHELL     = VERSION + '-shell';
 const ASSETS    = VERSION + '-assets';
 const SHELL_URLS = ['./', './index.html', './manifest.webmanifest',
-                    './icon-192.png', './icon-512.png', './og-card-3.png'];
+                    './icon-v2-192.png', './icon-v2-512.png', './og-card-3.png'];
 
 self.addEventListener('install', e => {
   // The shell only. Samples are large and many; they populate on first use so
