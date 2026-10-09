@@ -1,4 +1,4 @@
-// MōdRiff service worker.
+// mõdRïff service worker.
 //
 // A single self-contained HTML file plus a fixed, immutable sample set is
 // close to an ideal cache target, and a groovebox is exactly the thing you
@@ -25,7 +25,7 @@ const VERSION   = 'modriff-2.0.1';
 const SHELL     = VERSION + '-shell';
 const ASSETS    = VERSION + '-assets';
 const SHELL_URLS = ['./', './index.html', './manifest.webmanifest',
-                    './icon-192.png', './icon-512.png', './og-card.png'];
+                    './icon-192.png', './icon-512.png', './og-card-2.png'];
 
 self.addEventListener('install', e => {
   // The shell only. Samples are large and many; they populate on first use so
@@ -46,7 +46,7 @@ self.addEventListener('activate', e => {
 // so caching it forever would mean the sample ships and nobody's app ever
 // learns it exists. The files it names still are immutable and still cache.
 const isImmutable = url =>
-  /\/samples\/|\/fonts\/|\/icon-|\/og-card\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
+  /\/samples\/|\/fonts\/|\/icon-|\/og-card[\w-]*\.png$/.test(url) && !/\/samples\/user\/manifest\.json$/.test(url);
 
 // What version did the copy we just banked turn out to be? The page knows what
 // IT is running, so it can decide whether the difference matters. Read it out of

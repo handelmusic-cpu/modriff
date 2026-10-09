@@ -1,4 +1,4 @@
-# MōdRiff — working notes
+# mõdRïff — working notes
 
 ## Always merge
 
