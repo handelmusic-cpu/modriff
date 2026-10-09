@@ -22,6 +22,22 @@ Everything is `index.html`. One file, ~32k lines, in three parts:
 Alongside it: `sw.js` (service worker), `manifest.webmanifest`, `samples/`,
 the icons, and `check.sh`.
 
+### Build and deploy
+
+The source is what you edit; `dist/` is what ships. `npm run build`
+(`build/build.mjs`) copies the app into `dist/` with the comments and
+whitespace taken out of the inline scripts and styles — about half the file —
+and re-checks every script parses. Vercel runs it on every deploy
+(`vercel.json`), and a native wrapper packages the same `dist/`.
+
+- Keep writing comments; they never reach a phone.
+- Nothing is renamed, so `onclick="fn()"` attributes and `fn.toString()`
+  keep working. Don't add a minifier option that renames.
+- `MODRIFF_VERSION` must stay `'single-quoted'` in the output — `sw.js` reads it
+  with a single-quote pattern. The build puts the quotes back; it fails if the
+  version is missing.
+- To test what ships: `npm run build`, then serve `dist/` instead of the root.
+
 The version string lives in three places and they must agree: `#ft-ver`,
 `#unlock-ver`, and `MODRIFF_VERSION`. `VERSION` in `sw.js` is a cache key for
 immutable assets, **not** a release number — leave it alone.
