@@ -389,6 +389,14 @@
   f('fx.comp.release', 'Release', 0.01, 1.5, 0.18, Object.assign({ curve: 'exp', unit: 's' }, H));
   f('fx.comp.makeup',  'Makeup', 0, 18, 0, Object.assign({ unit: 'dB' }, H));
 
+  /* OTT (added for mõdRïff): three bands, each pushed hard into a fast
+     compressor and blended back in — what makes a modern preset sound dense
+     and forward. Appended after the factory params so no index moves. */
+  b('fx.ott.on',     'OTT On', 0, H);
+  f('fx.ott.depth',  'Depth', 0, 1, 0.5, H);
+  f('fx.ott.time',   'Time', 0, 1, 0.35, H);
+  f('fx.ott.upward', 'Upward', 0, 1, 0.6, H);
+
   f('fx.width',   'Stereo Width', 0, 2, 1, H);
   f('master.vol', 'Volume', 0, 1.4, 0.8, H);
   b('master.limit', 'Limiter', 1, H);

@@ -267,10 +267,36 @@
       this.reverbOut.connect(this.compBypass);
       this.compBypass.connect(this.compOut);
 
+      /* ── OTT ── (added for mõdRïff)
+         Three bands split at 120 Hz and 2.5 kHz (two cascaded biquads a
+         side, so each crossover falls at 24 dB/oct), each driven up into a
+         fast, hard compressor and summed, then blended against the dry
+         signal by Depth. Boost-then-squash is how a DynamicsCompressor, which
+         only compresses downward, gets the upward half of OTT: the quiet
+         detail is lifted by the pre-gain and the loud parts are held down. */
+      this.ottIn = g(); this.ottDry = g(); this.ottWet = g(); this.ottOut = g();
+      this.compOut.connect(this.ottDry); this.ottDry.connect(this.ottOut);
+      this.compOut.connect(this.ottIn);
+      const bq = (type, f) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = 0.707; return b; };
+      const chain = (src, nodes) => { let n = src; nodes.forEach(x => { n.connect(x); n = x; }); return n; };
+      const bandTails = [
+        chain(this.ottIn, [bq('lowpass', 120), bq('lowpass', 120)]),
+        chain(this.ottIn, [bq('highpass', 120), bq('highpass', 120), bq('lowpass', 2500), bq('lowpass', 2500)]),
+        chain(this.ottIn, [bq('highpass', 2500), bq('highpass', 2500)]),
+      ];
+      this.ottBands = bandTails.map(tail => {
+        const pre = g(), c = ctx.createDynamicsCompressor(), post = g();
+        c.threshold.value = -26; c.knee.value = 8; c.ratio.value = 12;
+        tail.connect(pre); pre.connect(c); c.connect(post); post.connect(this.ottWet);
+        return { pre, c, post };
+      });
+      this.ottWet.connect(this.ottOut);
+      this.ottWet.gain.value = 0;
+
       /* ── Stereo width (mid/side) ── */
       const sp = ctx.createChannelSplitter(2);
       const mg = ctx.createChannelMerger(2);
-      this.compOut.connect(sp);
+      this.ottOut.connect(sp);
       const midA = g(), midB = g(), sideA = g(), sideB = g();
       midA.gain.value = 0.5; midB.gain.value = 0.5;
       sideA.gain.value = 0.5; sideB.gain.value = -0.5;
@@ -363,20 +389,35 @@
       const ctx = this.ctx;
       const v = this._val(id);
       const on = k => !!this.p[k];
+      // An effect a macro or LFO is turning up counts as on (added for
+      // mõdRïff). Plenty of factory patches wire a "Space" or "Drive" macro to
+      // an effect they leave switched off, so the macro did nothing at all —
+      // Warm Keys' Space is reverb and delay mix with both effects off. Off and
+      // modulated, the amount is the modulation alone: the macro fades the
+      // effect in from nothing rather than jumping to the stored mix.
+      const amt = (onKey, id) => {
+        if (on(onKey)) return this._val(id);
+        const m = this.mod[id] || 0, pp = MS.PARAM[id];
+        return m > 0.001 && pp ? MS.clamp(pp.min + m * (pp.max - pp.min), pp.min, pp.max) : 0;
+      };
+      const live = (onKey, id) => on(onKey) || (this.mod[id] || 0) > 0.001;
 
       switch (id) {
         /* Drive */
         case 'fx.drive.on':
         case 'fx.drive.type':
         case 'fx.drive.amount': {
-          const active = on('fx.drive.on');
-          const amt = this._val('fx.drive.amount') || 0;
-          this.shaper.curve = makeCurve(this.p['fx.drive.type'] || 'tube', active ? amt : 0);
+          const active = live('fx.drive.on', 'fx.drive.amount');
+          const dAmt = amt('fx.drive.on', 'fx.drive.amount') || 0;
+          // Brought in by a macro with Drive off, it is fully wet: the stored
+          // mix belongs to the switched-on effect.
+          const dMix = on('fx.drive.on') ? this._val('fx.drive.mix') : 1;
+          this.shaper.curve = makeCurve(this.p['fx.drive.type'] || 'tube', active ? dAmt : 0);
           // Gain compensation, or a drive sweep doubles as a volume sweep.
           ramp(this.driveIn.gain, 1, ctx);
-          ramp(this.driveWet.gain, active ? this._val('fx.drive.mix') / (1 + amt * 1.4) : 0, ctx);
-          ramp(this.driveDry.gain, active ? 1 - this._val('fx.drive.mix') : 1, ctx);
-          this._gate('drive', active && amt > 0, this.driveIn, this.shaper, 0.1);
+          ramp(this.driveWet.gain, active ? dMix / (1 + dAmt * 1.4) : 0, ctx);
+          ramp(this.driveDry.gain, active ? 1 - dMix : 1, ctx);
+          this._gate('drive', active && dAmt > 0, this.driveIn, this.shaper, 0.1);
           break;
         }
         case 'fx.drive.tone':
@@ -390,9 +431,9 @@
         case 'fx.chorus.on':
         case 'fx.chorus.voices':
         case 'fx.chorus.mix': {
-          const active = on('fx.chorus.on');
+          const active = live('fx.chorus.on', 'fx.chorus.mix');
           const nv = Math.max(1, Math.min(4, this.p['fx.chorus.voices'] | 0 || 2));
-          const mix = active ? this._val('fx.chorus.mix') : 0;
+          const mix = amt('fx.chorus.on', 'fx.chorus.mix');
           this.chorusVoices.forEach((cv, i) => {
             ramp(cv.lvl.gain, i < nv ? mix / Math.sqrt(nv) : 0, ctx);
             this._gate('chorus' + i, active && mix > 0.001 && i < nv, this.chorusIn, cv.d, 0.1);
@@ -444,10 +485,11 @@
         /* Delay */
         case 'fx.delay.on':
         case 'fx.delay.mix': {
-          const active = on('fx.delay.on');
-          ramp(this.delayWet.gain, active ? this._val('fx.delay.mix') : 0, ctx);
+          const active = live('fx.delay.on', 'fx.delay.mix');
+          const dmix = amt('fx.delay.on', 'fx.delay.mix');
+          ramp(this.delayWet.gain, active ? dmix : 0, ctx);
           ramp(this.delayIn.gain, active ? 1 : 0, ctx);
-          this._gate('delay', active && this._val('fx.delay.mix') > 0.001, this.delayIn, this.splitD, 6);
+          this._gate('delay', active && dmix > 0.001, this.delayIn, this.splitD, 6);
           break;
         }
         case 'fx.delay.sync':
@@ -477,8 +519,9 @@
         /* Reverb */
         case 'fx.reverb.on':
         case 'fx.reverb.mix': {
-          const wantRev = !!on('fx.reverb.on') && this._val('fx.reverb.mix') > 0.001;
-          ramp(this.revWet.gain, wantRev ? this._val('fx.reverb.mix') * 1.4 : 0, ctx);
+          const rmix = amt('fx.reverb.on', 'fx.reverb.mix');
+          const wantRev = rmix > 0.001;
+          ramp(this.revWet.gain, wantRev ? rmix * 1.4 : 0, ctx);
           this._gate('reverb', wantRev, this.revPre, this.conv, (this._val('fx.reverb.decay') || 2) + 0.5);
           break;
         }
@@ -503,6 +546,31 @@
         case 'fx.comp.attack': ramp(this.comp.attack, MS.clamp(v, 0, 1), ctx); break;
         case 'fx.comp.release': ramp(this.comp.release, MS.clamp(v, 0, 1), ctx); break;
         case 'fx.comp.makeup': ramp(this.makeup.gain, Math.pow(10, v / 20), ctx); break;
+
+        /* OTT */
+        case 'fx.ott.on':
+        case 'fx.ott.depth':
+        case 'fx.ott.time':
+        case 'fx.ott.upward': {
+          const active = on('fx.ott.on');
+          const d = active ? MS.clamp(this._val('fx.ott.depth'), 0, 1) : 0;
+          const tm = MS.clamp(this._val('fx.ott.time'), 0, 1);
+          const up = MS.clamp(this._val('fx.ott.upward'), 0, 1);
+          // Upward 0…1 is 0…+24 dB of push into the compressors; the band
+          // outputs come down by most of it so Depth is a character control,
+          // not a volume knob.
+          const preDb = 4 + up * 20, postDb = -(preDb * 0.62);
+          this.ottBands.forEach((b, i) => {
+            ramp(b.pre.gain, Math.pow(10, preDb / 20), ctx);
+            ramp(b.post.gain, Math.pow(10, (postDb + (i === 1 ? -1.5 : 0)) / 20), ctx);
+            ramp(b.c.attack, 0.0015 + tm * 0.03, ctx);
+            ramp(b.c.release, 0.04 + tm * 0.35, ctx);
+          });
+          ramp(this.ottWet.gain, d, ctx);
+          ramp(this.ottDry.gain, 1 - d * 0.85, ctx);
+          this._gate('ott', active && d > 0.001, this.compOut, this.ottIn, 0.5);
+          break;
+        }
 
         /* Output */
         case 'fx.width':

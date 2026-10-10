@@ -6,6 +6,8 @@ const { makeSynth, peak, rms, hasBadSample } = require('./harness');
 const MS = require('../../modsynth/params.js');
 require('../../modsynth/patches.js');
 require('../../modsynth/patches-extra.js');
+require('../../modsynth/patches-modern.js');
+const ALL = MS.FACTORY_PATCHES.concat(MS.MODERN_PATCHES);
 
 const SRC_INDEX = {}; MS.MOD_SOURCES.forEach((s, i) => { SRC_INDEX[s[0]] = i; });
 const DST_INDEX = {}; MS.MOD_DESTS.forEach((d, i) => { DST_INDEX[d[0]] = i; });
@@ -41,7 +43,7 @@ function audition(patch, notes, blocks) {
 let pass = 0, fail = 0;
 const silent = [], hot = [], broken = [];
 
-MS.FACTORY_PATCHES.forEach(patch => {
+ALL.forEach(patch => {
   // Chord for polyphonic sounds, single low note for anything mono/bass.
   const mono = patch.values['voice.mode'] && patch.values['voice.mode'] !== 'poly';
   const bassy = /bass|sub|kick/.test(patch.tags.join(' ') + patch.category.toLowerCase());
@@ -65,5 +67,5 @@ if (broken.length) { console.log('\nNaN / Infinity:'); broken.forEach(x => conso
 if (silent.length) { console.log('\nSilent:'); silent.forEach(x => console.log('  ' + x)); }
 if (hot.length) { console.log('\nToo hot:'); hot.forEach(x => console.log('  ' + x)); }
 
-console.log(`\n${pass} patches sounded correct, ${fail} failed (of ${MS.FACTORY_PATCHES.length})`);
+console.log(`\n${pass} patches sounded correct, ${fail} failed (of ${ALL.length})`);
 process.exit(fail ? 1 : 0);

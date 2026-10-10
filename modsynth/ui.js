@@ -612,6 +612,11 @@
         'fx.comp.release', 'fx.comp.makeup'));
       rack.appendChild(comp);
 
+      const ott = this.panel('OTT', 'fx', { width: 260 });
+      ott.head.appendChild(this.toggle('fx.ott.on', 'On'));
+      ott.appendChild(this.knobs('fx.ott.depth', 'fx.ott.upward', 'fx.ott.time'));
+      rack.appendChild(ott);
+
       const out = this.panel('Output', 'fx', { width: 240 });
       out.appendChild(this.knobs('fx.width', 'master.vol'));
       out.appendChild(this.row(this.toggle('master.limit', 'Limiter')));
@@ -698,4 +703,4 @@
   MS.UI = UI;
   MS.Knob = Knob;
   MS.el = el;
-})(typeof self !== 'undefined' ? self : this);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
