@@ -441,6 +441,87 @@
     ['m1', 'flt1.cutoff', 0.4], ['m2', 'mix.ring', 0.5], ['m3', 'fx.drive.amount', 0.5], ['m4', 'env2.d', 1],
   ], ['Open', 'Metal', 'Distort', 'Length']);
 
+  /* ═══════════════════ NEW SOURCES (Batch 1: PD, feedback, pluck) ═══════ */
+
+  p('CZ Bass', 'Bass', 'phase distortion, cz, punchy, 80s-modern', Object.assign({}, MONO, {
+    'osc1.wave': 'czres', 'osc1.shape': 0.35, 'osc1.level': 0.9,
+    'osc2.on': 1, 'osc2.wave': 'czsaw', 'osc2.shape': 0.5, 'osc2.oct': -1, 'osc2.level': 0.5,
+    'flt1.model': 'ladder2', 'flt1.cutoff': 2400, 'flt1.res': 0.1,
+    'env3.a': 0, 'env3.d': 0.25, 'env3.s': 0.15,
+    'env1.a': 0.001, 'env1.d': 0.5, 'env1.s': 0.6, 'env1.r': 0.08,
+    'fx.drive.on': 1, 'fx.drive.type': 'tape', 'fx.drive.amount': 0.3,
+    'fx.ott.depth': 0.45,
+  }), [
+    ['env3', 'osc1.shape', 0.5], ['m1', 'osc1.shape', 0.55], ['m2', 'osc2.shape', 0.5],
+    ['m3', 'fx.drive.amount', 0.5], ['m4', 'mix.sub', 0.6],
+  ], ['Reso', 'Edge', 'Drive', 'Sub']);
+
+  p('Feedback Grit', 'Bass', 'fm, feedback, gritty, aggressive', Object.assign({}, MONO, {
+    'osc1.wave': 'classic', 'osc1.shape': 0.0, 'osc1.fb': 0.35, 'osc1.level': 0.85,
+    'osc2.on': 1, 'osc2.wave': 'classic', 'osc2.shape': 0.0, 'osc2.semi': 12, 'osc2.level': 0, 'osc2.fb': 0.2,
+    'osc2.ratio': 1, 'mix.fm': 0.25, 'mix.sub': 0.5,
+    'flt1.model': 'ladder4', 'flt1.cutoff': 3000, 'flt1.res': 0.15, 'flt1.drive': 0.4,
+    'env3.d': 0.3, 'env3.s': 0.2,
+    'fx.drive.on': 1, 'fx.drive.type': 'hard', 'fx.drive.amount': 0.25,
+    'fx.ott.depth': 0.5,
+  }), [
+    ['env3', 'mix.fm', 0.35], ['m1', 'mix.fm', 0.5], ['m2', 'flt1.cutoff', -0.4], ['m3', 'fx.drive.amount', 0.5],
+    ['m4', 'mix.sub', -0.5],
+  ], ['FM', 'Dark', 'Drive', 'Less Sub']);
+
+  p('Steel String', 'Pluck', 'karplus, string, guitar, pluck', {
+    'voice.poly': 8,
+    'osc1.on': 0, 'mix.pluck': 0.9, 'pluck.decay': 0.6, 'pluck.tone': 0.75,
+    'flt1.model': 'svfLP', 'flt1.cutoff': 9000,
+    'env1.a': 0.001, 'env1.d': 3, 'env1.s': 1, 'env1.r': 0.5,
+    'fx.chorus.on': 1, 'fx.chorus.mix': 0.18,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.2, 'fx.reverb.decay': 2,
+    'fx.ott.depth': 0.25,
+  }, [
+    ['m1', 'flt1.cutoff', -0.45], ['m2', 'fx.chorus.mix', 0.5], ['m3', 'fx.reverb.mix', 0.4], ['m4', 'osc1.level', 0.4],
+  ], ['Mute', 'Chorus', 'Space', 'Body']);
+
+  p('Kalimba Pluck', 'Pluck', 'karplus, kalimba, mallet, lofi', {
+    'voice.poly': 8, 'voice.drift': 0.2,
+    'osc1.wave': 'classic', 'osc1.shape': 0.0, 'osc1.level': 0.35,
+    'mix.pluck': 0.8, 'pluck.decay': 0.35, 'pluck.tone': 0.35, 'pluck.oct': 1,
+    'flt1.model': 'ladder2', 'flt1.cutoff': 3500,
+    'env1.a': 0.001, 'env1.d': 0.9, 'env1.s': 0, 'env1.r': 0.6,
+    'fx.delay.on': 1, 'fx.delay.div': '1_8d', 'fx.delay.mix': 0.15,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.22,
+    'fx.crush.on': 1, 'fx.crush.bits': 9, 'fx.crush.rate': 0.5, 'fx.crush.mix': 0,
+    'fx.ott.depth': 0.3,
+  }, [
+    ['m1', 'osc1.level', 0.5], ['m2', 'fx.delay.mix', 0.35], ['m3', 'fx.crush.mix', 0.7, 1], ['m4', 'flt1.cutoff', 0.4],
+  ], ['Tine', 'Echo', 'Lo-fi', 'Bright']);
+
+  p('Chip Lead', 'Lead', 'chiptune, console, 8-bit, square', Object.assign({}, LEGATO, {
+    'voice.glide': 0.03,
+    'osc1.wave': 'chip', 'osc1.shape': 0.66, 'osc1.level': 0.8,
+    'osc2.on': 1, 'osc2.wave': 'chip', 'osc2.shape': 0.0, 'osc2.oct': -1, 'osc2.level': 0.3,
+    'flt1.model': 'bypass',
+    'lfo1.shape': 'square', 'lfo1.sync': 1, 'lfo1.div': '1_32', 'lfo1.depth': 0,
+    'fx.delay.on': 1, 'fx.delay.div': '1_8', 'fx.delay.mix': 0.15, 'fx.delay.pong': 1,
+    'fx.ott.depth': 0.3,
+  }), [
+    ['lfo1', 'pitch', 0.25, 1], ['m1', 'lfo1.depth', 1, 1], ['m2', 'osc1.shape', 0.34], ['m3', 'fx.delay.mix', 0.35],
+    ['m4', 'osc2.level', 0.5],
+  ], ['Arp Trill', 'Duty', 'Echo', 'Bass']);
+
+  p('Metal Bell', 'Keys', 'metal, bell, fm, glassy', {
+    'voice.poly': 8,
+    'osc1.wave': 'metal', 'osc1.shape': 0.3, 'osc1.level': 0.65,
+    'osc2.on': 1, 'osc2.wave': 'classic', 'osc2.shape': 0, 'osc2.oct': 1, 'osc2.level': 0.3, 'osc2.fb': 0.15,
+    'flt1.model': 'svfLP', 'flt1.cutoff': 8000,
+    'env1.a': 0.001, 'env1.d': 2.4, 'env1.s': 0, 'env1.r': 1.2,
+    'env3.d': 0.6, 'env3.s': 0,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.3, 'fx.reverb.decay': 3.5,
+    'fx.ott.depth': 0.25,
+  }, [
+    ['env3', 'osc1.shape', 0.45], ['m1', 'osc1.shape', 0.6], ['m2', 'osc2.level', 0.5], ['m3', 'fx.reverb.mix', 0.45],
+    ['m4', 'flt1.cutoff', -0.45],
+  ], ['Clang', 'Sine', 'Space', 'Soft']);
+
   /* ════════════════════════════════ FX-ish ══════════════════════════════ */
 
   p('Riser Noise', 'Texture', 'riser, noise, sweep, transition', {
@@ -504,7 +585,13 @@
     'Detroit Chord': 0.76,
     'Gritty Stab': 0.43,
     'Riser Noise': 1.18,
-    'Metal Perc': 0.85
+    'Metal Perc': 0.85,
+    'CZ Bass': 1.0,
+    'Feedback Grit': 0.46,
+    'Steel String': 0.53,
+    'Kalimba Pluck': 0.84,
+    'Chip Lead': 1.1,
+    'Metal Bell': 0.63
   };
   BANK.forEach(p => { if (CAL[p.name] != null) p.values['master.vol'] = CAL[p.name]; });
 

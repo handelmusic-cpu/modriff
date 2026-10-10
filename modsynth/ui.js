@@ -323,7 +323,7 @@
         p.appendChild(this.knobs(g + '.shape', g + '.pw', g + '.level', g + '.pan'));
         p.appendChild(this.knobs(g + '.oct', g + '.semi', g + '.fine', g + '.keytrack'));
         p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
-        p.appendChild(this.row(this.knob(g + '.phase'), this.toggle(g + '.free', 'Free Phase')));
+        p.appendChild(this.row(this.knob(g + '.phase'), this.knob(g + '.fb'), this.toggle(g + '.free', 'Free Phase')));
         rack.appendChild(p);
       });
 
@@ -331,6 +331,7 @@
       mix.appendChild(this.knobs('mix.fm', 'mix.ring', 'mix.sub', 'mix.noise'));
       mix.appendChild(this.row('Sub', this.select('mix.subWave'), this.knob('mix.subOct')));
       mix.appendChild(this.row('Noise', this.select('mix.noiseType'), this.knob('mix.noiseFlt')));
+      mix.appendChild(this.row('Pluck', this.knob('mix.pluck'), this.knob('pluck.decay'), this.knob('pluck.tone'), this.knob('pluck.oct')));
       rack.appendChild(mix);
 
       [1, 2].forEach(n => {

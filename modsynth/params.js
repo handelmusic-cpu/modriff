@@ -42,6 +42,14 @@
     ['noise',    'Noisy'],      // pseudo-random band-limited tables
     ['vintage',  'Vintage'],    // deliberately imperfect saw/square pair
     ['sync',     'Sync'],       // pre-shaped sync-sweep frames
+    // Added for mõdRïff (Batch 1). Appended, never inserted: a patch stores
+    // the wave by id, but the DSP indexes WT_ORDER, which must match.
+    ['czsaw',    'PD Saw'],     // Casio CZ phase distortion: sine bent into a saw
+    ['czres',    'PD Reso'],    // CZ resonant sweep: a windowed sine climbing
+    ['czpulse',  'PD Pulse'],   // CZ phase distortion toward a square
+    ['metal',    'Metal'],      // sparse, clangorous upper partials
+    ['chip',     'Chip'],       // 4-bit triangle, 12/25 % pulses — console
+    ['hollow',   'Hollow'],     // odd partials with a formant tilt — clarinet-ish
   ];
 
   const SUB_WAVES   = [['sine', 'Sine'], ['tri', 'Tri'], ['square', 'Square'], ['saw', 'Saw']];
@@ -238,6 +246,10 @@
   }
   b('osc2.sync',  'Hard Sync', 0);
   b('osc2.ratio', 'FM Ratio',  0);
+  // Phase feedback, DX-style: each oscillator modulates its own phase with
+  // its last output. A little is warmth, a lot is a saw, all of it is noise.
+  f('osc1.fb', 'Feedback', 0, 1, 0);
+  f('osc2.fb', 'Feedback', 0, 1, 0);
 
   /* ════════════════ MIX / EXTRA SOURCES ════════════════ */
   f('mix.fm',        'FM 2→1',   0, 1, 0);
@@ -248,6 +260,13 @@
   f('mix.noise',     'Noise',    0, 1, 0);
   e('mix.noiseType', 'Noise Type', NOISE_TYPES, 'white');
   f('mix.noiseFlt',  'Noise Tone', 0, 1, 1);
+  // Plucked string (Karplus–Strong): a burst of noise circulating in a tuned
+  // delay line. Its own source, beside sub and noise, so it layers under any
+  // oscillator — a pluck transient on a pad, a string body under a saw.
+  f('mix.pluck',     'Pluck',      0, 1, 0);
+  f('pluck.decay',   'Pluck Decay', 0, 1, 0.55);
+  f('pluck.tone',    'Pluck Tone',  0, 1, 0.6);
+  i('pluck.oct',     'Pluck Oct',  -2, 1, 0);
 
   /* ════════════════ FILTERS ════════════════ */
   for (const n of [1, 2]) {

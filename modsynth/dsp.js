@@ -147,6 +147,7 @@ const WT_ORDER = [
   'classic', 'pulse', 'supersaw', 'harmonic', 'formant', 'bell',
   'digital', 'vocal', 'reed', 'string', 'glass', 'growl',
   'fold', 'noise', 'vintage', 'sync',
+  'czsaw', 'czres', 'czpulse', 'metal', 'chip', 'hollow',
 ];
 
 const WT_DEFS = {
@@ -253,6 +254,46 @@ const WT_DEFS = {
     t => (t < 0.48 ? 1 : -1) * (1 - 0.1 * Math.sin(TWO_PI * t)) * 0.8,
     t => { const s = 2 * t - 1; return 0.55 * s + 0.45 * Math.sign(s) * Math.pow(Math.abs(s), 0.7); },
   ],
+  /* ── Batch 1 (mõdRïff) ──────────────────────────────────────────────────
+     Casio CZ phase distortion. A cosine read through a bent phase: the
+     reading runs fast for the first d of the cycle and slow for the rest, so
+     the wave's rise steepens into a saw edge as d shrinks. Baked into four
+     frames (the shape knob is the DCW sweep) and band-limited like every
+     other table, so it costs nothing per note and cannot alias. */
+  czsaw: [0.5, 0.28, 0.13, 0.04].map(d => t => {
+    const p = t < d ? t * 0.5 / d : 0.5 + (t - d) * 0.5 / (1 - d);
+    return -Math.cos(TWO_PI * p);
+  }),
+  /* CZ "resonance": a cosine at r× the pitch, reset every cycle and windowed
+     by a falling ramp — the swept-resonance sound the CZ got without a filter. */
+  czres: [1.5, 3, 5.5, 9].map(r => t => (1 - t) * Math.cos(TWO_PI * r * t) * 1.2),
+  czpulse: [0.5, 0.3, 0.16, 0.06].map(d => t => {
+    // Two distorted halves: fast through each edge, slow across each plateau.
+    const h = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+    const q = h < d ? h * 0.5 / d : 0.5 + (h - d) * 0.5 / (1 - d);
+    return (t < 0.5 ? 1 : -1) * Math.sin(Math.PI * q);
+  }),
+  /* A periodic table cannot be inharmonic, but sparse, clustered high
+     partials with irregular phases read as metal rather than as a chord. */
+  metal: [
+    additive(k => ([1, 0, 0, 0, 0, 0, 0.6, 0, 0, 0, 0.5, 0, 0.45, 0, 0, 0, 0.3][k - 1] || 0), 32, k => k * 1.7),
+    additive(k => (k === 1 ? 0.8 : [7, 11, 13, 17, 19, 23].indexOf(k) >= 0 ? 0.55 : 0), 32, k => k * 2.3),
+    additive(k => (k === 1 ? 0.5 : [9, 14, 21, 26, 31, 37, 43].indexOf(k) >= 0 ? 0.5 : 0), 48, k => k * 0.9),
+    additive(k => (k === 1 ? 0.35 : (k % 7 === 3 || k % 11 === 5) ? 0.5 / Math.sqrt(k / 8) : 0), 80, k => k * 3.1),
+  ],
+  /* Console sound chips: the NES's 4-bit stepped triangle, then 12.5 % and
+     25 % pulses, then a 3-bit saw. Band-limiting keeps the steps' character
+     without the aliasing the real chips had. */
+  chip: [
+    t => Math.round((t < 0.5 ? 4 * t - 1 : 3 - 4 * t) * 7.5) / 7.5,
+    t => (t < 0.125 ? 1 : -0.143),
+    t => (t < 0.25 ? 1 : -0.333),
+    t => Math.round((2 * t - 1) * 3.5) / 3.5,
+  ],
+  /* Odd partials with a soft formant hump — a clarinet's hollow, then
+     brighter and nasal as the hump climbs. */
+  hollow: [3, 6, 11, 18].map(c => additive(
+    k => (k % 2 ? (1 / k) * (1 + 1.6 * Math.exp(-Math.pow((k - c) / (c * 0.45 + 1), 2))) : 0), 160)),
   /* Pre-swept sync shapes, so the classic tearing sound is available without
      paying for real-time hard sync. */
   sync: [1.6, 2.6, 4.1, 6.3].map(r => t => {
@@ -674,6 +715,12 @@ class Voice {
     this.driftT = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
     this.subPh = 0;
     this.rng = makeRng(0x9e37 + id * 2654435761);
+    // Phase feedback: the last two outputs of each unison line (averaged,
+    // as the DX does, which keeps high feedback from oscillating at Nyquist).
+    this.fbA = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
+    this.fbB = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
+    // Karplus–Strong string. Allocated on first use, sized for 20 Hz.
+    this.ks = null; this.ksW = 0; this.ksLp = 0; this.ksExc = 0;
 
     this.env = [new Env(), new Env(), new Env()];
     this.lfo = [new Lfo(id * 7919 + 13), new Lfo(id * 104729 + 7), new Lfo(id * 15485863 + 3)];
@@ -721,6 +768,10 @@ class Voice {
       }
     }
     this.subPh = 0;
+    this.fbA[0].fill(0); this.fbA[1].fill(0); this.fbB[0].fill(0); this.fbB[1].fill(0);
+    // A pluck is struck: the string is re-excited with a fresh noise burst
+    // on every note, whatever was ringing in it.
+    if (S.pluck > 0.0001) this.ksExc = 1;
     for (let n = 0; n < 3; n++) this.env[n].gate(true);
     for (let n = 0; n < 3; n++) {
       const mode = S.lfoMode[n];
@@ -956,6 +1007,12 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     }
     S.sync = g('osc2.sync') > 0.5;
     S.fmRatio = g('osc2.ratio') > 0.5;
+    S.oFb = S.oFb || [0, 0];
+    S.oFb[0] = g('osc1.fb'); S.oFb[1] = g('osc2.fb');
+    S.pluck = g('mix.pluck');
+    S.pluckDecay = g('pluck.decay');
+    S.pluckTone = g('pluck.tone');
+    S.pluckOct = g('pluck.oct');
 
     S.fm = g('mix.fm');
     S.ring = g('mix.ring');
@@ -1517,6 +1574,33 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     let curL = v.panL, curR = v.panR;
 
     const subInc = 440 * Math.pow(2, (basePitch + S.subOct * 12 - 69) / 12) / sr;
+
+    /* Karplus–Strong. The delay is one period of the note; each pass round the
+       loop averages neighbouring samples (that is the string losing its high
+       end) and scales by g, chosen so the string falls 60 dB in the decay
+       time. Tone sets the brightness of the noise it is struck with and how
+       much of the averaging is applied, so dark is a muted nylon and bright a
+       steel string. */
+    const ksOn = S.pluck > 0.0001;
+    let ksLen = 0, ksG = 0, ksMix = 0, ksBuf = null, ksN = 0;
+    if (ksOn) {
+      if (!v.ks) v.ks = new Float32Array(Math.ceil(sr / 20) + 4);
+      ksBuf = v.ks; ksN = ksBuf.length;
+      const fks = clamp(440 * Math.pow(2, (basePitch + S.pluckOct * 12 - 69) / 12), 20, sr * 0.45);
+      ksLen = clamp(sr / fks, 2, ksN - 3);
+      const t60 = 0.08 * Math.pow(160, S.pluckDecay);              // 0.08 s … 12.8 s
+      ksG = Math.pow(10, -3 / (t60 * fks));
+      ksMix = 0.5 + (1 - S.pluckTone) * 0.5;                      // 1 = full averaging
+      if (v.ksExc) {
+        // Strike: fill one period with noise, low-passed by Tone.
+        const a = 0.15 + S.pluckTone * 0.85;
+        let lp = 0;
+        const L = Math.ceil(ksLen) + 2;
+        for (let k = 0; k < ksN; k++) ksBuf[k] = 0;
+        for (let k = 0; k < L; k++) { lp += (v.rng() - lp) * a; ksBuf[k] = lp; }
+        v.ksW = L % ksN; v.ksLp = 0; v.ksExc = 0;
+      }
+    }
     const noiseCut = 0.015 + S.noiseFlt * 0.985;
     const noiseOpen = S.noiseFlt > 0.985;
 
@@ -1569,12 +1653,17 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       const pmBuf = bRaw[1];
       const pmAmt = o === 0 ? fmDepth / (uni1 || 1) : 0;
       const doSync = o === 1 && syncCount > 0;
+      // Squared so the first half of the knob is colour and the top end the
+      // full DX edge; 0.9 of a cycle at maximum is where it turns to noise.
+      const fbAmt = S.oFb[o] * S.oFb[o] * 0.9;
+      const fbA = v.fbA[o], fbB = v.fbB[o];
 
       for (let u = 0; u < n; u++) {
         let ph = phArr[u];
         const dph = incArr[u];
         const gl = glArr[u] * lvl, gr = grArr[u] * lvl;
         let sIdx = 0;
+        let za = fbA[u], zb = fbB[u];
         for (let i = 0; i < blk; i++) {
           ph += dph;
           if (ph >= 1) ph -= 1;
@@ -1594,8 +1683,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
             s = (s1 - (tA[i1] + (tA[i1 + 1] - tA[i1]) * fB)) * 0.62;
           } else {
             let rp = ph;
-            if (pmAmt !== 0) {
-              rp += pmAmt * pmBuf[i];
+            if (pmAmt !== 0 || fbAmt !== 0) {
+              if (pmAmt !== 0) rp += pmAmt * pmBuf[i];
+              if (fbAmt !== 0) rp += fbAmt * (za + zb) * 0.5;
               rp -= rp | 0;
               if (rp < 0) rp += 1;
             }
@@ -1603,6 +1693,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
             const i0 = a | 0, f = a - i0;
             const vA = tA[i0] + (tA[i0 + 1] - tA[i0]) * f;
             s = fmix === 0 ? vA : vA + (tB[i0] + (tB[i0 + 1] - tB[i0]) * f - vA) * fmix;
+            if (fbAmt !== 0) { zb = za; za = s; }
           }
 
           rAcc[i] += s;
@@ -1610,6 +1701,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
           if (stereo) rgtAcc[i] += s * gr;
         }
         phArr[u] = ph;
+        fbA[u] = za; fbB[u] = zb;
       }
     }
 
@@ -1642,6 +1734,21 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         else sv = 2 * p - 1;
         const sg = sv * subAmt;
         sL += sg; if (stereo) sR += sg;
+      }
+
+      if (ksOn) {
+        // Read one period behind the write head, fractionally.
+        let rp = v.ksW - ksLen;
+        if (rp < 0) rp += ksN;
+        const r0 = rp | 0, fr = rp - r0;
+        const r1 = r0 + 1 >= ksN ? 0 : r0 + 1;
+        const y = ksBuf[r0] + (ksBuf[r1] - ksBuf[r0]) * fr;
+        const avg = y * (1 - ksMix * 0.5) + v.ksLp * ksMix * 0.5;
+        v.ksLp = y;
+        ksBuf[v.ksW] = avg * ksG;
+        v.ksW = v.ksW + 1 >= ksN ? 0 : v.ksW + 1;
+        const kg = y * S.pluck * 1.4;
+        sL += kg; if (stereo) sR += kg;
       }
 
       if (noiseAmt > 0.0001) {
