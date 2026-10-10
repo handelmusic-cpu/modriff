@@ -22,7 +22,8 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const OUT  = path.join(ROOT, 'dist');
 // Repo furniture, never served.
 const SKIP = new Set(['.git', '.github', '.vercel', 'build', 'dist', 'node_modules',
-  'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore']);
+  'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
+  'tests']);
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT);
