@@ -294,20 +294,27 @@
     }
 
     /* ── Folding and jumping ────────────────────────────────────────────── */
-    _folds() {
-      if (!this._foldSet) {
-        let a = [];
-        try { a = JSON.parse(root.localStorage.getItem('modo-msx-fold') || '[]'); } catch (e) {}
-        this._foldSet = new Set(Array.isArray(a) ? a : []);
+    // Panels start folded (4.9.2.1): thirty-odd panels of knobs open at once
+    // was a wall to scroll past to reach the one you wanted. What is kept is
+    // the set you have OPENED, under modo-msx-open; the old modo-msx-fold list
+    // (what you had closed) meant nothing once closed became the default, so
+    // it is no longer read — and left where it is. Env 1 · Amp starts open:
+    // it is where a part on mõdSynth now takes its attack and release from,
+    // and where the greyed Studio sliders send you.
+    _opens() {
+      if (!this._openSet) {
+        let a = null;
+        try { a = JSON.parse(root.localStorage.getItem('modo-msx-open') || 'null'); } catch (e) {}
+        this._openSet = new Set(Array.isArray(a) ? a : ['Env 1']);
       }
-      return this._foldSet;
+      return this._openSet;
     }
 
     _setFold(p, on) {
       p.classList.toggle('fold', on);
-      const f = this._folds();
-      if (on) f.add(p.dataset.key); else f.delete(p.dataset.key);
-      try { root.localStorage.setItem('modo-msx-fold', JSON.stringify([...f])); } catch (e) {}
+      const f = this._opens();
+      if (on) f.delete(p.dataset.key); else f.add(p.dataset.key);
+      try { root.localStorage.setItem('modo-msx-open', JSON.stringify([...f])); } catch (e) {}
     }
 
     /** A chip per panel, above the page: tap to unfold it and bring it up. */
@@ -402,7 +409,7 @@
       p.head = head;
       p.dataset.title = title;
       p.dataset.key = title.replace(/\s*·.*$/, '');
-      if (this._folds().has(p.dataset.key)) p.classList.add('fold');
+      if (!this._opens().has(p.dataset.key)) p.classList.add('fold');
       // The heading folds the panel — except where it holds a control (the
       // On switches live in some headings), which must still just switch.
       head.addEventListener('click', e => {

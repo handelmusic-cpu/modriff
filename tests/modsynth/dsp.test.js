@@ -155,6 +155,18 @@ section('voices');
   s.render(10);
   ok(s.proc.voices[0].note === 64, 'mono falls back to the held note', String(s.proc.voices[0].note));
 }
+// A choke (a new chord gating the last) silences that note-on fast, tail
+// and all, and leaves every other note alone.
+{
+  const s = makeSynth();
+  s.set('env1.r', 3);                                  // a long release to cut through
+  s.send({ t: 'on', note: 60, vel: 0.8, id: 1 });
+  s.send({ t: 'on', note: 67, vel: 0.8, id: 2 }); s.render(40);
+  s.send({ t: 'choke', note: 60, id: 1 }); s.render(10);   // ~27 ms
+  const v1 = s.proc.voices.find(v => v.noteId === 1), v2 = s.proc.voices.find(v => v.noteId === 2);
+  ok(!v1 || !v1.active, 'a choked note is gone within 27 ms despite a 3 s release');
+  ok(v2 && v2.active && v2.held, 'choking one note leaves the others sounding');
+}
 // The host releases by id (noteOffId). After a fallback the voice must carry
 // the held key's id, or letting go of that key leaves the note ringing.
 ['mono', 'legato'].forEach(mode => {
