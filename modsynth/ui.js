@@ -6,11 +6,16 @@
      - Every structural class is prefixed mu- (el() does it). mõdRïff has its
        own .panel, .row, .btn, .sel and .tab, and the two sets of rules fought
        over the same elements. State classes (on, active, live) stay bare.
-     - A knob turns with a SIDEWAYS drag on touch. The standalone was a fixed
-       window, so a vertical drag was free; here the page scrolls, and a rack
-       of knobs that each swallowed vertical drags could not be scrolled past.
-       The first few pixels decide: across turns the knob, up/down scrolls.
-       A mouse still drags vertically, as it did.
+     - On touch, a drag on the DIAL turns the knob in any direction; a drag
+       on its label turns it only sideways and otherwise scrolls the page.
+       The standalone was a fixed window; here the page scrolls, and a rack
+       of knobs that each swallowed every drag could not be scrolled past.
+       (4.9.0 turned only on a sideways drag anywhere, which on a phone read
+       as knobs that didn't work.) A mouse still drags vertically.
+     - While a knob moves, a readout floats above it with its full name and
+       value in large type, because the finger is covering the knob's own.
+     - Panels fold (tap the heading) and each page has a strip of chips that
+       jumps to a panel, so a phone isn't one long wall of knobs.
      - No MIDI learn, arp, drums or patch browser: mõdRïff has its own, and
        the synth's own arp would fight the part's.
    ───────────────────────────────────────────────────────────────────────────
@@ -67,7 +72,8 @@
 
       const node = el('div', 'knob' + (opts.big ? ' big' : ''));
       node.dataset.param = paramId;
-      node.title = (opts.label || this.p.label) + '  ·  drag to change (sideways on touch), double-click to reset';
+      this.label = opts.label || this.p.label;
+      node.title = this.label + '  ·  drag to change, double-click to reset';
 
       const NS = 'http://www.w3.org/2000/svg';
       const svg = doc.createElementNS(NS, 'svg');
@@ -84,7 +90,8 @@
       ptr.setAttribute('class', 'kp');
       svg.appendChild(track); svg.appendChild(arc); svg.appendChild(cap); svg.appendChild(ptr);
 
-      const label = el('div', 'klabel', opts.label || this.p.label);
+      const label = el('div', 'klabel', this.label);
+      this.labelEl = label;
       const val = el('div', 'kval', '');
       node.appendChild(svg); node.appendChild(label); node.appendChild(val);
 
@@ -100,12 +107,16 @@
       let dragging = false, startX = 0, startY = 0, startT = 0, mode = null;
 
       // Mouse: vertical drag, as in the standalone.
+      let touchT = 0;
       const down = e => {
-        if (e.button !== 0) return;
+        // A tap on a phone also fires a mousedown/mouseup after the touch;
+        // without this the mouseup cut the tap's readout short.
+        if (e.button !== 0 || Date.now() - touchT < 800) return;
         dragging = true;
         startY = e.clientY;
         startT = MS.toNorm(this.p, this.ui.engine.get(this.id));
         node.classList.add('active');
+        this.ui.hud(this);
         e.preventDefault();
       };
       const move = e => {
@@ -114,24 +125,36 @@
         // 850 px, which is what makes a 12 ms attack settable by hand.
         const span = e.shiftKey ? 850 : 170;
         this.ui.setNorm(this.id, MS.clamp(startT + (startY - e.clientY) / span, 0, 1));
+        this.ui.hud(this);
         e.preventDefault();
       };
       const up = () => {
         if (!dragging) return;
         dragging = false;
         node.classList.remove('active');
+        this.ui.hudOff(500);
       };
       node.addEventListener('mousedown', down);
       doc.addEventListener('mousemove', move);
       doc.addEventListener('mouseup', up);
 
-      // Touch: decided by the first 6 px. Across turns the knob (right is
-      // up), so the page keeps its vertical scroll — touch-action: pan-y
-      // leaves vertical pans to the browser and hands us the sideways ones.
+      // Touch, two zones. On the DIAL itself any drag turns the knob — up or
+      // right is more — because that is what a thumb does to a knob, and the
+      // 4.9.0 rack, which only turned on a sideways drag, read as "the knobs
+      // don't work, the page just scrolls" on a phone. The dial is
+      // touch-action:none so the browser never claims the gesture first.
+      // The label and value under it keep the old rule (the first 6 px
+      // decide: across turns, up/down scrolls), so a rack that is mostly
+      // knobs can still be scrolled by its text, its gaps and its headings.
+      const svgEl = node.querySelector('svg');
+      svgEl.style.touchAction = 'none';
+      let lastX = 0, lastY = 0, acc = 0, moved = false;
       node.addEventListener('touchstart', e => {
         const t = e.touches[0];
-        startX = t.clientX; startY = t.clientY; mode = null;
+        startX = lastX = t.clientX; startY = lastY = t.clientY; acc = 0; moved = false; touchT = Date.now();
+        mode = svgEl.contains(e.target) ? 'dial' : null;
         startT = MS.toNorm(this.p, this.ui.engine.get(this.id));
+        if (mode === 'dial') { node.classList.add('active'); this.ui.hud(this); }
       }, { passive: true });
       node.addEventListener('touchmove', e => {
         const t = e.touches[0];
@@ -139,13 +162,30 @@
         if (mode === null) {
           if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
           mode = Math.abs(dx) > Math.abs(dy) ? 'turn' : 'scroll';
-          if (mode === 'turn') node.classList.add('active');
+          if (mode === 'turn') { node.classList.add('active'); this.ui.hud(this); }
         }
-        if (mode !== 'turn') return;
+        if (mode === 'scroll') return;
         if (e.cancelable) e.preventDefault();
-        this.ui.setNorm(this.id, MS.clamp(startT + dx / 200, 0, 1));
+        moved = true;
+        if (mode === 'turn') {
+          this.ui.setNorm(this.id, MS.clamp(startT + dx / 200, 0, 1));
+        } else {
+          // Dial: whichever way the finger travelled further this frame
+          // counts, so a diagonal thumb doesn't turn the knob twice over.
+          const mx = t.clientX - lastX, my = lastY - t.clientY;
+          acc += Math.abs(mx) > Math.abs(my) ? mx : my;
+          this.ui.setNorm(this.id, MS.clamp(startT + acc / 180, 0, 1));
+        }
+        lastX = t.clientX; lastY = t.clientY;
+        this.ui.hud(this);
       }, { passive: false });
-      const tend = () => { mode = null; node.classList.remove('active'); };
+      const tend = () => {
+        touchT = Date.now();
+        // A tap on the dial without a drag just reads the value out, longer,
+        // so a phone has a way to see the full name and number.
+        this.ui.hudOff(mode === 'dial' && !moved ? 1400 : 500);
+        mode = null; node.classList.remove('active');
+      };
       node.addEventListener('touchend', tend);
       node.addEventListener('touchcancel', tend);
 
@@ -226,6 +266,65 @@
       this.refreshMotion();
     }
 
+    /* ── Value readout ─────────────────────────────────────────────────────
+       One element for the whole page, on <body> and position:fixed so no
+       panel's overflow clips it. Placed above the knob, where the finger
+       isn't. */
+    hud(k) {
+      let h = this._hud;
+      if (!h) {
+        h = this._hud = doc.createElement('div');
+        h.className = 'mu-hud';
+        h.innerHTML = '<b></b><span></span>';
+        doc.body.appendChild(h);
+      }
+      clearTimeout(this._hudT);
+      h.firstChild.textContent = k.labelEl.textContent;
+      h.lastChild.textContent = k.val.textContent;
+      const r = k.node.getBoundingClientRect();
+      h.style.display = 'flex';
+      const w = h.offsetWidth, vw = doc.documentElement.clientWidth;
+      h.style.left = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+      h.style.top = Math.max(8, r.top - h.offsetHeight - 10) + 'px';
+    }
+
+    hudOff(ms) {
+      clearTimeout(this._hudT);
+      this._hudT = setTimeout(() => { if (this._hud) this._hud.style.display = 'none'; }, ms || 0);
+    }
+
+    /* ── Folding and jumping ────────────────────────────────────────────── */
+    _folds() {
+      if (!this._foldSet) {
+        let a = [];
+        try { a = JSON.parse(root.localStorage.getItem('modo-msx-fold') || '[]'); } catch (e) {}
+        this._foldSet = new Set(Array.isArray(a) ? a : []);
+      }
+      return this._foldSet;
+    }
+
+    _setFold(p, on) {
+      p.classList.toggle('fold', on);
+      const f = this._folds();
+      if (on) f.add(p.dataset.key); else f.delete(p.dataset.key);
+      try { root.localStorage.setItem('modo-msx-fold', JSON.stringify([...f])); } catch (e) {}
+    }
+
+    /** A chip per panel, above the page: tap to unfold it and bring it up. */
+    jumpBar(host, rack) {
+      const bar = el('div', 'jump');
+      rack.querySelectorAll('.mu-panel').forEach(p => {
+        const b = el('button', 'chip', p.dataset.title);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          if (p.classList.contains('fold')) this._setFold(p, false);
+          p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        bar.appendChild(b);
+      });
+      host.insertBefore(bar, rack);
+    }
+
     startLearn() {}
     clearLearn() {}
 
@@ -260,10 +359,13 @@
     /** A toggle bound to a boolean parameter. */
     toggle(paramId, label) {
       const p = MS.PARAM[paramId];
-      const node = el('label', 'sw');
+      const text = label || p.label;
+      // Short switches take one grid column of a row, longer ones two, the
+      // longest the whole row — a label wrapped under its switch reads badly.
+      const node = el('label', 'sw' + (text.length > 12 ? ' sw-long' : text.length > 5 ? ' sw-mid' : ''));
       const box = el('span', 'sw-box');
       node.appendChild(box);
-      node.appendChild(el('span', null, label || p.label));
+      node.appendChild(el('span', null, text));
       node.addEventListener('click', () => this.set(paramId, this.engine.get(paramId) ? 0 : 1));
       const ctrl = {
         id: paramId, node,
@@ -279,10 +381,20 @@
       if (accent) p.dataset.accent = accent;
       const head = el('div', 'panel-head');
       head.appendChild(el('span', 'dot'));
-      head.appendChild(el('span', null, title));
+      head.appendChild(el('span', 'title', title));
       head.appendChild(el('span', 'spacer'));
+      head.appendChild(el('span', 'chev'));
       p.appendChild(head);
       p.head = head;
+      p.dataset.title = title;
+      p.dataset.key = title.replace(/\s*·.*$/, '');
+      if (this._folds().has(p.dataset.key)) p.classList.add('fold');
+      // The heading folds the panel — except where it holds a control (the
+      // On switches live in some headings), which must still just switch.
+      head.addEventListener('click', e => {
+        if (e.target.closest('.mu-sw, select, button')) return;
+        this._setFold(p, !p.classList.contains('fold'));
+      });
       if (opts && opts.width) {
         // Panels may grow to fill a row, but only so far — without a cap the
         // last panel on a row stretches across the whole window and its knobs
@@ -300,7 +412,9 @@
     }
 
     knobs(...ids) {
-      const g = el('div', 'knobs');
+      // Five in a row (envelopes, LFO shape) sit five across rather than
+      // four and a stray one on the next line.
+      const g = el('div', 'knobs' + (ids.filter(Boolean).length === 5 ? ' k5' : ''));
       ids.forEach(id => {
         if (!id) return;
         g.appendChild(typeof id === 'string' ? this.knob(id) : id);
@@ -363,6 +477,7 @@
       rack.appendChild(voice);
 
       host.appendChild(rack);
+      this.jumpBar(host, rack);
     }
 
     /** A live ADSR curve, drawn from the same numbers the DSP uses. */
@@ -418,9 +533,11 @@
       [1, 2, 3].forEach(n => {
         const g = 'lfo' + n;
         const p = this.panel('LFO ' + n, 'mod', { width: 320 });
-        p.appendChild(this.row(this.select(g + '.shape'), this.select(g + '.mode'),
-          this.toggle(g + '.sync', 'Sync')));
-        p.appendChild(this.row('Rate', this.knob(g + '.rate'), this.select(g + '.div'), this.knob(g + '.depth')));
+        // Sync lives in the heading, so the rows below line up on the grid:
+        // shape and mode, then rate · division · depth.
+        p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
+        p.appendChild(this.row(this.select(g + '.shape'), this.select(g + '.mode')));
+        p.appendChild(this.row(this.knob(g + '.rate'), this.select(g + '.div'), this.knob(g + '.depth')));
         p.appendChild(this.knobs(g + '.phase', g + '.pw', g + '.smooth', g + '.delay', g + '.fade'));
         rack.appendChild(p);
       });
@@ -428,10 +545,10 @@
       [1, 2].forEach(n => {
         const g = 'mot' + n;
         const p = this.panel('Motion ' + n, 'mod', { width: 420 });
+        p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
         p.head.appendChild(this.toggle(g + '.on', 'On'));
-        p.appendChild(this.row(this.select(g + '.mode'), this.select(g + '.div'),
-          this.toggle(g + '.sync', 'Sync'), this.knob(g + '.rate')));
-        p.appendChild(this.knobs(g + '.steps', g + '.slew', g + '.depth'));
+        p.appendChild(this.row(this.select(g + '.mode'), this.select(g + '.div')));
+        p.appendChild(this.knobs(g + '.rate', g + '.steps', g + '.slew', g + '.depth'));
         p.appendChild(this.motionGrid(n - 1));
         const tools = this.row();
         [['Ramp', i => i / 15 * 2 - 1], ['Saw', i => 1 - i / 15 * 2],
@@ -506,6 +623,7 @@
         'point several rows at the same macro and one knob moves the whole sound.'));
       rack.appendChild(mx);
       host.appendChild(rack);
+      this.jumpBar(host, rack);
       this.refreshMatrix();
     }
 
@@ -631,6 +749,7 @@
       rack.appendChild(out);
 
       host.appendChild(rack);
+      this.jumpBar(host, rack);
     }
 
     /* The host draws its own macro bar; it hears about route changes here. */
