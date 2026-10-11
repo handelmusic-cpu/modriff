@@ -12097,8 +12097,20 @@ var PS = { bank:4, quant:0, slot:'melody', sel:0, hold:false, liveN:4, liveCtl:t
 var PS_LIVE = {};          // pad key -> {src, gain, end, mode, t0}
 var PS_LAST = null;        // last pad struck, for Roll
 var PS_REVBUF = {};        // clip id -> reversed AudioBuffer
-var PS_QUANTS = [0,1,2,4,'bar'];   // in sixteenths; 'bar' = the meter's bar
-var PS_QUANT_LABEL = {0:'Off', 1:'1/16', 2:'1/8', 4:'1/4', bar:'Bar'};
+// In sixteenths; 'bar' = the meter's bar. 1/32 is half a sixteenth, and a
+// triplet is three in the space of two, so each straight value has a triplet
+// at 2/3 of it: 1/32T = 1/3, 1/16T = 2/3, 1/8T = 4/3, 1/4T = 8/3.
+// Fractions are fine everywhere this is read — psWhen measures the grid in
+// seconds from the drums' bar line, and a pattern stores fractional steps.
+// A saved 2/3 survives the JSON round trip in modo-ps as the same double, so
+// indexOf still finds it on load.
+// The row shows the straight values plus a T switch rather than every value
+// as its own button: nine segments ran 23px off a 390px phone.
+var PS_QUANT_BASE = [0, 0.5, 1, 2, 4, 'bar'];
+var PS_QUANTS = PS_QUANT_BASE.concat([0.5*2/3, 2/3, 4/3, 8/3]);
+var PS_QUANT_LABEL = {0:'Off', 0.5:'1/32', 1:'1/16', 2:'1/8', 4:'1/4', bar:'Bar'};
+function psQuantIsTrip(q){ return typeof q==='number' && q>0 && PS_QUANT_BASE.indexOf(q)<0; }
+function psQuantBase(q){ return psQuantIsTrip(q) ? q*3/2 : q; }
 // Roll's own rate, in sixteenths (4.5.7). It used to borrow the quantize
 // value, so it could only roll in straight 1/16, 1/8 or 1/4 — no triplets,
 // nothing faster than a sixteenth — and changing it moved where every other
@@ -12357,9 +12369,19 @@ function psSetBank(b){
  psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
+ // Picking a straight value keeps the T switch where it was, as on a
+ // hardware sampler; Off and Bar have no triplet.
+ if(typeof q==='number' && q>0 && psQuantIsTrip(PS.quant) && PS_QUANT_BASE.indexOf(q)>=0) q = q*2/3;
  PS.quant = PS_QUANTS.indexOf(q)>=0 ? q : 0;
  psSavePrefs(); psRender();
 }
+function psToggleTrip(){
+ var b = psQuantBase(PS.quant);
+ if(!(typeof b==='number' && b>0)){ if(typeof showToast==='function') showToast('Pick a note value first — triplets are 1/32 to 1/4'); return; }
+ PS.quant = psQuantIsTrip(PS.quant) ? b : b*2/3;
+ psSavePrefs(); psRender();
+}
+window.psToggleTrip = psToggleTrip;
 function psToggleHold(){
  PS.hold = !PS.hold;
  // Releasing Hold lets go of anything it was holding, the way a sustain pedal
@@ -13572,11 +13594,17 @@ function psBuild(){
  bq.appendChild(g1);
  g2.appendChild(psEl('span','ps-lbl','Qtz'));
  var qs=psEl('div','ps-seg');
- PS_QUANTS.forEach(function(q){
+ PS_QUANT_BASE.forEach(function(q){
   var x=psBtn('ps-segb', PS_QUANT_LABEL[q], q? 'Strikes land on the next '+PS_QUANT_LABEL[q]+' while the transport runs' : 'Strikes play the moment you tap', function(){ psSetQuant(q); });
   x.dataset.psq=String(q); qs.appendChild(x);
  });
- g2.appendChild(qs); bq.appendChild(g2);
+ g2.appendChild(qs);
+ // Its own one-button segment, so it reads as a switch on the row rather
+ // than a seventh value.
+ var qts=psEl('div','ps-seg');
+ var qt=psBtn('ps-segb', 'T', 'Triplets — three in the space of two (1/32 to 1/4)', function(){ psToggleTrip(); });
+ qt.id='ps-trip'; qts.appendChild(qt); g2.appendChild(qts);
+ bq.appendChild(g2);
  // Pad count in Studio too (4.2.5.1). It lived only on Live's heading, so in
  // Studio there was no way to change it at all. One count, both views.
  var gN=psEl('span','ps-grp ps-studio'); gN.appendChild(psEl('span','ps-lbl','Pads'));
@@ -13832,7 +13860,8 @@ function psRender(){
   lb.textContent = '◈ Load';
   lb.title = 'Put a sample on the selected pad — built in, yours, or from Files';
  }
- document.querySelectorAll('#ps-panel [data-psq]').forEach(function(b){ b.classList.toggle('active', b.dataset.psq===String(PS.quant)); });
+ document.querySelectorAll('#ps-panel [data-psq]').forEach(function(b){ b.classList.toggle('active', b.dataset.psq===String(psQuantBase(PS.quant))); });
+ var _pt=document.getElementById('ps-trip'); if(_pt) _pt.classList.toggle('active', psQuantIsTrip(PS.quant));
  var h=document.getElementById('ps-hold'); if(h){ h.classList.toggle('active', PS.hold); h.setAttribute('aria-pressed', PS.hold?'true':'false'); }
  psRenderDeck();
  psPatRender();
