@@ -369,7 +369,14 @@
       node.addEventListener('click', () => this.set(paramId, this.engine.get(paramId) ? 0 : 1));
       const ctrl = {
         id: paramId, node,
-        refresh: () => node.classList.toggle('on', !!this.engine.get(paramId)),
+        refresh: () => {
+          const on = !!this.engine.get(paramId);
+          node.classList.toggle('on', on);
+          // An On switch in a panel's heading greys the panel out when off:
+          // an effect that is bypassed looked exactly like one that wasn't.
+          const pn = /\.on$/.test(paramId) && node.parentNode && node.parentNode.classList.contains('mu-panel-head') && node.closest('.mu-panel');
+          if (pn) pn.classList.toggle('off', !on);
+        },
       };
       ctrl.refresh();
       this.register(ctrl);
@@ -405,6 +412,9 @@
       return p;
     }
 
+    /** A small heading inside a panel, naming the group of controls below. */
+    sub(text) { return el('div', 'sublabel', text); }
+
     row(...kids) {
       const r = el('div', 'row');
       kids.forEach(k => { if (k) r.appendChild(typeof k === 'string' ? el('span', 'row-label', k) : k); });
@@ -413,8 +423,11 @@
 
     knobs(...ids) {
       // Five in a row (envelopes, LFO shape) sit five across rather than
-      // four and a stray one on the next line.
-      const g = el('div', 'knobs' + (ids.filter(Boolean).length === 5 ? ' k5' : ''));
+      // four and a stray one on the next line. A leading 5 asks for the
+      // five-column grid outright, so a short row lines up under a full one.
+      const five = ids[0] === 5;
+      if (five) ids = ids.slice(1);
+      const g = el('div', 'knobs' + (five || ids.filter(Boolean).length === 5 ? ' k5' : ''));
       ids.forEach(id => {
         if (!id) return;
         g.appendChild(typeof id === 'string' ? this.knob(id) : id);
@@ -435,8 +448,11 @@
           n === 2 ? this.toggle('osc2.sync', 'Sync') : null,
           n === 2 ? this.toggle('osc2.ratio', 'Ratio') : null));
         p.appendChild(this.knobs(g + '.shape', g + '.pw', g + '.level', g + '.pan'));
+        p.appendChild(this.sub('Pitch'));
         p.appendChild(this.knobs(g + '.oct', g + '.semi', g + '.fine', g + '.keytrack'));
+        p.appendChild(this.sub('Unison'));
         p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
+        p.appendChild(this.sub('Phase'));
         p.appendChild(this.row(this.knob(g + '.phase'), this.knob(g + '.fb'), this.toggle(g + '.free', 'Free Phase')));
         rack.appendChild(p);
       });
@@ -453,9 +469,9 @@
         const g = 'flt' + n;
         const p = this.panel('Filter ' + n, 'flt', { width: 300 });
         p.appendChild(this.row(this.select(g + '.model', { wide: true })));
-        p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive'));
-        p.appendChild(this.knobs(g + '.env', g + '.keytrack', g + '.vel'));
-        if (n === 1) p.appendChild(this.row(this.knob('flt.spread')));
+        // Four then three, not three, three and a lone Spread.
+        p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive', g + '.env'));
+        p.appendChild(this.knobs(g + '.keytrack', g + '.vel', n === 1 ? 'flt.spread' : null));
         if (n === 2) p.appendChild(this.row('Route', this.select('flt.route'), this.knob('flt.blend')));
         rack.appendChild(p);
       });
@@ -463,13 +479,15 @@
       [['env1', 'Env 1 · Amp'], ['env2', 'Env 2 · Filter'], ['env3', 'Env 3 · Mod']].forEach(([g, title]) => {
         const p = this.panel(title, 'mod', { width: 300 });
         if (g === 'env3') p.head.appendChild(this.toggle('env3.loop', 'Loop'));
-        p.appendChild(this.knobs(g + '.a', g + '.h', g + '.d', g + '.s', g + '.r'));
-        p.appendChild(this.knobs(g + '.curve', g + '.vel'));
+        // The curve first, so the shape is seen before the numbers that
+        // make it; Curve and Vel sit on the same five columns as A–R.
         p.appendChild(this.envDisplay(g));
+        p.appendChild(this.knobs(g + '.a', g + '.h', g + '.d', g + '.s', g + '.r'));
+        p.appendChild(this.knobs(5, g + '.curve', g + '.vel'));
         rack.appendChild(p);
       });
 
-      const voice = this.panel('Voice', 'perf', { width: 320 });
+      const voice = this.panel('Voice', 'perf', { width: 300 });
       voice.appendChild(this.row(this.select('voice.mode'), this.knob('voice.poly'), this.knob('voice.glide')));
       voice.appendChild(this.row(this.toggle('voice.glideAuto', 'Glide on legato only')));
       voice.appendChild(this.knobs('voice.bendUp', 'voice.bendDown', 'voice.transpose', 'voice.tune'));
@@ -485,7 +503,7 @@
       const cv = el('canvas');
       cv.width = 260; cv.height = 46;
       cv.style.width = '100%'; cv.style.height = '46px';
-      cv.style.display = 'block'; cv.style.marginTop = '4px';
+      cv.style.display = 'block'; cv.style.margin = '0 0 10px';
       cv.style.background = '#05060c';
       cv.style.border = '1px solid var(--border)';
       cv.style.borderRadius = '4px';
@@ -532,7 +550,7 @@
 
       [1, 2, 3].forEach(n => {
         const g = 'lfo' + n;
-        const p = this.panel('LFO ' + n, 'mod', { width: 320 });
+        const p = this.panel('LFO ' + n, 'mod', { width: 300 });
         // Sync lives in the heading, so the rows below line up on the grid:
         // shape and mode, then rate · division · depth.
         p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
@@ -544,7 +562,7 @@
 
       [1, 2].forEach(n => {
         const g = 'mot' + n;
-        const p = this.panel('Motion ' + n, 'mod', { width: 420 });
+        const p = this.panel('Motion ' + n, 'mod', { width: 300 });
         p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
         p.head.appendChild(this.toggle(g + '.on', 'On'));
         p.appendChild(this.row(this.select(g + '.mode'), this.select(g + '.div')));
@@ -568,19 +586,20 @@
         rack.appendChild(p);
       });
 
+      // The matrix as cards, not a table. A phone-width table of sixteen
+      // rows gave each select ~85px ("Filter 1 Cu…") and the amount slider
+      // ~50px, and twelve of the sixteen rows were usually Off. Now each
+      // route is two lines — source → destination, then a full-width amount
+      // — and only the routes in use are shown, plus "Add route" to open the
+      // next empty slot. The engine still has sixteen slots; nothing about
+      // the patch format changes.
       const mx = this.panel('Modulation Matrix', 'mod');
       mx.style.flexBasis = '100%';
-      const table = el('table', 'matrix');
-      const thead = el('thead');
-      const hr = el('tr');
-      ['', 'Source', 'Destination', 'Amount', ''].forEach(h => hr.appendChild(el('th', null, h)));
-      thead.appendChild(hr);
-      table.appendChild(thead);
-      const tbody = el('tbody');
+      const list = el('div', 'matrix');
       this._mxRows = [];
+      this._mxOpen = new Set();
       for (let i = 0; i < MS.MATRIX_SLOTS; i++) {
-        const tr = el('tr');
-        tr.appendChild(el('td', 'slot-n', String(i + 1)));
+        const tr = el('div', 'mx-row');
 
         const srcSel = el('select', 'sel');
         MS.MOD_SOURCES.forEach(([v, l]) => { const o = el('option', null, l); o.value = v; srcSel.appendChild(o); });
@@ -595,6 +614,8 @@
 
         const uni = el('button', 'btn', '±');
         uni.title = 'Bipolar (±) or unipolar (0…+) — unipolar is what you want for a macro that should only ever add.';
+        const del = el('button', 'btn mx-del', '✕');
+        del.title = 'Remove this route';
 
         const write = () => {
           const rows = this.engine.matrix.slice();
@@ -609,18 +630,37 @@
         dstSel.addEventListener('change', write);
         amt.addEventListener('input', () => { amtV.textContent = (+amt.value).toFixed(2); write(); });
         uni.addEventListener('click', () => { uni.classList.toggle('on'); write(); });
+        del.addEventListener('click', () => {
+          srcSel.value = 'none'; dstSel.value = 'none'; amt.value = 0; uni.classList.remove('on');
+          this._mxOpen.delete(i);
+          write();
+        });
 
-        const td = c => { const t = el('td'); t.appendChild(c); return t; };
-        tr.appendChild(td(srcSel)); tr.appendChild(td(dstSel));
-        tr.appendChild(td(amtWrap)); tr.appendChild(td(uni));
-        tbody.appendChild(tr);
+        const top = el('div', 'mx-top');
+        top.appendChild(el('span', 'slot-n', String(i + 1)));
+        top.appendChild(srcSel);
+        top.appendChild(el('span', 'mx-arrow', '→'));
+        top.appendChild(dstSel);
+        const bot = el('div', 'mx-bot');
+        bot.appendChild(amtWrap); bot.appendChild(uni); bot.appendChild(del);
+        tr.appendChild(top); tr.appendChild(bot);
+        list.appendChild(tr);
         this._mxRows.push({ tr, srcSel, dstSel, amt, amtV, uni });
       }
-      table.appendChild(tbody);
-      mx.appendChild(table);
+      mx.appendChild(list);
+      const add = el('button', 'btn mx-add', '+ Add route');
+      add.addEventListener('click', () => {
+        const free = this._mxRows.findIndex((r, i) => r.tr.style.display === 'none');
+        if (free < 0) return;
+        this._mxOpen.add(free);
+        this.refreshMatrix();
+        this._mxRows[free].srcSel.focus();
+      });
+      this._mxAdd = add;
+      mx.appendChild(add);
       mx.appendChild(el('div', 'hint',
-        'Each row wires one source to one destination. Macros appear as sources m1–m8 — ' +
-        'point several rows at the same macro and one knob moves the whole sound.'));
+        'Each route wires one source to one destination. Macros appear as sources m1–m8 — ' +
+        'point several routes at the same macro and one knob moves the whole sound.'));
       rack.appendChild(mx);
       host.appendChild(rack);
       this.jumpBar(host, rack);
@@ -680,7 +720,15 @@
         r.amtV.textContent = (+(row.amt || 0)).toFixed(2);
         r.uni.classList.toggle('on', !!row.uni);
         r.tr.classList.toggle('live', row.src !== 'none' && row.dst !== 'none' && !!row.amt);
+        // A slot shows if it holds anything, or was just opened with Add.
+        const used = (row.src && row.src !== 'none') || (row.dst && row.dst !== 'none') || !!row.amt;
+        if (used) this._mxOpen.delete(i);
+        r.tr.style.display = used || this._mxOpen.has(i) ? '' : 'none';
       });
+      if (this._mxAdd) {
+        const full = this._mxRows.every(r => r.tr.style.display !== 'none');
+        this._mxAdd.style.display = full ? 'none' : '';
+      }
     }
 
     buildFxPage(host) {
