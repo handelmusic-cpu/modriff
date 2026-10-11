@@ -7910,7 +7910,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span class="midi-panel-lbl">Key mapping:</span>
    <div class="tg">
     <button class="tb active" id="midi-movable-btn" onclick="setMidiKeyMap('movable')" title="Middle C plays the tonic, whatever key you are in">Movable Do</button>
-    <button class="tb" id="midi-smart-btn" onclick="setMidiKeyMap('smart')" title="C is always chord I, whatever key you are in">Smart Keys (C=I)</button>
+    <button class="tb" id="midi-smart-btn" onclick="setMidiKeyMap('smart')" title="The white keys are the scale: C is always I, D is II … B is VII, in whatever key and mode you are in">Smart Keys (C=I)</button>
    </div>
   </div>
   <div class="midi-panel-row" style="margin-top:6px;flex-direction:column;align-items:stretch;gap:4px">
@@ -31951,6 +31951,25 @@ function setMidiMode(m){
  document.querySelectorAll('[data-midimode]').forEach(b=>b.classList.toggle('active', b.dataset.midimode===m));
  if(typeof midiRoutesSave==='function') midiRoutesSave();
 }
+// Smart Keys: the white keys ARE the scale. C is degree I, D is II … B is VII,
+// in whatever key and mode is selected, and a black key is the degree below it
+// raised a half step. Returns semitones above the tonic, with middle C (60) on
+// the tonic itself. This used to be a plain transpose (note + root), which only
+// lines the white keys up with the scale in Ionian: in A minor E played C# on
+// the Melody and Bass and a borrowed chord instead of III on Chords — Smart
+// Keys only worked on major-mode parts. A scale that is not seven notes has no
+// one-white-key-per-degree reading, so it keeps the transpose.
+function _smartKeyRel(note){
+ const steps=(MODES[mode]||MODES.major).steps;
+ if(!steps || steps.length!==7) return note-60;
+ const WH=[0,2,4,5,7,9,11];
+ const pc=((note%12)+12)%12, oct=Math.floor(note/12)-5;
+ let wi=WH.indexOf(pc), sharp=0;
+ if(wi<0){ wi=WH.indexOf(pc-1); sharp=1; }
+ return oct*12 + steps[wi] + sharp;
+}
+// The pitch a Smart-Keys note plays on a pitched part (Melody, Bass).
+function _smartKeyMidi(note){ return 60 + (root<=5?root:root-12) + _smartKeyRel(note); }
 function setMidiKeyMap(k){
  midiKeyMap = k;
  document.getElementById('midi-movable-btn')?.classList.toggle('active', k==='movable');
@@ -32430,8 +32449,8 @@ function _onMidiCore(e, mm){
  // Movable: pc relative to current root
  pc = ((note - (60 + (root<=5?root:root-12))) % 12 + 12) % 12;
  } else {
- // Smart Keys: C always = I, so pc = note % 12 (C=0)
- pc = note % 12;
+ // Smart Keys: white keys are the degrees of the current mode — see _smartKeyRel.
+ pc = ((_smartKeyRel(note) % 12) + 12) % 12;
  }
 
  if(mm === 'melody'){
@@ -32440,8 +32459,8 @@ function _onMidiCore(e, mm){
  if(midiKeyMap === 'movable'){
  midi = note;
  } else {
- // Smart: transpose so C maps to root
- midi = note + (root<=5?root:root-12);
+ // Smart: white keys are the scale, C on the tonic — see _smartKeyRel.
+ midi = _smartKeyMidi(note);
  }
  const _m = midi + melOctShift;
  melPlayIn(_m, pressure);
@@ -32470,7 +32489,7 @@ function _onMidiCore(e, mm){
  } else if(type === 0x80 || (type === 0x90 && vel === 0)){
  const n = e.data[1];
  if(mm === 'melody'){
- let midi = midiKeyMap==='movable' ? n : n+(root<=5?root:root-12);
+ let midi = midiKeyMap==='movable' ? n : _smartKeyMidi(n);
  releaseMelNote(midi + melOctShift);
  } else if(midiChordTokens[n]!==undefined){
  // Chord mode used to ignore note-off entirely. Now that note-on sustains,
@@ -32634,7 +32653,7 @@ function onMidiMsg(e){
    if(nt==='off') return;
    if(nt==='pads') tg = {t:'pads', i:((note-36)%12+12)%12};
    else if(nt==='drums') tg = armedKit ? null : {t:'drums', i:(typeof window._sqTrackForMidi==='function' ? Math.max(0, window._sqTrackForMidi(note)) : ((note-36)%12+12)%12)};
-   else if(nt==='bass') tg = {t:'bass', midi: midiKeyMap==='movable' ? note : note + (root<=5?root:root-12)};
+   else if(nt==='bass') tg = {t:'bass', midi: midiKeyMap==='movable' ? note : _smartKeyMidi(note)};
    else tg = {t:'core', mode:nt};
   }
   // A Push's scale rows go to the port's note target: Melody, or Bass.
