@@ -332,6 +332,7 @@
       mix.appendChild(this.row('Sub', this.select('mix.subWave'), this.knob('mix.subOct')));
       mix.appendChild(this.row('Noise', this.select('mix.noiseType'), this.knob('mix.noiseFlt')));
       mix.appendChild(this.row('Pluck', this.knob('mix.pluck'), this.knob('pluck.decay'), this.knob('pluck.tone'), this.knob('pluck.oct')));
+      mix.appendChild(this.row('Drive', this.select('mix.driveType'), this.knob('mix.drive')));
       rack.appendChild(mix);
 
       [1, 2].forEach(n => {
@@ -340,6 +341,7 @@
         p.appendChild(this.row(this.select(g + '.model', { wide: true })));
         p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive'));
         p.appendChild(this.knobs(g + '.env', g + '.keytrack', g + '.vel'));
+        if (n === 1) p.appendChild(this.row(this.knob('flt.spread')));
         if (n === 2) p.appendChild(this.row('Route', this.select('flt.route'), this.knob('flt.blend')));
         rack.appendChild(p);
       });
@@ -613,10 +615,15 @@
         'fx.comp.release', 'fx.comp.makeup'));
       rack.appendChild(comp);
 
+      const grit = this.panel('Grit', 'fx', { width: 260 });
+      grit.head.appendChild(this.toggle('fx.grit.on', 'On'));
+      grit.appendChild(this.knobs('fx.grit.amount', 'fx.grit.tone', 'fx.grit.mix'));
+
       const ott = this.panel('OTT', 'fx', { width: 260 });
       ott.head.appendChild(this.toggle('fx.ott.on', 'On'));
       ott.appendChild(this.knobs('fx.ott.depth', 'fx.ott.upward', 'fx.ott.time'));
       rack.appendChild(ott);
+      rack.appendChild(grit);
 
       const out = this.panel('Output', 'fx', { width: 240 });
       out.appendChild(this.knobs('fx.width', 'master.vol'));

@@ -267,6 +267,11 @@
   f('pluck.decay',   'Pluck Decay', 0, 1, 0.55);
   f('pluck.tone',    'Pluck Tone',  0, 1, 0.6);
   i('pluck.oct',     'Pluck Oct',  -2, 1, 0);
+  // Drive on each note before it reaches the filter (Batch 2) — where an
+  // analog synth's mixer overloads. Rect folds the bottom half up, which adds
+  // an octave and a rasp; Fold is the West Coast wavefolder.
+  f('mix.drive',     'Pre Drive',  0, 1, 0);
+  e('mix.driveType', 'Drive Type', [['soft', 'Soft'], ['asym', 'Asym'], ['fold', 'Fold'], ['rect', 'Rect']], 'soft');
 
   /* ════════════════ FILTERS ════════════════ */
   for (const n of [1, 2]) {
@@ -281,6 +286,9 @@
   }
   e('flt.route', 'Routing', FILTER_ROUTES, 'serial');
   f('flt.blend', 'Blend',   0, 1, 0.5);
+  // Filter 1's cutoff pulled apart left and right, up to ±1.5 octaves: a
+  // mono voice becomes a wide one, and a cutoff sweep moves across the field.
+  f('flt.spread', 'Spread',  0, 1, 0);
 
   /* ════════════════ ENVELOPES ════════════════ */
   const ENV_DEFS = [
@@ -411,6 +419,13 @@
   /* OTT (added for mõdRïff): three bands, each pushed hard into a fast
      compressor and blended back in — what makes a modern preset sound dense
      and forward. Appended after the factory params so no index moves. */
+  // Grit (Batch 2): saturation after OTT, with its own tone. OTT lifts the
+  // quiet detail and Grit then dirties all of it evenly — the "OTT into
+  // distortion" chain a modern bass is built on.
+  b('fx.grit.on',     'Grit On', 0, H);
+  f('fx.grit.amount', 'Amount', 0, 1, 0.4, H);
+  f('fx.grit.tone',   'Tone',   0, 1, 0.6, H);
+  f('fx.grit.mix',    'Mix',    0, 1, 1, H);
   b('fx.ott.on',     'OTT On', 0, H);
   f('fx.ott.depth',  'Depth', 0, 1, 0.5, H);
   f('fx.ott.time',   'Time', 0, 1, 0.35, H);

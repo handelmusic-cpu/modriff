@@ -296,7 +296,17 @@
       /* ── Stereo width (mid/side) ── */
       const sp = ctx.createChannelSplitter(2);
       const mg = ctx.createChannelMerger(2);
-      this.ottOut.connect(sp);
+      /* ── Grit ── (Batch 2) after OTT: a waveshaper with a tone filter, wet
+         against dry. Out of the graph entirely while off, like the rest. */
+      this.gritIn = g(); this.gritDry = g(); this.gritWet = g(); this.gritOut = g();
+      this.gritShaper = ctx.createWaveShaper(); this.gritShaper.oversample = '2x';
+      this.gritTone = ctx.createBiquadFilter(); this.gritTone.type = 'lowpass'; this.gritTone.Q.value = 0.5;
+      this.ottOut.connect(this.gritDry); this.gritDry.connect(this.gritOut);
+      this.ottOut.connect(this.gritIn);
+      this.gritIn.connect(this.gritShaper); this.gritShaper.connect(this.gritTone);
+      this.gritTone.connect(this.gritWet); this.gritWet.connect(this.gritOut);
+      this.gritWet.gain.value = 0;
+      this.gritOut.connect(sp);
       const midA = g(), midB = g(), sideA = g(), sideB = g();
       midA.gain.value = 0.5; midB.gain.value = 0.5;
       sideA.gain.value = 0.5; sideB.gain.value = -0.5;
@@ -546,6 +556,30 @@
         case 'fx.comp.attack': ramp(this.comp.attack, MS.clamp(v, 0, 1), ctx); break;
         case 'fx.comp.release': ramp(this.comp.release, MS.clamp(v, 0, 1), ctx); break;
         case 'fx.comp.makeup': ramp(this.makeup.gain, Math.pow(10, v / 20), ctx); break;
+
+        /* Grit */
+        case 'fx.grit.on':
+        case 'fx.grit.amount':
+        case 'fx.grit.mix': {
+          const active = on('fx.grit.on');
+          const a = MS.clamp(this._val('fx.grit.amount'), 0, 1);
+          const mx = active ? MS.clamp(this._val('fx.grit.mix'), 0, 1) : 0;
+          if (active) this.gritShaper.curve = makeCurve('hard', 0.15 + a * 0.85);
+          // Level-matched by measurement, not by formula: the hard curve gains
+          // up to ×40, and how loud that comes out depends on how hard it
+          // clips, which depends on the synth's own level (around −26 dB RMS).
+          // Measured on three patches at five settings and fitted, so that
+          // switching Grit on reads as dirtier, not 12 dB louder.
+          const T = [0.60, 0.156, 0.096, 0.087, 0.083];
+          const q = a * 4, i0 = Math.min(3, q | 0), fr = q - i0;
+          ramp(this.gritWet.gain, mx * (T[i0] + (T[i0 + 1] - T[i0]) * fr), ctx);
+          ramp(this.gritDry.gain, 1 - mx, ctx);
+          this._gate('grit', active && mx > 0.001, this.ottOut, this.gritIn, 0.1);
+          break;
+        }
+        case 'fx.grit.tone':
+          ramp(this.gritTone.frequency, 600 * Math.pow(30, MS.clamp(v, 0, 1)), ctx);
+          break;
 
         /* OTT */
         case 'fx.ott.on':

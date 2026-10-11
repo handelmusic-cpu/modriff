@@ -52,6 +52,35 @@ const DIV_BEATS_DSP = [
 /* ── Cheap maths ──────────────────────────────────────────────────────────── */
 
 /** tanh-shaped soft clip; saturates to ±1 near |x| = 3. Far cheaper than tanh. */
+/* Pre-filter drive curves (Batch 2). Rational tanh (no Math.tanh in the
+   per-sample path), an asymmetric version that adds even harmonics, a
+   triangle wavefolder, and a rectifier blended with the straight signal. */
+function softClip(x) {
+  if (x > 3) return 1; if (x < -3) return -1;
+  const x2 = x * x;
+  return x * (27 + x2) / (27 + 9 * x2);
+}
+/* The curves are read from tables, not called: a function call per sample
+   in the mix loop measured +0.135 of real time on a six-note chord — more
+   than the oscillators — where a table read is a few multiplies. ±32 covers
+   the ×25 push at full drive on a full-scale mix; beyond it, the end value. */
+const PD_N = 8192, PD_R = 32, PD_TABLES = [];
+function preDriveTable(type) {
+  if (PD_TABLES[type]) return PD_TABLES[type];
+  const t = new Float32Array(PD_N + 1);
+  for (let i = 0; i <= PD_N; i++) t[i] = preDrive((i / PD_N) * 2 * PD_R - PD_R, type);
+  return (PD_TABLES[type] = t);
+}
+function preDrive(x, type) {
+  if (type === 1) return x > 0 ? softClip(x) : softClip(x * 0.55) * 0.8;
+  if (type === 2) {
+    let y = x * 0.5;
+    y = y - 4 * Math.floor((y + 1) / 4);           // into [-1, 3)
+    return y < 1 ? y : 2 - y;                       // triangle fold to [-1, 1]
+  }
+  if (type === 3) { const r = x < 0 ? -x : x; return softClip(x * 0.5 + (r - 0.5) * 0.8); }
+  return softClip(x);
+}
 function sat(x) {
   if (x < -3) return -1;
   if (x > 3) return 1;
@@ -726,6 +755,7 @@ class Voice {
     this.lfo = [new Lfo(id * 7919 + 13), new Lfo(id * 104729 + 7), new Lfo(id * 15485863 + 3)];
     this.f1 = new FilterSlot();
     this.f2 = new FilterSlot();
+    this.f1R = new FilterSlot();          // filter 1, right side, for Spread
 
     this.md = new Float32Array(N_DST);
     this.src = new Float32Array(N_SRC);
@@ -1048,6 +1078,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     }
     S.route = g('flt.route') | 0;
     S.blend = g('flt.blend');
+    S.spread = g('flt.spread');
+    S.drive = g('mix.drive');
+    S.driveType = g('mix.driveType') | 0;
 
     S.env = S.env || [{}, {}, {}];
     for (let n = 0; n < 3; n++) {
@@ -1568,8 +1601,13 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       S.fCut[0] * Math.pow(2, md[D_F1CUT] * 8 + S.fEnv[0] * env2 * 7 + kt1 + S.fVel[0] * velCurved * 4),
       12, sr * 0.47
     );
-    v.f1.set(S.fModel[0], cut1, clamp(S.fRes[0] + md[D_F1RES], 0, 0.995),
-             clamp(S.fDrv[0] + md[D_F1DRV], 0, 1), sr);
+    // Spread: left down, right up, ±1.5 octaves at full. Split routing already
+    // gives each side its own filter, so it ignores this.
+    const spreadOn = S.spread > 0.001 && S.route !== 2;
+    const spr = spreadOn ? Math.pow(2, S.spread * 1.5) : 1;
+    const res1 = clamp(S.fRes[0] + md[D_F1RES], 0, 0.995), drv1 = clamp(S.fDrv[0] + md[D_F1DRV], 0, 1);
+    v.f1.set(S.fModel[0], clamp(cut1 / spr, 12, sr * 0.47), res1, drv1, sr);
+    if (spreadOn) v.f1R.set(S.fModel[0], clamp(cut1 * spr, 12, sr * 0.47), res1, drv1, sr);
 
     const usesF2 = S.fModel[1] !== F_BYPASS;
     if (usesF2) {
@@ -1641,7 +1679,13 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     const stereoField =
       (uni0 > 1 && S.oWidth[0] > 0.001) || (uni1 > 1 && S.oWidth[1] > 0.001) ||
       S.oPan[0] < -0.001 || S.oPan[0] > 0.001 || S.oPan[1] < -0.001 || S.oPan[1] > 0.001;
-    const stereo = stereoField || route === 2;
+    const stereo = stereoField || route === 2 || spreadOn;
+    // Pre-filter drive. g pushes up to ×25 into the curve; trim brings the
+    // level most of the way back so the knob adds dirt, not volume.
+    const pdOn = S.drive > 0.001;
+    const pdG = 1 + S.drive * S.drive * 24, pdT = 1 / (1 + S.drive * 2.5);
+    const pdTab = pdOn ? preDriveTable(S.driveType) : null;
+    const pdS = PD_N / (2 * PD_R) * pdG, pdO = PD_N / 2;
 
     for (let o = 0; o < 2; o++) {
       bM[o].fill(0, 0, blk);
@@ -1801,6 +1845,19 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         sL += ng; if (stereo) sR += ng;
       }
 
+      if (pdOn) {
+        let a = sL * pdS + pdO;
+        a = a < 0 ? 0 : a > PD_N - 1 ? PD_N - 1 : a;
+        let k = a | 0;
+        sL = (pdTab[k] + (pdTab[k + 1] - pdTab[k]) * (a - k)) * pdT;
+        if (stereo) {
+          a = sR * pdS + pdO;
+          a = a < 0 ? 0 : a > PD_N - 1 ? PD_N - 1 : a;
+          k = a | 0;
+          sR = (pdTab[k] + (pdTab[k + 1] - pdTab[k]) * (a - k)) * pdT;
+        }
+      }
+
       /* DC blocker — PWM, folding and asymmetric drive all produce offset, and
          a DC-shifted signal eats filter headroom for nothing. */
       const mid = stereo ? (sL + sR) * 0.5 : sL;
@@ -1820,7 +1877,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < blk; i++) mixL[i] = mixL[i] * (1 - fblend) + tmp[i] * fblend;
       if (stereo) {
         tmp.set(mixR.subarray(0, blk));
-        f1.processBlock(mixR, blk, 1);
+        (spreadOn ? v.f1R : f1).processBlock(mixR, blk, 1);
         f2.processBlock(tmp, blk, 1);
         for (let i = 0; i < blk; i++) mixR[i] = mixR[i] * (1 - fblend) + tmp[i] * fblend;
       }
@@ -1831,7 +1888,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       f1.processBlock(mixL, blk, 0);
       if (usesF2) f2.processBlock(mixL, blk, 0);
       if (stereo) {
-        f1.processBlock(mixR, blk, 1);
+        (spreadOn ? v.f1R : f1).processBlock(mixR, blk, 1);
         if (usesF2) f2.processBlock(mixR, blk, 1);
       }
     }
