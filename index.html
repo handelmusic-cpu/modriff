@@ -7018,8 +7018,9 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Chords</div>
-  <div class="kb-sc-row"><span class="kb-key">1 – 7</span><span class="kb-desc">Play the diatonic chord for that scale degree, on the number row. (The numpad too, if Settings › MIDI gives it to chords.)</span></div>
-  <div class="kb-sc-row"><span class="kb-key">Shift + 1–7</span><span class="kb-desc">Play the 7th-chord version instead of the plain triad.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">1 – 9, 0</span><span class="kb-desc">Play the chords on the grid in order — the mode's own first, then any you added. (The numpad too, if Settings › MIDI gives it to chords.)</span></div>
+  <div class="kb-sc-row"><span class="kb-key">− &nbsp;=</span><span class="kb-desc">The 11th and 12th chords, when All 12 puts a chord on every root.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">Shift + number</span><span class="kb-desc">Play the 7th-chord version instead of the plain triad.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -7868,7 +7869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span class="sl">Numpad</span>
    <div class="tg">
     <button class="tb" data-kbpref="numpad:pads" onclick="kbSetPref('numpad','pads')" title="7 8 9 − / 4 5 6 + / 1 2 3 Enter are pads 1–12; 0 stops them; . rolls; / * change bank; = Preset ⇄ User; Clear is Hold">Sampler pads</button>
-    <button class="tb" data-kbpref="numpad:chords" onclick="kbSetPref('numpad','chords')" title="Numpad 1–7 play chords, like the number row">Chords</button>
+    <button class="tb" data-kbpref="numpad:chords" onclick="kbSetPref('numpad','chords')" title="Numpad 1–9, 0, − and + play chords, like the number row">Chords</button>
    </div>
   </div>
   <div class="row" style="align-items:center;gap:6px;flex-wrap:wrap">
@@ -30850,7 +30851,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'<strong>Press and hold</strong> to sustain a chord until you let go; a quick tap plays a short stab instead.'},
  {icon:'',text:'A <strong>green glow</strong> marks the chord sounding right now — including while a song plays itself, so you can follow along hands-free.'},
  {icon:'',text:'Colours show harmonic function: <strong>blue = tonic, amber = subdominant, red = dominant, purple = modal/borrowed</strong>.'},
- {icon:'⌨️',text:'<strong>Keys 1–7</strong> play the diatonic chords, <strong>Shift + 1–7</strong> their 7ths. ↑/↓ transpose, ←/→ change mode.'},
+ {icon:'⌨️',text:'<strong>Keys 1–9, 0, −, =</strong> play the chords on the grid, <strong>Shift</strong> + the key their 7ths. ↑/↓ transpose, ←/→ change mode.'},
  {icon:'',text:'<strong>Studio</strong> adds <strong>Borrowed &amp; Modal</strong> chords, <strong>Secondary Dominants</strong>, and the <strong>Variants</strong> row (sus2/sus4/add9 and slash chords) — arm one and the next chord you play uses it, then snaps back.'},
  ]},
  {title:'▦ Chord Forms — play along on a real instrument', tips:[
@@ -31677,19 +31678,29 @@ document.addEventListener('keydown', e => {
  }
  }
 
- // Chord keys 1-7 (Shift+number = 7th-chord extension instead of plain triad)
+ // Chord keys (Shift+number = 7th-chord extension instead of plain triad)
  // — the main number row and the numpad both work.
  // The numpad is the sampler's (see COMPUTER KEYBOARD) unless Settings gives
  // it back to chords.
- const digitMatch = e.code.match(KB_PREFS.numpad==='chords' ? /^(?:Digit|Numpad)([1-7])$/ : /^Digit([1-7])$/);
- const idx = digitMatch ? KEY_MAP[digitMatch[1]] : undefined;
+ // The keys walk the pads in the order they are on screen: 1–9, then 0, then
+ // − and = for an eleventh and twelfth (All 12 puts a chord on every root).
+ // They used to stop at 7, so every chord past the mode's own seven — and
+ // on a pentatonic, keys 6 and 7 — was mouse-only.
+ const idx = _kbChordSlot(e.code);
  if(idx===undefined) return;
  const _md=MODES[mode]||MODES.major;
  const steps=_md.steps, tq=_md.triadQ, t7=_md.seventh, f=_md.func;
- // 1–7 are wired to seven degrees, but a pentatonic only has five. Keys 6 and
- // 7 would read past the end of the scale and transpose the chord by NaN,
- // which silences it. There is no sixth degree to play, so they do nothing.
- if(idx>=steps.length) return;
+ if(idx>=steps.length){
+  // Past the mode's own chords: the added pads, pressed as a finger would.
+  const pad=_kbExtraPads()[idx-steps.length]; if(!pad) return;
+  const half=pad.querySelector(e.shiftKey ? '.btn-sev' : '.btn-tri'); if(!half) return;
+  e.preventDefault();
+  if(_kbExtraHeld[e.code]) return;
+  _kbExtraHeld[e.code]={half:half, pad:pad};
+  try{ half.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true})); }catch(_){}
+  pad.classList.add('kb-active');
+  return;
+ }
  const crm=rootMidi()+steps[idx];
  const el=document.getElementById('cs-'+idx);
  // Hold-to-sustain, exactly like a mouse press on the same chord button.
@@ -31708,6 +31719,36 @@ document.addEventListener('keydown', e => {
  if(el) el.classList.add('kb-active');
 });
 
+// Which pad a key plays: Digit1…9 → 0…8, Digit0 → 9, Minus → 10, Equal → 11,
+// and the same on the numpad when Settings gives it to chords.
+const KB_CHORD_CODES=['1','2','3','4','5','6','7','8','9','0'];
+function _kbChordSlot(code){
+ const np = KB_PREFS.numpad==='chords';
+ const m=/^(Digit|Numpad)(\d)$/.exec(code);
+ if(m){ if(m[1]==='Numpad' && !np) return undefined; return KB_CHORD_CODES.indexOf(m[2]); }
+ if(code==='Minus' || (np && code==='NumpadSubtract')) return 10;
+ if(code==='Equal' || (np && code==='NumpadAdd')) return 11;
+ return undefined;
+}
+// The pads after the mode's own: in Live they sit in the key's row after the
+// diatonic seven (.cp-inrow); in Studio they are the My Chords row.
+function _kbExtraPads(){
+ const inRow=[...document.querySelectorAll('#chords-diatonic > .cp-inrow')];
+ if(inRow.length) return inRow;
+ const wrap=document.getElementById('chords-user-wrap');
+ if(!wrap || wrap.style.display==='none') return [];
+ return [...document.querySelectorAll('#chords-user > .chord-split')];
+}
+// Added pads are played through their own pointer handlers, so a pinned
+// variant's bass and extension come along exactly as on a tap; this holds the
+// half that was pressed until its key comes up.
+var _kbExtraHeld={};
+function _kbExtraUp(code){
+ const h=_kbExtraHeld[code]; if(!h) return;
+ delete _kbExtraHeld[code];
+ if(!holdMode){ try{ h.half.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,cancelable:true})); }catch(_){} }
+ h.pad.classList.remove('kb-active');
+}
 document.addEventListener('keyup', e => {
  // Deliberately not gated on musicalTypingOn: whether we release a note is
  // not the toggle's business, only whether we start one is. Switching
@@ -31720,9 +31761,10 @@ document.addEventListener('keyup', e => {
  if(heldChordKeys[e.code]!==undefined){
  if(!holdMode) releaseSustainedChord(heldChordKeys[e.code]);
  delete heldChordKeys[e.code];
- const m=e.code.match(/^(?:Digit|Numpad)([1-7])$/);
- if(m){ const el=document.getElementById('cs-'+KEY_MAP[m[1]]); if(el) el.classList.remove('kb-active'); }
+ const si=_kbChordSlot(e.code);
+ if(si!==undefined){ const el=document.getElementById('cs-'+si); if(el) el.classList.remove('kb-active'); }
  }
+ _kbExtraUp(e.code);
  const _lku = (e.key && e.key.length===1) ? e.key.toLowerCase() : e.key;
  if(_lku==='c') melBendKey('down',false);
  if(_lku==='v') melBendKey('up',false);
@@ -31921,6 +31963,7 @@ window.addEventListener('blur', function(){
 function _releaseAllHeldKeys(){
  Object.keys(heldChordKeys).forEach(k=>{ if(!holdMode) releaseSustainedChord(heldChordKeys[k]); delete heldChordKeys[k]; });
  Object.keys(musicalTypingHeld).forEach(k=>{ if(!holdMode) releaseMelNote(musicalTypingHeld[k]); delete musicalTypingHeld[k]; });
+ Object.keys(_kbExtraHeld).forEach(_kbExtraUp);
  document.querySelectorAll('.kb-active').forEach(el=>el.classList.remove('kb-active'));
  if(melBendDownHeld||melBendUpHeld){ melBendDownHeld=false; melBendUpHeld=false; _melBendApply(); }
 }
@@ -33279,7 +33322,7 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
 <strong>A green glow</strong> marks the chord sounding right now — including while a song plays itself, so you can follow along without touching anything.<br><br>
 <strong>Logic Mode</strong> pulses the chords most likely to come next, based on common progressions. Toggle it on <strong>Settings › Playing</strong>.<br><br>
 <strong>Studio</strong> adds <strong>Borrowed &amp; Modal</strong> chords (from the parallel key) and <strong>Secondary Dominants</strong> (V7 chords that tonicise each degree).<br><br>
-<strong>Keys 1–7</strong> play the diatonic chords; <strong>Shift + 1–7</strong> plays their 7ths.`
+<strong>Keys 1–9, 0, −, =</strong> play the chords on the grid in order; <strong>Shift</strong> + the key plays their 7ths.`
  },
  'variants': {
  title: 'Chord Variants',
