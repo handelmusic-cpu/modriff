@@ -155,6 +155,18 @@ section('voices');
   s.render(10);
   ok(s.proc.voices[0].note === 64, 'mono falls back to the held note', String(s.proc.voices[0].note));
 }
+// The host releases by id (noteOffId). After a fallback the voice must carry
+// the held key's id, or letting go of that key leaves the note ringing.
+['mono', 'legato'].forEach(mode => {
+  const s = makeSynth();
+  s.set('voice.mode', mode);
+  s.send({ t: 'on', note: 48, vel: 0.8, id: 1 }); s.render(10);
+  s.send({ t: 'on', note: 55, vel: 0.8, id: 2 }); s.render(10);
+  s.send({ t: 'off', note: 55, id: 2 }); s.render(10);
+  ok(s.proc.voices[0].note === 48, mode + ': releasing the top key falls back to the held one');
+  s.send({ t: 'off', note: 48, id: 1 }); s.render(10);
+  ok(!s.proc.voices.some(v => v.active && v.held), mode + ': releasing the held key after a fallback stops it');
+});
 {
   const s = makeSynth();
   s.send({ t: 'sustain', v: 1 });

@@ -16478,6 +16478,17 @@ window._partBuses = window._partBuses || {};
 function _partDest(ctx, part){
  const master = masterDest(ctx);
  if(!part || !ctx) return master;
+ // Bass and the Melody sequencer build their buses inside their own IIFEs
+ // (BL_MG, ML_MG), and their mixer strips, meters, mõdFX chains and stems all
+ // hang off those. This used to fall through and mint a second, unity bus
+ // straight to the master for them — so mõdSynth on Bass or Melody Seq, the
+ // only thing that asks _partDest for those two, played past its own channel:
+ // no fader, no meter, no mõdFX, no stem. Hand back the real bus instead.
+ if(part==='bass' || part==='melgen'){
+  const ens = part==='bass' ? window._blEnsureBus : window._mlEnsureBus;
+  let own = null; try{ own = (typeof ens==='function') ? ens() : null; }catch(e){}
+  if(own && own.context===ctx) return own;
+ }
  let b = window._partBuses[part];
  if(!b || b.context!==ctx){
   b = ctx.createGain();
@@ -17564,6 +17575,20 @@ function msxModern(){ return (window.MS && MS.MODERN_PATCHES) || []; }
 function msxClassic(){ return ((window.MS && MS.FACTORY_PATCHES) || []).filter(function(x){ return x.category!=='Arp'; }); }
 function msxAllPatches(){ return msxModern().concat(msxClassic()); }
 // Level match against the app's other voices (measured: see the 4.6.0 notes).
+// Bass and Melody Seq run through their own bus gains (BL_MG 0.36, ML_MG 0.6)
+// now that _partDest returns those buses; the other parts' buses are unity.
+// This puts back what the bus takes, plus what each part measured short of
+// its own built-in voices (see _partDest). Measured at the master on one fixed
+// generated line per part, 5 s each, median of the factory patches against
+// median of the part's built-in voices:
+//   bass   — built-ins −36.7 dB RMS (Acid, Electric, Sub, Upright, 303); six
+//            bass patches −53.9 through BL_MG, so 17.2 dB short. Even before
+//            the reroute, bypassing BL_MG, it sat ~10 dB under — the "plays
+//            quietly" half of the same report.
+//   melgen — built-ins −42.7 (Sine, Piano, Saw, Tri, E.Piano); six patches
+//            −54.2 through ML_MG, 11.5 dB short.
+var MSX_BUS_CAL = { bass:7.2, melgen:3.75 };
+function _msxCal(part){ return MSX_CAL * (MSX_BUS_CAL[part]||1); }
 var MSX_CAL = 0.53;   // the factory patches run ~5.5 dB over the app's other chord voices (median, 8 patches against 5 voices)
 try{ MSX.state = JSON.parse(modStore.getItem('modo-msx')||'{}') || {}; }catch(e){ MSX.state = {}; }
 function msxSaveState(){ try{ modStore.setItem('modo-msx', JSON.stringify(MSX.state)); }catch(e){} }
@@ -17634,7 +17659,7 @@ function msxEnsure(part){
  if(MSX.pend[part]) return MSX.pend[part];
  MSX.pend[part] = msxLoadLib().then(function(){
   if(eng){ try{ eng.dispose(); }catch(e){} }
-  var trim=ctx.createGain(); trim.gain.value=MSX_CAL;
+  var trim=ctx.createGain(); trim.gain.value=_msxCal(part);
   trim.connect(_partDest(ctx, part));
   var e=new MS.Engine({ dspUrl:'modsynth/dsp.js' });
   return e.init(ctx, trim).then(function(){
@@ -17663,7 +17688,7 @@ function msxVoice(ctx, part, midi, t0, dur, vel){
  if(!eng || !eng.ready || eng.ctx!==ctx){ msxEnsure(part); return null; }
  var id=MSX.nid++;
  var mx=1; try{ mx=_cmx(part==='melgen'?'melgen':part); }catch(e){}
- try{ MSX.trim[part].gain.setTargetAtTime(MSX_CAL*mx, Math.max(ctx.currentTime, t0-0.02), 0.01); }catch(e){}
+ try{ MSX.trim[part].gain.setTargetAtTime(_msxCal(part)*mx, Math.max(ctx.currentTime, t0-0.02), 0.01); }catch(e){}
  if(eng.asleep) eng.wake();
  MSX.busyTill[part]=Math.max(MSX.busyTill[part]||0, t0+Math.max(0.03,dur));
  if(!MSX.sleepT) MSX.sleepT=setInterval(msxSleepSweep, 2000);
@@ -31495,6 +31520,23 @@ function _melBendApply(){
  if(melBendScope==='all' && typeof activeOscs!=='undefined'){
   activeOscs.forEach(v=>_bendOscs(v && v.oscs, now));
  }
+ // mõdSynth notes never reached by the above: msxVoice hands back a silent
+ // stand-in oscillator, so ramping its .detune bent nothing you could hear —
+ // which is why the wheel and C/V worked on every voice but this one. The
+ // engine has its own bend input, scaled by the patch's Bend Up/Down range in
+ // semitones, so convert the cents into that range: the same whole step on
+ // mõdSynth as everywhere else, whatever range the patch carries.
+ _msxBendApply(melBendScope==='all' ? ['mel','chord'] : ['mel']);
+}
+function _msxBendApply(parts){
+ if(typeof MSX==='undefined' || !MSX.eng) return;
+ parts.forEach(p=>{
+  const e=MSX.eng[p]; if(!e || !e.ready) return;
+  try{
+   const range = +(e.get(melBendCents>=0 ? 'voice.bendUp' : 'voice.bendDown')) || 0;
+   e.setBend(range>0 ? melBendCents/(100*range) : 0);
+  }catch(err){}
+ });
 }
 function setMidiBendScope(v){
  melBendScope = (v==='mel') ? 'mel' : 'all';
@@ -41609,20 +41651,43 @@ window._blEnsureGrid = function(){ blEnsureGrid(); };
 // is monophonic like a real bass, so a new note cuts the last and, played
 // legato, slides into it — and log it for Capture (window._blCapNote).
 var _blLiveMidi = null;
+// Every key still down, oldest first, with the velocity it was struck at.
+// Last-note priority, like a hardware mono synth: the newest key sounds, and
+// letting it go hands the voice back to the newest key still held. This used
+// to remember only the sounding note, so hold a low note, play a higher one,
+// release the higher one — and the bass went silent with your finger still on
+// the low key.
+var _blLiveHeld = [];
+function _blLiveSound(ctx, midi, v, legato){
+  blPlayNote(ctx.currentTime + 0.005, ((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1, 8, v, v > 0.85, legato);
+  _blLiveMidi = midi;
+}
 window._blLiveOn = function(midi, vel){
   var ctx = blCtx(); if(!ctx) return;
   var legato = _blLiveMidi != null;
   var v = Math.max(0.35, Math.min(1, vel==null ? 0.8 : vel));
-  blPlayNote(ctx.currentTime + 0.005, ((midi % 12) + 12) % 12, Math.floor(midi / 12) - 1, 8, v, v > 0.85, legato);
-  _blLiveMidi = midi;
+  _blLiveHeld = _blLiveHeld.filter(function(h){ return h.midi !== midi; });
+  _blLiveHeld.push({ midi:midi, v:v });
+  _blLiveSound(ctx, midi, v, legato);
   if(typeof window._blCapNote === 'function') window._blCapNote(midi, v > 0.85);
 };
 window._blLiveOff = function(midi){
   if(typeof window._blCapRelease === 'function') window._blCapRelease(midi);
+  _blLiveHeld = _blLiveHeld.filter(function(h){ return h.midi !== midi; });
   if(_blLiveMidi !== midi) return;      // a newer note already cut this one
+  var ctx = blCtx();
+  // A key under it is still down: slide back to it rather than stopping. Not
+  // logged to Capture again — that key never let go, so the take already has
+  // it as one held note, which is what was played.
+  if(ctx && _blLiveHeld.length){
+    var back = _blLiveHeld[_blLiveHeld.length - 1];
+    _blLiveSound(ctx, back.midi, back.v, true);
+    return;
+  }
   _blLiveMidi = null;
-  var ctx = blCtx(); if(!ctx || !_blPrevGain) return;
+  if(!ctx || !_blPrevGain) return;
   var t = ctx.currentTime;
+  _blStopMsx(t + 0.06);
   try{
     _blPrevGain.gain.cancelScheduledValues(t);
     _blPrevGain.gain.setValueAtTime(Math.max(0.0001, _blPrevGain.gain.value), t);
@@ -41684,6 +41749,17 @@ function blFreq(note, oct){ return 440 * Math.pow(2, (note + (oct+1)*12 - 69) / 
 
 // ── synthesis ──
 var _blPrevFreq=0, _blPrevSlide=false, _blPrevGain=null, _blPrevEnd=0;
+// What makeVoice handed back for the last note on the shared-palette path.
+// mõdSynth plays inside its own engine and never through _blPrevGain, so
+// fading that gain — how a new note cuts the old one, and how a released key
+// stops — did nothing to it: every live mõdSynth bass note rang its full
+// eight seconds on top of the next. Its stand-in oscillator's stop() moves
+// the engine's release, so the same cut reaches it through here.
+var _blPrevVoice=null;
+function _blStopMsx(at){
+  var vs=_blPrevVoice; _blPrevVoice=null;
+  (vs||[]).forEach(function(o){ if(o && o._msx){ try{ o.stop(at); }catch(e){} } });
+}
 // A short bandpassed noise burst at the onset — the sound of the string being
 // plucked rather than the tone it settles into. Bandpass rather than lowpass so
 // it reads as contact noise instead of a click, and it tracks the note so low
@@ -41768,7 +41844,9 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
       _blPrevGain.gain.setValueAtTime(_blPrevGain.gain.value, t);
       _blPrevGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
     }catch(e){}
+    _blStopMsx(t + 0.015);
   }
+  _blPrevVoice = null;
 
   // Master gain + amplitude envelope (shared by all modes)
   var g = ctx.createGain();
@@ -41977,7 +42055,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     // Compute the note here — _bmidi is only assigned inside the sampled
     // branch, so relying on it would read undefined on this path.
     var _fbMidi = note + (oct+1)*12;
-    if(typeof makeVoice === 'function') makeVoice(ctx, _fbMidi, g, t, dur, blWave, 'bass');
+    if(typeof makeVoice === 'function') _blPrevVoice = makeVoice(ctx, _fbMidi, g, t, dur, blWave, 'bass');
   }
 
   // Update slide state for next note
