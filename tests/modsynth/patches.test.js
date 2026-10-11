@@ -23,7 +23,7 @@ function audition(patch, notes, blocks) {
   });
   const rows = (patch.matrix || [])
     .filter(r => r[0] !== 'none' && r[1] !== 'none' && r[2])
-    .map(r => ({ s: SRC_INDEX[r[0]], d: DST_INDEX[r[1]], a: r[2], u: r[3] ? 1 : 0 }));
+    .map(r => ({ s: SRC_INDEX[r[0]], d: DST_INDEX[r[1]], a: r[2], u: r[3] ? 1 : 0, v: SRC_INDEX[r[4]] || 0 }));
   s.proc.port.deliver({ t: 'matrix', rows });
   if (patch.motion) {
     patch.motion.forEach((lane, i) => {

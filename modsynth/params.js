@@ -132,6 +132,9 @@
     ['m5', 'Macro 5'], ['m6', 'Macro 6'], ['m7', 'Macro 7'], ['m8', 'Macro 8'],
     ['rand', 'Random'], ['rand2', 'Random 2'], ['unison', 'Unison Idx'],
     ['gate', 'Gate'], ['alt', 'Alternate'],
+    // Batch 3. Appended, never inserted: the audio thread reads sources by
+    // position (SRC_ORDER in dsp.js), and patches by id.
+    ['chaos', 'Chaos'],
   ];
 
   /* Destination ids are parameter ids for anything the DSP can offset live.
@@ -153,6 +156,10 @@
     ['lfo1.rate', 'LFO 1 Rate'], ['lfo2.rate', 'LFO 2 Rate'], ['lfo3.rate', 'LFO 3 Rate'],
     ['lfo1.depth', 'LFO 1 Depth'], ['lfo2.depth', 'LFO 2 Depth'], ['lfo3.depth', 'LFO 3 Depth'],
     ['env2.d', 'Env 2 Decay'], ['env1.r', 'Env 1 Release'],
+    // Batch 3 (Osc 3 and its FM). Inserted before the FX block, which has to
+    // stay last: the host takes the FX destinations as slice(-6).
+    ['osc3.fine', 'Osc 3 Pitch'], ['osc3.shape', 'Osc 3 Shape'], ['osc3.level', 'Osc 3 Level'],
+    ['mix.fm3', 'FM from Osc 3'],
     ['fx.drive.amount', 'FX Drive'], ['fx.delay.mix', 'Delay Mix'],
     ['fx.reverb.mix', 'Reverb Mix'], ['fx.chorus.mix', 'Chorus Mix'],
     ['fx.phaser.rate', 'Phaser Rate'], ['fx.crush.mix', 'Crush Mix'],
@@ -225,7 +232,9 @@
   b('voice.hq',        'HQ Oversample', 0);
 
   /* ════════════════ OSCILLATORS ════════════════ */
-  for (const n of [1, 2]) {
+  // Osc 3 (Batch 3) is the same oscillator again, off by default, so every
+  // existing patch sounds exactly as it did and pays nothing for it.
+  for (const n of [1, 2, 3]) {
     const g = 'osc' + n;
     b(g + '.on',       'On',      n === 1 ? 1 : 0);
     e(g + '.wave',     'Wave',    WAVES, 'classic');
@@ -253,6 +262,11 @@
 
   /* ════════════════ MIX / EXTRA SOURCES ════════════════ */
   f('mix.fm',        'FM 2→1',   0, 1, 0);
+  // Osc 3 as an FM operator (Batch 3): into 2, into 1, or both. With FM 2→1
+  // that is a three-operator stack — 3→2→1 is the classic DX bell/e-piano
+  // algorithm, 3→1 + 2→1 two modulators on one carrier.
+  f('mix.fm3b',      'FM 3→2',   0, 1, 0);
+  f('mix.fm3a',      'FM 3→1',   0, 1, 0);
   f('mix.ring',      'Ring Mod', 0, 1, 0);
   f('mix.sub',       'Sub',      0, 1, 0);
   e('mix.subWave',   'Sub Wave', SUB_WAVES, 'sine');
@@ -338,12 +352,22 @@
     f(g + '.depth', 'Depth',  0, 1, 1);
   }
 
+  /* ════════════════ CHAOS ════════════════
+     A random walk per note (Batch 3): wanders, never repeats, never jumps.
+     Rate is how fast it wanders; it is smoothed so it can go straight to
+     pitch or cutoff without stepping. */
+  f('chaos.rate', 'Chaos Rate', 0.05, 20, 0.6, FREQ);
+
   /* ════════════════ MOD MATRIX ════════════════ */
   for (let s = 1; s <= MATRIX_SLOTS; s++) {
     e('mtx' + s + '.src', 'Source', MOD_SOURCES, 'none');
     e('mtx' + s + '.dst', 'Dest',   MOD_DESTS,   'none');
     f('mtx' + s + '.amt', 'Amount', -1, 1, 0);
     b('mtx' + s + '.uni', 'Unipolar', 0);
+    // Via (Batch 3): the route's amount is multiplied by a second source, so
+    // the mod wheel can fade an LFO's wobble in, or a macro set how much the
+    // envelope opens the filter.
+    e('mtx' + s + '.via', 'Via', MOD_SOURCES, 'none');
   }
 
   /* ════════════════ MACROS ════════════════

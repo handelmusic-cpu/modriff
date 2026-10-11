@@ -23,7 +23,7 @@ MS.MODERN_PATCHES.forEach(p => {
     else if (q.type !== 'bool' && (v < q.min || v > q.max)) bad(p.name + ': ' + k + ' = ' + v + ' out of range');
   });
   if (p.matrix.length > MS.MATRIX_SLOTS) bad(p.name + ': ' + p.matrix.length + ' matrix rows');
-  p.matrix.forEach(r => { if (!S.has(r[0]) || !D.has(r[1])) bad(p.name + ': bad row ' + JSON.stringify(r)); });
+  p.matrix.forEach(r => { if (!S.has(r[0]) || !D.has(r[1]) || (r[4] != null && !S.has(r[4]))) bad(p.name + ': bad row ' + JSON.stringify(r)); });
   const used = new Set(p.matrix.filter(r => /^m\d$/.test(r[0])).map(r => +r[0][1]));
   for (let m = 1; m <= 4; m++) if (!used.has(m)) bad(p.name + ': macro ' + m + ' is wired to nothing');
   if (!p.macros || p.macros.length < 4) bad(p.name + ': macros are not named');

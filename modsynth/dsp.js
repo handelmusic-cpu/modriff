@@ -104,6 +104,15 @@ function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /** 32-bit xorshift in −1…1. Deterministic, and much cheaper than Math.random
     inside a per-sample loop. */
+/* Chaos (Batch 3): one step of a bounded random walk. The step is scaled by
+   √(rate·dt), as a Brownian walk is, so the wander per second doesn't depend
+   on the block size; the pull back toward zero keeps it from sticking at an
+   edge. Run once per control block, not per sample. */
+function chaosWalk(w, rnd, rate, dt) {
+  w += rnd * Math.sqrt(rate * dt) * 1.6 - w * Math.min(1, rate * dt * 0.6);
+  return w > 1 ? 1 : w < -1 ? -1 : w;
+}
+
 function makeRng(seed) {
   let s = seed | 0 || 0x2545f491;
   return function () {
@@ -640,6 +649,7 @@ const SRC_ORDER = [
   'vel', 'keytrack', 'note', 'mw', 'bend', 'at', 'exp', 'breath', 'foot',
   'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8',
   'rand', 'rand2', 'unison', 'gate', 'alt',
+  'chaos',
 ];
 const DST_ORDER = [
   'none', 'pitch', 'osc1.fine', 'osc2.fine', 'osc1.shape', 'osc2.shape',
@@ -649,6 +659,7 @@ const DST_ORDER = [
   'amp', 'pan',
   'lfo1.rate', 'lfo2.rate', 'lfo3.rate', 'lfo1.depth', 'lfo2.depth', 'lfo3.depth',
   'env2.d', 'env1.r',
+  'osc3.fine', 'osc3.shape', 'osc3.level', 'mix.fm3',
   'fx.drive.amount', 'fx.delay.mix', 'fx.reverb.mix', 'fx.chorus.mix',
   'fx.phaser.rate', 'fx.crush.mix',
 ];
@@ -658,14 +669,17 @@ const DST_ORDER = [
    half its range and leave the control doing nothing at rest. */
 const SRC_BIPOLAR = new Uint8Array(SRC_ORDER.length);
 ['lfo1', 'lfo2', 'lfo3', 'mot1', 'mot2', 'bend', 'keytrack',
- 'rand', 'rand2', 'unison', 'alt'].forEach(id => { SRC_BIPOLAR[SRC_ORDER.indexOf(id)] = 1; });
+ 'rand', 'rand2', 'unison', 'alt', 'chaos'].forEach(id => { SRC_BIPOLAR[SRC_ORDER.indexOf(id)] = 1; });
 
 const D_PITCH = 1, D_O1FINE = 2, D_O2FINE = 3, D_O1SHAPE = 4, D_O2SHAPE = 5,
       D_O1PW = 6, D_O2PW = 7, D_O1LVL = 8, D_O2LVL = 9, D_O1DET = 10, D_O2DET = 11,
       D_FM = 12, D_RING = 13, D_SUB = 14, D_NOISE = 15,
       D_F1CUT = 16, D_F1RES = 17, D_F1DRV = 18, D_F2CUT = 19, D_F2RES = 20, D_FBLEND = 21,
       D_AMP = 22, D_PAN = 23,
-      D_L1RATE = 24, D_L1DEP = 27, D_E2D = 30, D_E1R = 31, D_FIRST_FX = 32;
+      D_L1RATE = 24, D_L1DEP = 27, D_E2D = 30, D_E1R = 31,
+      D_O3FINE = 32, D_O3SHAPE = 33, D_O3LVL = 34, D_FM3 = 35, D_FIRST_FX = 36;
+const S_CHAOS = 31;           // source index of 'chaos' in SRC_ORDER
+const N_OSC = 3;
 const N_DST = DST_ORDER.length;
 const N_SRC = SRC_ORDER.length;
 
@@ -739,15 +753,22 @@ class Voice {
     this.age = 0; this.startTime = 0; this.noteId = -1;
     this.uniIdx = 0;                                  // stack position in Uni Mono
 
-    this.ph = [new Float64Array(MAX_UNI), new Float64Array(MAX_UNI)];
-    this.drift = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
-    this.driftT = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
+    const per = T => [new T(MAX_UNI), new T(MAX_UNI), new T(MAX_UNI)];   // one per oscillator
+    this.ph = per(Float64Array);
+    this.drift = per(Float32Array);
+    this.driftT = per(Float32Array);
     this.subPh = 0;
     this.rng = makeRng(0x9e37 + id * 2654435761);
     // Phase feedback: the last two outputs of each unison line (averaged,
     // as the DX does, which keeps high feedback from oscillating at Nyquist).
-    this.fbA = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
-    this.fbB = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
+    this.fbA = per(Float32Array);
+    this.fbB = per(Float32Array);
+    // Chaos (Batch 3): a bounded random walk and its smoothed output.
+    this.chW = 0; this.chS = 0;
+    // Osc 3 and Chaos draw from their own generator. Taking numbers from
+    // this.rng would shift every later draw — drift, noise, free-run phases —
+    // and every patch written before Batch 3 would come out subtly different.
+    this.rng3 = makeRng(0x7f4a7c15 + id * 1103515245);
     // Karplus–Strong string. Allocated on first use, sized for 20 Hz.
     this.ks = null; this.ksW = 0; this.ksLp = 0; this.ksExc = 0;
 
@@ -789,16 +810,20 @@ class Voice {
     if (glideFrom != null && S.glide > 0.0005) this.glidePitch = glideFrom;
     else this.glidePitch = note;
 
-    for (let o = 0; o < 2; o++) {
+    for (let o = 0; o < N_OSC; o++) {
       const free = S.oFree[o];
       const base = S.oPhase[o];
+      const rnd = o < 2 ? this.rng : this.rng3;
       for (let u = 0; u < MAX_UNI; u++) {
-        this.ph[o][u] = free ? (this.rng() * 0.5 + 0.5) % 1 : (base + u * 0.11) % 1;
-        this.driftT[o][u] = (this.rng() * 0.5 + 0.5);
+        this.ph[o][u] = free ? (rnd() * 0.5 + 0.5) % 1 : (base + u * 0.11) % 1;
+        this.driftT[o][u] = (rnd() * 0.5 + 0.5);
       }
     }
     this.subPh = 0;
-    this.fbA[0].fill(0); this.fbA[1].fill(0); this.fbB[0].fill(0); this.fbB[1].fill(0);
+    for (let o = 0; o < N_OSC; o++) { this.fbA[o].fill(0); this.fbB[o].fill(0); }
+    // Each note starts its walk somewhere different, so a chord's notes
+    // wander apart rather than together.
+    this.chW = this.rng3() * 0.6; this.chS = this.chW;
     // A pluck is struck: the string is re-excited with a fresh noise burst
     // on every note, whatever was ringing in it.
     if (S.pluck > 0.0001) this.ksExc = 1;
@@ -868,17 +893,21 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     this.busyMs = 0; this.busyBlocks = 0; this.load = 0;
 
     // Scratch, reused across voices within a control block.
-    this.tInc = [new Float64Array(MAX_UNI), new Float64Array(MAX_UNI)];
-    this.tGL = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
-    this.tGR = [new Float32Array(MAX_UNI), new Float32Array(MAX_UNI)];
-    this.tMip = [0, 0];
-    this.tabA = [null, null];        // resolved wavetables for this block
-    this.tabB = [null, null];
-    this.mixF = [0, 0];
-    this.isPulse = [false, false];
-    this.bM = [new Float32Array(CTRL), new Float32Array(CTRL)];    // mono / left sum
-    this.bR = [new Float32Array(CTRL), new Float32Array(CTRL)];    // right sum
-    this.bRaw = [new Float32Array(CTRL), new Float32Array(CTRL)];  // ungained, for FM/ring
+    const per = (T, n) => [new T(n), new T(n), new T(n)];          // one per oscillator
+    this.tInc = per(Float64Array, MAX_UNI);
+    this.tGL = per(Float32Array, MAX_UNI);
+    this.tGR = per(Float32Array, MAX_UNI);
+    this.tMip = [0, 0, 0];
+    this.tabA = [null, null, null];  // resolved wavetables for this block
+    this.tabB = [null, null, null];
+    this.mixF = [0, 0, 0];
+    this.isPulse = [false, false, false];
+    this.need = [false, false, false];
+    this.bM = per(Float32Array, CTRL);    // mono / left sum
+    this.bR = per(Float32Array, CTRL);    // right sum
+    this.bRaw = per(Float32Array, CTRL);  // ungained, for FM/ring
+    this.gChW = 0; this.gChS = 0;         // the shared chaos walk, for FX destinations
+    this.gRng = makeRng(0x51ed27);
     this.syncAt = new Int32Array(CTRL + 1);
     this.mixL = new Float32Array(CTRL);
     this.mixR = new Float32Array(CTRL);
@@ -924,7 +953,10 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         this.capPoly = Math.max(1, Math.min(MAX_VOICES, m.poly | 0 || MAX_VOICES));
         this.dirty = true;
         break;
-      case 'matrix': this.matrix = m.rows || []; break;
+      case 'matrix':
+        this.matrix = m.rows || [];
+        this.chaosUsed = this.matrix.some(r => r.s === S_CHAOS || r.v === S_CHAOS);
+        break;
       case 'motion': this.motion[m.lane].set(m.steps.subarray(0, MOTION_MAX)); break;
       case 'tempo':
         this.bpm = m.bpm > 0 ? m.bpm : 120;
@@ -1023,12 +1055,12 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     S.velCurve = g('voice.velCurve');
     S.vspread = g('voice.spread');
 
-    S.oOn = S.oOn || [0, 0]; S.oWave = S.oWave || [0, 0]; S.oShape = S.oShape || [0, 0];
-    S.oPw = S.oPw || [0, 0]; S.oTune = S.oTune || [0, 0]; S.oLevel = S.oLevel || [0, 0];
-    S.oPan = S.oPan || [0, 0]; S.oUni = S.oUni || [1, 1]; S.oDet = S.oDet || [0, 0];
-    S.oWidth = S.oWidth || [0, 0]; S.oBlend = S.oBlend || [0, 0]; S.oKt = S.oKt || [1, 1];
-    S.oFree = S.oFree || [1, 1]; S.oPhase = S.oPhase || [0, 0];
-    for (let o = 0; o < 2; o++) {
+    S.oOn = S.oOn || [0, 0, 0]; S.oWave = S.oWave || [0, 0, 0]; S.oShape = S.oShape || [0, 0, 0];
+    S.oPw = S.oPw || [0, 0, 0]; S.oTune = S.oTune || [0, 0, 0]; S.oLevel = S.oLevel || [0, 0, 0];
+    S.oPan = S.oPan || [0, 0, 0]; S.oUni = S.oUni || [1, 1, 1]; S.oDet = S.oDet || [0, 0, 0];
+    S.oWidth = S.oWidth || [0, 0, 0]; S.oBlend = S.oBlend || [0, 0, 0]; S.oKt = S.oKt || [1, 1, 1];
+    S.oFree = S.oFree || [1, 1, 1]; S.oPhase = S.oPhase || [0, 0, 0];
+    for (let o = 0; o < N_OSC; o++) {
       const q = 'osc' + (o + 1) + '.';
       S.oOn[o] = g(q + 'on') > 0.5;
       S.oWave[o] = g(q + 'wave') | 0;
@@ -1047,8 +1079,10 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     }
     S.sync = g('osc2.sync') > 0.5;
     S.fmRatio = g('osc2.ratio') > 0.5;
-    S.oFb = S.oFb || [0, 0];
-    S.oFb[0] = g('osc1.fb'); S.oFb[1] = g('osc2.fb');
+    S.oFb = S.oFb || [0, 0, 0];
+    S.oFb[0] = g('osc1.fb'); S.oFb[1] = g('osc2.fb');      // osc 3 has none
+    S.fm3a = g('mix.fm3a'); S.fm3b = g('mix.fm3b');
+    S.chaosRate = g('chaos.rate');
     S.pluck = g('mix.pluck');
     S.pluckDecay = g('pluck.decay');
     S.pluckTone = g('pluck.tone');
@@ -1297,6 +1331,11 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     gs[12] = this.mw; gs[13] = this.bend; gs[14] = this.at;
     gs[15] = this.expr; gs[16] = this.breath; gs[17] = this.foot;
     for (let m = 0; m < 8; m++) gs[18 + m] = this.macros[m + 1];
+    if (this.chaosUsed) {
+      this.gChW = chaosWalk(this.gChW, this.gRng(), S.chaosRate, dt);
+      this.gChS += (this.gChW - this.gChS) * Math.min(1, S.chaosRate * dt * 8);
+      gs[S_CHAOS] = this.gChS;
+    }
     const gm = this.gmod;
     for (let d = D_FIRST_FX; d < N_DST; d++) gm[d] = 0;
     const rows = this.matrix;
@@ -1308,6 +1347,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       if (s <= 0 || !row.a) continue;
       let val = gs[s];
       if (row.u && SRC_BIPOLAR[s]) val = val * 0.5 + 0.5;
+      if (row.v > 0) val *= gs[row.v];
       gm[d] += val * row.a;
     }
   }
@@ -1481,6 +1521,11 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     src[28] = v.uniIdx;
     src[29] = v.held ? 1 : 0;
     src[30] = v.alt;
+    if (this.chaosUsed) {
+      v.chW = chaosWalk(v.chW, v.rng3(), S.chaosRate, dt);
+      v.chS += (v.chW - v.chS) * Math.min(1, S.chaosRate * dt * 8);
+      src[S_CHAOS] = v.chS;
+    }
 
     /* ── Matrix ───────────────────────────────────────────────────────── */
     md.fill(0);
@@ -1491,6 +1536,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       if (s <= 0 || d <= 0 || !row.a) continue;
       let val = src[s];
       if (row.u && SRC_BIPOLAR[s]) val = val * 0.5 + 0.5;
+      // Via: the second source scales the route, so 0 on it mutes the route
+      // and 1 lets it through at its set amount.
+      if (row.v > 0) val *= src[row.v];
       md[d] += val * row.a;
     }
 
@@ -1511,11 +1559,14 @@ class ModSynthProcessor extends AudioWorkletProcessor {
 
     const lvl0 = clamp(S.oLevel[0] + md[D_O1LVL], 0, 2) * (S.oOn[0] ? 1 : 0);
     const lvl1 = clamp(S.oLevel[1] + md[D_O2LVL], 0, 2) * (S.oOn[1] ? 1 : 0);
+    const lvl2 = clamp(S.oLevel[2] + md[D_O3LVL], 0, 2) * (S.oOn[2] ? 1 : 0);
     const shape0 = clamp(S.oShape[0] + md[D_O1SHAPE], 0, 1);
     const shape1 = clamp(S.oShape[1] + md[D_O2SHAPE], 0, 1);
+    const shape2 = clamp(S.oShape[2] + md[D_O3SHAPE], 0, 1);
     const pw0 = clamp(S.oPw[0] + md[D_O1PW], 0.02, 0.98);
     const pw1 = clamp(S.oPw[1] + md[D_O2PW], 0.02, 0.98);
-    const uni0 = S.oUni[0], uni1 = S.oUni[1];
+    const pw2 = S.oPw[2];
+    const uni0 = S.oUni[0], uni1 = S.oUni[1], uni2 = S.oUni[2];
 
     const fmAmt = clamp(S.fm + md[D_FM], 0, 1);
     const fmDepth = fmAmt * fmAmt * 2.5;
@@ -1523,13 +1574,25 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     const subAmt = clamp(S.sub + md[D_SUB], 0, 1);
     const noiseAmt = clamp(S.noise + md[D_NOISE], 0, 1);
 
+    // Osc 3 as an operator. Same depth law as FM 2→1; the FM 3 destination
+    // moves both of its routes together.
+    const fm3a = clamp(S.fm3a + md[D_FM3], 0, 1), fm3b = clamp(S.fm3b + md[D_FM3], 0, 1);
+    const fm3aDepth = S.fm3a > 0 || md[D_FM3] > 0 ? fm3a * fm3a * 2.5 : 0;
+    const fm3bDepth = S.fm3b > 0 || md[D_FM3] > 0 ? fm3b * fm3b * 2.5 : 0;
+
     const needO2 = S.oOn[1] || fmDepth > 0.0001 || ringAmt > 0.0001;
     const needO1 = S.oOn[0] || ringAmt > 0.0001;
+    // Osc 3 off and modulating nothing costs nothing: it is never set up or
+    // rendered, which is every patch written before it existed.
+    const needO3 = S.oOn[2] || (fm3aDepth > 0.0001 && needO1) || (fm3bDepth > 0.0001 && needO2);
+    const need = this.need;
+    need[0] = needO1; need[1] = needO2; need[2] = needO3;
+    const DFINE = [D_O1FINE, D_O2FINE, D_O3FINE];
 
-    for (let o = 0; o < 2; o++) {
-      if (o === 0 ? !needO1 : !needO2) continue;
+    for (let o = 0; o < N_OSC; o++) {
+      if (!need[o]) continue;
       const kt = S.oKt[o];
-      const tuneOff = S.oTune[o] + (o === 0 ? md[D_O1FINE] : md[D_O2FINE]) * 12;
+      const tuneOff = S.oTune[o] + md[DFINE[o]] * 12;
       let f;
       if (o === 1 && S.fmRatio) {
         // Ratio mode: osc 2 is a multiple of osc 1, so an FM patch keeps its
@@ -1542,8 +1605,8 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       }
       f = clamp(f, 0.02, sr * 0.49);
 
-      const n = o === 0 ? uni0 : uni1;
-      const det = clamp(S.oDet[o] + (o === 0 ? md[D_O1DET] : md[D_O2DET]) * 100, 0, 200);
+      const n = S.oUni[o];
+      const det = clamp(S.oDet[o] + (o === 0 ? md[D_O1DET] : o === 1 ? md[D_O2DET] : 0) * 100, 0, 200);
       const width = S.oWidth[o];
       const blendU = S.oBlend[o];
       const opan = S.oPan[o];
@@ -1559,7 +1622,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         let fd = fu;
         if (S.drift > 0.0001) {
           v.driftT[o][u] -= dt * (0.35 + u * 0.07);
-          if (v.driftT[o][u] <= 0) { v.driftT[o][u] += 1; v.drift[o][u] = v.rng(); }
+          if (v.driftT[o][u] <= 0) { v.driftT[o][u] += 1; v.drift[o][u] = o < 2 ? v.rng() : v.rng3(); }
           fd *= 1 + v.drift[o][u] * S.drift * 0.004;    // ≈ ±7 cents at full
         }
         inc[o][u] = fd / sr;
@@ -1579,8 +1642,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     /* Resolve the actual Float32Arrays now, once. Doing `bank[w][frame][mip]`
        inside the sample loop was costing more than the interpolation itself. */
     const tabA = this.tabA, tabB = this.tabB, mixF = this.mixF, isPulse = this.isPulse;
-    for (let o = 0; o < 2; o++) {
-      const m = (o === 0 ? shape0 : shape1) * (FRAMES - 1);
+    for (let o = 0; o < N_OSC; o++) {
+      if (!need[o]) continue;
+      const m = (o === 0 ? shape0 : o === 1 ? shape1 : shape2) * (FRAMES - 1);
       let fa = m | 0;
       if (fa >= FRAMES - 1) fa = FRAMES - 1;
       const fb = fa + 1 < FRAMES ? fa + 1 : fa;
@@ -1678,7 +1742,8 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     // routing is the one case that makes a mono source genuinely stereo.
     const stereoField =
       (uni0 > 1 && S.oWidth[0] > 0.001) || (uni1 > 1 && S.oWidth[1] > 0.001) ||
-      S.oPan[0] < -0.001 || S.oPan[0] > 0.001 || S.oPan[1] < -0.001 || S.oPan[1] > 0.001;
+      S.oPan[0] < -0.001 || S.oPan[0] > 0.001 || S.oPan[1] < -0.001 || S.oPan[1] > 0.001 ||
+      (lvl2 > 0 && ((uni2 > 1 && S.oWidth[2] > 0.001) || S.oPan[2] < -0.001 || S.oPan[2] > 0.001));
     const stereo = stereoField || route === 2 || spreadOn;
     // Pre-filter drive. g pushes up to ×25 into the curve; trim brings the
     // level most of the way back so the knob adds dirt, not volume.
@@ -1687,7 +1752,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     const pdTab = pdOn ? preDriveTable(S.driveType) : null;
     const pdS = PD_N / (2 * PD_R) * pdG, pdO = PD_N / 2;
 
-    for (let o = 0; o < 2; o++) {
+    for (let o = 0; o < N_OSC; o++) {
       bM[o].fill(0, 0, blk);
       bRaw[o].fill(0, 0, blk);
       if (stereo) bR[o].fill(0, 0, blk);
@@ -1708,20 +1773,23 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       }
     }
 
-    // Osc 2 first: it is the modulator for FM and the partner for ring mod.
+    // Modulators before carriers: osc 3 (it can drive 2 and 1), then osc 2
+    // (it drives 1, and is ring mod's partner), then osc 1.
     const syncAt = this.syncAt;
-    for (let oi = 0; oi < 2; oi++) {
-      const o = oi === 0 ? 1 : 0;
-      if (o === 0 ? !needO1 : !needO2) continue;
-      const n = o === 0 ? uni0 : uni1;
+    for (let o = 2; o >= 0; o--) {
+      if (!need[o]) continue;
+      const n = S.oUni[o];
       const phArr = v.ph[o], incArr = inc[o], glArr = ugL[o], grArr = ugR[o];
       const tA = tabA[o], tB = tabB[o], fmix = mixF[o];
       const len = tA.length - 1;
-      const pulse = isPulse[o], pw = o === 0 ? pw0 : pw1;
-      const lvl = o === 0 ? lvl0 : lvl1;
+      const pulse = isPulse[o], pw = o === 0 ? pw0 : o === 1 ? pw1 : pw2;
+      const lvl = o === 0 ? lvl0 : o === 1 ? lvl1 : lvl2;
       const mAcc = bM[o], rAcc = bRaw[o], rgtAcc = bR[o];
       const pmBuf = bRaw[1];
-      const pmAmt = o === 0 ? fmDepth / (uni1 || 1) : 0;
+      const pmAmt = o === 0 && needO2 ? fmDepth / (uni1 || 1) : 0;
+      // Osc 3's output, into whichever of 1 and 2 it is routed to.
+      const pm3Buf = bRaw[2];
+      const pm3Amt = !needO3 ? 0 : o === 0 ? fm3aDepth / (uni2 || 1) : o === 1 ? fm3bDepth / (uni2 || 1) : 0;
       const doSync = o === 1 && syncCount > 0;
       // Squared so the first half of the knob is colour and the top end the
       // full DX edge; 0.9 of a cycle at maximum is where it turns to noise.
@@ -1753,8 +1821,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
             s = (s1 - (tA[i1] + (tA[i1 + 1] - tA[i1]) * fB)) * 0.62;
           } else {
             let rp = ph;
-            if (pmAmt !== 0 || fbAmt !== 0) {
+            if (pmAmt !== 0 || fbAmt !== 0 || pm3Amt !== 0) {
               if (pmAmt !== 0) rp += pmAmt * pmBuf[i];
+              if (pm3Amt !== 0) rp += pm3Amt * pm3Buf[i];
               if (fbAmt !== 0) rp += fbAmt * (za + zb) * 0.5;
               rp -= rp | 0;
               if (rp < 0) rp += 1;
@@ -1779,6 +1848,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
        The mix is assembled into a scratch buffer so the filters can run over
        a whole block with their state in registers. */
     const m0 = bM[0], m1 = bM[1], r0 = bR[0], r1 = bR[1];
+    const hear3 = needO3 && lvl2 > 0, m2 = bM[2], r2 = bR[2];
     const raw0 = bRaw[0], raw1 = bRaw[1];
     const ringScale = ringAmt * 1.6 / ((uni0 || 1) * (uni1 || 1));
     const f1 = v.f1, f2 = v.f2;
@@ -1787,6 +1857,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < blk; i++) {
       let sL = m0[i] + m1[i];
       let sR = stereo ? r0[i] + r1[i] : 0;
+      if (hear3) { sL += m2[i]; if (stereo) sR += r2[i]; }
 
       if (ringAmt > 0.0001) {
         const rm = raw0[i] * raw1[i] * ringScale;
