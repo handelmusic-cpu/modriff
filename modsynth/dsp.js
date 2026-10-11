@@ -831,6 +831,11 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     this.frame = 0;
     this.peak = 0;
     this.reportCounter = 0;
+    // Load governor (added for mõdRïff). The host caps unison and polyphony
+    // when the audio thread is running out of time; this side measures how
+    // much of each block's time it uses and reports it, and obeys the caps.
+    this.capUni = MAX_UNI; this.capPoly = MAX_VOICES;
+    this.busyMs = 0; this.busyBlocks = 0; this.load = 0;
 
     // Scratch, reused across voices within a control block.
     this.tInc = [new Float64Array(MAX_UNI), new Float64Array(MAX_UNI)];
@@ -884,6 +889,11 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       case 'cc': this.setCC(m.n, m.v); break;
       case 'sustain': this.setSustain(!!m.v); break;
       case 'macro': this.macros[m.i] = m.v; break;
+      case 'cap':
+        this.capUni = Math.max(1, Math.min(MAX_UNI, m.uni | 0 || MAX_UNI));
+        this.capPoly = Math.max(1, Math.min(MAX_VOICES, m.poly | 0 || MAX_VOICES));
+        this.dirty = true;
+        break;
       case 'matrix': this.matrix = m.rows || []; break;
       case 'motion': this.motion[m.lane].set(m.steps.subarray(0, MOTION_MAX)); break;
       case 'tempo':
@@ -970,7 +980,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     const g = id => p[ix[id]] || 0;
     const S = this.S || {};
 
-    S.poly = Math.max(1, p[ix['voice.poly']] | 0);
+    S.poly = Math.max(1, Math.min(this.capPoly || MAX_VOICES, p[ix['voice.poly']] | 0));
     S.mode = g('voice.mode') | 0;
     S.glide = g('voice.glide');
     S.glideAuto = g('voice.glideAuto') > 0.5;
@@ -997,7 +1007,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       S.oTune[o] = g(q + 'oct') * 12 + g(q + 'semi') + g(q + 'fine') / 100;
       S.oLevel[o] = g(q + 'level');
       S.oPan[o] = g(q + 'pan');
-      S.oUni[o] = clamp(p[ix[q + 'uni']] | 0, 1, MAX_UNI);
+      S.oUni[o] = clamp(p[ix[q + 'uni']] | 0, 1, Math.min(MAX_UNI, this.capUni || MAX_UNI));
       S.oDet[o] = g(q + 'detune');
       S.oWidth[o] = g(q + 'width');
       S.oBlend[o] = g(q + 'blend');
@@ -1271,6 +1281,21 @@ class ModSynthProcessor extends AudioWorkletProcessor {
 
   /* ── Main render ───────────────────────────────────────────────────────── */
   process(inputs, outputs) {
+    const t0 = Date.now();
+    const r = this.process1(inputs, outputs);
+    // Date.now() is whole milliseconds and a block is ~2.7 ms, so one reading
+    // means little — but the rounding is unbiased, so the sum over 64 blocks
+    // is a fair measure of the share of the audio thread's time spent here.
+    this.busyMs += Date.now() - t0;
+    if (++this.busyBlocks >= 64) {
+      const budget = this.busyBlocks * 128 / this.sr * 1000;
+      this.load = this.busyMs / budget;
+      this.busyMs = 0; this.busyBlocks = 0;
+    }
+    return r;
+  }
+
+  process1(inputs, outputs) {
     const out = outputs[0];
     if (!out || out.length === 0) return true;
     const L = out[0], R = out.length > 1 ? out[1] : out[0];
@@ -1297,7 +1322,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       this.peak = 0;
       if (++this.reportCounter >= 8) {
         this.reportCounter = 0;
-        this.port.postMessage({ t: 'meter', voices: 0, peak: 0, gmod: Array.prototype.slice.call(this.gmod, D_FIRST_FX, N_DST) });
+        this.port.postMessage({ t: 'meter', voices: 0, peak: 0, load: this.load, gmod: Array.prototype.slice.call(this.gmod, D_FIRST_FX, N_DST) });
       }
       return true;
     }
@@ -1354,6 +1379,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         t: 'meter',
         voices: activeCount,
         peak: this.peak,
+        load: this.load,
         gmod: Array.prototype.slice.call(this.gmod, D_FIRST_FX, N_DST),
       });
     }

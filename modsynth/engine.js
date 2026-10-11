@@ -146,6 +146,7 @@
     _onWorkletMessage(m) {
       if (m.t === 'meter') {
         this.voiceCount = m.voices;
+        if (m.load != null) this.load = m.load;
         this.peak = m.peak;
         if (m.gmod && this.fx) {
           // The worklet computes matrix output for FX destinations, because
