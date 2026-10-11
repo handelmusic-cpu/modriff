@@ -374,12 +374,19 @@
           node.classList.toggle('on', on);
           // An On switch in a panel's heading greys the panel out when off:
           // an effect that is bypassed looked exactly like one that wasn't.
+          // Osc 3 switched off but driving FM is still at work — its pitch
+          // and shape are what the FM sounds like — so it stays lit.
           const pn = /\.on$/.test(paramId) && node.parentNode && node.parentNode.classList.contains('mu-panel-head') && node.closest('.mu-panel');
-          if (pn) pn.classList.toggle('off', !on);
+          const busy = paramId === 'osc3.on' && (this.engine.get('mix.fm3a') > 0 || this.engine.get('mix.fm3b') > 0);
+          if (pn) pn.classList.toggle('off', !on && !busy);
         },
       };
       ctrl.refresh();
       this.register(ctrl);
+      if (paramId === 'osc3.on') {
+        // Re-check the dimming when the FM knobs that use Osc 3 move.
+        ['mix.fm3a', 'mix.fm3b'].forEach(id => this.register({ id, node, refresh: ctrl.refresh }));
+      }
       return node;
     }
 
@@ -457,8 +464,28 @@
         rack.appendChild(p);
       });
 
+      // Osc 3 (Batch 3): a full third oscillator, and an FM operator — its
+      // FM knobs are in Mix & Sources, beside FM 2→1. No feedback or sync.
+      {
+        const g = 'osc3';
+        const p = this.panel('Oscillator 3', 'osc', { width: 300 });
+        p.head.appendChild(this.toggle(g + '.on', 'On'));
+        p.appendChild(this.row(this.select(g + '.wave', { wide: true })));
+        p.appendChild(this.knobs(g + '.shape', g + '.pw', g + '.level', g + '.pan'));
+        p.appendChild(this.sub('Pitch'));
+        p.appendChild(this.knobs(g + '.oct', g + '.semi', g + '.fine', g + '.keytrack'));
+        p.appendChild(this.sub('Unison'));
+        p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
+        p.appendChild(this.row(this.knob(g + '.phase'), this.toggle(g + '.free', 'Free Phase')));
+        p.appendChild(el('div', 'hint', 'Off, it can still be an FM operator: turn up FM 3→2 or FM 3→1 under Mix & Sources and you hear only what it does to the others.'));
+        rack.appendChild(p);
+      }
+
       const mix = this.panel('Mix & Sources', 'osc', { width: 280 });
-      mix.appendChild(this.knobs('mix.fm', 'mix.ring', 'mix.sub', 'mix.noise'));
+      mix.appendChild(this.sub('FM'));
+      mix.appendChild(this.knobs('mix.fm', 'mix.fm3b', 'mix.fm3a'));
+      mix.appendChild(this.sub('Sources'));
+      mix.appendChild(this.knobs('mix.ring', 'mix.sub', 'mix.noise'));
       mix.appendChild(this.row('Sub', this.select('mix.subWave'), this.knob('mix.subOct')));
       mix.appendChild(this.row('Noise', this.select('mix.noiseType'), this.knob('mix.noiseFlt')));
       mix.appendChild(this.row('Pluck', this.knob('mix.pluck'), this.knob('pluck.decay'), this.knob('pluck.tone'), this.knob('pluck.oct')));
@@ -593,6 +620,11 @@
       // — and only the routes in use are shown, plus "Add route" to open the
       // next empty slot. The engine still has sixteen slots; nothing about
       // the patch format changes.
+      const ch = this.panel('Chaos', 'mod', { width: 300 });
+      ch.appendChild(this.knobs('chaos.rate'));
+      ch.appendChild(el('div', 'hint', 'A slow random wander for each note — never repeats, never jumps. Route Chaos in the matrix to pitch, cutoff or pan for drift that sounds played rather than programmed.'));
+      rack.appendChild(ch);
+
       const mx = this.panel('Modulation Matrix', 'mod');
       mx.style.flexBasis = '100%';
       const list = el('div', 'matrix');
@@ -614,13 +646,16 @@
 
         const uni = el('button', 'btn', '±');
         uni.title = 'Bipolar (±) or unipolar (0…+) — unipolar is what you want for a macro that should only ever add.';
+        const viaSel = el('select', 'sel');
+        MS.MOD_SOURCES.forEach(([v, l]) => { const o = el('option', null, v === 'none' ? 'always' : l); o.value = v; viaSel.appendChild(o); });
+        viaSel.title = 'Via: a second source that scales this route — at 0 the route does nothing, at full it is at its set amount.';
         const del = el('button', 'btn mx-del', '✕');
         del.title = 'Remove this route';
 
         const write = () => {
           const rows = this.engine.matrix.slice();
           while (rows.length < MS.MATRIX_SLOTS) rows.push({ src: 'none', dst: 'none', amt: 0, uni: 0 });
-          rows[i] = { src: srcSel.value, dst: dstSel.value, amt: +amt.value, uni: uni.classList.contains('on') ? 1 : 0 };
+          rows[i] = { src: srcSel.value, dst: dstSel.value, amt: +amt.value, uni: uni.classList.contains('on') ? 1 : 0, via: viaSel.value };
           this.engine.setMatrix(rows);
           this.refreshMatrix();
           this.refreshMacroRoutes();
@@ -628,10 +663,11 @@
         };
         srcSel.addEventListener('change', write);
         dstSel.addEventListener('change', write);
+        viaSel.addEventListener('change', write);
         amt.addEventListener('input', () => { amtV.textContent = (+amt.value).toFixed(2); write(); });
         uni.addEventListener('click', () => { uni.classList.toggle('on'); write(); });
         del.addEventListener('click', () => {
-          srcSel.value = 'none'; dstSel.value = 'none'; amt.value = 0; uni.classList.remove('on');
+          srcSel.value = 'none'; dstSel.value = 'none'; viaSel.value = 'none'; amt.value = 0; uni.classList.remove('on');
           this._mxOpen.delete(i);
           write();
         });
@@ -643,9 +679,12 @@
         top.appendChild(dstSel);
         const bot = el('div', 'mx-bot');
         bot.appendChild(amtWrap); bot.appendChild(uni); bot.appendChild(del);
-        tr.appendChild(top); tr.appendChild(bot);
+        const via = el('div', 'mx-via');
+        via.appendChild(el('span', 'mx-via-l', 'Via'));
+        via.appendChild(viaSel);
+        tr.appendChild(top); tr.appendChild(bot); tr.appendChild(via);
         list.appendChild(tr);
-        this._mxRows.push({ tr, srcSel, dstSel, amt, amtV, uni });
+        this._mxRows.push({ tr, srcSel, dstSel, amt, amtV, uni, viaSel });
       }
       mx.appendChild(list);
       const add = el('button', 'btn mx-add', '+ Add route');
@@ -660,7 +699,8 @@
       mx.appendChild(add);
       mx.appendChild(el('div', 'hint',
         'Each route wires one source to one destination. Macros appear as sources m1–m8 — ' +
-        'point several routes at the same macro and one knob moves the whole sound.'));
+        'point several routes at the same macro and one knob moves the whole sound. ' +
+        'Via scales a route by a second source: LFO → Cutoff via Mod Wheel is a wobble you fade in by hand.'));
       rack.appendChild(mx);
       host.appendChild(rack);
       this.jumpBar(host, rack);
@@ -719,6 +759,7 @@
         r.amt.value = row.amt || 0;
         r.amtV.textContent = (+(row.amt || 0)).toFixed(2);
         r.uni.classList.toggle('on', !!row.uni);
+        r.viaSel.value = row.via || 'none';
         r.tr.classList.toggle('live', row.src !== 'none' && row.dst !== 'none' && !!row.amt);
         // A slot shows if it holds anything, or was just opened with Add.
         const used = (row.src && row.src !== 'none') || (row.dst && row.dst !== 'none') || !!row.amt;

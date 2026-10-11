@@ -213,7 +213,7 @@
 
     /* ── Modulation matrix ──────────────────────────────────────────────── */
 
-    /** rows: [{src, dst, amt, uni}] using string ids. */
+    /** rows: [{src, dst, amt, uni, via}] using string ids. */
     setMatrix(rows) {
       this.matrix = rows.slice(0, MS.MATRIX_SLOTS);
       // Mirror into the parameter table so the matrix is part of a patch and
@@ -224,6 +224,7 @@
         this.values['mtx' + (i + 1) + '.dst'] = r.dst || 'none';
         this.values['mtx' + (i + 1) + '.amt'] = r.amt || 0;
         this.values['mtx' + (i + 1) + '.uni'] = r.uni ? 1 : 0;
+        this.values['mtx' + (i + 1) + '.via'] = r.via || 'none';
       }
       this.pushMatrix();
     }
@@ -237,6 +238,7 @@
           dst: this.values['mtx' + i + '.dst'] || 'none',
           amt: this.values['mtx' + i + '.amt'] || 0,
           uni: this.values['mtx' + i + '.uni'] ? 1 : 0,
+          via: this.values['mtx' + i + '.via'] || 'none',
         });
       }
       this.matrix = rows;
@@ -247,7 +249,7 @@
       if (!this.ready) return;
       const rows = this.matrix
         .filter(r => r && r.src && r.src !== 'none' && r.dst && r.dst !== 'none' && r.amt)
-        .map(r => ({ s: SRC_INDEX[r.src] || 0, d: DST_INDEX[r.dst] || 0, a: +r.amt || 0, u: r.uni ? 1 : 0 }));
+        .map(r => ({ s: SRC_INDEX[r.src] || 0, d: DST_INDEX[r.dst] || 0, a: +r.amt || 0, u: r.uni ? 1 : 0, v: SRC_INDEX[r.via] || 0 }));
       this.node.port.postMessage({ t: 'matrix', rows });
       // FX destinations that nothing drives must fall back to their base value.
       if (this.fx) {
@@ -417,7 +419,7 @@
       n.connect(oc.destination);
       n.port.postMessage({ t: 'matrix', rows: this.matrix
         .filter(r => r && r.src !== 'none' && r.dst !== 'none' && r.amt)
-        .map(r => ({ s: SRC_INDEX[r.src] || 0, d: DST_INDEX[r.dst] || 0, a: +r.amt || 0, u: r.uni ? 1 : 0 })) });
+        .map(r => ({ s: SRC_INDEX[r.src] || 0, d: DST_INDEX[r.dst] || 0, a: +r.amt || 0, u: r.uni ? 1 : 0, v: SRC_INDEX[r.via] || 0 })) });
       n.port.postMessage({ t: 'on', note: note || 60, vel: 0.9, id: 0 });
       setTimeout(() => {}, 0);
       const buf = await oc.startRendering();

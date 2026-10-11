@@ -549,6 +549,119 @@
     ['m4', 'flt1.res', 0.4],
   ], ['Open', 'Drive', 'Space', 'Resonance']);
 
+  /* ═══════════════ MODULATION (Batch 3: osc 3, FM, chaos, via) ════════
+     Matrix rows here may carry a fifth field, the Via source: the route's
+     amount is multiplied by it, so ['lfo1', 'flt1.cutoff', 0.4, 0, 'm1'] is
+     a wobble that macro 1 fades in. */
+
+  // DX-style electric piano: osc 2 (1:1) and osc 3 (×12) both modulate osc 1,
+  // and Env 3 makes the FM decay so the bark and the tine are on the attack.
+  p('3-Op E.Piano', 'Keys', 'fm, dx, epiano, three operator', {
+    'voice.poly': 8,
+    'osc1.wave': 'classic', 'osc1.shape': 0, 'osc1.level': 0.75,
+    'osc2.wave': 'classic', 'osc2.shape': 0, 'osc2.ratio': 1,
+    'osc3.wave': 'classic', 'osc3.shape': 0, 'osc3.oct': 3, 'osc3.semi': 7,
+    'mix.fm': 0.12, 'mix.fm3a': 0.06,
+    'flt1.model': 'ladder4', 'flt1.cutoff': 6000, 'flt1.drive': 0.15,
+    'env1.a': 0.002, 'env1.d': 2.2, 'env1.s': 0.25, 'env1.r': 0.45,
+    'env3.a': 0.001, 'env3.d': 0.35, 'env3.s': 0,
+    'fx.chorus.on': 1, 'fx.chorus.mix': 0.25,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.18,
+    'fx.ott.depth': 0.25,
+  }, [
+    ['env3', 'mix.fm', 0.3], ['env3', 'mix.fm3', 0.32],
+    ['m1', 'mix.fm3', 0.45], ['m2', 'mix.fm', 0.5], ['m3', 'fx.chorus.mix', 0.5], ['m4', 'fx.reverb.mix', 0.4],
+  ], ['Tine', 'Bark', 'Chorus', 'Space']);
+
+  // A 3→2→1 chain: osc 3 (×4) modulates osc 2 (×1.5), which modulates osc 1.
+  // The classic inharmonic bell algorithm, with the clang decaying first.
+  p('DX Bell Stack', 'Keys', 'fm, bell, dx, three operator, metallic', {
+    'voice.poly': 8,
+    'osc1.wave': 'classic', 'osc1.shape': 0, 'osc1.level': 0.75,
+    'osc2.wave': 'classic', 'osc2.shape': 0, 'osc2.ratio': 1, 'osc2.semi': 7,
+    'osc3.wave': 'classic', 'osc3.shape': 0, 'osc3.oct': 2,
+    'mix.fm': 0.32, 'mix.fm3b': 0.38,
+    'flt1.model': 'bypass',
+    'env1.a': 0.001, 'env1.d': 4, 'env1.s': 0, 'env1.r': 2.5,
+    'env3.a': 0.001, 'env3.d': 1.2, 'env3.s': 0.1,
+    'fx.delay.on': 1, 'fx.delay.div': '1_8d', 'fx.delay.mix': 0.15, 'fx.delay.pong': 1,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.35, 'fx.reverb.decay': 4,
+    'fx.ott.depth': 0.3,
+  }, [
+    ['env3', 'mix.fm3', 0.3], ['env3', 'mix.fm', 0.2],
+    ['m1', 'mix.fm3', 0.5], ['m2', 'mix.fm', 0.45], ['m3', 'fx.reverb.mix', 0.45], ['m4', 'fx.delay.mix', 0.4],
+  ], ['Metal', 'Bright', 'Space', 'Echo']);
+
+  // Three oscillators, each note drifting on its own chaos walk — pitch a few
+  // cents, the cutoff and the pan — so a held chord never sits still the
+  // same way twice. Macro 2 turns the wander up.
+  p('Chaos Drift Pad', 'Pad', 'chaos, drift, three osc, evolving, wide', {
+    'voice.poly': 8,
+    'osc1.wave': 'classic', 'osc1.shape': 0.66, 'osc1.uni': 2, 'osc1.detune': 10, 'osc1.level': 0.6,
+    'osc2.on': 1, 'osc2.wave': 'classic', 'osc2.shape': 0.66, 'osc2.fine': 7, 'osc2.level': 0.45,
+    'osc3.on': 1, 'osc3.wave': 'supersaw', 'osc3.shape': 0.5, 'osc3.oct': -1, 'osc3.level': 0.35,
+    'chaos.rate': 0.35,
+    'flt1.model': 'ladder4', 'flt1.cutoff': 1800, 'flt1.res': 0.2,
+    'env1.a': 0.8, 'env1.d': 1.5, 'env1.s': 0.9, 'env1.r': 2,
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.35, 'fx.reverb.decay': 3.5,
+    'fx.ott.depth': 0.3,
+  }, [
+    ['chaos', 'pitch', 0.006], ['chaos', 'flt1.cutoff', 0.12], ['chaos', 'pan', 0.5],
+    ['chaos', 'flt1.cutoff', 0.35, 0, 'm2'], ['chaos', 'osc3.fine', 0.5, 0, 'm2'],
+    ['m1', 'flt1.cutoff', 0.45], ['m2', 'osc1.detune', 0.35], ['m3', 'osc3.level', 0.4], ['m4', 'fx.reverb.mix', 0.4],
+  ], ['Open', 'Unsteady', 'Low Osc', 'Space']);
+
+  // The wobble is routed via macro 1: at zero the bass is still, and the knob
+  // fades the LFO in — the way a player rides a mod wheel.
+  p('Wheel Wobble', 'Bass', 'wobble, lfo, via, dubstep, growl', Object.assign({}, MONO, {
+    'osc1.wave': 'growl', 'osc1.shape': 0.35, 'osc1.uni': 2, 'osc1.detune': 12, 'osc1.level': 0.8,
+    'osc2.on': 1, 'osc2.wave': 'classic', 'osc2.shape': 0.66, 'osc2.oct': -1, 'osc2.level': 0.45,
+    'mix.sub': 0.4,
+    'flt1.model': 'diode', 'flt1.cutoff': 420, 'flt1.res': 0.45, 'flt1.drive': 0.5,
+    'lfo1.shape': 'sine', 'lfo1.sync': 1, 'lfo1.div': '1_8', 'lfo1.depth': 1,
+    'fx.drive.on': 1, 'fx.drive.type': 'fold', 'fx.drive.amount': 0.2,
+    'fx.ott.depth': 0.5,
+  }), [
+    ['lfo1', 'flt1.cutoff', 0.45, 0, 'm1'], ['m1', 'flt1.res', 0.15],
+    ['m2', 'lfo1.rate', 0.25], ['m3', 'fx.drive.amount', 0.5], ['m4', 'flt1.cutoff', 0.4],
+  ], ['Wobble', 'Faster', 'Grit', 'Open']);
+
+  // FM as a bass growl: osc 3 → osc 2 → osc 1, all sines, the chain doing
+  // what a saw and a filter usually do — and macro 1 drives it into a snarl.
+  p('Growl Operator', 'Bass', 'fm, growl, three operator, mono', Object.assign({}, MONO, {
+    'voice.glide': 0.03,
+    'osc1.wave': 'classic', 'osc1.shape': 0, 'osc1.level': 0.8,
+    'osc2.wave': 'classic', 'osc2.shape': 0.66, 'osc2.ratio': 1,
+    'osc3.wave': 'classic', 'osc3.shape': 0, 'osc3.oct': 1,
+    'mix.fm': 0.3, 'mix.fm3b': 0.3, 'mix.sub': 0.35,
+    'mix.drive': 0.3, 'mix.driveType': 'asym',
+    'flt1.model': 'ladder4', 'flt1.cutoff': 1500, 'flt1.res': 0.3, 'flt1.drive': 0.5,
+    'env1.a': 0.002, 'env1.d': 0.6, 'env1.s': 0.85, 'env1.r': 0.12,
+    'env3.a': 0.001, 'env3.d': 0.25, 'env3.s': 0,
+    'fx.ott.depth': 0.5,
+  }), [
+    ['env3', 'mix.fm3', 0.2],
+    ['m1', 'mix.fm3', 0.5], ['m2', 'mix.fm', 0.45], ['m3', 'flt1.cutoff', 0.4], ['m4', 'flt1.drive', 0.5],
+  ], ['Growl', 'Bark', 'Open', 'Dirt']);
+
+  // Three saws — root, fifth, octave down — gliding together. Macro 3 is
+  // vibrato depth: the LFO runs all the time, routed via the macro.
+  p('Triple Saw Lead', 'Lead', 'three osc, fifth, glide, vibrato', Object.assign({}, LEGATO, {
+    'voice.glide': 0.06,
+    'osc1.wave': 'classic', 'osc1.shape': 0.66, 'osc1.uni': 2, 'osc1.detune': 12, 'osc1.level': 0.65,
+    'osc2.on': 1, 'osc2.wave': 'classic', 'osc2.shape': 0.66, 'osc2.semi': 7, 'osc2.level': 0.45,
+    'osc3.on': 1, 'osc3.wave': 'classic', 'osc3.shape': 0.66, 'osc3.oct': -1, 'osc3.level': 0.55,
+    'chaos.rate': 0.5,
+    'flt1.model': 'ladder4', 'flt1.cutoff': 2400, 'flt1.res': 0.25, 'flt1.env': 0.3,
+    'env2.d': 0.4, 'env2.s': 0.3,
+    'lfo2.shape': 'sine', 'lfo2.rate': 5.5,
+    'fx.delay.on': 1, 'fx.delay.div': '1_8', 'fx.delay.mix': 0.2,
+    'fx.ott.depth': 0.4,
+  }), [
+    ['chaos', 'pitch', 0.004], ['lfo2', 'pitch', 0.012, 0, 'm3'],
+    ['m1', 'flt1.cutoff', 0.4], ['m2', 'osc2.level', -0.45], ['m3', 'osc1.detune', 0.2], ['m4', 'fx.delay.mix', 0.4],
+  ], ['Open', 'No Fifth', 'Vibrato', 'Echo']);
+
   /* ════════════════════════════════ FX-ish ══════════════════════════════ */
 
   p('Riser Noise', 'Texture', 'riser, noise, sweep, transition', {
@@ -620,7 +733,13 @@
     'Chip Lead': 1.1,
     'Metal Bell': 0.63,
     'Rasp Bass': 1.4,
-    'Wide Saws': 1.05
+    'Wide Saws': 1.05,
+    '3-Op E.Piano': 0.5,
+    'DX Bell Stack': 0.44,
+    'Chaos Drift Pad': 0.58,
+    'Wheel Wobble': 1.25,
+    'Growl Operator': 1.12,
+    'Triple Saw Lead': 1.02
   };
   BANK.forEach(p => { if (CAL[p.name] != null) p.values['master.vol'] = CAL[p.name]; });
 
