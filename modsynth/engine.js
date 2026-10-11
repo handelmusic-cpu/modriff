@@ -298,6 +298,14 @@
       this.node.port.postMessage({ t: 'off', note, id, at });
     }
 
+    /** Cuts note-on `id` short at `time` — a gate, not a release (mõdRïff). */
+    chokeAt(note, time, id) {
+      if (!this.ready) return;
+      note = MS.clamp(note | 0, 0, 127);
+      const at = Math.round(Math.max(0, time) * this.ctx.sampleRate);
+      this.node.port.postMessage({ t: 'choke', note, id, at });
+    }
+
     /** Sleep and wake (added for mõdRïff). Asleep, the synth is unplugged from
         its rack and the rack from its destination and its analyser — the
         analyser is an automatic-pull node that kept the whole rack rendering

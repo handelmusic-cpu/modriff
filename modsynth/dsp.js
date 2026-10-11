@@ -36,7 +36,10 @@
 const TABLE_SIZE = 2048;
 const NUM_MIPS = 11;          // 1024 harmonics down to 1
 const FRAMES = 4;             // morph frames per wavetable set
-const CTRL = 32;              // samples per control-rate update (~0.7 ms)
+const CTRL = 32;
+// How long a choke takes (see chokeId): about the app's own FADE_OUT, so a
+// mõdSynth chord is cut by the next one exactly as fast as any other voice.
+const CHOKE_SEC = 0.012;              // samples per control-rate update (~0.7 ms)
 const MAX_VOICES = 16;
 const MAX_UNI = 8;
 const MOTION_MAX = 16;
@@ -788,6 +791,7 @@ class Voice {
     this.panL = 0; this.panR = 0;
     this.alt = 1; this.randA = 0; this.randB = 0;
     this.lastAmp = 0;
+    this.choke = 1; this.choking = false;
   }
 
   reset() {
@@ -802,6 +806,7 @@ class Voice {
 
   noteOn(note, vel, noteId, S, time, glideFrom) {
     this.note = note; this.vel = vel; this.noteId = noteId;
+    this.choke = 1; this.choking = false;
     this.held = true; this.pedal = false; this.active = true;
     this.startTime = time; this.age = 0;
     this.randA = this.rng(); this.randB = this.rng();
@@ -845,7 +850,9 @@ class Voice {
 
   kill() { this.active = false; this.held = false; this.pedal = false; this.reset(); }
 
-  finished() { return this.env[0].stage === E_IDLE && this.lastAmp < 1e-4; }
+  finished() {
+    return (this.env[0].stage === E_IDLE && this.lastAmp < 1e-4) || (this.choking && this.choke <= 0);
+  }
 }
 
 /* ── Processor ────────────────────────────────────────────────────────────── */
@@ -940,6 +947,15 @@ class ModSynthProcessor extends AudioWorkletProcessor {
         else if (m.id != null) this.noteOffId(m.id, m.note);
         else this.noteOff(m.note);
         break;
+      // Cut the voices of one note-on fast, release tail and all (added for
+      // mõdRïff: a new chord gates the one before it, as every other voice in
+      // the app does — a note-off only starts the patch's own release, which
+      // on a pad rang on under the next chord).
+      case 'choke':
+        if (m.id != null) this.unqueueOff(m.id);
+        if (m.at != null && m.at > this.now()) this.queue(m.at, 2, m.note, 0, m.id);
+        else this.chokeId(m.id);
+        break;
       case 'panic': this.panic(); break;
       case 'allOff': this.allNotesOff(); break;
       case 'mw': this.mw = m.v; break;
@@ -988,6 +1004,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     while (q.length && q[0].at <= frameEnd) {
       const ev = q.shift();
       if (ev.type === 1) this.noteOn(ev.note, ev.vel, ev.id == null ? -1 : ev.id);
+      else if (ev.type === 2) this.chokeId(ev.id);
       else if (ev.id != null) this.noteOffId(ev.id, ev.note);
       else this.noteOff(ev.note);
     }
@@ -1019,6 +1036,15 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       } else if (v.note === note) still = true;
     }
     if (!still) this.heldNotes = this.heldNotes.filter(n => n.note !== note);
+  }
+
+  /** Fast-fades every voice started by note-on `id` and forgets the key. */
+  chokeId(id) {
+    for (const v of this.voices) {
+      if (!v.active || v.noteId !== id) continue;
+      v.held = false; v.pedal = false; v.choking = true;
+    }
+    this.heldNotes = this.heldNotes.filter(n => n.id !== id);
   }
 
   setCC(n, v) {
@@ -1700,6 +1726,10 @@ class ModSynthProcessor extends AudioWorkletProcessor {
     let amp = env1 * velGain * (1 + md[D_AMP]) * OUT_TRIM;
     if (amp < 0) amp = 0;
     if (S.mode === 3) amp *= 1 / Math.sqrt(Math.max(1, Math.min(S.poly, MAX_VOICES)));
+    // A choked voice fades to nothing over CHOKE_SEC, whatever its envelope
+    // was doing, then frees itself (finished()). The amp is already ramped
+    // across the block, so a fade this short is still click-free.
+    if (v.choking) { v.choke = Math.max(0, v.choke - dt / CHOKE_SEC); amp *= v.choke; }
     const panPos = clamp(
       md[D_PAN] + (S.vspread && S.mode !== 3 ? ((v.note % 12) / 11 - 0.5) * 2 * S.vspread : 0),
       -1, 1
