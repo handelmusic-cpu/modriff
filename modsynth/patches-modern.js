@@ -522,6 +522,33 @@
     ['m4', 'flt1.cutoff', -0.45],
   ], ['Clang', 'Sine', 'Space', 'Soft']);
 
+  /* ═══════════════ CHARACTER (Batch 2: pre-drive, spread, grit) ═══════ */
+
+  p('Rasp Bass', 'Bass', 'rectifier, grit, ott, modern', Object.assign({}, MONO, {
+    'osc1.wave': 'classic', 'osc1.shape': 0.66, 'osc1.uni': 2, 'osc1.detune': 12, 'osc1.level': 0.8,
+    'mix.sub': 0.5, 'mix.drive': 0.45, 'mix.driveType': 'rect',
+    'flt1.model': 'ladder4', 'flt1.cutoff': 900, 'flt1.res': 0.25, 'flt1.env': 0.3,
+    'env2.d': 0.3, 'env2.s': 0.2,
+    'fx.grit.on': 1, 'fx.grit.amount': 0.35, 'fx.grit.tone': 0.55, 'fx.grit.mix': 0.7,
+    'fx.ott.depth': 0.55,
+  }), [
+    ['m1', 'flt1.cutoff', 0.45], ['m2', 'osc1.detune', 0.6], ['m3', 'mix.sub', -0.5], ['m4', 'flt1.res', 0.4],
+  ], ['Open', 'Width', 'Less Sub', 'Bite']);
+
+  p('Wide Saws', 'Pad', 'spread, stereo, drive, wide', {
+    'voice.poly': 8,
+    'osc1.wave': 'classic', 'osc1.shape': 0.66, 'osc1.uni': 2, 'osc1.detune': 14, 'osc1.level': 0.7,
+    'mix.drive': 0.3, 'mix.driveType': 'asym',
+    'flt1.model': 'ladder4', 'flt1.cutoff': 1400, 'flt1.res': 0.3, 'flt.spread': 0.55,
+    'env1.a': 0.25, 'env1.d': 1, 'env1.s': 0.85, 'env1.r': 1,
+    'lfo2.shape': 'sine', 'lfo2.rate': 0.18, 'lfo2.mode': 'free',
+    'fx.reverb.on': 1, 'fx.reverb.mix': 0.25,
+    'fx.ott.depth': 0.35,
+  }, [
+    ['lfo2', 'flt1.cutoff', 0.25], ['m1', 'flt1.cutoff', 0.45], ['m2', 'flt1.drive', 0.6], ['m3', 'fx.reverb.mix', 0.4],
+    ['m4', 'flt1.res', 0.4],
+  ], ['Open', 'Drive', 'Space', 'Resonance']);
+
   /* ════════════════════════════════ FX-ish ══════════════════════════════ */
 
   p('Riser Noise', 'Texture', 'riser, noise, sweep, transition', {
@@ -591,7 +618,9 @@
     'Steel String': 0.53,
     'Kalimba Pluck': 0.84,
     'Chip Lead': 1.1,
-    'Metal Bell': 0.63
+    'Metal Bell': 0.63,
+    'Rasp Bass': 1.4,
+    'Wide Saws': 1.05
   };
   BANK.forEach(p => { if (CAL[p.name] != null) p.values['master.vol'] = CAL[p.name]; });
 
