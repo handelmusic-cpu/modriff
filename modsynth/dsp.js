@@ -1194,7 +1194,9 @@ class ModSynthProcessor extends AudioWorkletProcessor {
   noteOn(note, vel, id) {
     const S = this.dirty || !this.S ? this.snapshot() : this.S;
     this.heldNotes = this.heldNotes.filter(n => n.note !== note);
-    this.heldNotes.push({ note, vel });
+    // The id rides along so a fallback (see noteOff) can hand the voice back
+    // to the key it now belongs to.
+    this.heldNotes.push({ note, vel, id });
 
     const mono = S.mode >= 1;
     const anySounding = this.voices.some(v => v.active && (v.held || v.pedal));
@@ -1246,8 +1248,14 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       for (let s = 0; s < stack; s++) {
         const v = this.voices[s];
         if (!v.active) continue;
-        if (S.mode === 2) { v.note = prev.note; v.targetPitch = prev.note; v.held = true; }
-        else v.noteOn(prev.note, prev.vel, -1, S, this.frame, v.note);
+        // The voice now sounds the held key, so it carries that key's id. It
+        // used to keep the released note's id (legato) or take -1 (mono), and
+        // noteOffId — which the host sends — only releases the voice whose id
+        // matches: letting go of the held key then just dropped it from the
+        // list and the note rang on with nothing down.
+        const pid = prev.id == null ? -1 : prev.id;
+        if (S.mode === 2) { v.note = prev.note; v.targetPitch = prev.note; v.held = true; v.noteId = pid; }
+        else v.noteOn(prev.note, prev.vel, pid, S, this.frame, v.note);
       }
       this.lastNote = prev.note;
       return;
