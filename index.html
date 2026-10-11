@@ -36431,7 +36431,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
 // compressed webm/opus containers in Chrome — not something most DAWs or
 // simple media players open cleanly).
 var _recProcessor=null, _recSilentGain=null, _recChunksL=[], _recChunksR=[], _isRecording=false, _recTapNode=null;
-var _recTap=null;
+var _recTap=null, _recChunksF=[];
 
 // ── PCM tap ────────────────────────────────────────────────────────────
 // ScriptProcessorNode has been deprecated for years and WebKit treats it that
@@ -36448,16 +36448,29 @@ function _recWorkletSource(){
  // Buffered to 4096 frames before posting, matching the ScriptProcessor block
  // size — a message per 128-frame render quantum would be ~375 posts a second
  // per tap, and a stem bounce runs six taps at once.
+ //
+ // Every block carries `f`, the context frame its first sample was rendered
+ // at. A part bus with nothing playing into it is not "actively processing",
+ // and the worklet then gets an input with no channels — so a stem tap simply
+ // skipped every stretch its part was silent, and the bass stem of a take
+ // whose bass came in at bar 5 started at bar 5 and ran short. Stamped, a gap
+ // stays a gap: the writer puts each block where it was heard. A non-
+ // contiguous block (input came back after a gap) is flushed on its own so a
+ // block's samples are always consecutive. {flush:1} from the page posts the
+ // last partial block, which used to be lost at Stop.
  return "class RecTap extends AudioWorkletProcessor{"
   +"constructor(){super();this.N=4096;this.l=new Float32Array(this.N);"
-  +"this.r=new Float32Array(this.N);this.i=0;}"
+  +"this.r=new Float32Array(this.N);this.i=0;this.f=0;"
+  +"this.port.onmessage=e=>{if(e.data&&e.data.flush)this.flush();};}"
   +"flush(){if(!this.i)return;"
-  +"this.port.postMessage({l:this.l.slice(0,this.i),r:this.r.slice(0,this.i)});this.i=0;}"
+  +"this.port.postMessage({l:this.l.slice(0,this.i),r:this.r.slice(0,this.i),f:this.f});this.i=0;}"
   +"process(inputs){const inp=inputs[0];"
   +"if(!inp||!inp.length||!inp[0]||!inp[0].length){return true;}"
+  +"if(this.i&&currentFrame!==this.f+this.i)this.flush();"
+  +"if(!this.i)this.f=currentFrame;"
   +"const L=inp[0],R=inp.length>1?inp[1]:inp[0];"
   +"for(let k=0;k<L.length;k++){this.l[this.i]=L[k];this.r[this.i]=R[k];this.i++;"
-  +"if(this.i>=this.N)this.flush();}return true;}}"
+  +"if(this.i>=this.N){this.flush();this.f=currentFrame+k+1;}}return true;}}"
   +"registerProcessor('rec-tap',RecTap);";
 }
 
@@ -36481,15 +36494,18 @@ function _makePcmTap(ctx, source, onBlock){
  if(_recWorkletReady && _recWorkletCtx===ctx){
   kind='worklet';
   node=new AudioWorkletNode(ctx,'rec-tap',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
-  node.port.onmessage=function(ev){ if(ev&&ev.data) onBlock(ev.data.l, ev.data.r); };
+  node.port.onmessage=function(ev){ if(ev&&ev.data) onBlock(ev.data.l, ev.data.r, ev.data.f); };
   detach=function(){ try{ node.port.onmessage=null; }catch(e){} };
  } else {
   kind='scriptprocessor';
   node=ctx.createScriptProcessor(4096,2,2);
   node.onaudioprocess=function(e){
    var b=e.inputBuffer;
+   // playbackTime is the same offset for every ScriptProcessor tap, so it
+   // lines stems up with the mix just as the worklet's frame stamp does.
    onBlock(new Float32Array(b.getChannelData(0)),
-           new Float32Array(b.numberOfChannels>1?b.getChannelData(1):b.getChannelData(0)));
+           new Float32Array(b.numberOfChannels>1?b.getChannelData(1):b.getChannelData(0)),
+           Math.round((e.playbackTime||0)*ctx.sampleRate));
   };
   detach=function(){ node.onaudioprocess=null; };
  }
@@ -36498,7 +36514,10 @@ function _makePcmTap(ctx, source, onBlock){
  // to the mix.
  var sg=ctx.createGain(); sg.gain.value=0;
  source.connect(node); node.connect(sg); sg.connect(ctx.destination);
- return { node:node, sg:sg, kind:kind, dispose:function(){
+ return { node:node, sg:sg, kind:kind,
+  // Posts the worklet's last partial block. A ScriptProcessor has none.
+  flush:function(){ if(kind==='worklet'){ try{ node.port.postMessage({flush:1}); }catch(e){} } },
+  dispose:function(){
   detach();
   try{ source.disconnect(node); }catch(e){}
   try{ node.disconnect(); }catch(e){}
@@ -36541,24 +36560,48 @@ function _startStemTaps(ctx){
   var buses = _ensureAllPartBuses(ctx);
   Object.keys(STEM_LABELS).forEach(function(part){
     var node = buses[part]; if(!node) return;
-    var tap = { part:part, node:node, L:[], R:[] };
+    var tap = { part:part, node:node, L:[], R:[], F:[] };
     // Same helper as the master tap, so stems get the AudioWorklet too.
-    tap.pcm = _makePcmTap(ctx, node, function(L,R){ tap.L.push(L); tap.R.push(R); });
+    tap.pcm = _makePcmTap(ctx, node, function(L,R,f){ tap.L.push(L); tap.R.push(R); tap.F.push(f); });
     _stemTaps.push(tap);
   });
 }
 // Stems are tapped at the part bus, which sits before the reverb send and
 // before the master limiter — so they come out dry and unprocessed, which is
 // what you want to mix with anyway.
-function _finishStemTaps(baseName, sampleRate, tags){
+// Every stem comes out exactly the mix's length and starts on its first frame:
+// `span` is {f0, n} — the context frame the mix's first sample was heard at and
+// how many frames it holds. Each block is written at its own stamp relative to
+// f0, so silence a part never sent stays silence in its file instead of being
+// closed up, and anything outside the mix's window is cut. Stems used to be
+// whatever each tap happened to collect, laid end to end — every file a
+// different length, none of them lining up with the mix in a DAW.
+function _finishStemTaps(baseName, sampleRate, tags, span){
   var taps=_stemTaps; _stemTaps=[];
   var written=[];
   taps.forEach(function(t){
     if(t.pcm) t.pcm.dispose();
     var total=t.L.reduce(function(a,c){return a+c.length;},0);
     if(!total) return;
-    var L=new Float32Array(total), R=new Float32Array(total), pos=0;
-    for(var i=0;i<t.L.length;i++){ L.set(t.L[i],pos); R.set(t.R[i],pos); pos+=t.L[i].length; }
+    var L, R;
+    if(span && span.f0!=null && span.n>0 && t.F.every(function(f){ return f!=null && isFinite(f); })){
+      L=new Float32Array(span.n); R=new Float32Array(span.n);
+      for(var i=0;i<t.L.length;i++){
+        var at=t.F[i]-span.f0, src=t.L[i], srcR=t.R[i], from=0;
+        if(at<0){ from=-at; at=0; }
+        var len=Math.min(src.length-from, span.n-at);
+        if(len<=0) continue;
+        L.set(src.subarray(from,from+len),at); R.set(srcR.subarray(from,from+len),at);
+      }
+    } else {
+      // No stamps to go by: the old end-to-end join, padded or cut to the mix.
+      var n=(span && span.n>0) ? span.n : total, pos=0;
+      L=new Float32Array(n); R=new Float32Array(n);
+      for(var k=0;k<t.L.length && pos<n;k++){
+        var m=Math.min(t.L[k].length, n-pos);
+        L.set(t.L[k].subarray(0,m),pos); R.set(t.R[k].subarray(0,m),pos); pos+=m;
+      }
+    }
     // A part that never sounded writes a silent file nobody wants. Skip it.
     var peak=0; for(var j=0;j<L.length;j++){ var a=Math.abs(L[j]); if(a>peak) peak=a; }
     if(peak < 0.0005) return;
@@ -36768,13 +36811,13 @@ function _startRecording(){
   // window collected the previous take's tail as its own opening. Caught by a
   // test that stopped and immediately restarted: the second bounce came back
   // with audio in it that had been captured before it began.
-  var _myL=[], _myR=[];
-  _recChunksL=_myL;_recChunksR=_myR;
+  var _myL=[], _myR=[], _myF=[];
+  _recChunksL=_myL;_recChunksR=_myR;_recChunksF=_myF;
   // Tap the final node, after Master Vol — tapping the limiter would bounce a
   // file that doesn't match what you just heard.
   _recTapNode = window._masterOut || window._masterLimiter;
-  _recTap = _makePcmTap(ctx, _recTapNode, function(L,R){
-    _myL.push(L); _myR.push(R);
+  _recTap = _makePcmTap(ctx, _recTapNode, function(L,R,f){
+    _myL.push(L); _myR.push(R); _myF.push(f);
   });
   _recProcessor=_recTap.node; _recSilentGain=_recTap.sg;
   _startStemTaps(ctx);
@@ -36870,15 +36913,34 @@ function _stopRecording(){
   var midiFile=_stopMidiRecording();
   var tap=_recTap;
   _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
+  // Ask every tap for its last partial block now, at the same moment, so the
+  // mix and the stems end together; the timeout below is what lets it arrive.
+  if(tap && tap.flush) tap.flush();
+  try{ _stemTaps.forEach(function(t){ if(t.pcm && t.pcm.flush) t.pcm.flush(); }); }catch(e){}
   // Let the final buffer flush before tearing the tap down
   setTimeout(function(){
     if(tap) tap.dispose();
     if(!_recChunksL.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
     var base0=(document.getElementById('chart-title')?.value||'modo-session');
     var totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
+    // The mix sets the timeline every stem is written onto (_finishStemTaps):
+    // its first block's frame, and its length. Laid out by stamp like the
+    // stems, so a gap in the mix's own blocks stays where it was too.
+    var _F=_recChunksF||[], _stamped=_F.length===_recChunksL.length && _F.every(function(f){ return f!=null && isFinite(f); });
+    var span=null;
+    if(_stamped && _F.length){
+      var _f0=Math.min.apply(null,_F), _fEnd=0;
+      for(var q=0;q<_F.length;q++) _fEnd=Math.max(_fEnd, _F[q]+_recChunksL[q].length);
+      span={ f0:_f0, n:_fEnd-_f0 };
+      totalLen=span.n;
+    }
     var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
-    for(var i=0;i<_recChunksL.length;i++){fullL.set(_recChunksL[i],pos);fullR.set(_recChunksR[i],pos);pos+=_recChunksL[i].length;}
-    _recChunksL=[];_recChunksR=[];
+    for(var i=0;i<_recChunksL.length;i++){
+      var _at = span ? _F[i]-span.f0 : pos;
+      fullL.set(_recChunksL[i],_at);fullR.set(_recChunksR[i],_at);pos+=_recChunksL[i].length;
+    }
+    if(!span) span={ f0:null, n:totalLen };
+    _recChunksL=[];_recChunksR=[];_recChunksF=[];
     // The stem taps have always thrown away a part that never sounded; the
     // master mix never checked, so a tap that captured nothing but zeros was
     // written out and handed over as though it were a take. Silence here means
@@ -36913,7 +36975,7 @@ function _stopRecording(){
     var base=base0;
     var tags=_bounceInfoTags();
     var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
-    var stems=_finishStemTaps(base,_sr,tags);
+    var stems=_finishStemTaps(base,_sr,tags,span);
     files=files.concat(stems);
     // One take, one name. The recorder defaulted to 'modo-performance' and the
     // mix to 'modo-session', so an untitled bounce landed as a pair of files
