@@ -6616,7 +6616,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  </button>
  <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
    role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
- Mix
+ Sound
  </button>
  <button class="tab-btn" id="tab-accomp" onclick="switchTab('accomp')"
    role="tab" aria-selected="false" aria-controls="page-accomp" tabindex="-1">
@@ -7189,15 +7189,8 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 ══════════════════════════════════════ -->
 
 
-<!-- Voices follow you between tabs: which instrument is on which part is
-     relevant everywhere, not just on Play. Collapsed by default so it costs
-     nothing until you want it. -->
-<div class="voices-dock" id="voices-dock">
- <button class="voices-dock-tab" id="voices-dock-tab" onclick="toggleVoicesDock()" title="Show or hide the voice assignments">⬡ Voices</button>
- <div class="voices-dock-body" id="voices-dock-body">
-  <div class="voices-grid" id="voices-grid-dock"></div>
- </div>
-</div>
+<!-- The Voices drawer that floated over every tab lives in Sound › Voices
+     now (see #mix-voices-pane); toggleVoicesDock() takes you there. -->
 
 <!-- ══════════════════════════════════════
  PERFORM TAB
@@ -8910,10 +8903,21 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <!-- Mixer | mõdSynth. Two views of the same parts side by side: how loud
       each is and what it is sent to, and what each one sounds like. -->
  <div class="subnav" id="mix-subnav" style="max-width:700px">
-  <span class="subnav-lbl">Mix</span>
+  <span class="subnav-lbl">Sound</span>
   <button class="subnav-btn active" id="mx-mixer-btn" onclick="setMixMode('mixer')">Mixer</button>
+  <button class="subnav-btn" id="mx-voices-btn" onclick="setMixMode('voices')">Voices</button>
   <button class="subnav-btn" id="mx-synth-btn" onclick="setMixMode('synth')">mõdSynth</button>
   <div class="subnav-led" id="mix-subnav-led"></div>
+ </div>
+ <!-- Voices: what every part plays, Drums included — the drawer that used to
+      float over every tab, given a home beside the mixer and the synth that
+      it is the other half of. Same panel as Play › Tone & Response; see
+      buildVoicesPanel. -->
+ <div id="mix-voices-pane" style="display:none;width:100%;max-width:700px">
+  <div class="panel p-perform" style="width:100%;max-width:700px">
+   <div class="panel-title"><span class="pt-icon"></span> Voices</div>
+   <div class="voices-grid" id="voices-grid-mix"></div>
+  </div>
  </div>
  <div id="mix-synth-pane" style="display:none;width:100%;max-width:700px"></div>
  <div id="mix-mixer-pane" style="width:100%;max-width:700px;display:flex;flex-direction:column;align-items:center">
@@ -17745,18 +17749,21 @@ function msxVoice(ctx, part, midi, t0, dur, vel){
 // the full engine is in the cards below. Every Sound picker links here.
 var MSX_PARTS = ['chord','mel','bass','melgen','arp'];
 var MSX_UI = { part:'chord', cat:null, mode:'mixer' };
-try{ var _mu=JSON.parse(modStore.getItem('modo-msx-ui')||'null'); if(_mu){ if(MSX_PARTS.indexOf(_mu.part)>=0) MSX_UI.part=_mu.part; MSX_UI.cat=_mu.cat||null; if(_mu.mode==='synth') MSX_UI.mode='synth'; if(_mu.page) MSX_UI.page=_mu.page; if(_mu.oldCat) MSX_UI.oldCat=_mu.oldCat; } }catch(e){}
+try{ var _mu=JSON.parse(modStore.getItem('modo-msx-ui')||'null'); if(_mu){ if(MSX_PARTS.indexOf(_mu.part)>=0) MSX_UI.part=_mu.part; MSX_UI.cat=_mu.cat||null; if(_mu.mode==='synth' || _mu.mode==='voices') MSX_UI.mode=_mu.mode; if(_mu.page) MSX_UI.page=_mu.page; if(_mu.oldCat) MSX_UI.oldCat=_mu.oldCat; } }catch(e){}
 function msxUiSave(){ try{ modStore.setItem('modo-msx-ui', JSON.stringify(MSX_UI)); }catch(e){} }
 function setMixMode(m){
- MSX_UI.mode = (m==='synth') ? 'synth' : 'mixer'; msxUiSave();
- var syn = MSX_UI.mode==='synth';
- var a=document.getElementById('mix-mixer-pane'), b=document.getElementById('mix-synth-pane');
- if(a) a.style.display = syn ? 'none' : 'flex';
+ MSX_UI.mode = (m==='synth' || m==='voices') ? m : 'mixer'; msxUiSave();
+ var syn = MSX_UI.mode==='synth', vo = MSX_UI.mode==='voices', mx = !syn && !vo;
+ var a=document.getElementById('mix-mixer-pane'), b=document.getElementById('mix-synth-pane'), c=document.getElementById('mix-voices-pane');
+ if(a) a.style.display = mx ? 'flex' : 'none';
  if(b) b.style.display = syn ? '' : 'none';
- var x=document.getElementById('mx-mixer-btn'), y=document.getElementById('mx-synth-btn');
- if(x) x.classList.toggle('active', !syn);
+ if(c) c.style.display = vo ? '' : 'none';
+ var x=document.getElementById('mx-mixer-btn'), y=document.getElementById('mx-synth-btn'), z=document.getElementById('mx-voices-btn');
+ if(x) x.classList.toggle('active', mx);
  if(y) y.classList.toggle('active', syn);
+ if(z) z.classList.toggle('active', vo);
  if(syn) msxUiRender();
+ if(vo && typeof syncVoicesPanel==='function') syncVoicesPanel();
  try{ positionSubnavLed('mix-subnav'); }catch(e){}
 }
 window.setMixMode = setMixMode;
@@ -18088,7 +18095,7 @@ function msxLinksMount(){
   bp.parentNode.appendChild(b2);
  }
 }
-setTimeout(function(){ msxLinksMount(); if(MSX_UI.mode==='synth') setMixMode('synth'); }, 0);
+setTimeout(function(){ msxLinksMount(); if(MSX_UI.mode!=='mixer') setMixMode(MSX_UI.mode); }, 0);
 
 function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // Your own sample, if this part has one, before anything else — a slot with
@@ -20905,7 +20912,7 @@ const FIND_INDEX = [
  {name:'Metronome (Click)', where:'Transport sheet', keys:'metronome click count beat time tick',
   note:'♩ Click in the sheet under the transport bar.',
   go:()=>{ closeFind(); if(typeof toggleFtMore==='function') toggleFtMore(); }},
- {name:'Reverb, delay and drive', where:'Mix · each strip', keys:'reverb delay echo drive distortion send rev dly drv space effect wet',
+ {name:'Reverb, delay and drive', where:'Sound › Mixer · each strip', keys:'reverb delay echo drive distortion send rev dly drv space effect wet',
   note:'REV, DLY and DRV under every channel\u2019s fader. mõdFX takes them over while you hold the pad.',
   go:()=>_findGo({tab:'mix'})},
  {name:'Sub under the chords', where:'Play › Chords', keys:'sub bass subbass octave below chord root weight low end bottom',
@@ -20918,8 +20925,8 @@ const FIND_INDEX = [
   go:()=>_findGo({tab:'build', sub:()=>setSettingsPane('midi'), el:'midi-out-dest'})},
  {name:'MIDI in — keyboards and controllers', where:'Settings › MIDI', keys:'midi in input controller keyboard usb device port rescan not showing missing',
   go:()=>_findGo({tab:'build', sub:()=>setSettingsPane('midi'), el:'midi-rescan'})},
- {name:'Voices — change a part\u2019s sound', where:'Voices drawer', keys:'voice sound instrument patch change timbre piano organ rhodes synth guitar',
-  note:'The Voices tab at the foot of the screen assigns an instrument to every part.',
+ {name:'Voices — change a part\u2019s sound', where:'Sound › Voices', keys:'voice sound instrument patch change timbre piano organ rhodes synth guitar drums kit',
+  note:'Sound › Voices assigns an instrument to every part, and the kit to the drums.',
   go:()=>{ closeFind(); if(typeof toggleVoicesDock==='function') toggleVoicesDock(); }},
  {name:'Synth filter — Moog / MS-20, cutoff, resonance', where:'Sound menu › Edit sound', keys:'edit sound shape filter moog ms20 ms-20 ladder cutoff resonance reso synth voice patch sweep low pass lowpass',
   note:'On the synth voices (Sine, Saw, Square, Tri, Supersaw, Pad): open a part\u2019s Sound menu, then Edit sound. On Accomp, the Melody and Arp panels have it under the voice.',
@@ -20993,9 +21000,9 @@ const FIND_INDEX = [
   go:()=>_findGo({tab:'songs', el:'chart-sequence'})},
  {name:'Arpeggiator', where:'Accomp › Arp', keys:'arp arpeggiator pattern rate gate octaves up down',
   go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('arp')})},
- {name:'Mixer — levels, mute, solo', where:'Mix', keys:'mixer mix level volume fader mute solo balance loud quiet',
+ {name:'Mixer — levels, mute, solo', where:'Sound › Mixer', keys:'mixer mix level volume fader mute solo balance loud quiet',
   go:()=>_findGo({tab:'mix'})},
- {name:'Bounce to audio & MIDI', where:'Transport · Mix › Export', keys:'bounce record export wav mid midi render stems download file',
+ {name:'Bounce to audio & MIDI', where:'Transport · Sound › Export', keys:'bounce record export wav mid midi render stems download file',
   go:()=>_findGo({tab:'mix'})},
  {name:'Capture chords into a song', where:'Transport sheet', keys:'capture record chords song section live write take keep',
   note:'Writes what you play into a new Song section. A ◀ appears beside it when there are chords you have already played that it could keep instead.',
@@ -21256,7 +21263,7 @@ function _findMatches(){
 // Read off the page rather than listed: a control added next month is
 // findable the day it ships, labelled by what it already says on the button
 // and its tooltip, and placed by where it lives in the DOM.
-var FIND_TAB_NAMES = {perform:'Play', build:'Settings', songs:'Songs', accomp:'Accomp', mix:'Mix', help:'Guide'};
+var FIND_TAB_NAMES = {perform:'Play', build:'Settings', songs:'Songs', accomp:'Accomp', mix:'Sound', help:'Guide'};
 var FIND_SUBS = [
  ['pf-chords-panel','Chords',   ()=>setPerformMode('chords')],
  ['pf-melody-panel','Melody',   ()=>setPerformMode('melody')],
@@ -22718,11 +22725,44 @@ const VOICE_PARTS=sortByPart([
   get:()=>(typeof arpWave!=='undefined'?arpWave:null), set:v=>setArpWave(v),
   opts:MS_SHARED_VOICES},
 ], 'k');
+// Every host the panel is drawn into, and the id suffix its selects carry.
+var VOICE_HOSTS={'voices-grid':'', 'voices-grid-dock':'-dock', 'voices-grid-mix':'-mix'};
+// Drums pick a kit, not a voice, so they are not in VOICE_PARTS (everything
+// that walks that list — the dice, mõdSynth, the sampler — means pitched
+// parts). The panel still leads with them: "what is each part playing" with
+// the drums missing was the one question it could not answer.
+function _voiceDrumRow(suffix){
+ const M=(typeof window._sqMachines==='function') ? window._sqMachines() : null;
+ if(!M) return null;
+ const row=document.createElement('div'); row.className='voice-row';
+ const sel=document.createElement('select');
+ sel.className='voice-sel'; sel.id='vsel-drum'+suffix; sel.title='Drums — the drum kit';
+ Object.keys(M).forEach(k=>{
+  const o=document.createElement('option'); o.value=k; o.textContent=(M[k]&&M[k].label)||k; sel.appendChild(o);
+ });
+ sel.addEventListener('change',()=>{
+  if(typeof window._sqPickDrumKit==='function') window._sqPickDrumKit(sel.value);
+  syncVoicesPanel();
+ });
+ const dp=(typeof PARTS!=='undefined') ? PARTS.find(p=>p.id==='drum') : null;
+ row.innerHTML='<span class="voice-ic">'+((dp&&dp.icon)||'🥁')+'</span><span class="voice-lbl">Drums</span>';
+ row.appendChild(sel);
+ // The pitched rows end in a ◈ sampler button; this keeps the kit picker the
+ // same width as theirs so the column lines up.
+ const sp=document.createElement('span'); sp.className='smp-badge'; sp.setAttribute('aria-hidden','true');
+ sp.style.visibility='hidden'; sp.textContent='◈'; row.appendChild(sp);
+ return row;
+}
 function buildVoicesPanel(){
- ['voices-grid','voices-grid-dock'].forEach(hostId=>{
+ Object.keys(VOICE_HOSTS).forEach(hostId=>{
   const host=document.getElementById(hostId); if(!host) return;
-  const suffix = hostId==='voices-grid-dock' ? '-dock' : '';
+  const suffix = VOICE_HOSTS[hostId];
   host.innerHTML='';
+  const dr=_voiceDrumRow(suffix);
+  if(dr) host.appendChild(dr);
+  // The boot call runs above the drum sequencer, which publishes its kits
+  // (window._sqMachines) further down the same script. Build again once it has.
+  else if(!buildVoicesPanel._retry){ buildVoicesPanel._retry=true; setTimeout(buildVoicesPanel, 0); }
   VOICE_PARTS.forEach(p=>{
    const row=document.createElement('div'); row.className='voice-row';
    const sel=document.createElement('select');
@@ -22750,20 +22790,25 @@ function buildVoicesPanel(){
  });
  syncVoicesPanel();
 }
-let voicesDockOpen=false;
+// The drawer is now a pane of the Sound tab (4.9.2): one home for what every
+// part plays, beside the mixer and the synth, instead of a strip floating over
+// every page. The name stays because Find and older links call it.
 function toggleVoicesDock(){
- voicesDockOpen=!voicesDockOpen;
- document.getElementById('voices-dock')?.classList.toggle('open',voicesDockOpen);
- try{ modStore.setItem('modo-voices-dock',voicesDockOpen?'1':''); }catch(e){}
- if(voicesDockOpen) syncVoicesPanel();
+ if(typeof switchTab==='function') switchTab('mix');
+ setMixMode('voices');
 }
 // Voices change from plenty of places other than this panel — the dice, undo,
 // loading a song, the per-tab pickers — so the panel reads state rather than
 // assuming it is the only writer.
 function syncVoicesPanel(){
+ let kit=null; try{ kit=(typeof window._sqDrumKit==='function') ? window._sqDrumKit() : null; }catch(e){}
+ Object.values(VOICE_HOSTS).forEach(sfx=>{
+  const sel=document.getElementById('vsel-drum'+sfx);
+  if(sel && kit!=null && sel.value!==kit) sel.value=kit;
+ });
  VOICE_PARTS.forEach(p=>{
   let v=null; try{ v=p.get(); }catch(e){}
-  ['','-dock'].forEach(sfx=>{
+  Object.values(VOICE_HOSTS).forEach(sfx=>{
    const sel=document.getElementById('vsel-'+p.k+sfx); if(!sel) return;
    if(v!=null && sel.value!==v && [...sel.options].some(o=>o.value===v)) sel.value=v;
   });
@@ -27937,7 +27982,7 @@ function _mutAddsElement(rs){
 var CTRL_TIPS = [
  ['#tab-build','Settings — sounds, timing, setups, MIDI'],
  ['#tab-songs','Songs — build, perform and print charts'],
- ['#tab-mix','Mix — levels, effects and export'],
+ ['#tab-mix','Sound — the mixer, every part\u2019s voice and mõdSynth'],
  ['#tab-accomp','Accomp — the band: drums, bass, melody, arp'],
  ['#tab-perform','Play — chords, melody, sampler and mõdFX'],
  ['#pf-chords-btn','The chord grid'], ['#pf-melody-btn','The melody strip'],
@@ -30985,7 +31030,7 @@ const HELP_SECTIONS=[
  {icon:'↺',text:'<strong>Arp</strong>: patterns (Up, Down, Bounce, Rand, Wt, Pedal, Walk, Block), rate, octave range, gate and velocity shape. It arpeggiates the last chord played and follows song playback.'},
  ]},
  {title:'Mix & Settings', tips:[
- {icon:'',text:'<strong>Mix</strong> is one row of strips: every channel and the master bus, each with its fader, meter, mute, solo and mõdFX sends — plus the WAV/MIDI exporter.'},
+ {icon:'',text:'<strong>Sound › Mixer</strong> is one row of strips: every channel and the master bus, each with its fader, meter, mute, solo and mõdFX sends — plus the WAV/MIDI exporter.'},
  {icon:'◎',text:'<strong>Key and mode</strong> live together in the strip at the top of Play: − / + move the key, the row beside it picks the mode, and ← / → step through that row.'},
  {icon:'〜',text:'<strong>Master tune</strong>: 440 Hz standard, 432 Hz warmer, 444 Hz brighter, or any reference from 415–466 Hz. Everything retunes instantly.'},
  {icon:'',text:'<strong>Live vs Studio</strong>: Live puts every playing surface on one screen and clears the furniture off it. Studio adds the extra modes and scales, the borrowed and secondary chords, mõdSynth, the variants row and the fingering charts — everything at once.'},
@@ -37910,7 +37955,8 @@ buildModSynthPresets();
 buildFingerInstList();
 buildVoicesPanel();
 if(typeof buildExtArmRow==='function') buildExtArmRow();
-try{ if(modStore.getItem('modo-voices-dock')) toggleVoicesDock(); }catch(e){}
+// modo-voices-dock (whether the old drawer was left open) is no longer read:
+// honouring it now would open the Sound tab at launch. The key is left as is.
 
 // Open on a different progression every launch. Only when the chart is empty,
 // so this can never overwrite something the user built or a loaded song.
@@ -39787,6 +39833,16 @@ function sqSwitchMach(key){
   if(sqPlaying){sqPendMach=key;sqRenderMachines();sqUpdateStatus();return;}
   sqDoSwap(key);
 }
+// The Drums row in Sound › Voices: the main kit, whichever layer the drum page
+// happens to be focused on. Same way through as the kit buttons — the tier
+// gate, and a swap made while playing waits for the top of the loop.
+window._sqDrumKit = function(){ return sqFocus===0 ? sqMach : (sqLayers[0] && sqLayers[0].mach); };
+window._sqPickDrumKit = function(k){
+  if(!SQM[k]) return;
+  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit'); return; }
+  if(sqFocus!==0) sqSetFocus(0);
+  sqSwitchMach(k);
+};
 // Focus swaps which layer sqGrid/sqMach point at. The grid keeps its height
 // because only one layer is edited at a time — which matters on a phone, where
 // the drum grid already needs landscape.
@@ -45492,7 +45548,7 @@ function sqSyncMixIndicators(){
   // muted or soloed, so a part that went quiet points at the tab that did it.
   var tm=document.getElementById('tab-mix');
   if(tm){ tm.classList.toggle('ms-on', anySolo||anyMute);
-   tm.setAttribute('aria-label', (anySolo||anyMute) ? 'Mix — something is '+(anySolo?'soloed':'muted') : 'Mix'); }
+   tm.setAttribute('aria-label', (anySolo||anyMute) ? 'Sound — something is '+(anySolo?'soloed':'muted') : 'Sound'); }
   led.textContent=txt;
   led.style.display = txt ? '' : 'none';
   led.classList.toggle('solo',anySolo);
