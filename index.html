@@ -9304,6 +9304,225 @@ const EXTS = {
  // underlying degree is major, minor or diminished.
  power: ()=>[0,7],
 };
+// ══════════════════════════════════════════════════════════════════
+// CHORD MODEL — a root and an interval set
+// ══════════════════════════════════════════════════════════════════
+// Everything above builds a chord from three fields: a triad quality, a
+// seventh type, and ONE key from EXTS. That shape cannot hold a 13♭9 — it is a
+// 13th AND a ♭9, two EXTS keys — so one of them had to go, and the chord
+// sounded as something else. Same for 7♯9♭13, 9♯11, 7♭9♯11: any chord with
+// more than one tension. It also cannot say what it is: a minor slot with
+// ext 'b9' sounds as m7♭9 but draws as "Dm" + "b9".
+//
+// The general model is what a chord actually is:
+//
+//   { root: 0-11, ivs: [0,4,7,10,13,21], bass: 0-11 | null }
+//
+// ivs are semitones above the root, ascending and unique. They may pass the
+// octave — 13 is the ♭9, 21 the 13th — because a tension written as a 9th is
+// voiced as a 9th, not as a crushed 2nd beside the root. There is no "kind"
+// of chord any more: a quality is just which numbers are in the set, so no
+// symbol has to lose a note to fit.
+//
+// The old fields stay where they are and still drive everything today:
+// chordFromSlot() reads a slot either way, so the call sites of getIntvs can
+// move over one at a time, and a slot that never had ivs keeps sounding
+// exactly as it did.
+//
+// Self-contained on purpose — tests/chords/ lifts this block out of the file
+// and runs it under node — and only var and function declarations, so code
+// that runs before this line in the file can still call into it (the
+// temporal dead zone note in CLAUDE.md).
+var CHORD_LETTER_PC = {C:0, D:2, E:4, F:5, G:7, A:9, B:11};
+// A degree as written in a symbol -> semitones above the root, before its
+// sharp or flat. 9/11/13 sit an octave up, for the reason above.
+var CHORD_DEGREE_SEMIS = {2:2, 3:4, 4:5, 5:7, 6:9, 7:10, 9:14, 11:17, 13:21};
+// An altered 4th or 6th is the 11th or 13th written low: C7♯4 is C7♯11.
+var CHORD_ALTER_DEGREE = {4:11, 5:5, 6:13, 9:9, 11:11, 13:13};
+
+// 'C', 'F#', 'B♭' -> 0-11, or null. Sharps and flats stack ("Fx" does not).
+function chordNotePc(s){
+ const m = /^([A-G])([#♯b♭]*)$/.exec(String(s||'').trim());
+ if(!m) return null;
+ let pc = CHORD_LETTER_PC[m[1]];
+ for(const c of m[2]) pc += (c==='#'||c==='♯') ? 1 : -1;
+ return ((pc%12)+12)%12;
+}
+
+// Any chord symbol -> {root, ivs, bass, sym}, or null if any part of it is not
+// understood. Strict on purpose: the failure this replaces is a chord that
+// quietly lost a note, so a symbol it cannot read in full is refused rather
+// than played as the part it could.
+//
+// Not a dictionary. Tonal.js and friends look the quality up in a table of
+// known chords, and a table has an edge: C7♭5♭9♯9♭13 and Calt are not in
+// Tonal's, and come back empty. This reads a symbol the way a player does —
+// a quality, a chord number, then any number of alterations, adds and omits —
+// so a combination nobody listed still parses. Tonal is the test oracle for
+// every symbol it does know (tests/chords/), and the two agree on all of
+// them but the deliberate differences recorded there.
+function parseChordSymbol(sym){
+ if(typeof sym !== 'string') return null;
+ const src = sym.trim();
+ const rm = /^([A-G][#♯b♭]?)(.*)$/.exec(src);
+ if(!rm) return null;
+ const root = chordNotePc(rm[1]);
+ let q = rm[2], bass = null;
+ // A slash bass is a note name after the LAST slash. "6/9" and "m/maj7" have
+ // a slash too, but nothing after it starts with a capital A-G.
+ const bm = /\/\s*([A-G][#♯b♭]?)\s*$/.exec(q);
+ if(bm){ bass = chordNotePc(bm[1]); q = q.slice(0, bm.index); }
+ q = q.replace(/♯/g,'#').replace(/♭/g,'b').replace(/[−–]/g,'-')
+      .replace(/\s+/g,'').replace(/6\/9/g,'69');
+
+ let third = 4, fifth = 7, sixth = false, seventh = null, top = 0;
+ let maj = null, dim = false, sus = null, power = false, alt = false;
+ let num = null;                        // the chord number, once one is read
+ const alters = [], adds = [], omit = {};
+ const take = re => { const m = re.exec(q); if(m) q = q.slice(m[0].length); return m; };
+ let m, first = true, sep = false;
+ while(q.length){
+  if(take(/^[(),.\/]/)){ sep = true; continue; }
+  const afterSep = sep; sep = false;
+  // maj before m: "Cmaj7" is not minor. Δ alone is a maj7 (resolved
+  // below). "ma" only when it is not the start of "madd9", which is minor.
+  if(num===null && (m = take(/^(maj|Maj|MAJ|ma(?!dd)|M|Δ|△|\^)/))){ maj = m[1]; first = false; continue; }
+  // "-" straight after the root is minor (C-7 is Cm7); anywhere later it is a
+  // flat (C7-9).
+  if(first && (m = take(/^(min|mi|m|-)/))){ third = 3; first = false; continue; }
+  if((m = take(/^(omit|no)(1|3|5)/))){ omit[m[2]] = true; first = false; continue; }
+  if(num===null && take(/^(dim|o|°)/)){ third = 3; fifth = 6; dim = true; first = false; continue; }
+  if(num===null && take(/^[øØh]7?/)){ third = 3; fifth = 6; seventh = 10; num = 7; first = false; continue; }
+  if((m = take(/^sus(2|4)?/))){ sus = m[1]==='2' ? 2 : 5; first = false; continue; }
+  if((m = take(/^add([#b+\-]?)(2|4|6|9|11|13)/))){
+   adds.push(CHORD_DEGREE_SEMIS[m[2]] + (m[1]==='#'||m[1]==='+' ? 1 : m[1] ? -1 : 0));
+   first = false; continue;
+  }
+  if(take(/^alt/)){ alt = true; if(num===null) num = 7; first = false; continue; }
+  if((m = take(/^([#b+\-])(13|11|9|6|5|4)/))){
+   const deg = CHORD_ALTER_DEGREE[m[2]];
+   alters.push({deg:deg, s:CHORD_DEGREE_SEMIS[deg] + (m[1]==='#'||m[1]==='+' ? 1 : -1)});
+   first = false; continue;
+  }
+  // A "+" that is not a sharp on a degree (read just above) is augmented,
+  // before the number or after it: C+7, C7+, C9aug.
+  if(take(/^(aug|\+)/)){ fifth = 8; first = false; continue; }
+  if(num===null && take(/^dom/)){ seventh = -1; num = 7; first = false; continue; }
+  if((m = take(/^(69|13|11|9|7|6|5|2)/))){
+   const n = +m[1];
+   first = false;
+   if(num !== null){
+    // A second bare number is a tension in parentheses: C7(9), C7(9,13).
+    // Only after a bracket or comma — "C99" is a typo, not a ninth twice.
+    if(afterSep && (n===9 || n===11 || n===13)){ adds.push(CHORD_DEGREE_SEMIS[n]); continue; }
+    if(n===7 && alt) continue;            // "Calt7" says the 7 alt already has
+    return null;
+   }
+   num = n;
+   if(n===5) power = true;
+   else if(n===6) sixth = true;
+   else if(n===69){ sixth = true; adds.push(14); }
+   else if(n===2) adds.push(14);           // C2: the ninth added, no seventh
+   else { seventh = -1; top = n===7 ? 0 : n; }   // which 7th is settled below
+   continue;
+  }
+  return null;
+ }
+
+ // Δ on its own is a maj7; "maj" on its own is only a major triad — unless
+ // a tension follows it (Cmaj♯11), which only a seventh chord carries. A
+ // moved fifth is not a tension: CM♭5 is still a triad.
+ if(maj && num===null && (maj==='Δ' || maj==='△' || alters.some(a => a.deg !== 5))) seventh = -1;
+ if(seventh === -1) seventh = maj ? 11 : dim ? 9 : 10;
+ if(alt){ third = 4; fifth = null; seventh = 10; top = 0;
+          alters.push({deg:9,s:13},{deg:9,s:15},{deg:13,s:20}); }
+ if(sus !== null) third = sus;
+ if(power){ third = null; seventh = null; }
+
+ let ext = [];
+ if(top >= 9) ext.push(14);
+ if(top === 11) ext.push(17);
+ if(top === 13) ext.push(21);
+ // A dominant 11 drops its major third: the 11th sits a minor 9th above it,
+ // the one interval a voicing avoids. Minor 11ths keep theirs (it is a 9th
+ // clear of a minor third), and so does anything that asks with add11.
+ if(top === 11 && third === 4 && seventh === 10) third = null;
+
+ const set = [0];
+ for(const a of alters){
+  if(a.deg === 5){ if(fifth === 7 || fifth === null) fifth = a.s; else set.push(a.s); continue; }
+  // An altered tension replaces the natural one the chord number stacked:
+  // 13♭9 is 1 3 5 ♭7 ♭9 13, not 9 and ♭9 at once.
+  const nat = CHORD_DEGREE_SEMIS[a.deg];
+  ext = ext.filter(x => x !== nat);
+  set.push(a.s);
+ }
+ if(third !== null && !omit[3]) set.push(third);
+ if(fifth !== null && !omit[5]) set.push(fifth);
+ if(sixth) set.push(9);
+ if(seventh !== null) set.push(seventh);
+ const ivs = set.concat(ext, adds)
+  .filter((x, i, a) => a.indexOf(x) === i)
+  .sort((a, b) => a - b);
+ if(omit[1]) ivs.shift();
+ return {root: root, ivs: ivs, bass: (bass === null || bass === root) ? null : bass, sym: src};
+}
+
+// Any slot -> the general model. A slot written by the new model carries its
+// own ivs; every slot from before it is read through getIntvs exactly as the
+// engine reads it today, so moving a call site onto this changes nothing it
+// plays. rootM is kept beside root because slots store a sounding MIDI note.
+function chordFromSlot(slot){
+ if(!slot || slot.isRest) return null;
+ const ivs = (Array.isArray(slot.ivs) && slot.ivs.length)
+  ? slot.ivs.slice()
+  : getIntvs(slot.triadQ, slot.type7, slot.ext || 'triad').slice();
+ const pc = x => ((x % 12) + 12) % 12;
+ return {root: pc(slot.rootM), rootM: slot.rootM, ivs: ivs,
+         bass: slot.bassNote == null ? null : pc(slot.bassNote)};
+}
+
+// The one message a chord becomes on its way to a sound engine — the Web
+// Audio voices today, a native one behind a wrapper later. Plain JSON of
+// integers and seconds, nothing the far side has to understand about harmony:
+// voicing, inversions and the bass are settled here, so a native engine is
+// told which notes and never has to know what a 13♭9 is (and cannot spell it
+// differently from the chord on screen).
+//
+//   chord   the general model (parseChordSymbol / chordFromSlot)
+//   rootM   the MIDI note the root sounds at
+//   opts    part ('chord'), vel 0-1, at (AudioContext seconds, 0 = now),
+//           dur (seconds; null = held until a release with the same id),
+//           ivs (already-voiced intervals, e.g. from smartVoiceLead), id
+//
+// v is the message version: a wrapper must refuse a v it does not know rather
+// than guess at it.
+var _chordEvtSeq = 0;
+function chordEngineEvent(chord, rootM, opts){
+ opts = opts || {};
+ const clamp = n => Math.max(0, Math.min(127, Math.round(n)));
+ const ivs = opts.ivs || chord.ivs;
+ const notes = ivs.map(i => clamp(rootM + i));
+ let bass = null;
+ if(chord.bass != null){
+  // The slash bass goes under the lowest chord tone, never on top of it.
+  bass = rootM - 12 + (((chord.bass - chord.root) % 12) + 12) % 12;
+  while(bass >= Math.min.apply(null, notes)) bass -= 12;
+  bass = clamp(bass);
+ }
+ return {
+  v: 1, kind: 'chord',
+  id: opts.id != null ? opts.id : ++_chordEvtSeq,
+  part: opts.part || 'chord',
+  notes: notes.filter((x, i, a) => a.indexOf(x) === i).sort((a, b) => a - b),
+  bass: bass,
+  vel: Math.max(0, Math.min(1, opts.vel == null ? 0.8 : opts.vel)),
+  at: opts.at || 0,
+  dur: opts.dur === undefined ? null : opts.dur
+ };
+}
+// ── END CHORD MODEL ──
+
 const SUFFIX7 = {maj7:'maj7',min7:'m7',dom7:'7',halfdim:'ø7',dim7:'°7',minMaj7:'mM7',augMaj7:'+M7',aug7:'+7'};
 const QLABEL = {0:'maj',1:'min',2:'dim',3:'aug',maj7:'maj7',min7:'min7',dom7:'dom7',halfdim:'ø7',dim7:'dim7',minMaj7:'mMaj7',augMaj7:'augMaj7',aug7:'aug7'};
 
