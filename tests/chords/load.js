@@ -11,6 +11,7 @@ module.exports = function load(){
   const g = /\nfunction getIntvs\([\s\S]*?\n\}\n/.exec(html);
   if (a < 0 || b < a || !g) throw new Error('chord model markers not found in index.html');
   const src = html.slice(a, b) + g[0] +
-    '\n;({parseChordSymbol, chordFromSlot, chordEngineEvent, chordNotePc, getIntvs, EXTS});';
+    '\n;({parseChordSymbol, chordFromSlot, chordEngineEvent, chordNotePc, getIntvs, EXTS,' +
+    ' slotIvs, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords});';
   return vm.runInNewContext(src, {});
 };

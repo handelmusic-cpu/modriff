@@ -23,7 +23,7 @@ const OUT  = path.join(ROOT, 'dist');
 // Repo furniture, never served.
 const SKIP = new Set(['.git', '.github', '.vercel', 'build', 'dist', 'node_modules',
   'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
-  'tests', 'docs']);
+  'tests', 'docs', 'ios', 'capacitor.config.json']);
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT);
