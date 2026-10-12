@@ -148,6 +148,19 @@ So: a `modo-` key is never renamed to match whatever the app is called. If a
 key ever genuinely has to move, it is a read-old-write-new migration, not a
 find-and-replace.
 
+## No emoji
+
+The owner's rule: no emoji anywhere in the interface — not as icons, not in
+labels, not in toasts. iOS draws them as coloured pictures that clash with the
+app's own look (🥁, 🔒, ⚄ and a ▶ in a blue tile all shipped once). Say it in
+words, or draw it (inline SVG, CSS shapes, a part's colour).
+
+Plain symbols are fine — ♭ ♯ → ✕ ◈ — with one catch: ▶ ◀ ↕ ✔ and a few
+others have an emoji form iOS falls back to. Those code points are claimed by
+`fonts/dejavu-symbols-text.woff2` (see the @font-face note at the top of the
+CSS), so they render as text. A new symbol with an emoji form goes into that
+subset's unicode-range, or doesn't go in at all.
+
 ## Comments
 
 The codebase explains *why*, at length, wherever the reason isn't obvious from
