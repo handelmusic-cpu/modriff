@@ -1,7 +1,9 @@
 # 5.0 — architecture plan
 
-The road from the web app to a native iOS/Mac build, and the four pieces of
-work that ride with it. Each section says what exists in `index.html` today,
+The road from the web app to an App Store app, and the four pieces of work
+that ride with it. **The product is the iPhone app.** The Vercel build keeps
+deploying for as long as it is free to, but nothing is held back or
+designed around it. Each section says what exists in `index.html` today,
 what changes, and in what order. The order matters more than the details:
 two of these pieces are already half-built, and two depend on decisions that
 are cheaper to make before code than after.
@@ -10,11 +12,12 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, slot adapter, engine message, tests |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | designed below; the wrapper seam already exists |
+| 3 | Native wrapper, audio, haptics | **decided: native audio.** Plan below; the wrapper seam already exists |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
-The version stays 4.x until the native build ships. Per CLAUDE.md, the move
-to 5.0.0 is the owner's call and gets asked for, not assumed.
+**Versioning, as decided:** 5.0.0 is the native App Store release. Until then
+every step ships as a 4.9.x increment (a fourth part where it helps, per the
+numbering rule in CLAUDE.md).
 
 ---
 
@@ -71,14 +74,16 @@ one file.
 The parser is strict: a symbol it cannot read in full is refused, never
 half-played.
 
-### One musical call to make
+### The dominant 11th (settled in 4.9.2.5)
 
-The app's `'11th'` quality on a dominant keeps the major third under the 11th
-(`0 4 7 10 14 17`). The symbol `C11`, by jazz convention and by Tonal, drops
-it (`0 7 10 14 17`), because the 11th sits a ♭9 above the third. The parser
-does the latter; the quality menu still does the former. The test pins both
-so whichever changes, the note gets updated. Which the app *should* do is a
-musical decision, not a parser one.
+A dominant 11 leaves out its major third: `C11` is `1 5 ♭7 9 11`. That is
+how it is written and voiced nearly everywhere (and how Tonal reads it),
+because the 11th is the 4th an octave up — with the third under it, the
+chord is a sus chord and a major chord at once. The same notes are often
+written **C9sus4** or **B♭/C**; all three are one chord. Until 4.9.2.5 the
+quality menu kept the third, so the 11 you picked and the C11 you typed
+differed. Now `EXTS['11th']` drops it on a dominant too. Minor 11ths and
+maj7 11ths keep their thirds, as they do in common use.
 
 ### Migration, in steps that each ship on their own
 
@@ -208,26 +213,77 @@ app script runs, and the web versions only fill in what it left out.
 Capacitor fits that exactly. Everything below adds to that layer rather than
 reaching into the app.
 
-### Audio: measure before moving it
+### Audio: native, decided
 
-The mõdSynth already runs in an **AudioWorklet** (`modsynth/engine.js`), on
-the audio thread, not the main thread. So before moving synthesis to JUCE or
-Swift, the first job is to find which of these is actually the bottleneck,
-with numbers, on a real iPhone:
+The app is going to the App Store and the complaint is the processor
+overloading on older phones, so the sound moves to native code.
 
-- **main-thread scheduling** — the sequencer and arp run on JS timers, and
-  a long frame (a re-render, a GC) delays them. Native audio does not fix
-  this; moving the *clock* does.
-- **worklet render time** — the DSP itself running out of its 2.9 ms budget
-  (128 frames at 44.1 kHz). Native DSP fixes this.
-- **WKWebView's audio** — output latency and session handling (silent
-  switch, interruptions, route changes) are worse in a web view than in an
-  `AVAudioSession` you own. A thin native output fixes this without moving
-  DSP.
+**What overloading actually is.** Audio is made in small chunks — 128
+samples, about 3 milliseconds each — and every chunk has to be finished
+before the speaker needs it. When the phone cannot finish in time you hear a
+click, a crackle or a dropout. Today all of the synthesis is JavaScript
+running inside the web view: the mõdSynth in an AudioWorklet
+(`modsynth/dsp.js`, ~7,500 lines across `modsynth/`), and the built-in
+voices, drums, mõdFX and master as Web Audio node graphs built in
+`index.html` (about 50 oscillator, 45 filter, 20 sample-player, 13
+waveshaper, 8 delay and 4 reverb creation sites). On an older phone that is
+the part that does not finish in time. The same arithmetic in compiled C++,
+with the CPU's vector instructions and no garbage collector to pause it, is
+typically several times cheaper, and it runs at the highest priority iOS
+gives anything.
 
-They have different fixes, and a native DSP rewrite is the most expensive by
-far: 302 factory patches' worth of oscillators, filters and effects in C++,
-kept bit-compatible with the web build that keeps shipping.
+**Engine choice: C++ DSP, hosted by AVAudioEngine. Not JUCE.**
+
+- The DSP core is plain C++ with no Apple dependency. That matters twice:
+  it is the fastest option, and it compiles and runs **on Linux**, so it can
+  be tested here, sample by sample, against the JavaScript engine it
+  replaces (below).
+- A small Swift layer owns `AVAudioSession` (silent switch, phone calls,
+  headphones, Bluetooth), runs the C++ in an `AVAudioSourceNode` /
+  `AUAudioUnit` render callback, and talks to the web view through a
+  Capacitor plugin.
+- JUCE would also work, but it is built to own a whole app's UI and build
+  system, which this app does not need, and its free tier is capped by
+  revenue. Nothing here needs what it adds over AVAudioEngine. Revisit only
+  if an AUv3 plugin for other DAWs becomes a goal.
+
+**The UI stays in the web view.** Capacitor still hosts `index.html`; only
+the sound leaves it. That keeps 50,000 lines of interface working while the
+engine underneath is replaced.
+
+**Proving each piece before it ships: null tests.** `tests/modsynth/`
+already renders the mõdSynth offline in node. The C++ port renders the same
+patch, the same notes, the same sample rate, and the two outputs are
+compared sample by sample. A port that matches to within float rounding
+sounds identical, by measurement rather than by ear — which is how every
+one of the 302 factory patches can be checked, not a handful.
+
+**The order:**
+
+1. **One door for all sound (web).** Every voice goes through
+   `modEngine.send(msg)` — today's Web Audio code behind it, unchanged.
+   Pure refactor; nothing sounds different. Without it, there is no single
+   place to swap the engine.
+2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
+   the parameter list; a generated header gives C++ the same indices. Null
+   tested against `dsp.js`, patch by patch. All of this happens and is
+   verified here, before any phone is involved.
+3. **The iOS shell.** Capacitor project, the Swift audio host, the
+   `modEngine` plugin. This step needs a Mac with Xcode to build and a phone
+   to run — the code is written here, the build is yours.
+4. **Parts move over one at a time:** chords first (least timing-critical),
+   then melody, bass, arp, then the drums and the sampled instruments
+   (`samples/`, 11 MB, decoded natively instead of in the web view).
+   mõdFX, reverb and the master bus move with the last of them.
+5. **The clock moves native.** The sequencer and arp currently schedule
+   from JS timers with a lookahead. Once the sound is native, a hiccup on the
+   web view's thread can still make a note late; moving the transport into
+   the native engine (JS sends it the patterns, not the notes) ends that.
+   Last, because it is the largest change to how the app works.
+
+The web build keeps its Web Audio engine behind the same `modEngine` door
+and keeps deploying, but it is not tested on old hardware or optimised
+further.
 
 ### The message, wherever the engine is
 
@@ -260,8 +316,8 @@ window.modEngine = window.modEngine || {
 
 The web provider wraps today's Web Audio calls (`playChord`,
 `playSlashChord`, the melody and bass voices). Once every sound goes through
-`send`, a native provider can take over one part at a time — chords first,
-since they are the least time-critical, the drums last.
+`send`, the native provider takes over one part at a time, in the order
+above.
 
 ### Haptics
 
@@ -328,16 +384,14 @@ granting everything, as it does today.
 
 ## Where to start
 
-1. **Chord model step 2** — move the ten `getIntvs` call sites onto
-   `chordFromSlot`, verified by ear-equivalent measurement, not by reading.
-   Small, safe, and everything after it depends on it.
-2. **Chord model step 3** — the "type a chord" field. The first thing a user
-   can see from 5.0, and the proof the model works.
-3. **`modEngine.send`** — route every voice through one function on the web
-   engine. Pure refactor, no native code, and it is the precondition for the
-   native engine, for MIDI out of every part, and for stems.
-4. **MIDI Mapping Mode** — independent of the native work; can run in
-   parallel with 3.
-5. **Profile on device** — then decide what native audio needs to be.
-6. **Wrapper, haptics, IAP** — together, since none of them can be tested
-   without a device build.
+1. **`modEngine.send`** — every voice through one function on the web
+   engine. The precondition for native audio, so it goes first now that
+   native is decided. Also what MIDI out of every part and stems need.
+2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
+   native engine, and fully verifiable without a phone.
+3. **Chord model steps 2–3** — the `getIntvs` call sites, then the "type a
+   chord" field. Independent of audio; fits between the bigger steps.
+4. **MIDI Mapping Mode** — independent; can run alongside any of the above.
+5. **iOS shell** — Capacitor project, Swift audio host, haptics, IAP. Needs
+   a Mac with Xcode for every build.
+6. **Remaining parts native, then the clock** — ships as 5.0.0.

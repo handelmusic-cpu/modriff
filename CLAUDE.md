@@ -9,6 +9,15 @@ questions worth a round trip. Report what shipped instead.
 The exception is work that isn't verified yet: an unverified change doesn't
 get merged, it gets finished first.
 
+## Where this is going
+
+The product is the **iPhone app**, from the App Store, with the sound in
+native code (C++ DSP under a Swift/AVAudioEngine host, the UI still this page
+inside Capacitor). The Vercel web build keeps deploying, but nothing is
+designed around it or held back for it. The plan and its order are in
+`docs/v5-architecture.md`; keep that file current when a step lands or a
+decision changes.
+
 ## Shape of the repo
 
 Everything is `index.html`. One file, ~32k lines, in three parts:
@@ -55,6 +64,11 @@ adds a fourth part instead of using up the third: `4.1.0` → `4.1.0.1` →
 `4.1.0.2`. A batch of new features is the next third-part number (or the next
 minor, if that would pass 9). The 4.0.x run went to 4.0.21 before this rule
 existed and was renumbered 4.1.0.
+
+**5.0.0 is decided: it is the native App Store release** (see
+`docs/v5-architecture.md`). Until that ships, everything stays under 5 — a
+fourth part rather than reaching 5.0.0 early, and past `4.9.9` it is
+`4.9.9.1`, not `5.0.0`. Any *other* major bump still gets asked about.
 
 ## After every edit
 

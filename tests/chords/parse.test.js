@@ -116,7 +116,7 @@ const APP = [
   ['9th', 0, 'dom7', 'C9'], ['9th', 0, 'maj7', 'Cmaj9'], ['9th', 1, 'min7', 'Cm9'],
   ['sus2', 0, null, 'Csus2'], ['sus4', 0, null, 'Csus4'], ['add9', 0, null, 'Cadd9'], ['add9', 1, null, 'Cmadd9'],
   ['6th', 0, null, 'C6'], ['6th', 1, null, 'Cm6'], ['69', 0, null, 'C69'],
-  ['11th', 1, 'min7', 'Cm11'], ['#11', 0, 'dom7', 'C9#11'],
+  ['11th', 0, 'dom7', 'C11'], ['11th', 1, 'min7', 'Cm11'], ['11th', 0, 'maj7', 'Cmaj11'], ['#11', 0, 'dom7', 'C9#11'],
   ['13th', 0, 'dom7', 'C13'], ['13th', 1, 'min7', 'Cm13'], ['13th', 0, 'maj7', 'Cmaj13'],
   ['b9', 0, 'dom7', 'C7b9'], ['#9', 0, 'dom7', 'C7#9'], ['b13', 0, 'dom7', 'C7b13'],
   ['alt', 0, 'dom7', 'C7alt'], ['7sus4', 0, 'dom7', 'C7sus4'], ['maj9', 0, null, 'Cmaj9'],
@@ -126,11 +126,6 @@ APP.forEach(([ext, q, t7, sym]) => {
   const app = M.getIntvs(q, t7, ext).slice().sort((a, b) => a - b).join(',');
   ok(app === ivs(sym), ext + '/' + q + '/' + t7 + ' plays ' + app + ' but ' + sym + ' parses ' + ivs(sym));
 });
-// The one known disagreement, kept visible: the app's '11th' on a dominant
-// stacks the 11th over the major third; the symbol C11 drops the third. Which
-// the app should do is a musical call, not a parser one.
-ok(M.getIntvs(0, 'dom7', '11th').join(',') === '0,4,7,10,14,17' && ivs('C11') === '0,7,10,14,17',
-  "app '11th' on dom7 keeps the 3rd, C11 drops it — update this note if either changes");
 
 // ── 4. Old slots read through unchanged ─────────────────────────────────────
 {
