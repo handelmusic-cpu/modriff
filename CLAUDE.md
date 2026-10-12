@@ -150,10 +150,14 @@ find-and-replace.
 
 ## No emoji
 
-The owner's rule: no emoji anywhere in the interface — not as icons, not in
-labels, not in toasts. iOS draws them as coloured pictures that clash with the
-app's own look (🥁, 🔒, ⚄ and a ▶ in a blue tile all shipped once). Say it in
-words, or draw it (inline SVG, CSS shapes, a part's colour).
+The owner's rule: no emoji in the interface — not as icons, not in labels,
+not in toasts. iOS draws them as coloured pictures that clash with the app's
+own look (🥁, 🔈, ⚄ and a ▶ in a blue tile all shipped once). Say it in words,
+or draw it (inline SVG, CSS shapes, a part's colour).
+
+The owner's exceptions, and the only ones: folders (🗀 📁) and locks (🔒 🔓)
+stay where they are. They were taken out in 4.9.5 and put back in 4.9.5.1 at
+the owner's word. A new emoji anywhere else is asked about first.
 
 Plain symbols are fine — ♭ ♯ → ✕ ◈ — with one catch: ▶ ◀ ↕ ✔ and a few
 others have an emoji form iOS falls back to. Those code points are claimed by
