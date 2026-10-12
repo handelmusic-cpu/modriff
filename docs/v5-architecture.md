@@ -10,9 +10,9 @@ are cheaper to make before code than after.
 
 | | piece | state |
 |---|---|---|
-| 1 | General chord model | **landed** — model, parser, slot adapter, engine message, tests |
+| 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **decided: native audio.** Plan below; the wrapper seam already exists |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -89,12 +89,12 @@ maj7 11ths keep their thirds, as they do in common use.
 
 1. **Done.** Model, parser, adapter and engine message, additive. Nothing
    calls them yet, so nothing sounds different.
-2. **Read through the adapter.** The ten `getIntvs(slot.triadQ, slot.type7,
-   slot.ext)` call sites (`grep -n "getIntvs(" index.html`) move to
-   `chordFromSlot(slot).ivs`. Identical output for every existing slot —
-   `parse.test.js` checks all 720 combinations — so this is a refactor
-   to verify with the Playwright pattern in CLAUDE.md, not a redesign.
-3. **Write `ivs` onto slots.** A "type a chord" field in the chord builder:
+2. **Done (4.9.3).** Every path that plays or draws a song slot reads
+   `slotIvs(slot)`: the slot's own `ivs` if it has them, `getIntvs` exactly
+   as before if not. Changing a slot's quality from the menu drops its `ivs`
+   (`_slotForgetNotes`), so the menu always wins once used.
+3. **Write `ivs` onto slots.** Chord-sheet import does this now (below). Still
+   to do: a "type a chord" field in the chord builder:
    `parseChordSymbol` → `{rootM, ivs, label: sym, bassNote}`. The old fields
    are still filled in (nearest `triadQ`/`type7`) so the chord grid, colours,
    Nashville numbers and anything else that reads them keep working.
@@ -104,6 +104,30 @@ maj7 11ths keep their thirds, as they do in common use.
    cannot say what it is (the "Dm" + "b9" case) is named from its notes.
 5. **Retire `EXTS`** as the source of truth: the quality menu writes `ivs`
    too, and `getIntvs` becomes a thin reader for old saves.
+
+### Importing chord sheets (4.9.3)
+
+File → **Import a chord sheet…** takes pasted text (or a text file) and
+builds the chart: sections from `[Verse]`-style headers, chords in order,
+`(x3)` repeats on a line, `[Chorus] (x2)` as a section's play count, the key
+guessed from the chords, every chord one bar. ChordPro (`[G]lyrics`,
+`{soc}`) works too. A line counts as chords only when every word on it parses,
+so lyrics are never misread; lines that look like chords but don't parse are
+listed in the preview. `tests/chords/sheet.test.js` runs it on two real
+Ultimate Guitar exports, as text recognition reads them — misreads like
+"Cc" for C and "BC" for B C are corrected on lines that already hold a clean
+chord.
+
+Three kinds of input, three readers:
+
+| input | example | reader |
+|---|---|---|
+| text | pasted from a website, a `.txt`, ChordPro | `parseChordSheet` — **shipped** |
+| a picture of a chord sheet | UG's PDF export, a photo of a songbook page | the phone's text recognition (Apple Vision, `VNRecognizeTextRequest`, on device, free) → the same parser. Needs the iOS app: a small Capacitor plugin returning the page's lines top to bottom |
+| a lead sheet | Real Book page: chords over a staff, superscript qualities, 1st/2nd endings | text recognition is not enough — it cannot see bars, endings or which chord sits where on the staff, and it mangles stacked superscripts. This needs a vision model reading the page into a structured chart (sections, bars, chords per bar, endings), with every chord it returns validated by `parseChordSymbol` before it is used. Network and a per-page cost; a candidate for an add-on |
+
+The parser already reads lead-sheet spelling (`DMI`, `GMI7`, `EMI7(♭5)`,
+`B♭9`) and sections lettered `[A]` `[B]` `[C]`.
 
 ---
 
@@ -392,6 +416,9 @@ granting everything, as it does today.
 3. **Chord model steps 2–3** — the `getIntvs` call sites, then the "type a
    chord" field. Independent of audio; fits between the bigger steps.
 4. **MIDI Mapping Mode** — independent; can run alongside any of the above.
-5. **iOS shell** — Capacitor project, Swift audio host, haptics, IAP. Needs
-   a Mac with Xcode for every build.
+5. **iOS shell** — the Capacitor project is in `ios/` (4.9.3), with the
+   app icon and `.playback` audio (sound with the silent switch on). Still to
+   come: the Swift audio host, haptics, IAP, text recognition for picture
+   imports. Every build needs a Mac with Xcode: `npm install`, then
+   `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
 6. **Remaining parts native, then the clock** — ships as 5.0.0.
