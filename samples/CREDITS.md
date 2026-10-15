@@ -388,3 +388,19 @@ A TR-909 set was looked at and **not** used: the only free one
 (`@fluid-music/tr-909`, Jason Baker / Rob Roy Recordings, via
 machines.hyperreal.org) forbids changing the samples and distributing them for
 profit, and this app both converts its samples and has paid tiers.
+
+## samples/mideast, africa, samba, bellsfx — world percussion for the Aux layer (4.9.9.2)
+
+Same library (VCSL, **CC0 1.0**), same build (`build/drum-kits.py`, run with
+the kit list `mideast,africa,samba,bellsfx` so the shipped kits are not
+re-encoded), same layering and naming. 1.4 MB for the four.
+
+| kit | lanes and sources |
+|---|---|
+| **Middle East ◆** (`mideast/`) | Darbuka 1 doum, Darbuka 2 tek, Darbuka 4 ka, Darbuka 3 second tek (2 strengths × 2 takes each); Frame Drum large open, large muted and small open (2 × 2 each); Tambourine 2 as riq (2); Finger Cymbals (zills, to 3 s); Shaker large. |
+| **West Africa ◆** (`africa/`) | Slit Drum low (~108 Hz) and high (~156 Hz) log drums (3 strengths each); Cowbell 2 double bell and single bell (2 each); Agogo Bells 3 (2 strengths, 2–3 takes); Shaker large strokes (4 takes); Claps, solo (4 strengths); Balafon hard mallet, F and C bars (3 strengths each). |
+| **Samba ◆** (`samba/`) | Bass Drum 2 as surdo (3 strengths, to 1 s); Snare Drum Rope Tension, low, snares on, as caixa (3); Tom 1 stick rimshots as repinique (2); Agogo Bells 2 and 1, high and low; Tambourine 2; Shaker small doubles (4 takes); Ball Whistle short and long. |
+| **Bells & FX ◆** (`bellsfx/`) | Sleigh Bells (3 strengths); Mark Trees (three sweeps, cut to 3 s); Bell Tree (four strokes); Hand Bells, Nepalese (three takes); Finger Cymbals; Vibraslap (four takes); Ratchet (two, cut to 1.2 s); Slapstick (2 strengths); Anvil (three hits × 3 strengths); Brake Drum, hammer (3); Ocean Drum (three, cut to 3 s from 20–37 s). |
+
+Tabla, djembe, udu and taiko are not in VCSL. Freesound has CC0 recordings of
+all four, but it was not reachable from where these were built.
