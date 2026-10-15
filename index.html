@@ -7225,7 +7225,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.2</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.3</span>
     </div>
    </div>
   </div>
@@ -7262,7 +7262,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.3</span></div>
  </div>
 </div>
 
@@ -9417,7 +9417,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.2';
+const MODRIFF_VERSION = '4.9.9.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10534,6 +10534,11 @@ const WAVE_GAIN = {
  // read -21.5 dB RMS against Piano 1's -29.3 (it keeps its room and sustains),
  // and Marimba -20.4 against Vibes' -27.0, the mallet voice it sits beside.
  pianoreal2:0.58, marimba:0.66,
+ // 4.9.9.3: a four-note chord's file RMS times this number lands Vibes and
+ // Marimba within 0.1 dB of each other (-10.6, -10.5 dB), so the same sum
+ // places these two beside them: the kalimba's tines are all attack and
+ // little body, which is why it needs so much more.
+ kalimba:3.09, xylo:1.58,
  // Your own clips. Unlike the five above, whose raw level is a fixed property
  // of the sample set, a user clip is whatever it is — so it is peak-normalised
  // at playback (smpNorm) to a known 0.9 before this ever sees it, and this
@@ -10682,6 +10687,19 @@ const SAMPLE_LIBS = {
  // voice: notes above C4 are pitched up from it.
  marimba:   {dir:'samples/marimba', fallbackWave:'vibes',
             notes:['C2','D2','E2','F2','G2','A2','B2','C3','D3','E3','F3','G3','A3','B3','C4']},
+ // Kalimba (4.9.9.3): hollandm's CC0 "Kalimba Thumb Piano", the hard
+ // strikes. The pack names every note an octave low — its "c3" is middle C —
+ // so files were placed by measured pitch: C4–E6, naturals, resampled to
+ // within ±1 cent. No note shifts more than a semitone.
+ kalimba:   {dir:'samples/kalimba', fallbackWave:'vibes',
+            notes:['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5','C6','D6','E6']},
+ // Xylophone (4.9.9.3): VSCO-2 CE, medium mallets — CC0. It sounds an octave
+ // above its written names, and the pack's "f" files are G, so these too are
+ // placed by measurement: G4–C8 on a C/G grid, de-sharpened 12–20 cents.
+ // A note can shift up to 3.5 semitones, which a xylophone's short, hard
+ // bar tone hides better than any sustained voice would.
+ xylo:      {dir:'samples/xylo', fallbackWave:'vibes',
+            notes:['G4','C5','G5','C6','G6','C7','G7','C8']},
 };
 const SAMPLE_BUFFERS = {}; // {piano:{C4:AudioBuffer,...}, bass:{...}}
 const SAMPLE_STATE = {};   // {piano:'idle'|'loading'|'ready'|'error', ...}
@@ -12987,6 +13005,7 @@ function smpApplyState(st){
  // Spread pads are saved by their source and degree; their per-note clips are
  // rebuilt for the key in force.
  setTimeout(function(){ try{ psAcrossFollow(true); }catch(e){} }, 0);
+ setTimeout(function(){ try{ psEnsureForSlots(); }catch(e){} }, 0);
  if(typeof fxSmpSync==='function') fxSmpSync();
  smpRenderAll();
 }
@@ -13566,9 +13585,19 @@ function psRenderLoader(){
    if(!byKit[n]){ byKit[n]=[]; kits.push(n); } byKit[n].push(cl);
   });
   kits.forEach(function(n){
-   var act = n==='Loops' ? null : psBtn('ps-chip ps-load-kit', 'Whole kit', 'Put every '+n+' sound on the pads, from this pad on',
+   var set = !!PS_LOOP_SETS[n];
+   var act = n==='Loops' ? null : psBtn('ps-chip ps-load-kit', set ? 'Whole set' : 'Whole kit', 'Put every '+n+' sound on the pads, from this pad on',
      function(){ psLoadKit(_psLoadPad, byKit[n].map(function(cl){ return cl.id; }), n); });
-   section(n==='Loops' ? 'Drum loops' : n+' kit', byKit[n], '', act);
+   section(n==='Loops' ? 'Drum loops' : set ? n : n+' kit', byKit[n], '', act);
+  });
+  // Loop sets not yet downloaded: what they are, and a button to fetch one.
+  Object.keys(PS_LOOP_SETS).forEach(function(n){
+   if(byKit[n]) return;
+   var info = PS_LOOP_SETS[n], job = _psLoopSetJob[n];
+   var act = psBtn('ps-chip ps-load-kit', job ? 'Loading…' : 'Load · '+(info.kb/1024).toFixed(1).replace(/\.0$/,'')+' MB',
+     'Download '+n, function(){ psLoopSetEnsure(n).then(psRenderLoader); psRenderLoader(); });
+   if(job) act.disabled = true;
+   section(n, [], info.about, act);
   });
  });
  var other=built.filter(function(cl){ var k=PS_KIT_BY_ID[cl.id.replace(/^factory:/,'')]; return !k || !k.cat; });
@@ -13579,11 +13608,12 @@ function psRenderLoader(){
 // because a kit is a set and half of one is not what was asked for. Live
 // shows more pads if the kit would run past the ones on screen.
 function psLoadKit(i, ids, name){
+ var what = PS_LOOP_SETS[name] ? name : name+' kit';
  var n=Math.min(ids.length, PS_N-i);
  for(var k=0;k<n;k++) psLoadClip(i+k, ids[k], true);
  if(PS.liveN < i+n) psSetLiveN(i+n);
  psCloseLoader(); psRender();
- showToast(name+' kit → pads '+psPadName(i)+'–'+psPadName(i+n-1));
+ showToast(what+' → pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
 // ⇉ — a sound across the pads as a playable scale (rebuilt 4.3.0).
 //
@@ -13602,7 +13632,8 @@ function psLoadKit(i, ids, name){
 // at its own sound on the root and is retuned from there.
 var PS_NOTE_LIBS = {'n-piano':'pianoreal','n-piano2':'pianoreal2','n-vibes':'vibes','n-nylon':'nylongtr',
  'n-jazzg':'jazzgtr','n-sax':'tenorsax','n-tpt':'mutetpt','n-flute':'flute','n-clar':'clarinet',
- 'n-violin':'violin','n-bass':'bass','n-upright2':'bassup2','n-marimba':'marimba'};
+ 'n-violin':'violin','n-bass':'bass','n-upright2':'bassup2','n-marimba':'marimba',
+ 'n-kalimba':'kalimba','n-xylo':'xylo'};
 function _psFileMidi(file){ var m=/\/([A-G])(s?)(\d)\.mp3$/.exec(file||''); return m ? _sampleNoteToMidi(m[1]+m[2]+m[3]) : null; }
 function psLoadAcross(i, clipId){
  var clip=smpClip(clipId); if(!clip) return;
@@ -14236,6 +14267,75 @@ var PS_FACTORY_KIT = [
               ['h8',8,.45],['k8',10,.85],['h8',10,.35],['c8',12,.7],['s8',12,.5],['h8',12,.45],['cb8',13,.25],['o8',14,.4]]}},
  {id:'tomfill', name:'Tom Fill',     cat:'drums', bpm:PS_FACTORY_BPM, ps:{sync:true, warp:true},
   beat:{hits:[['tom',0,.8,1.25],['tom',1,.75,1.25],['tom',2,.8,1.12],['tom',3,.75,1.12],['tom',4,.85,1],['tom',5,.8,1],['tom',6,.9,.9],['kick',7,.9],['bell',8,.7]], oneshot:true}},
+ // Recorded loops (4.9.9.3): a samba bateria from plotzki's CC0 pack and the
+ // owner's own. kit names the set they are drawn under in the Load sheet,
+ // and each set downloads only when asked (PS_LOOP_SETS, below). bpm is
+ // computed from the exact length, beats is that length in beats — which is
+ // what _psLoopTrim holds a decoded loop to. No choke: the Samba Band is six
+ // players of one bateria, recorded to be stacked.
+ {id:'sb-surdo', name:'Surdo', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/surdo-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sb-caixeta', name:'Caixeta', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/caixeta-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sb-pandeiro', name:'Pandeiro', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/pandeiro-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sb-repinique', name:'Repinique', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/repinique-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sb-shaker', name:'Shaker', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/shaker-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sb-tamborim', name:'Tamborim', cat:'drums', kit:'Samba Band', file:'samples/loops/samba/tamborim-f.mp3', bpm:109.9992, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-repinique', name:'Repinique 2', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/repinique.mp3', bpm:110.0013, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-repinique-a', name:'Repinique 3', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/repinique-a.mp3', bpm:110.0008, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-repinique-b', name:'Repinique 5 bars', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/repinique-b.mp3', bpm:110.0013, beats:20,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-surdo-d', name:'Surdo 2', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/surdo-d.mp3', bpm:110.0008, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-pandeiro-d', name:'Pandeiro 2', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/pandeiro-d.mp3', bpm:110.0003, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-pandeiro-c2', name:'Pandeiro 3', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/pandeiro-c2.mp3', bpm:109.9998, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-tamborim-c', name:'Tamborim 2', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/tamborim-c.mp3', bpm:110.0003, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-tamborim-e', name:'Tamborim 3', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/tamborim-e.mp3', bpm:110.0013, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-shaker-e', name:'Shaker 1 bar', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/shaker-e.mp3', bpm:110.0013, beats:4,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-pandeiro-c', name:'Pandeiro 121', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/pandeiro-c.mp3', bpm:120.929, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-pandeiro-b', name:'Pandeiro 121 B', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/pandeiro-b.mp3', bpm:120.929, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-surdo-b', name:'Surdo 121', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/surdo-b.mp3', bpm:120.9284, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-tamborim-b', name:'Tamborim 121', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/tamborim-b.mp3', bpm:120.929, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-shaker-b', name:'Shaker 121', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/shaker-b.mp3', bpm:120.9284, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-pandeiro', name:'Pandeiro 125', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/pandeiro.mp3', bpm:124.5937, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-surdo', name:'Surdo 125', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/surdo.mp3', bpm:124.5937, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-tamborim', name:'Tamborim 125', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/tamborim.mp3', bpm:124.5937, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-shaker', name:'Shaker 125', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/shaker.mp3', bpm:124.5937, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-tamborim-slow', name:'Tamborim 100', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/tamborim-slow.mp3', bpm:99.6751, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-shaker-slow', name:'Shaker 100', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/shaker-slow.mp3', bpm:99.6751, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'sl-call', name:'Repinique Call', cat:'drums', kit:'Samba Loops', file:'samples/loops/samba/repinique-call.mp3', bpm:110, ps:{sync:true, warp:true}},
+ {id:'wl-drumset', name:'Drum Set Groove', cat:'drums', kit:'World Loops', file:'samples/loops/world/drumset.mp3', bpm:130.0102, beats:8,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'wl-electro', name:'Electro Hi Drums', cat:'drums', kit:'World Loops', file:'samples/loops/world/electro.mp3', bpm:137, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'wl-weirdo', name:'Weirdo Drums', cat:'drums', kit:'World Loops', file:'samples/loops/world/weirdo.mp3', bpm:100.2892, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'wl-woodblock', name:'Woodblock & FX', cat:'drums', kit:'World Loops', file:'samples/loops/world/woodblock.mp3', bpm:100.2892, beats:16,
+  ps:{mode:'loop', sync:true, warp:true}},
+ {id:'wl-udu', name:'Udu Groove', cat:'drums', kit:'World Loops', file:'samples/loops/world/udu.mp3', bpm:83.9819, beats:12,
+  ps:{mode:'loop', sync:true, warp:true}},
  // ── Phrases ──
  {id:'vibes',  name:'Vibes Run',     cat:'phrases', key:0, bpm:PS_FACTORY_BPM, ps:{mode:'loop', sync:true, keyf:true, warp:true},
   phrase:{loop:true, bars:1, notes:[['vibes','C4',0,.5,.7,-.2],['vibes','E4',.5,.5,.65,-.1],['vibes','G4',1,.5,.7,0],['vibes','B4',1.5,.5,.65,.1],
@@ -14295,6 +14395,8 @@ var PS_FACTORY_KIT = [
  {id:'n-piano',  name:'Piano · C4',       cat:'notes', file:'samples/piano/C4.mp3',    key:0},
  {id:'n-piano2', name:'Piano 2 · Cs4',    cat:'notes', file:'samples/piano2/Cs4.mp3',  key:1},
  {id:'n-marimba',name:'Marimba · C3',     cat:'notes', file:'samples/marimba/C3.mp3',  key:0},
+ {id:'n-kalimba',name:'Kalimba · C5',     cat:'notes', file:'samples/kalimba/C5.mp3',  key:0},
+ {id:'n-xylo',   name:'Xylophone · C6',   cat:'notes', file:'samples/xylo/C6.mp3',     key:0},
  {id:'n-upright2',name:'Upright 2 · C2',  cat:'notes', file:'samples/upright/C2.mp3',  key:0},
  {id:'n-vibes',  name:'Vibes · C4',       cat:'notes', file:'samples/vibes/C4.mp3',    key:0},
  {id:'n-nylon',  name:'Nylon Guitar · C3',cat:'notes', file:'samples/nylongtr/C3.mp3', key:0},
@@ -14357,21 +14459,69 @@ window.psPresetInstall = psPresetInstall;
 // whole list (full=true): the Load sheet and the lane sample picker.
 var PS_LAZY_KITS = {'Rock':1, 'Hip-Hop':1, 'Beatbox':1, 'Beatbox 2':1};
 var _psFactoryLazy = null;
+// Recorded loop sets (4.9.9.3) go one step further: 1.8 MB between them,
+// which is too much to fetch just because the Load sheet was opened. Each
+// is listed there with what it is and its size, and comes down when its Load
+// button is pressed — or when a restored pad already holds one of its loops.
+var PS_LOOP_SETS = {
+ 'Samba Band':  {kb:464, about:'Surdo, caixeta, pandeiro, repinique, shaker and tamborim — six players of one bateria at 110, made to play together.'},
+ 'Samba Loops': {kb:924, about:'More samba parts: variations at 110, sets at 121, 125 and 100, and a repinique call.'},
+ 'World Loops': {kb:396, about:'A drum-set groove, electro hi drums, odd drums, woodblock and effects, and an udu groove.'}
+};
+var _psLoopSetJob = {};
+function psLoopSetEnsure(name){
+ if(!PS_LOOP_SETS[name]) return Promise.resolve(false);
+ // No audio yet (before the first tap): nothing can be decoded, and a job
+ // remembered now would be a failed one that never retries.
+ if(!psCtx()) return Promise.resolve(false);
+ if(!_psLoopSetJob[name]){
+  _psLoopSetJob[name] = (_psFactory || Promise.resolve()).then(function(){
+   return _psFactoryBuild(PS_FACTORY_KIT.filter(function(k){ return k.kit===name; }));
+  }).then(function(ok){ if(!ok) delete _psLoopSetJob[name]; return ok; });
+ }
+ return _psLoopSetJob[name];
+}
+// Whatever the slots now hold that is not built yet: the lazy kits' pieces
+// and the loop sets. Run when the startup sounds are ready, and again after a
+// restore — "Pick up where I left off" puts clips back on pads long after
+// startup, and nothing else would fetch a loop set no sheet has asked for.
+function psEnsureForSlots(){
+ // A restore can reach here before this part of the script has run.
+ if(!PS_KIT_BY_ID || !PS_LOOP_SETS || !_psFactory) return;
+ var lazy = false;
+ Object.keys(SMP_SLOTS||{}).forEach(function(key){
+  var sl=SMP_SLOTS[key], id=sl && sl.id && String(sl.id).replace(/^factory:/,'');
+  var k=id && PS_KIT_BY_ID[id]; if(!k) return;
+  if(PS_LAZY_KITS[k.kit]) lazy = true;
+  if(PS_LOOP_SETS[k.kit]) psLoopSetEnsure(k.kit);
+ });
+ if(lazy) psFactoryEnsure(true);
+}
+// mp3 starts with the encoder's delay and ends padded to a whole frame.
+// Chrome strips both using the LAME header; a decoder that does not leaves
+// 1105 samples of silence at the head and a few hundred at the tail, which a
+// loop plays on every pass — late by 25 ms, and drifting against the bar.
+// So a loop whose length is known is held to it: unchanged when the decoder
+// already did the work, cut back to the beat when it did not.
+function _psLoopTrim(ctx, buf, secs){
+ var want = Math.round(secs*buf.sampleRate), extra = buf.length - want;
+ if(extra < 64) return buf;
+ var lead = Math.min(extra, Math.round(1105*buf.sampleRate/44100));
+ var out = ctx.createBuffer(buf.numberOfChannels, want, buf.sampleRate);
+ for(var c=0;c<buf.numberOfChannels;c++) out.copyToChannel(buf.getChannelData(c).subarray(lead, lead+want), c);
+ return out;
+}
 function psFactoryEnsure(full){
  if(full && _psFactory && !_psFactoryLazy){
   _psFactoryLazy = _psFactory.then(function(){ return _psFactoryBuild(PS_FACTORY_KIT.filter(function(k){ return PS_LAZY_KITS[k.kit]; })); });
  }
  if(_psFactory) return full ? _psFactoryLazy : _psFactory;
  var ctx = psCtx(); if(!ctx) return Promise.resolve(false);
- _psFactory = _psFactoryBuild(PS_FACTORY_KIT.filter(function(k){ return !PS_LAZY_KITS[k.kit]; }));
+ _psFactory = _psFactoryBuild(PS_FACTORY_KIT.filter(function(k){ return !PS_LAZY_KITS[k.kit] && !PS_LOOP_SETS[k.kit]; }));
  // A restored session (or a lane) already holding one of the lazy pieces
  // needs it now, not when a sheet is next opened.
  _psFactory.then(function(){
-  var want = Object.keys(SMP_SLOTS||{}).some(function(key){
-   var sl=SMP_SLOTS[key], id=sl && sl.id && String(sl.id).replace(/^factory:/,'');
-   var k=id && PS_KIT_BY_ID[id]; return !!(k && PS_LAZY_KITS[k.kit]);
-  });
-  if(want) psFactoryEnsure(true);
+  psEnsureForSlots();
  });
  return full ? psFactoryEnsure(true) : _psFactory;
 }
@@ -14392,7 +14542,7 @@ function _psFactoryBuild(list){
  })).then(function(){
   return Promise.all(list.map(function(k){
    var job = k.drum ? Promise.resolve(bufs[PS_DRUM[k.drum]] || null)
-     : k.file ? Promise.resolve(bufs[k.file] || null)
+     : k.file ? Promise.resolve(bufs[k.file] && k.beats && k.bpm ? _psLoopTrim(ctx, bufs[k.file], k.beats*60/k.bpm) : (bufs[k.file] || null))
      : k.phrase ? _psRenderPhrase(ctx, bufs, k.phrase)
      : k.beat ? _psRenderBeat(ctx, bufs, k.beat)
      : k.synth==='riser' ? _psRenderRiser(ctx) : _psRenderSubDrop(ctx);
@@ -18597,6 +18747,7 @@ function releaseSustainedChord(myId){
 // selecting one of these should never produce silence.
 const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
                         tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal', pianoreal2:'pianoreal2', marimba:'marimba',
+                        kalimba:'kalimba', xylo:'xylo',
                         violin:'violin', clarinet:'clarinet', flute:'flute' };
 
 // ═══════════════════════════════════════
@@ -20737,7 +20888,7 @@ function melTouchY(el, src){
 // a synth patch — while pianoreal was still +4.1 dB hot. Picking a sampled
 // melody voice changed the volume more than the tone, in whichever direction
 // that voice happened to be wrong.
-const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, pianoreal2:0.55, marimba:0.72, violin:0.85, clarinet:0.85, flute:0.85};
+const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, pianoreal2:0.55, marimba:0.72, kalimba:0.72, xylo:0.72, violin:0.85, clarinet:0.85, flute:0.85};
 function playMelNote(midi,pressure,sustain,modY){
  const ctx=getCtx(); if(!ctx) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -21035,7 +21186,7 @@ function initBendStrip(){
  // sample buffer, not a synthesized tone). That mismatch is what made a
  // glide on any of those five voices blast out far louder than every other
  // sound. Pick the stand-in wave and its gain to match on purpose instead.
- const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba'].indexOf(melWave) >= 0;
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba','kalimba','xylo'].indexOf(melWave) >= 0;
  const glideWave = isSampledMelWave ? 'sine' : melWave;
  const wg=WAVE_GAIN[glideWave]||1;
  // Same convention as every other melody surface — see melPressure.
@@ -23291,6 +23442,21 @@ const RHYTHMS=[
  {name:'Afro 6/8', fam:'Latin & World', sig:'6/8', stepDiv:3, tip:'West African 6/8 on the standard bell pattern. Put West Africa on Aux for the bell, log drums and shaker.',
   pat:[1,0,1,0,1,1,0,1,0,1,0,1], kick:[1,0,0,0,0,0,1,0,0,0,0,0], snare:[0,0,0,1,0,0,0,0,0,1,0,0],
   rows:{ BD:[1,0,0,0,0,0,1,0,0,0,0,0], SD:[0,0,0,1,0,0,0,0,0,1,0,0], CH:[1,0,1,0,1,1,0,1,0,1,0,1] }},
+ // ── 4.9.9.3: two tabla thekas and a djembe rhythm, for the Freesound kits
+ // (Tabla and Djembe on Aux; parts in AUX_PARTS). A theka's sixteen beats
+ // are the bar's sixteen steps, so the tempo is a quarter of the matra rate.
+ {name:'Teental', fam:'Latin & World', sig:'4/4', stepDiv:4, tip:'The sixteen-beat tala of Hindustani music: Dha Dhin Dhin Dha, with the bayan falling silent on the khali. Put Tabla on Aux.',
+  pat:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], kick:[1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], snare:[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+  rows:{ BD:[1,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], RS:[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], CH:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] }},
+ {name:'Keherwa', fam:'Latin & World', sig:'4/4', stepDiv:4, tip:'The eight-beat tala of film song and bhajan: Dha Ge Na Ti, Na Ka Dhi Na. Put Tabla on Aux.',
+  pat:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], kick:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0], snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+  rows:{ BD:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0], RS:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], CH:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] }},
+ // Kuku, as it is commonly taught (the "old way" in Malcolm Smith's
+ // notation): the main layer carries the sangban (open on the kick, closed
+ // on the rim) and the bell; Aux carries the djembe accompaniment.
+ {name:'Kuku', fam:'Latin & World', sig:'4/4', stepDiv:4, tip:'A Guinean djembe rhythm: bass, two tones, slap over the sangban and bell. Try 130, and put Djembe on Aux.',
+  pat:[1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,0], kick:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0], snare:[0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0],
+  rows:{ BD:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0], RS:[0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0], CH:[1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,0] }},
 ];
 
 // ── Aux Perc parts ──
@@ -23311,11 +23477,13 @@ const AUX_PARTS = {
  '4/4 Funk':  { SH:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1] },
  // With the backbeat, not against it.
  'Shuffle':   { TB:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0] },
- '3/4 Ballad':{ TR:[1,0,0,0,0,0,0,0,0,0,0,0] },
+ '3/4 Ballad':{ TR:[1,0,0,0,0,0,0,0,0,0,0,0], MD:[1,0,0,0,0,0,0,0,0,0,0,0], MN:[0,0,0,0,1,0,0,0,1,0,0,0] },
  // BB (the West Africa kit's double bell) plays the standard twelve-pulse
  // bell — the one every 6/8 and 12/8 groove from Ewe to bembé hangs on.
  // Names no older kit has, so these reach only the world kits.
- '6/8 Feel':  { TB:[1,0,0,0,0,0,1,0,0,0,0,0], BB:[1,0,1,0,1,1,0,1,0,1,0,1], SK:[1,0,0,1,0,0,1,0,0,1,0,0] },
+ // MD/MN (4.9.9.3): Medieval's tabor on the beat, its hand drum answering.
+ '6/8 Feel':  { TB:[1,0,0,0,0,0,1,0,0,0,0,0], BB:[1,0,1,0,1,1,0,1,0,1,0,1], SK:[1,0,0,1,0,0,1,0,0,1,0,0],
+                MD:[1,0,0,0,0,0,1,0,0,0,0,0], MN:[0,0,0,1,0,0,0,0,0,1,0,0] },
  '12/8 Slow': { TR:[1,0,0,0,0,0,0,0,0,0,0,0], BB:[1,0,1,0,1,1,0,1,0,1,0,1] },
  '12/8 Blues':{ TB:[0,0,0,1,0,0,0,0,0,1,0,0], BB:[1,0,1,0,1,1,0,1,0,1,0,1] },
  // Bossa clave (3-2) — the real one, landing on the "and" of 4 rather than on
@@ -23336,19 +23504,59 @@ const AUX_PARTS = {
  // agogo plays its two-tone figure.
  'Samba':     { SH:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
                 SU:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1], CX:[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1],
-                GH:[1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0], GL:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0] },
+                GH:[1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0], GL:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+                // 4.9.9.3, Maracatu: the alfaia answers like the surdo, the
+                // caixa runs with the snare, the gonguê takes the agogo's
+                // high figure.
+                AF:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1], CI:[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1],
+                GN:[1,0,1,0,0,0,1,0,1,0,1,0,0,0,0,0] },
  // West Africa's Bell Lo answers to CB, so it takes the bell here as is.
  'Afrobeat':  { CB:[1,0,1,0,1,1,0,1,0,1,1,0,1,0,1,0],
                 LL:[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0], LH:[0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0],
-                SK:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] },
+                SK:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+                // 4.9.9.3: the udu is Igbo, from Afrobeat's own country — its
+                // bass and taps take the log drums' two lines.
+                UB:[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0], UT:[0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0] },
  'Cumbia':    { GU:[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1] },
- 'Son Clave': { CV:[1,0,0,1,0,0,1,0,0,0,1,0,1,0,0,0] },
+ // 4.9.9.3, Salsa: the conga's tumbao (slap on 2, open tones on 4 and its
+ // "and") under the mambo bell on the beat.
+ 'Son Clave': { CV:[1,0,0,1,0,0,1,0,0,0,1,0,1,0,0,0],
+                CS:[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0], CO:[0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0],
+                MB:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0] },
  // 4.9.9.2's two world grooves. Maqsum: doum on 1 and 3, tek answering —
  // D T . T D . T . in eighths — with the riq on every eighth and a ka pickup.
  'Maqsum':    { DM:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], TK:[0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0],
-                KA:[0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0], TB:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0] },
+                KA:[0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0], TB:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+                // 4.9.9.3, Clay Drums: its darbuka plays the same part, and
+                // the udu's bass doubles the doum.
+                DD:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], DK:[0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0],
+                DA:[0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0], UB:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0] },
  'Afro 6/8':  { BB:[1,0,1,0,1,1,0,1,0,1,0,1], LL:[1,0,0,0,0,0,1,0,0,0,0,0],
-                LH:[0,0,0,1,0,1,0,0,0,1,0,1], SK:[1,0,1,1,0,1,1,0,1,1,0,1] }
+                LH:[0,0,0,1,0,1,0,0,0,1,0,1], SK:[1,0,1,1,0,1,1,0,1,1,0,1],
+                // 4.9.9.3: a simple part for Batá — not a toque, three drums
+                // answering each other across the bell: iyá on the beat and
+                // slapping the half-way, itótele between, okónkolo keeping
+                // the pulse (slap on each beat, open on its last third).
+                YO:[1,0,0,0,0,0,1,0,0,0,0,0], YS:[0,0,0,1,0,0,0,0,0,1,0,0],
+                IO:[0,1,0,0,0,0,0,1,0,0,0,0], IS:[0,0,0,0,1,0,0,0,0,0,1,0],
+                OS:[1,0,0,1,0,0,1,0,0,1,0,0], OO:[0,0,1,0,0,1,0,0,1,0,0,1] },
+ // ── 4.9.9.3's Freesound kits ──
+ // Teental: Dha Dhin Dhin Dha | Dha Dhin Dhin Dha | Dha Tin Tin Ta | Ta Dhin
+ // Dhin Dha. Na sounds on every Dha and Ta, Tin on every Dhin and Tin, and
+ // Ge — the bayan — on every bol with a "dh", which is why it drops out for
+ // Tin Tin Ta Ta: the khali, the empty quarter a listener counts by.
+ 'Teental':   { NA:[1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1], TI:[0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0],
+                GE:[1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1] },
+ // Keherwa in eighths: Dha Ge Na Ti | Na Ka Dhi Na.
+ 'Keherwa':   { NA:[1,0,0,0,1,0,0,0,1,0,0,0,0,0,1,0], GE:[1,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0],
+                TE:[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0], KE:[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
+                TI:[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0] },
+ // Kuku: the djembe accompaniment B.OO..S. twice; on West Africa the log
+ // drums take the sangban (open, closed) and its bell the bell part.
+ 'Kuku':      { DB:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], DT:[0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0],
+                DS:[0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
+                LL:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0], LH:[0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0],
+                CB:[1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,0] }
 };
 
 function rhythmStepDuration(r){ return beatSec()/r.stepDiv; }
@@ -23848,7 +24056,7 @@ function renderChordDiagram(){
 // recorded, sample-based instrument or kit; ◈ = the sampler — a clip, or a
 // place to load one. Nothing else borrows either (Setups and mõdSynth did).
 const MS_SHARED_VOICES=[['pianoreal','Piano 1 ◆'],['pianoreal2','Piano 2 ◆'],['piano','Piano (synth)'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
- ['vibes','Vibes ◆'],['marimba','Marimba ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
+ ['vibes','Vibes ◆'],['marimba','Marimba ◆'],['xylo','Xylophone ◆'],['kalimba','Kalimba ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
  ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],['violin','Violin ◆'],['clarinet','Clarinet ◆'],['flute','Flute ◆'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','mõdSynth'],
@@ -28099,7 +28307,8 @@ var PP_KIT_FAMS = [
  ['Recorded kits', ['ROCK','STUDIO','R808','HIPHOP','BEATBOX']],
  ['Drum machines', ['808','909','606','CR78','LIN','IDM','MOD']],
  ['Acoustic & jazz', ['ACU','JAZZ','BRS']],
- ['Percussion & world', ['LATIN','AFRICA','MIDEAST','SAMBA','HAND','PERC']],
+ ['Percussion & world', ['LATIN','AFRICA','MIDEAST','SAMBA','HAND','PERC',
+   'TABLA','DJEMBE','BATA','MARACATU','SALSA','MEDIEVAL','CLAY']],
  ['Orchestral & effects', ['ORCH','BELLSFX']]
 ];
 // Style buttons that name a genre rather than a shape of line.
@@ -35378,7 +35587,7 @@ Generated notes are held to a singable range (G3–C6) so the octave-lifting sty
  },
  'jazzkit': {
   title: 'Real instruments & the Jazz kit',
-  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Upright 1</strong> and <strong>Upright 2</strong> on the bass. Eight drum kits are recorded: <strong>Rock&nbsp;◆</strong>, <strong>Studio&nbsp;◆</strong>, <strong>Real&nbsp;808&nbsp;◆</strong> (sampled from a real TR-808's own outputs), <strong>Hip-Hop&nbsp;◆</strong>, <strong>Beatbox&nbsp;◆</strong>, <strong>Latin&nbsp;Perc&nbsp;◆</strong>, <strong>Hand&nbsp;Drums&nbsp;◆</strong> and <strong>Orchestral&nbsp;◆</strong>. Four more are made for the <strong>Aux</strong> layer: <strong>Middle&nbsp;East&nbsp;◆</strong> (darbuka, frame drums, riq, zills), <strong>West&nbsp;Africa&nbsp;◆</strong> (log drums, double bell, agogo, balafon), <strong>Samba&nbsp;◆</strong> (surdo, caixa, agogos, whistles) and <strong>Bells&nbsp;&amp;&nbsp;FX&nbsp;◆</strong> (sleigh bells, mark tree, vibraslap, anvil, ocean drum). Grooves write their parts for them — try <strong>Maqsum</strong> with Middle East, <strong>Afro&nbsp;6/8</strong> or <strong>Afrobeat</strong> with West Africa, <strong>Samba</strong> with Samba. Rock, Studio, Latin, Hand Drums and Orchestral carry every strength each drum was recorded at: a soft step plays a soft stroke and an accent a hard one, not the same hit turned up or down, and repeated hits alternate between two takes so a run of sixteenths never sounds like a loop of one. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
+  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Upright 1</strong> and <strong>Upright 2</strong> on the bass. Eight drum kits are recorded: <strong>Rock&nbsp;◆</strong>, <strong>Studio&nbsp;◆</strong>, <strong>Real&nbsp;808&nbsp;◆</strong> (sampled from a real TR-808's own outputs), <strong>Hip-Hop&nbsp;◆</strong>, <strong>Beatbox&nbsp;◆</strong>, <strong>Latin&nbsp;Perc&nbsp;◆</strong>, <strong>Hand&nbsp;Drums&nbsp;◆</strong> and <strong>Orchestral&nbsp;◆</strong>. Eleven more are made for the <strong>Aux</strong> layer: <strong>Middle&nbsp;East&nbsp;◆</strong> (darbuka, frame drums, riq, zills), <strong>West&nbsp;Africa&nbsp;◆</strong> (log drums, double bell, agogo, balafon), <strong>Samba&nbsp;◆</strong> (surdo, caixa, agogos, whistles), <strong>Bells&nbsp;&amp;&nbsp;FX&nbsp;◆</strong> (sleigh bells, mark tree, vibraslap, anvil, ocean drum), <strong>Tabla&nbsp;◆</strong> (Na, Tin, Tun, Te, Re on the dayan; Ge and Ke on the bayan), <strong>Djembe&nbsp;◆</strong> (bass, tone, slap, flam, roll), <strong>Batá&nbsp;◆</strong> (iyá, itótele, okónkolo), <strong>Maracatu&nbsp;◆</strong> (alfaia, caixa, gonguê, shekere), <strong>Salsa&nbsp;◆</strong> (timbales, mambo and cha-cha bells, congas with their slaps), <strong>Medieval&nbsp;◆</strong> (tabor, hand drum, tambourine, clappers, rattles) and <strong>Clay&nbsp;Drums&nbsp;◆</strong> (udu and darbuka). Grooves write their parts for them — try <strong>Maqsum</strong> with Middle East or Clay Drums, <strong>Afro&nbsp;6/8</strong> with West Africa or Batá, <strong>Afrobeat</strong> with West Africa or Clay Drums, <strong>Samba</strong> with Samba or Maracatu, <strong>Son&nbsp;Clave</strong> with Salsa, <strong>Teental</strong> or <strong>Keherwa</strong> with Tabla, and <strong>Kuku</strong> with Djembe. <strong>Kalimba&nbsp;◆</strong> and <strong>Xylophone&nbsp;◆</strong> sit beside Marimba in every part's voices, and the sampler's Load sheet has a <strong>Samba&nbsp;Band</strong> — six players of one bateria, made to stack — and more recorded loops, each set downloaded only when you ask for it. The recorded kits carry every strength each drum was recorded at: a soft step plays a soft stroke and an accent a hard one, not the same hit turned up or down, and repeated hits alternate between two takes so a run of sixteenths never sounds like a loop of one. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> Most of the sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why the first sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br><strong>Piano&nbsp;◆</strong> is the exception, and it came from full-rate stereo source rather than from that mp3 library. It measures 8.2&nbsp;kHz, so it is a dark piano — nearer a felt-damped upright than a bright grand — but it is a real one, across the whole keyboard from C1 to C8. <strong>Piano (synth)</strong> is the original synthesized voice, still there.<br><br>
 <strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
 The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
@@ -39137,7 +39346,19 @@ var GM_DRUM_MAP={
   'Log Lo':77, 'Log Hi':76, 'Double Bell':56, 'Bell Lo':55, 'Agogo':67, 'Big Shaker':82,
   'Balafon Lo':60, 'Balafon Hi':62, 'Rim Tom':50, 'Whistle':71, 'Whistle Long':72,
   'Sleigh Bells':83, 'Mark Tree':55, 'Bell Tree':84, 'Nepal Bell':57, 'Vibraslap':58,
-  'Ratchet':74, 'Slapstick':85, 'Anvil':52, 'Brake Drum':56, 'Ocean Drum':86
+  'Ratchet':74, 'Slapstick':85, 'Anvil':52, 'Brake Drum':56, 'Ocean Drum':86,
+  // 4.9.9.3's Freesound kits. Hand-drum strokes take the conga and bongo pads
+  // (60–64), the deep drums the floor toms (41/43), bells the cowbell's
+  // neighbours; Conga, Quinto, Tamb and Shaker keep their notes above.
+  'Na':62, 'Tin':63, 'Tun':64, 'Te':60, 'Re':61, 'Ke':39, 'Ge':41, 'Ge Open':43,
+  'Bass':41, 'Tone':63, 'Slap':62, 'Muted':64, 'Flam':65, 'Roll':66,
+  'Iyá':41, 'Iyá Slap':45, 'Itótele':64, 'Itótele Slap':62, 'Okónkolo':63, 'Okónkolo Slap':60,
+  'Alfaia':36, 'Alfaia Rim':37, 'Caixa':38, 'Caixa Rim':40, 'Gonguê':56, 'Shekere':69,
+  'Timbal Hi':65, 'Timbal Lo':66, 'Timbal Rim':71, 'Mambo Bell':56, 'Cha-cha Bell':55, 'Wood Block':77,
+  'Conga Slap':61, 'Quinto Slap':60, 'Tumba':64, 'Tumba Slap':68,
+  'Tabor':41, 'Tabor Open':43, 'Hand Drum':64, 'Hand Slap':62, 'Tamb Skin':45, 'Clappers':75,
+  'Seeds':69, 'Seed Pod':70, 'Rattle':78,
+  'Udu Bass':35, 'Udu':47, 'Udu Tap':76, 'Darbuka Doum':41, 'Darbuka Tek':37, 'Darbuka Ka':39
 };
 // Nothing may share a note within one machine, or two voices collapse onto one
 // pad on export. Checked at load rather than trusted.
@@ -40983,8 +41204,10 @@ function sqLayerTrack(n, s, c, layers, gain, fb){
 }
 // Recorded kits (4.9.9.1) — every one CC0 or unrestricted; sources and the
 // build in samples/CREDITS.md.
+// Crash and ride gained their second takes in 4.9.9.3 (VSCO-2 CE's rr2 of
+// the same cymbal) — new files beside the old, so nothing cached is stale.
 var RK2_FILES = _drumKitFiles('rk2_', 'rock2', {kick:[2,2,2,2], snare:[2,2,2,2], hat:[2,2,2,2], open:[2],
-  tomhi:[2,2,2], tomlo:[2,2,2], crash:[1,1,1], ride:[1,1,1]});
+  tomhi:[2,2,2], tomlo:[2,2,2], crash:[2,2,2], ride:[2,2,2]});
 var ST_FILES = _drumKitFiles('st_', 'studio', {kick:[2,2,2,2], snare:[2,2,2], rimshot:[2,2], xstick:[2],
   hat:[2,2,2,2], open:[2], foot:[2], tomhi:[2,2,2], tomlo:[2,2,2], crash:[1,1,1,1], ride:[1,1,1], bell:[1,1]});
 var LA_FILES = _drumKitFiles('la_', 'latin', {tumba:[2,2,2,2], conga:[2,2,2], quinto:[2,2,2], bongohi:[2,2,2],
@@ -41002,6 +41225,17 @@ var SB_FILES = _drumKitFiles('sb_', 'samba', {bass:[2,2,1], snare:[2,2,2], rimto
   tamb:[1,1], shaker:[4], whistle:[1], whistlelong:[1]});
 var BF_FILES = _drumKitFiles('bf_', 'bellsfx', {sleigh:[1,2,1], marktree:[3], belltree:[4], nepal:[3], zills:[1],
   vibraslap:[4], ratchet:[2], slapstick:[2,3], anvil:[3,3,3], brake:[1,1,1], ocean:[3]});
+// World kits from Freesound (4.9.9.3) — CC0 packs, plus the owner's udu and
+// darbuka; which recording is which lane is in samples/CREDITS.md.
+var TA_FILES = _drumKitFiles('ta_', 'tabla', {na:[1,2], tin:[1,2], tun:[3], te:[2,2], re:[1], ke:[3], ge:[1,2], geopen:[5]});
+var DJ_FILES = _drumKitFiles('dj_', 'djembe', {bass:[3,3], tone:[3,3], slap:[1,2,1], mute:[3], flam:[4], roll:[3]});
+var BA_FILES = _drumKitFiles('ba_', 'bata', {iyaopen:[2], iyaslap:[2], itoopen:[2], itoslap:[2], okoopen:[1], okoslap:[2]});
+var MC_FILES = _drumKitFiles('mc_', 'maracatu', {alfaia:[1,2], alfaiarim:[1], caixa:[2,2], caixarim:[2,1], gongue:[1], shekere:[1]});
+var SA_FILES = _drumKitFiles('sa_', 'salsa', {timbhi:[1], timblo:[1], timbrim:[1], mambo:[1,1], chacha:[1], block:[1],
+  conga:[2], congaslap:[1], quinto:[3], quintoslap:[3], tumba:[2], tumbaslap:[1]});
+var MV_FILES = _drumKitFiles('mv_', 'medieval', {drum:[3,3], drumopen:[4], hand:[3], handslap:[4], tambbass:[1], tamb:[1,2],
+  clappers:[2,4], seeds:[4], seedpod:[2], shaker:[4,3], rattle:[1,3]});
+var CL_FILES = _drumKitFiles('cl_', 'clay', {udubass:[2], udumid:[2], udutap:[2,1], doum:[1,1,1], tek:[1,1], ka:[1]});
 // The real TR-808 — Michael Fischer's set, from the machine's own outputs.
 // The phrase sampler has had these files since 4.2; the kit called TR-808 is
 // a synthesis of one, and this is the machine. One take each: an 808 has no
@@ -41579,6 +41813,112 @@ var SQM={
     sqLayerTrack('Anvil','AN','#90c8e8',BF_FILES.anvil,.194,_FB.click),
     sqLayerTrack('Brake Drum','BK','#78b8d8',BF_FILES.brake,.264,_FB.click),
     sqLayerTrack('Ocean Drum','OD','#a8d8f0',BF_FILES.ocean,.425,_FB.shake)
+  ]},
+  // ── World kits from Freesound (4.9.9.3), also made for the Aux layer ───
+  // Same rule as above: short names no older kit has, so a groove's part
+  // for the tabla reaches the tabla and nothing else, and every kit already
+  // on Aux sounds as it did. Only SH (the shekere, the medieval shaker) and
+  // TB (the medieval tambourine) are shared, and mean what they mean
+  // everywhere. Gains measured by build/drum-kits.py; the five it put over
+  // 1.25 (djembe bass and flam, alfaia, tabor, udu bass) are held at 1.25.
+  // Tabla: the dayan's strokes (Na, Tin, Tun, Te, Re) and the bayan's (Ke
+  // closed, Ge open). A bol that is both drums at once — Dha is Na with Ge,
+  // Dhin is Tin with Ge — is written as both lanes on the same step.
+  'TABLA':{label:'Tabla ◆',color:'#e0703a',patShort:'TE',
+    samples:_drumKitNames(TA_FILES),
+    tracks:[
+    sqLayerTrack('Na','NA','#e0703a',TA_FILES.na,.363,_FB.rim),
+    sqLayerTrack('Tin','TI','#ea8a55',TA_FILES.tin,.733,_FB.hand),
+    sqLayerTrack('Tun','TU','#f0a070',TA_FILES.tun,.275,_FB.hand),
+    sqLayerTrack('Te','TE','#c85a28',TA_FILES.te,.561,_FB.rim),
+    sqLayerTrack('Re','RE','#b04a20',TA_FILES.re,.85,_FB.rim),
+    sqLayerTrack('Ke','KE','#8a3a18',TA_FILES.ke,.385,_FB.click),
+    sqLayerTrack('Ge','GE','#a05030',TA_FILES.ge,.995,_FB.tom),
+    sqLayerTrack('Ge Open','GO','#b86840',TA_FILES.geopen,.787,_FB.tom)
+  ]},
+  // Djembe: bass, tone and slap — the three sounds every djembe part is
+  // written in — with a muted stroke, a flam and a roll.
+  'DJEMBE':{label:'Djembe ◆',color:'#c27a3a',patShort:'DT',
+    samples:_drumKitNames(DJ_FILES),
+    tracks:[
+    sqLayerTrack('Bass','DB','#c27a3a',DJ_FILES.bass,1.25,_FB.tom),
+    sqLayerTrack('Tone','DT','#d49058',DJ_FILES.tone,1.072,_FB.hand),
+    sqLayerTrack('Slap','DS','#e6aa78',DJ_FILES.slap,.85,_FB.rim),
+    sqLayerTrack('Muted','DX','#a86830',DJ_FILES.mute,.664,_FB.hand),
+    sqLayerTrack('Flam','DF','#b87440',DJ_FILES.flam,1.25,_FB.hand),
+    sqLayerTrack('Roll','DR','#9a5a28',DJ_FILES.roll,.71,_FB.hand)
+  ]},
+  // Batá: the three two-headed drums of Yoruba and Afro-Cuban ritual music,
+  // biggest to smallest — iyá, itótele, okónkolo — each with its open tone
+  // and its slap.
+  'BATA':{label:'Batá ◆',color:'#e8c048',patShort:'OO',
+    samples:_drumKitNames(BA_FILES),
+    tracks:[
+    sqLayerTrack('Iyá','YO','#e8c048',BA_FILES.iyaopen,.933,_FB.tom),
+    sqLayerTrack('Iyá Slap','YS','#f0d070',BA_FILES.iyaslap,.732,_FB.hand),
+    sqLayerTrack('Itótele','IO','#d8a830',BA_FILES.itoopen,.755,_FB.hand),
+    sqLayerTrack('Itótele Slap','IS','#e8c060',BA_FILES.itoslap,.346,_FB.rim),
+    sqLayerTrack('Okónkolo','OO','#c89020',BA_FILES.okoopen,.373,_FB.hand),
+    sqLayerTrack('Okónkolo Slap','OS','#f8e090',BA_FILES.okoslap,.625,_FB.rim)
+  ]},
+  // Maracatu, from Recife: the alfaia (a deep rope-tuned bass drum), caixa
+  // and tarol snares, the gonguê bell and a shekere.
+  'MARACATU':{label:'Maracatu ◆',color:'#3d8fe0',patShort:'SH',
+    samples:_drumKitNames(MC_FILES),
+    tracks:[
+    sqLayerTrack('Alfaia','AF','#3d8fe0',MC_FILES.alfaia,1.25,_FB.kick),
+    sqLayerTrack('Alfaia Rim','AR','#5aa4ea',MC_FILES.alfaiarim,.552,_FB.rim),
+    sqLayerTrack('Caixa','CI','#78b8f0',MC_FILES.caixa,.639,_FB.snare),
+    sqLayerTrack('Caixa Rim','CR','#98ccf4',MC_FILES.caixarim,.32,_FB.rim),
+    sqLayerTrack('Gonguê','GN','#b8dcf8',MC_FILES.gongue,.235,_FB.click),
+    sqLayerTrack('Shekere','SH','#d8ecfc',MC_FILES.shekere,.386,_FB.shake)
+  ]},
+  // Salsa: timbales, the mambo and cha-cha bells, a wood block, and a set of
+  // congas with their slaps — the slaps Latin Perc does not have.
+  'SALSA':{label:'Salsa ◆',color:'#f0682a',patShort:'MB',
+    samples:_drumKitNames(SA_FILES),
+    tracks:[
+    sqLayerTrack('Timbal Hi','TH','#f0682a',SA_FILES.timbhi,.707,_FB.tom),
+    sqLayerTrack('Timbal Lo','TL','#d85818',SA_FILES.timblo,.663,_FB.tom),
+    sqLayerTrack('Timbal Rim','TX','#f88848',SA_FILES.timbrim,.265,_FB.rim),
+    sqLayerTrack('Mambo Bell','MB','#ffa868',SA_FILES.mambo,.235,_FB.click),
+    sqLayerTrack('Cha-cha Bell','CC','#ffc090',SA_FILES.chacha,.232,_FB.click),
+    sqLayerTrack('Wood Block','WK','#e09060',SA_FILES.block,.323,_FB.click),
+    sqLayerTrack('Conga','CO','#c84810',SA_FILES.conga,.564,_FB.hand),
+    sqLayerTrack('Conga Slap','CS','#e07038',SA_FILES.congaslap,.481,_FB.rim),
+    sqLayerTrack('Quinto','QT','#f09060',SA_FILES.quinto,.385,_FB.hand),
+    sqLayerTrack('Quinto Slap','QS','#f8b088',SA_FILES.quintoslap,.496,_FB.rim),
+    sqLayerTrack('Tumba','TA','#a83808',SA_FILES.tumba,.695,_FB.hand),
+    sqLayerTrack('Tumba Slap','TS','#c05020',SA_FILES.tumbaslap,.735,_FB.rim)
+  ]},
+  // Medieval: a tabor (the pack calls it "adrum"), a hand drum, a tambourine
+  // and its skin, wooden clappers, seed rattles, a shaker and a rattle.
+  'MEDIEVAL':{label:'Medieval ◆',color:'#9aa860',patShort:'SH',
+    samples:_drumKitNames(MV_FILES),
+    tracks:[
+    sqLayerTrack('Tabor','MD','#9aa860',MV_FILES.drum,1.25,_FB.tom),
+    sqLayerTrack('Tabor Open','MO','#aab878',MV_FILES.drumopen,.711,_FB.tom),
+    sqLayerTrack('Hand Drum','MN','#8a9850',MV_FILES.hand,.484,_FB.hand),
+    sqLayerTrack('Hand Slap','MS','#bac890',MV_FILES.handslap,.575,_FB.rim),
+    sqLayerTrack('Tamb Skin','PB','#7a8840',MV_FILES.tambbass,.891,_FB.hand),
+    sqLayerTrack('Tamb','TB','#cad8a8',MV_FILES.tamb,.272,_FB.shake),
+    sqLayerTrack('Clappers','MC','#dae4c0',MV_FILES.clappers,.235,_FB.click),
+    sqLayerTrack('Seeds','SE','#c0c890',MV_FILES.seeds,.208,_FB.shake),
+    sqLayerTrack('Seed Pod','SP','#d0d8a0',MV_FILES.seedpod,.221,_FB.shake),
+    sqLayerTrack('Shaker','SH','#e0e8c8',MV_FILES.shaker,.226,_FB.shake),
+    sqLayerTrack('Rattle','RK','#b0b880',MV_FILES.rattle,.243,_FB.shake)
+  ]},
+  // Clay: the udu — a clay pot drum from Nigeria, its hole giving the deep
+  // bass and its body the taps — beside a darbuka, the clay goblet drum.
+  'CLAY':{label:'Clay Drums ◆',color:'#c0784f',patShort:'UT',
+    samples:_drumKitNames(CL_FILES),
+    tracks:[
+    sqLayerTrack('Udu Bass','UB','#c0784f',CL_FILES.udubass,1.25,_FB.kick),
+    sqLayerTrack('Udu','UM','#cc8c68',CL_FILES.udumid,.833,_FB.tom),
+    sqLayerTrack('Udu Tap','UT','#dca888',CL_FILES.udutap,.556,_FB.click),
+    sqLayerTrack('Darbuka Doum','DD','#a86038',CL_FILES.doum,.947,_FB.tom),
+    sqLayerTrack('Darbuka Tek','DK','#d89870',CL_FILES.tek,.543,_FB.rim),
+    sqLayerTrack('Darbuka Ka','DA','#e8b898',CL_FILES.ka,.597,_FB.rim)
   ]},
   // Orchestral: concert bass drum, rope-tension field snare, two timpani,
   // clash cymbals, gong and triangle — for the film cue, not the backbeat.
