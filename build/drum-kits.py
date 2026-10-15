@@ -8,7 +8,10 @@
 #                find VCSL -name '*.wav' > index.txt
 #   TR-808:      npm pack @fluid-music/tr-808, untar; HT50.WAV is the hi tom
 #
-#   python3 -I build/drum-kits.py index.txt samples <path>/TR808WAV/HT/HT50.WAV
+#   python3 -I build/drum-kits.py index.txt samples <path>/TR808WAV/HT/HT50.WAV [kit,kit…]
+#
+# With a kit list, only those kits are built (and the 808 is left alone), so
+# adding a kit does not re-encode the ones already shipped.
 #
 # Needs ffmpeg and numpy. Every take is: mono, the kit's EQ/compression,
 # lead-in trimmed to 1 ms before the attack, the tail cut where it falls 60 dB
@@ -22,6 +25,7 @@
 import sys, os, re, json, subprocess, numpy as np, tempfile
 IDX=[l.strip() for l in open(sys.argv[1])]
 OUT=sys.argv[2]; HT808=sys.argv[3]
+ONLY=set(sys.argv[4].split(',')) if len(sys.argv)>4 else None
 SR=44100
 def find(name):
     m=[p for p in IDX if os.path.basename(p)==name]
@@ -127,6 +131,54 @@ KITS={
   ('gong',[['gong_p.wav'],['gong_mf.wav'],['gong_f.wav'],['gong_fff.wav']],'nat',5.0,2),
   ('triangle',[['triangle1_hit_pp.wav'],['triangle1_hit_mp.wav'],['triangle1_hit_mf_pt2.wav']],'nat',2.0,-8),
  ],
+ # ── World percussion for the Aux layer (4.9.9.2) ──
+ 'mideast':[
+  ('doum',rr('Darbuka_1_hit_{v}_{r}.wav',['vl1','vl2']),'nat',1.0,-1),
+  ('tek', rr('Darbuka_2_hit_{v}_{r}.wav',['vl1','vl2']),'nat',.45,-3),
+  ('ka',  rr('Darbuka_4_hit_{v}_{r}.wav',['vl1','vl2']),'nat',.5,-5),
+  ('tek2',rr('Darbuka_3_hit_{v}_{r}.wav',['vl1','vl2']),'nat',.45,-5),
+  ('framelo',rr('HDrumL_Hit_{v}_{r}_Sum.wav',['v2','v3']),'nat',1.3,-2),
+  ('framemute',rr('HDrumL_HitMuted_{v}_{r}_Sum.wav',['v2','v3']),'nat',.5,-3),
+  ('framehi',rr('HDrumS_Hit_{v}_{r}_Sum.wav',['v2','v3']),'nat',1.0,-3),
+  ('riq',[['Tamb2_Hit_v1_rr1_Mid.wav'],['Tamb2_Hit_v2_rr2_Mid.wav']],'hat',.6,-7),
+  ('zills',[['Fing_Cymb.wav']],'nat',3.0,-9),
+  ('shaker',[['LShaker_Hit_rr1_Mid.wav','LShaker_Hit_rr2_Mid.wav']],'hat',.35,-9),
+ ],
+ 'africa':[
+  ('loglo',[['LogDrumLo_MedM_v1_rr1_Sum.wav'],['LogDrumLo_MedM_v2_rr1_Sum.wav'],['LogDrumLo_MedM_v3_rr1_Sum.wav']],'nat',.9,-3),
+  ('loghi',[['LogDrumHi_MedM_v1_rr1_Sum.wav'],['LogDrumHi_MedM_v2_rr1_Sum.wav'],['LogDrumHi_MedM_v3_rr1_Sum.wav']],'nat',.9,-3),
+  ('dbell',[['Cowbell2_Double_v2_rr1_Mid.wav'],['Cowbell2_Double_v3_rr1_Mid.wav']],'nat',.6,-8),
+  ('bell',[['Cowbell2_Normal_v2_rr1_Mid.wav'],['Cowbell2_Normal_v3_rr1_Mid.wav']],'nat',.6,-8),
+  ('agogo',[['agogoBell3_f_1.wav','agogoBell3_f_2.wav'],['agogoBell3_ff_1.wav','agogoBell3_ff_2.wav','agogoBell3_ff_3.wav']],'nat',.5,-8),
+  ('shaker',[['LShaker_Shake1D_rr2_Mid.wav','LShaker_Shake1U_rr1_Mid.wav','LShaker_Shake1D_rr3_Mid.wav','LShaker_Shake1U_rr4_Mid.wav']],'hat',.5,-9),
+  ('clap',[['SoloClap_vl1.wav'],['SoloClap_vl2.wav'],['SoloClap_vl3.wav'],['SoloClap_vl4.wav']],'nat',.4,-2),
+  ('balalo',[['EthnicXylo_hardM_F3_vl1_rr1_Mid.wav'],['EthnicXylo_hardM_F3_vl2_rr1_Mid.wav'],['EthnicXylo_hardM_F3_vl3_rr1_Mid.wav']],'nat',1.0,-5),
+  ('balahi',[['EthnicXylo_hardM_C4_vl1_rr1_Mid.wav'],['EthnicXylo_hardM_C4_vl2_rr1_Mid.wav'],['EthnicXylo_hardM_C4_vl3_rr1_Mid.wav']],'nat',1.0,-5),
+ ],
+ 'samba':[
+  ('bass',[['bassdrum_hit_mp1.wav','bassdrum_hit_mp2.wav'],['bassdrum_hit_mf1.wav','bassdrum_hit_mf2.wav'],['bassdrum_hit_f.wav']],'nat',1.0,0),
+  ('snare',[['RopeSnare_low_sn_Main_vl1_rr1.wav','RopeSnare_low_sn_Main_vl1_rr2.wav'],['RopeSnare_low_sn_Main_vl2_rr1.wav','RopeSnare_low_sn_Main_vl2_rr2.wav'],['RopeSnare_low_sn_Main_vl3_rr1.wav','RopeSnare_low_sn_Main_vl3_rr3.wav']],'nat',.5,-2),
+  ('rimtom',rr('TomH_rimS_{v}_{r}_Mid.wav',['v2','v4']),'nat',.6,-3),
+  ('agogohi',[['agogoBell2_mp_1.wav','agogoBell2_mp_2.wav'],['agogoBell2_mf_1.wav']],'nat',.6,-8),
+  ('agogolo',[['agogoBell_mf1.wav'],['agogoBell_f_1.wav']],'nat',.6,-8),
+  ('tamb',[['Tamb2_Hit_v1_rr1_Mid.wav'],['Tamb2_Hit_v2_rr2_Mid.wav']],'hat',.5,-7),
+  ('shaker',[['Mid_ShakerDouble_Down_rr1.wav','Mid_ShakerDouble_Up_rr1.wav','Mid_ShakerDouble_Down_rr2.wav','Mid_ShakerDouble_Up_rr2.wav']],'hat',.3,-9),
+  ('whistle',[['Main_BallWhistle_Short-001.wav']],'nat',1.1,-6),
+  ('whistlelong',[['Main_BallWhistle_Long-001.wav']],'nat',2.1,-6),
+ ],
+ 'bellsfx':[
+  ('sleigh',[['sleighbell2_hit_2.wav'],['Sleighbells_Hit_rr1_Mid.wav','Sleighbells_Hit_rr2_Mid.wav'],['sleighbell2_hit_loud.wav']],'hat',1.2,-7),
+  ('marktree',[['windchimes_asc1.wav','windchimes_desc1.wav','windchimes_fastAsc1.wav']],'nat',3.0,-8),
+  ('belltree',[['BellTree_Stroke_1_Mid.wav','BellTree_Stroke_3_Mid.wav','BellTree_Stroke_4_Mid.wav','BellTree_Stroke_6_Mid.wav']],'nat',3.0,-8),
+  ('nepal',[['HB_1.wav','HB_2.wav','HB_3.wav']],'nat',2.5,-8),
+  ('zills',[['Fing_Cymb.wav']],'nat',3.0,-9),
+  ('vibraslap',[['vibraslap_rr1.wav','vibraslap_rr2.wav','vibraslap_rr3.wav','vibraslap_rr4.wav']],'nat',1.6,-6),
+  ('ratchet',[['Ratchet1_Fast_rr1_Mid.wav','Ratchet2_Fast_rr1_Mid.wav']],'nat',1.2,-8),
+  ('slapstick',[['slapstick_quiet_rr1.wav','slapstick_quiet_rr2.wav'],['slapstick_rr1.wav','slapstick_rr2.wav','slapstick_rr3.wav']],'nat',.4,-4),
+  ('anvil',[['Anvil_Hit1_v1_rr1_Mid.wav','Anvil_Hit2_v1_rr1_Mid.wav','Anvil_Hit3_v1_rr1_Mid.wav'],['Anvil_Hit1_v2_rr1_Mid.wav','Anvil_Hit2_v2_rr1_Mid.wav','Anvil_Hit3_v2_rr1_Mid.wav'],['Anvil_Hit1_v3_rr1_Mid.wav','Anvil_Hit2_v3_rr1_Mid.wav','Anvil_Hit3_v3_rr1_Mid.wav']],'nat',1.0,-7),
+  ('brake',[['BrakeDrum1_Hammer_v1_rr1_Mid.wav'],['BrakeDrum1_Hammer_v2_rr1_Mid.wav'],['BrakeDrum1_Hammer_v3_rr1_Mid.wav']],'nat',.8,-7),
+  ('ocean',[['OceanDrum_Sus_1_Mid.wav','OceanDrum_Sus_2_Mid.wav','OceanDrum_Sus_3_Mid.wav']],'nat',3.0,-9),
+ ],
 }
 REF_SNARE_DB=None
 # Reference: the shipping Rock snare at its lane gain (0.75) is what every new
@@ -134,6 +186,7 @@ REF_SNARE_DB=None
 rk=decode(os.path.join(OUT,'rock','snare.mp3'),None); REF=aweight_db(rk)+20*np.log10(.75)
 report={}
 for kit,lanes in KITS.items():
+    if ONLY and kit not in ONLY: continue
     rep=report[kit]={}
     for key,layers,treat,maxlen,rel in lanes:
         files=[]; top=None
@@ -146,6 +199,7 @@ for kit,lanes in KITS.items():
         if rel=='kick': gain=.9
         else: gain=10**((REF+rel-aweight_db(top))/20)
         rep[key]={'layers':[len(l) for l in layers],'gain':round(float(gain),3),'len':round(len(top)/SR,2)}
+if ONLY: print(json.dumps(report,indent=1)); sys.exit(0)
 # The 808's missing hi tom, to sit with the files samples/808 already has.
 x=shape(decode(HT808,None),.8); encode(x,os.path.join(OUT,'808','hitom.mp3'))
 # 808 lane gains, measured the same way against the same reference.
