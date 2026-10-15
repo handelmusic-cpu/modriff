@@ -4152,6 +4152,9 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
  width:44px; box-sizing:border-box; line-height:1.35; white-space:nowrap; overflow:hidden;
 }
 .ft-rate-val.free { font-size:.5rem; letter-spacing:-.01em; }
+/* The long labels (1/12, 1/16, 1/24, 1/32, 1/16.) give up side padding, not
+   width: the box stays 44px so the bar never reflows as the rate changes. */
+.ft-rate-val.long { padding-left:2px; padding-right:2px; letter-spacing:-.02em; }
 /* Being dragged: lit in the arp's colour so the hand knows the press took. */
 .ft-rate-val.turning { background:color-mix(in srgb, #2ad4c8 22%, var(--surf2)); border-color:#2ad4c8; box-shadow:0 0 10px color-mix(in srgb, #2ad4c8 45%, transparent); }
 .ft-more-wrap { position:relative; display:inline-flex; }
@@ -7170,7 +7173,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.7</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.8</span>
     </div>
    </div>
   </div>
@@ -7207,7 +7210,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.8</span></div>
  </div>
 </div>
 
@@ -9186,7 +9189,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="row arp-feel" id="arp-patterns-row-p"></div>
   </div>
   <!-- TIMING (4.9.6): one knob. It is the arp's clock, so it looks like one:
-       ten notches round a dial, each a fraction of the bar (1/1 … 1/32), and
+       fourteen notches round a dial (ten before 4.9.8 added the dotted rates), each a fraction of the bar (1/1 … 1/32), and
        a pointer. Sync | Free beside it — in Free the notches go and the knob
        sets milliseconds, for an arp meant to drift against the groove.
        The Rate and Gate sliders it replaces stay in the DOM, hidden, because
@@ -9198,7 +9201,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="arp-lbl">Timing</div>
    <div class="arp-clock">
     <div class="arp-knob" id="arp-knob" role="slider" tabindex="0" aria-label="Arp rate"
-      aria-valuemin="0" aria-valuemax="9" aria-valuenow="7" aria-valuetext="1/16">
+      aria-valuemin="0" aria-valuemax="13" aria-valuenow="11" aria-valuetext="1/16">
      <svg viewBox="0 0 120 120" aria-hidden="true">
       <g class="ak-ticks" id="arp-knob-ticks"></g>
       <path class="ak-track" id="arp-knob-track"/>
@@ -9218,7 +9221,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     </div>
    </div>
    <div style="display:none">
-    <input type="range" id="arp-rate-sl-p" min="0" max="9" step="1" value="7" oninput="onArpRateSlider(this.value)"><div id="arp-rate-disp-p">1/16</div>
+    <input type="range" id="arp-rate-sl-p" min="0" max="13" step="1" value="11" oninput="onArpRateSlider(this.value)"><div id="arp-rate-disp-p">1/16</div>
     <input type="range" id="arp-gate-p" min=".05" max=".98" step=".01" value=".5" oninput="syncArpGate(this.value)"><div id="gate-val-p">50%</div>
    </div>
   </div>
@@ -9310,7 +9313,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 <!--Hidden state inputs needed by JS at init time (must be before <script>) -->
 <div style="display:none">
  <input id="arp-gate" type="range" min=".05" max=".98" step=".01" value=".5">
- <input id="arp-rate-sl" type="range" min="0" max="9" step="1" value="7">
+ <input id="arp-rate-sl" type="range" min="0" max="13" step="1" value="11">
  <input id="bpm" type="range" min="40" max="220" step="1" value="100">
  <div id="rhythm-grid"></div>
  <div id="arp-status2"></div>
@@ -9332,7 +9335,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.7';
+const MODRIFF_VERSION = '4.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -15971,27 +15974,51 @@ const FUNC_QUAL_CSS = {tonic:'fq-tonic', subdom:'fq-subdom', dom:'fq-dom', modal
 // a setup saved with the old table is read. Seven of the ten indices mean
 // what they always did, so the transport cycle, the dice (5, 6, 7) and the
 // default (7, 1/16) did not move.
+// 4.9.8: the dotted rates are back, all four of them — half, quarter, eighth
+// and sixteenth, written with a trailing dot (1/8.) the way a sequencer
+// writes them. A dotted note is one and a half of its plain value, so its
+// div is two-thirds of the plain one's. The table stays sorted slowest to
+// fastest, because the knob and a drag on the transport both treat the index
+// as a speed: so each dotted rate sits between its plain value and the next
+// slower one, interleaved with the triplets (1/4. at 0.67 a beat is slower
+// than the half triplet at 0.75). That moved every index after 0 again;
+// arpRateV:3 marks a save made with this table, and arpRateFromSaved reads
+// both older ones.
 const ARP_RATES = [
- {label:'1/1',  name:'Whole',              glyph:'1/1',  div:.25}, // 0
- {label:'1/2',  name:'Half',               glyph:'1/2',  div:.5},  // 1
- {label:'1/3',  name:'Half triplet',       glyph:'1/3',  div:.75}, // 2
- {label:'1/4',  name:'Quarter',            glyph:'1/4',  div:1},   // 3
- {label:'1/6',  name:'Quarter triplet',    glyph:'1/6',  div:1.5}, // 4
- {label:'1/8',  name:'Eighth',             glyph:'1/8',  div:2},   // 5
- {label:'1/12', name:'Eighth triplet',     glyph:'1/12', div:3},   // 6
- {label:'1/16', name:'Sixteenth',          glyph:'1/16', div:4},   // 7 ← default
- {label:'1/24', name:'Sixteenth triplet',  glyph:'1/24', div:6},   // 8
- {label:'1/32', name:'Thirty-second',      glyph:'1/32', div:8},   // 9
+ {label:'1/1',   name:'Whole',              glyph:'1/1',   div:.25},  // 0
+ {label:'1/2.',  name:'Dotted half',        glyph:'1/2.',  div:1/3},  // 1
+ {label:'1/2',   name:'Half',               glyph:'1/2',   div:.5},   // 2
+ {label:'1/4.',  name:'Dotted quarter',     glyph:'1/4.',  div:2/3},  // 3
+ {label:'1/3',   name:'Half triplet',       glyph:'1/3',   div:.75},  // 4
+ {label:'1/4',   name:'Quarter',            glyph:'1/4',   div:1},    // 5
+ {label:'1/8.',  name:'Dotted eighth',      glyph:'1/8.',  div:4/3},  // 6
+ {label:'1/6',   name:'Quarter triplet',    glyph:'1/6',   div:1.5},  // 7
+ {label:'1/8',   name:'Eighth',             glyph:'1/8',   div:2},    // 8
+ {label:'1/16.', name:'Dotted sixteenth',   glyph:'1/16.', div:8/3},  // 9
+ {label:'1/12',  name:'Eighth triplet',     glyph:'1/12',  div:3},    // 10
+ {label:'1/16',  name:'Sixteenth',          glyph:'1/16',  div:4},    // 11 ← default
+ {label:'1/24',  name:'Sixteenth triplet',  glyph:'1/24',  div:6},    // 12
+ {label:'1/32',  name:'Thirty-second',      glyph:'1/32',  div:8},    // 13
 ];
+// Where the default sits, by name rather than by number, so the next change
+// to the table cannot leave the default pointing at some other rate.
+var ARP_RATE_DEFAULT = ARP_RATES.findIndex(function(r){ return r.label === '1/16'; });
 // A setup, song or session saved before 4.9.6 stored an index into the old
 // table (… 2 Quarter, 3 Qtr-T, 4 D.8th …). Those three are the only ones that
 // moved: Quarter is 3 now, the quarter triplet 4, and the dotted eighth —
 // 0.75 of a beat — takes 1/6, the nearest (0.67) that kept its feel of
-// running across the bar. arpRateV:2 marks a save made with this table.
+// running across the bar. arpRateV:2 marked a save made with that table.
+// 4.9.8 (arpRateV:3) inserted the dotted rates, so both older tables are
+// mapped onto this one. The pre-4.9.6 dotted eighth gets its own rate back
+// instead of the 1/6 it was approximated to.
+var ARP_RATE_FROM_V2 = [0, 2, 4, 5, 7, 8, 10, 11, 12, 13];
+var ARP_RATE_FROM_V1 = [0, 2, 5, 7, 6, 8, 10, 11, 12, 13];
 function arpRateFromSaved(s){
  var i = s.arpRateIdx;
- if(s.arpRateV === 2) return i;
- return ({2:3, 3:4, 4:4})[i] != null ? ({2:3, 3:4, 4:4})[i] : i;
+ if(s.arpRateV === 3) return i;
+ var t = s.arpRateV === 2 ? ARP_RATE_FROM_V2 : ARP_RATE_FROM_V1;
+ i = Math.max(0, Math.min(t.length - 1, Math.round(+i) || 0));
+ return t[i];
 }
 // Free timing: the arp runs on milliseconds instead of a division of the
 // beat, for textures that are meant to drift against the groove. var, not
@@ -16374,7 +16401,7 @@ let arpOn=false, arpPat='up', arpOcts=1, arpGatePat=0;
 var blEnabled=false; // bass is enabled for next Play press (separate from blPlaying)
 var mlEnabled=false; // melody sequencer is enabled for next Play press (separate from mlPlaying)
 let arpWave='flute';
-let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=7;
+let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=ARP_RATE_DEFAULT;
 // arpOn is a LAYER switch — it survives a stop on purpose, so the next Play
 // brings the arp back with everything else. This is the arp's transport: true
 // when it has a chord it should be sounding right now, false the moment
@@ -24978,7 +25005,7 @@ function onArpRateSlider(v){
  if(typeof arpKnobPaint==='function') arpKnobPaint();
 }
 // ── The arp's rate knob ───────────────────────────────────────────────────
-// 270° of travel, 7:30 to 4:30. Sync: ten detents, one per ARP_RATES entry,
+// 270° of travel, 7:30 to 4:30. Sync: a detent, one per ARP_RATES entry,
 // and a drag clicks from one to the next. Free: no detents; the pointer is
 // on a log scale from ARP_FREE_MAX (slow, left) to ARP_FREE_MIN (fast, right),
 // so every turn of it changes the speed by the same proportion. Clockwise is
@@ -26927,7 +26954,7 @@ function syncFixedTransport(){
  updateFtRateDisp();
  updateFtSongBtn();
 }
-let ftRateCycleIdx=6; // starts at 8th-T (index 6)
+let ftRateCycleIdx=ARP_RATE_DEFAULT;
 function cycleArpRate(){
  // A tap on the transport's rate is a tap for the next division, so it also
  // puts a Free arp back on the grid.
@@ -27028,6 +27055,9 @@ function updateFtRateDisp(){
  // milliseconds instead.
  el.textContent = arpFree ? Math.round(arpFreeMs)+'ms' : (r.glyph || r.label);
  el.classList.toggle('free', arpFree);
+ // "1/16." and "1/24" are wider than the fixed box's padding leaves room for
+ // (measured: 45 and 43px of text in 42); see .ft-rate-val.long.
+ el.classList.toggle('long', !arpFree && String(r.glyph || r.label).length >= 4);
  const what = arpFree ? 'free, '+Math.round(arpFreeMs)+' ms a step' : r.label+' ('+r.name+')';
  el.setAttribute('aria-label', 'Arp rate: '+what+' — tap for the next division, drag to adjust');
  el.setAttribute('aria-valuetext', what);
@@ -27128,7 +27158,7 @@ const RND_MELSTRIP_ALLOWED= ['sine','square','sawtooth'];
 const RND_MELGEN_ARP_ALLOWED = ['sine','sawtooth','square','triangle','supersaw'];
 const RND_BASS_ALLOWED    = ['sawtooth','square','triangle','sine','electric','upright'];
 // Indices into ARP_RATES for 8th, 8th-T (triplet) and 16th.
-const RND_ARP_RATE_ALLOWED = [5,6,7];
+const RND_ARP_RATE_ALLOWED = [8,10,11]; // 1/8, 1/12, 1/16 — the same three as before 4.9.8's renumbering
 
 // ── Patch archetypes ───────────────────────────────────────────────────
 // Rolling every parameter independently across its full range produces
@@ -27295,7 +27325,7 @@ function _capSettings(){
   blWave: (typeof window._blCaptureState==='function') ? window._blCaptureState().wave : null,
   melgenWave: (typeof window._mlCaptureState==='function') ? window._mlCaptureState().wave : null,
   // arp behaviour
-  arpPat, arpOcts, arpVelShape, arpGatePat, arpRateIdx, arpRateV:2, arpFree, arpFreeMs,
+  arpPat, arpOcts, arpVelShape, arpGatePat, arpRateIdx, arpRateV:3, arpFree, arpFreeMs,
   gate: _sv('arp-gate'),
   // chord envelope + FX
   atk:_sv('attack'), dec:_sv('decay'), rev:_sv('rev-mix'), strum:_sv('strum-spread'),
@@ -27666,7 +27696,7 @@ function randomizeSettings(opts){
  s.arpGatePat  = Math.floor(Math.random()*ARP_GATE_PATTERNS.length);
  // 8th, 8th-T (triplet) or 16th only — anything slower doesn't read as an
  // arpeggio, anything faster turns to mud.
- s.arpRateIdx  = _rndPick(RND_ARP_RATE_ALLOWED); s.arpRateV = 2; s.arpFree = false;
+ s.arpRateIdx  = _rndPick(RND_ARP_RATE_ALLOWED); s.arpRateV = 3; s.arpFree = false;
  s.gate        = _rndBand(A.gate||[.15,.95],2);
 
  s.atk   = _rndBand(A.atk||[.005,.3],3);
@@ -37651,7 +37681,7 @@ function getSongPerformSettings() {
  arpOcts,
  arpGatePat,
  arpRateIdx,
- arpRateV: 2,
+ arpRateV: 3,
  arpFree,
  arpFreeMs,
  rhythmSel,
@@ -39436,7 +39466,7 @@ try{ setFingeringVisible(fingeringOn(), {silent:true}); }catch(e){}
 // Variants start shut. Restored rather than assumed, so someone who works with
 // them open every day is not re-opening the row each launch.
 try{ toggleVariantRow(!!modStore.getItem('modo-variants-open')); }catch(e){ toggleVariantRow(false); }
-onArpRateSlider(7);
+onArpRateSlider(ARP_RATE_DEFAULT);
 if(typeof onFxInput==='function') onFxInput(); // seed fx state + labels from the sliders
 if(typeof syncSeqLinkUI==='function') syncSeqLinkUI();
 if(typeof syncMasterUI==='function') syncMasterUI();
