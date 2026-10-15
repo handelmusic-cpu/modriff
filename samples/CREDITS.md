@@ -356,3 +356,35 @@ The pack says only "mallet"; it is a marimba by its bars' tuned 4th harmonic
 (-16 to -24 dB below the fundamental) and ~1 s ring. Naturals C2–C4, 15 notes,
 each 4–15 cents sharp as recorded and resampled to within ±2. Mono, 2 s, mp3
 VBR q6, 184 KB.
+
+## samples/rock2, studio, latin, hand, orch — the layered kits (4.9.9.1)
+
+All five are built from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL)
+(Versilian Studios / Sam Gossner), **CC0 1.0**, by `build/drum-kits.py`, which
+records the full chain and the gain calibration. Every take is mono, trimmed
+to its attack and to where its tail falls 60 dB under its peak, peak-normalised
+to -1 dBFS, mp3 VBR q5. A lane holds every strength VCSL recorded (soft to
+hard) and both round-robin takes of each; the app picks the strength from the
+step's velocity and alternates the takes (`sqLayerTrack`). Files are named
+`<lane><layer><take>.mp3` — `snare2b.mp3` is the snare's third strength,
+second take. 2.3 MB for all five, loaded only when the kit is picked.
+
+| kit | lanes and sources (VCSL folder › articulation) |
+|---|---|
+| **Rock ◆** (`rock2/`) | Bass Drum 1 (4 strengths), Snare Drum Modern 1 snares-on (4), Hi-Hat closed (4) and open, Tom 1 / Tom 2 stick (3 each), Suspended Cymbal 1 as crash (3) and ride (stick, 3). The 4.2.2 close-kit treatment: kick boom cut at 400 Hz with a 3.5 kHz beater lift, light compression. Replaces the one-hit-per-drum `rock/` for the kit; `rock/` stays for the phrase sampler's library. |
+| **Studio ◆** (`studio/`) | Bass Drum 1 gated to 0.35 s, mids scooped, beater forward; Snare Drum Modern 3 (3) with its rimshot (2) and cross-stick; Hi-Hat closed (4), open and pedal; Tom 1 / Tom 2 stick, tightened; Suspended Cymbal 2 crash (4), ride (3) and bell (2). |
+| **Latin Perc ◆** (`latin/`) | Conga — tumba (4), conga (3), quinto (3), open tones; Bongos hi and lo (3 each); Cowbell 1 (3); Claves 1 (3); Guiro; Agogo high (3) and low (2); Shaker small (down/up strokes, four takes); Cabasa. |
+| **Hand Drums ◆** (`hand/`) | Cajon — the bass tone (`hit2`/`hit3`, 96–99% of its energy under 200 Hz, 4 strengths) and the slap (`hit1`, 3); Darbuka 1 doum and Darbuka 2 tek (2 each); Frame Drum large (2); Claps (six takes); Tambourine 1 (2); Shaker small; Woodblock (3). |
+| **Orchestral ◆** (`orch/`) | Bass Drum 2 (concert, 5); Snare Drum Rope Tension snares-on (4); Timpani 1 (~90 Hz) and Timpani 3 (~213 Hz) drums, 3 strengths each; Clash Cymbals 1 (4); Gong 1 (4, to 5 s); Triangle 1 (3). |
+
+## samples/808 — the Real 808 ◆ kit (4.9.9.1)
+
+The kit plays the fourteen files the phrase sampler already had (above), plus
+**hitom.mp3** ← HT50 from the same Michael Fischer set (via `@fluid-music/tr-808`),
+trimmed and peak-normalised by `build/drum-kits.py`. One take per lane: an 808
+has no velocity timbre.
+
+A TR-909 set was looked at and **not** used: the only free one
+(`@fluid-music/tr-909`, Jason Baker / Rob Roy Recordings, via
+machines.hyperreal.org) forbids changing the samples and distributing them for
+profit, and this app both converts its samples and has paid tiers.
