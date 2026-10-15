@@ -13,6 +13,13 @@
 # With a kit list, only those kits are built (and the 808 is left alone), so
 # adding a kit does not re-encode the ones already shipped.
 #
+# The index is any list of source files, matched by basename — VCSL's, and
+# since 4.9.9.3 Freesound packs as downloaded (each sound keeps its
+# "<id>__<author>__<name>.wav" basename, which is also its credit: see
+# samples/CREDITS.md), VSCO-2 CE files, and the owner's own uploads. Unzip
+# them anywhere and add them the same way:
+#   find VCSL freesound-packs owner-files -name '*.wav' -o -name '*.aif*' > index.txt
+#
 # Needs ffmpeg and numpy. Every take is: mono, the kit's EQ/compression,
 # lead-in trimmed to 1 ms before the attack, the tail cut where it falls 60 dB
 # under the peak (or at the lane's cap, with a longer fade), peak-normalised
@@ -80,8 +87,10 @@ KITS={
   ('open', [['HiHat_HitO_rr1_Mid.wav','HiHat_HitO_rr2_Mid.wav']],'hat',1.4,0),
   ('tomhi',rr('TomH_HitS_{v}_{r}_Mid.wav',['v2','v3','v4']),'rk_tom',1.1,0),
   ('tomlo',rr('TomL_HitS_{v}_{r}_Mid.wav',['v2','v3','v4']),'rk_tom',1.3,0),
-  ('crash',[['susCymb1_hit_mp1.wav'],['susCymb1_hit_f1.wav'],['susCymb1_hit_fff1.wav']],'cym',2.6,4),
-  ('ride', [['susCymb1_hit_stick_pp1.wav'],['susCymb1_hit_stick_mp1.wav'],['susCymb1_hit_stick_f1.wav']],'cym',2.2,2),
+  # The second take of each strength (4.9.9.3) is VSCO-2 CE's rr2 of the same
+  # cymbal: its rr1 files are byte-identical to the VCSL takes beside them.
+  ('crash',[['susCymb1_hit_mp1.wav','susCymb1-hit_mp_rr2.wav'],['susCymb1_hit_f1.wav','susCymb1-hit_f_rr2.wav'],['susCymb1_hit_fff1.wav','susCymb1-hit_fff_rr2.wav']],'cym',2.6,4),
+  ('ride', [['susCymb1_hit_stick_pp1.wav','susCymb1-hitstick_pp_rr2.wav'],['susCymb1_hit_stick_mp1.wav','susCymb1-hitstick_mp_rr2.wav'],['susCymb1_hit_stick_f1.wav','susCymb1-hitstick_f_rr2.wav']],'cym',2.2,2),
  ],
  'studio':[
   ('kick', rr('BDrumNew_hit_{v}_{r}_Sum.wav',['v2','v3','v5','v7']),'st_kick',.35,'kick'),
@@ -178,6 +187,93 @@ KITS={
   ('anvil',[['Anvil_Hit1_v1_rr1_Mid.wav','Anvil_Hit2_v1_rr1_Mid.wav','Anvil_Hit3_v1_rr1_Mid.wav'],['Anvil_Hit1_v2_rr1_Mid.wav','Anvil_Hit2_v2_rr1_Mid.wav','Anvil_Hit3_v2_rr1_Mid.wav'],['Anvil_Hit1_v3_rr1_Mid.wav','Anvil_Hit2_v3_rr1_Mid.wav','Anvil_Hit3_v3_rr1_Mid.wav']],'nat',1.0,-7),
   ('brake',[['BrakeDrum1_Hammer_v1_rr1_Mid.wav'],['BrakeDrum1_Hammer_v2_rr1_Mid.wav'],['BrakeDrum1_Hammer_v3_rr1_Mid.wav']],'nat',.8,-7),
   ('ocean',[['OceanDrum_Sus_1_Mid.wav','OceanDrum_Sus_2_Mid.wav','OceanDrum_Sus_3_Mid.wav']],'nat',3.0,-9),
+ ],
+ # ── Freesound world kits (4.9.9.3), every sound CC0 ──
+ # Packs name strokes loosely, so lanes were sorted by measurement: the
+ # fraction of energy under 250 Hz in the first 30 ms (bass vs tone vs slap)
+ # and the spectral peak. Where a pack gives no strengths, the takes of a lane
+ # are split into soft and hard layers by their raw RMS, quietest first.
+ 'tabla':[
+  ('na',[['130428__mmiron__na_sharp.wav'],['130421__mmiron__na.wav','130422__mmiron__na-open.wav']],'nat',1.2,-3),
+  # The pack's "tas" strokes: the ringing sur stroke, ~555 Hz against the
+  # dayan's 314 — what a theka calls Tin.
+  ('tin',[['130426__mmiron__tas.wav'],['130425__mmiron__tas_2.wav','130430__mmiron__tas_3.wav']],'nat',1.4,-3),
+  ('tun',[['130416__mmiron__tun.wav','130419__mmiron__tun_2.wav','130420__mmiron__tun_3.wav']],'nat',2.0,-3),
+  ('te',[['130415__mmiron__te_middlefinger.wav','130418__mmiron__te_2.wav'],['130429__mmiron__te.wav','130417__mmiron__te_ne.wav']],'nat',.35,-4),
+  ('re',[['130427__mmiron__re.wav']],'nat',.3,-5),
+  ('ke',[['130413__mmiron__ke.wav','130424__mmiron__ke_2.wav','130423__mmiron__ke_3.wav']],'nat',.15,-3),
+  ('ge',[['130406__mmiron__ghe.wav'],['130411__mmiron__ghe_4.wav','130414__mmiron__ghe_8.wav']],'nat',.9,-1),
+  # Measured: none of the long ghe takes bends — each settles at ~92 Hz and
+  # rings — so they are one open lane, five takes.
+  ('geopen',[['130405__mmiron__ghe_2.wav','130404__mmiron__ghe_3.wav','130410__mmiron__ghe_5.wav','130409__mmiron__ghe_6.wav','130408__mmiron__ghe_7.wav']],'nat',2.6,-1),
+ ],
+ 'djembe':[
+  ('bass',[['460959__infinita08__djembe_hit22.wav','460973__infinita08__djembe_hit15.wav','460974__infinita08__djembe_hit14.wav'],
+           ['460972__infinita08__djembe_hit16.wav','460958__infinita08__djembe_hit21.wav','460967__infinita08__djembe_hit13.wav']],'nat',.8,0),
+  ('tone',[['460970__infinita08__djembe_hit10.wav','460949__infinita08__djembe_hit1.wav','460968__infinita08__djembe_hit12.wav'],
+           ['460965__infinita08__djembe_hit4.wav','460960__infinita08__djembe_hit2.wav','460964__infinita08__djembe_hit3.wav']],'nat',.8,-1),
+  # The "rim" hits are the brightest strokes in the pack: the slap.
+  ('slap',[['460954__infinita08__djembe_hit7-rim.wav'],['460963__infinita08__djembe_hit6-rim.wav','460980__infinita08__djembe_hit9-rim.wav'],['460955__infinita08__djembe_hit8-rim.wav']],'nat',.8,-1),
+  ('mute',[['460983__infinita08__djembe_longrim_mute.wav','460986__infinita08__djembe_longrim_mute2.wav','460985__infinita08__djembe_longrim_mute3.wav']],'nat',1.0,-2),
+  ('flam',[['460948__infinita08__djembe_doublehit5.wav','460947__infinita08__djembe_doublehit6.wav','460946__infinita08__djembe_doublehit7.wav','460945__infinita08__djembe_doublehit8.wav']],'nat',.9,-2),
+  ('roll',[['460978__infinita08__djembe_roll.wav','460977__infinita08__djembe_roll2.wav','460953__infinita08__djembe_roll4.wav']],'nat',1.4,-2),
+ ],
+ # Two packs by the same player, different recordings: one take from each.
+ # The okónkolo's open tone is the exception — the two takes are tuned 2.5
+ # semitones apart, which alternating would turn into a melody.
+ 'bata':[
+  ('iyaopen',[['509892__sassaby__bata-iya-tone.wav','687122__sassaby__bata-iya-tone.wav']],'nat',1.5,-1),
+  ('iyaslap',[['509893__sassaby__bata-iya-slap.wav','687119__sassaby__bata-iya-slap.wav']],'nat',.8,-2),
+  ('itoopen',[['509894__sassaby__bata-itotele-tone.wav','687118__sassaby__bata-itotele-tone.wav']],'nat',1.2,-2),
+  ('itoslap',[['509895__sassaby__bata-itotele-slap.wav','687117__sassaby__bata-itotele-slap.wav']],'nat',.8,-3),
+  ('okoopen',[['687121__sassaby__bata-okonkolo-tone.wav']],'nat',.9,-3),
+  ('okoslap',[['509897__sassaby__bata-okonkolo-slap.wav','687120__sassaby__bata-okonkolo-slap.wav']],'nat',.6,-4),
+ ],
+ 'maracatu':[
+  ('alfaia',[['509528__sassaby__alfaia-hit.wav'],['506385__sassaby__alfaia-hit-maracatu.wav','511275__sassaby__alfaia-hit-combined.wav']],'nat',1.2,0),
+  ('alfaiarim',[['509527__sassaby__alfaia-rim.wav']],'nat',.6,-4),
+  ('caixa',[['506384__sassaby__maracatu-caixa-snare-hit.wav','531787__sassaby__caixa-vazada-hit.wav'],['531782__sassaby__caixa-tarol-hit.wav','511274__sassaby__caixa-hit-combined.wav']],'nat',.5,-2),
+  ('caixarim',[['531788__sassaby__caixa-tarol-rim.wav','531786__sassaby__caixa-vazada-rim.wav'],['531784__sassaby__samba-caixa-rimshot.wav']],'nat',.6,-3),
+  ('gongue',[['506386__sassaby__agogo-hit.wav']],'nat',.7,-8),
+  ('shekere',[['506383__sassaby__shekere-hit.wav']],'nat',.5,-8),
+ ],
+ 'salsa':[
+  ('timbhi',[['533095__sassaby__timbales-high-macho.wav']],'nat',.8,-2),
+  ('timblo',[['533094__sassaby__timbales-low-hembra.wav']],'nat',1.2,-2),
+  ('timbrim',[['533089__sassaby__timbales-high-rimshot-macho.wav']],'nat',.9,-4),
+  # The bell's body is the muted, quiet stroke and its mouth the open one —
+  # which is what soft and hard sound like on a mambo bell anyway.
+  ('mambo',[['533091__sassaby__mambo-bell-body.wav'],['533090__sassaby__mambo-bell-mouth.wav']],'nat',.7,-8),
+  ('chacha',[['533092__sassaby__cha-cha-bell.wav']],'nat',.4,-8),
+  ('block',[['533093__sassaby__wood-block.wav']],'nat',.3,-7),
+  ('conga',[['512063__sassaby__conga-f-tone.wav','512064__sassaby__conaa-tone.wav']],'nat',.8,-2),
+  ('congaslap',[['512065__sassaby__conaa-slap.wav']],'nat',.5,-2),
+  ('quinto',[['512071__sassaby__quinto-c-tone.wav','512067__sassaby__quintoc-tone.wav','512069__sassaby__quinto-b-tone.wav']],'nat',.7,-3),
+  ('quintoslap',[['512068__sassaby__quinto-c-slap.wav','512066__sassaby__quintoc-slap.wav','512062__sassaby__quintob-slap.wav']],'nat',.5,-3),
+  ('tumba',[['512080__sassaby__whitelowdrumd-tone.wav','512076__sassaby__whitelowdrumd-toneoff-floor.wav']],'nat',.9,-2),
+  ('tumbaslap',[['512073__sassaby__whitelowdrumd-slap.wav']],'nat',.6,-2),
+ ],
+ 'medieval':[
+  ('drum',[['99743__menegass__adrum2.wav','99745__menegass__adrum4.wav','99749__menegass__adrum8.wav'],['99741__menegass__adrum1.wav','99744__menegass__adrum3.wav','99748__menegass__adrum7.wav']],'nat',.6,0),
+  ('drumopen',[['99746__menegass__adrum5.wav','99747__menegass__adrum6.wav','99750__menegass__adrum9.wav','99742__menegass__adrum10.wav']],'nat',1.0,-1),
+  ('hand',[['99734__menegass__conga_1.wav','99737__menegass__conga_4.wav','99740__menegass__conga_7.wav']],'nat',.6,-2),
+  ('handslap',[['99735__menegass__conga_2.wav','99736__menegass__conga_3.wav','99738__menegass__conga_5.wav','99739__menegass__conga_6.wav']],'nat',.4,-3),
+  ('tambbass',[['89647__menegass__pand0.wav']],'nat',.5,-3),
+  ('tamb',[['90078__menegass__pand1.wav'],['89648__menegass__pand2.wav','89649__menegass__pand3.wav']],'hat',.5,-7),
+  ('clappers',[['99729__menegass__clp2.wav','99730__menegass__clp3.wav'],['99728__menegass__clp1.wav','99731__menegass__clp4.wav','99732__menegass__clp5.wav','99733__menegass__clp6.wav']],'nat',.5,-6),
+  ('seeds',[['99716__menegass__seedb1.wav','99717__menegass__seedb2.wav','99718__menegass__seedb3.wav','99719__menegass__seedb4.wav']],'hat',.45,-9),
+  ('seedpod',[['99724__menegass__seedp1.wav','99725__menegass__seedp2.wav']],'hat',.6,-9),
+  ('shaker',[['99843__menegass__shk3.wav','99842__menegass__shk2.wav','99845__menegass__shk5.wav','99846__menegass__shk6.wav'],['99844__menegass__shk4.wav','99841__menegass__shk1.wav','99848__menegass__shk8.wav']],'hat',.7,-9),
+  ('rattle',[['100005__menegass__rshk2.wav'],['100004__menegass__rshk1.wav','100006__menegass__rshk3.wav','100007__menegass__rshk4.wav']],'hat',.8,-9),
+ ],
+ # Udu (iyankc, Freesound) and darbuka (the owner's own files) — both clay.
+ 'clay':[
+  ('udubass',[['479245__iyankc__udu-1.wav','479250__iyankc__udu-2.wav']],'nat',1.0,-1),
+  ('udumid',[['479249__iyankc__udu-3.wav','479253__iyankc__udu-8.wav']],'nat',.5,-2),
+  ('udutap',[['479248__iyankc__udu-4.wav','479251__iyankc__udu-7.wav'],['479247__iyankc__udu-5.wav']],'nat',.5,-5),
+  ('doum',[['Darbuka_06.wav'],['Darbuka_01.wav'],['Darbuka_02.wav']],'nat',1.0,-1),
+  ('tek',[['Darbuka_03.wav'],['Darbuka_04.wav']],'nat',.5,-4),
+  ('ka',[['Darbuka_05.wav']],'nat',.5,-5),
  ],
 }
 REF_SNARE_DB=None

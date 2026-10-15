@@ -404,3 +404,168 @@ re-encoded), same layering and naming. 1.4 MB for the four.
 
 Tabla, djembe, udu and taiko are not in VCSL. Freesound has CC0 recordings of
 all four, but it was not reachable from where these were built.
+
+
+## Freesound world kits, Kalimba, Xylophone and recorded loops (4.9.9.3)
+
+Supplied by the project owner as Freesound pack downloads, and built here.
+Freesound itself refuses connections from the build environment, so each
+licence was checked against the `_readme_and_license.txt` every pack zip
+carries, which lists the licence per sound: **every sound below is
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)**. Two kinds
+of file came without one, and are marked where they appear: the udu takes
+(single files from Freesound, CC0 per the owner) and the darbuka and loop
+files (no Freesound ID or author in the files; CC0 per the owner, source not
+recorded here — **owner: add it**).
+
+Built by `build/drum-kits.py` (kits), `build/pitched-sets.py` (Kalimba,
+Xylophone) and `build/sampler-loops.py` (loops), which record the full chain.
+Kit takes are treated exactly as the VCSL kits above: mono, trimmed to the
+attack and to where the tail falls 60 dB under its peak, peak-normalised to
+-1 dBFS, mp3 VBR q5, gain calibrated against the Rock snare. Packs name
+strokes loosely, so each lane was sorted by measurement — the share of energy
+under 250 Hz in the first 30 ms (bass against tone against slap) and the
+spectral peak — and where a pack gives no strengths, a lane's takes are split
+into soft and hard layers by their raw level. Files are named
+`<lane><layer><take>.mp3`, as above. 1.1 MB for the seven kits.
+
+| kit | from | lanes |
+|---|---|---|
+| **Tabla ◆** (`tabla/`) | "tabla bols" by **mmiron** — [pack 8162](https://freesound.org/people/mmiron/packs/8162/) | Na, Tin (the pack's "tas": the ringing ~555 Hz stroke), Tun, Te, Re on the dayan; Ke (closed) and Ge, Ge Open on the bayan. The long ghe takes were checked for a pitch bend and have none — each settles at ~92 Hz — so they are one open lane of five takes. The pack's "dhec" is not used. |
+| **Djembe ◆** (`djembe/`) | "Djembe Drum Sample Library" by **Infinita08** — [pack 26031](https://freesound.org/people/Infinita08/packs/26031/) | Bass, Tone, Slap (the pack's "rim" hits, its brightest strokes), Muted, Flam (the tone double-hits), Roll. The bass double-hits and the long and roll5–8 takes are not used. |
+| **Batá ◆** (`bata/`) | "Percussion samples" ([pack 28352](https://freesound.org/people/sassaby/packs/28352/)) and "Bata samples" ([pack 38391](https://freesound.org/people/sassaby/packs/38391/)) by **sassaby** | Iyá, Itótele and Okónkolo, open and slap — one take from each pack, which are different recordings. The okónkolo's open tone keeps one: the two are tuned 2.5 semitones apart. |
+| **Maracatu ◆** (`maracatu/`) | sassaby, pack 28352 | Alfaia (2 strengths) and its rim; caixa and tarol (2), their rims and the samba rimshot; gonguê (the pack's agogo); shekere. |
+| **Salsa ◆** (`salsa/`) | sassaby, pack 28352 | Timbales macho, hembra and rimshot; mambo bell (body soft, mouth hard); cha-cha bell; wood block; conga, quinto and tumba with their slaps. Not used: electrokick, electro cymbal, china trash cymbal, the caixa with reverb, the side stick, mele and white conga E. |
+| **Medieval ◆** (`medieval/`) | "medieval perc" by **menegass** — [pack 5824](https://freesound.org/people/menegass/packs/5824/) | Tabor (the pack's "adrum", 2 strengths) and Tabor Open; hand drum (its "conga") and slap; tambourine skin and jingles; clappers; seeds; seed pod; shaker; rattle. The seedm and lyre-hit takes are not used. |
+| **Clay Drums ◆** (`clay/`) | udu by **iyankc** (Freesound 479245–479253, single files, CC0 per the owner); darbuka from the owner (`Darbuka_01`–`06.wav`, source not recorded) | Udu Bass, Udu, Udu Tap (2 strengths); Darbuka Doum (3), Tek (2), Ka. |
+
+Which file is which take:
+
+**tabla/**
+- na0a ← na_sharp ([130428](https://freesound.org/s/130428/)) · na1a ← na ([130421](https://freesound.org/s/130421/)) · na1b ← na-open ([130422](https://freesound.org/s/130422/))
+- tin0a ← tas ([130426](https://freesound.org/s/130426/)) · tin1a ← tas_2 ([130425](https://freesound.org/s/130425/)) · tin1b ← tas_3 ([130430](https://freesound.org/s/130430/))
+- tun0a ← tun ([130416](https://freesound.org/s/130416/)) · tun0b ← tun_2 ([130419](https://freesound.org/s/130419/)) · tun0c ← tun_3 ([130420](https://freesound.org/s/130420/))
+- te0a ← te_middlefinger ([130415](https://freesound.org/s/130415/)) · te0b ← te_2 ([130418](https://freesound.org/s/130418/)) · te1a ← te ([130429](https://freesound.org/s/130429/)) · te1b ← te_ne ([130417](https://freesound.org/s/130417/))
+- re0a ← re ([130427](https://freesound.org/s/130427/))
+- ke0a ← ke ([130413](https://freesound.org/s/130413/)) · ke0b ← ke_2 ([130424](https://freesound.org/s/130424/)) · ke0c ← ke_3 ([130423](https://freesound.org/s/130423/))
+- ge0a ← ghe ([130406](https://freesound.org/s/130406/)) · ge1a ← ghe_4 ([130411](https://freesound.org/s/130411/)) · ge1b ← ghe_8 ([130414](https://freesound.org/s/130414/))
+- geopen0a ← ghe_2 ([130405](https://freesound.org/s/130405/)) · geopen0b ← ghe_3 ([130404](https://freesound.org/s/130404/)) · geopen0c ← ghe_5 ([130410](https://freesound.org/s/130410/)) · geopen0d ← ghe_6 ([130409](https://freesound.org/s/130409/)) · geopen0e ← ghe_7 ([130408](https://freesound.org/s/130408/))
+
+**djembe/**
+- bass0a ← djembe_hit22 ([460959](https://freesound.org/s/460959/)) · bass0b ← djembe_hit15 ([460973](https://freesound.org/s/460973/)) · bass0c ← djembe_hit14 ([460974](https://freesound.org/s/460974/)) · bass1a ← djembe_hit16 ([460972](https://freesound.org/s/460972/)) · bass1b ← djembe_hit21 ([460958](https://freesound.org/s/460958/)) · bass1c ← djembe_hit13 ([460967](https://freesound.org/s/460967/))
+- tone0a ← djembe_hit10 ([460970](https://freesound.org/s/460970/)) · tone0b ← djembe_hit1 ([460949](https://freesound.org/s/460949/)) · tone0c ← djembe_hit12 ([460968](https://freesound.org/s/460968/)) · tone1a ← djembe_hit4 ([460965](https://freesound.org/s/460965/)) · tone1b ← djembe_hit2 ([460960](https://freesound.org/s/460960/)) · tone1c ← djembe_hit3 ([460964](https://freesound.org/s/460964/))
+- slap0a ← djembe_hit7-rim ([460954](https://freesound.org/s/460954/)) · slap1a ← djembe_hit6-rim ([460963](https://freesound.org/s/460963/)) · slap1b ← djembe_hit9-rim ([460980](https://freesound.org/s/460980/)) · slap2a ← djembe_hit8-rim ([460955](https://freesound.org/s/460955/))
+- mute0a ← djembe_longrim_mute ([460983](https://freesound.org/s/460983/)) · mute0b ← djembe_longrim_mute2 ([460986](https://freesound.org/s/460986/)) · mute0c ← djembe_longrim_mute3 ([460985](https://freesound.org/s/460985/))
+- flam0a ← djembe_doublehit5 ([460948](https://freesound.org/s/460948/)) · flam0b ← djembe_doublehit6 ([460947](https://freesound.org/s/460947/)) · flam0c ← djembe_doublehit7 ([460946](https://freesound.org/s/460946/)) · flam0d ← djembe_doublehit8 ([460945](https://freesound.org/s/460945/))
+- roll0a ← djembe_roll ([460978](https://freesound.org/s/460978/)) · roll0b ← djembe_roll2 ([460977](https://freesound.org/s/460977/)) · roll0c ← djembe_roll4 ([460953](https://freesound.org/s/460953/))
+
+**bata/**
+- iyaopen0a ← bata-iya-tone ([509892](https://freesound.org/s/509892/)) · iyaopen0b ← bata-iya-tone ([687122](https://freesound.org/s/687122/))
+- iyaslap0a ← bata-iya-slap ([509893](https://freesound.org/s/509893/)) · iyaslap0b ← bata-iya-slap ([687119](https://freesound.org/s/687119/))
+- itoopen0a ← bata-itotele-tone ([509894](https://freesound.org/s/509894/)) · itoopen0b ← bata-itotele-tone ([687118](https://freesound.org/s/687118/))
+- itoslap0a ← bata-itotele-slap ([509895](https://freesound.org/s/509895/)) · itoslap0b ← bata-itotele-slap ([687117](https://freesound.org/s/687117/))
+- okoopen0a ← bata-okonkolo-tone ([687121](https://freesound.org/s/687121/))
+- okoslap0a ← bata-okonkolo-slap ([509897](https://freesound.org/s/509897/)) · okoslap0b ← bata-okonkolo-slap ([687120](https://freesound.org/s/687120/))
+
+**maracatu/**
+- alfaia0a ← alfaia-hit ([509528](https://freesound.org/s/509528/)) · alfaia1a ← alfaia-hit-maracatu ([506385](https://freesound.org/s/506385/)) · alfaia1b ← alfaia-hit-combined ([511275](https://freesound.org/s/511275/))
+- alfaiarim0a ← alfaia-rim ([509527](https://freesound.org/s/509527/))
+- caixa0a ← maracatu-caixa-snare-hit ([506384](https://freesound.org/s/506384/)) · caixa0b ← caixa-vazada-hit ([531787](https://freesound.org/s/531787/)) · caixa1a ← caixa-tarol-hit ([531782](https://freesound.org/s/531782/)) · caixa1b ← caixa-hit-combined ([511274](https://freesound.org/s/511274/))
+- caixarim0a ← caixa-tarol-rim ([531788](https://freesound.org/s/531788/)) · caixarim0b ← caixa-vazada-rim ([531786](https://freesound.org/s/531786/)) · caixarim1a ← samba-caixa-rimshot ([531784](https://freesound.org/s/531784/))
+- gongue0a ← agogo-hit ([506386](https://freesound.org/s/506386/))
+- shekere0a ← shekere-hit ([506383](https://freesound.org/s/506383/))
+
+**salsa/**
+- timbhi0a ← timbales-high-macho ([533095](https://freesound.org/s/533095/))
+- timblo0a ← timbales-low-hembra ([533094](https://freesound.org/s/533094/))
+- timbrim0a ← timbales-high-rimshot-macho ([533089](https://freesound.org/s/533089/))
+- mambo0a ← mambo-bell-body ([533091](https://freesound.org/s/533091/)) · mambo1a ← mambo-bell-mouth ([533090](https://freesound.org/s/533090/))
+- chacha0a ← cha-cha-bell ([533092](https://freesound.org/s/533092/))
+- block0a ← wood-block ([533093](https://freesound.org/s/533093/))
+- conga0a ← conga-f-tone ([512063](https://freesound.org/s/512063/)) · conga0b ← conaa-tone ([512064](https://freesound.org/s/512064/))
+- congaslap0a ← conaa-slap ([512065](https://freesound.org/s/512065/))
+- quinto0a ← quinto-c-tone ([512071](https://freesound.org/s/512071/)) · quinto0b ← quintoc-tone ([512067](https://freesound.org/s/512067/)) · quinto0c ← quinto-b-tone ([512069](https://freesound.org/s/512069/))
+- quintoslap0a ← quinto-c-slap ([512068](https://freesound.org/s/512068/)) · quintoslap0b ← quintoc-slap ([512066](https://freesound.org/s/512066/)) · quintoslap0c ← quintob-slap ([512062](https://freesound.org/s/512062/))
+- tumba0a ← whitelowdrumd-tone ([512080](https://freesound.org/s/512080/)) · tumba0b ← whitelowdrumd-toneoff-floor ([512076](https://freesound.org/s/512076/))
+- tumbaslap0a ← whitelowdrumd-slap ([512073](https://freesound.org/s/512073/))
+
+**medieval/**
+- drum0a ← adrum2 ([99743](https://freesound.org/s/99743/)) · drum0b ← adrum4 ([99745](https://freesound.org/s/99745/)) · drum0c ← adrum8 ([99749](https://freesound.org/s/99749/)) · drum1a ← adrum1 ([99741](https://freesound.org/s/99741/)) · drum1b ← adrum3 ([99744](https://freesound.org/s/99744/)) · drum1c ← adrum7 ([99748](https://freesound.org/s/99748/))
+- drumopen0a ← adrum5 ([99746](https://freesound.org/s/99746/)) · drumopen0b ← adrum6 ([99747](https://freesound.org/s/99747/)) · drumopen0c ← adrum9 ([99750](https://freesound.org/s/99750/)) · drumopen0d ← adrum10 ([99742](https://freesound.org/s/99742/))
+- hand0a ← conga_1 ([99734](https://freesound.org/s/99734/)) · hand0b ← conga_4 ([99737](https://freesound.org/s/99737/)) · hand0c ← conga_7 ([99740](https://freesound.org/s/99740/))
+- handslap0a ← conga_2 ([99735](https://freesound.org/s/99735/)) · handslap0b ← conga_3 ([99736](https://freesound.org/s/99736/)) · handslap0c ← conga_5 ([99738](https://freesound.org/s/99738/)) · handslap0d ← conga_6 ([99739](https://freesound.org/s/99739/))
+- tambbass0a ← pand0 ([89647](https://freesound.org/s/89647/))
+- tamb0a ← pand1 ([90078](https://freesound.org/s/90078/)) · tamb1a ← pand2 ([89648](https://freesound.org/s/89648/)) · tamb1b ← pand3 ([89649](https://freesound.org/s/89649/))
+- clappers0a ← clp2 ([99729](https://freesound.org/s/99729/)) · clappers0b ← clp3 ([99730](https://freesound.org/s/99730/)) · clappers1a ← clp1 ([99728](https://freesound.org/s/99728/)) · clappers1b ← clp4 ([99731](https://freesound.org/s/99731/)) · clappers1c ← clp5 ([99732](https://freesound.org/s/99732/)) · clappers1d ← clp6 ([99733](https://freesound.org/s/99733/))
+- seeds0a ← seedb1 ([99716](https://freesound.org/s/99716/)) · seeds0b ← seedb2 ([99717](https://freesound.org/s/99717/)) · seeds0c ← seedb3 ([99718](https://freesound.org/s/99718/)) · seeds0d ← seedb4 ([99719](https://freesound.org/s/99719/))
+- seedpod0a ← seedp1 ([99724](https://freesound.org/s/99724/)) · seedpod0b ← seedp2 ([99725](https://freesound.org/s/99725/))
+- shaker0a ← shk3 ([99843](https://freesound.org/s/99843/)) · shaker0b ← shk2 ([99842](https://freesound.org/s/99842/)) · shaker0c ← shk5 ([99845](https://freesound.org/s/99845/)) · shaker0d ← shk6 ([99846](https://freesound.org/s/99846/)) · shaker1a ← shk4 ([99844](https://freesound.org/s/99844/)) · shaker1b ← shk1 ([99841](https://freesound.org/s/99841/)) · shaker1c ← shk8 ([99848](https://freesound.org/s/99848/))
+- rattle0a ← rshk2 ([100005](https://freesound.org/s/100005/)) · rattle1a ← rshk1 ([100004](https://freesound.org/s/100004/)) · rattle1b ← rshk3 ([100006](https://freesound.org/s/100006/)) · rattle1c ← rshk4 ([100007](https://freesound.org/s/100007/))
+
+**clay/**
+- udubass0a ← udu-1 ([479245](https://freesound.org/s/479245/)) · udubass0b ← udu-2 ([479250](https://freesound.org/s/479250/))
+- udumid0a ← udu-3 ([479249](https://freesound.org/s/479249/)) · udumid0b ← udu-8 ([479253](https://freesound.org/s/479253/))
+- udutap0a ← udu-4 ([479248](https://freesound.org/s/479248/)) · udutap0b ← udu-7 ([479251](https://freesound.org/s/479251/)) · udutap1a ← udu-5 ([479247](https://freesound.org/s/479247/))
+- doum0a ← Darbuka_06 · doum1a ← Darbuka_01 · doum2a ← Darbuka_02 · tek0a ← Darbuka_03 · tek1a ← Darbuka_04 · ka0a ← Darbuka_05
+
+### Rock ◆ — second cymbal takes
+
+`rock2/crash0b–2b` and `ride0b–2b` are Suspended Cymbal 1's second take of
+each strength from **[VSCO-2 CE](https://github.com/sgossner/VSCO-2-CE)**
+(Versilian Studios, **CC0**) — `susCymb1-hit_{mp,f,fff}_rr2` and
+`susCymb1-hitstick_{pp,mp,f}_rr2`. Its rr1 files are byte-identical to the
+VCSL takes the kit already used, so these are the same cymbal's other strike.
+The files already shipped re-encode byte-identical; only the six are new.
+
+### samples/kalimba — "Kalimba ◆"
+
+"Kalimba Thumb Piano" by **hollandm** —
+[pack 38696](https://freesound.org/people/hollandm/packs/38696/), CC0. The
+hard strikes, 17 notes. The pack names every note an octave low (its "c3"
+measures 260.7 Hz, middle C), so each file was placed by measured pitch: C4–E6,
+naturals, every one resampled to within ±1 cent (they were −24 to +12).
+Trimmed to the attack, 2.5 s with a 0.6 s fade, 60 Hz high-pass, peaks
+−1.5 dBFS, mono, mp3 VBR q6. 216 KB.
+
+Files, low to high: [691780](https://freesound.org/s/691780/) · [691786](https://freesound.org/s/691786/) · [691792](https://freesound.org/s/691792/) · [691798](https://freesound.org/s/691798/) · [691802](https://freesound.org/s/691802/) · [691772](https://freesound.org/s/691772/) · [691776](https://freesound.org/s/691776/) · [691782](https://freesound.org/s/691782/) · [691788](https://freesound.org/s/691788/) · [691794](https://freesound.org/s/691794/) · [691800](https://freesound.org/s/691800/) · [691804](https://freesound.org/s/691804/) · [691774](https://freesound.org/s/691774/) · [691778](https://freesound.org/s/691778/) · [691784](https://freesound.org/s/691784/) · [691790](https://freesound.org/s/691790/) · [691796](https://freesound.org/s/691796/)
+
+### samples/xylo — "Xylophone ◆"
+
+"VSCO 2 CE - Percussion - Xylophone" by **sgossner** —
+[pack 21065](https://freesound.org/people/sgossner/packs/21065/), CC0
+(Versilian Studios). Medium mallets, ff. A xylophone sounds an octave above its
+written note, which is what the pack's names give, and its "f" files are G —
+so these too were placed by measurement: G4–C8 on a C/G grid, each brought
+down 12–20 cents to exact pitch. 1.8 s with a 0.4 s fade, 150 Hz high-pass,
+otherwise as the kalimba. 84 KB.
+
+Files, low to high: [374703](https://freesound.org/s/374703/) · [374699](https://freesound.org/s/374699/) · [374704](https://freesound.org/s/374704/) · [374700](https://freesound.org/s/374700/) · [374705](https://freesound.org/s/374705/) · [374701](https://freesound.org/s/374701/) · [374706](https://freesound.org/s/374706/) · [374702](https://freesound.org/s/374702/)
+
+Level: a four-note chord's file RMS times `WAVE_GAIN` lands Vibes and Marimba
+within 0.1 dB of each other (−10.6, −10.5 dB), so the same sum sets these two:
+Kalimba 3.09, Xylophone 1.58.
+
+### samples/loops — the sampler's recorded loops
+
+**Samba Band, Samba Loops** — "samba percussion" by **plotzki** —
+[pack 2301](https://freesound.org/people/plotzki/packs/2301/), CC0. The
+pack is cut to the sample (418,912 samples at 48 kHz is sixteen beats at
+110.00 BPM), so the files are used whole; each loop's tempo is computed from
+its exact length, beats × 60 / seconds. The six 4-bar "f" files are one
+bateria at 110 and are the Samba Band; the rest are Samba Loops, with sets at
+~121, ~125 and ~100. Mono as recorded, mp3 VBR q5, 1.4 MB.
+
+surdo-f ← x-surdo-4bar-f ([36110](https://freesound.org/s/36110/)) · caixeta-f ← x-caixeta-4bar-f ([36111](https://freesound.org/s/36111/)) · pandeiro-f ← x-pandeiro-4barf ([36116](https://freesound.org/s/36116/)) · repinique-f ← x-repinique-4bar-f ([36117](https://freesound.org/s/36117/)) · shaker-f ← x-shake-4bar-f ([36120](https://freesound.org/s/36120/)) · tamborim-f ← x-tamb-4bar-f ([36132](https://freesound.org/s/36132/)) · repinique ← repinique-loop ([36108](https://freesound.org/s/36108/)) · repinique-a ← x-repinique-4bar-a ([36118](https://freesound.org/s/36118/)) · repinique-b ← x-repinique-5bar-b ([36119](https://freesound.org/s/36119/)) · surdo-d ← x-surdo-4bar-d ([36127](https://freesound.org/s/36127/)) · pandeiro-d ← x-pand-2bar-d ([36112](https://freesound.org/s/36112/)) · pandeiro-c2 ← x-pandeiro-2bar-c2 ([36114](https://freesound.org/s/36114/)) · tamborim-c ← x-tamb-2bar-c ([36129](https://freesound.org/s/36129/)) · tamborim-e ← x-tamp-2bar-e ([36133](https://freesound.org/s/36133/)) · shaker-e ← x-shake-1bar-e ([36122](https://freesound.org/s/36122/)) · pandeiro-c ← x-pandeiro-2bar-c ([36113](https://freesound.org/s/36113/)) · pandeiro-b ← x-pandero-2bar ([36134](https://freesound.org/s/36134/)) · surdo-b ← x-surdo-2barb ([36126](https://freesound.org/s/36126/)) · tamborim-b ← x-tamb-2-bar-b ([36128](https://freesound.org/s/36128/)) · shaker-b ← x-shake-1bar-b ([36121](https://freesound.org/s/36121/)) · pandeiro ← x-pandeiro-2bar ([36115](https://freesound.org/s/36115/)) · surdo ← x-surd-2bar ([36125](https://freesound.org/s/36125/)) · tamborim ← x-tamb-2bar ([36130](https://freesound.org/s/36130/)) · shaker ← x-shake-2bar ([36123](https://freesound.org/s/36123/)) · tamborim-slow ← x-tamb-4-bar ([36131](https://freesound.org/s/36131/)) · shaker-slow ← x-shake-4bar ([36124](https://freesound.org/s/36124/)) · repinique-call ← repinique-loop-intro ([36109](https://freesound.org/s/36109/))
+
+**World Loops** (`loops/world/`, 396 KB, stereo) — the owner's files
+`DrumSet_Groove`, `Electro_Hi_Drums`, `Weirdo_Drums`,
+`Woodblock_and_stuff_sfx` and `Udu_Groovoo`: CC0 per the owner, source not
+recorded. The first two are exact whole-bar exports (8 beats at 130.01, 16 at
+137.00) and are used whole. The other three were performances, so the beat
+grid was fitted to their onsets (least squares; 9.1, 5.6 and 7.5 ms RMS
+error) and whole bars cut from the first hit: 16 beats at 100.29 for Weirdo
+Drums and Woodblock, 12 at 83.98 — four bars of its 6/8 — for the udu.
+
+All loops have 5 ms fades at both ends. Each set downloads only when asked for
+(`PS_LOOP_SETS`), and a decoded loop is held to its computed length
+(`_psLoopTrim`) in case a decoder leaves mp3's encoder delay and padding in.
