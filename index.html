@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.7</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.8</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.8</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.7';
+const MODRIFF_VERSION = '4.9.9.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9650,7 +9650,11 @@ window._genQueuePaint = function(part, frac, landed){
 //                      before the first message of the session.
 //     {kind:'param',   part, name, value}  (no id)
 //                      one piece of that state changed; sent just before the
-//                      next message that would be played with it.
+//                      next message that would be played with it — or at
+//                      once, for the controls that shape what is already
+//                      sounding (mõdFX, the master bus and drive, mute and
+//                      solo, the faders, the reverb's size, a mõdSynth knob),
+//                      which the engine applies as they arrive.
 //   `at` is on the engine's clock (now()); null means as soon as possible.
 //   now()       the engine's clock, seconds.
 //   ready(part) whether the engine can sound at all yet (that part, if
@@ -9699,9 +9703,7 @@ window.modEngine = window.modEngine || {};
 // attack or reverb of its own and plays with the chord's, so it reads
 // chord.attack and chord.reverb rather than a second name for one knob.
 //
-// Not here yet, and next (docs/v5-architecture.md, "knobs and samples"):
-// each part's mõdSynth patch and the voice designer's internals, the mixer's
-// sends and mõdFX chains, the reverbs and the master bus, and the sampler.
+// Not here yet (docs/v5-architecture.md, "knobs and samples"): the sampler.
 function _pSlider(id){ var e = document.getElementById(id); return e ? parseFloat(e.value) : null; }
 function _pGet(name, key){ var f = window[name]; return (typeof f === 'function') ? f()[key] : null; }
 var PARAMS = [
@@ -9763,6 +9765,26 @@ PARAMS.push({part:'transport', name:'bpm', read:function(){ return _pSlider('bpm
 ['chord','mel','melgen','bass','arp','drum','auxperc','sampler'].forEach(function(p){
  PARAMS.push({part:'mix', name:p, read:function(){ return _cmx(p); }});
 });
+// ── The live controls (4.9.9.9.8) ──
+// These shape what is already sounding, so the app flushes as each one
+// moves, and the engine applies it on arrival (_webLiveParam) instead of at
+// the next note: mute and solo together (one object, so clearing both is one
+// change, not two), which the web engine also gates at each part's bus so a
+// held note obeys them; the whole mõdFX state, as one object (see
+// _fxAppState); the master bus; and the chord reverb's size, as last
+// committed — the reverb is rebuilt when the slider is let go, not on every
+// step of a drag, as it always was.
+PARAMS.push({part:'mix', name:'muteSolo', read:function(){ return {mute: window.sqMixMute || {}, solo: window.sqMixSolo || {}}; }});
+PARAMS.push({part:'fx', name:'modfx', read:function(){ return _fxAppState(); }});
+PARAMS.push({part:'master', name:'on',   read:function(){ return masterBusOn; }});
+PARAMS.push({part:'master', name:'vol',  read:function(){ return masterVol; }});
+PARAMS.push({part:'master', name:'comp', read:function(){ return masterCompAmt; }});
+PARAMS.push({part:'master', name:'rev',  read:function(){ return masterRevAmt; }});
+var _revSizeNow = null;
+PARAMS.push({part:'chord', name:'reverbSize', read:function(){ if(_revSizeNow == null) _revSizeNow = _pSlider('rev-size'); return _revSizeNow; }});
+// An engine value, or the app's own default for it if the snapshot has not
+// arrived yet (a bus built by something other than the first touch).
+function _wpd(k, d){ var v = window._webParams[k]; return (v == null) ? d : v; }
 
 // The app's door. Every note, hit, release and stop goes through here, not
 // straight to modEngine.send: before the message, any param that has changed
@@ -9792,6 +9814,9 @@ function _paramSame(a, b){
 function _paramCopy(v){ return (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v; }
 function modParamsSync(){
  var E = window.modEngine;
+ // A live control reached during start-up, before the table below is built,
+ // has nothing to send yet; the snapshot will carry it.
+ if(!PARAMS) return;
  if(!_paramSent){
   _paramSent = {};
   var all = {};
@@ -17375,6 +17400,9 @@ function _newAudioCtx(){
  catch(e){ try{ return new AC(); }catch(e2){ return null; } }
 }
 function unlockAudio(startDemo){
+ // The engine's store first: the buses built below (the master, the
+ // reverbs, the mõdFX chains) start from it.
+ modParamsFlush();
  if(!audioCtx){
  audioCtx=_newAudioCtx();
  if(!audioCtx) return;
@@ -17926,7 +17954,7 @@ function buildReverb(){
  if(!window._masterLimiter){
   buildMasterBus();
  }
- const size=parseFloat(document.getElementById('rev-size').value)||1.8;
+ const size=_wp('chord.reverbSize')||1.8;
  const len=Math.floor(audioCtx.sampleRate*size);
  const buf=audioCtx.createBuffer(2,len,audioCtx.sampleRate);
  for(let c=0;c<2;c++){
@@ -18028,8 +18056,12 @@ function _curveRmsGain(curve, amp, span){
  }
  return inSum>0 ? Math.sqrt(outSum/inSum) : 1;
 }
-function applyDrive(){
+// The app's half: fx.drive is a PARAM, applied by the engine as it arrives.
+function applyDrive(){ modParamsFlush(); }
+// The engine's half, from its copy.
+function _webApplyDrive(){
  if(!window._driveShaper) return;
+ const fxDrive=_wpd('fx.drive', .18);
  const curve=_driveCurve(fxDrive, DRIVE_SPAN);
  window._driveShaper.curve=curve;
  if(window._chordDriveShaper){
@@ -18258,7 +18290,7 @@ function buildMasterBus(){
  // CHORD_ROOM_K: the pair runs the chord reverb's own impulse, not the 2.4 s
  // room, so the same send level leaves less tail. Matched by measurement —
  // the master's RMS over 0.8 s after a released C major, against 4.2.9.
- const cRoomSend=c.createGain(); cRoomSend.gain.value=masterRevAmt*CHORD_ROOM_K;
+ const cRoomSend=c.createGain(); cRoomSend.gain.value=_wpd('master.rev', .05)*CHORD_ROOM_K;
  cDrvOut.connect(cRoomSend);
  window._chordMasterIn=cDrvIn; window._chordDriveShaper=cShaper; window._chordDriveIn=cDrvIn;
  window._chordDriveOut=cDrvOut; window._chordRoomSend=cRoomSend;
@@ -18267,8 +18299,8 @@ function buildMasterBus(){
  window._busIn=busIn; window._masterRevSend=revSend; window._masterRevConv=revConv;
  window._driveIn=drvIn; window._driveShaper=shaper; window._driveOut=drvOut;
  window._masterDest=drvIn;
- applyDrive();
- applyMasterBus();
+ _webApplyDrive();
+ _webMasterApply();
 }
 
 // Frequency-damped room impulse: real rooms lose treble as they decay, and a
@@ -18290,18 +18322,22 @@ function _makeRoomIR(c,seconds){
  return buf;
 }
 
-function applyMasterBus(){
+// The app's half: the master's four values are PARAMS (master.on, .vol,
+// .comp, .rev), and the engine applies them as they arrive.
+function applyMasterBus(){ modParamsFlush(); }
+// The engine's half, from its copies.
+function _webMasterApply(){
  if(!window._masterOut) return;
- const on=masterBusOn;
- window._masterOut.gain.value = masterVol;
+ const on=_wpd('master.on', true), vol=_wpd('master.vol', .72), compAmt=_wpd('master.comp', .35), revAmt=_wpd('master.rev', .05);
+ window._masterOut.gain.value = vol;
  // Bypass = neutral settings, not a rewire: a disconnect mid-note would click.
  if(window._masterComp){
   const cm=window._masterComp;
-  cm.threshold.value = on ? (-6 - masterCompAmt*20) : 0;
-  cm.ratio.value     = on ? (1.5 + masterCompAmt*5) : 1;
+  cm.threshold.value = on ? (-6 - compAmt*20) : 0;
+  cm.ratio.value     = on ? (1.5 + compAmt*5) : 1;
  }
- if(window._masterRevSend) window._masterRevSend.gain.value = on ? masterRevAmt : 0;
- if(window._chordRoomSend) window._chordRoomSend.gain.value = on ? masterRevAmt*CHORD_ROOM_K : 0;
+ if(window._masterRevSend) window._masterRevSend.gain.value = on ? revAmt : 0;
+ if(window._chordRoomSend) window._chordRoomSend.gain.value = on ? revAmt*CHORD_ROOM_K : 0;
  if(window._masterLimiter){
   const l=window._masterLimiter;
   l.threshold.value = on ? -3 : 0;
@@ -18333,7 +18369,10 @@ function syncMasterUI(){
  if(d) d.classList.toggle('lit',masterBusOn);
 }
 
-function rebuildReverb(){ reverbNode=null; if(audioCtx) buildReverb(); }
+// The size is committed when the slider is let go, and the engine rebuilds
+// the reverb when it arrives (_webReverbSize).
+function rebuildReverb(){ _revSizeNow=_pSlider('rev-size'); modParamsFlush(); }
+function _webReverbSize(){ reverbNode=null; if(audioCtx) buildReverb(); }
 document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 
 // Returns the send gain so the caller can reap it — otherwise every note
@@ -21058,9 +21097,12 @@ function _webEngineSend(msg){
  // A part-level param that is not one of the live controls below (bend,
  // accent) is standing state: kept, and read when the next voice is built.
  if(msg && msg.v === 1 && kind === 'param' && msg.id == null && msg.name !== 'bend' && msg.name !== 'accent'){
-  window._webParams[part + '.' + msg.name] = msg.value;
+  const key = part + '.' + msg.name, prev = window._webParams[key];
+  window._webParams[key] = msg.value;
   // A part's mõdSynth state reaches its engine as soon as it changes.
   if(msg.name === 'msx' && typeof _webMsxState === 'function') _webMsxState(part);
+  // So do the live controls: mõdFX, the master, mute and solo.
+  _webLiveParam(part, msg.name, prev, msg.value);
   return;
  }
  // The mõdSynth panel's own sounds and its warm-up.
@@ -41236,6 +41278,10 @@ function sqApplyMixToNodes(ch, gain){
   // of full, and only once you first touched the knob, since this never ran
   // at startup. SQMG stays a fixed headroom trim.
   if(window.sqMixGainsW) window.sqMixGainsW[ch]=gain;
+  // The level reaches the engine as the fader moves, not with the next note
+  // (mix.<part>). The web engine still applies it per note, as above; an
+  // engine that rides a held note's level can do so from here.
+  modParamsFlush();
 }
 
 // ── Mute / solo ────────────────────────────────────────────────────────────
@@ -41264,7 +41310,7 @@ function sqClearMuteSolo(){
   var led=document.getElementById('ft-ms-led');
   if(led && led.classList.contains('fx')){
    if(typeof fxHold!=='undefined' && fxHold && typeof fxToggleHold==='function') fxToggleHold();
-   if(typeof fxEngaged!=='undefined'){ fxEngaged=false; fxApplyAll(); }
+   if(typeof fxEngaged!=='undefined'){ fxEngaged=false; fxLiftTail=false; modParamsFlush(); }
    if(typeof fxSyncUI==='function') fxSyncUI();
    if(typeof showToast==='function') showToast('Released the mõdFX pad');
    if(typeof sqSyncMixIndicators==='function') sqSyncMixIndicators();
@@ -41391,13 +41437,17 @@ function sqInitFX(){
   // false, so these are dead weight on every buffer. Left built so sqApplyFX
   // still has something to park, but no longer wired into the master.
   SQMG.connect(sqDistNode);
+  // Parked once, here, where the nodes are built. The sequencer's start and
+  // every tempo change used to do it again from app code; with the toggles
+  // gone there is nothing for either to change.
+  sqApplyFX();
 }
 window._sqEnsureBus = sqInitFX;
 
 function sqApplyFX(){
   var c=sqCtx(); if(!c||!SQMG) return;
   sqRevGain.gain.setTargetAtTime(sqFxRev?.38:0,c.currentTime,.05);
-  var bpmNow=parseFloat(document.getElementById('bpm').value)||120;
+  var bpmNow=_wp('transport.bpm')||120;
   var dt=Math.min((60/bpmNow)*1.5,1.9);
   sqDelayNode.delayTime.setTargetAtTime(sqFxDel?dt:.001,c.currentTime,.05);
   sqDelayGain.gain.setTargetAtTime(sqFxDel?.28:0,c.currentTime,.05);
@@ -43689,7 +43739,6 @@ function sqStart(opts){
     // Also re-align arp and rhythm to same epoch if they're running
     if(arpOn) arpNextBeat=clockAlignTo(c, arpStepSec(), _alignLead());
     if(rhythmOn){ rhythmNextBeat=clockAlignTo(c, rhythmStepSec||clockStepSec(), _alignLead()); rhythmIdx=0; }
-    sqApplyFX();
     // Always kick clock so arp/bass scheduling runs alongside sequencer
     clearTimeout(clockTimer);tickClock();
     cancelAnimationFrame(sqRafID);sqRafID=requestAnimationFrame(sqDraw);
@@ -44596,12 +44645,6 @@ function sqWire(){
   // Build sq-mixer-panel inside tab (secondary, universal mixer is main)
   sqRenderMixer();
 
-  // BPM changes from Vibe also update sequencer's delay FX
-  var origOnBpm=onBpmInput;
-  onBpmInput=function(v){
-    origOnBpm(v);
-    if(sqCtx()&&SQMG)sqApplyFX();
-  };
 
   // Fixed transport Rhythm button: if we're on rhythm tab, toggle sequencer
   var ftRhy=document.getElementById('ft-rhy-btn');
@@ -48863,14 +48906,18 @@ window.mixSyncFx = function(){
 // end after Mute — a desk's mute is instant. Each bus is ramped to 0 in ~5 ms
 // (a click-free cut) and back to the level it was built with. Effect tails
 // already past the bus ring out, as on a desk.
+// Engine side (4.9.9.9.8): from its copy, mix.muteSolo, applied when it
+// changes. The app's sqSyncMixIndicators flushes it.
 function _mixGateBuses(){
  try{
   if(typeof _allPartBuses!=='function') return;
-  var B=_allPartBuses(), anySolo=sqAnySolo();
+  var MS=_wp('mix.muteSolo')||{}, M=MS.mute||{}, So=MS.solo||{};
+  var B=_allPartBuses(), anySolo=false;
+  for(var k in So) if(So[k]) anySolo=true;
   Object.keys(B).forEach(function(ch){
    var bus=B[ch]; if(!bus || !bus.gain || !bus.context) return;
    if(bus._mixBase==null) bus._mixBase = bus.gain.value;
-   var off = !!(window.sqMixMute && window.sqMixMute[ch]) || (anySolo && !(window.sqMixSolo && window.sqMixSolo[ch]));
+   var off = !!M[ch] || (anySolo && !So[ch]);
    var t=bus.context.currentTime, g=bus.gain;
    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
    g.setTargetAtTime(off ? 0 : bus._mixBase, t, 0.005);
@@ -48878,7 +48925,8 @@ function _mixGateBuses(){
  }catch(e){}
 }
 function sqSyncMixIndicators(){
- _mixGateBuses();
+ // Mute and solo reach the engine, which gates the buses (_mixGateBuses).
+ modParamsFlush();
  var anySolo=(typeof sqAnySolo==='function') && sqAnySolo();
  var anyMute=false;
  (window.MIX_CHANNELS||[]).forEach(function(ch){
@@ -50786,8 +50834,9 @@ function _fxDivIdx(v){
  return Math.max(0,Math.min(FX_DIVS.length-1,Math.round(n*(FX_DIVS.length-1))));
 }
 function _fxDivLabel(v){ return FX_DIVS[_fxDivIdx(v)].l; }
+// Engine side: the tempo is the engine's copy (transport.bpm), not the slider.
 function _fxDivSec(v){
- const bpm=parseFloat(document.getElementById('bpm')?.value)||100;
+ const bpm=_wp('transport.bpm')||100;
  return FX_DIVS[_fxDivIdx(v)].b * (60/bpm);
 }
 
@@ -51100,7 +51149,7 @@ try{ var _pf=parseInt(modStore.getItem('modo-fx-padflt'),10); if(_pf>=0&&_pf<=2)
 function fxSetPadFlt(m){
  fxPadFlt = (m==null ? (fxPadFlt+1)%3 : Math.max(0,Math.min(2,m|0)));
  try{ modStore.setItem('modo-fx-padflt', String(fxPadFlt)); }catch(e){}
- if(typeof fxApplyAll==='function') try{ fxApplyAll(); }catch(e){}
+ modParamsFlush();
  _fxSyncPadFltBtn();
 }
 function _fxSyncPadFltBtn(){
@@ -51138,6 +51187,8 @@ function _partVoice(ch){
 // The Sampler channel has no voice to ask about, and its ladder is the phrase
 // sampler's Filter+Drive (see psFx), so it always applies there.
 function synthFilterApplies(ch){ return ch==='sampler' || !!(SYNTH_FILTER_WAVES && SYNTH_FILTER_WAVES[_partVoice(ch)]); }
+// The same rule on the engine's copy of the part's voice (<part>.voice).
+function _fxEngFilterApplies(ch){ return ch==='sampler' || !!(SYNTH_FILTER_WAVES && SYNTH_FILTER_WAVES[_wp(ch+'.voice')]); }
 function _sfHz(v){ var hz=20*Math.pow(900, v<0?0:v>1?1:v); return hz>=1000 ? (hz/1000).toFixed(1)+'k' : Math.round(hz)+'Hz'; }
 // inline: one wrapping row, for the Accomp panels beside their other rows.
 function synthFilterBuild(host, ch, inline){
@@ -51183,10 +51234,8 @@ function synthFilterSet(ch, field, val){
   // Moving Cutoff or Resonance is asking for a filter.
   if(!(L.lmode>0)) L.lmode=1;
  }
- // The part's chain may not exist yet (the melody sequencer builds its bus the
- // first time it plays); inserting is idempotent.
- if(!fxChains[ch] && typeof fxInsertAll==='function') try{ fxInsertAll(); }catch(e){}
- fxApplyChannel(ch);
+ // The engine builds the part's chain if it has none yet (_webFxState).
+ modParamsFlush();
  synthFilterSync();
 }
 function synthFilterSync(){
@@ -51212,7 +51261,8 @@ function synthFilterVoiceChanged(){
  // yet. Nothing has been built to sync at that point anyway.
  if(!SYNTH_FILTER_PARTS) return;
  synthFilterSync();
- SYNTH_FILTER_PARTS.forEach(function(ch){ try{ if(fxChains[ch]) fxApplyChannel(ch); }catch(e){} });
+ // The new voice reaches the engine, which re-applies that part's chain.
+ modParamsFlush();
 }
 window.synthFilterSet=synthFilterSet; window.synthFilterVoiceChanged=synthFilterVoiceChanged;
 // The Shape drawers are moved into their popovers by sndPickInit; the block
@@ -51450,7 +51500,7 @@ function fxBuildChain(ctx, ch){
  // meets in `wet` before the output, so one gain sets how much of the chain
  // the part hears. The clean side of that mix is byp below: it is already
  // the part's own signal, untouched, landing on the same output.
- const wet=ctx.createGain(); wet.gain.value=_fxMix(ch);
+ const wet=ctx.createGain(); wet.gain.value=_fxMix(ch, true);
  wet.connect(out);
  postRing.connect(dry); dry.connect(wet);
  out.connect(dest);
@@ -51628,13 +51678,40 @@ function fxChannelsWired(){ return Array.from(_fxInserted); }
 // Sends are the floor; the pad overrides while engaged. A parameter with a
 // `send` reads its base from there, so latching reverb on the pad and dialling
 // it on the send row are the same number rather than two competing ones.
+//
+// This and everything the chains do below is the engine's half (4.9.9.9.8):
+// it reads the engine's copy of the whole mõdFX state — one param,
+// fx.modfx = {sends, pad, release} (see _fxAppState), sent through modEngine
+// like every other knob — and never the app's own fxSends, fxPadX/Y,
+// fxTargets, fxEngaged, fxPos, fxPadFlt or fxReleaseSec. The app changes
+// those and flushes; the engine applies what changed (_webFxState).
+//
+// One param rather than one per field, because a single gesture often moves
+// several (Clear resets the sends and lets go of the pad): applied field by
+// field, the chains would pass through a state that never existed — the new
+// sends under the old pad — and a branch can be built or plugged in on the
+// strength of it. The defaults are the app's own, for the moment before the
+// first snapshot.
+var _FX_PAD_IDLE = {x:'cutoff', y:'reso', targets:[], engaged:false, tail:false, pos:{x:0.5,y:0.5}, flt:0};
+var _FX_SENDS_IDLE = {rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0,mix:1};
+function _fxEng(){ return _wp('fx.modfx') || null; }
+function _fxEngPad(){ var F=_fxEng(); return (F && F.pad) || _FX_PAD_IDLE; }
+function _fxEngSends(ch){ var F=_fxEng(); return (F && F.sends && F.sends[ch]) || _FX_SENDS_IDLE; }
+function _fxEngRelease(){ var F=_fxEng(); return (F && F.release!=null) ? F.release : 0.42; }
+// What the app sends: its mõdFX state, whole.
+function _fxAppState(){
+ return { sends: fxSends,
+          pad: {x:fxPadX, y:fxPadY, targets:fxTargets, engaged:fxEngaged, tail:fxLiftTail, pos:fxPos, flt:fxPadFlt},
+          release: fxReleaseSec };
+}
 function fxValue(ch, key){
  const p=FX_PARAMS[key]; if(!p) return 0;
- if(fxEngaged && fxTargets.indexOf(ch)>=0){
-  if(key===fxPadX) return fxPos.x;
-  if(key===fxPadY) return fxPos.y;
+ const P=_fxEngPad();
+ if(P.engaged && P.targets.indexOf(ch)>=0){
+  if(key===P.x) return P.pos.x;
+  if(key===P.y) return P.pos.y;
  }
- if(p.send) return fxSends[ch][p.send];
+ if(p.send) return _fxEngSends(ch)[p.send];
  return p.base;
 }
 
@@ -51656,7 +51733,13 @@ function fxSetRelease(v){
  try{ modStore.setItem('modo-fx-release', String(fxReleaseSec)); }catch(e){}
 }
 // True while the pad has just been let go and the tail is still running.
+// The engine's own: it starts when fx.pad goes from engaged to not with the
+// lift's tail asked for (fxLiftTail), and ends on its own timer.
 let _fxReleasing = false;
+// The app's: whether the pad's last let-go was a lift, which glides home over
+// the release, rather than a Clear, an Escape or Hold switched off, which
+// do not. Sent in fx.pad as `tail`.
+var fxLiftTail = false;
 
 // Is the pad actually driving this parameter on this channel, right now?
 // The same condition fxValue uses to decide whether to return the pad's
@@ -51670,7 +51753,8 @@ let _fxReleasing = false;
 // only", so choosing that patch cut the lows and highs out of every targeted
 // channel and left them cut with nothing held.
 function _fxPadDriving(ch, key){
- return fxEngaged && fxTargets.indexOf(ch)>=0 && (fxPadX===key || fxPadY===key);
+ const P=_fxEngPad();
+ return !!P.engaged && P.targets.indexOf(ch)>=0 && (P.x===key || P.y===key);
 }
 
 // ── An idle branch leaves the graph ──────────────────────────────────────
@@ -51725,7 +51809,7 @@ function _fxSetActive(chain, on, now){
   chain.io.gain.cancelScheduledValues(t); chain.io.gain.setValueAtTime(0, t);
   chain.io.gain.setTargetAtTime(1, t, 0.005);
   // Not to zero: with the mix below 100% the bypass IS the clean half.
-  chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(1-_fxMix(chain.ch), t, 0.005);
+  chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(1-_fxMix(chain.ch, true), t, 0.005);
   chain.active=true;
   return;
  }
@@ -51751,10 +51835,11 @@ function _fxSetActive(chain, on, now){
 // 250 ms while the pad is held brings a part that starts mid-gesture in.
 var _fxHearAn = {}, _fxHeardAt = {}, _fxHearT = null, _fxHearBuf = null;
 function _fxHearPoll(){
- if(!(fxEngaged || _fxReleasing)){ clearInterval(_fxHearT); _fxHearT=null; return; }
+ var P = _fxEngPad();
+ if(!(P.engaged || _fxReleasing)){ clearInterval(_fxHearT); _fxHearT=null; return; }
  var buses = (typeof _allPartBuses==='function') ? _allPartBuses() : {};
  var now = performance.now();
- fxTargets.forEach(function(ch){
+ P.targets.forEach(function(ch){
   var bus = buses[ch]; if(!bus || !bus.context) return;
   var an = _fxHearAn[ch];
   if(!an || an.context!==bus.context){
@@ -51771,19 +51856,19 @@ function _fxHearPoll(){
  });
 }
 function _fxPartHeard(ch){
- if(!_fxHearT && (fxEngaged || _fxReleasing)){ _fxHearT = setInterval(_fxHearPoll, 250); _fxHearPoll(); }
+ if(!_fxHearT && (_fxEngPad().engaged || _fxReleasing)){ _fxHearT = setInterval(_fxHearPoll, 250); _fxHearPoll(); }
  // No reading yet (the poll has not run, or there is no bus to read): assume
  // it is sounding — engaging the pad must never make something go dry.
  if(!_fxHearAn[ch]) return true;
  return (performance.now() - (_fxHeardAt[ch]||0)) < 1500;
 }
 function _fxChainIdle(ch, chain){
- const L=fxSends[ch]||{};
+ const L=_fxEngSends(ch), P=_fxEngPad();
  // A part mixed all the way out hears none of the chain, so the chain has
  // nothing to do for it — out of the graph, the same as XY off used to be.
- if(_fxMix(ch) < 0.005) return true;
+ if(_fxMix(ch, true) < 0.005) return true;
  if(L.rev>0.0005 || L.dly>0.0005 || L.drv>0.0005 || L.lmode>0) return false;
- if(fxTargets.indexOf(ch)>=0 && (fxEngaged || _fxReleasing) && _fxPartHeard(ch)) return false;
+ if(P.targets.indexOf(ch)>=0 && (P.engaged || _fxReleasing) && _fxPartHeard(ch)) return false;
  const live=chain._live||{}, rel=chain._relT||{};
  for(const k in live) if(live[k]) return false;
  for(const k in rel) if(rel[k]) return false;
@@ -51798,8 +51883,9 @@ function _fxIdleCheck(ch){
   clearTimeout(chain._idleT); chain._idleT=null;
   if(!chain.active) _fxSetActive(chain, true);
   // Still settling (a tail, a release): look again when it may be done.
-  if(chain.active && !(fxSends[ch].rev>0.0005 || fxSends[ch].dly>0.0005 || fxSends[ch].drv>0.0005 || fxSends[ch].lmode>0)
-     && !(fxEngaged && fxTargets.indexOf(ch)>=0)){
+  const L=_fxEngSends(ch), P=_fxEngPad();
+  if(chain.active && !(L.rev>0.0005 || L.dly>0.0005 || L.drv>0.0005 || L.lmode>0)
+     && !(P.engaged && P.targets.indexOf(ch)>=0)){
    chain._idleT=setTimeout(function(){ chain._idleT=null; _fxIdleCheck(ch); }, 1000);
   }
   return;
@@ -51860,7 +51946,8 @@ function fxApplyChannel(ch){
  _fxApplyMix(ch);
  // setTargetAtTime reaches ~95% in three time constants, so the tau is a
  // third of the release the user asked for.
- const S = _fxReleasing ? Math.max(0.02, fxReleaseSec/3) : 0.02;
+ const P=_fxEngPad(), rel=_fxEngRelease();
+ const S = _fxReleasing ? Math.max(0.02, rel/3) : 0.02;
  const v=k=>fxValue(ch,k);
 
  // A ganged axis owns both the frequency and the Q of the filter it drives;
@@ -51873,7 +51960,7 @@ function fxApplyChannel(ch){
  // is the ladder's to make, and the biquads open right up so the two are not
  // stacked. Only while the pad is actually driving the lowpass here: at rest
  // the channel's own strip filter is back in charge, same as the sends.
- const padLad = fxPadFlt>0 && !!(chain.worklet && chain.worklet.parameters.get('fltmode'))
+ const padLad = P.flt>0 && !!(chain.worklet && chain.worklet.parameters.get('fltmode'))
    && (lpOn || _fxPadDriving(ch,'cutoff') || _fxPadDriving(ch,'reso'));
  const lpSweepHz=_fxFiltHz(lpV);
  const lpHz=padLad ? _fxFiltHz(1) : lpSweepHz, hpHz=_fxHpHz(hpV);
@@ -51946,7 +52033,7 @@ function fxApplyChannel(ch){
    chain.gatePat.loopStart = pi*span;
    chain.gatePat.loopEnd   = (pi+1)*span;
    // One loop of the buffer is one bar, whatever the tempo says a bar is.
-   const bpm=parseFloat(document.getElementById('bpm')?.value)||100;
+   const bpm=_wp('transport.bpm')||100;
    const barSec=(60/bpm)*4;
    try{ chain.gatePat.playbackRate.setTargetAtTime(span/barSec, t, 0.05); }catch(e){}
   }
@@ -52000,18 +52087,18 @@ function fxApplyChannel(ch){
   if(pr.get('fltmode')){
    // The channel's own filter is the floor; an engaged pad axis overrides it
    // on the channels the pad is pointed at, exactly as the sends behave.
-   const L=fxSends[ch]||{};
+   const L=_fxEngSends(ch);
    if(padLad){
     // The same frequency the biquad would have gone to, re-expressed on the
     // ladder's 20Hz·900^x travel, so switching character does not move the
     // sweep. The ganged resonance profile is scaled to stay under the
     // ladder's own self-oscillation (k≈4 Moog, ≈2 MS-20).
-    pr.get('fltmode').setValueAtTime(fxPadFlt, t);
+    pr.get('fltmode').setValueAtTime(P.flt, t);
     pr.get('fltcut').setValueAtTime(Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))), t);
     pr.get('fltres').setValueAtTime(lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95, t);
    } else {
     // The part's own filter only runs while it plays a synth voice.
-    pr.get('fltmode').setValueAtTime(synthFilterApplies(ch) ? (L.lmode||0) : 0, t);
+    pr.get('fltmode').setValueAtTime(_fxEngFilterApplies(ch) ? (L.lmode||0) : 0, t);
     pr.get('fltcut').setValueAtTime(_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut), t);
     pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
    }
@@ -52038,7 +52125,7 @@ function fxApplyChannel(ch){
  // number reaches zero would truncate the glide and click.
  // Three time constants of the release glide is 95%, which still leaves a
  // -30dB step at the moment the edge goes. Nine is -78dB, i.e. nothing.
- const settle=Math.max(0.5, fxReleaseSec*3+0.2);
+ const settle=Math.max(0.5, rel*3+0.2);
  const revWant=revAmt>0.0005;
  if(revWant) _fxNeedRev(chain);
  _fxGateBranch(chain,'rev',chain.revRet,chain.wet, revWant && !!chain.rev,
@@ -52058,6 +52145,60 @@ function fxApplyChannel(ch){
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
 
+// ── A change of mõdFX state arriving at the engine ──────────────────────
+// prev is the state the chains were last applied with. Applies exactly the
+// channels the app used to apply by hand: a move of the pad and nothing else
+// re-aims the channels under it (fxSetPos); a send or a mix moved re-applies
+// that channel (fxSetSend, fxSetMix, the synth filter); anything else about
+// the pad — engaged, the axes, the targets, its filter — every chain. The
+// release on its own applies nothing: it is read at the next let-go.
+function _webFxState(prev, F){
+ const P0=(prev && prev.pad) || _FX_PAD_IDLE, P=(F && F.pad) || _FX_PAD_IDLE;
+ const S0=(prev && prev.sends) || {}, S=(F && F.sends) || {};
+ // The release tail is the engine's: it starts when the pad is let go by a
+ // lift (tail), lasts the release, and the next apply after it is back to
+ // normal smoothing. The timer is not cancelled by a re-touch, as it never was.
+ if(P.engaged) _fxReleasing=false;
+ else if(P0.engaged){
+  const rel=_fxEngRelease();
+  _fxReleasing = !!P.tail && rel>0.02;
+  if(_fxReleasing) setTimeout(()=>{ _fxReleasing=false; }, Math.round(rel*1000)+40);
+ }
+ const J=JSON.stringify;
+ const padRest=p=>J([p.engaged, p.x, p.y, p.targets, p.flt]);
+ const changed=FX_CHANNELS.filter(ch=>J(S0[ch]||null)!==J(S[ch]||null));
+ // A synth filter asked for on a part whose chain is not built yet (the
+ // melody sequencer builds its bus the first time it plays): inserting is
+ // idempotent, and applies every chain when it is done.
+ const want=changed.filter(ch=>{
+  const a=S0[ch]||{}, b=S[ch]||{};
+  return !fxChains[ch] && (a.lmode!==b.lmode || a.lcut!==b.lcut || a.lres!==b.lres || a.ldrv!==b.ldrv);
+ });
+ if(want.length) fxInsertAll();
+ if(padRest(P0)!==padRest(P)){ fxApplyAll(); return; }
+ const list=(J(P0.pos)!==J(P.pos)) ? P.targets.slice() : [];
+ changed.forEach(ch=>{ if(list.indexOf(ch)<0) list.push(ch); });
+ list.forEach(fxApplyChannel);
+}
+// Standing state that shapes what is already sounding, applied the moment
+// it arrives rather than read at the next note (4.9.9.9.8): mõdFX, the
+// master bus, the master drive, mute and solo at the part buses, the chord
+// reverb's size, and a part's voice (whether its synth filter runs). The
+// rest of the store waits for the next voice, as it always has. Reached from
+// _webEngineSend after the value is stored; a flush during start-up can get
+// here before the chains' own declarations have run, and there is nothing
+// to apply to yet then.
+function _webLiveParam(part, name, prev, value){
+ try{
+  if(part==='fx' && name==='modfx') return _webFxState(prev, value);
+  if(part==='fx' && name==='drive') return _webApplyDrive();
+  if(part==='master' && name!=='tune') return _webMasterApply();
+  if(part==='mix' && name==='muteSolo') return _mixGateBuses();
+  if(part==='chord' && name==='reverbSize') return _webReverbSize();
+  if(name==='voice' && SYNTH_FILTER_PARTS.indexOf(part)>=0 && fxChains[part]) return fxApplyChannel(part);
+ }catch(e){}
+}
+
 // ── Public control surface ──
 // ── Mix: how much of mõdFX each part takes ──────────────────────────────
 // The chain is an insert, so a part sent through it was 100% processed: a
@@ -52067,13 +52208,15 @@ function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
 // same signal and at rest the chain is transparent, so a linear blend stays
 // at unity wherever the slider sits. Saved with the sends; missing (older
 // setups) reads as 100%, which is what they always were.
-function _fxMix(ch){
- var L=fxSends[ch]; var m=L && L.mix;
+// eng: the engine's copy (fx.sends) rather than the app's — the chains pass
+// it, the strips' readouts do not.
+function _fxMix(ch, eng){
+ var L=eng ? _fxEngSends(ch) : fxSends[ch]; var m=L && L.mix;
  return (m==null || !isFinite(m)) ? 1 : Math.max(0, Math.min(1, m));
 }
 function _fxApplyMix(ch){
  var chain=fxChains[ch]; if(!chain || !chain.wet) return;
- var t=chain.ctx.currentTime, m=_fxMix(ch);
+ var t=chain.ctx.currentTime, m=_fxMix(ch, true);
  chain.wet.gain.setTargetAtTime(m, t, 0.015);
  // Only while the chain is in: out of it, byp is the whole signal at 1.
  if(chain.active && chain.byp){ chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(1-m, t, 0.015); }
@@ -52083,7 +52226,7 @@ function fxSetMix(ch, amount){
  fxSends[ch].mix=Math.max(0,Math.min(1,+amount||0));
  // Through the full apply, not just the two gains: a mix of 0 lets the chain
  // leave the graph, and raising it again has to plug the chain back in.
- if(fxChains[ch]) fxApplyChannel(ch); else _fxApplyMix(ch);
+ modParamsFlush();
  if(typeof fxSyncMixUI==='function') fxSyncMixUI();
  if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
 }
@@ -52091,7 +52234,7 @@ window.fxSetMix = fxSetMix;
 function fxSetSend(ch, which, amount){
  if(!fxSends[ch]) return;
  fxSends[ch][which]=Math.max(0,Math.min(1,amount));
- fxApplyChannel(ch);
+ modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
 }
 function fxSetPos(x,y){
@@ -52100,7 +52243,7 @@ function fxSetPos(x,y){
  if(!isFinite(x)||!isFinite(y)) return;
  fxPos.x=Math.max(0,Math.min(1,x));
  fxPos.y=Math.max(0,Math.min(1,y));
- fxTargets.forEach(fxApplyChannel);
+ modParamsFlush();
  // Every move is a frame while the recorder is armed — including the ones
  // that come from playback, which is why fxMotionCapture no-ops unless
  // recording is actually on.
@@ -52112,8 +52255,10 @@ function fxSetPos(x,y){
 function fxEngage(on){
  // Hold keeps the last position live after you lift, which is the difference
  // between a stab and a setting.
- if(on){ fxEngaged=true; _fxReleasing=false; }
- else if(!fxHold){ fxEngaged=false; _fxReleasing = fxReleaseSec>0.02; }
+ // The release tail itself is the engine's (_webFxState); the app says only
+ // that this let-go was a lift.
+ if(on){ fxEngaged=true; fxLiftTail=false; }
+ else if(!fxHold){ fxEngaged=false; fxLiftTail=true; }
  // The clip sounds while you are TOUCHING the pad, and that is the whole
  // rule. Hold parks the parameters so the next touch starts from where you
  // left off; it does not keep the clip running.
@@ -52126,10 +52271,7 @@ function fxEngage(on){
  if(typeof fxSmpOn==='function' && fxSmpOn()){
   if(on) fxSmpStart(); else fxSmpStop();
  }
- fxApplyAll();
- // The tail is a one-shot: the next application is back to normal smoothing,
- // or a parameter moved during the tail would inherit the slow glide.
- if(_fxReleasing) setTimeout(()=>{ _fxReleasing=false; }, Math.round(fxReleaseSec*1000)+40);
+ modParamsFlush();
  if(typeof fxPaintPad==='function') fxPaintPad();
  // The readouts on every tab are how you find out a channel is being held
  // under an effect. They were only refreshed by fxSyncUI, so a held pad
@@ -52147,14 +52289,14 @@ function fxRelease(){
 function fxSetAxis(which, key){
  if(!FX_PARAMS[key]) return;
  if(which==='x') fxPadX=key; else fxPadY=key;
- fxApplyAll();
+ modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
 }
 function fxToggleTarget(ch){
  const i=fxTargets.indexOf(ch);
  if(i>=0){ if(fxTargets.length>1) fxTargets.splice(i,1); }
  else fxTargets.push(ch);
- fxApplyAll();
+ modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
 }
 function fxClearAll(){
@@ -52166,14 +52308,14 @@ function fxClearAll(){
   // The mix stays: it is how much of mõdFX this part takes, not an effect.
   fxSends[ch]={rev:0,dly:0,drv:0,lmode:o.lmode||0,lcut:(o.lcut==null?1:o.lcut),lres:o.lres||0,ldrv:o.ldrv||0,mix:(o.mix==null?1:o.mix)};
  });
- fxEngaged=false; fxHold=false; fxPos={x:0.5,y:0.5};
+ fxEngaged=false; fxLiftTail=false; fxHold=false; fxPos={x:0.5,y:0.5};
  // Clear means everything, including the clip the pad is holding — leaving it
  // loaded made "no sample" a state you could not get back to. The clip itself
  // stays in the library; fxSmpEject offers the Undo.
  fxSmpStop();
  if(typeof fxSmpLoaded==='function' && fxSmpLoaded()) fxSmpEject();
  fxSmpMuted=false;
- fxApplyAll();
+ modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
 }
 // Does this channel have anything going on? Drives every tab's readout.
@@ -52224,7 +52366,7 @@ function fxRestoreState(st){
  if(!fxTargets.length) fxTargets=FX_CHANNELS.slice();
  fxHold=!!st.hold;
  if(st.pos) fxPos={x:+st.pos.x||0.5, y:+st.pos.y||0.5};
- fxEngaged=!!st.engaged && fxHold;
+ fxEngaged=!!st.engaged && fxHold; fxLiftTail=false;
  // Merge rather than replace: a shared link should not delete presets you
  // made yourself. Anything already saved under the same name is left alone.
  if(Array.isArray(st.presets)){
@@ -52242,7 +52384,7 @@ function fxRestoreState(st){
  } else {
   fxMotion.frames=[]; fxMotion.loopSec=0;
  }
- fxApplyAll();
+ modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
  return true;
 }
@@ -52345,7 +52487,7 @@ function fxApplyPreset(i){
  // shared link can carry someone else's presets, so ignoring the field rather
  // than trusting it also means an imported patch cannot reach into this
  // rig's routing.
- fxApplyAll(); fxSyncUI();
+ modParamsFlush(); fxSyncUI();
  showToast('mõdFX: '+p.name);
 }
 function fxSaveUserPreset(){
@@ -52456,7 +52598,7 @@ function fxMotionPlay(){
  if(fxMotion.playing){ fxMotionStopPlaying(); return; }
  if(fxMotion.frames.length<2){ showToast('Record a move first'); return; }
  fxMotion.playing=true; fxMotion.t0=_fxNowSec();
- fxEngaged=true;
+ fxEngaged=true; fxLiftTail=false;
  const tick=()=>{
   if(!fxMotion.playing) return;
   const phase=((_fxNowSec()-fxMotion.t0)%fxMotion.loopSec);
@@ -52481,7 +52623,7 @@ function fxMotionPlay(){
   fxSetPos(ax+(bx-ax)*k, ay+(by-ay)*k);
   fxMotion.raf=requestAnimationFrame(tick);
  };
- fxApplyAll(); fxSyncUI(); tick();
+ modParamsFlush(); fxSyncUI(); tick();
  showToast('Looping the recorded move');
 }
 function fxMotionStopPlaying(){
@@ -52490,7 +52632,7 @@ function fxMotionStopPlaying(){
  if(!fxMotion.playing) return;
  fxMotion.playing=false;
  if(!fxHold) fxEngaged=false;
- fxApplyAll(); fxSyncUI();
+ modParamsFlush(); fxSyncUI();
 }
 function fxMotionClear(){
  fxMotionStopPlaying();
@@ -52631,7 +52773,7 @@ function fxPatchMount(){
 function fxToggleHold(){
  fxHold=!fxHold;
  if(!fxHold){ fxEngaged=false; fxSmpStop(); }
- fxApplyAll();
+ modParamsFlush();
  fxSyncUI();
  showToast(fxHold ? 'Hold on — the pad stays where you leave it'
                   : 'Hold off — the pad springs back on release');
@@ -53249,7 +53391,7 @@ function fxWirePad(){
   let dx=0,dy=0;
   if(e.key==='ArrowLeft')dx=-step; else if(e.key==='ArrowRight')dx=step;
   else if(e.key==='ArrowUp')dy=step; else if(e.key==='ArrowDown')dy=-step;
-  else if(e.key==='Escape'){ fxEngaged=false; fxApplyAll(); fxPaintPad(); fxSyncAllReadouts(); return; }
+  else if(e.key==='Escape'){ fxEngaged=false; fxLiftTail=false; modParamsFlush(); fxPaintPad(); fxSyncAllReadouts(); return; }
   else if(e.key===' '||e.key==='Enter'){ e.preventDefault(); fxEngage(!fxEngaged); fxSyncAllReadouts(); return; }
   else return;
   e.preventDefault(); e.stopPropagation();
@@ -53292,7 +53434,7 @@ function fxOpenPanel(focusCh){
  switchTab('perform');
  if(typeof setPerformMode==='function') setPerformMode('fx');
  if(focusCh && fxTargets.indexOf(focusCh)<0) fxTargets=[focusCh];
- fxApplyAll(); fxSyncUI();
+ modParamsFlush(); fxSyncUI();
  const p=document.getElementById('modfx-panel');
  if(p){ p.scrollIntoView({behavior:'smooth',block:'center'}); p.classList.add('panel-flash');
         setTimeout(()=>p.classList.remove('panel-flash'),1400); }

@@ -584,14 +584,14 @@ through it (and, since 4.9.9.9.7, every mõdSynth edit):
   plays a buffer the user recorded or loaded — plus time-stretched and
   reversed renders of it — which a native engine would first have to be
   given. See the proposal below.
-- **The knobs.** Attack, release, voice, filter, reverb, the mixer, mõdFX,
-  a drum lane's Shape: every engine function still reads them from the
-  sliders or app state. A native engine needs them as `param` messages
-  before it can own a part. This is the next piece of the door, and the
-  largest.
 - **Bus preparation** called from app code (`sqInitFX`, `sqEnsureNoise`,
-  `mlMG`, `blMG` before a preview). They build buses rather than sound,
-  but they are Web Audio reached from outside the engine.
+  `mlMG`, `blMG` before a preview, `fxInsertAll` when the mõdFX panel or a
+  synth filter first appears, `buildReverb` before a recording). They build
+  buses rather than sound, but they are Web Audio reached from outside the
+  engine.
+
+The knobs are through (4.9.9.9.4–4.9.9.9.8): every one is a `param`, and
+the live ones are applied the moment they move — see step 4 below.
 
 ### Knobs and samples (agreed; steps 1–2 landed in 4.9.9.9.4–4.9.9.9.5)
 
@@ -759,9 +759,67 @@ every `oninput`.
    One fix: a key tapped on the panel before its engine had finished
    loading started its note after the release had already gone, so it
    hung. Measured on main: `on 60` and no `off`; now nothing starts.
-4. The mixer, mõdFX, the reverbs and the master bus, as one part (`mix`,
-   `fx`, `master`) each — they move native together, last, as already
-   planned.
+4. **Done (4.9.9.9.8): the live controls.** Measured first, by trapping
+   every write to the audio graph (a parameter, a connection, a node, a
+   curve, a worklet message) made outside the engine — outside `send`, or
+   a timer or callback the engine started — while a probe moved every
+   slider, select and toggle in the page, every mõdFX send and mix, the
+   pad through all 24 patches, Hold, Clear, the synth filters, mute and
+   solo, the master bus and the drive. On main: 53,821 such writes, from
+   six places — the mõdFX chains (`fxApplyChannel`, from fifteen app
+   functions), mute and solo gating the part buses (`_mixGateBuses`), the
+   master drive (`applyDrive`), the master bus (`applyMasterBus`), the old
+   drum-bus effects' reset on every tempo change (`sqApplyFX`), and the
+   chord reverb rebuilt when its size is let go. On this build: none.
+
+   Now each is state the app sends and the engine applies on arrival
+   (`_webLiveParam`), not at the next note:
+
+   | param | what | the engine does |
+   |---|---|---|
+   | `fx.modfx` | the whole mõdFX state: every part's sends, mix and synth filter, the pad (axes, targets, engaged, position, filter character, whether the let-go was a lift) and the release | re-applies exactly the chains the app used to: the targets for a pad move, the part for a send, all for anything else |
+   | `master.on` `.vol` `.comp` `.rev` | the master bus | sets the bus |
+   | `fx.drive` | the master drive | redraws the curve |
+   | `mix.muteSolo` | mute and solo, together | gates each part's bus, so a held note obeys |
+   | `mix.<part>` | each fader | stored; the web engine applies it per note, as it always has, and a native one can ride a held note |
+   | `chord.reverbSize` | as last committed | rebuilds the reverb |
+   | `<part>.voice` | (already a param) | re-applies the part's chain, which decides whether its synth filter runs |
+
+   mõdFX is one param, not one per field, because a gesture often moves
+   several fields at once (Clear resets the sends and lets go of the pad).
+   Applied one field at a time, the chains would pass through a state that
+   never existed, the new sends under the old pad, and a branch could be
+   built or plugged in because of it. Mute and solo are one param for the
+   same reason. The release tail after a lift is the engine's own now: it
+   starts when the pad goes from engaged to not, with a lift's tail asked
+   for, and ends on its own timer. The app says only whether that let-go
+   was a lift (`tail`), so Clear, Escape and Hold-off stay as instant as
+   they were. The store is filled before the first bus is built
+   (`unlockAudio` flushes first), and anything built before it has arrived
+   falls back to the app's own defaults (`_wpd`).
+
+   Verified with a new scenario, 243 steps of mõdFX, mute and solo, the
+   master bus, the drive, the reverb size and the tempo, with the chains'
+   own timers (branch gates, idle checks, the hear poll, the release tail)
+   run on the frozen clock. The traces are not equal line for line: main
+   re-applied whole chains and re-gated every bus where nothing had
+   changed (every pad move re-gated all eight buses at their current
+   level). So the check is audible equivalence. Every parameter's
+   automation is replayed (set, target, ramps, cancel) and the two builds'
+   value curves are compared at every event and along every glide; the
+   connection graph is compared after every step; and so are every node's
+   curve, type and buffer. Result: all 960 parameters identical, the graph
+   identical after all 243 steps, every curve identical. The two
+   exceptions are dead nodes, the old drum bus's delay and distortion
+   (connected to nothing that sounds), which are now parked once when they
+   are built instead of on the sequencer's first start.
+
+   The scramble covers these too. During every engine call and every
+   engine timer, the app's mõdFX state, master, drive, mute and solo, the
+   reverb-size and tempo sliders were all set to something else (809
+   scrambled calls), and the output was identical. As a control, the same
+   scramble on a copy with one engine read put back on the app (the pad's
+   position) changed 102 parameters.
 
 **Samples.** The bundled instruments (`samples/`) are files in the app, so
 a native engine loads them itself, by name; nothing crosses the bridge.
@@ -863,8 +921,9 @@ unchanged.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. Every part is through (4.9.9.6–4.9.9.9.3); the sampler pads and
-   the knobs (`param`) remain, proposed below. The precondition for native audio, so it goes first now that
+   engine. Every part is through (4.9.9.6–4.9.9.9.3), and every knob,
+   live controls included (4.9.9.9.4–4.9.9.9.8); the sampler pads remain,
+   proposed below. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
