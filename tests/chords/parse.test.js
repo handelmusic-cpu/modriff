@@ -157,12 +157,21 @@ APP.forEach(([ext, q, t7, sym]) => {
   ok(e.vel === 0.9 && e.at === 1.25 && e.dur === 0.5 && e.part === 'chord', 'timing and part carried');
   ok(JSON.stringify(JSON.parse(JSON.stringify(e))) === JSON.stringify(e), 'survives a JSON round trip (the bridge)');
   const held = M.chordEngineEvent(M.parseChordSymbol('Am7'), 57);
-  ok(held.dur === null && held.vel === 0.8 && held.at === 0, 'defaults: held, 0.8, now');
+  ok(held.dur === null && held.vel === 0.8 && held.at === null, 'defaults: held, 0.8, now (null)');
+  ok(held.root === 57 && e.root === 60, 'the root travels as a MIDI note, for the Sub');
   ok(held.id !== e.id, 'each message has its own id, so a release can name it');
   const voiced = M.chordEngineEvent(M.parseChordSymbol('Cmaj7'), 60, { ivs: [-1, 4, 7, 12] });
   ok(voiced.notes.join(',') === '59,64,67,72', 'already-voiced intervals win over the raw set');
   const low = M.chordEngineEvent(M.parseChordSymbol('C/G'), 60, { ivs: [-5, 0, 4] });
   ok(low.bass < Math.min(...low.notes), 'the bass stays under a voicing that reaches below the root');
+  // Smart voice leading can put a chord tone under the root (E minor as
+  // E G B with the B dropped). That order is the strum order, so it is kept.
+  const led = M.chordEngineEvent({ root: 4, ivs: [0, 3, 7], bass: null }, 64, { ivs: [0, 3, -5] });
+  ok(led.notes.join(',') === '64,67,59', 'notes keep the order they are struck in: ' + led.notes);
+  // A slash bass goes in the octave directly under the lowest tone, wherever
+  // the voicing sits (playChord's rule): C/E voiced up at 72 gets 64, not 52.
+  const high = M.chordEngineEvent(M.parseChordSymbol('C/E'), 60, { ivs: [12, 16, 19] });
+  ok(high.bass === 64, 'slash bass directly under a high voicing: ' + high.bass);
   const edge = M.chordEngineEvent(M.parseChordSymbol('C13'), 120);
   ok(edge.notes.every(n => n >= 0 && n <= 127 && Number.isInteger(n)), 'notes clamp to MIDI range');
 }
