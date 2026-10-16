@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.2</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.3</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.3</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.2';
+const MODRIFF_VERSION = '4.9.9.9.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9586,8 +9586,8 @@ window._genQueuePaint = function(part, frac, landed){
 // single place every part's sound passes through. Chords, the live melody
 // ('mel': the strip, the keys, MIDI), the melody sequencer ('melgen'), the
 // bass, the arp and the drum kit and Aux ('drum', 'auxperc') go through it
-// now. Still outside: the legacy Rhythm patterns, the metronome click and the
-// sampler pads.
+// now, and so do the legacy Rhythm patterns (kit 'rhythm/…') and the
+// metronome ('click'). Still outside: the sampler pads.
 //
 //   send(msg)   msg is one of (v is always 1):
 //     {kind:'chord',   part, id, root, notes:[midi…], bass, vel, at, dur}
@@ -9628,6 +9628,10 @@ window._genQueuePaint = function(part, frac, landed){
 //                      kit `kit` (an SQM key), pitch in semitones, dyn how
 //                      hard this stroke is within its step (null = full).
 //                      It rings out on its own; a choke group cuts it.
+//                      kit 'rhythm/<name>' is the legacy Rhythm patterns'
+//                      three drums (lane 0 kick, 1 snare, 2 hihat).
+//     {kind:'hit',     part:'click', id, accent, at}
+//                      the metronome; accent on the bar line.
 //     {kind:'release', part:'bass', at}
 //                      let go of the bass voice (it has only one), as a key
 //                      played by hand comes up.
@@ -20844,7 +20848,9 @@ function _webEngineSend(msg){
  }
  if(msg && msg.v === 1 && part === 'melgen' && kind === 'note') return window._webMelgenNote(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'note') return window._webBassNote(msg);
+ if(msg && msg.v === 1 && part === 'drum' && kind === 'hit' && typeof msg.kit === 'string' && msg.kit.indexOf('rhythm/') === 0) return _webRhythmHit(msg);
  if(msg && msg.v === 1 && (part === 'drum' || part === 'auxperc') && kind === 'hit') return window._webDrumHit(msg);
+ if(msg && msg.v === 1 && part === 'click' && kind === 'hit') return _webClick(msg);
  if(msg && msg.v === 1 && part === 'arp' && kind === 'note') return _webArpNote(msg);
  if(msg && msg.v === 1 && part === 'arp' && kind === 'chord') return _webArpBlock(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'release') return window._webBassRelease(msg);
@@ -23152,20 +23158,27 @@ function scheduleMetronome(){
    // third beat in 3/4, every seventh in 7/8. It was every fourth, always.
    const beatNum=Math.round((t-CLOCK_EPOCH)/bSec);
    const isDownbeat=(((beatNum%METER.beats)+METER.beats)%METER.beats)===0;
-   const freq=isDownbeat?1760:880;
-   const vol=isDownbeat?0.35:0.18;
-   const g=ctx.createGain();
-   g.gain.setValueAtTime(vol,t);
-   g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
-   g.connect(masterDest(ctx));
-   const osc=ctx.createOscillator();
-   osc.type='sine'; osc.frequency.value=freq;
-   osc.connect(g);
-   osc.start(t); osc.stop(t+0.04);
-   reapVoice([osc],[g],0.05);
+   window.modEngine.send({v: 1, kind: 'hit', part: 'click', id: ++_clickSeq, accent: isDownbeat, at: t});
   }
   metroNextBeat += bSec;
  }
+}
+var _clickSeq = 0;
+// The Web Audio engine's click: high and louder on the bar line.
+function _webClick(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const t=msg.at, isDownbeat=msg.accent;
+ const freq=isDownbeat?1760:880;
+ const vol=isDownbeat?0.35:0.18;
+ const g=ctx.createGain();
+ g.gain.setValueAtTime(vol,t);
+ g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
+ g.connect(masterDest(ctx));
+ const osc=ctx.createOscillator();
+ osc.type='sine'; osc.frequency.value=freq;
+ osc.connect(g);
+ osc.start(t); osc.stop(t+0.04);
+ reapVoice([osc],[g],0.05);
 }
 
 // One scheduling horizon, computed once per tick and shared by every engine.
@@ -23584,8 +23597,19 @@ function _drumNoiseSrc(ctx,t,len){
  src.stop(t+len);
  return src;
 }
+// The legacy Rhythm patterns' three drums — a hit like the kit's, from a
+// kit family of its own: kit 'rhythm/<drumKit>', lane 0 kick, 1 snare, 2 hihat.
+// Not through the drum sequencer's engine, so not gated on its bus either.
+var RHYTHM_LANES = ['kick', 'snare', 'hihat'], _rhyHitSeq = 0;
 function scheduleDrum(type,t){
  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
+ if(!window.modEngine.ready()) return;
+ window.modEngine.send({v: 1, kind: 'hit', part: 'drum', id: ++_rhyHitSeq, kit: 'rhythm/'+drumKit,
+                        lane: RHYTHM_LANES.indexOf(type), vel: 1, accent: false, pitch: 0, dyn: null, at: t});
+}
+// The Web Audio engine's legacy Rhythm drum.
+function _webRhythmHit(msg){
+ const type=RHYTHM_LANES[msg.lane], t=msg.at;
  const ctx=getCtx(); if(!ctx) return;
  const dest=masterDest(ctx);
  const rv=_cmx('drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
@@ -23594,7 +23618,7 @@ function scheduleDrum(type,t){
  // throws — which would abort the rest of that voice's scheduling and could
  // leave a source running with no envelope to shut it off.
  if(!(rv>0)) return;
- const kit=drumKit;
+ const kit=msg.kit.slice(7);   // after 'rhythm/'
 
  if(type==='kick'){
  const o=ctx.createOscillator(), g=ctx.createGain();
