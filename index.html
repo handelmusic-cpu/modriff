@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.1</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.1</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9';
+const MODRIFF_VERSION = '4.9.9.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16221,7 +16221,14 @@ var LV_MAX = 4;              // instruments; the key strip does not count
 var LV_ORDER = ['key','chords','melody','pads','fx','drums','bass','melseq'];
 var LV_NAME = {key:'Key', chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
                drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid'};
-var LV_STD = ['key','chords','melody','fx','pads'];
+// The sampler's pads sit above the mõdFX pad (4.9.9.9.9.1): the pads are
+// what you strike, the mõdFX pad what you hold over everything, and the
+// thumb that holds it belongs at the foot of the page.
+var LV_STD = ['key','chords','melody','pads','fx'];
+// The standard before that. A layout saved as exactly this was the standard
+// layout, not a choice, so it follows the standard; any other saved order
+// is somebody's own and is left alone.
+var LV_STD_OLD = ['key','chords','melody','fx','pads'];
 var LV_GATE = {pads:'sampler', fx:'modfx'};
 // var: setPerformMode reads this during boot, long before this line runs in
 // file order would matter for a let. See CLAUDE.md.
@@ -16234,9 +16241,11 @@ var LV = { slots:null };
   // The layout Live always had, with the pads where the first look put them
   // if they had been swapped in.
   var pads = false; try{ pads = (JSON.parse(modStore.getItem('modo-ps')||'{}')||{}).slot==='pads'; }catch(e){}
-  // The sampler is part of the first page now, at the foot of it. A layout
+  // The sampler is part of the first page, above the mõdFX pad. A layout
   // that swapped it in for the melody keeps that.
-  s = pads ? ['key', 'chords', 'pads', 'fx'] : ['key', 'chords', 'melody', 'fx', 'pads'];
+  s = pads ? ['key', 'chords', 'pads', 'fx'] : LV_STD.slice();
+ } else if(s.join(',') === LV_STD_OLD.join(',')){
+  s = LV_STD.slice();
  }
  // The key strip became a slot in v4.0.3. A layout saved before then has no
  // 'key' in it, and that must not read as "taken off": it goes in once, at
@@ -17437,6 +17446,39 @@ function saveLastSession(){
  try{ modStore.setItem(LAST_SESSION_KEY, JSON.stringify(captureSetup('Last session', true))); }
  catch(e){ /* storage full or unavailable — resuming is best-effort */ }
 }
+// Start means a blank session (4.9.9.9.9.1). It used to mean "the chart and
+// the chord palette are empty" while everything the page restores on load
+// came back underneath: the drum, bass and melody grids and their kit,
+// swing, voices and styles (the 4-second sequencer autosave), every part's
+// mõdSynth patch (modo-msx) and the phrase locks — measured by pressing Start
+// in a fresh browser and in one that had played a session, and diffing.
+// Preferences are not session content and stay: the theme, the Live layout,
+// the default key, latency, MIDI, the setlist, saved setups and the sample
+// library.
+//
+// Nothing is deleted. Resume still has the last session until the autosave
+// replaces it, and the toast's Undo puts it back straight away — an
+// accidental Start used to cost only the chart; it would now cost the grids.
+function startFresh(){
+ var prev = null;
+ try{ prev = modStore.getItem(LAST_SESSION_KEY); }catch(e){}
+ if(window._sqFactory && typeof window._sqRestoreState==='function') window._sqRestoreState(JSON.parse(JSON.stringify(window._sqFactory)));
+ if(window._blFactory && typeof window._blRestoreState==='function') window._blRestoreState(JSON.parse(JSON.stringify(window._blFactory)));
+ if(window._mlFactory && typeof window._mlRestoreState==='function') window._mlRestoreState(JSON.parse(JSON.stringify(window._mlFactory)));
+ if(typeof window.phraseRestoreState==='function') window.phraseRestoreState({bass:{}, mel:{}});
+ if(typeof MSX!=='undefined'){
+  MSX.state = {}; msxSaveState();
+  modParamsFlush();
+  if(typeof window.msxUiRefresh==='function') window.msxUiRefresh();
+ }
+ var had = false;
+ try{ had = !!(prev && JSON.parse(prev)); }catch(e){}
+ if(had && typeof showToast==='function'){
+  showToast('Started fresh', {actionLabel:'Undo', onAction:function(){
+   try{ if(applySetup(JSON.parse(prev))) showToast('Back where you left off'); }catch(e){}
+  }});
+ }
+}
 function restoreLastSession(){
  try{
   const st=JSON.parse(modStore.getItem(LAST_SESSION_KEY)||'null');
@@ -17640,6 +17682,9 @@ function unlockAudio(startDemo){
   try{ if(typeof seedOpeningProgression==='function') seedOpeningProgression(); }catch(e){}
  }
  if(mode==='blank'){
+  // Everything else last time left behind: the grids, the kit, the mõdSynth
+  // patches, the phrase locks. See startFresh.
+  try{ startFresh(); }catch(e){ try{ console.error('startFresh', e); }catch(_){} }
   // The chord palette persists across launches on purpose — it is a setup you
   // build and keep, and it follows you between Basic and Advanced. But it is
   // still content, and Start Blank says what it means: opening onto five
@@ -44848,6 +44893,13 @@ function sqWire(){
   }
 }
 
+// The kit as it is before anything saved is laid over it, kept for Start
+// (startFresh): a blank session is this, not last time's grooves. Taken
+// here, at the one point where nothing has been restored yet, in the shape
+// _sqRestoreState reads, so putting it back goes through the same path as a
+// setup, a song or undo.
+window._sqFactory = JSON.parse(JSON.stringify({ steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: sqMach,
+  grid: sqGrid, vols: sqVols[sqMach] || {}, pitches: sqPitches[sqMach] || {}, shapes: {}, machGrids: sqMachGrids, kitOn: true }));
 // ── restore autosaved rhythm state, if any (see _seqAutosaveData near top of script) ──
 if(_seqAutosaveData && _seqAutosaveData.rhythm){
  (function(){
@@ -47410,6 +47462,9 @@ document.querySelectorAll('[data-blstyle]').forEach(function(b){
 
 // SQMG_REF is set directly in sqInitFX via window.SQMG_REF = SQMG
 
+// The bass before the autosave, for Start — see window._sqFactory.
+window._blFactory = JSON.parse(JSON.stringify({ steps: blSteps, oct: blOct, genStyle: blGenStyle,
+  cutoff: blCutoff, resonance: blResonance, grid: blGrid, wave: blWave }));
 // ── restore autosaved bassline state, if any (see _seqAutosaveData near top of script) ──
 if(_seqAutosaveData && _seqAutosaveData.bass){
   var _bs = _seqAutosaveData.bass;
@@ -48493,6 +48548,8 @@ document.querySelectorAll('[data-mlstyle]').forEach(function(b){
 
 // Melody sequencer volume is controlled solely by the Mixer's Mel channel now (mlVol is a fixed baseline).
 
+// The melody sequencer before the autosave, for Start — see window._sqFactory.
+window._mlFactory = JSON.parse(JSON.stringify({ steps: mlSteps, oct: mlOct, genStyle: mlGenStyle, grid: mlGrid, wave: mlWave }));
 // ── restore autosaved melody state, if any (see _seqAutosaveData near top of script) ──
 if(_seqAutosaveData && _seqAutosaveData.melody){
   var _ms = _seqAutosaveData.melody;
