@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.8</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.8';
+const MODRIFF_VERSION = '4.9.9.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9655,6 +9655,17 @@ window._genQueuePaint = function(part, frac, landed){
 //                      sounding (mõdFX, the master bus and drive, mute and
 //                      solo, the faders, the reverb's size, a mõdSynth knob),
 //                      which the engine applies as they arrive.
+//   The sampler ('sampler'), 4.9.9.9.9 — the messages are spelled out where
+//   it lives (smpBufSet, psFade, smpStopPreview, fxSmpStart):
+//     {kind:'asset',   id, …}       a clip, handed over once; {…, drop:true}
+//     {kind:'clip',    id, asset, …} a pad's strike, or (grain) the mõdFX pad
+//     {kind:'note',    id, slot, midi, dur, at, to}   a preview of a slot
+//     {kind:'release', id, at?, fade?}               let go of any of those
+//     {kind:'param',   id, name:'rate', value}       re-pitch a sounding pad
+//     {kind:'prepare', asset, rev, stretch}          render a Warp ratio;
+//                      returns a promise that settles true once it exists.
+//   A Sampler voice on another part and a drum lane's clip are played inside
+//   that part's own notes, from the 'sampler.slots' param.
 //   `at` is on the engine's clock (now()); null means as soon as possible.
 //   now()       the engine's clock, seconds.
 //   ready(part) whether the engine can sound at all yet (that part, if
@@ -11307,6 +11318,48 @@ var SMP_LIB   = [];   // clip metadata, newest first — the audio is NOT in her
 var SMP_BUF   = {};   // clip id -> AudioBuffer (decoded, this session only)
 var SMP_PEAKS = {};   // clip id -> Float32Array, 2 per column (min,max)
 var SMP_SLOTS = {};   // slot key -> {id,start,end,gain,loop,tune,fine,root}
+
+// ── The sampler through modEngine (4.9.9.9.9) ─────────────────────────────
+// The app owns the clips: their bytes (IndexedDB here, native storage on the
+// phone), their names and trims, and SMP_BUF, its own decoded copy, which the
+// editor draws and measures. The engine is handed each clip once, as an
+// asset, and plays from its own table (_webAssets). On the web the asset
+// carries the decoded buffer itself, so nothing is copied; a native engine
+// ignores that field and opens the clip by id from native storage, where the
+// app saved it.
+//   {kind:'asset', part:'sampler', id, rate, channels, frames, buffer}
+//   {kind:'asset', part:'sampler', id, drop:true}
+// Every write to SMP_BUF goes through these two, so the engine's table can
+// never disagree with the app's.
+window._webAssets = window._webAssets || {};
+function smpBufSet(id, buf){
+ SMP_BUF[id] = buf;
+ modSend({v:1, kind:'asset', part:'sampler', id:id, rate:buf.sampleRate, channels:buf.numberOfChannels, frames:buf.length, buffer:buf});
+}
+function smpBufDrop(id){
+ delete SMP_BUF[id];
+ modSend({v:1, kind:'asset', part:'sampler', id:id, drop:true});
+}
+function _webAsset(m){
+ if(m.drop) delete window._webAssets[m.id];
+ else if(m.buffer) window._webAssets[m.id] = m.buffer;
+}
+// The slots the engine plays from inside other parts' notes — a part whose
+// voice is the Sampler (v:<part>) and a drum lane with a clip on it
+// (d:<kit>:<lane>) — as standing state, with each clip's loudness
+// normalisation worked out here, where the library is. Pads, previews and the
+// mõdFX pad carry what they need in their own messages.
+function _smpSlotsParam(){
+ var out = {};
+ Object.keys(SMP_SLOTS).forEach(function(k){
+  if(k.charAt(1)!==':' || (k.charAt(0)!=='v' && k.charAt(0)!=='d')) return;
+  var s = SMP_SLOTS[k]; if(!s || !s.id) return;
+  out[k] = Object.assign({}, s, {norm: smpNorm(smpClip(s.id))});
+ });
+ return out;
+}
+PARAMS.push({part:'sampler', name:'slots', read:function(){ return _smpSlotsParam(); }});
+function _webSmpSlot(key){ var S = _wp('sampler.slots'); return (S && S[key]) || null; }
 var SMP_PEAK_N = 1024;         // peak columns per clip, resampled when drawn
 var SMP_REC_MAX = 30;          // seconds — a sampler, not a tape machine
 // A looping drum lane is held open by nothing: a lane has no note-off. The
@@ -11627,9 +11680,12 @@ window.smpClipPitch = smpClipPitch;
 // and moves only by its own tune. `dur` is how long the CALLER is holding the
 // note open — a looping slot runs for that long, a one-shot for as long as its
 // own trimmed window lasts, however long the caller thinks the note is.
+// Engine side: slot is the engine's copy (from sampler.slots, or a preview's
+// own message), the buffer is from its asset table, and the clip's
+// normalisation came with the slot (norm).
 function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  if(!ctx || !slot || !slot.id || !dest) return null;
- var buf = SMP_BUF[slot.id]; if(!buf) return null;
+ var buf = window._webAssets[slot.id]; if(!buf) return null;
  var a = Math.max(0, Math.min(0.999, +slot.start||0));
  var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
  var win = (b-a)*buf.duration;
@@ -11639,7 +11695,7 @@ function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  // AudioBufferSourceNode's own range. Past this it is not playing the clip any
  // more, it is playing aliasing.
  var rate = Math.max(1/32, Math.min(32, Math.pow(2, semis/12)));
- var lvl  = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id))
+ var lvl  = Math.max(0, slot.gain==null?1:+slot.gain) * (slot.norm==null?1:slot.norm)
           * (mul==null?1:mul);
  if(!(lvl > 0)) return null;
  var src = ctx.createBufferSource();
@@ -11695,6 +11751,20 @@ function smpVoice(ctx, slot, dest, t0, dur, midi, mul){
  return {src:src, gain:g, end:t0+hold};
 }
 window.smpVoice = smpVoice;
+// When a voice smpVoice would build ends, worked out from the app's own copy
+// of the clip, by the same rules — null where it would build nothing.
+function smpVoiceEnd(slot, buf, t0, dur, midi){
+ if(!slot || !slot.id || !buf) return null;
+ var a = Math.max(0, Math.min(0.999, +slot.start||0));
+ var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
+ var win = (b-a)*buf.duration;
+ if(!(win > 0.002)) return null;
+ var semis = (+slot.tune||0) + (+slot.fine||0)/100;
+ if(midi!=null) semis += midi - (slot.root==null?60:slot.root);
+ var rate = Math.max(1/32, Math.min(32, Math.pow(2, semis/12)));
+ if(!(Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) > 0)) return null;
+ return t0 + (slot.loop ? Math.max(0.02, dur||0.25) : win/rate);
+}
 
 // The loop region in seconds, clamped inside the trimmed window. A slot with
 // no loop points of its own gets them worked out now rather than looping the
@@ -11705,7 +11775,7 @@ function smpLoopWin(slot, buf){
  var a = Math.max(0, Math.min(0.999, +slot.start||0));
  var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
  var la = slot.loopA, lb = slot.loopB;
- if(!(la>=0) || !(lb>la)){ var g=smpAutoLoop(slot.id, a, b); la=g.loopA; lb=g.loopB; }
+ if(!(la>=0) || !(lb>la)){ var g=smpAutoLoop(slot.id, a, b, buf); la=g.loopA; lb=g.loopB; }
  la = Math.max(a, Math.min(b-0.0005, la));
  lb = Math.max(la+0.0005, Math.min(b, lb));
  return [la*buf.duration, lb*buf.duration];
@@ -11723,8 +11793,10 @@ function smpLoopWin(slot, buf){
 //    both crossing zero upwards makes it continuous in value AND, on anything
 //    periodic, in phase — two rising crossings are always a whole number of
 //    periods apart.
-function smpAutoLoop(id, a, b){
- var buf = SMP_BUF[id];
+// buf: the caller's own copy of the clip — the engine's, when a voice is
+// being built; the app's, in the editor.
+function smpAutoLoop(id, a, b, buf){
+ buf = buf || SMP_BUF[id];
  var fall = {loopA:a+(b-a)*0.35, loopB:a+(b-a)*0.9};
  if(!buf) return fall;
  var d = buf.getChannelData(0), n = d.length;
@@ -11749,7 +11821,7 @@ window.smpAutoLoop = smpAutoLoop;
 // A pitched part's slot, played from makeVoice(). Separate from smpVoice only
 // so the wave-name lookup lives in one place rather than at five call sites.
 function smpPartVoice(ctx, part, midi, gainNode, t0, dur){
- var v = smpVoice(ctx, SMP_SLOTS[smpKeyVoice(part||'chord')], gainNode, t0, dur, midi);
+ var v = smpVoice(ctx, _webSmpSlot(smpKeyVoice(part||'chord')), gainNode, t0, dur, midi);
  return v ? v.src : null;
 }
 
@@ -11768,8 +11840,8 @@ var _smpLaneLive = {};
 window.smpDrumVoice = function(track, ctx, dest, t, vol, ps){
  if(!track || track._m==null || !ctx || !dest) return null;
  var key = smpKeyDrum(track._m, track._i);
- var slot = SMP_SLOTS[key];
- if(!slot || !slot.id || !SMP_BUF[slot.id]) return null;
+ var slot = _webSmpSlot(key);
+ if(!slot || !slot.id || !window._webAssets[slot.id]) return null;
  // The lane's own PCH knob still works — it adds to the slot's tune rather
  // than replacing it, so the grid's per-lane pitch means the same thing
  // whether the lane is synthesized or sampled.
@@ -11891,7 +11963,7 @@ function smpAddClip(meta, buf, bytes, mime){
   peak: smpPeakOf(buf), ts: meta.ts || Date.now()
  };
  if(meta.url) clip.url = meta.url;
- SMP_BUF[clip.id]=buf;
+ smpBufSet(clip.id, buf);
  delete SMP_PEAKS[clip.id];
  SMP_LIB = SMP_LIB.filter(function(c){ return c.id!==clip.id; });
  SMP_LIB.unshift(clip);
@@ -11933,7 +12005,7 @@ function smpDeleteClip(id){
   });
  });
  smpForget(id);
- delete SMP_BUF[id]; delete SMP_PEAKS[id];
+ smpBufDrop(id); delete SMP_PEAKS[id];
  SMP_LIB = SMP_LIB.filter(function(x){ return x.id!==id; });
  smpDbDel(id);
  if(_smpOpenKey && !SMP_SLOTS[_smpOpenKey]) _smpOpenKey=null;
@@ -11941,7 +12013,7 @@ function smpDeleteClip(id){
  smpRenderAll();
  showToast('Deleted “'+c.name+'”', {actionLabel:'Undo', onAction:function(){
   SMP_LIB.unshift(c);
-  if(buf) SMP_BUF[id]=buf;
+  if(buf) smpBufSet(id, buf);
   Object.keys(used).forEach(function(k){ SMP_SLOTS[k]=used[k]; });
   bytesP.then(function(rec){ if(rec) smpDbPut(rec); });
   smpRenderAll();
@@ -12074,7 +12146,7 @@ function smpDecodeAll(){
       });
    return get.then(function(bytes){ return smpDecodeBytes(ctx, bytes); })
     .then(function(buf){
-     SMP_BUF[c.id]=buf;
+     smpBufSet(c.id, buf);
      c.dur=buf.duration; c.sr=buf.sampleRate; c.ch=buf.numberOfChannels;
      if(!(c.peak>0)) c.peak=smpPeakOf(buf);
      c.pending=false;
@@ -12321,7 +12393,7 @@ function smpTrimToClip(){
     // offering another undo is not a thing anybody can follow.
     SMP_SLOTS[key]=before; _smpSelId=prevSel;
     SMP_LIB=SMP_LIB.filter(function(x){ return x.id!==clip.id; });
-    delete SMP_BUF[clip.id]; delete SMP_PEAKS[clip.id];
+    smpBufDrop(clip.id); delete SMP_PEAKS[clip.id];
     try{ smpDbDel(clip.id); }catch(e){}
     if(key==='fxpad' && typeof fxSmpSync==='function') try{ fxSmpSync(); }catch(e){}
     smpRenderAll();
@@ -12665,17 +12737,39 @@ window.smpBackToLibrary = smpBackToLibrary;
 // the clip, not the channel it will end up on, and a muted or soloed-out
 // channel silently auditioning nothing is the worst possible answer to
 // "why can't I hear it".
+// A preview is a note of the slot being edited, carried whole in the
+// message (the slot may be one that is not saved anywhere yet), straight to
+// the master: {kind:'note', part:'sampler', id, slot, midi, dur, at, to}.
+// Its end is known from the clip, so the playhead and the clean-up are the
+// app's own and need nothing back from the engine.
+var _smpPrevSeq = 0;
 function smpStopPreview(){
  if(!_smpPrev) return;
- try{
-  var t=_smpPrev.ctx.currentTime;
-  _smpPrev.gain.gain.cancelScheduledValues(t);
-  _smpPrev.gain.gain.setValueAtTime(_smpPrev.gain.gain.value, t);
-  _smpPrev.gain.gain.linearRampToValueAtTime(0, t+0.01);
-  _smpPrev.src.stop(t+0.03);
- }catch(e){}
+ modSend({v:1, kind:'release', part:'sampler', id:_smpPrev.id, preview:true});
+ clearTimeout(_smpPrev.timer);
  _smpPrev=null;
  smpDrawWave();
+}
+// Engine side.
+var _webSmpPrev = {};
+function _webSmpNote(m){
+ var ctx=getCtx(); if(!ctx) return;
+ var dest = m.to==='master' ? ((typeof masterDest==='function')?masterDest(ctx):ctx.destination) : _partDest(ctx,'sampler');
+ var v=smpVoice(ctx, m.slot, dest, m.at==null?ctx.currentTime:m.at, m.dur, m.midi);
+ if(!v) return;
+ _webSmpPrev[m.id]=v;
+ v.src.onended=function(){ if(_webSmpPrev[m.id]===v) delete _webSmpPrev[m.id]; };
+}
+function _webSmpNoteOff(m){
+ var v=_webSmpPrev[m.id]; if(!v) return;
+ delete _webSmpPrev[m.id];
+ try{
+  var t=v.src.context.currentTime;
+  v.gain.gain.cancelScheduledValues(t);
+  v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+  v.gain.gain.linearRampToValueAtTime(0, t+0.01);
+  v.src.stop(t+0.03);
+ }catch(e){}
 }
 function smpPreview(slotOrId, midi){
  smpStopPreview();
@@ -12689,11 +12783,16 @@ function smpPreview(slotOrId, midi){
  // A looping slot previewed forever would have to be stopped by hand, so a
  // preview of one runs for four seconds — long enough to hear the loop point
  // do its job, short enough not to need a second tap.
- var v=smpVoice(ctx, slot, (typeof masterDest==='function')?masterDest(ctx):ctx.destination,
-                t0, 4, midi==null?null:midi);
- if(!v) return;
- _smpPrev={ctx:ctx, src:v.src, gain:v.gain, t0:t0, end:v.end, slot:slot};
- v.src.onended=function(){ if(_smpPrev&&_smpPrev.src===v.src){ _smpPrev=null; smpDrawWave(); } };
+ var end=smpVoiceEnd(slot, SMP_BUF[slot.id], t0, 4, midi==null?null:midi);
+ if(end==null) return;
+ var id=++_smpPrevSeq;
+ modSend({v:1, kind:'note', part:'sampler', id:id, to:'master', at:t0, dur:4, midi:(midi==null?null:midi),
+          slot:Object.assign({}, slot, {norm: smpNorm(smpClip(slot.id))})});
+ var P={id:id, ctx:ctx, t0:t0, end:end, slot:slot};
+ // Where the source's onended used to clear it: the voice stops 20 ms after
+ // its end.
+ P.timer=setTimeout(function(){ if(_smpPrev===P){ _smpPrev=null; smpDrawWave(); } }, Math.max(0,(end+0.02-ctx.currentTime)*1000));
+ _smpPrev=P;
  smpDrawWave();
 }
 window.smpPreview = smpPreview;
@@ -13418,7 +13517,10 @@ function psPresetBlocked(){
 // a 2×2 of pads is a size a thumb can play without scrolling. Anyone who has
 // set a count keeps it (modo-ps).
 var PS = { bank:4, quant:0, slot:'melody', sel:0, hold:false, liveN:4, liveCtl:true };
-var PS_LIVE = {};          // pad key -> {src, gain, end, mode, t0}
+// What the app has struck and not yet let go, from the messages it sent —
+// not the engine's voices. A one-shot's end is known from the clip.
+var PS_LIVE = {};          // pad key -> {id, end, mode, t0, holdLoop}
+var _psClipSeq = 0;
 var PS_LAST = null;        // last pad struck, for Roll
 var PS_REVBUF = {};        // clip id -> reversed AudioBuffer
 // In sixteenths; 'bar' = the meter's bar. 1/32 is half a sixteenth, and a
@@ -13496,9 +13598,10 @@ function psWhen(ctx){
  return (t >= now) ? t : t + q;
 }
 
+// Engine side: the reversed copy of an asset, made once.
 function psRevBuf(ctx, id){
  if(PS_REVBUF[id]) return PS_REVBUF[id];
- var src = SMP_BUF[id]; if(!src) return null;
+ var src = window._webAssets[id]; if(!src) return null;
  var out = ctx.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
  for(var c=0;c<src.numberOfChannels;c++){
   var a=src.getChannelData(c), b=out.getChannelData(c), n=a.length;
@@ -13521,13 +13624,72 @@ function psNoteName(m){ return PS_NOTE_NAMES[((m%12)+12)%12] + (Math.floor(m/12)
 // Playback rate for a strike — see psPlan, which also decides on Warp.
 function psRate(slot, clip, win){ return psPlan(slot, clip, win).rate; }
 
+// ── A pad's strike, through modEngine (4.9.9.9.9) ──
+//   {kind:'clip', part:'sampler', id, asset, rev, stretch, from, to, rate,
+//    level, loop, loopA, loopB, at}
+//      asset: the clip; rev, stretch: which render of it (stretch is the
+//      Warp ratio, rendered beforehand by 'prepare'); from/to: the window,
+//      as fractions of that render; loop: 'window' (Loop mode), 'hold' (the
+//      clip's sustain loop, loopA–loopB) or null (plays to the window's end);
+//      level: the pad's, before the Sampler fader, which the engine applies.
+//   {kind:'release', part:'sampler', id, at, fade}   — let go, over fade s
+//   {kind:'param', part:'sampler', id, name:'rate', value}   — re-pitch
+//   {kind:'prepare', part:'sampler', asset, rev, stretch}  → a promise that
+//      settles true once that render exists ({…, drop:true} forgets it)
 function psFade(v, t, sec){
  if(!v) return;
+ modSend({v:1, kind:'release', part:'sampler', id:v.id, at:t, fade:sec||0.012});
+}
+// Engine side.
+var _webClips = {};
+function _webSmpBuf(ctx, asset, rev, stretch){
+ if(stretch) return PS_WARP[psWarpKey(asset, rev, stretch)] || null;
+ return rev ? psRevBuf(ctx, asset) : (window._webAssets[asset] || null);
+}
+function _webClipOn(m){
+ var ctx = getCtx(); if(!ctx) return;
+ var buf = _webSmpBuf(ctx, m.asset, !!m.rev, m.stretch); if(!buf) return;
+ var t = m.at==null ? ctx.currentTime : m.at;
+ var lvl = m.level * _wpd('mix.sampler', 1);
+ if(!(lvl > 0)) return;
+ var win = (m.to-m.from)*buf.duration, rate = m.rate;
+ var src = ctx.createBufferSource();
+ src.buffer = buf;
+ src.playbackRate.value = rate;
+ var g = ctx.createGain();
+ src.connect(g);
+ g.connect(_partDest(ctx, 'sampler'));
+ var FD = Math.min(0.003, win/rate/4);
+ g.gain.setValueAtTime(0, t);
+ g.gain.linearRampToValueAtTime(lvl, t+FD);
+ var end = null;
+ if(m.loop==='window'){
+  src.loop = true; src.loopStart = m.from*buf.duration; src.loopEnd = m.to*buf.duration;
+ } else if(m.loop==='hold'){
+  src.loop = true; src.loopStart = m.loopA*buf.duration; src.loopEnd = m.loopB*buf.duration;
+ } else {
+  end = t + win/rate;
+  g.gain.setValueAtTime(lvl, Math.max(t+FD, end-0.004));
+  g.gain.linearRampToValueAtTime(0, end);
+ }
+ src.start(t, m.from*buf.duration);
+ if(end!=null) src.stop(end + 0.02);
+ var v = {src:src, gain:g};
+ _webClips[m.id] = v;
+ src.onended = function(){ if(_webClips[m.id]===v) delete _webClips[m.id]; };
+}
+function _webClipRelease(m){
+ var v = _webClips[m.id]; if(!v) return;
+ var t = m.at==null ? v.src.context.currentTime : m.at, sec = m.fade || 0.012;
  try{
   v.gain.gain.cancelScheduledValues(t);
-  v.gain.gain.setTargetAtTime(0, t, (sec||0.012)/3);
-  v.src.stop(t + (sec||0.012) + 0.03);
+  v.gain.gain.setTargetAtTime(0, t, sec/3);
+  v.src.stop(t + sec + 0.03);
  }catch(e){}
+}
+function _webClipRate(m){
+ var v = _webClips[m.id]; if(!v) return;
+ try{ v.src.playbackRate.setTargetAtTime(m.value, v.src.context.currentTime, 0.01); }catch(e){}
 }
 function psStop(key, t){
  delete PS_PEND[key];
@@ -13543,18 +13705,20 @@ function psStopAll(){
 }
 window.psStopAll = psStopAll;
 
+// The app's half: what to strike, where, and for how long, worked out from
+// its own copy of the clip (SMP_BUF); the strike itself is a clip message.
 function psStart(key, t){
  var ctx = psCtx(); if(!ctx) return null;
  var slot = SMP_SLOTS[key];
  if(!slot || !slot.id || !SMP_BUF[slot.id]) return null;
  var ps = slot.ps || psDefaults();
  var clip = smpClip(slot.id);
- var buf = ps.rev ? psRevBuf(ctx, slot.id) : SMP_BUF[slot.id];
- if(!buf) return null;
+ // A reversed render is the same length as the clip.
+ var buf = SMP_BUF[slot.id], bufDur = buf.duration, S3 = null;
  var a = Math.max(0, Math.min(0.999, +slot.start||0));
  var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
  if(ps.rev){ var a2 = 1-b; b = 1-a; a = a2; }
- var win = (b-a)*buf.duration;
+ var win = (b-a)*bufDur;
  if(!(win > 0.002)) return null;
  var plan = psPlan(slot, clip, win);
  if(plan.stretch){
@@ -13571,12 +13735,14 @@ function psStart(key, t){
    });
    return null;
   }
-  // The same window, in the stretched clip's own seconds.
-  buf = wb; win = (b-a)*buf.duration;
+  // The same window, in the stretched clip's own seconds: the render is
+  // ceil(frames × S) long (see _psWsola).
+  S3 = +plan.S.toFixed(3);
+  bufDur = Math.max(1, Math.ceil(buf.length*S3)) / buf.sampleRate; win = (b-a)*bufDur;
  }
  var mx = (typeof _cmx==='function') ? _cmx('sampler') : 1;
- var lvl = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(clip) * mx;
- if(!(lvl > 0)) return null;
+ var lvl = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(clip);
+ if(!(lvl * mx > 0)) return null;
  // A strike replaces this pad's own last strike, and its mute group's.
  psStop(key, t);
  if(ps.choke){
@@ -13586,40 +13752,25 @@ function psStart(key, t){
   });
  }
  var rate = plan.rate;
- var src = ctx.createBufferSource();
- src.buffer = buf;
- src.playbackRate.value = rate;
- var g = ctx.createGain();
- src.connect(g);
- g.connect(_partDest(ctx, 'sampler'));
- var FD = Math.min(0.003, win/rate/4);
- g.gain.setValueAtTime(0, t);
- g.gain.linearRampToValueAtTime(lvl, t+FD);
  var end = null;
  // A clip with a sustain loop set (the ◈ sampler's Loop, loopA–loopB) holds
  // on it for as long as the pad is held, in One-shot and Gate alike, and
  // lets go on release (4.3.0). It used to play straight through and stop.
  var holdLoop = ps.mode!=='loop' && !ps.rev && !!slot.loop && slot.loopB > slot.loopA && slot.loopB <= 1;
- if(ps.mode==='loop'){
-  src.loop = true; src.loopStart = a*buf.duration; src.loopEnd = b*buf.duration;
- } else if(holdLoop){
-  src.loop = true; src.loopStart = slot.loopA*buf.duration; src.loopEnd = slot.loopB*buf.duration;
- } else {
-  // One-shot and gate both end at the window's end; a gate can end sooner,
-  // on release.
-  end = t + win/rate;
-  g.gain.setValueAtTime(lvl, Math.max(t+FD, end-0.004));
-  g.gain.linearRampToValueAtTime(0, end);
- }
- // start() before stop(): a source that is told to stop before it has been
- // started throws, and the strike is lost.
- src.start(t, a*buf.duration);
- if(end!=null) src.stop(end + 0.02);
- var v = {src:src, gain:g, end:end, mode:ps.mode, t0:t, holdLoop:holdLoop};
+ // One-shot and gate both end at the window's end; a gate can end sooner,
+ // on release.
+ if(ps.mode!=='loop' && !holdLoop) end = t + win/rate;
+ var id = ++_psClipSeq;
+ modSend({v:1, kind:'clip', part:'sampler', id:id, asset:slot.id, rev:!!ps.rev, stretch:S3, from:a, to:b,
+          rate:rate, level:lvl, loop:(ps.mode==='loop' ? 'window' : holdLoop ? 'hold' : null),
+          loopA:slot.loopA, loopB:slot.loopB, at:t});
+ var v = {id:id, end:end, mode:ps.mode, t0:t, holdLoop:holdLoop};
  delete PS_PEND[key];
  PS_LIVE[key] = v;
  PS_LAST = key;
- src.onended = function(){ if(PS_LIVE[key]===v){ delete PS_LIVE[key]; psLit(key,false); } };
+ // Where the source's onended used to clear it: the voice stops 20 ms after
+ // its end. A loop has no end until it is let go.
+ if(end!=null) setTimeout(function(){ if(PS_LIVE[key]===v){ delete PS_LIVE[key]; psLit(key,false); } }, Math.max(0, (end+0.02-ctx.currentTime)*1000));
  // Lit when it actually starts sounding, not when it was asked for — under
  // quantize that can be most of a bar later.
  var ms = Math.max(0, (t - ctx.currentTime)*1000);
@@ -14028,7 +14179,7 @@ function psAcrossApply(key){
   if(best){
    var id='factory:lib:'+A.lib+':'+best.nm;
    if(!SMP_BUF[id]){
-    var b=bufs[best.nm]; SMP_BUF[id]=b;
+    var b=bufs[best.nm]; smpBufSet(id, b);
     if(!smpClip(id)) SMP_LIB.push({id:id, name:A.name+' · '+best.nm.replace('s','♯'), src:'factory', hidden:true, ts:0,
       dur:b.duration, sr:b.sampleRate, ch:b.numberOfChannels, peak:smpPeakOf(b), pending:false});
    }
@@ -14273,29 +14424,55 @@ function _psWarpRun(chans, S, sr){
  });
 }
 function psWarpKey(id, rev, S){ return id+'|'+(rev?1:0)+'|'+S.toFixed(3); }
+// The app's half (4.9.9.9.9). The renders are the engine's, made by
+// 'prepare'; which ones exist, and which to let go when there are too many,
+// is the app's own record — so a strike never asks the engine anything.
+var PS_WARP_READY = {};    // cache key -> true, once the engine has the render
 function psWarpGet(id, rev, S){
- var k = psWarpKey(id, rev, S), b = PS_WARP[k];
+ var k = psWarpKey(id, rev, S), b = PS_WARP_READY[k];
  if(b){ var ix=PS_WARP_ORDER.indexOf(k); if(ix>=0){ PS_WARP_ORDER.splice(ix,1); PS_WARP_ORDER.push(k); } }
  return b || null;
 }
 function psWarpRequest(ctx, id, rev, S){
  var k = psWarpKey(id, rev, S);
- if(PS_WARP[k]) return Promise.resolve(PS_WARP[k]);
+ if(PS_WARP_READY[k]) return Promise.resolve(true);
  if(PS_WARP_PEND[k]) return PS_WARP_PEND[k];
- var src = rev ? psRevBuf(ctx, id) : SMP_BUF[id];
- if(!src) return Promise.resolve(null);
- var chans = []; for(var c=0;c<src.numberOfChannels;c++) chans.push(src.getChannelData(c).slice());
- var sr = src.sampleRate;
- PS_WARP_PEND[k] = _psWarpRun(chans, +S.toFixed(3), sr).then(function(out){
+ if(!SMP_BUF[id]) return Promise.resolve(null);
+ var S3 = +S.toFixed(3);
+ PS_WARP_PEND[k] = Promise.resolve(modSend({v:1, kind:'prepare', part:'sampler', asset:id, rev:!!rev, stretch:S3})).then(function(ok){
   delete PS_WARP_PEND[k];
-  if(!out || !out.length) return null;
-  var b = ctx.createBuffer(out.length, out[0].length, sr);
-  for(var c2=0;c2<out.length;c2++) b.copyToChannel(out[c2], c2);
-  PS_WARP[k] = b; PS_WARP_ORDER.push(k);
-  while(PS_WARP_ORDER.length > PS_WARP_MAX){ delete PS_WARP[PS_WARP_ORDER.shift()]; }
-  return b;
+  if(!ok) return null;
+  PS_WARP_READY[k] = true; PS_WARP_ORDER.push(k);
+  while(PS_WARP_ORDER.length > PS_WARP_MAX){
+   var old = PS_WARP_ORDER.shift(), p = old.split('|');
+   delete PS_WARP_READY[old];
+   modSend({v:1, kind:'prepare', part:'sampler', asset:p.slice(0,-2).join('|'), rev:p[p.length-2]==='1', stretch:+p[p.length-1], drop:true});
+  }
+  return true;
  }, function(){ delete PS_WARP_PEND[k]; return null; });
  return PS_WARP_PEND[k];
+}
+// Engine side: the render itself, kept until the app lets it go.
+var _webWarpPend = {};
+function _webSmpPrepare(m){
+ var ctx = getCtx(); if(!ctx) return Promise.resolve(false);
+ var k = psWarpKey(m.asset, !!m.rev, m.stretch);
+ if(m.drop){ delete PS_WARP[k]; return Promise.resolve(true); }
+ if(PS_WARP[k]) return Promise.resolve(true);
+ if(_webWarpPend[k]) return _webWarpPend[k];
+ var src = m.rev ? psRevBuf(ctx, m.asset) : window._webAssets[m.asset];
+ if(!src) return Promise.resolve(false);
+ var chans = []; for(var c=0;c<src.numberOfChannels;c++) chans.push(src.getChannelData(c).slice());
+ var sr = src.sampleRate;
+ _webWarpPend[k] = _psWarpRun(chans, m.stretch, sr).then(function(out){
+  delete _webWarpPend[k];
+  if(!out || !out.length) return false;
+  var b = ctx.createBuffer(out.length, out[0].length, sr);
+  for(var c2=0;c2<out.length;c2++) b.copyToChannel(out[c2], c2);
+  PS_WARP[k] = b;
+  return true;
+ }, function(){ delete _webWarpPend[k]; return false; });
+ return _webWarpPend[k];
 }
 
 // What a strike on this pad needs: the pitch ratio p, the tempo ratio t, and
@@ -14911,7 +15088,7 @@ function _psFactoryBuild(list){
     clip.peak = smpPeakOf(buf); clip.pending = false;
     if(k.key!=null) clip.key = k.key;
     if(k.bpm) clip.bpm = k.bpm;
-    SMP_BUF[id] = buf;
+    smpBufSet(id, buf);
    }).catch(function(){});
   }));
  }).then(function(){
@@ -15440,7 +15617,7 @@ function psRetunePad(key){
  var buf=SMP_BUF[s.id], a=+s.start||0, b=s.end==null?1:+s.end;
  var pl=psPlan(s, smpClip(s.id), (b-a)*buf.duration);
  if(!pl.stretch && !(s.ps && s.ps.warp)){
-  try{ v.src.playbackRate.setTargetAtTime(pl.rate, ctx.currentTime, 0.01); }catch(e){}
+  modSend({v:1, kind:'param', part:'sampler', id:v.id, name:'rate', value:pl.rate});
   return;
  }
  if(v.mode!=='loop') return;           // a warped one-shot finishes as struck
@@ -21104,6 +21281,16 @@ function _webEngineSend(msg){
   // So do the live controls: mõdFX, the master, mute and solo.
   _webLiveParam(part, msg.name, prev, msg.value);
   return;
+ }
+ // The sampler: its clips handed over once, the pads' strikes and renders,
+ // previews, and the mõdFX pad's grain player.
+ if(msg && msg.v === 1 && part === 'sampler'){
+  if(kind === 'asset')   return _webAsset(msg);
+  if(kind === 'prepare') return _webSmpPrepare(msg);
+  if(kind === 'clip')    return msg.grain ? _webGrainOn(msg) : _webClipOn(msg);
+  if(kind === 'note')    return _webSmpNote(msg);
+  if(kind === 'release') return msg.grain ? _webGrainRelease(msg) : msg.preview ? _webSmpNoteOff(msg) : _webClipRelease(msg);
+  if(kind === 'param' && msg.name === 'rate') return _webClipRate(msg);
  }
  // The mõdSynth panel's own sounds and its warm-up.
  if(msg && msg.v === 1 && msg.voice === 'modsynth'){
@@ -52877,12 +53064,14 @@ function _fxWinSec(v){   return 0.03 *Math.pow(60, Math.max(0,Math.min(1,v))); }
 // A source parameter's live value. Unlike fxValue it has no channel: the pad
 // drives the player directly, so being on an axis is the only thing that
 // makes one of these move.
-function _fxSrcDriving(key){ return fxEngaged && (fxPadX===key || fxPadY===key); }
+// Engine side: the engine's copy of the pad (fx.modfx), as fxValue reads it.
+function _fxSrcDriving(key){ var P=_fxEngPad(); return !!P.engaged && (P.x===key || P.y===key); }
 function _fxSrcVal(key){
  var p=FX_PARAMS[key]; if(!p) return 0;
- if(fxEngaged){
-  if(key===fxPadX) return fxPos.x;
-  if(key===fxPadY) return fxPos.y;
+ var P=_fxEngPad();
+ if(P.engaged){
+  if(key===P.x) return P.pos.x;
+  if(key===P.y) return P.pos.y;
  }
  return p.base;
 }
@@ -52891,12 +53080,30 @@ function _fxSrcVal(key){
 // under your finger for as long as it is down. A one-shot that ran out halfway
 // through a sweep would leave the axes working on silence, which is the one
 // thing a real unit never does.
+// The app's half (4.9.9.9.9): the pad's clip is a clip message with grain
+// set, carrying the slot it plays; the player is the engine's, and reads the
+// axes from its own copy of the pad. Let go of by id, like a pad.
+var _fxGrainId = null, _fxGrainSeq = 0;
 function fxSmpStart(){
  if(!fxSmpOn()) return;
  var ctx=(typeof getCtx==='function')?getCtx():null; if(!ctx) return;
  fxSmpStop();
- var slot=SMP_SLOTS.fxpad, buf=SMP_BUF[slot.id];
- var mx=(typeof _cmx==='function') ? _cmx('sampler') : 1;
+ var slot=SMP_SLOTS.fxpad;
+ _fxGrainId = 'fxpad:'+(++_fxGrainSeq);
+ modSend({v:1, kind:'clip', part:'sampler', id:_fxGrainId, grain:true, asset:slot.id,
+          slot:Object.assign({}, slot, {norm: smpNorm(smpClip(slot.id))})});
+}
+function fxSmpStop(){
+ if(_fxGrainId==null) return;
+ var id=_fxGrainId; _fxGrainId=null;
+ modSend({v:1, kind:'release', part:'sampler', id:id, grain:true});
+}
+// Engine side.
+function _webGrainOn(m){
+ var ctx=getCtx(); if(!ctx) return;
+ _webGrainOff();
+ var slot=m.slot, buf=window._webAssets[m.asset]; if(!buf) return;
+ var mx=_wpd('mix.sampler', 1);
  var dest=(typeof _partDest==='function') ? _partDest(ctx,'sampler') : ctx.destination;
  var out=ctx.createGain();
  // The clip's OWN level, kept apart from the channel's. Every other part in
@@ -52906,7 +53113,7 @@ function fxSmpStart(){
  // was frozen at whatever it read the moment you pressed the pad. The meter
  // taps the bus downstream of this node, so it showed signal the whole time —
  // a channel that looked wired and answered to nothing.
- var base = Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id)) * 0.62;
+ var base = Math.max(0, slot.gain==null?1:+slot.gain) * (slot.norm==null?1:slot.norm) * 0.62;
  out.gain.value = base * mx;
  // The pad is the one player that does not go through smpVoice, so the slot's
  // high-pass has to be wired here too or the setting would silently mean
@@ -52923,7 +53130,7 @@ function fxSmpStart(){
  else out.connect(dest);
  var a=Math.max(0, Math.min(0.999, +slot.start||0));
  var b=Math.max(a+0.002, Math.min(1, slot.end==null?1:+slot.end));
- _fxGrain = {
+ _fxGrain = { id:m.id,
   ctx:ctx, buf:buf, out:out, base:base,
   a:a*buf.duration, b:b*buf.duration,     // the trimmed window, in seconds
   head:a*buf.duration,                     // where the read head is now
@@ -52932,7 +53139,7 @@ function fxSmpStart(){
  };
  _fxGrainTick();
 }
-function fxSmpStop(){
+function _webGrainOff(){
  var G=_fxGrain; if(!G) return;
  _fxGrain=null;
  clearTimeout(G.timer);
@@ -52948,6 +53155,7 @@ function fxSmpStop(){
 }
 window.fxSmpStart = fxSmpStart;
 window.fxSmpStop  = fxSmpStop;
+function _webGrainRelease(m){ if(_fxGrain && _fxGrain.id===m.id) _webGrainOff(); }
 window._fxGrainState = function(){
  var G=_fxGrain;
  return G ? {head:G.head, a:G.a, b:G.b, grains:G.fired||0} : null;
@@ -52963,13 +53171,15 @@ function _fxGrainTick(){
  // after Hold was switched off and after Clear — a sound with no way out.
  // The loop asks on every tick whether it is still wanted, so a path that
  // forgets costs 25 ms of audio rather than the rest of the session.
- if(!fxEngaged || !fxSmpOn() || G.ctx.state==='closed'){ fxSmpStop(); return; }
+ // On the engine's side now, it asks its own copy of the pad: the app sends
+ // the release, and this catches the paths that might not.
+ if(!_fxEngPad().engaged || G.ctx.state==='closed'){ _webGrainOff(); return; }
  var ctx=G.ctx, horizon=ctx.currentTime+FX_GRAIN_AHEAD;
  // Follow the Sampler strip live — fader, mute and solo, since _cmx folds all
  // three into one number. setTargetAtTime rather than an assignment so a
  // fader drag is a ramp and a mute is not a click.
- if(G.base!=null && typeof _cmx==='function'){
-  try{ G.out.gain.setTargetAtTime(G.base*_cmx('sampler'), ctx.currentTime, 0.015); }catch(e){}
+ if(G.base!=null){
+  try{ G.out.gain.setTargetAtTime(G.base*_wpd('mix.sampler', 1), ctx.currentTime, 0.015); }catch(e){}
  }
  var guard=0;
  while(G.next < horizon && guard++ < 64){

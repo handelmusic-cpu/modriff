@@ -578,12 +578,11 @@ built inside `send`; on main all 18 were outside it.
 Still reaching past the door, now that every note, hit and click goes
 through it (and, since 4.9.9.9.7, every mõdSynth edit):
 
-- **The sampler pads and clips** (`psStart`, `psStop`, `psFade`, the
-  Sampler channel). Not one more message: the app decides what a tap does
-  by reading the engine's live voices (`PS_LIVE`, 17 places), and a clip
-  plays a buffer the user recorded or loaded — plus time-stretched and
-  reversed renders of it — which a native engine would first have to be
-  given. See the proposal below.
+- **Recording.** The mic and the app tap that record a clip are Web Audio
+  the app drives directly. They are input, not sound, and a native build
+  records natively; they stay where they are until then. So does decoding
+  a clip's bytes (`smpDecodeBytes`) and rendering the factory kit offline:
+  both make the app's own copy of a clip, not sound.
 - **Bus preparation** called from app code (`sqInitFX`, `sqEnsureNoise`,
   `mlMG`, `blMG` before a preview, `fxInsertAll` when the mõdFX panel or a
   synth filter first appears, `buildReverb` before a recording). They build
@@ -837,6 +836,57 @@ direction and the engine renders), and the app keeps its own record of
 which pads are live from the messages it sent — a one-shot's end is known
 from the clip's length — instead of reading `PS_LIVE`.
 
+**Done (4.9.9.9.9), close to that sketch.** Before: every pad strike,
+release and re-pitch, every Warp and reverse render, the editor's preview
+and the mõdFX pad's grain player built and drove Web Audio nodes from app
+code, and the Sampler voice and drum lanes read the app's slots and
+buffers from inside the engine. Now:
+
+| message | what |
+|---|---|
+| `{kind:'asset', id, rate, channels, frames, buffer}` | a clip, handed over once, from the one place every clip enters (`smpBufSet`); `{…, drop:true}` when it goes. On the web the decoded buffer travels in the message, so nothing is copied. A native engine opens `id` from native storage instead |
+| `{kind:'clip', id, asset, rev, stretch, from, to, rate, level, loop, loopA, loopB, at}` | a pad's strike. `loop` is `'window'` (Loop mode), `'hold'` (the clip's sustain loop) or null; `level` is the pad's, and the engine applies the Sampler fader |
+| `{kind:'release', id, at, fade}` | let go of a strike, a preview or the grain player |
+| `{kind:'param', id, name:'rate', value}` | re-pitch a sounding pad |
+| `{kind:'prepare', asset, rev, stretch}` | render a Warp ratio; returns a promise that settles once the render exists. `{…, drop:true}` forgets one |
+| `{kind:'note', id, slot, midi, dur, at, to:'master'}` | the editor's preview, with the slot carried whole (it may not be saved anywhere yet) |
+| `{kind:'clip', id, grain:true, asset, slot}` | the mõdFX pad playing its clip. The engine's grain player reads the axes from its own copy of the pad (`fx.modfx`) |
+| param `sampler.slots` | the Sampler voice slots (`v:<part>`) and drum lanes' clips (`d:<kit>:<lane>`), each with its clip's loudness normalisation |
+
+The app keeps its own records, built from the messages it sent: which pads
+are live (`PS_LIVE`, now ids and end times, not nodes; a one-shot is
+cleared 20 ms after its end, where the source's `ended` used to do it),
+which Warp renders exist (`PS_WARP_READY`), and which of them to let go
+when there are more than 24. So a strike never asks the engine anything.
+The renders themselves, the reversed copies and the voices are the
+engine's. The app's own decoded copy of each clip (`SMP_BUF`) stays for
+what the editor draws and measures: the waveform, the detected pitch, the
+auto-loop points.
+
+Verified the same way as the live controls. The outside-the-engine write
+probe, extended to pads in every mode, reverse, Warp, re-pitch, a preview,
+a Sampler voice and the grain pad: main 55,707 writes, this build none. A
+new 182-step scenario covers six pads through One-shot, Gate and Loop,
+reverse, re-pitch, Warp and Warp reversed (rendered on a real worker),
+Sync, choke groups, Hold, Roll, quantize, previews, a Sampler voice, a
+drum lane with a clip, and the grain pad through two patches and a mute. A
+source's `ended` is fired on the probe's frozen clock in both builds,
+since that is what the app's own end-time records replace. Result: every
+parameter's curve identical to main except two kinds of difference, both
+accounted for. Steps where the scenario set a voice directly carry the
+chain re-apply that the voice param now triggers, at unchanged values.
+In the grain-pad steps, the pad's state now reaches the engine before
+the clip, so one analyser is created a node earlier and the ids after it
+shift; with ids set aside those steps are identical, apart from main's
+redundant re-gating. Under a scramble of every slot's settings, every
+pad's settings and which buffer each clip id holds, during every engine
+call and timer (314), the output is identical. As a control, a copy with
+the Sampler voice reading the app's buffers again changed 7 steps.
+
+Not built yet, because it is native code: saving a clip's bytes into native
+storage when the app stores it (the IndexedDB write in `smpAddClip`), so a
+native engine finds the asset by id. It goes with the native sampler.
+
 **Decided (owner, after 4.9.9.9.3):**
 
 - *User samples live in native storage* on the phone, saved once and
@@ -922,8 +972,8 @@ unchanged.
 
 1. **`modEngine.send`** — every voice through one function on the web
    engine. Every part is through (4.9.9.6–4.9.9.9.3), and every knob,
-   live controls included (4.9.9.9.4–4.9.9.9.8); the sampler pads remain,
-   proposed below. The precondition for native audio, so it goes first now that
+   live controls included (4.9.9.9.4–4.9.9.9.8), and the sampler
+   (4.9.9.9.9). What remains is bus preparation and recording (above). The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
