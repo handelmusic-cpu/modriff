@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5); voices/patches, live controls and the sampler next |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6); the mõdSynth panel, live controls and the sampler next |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -700,6 +700,29 @@ every `oninput`.
 3. Voices and patches: `chord.voice` is a voice name; a mõdSynth patch is
    one `param` whose value is the patch object, the shape
    `modsynth/params.js` already defines.
+
+   **First half done (4.9.9.9.6).** Following `makeVoice` and its callees
+   found four reads outside `PARAMS`: each part's **Mega** patch
+   (`modSynthPatches` — the built-in synth that plays the `modsynth` voice
+   while the mõdSynth worklet loads, or where it cannot run), and in
+   `msxVoice` the tuning and the mixer level, which the scramble could not
+   have caught because no trace plays the worklet. All are in the store
+   now (`<part>.megaPatch`, compared by value). The fourth, `root` in the
+   sampler's key voice, goes with the sampler. Verified: a new trace
+   plays the Mega voice on every part across every factory preset, with
+   patches edited between notes — identical to main plain and under the
+   scramble (which now swaps each part's patch for another preset while the
+   engine runs), source and `dist/`. As a control, the same scramble
+   applied to main does change its output, so the test bites. Every other
+   scenario re-run, plain and scrambled: identical.
+
+   **Second half, next: the mõdSynth panel.** Its knobs (`MsxBind.set` →
+   `msxSetParam`), motion lanes, mod matrix, patch loads and its own
+   on-screen keyboard all reach the worklet engine directly, not through
+   the door — the patch lives inside the engine object. They become
+   messages to the engine (`{kind: 'param', part, name: 'msx', …}` and the
+   keyboard's notes as ordinary `note`s), so that when the worklet becomes
+   C++ (order step 2) the panel needs no change.
 4. The mixer, mõdFX, the reverbs and the master bus, as one part (`mix`,
    `fx`, `master`) each — they move native together, last, as already
    planned.

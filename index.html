@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.5</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.6</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.6</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.5';
+const MODRIFF_VERSION = '4.9.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9743,6 +9743,12 @@ var PARAMS = [
  {part:'fx',     name:'trim',       read:function(){ return fxTrim; }},
  {part:'master', name:'tune',       read:function(){ return masterTune; }}
 ];
+// Each part's Mega patch — the built-in synth voice behind the 'modsynth'
+// choice while the mõdSynth worklet is loading, or where it cannot run. An
+// object, compared by value, so an edit inside it is a change.
+['chord','arp','mel','bass','melgen'].forEach(function(p){
+ PARAMS.push({part:p, name:'megaPatch', read:function(){ return modSynthPatches[p]; }});
+});
 // Each part's level as the mixer has it now — fader, mute and solo together.
 ['chord','mel','melgen','bass','arp','drum','auxperc','sampler'].forEach(function(p){
  PARAMS.push({part:'mix', name:p, read:function(){ return _cmx(p); }});
@@ -19317,7 +19323,7 @@ function msxVoice(ctx, part, midi, t0, dur, vel){
  var eng=MSX.eng[part];
  if(!eng || !eng.ready || eng.ctx!==ctx){ msxEnsure(part); return null; }
  var id=MSX.nid++;
- var mx=1; try{ mx=_cmx(part==='melgen'?'melgen':part); }catch(e){}
+ var mx=_wp('mix.'+part); if(mx==null) mx=1;
  try{ MSX.trim[part].gain.setTargetAtTime(_msxCal(part)*mx, Math.max(ctx.currentTime, t0-0.02), 0.01); }catch(e){}
  if(eng.asleep) eng.wake();
  MSX.busyTill[part]=Math.max(MSX.busyTill[part]||0, t0+Math.max(0.03,dur));
@@ -19325,7 +19331,7 @@ function msxVoice(ctx, part, midi, t0, dur, vel){
  eng.noteOnAt(midi, vel==null?0.85:vel, t0, id);
  eng.noteOffAt(midi, t0+Math.max(0.03, dur), id);
  var o=ctx.createOscillator();
- o.frequency.value=masterTune*Math.pow(2,(midi-69)/12);
+ o.frequency.value=_wp('master.tune')*Math.pow(2,(midi-69)/12);
  var _stop=o.stop.bind(o);
  o.start(t0); _stop(t0+Math.max(0.03,dur)+0.05);
  o.stop=function(t){
@@ -20031,7 +20037,7 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  //     (independent of the shared fxCutoff/fxEnv character macros applied
  //     downstream by voiceFx — this is the voice's own built-in movement)
  //  5. a soft internal saturation stage for harmonic bite
- const P=(modSynthPatches&&modSynthPatches[part||'chord'])||MODSYNTH_PRESETS.mega;
+ const P=_wp((part||'chord')+'.megaPatch')||MODSYNTH_PRESETS.mega;
  const unison=buildSuperSaw(ctx,f,P.spread,P.voices,P.type);
  const filt=ctx.createBiquadFilter(); filt.type='lowpass'; filt.Q.value=P.q;
  // Cutoff is a real, dialable frequency (the Cutoff slider), and Sweep is a
