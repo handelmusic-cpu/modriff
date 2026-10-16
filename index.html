@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.1</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.1</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9';
+const MODRIFF_VERSION = '4.9.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9584,8 +9584,8 @@ window._genQueuePaint = function(part, frac, landed){
 // engine is Web Audio, here in the page; the iPhone app replaces it with
 // native code one part at a time, and it can only do that if there is a
 // single place every part's sound passes through. Chords, the live melody
-// ('mel': the strip, the keys, MIDI), the melody sequencer ('melgen') and the
-// bass go through it now; the arp and the drums still build their notes
+// ('mel': the strip, the keys, MIDI), the melody sequencer ('melgen'), the
+// bass and the arp go through it now; the drums still build their hits
 // directly, though a kill of their look-ahead (stop) already comes this way.
 //
 //   send(msg)   msg is one of (v is always 1):
@@ -9618,6 +9618,10 @@ window._genQueuePaint = function(part, frac, landed){
 //                      on into the next) and from (the MIDI note it glides
 //                      in from, or null). The bass is monophonic: each note
 //                      cuts the last.
+//                      'arp' carries level (the pattern's dynamic shape,
+//                      a plain scale) and pan (the ping-pong) beside vel.
+//                      On 'arp' a chord is the Block pattern: its notes
+//                      struck 12 ms apart, root and bass null.
 //     {kind:'release', part:'bass', at}
 //                      let go of the bass voice (it has only one), as a key
 //                      played by hand comes up.
@@ -20826,6 +20830,8 @@ function _webEngineSend(msg){
  }
  if(msg && msg.v === 1 && part === 'melgen' && kind === 'note') return window._webMelgenNote(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'note') return window._webBassNote(msg);
+ if(msg && msg.v === 1 && part === 'arp' && kind === 'note') return _webArpNote(msg);
+ if(msg && msg.v === 1 && part === 'arp' && kind === 'chord') return _webArpBlock(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'release') return window._webBassRelease(msg);
  if(msg && msg.v === 1 && kind === 'stop' && KILL_PARTS.indexOf(part) >= 0) return _webKillPart(part, msg.at);
  if(msg && msg.v === 1 && part === 'mel'){
@@ -23338,15 +23344,26 @@ function startClock(){
 function restartIfRunning(){ if(rhythmOn||_arpSounding()) startClock(); }
 
 // ─── Arp note scheduling ───
+var _arpNoteSeq = 0;
 function scheduleArpBlock(t,dur){
  // Block: play all chord tones with strum effect
- const ctx=getCtx(); if(!ctx||!arpNotes.length) return;
+ if(!window.modEngine.ready() || !arpNotes.length) return;
+ // An external synth playing the lane with local sound off has it instead.
+ if(typeof moSilences==='function' && moSilences('arp')) return;
+ window.modEngine.send({v: 1, kind: 'chord', part: 'arp', id: ++_arpNoteSeq, root: null,
+                        notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur});
+}
+// The Web Audio engine's block: the chord's tones 12 ms apart, low to high
+// as given.
+function _webArpBlock(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const t=msg.at, dur=msg.dur;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
  const _mxArp=_cmx('arp');
- if(!(_mxArp>0) || (typeof moSilences==='function' && moSilences('arp'))) return;
+ if(!(_mxArp>0)) return;
  const wg = (WAVE_GAIN[arpWave] || 1) * (ARP_SAMPLE_GAIN[arpWave] || 1);
  const revMix = parseFloat(document.getElementById('rev-mix')?.value || '0.25');
- arpNotes.forEach((midi,idx)=>{
+ msg.notes.forEach((midi,idx)=>{
  const strumT = t + idx * 0.012;
  const g = ctx.createGain();
  g.gain.setValueAtTime(0, strumT);
@@ -23370,11 +23387,7 @@ const ARP_SAMPLE_GAIN = {clarinet:4.2, flute:3.8, violin:2.2, tenorsax:2.4};
 // -36 to -40 for the rest on C-E-G at the default envelope.
 var CHORD_SAMPLE_GAIN = {clarinet:2.0, flute:1.8};
 function scheduleArpNote(midi,t,dur){
- const ctx=getCtx(); if(!ctx) return;
- const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
- const atk=parseFloat(document.getElementById('attack').value);
- const wg=(WAVE_GAIN[arpWave]||1)*(ARP_SAMPLE_GAIN[arpWave]||1);
- const revMix=parseFloat(document.getElementById('rev-mix').value);
+ if(!window.modEngine.ready()) return;
 
  // Gate pattern
  const pat=ARP_GATE_PATTERNS[arpGatePat];
@@ -23401,31 +23414,50 @@ function scheduleArpNote(midi,t,dur){
  if(!pat.gates[stepInPat]) return; // gate closed
 
  // Clamp to at least 5ms in the future — prevents scheduling in the past which causes clicks
- const tAdj=Math.max(ctx.currentTime + 0.005, t + humanOff);
+ const now=window.modEngine.now();
+ const tAdj=Math.max(now + 0.005, t + humanOff);
 
  const bounceV=(arpPat==='ud'||arpPat==='bounce')?_arpBounceVel:1.0;
- const _mxArp=_cmx('arp');
  // Gate-pattern position (arpGateIdx) has already advanced above regardless,
  // same as when the gate itself is closed — muting shouldn't desync the
  // pattern from where it'd be if the channel were live.
- if(!(_mxArp>0) || (typeof moSilences==='function' && moSilences('arp'))) return;
- const _pk=vol*.55*wg*velMult*humanVel*bounceV*velShapeMult*_mxArp*fxTrim;
+ if(typeof moSilences==='function' && moSilences('arp')) return;
+ // Alternate successive arp notes left/right — a ping-pong image that makes
+ // a fast arp feel like it's moving through the field rather than drilling
+ // one spot. Uses the gate index so the pattern is stable, not random. Part of
+ // the pattern, so it is decided here and travels with the note.
+ const arpPan = (arpGateIdx%2 ? 1 : -1) * 0.75;
+ // vel is how hard the step is struck (its accent, humanised), which also
+ // opens the filter; level is where it sits in the pattern's dynamic shape
+ // (Bounce, Cresc, Hill...), which only scales it.
+ window.modEngine.send({v: 1, kind: 'note', part: 'arp', id: ++_arpNoteSeq, note: midi,
+                        vel: velMult*humanVel, level: bounceV*velShapeMult, pan: arpPan,
+                        at: tAdj, dur: dur});
+ // The readout under the arp follows what sounds, so not with its fader down.
+ if(!(_cmx('arp')>0)) return;
+ const delay=Math.max(0,(tAdj-now)*1000);
+ setTimeout(()=>_arpShowNote(midi),delay);
+}
+// The Web Audio engine's arp step.
+function _webArpNote(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const midi=msg.note, tAdj=msg.at, dur=msg.dur;
+ const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
+ const atk=parseFloat(document.getElementById('attack').value);
+ const wg=(WAVE_GAIN[arpWave]||1)*(ARP_SAMPLE_GAIN[arpWave]||1);
+ const revMix=parseFloat(document.getElementById('rev-mix').value);
+ const _mxArp=_cmx('arp');
+ if(!(_mxArp>0)) return;
+ const _pk=vol*.55*wg*msg.vel*msg.level*_mxArp*fxTrim;
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
  g.gain.setValueAtTime(_pk,tAdj+atk+.005); g.gain.exponentialRampToValueAtTime(.0001,tAdj+dur);
- // Alternate successive arp notes left/right — a ping-pong image that makes
- // a fast arp feel like it's moving through the field rather than drilling
- // one spot. Uses the gate index so the pattern is stable, not random.
- const arpPan = (arpGateIdx%2 ? 1 : -1) * 0.75;
- const fx = voiceFx(ctx,tAdj,dur,velMult*humanVel,arpPan,'arp');
+ const fx = voiceFx(ctx,tAdj,dur,msg.vel,msg.pan,'arp');
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
  const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave,'arp');
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],dur);
  _regKill(g, 'arp');
-
- const delay=Math.max(0,(tAdj-ctx.currentTime)*1000);
- setTimeout(()=>_arpShowNote(midi),delay);
 }
 
 // Which note the arp is on, as text under the arp controls. It was being built
