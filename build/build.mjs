@@ -23,7 +23,9 @@ const OUT  = path.join(ROOT, 'dist');
 // Repo furniture, never served.
 const SKIP = new Set(['.git', '.github', '.vercel', 'build', 'dist', 'node_modules',
   'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
-  'tests', 'docs', 'ios', 'capacitor.config.json']);
+  'tests', 'docs', 'ios', 'capacitor.config.json',
+  // The C++ engine is compiled into the native app, not served to the web one.
+  'native']);
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT);
