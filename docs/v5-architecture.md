@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6); the mõdSynth panel, live controls and the sampler next |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -576,7 +576,7 @@ identical, source and `dist/`. In real time all 18 of their voices are
 built inside `send`; on main all 18 were outside it.
 
 Still reaching past the door, now that every note, hit and click goes
-through it:
+through it (and, since 4.9.9.9.7, every mõdSynth edit):
 
 - **The sampler pads and clips** (`psStart`, `psStop`, `psFade`, the
   Sampler channel). Not one more message: the app decides what a tap does
@@ -716,13 +716,49 @@ every `oninput`.
    applied to main does change its output, so the test bites. Every other
    scenario re-run, plain and scrambled: identical.
 
-   **Second half, next: the mõdSynth panel.** Its knobs (`MsxBind.set` →
-   `msxSetParam`), motion lanes, mod matrix, patch loads and its own
-   on-screen keyboard all reach the worklet engine directly, not through
-   the door — the patch lives inside the engine object. They become
-   messages to the engine (`{kind: 'param', part, name: 'msx', …}` and the
-   keyboard's notes as ordinary `note`s), so that when the worklet becomes
-   C++ (order step 2) the panel needs no change.
+   **Second half done (4.9.9.9.7): the mõdSynth panel.** Its knobs,
+   motion lanes, mod matrix, patch picks, setup recall, Hear, its
+   on-screen keyboard and the warm-up all reached the worklet engine
+   directly. Now:
+
+   - Each part's mõdSynth state is a `PARAMS` entry, `<part>.msx` — the
+     same small object that is saved under `modo-msx`: the patch's name,
+     the edits on top of it, the motion lanes. The engine resolves it
+     against the patch library it carries itself (`modsynth/patches*.js`),
+     so a native engine needs only the same files. Tempo is
+     `transport.bpm`.
+   - The panel **flushes** (`modParamsFlush`) instead of waiting for the
+     next note, because a knob shapes a note that is already sounding. A
+     batch (a whole matrix) flushes once at its end.
+   - The engine applies a **change of patch whole** and **anything else as
+     what changed** (`_webMsxState`): the knob that moved, the matrix
+     rebuilt once if any row moved, a macro, a motion lane. It remembers
+     what it applied (`MSX.applied`); nothing else writes an engine's
+     values (the load governor sends its caps separately).
+   - The panel's own sounds carry `voice: 'modsynth'` — they play the
+     part's mõdSynth whatever voice the part is set to: Hear is a `chord`,
+     a key is a `note` and its `release`, the warm-up is
+     `{kind: 'prepare', part, voice: 'modsynth'}`.
+   - Motion edits stay at full precision while the session runs (they are
+     what the engine plays) and are rounded to three places only when
+     saved, as they always were on disk.
+
+   Verified at the boundary that becomes C++ — every message each part's
+   worklet receives (`node.port.postMessage`) and each engine's values,
+   matrix and motion — by driving the panel through 25 steps (patch picks,
+   a knob of every type, one past its cap, a macro, a matrix row, a whole
+   matrix, a motion step and a whole lane, the same value twice, a repick,
+   a setup recall, Hear, the panel keyboard held and tapped), on main and
+   on this build: the engines' state is identical after every step; Hear
+   and the keyboard send identical notes; the saved `modo-msx` is
+   byte-for-byte identical. The branch sends 142 worklet messages where
+   main sent 312 — main re-sent unchanged values, wrote a whole matrix
+   field by field rebuilding it 25 times, and re-applied every part whole
+   on a recall. Every graph trace re-run: identical, source and `dist/`.
+
+   One fix: a key tapped on the panel before its engine had finished
+   loading started its note after the release had already gone, so it
+   hung. Measured on main: `on 60` and no `off`; now nothing starts.
 4. The mixer, mõdFX, the reverbs and the master bus, as one part (`mix`,
    `fx`, `master`) each — they move native together, last, as already
    planned.

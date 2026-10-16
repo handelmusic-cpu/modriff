@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.6</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.7</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.7</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.6';
+const MODRIFF_VERSION = '4.9.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9749,6 +9749,16 @@ var PARAMS = [
 ['chord','arp','mel','bass','melgen'].forEach(function(p){
  PARAMS.push({part:p, name:'megaPatch', read:function(){ return modSynthPatches[p]; }});
 });
+// Each part's mõdSynth: which patch, the edits made on top of it, its motion
+// lanes — MSX.state[part], exactly what is saved under modo-msx. The engine
+// resolves it against the patch library it carries itself (modsynth/
+// patches*.js), so the message is small and a native engine needs nothing
+// but the same files. Edits from the panel are flushed at once (see
+// msxSetParam), because they shape a note that is already sounding.
+['chord','mel','bass','melgen','arp'].forEach(function(p){
+ PARAMS.push({part:p, name:'msx', read:function(){ return MSX.state[p] || {}; }});
+});
+PARAMS.push({part:'transport', name:'bpm', read:function(){ return _pSlider('bpm'); }});
 // Each part's level as the mixer has it now — fader, mute and solo together.
 ['chord','mel','melgen','bass','arp','drum','auxperc','sampler'].forEach(function(p){
  PARAMS.push({part:'mix', name:p, read:function(){ return _cmx(p); }});
@@ -9797,6 +9807,9 @@ function modParamsSync(){
   E.send({v: 1, kind: 'param', part: p.part, name: p.name, value: v});
  });
 }
+// Send any changed state now, not with the next note — for controls that
+// shape what is already sounding.
+function modParamsFlush(){ modParamsSync(); }
 function modSend(msg){
  modParamsSync();
  return window.modEngine.send(msg);
@@ -19133,7 +19146,7 @@ const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
 // Notes are frame-timed (dsp.js `at`), so the engine follows the lookahead
 // clock exactly; a note's release is sent with its start and moved earlier
 // when something cuts it (stopAll, a held chord let go) — see msxVoice.
-var MSX = { loading:null, eng:{}, pend:{}, trim:{}, nid:1, state:{}, busyTill:{}, sleepT:null };
+var MSX = { loading:null, eng:{}, pend:{}, trim:{}, nid:1, state:{}, busyTill:{}, sleepT:null, applied:{} };
 // An engine with nothing to play sleeps (Engine.sleep) once its last note and
 // that note's longest tail are well past, and wakes when the next note is
 // scheduled — which is always a lookahead before it sounds. Measured before
@@ -19227,7 +19240,10 @@ var MSX_BUS_CAL = { bass:7.2, melgen:3.75 };
 function _msxCal(part){ return MSX_CAL * (MSX_BUS_CAL[part]||1); }
 var MSX_CAL = 0.53;   // the factory patches run ~5.5 dB over the app's other chord voices (median, 8 patches against 5 voices)
 try{ MSX.state = JSON.parse(modStore.getItem('modo-msx')||'{}') || {}; }catch(e){ MSX.state = {}; }
-function msxSaveState(){ try{ modStore.setItem('modo-msx', JSON.stringify(MSX.state)); }catch(e){} }
+// Motion steps are stored to three places, as they always have been.
+function msxSaveState(){ try{ modStore.setItem('modo-msx', JSON.stringify(MSX.state, function(k, v){
+ return (k==='motion' && Array.isArray(v)) ? v.map(function(l){ return l && l.map ? l.map(function(x){ return Math.round(x*1000)/1000; }) : l; }) : v;
+})); }catch(e){} }
 function msxLoadLib(){
  if(window.MS && MS.Engine && MS.FACTORY_PATCHES && MS.MODERN_PATCHES && MS.UI) return Promise.resolve();
  if(MSX.loading) return MSX.loading;
@@ -19247,8 +19263,8 @@ function msxPatchByName(name){
 }
 // The values a part plays with: schema defaults, then its factory patch, then
 // whatever you have changed on top (MSX.state[part].vals, saved sparse).
-function msxValuesFor(part){
- var st = MSX.state[part] || {};
+function msxValuesFor(part, state){
+ var st = state || MSX.state[part] || {};
  var patch = msxPatchByName(st.patch || MSX_DEFAULT[part] || 'Warm Keys') || msxPatchByName('Warm Keys');
  var v = MS.paramDefaults();
  if(patch){
@@ -19265,16 +19281,18 @@ function msxValuesFor(part){
 }
 // A motion lane's sixteen steps: the part's own edit if it has one (saved
 // whole, as st.motion[lane]), else the patch's.
-function msxMotionFor(part, lane, patch){
- var st=MSX.state[part]||{};
+function msxMotionFor(part, lane, patch, state){
+ var st=state||MSX.state[part]||{};
  var src=(st.motion && st.motion[lane]) || (patch && patch.motion && patch.motion[lane]);
  var arr=new Float32Array(MS.MOTION_STEPS);
  if(src) for(var i=0;i<Math.min(src.length,MS.MOTION_STEPS);i++) arr[i]=+src[i]||0;
  return arr;
 }
+// Engine side. A whole patch onto a part's engine, from the engine's store.
 function msxApply(part){
  var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
- var r=msxValuesFor(part);
+ var state=_wp(part+'.msx') || {};
+ var r=msxValuesFor(part, state);
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
@@ -19282,11 +19300,38 @@ function msxApply(part){
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) r.values[k]=Math.min(+r.values[k]||1, 4); });
  eng.setAll(r.values);
  eng.syncMatrixFromParams();
+ var motion=[];
  for(var lane=0; lane<2; lane++){
-  eng.setMotion(lane, msxMotionFor(part, lane, r.patch));
+  motion[lane]=msxMotionFor(part, lane, r.patch, state);
+  eng.setMotion(lane, motion[lane]);
  }
  for(var m=1;m<=MS.MACRO_COUNT;m++) eng.setMacro(m, r.values['macro.'+m]||0);
- try{ eng.setTempo(parseFloat(document.getElementById('bpm').value)||100); }catch(e){}
+ try{ eng.setTempo(_wp('transport.bpm')||100); }catch(e){}
+ MSX.applied[part]={patch: state.patch, values: r.values, motion: motion.map(function(a){ return Array.from(a); })};
+}
+// Engine side. The part's mõdSynth state changed: a new patch is applied
+// whole; an edit to the one already on is applied as just what changed — the
+// knob that moved, the matrix once if any row moved, a macro, a motion lane —
+// as the panel used to do straight to the engine.
+function _webMsxState(part){
+ var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
+ var A=MSX.applied[part], state=_wp(part+'.msx') || {};
+ if(!A || A.patch!==state.patch){ msxApply(part); return; }
+ var r=msxValuesFor(part, state), v=r.values, mtx=false;
+ v['voice.poly'] = Math.min(+v['voice.poly']||8, part==='chord' ? 8 : 6);
+ ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) v[k]=Math.min(+v[k]||1, 4); });
+ Object.keys(v).forEach(function(id){
+  if(v[id]===A.values[id]) return;
+  eng.set(id, v[id]);
+  if(/^mtx/.test(id)) mtx=true;
+  var mm=/^macro\.(\d)$/.exec(id); if(mm) eng.setMacro(+mm[1], +v[id]);
+ });
+ if(mtx) eng.syncMatrixFromParams();
+ for(var lane=0; lane<2; lane++){
+  var mo=msxMotionFor(part, lane, r.patch, state), a=Array.from(mo);
+  if(JSON.stringify(a)!==JSON.stringify(A.motion[lane])){ eng.setMotion(lane, mo); A.motion[lane]=a; }
+ }
+ A.values=v;
 }
 function msxEnsure(part){
  var ctx=getCtx(); if(!ctx) return Promise.resolve(null);
@@ -19311,7 +19356,7 @@ function msxEnsure(part){
 }
 // Builds every engine a part is set to play on, ahead of the first note.
 function msxPrewarm(){
- try{ VOICE_PARTS.forEach(function(p){ var v=null; try{ v=p.get(); }catch(e){} if(v==='modsynth') msxEnsure(p.k); }); }catch(e){}
+ try{ VOICE_PARTS.forEach(function(p){ var v=null; try{ v=p.get(); }catch(e){} if(v==='modsynth') modSend({v: 1, kind: 'prepare', part: p.k, voice: 'modsynth'}); }); }catch(e){}
 }
 window.msxPrewarm = msxPrewarm;
 // One note on a part's engine. Returns a stand-in for the oscillator array
@@ -19404,18 +19449,15 @@ function msxSetParam(part, id, v, noSync){
  var st=MSX.state[part]||(MSX.state[part]={});
  st.vals=st.vals||{}; st.vals[id]=v;
  clearTimeout(_msxSaveT); _msxSaveT=setTimeout(msxSaveState, 300);
- var e=MSX.eng[part];
- if(e && e.ready){
-  e.set(id, v);
-  if(/^mtx/.test(id) && !noSync) e.syncMatrixFromParams();
-  var mm=/^macro\.(\d)$/.exec(id); if(mm) e.setMacro(+mm[1], +v);
- }
+ // noSync: one of a batch (a whole matrix written at once); the batch
+ // flushes when it is done, so the engine rebuilds the matrix once.
+ if(!noSync) modParamsFlush();
  var ed=document.getElementById('msx-edited'); if(ed) ed.style.display='';
 }
 function msxPickPatch(part, name){
  MSX.state[part]={ patch:name };
  msxSaveState();
- if(MSX.eng[part]) msxApply(part);
+ modParamsFlush();
  msxUiRender();
  if(msxAuditionOn()) msxAudition(part);
 }
@@ -19429,15 +19471,22 @@ function msxToggleAudition(){
  var b=document.getElementById('msx-aud'); if(b){ b.classList.toggle('on', msxAuditionOn()); b.setAttribute('aria-pressed', String(msxAuditionOn())); b.querySelector('span').textContent='Audition '+(msxAuditionOn()?'on':'off'); }
 }
 window.msxToggleAudition = msxToggleAudition;
+// Hear: a short chord, or one note, on the part's mõdSynth.
 function msxAudition(part){
- msxEnsure(part).then(function(e){
+ var notes = part==='chord' ? [60,64,67] : part==='bass' ? [36] : [72];
+ modSend({v: 1, kind: 'chord', part: part, id: ++_msxAudSeq, root: null, notes: notes, bass: null,
+          vel: 0.85, at: null, dur: 0.8, voice: 'modsynth'});
+}
+function _webMsxAudition(msg){
+ var part=msg.part;
+ return msxEnsure(part).then(function(e){
   if(!e) return;
   var ctx=getCtx(); if(!ctx) return;
-  var t=ctx.currentTime+0.05, notes = part==='chord' ? [60,64,67] : part==='bass' ? [36] : [72];
+  var t=ctx.currentTime+0.05;
   if(e.asleep) e.wake();
   MSX.busyTill[part]=Math.max(MSX.busyTill[part]||0, t+0.9);
   if(!MSX.sleepT) MSX.sleepT=setInterval(msxSleepSweep, 2000);
-  notes.forEach(function(n){ var id=MSX.nid++; e.noteOnAt(n, 0.85, t, id); e.noteOffAt(n, t+0.8, id); });
+  msg.notes.forEach(function(n){ var id=MSX.nid++; e.noteOnAt(n, msg.vel, t, id); e.noteOffAt(n, t+msg.dur, id); });
  });
 }
 function msxUiRender(part){
@@ -19479,7 +19528,7 @@ function msxUiRender(part){
   on.innerHTML=d.label+' is playing <b>'+cur+'</b>. ';
   var go=document.createElement('button'); go.type='button'; go.className='msx-go';
   go.textContent='Play '+d.label+' on mõdSynth';
-  go.addEventListener('click', function(){ d.set('modsynth'); msxEnsure(part).then(function(){ msxUiRender(); if(msxAuditionOn()) msxAudition(part); }); });
+  go.addEventListener('click', function(){ d.set('modsynth'); Promise.resolve(modSend({v: 1, kind: 'prepare', part: part, voice: 'modsynth'})).then(function(){ msxUiRender(); if(msxAuditionOn()) msxAudition(part); }); });
   on.appendChild(go); top.appendChild(on);
  }
  var gv=document.createElement('div'); gv.id='msx-gov'; gv.className='msx-note msx-gov'; gv.style.display='none';
@@ -19585,20 +19634,47 @@ MsxBind.prototype.setMatrix=function(rows){
   this.set(n+'src', r.src||'none', true); this.set(n+'dst', r.dst||'none', true);
   this.set(n+'amt', r.amt||0, true); this.set(n+'uni', r.uni?1:0, true); this.set(n+'via', r.via||'none', true);
  }
- var e=MSX.eng[this.part]; if(e && e.ready) e.syncMatrixFromParams();
+ modParamsFlush();
 };
 MsxBind.prototype._saveMotion=function(lane){
  var st=MSX.state[this.part]||(MSX.state[this.part]={});
  st.motion=st.motion||[null,null];
- st.motion[lane]=Array.prototype.map.call(this.motion[lane], function(x){ return Math.round(x*1000)/1000; });
+ // Kept at full precision while the session runs — it is what the engine
+ // plays — and rounded only when saved (msxSaveState).
+ st.motion[lane]=Array.prototype.slice.call(this.motion[lane]);
  clearTimeout(_msxSaveT); _msxSaveT=setTimeout(msxSaveState, 300);
- var e=MSX.eng[this.part]; if(e && e.ready) e.setMotion(lane, this.motion[lane]);
+ modParamsFlush();
 };
 MsxBind.prototype.setMotion=function(lane, steps){ this.motion[lane].set(steps.subarray ? steps.subarray(0, MS.MOTION_STEPS) : steps.slice(0, MS.MOTION_STEPS)); this._saveMotion(lane); };
 MsxBind.prototype.setMotionStep=function(lane, i, v){ this.motion[lane][i]=MS.clamp(v,-1,1); this._saveMotion(lane); };
 
 var MSX_PAGES=[['synth','Synth'],['mod','Mod'],['fx','FX']];
-var _msxHeld={};
+var _msxHeld={}, _msxKeySeq=0, _msxAudSeq=0;
+// Engine side: the panel keyboard's notes, by message id, once sounding.
+MSX.keys = {};
+function _webMsxKeyOn(msg){
+ var pt=msg.part;
+ msxEnsure(pt).then(function(e){
+  var ctx=getCtx(); if(!e || !ctx) return;
+  // Let go before the engine finished loading: the key is already up, so
+  // the note is not started. It used to start anyway and hang, since its
+  // release had come and gone.
+  if(MSX.keys[msg.id] === false){ delete MSX.keys[msg.id]; return; }
+  if(e.asleep) e.wake();
+  MSX.busyTill[pt]=ctx.currentTime+600;
+  if(!MSX.sleepT) MSX.sleepT=setInterval(msxSleepSweep, 2000);
+  var nid=MSX.nid++; MSX.keys[msg.id]={part:pt, note:msg.note, nid:nid};
+  e.noteOnAt(msg.note, msg.vel, ctx.currentTime, nid);
+ });
+}
+function _webMsxKeyOff(msg){
+ var k=MSX.keys[msg.id];
+ if(!k){ MSX.keys[msg.id]=false; return; }
+ delete MSX.keys[msg.id];
+ var e=MSX.eng[k.part], ctx=getCtx(); if(!e || !ctx) return;
+ e.noteOffAt(k.note, ctx.currentTime, k.nid);
+ MSX.busyTill[k.part]=ctx.currentTime+1.5;
+}
 function msxRackMount(host, part){
  var R=MSX.rack;
  if(!R){
@@ -19609,24 +19685,18 @@ function msxRackMount(host, part){
    macroRoutes:function(){ msxMacroRoutes(); },
    // The keyboard plays the part's engine directly — straight to the synth,
    // not through the song — so it is what the knobs above are doing to it.
+   // A key on the panel plays the part's mõdSynth whatever voice the part
+   // is set to, so its messages say voice:'modsynth'.
    noteOn:function(note, vel){
-    var pt=MSX_UI.part;
-    msxEnsure(pt).then(function(e){
-     var ctx=getCtx(); if(!e || !ctx) return;
-     if(e.asleep) e.wake();
-     MSX.busyTill[pt]=ctx.currentTime+600;
-     if(!MSX.sleepT) MSX.sleepT=setInterval(msxSleepSweep, 2000);
-     var id=MSX.nid++; _msxHeld[note]={id:id, part:pt};
-     e.noteOnAt(note, vel, ctx.currentTime, id);
-     R.ui.setKeyLit(note, true);
-    });
+    var pt=MSX_UI.part, id=++_msxKeySeq;
+    _msxHeld[note]={id:id, part:pt};
+    R.ui.setKeyLit(note, true);
+    modSend({v: 1, kind: 'note', part: pt, id: id, note: note, vel: vel, at: null, dur: null, voice: 'modsynth'});
    },
    noteOff:function(note){
     var h=_msxHeld[note]; delete _msxHeld[note];
     R.ui.setKeyLit(note, false);
-    var e=h && MSX.eng[h.part], ctx=getCtx(); if(!e || !ctx) return;
-    e.noteOffAt(note, ctx.currentTime, h.id);
-    MSX.busyTill[h.part]=ctx.currentTime+1.5;
+    if(h) modSend({v: 1, kind: 'release', part: h.part, id: h.id, at: null, voice: 'modsynth'});
    }
   };
   var ui=R.ui=new MS.UI(app);
@@ -20988,7 +21058,17 @@ function _webEngineSend(msg){
  // A part-level param that is not one of the live controls below (bend,
  // accent) is standing state: kept, and read when the next voice is built.
  if(msg && msg.v === 1 && kind === 'param' && msg.id == null && msg.name !== 'bend' && msg.name !== 'accent'){
-  window._webParams[part + '.' + msg.name] = msg.value; return;
+  window._webParams[part + '.' + msg.name] = msg.value;
+  // A part's mõdSynth state reaches its engine as soon as it changes.
+  if(msg.name === 'msx' && typeof _webMsxState === 'function') _webMsxState(part);
+  return;
+ }
+ // The mõdSynth panel's own sounds and its warm-up.
+ if(msg && msg.v === 1 && msg.voice === 'modsynth'){
+  if(kind === 'prepare') return msxEnsure(part);
+  if(kind === 'note')    return _webMsxKeyOn(msg);
+  if(kind === 'release') return _webMsxKeyOff(msg);
+  if(kind === 'chord')   return _webMsxAudition(msg);
  }
  if(msg && msg.v === 1 && part === 'chord'){
   if(kind === 'chord')   return _webChordOn(msg);
@@ -28404,7 +28484,10 @@ function _applySettings(s){
  if(s.msx && typeof MSX!=='undefined'){
   try{
    MSX.state = JSON.parse(JSON.stringify(s.msx)); msxSaveState();
-   Object.keys(MSX.eng).forEach(function(k){ try{ msxApply(k); }catch(e){} });
+   // The engines take it as they take any edit: a part whose patch changed
+   // is applied whole, the rest as what changed. Each engine ends up holding
+   // exactly the recalled state, as it did when this applied every part whole.
+   modParamsFlush();
    if(typeof window.msxUiRefresh==='function') window.msxUiRefresh();
   }catch(e){}
  }
