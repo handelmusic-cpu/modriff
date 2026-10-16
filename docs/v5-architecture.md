@@ -280,7 +280,7 @@ already renders the mõdSynth offline in node. The C++ port renders the same
 patch, the same notes, the same sample rate, and the two outputs are
 compared sample by sample. A port that matches to within float rounding
 sounds identical, by measurement rather than by ear — which is how every
-one of the 302 factory patches can be checked, not a handful.
+one of the 344 factory patches can be checked, not a handful.
 
 **The order:**
 
@@ -296,7 +296,19 @@ one of the 302 factory patches can be checked, not a handful.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
-   verified here, before any phone is involved.
+   verified here, before any phone is involved. **Done** — `native/modsynth/`
+   (see its README). A line-for-line port of `dsp.js`; the null test
+   (`tests/modsynth/null.test.js`) records every message the JS processor
+   receives, replays them into the C++ build, and compares: 516 runs (all
+   344 factory patches, plus every eighth in all four voice modes at 44.1
+   kHz with the pedal, CCs, caps, queue, all-off and panic), 24 million
+   samples, **bit-identical**, with g++ and clang++. That takes three things:
+   single precision exactly where the JS has typed arrays, V8's own fdlibm
+   maths rather than the C library's (which differs in the last bit for one
+   argument in ten), and no fused multiply-add (`-ffp-contract=off`, which
+   the iOS target must set too). Ten seconds of a six-note chord on the
+   heaviest unison patches renders 2.7–5.4× faster than in Node, before any
+   SIMD. The FX rack stays Web Audio until step 4.
 3. **The iOS shell.** Capacitor project, the Swift audio host, the
    `modEngine` plugin. This step needs a Mac with Xcode to build and a phone
    to run — the code is written here, the build is yours.
@@ -975,8 +987,8 @@ unchanged.
    live controls included (4.9.9.9.4–4.9.9.9.8), and the sampler
    (4.9.9.9.9). What remains is bus preparation and recording (above). The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
-2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
-   native engine, and fully verifiable without a phone.
+2. **mõdSynth DSP in C++, null tested** — done (`native/modsynth/`,
+   bit-identical to `dsp.js` across every factory patch).
 3. **Chord model steps 2–3** — the `getIntvs` call sites, then the "type a
    chord" field. Independent of audio; fits between the bigger steps.
 4. **MIDI Mapping Mode** — independent; can run alongside any of the above.
