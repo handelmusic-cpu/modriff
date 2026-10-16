@@ -2432,11 +2432,17 @@ body.light-mode .subnav-btn.active { color:#1d1f33; background:rgba(0,0,0,.06); 
            border-radius:var(--r-md); overflow:auto; background:var(--bg);
            -webkit-overflow-scrolling:touch;
            /* The roll is four octaves tall. Cap it and scroll rather than
-              letting it push the whole page down. */
-           max-height:min(56vh, 420px);
-           /* Reaching an edge of the roll should stop there, not hand the rest
-              of the swipe to the page and throw you off the sequencer. */
-           overscroll-behavior:contain;
+              letting it push the whole page down. 56vh until 4.9.9.5: on a
+              phone that, with the fixed transport under it, was nearly every
+              pixel of page there was to put a thumb on. */
+           max-height:min(40vh, 340px);
+           /* Sideways, an edge stops there — the steps are what the roll is
+              for, and a swipe past bar 4 should not slide the page. Up and
+              down, an edge hands the rest of the swipe to the page (4.9.9.5).
+              It was contain both ways, which made the roll a trap: a swipe
+              that started on it could never move the page at all, so on a
+              phone the controls below it were close to unreachable. */
+           overscroll-behavior-x:contain; overscroll-behavior-y:auto;
            /* manipulation, not pan-x: both axes, plus it suppresses the
               double-tap zoom that a quick second tap on a cell would otherwise
               trigger — and a second tap on a cell is how you clear a note. */
@@ -6009,17 +6015,25 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 [data-acrow="status"] { order:10; }
 [data-acrow="synth"]  { order:11; }
 [data-acrow="fx"]     { order:12; }
-/* Bass and melody now read like drums (asked for in v4.0.5): Steps, the grid,
-   then what writes it — Generate and the style presets — then how it behaves,
-   then what it sounds like. The generators above the grid pushed the grid
-   below the fold on a phone, and put the two pages in a different order from
-   the one beside them. Scoped to .bl-page-wrap, so drums keep their own. */
-.bl-page-wrap > [data-acrow="timing"] { order:0; }
-.bl-page-wrap > [data-acrow="roll"]   { order:1; margin-bottom:10px; }
-.bl-page-wrap > [data-acrow="gen"]    { order:2; }
-.bl-page-wrap > [data-acrow="write"]  { order:3; }
-.bl-page-wrap > [data-acrow="behave"] { order:4; }
-.bl-page-wrap > [data-acrow="chips"]  { order:5; }
+/* Bass and melody, since 4.9.9.5: Line and Patch, then how the part gets
+   written (the Generate | Arrange | Play in switch and that mode's controls),
+   then the roll, then Steps / Oct / Rate under it.
+
+   From 4.0.5 to 4.9.9.4 the roll came first, under Steps, with Generate
+   below it — to read like the drum page. It made the roll the thing you had
+   to get past: it is a scroller of its own, four octaves tall in a box half
+   the screen high, so on a phone almost every swipe landed on it and moved
+   the roll instead of the page, and Generate, Follow and the per-chord chips
+   were all on the far side. Everything you reach for is above it now, and
+   what is below (step count, octave, rate, filter) is set once and left.
+   Scoped to .bl-page-wrap, so drums keep their own. */
+.bl-page-wrap > [data-acrow="mode"]   { order:0; }
+.bl-page-wrap > [data-acrow="gen"]    { order:1; }
+.bl-page-wrap > [data-acrow="write"]  { order:2; }
+.bl-page-wrap > [data-acrow="behave"] { order:3; }
+.bl-page-wrap > [data-acrow="chips"]  { order:4; }
+.bl-page-wrap > [data-acrow="roll"]   { order:5; margin-bottom:10px; }
+.bl-page-wrap > [data-acrow="timing"] { order:6; }
 /* What the part is playing heads its page since 4.9.6: the big Voices-style
    readout (.voices-one) lives in this row, and a readout under the roll and
    the generator was a readout nobody saw. */
@@ -6027,6 +6041,26 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
 .bl-page-wrap > [data-acrow="pick"]   { order:-2; }
 .bl-page-wrap > [data-acrow="tone"]   { order:7; }
 
+/* The write-mode switch (4.9.9.5). Each control belongs to one mode, by class,
+   and the page's data-wmode hides the other two's — so the ids, handlers and
+   parents the rest of the script reaches for never move. Clr carries no mode
+   class and so shows in all three. */
+.bl-page-wrap:not([data-wmode="gen"]) .ac-w-gen,
+.bl-page-wrap:not([data-wmode="arr"]) .ac-w-arr,
+.bl-page-wrap:not([data-wmode="rec"]) .ac-w-rec { display:none !important; }
+/* Arrange has its own Clear, on the chord chips, and it means "drop every
+   per-chord line"; the roll's Clr beside it would have been a second clear
+   button doing something else. */
+.bl-page-wrap[data-wmode="arr"] .ac-no-arr { display:none !important; }
+.ac-mode { display:flex; flex-direction:column; align-items:stretch; gap:5px; margin:2px 0 8px; }
+/* Full width, in the part's own colour (--mel-c is the pill's accent; set
+   from PARTS by acModeTint), and a thumb tall: it is the first decision on
+   the page. */
+.ac-mode-pill { width:100%; box-sizing:border-box; }
+.ac-mode-pill button { flex:1 1 0; min-height:40px; padding:0 8px; font-size:.56rem; }
+.ac-mode-hint { font-size:.48rem; line-height:1.55; color:var(--muted); padding:0 2px; min-height:1.55em; }
+/* In Arrange the chord chips ARE the result, so they get the room. */
+.bl-page-wrap[data-wmode="arr"] > .pl-row { margin-bottom:8px; }
 /* The three labelled rows (Voice, Filter, Style, Follow) were four copies of
    the same inline style attribute, which is why they had drifted to three
    different gaps. One rule, one gap. */
@@ -7225,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.4</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.5</span>
     </div>
    </div>
   </div>
@@ -7262,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.4</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.5</span></div>
  </div>
 </div>
 
@@ -9026,14 +9060,28 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span class="bl-pl" style="margin-left:4px">Reso</span>
    <input type="range" id="bl-reso" min="0.3" max="18" step="0.1" value="2" style="-webkit-appearance:none;width:60px;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer" oninput="window.blSetResonance&&window.blSetResonance(this.value)">
   </div>
-  <!-- Generate: the first thing on the panel, at the same height as melody's.
-       See the accomp order block in the CSS. -->
+  <!-- How this part gets written (4.9.9.5): Generate, Arrange or Play in,
+       one at a time. The three used to sit side by side as equal buttons
+       under the roll, with Arrange's results — the per-chord chips — two
+       rows further down, under Follow; on a phone they landed behind the
+       transport, so Arrange looked like a button that did nothing. Now the
+       switch says which tool you are holding, and the page shows that tool's
+       controls and nothing else's, all above the roll. acSetWriteMode. -->
+  <div class="ac-mode" data-acrow="mode">
+   <div class="tmod-axis-pill ac-mode-pill" role="group" aria-label="How to write the bass line">
+    <button type="button" data-acmode="gen" onclick="acSetWriteMode('bl','gen')">Generate</button>
+    <button type="button" data-acmode="arr" class="pro-only" onclick="acSetWriteMode('bl','arr')">Arrange</button>
+    <button type="button" data-acmode="rec" onclick="acSetWriteMode('bl','rec')">Play in</button>
+   </div>
+   <div class="ac-mode-hint" id="bl-mode-hint"></div>
+  </div>
+  <!-- The one action for the mode above — the other two are hidden by it. -->
   <div class="ac-inline-row ac-gen-row" data-acrow="gen">
-   <button class="bl-genbtn ac-gen-primary" id="bl-gen-go" onclick="blGenerateAndArm()" title="Write one line in the style below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
-   <button class="bl-genbtn" id="bl-arr-go" onclick="blArrange()" title="Write a different line for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
-   <button class="bl-genbtn bl-recbtn" data-recarm="bl" onclick="noteInputArm('bl')"
-    title="Play the line in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">Play in</button>
-   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
+   <button class="bl-genbtn ac-gen-primary ac-w-gen" id="bl-gen-go" onclick="blGenerateAndArm()" title="Write one line in the style below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn ac-gen-primary ac-w-arr" id="bl-arr-go" onclick="blArrange()" title="Write a different line for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
+   <button class="bl-genbtn ac-gen-primary bl-recbtn ac-w-rec" data-recarm="bl" data-recidle="Start recording" onclick="noteInputArm('bl')"
+    title="Play the line in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">Start recording</button>
+   <button class="bl-genbtn advanced-only ac-no-arr" style="border-color:var(--muted);color:var(--muted)" onclick="blClear()">Clr</button>
   </div>
   <div class="ac-inline-row" data-acrow="write">
    <span class="ac-rowlbl">Style:</span>
@@ -9052,8 +9100,9 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="bl-gen-btn" data-blstyle="hook">Pop Hook</button>
    </div>
   </div>
-  <!-- Follow the changes -->
-  <div class="ac-inline-row" data-acrow="behave">
+  <!-- Follow the changes — what Generate's one bar does on each chord, so it
+       shows in Generate only. -->
+  <div class="ac-inline-row ac-w-gen" data-acrow="behave">
    <button class="bl-genbtn" id="bl-follow-btn" onclick="blToggleFollow()" title="Re-root the bass onto whichever chord the song is playing, instead of looping one bar">Follow: ON</button>
    <button class="bl-genbtn" id="bl-feel-btn" onclick="blToggleWalkFeel()" title="Four = walking quarter notes. Two = half notes on 1 and 3, the way a head is usually played">Feel: Four</button>
    <span class="bl-pl pf-info" id="bl-follow-hint" style="font-size:.4rem;color:var(--muted)">Line re-roots onto each chord</span>
@@ -9063,7 +9112,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
        Arrange wrote it, 🔒 means you froze it yourself, ↺ opens it in the roll.
        Pro only — Generate and Follow stay in the free tier, this is the
        arranging tool on top of them. -->
-  <div class="pl-row pro-only" data-acrow="chips">
+  <div class="pl-row pro-only ac-w-arr" data-acrow="chips">
    <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="bl-lock-chips"></div>
    <button class="pl-clr" id="bl-lock-clr" style="display:none"
@@ -9091,7 +9140,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="bl-empty-hint" id="bl-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No bassline yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> below for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant line that follows your chords, <b>⟳ Arrange</b> for a different line on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -9150,13 +9199,28 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   </div>
   <!-- The synth voices' filter, in the same slot as the bass's Filter row. -->
   <div class="ac-inline-row" data-acrow="tone" id="sf-host-melgen"></div>
-  <!-- Generate: first on the panel, same place as bass. -->
+  <!-- How this part gets written (4.9.9.5): Generate, Arrange or Play in,
+       one at a time. The three used to sit side by side as equal buttons
+       under the roll, with Arrange's results — the per-chord chips — two
+       rows further down, under Follow; on a phone they landed behind the
+       transport, so Arrange looked like a button that did nothing. Now the
+       switch says which tool you are holding, and the page shows that tool's
+       controls and nothing else's, all above the roll. acSetWriteMode. -->
+  <div class="ac-mode" data-acrow="mode">
+   <div class="tmod-axis-pill ac-mode-pill" role="group" aria-label="How to write the melody">
+    <button type="button" data-acmode="gen" onclick="acSetWriteMode('ml','gen')">Generate</button>
+    <button type="button" data-acmode="arr" class="pro-only" onclick="acSetWriteMode('ml','arr')">Arrange</button>
+    <button type="button" data-acmode="rec" onclick="acSetWriteMode('ml','rec')">Play in</button>
+   </div>
+   <div class="ac-mode-hint" id="ml-mode-hint"></div>
+  </div>
+  <!-- See the bass page: the one action for the mode above. -->
   <div class="ac-inline-row ac-gen-row" data-acrow="gen">
-   <button class="bl-genbtn ac-gen-primary" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in the pattern below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
-   <button class="bl-genbtn" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
-   <button class="bl-genbtn bl-recbtn" data-recarm="ml" onclick="noteInputArm('ml')"
-    title="Play the phrase in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">Play in</button>
-   <button class="bl-genbtn advanced-only" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
+   <button class="bl-genbtn ac-gen-primary ac-w-gen" id="ml-gen-go" onclick="mlGenerateAndArm()" title="Write one phrase in the pattern below. Follow moves it onto each chord as the song plays.">✦ Generate</button>
+   <button class="bl-genbtn ac-gen-primary ac-w-arr" id="ml-arr-go" onclick="mlArrange()" title="Write a different phrase for every chord in your song, in this style, and file each one against its chord. Tap a chip below to open one and edit it.">⟳ Arrange</button>
+   <button class="bl-genbtn ac-gen-primary bl-recbtn ac-w-rec" data-recarm="ml" data-recidle="Start recording" onclick="noteInputArm('ml')"
+    title="Play the phrase in yourself — the home-row keys or a MIDI keyboard write into the roll. Stopped, each note takes the next step; playing, it lands where the playhead is.">Start recording</button>
+   <button class="bl-genbtn advanced-only ac-no-arr" style="border-color:var(--muted);color:var(--muted)" onclick="mlClear()">Clr</button>
   </div>
   <div class="ac-inline-row" data-acrow="write">
    <span class="ac-rowlbl">Pattern:</span>
@@ -9176,14 +9240,14 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="bl-gen-btn" data-mlstyle="latin">Latin</button>
    </div>
   </div>
-  <!-- Follow the changes -->
-  <div class="ac-inline-row" data-acrow="behave">
+  <!-- Follow the changes — Generate only, as on the bass page. -->
+  <div class="ac-inline-row ac-w-gen" data-acrow="behave">
    <button class="bl-genbtn" id="ml-follow-btn" onclick="mlToggleFollow()" title="Move the phrase onto whichever chord the song is playing, instead of rewriting it every change">Follow: ON</button>
    <span class="bl-pl pf-info" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
   <!-- See the bass page — same row, same meaning. -->
-  <div class="pl-row pro-only" data-acrow="chips">
+  <div class="pl-row pro-only ac-w-arr" data-acrow="chips">
    <span class="pl-lbl">Lines per chord</span>
    <div class="pl-chips" id="ml-lock-chips"></div>
    <button class="pl-clr" id="ml-lock-clr" style="display:none"
@@ -9206,7 +9270,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="bl-empty-hint" id="ml-empty-hint" data-acrow="roll">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     <div class="bl-eh-title">No melody yet</div>
-    <div class="bl-eh-text">Tap <b>✦ Generate</b> below for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
+    <div class="bl-eh-text">Tap <b>✦ Generate</b> above for an instant phrase that follows your chords and key, <b>⟳ Arrange</b> for a different phrase on every chord, or tap any step to place a note by hand.</div>
    </div>
   </div>
  </div>
@@ -9417,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.4';
+const MODRIFF_VERSION = '4.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16633,7 +16697,10 @@ const VOICE_TYPES = [
 // Sine, drums on the Linn, bass on Upright 1, the melody sequencer on Mute
 // Trumpet, the arp on Flute. 4.9.9.4 moved the drums to mõdKit, which the
 // free tier has (the Linn is Pro), and made Upright 1 a free voice, so a
-// first launch on free plays its drums and bass rather than a locked kit. Only a fresh start sees them — a restored
+// first launch on free plays its drums and bass rather than a locked kit.
+// 4.9.9.5 finished the job at the owner's word: the arp on Sine and the
+// melody sequencer on Triangle — plain waves, free and nothing to download —
+// and the Aux layer's Perc kit free too. Every default is now one free has. Only a fresh start sees them — a restored
 // session, a setup or a song brings its own. The recorded ones are fetched
 // when audio unlocks (see unlockAudio's finish), since a default never goes
 // through the setters that fetch on selection.
@@ -16644,7 +16711,7 @@ let melWave='sine', melOctShift=12, melMode='keys', holdMode=false;
 let arpOn=false, arpPat='up', arpOcts=1, arpGatePat=0;
 var blEnabled=false; // bass is enabled for next Play press (separate from blPlaying)
 var mlEnabled=false; // melody sequencer is enabled for next Play press (separate from mlPlaying)
-let arpWave='flute';
+let arpWave='sine';
 let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=ARP_RATE_DEFAULT;
 // arpOn is a LAYER switch — it survives a stop on purpose, so the next Play
 // brings the arp back with everything else. This is the arp's transport: true
@@ -17061,7 +17128,7 @@ function unlockAudio(startDemo){
  const finish=()=>{
  if(typeof _watchAudioState==='function') _watchAudioState();
  // Every part's current voice, fetched now if it is a recorded one. The
- // defaults are (Piano 1, Upright 1, Mute Tpt, Flute) and were never
+ // defaults are (Piano 1, Upright 1, Sine, Triangle) and were never
  // selected through a setter, which is what normally starts the fetch.
  setTimeout(function(){
   try{ VOICE_PARTS.forEach(function(p){ var v=null; try{ v=p.get(); }catch(e){} if(v) _preloadIfSampled(v); }); }catch(e){}
@@ -46620,7 +46687,7 @@ var _mlStepSecLive = 0;
 // Pop Hook rather than Arpeggio, for the same reason: an arpeggio spells the
 // chord you are already hearing, where a hook is a line of its own.
 var mlGenStyle = 'hook';
-var mlWave = 'mutetpt';
+var mlWave = 'triangle';
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
 function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
@@ -49198,7 +49265,9 @@ function noteInputSyncUI(){
  document.querySelectorAll('[data-recarm]').forEach(function(b){
   const on = b.dataset.recarm === _recArm;
   b.classList.toggle('armed', on);
-  b.textContent = on ? 'Recording' : 'Play in';
+  // The bass and melody buttons sit under a switch already labelled Play in,
+  // so at rest they say what pressing them does instead (data-recidle).
+  b.textContent = on ? 'Recording' : (b.dataset.recidle || 'Play in');
  });
  // …and on the Perform page, where the keys are but the roll is not.
  const rh = document.getElementById('rec-here');
@@ -49214,6 +49283,80 @@ function noteInputSyncUI(){
  }
  if(_recArm) _recRepaint(_recArm);
 }
+// ── How bass and melody get written: Generate | Arrange | Play in ─────────
+// (4.9.9.5.) One mode at a time per part, shown by a switch above the roll;
+// the page's data-wmode hides the controls that belong to the other two (see
+// .ac-w-* in the CSS). The modes are views, not states of the sequencer:
+// switching does not stop, clear or rewrite anything. What does play is
+// unchanged — a chord with a line of its own from Arrange plays that line in
+// any mode, and every other chord plays the roll — which is why Arrange's
+// chips are what its mode is for: they are the only place those lines show.
+// `var`, and on window: the tier repaint reaches in from far below.
+var _acWMode = { bl:'gen', ml:'gen' };
+// What each page was last set to by hand — kept apart from what it shows, so
+// a free install showing Generate in place of Arrange never saves that
+// fallback over the choice, and a return to Pro brings Arrange back.
+var _acWModePref = { bl:'gen', ml:'gen' };
+var AC_WMODE_HINT = {
+ bl:{ gen:'One bar in the Bass line style, moved onto each chord as the song plays.',
+      arr:'A different line for every chord in your progression. Tap ↺ on a chord to open its line in the roll.',
+      rec:'Start recording, then play the keys or a MIDI keyboard. Stopped, each note takes the next step; playing, it lands under the playhead.' },
+ ml:{ gen:'One phrase in the Melody line style, moved onto each chord as the song plays.',
+      arr:'A different phrase for every chord in your progression. Tap ↺ on a chord to open its phrase in the roll.',
+      rec:'Start recording, then play the keys or a MIDI keyboard. Stopped, each note takes the next step; playing, it lands under the playhead.' }
+};
+function _acWrap(id){
+ const panel = document.getElementById(id==='bl' ? 'bm-bass-panel' : 'bm-melody-panel');
+ return panel ? panel.querySelector('.bl-page-wrap') : null;
+}
+function acSetWriteMode(id, m, quiet){
+ if(['gen','arr','rec'].indexOf(m) < 0) m = 'gen';
+ // Arrange is Pro. Its segment is hidden on free (.pro-only), so this is the
+ // saved mode or a restored one arriving on a free install.
+ if(m==='arr' && typeof modAllows==='function' && typeof modTier==='function' && modTier()==='free'){
+  if(!quiet && typeof freeBlocked==='function') freeBlocked('Arrange');
+  m = 'gen';
+ }
+ _acWMode[id] = m;
+ const wrap = _acWrap(id); if(!wrap) return;
+ wrap.dataset.wmode = m;
+ wrap.querySelectorAll('[data-acmode]').forEach(function(b){
+  const on = b.dataset.acmode === m;
+  b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+ });
+ const h = document.getElementById(id + '-mode-hint');
+ if(h) h.textContent = (AC_WMODE_HINT[id] || {})[m] || '';
+ // Leaving Play in disarms: an armed part whose record button is hidden
+ // would go on taking the keys with nothing on screen to say so.
+ if(m !== 'rec' && typeof _recArm !== 'undefined' && _recArm === id) noteInputArm(id);
+ // The chips are rebuilt while hidden and measure their overflow when shown.
+ if(m === 'arr' && typeof window.phraseRenderChips === 'function'){ try{ window.phraseRenderChips(); }catch(e){} }
+ // A per-viewer convenience, so a failed write costs nothing but the memory.
+ // Only a choice someone made is remembered: boot and the tier repaint pass
+ // quiet, and a free install falling back from Arrange must not overwrite the
+ // Arrange a Pro user left it on.
+ if(!quiet){
+  _acWModePref[id] = m;
+  try{ modStore.setItem('modo-ac-wmode', JSON.stringify(_acWModePref)); }catch(e){}
+ }
+}
+window.acSetWriteMode = acSetWriteMode;
+function acWriteModeInit(){
+ let saved = null;
+ try{ saved = JSON.parse(modStore.getItem('modo-ac-wmode') || 'null'); }catch(e){}
+ ['bl','ml'].forEach(function(id){
+  // The switch wears its part's colour, from PARTS like every other one.
+  const wrap = _acWrap(id), pill = wrap && wrap.querySelector('.ac-mode-pill');
+  if(pill && typeof _ppPartColor === 'function'){
+   const c = _ppPartColor(id==='bl' ? 'bass' : 'melgen');
+   if(c) pill.style.setProperty('--mel-c', c);
+  }
+  if(saved && saved[id]) _acWModePref[id] = saved[id];
+  acSetWriteMode(id, _acWModePref[id], true);
+ });
+}
+setTimeout(acWriteModeInit, 0);
+
 // Where the next note goes. While the transport runs that is wherever the
 // playhead is, so what you hear is what you write on; stopped, it is the
 // cursor you have been advancing yourself.
@@ -52501,7 +52644,10 @@ const FREE_LIMITS = {
   chordExtensions: false,      // 6/9, 11, #11, 13, b9, #9, alt, ... are Pro
   // Four kits, not one: a synth box, a classic box, a real kit and a jazz kit,
   // so free can find a feel rather than be shown that it cannot.
-  drumKits:     ['MOD','808','ACU','JAZZ'],
+  // Perc (4.9.9.5) because it is what the Aux layer starts on: a synth kit,
+  // shaker and tambourine and the like, and free with no Aux kit at all had
+  // a second drum layer it could not use.
+  drumKits:     ['MOD','808','ACU','JAZZ','PERC'],
   stepCounts:   [16,32],
   bassStyles:   ['Rock','Jazz','Motown','Funk','Latin','Pedal'],
   arpRates:     ['1/8','1/16'],
@@ -52810,6 +52956,15 @@ function freeApplyLimits(){
   // — goes back to Upright 1 first, so the voice lists below are painted
   // around the bass that will actually play. Done last, the Voices select
   // kept Upright 2 on show because it was still the selected value.
+  // Arrange is Pro; a page left in it when the tier drops shows Generate,
+  // and goes back to Arrange when it rises again if that was the choice.
+  try{
+   ['bl','ml'].forEach(function(id){
+    if(typeof _acWMode==='undefined') return;
+    if(free && _acWMode[id]==='arr') acSetWriteMode(id, 'gen', true);
+    else if(!free && _acWModePref[id]==='arr' && _acWMode[id]!=='arr') acSetWriteMode(id, 'arr', true);
+   });
+  }catch(e){}
   if(free){
    try{
     const bw = window._blCaptureState().wave;
