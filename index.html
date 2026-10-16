@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.6</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.7</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.7</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.6';
+const MODRIFF_VERSION = '4.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9583,8 +9583,9 @@ window._genQueuePaint = function(part, frac, landed){
 // plain JSON message. The engine decides only how it sounds. Today the only
 // engine is Web Audio, here in the page; the iPhone app replaces it with
 // native code one part at a time, and it can only do that if there is a
-// single place every part's sound passes through. Chords go through it now;
-// melody, bass and drums still call their Web Audio voices directly.
+// single place every part's sound passes through. Chords and the live melody
+// ('mel': the strip, the keys, MIDI) go through it now; the bass, the melody
+// sequencer, the arp and the drums still call their Web Audio voices directly.
 //
 //   send(msg)   msg is one of (v is always 1):
 //     {kind:'chord',   part, id, root, notes:[midi…], bass, vel, at, dur}
@@ -9603,8 +9604,25 @@ window._genQueuePaint = function(part, frac, landed){
 //                      = now). The app sends it only for the chord sounding.
 //     {kind:'stop',    part, at}
 //                      choke everything the part is sounding, in ~22 ms.
+//     {kind:'note',    part, id, note, vel, at, dur, y}
+//                      one note (part 'mel'). A second note on the same pitch
+//                      replaces the first. y is the touch's height 0-1, for
+//                      the Touch Mod.
+//     {kind:'glide',   part, id, note, hz, vel, y}
+//                      the bend strip's glissando: one held tone at hz that
+//                      moves (param 'hz') until released. note is the strip
+//                      note it began nearest, which places it in the stereo
+//                      field. Replaces any glide already sounding.
+//     {kind:'param',   part, id?, name, value}
+//                      a change to something sounding. With an id, that note
+//                      or glide: 'y', 'hz'. Without, the whole part: 'bend'
+//                      (cents, 'mel' and 'chord'), 'accent' (true/false,
+//                      'mel').
 //   `at` is on the engine's clock (now()); null means as soon as possible.
 //   now()       the engine's clock, seconds.
+//   ready()     whether the engine can sound at all yet. On the web, false
+//               until the first touch has made an AudioContext; a gesture
+//               that arrives before then does nothing, as it always has.
 //   web(msg)    the Web Audio engine, always. A native provider passes back
 //               the parts it does not own yet.
 //   provider    'web' | 'native'
@@ -9617,6 +9635,9 @@ window.modEngine = window.modEngine || {};
  E.web = function(msg){ return _webEngineSend(msg); };
  if(!E.send) E.send = E.web;
  if(!E.now) E.now = function(){ var c = getCtx(); return c ? c.currentTime : 0; };
+ // No getCtx() here: that also resumes a suspended context, and the voice
+ // that follows does it once already.
+ if(!E.ready) E.ready = function(){ return !!audioCtx && audioCtx.state !== 'closed'; };
  if(!E.provider) E.provider = 'web';
 })(window.modEngine);
 
@@ -20759,6 +20780,11 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
 // voices. A message this engine does not understand is dropped and said so
 // once, never half-played: a wrong v is a wrapper out of step with the page,
 // and guessing at it would sound like a bug somewhere else.
+//
+// Nothing behind this door calls the app's public play/stop/release functions
+// (stopAll, playMelNote, releaseMelNote…). The MIDI-out and MIDI-record layer
+// wraps those by reassigning them, so an engine that called one would send an
+// external synth a second note-off, or log a chord twice.
 var _webEngineWarned = {};
 function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
@@ -20766,6 +20792,28 @@ function _webEngineSend(msg){
   if(kind === 'chord')   return _webChordOn(msg);
   if(kind === 'stop')    return _webChordStop(msg.at);
   if(kind === 'release') return msg.at == null ? _webChordRelease() : _webChordReleaseAt(msg.at);
+  if(kind === 'param' && msg.name === 'bend') return _webBendPart('chord', msg.value);
+ }
+ if(msg && msg.v === 1 && part === 'mel'){
+  const glide = (msg.id != null && bendContOsc && bendContOsc._modId === msg.id);
+  if(kind === 'note')    return _webMelNoteOn(msg);
+  if(kind === 'glide')   return _webMelGlideOn(msg);
+  if(kind === 'release') return glide ? _webMelGlideStop() : _webMelRelease(msg.id);
+  if(kind === 'param'){
+   if(msg.name === 'bend')   return _webBendPart('mel', msg.value);
+   if(msg.name === 'accent') return _webMelAccent(msg.value);
+   if(glide){
+    const ctx=getCtx(); if(!ctx) return;
+    if(msg.name === 'hz' && bendContOsc.frequency) return bendContOsc.frequency.setValueAtTime(msg.value, ctx.currentTime);
+    if(msg.name === 'y')  return bendContMod ? bendContMod.setY(msg.value, ctx.currentTime) : undefined;
+   }
+   if(msg.name === 'y'){
+    const m=_webMelById(msg.id), n=m==null ? null : activeMelOscs[m];
+    if(!n || !n.mod) return;
+    const ctx=getCtx(); if(!ctx) return;
+    return n.mod.setY(msg.value, ctx.currentTime);
+   }
+  }
  }
  const key = (msg && msg.v) + '/' + kind + '/' + part;
  if(!_webEngineWarned[key]){ _webEngineWarned[key] = 1; console.warn('modEngine (web): dropped', msg); }
@@ -21068,10 +21116,9 @@ function buildMelMod(ctx, t0){
 
 // Live update for a note that is still sounding.
 function melNoteSetY(midi, y){
- const n=activeMelOscs[midi];
- if(!n || !n.mod) return;
- const ctx=getCtx(); if(!ctx) return;
- n.mod.setY(y, ctx.currentTime);
+ const id=_melLive[midi];
+ if(id==null) return;
+ window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: id, name: 'y', value: y});
 }
 
 // Vertical position inside an element, 0 at the bottom edge and 1 at the top.
@@ -21097,15 +21144,42 @@ function melTouchY(el, src){
 // melody voice changed the volume more than the tone, in whichever direction
 // that voice happened to be wrong.
 const MEL_SAMPLE_TRIM = {vibes:0.72, jazzgtr:0.81, nylongtr:0.69, tenorsax:0.87, mutetpt:0.96, pianoreal:0.55, pianoreal2:0.55, marimba:0.72, kalimba:0.72, xylo:0.72, violin:0.85, clarinet:0.85, flute:0.85};
+// The live melody's notes, as the app sees them: pitch -> the id of the note
+// message that pitch is sounding. Everything that asks "which melody notes are
+// down" (Hold, Stop, Roll, Accent) asks this, not the engine's voices — those
+// are the engine's business, and a native engine has none in this page to
+// read. It is also why a note the engine was told not to sound (the Mel fader
+// at zero, or a lane playing an external synth with local sound off) now
+// still counts as down: before, Hold-off and Stop never released it, which
+// left that note hanging on the external synth.
+var _melLive = {};
+var _melNoteSeq = 0;
 function playMelNote(midi,pressure,sustain,modY){
- const ctx=getCtx(); if(!ctx) return;
+ if(!window.modEngine.ready()) return;
  if(typeof renderFingering==='function') renderFingering(midi);
+ markMelKeyOn(midi);
+ // Held until released, or rings out over the Release knob.
+ const held = holdMode||sustain;
+ const msg = {v: 1, kind: 'note', part: 'mel', id: ++_melNoteSeq, note: midi,
+              vel: velScale(pressure||0), at: null,
+              dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
+              y: modY==null ? melModY : modY};
+ _melLive[midi] = msg.id;
+ window.modEngine.send(msg);
+ return msg.id;
+}
+
+// The Web Audio engine's melody note. What it is was settled in playMelNote.
+function _webMelNoteOn(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const midi=msg.note;
+ const sustain=(msg.dur==null);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
  const atk=parseFloat(document.getElementById('mel-attack').value);
- const dec=parseFloat(document.getElementById('mel-decay').value);
+ const dec=sustain ? parseFloat(document.getElementById('mel-decay').value) : msg.dur;
  const revMix=parseFloat(document.getElementById('mel-rev').value);
  const wg=(WAVE_GAIN[melWave]||1) * (MEL_SAMPLE_TRIM[melWave]||1);
- const vsc=velScale(pressure||0);
+ const vsc=msg.vel;
  const now=ctx.currentTime;
 
  // Fade out any existing note on this midi slot before retriggering
@@ -21122,7 +21196,6 @@ function playMelNote(midi,pressure,sustain,modY){
 
  const startT = now + FADE_OUT; // start after any fade-out
  const _mxMel=_cmx('mel');
- markMelKeyOn(midi);
  // Same class of fix as the chord engine: a muted or zeroed Mel channel
  // still built the voice and ramped toward a hardcoded .0001 floor. The key
  // still lights (you can see what you played, same as a muted MIDI
@@ -21133,7 +21206,7 @@ function playMelNote(midi,pressure,sustain,modY){
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
  g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
- if(holdMode||sustain){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
+ if(sustain){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
  else { g.gain.exponentialRampToValueAtTime(.0001,startT+atk+dec); }
  // Lead sits near the centre — a little off-axis by pitch so it doesn't
  // fight the chord's middle, but not swung out wide like the chord tones.
@@ -21141,7 +21214,7 @@ function playMelNote(midi,pressure,sustain,modY){
  // A sustained note has no known end until the finger lifts, so the FX chain
  // gets the same long window the latch already used rather than being torn
  // down at atk+dec while the note is still sounding.
- const _mdur=(holdMode||sustain)?10:atk+dec;
+ const _mdur=sustain?10:atk+dec;
  const fx = voiceFx(ctx,startT,_mdur,vsc,melPan,'mel');
  // Touch Mod sits between this note's envelope and the shared character
  // chain, so it colours this note alone. With it off, mod is null and what
@@ -21151,19 +21224,23 @@ function playMelNote(midi,pressure,sustain,modY){
  chainOut.connect(fx.head);
  const _mrv=feedRev(fx.plain?chainOut:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave,'mel');
- if(mod){ mod.attach(oscs); mod.setY(modY==null?melModY:modY, startT); }
+ if(mod){ mod.attach(oscs); mod.setY(msg.y, startT); }
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
  // in from zero, since the wheel was already there.
- if(typeof melBendCents!=='undefined' && melBendCents!==0){
+ if(_webBend.mel!==0){
   oscs.forEach(o=>{ try{
    if(o._bendBase === undefined) o._bendBase = o.detune.value;
-   o.detune.setValueAtTime(o._bendBase + melBendCents, startT);
+   o.detune.setValueAtTime(o._bendBase + _webBend.mel, startT);
   }catch(e){} });
  }
- activeMelOscs[midi]={oscs,g,mod};
+ activeMelOscs[midi]={oscs,g,mod,id:msg.id};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
- return{oscs,g,mod};
+}
+// The engine's melody voice that a message id names, by its pitch.
+function _webMelById(id){
+ for(const m in activeMelOscs){ if(activeMelOscs[m] && activeMelOscs[m].id === id) return +m; }
+ return null;
 }
 
 // The one door every "a note was just played" path goes through, whatever
@@ -21212,7 +21289,14 @@ function releaseMelNote(midi){
  // still has to close its captured length, or a held note comes back as a
  // sixteenth.
  if(typeof window._melCapRelease==='function') window._melCapRelease(midi);
- if(!activeMelOscs[midi]) return;
+ const id=_melLive[midi];
+ if(id==null) return;
+ delete _melLive[midi];
+ window.modEngine.send({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+}
+function _webMelRelease(id){
+ const midi=_webMelById(id);
+ if(midi==null) return;
  const {g,oscs,mod}=activeMelOscs[midi];
  const ctx=getCtx(); if(!ctx){ delete activeMelOscs[midi]; return; }
  const now=ctx.currentTime;
@@ -21279,7 +21363,14 @@ function setBendMode(m){
  if(bc) bc.classList.toggle('active', m==='continuous');
 }
 
+// The glide the app has started and not yet stopped — see _melLive.
+var _melGlideId = null;
 function bendStopContinuous(){
+ if(_melGlideId==null) return;
+ const id=_melGlideId; _melGlideId=null;
+ window.modEngine.send({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+}
+function _webMelGlideStop(){
  if(!bendContOsc) return;
  const ctx=getCtx();
  if(ctx && bendContGain){
@@ -21294,6 +21385,83 @@ function bendStopContinuous(){
  }catch(e){}
  }
  bendContOsc=null; bendContGain=null; bendContActive=false; bendContMod=null;
+}
+
+// The Web Audio engine's glide. A continuous pitch needs an oscillator whose
+// frequency can be swept, so this is its own small voice rather than
+// makeVoice's.
+function _webMelGlideOn(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
+ const atk=parseFloat(document.getElementById('mel-attack').value);
+ const revMix=parseFloat(document.getElementById('mel-rev').value);
+ // A true continuous glide needs an oscillator whose frequency can be swept
+ // in real time. A sampled ◆ instrument (Vibes, Jazz Gtr, Nylon, Tenor Sax,
+ // Mute Tpt) is a fixed-pitch recorded buffer and can't do that, so a glide
+ // always synthesizes a plain tone standing in for it — that part is fine.
+ // What wasn't fine: assigning melWave straight to OscillatorNode.type did
+ // this by accident rather than on purpose. 'vibes' etc. aren't valid
+ // oscillator types, so the browser silently ignored the assignment and left
+ // it at the default 'sine' — while the gain right below still used that
+ // sampled instrument's WAVE_GAIN (up to 16x, calibrated for a quiet raw
+ // sample buffer, not a synthesized tone). That mismatch is what made a
+ // glide on any of those five voices blast out far louder than every other
+ // sound. Pick the stand-in wave and its gain to match on purpose instead.
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba','kalimba','xylo'].indexOf(melWave) >= 0;
+ const glideWave = isSampledMelWave ? 'sine' : melWave;
+ const wg=WAVE_GAIN[glideWave]||1;
+ const vsc=msg.vel;
+ const _mxMel=_cmx('mel');
+ const now=ctx.currentTime;
+ const f=msg.hz;
+ const y=msg.y;
+
+ _webMelGlideStop();
+ // Same guard as playMelNote — a muted or zeroed Mel channel shouldn't start
+ // a new glide at all, not build one and ramp it toward an inaudible floor.
+ if(!(_mxMel>0) || (typeof moSilences==='function' && moSilences('melody'))) return;
+ bendContGain=ctx.createGain();
+ bendContGain.gain.setValueAtTime(0, now);
+ // Same sustain level and character chain as a held note (playMelNote) — a
+ // glide used to skip both fxTrim and the filter/pan macro chain entirely
+ // and connect straight to the master bus, which is why bend mode read
+ // louder and brighter across every instrument, not just the sampled ones;
+ // Note Lock mode (which just calls playMelNote per note) never had either
+ // problem.
+ bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*bendGlideTrim()*_mxMel*fxTrim, now+atk);
+ const melPan=Math.max(-.5,Math.min(.5,((msg.note-72)/24)))*0.5;
+ const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
+ // A glide gets the same vertical mod a tapped note does, so a glissando can
+ // open up or shake as it travels rather than being the one gesture on the
+ // strip that can't move.
+ bendContMod=buildMelMod(ctx,now);
+ const glideOut = bendContMod ? (bendContGain.connect(bendContMod.input), bendContMod.output) : bendContGain;
+ glideOut.connect(fx.head);
+ feedRev(fx.plain?glideOut:fx.tail, revMix*.6);
+
+ if(glideWave==='supersaw'){
+ const ss=buildSuperSaw(ctx, f);
+ ss.out.connect(bendContGain);
+ // Start ALL 7 oscillators
+ ss.oscs.forEach(o=>o.start(now));
+ if(bendContMod){ bendContMod.attach(ss.oscs); bendContMod.setY(y, now); }
+ // Store a wrapper object so glide and stop work uniformly
+ bendContOsc={
+ _ss: ss,
+ frequency: { setValueAtTime(freq, t){ ss.oscs.forEach(o=>o.frequency.setValueAtTime(freq,t)); } },
+ stop(t){ ss.oscs.forEach(o=>{ try{o.stop(t);}catch(e){} }); }
+ };
+ } else {
+ const o=ctx.createOscillator();
+ o.type=glideWave;
+ o.frequency.value=f;
+ o.connect(bendContGain);
+ o.start(now);
+ if(bendContMod){ bendContMod.attach([o]); bendContMod.setY(y, now); }
+ bendContOsc=o;
+ }
+ bendContOsc._modId=msg.id;
+ bendContActive=true;
 }
 
 function initBendStrip(){
@@ -21378,78 +21546,17 @@ function initBendStrip(){
  // Begin a true continuous glide starting at the given x, taking over from
  // whatever snapped tap note was sounding.
  const startGlide=(x, y, notes, touch)=>{
- const ctx=getCtx(); if(!ctx) return;
- const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
- const atk=parseFloat(document.getElementById('mel-attack').value);
- const revMix=parseFloat(document.getElementById('mel-rev').value);
- // A true continuous glide needs an oscillator whose frequency can be swept
- // in real time. A sampled ◆ instrument (Vibes, Jazz Gtr, Nylon, Tenor Sax,
- // Mute Tpt) is a fixed-pitch recorded buffer and can't do that, so a glide
- // always synthesizes a plain tone standing in for it — that part is fine.
- // What wasn't fine: assigning melWave straight to OscillatorNode.type did
- // this by accident rather than on purpose. 'vibes' etc. aren't valid
- // oscillator types, so the browser silently ignored the assignment and left
- // it at the default 'sine' — while the gain right below still used that
- // sampled instrument's WAVE_GAIN (up to 16x, calibrated for a quiet raw
- // sample buffer, not a synthesized tone). That mismatch is what made a
- // glide on any of those five voices blast out far louder than every other
- // sound. Pick the stand-in wave and its gain to match on purpose instead.
- const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba','kalimba','xylo'].indexOf(melWave) >= 0;
- const glideWave = isSampledMelWave ? 'sine' : melWave;
- const wg=WAVE_GAIN[glideWave]||1;
- // Same convention as every other melody surface — see melPressure.
- const vsc=velScale(melPressure(touch));
- const _mxMel=_cmx('mel');
- const now=ctx.currentTime;
- const f=xToFreq(x, notes);
-
+ if(!window.modEngine.ready()) return;
  bendStopContinuous();
- // Same guard as playMelNote — a muted or zeroed Mel channel shouldn't start
- // a new glide at all, not build one and ramp it toward an inaudible floor.
- if(!(_mxMel>0) || (typeof moSilences==='function' && moSilences('melody'))) return;
- bendContGain=ctx.createGain();
- bendContGain.gain.setValueAtTime(0, now);
- // Same sustain level and character chain as a held note (playMelNote) — a
- // glide used to skip both fxTrim and the filter/pan macro chain entirely
- // and connect straight to the master bus, which is why bend mode read
- // louder and brighter across every instrument, not just the sampled ones;
- // Note Lock mode (which just calls playMelNote per note) never had either
- // problem.
- bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*bendGlideTrim()*_mxMel*fxTrim, now+atk);
- const idxForPan=Math.round(x*(notes.length-1));
- const melPan=Math.max(-.5,Math.min(.5,((notes[Math.min(idxForPan,notes.length-1)]-72)/24)))*0.5;
- const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
- // A glide gets the same vertical mod a tapped note does, so a glissando can
- // open up or shake as it travels rather than being the one gesture on the
- // strip that can't move.
- bendContMod=buildMelMod(ctx,now);
- const glideOut = bendContMod ? (bendContGain.connect(bendContMod.input), bendContMod.output) : bendContGain;
- glideOut.connect(fx.head);
- feedRev(fx.plain?glideOut:fx.tail, revMix*.6);
+ const msg={v: 1, kind: 'glide', part: 'mel', id: ++_melNoteSeq,
+            note: notes[Math.min(Math.round(x*(notes.length-1)), notes.length-1)],
+            hz: xToFreq(x, notes),
+            // Same convention as every other melody surface — see melPressure.
+            vel: velScale(melPressure(touch)), y: y};
+ _melGlideId=msg.id;
+ window.modEngine.send(msg);
+ };
 
- if(glideWave==='supersaw'){
- const ss=buildSuperSaw(ctx, f);
- ss.out.connect(bendContGain);
- // Start ALL 7 oscillators
- ss.oscs.forEach(o=>o.start(now));
- if(bendContMod){ bendContMod.attach(ss.oscs); bendContMod.setY(y, now); }
- // Store a wrapper object so glide and stop work uniformly
- bendContOsc={
- _ss: ss,
- frequency: { setValueAtTime(freq, t){ ss.oscs.forEach(o=>o.frequency.setValueAtTime(freq,t)); } },
- stop(t){ ss.oscs.forEach(o=>{ try{o.stop(t);}catch(e){} }); }
- };
- } else {
- const o=ctx.createOscillator();
- o.type=glideWave;
- o.frequency.value=f;
- o.connect(bendContGain);
- o.start(now);
- if(bendContMod){ bendContMod.attach([o]); bendContMod.setY(y, now); }
- bendContOsc=o;
- }
- bendContActive=true;
- };
 
  const handleStart=(e)=>{
  e.preventDefault();
@@ -21511,12 +21618,9 @@ function initBendStrip(){
  }
  } else if(bendIsGliding){
  // Already gliding — true continuous pitch, no snapping
- const ctx=getCtx(); if(!ctx) return;
- const f=xToFreq(x, notes);
- if(bendContOsc && bendContOsc.frequency){
- bendContOsc.frequency.setValueAtTime(f, ctx.currentTime);
- }
- if(bendContMod) bendContMod.setY(y, ctx.currentTime);
+ if(!window.modEngine.ready() || _melGlideId==null) return;
+ window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'hz', value: xToFreq(x, notes)});
+ window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'y', value: y});
  } else {
  // Still within tap tolerance — behave like locked mode until the
  // gesture actually moves like a glissando. Vertical travel alone is a
@@ -27502,7 +27606,7 @@ function updateMelOctDisp(){
 function toggleHold(){
  holdMode=!holdMode;
  const b=document.getElementById('hold-btn'); if(b){ b.textContent=holdMode?'Hold ON':'Hold'; b.classList.toggle('active',holdMode); }
- if(!holdMode) Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
+ if(!holdMode) Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
 }
 
 
@@ -33870,42 +33974,52 @@ let melBendScope='all';
 // first time an oscillator is bent, by which point makeVoice has already
 // applied its spread. An LFO routed to pitch still sums on top, since that
 // arrives through a connection rather than through .value.
-function _bendOscs(list, now){
+function _bendOscs(list, now, cents){
  (list||[]).forEach(o=>{
   try{
    if(o._bendBase === undefined) o._bendBase = o.detune.value;
    o.detune.cancelScheduledValues(now);
    o.detune.setValueAtTime(o.detune.value, now);
-   o.detune.linearRampToValueAtTime(o._bendBase + melBendCents, now+MEL_BEND_RAMP);
+   o.detune.linearRampToValueAtTime(o._bendBase + cents, now+MEL_BEND_RAMP);
   }catch(e){}
  });
 }
+// The wheel's position is the app's; bending what is sounding is the
+// engine's. Melody always, chords too when the scope is 'all'.
 function _melBendApply(){
- const ctx=getCtx(); if(!ctx) return;
+ if(!window.modEngine.ready()) return;
  melBendCents=_melBendTargetCents();
+ window.modEngine.send({v: 1, kind: 'param', part: 'mel', name: 'bend', value: melBendCents});
+ if(melBendScope==='all') window.modEngine.send({v: 1, kind: 'param', part: 'chord', name: 'bend', value: melBendCents});
+}
+// What the Web Audio engine has been told each part is bent by. A melody note
+// struck while the wheel is off-centre starts pre-bent from this, the way a
+// key hit on a real synth with the wheel already pushed does.
+var _webBend = {mel: 0, chord: 0};
+function _webBendPart(part, cents){
+ const ctx=getCtx(); if(!ctx) return;
+ _webBend[part]=cents;
  const now=ctx.currentTime;
- Object.values(activeMelOscs).forEach(v=>_bendOscs(v.oscs, now));
+ if(part==='mel') Object.values(activeMelOscs).forEach(v=>_bendOscs(v.oscs, now, cents));
  // Chord voices live in a parallel array rather than a by-midi map, but they
  // hold oscillators just the same, so the wheel can reach them by the same
  // .detune route — no need to know what pitch any of them started on.
- if(melBendScope==='all' && typeof activeOscs!=='undefined'){
-  activeOscs.forEach(v=>_bendOscs(v && v.oscs, now));
- }
+ if(part==='chord') activeOscs.forEach(v=>_bendOscs(v && v.oscs, now, cents));
  // mõdSynth notes never reached by the above: msxVoice hands back a silent
  // stand-in oscillator, so ramping its .detune bent nothing you could hear —
  // which is why the wheel and C/V worked on every voice but this one. The
  // engine has its own bend input, scaled by the patch's Bend Up/Down range in
  // semitones, so convert the cents into that range: the same whole step on
  // mõdSynth as everywhere else, whatever range the patch carries.
- _msxBendApply(melBendScope==='all' ? ['mel','chord'] : ['mel']);
+ _msxBendApply([part], cents);
 }
-function _msxBendApply(parts){
+function _msxBendApply(parts, cents){
  if(typeof MSX==='undefined' || !MSX.eng) return;
  parts.forEach(p=>{
   const e=MSX.eng[p]; if(!e || !e.ready) return;
   try{
-   const range = +(e.get(melBendCents>=0 ? 'voice.bendUp' : 'voice.bendDown')) || 0;
-   e.setBend(range>0 ? melBendCents/(100*range) : 0);
+   const range = +(e.get(cents>=0 ? 'voice.bendUp' : 'voice.bendDown')) || 0;
+   e.setBend(range>0 ? cents/(100*range) : 0);
   }catch(err){}
  });
 }
@@ -38225,7 +38339,7 @@ function stopEverything(){
  arpIdx=0; arpDir=1; arpGateIdx=0;
  clearTimeout(clockTimer);
  if(_isRecording) _stopRecording();
- Object.keys(activeMelOscs).forEach(m=>releaseMelNote(+m));
+ Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
  stopAll();
  // Silences whatever the arp, bass and melody generator had already
  // committed into the next look-ahead's worth of the audio graph — see the
@@ -38436,12 +38550,15 @@ document.addEventListener('keydown', e => {
 const ACCENT_BOOST = 1.4;
 let _accentOn = false, _rollOn = false, _rollTimer = null;
 
-function _activeMelMidiList(){ return Object.keys(activeMelOscs).map(Number); }
+function _activeMelMidiList(){ return Object.keys(_melLive).map(Number); }
 
 function _setMelodyAccent(on){
+ window.modEngine.send({v: 1, kind: 'param', part: 'mel', name: 'accent', value: !!on});
+}
+function _webMelAccent(on){
  const ctx = getCtx(); if(!ctx) return;
  const now = ctx.currentTime;
- _activeMelMidiList().forEach(midi=>{
+ Object.keys(activeMelOscs).forEach(midi=>{
  const v = activeMelOscs[midi]; if(!v||!v.g) return;
  try{
  const cur = v.g.gain.value;

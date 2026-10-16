@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open, **chords through it** (4.9.9.6) |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6) and the **live melody** (4.9.9.7) through it |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -287,8 +287,9 @@ one of the 302 factory patches can be checked, not a handful.
 1. **One door for all sound (web).** Every voice goes through
    `modEngine.send(msg)` — today's Web Audio code behind it, unchanged.
    Pure refactor; nothing sounds different. Without it, there is no single
-   place to swap the engine. **Chords: done (4.9.9.6)** — see "The door,
-   as built" below. Melody, bass, arp and drums next, one part per step.
+   place to swap the engine. **Chords: done (4.9.9.6). Live melody: done
+   (4.9.9.7)** — see "The door, as built" below. The melody sequencer,
+   bass, arp and drums next, one part per step.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
@@ -353,7 +354,7 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `send`, the native provider takes over one part at a time, in the order
 above.
 
-### The door, as built (4.9.9.6: chords)
+### The door, as built (4.9.9.6 chords, 4.9.9.7 live melody)
 
 `window.modEngine` is in the platform layer next to `modStore` and
 `modPlatform`, with the same contract: a wrapper defines it before the app
@@ -362,13 +363,30 @@ script runs, and the web versions fill in only what it left out. Besides
 always there — so a native provider that owns only the chord part passes
 everything else back to it.
 
-Three messages so far, all `part: 'chord'`:
+The chord part (`part: 'chord'`):
 
 | kind | fields | sent by |
 |---|---|---|
 | `chord` | `id root notes bass vel at dur` | `playChord` / `playSlashChord` (every chord: pads, keys, MIDI, the song loop, comp re-strikes, endings) |
 | `release` | `id at` | `releaseSustainedChord` (finger up, `at: null`) and `_releaseChordAt` (an As played slot's known release) |
 | `stop` | `at` | `stopAll` — the ~22 ms choke, every caller including the Stop button |
+| `param` `bend` | `value` (cents) | the pitch wheel and C/V, when the bend scope is "all" |
+
+The live melody (`part: 'mel'` — the strip, the on-screen and typed keys,
+MIDI in; not the melody sequencer, which is `melgen`):
+
+| kind | fields | sent by |
+|---|---|---|
+| `note` | `id note vel at dur y` | `playMelNote` (through `melPlayIn` for every gesture, and the Roll modifier) |
+| `release` | `id at` | `releaseMelNote`; `bendStopContinuous` for a glide |
+| `glide` | `id note hz vel y` | the bend strip once a gesture moves like a glissando |
+| `param` `y` / `hz` | `id value` | the finger moving on a held note (`melNoteSetY`) or a glide |
+| `param` `bend` | `value` (cents) | the pitch wheel and C/V |
+| `param` `accent` | `value` (true/false) | the Control-key accent |
+
+A note's `y` is the touch's height on the strip, 0–1, for the Touch Mod. A
+glide's `note` is the strip note it began nearest, which is all the engine
+needs to place it in the stereo field; its pitch is `hz`, already tuned.
 
 What moved to the app's side of the door, because it decides *what*
 plays rather than how it sounds: the voicing (`chordVoicing`, Vary), the
@@ -379,13 +397,29 @@ counter bumped inside the Web Audio code (`_sustainId`); it is now
 sounding, so an engine never has to judge whether a release is stale.
 Capture's held-time hook (`_capOnRelease`) fires on that side too.
 
+The melody works the same way: which notes are down is `_melLive` (pitch →
+note id) and `_melGlideId` on the app's side, and Hold, Stop, Roll and
+Accent ask that rather than the engine's `activeMelOscs`. One behaviour
+change comes with it, on purpose: a note the engine was told not to sound
+— the Mel fader at zero, or a lane playing an external synth with local
+sound off — now still counts as down, so Hold-off and Stop release it.
+Before, they asked the Web Audio voices, found none, and never sent the
+external synth its note-off (measured: on main, Hold-off and Stop release
+nothing in that case; now they release both notes).
+
+The MIDI-out and MIDI-record layer (around `index.html:40000`) wraps
+`playChord`, `stopAll`, `playMelNote`, `releaseMelNote` and others by
+reassigning them. So the engine side never calls those public functions —
+an engine calling `stopAll` would fire the wrapper a second time — and
+those wrappers go on seeing exactly the calls they always did.
+
 What stayed behind it (`_webChordOn`, `_webChordStop`,
 `_webChordRelease`, `_webChordReleaseAt`): attack and release knobs, the
 voice, the mixer channel, the strum spread, the Sub, the reverb pair,
 glide. A native engine needs these as `param` messages before it can own
 the chord part; today they are read from the sliders.
 
-Verified by recording every Web Audio call the chord part makes — 925,171
+Verified, for each part, by recording every Web Audio call it makes. Chords: 925,171
 of them across 2,688 gestures (7 voices × 6 voicings × strum on/off, with
 and without glide, Vary, Length and the Sub; taps, scheduled hits, slash
 chords, held and released pads, stale releases, stops, endings, song
@@ -393,11 +427,18 @@ slots) — with the audio clock frozen and `Math.random` seeded. Before and
 after are identical, call for call, in the source and in `dist/`. A real
 touch run on the pads sees each hold arrive as a `chord` with `dur: null`
 and its lift as a `release` with the same id, and no chord voice built
-outside `send`.
+outside `send`. Live melody: 21,215 calls over 480 gestures (6 voices,
+Touch Mod on and off; taps, holds, retriggers, play-in, touch height,
+accent, roll, the wheel in both scopes over a held chord, Hold latch,
+Stop, and the strip in both modes driven through its own handlers —
+snapped notes, wobble, glissandi, Hold, mode switches mid-gesture),
+identical before and after in the source and `dist/`; the chord trace was
+re-run on this build and is still identical. Real touch on the strip:
+notes, releases, a glide and its `hz`/`y` moves all arrive as messages,
+and no melody voice is built outside `send` (4 were, on main).
 
-Still reaching past the door, to fix as the parts move: the pitch wheel
-bends chord voices by reading `activeOscs` directly (`melBendScope ===
-'all'`), and `hardKillAll` still covers arp, bass, melody and drums only.
+Still reaching past the door, to fix as the parts move: `hardKillAll`
+covers arp, bass, the melody sequencer and drums only.
 
 ### Haptics
 
@@ -465,7 +506,8 @@ granting everything, as it does today.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. Chords are through (4.9.9.6); melody, bass, arp, drums next. The precondition for native audio, so it goes first now that
+   engine. Chords (4.9.9.6) and the live melody (4.9.9.7) are through;
+   the melody sequencer, bass, arp and drums next. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
