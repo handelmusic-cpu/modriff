@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Builds the sampled melodic sets added in 4.9.9.3 — samples/kalimba and
-# samples/xylo — from their Freesound packs (both CC0; see samples/CREDITS.md).
+# samples/xylo — and the picked electric bass added in 4.9.9.4, samples/ebass,
+# from their Freesound packs (all CC0; see samples/CREDITS.md).
 #
 #   python3 -I build/pitched-sets.py index.txt samples
 #
@@ -32,14 +33,14 @@ def decode(path, filt=None):
     cmd += ['-f','f32le','-']
     return np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, dtype=np.float32).copy()
 
-def measure(x):
+def measure(x, lo=36, hi=None):
     """MIDI note (fractional) by a harmonic comb over the ringing part."""
     pk = int(np.argmax(np.abs(x)))
     seg = x[pk + int(.05*SR): pk + int(.05*SR) + 16384]
     seg = np.pad(seg, (0, 16384 - len(seg)))
     sp = np.abs(np.fft.rfft(seg*np.hanning(len(seg)), n=1<<18)); bin_hz = SR/(1<<18)
     best = None
-    for m in np.arange(36, 112, 0.02):
+    for m in np.arange(lo, hi if hi is not None else lo + 76, 0.02):
         f0 = 440*2**((m-69)/12); s = 0
         for h in range(1, 5):
             i = int(round(f0*h/bin_hz))
@@ -47,11 +48,19 @@ def measure(x):
         if best is None or s > best[0]: best = (s, m)
     return best[1]
 
-def build(dst_dir, files, maxlen, fade, hp):
+def named_midi(name):
+    """'826034__ixwolf__e1_rr1.wav' -> 28: the note in the file's own name."""
+    tag = name.split('__')[2].split('_')[0].capitalize()
+    return NAMES.index(tag[:-1]) + 12*(int(tag[-1]) + 1)
+
+def build(dst_dir, files, maxlen, fade, hp, lo=36, named=False):
     os.makedirs(os.path.join(OUT, dst_dir), exist_ok=True)
     for name in files:
         src = find(name)
-        m = measure(decode(src)); n = int(round(m))
+        if named:                                     # trust the name to the semitone
+            e = named_midi(name); m = measure(decode(src), e - 1, e + 1)
+        else: m = measure(decode(src), lo)
+        n = int(round(m))
         ratio = 2**((n - m)/12)                       # to exactly note n
         x = decode(src, 'asetrate=%d,aresample=%d,highpass=f=%d' % (round(SR*ratio), SR, hp))
         pk = np.max(np.abs(x))
@@ -83,3 +92,17 @@ build('xylo', ['374703__sgossner__xylophone-f3-xylo_medium_g3_ff_01_far.wav','37
   '374705__sgossner__xylophone-f5-xylo_medium_g5_ff_01_far.wav','374701__sgossner__xylophone-c6-xylo_medium_c6_ff_01_far.wav',
   '374706__sgossner__xylophone-f6-xylo_medium_g6_ff_01_far.wav','374702__sgossner__xylophone-c7-xylo_medium_c7_ff_01_far.wav'],
   1.8, .4, 150)
+# Electric bass, picked (Ixwolf's "Picked Riff on Real Bass Guitar"): E1–E2,
+# chromatic, one take each — the open E string to the twelfth fret. Its names
+# are right (checked by ear-free measurement: every one within 18 cents of its
+# label), but a low E's fundamental is weak enough that the comb heard E1 as
+# E2 and overwrote the real one. So here the name fixes the semitone and the
+# comb only measures the cents, a semitone either side.
+# The files ring for 5.4 s; three is longer than any bass step, and keeps the
+# set the size of the uprights'. Tuned: the low notes were 12-18 cents sharp.
+build('ebass', ['826034__ixwolf__e1_rr1.wav','826036__ixwolf__f1_rr1.wav','826037__ixwolf__fs1_rr1.wav',
+  '826038__ixwolf__g1_rr1.wav','826039__ixwolf__gs1_rr1.wav','826027__ixwolf__a1_rr1.wav',
+  '826028__ixwolf__as1_rr1.wav','826029__ixwolf__b1_rr1.wav','826030__ixwolf__c2_rr1.wav',
+  '826031__ixwolf__cs2_rr1.wav','826032__ixwolf__d2_rr1.wav','826033__ixwolf__ds2_rr1.wav',
+  '826035__ixwolf__e2_rr1.wav'],
+  3.0, .8, 30, named=True)
