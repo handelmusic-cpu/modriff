@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7) and the **melody sequencer** (4.9.9.8) through it |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8) and the **bass** (4.9.9.9) through it |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -288,8 +288,8 @@ one of the 302 factory patches can be checked, not a handful.
    `modEngine.send(msg)` — today's Web Audio code behind it, unchanged.
    Pure refactor; nothing sounds different. Without it, there is no single
    place to swap the engine. **Chords (4.9.9.6), live melody (4.9.9.7),
-   melody sequencer (4.9.9.8): done** — see "The door, as built" below.
-   Bass, arp and drums next, one part per step.
+   melody sequencer (4.9.9.8), bass (4.9.9.9): done** — see "The door, as
+   built" below. Arp and drums next, one part per step.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
@@ -354,7 +354,7 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `send`, the native provider takes over one part at a time, in the order
 above.
 
-### The door, as built (4.9.9.6 chords, 4.9.9.7 live melody, 4.9.9.8 melody sequencer)
+### The door, as built (4.9.9.6 chords, 4.9.9.7 live melody, 4.9.9.8 melody sequencer, 4.9.9.9 bass)
 
 `window.modEngine` is in the platform layer next to `modStore` and
 `modPlatform`, with the same contract: a wrapper defines it before the app
@@ -408,8 +408,28 @@ committed) is a `stop` per part now, so an engine that owns one part can
 be told to silence just that part. The kill registry records which part
 each gain belongs to and stays one bounded list, so a kill reaches exactly
 the gains it did before; `drum` covers the kit and Aux, which share the
-drum engine. Bass, arp and drums take this `stop` already, ahead of their
+drum engine. Arp and drums take this `stop` already, ahead of their
 notes.
+
+The bass (`part: 'bass'`):
+
+| kind | fields | sent by |
+|---|---|---|
+| `note` | `id note vel accent slide from at dur` | `blPlayNote` — the sequencer, walking lines, the roll's previews, and keys played by hand (`_blLiveOn`) |
+| `release` | `at` | `_blLiveOff`, when the last key held by hand comes up |
+
+The bass is monophonic: every note cuts the one before, so a `release`
+names no id — it lets go of the voice. `slide` says this note's tail runs
+on into the next; `from` is the MIDI note it glides in from, or `null`.
+Where it glides from is the app's memory (`_blPrevFreq`, `_blPrevMidi`),
+not the engine's: the sequencer already resets it at the top of each loop,
+and it has to move on even for a note an external synth played instead.
+
+One behaviour change: on a sampled bass whose samples were still loading,
+the stand-in voice used to be reached by calling `blPlayNote` again, which
+logged every such note to MIDI out and the `.mid` recorder twice
+(measured: 6 notes, 12 log calls on main; 6 now). The engine now calls its
+own voice for the stand-in.
 
 What moved to the app's side of the door, because it decides *what*
 plays rather than how it sounds: the voicing (`chordVoicing`, Vary), the
@@ -473,9 +493,19 @@ scheduled. A real read comes from the audio thread, which the frozen clock
 does not freeze, so it varied with wall time — that is what made a kill
 look different between builds before it was taken out.
 
-Still reaching past the door: the bass, arp and drum notes themselves
-(`blPlayNote`, `scheduleArpNote`/`scheduleArpBlock`, the drum engine),
-which are the next three steps.
+Bass: 9,731 calls over 272 gestures — the real sequencer across 11 voices
+(the synth basses, acid, plucked, sampled while loading, and the shared
+palette), the roll's previews, keys played by hand (held, legato over a
+held key, letting the top go so it slides back, a quick tap), kills, and
+the lane silenced for an external synth. All 272 identical, in the source
+and `dist/`; the other three parts' traces were re-run and are unchanged.
+Playing in real time, every bass voice is built inside `send`. What is
+still built outside it during playback is the sample loader preparing
+buffers (`_sampleShape`, on an OfflineAudioContext), not sound.
+
+Still reaching past the door: the arp and drum notes themselves
+(`scheduleArpNote`/`scheduleArpBlock`, the drum engine), which are the
+next two steps.
 
 ### Haptics
 
@@ -543,8 +573,8 @@ granting everything, as it does today.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. Chords, the live melody and the melody sequencer are through
-   (4.9.9.6–4.9.9.8); bass, arp and drums next. The precondition for native audio, so it goes first now that
+   engine. Chords, the live melody, the melody sequencer and the bass are
+   through (4.9.9.6–4.9.9.9); arp and drums next. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
