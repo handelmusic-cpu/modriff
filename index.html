@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.5</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.6</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.6</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.5';
+const MODRIFF_VERSION = '4.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9576,6 +9576,49 @@ window._genQueuePaint = function(part, frac, landed){
   P._wakeHeld = function(){ return !!lock && !lock.released; };
  }
 })(window.modPlatform);
+//
+// modEngine — the one door every sound goes through on its way to an engine
+// (docs/v5-architecture.md, section 3). The app decides WHAT plays — which
+// notes, voiced how, how hard, when, for how long — and hands that over as a
+// plain JSON message. The engine decides only how it sounds. Today the only
+// engine is Web Audio, here in the page; the iPhone app replaces it with
+// native code one part at a time, and it can only do that if there is a
+// single place every part's sound passes through. Chords go through it now;
+// melody, bass and drums still call their Web Audio voices directly.
+//
+//   send(msg)   msg is one of (v is always 1):
+//     {kind:'chord',   part, id, root, notes:[midi…], bass, vel, at, dur}
+//                      a chord. It replaces whatever the part was sounding
+//                      (the old one is choked, not released). notes are in
+//                      the order struck (a strum runs through them in this
+//                      order); bass is a slash or pedal note under them, in
+//                      the chord's own voice, or null. root is the chord's
+//                      root as a MIDI note — after an inversion no note says
+//                      which one is the root, and the Sub sits under it. vel
+//                      is the gain scale 0-1 (pad pressure already applied).
+//                      dur is how long it rings after its attack, in
+//                      seconds; null = held until a release with this id.
+//     {kind:'release', part, id, at}
+//                      let chord `id` go on the Release knob, at `at` (null
+//                      = now). The app sends it only for the chord sounding.
+//     {kind:'stop',    part, at}
+//                      choke everything the part is sounding, in ~22 ms.
+//   `at` is on the engine's clock (now()); null means as soon as possible.
+//   now()       the engine's clock, seconds.
+//   web(msg)    the Web Audio engine, always. A native provider passes back
+//               the parts it does not own yet.
+//   provider    'web' | 'native'
+//
+// Same contract as modStore/modPlatform: a wrapper defines window.modEngine
+// before this script runs and the web versions fill in only what it left out.
+// An engine refuses a v it does not know rather than guessing at it.
+window.modEngine = window.modEngine || {};
+(function(E){
+ E.web = function(msg){ return _webEngineSend(msg); };
+ if(!E.send) E.send = E.web;
+ if(!E.now) E.now = function(){ var c = getCtx(); return c ? c.currentTime : 0; };
+ if(!E.provider) E.provider = 'web';
+})(window.modEngine);
 
 'use strict';
 // ═══════════════════════════════════════
@@ -10011,17 +10054,26 @@ function slotIvs(slot){
 }
 
 // The one message a chord becomes on its way to a sound engine — the Web
-// Audio voices today, a native one behind a wrapper later. Plain JSON of
-// integers and seconds, nothing the far side has to understand about harmony:
+// Audio voices today, a native one behind a wrapper later (window.modEngine,
+// in the platform layer, has the whole message set). Plain JSON of integers
+// and seconds, nothing the far side has to understand about harmony:
 // voicing, inversions and the bass are settled here, so a native engine is
 // told which notes and never has to know what a 13♭9 is (and cannot spell it
 // differently from the chord on screen).
 //
 //   chord   the general model (parseChordSymbol / chordFromSlot)
 //   rootM   the MIDI note the root sounds at
-//   opts    part ('chord'), vel 0-1, at (AudioContext seconds, 0 = now),
+//   opts    part ('chord'), vel 0-1, at (engine seconds, null = now),
 //           dur (seconds; null = held until a release with the same id),
-//           ivs (already-voiced intervals, e.g. from smartVoiceLead), id
+//           ivs (already-voiced intervals, e.g. from chordVoicing), id
+//
+// playChord builds every chord it plays through this, so this is the shape
+// the engine actually receives, not a description of it.
+//
+// notes keep the order they are given in. They used to be sorted and
+// de-duplicated here, but the order is the strum order, and a duplicate is a
+// doubled voice that adds loudness — either change would make the message
+// sound different from the call it replaced.
 //
 // v is the message version: a wrapper must refuse a v it does not know rather
 // than guess at it.
@@ -10033,19 +10085,26 @@ function chordEngineEvent(chord, rootM, opts){
  const notes = ivs.map(i => clamp(rootM + i));
  let bass = null;
  if(chord.bass != null){
-  // The slash bass goes under the lowest chord tone, never on top of it.
-  bass = rootM - 12 + (((chord.bass - chord.root) % 12) + 12) % 12;
-  while(bass >= Math.min.apply(null, notes)) bass -= 12;
-  bass = clamp(bass);
+  // The slash bass goes directly under the lowest chord tone: the nearest
+  // octave of it below, never on or above it. The same rule playChord has
+  // always voiced a slash chord by (it once started an octave under the root
+  // and only walked down, which left a high-voiced chord's bass two octaves
+  // away from it).
+  const lo = Math.min.apply(null, ivs);
+  let b = (((chord.bass - chord.root) % 12) + 12) % 12;
+  while(b >= lo) b -= 12;
+  while(b < lo - 12) b += 12;
+  bass = clamp(rootM + b);
  }
  return {
   v: 1, kind: 'chord',
   id: opts.id != null ? opts.id : ++_chordEvtSeq,
   part: opts.part || 'chord',
-  notes: notes.filter((x, i, a) => a.indexOf(x) === i).sort((a, b) => a - b),
+  root: clamp(rootM),
+  notes: notes,
   bass: bass,
   vel: Math.max(0, Math.min(1, opts.vel == null ? 0.8 : opts.vel)),
-  at: opts.at || 0,
+  at: opts.at == null ? null : opts.at,
   dur: opts.dur === undefined ? null : opts.dur
  };
 }
@@ -18677,7 +18736,15 @@ const FADE_OUT = 0.022;
 // Bumped every time voices are cut off (new chord, stopAll, etc.) so a
 // pointerup arriving after a held chord was already superseded is a no-op
 // instead of releasing whatever chord happens to be playing now.
-let _sustainId = 0;
+// The chord the app considers sounding — the id of the last chord message,
+// until a stop or a release ends it. A held pad hands this id out as its
+// token, and only a token that still matches may release anything: a later
+// chord or a Stop has already taken that chord away, and releasing again
+// would put a decay on whatever is sounding now. It used to be a generation
+// counter (_sustainId) that stopAll and the release bumped inside the Web
+// Audio code; it lives on the app's side of modEngine now, because whether a
+// release still means anything is the app's question, not the engine's.
+var _chordLiveId = null;
 // atTime lets a scheduled chord change release the previous chord at the exact
 // audio time the new one starts, instead of at whatever moment the JS timer
 // happened to run. Without it, a chord scheduled 100 ms ahead would silence
@@ -18725,11 +18792,16 @@ function hardKillAll(atTime){
  });
  _voiceKillReg=[];
 }
+// Chokes the chord part. Every caller, the Stop button's included, goes
+// through modEngine; _webChordStop is the Web Audio engine's half.
 function stopAll(atTime){
+ _chordLiveId = null;
+ window.modEngine.send({v: 1, kind: 'stop', part: 'chord', at: atTime == null ? null : atTime});
+}
+function _webChordStop(atTime){
  const ctx = getCtx();
  const nowT = ctx ? ctx.currentTime : 0;
  const t = (atTime != null) ? Math.max(atTime, nowT) : nowT;
- _sustainId++;
  activeOscs.forEach(v => {
  try {
  // cancelAndHoldAtTime keeps the envelope's value at t rather than
@@ -18755,11 +18827,16 @@ function stopAll(atTime){
  activeOscs = [];
 }
 
-// releaseSustainedChord, scheduled: the chord now sounding lets go at `t` on
-// the Release knob, exactly as if the finger came off then. For As played
-// slots, whose release time is known when the chord starts. The voices stay
-// in activeOscs, so the next chord's stopAll still cuts whatever is left.
-function _releaseChordAt(t){
+// releaseSustainedChord, scheduled: chord `id` lets go at `t` on the Release
+// knob, exactly as if the finger came off then. For As played slots, whose
+// release time is known when the chord starts. The chord stays the live one
+// (and its voices stay in activeOscs), so the next chord's stop still cuts
+// whatever is left.
+function _releaseChordAt(id, t){
+ if(id == null || id !== _chordLiveId) return;
+ window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: id, at: t});
+}
+function _webChordReleaseAt(t){
  const ctx=getCtx(); if(!ctx || !(t>0)) return;
  const dec=parseFloat(document.getElementById('decay').value)||2.0;
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
@@ -18778,11 +18855,19 @@ function _releaseChordAt(t){
 // natural decay-curve release instead of stopAll()'s instant fade, and only
 // if nothing has interrupted it since (myId still matches the live one).
 function releaseSustainedChord(myId){
- if(myId !== _sustainId) return;
+ if(myId == null || myId !== _chordLiveId) return;
+ _chordLiveId = null;
+ // Capture wants to know how long the chord was held — see _capOnRelease.
+ // App state, so it is told here rather than by whichever engine sounds it.
+ // Not without a context, as before: nothing was held if nothing could sound.
+ if(getCtx()){
+  try{ if(typeof window._capOnRelease==='function') window._capOnRelease(window.modEngine.now()); }catch(e){}
+ }
+ window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: myId, at: null});
+}
+function _webChordRelease(){
  const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
  const t=ctx.currentTime;
- // Capture wants to know how long the chord was held — see _capOnRelease.
- try{ if(typeof window._capOnRelease==='function') window._capOnRelease(t); }catch(e){}
  const dec=parseFloat(document.getElementById('decay').value)||2.0;
  const atk=parseFloat(document.getElementById('attack').value)||0.025;
  activeOscs.forEach(v=>{
@@ -18817,7 +18902,6 @@ function releaseSustainedChord(myId){
  }
  });
  activeOscs=[];
- _sustainId++;
 }
 
 // Wave names that are really sampled instruments, and the synth voice each
@@ -20497,52 +20581,80 @@ function _chordDamp(t, midis){
   nu.outG.gain.setValueAtTime(1, t);
  }catch(e){}
 }
+// Plays a chord: settles what it is (the voicing, the slash bass, how long it
+// rings, how hard) and hands that to modEngine as one message. Returns the
+// message's id, which is the token a held chord is released by.
+//
+// skipStop is gone in all but name: no caller ever passed true, and a chord
+// message always replaces the part's chord. The slot is kept so the seven
+// positional arguments every call site passes still line up.
 function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
- const ctx=getCtx(); if(!ctx) return;
- const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
- const atk=parseFloat(document.getElementById('attack').value)||0.025;
+ // How long it rings after the attack, unless held.
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
- let dec=sustain?SUSTAIN_DUR:(chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw);
+ let dec=chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw;
  // The plucked/strummed character shortens the decay — but only when you
  // haven't asked for a specific length. Clamping after chordBeats was applied
  // meant Length 2♩ and 4♩ (1.2 s and 2.4 s at 100 BPM) were both cut to 0.7 s
  // whenever Strum was on, which is the default: the two longest Length buttons
  // did nothing at all.
- if(strumMode && !sustain && !(chordBeats>0)) dec=Math.min(dec,0.7);
+ if(strumMode && !(chordBeats>0)) dec=Math.min(dec,0.7);
+ // No atTime is a live tap — always a new chord for Vary. Scheduled calls
+ // (comp re-strikes) are not; playChartSlot2 raises the flag itself.
+ if(atTime==null) _vvFresh = true;
+ const intvs=chordVoicing(rootM, relIntvs);
+ // A slash chord is a voicing: the named bass note becomes the chord's lowest
+ // tone, in the chord's own sound, directly under the rest of the voicing.
+ // See playSlashChord for why it is no longer a separate oscillator.
+ const slash = (slashBass!=null && isFinite(slashBass));
+ const msg = chordEngineEvent({root: rootM, ivs: intvs, bass: slash ? slashBass : null}, rootM, {
+  part: 'chord',
+  ivs: intvs,
+  vel: velScale(pressure||0),
+  at: atTime==null ? null : atTime,
+  dur: sustain ? null : dec
+ });
+ window._lastVoiced = {rel:relIntvs, midi:(msg.bass!=null ? [msg.bass] : []).concat(msg.notes)};
+ // Live before the send: the message chokes the old chord first, and a
+ // release already in flight for that one must not land on this one.
+ _chordLiveId = msg.id;
+ window.modEngine.send(msg);
+ return msg.id;
+}
+
+// The Web Audio engine's chord: one message in, voices out. Everything that
+// decides WHAT the chord is happened in playChord; everything here is how it
+// sounds — the knobs, the mixer channel, the strum, the Sub, the reverb pair,
+// glide. A native engine replaces this function and nothing above it.
+function _webChordOn(msg){
+ const ctx=getCtx(); if(!ctx) return;
+ const rootM=msg.root;
+ const sustain=(msg.dur==null);
+ const atTime=msg.at;
+ // The slash bass is the lowest tone of the voicing, so it goes back in front.
+ const intvs=(msg.bass!=null ? [msg.bass] : []).concat(msg.notes).map(n=>n-rootM);
+ const slashBass=msg.bass;
+ const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
+ const atk=parseFloat(document.getElementById('attack').value)||0.025;
+ const dec=sustain?SUSTAIN_DUR:msg.dur;
  const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
  const wg=(WAVE_GAIN[wave]||1)*((window.CHORD_SAMPLE_GAIN||{})[wave]||1);   // defined with the arp, further down
- const vsc=velScale(pressure||0);
+ const vsc=msg.vel;
  const _mxCh=_cmx('chord');
  // atTime is an exact AudioContext time supplied by a scheduler (song loop,
  // comp re-strikes). When it's absent this is a live tap, so start slightly
- // after now to let any fade-out from stopAll complete cleanly.
+ // after now to let any fade-out from the stop complete cleanly.
  // Never in the past. A scheduler that woke late hands over an atTime that
  // has already gone, and Web Audio applies a ramp whose start AND end are
  // behind currentTime by jumping the gain straight to the end value — the
  // attack collapses to a step, which is a click. stopAll and mlPlayNote have
  // always clamped for this reason; the chord, slash, bass and drum paths did
  // not. A note a few milliseconds late is inaudible. The click is not.
- const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + (skipStop ? 0 : FADE_OUT));
- // No atTime is a live tap — always a new chord for Vary. Scheduled calls
- // (comp re-strikes) are not; playChartSlot2 raises the flag itself.
- if(atTime==null) _vvFresh = true;
- let intvs=chordVoicing(rootM, relIntvs);
- // A slash chord is a voicing: the named bass note becomes the chord's lowest
- // tone, in the chord's own sound, directly under the rest of the voicing.
- // See playSlashChord for why it is no longer a separate oscillator.
- if(slashBass!=null && isFinite(slashBass)){
-  const lo=Math.min.apply(null,intvs);
-  let b=slashBass-rootM;
-  while(b>=lo) b-=12;
-  while(b<lo-12) b+=12;
-  intvs=[b].concat(intvs);
- }
+ const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + FADE_OUT);
  glideBegin();
  const _gOrder = intvs.map((s,i)=>i).sort((a,b)=>intvs[a]-intvs[b]);
  glideRemember(intvs.map(s=>rootM+s), now);
- window._lastVoiced = {rel:relIntvs, midi:intvs.map(s=>rootM+s)};
 
- if(!skipStop){ stopAll(atTime); _chordDamp(now, intvs.map(s=>rootM+s)); }
+ _webChordStop(atTime); _chordDamp(now, intvs.map(s=>rootM+s));
  // A muted or zeroed Chord channel used to still build every voice — the
  // sustain+strum path even threw (an exponentialRampToValueAtTime target of
  // exactly 0 is invalid), and the tap path ramped toward a hardcoded .0001
@@ -20639,7 +20751,24 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
 // already plays to the slash note (_blOnChord's bassPc). Everything else —
 // strum, envelope, damping, the channel gates — is playChord's, not a copy.
 function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
- playChord(rootM, relIntvs, false, pressure, sustain, atTime, bassNote);
+ return playChord(rootM, relIntvs, false, pressure, sustain, atTime, bassNote);
+}
+
+// The Web Audio engine behind modEngine (window.modEngine.web). Only the
+// chord part comes through here yet; the other parts still build their own
+// voices. A message this engine does not understand is dropped and said so
+// once, never half-played: a wrong v is a wrapper out of step with the page,
+// and guessing at it would sound like a bug somewhere else.
+var _webEngineWarned = {};
+function _webEngineSend(msg){
+ const kind = msg && msg.kind, part = msg && msg.part;
+ if(msg && msg.v === 1 && part === 'chord'){
+  if(kind === 'chord')   return _webChordOn(msg);
+  if(kind === 'stop')    return _webChordStop(msg.at);
+  if(kind === 'release') return msg.at == null ? _webChordRelease() : _webChordReleaseAt(msg.at);
+ }
+ const key = (msg && msg.v) + '/' + kind + '/' + part;
+ if(!_webEngineWarned[key]){ _webEngineWarned[key] = 1; console.warn('modEngine (web): dropped', msg); }
 }
 
 // Melody
@@ -24575,9 +24704,11 @@ function _endingLandChord(at, sustain){
  const intvs=_endTonicIntvs();
  const r=(typeof rootMidi==='function')?rootMidi():60;
  _endingRetargetArp(intvs);
+ // The fallback's chord, if it came to that, is the live one; the token is
+ // whichever chord is live, as it was when this returned the generation.
  try{ playSlashChord(r, intvs, r-12, 0, !!sustain, at); }
  catch(e){ try{ playChord(r, intvs, false, 0, !!sustain, at); }catch(_){} }
- return _sustainId;
+ return _chordLiveId;
 }
 // Stops the band without touching whatever chord is ringing. stopEverything()
 // also calls stopAll(), which would cut the tonic an ending just landed on —
@@ -35372,7 +35503,7 @@ function _playChartSlot2(si, ci, atTime){
  } else {
  playChord(playRoot, voicedIntvs, false, 0, _holdFlat, atTime);
  }
- if(_played && slot.ring > 0) _releaseChordAt((atTime!=null ? atTime : getCtx().currentTime) + slot.ring*beatSec());
+ if(_played && slot.ring > 0) _releaseChordAt(_chordLiveId, (atTime!=null ? atTime : getCtx().currentTime) + slot.ring*beatSec());
  } else {
  // arpOn + wetDry≈1: still pedal a bass note under the arp — a held pedal
  // point is the right articulation regardless of comp style, since the arp
@@ -35927,8 +36058,9 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  }
   // Auto-regenerate bass line and melody when a chord fires (if sync is enabled)
   if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(null);
-  // Token for releaseSustainedChord() — identifies "this" trigger's generation
-  return _sustainId;
+  // Token for releaseSustainedChord() — the id of the chord this trigger
+  // played, which stays releasable until another chord or a stop replaces it.
+  return _chordLiveId;
 }
 
 // ═══════════════════════════════════════

@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open, **chords through it** (4.9.9.6) |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -287,7 +287,8 @@ one of the 302 factory patches can be checked, not a handful.
 1. **One door for all sound (web).** Every voice goes through
    `modEngine.send(msg)` — today's Web Audio code behind it, unchanged.
    Pure refactor; nothing sounds different. Without it, there is no single
-   place to swap the engine.
+   place to swap the engine. **Chords: done (4.9.9.6)** — see "The door,
+   as built" below. Melody, bass, arp and drums next, one part per step.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
@@ -315,7 +316,7 @@ Whatever ends up native, the app talks to it in one message shape, and the
 first one exists now — `chordEngineEvent`:
 
 ```json
-{ "v": 1, "kind": "chord", "id": 17, "part": "chord",
+{ "v": 1, "kind": "chord", "id": 17, "part": "chord", "root": 60,
   "notes": [60, 64, 67, 70, 73, 81], "bass": 52,
   "vel": 0.8, "at": 12.345, "dur": null }
 ```
@@ -324,8 +325,17 @@ first one exists now — `chordEngineEvent`:
   chord's spelling are all settled in JS, so the engine is told *which notes*
   and never has to understand a 13♭9 — and cannot spell it differently from
   the chord on screen.
-- `at` is on the engine's clock. `dur: null` is held until a release naming
-  the same `id`.
+- `at` is on the engine's clock; `null` is "as soon as you can" (a live
+  tap). `dur` is how long the chord rings after its attack; `null` is held
+  until a release naming the same `id`.
+- `root` is the chord's root as a MIDI note. Once a chord is inverted no
+  note says which one is the root, and the Sub sits an octave under it.
+- `notes` are in the order they are struck, which is **not always
+  ascending**: smart voice leading drops a tone under the root (E minor
+  arrives as `[64, 67, 59]`). The strum runs through them in that order and
+  a doubled note is a doubled voice, so the engine plays them as given.
+- `bass` is a slash or pedal note, voiced in the octave directly under the
+  lowest chord tone, in the chord's own sound — not a separate instrument.
 - `v` is the message version. A wrapper refuses a `v` it does not know.
 
 The next steps make every voice go through one function:
@@ -342,6 +352,52 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `playSlashChord`, the melody and bass voices). Once every sound goes through
 `send`, the native provider takes over one part at a time, in the order
 above.
+
+### The door, as built (4.9.9.6: chords)
+
+`window.modEngine` is in the platform layer next to `modStore` and
+`modPlatform`, with the same contract: a wrapper defines it before the app
+script runs, and the web versions fill in only what it left out. Besides
+`send`, `now` and `provider` it has `web(msg)` — the Web Audio engine,
+always there — so a native provider that owns only the chord part passes
+everything else back to it.
+
+Three messages so far, all `part: 'chord'`:
+
+| kind | fields | sent by |
+|---|---|---|
+| `chord` | `id root notes bass vel at dur` | `playChord` / `playSlashChord` (every chord: pads, keys, MIDI, the song loop, comp re-strikes, endings) |
+| `release` | `id at` | `releaseSustainedChord` (finger up, `at: null`) and `_releaseChordAt` (an As played slot's known release) |
+| `stop` | `at` | `stopAll` — the ~22 ms choke, every caller including the Stop button |
+
+What moved to the app's side of the door, because it decides *what*
+plays rather than how it sounds: the voicing (`chordVoicing`, Vary), the
+slash bass, how long a chord rings (Length, Strum's shorter decay), pad
+pressure → `vel`, and which chord is live. That last one was a generation
+counter bumped inside the Web Audio code (`_sustainId`); it is now
+`_chordLiveId`, and the app only sends a `release` for the chord actually
+sounding, so an engine never has to judge whether a release is stale.
+Capture's held-time hook (`_capOnRelease`) fires on that side too.
+
+What stayed behind it (`_webChordOn`, `_webChordStop`,
+`_webChordRelease`, `_webChordReleaseAt`): attack and release knobs, the
+voice, the mixer channel, the strum spread, the Sub, the reverb pair,
+glide. A native engine needs these as `param` messages before it can own
+the chord part; today they are read from the sliders.
+
+Verified by recording every Web Audio call the chord part makes — 925,171
+of them across 2,688 gestures (7 voices × 6 voicings × strum on/off, with
+and without glide, Vary, Length and the Sub; taps, scheduled hits, slash
+chords, held and released pads, stale releases, stops, endings, song
+slots) — with the audio clock frozen and `Math.random` seeded. Before and
+after are identical, call for call, in the source and in `dist/`. A real
+touch run on the pads sees each hold arrive as a `chord` with `dur: null`
+and its lift as a `release` with the same id, and no chord voice built
+outside `send`.
+
+Still reaching past the door, to fix as the parts move: the pitch wheel
+bends chord voices by reading `activeOscs` directly (`melBendScope ===
+'all'`), and `hardKillAll` still covers arp, bass, melody and drums only.
 
 ### Haptics
 
@@ -409,7 +465,7 @@ granting everything, as it does today.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. The precondition for native audio, so it goes first now that
+   engine. Chords are through (4.9.9.6); melody, bass, arp, drums next. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
