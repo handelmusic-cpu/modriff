@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1) and the **drum kit and Aux** (4.9.9.9.2) through it |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; sampler and knobs proposed below |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -289,9 +289,10 @@ one of the 302 factory patches can be checked, not a handful.
    Pure refactor; nothing sounds different. Without it, there is no single
    place to swap the engine. **Chords (4.9.9.6), live melody (4.9.9.7),
    melody sequencer (4.9.9.8), bass (4.9.9.9), arp (4.9.9.9.1), drum kit
-   and Aux (4.9.9.9.2): done** — see "The door, as built" below. Every
-   part's notes go through the door now; what is still outside it is listed
-   at the end of that section.
+   and Aux (4.9.9.9.2), legacy Rhythm and click (4.9.9.9.3): done** — see
+   "The door, as built" below. Every note, hit and click goes through the
+   door now. The sampler pads and the knobs are the rest, and both need a
+   decision first: "Proposed: knobs and samples" below.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
@@ -356,7 +357,7 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `send`, the native provider takes over one part at a time, in the order
 above.
 
-### The door, as built (4.9.9.6 chords → 4.9.9.9.2 drums)
+### The door, as built (4.9.9.6 chords → 4.9.9.9.3 legacy Rhythm and click)
 
 `window.modEngine` is in the platform layer next to `modStore` and
 `modPlatform`, with the same contract: a wrapper defines it before the app
@@ -462,6 +463,13 @@ its recording by. The Drums switch, the time clamp and MIDI out / the
 `.mid` recorder are the app's. The fader, the choke groups, a lane's Shape
 and a sample dropped on a lane are the engine's.
 
+The legacy Rhythm patterns (the three-voice beat from before the drum
+sequencer, `scheduleRhythm` → `scheduleDrum`) send the same `hit`, from a
+kit family of their own: `kit: 'rhythm/808'` (or `909`, `brush`,
+`classic`), lane 0 kick, 1 snare, 2 hihat. They do not run through the
+drum sequencer's engine, so they are not gated on its bus. The metronome
+is `{kind: 'hit', part: 'click', id, accent, at}`, accent on the bar line.
+
 `modEngine.ready(part)` answers for one part: on the web the drums are not
 ready until their bus is built (`sqInitFX`), and a hit before then has
 always been dropped — MIDI log included — and still is.
@@ -561,13 +569,21 @@ re-run on this build against main: identical, source and `dist/`. Playing
 in real time, all 197 drum voices are built inside `send`; on main all 197
 were outside it.
 
-Still reaching past the door, now that every part's notes go through it:
+Legacy Rhythm and click: 61 gestures (every legacy kit and drum, the
+Drums switch off, the pattern scheduler on three patterns, the click
+across bars), identical; every other part re-run on this build,
+identical, source and `dist/`. In real time all 18 of their voices are
+built inside `send`; on main all 18 were outside it.
 
-- **The legacy Rhythm patterns** (`scheduleRhythm` → `scheduleDrum`), the
-  three-voice beat from before the drum sequencer, still building its own
-  voices.
-- **The metronome click** (`scheduleMetronome`).
-- **The sampler pads and clips** (`psPress`, the Sampler channel).
+Still reaching past the door, now that every note, hit and click goes
+through it:
+
+- **The sampler pads and clips** (`psStart`, `psStop`, `psFade`, the
+  Sampler channel). Not one more message: the app decides what a tap does
+  by reading the engine's live voices (`PS_LIVE`, 17 places), and a clip
+  plays a buffer the user recorded or loaded — plus time-stretched and
+  reversed renders of it — which a native engine would first have to be
+  given. See the proposal below.
 - **The knobs.** Attack, release, voice, filter, reverb, the mixer, mõdFX,
   a drum lane's Shape: every engine function still reads them from the
   sliders or app state. A native engine needs them as `param` messages
@@ -576,6 +592,87 @@ Still reaching past the door, now that every part's notes go through it:
 - **Bus preparation** called from app code (`sqInitFX`, `sqEnsureNoise`,
   `mlMG`, `blMG` before a preview). They build buses rather than sound,
   but they are Web Audio reached from outside the engine.
+
+### Proposed: knobs and samples (not built — for agreement first)
+
+**What the engine side reads today.** Seven sliders by element id
+(`attack`, `decay`, `rev-mix`, `mel-attack`, `mel-decay`, `mel-rev`,
+`bpm`), about seventeen pieces of app state (each part's voice — `wave`,
+`melWave`, `mlWave`, `blWave`, `arpWave` — the Sub, Strum, the mõdFX
+macro `fxCutoff`/`fxEnv`/`fxReso`/`fxWidth`/`fxTrim`, `blCutoff`, `blVol`,
+`masterTune`), and behind those the voice builder (`makeVoice`, each
+part's mõdSynth patch, the sample libraries), the mixer (`_cmx`), mõdFX,
+the reverbs and the master bus. A native engine sees none of that.
+
+**The rule for what goes where.** Two kinds of value, and every knob is
+one or the other:
+
+1. *Decided per note* — the app's, and already in the note: which notes,
+   how hard, when, how long, the arp's pan, the bass's slide.
+2. *Standing state of the instrument* — the engine's, sent as `param`
+   whenever it changes, and as a whole snapshot when the engine starts or
+   a setup, song or patch loads:
+
+   ```json
+   { "v": 1, "kind": "param", "part": "chord", "name": "attack", "value": 0.025 }
+   { "v": 1, "kind": "state", "params": { "chord.attack": 0.025, "chord.voice": "pianoreal", "mix.bass.gain": 0.8, … } }
+   ```
+
+   The test for which kind: would a native engine sound wrong if it kept
+   the last value it was told? Attack, voice, a fader, the reverb — no, so
+   they are state. A note's velocity — yes, so it travels with the note.
+
+**One table, like PARTS.** A `PARAMS` table names every parameter once
+(`part.name`, range, default, where the web value lives today — an element
+id or a getter). It is the single source of truth for three things that
+would otherwise drift: the snapshot, the `param` messages, and MIDI
+Mapping Mode (section 2), whose `data-map` targets are the same knobs.
+Sending is one listener on the elements the table names, not a call in
+every `oninput`.
+
+**In steps that each ship on their own, verified by the same traces:**
+
+1. The table, the snapshot and the `param` messages, sent on every change.
+   The web engine still reads the sliders, so nothing changes; a probe
+   checks that every value it reads matches the last one sent.
+2. Part by part, the web engine reads its store instead of the sliders.
+   Traces must stay identical, which proves the messages carry everything.
+3. Voices and patches: `chord.voice` is a voice name; a mõdSynth patch is
+   one `param` whose value is the patch object, the shape
+   `modsynth/params.js` already defines.
+4. The mixer, mõdFX, the reverbs and the master bus, as one part (`mix`,
+   `fx`, `master`) each — they move native together, last, as already
+   planned.
+
+**Samples.** The bundled instruments (`samples/`) are files in the app, so
+a native engine loads them itself, by name; nothing crosses the bridge.
+User clips are different: they live in the page (IndexedDB) and have to be
+handed over once, as an asset:
+
+```json
+{ "v": 1, "kind": "asset", "id": "smp_…", "type": "sample", "rate": 48000, "channels": 2, "data": "<base64 or a native file id>" }
+```
+
+after which a pad strike is `{kind: 'clip', part: 'sampler', id, asset,
+start, end, loop, rate, at}`, with `release`/`stop` by id. Time-stretch and
+reverse renders become the engine's job (the app sends tempo, pitch and
+direction and the engine renders), and the app keeps its own record of
+which pads are live from the messages it sent — a one-shot's end is known
+from the clip's length — instead of reading `PS_LIVE`.
+
+**Decisions this needs from you:**
+
+- *Where user samples live on the phone.* Either the page keeps them and
+  hands each to the engine when it is first used (simple, but every clip
+  crosses the bridge as base64 once per launch, about 1.4 MB per 10 s of
+  stereo), or they are saved natively once, as `modStore` already does
+  for settings, and the page refers to them by id (no repeat cost; the
+  library moves to native storage, which iOS does not clear the way it can
+  clear a web view's). Recommended: native storage, for the same reason
+  `modStore` exists.
+- *Whether the web build follows the same path.* Recommended: yes — the
+  web engine reads the same store, so there is one engine contract and the
+  traces keep proving both.
 
 ### Haptics
 
@@ -643,9 +740,8 @@ granting everything, as it does today.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. Every part is through (4.9.9.6–4.9.9.9.2); the legacy Rhythm
-   patterns, the metronome, the sampler pads and the knobs (`param`) are
-   what remains. The precondition for native audio, so it goes first now that
+   engine. Every part is through (4.9.9.6–4.9.9.9.3); the sampler pads and
+   the knobs (`param`) remain, proposed below. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.
