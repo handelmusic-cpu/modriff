@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.8</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.8';
+const MODRIFF_VERSION = '4.9.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9584,8 +9584,8 @@ window._genQueuePaint = function(part, frac, landed){
 // engine is Web Audio, here in the page; the iPhone app replaces it with
 // native code one part at a time, and it can only do that if there is a
 // single place every part's sound passes through. Chords, the live melody
-// ('mel': the strip, the keys, MIDI) and the melody sequencer ('melgen') go
-// through it now; the bass, the arp and the drums still build their notes
+// ('mel': the strip, the keys, MIDI), the melody sequencer ('melgen') and the
+// bass go through it now; the arp and the drums still build their notes
 // directly, though a kill of their look-ahead (stop) already comes this way.
 //
 //   send(msg)   msg is one of (v is always 1):
@@ -9614,6 +9614,13 @@ window._genQueuePaint = function(part, frac, landed){
 //                      and dur (the sequencer schedules ahead) and carries
 //                      accent (true/false) instead of y; vel is the step's
 //                      level, humanised, before the accent is applied.
+//                      'bass' is the same plus slide (this note's tail runs
+//                      on into the next) and from (the MIDI note it glides
+//                      in from, or null). The bass is monophonic: each note
+//                      cuts the last.
+//     {kind:'release', part:'bass', at}
+//                      let go of the bass voice (it has only one), as a key
+//                      played by hand comes up.
 //     {kind:'glide',   part, id, note, hz, vel, y}
 //                      the bend strip's glissando: one held tone at hz that
 //                      moves (param 'hz') until released. note is the strip
@@ -20818,6 +20825,8 @@ function _webEngineSend(msg){
   if(kind === 'param' && msg.name === 'bend') return _webBendPart('chord', msg.value);
  }
  if(msg && msg.v === 1 && part === 'melgen' && kind === 'note') return window._webMelgenNote(msg);
+ if(msg && msg.v === 1 && part === 'bass' && kind === 'note') return window._webBassNote(msg);
+ if(msg && msg.v === 1 && part === 'bass' && kind === 'release') return window._webBassRelease(msg);
  if(msg && msg.v === 1 && kind === 'stop' && KILL_PARTS.indexOf(part) >= 0) return _webKillPart(part, msg.at);
  if(msg && msg.v === 1 && part === 'mel'){
   const glide = (msg.id != null && bendContOsc && bendContOsc._modId === msg.id);
@@ -44831,6 +44840,12 @@ window._blLiveOff = function(midi){
     return;
   }
   _blLiveMidi = null;
+  if(!ctx) return;
+  // The bass is one voice, so letting go is not of a note but of the voice.
+  window.modEngine.send({v: 1, kind: 'release', part: 'bass', at: null});
+};
+window._webBassRelease = function(){
+  var ctx = blCtx();
   if(!ctx || !_blPrevGain) return;
   var t = ctx.currentTime;
   _blStopMsx(t + 0.06);
@@ -44958,22 +44973,50 @@ function _blPluck(ctx, dest, t, v, accent, freq){
     n.start(t); n.stop(t + 0.03);
   }catch(e){}
 }
+// The bass's note: when (never in the past — see playChord: a scheduled time
+// that has already passed makes the envelope jump rather than ramp, and a
+// jump is a click), who else hears it (MIDI out and the .mid recorder, which
+// may take the lane for an external synth), and where it slides from. Then
+// it goes to modEngine.
+//
+// The slide memory (_blPrevFreq/_blPrevSlide) is the app's: the sequencer
+// already resets it at the top of every loop, and it has to move on even for a
+// note an external synth played instead, so the next note glides from the
+// right pitch. It travels in the message as `from`, so the engine needs no
+// memory of its own.
+var _blNoteSeq = 0, _blPrevMidi = null;
 function blPlayNote(t, note, oct, dur, vol, accent, slide){
-  var ctx = blCtx(); if(!ctx) return;
-  // See playChord: a scheduled time that has already passed makes the envelope
-  // jump rather than ramp, and a jump is a click.
-  if(t==null || !isFinite(t) || t < ctx.currentTime) t = ctx.currentTime;
-  var mg = blMG(); if(!mg) return;
+  if(!window.modEngine.ready()) return;
+  var now = window.modEngine.now();
+  if(t==null || !isFinite(t) || t < now) t = now;
   var _moTook = (typeof window._midiRecLogBass==='function')
     ? (window._midiRecLogBass(note,oct,t,dur,vol,accent)===true) : false;
+  var midi = note + (oct+1)*12;
   var freq = blFreq(note, oct);
+  var from = (_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq) ? _blPrevMidi : null;
+  if(!_moTook) window.modEngine.send({v: 1, kind: 'note', part: 'bass', id: ++_blNoteSeq, note: midi,
+                                       vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur});
+  _blPrevFreq = freq; _blPrevMidi = midi;
+  _blPrevSlide = slide;
+}
+// The Web Audio engine's bass note.
+window._webBassNote = function(msg){ _webBassVoice(msg); };
+function _webBassVoice(msg){
+  var ctx = blCtx(); if(!ctx) return;
+  var mg = blMG(); if(!mg) return;
+  var t = msg.at, dur = msg.dur, vol = msg.vel, accent = msg.accent, slide = msg.slide;
+  var oct = Math.floor(msg.note / 12) - 1, note = msg.note - (oct+1)*12;
+  var freq = blFreq(note, oct);
+  // Where this note glides from, if it does. The four branches below all ask
+  // the same question; it is answered once, by the app.
+  var slideFrom = msg.from == null ? 0 : 440 * Math.pow(2, (msg.from - 69) / 12);
   var _mxBs = typeof _cmx === 'function' ? _cmx('bass') : 1;
   // Same class of fix as drums/chords: a muted or zeroed Bass channel still
   // built and connected every voice, floored at 0.0001 so the ramp below
   // wouldn't throw — audible once the bus compressor pulled that floor back
-  // up with nothing else in the mix. Slide state still updates so the next
-  // real note picks up cleanly once the channel comes back.
-  if(!(_mxBs>0) || _moTook){ _blPrevFreq=freq; _blPrevSlide=slide; return; }
+  // up with nothing else in the mix. (The slide memory moves on regardless,
+  // on the app's side.)
+  if(!(_mxBs>0)) return;
 
   // A real bass is monophonic — a new pluck always cuts the previous note
   // off, never rings on top of it. Step patterns are supposed to leave a
@@ -45051,8 +45094,8 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     // Slide is kept, which the drum-tab version never had.
     var o3 = ctx.createOscillator();
     o3.type = 'sawtooth';
-    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-      o3.frequency.setValueAtTime(_blPrevFreq, t);
+    if(slideFrom){
+      o3.frequency.setValueAtTime(slideFrom, t);
       o3.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
     } else { o3.frequency.setValueAtTime(freq, t); }
     var f3 = ctx.createBiquadFilter();
@@ -45072,8 +45115,8 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     // Acid 303 — resonant filter sweep + soft saturation
     var o = ctx.createOscillator();
     o.type = 'sawtooth';
-    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-      o.frequency.setValueAtTime(_blPrevFreq, t);
+    if(slideFrom){
+      o.frequency.setValueAtTime(slideFrom, t);
       o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
     } else { o.frequency.setValueAtTime(freq, t); }
     var f = ctx.createBiquadFilter();
@@ -45093,8 +45136,8 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     // Clean filtered oscillator — user-controlled cutoff & resonance
     var o = ctx.createOscillator();
     o.type = blWave;
-    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-      o.frequency.setValueAtTime(_blPrevFreq, t);
+    if(slideFrom){
+      o.frequency.setValueAtTime(slideFrom, t);
       o.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
     } else { o.frequency.setValueAtTime(freq, t); }
     var f = ctx.createBiquadFilter();
@@ -45115,8 +45158,8 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   } else if(blWave === 'electric'){
     // Electric bass — triangle fundamental + 2nd harmonic, punchy attack filter
     var o1 = ctx.createOscillator();
-    if(_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq){
-      o1.frequency.setValueAtTime(_blPrevFreq, t);
+    if(slideFrom){
+      o1.frequency.setValueAtTime(slideFrom, t);
       o1.frequency.exponentialRampToValueAtTime(freq, t + Math.min(dur*0.45, 0.06));
     } else {
       o1.frequency.setValueAtTime(freq, t);
@@ -45191,7 +45234,11 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     if(!src){
       if(SAMPLE_STATE[_sk] !== 'ready') preloadSampleInstrument(_sk);
       var _sw = blWave;
-      try{ blWave = (SAMPLE_LIBS[_sk] && SAMPLE_LIBS[_sk].fallbackWave) || 'upright'; blPlayNote(t, note, oct, dur, vol, accent, slide); }
+      // The same note again on the voice that stands in for this one. It used
+      // to go back through blPlayNote, which logged the note to MIDI out and
+      // the .mid recorder a second time whenever the samples were still
+      // loading; the engine calls its own voice instead.
+      try{ blWave = (SAMPLE_LIBS[_sk] && SAMPLE_LIBS[_sk].fallbackWave) || 'upright'; _webBassVoice(msg); }
       finally{ blWave = _sw; }
     }
   } else {
@@ -45203,10 +45250,6 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
     var _fbMidi = note + (oct+1)*12;
     if(typeof makeVoice === 'function') _blPrevVoice = makeVoice(ctx, _fbMidi, g, t, dur, blWave, 'bass');
   }
-
-  // Update slide state for next note
-  _blPrevFreq = freq;
-  _blPrevSlide = slide;
 }
 
 // ═══════════════════════════════════════
