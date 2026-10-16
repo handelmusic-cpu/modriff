@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; sampler and knobs proposed below |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs step 1 — `PARAMS` and the `state`/`param` messages — landed (4.9.9.9.4); sampler next |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -593,7 +593,7 @@ through it:
   `mlMG`, `blMG` before a preview). They build buses rather than sound,
   but they are Web Audio reached from outside the engine.
 
-### Proposed: knobs and samples (not built — for agreement first)
+### Knobs and samples (agreed; step 1 landed in 4.9.9.9.4)
 
 **What the engine side reads today.** Seven sliders by element id
 (`attack`, `decay`, `rev-mix`, `mel-attack`, `mel-decay`, `mel-rev`,
@@ -632,9 +632,44 @@ every `oninput`.
 
 **In steps that each ship on their own, verified by the same traces:**
 
-1. The table, the snapshot and the `param` messages, sent on every change.
-   The web engine still reads the sliders, so nothing changes; a probe
-   checks that every value it reads matches the last one sent.
+1. **Done (4.9.9.9.4).** The table, the snapshot and the `param`
+   messages. The web engine still reads the sliders, so nothing changes.
+
+   As built, it differs from the sketch in one way, for the better: there
+   is no listener per knob. Every message goes through the app's door,
+   `modSend`, which first compares each `PARAMS` entry with what it last
+   sent and sends whatever changed (the whole set, as `state`, before the
+   first message of the session). So an engine always holds the state a
+   note is meant to be played with, the same values the web voices read off
+   the sliders at that instant, with no hook in any of the forty places a
+   knob is set. Live controls a note does not wait for (a fader moving
+   under a held chord) still need a listener; they come with step 4.
+
+   `PARAMS` holds 45 entries: per part — chord attack, release, reverb,
+   strum and spread, voice, Sub (on, sampled, level, wave), glide; melody
+   attack, release, reverb, voice, Vel Sense (the glide's trim), the Touch
+   Mod (on, destination, depth, rate, axis); the sequencer's, bass's and
+   arp's voices; the bass's level, cutoff and resonance; the drum lanes'
+   Shapes — and the mõdFX macro (cutoff, reso, env, drive, width, drift,
+   trim), tuning, and each part's mixer level. The arp has no attack or
+   reverb of its own and plays with the chord's, so it reads `chord.attack`
+   and `chord.reverb`. State inside a closure (the bass's, the sequencer's
+   voice, the drum Shapes) is read through a getter the closure exports
+   (`window._blParams`, `_mlParams`, `_sqParams`).
+
+   Verified: every trace identical to main, source and `dist/`. Across
+   every scenario, at each of 7,775 messages the engine played, its store
+   held exactly what the app held for all 45 entries (0 mismatches); every
+   slider the engine side reads (measured by trapping `getElementById`
+   inside `send`: the eight it reads) is in the table; params are sent only
+   when something changed (in the chord run: 13 voice switches, 167 Strum
+   toggles, 1 glide); and an object edited in place (a drum Shape, nested)
+   is seen as a change and stored as a copy.
+
+   What `PARAMS` does not hold yet: the globals cannot be trapped the way
+   sliders can, and the voice builder (`makeVoice`) reaches far — each
+   part's mõdSynth patch, the voice designer's settings, the sampled
+   instruments' tables. Step 3 takes those, with its own measurement.
 2. Part by part, the web engine reads its store instead of the sliders.
    Traces must stay identical, which proves the messages carry everything.
 3. Voices and patches: `chord.voice` is a voice name; a mõdSynth patch is
@@ -660,19 +695,16 @@ direction and the engine renders), and the app keeps its own record of
 which pads are live from the messages it sent — a one-shot's end is known
 from the clip's length — instead of reading `PS_LIVE`.
 
-**Decisions this needs from you:**
+**Decided (owner, after 4.9.9.9.3):**
 
-- *Where user samples live on the phone.* Either the page keeps them and
-  hands each to the engine when it is first used (simple, but every clip
-  crosses the bridge as base64 once per launch, about 1.4 MB per 10 s of
-  stereo), or they are saved natively once, as `modStore` already does
-  for settings, and the page refers to them by id (no repeat cost; the
-  library moves to native storage, which iOS does not clear the way it can
-  clear a web view's). Recommended: native storage, for the same reason
-  `modStore` exists.
-- *Whether the web build follows the same path.* Recommended: yes — the
-  web engine reads the same store, so there is one engine contract and the
-  traces keep proving both.
+- *User samples live in native storage* on the phone, saved once and
+  referred to by id — not handed across the bridge on every launch. Same
+  reason `modStore` exists: iOS can clear a web view's storage, and these
+  are people's own recordings.
+- *The web build follows the same path*: its engine reads the same param
+  store, so there is one engine contract and the traces keep proving it. It
+  matters less than it sounds, because the web build is not the product
+  (below).
 
 ### Haptics
 
@@ -734,6 +766,13 @@ Native side: StoreKit 2 through a Capacitor plugin (RevenueCat's, or
 requires a visible **Restore Purchases** control (already in the contract,
 guideline 3.1.1) and no link out to a web checkout. The web build keeps
 granting everything, as it does today.
+
+**The web build after the App Store release (owner's direction, not yet
+built):** the web Web Audio path goes away once the app ships. The Vercel
+build may stay up as the free version, with no way to upgrade from it —
+the App Store is the only place to buy. That replaces "the web build keeps
+granting everything" above once it is built; until then the web build is
+unchanged.
 
 ---
 

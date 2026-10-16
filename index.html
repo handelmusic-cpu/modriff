@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.3</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.4</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.3';
+const MODRIFF_VERSION = '4.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9645,6 +9645,12 @@ window._genQueuePaint = function(part, frac, landed){
 //                      or glide: 'y', 'hz'. Without, the whole part: 'bend'
 //                      (cents, 'mel' and 'chord'), 'accent' (true/false,
 //                      'mel').
+//     {kind:'state',   params:{'part.name': value, …}}
+//                      the instrument's whole standing state (PARAMS), once,
+//                      before the first message of the session.
+//     {kind:'param',   part, name, value}  (no id)
+//                      one piece of that state changed; sent just before the
+//                      next message that would be played with it.
 //   `at` is on the engine's clock (now()); null means as soon as possible.
 //   now()       the engine's clock, seconds.
 //   ready(part) whether the engine can sound at all yet (that part, if
@@ -9675,6 +9681,120 @@ window.modEngine = window.modEngine || {};
  };
  if(!E.provider) E.provider = 'web';
 })(window.modEngine);
+
+// ── PARAMS — the instrument's standing state, named once ──────────────────
+// Everything an engine needs that is not decided per note: each part's
+// attack, release, reverb send and voice, the Sub, Strum, glide, the Touch
+// Mod, the mõdFX macro, tuning, each part's mixer level, the drum lanes'
+// Shapes. One table, like PARTS, because three things read it and must not
+// drift: the snapshot an engine starts from, the param messages that follow
+// it, and (later) MIDI Mapping Mode's targets.
+//
+// read() returns the value the app holds right now, from wherever it lives
+// (a slider, a module flag, a getter a closure exports). A slider is read as
+// parseFloat of its value, exactly what the voices parse, and NaN travels as
+// null; the engine applies the same fallback either way.
+//
+// Shared sliders are named by the panel that owns them: the arp has no
+// attack or reverb of its own and plays with the chord's, so it reads
+// chord.attack and chord.reverb rather than a second name for one knob.
+//
+// Not here yet, and next (docs/v5-architecture.md, "knobs and samples"):
+// each part's mõdSynth patch and the voice designer's internals, the mixer's
+// sends and mõdFX chains, the reverbs and the master bus, and the sampler.
+function _pSlider(id){ var e = document.getElementById(id); return e ? parseFloat(e.value) : null; }
+function _pGet(name, key){ var f = window[name]; return (typeof f === 'function') ? f()[key] : null; }
+var PARAMS = [
+ {part:'chord',  name:'attack',     read:function(){ return _pSlider('attack'); }},
+ {part:'chord',  name:'release',    read:function(){ return _pSlider('decay'); }},
+ {part:'chord',  name:'reverb',     read:function(){ return _pSlider('rev-mix'); }},
+ {part:'chord',  name:'strumSpread',read:function(){ return _pSlider('strum-spread'); }},
+ {part:'chord',  name:'strum',      read:function(){ return strumMode; }},
+ {part:'chord',  name:'voice',      read:function(){ return wave; }},
+ {part:'chord',  name:'sub',        read:function(){ return chordSubOn; }},
+ {part:'chord',  name:'subSampled', read:function(){ return chordSubOnSmp; }},
+ {part:'chord',  name:'subLevel',   read:function(){ return chordSubLevel; }},
+ {part:'chord',  name:'subWave',    read:function(){ return chordSubWave; }},
+ {part:'chord',  name:'glide',      read:function(){ return chordGlideOn; }},
+ {part:'chord',  name:'glideTime',  read:function(){ return chordGlideTime; }},
+ {part:'mel',    name:'attack',     read:function(){ return _pSlider('mel-attack'); }},
+ {part:'mel',    name:'release',    read:function(){ return _pSlider('mel-decay'); }},
+ {part:'mel',    name:'reverb',     read:function(){ return _pSlider('mel-rev'); }},
+ {part:'mel',    name:'voice',      read:function(){ return melWave; }},
+ {part:'mel',    name:'velSense',   read:function(){ return _pSlider('vel-sense'); }},
+ {part:'mel',    name:'mod',        read:function(){ return melModOn; }},
+ {part:'mel',    name:'modDest',    read:function(){ return melModDest; }},
+ {part:'mel',    name:'modDepth',   read:function(){ return melModDepth; }},
+ {part:'mel',    name:'modRate',    read:function(){ return melModRate; }},
+ {part:'mel',    name:'modAxis',    read:function(){ return melModAxis; }},
+ {part:'melgen', name:'voice',      read:function(){ return _pGet('_mlParams', 'voice'); }},
+ {part:'bass',   name:'voice',      read:function(){ return _pGet('_blParams', 'voice'); }},
+ {part:'bass',   name:'level',      read:function(){ return _pGet('_blParams', 'level'); }},
+ {part:'bass',   name:'cutoff',     read:function(){ return _pGet('_blParams', 'cutoff'); }},
+ {part:'bass',   name:'resonance',  read:function(){ return _pGet('_blParams', 'resonance'); }},
+ {part:'arp',    name:'voice',      read:function(){ return arpWave; }},
+ {part:'drum',   name:'shapes',     read:function(){ return _pGet('_sqParams', 'shapes'); }},
+ {part:'fx',     name:'cutoff',     read:function(){ return fxCutoff; }},
+ {part:'fx',     name:'reso',       read:function(){ return fxReso; }},
+ {part:'fx',     name:'env',        read:function(){ return fxEnv; }},
+ {part:'fx',     name:'drive',      read:function(){ return fxDrive; }},
+ {part:'fx',     name:'width',      read:function(){ return fxWidth; }},
+ {part:'fx',     name:'drift',      read:function(){ return fxDrift; }},
+ {part:'fx',     name:'trim',       read:function(){ return fxTrim; }},
+ {part:'master', name:'tune',       read:function(){ return masterTune; }}
+];
+// Each part's level as the mixer has it now — fader, mute and solo together.
+['chord','mel','melgen','bass','arp','drum','auxperc','sampler'].forEach(function(p){
+ PARAMS.push({part:'mix', name:p, read:function(){ return _cmx(p); }});
+});
+
+// The app's door. Every note, hit, release and stop goes through here, not
+// straight to modEngine.send: before the message, any param that has changed
+// since the last one is sent, so an engine always holds the state the note
+// is meant to be played with — the same values the web voices read off the
+// sliders at that instant. The first message of the session is preceded by
+// the whole set, as one 'state' message. Comparing on every send costs a few
+// dozen reads, which the voices themselves were already making; it is what
+// lets this work without a hook on each of the forty places a knob is set.
+var _paramSent = null;
+function _paramRead(p){
+ var v;
+ // A read during init can reach a let still in its dead zone (CLAUDE.md);
+ // that is "unknown", not a crash in the middle of playing a note.
+ try{ v = p.read(); }catch(e){ v = null; }
+ if(typeof v === 'number' && !isFinite(v)) v = null;
+ if(v === undefined) v = null;
+ return v;
+}
+function _paramSame(a, b){
+ if(a === b) return true;
+ if(a && b && typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b);
+ return false;
+}
+// Objects are copied when sent, so a later edit to the app's own object is
+// seen as a change rather than silently shared.
+function _paramCopy(v){ return (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v; }
+function modParamsSync(){
+ var E = window.modEngine;
+ if(!_paramSent){
+  _paramSent = {};
+  var all = {};
+  PARAMS.forEach(function(p){ var k = p.part + '.' + p.name, v = _paramCopy(_paramRead(p)); _paramSent[k] = v; all[k] = v; });
+  E.send({v: 1, kind: 'state', params: all});
+  return;
+ }
+ PARAMS.forEach(function(p){
+  var k = p.part + '.' + p.name, v = _paramRead(p);
+  if(_paramSame(v, _paramSent[k])) return;
+  v = _paramCopy(v);
+  _paramSent[k] = v;
+  E.send({v: 1, kind: 'param', part: p.part, name: p.name, value: v});
+ });
+}
+function modSend(msg){
+ modParamsSync();
+ return window.modEngine.send(msg);
+}
 
 'use strict';
 // ═══════════════════════════════════════
@@ -18846,7 +18966,7 @@ function _regKill(gain, part){
 var KILL_PARTS = ['arp', 'bass', 'melgen', 'drum', 'auxperc'];
 function hardKillAll(atTime){
  KILL_PARTS.forEach(function(part){
-  window.modEngine.send({v: 1, kind: 'stop', part: part, at: atTime == null ? null : atTime});
+  modSend({v: 1, kind: 'stop', part: part, at: atTime == null ? null : atTime});
  });
 }
 // The Web Audio engine's half: silence what this part has committed.
@@ -18869,7 +18989,7 @@ function _webKillPart(part, atTime){
 // through modEngine; _webChordStop is the Web Audio engine's half.
 function stopAll(atTime){
  _chordLiveId = null;
- window.modEngine.send({v: 1, kind: 'stop', part: 'chord', at: atTime == null ? null : atTime});
+ modSend({v: 1, kind: 'stop', part: 'chord', at: atTime == null ? null : atTime});
 }
 function _webChordStop(atTime){
  const ctx = getCtx();
@@ -18907,7 +19027,7 @@ function _webChordStop(atTime){
 // whatever is left.
 function _releaseChordAt(id, t){
  if(id == null || id !== _chordLiveId) return;
- window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: id, at: t});
+ modSend({v: 1, kind: 'release', part: 'chord', id: id, at: t});
 }
 function _webChordReleaseAt(t){
  const ctx=getCtx(); if(!ctx || !(t>0)) return;
@@ -18936,7 +19056,7 @@ function releaseSustainedChord(myId){
  if(getCtx()){
   try{ if(typeof window._capOnRelease==='function') window._capOnRelease(window.modEngine.now()); }catch(e){}
  }
- window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: myId, at: null});
+ modSend({v: 1, kind: 'release', part: 'chord', id: myId, at: null});
 }
 function _webChordRelease(){
  const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
@@ -20690,7 +20810,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
  // Live before the send: the message chokes the old chord first, and a
  // release already in flight for that one must not land on this one.
  _chordLiveId = msg.id;
- window.modEngine.send(msg);
+ modSend(msg);
  return msg.id;
 }
 
@@ -20838,8 +20958,19 @@ function playSlashChord(rootM,relIntvs,bassNote,pressure,sustain,atTime){
 // wraps those by reassigning them, so an engine that called one would send an
 // external synth a second note-off, or log a chord twice.
 var _webEngineWarned = {};
+// What the web engine has been told of the instrument's state (PARAMS), by
+// 'part.name'. The voices still read the sliders and flags themselves; this
+// is where they will read from instead, part by part, and the probe checks it
+// against what they read meanwhile.
+window._webParams = {};
 function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
+ if(msg && msg.v === 1 && kind === 'state' && msg.params){ Object.assign(window._webParams, msg.params); return; }
+ // A part-level param that is not one of the live controls below (bend,
+ // accent) is standing state: kept, and read when the next voice is built.
+ if(msg && msg.v === 1 && kind === 'param' && msg.id == null && msg.name !== 'bend' && msg.name !== 'accent'){
+  window._webParams[part + '.' + msg.name] = msg.value; return;
+ }
  if(msg && msg.v === 1 && part === 'chord'){
   if(kind === 'chord')   return _webChordOn(msg);
   if(kind === 'stop')    return _webChordStop(msg.at);
@@ -21179,7 +21310,7 @@ function buildMelMod(ctx, t0){
 function melNoteSetY(midi, y){
  const id=_melLive[midi];
  if(id==null) return;
- window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: id, name: 'y', value: y});
+ modSend({v: 1, kind: 'param', part: 'mel', id: id, name: 'y', value: y});
 }
 
 // Vertical position inside an element, 0 at the bottom edge and 1 at the top.
@@ -21226,7 +21357,7 @@ function playMelNote(midi,pressure,sustain,modY){
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
               y: modY==null ? melModY : modY};
  _melLive[midi] = msg.id;
- window.modEngine.send(msg);
+ modSend(msg);
  return msg.id;
 }
 
@@ -21353,7 +21484,7 @@ function releaseMelNote(midi){
  const id=_melLive[midi];
  if(id==null) return;
  delete _melLive[midi];
- window.modEngine.send({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+ modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null});
 }
 function _webMelRelease(id){
  const midi=_webMelById(id);
@@ -21429,7 +21560,7 @@ var _melGlideId = null;
 function bendStopContinuous(){
  if(_melGlideId==null) return;
  const id=_melGlideId; _melGlideId=null;
- window.modEngine.send({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+ modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null});
 }
 function _webMelGlideStop(){
  if(!bendContOsc) return;
@@ -21615,7 +21746,7 @@ function initBendStrip(){
             // Same convention as every other melody surface — see melPressure.
             vel: velScale(melPressure(touch)), y: y};
  _melGlideId=msg.id;
- window.modEngine.send(msg);
+ modSend(msg);
  };
 
 
@@ -21680,8 +21811,8 @@ function initBendStrip(){
  } else if(bendIsGliding){
  // Already gliding — true continuous pitch, no snapping
  if(!window.modEngine.ready() || _melGlideId==null) return;
- window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'hz', value: xToFreq(x, notes)});
- window.modEngine.send({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'y', value: y});
+ modSend({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'hz', value: xToFreq(x, notes)});
+ modSend({v: 1, kind: 'param', part: 'mel', id: _melGlideId, name: 'y', value: y});
  } else {
  // Still within tap tolerance — behave like locked mode until the
  // gesture actually moves like a glissando. Vertical travel alone is a
@@ -23158,7 +23289,7 @@ function scheduleMetronome(){
    // third beat in 3/4, every seventh in 7/8. It was every fourth, always.
    const beatNum=Math.round((t-CLOCK_EPOCH)/bSec);
    const isDownbeat=(((beatNum%METER.beats)+METER.beats)%METER.beats)===0;
-   window.modEngine.send({v: 1, kind: 'hit', part: 'click', id: ++_clickSeq, accent: isDownbeat, at: t});
+   modSend({v: 1, kind: 'hit', part: 'click', id: ++_clickSeq, accent: isDownbeat, at: t});
   }
   metroNextBeat += bSec;
  }
@@ -23378,7 +23509,7 @@ function scheduleArpBlock(t,dur){
  if(!window.modEngine.ready() || !arpNotes.length) return;
  // An external synth playing the lane with local sound off has it instead.
  if(typeof moSilences==='function' && moSilences('arp')) return;
- window.modEngine.send({v: 1, kind: 'chord', part: 'arp', id: ++_arpNoteSeq, root: null,
+ modSend({v: 1, kind: 'chord', part: 'arp', id: ++_arpNoteSeq, root: null,
                         notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur});
 }
 // The Web Audio engine's block: the chord's tones 12 ms apart, low to high
@@ -23458,7 +23589,7 @@ function scheduleArpNote(midi,t,dur){
  // vel is how hard the step is struck (its accent, humanised), which also
  // opens the filter; level is where it sits in the pattern's dynamic shape
  // (Bounce, Cresc, Hill...), which only scales it.
- window.modEngine.send({v: 1, kind: 'note', part: 'arp', id: ++_arpNoteSeq, note: midi,
+ modSend({v: 1, kind: 'note', part: 'arp', id: ++_arpNoteSeq, note: midi,
                         vel: velMult*humanVel, level: bounceV*velShapeMult, pan: arpPan,
                         at: tAdj, dur: dur});
  // The readout under the arp follows what sounds, so not with its fader down.
@@ -23604,7 +23735,7 @@ var RHYTHM_LANES = ['kick', 'snare', 'hihat'], _rhyHitSeq = 0;
 function scheduleDrum(type,t){
  if(typeof drumsEnabled!=='undefined' && !drumsEnabled) return;
  if(!window.modEngine.ready()) return;
- window.modEngine.send({v: 1, kind: 'hit', part: 'drum', id: ++_rhyHitSeq, kit: 'rhythm/'+drumKit,
+ modSend({v: 1, kind: 'hit', part: 'drum', id: ++_rhyHitSeq, kit: 'rhythm/'+drumKit,
                         lane: RHYTHM_LANES.indexOf(type), vel: 1, accent: false, pitch: 0, dyn: null, at: t});
 }
 // The Web Audio engine's legacy Rhythm drum.
@@ -34094,8 +34225,8 @@ function _bendOscs(list, now, cents){
 function _melBendApply(){
  if(!window.modEngine.ready()) return;
  melBendCents=_melBendTargetCents();
- window.modEngine.send({v: 1, kind: 'param', part: 'mel', name: 'bend', value: melBendCents});
- if(melBendScope==='all') window.modEngine.send({v: 1, kind: 'param', part: 'chord', name: 'bend', value: melBendCents});
+ modSend({v: 1, kind: 'param', part: 'mel', name: 'bend', value: melBendCents});
+ if(melBendScope==='all') modSend({v: 1, kind: 'param', part: 'chord', name: 'bend', value: melBendCents});
 }
 // What the Web Audio engine has been told each part is bent by. A melody note
 // struck while the wheel is off-centre starts pre-bent from this, the way a
@@ -38658,7 +38789,7 @@ let _accentOn = false, _rollOn = false, _rollTimer = null;
 function _activeMelMidiList(){ return Object.keys(_melLive).map(Number); }
 
 function _setMelodyAccent(on){
- window.modEngine.send({v: 1, kind: 'param', part: 'mel', name: 'accent', value: !!on});
+ modSend({v: 1, kind: 'param', part: 'mel', name: 'accent', value: !!on});
 }
 function _webMelAccent(on){
  const ctx = getCtx(); if(!ctx) return;
@@ -42549,6 +42680,8 @@ window._sqSetMach = function(k){
  if(typeof sqDoSwap==='function') sqDoSwap(k); else sqMach=k;
 };
 var sqGrid={}, sqVols={}, sqPitches={}, sqMachGrids={}, sqShapes={};
+// For PARAMS (in the platform layer, outside this closure).
+window._sqParams = function(){ return {shapes: sqShapes}; };
 var SQ_NUM_P=8, sqPats=[], sqCurPat=0;
 for(var _pi=0;_pi<SQ_NUM_P;_pi++) sqPats.push(null);
 var sqPlaying=false, sqSchedID=null, sqRafID=null;
@@ -43103,7 +43236,7 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   // kit + lane say which drum, in plain data a native engine can look up.
   // dyn is how hard this one stroke is within its step (a flam's grace note,
   // a ratchet's tail) — what a layered kit picks its recording by.
-  window.modEngine.send({v: 1, kind: 'hit', part: part, id: ++_sqHitSeq, kit: where.kit, lane: where.lane,
+  modSend({v: 1, kind: 'hit', part: part, id: ++_sqHitSeq, kit: where.kit, lane: where.lane,
                          vel: vol, accent: !!ac, pitch: ps||0,
                          dyn: window.__sqDyn==null ? null : window.__sqDyn, at: t});
 }
@@ -44951,7 +45084,7 @@ window._blLiveOff = function(midi){
   _blLiveMidi = null;
   if(!ctx) return;
   // The bass is one voice, so letting go is not of a note but of the voice.
-  window.modEngine.send({v: 1, kind: 'release', part: 'bass', at: null});
+  modSend({v: 1, kind: 'release', part: 'bass', at: null});
 };
 window._webBassRelease = function(){
   var ctx = blCtx();
@@ -44999,6 +45132,8 @@ var blCutoff = 600;
 var blResonance = 2;
 var blOpen = true;
 var blVol = 0.7;
+// For PARAMS (in the platform layer, outside this closure).
+window._blParams = function(){ return {voice: blWave, level: blVol, cutoff: blCutoff, resonance: blResonance}; };
 
 window.blSetCutoff = function(v){ blCutoff = +v; };
 window.blSetResonance = function(v){ blResonance = +v; };
@@ -45103,7 +45238,7 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var midi = note + (oct+1)*12;
   var freq = blFreq(note, oct);
   var from = (_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq) ? _blPrevMidi : null;
-  if(!_moTook) window.modEngine.send({v: 1, kind: 'note', part: 'bass', id: ++_blNoteSeq, note: midi,
+  if(!_moTook) modSend({v: 1, kind: 'note', part: 'bass', id: ++_blNoteSeq, note: midi,
                                        vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur});
   _blPrevFreq = freq; _blPrevMidi = midi;
   _blPrevSlide = slide;
@@ -47114,6 +47249,8 @@ var _mlStepSecLive = 0;
 // chord you are already hearing, where a hook is a line of its own.
 var mlGenStyle = 'hook';
 var mlWave = 'triangle';
+// For PARAMS (in the platform layer, outside this closure).
+window._mlParams = function(){ return {voice: mlWave}; };
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
 function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
@@ -47149,7 +47286,7 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
     _midiRecNotes.push({lane:'melgen',note:_mlMidi,vel:_mlVel,tOn:_mlOn,tOff:_mlOn+_mlDur});
   }catch(e){}
   if(_moTookMel) return;
-  window.modEngine.send({v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
+  modSend({v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
                          vel: vol, accent: !!accent, at: t, dur: dur});
 }
 // The Web Audio engine's sequencer note. In this closure because the voice,
