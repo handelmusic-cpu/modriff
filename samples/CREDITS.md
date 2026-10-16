@@ -211,19 +211,34 @@ panel.
 The saxophone table above them is older and hand-written, and carries no such
 citation. It covers written B♭3–F6 and has not been re-sourced.
 
-## samples/bassfinger, samples/basspick, samples/bassslap — "Motown", "Höfner", "Slap"
+## samples/bassfinger, samples/basspick — "Motown", "Höfner"
 
 From the same midi-js-soundfonts project as the upright (CC BY 3.0 / the
 SoundFonts' own terms, as above): `electric_bass_finger` and
-`electric_bass_pick` from **FluidR3_GM**, `slap_bass_1` from **MusyngKite**.
-Chosen by measuring both libraries: MusyngKite's fingered and picked sets sit
-9-17 cents out of tune, FluidR3's within 4; for slap both are in tune and
-MusyngKite's attack is sharper. Natural notes C1-B4, 28 per set, shipped as
-downloaded.
+`electric_bass_pick` from **FluidR3_GM**. Chosen by measuring both libraries:
+MusyngKite's fingered and picked sets sit 9-17 cents out of tune, FluidR3's
+within 4. Natural notes C1-B4, 28 per set, shipped as downloaded.
 
 Each player's tone (Jamerson's muted flatwound P-bass, McCartney's picked
-Höfner, a scooped slap) is applied by the app when the notes load — see
-`_sampleShape` in index.html — so the files themselves are unprocessed.
+Höfner) is applied by the app when the notes load — see `_sampleShape` in
+index.html — so the files themselves are unprocessed.
+
+A third set, `samples/bassslap` (MusyngKite's `slap_bass_1`, "Slap"), was
+removed in 4.9.9.4 at the owner's word. A saved bass on Slap plays Picked.
+
+## samples/ebass — "Picked ◆" (bass sequencer)
+
+**[Picked Riff on Real Bass Guitar](https://freesound.org/people/Ixwolf/packs/44244/)**
+by **Ixwolf** on Freesound, **CC0**. A real electric bass, picked, one note
+per file up the E string: E1 to E2, all thirteen semitones (Freesound sounds
+826027-826039, `_rr1` — the pack has one take of each). 24-bit, 48 kHz
+originals.
+
+The names were right; the tuning was not quite — the low notes sat 10-14
+cents sharp. `build/pitched-sets.py` retunes each to its exact note (the
+name fixes the semitone, a harmonic comb measures the cents), trims it to
+the attack, keeps 3.0 s of its 5.4 s ring with a 0.8 s fade, peak-matches to
+-1.5 dBFS and encodes mono mp3 VBR q6. Notes above E2 are these, shifted up.
 
 ## samples/808 — the phrase sampler's TR-808
 

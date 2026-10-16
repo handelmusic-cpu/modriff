@@ -7225,7 +7225,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.3</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.4</span>
     </div>
    </div>
   </div>
@@ -7262,7 +7262,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.4</span></div>
  </div>
 </div>
 
@@ -9009,7 +9009,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="bl-mopt" id="blw-upright2" onclick="setBlWave('upright2')" title="Upright 2 ◆ — recorded double bass, every semitone from E1 (pjcohen, CC0). Falls back to the synth Uprt offline">Up 2</button>
      <button class="bl-mopt" id="blw-motown" onclick="setBlWave('bass_motown')" title="Motown — fingered P-bass, flatwounds, foam mute: the deep, dead thump under a Jamerson line">Motown</button>
      <button class="bl-mopt" id="blw-hofner" onclick="setBlWave('bass_hofner')" title="Höfner — picked violin bass: woody, round, short — the 60s McCartney sound">Höfner</button>
-     <button class="bl-mopt" id="blw-slap" onclick="setBlWave('bass_slap')" title="Slap — thumb and pop, mids scooped, sub and top pushed">Slap</button>
+     <button class="bl-mopt" id="blw-picked" onclick="setBlWave('bass_picked')" title="Picked ◆ — recorded electric bass, picked, every semitone of the E string (Ixwolf, CC0). Falls back to the synth Elec offline">Pick</button>
      <button class="bl-mopt" id="blw-303" onclick="setBlWave('acid303')" title="The TB-303 voice the drum tab used to carry — its own filter and resonance, so the Cutoff and Reso sliders do not apply">303</button>
      <!-- Covers any voice picked via the Voices drawer that isn't one of the
           seven quick buttons above (piano, vibes, modsynth, ...), so the
@@ -9417,7 +9417,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.3';
+const MODRIFF_VERSION = '4.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10566,7 +10566,11 @@ const WAVE_GAIN = {
 const BASS_SAMPLE_GAIN = 11.4;
 // The sampled bass voices, by wave id: which library, and the gain that puts
 // it at that level (same measurement; at 4.5 Motown read -38.5, Höfner
-// -36.8, Slap -44.1 — slap is spiky, all transient and little body).
+// -36.8).
+//
+// Slap went in 4.9.9.4 at the owner's word — it never sounded like a slap
+// player, and the scoop-and-compress chain could not make a General MIDI
+// patch into one. A saved bass on 'bass_slap' lands on Picked (BASS_RENAMED).
 var BASS_SAMPLED = {
  upright_real:{lib:'bass',       gain:BASS_SAMPLE_GAIN},
  // Measured (4.2.8), same generated line soloed into the bass bus: at 11.4
@@ -10575,8 +10579,16 @@ var BASS_SAMPLED = {
  upright2:    {lib:'bassup2',    gain:1.42},
  bass_motown: {lib:'bassmotown', gain:16.9},
  bass_hofner: {lib:'basshofner', gain:13.9},
- bass_slap:   {lib:'bassslap',   gain:32}
+ // Picked (4.9.9.4): a real electric, not a SoundFont patch with a tone
+ // painted on — so nothing is baked in when it loads. Measured the same way
+ // as the rest (a generated Rock line on the bass bus, 6 s): at 2.6 it read
+ // -20.4 dB RMS against Upright 1's -22.9, so 2.6 × 10^(-2.5/20) puts it level.
+ bass_picked: {lib:'basspicked', gain:1.95}
 };
+// Wave ids that no longer exist, and where a saved one should land instead.
+// setBlWave reads it, so a setup, an autosave or a shared link from before the
+// change plays a bass rather than a silent part labelled "bass_slap".
+var BASS_RENAMED = { bass_slap:'bass_picked' };
 
 // ═══════════════════════════════════════
 // SAMPLE ENGINE — real instrument samples (progressive enhancement)
@@ -10612,7 +10624,16 @@ const SAMPLE_LIBS = {
  // fingered and picked sets sit 9-17 cents out of tune, FluidR3's within 4.
  bassmotown: {dir:'samples/bassfinger', notes:_natRange(1,4), fallbackWave:'electric', shape:'motown'},
  basshofner: {dir:'samples/basspick',   notes:_natRange(1,4), fallbackWave:'electric', shape:'hofner'},
- bassslap:   {dir:'samples/bassslap',   notes:_natRange(1,4), fallbackWave:'electric', shape:'slap'},
+ // Picked (4.9.9.4): Ixwolf's CC0 "Picked Riff on Real Bass Guitar", a real
+ // electric played note by note up the E string — E1 to E2, every semitone,
+ // tuned and trimmed by build/pitched-sets.py. That is the whole pack, so the
+ // octave above E2 is the same strings shifted up, which a picked bass
+ // carries better than a bowed or blown note would: the pick is the attack
+ // whatever the speed. A new directory, not samples/bassslap reused —
+ // samples are immutable to the service worker (sw.js), so a changed file
+ // under an old name would never reach a phone that had cached the old one.
+ basspicked: {dir:'samples/ebass', fallbackWave:'electric',
+              notes:['E1','F1','Fs1','G1','Gs1','A1','As1','B1','C2','Cs2','D2','Ds2','E2']},
  // Two real jazz comping instruments. Which ones was decided by measurement,
  // not taste: these sample sets are mp3s that brickwall around 7.5 kHz, which
  // is why the piano set that used to ship here was removed — a piano without
@@ -10758,9 +10779,6 @@ function preloadSampleInstrument(key){
 //            bump at 100-180 Hz, the box taken out at 400 Hz, rolled off from
 //            1.5 kHz, levelled by a fast compressor (the RS124 role) and
 //            warmed with a gentle tanh. Short-scale, so it dies sooner.
-//   slap   — Marcus Miller / Flea: the scoop (400-800 Hz down), sub and top
-//            shelves up, and a fast compressor holding the slap's spike down
-//            so the tail comes up.
 function _sampleShape(kind, buf, ctx){
  try{
   const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
@@ -10797,14 +10815,6 @@ function _sampleShape(kind, buf, ctx){
    add(env);
    env.gain.setValueAtTime(1, 0);
    env.gain.setTargetAtTime(0, 0.12, 0.9);            // short scale, flatwounds
-  } else if(kind==='slap'){
-   const cmp=oc.createDynamicsCompressor();
-   cmp.threshold.value=-22; cmp.ratio.value=5; cmp.attack.value=0.0015; cmp.release.value=0.12; cmp.knee.value=4;
-   add(cmp);
-   bq('peaking', 600, 0.7, -7.5);
-   bq('lowshelf', 80, null, 4);
-   bq('highshelf', 4000, null, 4);
-   add(env);
   } else return Promise.resolve(buf);
   head.connect(oc.destination);
   src.start(0);
@@ -16621,7 +16631,9 @@ const VOICE_TYPES = [
 // ── State ──
 // Defaults (4.9.6, the owner's): chords on Piano 1, the melody strip on
 // Sine, drums on the Linn, bass on Upright 1, the melody sequencer on Mute
-// Trumpet, the arp on Flute. Only a fresh start sees them — a restored
+// Trumpet, the arp on Flute. 4.9.9.4 moved the drums to mõdKit, which the
+// free tier has (the Linn is Pro), and made Upright 1 a free voice, so a
+// first launch on free plays its drums and bass rather than a locked kit. Only a fresh start sees them — a restored
 // session, a setup or a song brings its own. The recorded ones are fetched
 // when audio unlocks (see unlockAudio's finish), since a default never goes
 // through the setters that fetch on selection.
@@ -24070,7 +24082,7 @@ const MS_SHARED_VOICES=[['pianoreal','Piano 1 ◆'],['pianoreal2','Piano 2 ◆']
 // i.e. a shared voice reached through the Voices drawer — falls back to the
 // shared catalog's label so the current sound is never unlabeled.
 const BL_WAVE_LABELS = {sawtooth:'Acid',square:'Sqr',triangle:'Tri',sine:'Sub',electric:'Electric',upright:'Upright',upright_real:'Upright 1 ◆',upright2:'Upright 2 ◆',
-                        bass_motown:'Motown',bass_hofner:'Höfner',bass_slap:'Slap'};
+                        bass_motown:'Motown',bass_hofner:'Höfner',bass_picked:'Picked ◆'};
 function _sharedVoiceLabel(w){
  const m=MS_SHARED_VOICES.find(o=>o[0]===w);
  return m?m[1]:w;
@@ -24172,7 +24184,7 @@ const VOICE_PARTS=sortByPart([
   get:()=>{ try{ return window._blCaptureState().wave; }catch(e){ return null; } },
   set:v=>{ if(typeof setBlWave==='function') setBlWave(v); },
   opts:[['electric','Electric'],['upright','Upright'],['upright_real','Upright 1 ◆'],['upright2','Upright 2 ◆'],
-        ['bass_motown','Motown'],['bass_hofner','Höfner'],['bass_slap','Slap'],
+        ['bass_picked','Picked ◆'],['bass_motown','Motown'],['bass_hofner','Höfner'],
         ['sawtooth','Acid'],['acid303','303'],['square','Square'],['triangle','Tri'],['sine','Sub']]
        .concat(MS_SHARED_VOICES.filter(o=>!['sine','sawtooth','square','triangle'].includes(o[0])))},
  {k:'melgen', icon:'✦', label:'Melody Seq', hint:'the generated melody line',
@@ -35587,7 +35599,7 @@ Generated notes are held to a singable range (G3–C6) so the octave-lifting sty
  },
  'jazzkit': {
   title: 'Real instruments & the Jazz kit',
-  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Upright 1</strong> and <strong>Upright 2</strong> on the bass. Eight drum kits are recorded: <strong>Rock&nbsp;◆</strong>, <strong>Studio&nbsp;◆</strong>, <strong>Real&nbsp;808&nbsp;◆</strong> (sampled from a real TR-808's own outputs), <strong>Hip-Hop&nbsp;◆</strong>, <strong>Beatbox&nbsp;◆</strong>, <strong>Latin&nbsp;Perc&nbsp;◆</strong>, <strong>Hand&nbsp;Drums&nbsp;◆</strong> and <strong>Orchestral&nbsp;◆</strong>. Eleven more are made for the <strong>Aux</strong> layer: <strong>Middle&nbsp;East&nbsp;◆</strong> (darbuka, frame drums, riq, zills), <strong>West&nbsp;Africa&nbsp;◆</strong> (log drums, double bell, agogo, balafon), <strong>Samba&nbsp;◆</strong> (surdo, caixa, agogos, whistles), <strong>Bells&nbsp;&amp;&nbsp;FX&nbsp;◆</strong> (sleigh bells, mark tree, vibraslap, anvil, ocean drum), <strong>Tabla&nbsp;◆</strong> (Na, Tin, Tun, Te, Re on the dayan; Ge and Ke on the bayan), <strong>Djembe&nbsp;◆</strong> (bass, tone, slap, flam, roll), <strong>Batá&nbsp;◆</strong> (iyá, itótele, okónkolo), <strong>Maracatu&nbsp;◆</strong> (alfaia, caixa, gonguê, shekere), <strong>Salsa&nbsp;◆</strong> (timbales, mambo and cha-cha bells, congas with their slaps), <strong>Medieval&nbsp;◆</strong> (tabor, hand drum, tambourine, clappers, rattles) and <strong>Clay&nbsp;Drums&nbsp;◆</strong> (udu and darbuka). Grooves write their parts for them — try <strong>Maqsum</strong> with Middle East or Clay Drums, <strong>Afro&nbsp;6/8</strong> with West Africa or Batá, <strong>Afrobeat</strong> with West Africa or Clay Drums, <strong>Samba</strong> with Samba or Maracatu, <strong>Son&nbsp;Clave</strong> with Salsa, <strong>Teental</strong> or <strong>Keherwa</strong> with Tabla, and <strong>Kuku</strong> with Djembe. <strong>Kalimba&nbsp;◆</strong> and <strong>Xylophone&nbsp;◆</strong> sit beside Marimba in every part's voices, and the sampler's Load sheet has a <strong>Samba&nbsp;Band</strong> — six players of one bateria, made to stack — and more recorded loops, each set downloaded only when you ask for it. The recorded kits carry every strength each drum was recorded at: a soft step plays a soft stroke and an accent a hard one, not the same hit turned up or down, and repeated hits alternate between two takes so a run of sixteenths never sounds like a loop of one. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
+  body: `Voices marked <strong>◆</strong> are <strong>recorded instruments</strong>, not synthesis — Vibes, Jazz Gtr, Nylon, Tenor Sax and Mute Tpt, plus <strong>Upright 1</strong>, <strong>Upright 2</strong> and the picked electric <strong>Picked</strong> on the bass. Eight drum kits are recorded: <strong>Rock&nbsp;◆</strong>, <strong>Studio&nbsp;◆</strong>, <strong>Real&nbsp;808&nbsp;◆</strong> (sampled from a real TR-808's own outputs), <strong>Hip-Hop&nbsp;◆</strong>, <strong>Beatbox&nbsp;◆</strong>, <strong>Latin&nbsp;Perc&nbsp;◆</strong>, <strong>Hand&nbsp;Drums&nbsp;◆</strong> and <strong>Orchestral&nbsp;◆</strong>. Eleven more are made for the <strong>Aux</strong> layer: <strong>Middle&nbsp;East&nbsp;◆</strong> (darbuka, frame drums, riq, zills), <strong>West&nbsp;Africa&nbsp;◆</strong> (log drums, double bell, agogo, balafon), <strong>Samba&nbsp;◆</strong> (surdo, caixa, agogos, whistles), <strong>Bells&nbsp;&amp;&nbsp;FX&nbsp;◆</strong> (sleigh bells, mark tree, vibraslap, anvil, ocean drum), <strong>Tabla&nbsp;◆</strong> (Na, Tin, Tun, Te, Re on the dayan; Ge and Ke on the bayan), <strong>Djembe&nbsp;◆</strong> (bass, tone, slap, flam, roll), <strong>Batá&nbsp;◆</strong> (iyá, itótele, okónkolo), <strong>Maracatu&nbsp;◆</strong> (alfaia, caixa, gonguê, shekere), <strong>Salsa&nbsp;◆</strong> (timbales, mambo and cha-cha bells, congas with their slaps), <strong>Medieval&nbsp;◆</strong> (tabor, hand drum, tambourine, clappers, rattles) and <strong>Clay&nbsp;Drums&nbsp;◆</strong> (udu and darbuka). Grooves write their parts for them — try <strong>Maqsum</strong> with Middle East or Clay Drums, <strong>Afro&nbsp;6/8</strong> with West Africa or Batá, <strong>Afrobeat</strong> with West Africa or Clay Drums, <strong>Samba</strong> with Samba or Maracatu, <strong>Son&nbsp;Clave</strong> with Salsa, <strong>Teental</strong> or <strong>Keherwa</strong> with Tabla, and <strong>Kuku</strong> with Djembe. <strong>Kalimba&nbsp;◆</strong> and <strong>Xylophone&nbsp;◆</strong> sit beside Marimba in every part's voices, and the sampler's Load sheet has a <strong>Samba&nbsp;Band</strong> — six players of one bateria, made to stack — and more recorded loops, each set downloaded only when you ask for it. The recorded kits carry every strength each drum was recorded at: a soft step plays a soft stroke and an accent a hard one, not the same hit turned up or down, and repeated hits alternate between two takes so a run of sixteenths never sounds like a loop of one. <strong>◈</strong> always means the sampler: a clip, or a place to load one. They download the first time you pick one and fall back to a synth voice until they arrive, so choosing one never gives you silence. Every part can use them.<br><br>
 <strong>Why these instruments.</strong> Most of the sample sets are mp3s that run out of top end around 7.5&nbsp;kHz. That costs an upright bass nothing — almost all its energy is below 1.8&nbsp;kHz — but it strips a piano of the brilliance that makes it a piano, which is why the first sampled piano was tried here and removed. So the ones that ship are the ones whose own sound fits under that ceiling: vibes, an archtop guitar, nylon strings, a tenor and a cup-muted trumpet are all dark instruments to begin with, and arrive intact.<br><br><strong>Piano&nbsp;◆</strong> is the exception, and it came from full-rate stereo source rather than from that mp3 library. It measures 8.2&nbsp;kHz, so it is a dark piano — nearer a felt-damped upright than a bright grand — but it is a real one, across the whole keyboard from C1 to C8. <strong>Piano (synth)</strong> is the original synthesized voice, still there.<br><br>
 <strong>The Jazz kit</strong> is on the Rhythm tab with the other machines. Its <strong>ride, ride bell and hi-hat are real recorded cymbals</strong> — the GM percussion bank, which unlike the melodic samples is not bandwidth-limited. They load the first time you select the kit, and fall back to synthesis until they arrive, so the kit is never silent.<br><br>
 The cymbals were synthesized first and it did not work. The synthesis measured correctly — inharmonic modes with the high partials decaying much faster than the low ones, which is the thing that makes metal read as metal — but a ride is among the hardest sounds there is to fake, and measuring right is not the same as sounding right. <strong>Brushes stay synthesized</strong>: there is no brush in the sample bank, and a swirl is a sustained gesture rather than a struck one, which is the case synthesis actually handles well.<br><br>
@@ -42033,7 +42045,7 @@ var SQM={
 
 // ── state ──
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
-var sqSwing=0, sqMach='LIN', sqSteps=16;
+var sqSwing=0, sqMach='MOD', sqSteps=16;
 // ── Aux Perc: the second drum layer ───────────────────────────────────────
 // sqGrid/sqMach are always the FOCUSED layer, so every editing path — the
 // grid renderer, the step menu, the vol/pitch knobs, the pattern slots —
@@ -42045,7 +42057,7 @@ var sqSwing=0, sqMach='LIN', sqSteps=16;
 // turning Aux off silenced the KIT and left the aux playing alone.
 // sqMach/sqGrid stay a view onto the focused layer so every editing path is
 // untouched; identity and the on/off flags live here.
-var sqLayers = [ {mach:'LIN', grid:{}, on:true}, {mach:'PERC', grid:{}, on:true} ];
+var sqLayers = [ {mach:'MOD', grid:{}, on:true}, {mach:'PERC', grid:{}, on:true} ];
 var sqFocus = 0;
 const SQ_LAYER_CH = ['drum','auxperc'];
 // 'Aux', not 'Aux Perc' (4.2.1): the layer takes any kit, and the old name
@@ -46366,10 +46378,19 @@ window.blSyncFollowUI = function(){
 
 // ── bass waveform selector ──
 window.setBlWave = function(w){
+  if(BASS_RENAMED[w]) w = BASS_RENAMED[w];
+  // The setter half of the free tier (see freeApplyLimits): every way of
+  // picking a bass ends here, the Voices row and the Patch list included.
+  // A restore runs before the tier is known and gets through; the repaint
+  // that follows once it is known moves it back (freeApplyLimits).
+  if(typeof freeAllowsVoice==='function' && !freeAllowsVoice(w)){
+    if(typeof freeBlocked==='function') freeBlocked('That bass');
+    return;
+  }
   blWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
   var map = {sawtooth:'blw-saw', square:'blw-sqr', triangle:'blw-tri', sine:'blw-sin', electric:'blw-elec', upright:'blw-up', upright_real:'blw-upreal', upright2:'blw-upright2',
-             bass_motown:'blw-motown', bass_hofner:'blw-hofner', bass_slap:'blw-slap', acid303:'blw-303'};
+             bass_motown:'blw-motown', bass_hofner:'blw-hofner', bass_picked:'blw-picked', acid303:'blw-303'};
   Object.values(map).forEach(function(id){ var e=document.getElementById(id); if(e) e.classList.remove('active'); });
   var e = document.getElementById(map[w]); if(e) e.classList.add('active');
   // Covers voices reached through the Voices drawer that aren't one of the
@@ -52460,7 +52481,9 @@ const FREE_LIMITS = {
   // Enough real instruments that free sounds good from the first bar. The
   // whole pitch is the sound; a free tier that only has synth voices sells
   // the wrong first impression.
-  freeVoices:   ['pianoreal','vibes'],
+  // Upright 1 joined in 4.9.9.4 as the bass everyone starts on: it is the
+  // default, and a free tier whose first bass is locked is not a free tier.
+  freeVoices:   ['pianoreal','vibes','upright_real'],
   // The seven church modes — Ionian through Locrian, major and minor among
   // them. That is one COMPLETE system: every rotation of the same parent
   // scale, so free is still a whole modal instrument and "every part, always
@@ -52746,11 +52769,20 @@ function freeAllowsMode(m){
  const l=_freeList('freeModes'); if(modTier()!=='free'||!l) return true;
  return l.indexOf(String(m))>=0;
 }
+// The recorded basses count as sampled voices. They live in BASS_SAMPLED, not
+// SAMPLED_WAVES (the bass engine plays them itself), and before 4.9.9.4 this
+// only looked in the second table — so every recorded bass was free, by
+// accident, while the table above said only Piano 1 and Vibes were.
+function _freeSampledWaves(){
+ const out = {};
+ try{ Object.keys(SAMPLED_WAVES).forEach(k=>{ out[k]=1; }); }catch(e){}
+ try{ Object.keys(BASS_SAMPLED).forEach(k=>{ out[k]=1; }); }catch(e){}
+ return out;
+}
 function freeAllowsVoice(w){
  if(modTier()!=='free') return true;
  if(w==='modsynth') return modAllows('modsynth');
- const sampled = (typeof SAMPLED_WAVES!=='undefined') ? SAMPLED_WAVES : {};
- if(!sampled[w]) return true;                 // not a sampled voice: always fine
+ if(!_freeSampledWaves()[w]) return true;     // not a sampled voice: always fine
  if(modAllows('samples')) return true;
  const l=_freeList('freeVoices');
  return !!l && l.indexOf(w)>=0;
@@ -52773,6 +52805,17 @@ function freeBlocked(what){
 function freeApplyLimits(){
  const free = modTier()==='free';
  try{
+  // A Pro bass in place when the tier drops — a restored session or a setup
+  // brings one in before the tier is known, and setBlWave lets those through
+  // — goes back to Upright 1 first, so the voice lists below are painted
+  // around the bass that will actually play. Done last, the Voices select
+  // kept Upright 2 on show because it was still the selected value.
+  if(free){
+   try{
+    const bw = window._blCaptureState().wave;
+    if(bw && !freeAllowsVoice(bw)) window.setBlWave('upright_real');
+   }catch(e){}
+  }
   // Drum kits — mõdKit only.
   document.querySelectorAll('#sq-machineRow .sq-mbtn').forEach(b=>{
    const id=(b.dataset.mach||'').trim();
@@ -52795,11 +52838,14 @@ function freeApplyLimits(){
   });
   // Voices free cannot pick — the sampled ◆ ones outside freeVoices, plus
   // mõdSynth. Everywhere a voice is chosen, from one predicate.
-  const sampled = (typeof SAMPLED_WAVES!=='undefined') ? Object.keys(SAMPLED_WAVES) : [];
+  const sampled = Object.keys(_freeSampledWaves());
   const gated = sampled.concat(['modsynth']);
   gated.forEach(w=>{
    const lock = free && !freeAllowsVoice(w);
    document.querySelectorAll('[data-wave="'+w+'"],[data-arpwave="'+w+'"],[data-melwave="'+w+'"]')
+    .forEach(b=>b.classList.toggle('tier-locked', lock));
+   // The bass's own quick buttons name their voice only in onclick.
+   document.querySelectorAll('.bl-mopt[onclick="setBlWave(\''+w+'\')"]')
     .forEach(b=>b.classList.toggle('tier-locked', lock));
   });
   document.querySelectorAll('select.voice-sel').forEach(sel=>{
