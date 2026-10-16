@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.4</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.5</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.4</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.5</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.4';
+const MODRIFF_VERSION = '4.9.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18092,6 +18092,8 @@ function _ensureAllPartBuses(ctx){
 
 function voiceFx(ctx,t0,dur,vel,panPos,part){
  const dest=_partDest(ctx,part);
+ // The engine's copies of the mõdFX macro, under the app's names.
+ const fxCutoff=_wp('fx.cutoff'), fxEnv=_wp('fx.env'), fxReso=_wp('fx.reso'), fxWidth=_wp('fx.width');
  const wantFilt = fxCutoff<0.985 || fxEnv>0.01;
  const wantPan  = fxWidth>0.01 && panPos!=null && ctx.createStereoPanner;
  if(!wantFilt && !wantPan) return {head:dest, tail:dest, plain:true};
@@ -18127,7 +18129,8 @@ function voiceFx(ctx,t0,dur,vel,panPos,part){
 // with each other; mathematically perfect pitch is what makes a synth sound
 // sterile. Returns a multiplier to apply to the note's frequency.
 function driftMul(){
- return fxDrift<=0 ? 1 : Math.pow(2,((Math.random()-.5)*fxDrift*13)/1200);
+ const d=_wp('fx.drift');
+ return d<=0 ? 1 : Math.pow(2,((Math.random()-.5)*d*13)/1200);
 }
 
 function onFxInput(){
@@ -19031,8 +19034,8 @@ function _releaseChordAt(id, t){
 }
 function _webChordReleaseAt(t){
  const ctx=getCtx(); if(!ctx || !(t>0)) return;
- const dec=parseFloat(document.getElementById('decay').value)||2.0;
- const atk=parseFloat(document.getElementById('attack').value)||0.025;
+ const dec=(_wp('chord.release')||2.0);
+ const atk=(_wp('chord.attack')||0.025);
  activeOscs.forEach(v=>{
   try{
    const relT=Math.max(t, ctx.currentTime, (v.t0!=null ? v.t0 : t) + atk + 0.02);
@@ -19061,8 +19064,8 @@ function releaseSustainedChord(myId){
 function _webChordRelease(){
  const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
  const t=ctx.currentTime;
- const dec=parseFloat(document.getElementById('decay').value)||2.0;
- const atk=parseFloat(document.getElementById('attack').value)||0.025;
+ const dec=(_wp('chord.release')||2.0);
+ const atk=(_wp('chord.attack')||0.025);
  activeOscs.forEach(v=>{
  try{
  // A chord is scheduled to start FADE_OUT ahead of the press, plus its strum
@@ -19755,7 +19758,7 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
  // driftMul() detunes each note by a few cents at random — every voice type
  // below derives its frequencies from f, so this one line gives the whole
  // engine analog-style pitch imperfection.
- const f=masterTune*Math.pow(2,(midi-69)/12)*driftMul();
+ const f=_wp('master.tune')*Math.pow(2,(midi-69)/12)*driftMul();
  const r=[];
 
  if(wv==='supersaw'){
@@ -20544,7 +20547,7 @@ function chordVoicing(rootM, relIntvs){
 var chordGlideOn = false, chordGlideTime = 0.15;
 var _glidePrev = null, _glidePrevT = 0;
 function glideApply(nodes, midi, voiceIdx, voiceCount, t0){
- if(!chordGlideOn || !_glidePrev || !_glidePrev.length) return;
+ if(!_wp('chord.glide') || !_glidePrev || !_glidePrev.length) return;
  var n = _glidePrev.length;
  var j = voiceCount > 1 ? Math.round(voiceIdx * (n-1) / (voiceCount-1)) : 0;
  var from = _glidePrev[Math.max(0, Math.min(n-1, j))];
@@ -20558,7 +20561,7 @@ function glideApply(nodes, midi, voiceIdx, voiceCount, t0){
   try{
    var base = nd.detune.value;
    nd.detune.setValueAtTime(base + cents, t0);
-   nd.detune.linearRampToValueAtTime(base, t0 + chordGlideTime);
+   nd.detune.linearRampToValueAtTime(base, t0 + _wp('chord.glideTime'));
   }catch(e){}
  });
 }
@@ -20710,8 +20713,8 @@ function toggleAutoInv(){
 // tooltip has always claimed: plucked and strummed, or struck together and
 // sustained.
 function strumOffsets(n){
- if(!strumMode) return new Array(n).fill(0);
- const sp=parseFloat(document.getElementById('strum-spread').value)||0;
+ if(!_wp('chord.strum')) return new Array(n).fill(0);
+ const sp=_wp('chord.strumSpread')||0;
  if(sp<.005) return new Array(n).fill(0);
  return Array.from({length:n},(_,i)=>i*(sp/(n-1||1)));
 }
@@ -20827,12 +20830,13 @@ function _webChordOn(msg){
  const intvs=(msg.bass!=null ? [msg.bass] : []).concat(msg.notes).map(n=>n-rootM);
  const slashBass=msg.bass;
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
- const atk=parseFloat(document.getElementById('attack').value)||0.025;
+ const atk=_wp('chord.attack')||0.025;
  const dec=sustain?SUSTAIN_DUR:msg.dur;
- const revMix=parseFloat(document.getElementById('rev-mix').value)||0;
- const wg=(WAVE_GAIN[wave]||1)*((window.CHORD_SAMPLE_GAIN||{})[wave]||1);   // defined with the arp, further down
+ const revMix=_wp('chord.reverb')||0;
+ const voice=_wp('chord.voice');
+ const wg=(WAVE_GAIN[voice]||1)*((window.CHORD_SAMPLE_GAIN||{})[voice]||1);   // defined with the arp, further down
  const vsc=msg.vel;
- const _mxCh=_cmx('chord');
+ const _mxCh=_wp('mix.chord');
  // atTime is an exact AudioContext time supplied by a scheduler (song loop,
  // comp re-strikes). When it's absent this is a live tap, so start slightly
  // after now to let any fade-out from the stop complete cleanly.
@@ -20863,7 +20867,7 @@ function _webChordOn(msg){
  // fxTrim is read by the chord voices further down too, so it stays outside
  // the sub's block — inside it, `const` made it invisible to the rest of the
  // function and every chord threw.
- const _tr=fxTrim;
+ const _tr=_wp('fx.trim');
  // Sub — see CHORD SUB (chordSubActive / chordSubLevel / chordSubWave).
  // 0.11 was 0.38. Measured on the chord bus, three-note triads at the default
  // 62%: the sub raised the bus by 8 dB peak and 7 dB RMS on the synth piano and
@@ -20871,19 +20875,19 @@ function _webChordOn(msg){
  // also ignores WAVE_GAIN, so the quieter the voice, the more the sub won. At
  // 0.11 it lands roughly 6 dB under the chord on those voices — weight, not a
  // second part — and 140% on the slider still gives back most of the old level.
- if(chordSubActive()){
- const _subPk=vol*.11*vsc*_mxCh*_tr*chordSubLevel;
+ if(_webChordSubOn()){
+ const _subPk=vol*.11*vsc*_mxCh*_tr*_wp('chord.subLevel');
  const bg=ctx.createGain();
  bg.gain.setValueAtTime(0,now); bg.gain.linearRampToValueAtTime(_subPk,now+atk);
  if(sustain){
  bg.gain.setValueAtTime(_subPk,now+atk+.01);
- if(strumMode){ bg.gain.exponentialRampToValueAtTime(_subPk*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
+ if(_wp('chord.strum')){ bg.gain.exponentialRampToValueAtTime(_subPk*0.7,now+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  bg.gain.setValueAtTime(_subPk,now+atk+.01); if(vol>.001) bg.gain.exponentialRampToValueAtTime(.0001,now+atk+dec*.85); else bg.gain.linearRampToValueAtTime(0,now+atk+dec*.85);
  }
- const bo=ctx.createOscillator(); bo.type=chordSubWave;
+ const bo=ctx.createOscillator(); bo.type=_wp('chord.subWave');
  // Under the lowest note: the root, or a slash chord's bass.
- bo.frequency.value=masterTune*Math.pow(2,((slashBass!=null ? rootM+intvs[0] : rootM)-12-69)/12);
+ bo.frequency.value=_wp('master.tune')*Math.pow(2,((slashBass!=null ? rootM+intvs[0] : rootM)-12-69)/12);
  // Through the chord's own bus, not straight to master. On master it was the
  // one part of the chord mõdFX never touched and the chord meter never showed
  // — a channel's sends and its meter are supposed to see everything on it.
@@ -20914,7 +20918,7 @@ function _webChordOn(msg){
  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk);
  if(sustain){
  g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk+.01);
- if(strumMode){ g.gain.exponentialRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
+ if(_wp('chord.strum')){ g.gain.exponentialRampToValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr*0.7,t0+atk+.35); } // strum: settle after the hit instead of holding flat
  } else {
  g.gain.setValueAtTime(vol*.45*vl*wg*vsc*_mxCh*_tr,t0+atk+.01); if(vol>.001) g.gain.exponentialRampToValueAtTime(.0001,t0+atk+dec); else g.gain.linearRampToValueAtTime(0,t0+atk+dec);
  }
@@ -20924,7 +20928,7 @@ function _webChordOn(msg){
  const fx = voiceFx(ctx,t0,atk+dec,vsc,pan,'chord');
  g.connect(fx.head);
  const _rv=feedChordRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
- const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,wave,'chord');
+ const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,voice,'chord');
  glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
@@ -20963,6 +20967,15 @@ var _webEngineWarned = {};
 // is where they will read from instead, part by part, and the probe checks it
 // against what they read meanwhile.
 window._webParams = {};
+// How every web voice reads that state.
+function _wp(k){ return window._webParams[k]; }
+// chordSubActive's rule, on the engine's copies: a sampled chord voice has
+// its own Sub switch.
+function _webChordSubOn(){
+ var v=_wp('chord.voice'), sampled=false;
+ try{ sampled = v==='sampler' || !!SAMPLED_WAVES[v]; }catch(e){}
+ return sampled ? _wp('chord.subSampled') : _wp('chord.sub');
+}
 function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
  if(msg && msg.v === 1 && kind === 'state' && msg.params){ Object.assign(window._webParams, msg.params); return; }
@@ -21159,6 +21172,9 @@ function _melModRamp(param, v, when){
 // which case every call site falls back to exactly the graph it built before
 // this existed.
 function buildMelMod(ctx, t0){
+ // The engine's copies, under the app's names, so the body is unchanged.
+ const melModOn=_wp('mel.mod'), melModDepth=_wp('mel.modDepth'), melModDest=_wp('mel.modDest'),
+       melModRate=_wp('mel.modRate'), melModAxis=_wp('mel.modAxis');
  if(!melModOn || !(melModDepth>0)) return null;
  const d=Math.max(0,Math.min(1,melModDepth));
  // What the finger drives. On the Speed axis the depth is whatever the slider
@@ -21367,10 +21383,11 @@ function _webMelNoteOn(msg){
  const midi=msg.note;
  const sustain=(msg.dur==null);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
- const atk=parseFloat(document.getElementById('mel-attack').value);
- const dec=sustain ? parseFloat(document.getElementById('mel-decay').value) : msg.dur;
- const revMix=parseFloat(document.getElementById('mel-rev').value);
- const wg=(WAVE_GAIN[melWave]||1) * (MEL_SAMPLE_TRIM[melWave]||1);
+ const atk=_wp('mel.attack');
+ const dec=sustain ? _wp('mel.release') : msg.dur;
+ const revMix=_wp('mel.reverb');
+ const voice=_wp('mel.voice');
+ const wg=(WAVE_GAIN[voice]||1) * (MEL_SAMPLE_TRIM[voice]||1);
  const vsc=msg.vel;
  const now=ctx.currentTime;
 
@@ -21387,7 +21404,7 @@ function _webMelNoteOn(msg){
  }
 
  const startT = now + FADE_OUT; // start after any fade-out
- const _mxMel=_cmx('mel');
+ const _mxMel=_wp('mix.mel');
  // Same class of fix as the chord engine: a muted or zeroed Mel channel
  // still built the voice and ramped toward a hardcoded .0001 floor. The key
  // still lights (you can see what you played, same as a muted MIDI
@@ -21396,9 +21413,9 @@ function _webMelNoteOn(msg){
  // the fingering draws, and the note is somebody else's to make.
  if(!(_mxMel>0) || (typeof moSilences==='function' && moSilences('melody'))) return;
  const g=ctx.createGain();
- g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*fxTrim,startT+atk);
- g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.01);
- if(sustain){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*fxTrim,startT+atk+.02); }
+ g.gain.setValueAtTime(0,startT); g.gain.linearRampToValueAtTime(vol*.60*wg*vsc*_mxMel*_wp('fx.trim'),startT+atk);
+ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*_wp('fx.trim'),startT+atk+.01);
+ if(sustain){ g.gain.setValueAtTime(vol*.75*wg*vsc*_mxMel*_wp('fx.trim'),startT+atk+.02); }
  else { g.gain.exponentialRampToValueAtTime(.0001,startT+atk+dec); }
  // Lead sits near the centre — a little off-axis by pitch so it doesn't
  // fight the chord's middle, but not swung out wide like the chord tones.
@@ -21415,7 +21432,7 @@ function _webMelNoteOn(msg){
  const chainOut = mod ? (g.connect(mod.input), mod.output) : g;
  chainOut.connect(fx.head);
  const _mrv=feedRev(fx.plain?chainOut:fx.tail,revMix*.6);
- const oscs=makeVoice(ctx,midi,g,startT,_mdur,melWave,'mel');
+ const oscs=makeVoice(ctx,midi,g,startT,_mdur,voice,'mel');
  if(mod){ mod.attach(oscs); mod.setY(msg.y, startT); }
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
@@ -21492,7 +21509,7 @@ function _webMelRelease(id){
  const {g,oscs,mod}=activeMelOscs[midi];
  const ctx=getCtx(); if(!ctx){ delete activeMelOscs[midi]; return; }
  const now=ctx.currentTime;
- const dec=parseFloat(document.getElementById('mel-decay').value);
+ const dec=_wp('mel.release');
  try{
  g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value,now);
  g.gain.exponentialRampToValueAtTime(.0001,now+dec*.5);
@@ -21532,7 +21549,10 @@ let bendContOsc=null, bendContGain=null, bendContActive=false, bendContMod=null;
 // from velScale rather than hardcoded so it still cancels when Vel Sense
 // moves. Only the tapped note was too loud; the glissando was already right.
 function bendGlideTrim(){
- const v=velScale(MEL_NEUTRAL_PRESSURE);
+ // velScale's rule, on the engine's copy of Vel Sense — the app's control,
+ // read here only for this calibration.
+ const vs=_wp('mel.velSense')||.5;
+ const v=MEL_NEUTRAL_PRESSURE>0 ? .5+(MEL_NEUTRAL_PRESSURE*vs*.5) : 1.0;
  return v>0 ? 1/v : 1;
 }
 let bendMode='locked'; // 'locked' | 'continuous'
@@ -21567,7 +21587,7 @@ function _webMelGlideStop(){
  const ctx=getCtx();
  if(ctx && bendContGain){
  const now=ctx.currentTime;
- const dec=parseFloat(document.getElementById('mel-decay').value)||0.8;
+ const dec=_wp('mel.release')||0.8;
  try{
  bendContGain.gain.cancelScheduledValues(now);
  bendContGain.gain.setValueAtTime(bendContGain.gain.value, now);
@@ -21585,8 +21605,8 @@ function _webMelGlideStop(){
 function _webMelGlideOn(msg){
  const ctx=getCtx(); if(!ctx) return;
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
- const atk=parseFloat(document.getElementById('mel-attack').value);
- const revMix=parseFloat(document.getElementById('mel-rev').value);
+ const atk=_wp('mel.attack');
+ const revMix=_wp('mel.reverb');
  // A true continuous glide needs an oscillator whose frequency can be swept
  // in real time. A sampled ◆ instrument (Vibes, Jazz Gtr, Nylon, Tenor Sax,
  // Mute Tpt) is a fixed-pitch recorded buffer and can't do that, so a glide
@@ -21599,11 +21619,11 @@ function _webMelGlideOn(msg){
  // sample buffer, not a synthesized tone). That mismatch is what made a
  // glide on any of those five voices blast out far louder than every other
  // sound. Pick the stand-in wave and its gain to match on purpose instead.
- const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba','kalimba','xylo'].indexOf(melWave) >= 0;
- const glideWave = isSampledMelWave ? 'sine' : melWave;
+ const isSampledMelWave = ['vibes','jazzgtr','nylongtr','tenorsax','mutetpt','pianoreal','pianoreal2','marimba','kalimba','xylo'].indexOf(_wp('mel.voice')) >= 0;
+ const glideWave = isSampledMelWave ? 'sine' : _wp('mel.voice');
  const wg=WAVE_GAIN[glideWave]||1;
  const vsc=msg.vel;
- const _mxMel=_cmx('mel');
+ const _mxMel=_wp('mix.mel');
  const now=ctx.currentTime;
  const f=msg.hz;
  const y=msg.y;
@@ -21620,7 +21640,7 @@ function _webMelGlideOn(msg){
  // louder and brighter across every instrument, not just the sampled ones;
  // Note Lock mode (which just calls playMelNote per note) never had either
  // problem.
- bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*bendGlideTrim()*_mxMel*fxTrim, now+atk);
+ bendContGain.gain.linearRampToValueAtTime(vol*.75*wg*vsc*bendGlideTrim()*_mxMel*_wp('fx.trim'), now+atk);
  const melPan=Math.max(-.5,Math.min(.5,((msg.note-72)/24)))*0.5;
  const fx=voiceFx(ctx,now,10,vsc,melPan,'mel');
  // A glide gets the same vertical mod a tapped note does, so a glissando can
@@ -23518,10 +23538,14 @@ function _webArpBlock(msg){
  const ctx=getCtx(); if(!ctx) return;
  const t=msg.at, dur=msg.dur;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
- const _mxArp=_cmx('arp');
+ const _mxArp=_wp('mix.arp');
  if(!(_mxArp>0)) return;
- const wg = (WAVE_GAIN[arpWave] || 1) * (ARP_SAMPLE_GAIN[arpWave] || 1);
- const revMix = parseFloat(document.getElementById('rev-mix')?.value || '0.25');
+ const voice = _wp('arp.voice');
+ const wg = (WAVE_GAIN[voice] || 1) * (ARP_SAMPLE_GAIN[voice] || 1);
+ // The block shares the chord's reverb send; 0.25 was the fallback for a
+ // missing slider, kept for a missing value.
+ const _rv = _wp('chord.reverb');
+ const revMix = (_rv == null) ? 0.25 : _rv;
  msg.notes.forEach((midi,idx)=>{
  const strumT = t + idx * 0.012;
  const g = ctx.createGain();
@@ -23530,7 +23554,7 @@ function _webArpBlock(msg){
  g.gain.exponentialRampToValueAtTime(0.001, strumT + dur * 0.88);
  g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
- makeVoice(ctx, midi, g, strumT, dur * 0.85, arpWave,'arp');
+ makeVoice(ctx, midi, g, strumT, dur * 0.85, voice,'arp');
  _regKill(g, 'arp');
  });
 }
@@ -23602,19 +23626,20 @@ function _webArpNote(msg){
  const ctx=getCtx(); if(!ctx) return;
  const midi=msg.note, tAdj=msg.at, dur=msg.dur;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
- const atk=parseFloat(document.getElementById('attack').value);
- const wg=(WAVE_GAIN[arpWave]||1)*(ARP_SAMPLE_GAIN[arpWave]||1);
- const revMix=parseFloat(document.getElementById('rev-mix').value);
- const _mxArp=_cmx('arp');
+ const atk=_wp('chord.attack');
+ const voice=_wp('arp.voice');
+ const wg=(WAVE_GAIN[voice]||1)*(ARP_SAMPLE_GAIN[voice]||1);
+ const revMix=_wp('chord.reverb');
+ const _mxArp=_wp('mix.arp');
  if(!(_mxArp>0)) return;
- const _pk=vol*.55*wg*msg.vel*msg.level*_mxArp*fxTrim;
+ const _pk=vol*.55*wg*msg.vel*msg.level*_mxArp*_wp('fx.trim');
  const g=ctx.createGain();
  g.gain.setValueAtTime(0,tAdj); g.gain.linearRampToValueAtTime(_pk,tAdj+atk);
  g.gain.setValueAtTime(_pk,tAdj+atk+.005); g.gain.exponentialRampToValueAtTime(.0001,tAdj+dur);
  const fx = voiceFx(ctx,tAdj,dur,msg.vel,msg.pan,'arp');
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
- const _aos=makeVoice(ctx,midi,g,tAdj,dur,arpWave,'arp');
+ const _aos=makeVoice(ctx,midi,g,tAdj,dur,voice,'arp');
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],dur);
  _regKill(g, 'arp');
 }
@@ -23743,7 +23768,7 @@ function _webRhythmHit(msg){
  const type=RHYTHM_LANES[msg.lane], t=msg.at;
  const ctx=getCtx(); if(!ctx) return;
  const dest=masterDest(ctx);
- const rv=_cmx('drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
+ const rv=_wp('mix.drum')*0.38; // volume is controlled solely by the Mixer's Drums channel now
  // Same reasoning as sqHitTrack: silent means don't play. Several voices below
  // ramp to a value derived from rv, and an exponential ramp to exactly zero
  // throws — which would abort the rest of that voice's scheduling and could
@@ -43249,6 +43274,16 @@ function _sqTrackWhere(track){
   for(var k in SQM){ var i=SQM[k].tracks.indexOf(track); if(i>=0){ var w={kit:k, lane:i}; _sqWhere.set(track, w); return w; } }
   return null;
 }
+// A lane's Shape, from the engine's copy, for the kit the hit names. The app's
+// _sqShapeOf looks the lane up in the FOCUSED kit (sqMach) instead, so while
+// the Aux layer was focused a drum-layer hit could not find its own lane and
+// played unshaped — Shape stopped working on the drums whenever you were
+// editing Aux. The hit says which kit it is; the lookup uses that.
+function _webShapeOf(kit, lane){
+  var M=SQM[kit]; if(!M || !M.shape) return null;
+  var all=_wp('drum.shapes'), m=all && all[sqLK(kit,0)], sh=m && m[lane];
+  return (sh && ((sh.d!=null && sh.d!==1) || sh.t || sh.x || (sh.s!=null && sh.s!==1) || sh.b)) ? sh : null;
+}
 // What the drum engine's own registrations belong to while a hit is being
 // built: the kit's channel or Aux's — see _regKill.
 var _sqPartCur = null;
@@ -43260,10 +43295,10 @@ window._webDrumHit = function(msg){
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   var t=msg.at, vol=msg.vel, ac=msg.accent, ps=msg.pitch, ch=msg.part;
   var _dyn=window.__sqDyn; window.__sqDyn=msg.dyn; _sqPartCur=ch;
-  try{ _webDrumVoice(track,t,vol,ac,ps,ch); }
+  try{ _webDrumVoice(track,t,vol,ac,ps,ch,msg.kit,msg.lane); }
   finally{ window.__sqDyn=_dyn; _sqPartCur=null; }
 };
-function _webDrumVoice(track,t,vol,ac,ps,ch){
+function _webDrumVoice(track,t,vol,ac,ps,ch,kit,lane){
   // The Mixer's Drums channel — level, mute AND solo — did nothing at all
   // while the sequencer was running. _cmx('drum') was applied on exactly one
   // path: auditioning a step by clicking it in the grid. Every scheduled hit
@@ -43277,7 +43312,7 @@ function _webDrumVoice(track,t,vol,ac,ps,ch){
   // sqInitFX) so the default position sounds exactly as it did.
   // The aux layer has its own channel, so the fader that scales a hit
   // follows the layer it came from rather than always being Drums.
-  vol = vol * (typeof _cmx==='function' ? _cmx(ch) : 1);
+  vol = vol * _wp('mix.'+ch);
   // A silent hit is not played at all. The Math.max floor below exists so the
   // voices never ramp an envelope to exactly zero (which throws), but on its
   // own it turned "muted" into "-60 dB" — every hit still fired, and a bus
@@ -43312,7 +43347,7 @@ function _webDrumVoice(track,t,vol,ac,ps,ch){
     // voice, not the lane's behaviour.
     if(_chokeCur) _chokeRegister(_chokeCur, _smpv.gain, _smpv.src, _smpv.end);
   } else {
-    var _sh = ch!=='auxperc' ? _sqShapeOf(track) : null;
+    var _sh = ch!=='auxperc' ? _webShapeOf(kit, lane) : null;
     if(_sh){
       _sqDecMul = Math.max(0.1, Math.min(6, _sh.d==null?1:_sh.d));
       _sqSweepMul = Math.max(0, Math.min(3, _sh.s==null?1:_sh.s));
@@ -45245,8 +45280,13 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
 }
 // The Web Audio engine's bass note.
 window._webBassNote = function(msg){ _webBassVoice(msg); };
-function _webBassVoice(msg){
+function _webBassVoice(msg, standIn){
   var ctx = blCtx(); if(!ctx) return;
+  // The engine's copies of the bass's controls, under the app's names so the
+  // voices below read as they always have. standIn is the voice a sampled
+  // bass falls back to while its samples load.
+  var blWave = standIn || _wp('bass.voice'), blVol = _wp('bass.level'),
+      blCutoff = _wp('bass.cutoff'), blResonance = _wp('bass.resonance');
   var mg = blMG(); if(!mg) return;
   var t = msg.at, dur = msg.dur, vol = msg.vel, accent = msg.accent, slide = msg.slide;
   var oct = Math.floor(msg.note / 12) - 1, note = msg.note - (oct+1)*12;
@@ -45254,7 +45294,7 @@ function _webBassVoice(msg){
   // Where this note glides from, if it does. The four branches below all ask
   // the same question; it is answered once, by the app.
   var slideFrom = msg.from == null ? 0 : 440 * Math.pow(2, (msg.from - 69) / 12);
-  var _mxBs = typeof _cmx === 'function' ? _cmx('bass') : 1;
+  var _mxBs = _wp('mix.bass');
   // Same class of fix as drums/chords: a muted or zeroed Bass channel still
   // built and connected every voice, floored at 0.0001 so the ramp below
   // wouldn't throw — audible once the bus compressor pulled that floor back
@@ -45477,13 +45517,11 @@ function _webBassVoice(msg){
     }
     if(!src){
       if(SAMPLE_STATE[_sk] !== 'ready') preloadSampleInstrument(_sk);
-      var _sw = blWave;
       // The same note again on the voice that stands in for this one. It used
       // to go back through blPlayNote, which logged the note to MIDI out and
       // the .mid recorder a second time whenever the samples were still
       // loading; the engine calls its own voice instead.
-      try{ blWave = (SAMPLE_LIBS[_sk] && SAMPLE_LIBS[_sk].fallbackWave) || 'upright'; _webBassVoice(msg); }
-      finally{ blWave = _sw; }
+      _webBassVoice(msg, (SAMPLE_LIBS[_sk] && SAMPLE_LIBS[_sk].fallbackWave) || 'upright');
     }
   } else {
     // Anything outside the bass-specific voices falls through to the shared
@@ -47296,8 +47334,9 @@ window._webMelgenNote = function(msg){
   var mg = mlMG(); if(!mg) return;
   var midi = msg.note, t = msg.at, dur = msg.dur, vol = msg.vel, accent = msg.accent;
   // Its own channel, not shared with the melody strip — see MIX_CHANNELS.
-  var _mxMel = typeof _cmx === 'function' ? _cmx('melgen') : 1;
+  var _mxMel = _wp('mix.melgen');
   if(!(_mxMel>0)) return;
+  var mlWave = _wp('melgen.voice');   // the engine's copy, under the app's name
   var wg = (typeof WAVE_GAIN !== 'undefined' && WAVE_GAIN[mlWave]) ? WAVE_GAIN[mlWave] : 1;
   var g = ctx.createGain();
   // Floored above 0: exponentialRampToValueAtTime throws if it ramps from a
