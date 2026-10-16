@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9) and the **arp** (4.9.9.9.1) through it; drums next |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1) and the **drum kit and Aux** (4.9.9.9.2) through it |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -288,8 +288,10 @@ one of the 302 factory patches can be checked, not a handful.
    `modEngine.send(msg)` — today's Web Audio code behind it, unchanged.
    Pure refactor; nothing sounds different. Without it, there is no single
    place to swap the engine. **Chords (4.9.9.6), live melody (4.9.9.7),
-   melody sequencer (4.9.9.8), bass (4.9.9.9), arp (4.9.9.9.1): done** —
-   see "The door, as built" below. The drums are the last part.
+   melody sequencer (4.9.9.8), bass (4.9.9.9), arp (4.9.9.9.1), drum kit
+   and Aux (4.9.9.9.2): done** — see "The door, as built" below. Every
+   part's notes go through the door now; what is still outside it is listed
+   at the end of that section.
 2. **mõdSynth DSP in C++.** `modsynth/params.js` stays the single source of
    the parameter list; a generated header gives C++ the same indices. Null
    tested against `dsp.js`, patch by patch. All of this happens and is
@@ -354,7 +356,7 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `send`, the native provider takes over one part at a time, in the order
 above.
 
-### The door, as built (4.9.9.6 chords → 4.9.9.9.1 arp)
+### The door, as built (4.9.9.6 chords → 4.9.9.9.2 drums)
 
 `window.modEngine` is in the platform layer next to `modStore` and
 `modPlatform`, with the same contract: a wrapper defines it before the app
@@ -407,8 +409,8 @@ engine's.
 committed) is a `stop` per part now, so an engine that owns one part can
 be told to silence just that part. The kill registry records which part
 each gain belongs to and stays one bounded list, so a kill reaches exactly
-the gains it did before; `drum` covers the kit and Aux, which share the
-drum engine. The drums take this `stop` already, ahead of their hits.
+the gains it did before. The kit and Aux share the drum engine but are two
+parts with two channels, `drum` and `auxperc`, and are killed as two.
 
 The bass (`part: 'bass'`):
 
@@ -444,6 +446,25 @@ the filter); `level` is where it sits in the pattern's dynamic shape, a
 plain scale. A Block `chord` is its notes struck 12 ms apart, as given. The
 readout under the arp is scheduled on the app's side too, and only while
 its fader is up, as before.
+
+The drum kit and Aux (`part: 'drum'` and `'auxperc'`):
+
+| kind | fields | sent by |
+|---|---|---|
+| `hit` | `id kit lane vel accent pitch dyn at` | `sqHitTrack` — the grid (with its ratchets and ornaments), keys and pads, ending hits, the Shape sheet's audition, note input |
+
+`kit` is an `SQM` key and `lane` the track's index in it, so a hit names
+its drum in plain data; every track that reaches `sqHitTrack` is one of
+`SQM`'s (a hit on one that is not would be dropped with a warning — none
+is today). `pitch` is in semitones; `dyn` is how hard this stroke is within
+its step (a flam's grace note, a ratchet's tail), which a layered kit picks
+its recording by. The Drums switch, the time clamp and MIDI out / the
+`.mid` recorder are the app's. The fader, the choke groups, a lane's Shape
+and a sample dropped on a lane are the engine's.
+
+`modEngine.ready(part)` answers for one part: on the web the drums are not
+ready until their bus is built (`sqInitFX`), and a hit before then has
+always been dropped — MIDI log included — and still is.
 
 What moved to the app's side of the door, because it decides *what*
 plays rather than how it sounds: the voicing (`chordVoicing`, Vary), the
@@ -529,8 +550,32 @@ part's trace was re-run against this build's main and is identical. In
 real time the arp's 50 voices are all built inside `send`; on main all 50
 were outside it.
 
-Still reaching past the door: the drum hits themselves (the drum engine,
-`sqHitTrack` and its kit voices), the last step.
+Drums: 41,678 calls over 2,124 gestures — three grooves on every kit
+through the real scheduler, the Aux layer on, kills now and scheduled,
+every lane of every kit struck by hand (plain, accented and pitched, on
+Aux, with a stroke strength, scheduled in the past), the choke groups,
+keys, an ending's hits, the Drums switch off (Aux still plays), and the
+lane silenced for an external synth. 2,123 identical; the kill makes the
+same calls grouped by part, at one instant. Every other part's trace was
+re-run on this build against main: identical, source and `dist/`. Playing
+in real time, all 197 drum voices are built inside `send`; on main all 197
+were outside it.
+
+Still reaching past the door, now that every part's notes go through it:
+
+- **The legacy Rhythm patterns** (`scheduleRhythm` → `scheduleDrum`), the
+  three-voice beat from before the drum sequencer, still building its own
+  voices.
+- **The metronome click** (`scheduleMetronome`).
+- **The sampler pads and clips** (`psPress`, the Sampler channel).
+- **The knobs.** Attack, release, voice, filter, reverb, the mixer, mõdFX,
+  a drum lane's Shape: every engine function still reads them from the
+  sliders or app state. A native engine needs them as `param` messages
+  before it can own a part. This is the next piece of the door, and the
+  largest.
+- **Bus preparation** called from app code (`sqInitFX`, `sqEnsureNoise`,
+  `mlMG`, `blMG` before a preview). They build buses rather than sound,
+  but they are Web Audio reached from outside the engine.
 
 ### Haptics
 
@@ -598,8 +643,9 @@ granting everything, as it does today.
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
-   engine. Chords, the live melody, the melody sequencer, the bass and the
-   arp are through (4.9.9.6–4.9.9.9.1); the drums are last. The precondition for native audio, so it goes first now that
+   engine. Every part is through (4.9.9.6–4.9.9.9.2); the legacy Rhythm
+   patterns, the metronome, the sampler pads and the knobs (`param`) are
+   what remains. The precondition for native audio, so it goes first now that
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — the largest single piece of the
    native engine, and fully verifiable without a phone.

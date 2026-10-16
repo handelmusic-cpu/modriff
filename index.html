@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.1</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.2</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.2</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.1';
+const MODRIFF_VERSION = '4.9.9.9.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9585,8 +9585,9 @@ window._genQueuePaint = function(part, frac, landed){
 // native code one part at a time, and it can only do that if there is a
 // single place every part's sound passes through. Chords, the live melody
 // ('mel': the strip, the keys, MIDI), the melody sequencer ('melgen'), the
-// bass and the arp go through it now; the drums still build their hits
-// directly, though a kill of their look-ahead (stop) already comes this way.
+// bass, the arp and the drum kit and Aux ('drum', 'auxperc') go through it
+// now. Still outside: the legacy Rhythm patterns, the metronome click and the
+// sampler pads.
 //
 //   send(msg)   msg is one of (v is always 1):
 //     {kind:'chord',   part, id, root, notes:[midi…], bass, vel, at, dur}
@@ -9622,6 +9623,11 @@ window._genQueuePaint = function(part, frac, landed){
 //                      a plain scale) and pan (the ping-pong) beside vel.
 //                      On 'arp' a chord is the Block pattern: its notes
 //                      struck 12 ms apart, root and bass null.
+//     {kind:'hit',     part, id, kit, lane, vel, accent, pitch, dyn, at}
+//                      one drum stroke ('drum' or 'auxperc'): lane `lane` of
+//                      kit `kit` (an SQM key), pitch in semitones, dyn how
+//                      hard this stroke is within its step (null = full).
+//                      It rings out on its own; a choke group cuts it.
 //     {kind:'release', part:'bass', at}
 //                      let go of the bass voice (it has only one), as a key
 //                      played by hand comes up.
@@ -9637,9 +9643,11 @@ window._genQueuePaint = function(part, frac, landed){
 //                      'mel').
 //   `at` is on the engine's clock (now()); null means as soon as possible.
 //   now()       the engine's clock, seconds.
-//   ready()     whether the engine can sound at all yet. On the web, false
-//               until the first touch has made an AudioContext; a gesture
-//               that arrives before then does nothing, as it always has.
+//   ready(part) whether the engine can sound at all yet (that part, if
+//               named). On the web, false until the first touch has made an
+//               AudioContext, and for the drums until their bus is built; a
+//               gesture that arrives before then does nothing, as it always
+//               has.
 //   web(msg)    the Web Audio engine, always. A native provider passes back
 //               the parts it does not own yet.
 //   provider    'web' | 'native'
@@ -9654,7 +9662,13 @@ window.modEngine = window.modEngine || {};
  if(!E.now) E.now = function(){ var c = getCtx(); return c ? c.currentTime : 0; };
  // No getCtx() here: that also resumes a suspended context, and the voice
  // that follows does it once already.
- if(!E.ready) E.ready = function(){ return !!audioCtx && audioCtx.state !== 'closed'; };
+ if(!E.ready) E.ready = function(part){
+  if(!audioCtx || audioCtx.state === 'closed') return false;
+  // The drum engine's bus is built when the kit is first wanted (sqInitFX); a
+  // hit before that has always been dropped, MIDI log and all.
+  if((part === 'drum' || part === 'auxperc') && typeof window._webDrumReady === 'function') return window._webDrumReady();
+  return true;
+ };
  if(!E.provider) E.provider = 'web';
 })(window.modEngine);
 
@@ -18813,7 +18827,7 @@ var _chordLiveId = null;
 // modEngine as one 'stop' per part — an engine that owns the bass has to be
 // told to silence the bass. The bound stays one bound across all of them, as
 // it always was, so a kill reaches exactly the gains it reached before.
-// 'drum' is the drum engine's: the kit and Aux both play through it.
+// 'drum' is the kit's and 'auxperc' Aux's — the same engine, two channels.
 const _VOICE_KILL_MAX = 256;
 let _voiceKillReg=[];
 function _regKill(gain, part){
@@ -18825,7 +18839,7 @@ function _regKill(gain, part){
 }
 // The parts whose look-ahead a kill clears. Not the chords: an ending lands on
 // one and must not cut it (stopAll is the chord part's stop).
-var KILL_PARTS = ['arp', 'bass', 'melgen', 'drum'];
+var KILL_PARTS = ['arp', 'bass', 'melgen', 'drum', 'auxperc'];
 function hardKillAll(atTime){
  KILL_PARTS.forEach(function(part){
   window.modEngine.send({v: 1, kind: 'stop', part: part, at: atTime == null ? null : atTime});
@@ -20830,6 +20844,7 @@ function _webEngineSend(msg){
  }
  if(msg && msg.v === 1 && part === 'melgen' && kind === 'note') return window._webMelgenNote(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'note') return window._webBassNote(msg);
+ if(msg && msg.v === 1 && (part === 'drum' || part === 'auxperc') && kind === 'hit') return window._webDrumHit(msg);
  if(msg && msg.v === 1 && part === 'arp' && kind === 'note') return _webArpNote(msg);
  if(msg && msg.v === 1 && part === 'arp' && kind === 'chord') return _webArpBlock(msg);
  if(msg && msg.v === 1 && part === 'bass' && kind === 'release') return window._webBassRelease(msg);
@@ -41185,7 +41200,7 @@ var _chokeCur = null;
 // play on for the rest of the look-ahead — the few stray notes after an
 // ending. hardKillAll() needs a GainNode, so filters at the end of a chain
 // (sqCym, sqNs2, sqHHMod) register the gain feeding them instead.
-function _sqKill(g){ try{ if(typeof _regKill==='function') _regKill(g, 'drum'); }catch(e){} }
+function _sqKill(g){ try{ if(typeof _regKill==='function') _regKill(g, _sqPartCur || 'drum'); }catch(e){} }
 function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var c=sqCtx();if(!c||!SQMG||!SQNBUF)return;
   dur*=_sqDecMul; vol*=_sqNsMul;
@@ -43049,11 +43064,49 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   // See playChord: a hit scheduled in the past has its envelope collapsed to a
   // step by the time it is applied, and on a transient-heavy voice that reads
   // as a crack rather than a drum.
-  (function(){ var _c=sqCtx(); if(_c && (t==null || !isFinite(t) || t < _c.currentTime)) t=_c.currentTime; })();
+  if(window.modEngine.ready()){ var _now=window.modEngine.now(); if(t==null || !isFinite(t) || t < _now) t=_now; }
   try{ window.__diagDrum('seq:'+(track&&track.s||'?')); }catch(e){}
-  if(!sqCtx()||!SQMG||!track||!track.play)return;
+  var part = (ch==='auxperc') ? 'auxperc' : 'drum';
+  if(!window.modEngine.ready(part)||!track||!track.play)return;
   var _moTookDrum = (typeof window._midiRecLogDrum==='function')
     ? (window._midiRecLogDrum(track.n,t,vol,ac)===true) : false;
+  // An external synth playing the lane with local sound off has it instead.
+  if(_moTookDrum) return;
+  var where = _sqTrackWhere(track);
+  // Not one of SQM's: there is no way to name it to an engine. Nothing does
+  // this today; if something starts to, it should be heard about, not lost.
+  if(!where){ if(!_sqWhereWarned){ _sqWhereWarned = true; console.warn('drum hit on a track outside SQM, dropped', track && track.n); } return; }
+  // kit + lane say which drum, in plain data a native engine can look up.
+  // dyn is how hard this one stroke is within its step (a flam's grace note,
+  // a ratchet's tail) — what a layered kit picks its recording by.
+  window.modEngine.send({v: 1, kind: 'hit', part: part, id: ++_sqHitSeq, kit: where.kit, lane: where.lane,
+                         vel: vol, accent: !!ac, pitch: ps||0,
+                         dyn: window.__sqDyn==null ? null : window.__sqDyn, at: t});
+}
+// Which kit and lane a track object is, found once and remembered. Every
+// track that reaches sqHitTrack is one of SQM's: the grid's, the keys', the
+// endings', the Shape sheet's audition.
+var _sqHitSeq = 0, _sqWhere = new WeakMap(), _sqWhereWarned = false;
+function _sqTrackWhere(track){
+  if(_sqWhere.has(track)) return _sqWhere.get(track);
+  for(var k in SQM){ var i=SQM[k].tracks.indexOf(track); if(i>=0){ var w={kit:k, lane:i}; _sqWhere.set(track, w); return w; } }
+  return null;
+}
+// What the drum engine's own registrations belong to while a hit is being
+// built: the kit's channel or Aux's — see _regKill.
+var _sqPartCur = null;
+window._webDrumReady = function(){ return !!sqCtx() && !!SQMG; };
+// The Web Audio engine's drum hit: the fader, the choke groups, the lane's
+// Shape, a sample dropped on the lane, then the kit's own voice.
+window._webDrumHit = function(msg){
+  var M=SQM[msg.kit], track=M && M.tracks[msg.lane];
+  if(!sqCtx()||!SQMG||!track||!track.play)return;
+  var t=msg.at, vol=msg.vel, ac=msg.accent, ps=msg.pitch, ch=msg.part;
+  var _dyn=window.__sqDyn; window.__sqDyn=msg.dyn; _sqPartCur=ch;
+  try{ _webDrumVoice(track,t,vol,ac,ps,ch); }
+  finally{ window.__sqDyn=_dyn; _sqPartCur=null; }
+};
+function _webDrumVoice(track,t,vol,ac,ps,ch){
   // The Mixer's Drums channel — level, mute AND solo — did nothing at all
   // while the sequencer was running. _cmx('drum') was applied on exactly one
   // path: auditioning a step by clicking it in the grid. Every scheduled hit
@@ -43067,14 +43120,14 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   // sqInitFX) so the default position sounds exactly as it did.
   // The aux layer has its own channel, so the fader that scales a hit
   // follows the layer it came from rather than always being Drums.
-  vol = vol * (typeof _cmx==='function' ? _cmx(ch||'drum') : 1);
+  vol = vol * (typeof _cmx==='function' ? _cmx(ch) : 1);
   // A silent hit is not played at all. The Math.max floor below exists so the
   // voices never ramp an envelope to exactly zero (which throws), but on its
   // own it turned "muted" into "-60 dB" — every hit still fired, and a bus
   // compressor with nothing else to work on pulls -60 dB back up into
   // earshot. Muting the Drums channel left a quiet hi-hat ticking away.
   // It also saves scheduling dozens of inaudible oscillators per bar.
-  if(!(vol>0) || _moTookDrum) return;
+  if(!(vol>0)) return;
   var ck=_trackChoke(track);
   // Cut the group BEFORE this voice registers itself, or a closed hat would
   // choke its own tail the instant it started.
