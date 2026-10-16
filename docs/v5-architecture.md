@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs step 1 — `PARAMS` and the `state`/`param` messages — landed (4.9.9.9.4); sampler next |
+| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5); voices/patches, live controls and the sampler next |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -593,7 +593,7 @@ through it:
   `mlMG`, `blMG` before a preview). They build buses rather than sound,
   but they are Web Audio reached from outside the engine.
 
-### Knobs and samples (agreed; step 1 landed in 4.9.9.9.4)
+### Knobs and samples (agreed; steps 1–2 landed in 4.9.9.9.4–4.9.9.9.5)
 
 **What the engine side reads today.** Seven sliders by element id
 (`attack`, `decay`, `rev-mix`, `mel-attack`, `mel-decay`, `mel-rev`,
@@ -670,8 +670,33 @@ every `oninput`.
    sliders can, and the voice builder (`makeVoice`) reaches far — each
    part's mõdSynth patch, the voice designer's settings, the sampled
    instruments' tables. Step 3 takes those, with its own measurement.
-2. Part by part, the web engine reads its store instead of the sliders.
-   Traces must stay identical, which proves the messages carry everything.
+2. **Done (4.9.9.9.5), every part at once.** The web voices read their
+   store (`_wp('chord.attack')`, `_wp('mix.bass')`…) instead of the sliders,
+   flags and `_cmx`. Where a helper reads several values (`voiceFx`, the
+   Touch Mod, the bass voice, the sequencer's voice), it takes local copies
+   under the app's names so the body below is unchanged. The sampled bass's
+   stand-in voice is now an argument (`_webBassVoice(msg, standIn)`) instead
+   of swapping the global `blWave` around a recursive call.
+
+   Traces matching is not enough here, because during a trace the store and
+   the app hold equal values. So the proof is a **scramble**: while each
+   engine call runs, every slider and flag `PARAMS` covers (the eight
+   sliders, 22 globals, every mixer level, the bass's resonance, the drum
+   Shapes) is set to a different value and restored after. A voice that
+   still read the app would play differently. On the first run it caught
+   one — held chords read `strumMode` directly to settle after the hit —
+   and with that fixed, all eight scenarios are identical to main under the
+   scramble (7,775 scrambled engine calls), in the source and `dist/`, as
+   well as plain. Three bass controls and the sequencer's voice live in
+   closures the probe cannot set from outside; a source scan of every
+   engine-side function finds no remaining direct read of any `PARAMS`
+   global, only the local copies.
+
+   One behaviour change, a fix: the drum engine looked a lane's Shape up in
+   the *focused* kit (`sqMach`), so while the Aux layer was focused a
+   drum-layer hit could not find its lane and played unshaped. The engine
+   now uses the kit the hit names. Measured: a shaped hit built 14 nodes
+   with the drums focused and 9 with Aux focused on main; 14 both ways now.
 3. Voices and patches: `chord.voice` is a voice name; a mõdSynth patch is
    one `param` whose value is the patch object, the shape
    `modsynth/params.js` already defines.
