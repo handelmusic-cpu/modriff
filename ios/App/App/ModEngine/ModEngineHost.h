@@ -62,6 +62,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) uint32_t dropped;
 /// Voices sounding across every part, for the diagnostics readout.
 @property (nonatomic, readonly) int activeVoices;
+/// Loudest sample the engine has produced since this was last read, and the
+/// count of note-ons it has applied. Together they answer the question a
+/// load figure cannot: is this engine actually making a sound, or is what we
+/// are hearing coming from somewhere else?
+@property (nonatomic, readonly) float peakOut;
+@property (nonatomic, readonly) uint32_t notesOn;
 
 @end
 

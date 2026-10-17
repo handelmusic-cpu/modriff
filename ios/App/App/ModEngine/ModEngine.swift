@@ -34,6 +34,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var source: AVAudioSourceNode?
     private var host: ModEngineHost?
     private var started = false
+    private var watchdog: Timer?
+    private var restarts = 0
 
     // Render-cost accounting. Written only by the render thread, read by
     // stats() — plain Int64s through atomics-by-convention: one writer, and a
@@ -111,6 +113,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.source = source
             self.host = host
             self.started = true
+            self.watchForStops()
 
             call.resolve([
                 "started": true,
@@ -122,7 +125,78 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Keeps the graph alive.
+    ///
+    /// Measured on the phone: the engine rendered 34,816 frames — 0.73 s at
+    /// 48 kHz — and then stopped, and every message after that piled up in a
+    /// queue nobody was draining. The web view is the other tenant of this
+    /// process's audio session: WebKit configures AVAudioSession for its own
+    /// AudioContext, and that reconfiguration both interrupts us and changes
+    /// the engine's configuration underneath it. AVAudioEngine does not come
+    /// back from either on its own.
+    ///
+    /// So: watch for both, and restart. The poll is the backstop, because an
+    /// engine can also be left not-running by a route change that fires
+    /// neither notification, and a silent instrument is worse than a timer.
+    private func watchForStops() {
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: .AVAudioEngineConfigurationChange,
+                       object: engine, queue: .main) { [weak self] _ in
+            NSLog("[ModEngine] configuration changed — restarting")
+            self?.restartEngine()
+        }
+        nc.addObserver(forName: AVAudioSession.interruptionNotification,
+                       object: AVAudioSession.sharedInstance(), queue: .main) { [weak self] note in
+            guard let info = note.userInfo,
+                  let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            if type == .ended {
+                NSLog("[ModEngine] interruption ended — restarting")
+                self?.restartEngine()
+            }
+        }
+        // On the main queue, deliberately. Capacitor runs plugin calls on a
+        // background thread, and Timer.scheduledTimer attaches to whatever
+        // run loop is current — a dispatch queue thread has none, so the
+        // first version of this created a timer that never fired once.
+        // Measured: isRunning=false, restarts=0, for the whole session.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.watchdog == nil else { return }
+            self.watchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self = self, self.started, let e = self.engine, !e.isRunning else { return }
+                self.restartEngine()
+            }
+        }
+    }
+
+    private func restartEngine() {
+        guard started, let engine = engine else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            if !session.isOtherAudioPlaying || true {
+                try? session.setCategory(.playback, mode: .default)
+                try? session.setActive(true)
+            }
+            if !engine.isRunning {
+                engine.prepare()
+                try engine.start()
+                restarts += 1
+                // Only the first few, then every hundredth: a restart loop
+                // must be visible without drowning the log.
+                if restarts <= 3 || restarts % 100 == 0 {
+                    NSLog("[ModEngine] restarted (%d), running=%@", restarts,
+                          engine.isRunning ? "yes" : "no")
+                }
+            }
+        } catch {
+            NSLog("[ModEngine] restart failed: %@", error.localizedDescription)
+        }
+    }
+
     @objc func stop(_ call: CAPPluginCall) {
+        watchdog?.invalidate()
+        watchdog = nil
+        NotificationCenter.default.removeObserver(self)
         engine?.stop()
         if let source = source { engine?.detach(source) }
         source = nil
@@ -179,10 +253,14 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "framesRendered": Int(host.framesRendered),
             "dropped": Int(host.dropped),
             "activeVoices": Int(host.activeVoices),
+            "peakOut": Double(host.peakOut),
+            "notesOn": Int(host.notesOn),
             "renderBlocks": Int(blocks),
             "avgRenderUs": Double(renderNanosTotal) / Double(blocks) / 1000.0,
             "maxRenderUs": Double(renderNanosMax) / 1000.0,
-            "load": load
+            "load": load,
+            "isRunning": engine?.isRunning ?? false,
+            "restarts": restarts
         ])
     }
 }
