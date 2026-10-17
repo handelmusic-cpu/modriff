@@ -147,33 +147,49 @@ Three kinds of input, three readers:
 The parser already reads lead-sheet spelling (`DMI`, `GMI7`, `EMI7(♭5)`,
 `B♭9`) and sections lettered `[A]` `[B]` `[C]`.
 
-### Importing from iReal Pro, and dropping the bundled standards
+### Importing from iReal Pro, and dropping the bundled standards (4.9.9.9.9.4)
 
-**The Standards tab goes.** The library's middle tab is 28 jazz standards'
-changes, written into `index.html` and shipped in the binary. They are
-someone else's harmony in our product, and the replacement is better on both
-counts: the user brings their own.
+**The Standards tab is gone.** The library's middle tab was 28 jazz standards'
+changes written into `index.html` and shipped in the binary — someone else's
+harmony in our product, and only ever growing by someone editing this file.
+It is an **iReal Pro** tab now, and what a player sees there is what they put
+there.
 
-**iReal Pro import replaces it.** Its songs travel as an `irealb://` URL with
-an obfuscated payload, and its export is an HTML file full of those links.
 Two ways in, both of them the user's own file:
 
 | input | how |
 |---|---|
-| one song | paste an `irealb://` / `irealbook://` link into the import field. On iOS also register the URL scheme and a share-sheet target, so **Share** from iReal Pro opens mõdRïff directly |
-| a playlist | the file picker opens an iReal Pro HTML export and lists every song in it to choose from |
+| one song | paste an `irealb://` link into the field at the top of the tab |
+| a playlist | **Open file** reads the HTML file iReal Pro exports, which is a page of those links, and imports every song in it |
 
-**Nothing is fetched from their forum and nothing is bundled.** Scraping a
-public playlist archive would put other people's transcriptions back in the
-product, which is the thing the Standards removal is getting rid of. The only
-chord changes that reach the app are the ones the user hands it.
+**Nothing is fetched from iReal's forum and no chord changes are bundled.**
+Scraping a public playlist archive would put other people's transcriptions
+back in the product, which is the thing this removal is getting rid of.
 
-The payload decodes to chords, bar lines, section markers, repeats, endings
-and a time signature — which is more structure than `parseChordSheet` gets
-from text, so it maps onto sections and bars rather than one chord per bar.
-Every chord it yields goes through `slotFromChordSymbol`, the same function
-the Chord field and the text importer use, so an iReal chord is refused if it
-does not parse rather than half-played.
+Charts are kept under `modo-ireal-songs` and load the way the standards did —
+replace the song, or arrive as a new section, with the key question asked as
+before. `parseIRealProLink(url)` and `modriffImportIReal(text)` are on
+`window` for a native wrapper that catches `irealb://` itself: a PWA manifest
+cannot register that scheme, so on iOS the share-sheet target and the URL
+scheme are the app's, and they hand the link straight in.
+
+The reader is **ireal-reader 1.3.1** (MIT, © Florin Alexandrescu), carried
+inline because the app has no bundler. Changes from upstream are marked at
+the call site: an iterative parser, anchored regexes, repeat signs that copy
+a bar rather than aliasing it, and section marks kept so A A B A arrives as
+four sections.
+
+**Why this waited for the chord model.** It was written at 4.7.2 and reverted
+the next commit, to be re-applied on top of sections 1 and 3 — because
+`_irealQ` mapped a quality onto `triadQ`/`type7`/`ext`, which hold one
+tension. **17 of iReal Pro's 58 published qualities arrived as a different
+chord from the one on the chart**: `13b9` lost its thirteenth, `9sus` and
+`13sus` lost the note they are named for, `-#5` lost its raised fifth, and
+`7b5` came through with a natural fifth and a ♯11 and no flat five anywhere.
+Chords now go through `_irealSymbol` → `parseChordSymbol` →
+`slotFromChordSymbol` and carry real `ivs`; `_irealQ` stays as the fallback
+for a symbol the parser will not read in full.
+`tests/chords/ireal.test.js` holds the whole quality list and the count.
 
 ---
 
@@ -1157,8 +1173,9 @@ unchanged.
 3. **Chord model steps 2–4** — done (4.9.3, 4.9.9.9.9.3): the `getIntvs` call
    sites, the Chord field, and spelling from `ivs`. Step 5 (retiring `EXTS`)
    is still open and is not urgent.
-4. **Drop Standards, add iReal Pro import** — next. Sits straight on top of
-   `slotFromChordSymbol`, and independent of audio.
+4. **Drop Standards, add iReal Pro import** — done (4.9.9.9.9.4). The
+   v4.7.2 branch re-applied on top of the chord model, with its chords now
+   going through `slotFromChordSymbol`.
 5. **MIDI** — `navigator.requestMIDIAccess` over CoreMIDI first (step 0
    above), because without it none of the mapping mode can be tried on a
    phone. Then Mapping Mode. Independent of audio; can run alongside.
