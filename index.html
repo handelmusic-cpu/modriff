@@ -7290,7 +7290,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.5</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.6</span>
     </div>
    </div>
   </div>
@@ -7327,7 +7327,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.6</span></div>
  </div>
 </div>
 
@@ -8315,6 +8315,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span class="midi-panel-lbl" style="min-width:0;flex:1">Inputs — mõdRïff listens to all of these</span>
     <button class="tb" id="midi-rescan" onclick="midiRescan()" style="flex:0 0 auto"
      title="Ask the device to list MIDI ports again. A controller plugged in after the page loaded, or one the OS was still setting up, appears here.">Rescan</button>
+    <!-- Bluetooth LE MIDI has no programmatic pairing — Apple's own sheet is
+         the only way in, by design. Shown only in the app, where there is a
+         sheet to present: window.modMidiBluetooth exists when ModMidi is
+         registered (see the shim in the platform layer). -->
+    <button class="tb" id="midi-bt" onclick="midiOpenBluetooth()" style="flex:0 0 auto;display:none"
+     title="Pair a Bluetooth MIDI keyboard. Apple's own pairing sheet opens; anything paired there appears in the list above.">Bluetooth…</button>
    </div>
    <div id="midi-port-list" class="midi-port-list">—</div>
    <div id="midi-why" style="display:none;font-size:.44rem;color:var(--dom);line-height:1.6"></div>
@@ -9512,7 +9518,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.5';
+const MODRIFF_VERSION = '4.9.9.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -9554,6 +9560,132 @@ window.modPlatform = window.modPlatform || {};
 // here, before anything makes an AudioContext. The iOS app sets the same
 // category natively (AppDelegate.swift); this covers the web build too.
 try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
+
+// ── Web MIDI, where there is none: CoreMIDI behind the spec's own API ─────
+// WebKit has never shipped Web MIDI and Apple has refused it over
+// fingerprinting. Safari does not have it, every browser on iOS runs Safari's
+// engine so none of them do, and a Capacitor app is a WKWebView — so the App
+// Store build sees exactly the same `undefined` as mobile Safari, and
+// initMidi() takes its 'no-api' branch. Shipping natively does not fix that;
+// the ModMidi plugin does, and this is the seam.
+//
+// The shim IS navigator.requestMIDIAccess. Nothing downstream knows about
+// Capacitor: initMidi, _midiWireAll, onMidiMsg, the port list, the CC learn
+// and the mapping mode are all written against the spec and keep working
+// unchanged. That is the point — a bespoke native MIDI API would mean
+// special-casing every one of them.
+//
+// Installed synchronously, because initMidi tests for the function's
+// existence; only the access itself is a promise, as the spec has it.
+// Deliberately not installed when a real implementation is present (desktop
+// Chrome and Edge), and silently absent when the plugin is not registered —
+// in which case the pane says "not supported", which is then true.
+(function(){
+ try{
+  if(navigator.requestMIDIAccess) return;
+  var cap = window.Capacitor;
+  var P = cap && cap.Plugins && cap.Plugins.ModMidi;
+  if(!P || typeof P.start !== 'function') return;
+
+  // A spec MIDIInput/MIDIOutput is an EventTarget, but the app only ever
+  // assigns .onmidimessage and reads the fields, so these are plain objects
+  // with the same surface. addEventListener('midimessage') is the one thing
+  // a browser would also accept, and it is supported here because the
+  // mapping mode will want to intercept before the normal router.
+  function Port(d, kind){
+    this.id = String(d.id); this.name = d.name || 'Unnamed';
+    this.manufacturer = d.manufacturer || ''; this.state = d.state || 'connected';
+    this.connection = d.connection || 'open'; this.type = kind;
+    this.onmidimessage = null; this._l = [];
+  }
+  Port.prototype.addEventListener = function(t, fn){ if(t === 'midimessage' && fn) this._l.push(fn); };
+  Port.prototype.removeEventListener = function(t, fn){
+   if(t !== 'midimessage') return;
+   var i = this._l.indexOf(fn); if(i >= 0) this._l.splice(i, 1);
+  };
+  Port.prototype.open = function(){ return Promise.resolve(this); };
+  Port.prototype.close = function(){ return Promise.resolve(this); };
+  Port.prototype._fire = function(ev){
+   if(typeof this.onmidimessage === 'function'){ try{ this.onmidimessage(ev); }catch(e){ console.error(e); } }
+   for(var i = 0; i < this._l.length; i++){ try{ this._l[i](ev); }catch(e){ console.error(e); } }
+  };
+  // send(bytes, when) — `when` is a performance.now() timestamp, as the spec
+  // says and as _moRaw passes it. The native side takes bytes and sends them
+  // immediately, so a future time is held here rather than translated into
+  // mach time on the far side, which would be a second opinion about when a
+  // note starts. 0 and the past both mean now.
+  Port.prototype.send = function(data, when){
+   var bytes = Array.prototype.slice.call(data).map(function(b){ return b & 0xff; });
+   var id = this.id;
+   var go = function(){ try{ P.send({id: id, data: bytes}); }catch(e){} };
+   var lead = (typeof when === 'number' && when > 0) ? when - performance.now() : 0;
+   if(lead > 1) setTimeout(go, lead); else go();
+   return undefined;
+  };
+  Port.prototype.clear = function(){};
+
+  // The spec's inputs/outputs are MIDIInputMap — a read-only Map. The app
+  // uses .values(), .forEach() and iteration, so a real Map is both correct
+  // and less code than faking one.
+  function toMap(list, kind, old){
+   var m = new Map();
+   (list || []).forEach(function(d){
+    var id = String(d.id);
+    // Keep the existing object when a port is still there, so an
+    // onmidimessage assigned before a statechange is not thrown away —
+    // _midiWireAll reassigns on every change, but a port that vanished and
+    // came back mid-phrase should not drop the notes in between.
+    var p = old && old.get(id);
+    if(p){ p.name = d.name || p.name; p.manufacturer = d.manufacturer || '';
+           p.state = d.state || 'connected'; p.connection = d.connection || 'open'; }
+    else p = new Port(d, kind);
+    m.set(id, p);
+   });
+   return m;
+  }
+
+  var access = null;
+  navigator.requestMIDIAccess = function(){
+   return P.start().then(function(r){
+    if(access){
+     access.inputs  = toMap(r.inputs,  'input',  access.inputs);
+     access.outputs = toMap(r.outputs, 'output', access.outputs);
+     return access;
+    }
+    access = {
+     inputs:  toMap(r.inputs,  'input'),
+     outputs: toMap(r.outputs, 'output'),
+     sysexEnabled: false,
+     onstatechange: null
+    };
+    // A cable in or out, another app publishing a port, a Bluetooth device
+    // pairing: CoreMIDI's own notification, not a poll.
+    P.addListener('statechange', function(ev){
+     access.inputs  = toMap(ev.inputs,  'input',  access.inputs);
+     access.outputs = toMap(ev.outputs, 'output', access.outputs);
+     if(typeof access.onstatechange === 'function'){
+      try{ access.onstatechange({port: null, target: access}); }catch(e){ console.error(e); }
+     }
+    });
+    P.addListener('midimessage', function(ev){
+     var port = access.inputs.get(String(ev.portId));
+     if(!port) return;
+     // .data is a Uint8Array in a browser and onMidiMsg indexes it; moIsEcho
+     // reads .timeStamp against performance.now(), so it has to be on the
+     // same clock — the native side does not stamp, and the hop to the main
+     // thread is the only delay, so now is the honest answer.
+     port._fire({data: new Uint8Array(ev.data || []), target: port,
+                 timeStamp: performance.now(), currentTarget: port, type: 'midimessage'});
+    });
+    return access;
+   });
+  };
+  // Not in the spec, so it is not on the access object: Bluetooth LE MIDI
+  // has no programmatic pairing by design, and Apple's own sheet is the only
+  // way in. The Settings pane offers it as a button when this exists.
+  window.modMidiBluetooth = function(){ return P.openBluetooth(); };
+ }catch(e){ /* no shim; the pane says MIDI is unsupported, which is then true */ }
+})();
 
 // A new bass or melody line written while the part is playing does not cut in
 // mid-bar: it waits for the top of the loop (see _blPendingGrid). That was
@@ -30319,6 +30451,23 @@ function initMidi(rescan){
  });
 }
 function midiRescan(){ initMidi(true); }
+// Apple's Bluetooth MIDI pairing sheet, from the app. There is no
+// programmatic pairing for BLE MIDI and no web equivalent at all, so the
+// button is hidden unless the native plugin put modMidiBluetooth there.
+function midiOpenBluetooth(){
+ if(typeof window.modMidiBluetooth !== 'function') return;
+ Promise.resolve(window.modMidiBluetooth()).then(function(){
+  // Anything paired arrives as a CoreMIDI setup change, which the shim turns
+  // into onstatechange — so the list fills itself and there is nothing to do
+  // here. Rescanning on dismiss anyway costs nothing and covers a device
+  // that finished pairing after the sheet closed.
+  setTimeout(function(){ try{ initMidi(false); }catch(e){} }, 400);
+ }).catch(function(e){ try{ showToast('Bluetooth MIDI: '+((e&&e.message)||e)); }catch(_){} });
+}
+function _midiSyncBtBtn(){
+ var b=document.getElementById('midi-bt'); if(!b) return;
+ b.style.display = (typeof window.modMidiBluetooth === 'function') ? '' : 'none';
+}
 function updateMidiBadge(){
  const ins=midiAccess?[...midiAccess.inputs.values()]:[];
  const cnt=ins.length;
@@ -30376,7 +30525,18 @@ function updateMidiBadge(){
   ins.forEach(function(i){ const k=(i.name||'').trim().toLowerCase(); if(k){ if(seen[k]) dup=true; seen[k]=1; } });
   warn.style.display = dup ? '' : 'none';
  }
+ _midiSyncBtBtn();
  if(typeof syncSSPreviews==='function') syncSSPreviews();
+}
+// Safari, or any browser on iOS — which is every browser on iOS, since they
+// all run WebKit. Chrome on a Mac has "Safari" in its UA string and Chromium
+// everywhere reports Chrome, so the test is for Safari's engine with no
+// Chromium marker rather than for the word Safari.
+function _midiIsWebKit(){
+ var ua = navigator.userAgent || '';
+ if(/CriOS|FxiOS|EdgiOS/.test(ua)) return true;              // Chrome/Firefox/Edge on iOS: still WebKit
+ if(/Chrome|Chromium|Edg\//.test(ua)) return false;
+ return /Safari|iPhone|iPad|iPod/.test(ua);
 }
 function _midiPaintWhy(ins){
  var el=document.getElementById('midi-why'); if(!el) return;
@@ -30385,7 +30545,17 @@ function _midiPaintWhy(ins){
   // It was a paragraph — about Safari, iOS and which desktop browsers do
   // ship it — and the output section below printed a second, longer one.
   // Someone on an iPhone needs to know it is not there, once.
-  msg='Not supported on this device.';
+  //
+  // But "not supported on this device" reads as a dead end, and on a phone
+  // it is the wrong one: the device supports MIDI perfectly well, this web
+  // view does not. WebKit has never shipped Web MIDI and Apple has refused
+  // it, so Safari and every browser on iOS are permanently without it —
+  // while the iPhone app talks to CoreMIDI directly (ModMidi) and takes USB,
+  // Bluetooth and other apps' ports. Saying which is which is the difference
+  // between "wait for a fix" and "here is where it works".
+  msg = _midiIsWebKit()
+   ? 'Not available in this browser. Safari has never had Web MIDI and every browser on iPhone and iPad uses Safari’s engine, so none of them do — it is not a setting. The mõdRïff app connects to MIDI directly; on a computer, Chrome and Edge do too.'
+   : 'Not supported in this browser. Chrome, Edge and Opera have Web MIDI; Safari and Firefox do not.';
  } else if(_midiErr==='blocked'){
   msg='The browser refused MIDI access for this page. Allow MIDI in the site settings (the icon at the left of the address bar), then hit Rescan.';
  } else if(_midiErr==='pending'){
