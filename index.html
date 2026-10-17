@@ -3247,6 +3247,34 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
 }
 .ci-more:hover { text-decoration:underline; text-underline-offset:2px; }
 .ci-extras { display:flex; flex:0 0 auto; align-items:stretch; }
+/* TYPE A CHORD. The Type row below covers the qualities the menu has names
+   for; this covers the rest of harmony. It borrows .ci-seg's frame so it
+   reads as one more row rather than a form dropped into the panel, and its
+   own border goes red only once what is typed cannot be parsed — while you
+   are still halfway through "Cmaj" every chord is briefly unreadable, so the
+   warning waits for a commit. */
+.ci-type { display:flex; flex:1; gap:4px; min-width:0; align-items:center;
+ padding:2px; background:var(--bg); border:1px solid var(--border2); border-radius:var(--r-md); }
+.ci-type input {
+ flex:1; min-width:0; padding:8px 7px; border:none; background:none; color:var(--text);
+ font-family:'Outfit',sans-serif; font-size:0.7rem; letter-spacing:.01em;
+}
+.ci-type input:focus { outline:none; }
+/* .ci-more sets a colour and a hairline but no background — inside .ci-seg
+   that is fine, because .ci-seg button already cleared it. These two sit in
+   .ci-type instead, so without this they came out as the browser's default
+   light grey buttons: two filled boxes beside a dark field. */
+.ci-type button {
+ flex:0 0 auto; background:none; border:none; cursor:pointer;
+ font-family:'Outfit',sans-serif; touch-action:manipulation;
+}
+.ci-type input::placeholder { color:var(--muted); opacity:.7; }
+.ci-type.bad { border-color:var(--dom); }
+.ci-type-why { font-size:.5rem; color:var(--dom); line-height:1.5; padding:3px 0 0 63px; }
+/* Said once, under the field, when the old fields had to approximate the
+   chord: it sounds exactly what was typed either way, but anything reading
+   triadQ/type7 (the grid's colour, the shapes) is on the nearest thing. */
+.ci-type-note { font-size:.5rem; color:var(--muted); line-height:1.5; padding:3px 0 0 63px; }
 /* ── Mix › mõdSynth ── */
 #modsynth-panel, .ms-stub { display:none !important; }   /* replaced by Mix › mõdSynth (4.6.0) */
 .msx-card { padding:12px 12px 14px; margin-bottom:10px; }
@@ -7259,7 +7287,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.2</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.3</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7324,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.3</span></div>
  </div>
 </div>
 
@@ -9481,7 +9509,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.2';
+const MODRIFF_VERSION = '4.9.9.9.9.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10556,41 +10584,232 @@ function _legacyFromIvs(ivs){
  return {triadQ: best.triadQ, type7: best.type7, ext: best.ext, approx: true};
 }
 
+// ── Spelling: an interval set -> the name a player would write ─────────────
+// The other direction from parseChordSymbol, and the inverse of it: whatever
+// this returns, parsed again, is the same notes. `tests/chords/spell.test.js`
+// asserts exactly that round trip over every symbol in the Tonal fixture,
+// which is the only test that matters here — a speller that is merely
+// plausible puts a name on screen that is not the chord being played.
+//
+// Needed in three places, all of which had nothing to say about a chord the
+// quality menu cannot hold:
+//   · _slotExtSuffix — "Dm" + "b9" for a chord that is Dm7♭9
+//   · the Chord field's prefill, which has to show a symbol you can edit
+//   · the iReal Pro and chord-sheet imports, for a chord whose written name
+//     did not survive (a transposed song, or one built from numerals)
+//
+// Not a reverse lookup in a table: the same reason parseChordSymbol is not
+// one. It reads the set the way a player names it — the third, the fifth, the
+// seventh, how far up the natural stack runs, then every leftover note as an
+// alteration or an add.
+// A tension above the octave, as it is written. Below the octave the same
+// pitch is a different degree — 9 semitones is a 6th, not a 13th — so the two
+// have separate tables and a leftover note is named from the one it is in.
+var CHORD_TENSION_NAME = {13:'♭9', 14:'9', 15:'♯9', 17:'11', 18:'♯11', 20:'♭13', 21:'13'};
+var CHORD_LOW_ADD_NAME = {1:'add♭9', 2:'add2', 5:'add4', 6:'add♯4', 8:'add♭6', 9:'add6', 10:'add♭7', 11:'add7'};
+// The altered dominant, which is a name rather than a stack: 1 3 ♭7 ♭9 ♯9 ♭13
+// with no fifth. Spelled out it is "C7♭9♯9♭13no5", which is the same chord and
+// not what anyone calls it.
+var CHORD_ALT_SET = '0,4,10,13,15,20';
+// opts.parts  — return {base, sfx, full} instead of a string. base is the root
+//               and the quality; sfx is every alteration and add past it, which
+//               is what the chart and the chord cards draw in small type.
+// opts.rootName — use this spelling of the root rather than the table's. The
+//               app labels a chord in the key it is in ("F♯m" in E, not
+//               "G♭m"), and re-spelling a slot it already named would change
+//               the note name under the player's eyes.
+function spellChord(rootPc, ivs, bassPc, opts){
+ const parts = !!(opts && opts.parts);
+ const nil = parts ? {base:'', sfx:'', full:''} : '';
+ if(!Array.isArray(ivs) || !ivs.length) return nil;
+ const name = (opts && opts.rootName) || CHORD_SPELL_NAMES[((rootPc % 12) + 12) % 12] || '';
+ const slash = (bassPc != null && bassPc !== rootPc) ? ('/' + (CHORD_SPELL_NAMES[((bassPc % 12) + 12) % 12] || '')) : '';
+ const out = (base, sfx) => parts ? {base: base, sfx: sfx, full: base + sfx + slash}
+                                  : (base + sfx + slash);
+ const sorted = ivs.slice().sort((a, b) => a - b);
+ if(sorted.join(',') === CHORD_ALT_SET) return out(name + 'alt', '');
+
+ const rest = new Set(sorted);
+ rest.delete(0);
+ const eat = n => { const h = rest.has(n); rest.delete(n); return h; };
+ const has = n => rest.has(n);
+
+ // The third. A sus chord has a 2nd or a 4th in its place, not beside it.
+ let third = null, susName = '';
+ if(eat(4)) third = 'maj';
+ else if(eat(3)) third = 'min';
+ else if(has(5)){ rest.delete(5); susName = 'sus4'; }
+ else if(has(2)){ rest.delete(2); susName = 'sus2'; }
+
+ // The fifth. Whether there was one at all matters: spelling a chord that
+ // has no fifth without saying so puts one back when it is read again.
+ const hadFifth = has(7) || has(6) || has(8);
+ let fifth = '';
+ if(eat(7)) fifth = '';
+ else if(eat(6)) fifth = '♭5';
+ else if(eat(8)) fifth = '♯5';
+
+ // The seventh, and the sixth that stands in for it.
+ let sev = null, sixth = false;
+ if(eat(11)) sev = 'maj';
+ else if(eat(10)) sev = 'min';
+ else if(third === 'min' && fifth === '♭5' && eat(9)) sev = 'dim';
+ if(sev === null && eat(9)) sixth = true;
+
+ // How far up the stack the chord is named. The number is the highest
+ // tension present in its NATURAL form, and only while the degrees under it
+ // are filled by something — natural or altered.
+ //   1 3 5 ♭7 9 13    -> C13      (9 is there, 11 is skipped as dominants do)
+ //   1 3 5 ♭7 ♭9 13   -> C13♭9    (the 9 slot is filled, by a ♭9)
+ //   1 3 5 ♭7 13      -> C7add13  (nothing in the 9 slot; "C13no9" is not a name)
+ //   1 3 5 ♭7 ♭9      -> C7♭9     (the top note is altered, so it is the alteration)
+ // Only a seventh chord stacks: a sixth chord's one extension is 6/9, and a
+ // diminished seventh is a closed name that takes adds rather than numbers.
+ let num = 0;
+ const ninthish = has(13) || has(14) || has(15);
+ if(sev === 'maj' || sev === 'min'){
+  if(has(21) && ninthish) num = 13;
+  else if(has(17) && ninthish) num = 11;
+  else if(has(14)) num = 9;
+ }
+ // A dominant 11 has no major third — that is what the name means, and
+ // parseChordSymbol drops one when it reads it back. So a chord that has
+ // both is not an 11th however it is stacked: it is a 9th with an added 11,
+ // which is also what a player would write. Without this, 1 3 ♯5 ♭7 9 11
+ // came back as the same chord minus its third.
+ if(num === 11 && sev === 'min' && third === 'maj') num = 9;
+ if(num === 13){ rest.delete(21); rest.delete(14); rest.delete(17); }
+ else if(num === 11){ rest.delete(17); rest.delete(14); }
+ else if(num === 9){ rest.delete(14); }
+
+ let s = '';
+ if(third === 'min') s += 'm';
+ if(sev === 'dim') s = '°7';
+ else if(sev === 'maj') s += num ? ('maj' + num) : 'maj7';
+ else if(sev === 'min') s += num ? String(num) : '7';
+ else if(sixth) s += (has(14) && (rest.delete(14), true)) ? '6/9' : '6';
+ else if(third === null && susName === '' && fifth === '' && !rest.size) s += '5';
+ if(sev !== 'dim') s += susName;
+
+ const tail = [];
+ // ♭5/♯5 sit after the chord number. An augmented or flat-five triad has
+ // nothing between the root letter and the accidental, and "C♯5" reads as a
+ // C♯ power chord — so a bare one is named with a word instead.
+ if(fifth && sev !== 'dim'){
+  if(s === '' && fifth === '♯5') s = 'aug';
+  else if(s === '' && fifth === '♭5') s = 'maj♭5';
+  else tail.push(fifth);
+ }
+ // Everything left. Above the octave a tension is written as an alteration
+ // (♭9, ♯11) when the chord has a seventh for it to alter, and as an add when
+ // it does not — "Cadd♭9" rather than "C♭9", which would read as a C♭ ninth.
+ for(const iv of [...rest].sort((a, b) => a - b)){
+  const nm = CHORD_TENSION_NAME[iv];
+  if(nm === undefined){ tail.push(CHORD_LOW_ADD_NAME[iv] || ('add' + iv)); continue; }
+  if(nm === '9' || nm === '11' || nm === '13' || sev === null) tail.push('add' + nm);
+  else tail.push(nm);
+ }
+ // Said last, and only when it has to be: a missing third or fifth that
+ // would otherwise be read back in. A dominant 11 has no third by definition
+ // (parseChordSymbol drops it, as EXTS['11th'] does), so it does not say so.
+ if(third === null && susName === '' && !(sev === null && !sixth && !num)
+    && !(num === 11 && sev === 'min')) tail.push('no3');
+ if(!hadFifth && (third !== null || sev !== null || sixth)) tail.push('no5');
+
+ return out(name + s, tail.join(''));
+}
+// Which of the two names a black note gets when the app has to choose. Flats:
+// the app's own chord grid and every lead sheet spell these flat far more
+// often than sharp, and a chord that came in written with a sharp keeps its
+// own label rather than being spelled at all.
+var CHORD_SPELL_NAMES = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+
+var CHORD_NUMERALS = ['I','♭II','II','♭III','III','IV','♯IV','V','♭VI','VI','♭VII','VII'];
+var CHORD_FUNC_BY_DEGREE = {0:'tonic', 2:'subdom', 3:'tonic', 4:'tonic', 5:'subdom', 7:'dom', 8:'subdom', 9:'tonic', 11:'dom'};
+
+// One chord symbol -> the slot fields that spell and sound it, or null if the
+// symbol is not understood. The one place a written chord becomes a slot:
+// chord-sheet import, the Chord field in the editor and the iReal Pro import
+// all come through here, so a typed "C13♭9" and an imported one are the same
+// chord with the same name and the same approximation in the old fields.
+//
+//   sym      the symbol as written — it becomes the label, so its own
+//            spelling survives ("E♭m7♭5" does not come back as "D♯m7♭5")
+//   keyRoot  0-11, keyMode  'major'|'minor'  — for the numeral and function
+//   nearM    a sounding MIDI note to stay near, so retyping a chord in the
+//            editor does not jump it an octave. Omitted: middle C's octave.
+//
+// Only the harmonic fields: no length, no rhythm, no voicing. A caller
+// editing a slot assigns these over it and keeps everything else; a caller
+// building a new slot adds its own timing.
+function slotFromChordSymbol(sym, keyRoot, keyMode, nearM){
+ const c = parseChordSymbol(sym);
+ if(!c) return null;
+ const leg = _legacyFromIvs(c.ivs);
+ const off = (c.root - (keyRoot|0) + 12) % 12;
+ const scale = keyMode === 'minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
+ const inKey = c.ivs.every(i => scale.indexOf((off + i) % 12) >= 0);
+ // The numeral's case and sign come from the NOTES, not from triadQ. triadQ
+ // cannot be asked: EXTS ignores it whenever type7 is set, because the
+ // seventh's name already carries the quality — so Dm7 comes back from
+ // _legacyFromIvs as triadQ 0 (major) with type7 'min7', and reading the
+ // triad off it numeralled every imported m7 chord as a major "II".
+ const has = n => c.ivs.indexOf(n) >= 0;
+ const minorish = has(3) && !has(4);
+ const flat5 = minorish && has(6) && !has(7);
+ // ° and ø are not the same chord, and SUFFIX7 already spells them apart: a
+ // ring is a diminished triad or a diminished seventh (♭♭7), ø is
+ // half-diminished (m7♭5), which is a minor seventh with a flat fifth and
+ // behaves like one. Numeralling both "°" loses the distinction the chord
+ // names keep.
+ const dimish = flat5 && !has(10);
+ const halfdim = flat5 && has(10);
+ const augish = has(4) && has(8) && !has(7) && !has(10) && !has(11);
+ let numeral = CHORD_NUMERALS[off];
+ if(minorish) numeral = numeral.toLowerCase();
+ if(dimish) numeral += '°'; else if(halfdim) numeral += 'ø'; else if(augish) numeral += '+';
+ // The label is the chord's own name as it was written, minus any slash bass
+ // (whoever draws a slot appends that from bassNote). named tells
+ // _slotExtSuffix the quality is already in the label, so it appends nothing.
+ // A "b" before a digit is a flat wherever it appears — the root's own, and
+ // every alteration past it. Only fixing the root's left "E♭m7b5" half
+ // converted, with two different flat signs in one chord name. No quality
+ // word has a b before a number (sus4, add9, maj7, dim, aug, alt), so this
+ // cannot eat a letter.
+ const label = String(sym).trim().replace(/\/\s*[A-G][#♯b♭]?\s*$/, '')
+   .replace(/#/g, '♯').replace(/(^[A-G])b/, '$1♭').replace(/b(?=\d)/g, '♭');
+ // Land the root in the octave of the note we were asked to stay near, by
+ // whichever of the twelve transpositions is closest to it. A typed B over a
+ // C slot should step down a semitone, not up eleven.
+ let rootM;
+ if(nearM == null) rootM = 60 + (c.root <= 5 ? c.root : c.root - 12);
+ else {
+  rootM = c.root + 12 * Math.round((nearM - c.root) / 12);
+ }
+ return {
+  label: label, numeral: numeral, rootM: rootM,
+  triadQ: leg.triadQ, type7: leg.type7, ext: leg.ext,
+  ivs: c.ivs.slice(), named: true, approx: leg.approx,
+  func: inKey ? (CHORD_FUNC_BY_DEGREE[off] || 'modal') : 'modal',
+  bassNote: c.bass == null ? null : 48 + c.bass
+ };
+}
+
 // A parsed sheet -> a song in the setlist's own shape, ready for loadSong().
 // Every chord is one bar: a sheet does not say how long a chord lasts, and a
 // bar each is right far more often than anything else, and quick to change.
-var CHORD_NUMERALS = ['I','♭II','II','♭III','III','IV','♯IV','V','♭VI','VI','♭VII','VII'];
-var CHORD_FUNC_BY_DEGREE = {0:'tonic', 2:'subdom', 3:'tonic', 4:'tonic', 5:'subdom', 7:'dom', 8:'subdom', 9:'tonic', 11:'dom'};
 function songFromChordSheet(sheet){
  const all = [];
  sheet.sections.forEach(s => s.chords.forEach(c => all.push(c)));
  const key = guessChordKey(all);
- const scale = key.mode === 'minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
  let approx = 0;
  const sections = sheet.sections.map(sec => ({
   name: sec.name, plays: sec.plays || 1, follow: 'next',
   slots: sec.chords.map(sym => {
-   const c = parseChordSymbol(sym);
-   const leg = _legacyFromIvs(c.ivs);
-   if(leg.approx) approx++;
-   const off = (c.root - key.root + 12) % 12;
-   const minorish = leg.triadQ === 1 || leg.triadQ === 2;
-   const inKey = c.ivs.every(i => scale.indexOf((off + i) % 12) >= 0);
-   let numeral = CHORD_NUMERALS[off];
-   if(minorish) numeral = numeral.toLowerCase();
-   if(leg.triadQ === 2) numeral += '°'; else if(leg.triadQ === 3) numeral += '+';
-   // The label is the chord's own name as the sheet wrote it, minus any
-   // slash bass (whoever draws a slot appends that from bassNote). named
-   // tells _slotExtSuffix the quality is already in the label.
-   const label = sym.replace(/\/\s*[A-G][#♯b♭]?\s*$/, '').replace(/#/g, '♯').replace(/(^[A-G])b/, '$1♭');
-   return {
-    label: label, numeral: numeral,
-    rootM: 60 + (c.root <= 5 ? c.root : c.root - 12),
-    triadQ: leg.triadQ, type7: leg.type7, ext: leg.ext, ivs: c.ivs.slice(), named: true,
-    func: inKey ? (CHORD_FUNC_BY_DEGREE[off] || 'modal') : 'modal',
-    bassNote: c.bass == null ? null : 48 + c.bass,
-    isRest: false, bars: 1, beats: 0, eighths: 0
-   };
+   const f = slotFromChordSymbol(sym, key.root, key.mode, null);
+   if(f.approx) approx++;
+   delete f.approx;
+   return Object.assign(f, {isRest: false, bars: 1, beats: 0, eighths: 0});
   })
  }));
  return {song: {title: sheet.title || 'Imported song', root: key.root, mode: key.mode, sections: sections},
@@ -32034,9 +32253,10 @@ function renderChartSeq(){
  if(slot.isRest){
   btn.innerHTML='<span class="slot-cnum" style="color:var(--muted)">—</span><span style="color:var(--muted);font-size:.6rem">REST</span>';
  } else {
-  const displayName=slot.bassNote!=null?slot.label+'/'+nn(slot.bassNote%12):slot.label;
+  const _np=_slotNameParts(slot);
+  const displayName=slot.bassNote!=null?_np.base+'/'+nn(slot.bassNote%12):_np.base;
   btn.innerHTML=`<span class="slot-cnum">${slot.numeral}</span>${displayName}`;
-  const _sx=_slotExtSuffix(slot);
+  const _sx=_np.sfx;
   if(_sx) btn.innerHTML+=`<span style="font-size:.36rem;opacity:.7">${_sx}</span>`;
  }
  btn.addEventListener('click',()=>{
@@ -32207,9 +32427,10 @@ function _ciRelabel(slot){
 function _ciName(slot){
  if(!slot) return {base:'Chord', sfx:''};
  if(slot.isRest) return {base:'Rest', sfx:''};
- var base=slot.label||'Chord';
+ var np=_slotNameParts(slot);
+ var base=np.base||'Chord';
  if(slot.bassNote!=null) base+='/'+nn(((slot.bassNote%12)+12)%12);
- return {base:base, sfx:_slotExtSuffix(slot)};
+ return {base:base, sfx:np.sfx};
 }
 function _ciSeg(rowLbl, opts, isOn, onPick, extra){
  var row=document.createElement('div'); row.className='ci-row';
@@ -32290,6 +32511,97 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
  // for the NEXT chord added — which is the job the separate "Chord quality
  // for next add" row used to do on its own, further up the page, with no
  // connection to any chord you could see.
+ // CHORD. Type the name and the chord is those notes — the way past the
+ // quality menu, which only has names for the twenty qualities in EXTS and
+ // can hold only one tension at a time. Anything parseChordSymbol reads goes
+ // in here: C13♭9, F♯7alt, B♭m11, E♭maj9♯11, D7sus4/A.
+ //
+ // The field is above Type on purpose. Type is the quick way to the common
+ // ones and stays the first thing you reach for; this is the one that can
+ // say anything, and a player who knows what chord they want types it faster
+ // than they can find it in a menu of twenty.
+ if(!slot.isRest){
+  var crow=document.createElement('div'); crow.className='ci-row';
+  var clb=document.createElement('div'); clb.className='ci-lbl'; clb.textContent='Chord';
+  crow.appendChild(clb);
+  var cbox=document.createElement('div'); cbox.className='ci-type';
+  var cin=document.createElement('input');
+  cin.type='text'; cin.autocapitalize='off'; cin.autocomplete='off'; cin.spellcheck=false;
+  cin.setAttribute('aria-label','Chord name — type any chord, like C13♭9 or F♯m7♭5');
+  // The name the slot has now, spelled from its own notes, so what is in the
+  // field is always the chord you are hearing and editing it is a small edit
+  // rather than a retype. Round-tripped by tests/chords/spell.test.js, so it
+  // parses back to exactly these notes.
+  var _curName=function(){
+   var np=_slotNameParts(slot);
+   return (np.base||'')+(np.sfx||'')+(slot.bassNote!=null ? '/'+nn(((slot.bassNote%12)+12)%12) : '');
+  };
+  cin.value=_curName();
+  cin.placeholder='C13♭9';
+  var why=document.createElement('div'); why.className='ci-type-why'; why.style.display='none';
+  var note=document.createElement('div'); note.className='ci-type-note'; note.style.display='none';
+  // ♯ and ♭ without hunting for them on a phone keyboard. The parser takes
+  // # and b as well, so these are a convenience and never the only way in.
+  [['♭','Flat'],['♯','Sharp']].forEach(function(a){
+   var b=document.createElement('button');
+   b.type='button'; b.className='ci-more'; b.textContent=a[0]; b.title=a[1];
+   b.setAttribute('aria-label',a[1]);
+   // mousedown, not click: a click would have blurred the field first, which
+   // commits, so the accidental would land after the chord had already been
+   // applied and the field rebuilt.
+   b.addEventListener('mousedown', function(ev){ ev.preventDefault(); });
+   b.addEventListener('click', function(){
+    var p=cin.selectionStart==null?cin.value.length:cin.selectionStart;
+    cin.value=cin.value.slice(0,p)+a[0]+cin.value.slice(cin.selectionEnd==null?p:cin.selectionEnd);
+    cin.focus(); cin.setSelectionRange(p+1,p+1);
+   });
+   cbox.appendChild(b);
+  });
+  cbox.insertBefore(cin, cbox.firstChild);
+  var commit=function(){
+   var txt=cin.value.trim();
+   // Emptied, or unchanged: nothing to do. Leaving it empty is not "delete
+   // the chord" — the ✕ in the header is, and a field that deleted on blur
+   // would be a trap.
+   if(!txt || txt===_curName()){ cin.value=_curName(); cbox.classList.remove('bad'); why.style.display='none'; return; }
+   var f=slotFromChordSymbol(txt, root, mode, slot.rootM);
+   if(!f){
+    cbox.classList.add('bad');
+    why.textContent='Not a chord name this can read. Try C, Am7, G7sus4, E♭maj9, C13♭9 — a root, a quality, then any alterations.';
+    why.style.display='';
+    return;
+   }
+   cbox.classList.remove('bad'); why.style.display='none';
+   var approx=f.approx;
+   withUndo('Set '+(slot.label||'chord')+' to '+f.label,
+    function(){ return Object.assign({}, slot); },
+    function(before){ for(var k in slot) delete slot[k]; Object.assign(slot, before); repaint(); },
+    function(){
+     delete f.approx;
+     // Only the harmonic fields move. Length, rhythm, voicing and whether it
+     // is a rest belong to the slot's place in the song, not to its name.
+     Object.assign(slot, f);
+     if(approx){
+      note.textContent='Sounds exactly '+f.label+'. The chord grid and the shapes show the nearest quality the menu has.';
+      note.style.display='';
+     } else note.style.display='none';
+     repaint();
+    });
+  };
+  cin.addEventListener('keydown', function(ev){
+   if(ev.key==='Enter'){ ev.preventDefault(); commit(); }
+   else if(ev.key==='Escape'){ ev.preventDefault(); cin.value=_curName(); cbox.classList.remove('bad'); why.style.display='none'; cin.blur(); }
+  });
+  cin.addEventListener('blur', commit);
+  // Typing again clears a standing complaint, so the red border is about what
+  // is in the field now and not about the last thing that was.
+  cin.addEventListener('input', function(){ if(cbox.classList.contains('bad')){ cbox.classList.remove('bad'); why.style.display='none'; } });
+  crow.appendChild(cbox);
+  body.appendChild(crow);
+  body.appendChild(why);
+  body.appendChild(note);
+ }
+
  if(!slot.isRest){
   var TYPES=[['triad','Triad'],['7th','7'],['9th','9'],['sus2','sus2'],['sus4','sus4'],['add9','add9']];
   var setType=function(k){
@@ -36161,11 +36473,11 @@ function renderSongsPerformView(){
   btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">—</div><span style="color:var(--muted);font-size:.7rem">REST</span><div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
   btn.style.opacity = '.55';
  } else {
-  const _ext = _slotExtSuffix(slot);
-  const extLabel = _ext ? '<sup style="font-size:.5em;opacity:.7">'+_ext+'</sup>' : '';
+  const _np = _slotNameParts(slot);
+  const extLabel = _np.sfx ? '<sup style="font-size:.5em;opacity:.7">'+_np.sfx+'</sup>' : '';
   const bassLabel = slot.bassNote!=null ? '<span style="font-size:.55em;opacity:.8">/'+nn(slot.bassNote%12)+'</span>' : '';
   const durLabel = '<div style="font-size:.3rem;color:var(--muted);margin-top:2px">'+_slotDurLabel(slot)+'</div>';
-  btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+slot.label+extLabel+bassLabel+durLabel;
+  btn.innerHTML = '<div style="font-size:.34rem;color:var(--muted)">'+(slot.numeral||'')+'</div>'+_np.base+extLabel+bassLabel+durLabel;
  }
  btn.addEventListener('click', ()=>{ songChartTap(si, ci); });
  row.appendChild(btn);
@@ -38757,12 +39069,45 @@ function _updateSectionNavUI(){
 // 'triad' has none, and '7th' is already baked into the label itself: the chord
 // picker's 7th half stores the seventh's full name ("Dmaj7") AND ext:'7th'
 // beside it, so appending the ext there spelled the chord "Dmaj77th".
+// A slot's name, split where the small type starts: {base, sfx}. base is the
+// root and quality, sfx the alterations and adds drawn smaller beside it. The
+// slash bass is NOT in either — every caller appends it from bassNote, in its
+// own type size.
+//
+// This used to return the EXTS key verbatim, which is a storage key and not a
+// chord name: a minor slot with ext 'b9' sounds Dm7♭9 and drew "Dm" + "b9",
+// and a ninth drew "Am" + "9th". The quality is spelled from the notes now
+// (spellChord), so a slot is called what it plays — including the chords with
+// two tensions that the ext field cannot describe at all.
+//
+// The label's own root spelling is kept: the app writes "F♯m" in E and
+// "G♭m" in D♭, and re-deriving it would flip the note name on screen.
+function _slotNameParts(slot){
+ if(!slot || slot.isRest) return {base:'', sfx:''};
+ // A chord that arrived with its whole name written out — from a sheet, an
+ // iReal import or the Chord field — keeps it. It is already a full symbol,
+ // and it is the spelling the player typed.
+ if(slot.named) return {base: slot.label || '', sfx: ''};
+ const lbl = slot.label || '';
+ let ivs = null;
+ try{ ivs = slotIvs(slot); }catch(e){}
+ if(!ivs || !ivs.length) return {base: lbl, sfx: ''};
+ // Only the root is taken from the label; everything past it is re-spelled.
+ const rm = /^[A-G][♯♭#b]?/.exec(lbl);
+ // A Nashville-numbered label does not start with a note name and is
+ // key-independent — it is left exactly as it is, as every other path does.
+ if(!rm) return {base: lbl, sfx: ''};
+ const pc = ((slot.rootM % 12) + 12) % 12;
+ const p = spellChord(pc, ivs, null, {parts:true, rootName: rm[0]});
+ return {base: p.base || lbl, sfx: p.sfx || ''};
+}
 function _slotExtSuffix(slot){
- // A chord from a sheet carries its whole name ("Cadd4", "E♭m7♭5") in its
- // label, so there is nothing to append.
- if(slot && slot.named) return '';
- const k = slot && slot.ext;
- return (!k || k==='triad' || k==='7th') ? '' : k;
+ return _slotNameParts(slot).sfx;
+}
+// What goes where slot.label used to be drawn. Same string for a named slot;
+// for an old-field slot, the quality as its notes spell it.
+function _slotBaseName(slot){
+ return _slotNameParts(slot).base;
 }
 
 // What a slot is called, as you are hearing it. Built from the slot rather than
@@ -38773,7 +39118,8 @@ function _songSlotName(slot){
  if(!slot) return '';
  if(slot.isRest) return 'REST';
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
- let lbl = slot.label || '';
+ const np = _slotNameParts(slot);
+ let lbl = np.base || '';
  if(capo){
   // Same surgery transposeSong() does: swap the leading note name and leave
   // the quality alone. Nashville-number labels never start with A-G, so they
@@ -38781,7 +39127,7 @@ function _songSlotName(slot){
   const m = lbl.match(/^[A-G][♯♭]?/);
   if(m) lbl = nn(slot.rootM + capo) + lbl.slice(m[0].length);
  }
- lbl += _slotExtSuffix(slot);
+ lbl += np.sfx;
  if(slot.bassNote != null) lbl += '/' + nn(slot.bassNote + capo);
  return lbl;
 }
