@@ -8,7 +8,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // ModRiffViewController, not CAPBridgeViewController: it is the same
+        // thing plus the capacitorDidLoad that registers ModEngine. This line
+        // is what decides the root controller — the storyboard's class is set
+        // to match, but it is never consulted, because the window is built
+        // here in code.
+        window?.rootViewController = ModRiffViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

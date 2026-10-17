@@ -21,6 +21,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise)
     ]
 
+    /// Capacitor calls this when it registers the plugin. It is the only
+    /// proof that a CAPBridgedPlugin declared in the app target — rather than
+    /// in a Swift package, as the bundled plugins are — is discovered at all.
+    /// Cheap, and it turns "it should register" into something the device log
+    /// answers.
+    override public func load() {
+        NSLog("[ModEngine] plugin registered")
+    }
+
     private var engine: AVAudioEngine?
     private var source: AVAudioSourceNode?
     private var host: ModEngineHost?
