@@ -7259,7 +7259,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.1</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.2</span>
     </div>
    </div>
   </div>
@@ -7296,7 +7296,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.2</span></div>
  </div>
 </div>
 
@@ -9481,7 +9481,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.1';
+const MODRIFF_VERSION = '4.9.9.9.9.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11098,6 +11098,25 @@ function _sampleStateChanged(key){
  _sampleWatchers.forEach(fn=>{ try{ fn(key, SAMPLE_STATE[key]); }catch(e){} });
 }
 
+// Did a fetch of an app asset arrive? Not the same question as `r.ok`.
+//
+// In the native build the page is served from capacitor://localhost by a
+// WKURLSchemeHandler, and a Response built by a custom scheme handler carries
+// status 0 — not 200 — however complete the body is. `r.ok` is false for
+// status 0, so every `if(!r.ok) throw` here threw away a file that had
+// arrived intact, and the `.catch(()=>{})` below swallowed the error without
+// a word. Measured on the phone: samples/piano/A1.mp3 came back ok=false,
+// status=0, 63937 bytes — the exact size on disk — and decoded to 6.4457 s,
+// the same length Chromium and CoreAudio read. So every sampled instrument
+// and every sampler pad was silently empty while the synthesised voices were
+// fine, which is exactly how it looked: "loading…" for ever and no error.
+//
+// Over http(s) — the web build and the dev server — status is 200 and this
+// is `r.ok` as before. A file that is genuinely missing still fails, one step
+// later and just as safely: the body is empty, so decodeAudioData rejects
+// into the same catch.
+function _assetOK(r){ return r.ok || r.status === 0; }
+
 function preloadSampleInstrument(key){
  const lib=SAMPLE_LIBS[key]; if(!lib) return;
  if(SAMPLE_STATE[key]==='ready'||SAMPLE_STATE[key]==='loading') return;
@@ -11106,7 +11125,7 @@ function preloadSampleInstrument(key){
  _sampleStateChanged(key);
  SAMPLE_BUFFERS[key]=SAMPLE_BUFFERS[key]||{};
  const loads=lib.notes.map(n=>fetch(lib.dir+'/'+n+'.mp3')
-  .then(r=>{ if(!r.ok) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
+  .then(r=>{ if(!_assetOK(r)) throw new Error('sample fetch failed: '+n); return r.arrayBuffer(); })
   .then(buf=>ctx.decodeAudioData(buf))
   .then(audioBuf=>lib.shape ? _sampleShape(lib.shape, audioBuf, ctx) : audioBuf)
   .then(audioBuf=>{ SAMPLE_BUFFERS[key][n]=audioBuf; })
@@ -12112,7 +12131,7 @@ function smpLoadLibrary(){
   // in samples/user/manifest.json and they turn up in everybody's library,
   // cached offline by the service worker like every other sample. A missing
   // manifest is the normal case and must stay silent.
-  fetch('samples/user/manifest.json').then(function(r){ return r.ok?r.json():null; })
+  fetch('samples/user/manifest.json').then(function(r){ return _assetOK(r)?r.json():null; })
    .then(function(m){
     var list = (m && (m.clips||m.samples)) || [];
     list.forEach(function(e){
@@ -12135,7 +12154,7 @@ function smpDecodeAll(){
  return smpLoadLibrary().then(function(){
   var jobs = SMP_LIB.filter(function(c){ return !SMP_BUF[c.id]; }).map(function(c){
    var get = c.src==='dev'
-    ? fetch(c.url).then(function(r){ if(!r.ok) throw 0; return r.arrayBuffer(); })
+    ? fetch(c.url).then(function(r){ if(!_assetOK(r)) throw 0; return r.arrayBuffer(); })
     : _smpStore('readonly').then(function(st){
        if(!st) throw 0;
        return new Promise(function(res,rej){
@@ -14566,7 +14585,7 @@ window.psWarpPrime = psWarpPrime;
 var PS_FACTORY_BPM = 100;
 var _psFactory = null;     // the render, once started — a promise
 function _psFetch(ctx, url){
- return fetch(url).then(function(r){ if(!r.ok) throw 0; return r.arrayBuffer(); })
+ return fetch(url).then(function(r){ if(!_assetOK(r)) throw 0; return r.arrayBuffer(); })
   .then(function(b){ return ctx.decodeAudioData(b); });
 }
 var _PS_NOTE = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
@@ -41875,7 +41894,7 @@ function _drumLoadOne(name){
  if(!ctx) return;
  _drumLazyPending[name] = 1;
  fetch(DRUM_SAMPLES_LAZY[name])
-  .then(r=>{ if(!r.ok) throw new Error('drum fetch '+name); return r.arrayBuffer(); })
+  .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+name); return r.arrayBuffer(); })
   .then(a=>ctx.decodeAudioData(a))
   .then(buf=>{ DRUM_BUFFERS[name]=buf; })
   .catch(()=>{ delete _drumLazyPending[name]; });
@@ -41893,7 +41912,7 @@ function preloadDrumSamples(){
  _drumLoadState='loading';
  const jobs = Object.keys(DRUM_SAMPLES).map(k =>
   fetch(DRUM_SAMPLES[k])
-   .then(r=>{ if(!r.ok) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
+   .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
    .then(a=>ctx.decodeAudioData(a))
    .then(buf=>{ DRUM_BUFFERS[k]=buf; })
    .catch(()=>{}));   // one missing cymbal must not sink the kit
