@@ -1,0 +1,68 @@
+// The C++ mõdSynth, as something Swift can hold.
+//
+// Everything below the bridge is C++ (modsynth::Processor, one per part) and
+// everything above it is Swift (AVAudioSession, AVAudioEngine, the Capacitor
+// plugin). This header is deliberately plain Objective-C — no C++ in it — so
+// the Swift side can import it through the bridging header without needing
+// to understand std::vector or a class template.
+//
+// The division of labour, which is the whole point of the design:
+//
+//   post:      called from whatever thread Capacitor runs plugin calls on.
+//              Parses an NSDictionary (allocating freely, because it is not
+//              the audio thread) into a fixed-size POD and puts it in a
+//              lock-free queue.
+//   renderInto: called from the audio thread. Drains the queue, applies the
+//              messages, renders. Allocates nothing and takes no lock.
+//
+// That split is why the message is parsed where it is: JSON → POD on the
+// caller's thread, POD → engine on the render thread.
+#import <Foundation/Foundation.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+@interface ModEngineHost : NSObject
+
+/// Builds the host. `maxFrames` is the largest block renderInto will ever be
+/// asked for; the scratch buffers are sized to it once, here, because the
+/// render thread cannot grow them later.
+- (instancetype)initWithSampleRate:(double)sampleRate maxFrames:(int)maxFrames;
+
+/// Creates the processor for a part if it does not exist yet. Allocates (the
+/// wavetable bank is ~13 ms of work and several MB), so it must be called off
+/// the audio thread — the render callback only ever reads the slot. Returns NO
+/// if `part` is out of range.
+- (BOOL)ensurePart:(int)part;
+
+/// Queues one message. The dictionary is the same shape the worklet's port
+/// takes — {t:'on', note:…, vel:…, id:…, at:…} and the rest — plus a `part`
+/// key saying which processor it is for. Returns NO if the queue is full,
+/// which is a dropped message and is counted in `dropped`.
+- (BOOL)post:(NSDictionary *)message;
+
+/// Renders `frames` frames of every live part, summed, into L and R.
+/// **Audio thread only.** Overwrites the buffers.
+- (void)renderInto:(float *)left right:(float *)right frames:(int)frames;
+
+/// Grows the engine's internal containers to their steady-state size by
+/// playing and releasing notes into a throwaway buffer. Call once, before
+/// audio starts. Without it the first few notes of a session would each
+/// allocate on the render thread as std::vector grows; with it the capacity
+/// is already there and the steady state allocates nothing. See the note in
+/// the implementation — this is the honest version of "the render thread
+/// never allocates", not a claim that it cannot.
+- (void)warmUpPart:(int)part;
+
+@property (nonatomic, readonly) double sampleRate;
+/// Frames rendered since the engine started — the engine's clock, which is
+/// what a message's `at` is measured against.
+@property (nonatomic, readonly) uint64_t framesRendered;
+/// Messages refused because the queue was full. Should stay 0; if it does
+/// not, the queue is too small or the producer is too chatty.
+@property (nonatomic, readonly) uint32_t dropped;
+/// Voices sounding across every part, for the diagnostics readout.
+@property (nonatomic, readonly) int activeVoices;
+
+@end
+
+NS_ASSUME_NONNULL_END
