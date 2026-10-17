@@ -7290,7 +7290,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.4</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.5</span>
     </div>
    </div>
   </div>
@@ -7327,7 +7327,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.4</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.5</span></div>
  </div>
 </div>
 
@@ -7427,8 +7427,8 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Song Navigation</div>
-  <div class="kb-sc-row"><span class="kb-key">N</span><span class="kb-desc">Queue the next song section (advances at the end of the current pass).</span></div>
-  <div class="kb-sc-row"><span class="kb-key">B</span><span class="kb-desc">Queue the previous song section.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">N</span><span class="kb-desc">The next song section. While the song runs it is queued, and arrives at the end of the current pass; stopped, it moves there straight away without playing anything, and ▶ starts from it.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">B</span><span class="kb-desc">The previous song section, the same way.</span></div>
   <div class="kb-sc-row"><span class="kb-key">. / ,</span><span class="kb-desc">Step one chord on or back, straight away — no waiting for the bar. Rolls into the next or previous section at the ends of one.</span></div>
  </div>
 
@@ -9512,7 +9512,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.4';
+const MODRIFF_VERSION = '4.9.9.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39402,10 +39402,14 @@ function songGotoSection(delta){
  songPendingSectionDelta = delta;
  _updateSectionNavUI();
  } else {
- // Not auto-looping (e.g. Auto is off) — nothing to finish, jump now
+ // Not auto-looping (e.g. Auto is off) — nothing to finish, jump now.
+ // Silently: this is navigation, and a section move that sounds a chord
+ // every press turns looking through a song into playing one. The section
+ // still moves and ▶ still starts from where you stopped; you hear it when
+ // you ask to hear it. (N and B, and the two section arrows.)
  _moveToSection(delta);
  songLoopSlot = 0;
- songChartTap(songLoopSection, 0);
+ songChartTap(songLoopSection, 0, {silent:true});
  }
 }
 function songNextSection(){ songGotoSection(1); }
@@ -39605,7 +39609,13 @@ function toggleSongAutoAdvance(){
 }
 
 // Override playChartSlot2 click handler to also stop loop and allow free play
-function songChartTap(si, ci){
+// opts.silent — park the song here without sounding the chord. Tapping a
+// chord on the chart means "play this one"; moving a SECTION means "start
+// from there", and the two want different things when nothing is running.
+// Without it, N and B made a noise every press while the song was stopped —
+// and in a one-section song both keys land back on the same section, so both
+// played its first chord and neither appeared to navigate anywhere.
+function songChartTap(si, ci, opts){
  // If loop was running, jump to this slot and continue looping from here
  if(songLoopActive){
  clearTimeout(songLoopTimer);
@@ -39613,7 +39623,7 @@ function songChartTap(si, ci){
  songLoopSlot = ci;
  _playLoopSlot();
  } else {
- playChartSlot2(si, ci);
+ if(!(opts && opts.silent)) playChartSlot2(si, ci);
  // Highlight
  const chart=document.getElementById('songs-full-chart');
  if(chart){ chart.querySelectorAll('.songs-chord-btn').forEach(b=>b.classList.remove('active')); }
