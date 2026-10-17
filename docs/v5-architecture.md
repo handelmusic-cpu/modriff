@@ -93,15 +93,33 @@ maj7 11ths keep their thirds, as they do in common use.
    `slotIvs(slot)`: the slot's own `ivs` if it has them, `getIntvs` exactly
    as before if not. Changing a slot's quality from the menu drops its `ivs`
    (`_slotForgetNotes`), so the menu always wins once used.
-3. **Write `ivs` onto slots.** Chord-sheet import does this now (below). Still
-   to do: a "type a chord" field in the chord builder:
-   `parseChordSymbol` → `{rootM, ivs, label: sym, bassNote}`. The old fields
-   are still filled in (nearest `triadQ`/`type7`) so the chord grid, colours,
-   Nashville numbers and anything else that reads them keep working.
+3. **Done (4.9.9.9.9.3).** `ivs` are written onto slots. One function —
+   `slotFromChordSymbol(sym, keyRoot, keyMode, nearM)` — turns a written
+   chord into the slot fields that spell and sound it, and chord-sheet
+   import, the **Chord** field at the top of the chord editor and (next) the
+   iReal Pro import all go through it, so a typed `C13♭9` and an imported one
+   are the same chord. The old fields are still filled in (nearest
+   `triadQ`/`type7`, via `_legacyFromIvs`) so the chord grid, colours,
+   Nashville numbers and anything else that reads them keep working; when the
+   menu cannot hold the chord exactly, the field says so once, under itself.
    Saved songs gain an optional field; old saves load unchanged.
-4. **Spell from `ivs`.** `_slotExtSuffix` is the one place a chord's quality
-   is spelled. It learns to name an interval set, so a slot whose `ext`
-   cannot say what it is (the "Dm" + "b9" case) is named from its notes.
+
+   Found on the way: the numeral was read off `triadQ`, and `EXTS` ignores
+   `triadQ` whenever `type7` is set — so every imported m7 chord numeralled
+   as a major "II". It is read from the notes now, half-diminished included
+   (`iiø`, not `ii°`).
+4. **Done (4.9.9.9.9.3).** `spellChord(root, ivs, bass, opts)` names an
+   interval set, and `_slotNameParts` splits that into the base and the small
+   type beside it. `_slotExtSuffix` is a thin reader of it. A slot whose
+   `ext` cannot say what it is is named from its notes, so the "Dm" + "b9"
+   case draws **Dm7♭9**, and "Am" + "9th" draws **Am9**.
+
+   The test is a **round trip**: whatever `spellChord` returns, parsed again,
+   must be the same notes. `tests/chords/spell.test.js` asserts it over all
+   212 parseable symbols in the Tonal fixture and every quality the menu can
+   build in all twelve roots. It caught 19 real bugs on the first run — the
+   worst being that `C♯5` reads back as a C♯ power chord, because an
+   accidental glues to the root letter with nothing between them.
 5. **Retire `EXTS`** as the source of truth: the quality menu writes `ivs`
    too, and `getIntvs` becomes a thin reader for old saves.
 
@@ -129,9 +147,73 @@ Three kinds of input, three readers:
 The parser already reads lead-sheet spelling (`DMI`, `GMI7`, `EMI7(♭5)`,
 `B♭9`) and sections lettered `[A]` `[B]` `[C]`.
 
+### Importing from iReal Pro, and dropping the bundled standards
+
+**The Standards tab goes.** The library's middle tab is 28 jazz standards'
+changes, written into `index.html` and shipped in the binary. They are
+someone else's harmony in our product, and the replacement is better on both
+counts: the user brings their own.
+
+**iReal Pro import replaces it.** Its songs travel as an `irealb://` URL with
+an obfuscated payload, and its export is an HTML file full of those links.
+Two ways in, both of them the user's own file:
+
+| input | how |
+|---|---|
+| one song | paste an `irealb://` / `irealbook://` link into the import field. On iOS also register the URL scheme and a share-sheet target, so **Share** from iReal Pro opens mõdRïff directly |
+| a playlist | the file picker opens an iReal Pro HTML export and lists every song in it to choose from |
+
+**Nothing is fetched from their forum and nothing is bundled.** Scraping a
+public playlist archive would put other people's transcriptions back in the
+product, which is the thing the Standards removal is getting rid of. The only
+chord changes that reach the app are the ones the user hands it.
+
+The payload decodes to chords, bar lines, section markers, repeats, endings
+and a time signature — which is more structure than `parseChordSheet` gets
+from text, so it maps onto sections and bars rather than one chord per bar.
+Every chord it yields goes through `slotFromChordSymbol`, the same function
+the Chord field and the text importer use, so an iReal chord is refused if it
+does not parse rather than half-played.
+
 ---
 
 ## 2. MIDI Mapping Mode
+
+### Step 0: there is no Web MIDI on the phone, and there never will be
+
+Everything below assumes MIDI arrives. On the product — the iPhone app — it
+does not, and this is not a gap that closes on its own:
+
+**WebKit has never shipped Web MIDI and Apple has refused it over
+fingerprinting.** Safari does not have it, every browser on iOS runs Safari's
+engine so none of them have it, and Capacitor is a `WKWebView`, so the
+packaged App Store build gets exactly the same `undefined` that mobile Safari
+does. `initMidi` takes its `_midiErr='no-api'` branch and the pane says "Not
+supported on this device." Shipping natively does not fix this by itself.
+
+What does: **CoreMIDI, which iOS has in full** — USB class-compliant
+controllers through the USB-C/Lightning adapter, Bluetooth LE MIDI, virtual
+ports from other iOS apps, network MIDI. All of it is open to native Swift
+and none of it to the webview. So MIDI is a Capacitor plugin, the same shape
+as `ModEngine`:
+
+- A Swift plugin opens CoreMIDI, enumerates sources, and forwards packets.
+- It installs a **`navigator.requestMIDIAccess` shim before the page script
+  runs**, returning an object with the `inputs`/`outputs` maps,
+  `onstatechange` and `onmidimessage` that the spec defines and that this
+  file already drives. Same seam as `window.modPlatform` / `window.modStore`.
+- Nothing in `index.html` changes. `initMidi`, `_midiWireAll`, `onMidiMsg`,
+  the port list, the learn flow and the mapping mode below all keep working
+  — they stop seeing an empty API, which is the whole bug.
+
+Consequences worth stating plainly:
+
+- The finished iPhone app is a **better** MIDI host than any browser.
+- The **web build stays desktop-only** for MIDI (Chrome, Edge, Opera). That
+  is permanent, and the pane should say so rather than implying a fix is
+  coming.
+- This is a precondition for testing the mapping mode on a phone at all, so
+  it goes before the rest of section 2.
 
 ### What exists
 
@@ -1072,12 +1154,17 @@ unchanged.
    native is decided. Also what MIDI out of every part and stems need.
 2. **mõdSynth DSP in C++, null tested** — done (`native/modsynth/`,
    bit-identical to `dsp.js` across every factory patch).
-3. **Chord model steps 2–3** — the `getIntvs` call sites, then the "type a
-   chord" field. Independent of audio; fits between the bigger steps.
-4. **MIDI Mapping Mode** — independent; can run alongside any of the above.
-5. **iOS shell** — the Capacitor project is in `ios/` (4.9.3), with the
+3. **Chord model steps 2–4** — done (4.9.3, 4.9.9.9.9.3): the `getIntvs` call
+   sites, the Chord field, and spelling from `ivs`. Step 5 (retiring `EXTS`)
+   is still open and is not urgent.
+4. **Drop Standards, add iReal Pro import** — next. Sits straight on top of
+   `slotFromChordSymbol`, and independent of audio.
+5. **MIDI** — `navigator.requestMIDIAccess` over CoreMIDI first (step 0
+   above), because without it none of the mapping mode can be tried on a
+   phone. Then Mapping Mode. Independent of audio; can run alongside.
+6. **iOS shell** — the Capacitor project is in `ios/` (4.9.3), with the
    app icon and `.playback` audio (sound with the silent switch on). Still to
    come: the Swift audio host, haptics, IAP, text recognition for picture
    imports. Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
-6. **Remaining parts native, then the clock** — ships as 5.0.0.
+7. **Remaining parts native, then the clock** — ships as 5.0.0.
