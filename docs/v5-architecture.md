@@ -195,7 +195,7 @@ for a symbol the parser will not read in full.
 
 ## 2. MIDI Mapping Mode
 
-### Step 0: there is no Web MIDI on the phone, and there never will be
+### Step 0: there is no Web MIDI on the phone (built 4.9.9.9.9.6, unbuilt on device)
 
 Everything below assumes MIDI arrives. On the product — the iPhone app — it
 does not, and this is not a gap that closes on its own:
@@ -209,27 +209,56 @@ supported on this device." Shipping natively does not fix this by itself.
 
 What does: **CoreMIDI, which iOS has in full** — USB class-compliant
 controllers through the USB-C/Lightning adapter, Bluetooth LE MIDI, virtual
-ports from other iOS apps, network MIDI. All of it is open to native Swift
-and none of it to the webview. So MIDI is a Capacitor plugin, the same shape
-as `ModEngine`:
+ports from other iOS apps, network MIDI.
 
-- A Swift plugin opens CoreMIDI, enumerates sources, and forwards packets.
-- It installs a **`navigator.requestMIDIAccess` shim before the page script
-  runs**, returning an object with the `inputs`/`outputs` maps,
-  `onstatechange` and `onmidimessage` that the spec defines and that this
-  file already drives. Same seam as `window.modPlatform` / `window.modStore`.
-- Nothing in `index.html` changes. `initMidi`, `_midiWireAll`, `onMidiMsg`,
-  the port list, the learn flow and the mapping mode below all keep working
-  — they stop seeing an empty API, which is the whole bug.
+As built:
+
+- `ios/App/App/ModMidi/ModMidi.swift` — a Capacitor plugin holding a
+  `MIDIClientRef`, an input port with every source connected, and an output
+  port. `start`/`list` return the endpoints; `send` writes a packet;
+  `openBluetooth` presents `CABTMIDICentralViewController`, which is the only
+  way to pair BLE MIDI (there is no programmatic pairing, by design).
+  CoreMIDI's own notify block drives `statechange`, so a cable in or out is
+  not polled for. Registered in `ModRiffViewController` beside `ModEngine` —
+  an app-target plugin is not discovered on its own.
+- **The web side is `navigator.requestMIDIAccess`.** The shim in the platform
+  layer wraps the plugin in the spec's own API, so `initMidi`,
+  `_midiWireAll`, `onMidiMsg`, the port list, the CC learn and the mapping
+  mode below all keep working unchanged — they stop seeing an empty API,
+  which was the whole bug. It declines to install when a real implementation
+  is present (desktop Chrome), and is simply absent when the plugin is not
+  registered, in which case the pane's "not supported" is true.
+- `NSBluetoothAlwaysUsageDescription` is in `Info.plist`. Without it iOS
+  **terminates the app** the moment the pairing sheet starts scanning — not a
+  prompt, not a refusal, a crash.
+- The pane no longer says "Not supported on this device" full stop, which
+  read as a dead end on the one device that supports MIDI best. It names
+  which browsers have it and says the app connects directly.
+
+**Verified without a Mac**, which is most of the point of the shim being
+ordinary JavaScript: `tests/midi/make-fixture.mjs` injects a stand-in for the
+plugin ahead of the app's script and simulates WebKit by deleting Chromium's
+real `requestMIDIAccess`. Driven through it, a note-on plays the right chord,
+a hot-plugged port is wired by the app's own `onstatechange` and plays, a
+removed one stops, a handler assigned before the change survives on the port
+that stayed, out goes to the right endpoint, and a send scheduled ahead is
+held until it is due. Read the file's header before writing another probe:
+the two traps in it (Chromium *has* Web MIDI; the service worker serves
+`index.html` for every navigation and will quietly test the wrong page) each
+cost an hour the first time.
+
+**The Swift is unbuilt.** It is written against the CoreMIDI API and compiles
+in principle, but no Mac has seen it: per CLAUDE.md it does not count until
+Xcode says so on the owner's machine. What to look for on the first run is
+`[ModMidi] plugin registered` in the device log — its absence is the
+app-target registration problem, and it looks exactly like a device with no
+MIDI.
 
 Consequences worth stating plainly:
 
 - The finished iPhone app is a **better** MIDI host than any browser.
 - The **web build stays desktop-only** for MIDI (Chrome, Edge, Opera). That
-  is permanent, and the pane should say so rather than implying a fix is
-  coming.
-- This is a precondition for testing the mapping mode on a phone at all, so
-  it goes before the rest of section 2.
+  is permanent, and the pane says so rather than implying a fix is coming.
 
 ### What exists
 
@@ -1176,9 +1205,9 @@ unchanged.
 4. **Drop Standards, add iReal Pro import** — done (4.9.9.9.9.4). The
    v4.7.2 branch re-applied on top of the chord model, with its chords now
    going through `slotFromChordSymbol`.
-5. **MIDI** — `navigator.requestMIDIAccess` over CoreMIDI first (step 0
-   above), because without it none of the mapping mode can be tried on a
-   phone. Then Mapping Mode. Independent of audio; can run alongside.
+5. **MIDI** — the CoreMIDI plugin and its `requestMIDIAccess` shim are
+   written (4.9.9.9.9.6) and verified on the web side; the Swift is unbuilt
+   until a Mac compiles it. Mapping Mode next, on top of it.
 6. **iOS shell** — the Capacitor project is in `ios/` (4.9.3), with the
    app icon and `.playback` audio (sound with the silent switch on). Still to
    come: the Swift audio host, haptics, IAP, text recognition for picture
