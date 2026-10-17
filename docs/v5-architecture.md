@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **iOS project committed** (`ios/`, Capacitor 8.5.2); native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next |
+| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -312,6 +312,15 @@ one of the 344 factory patches can be checked, not a handful.
 3. **The iOS shell.** Capacitor project, the Swift audio host, the
    `modEngine` plugin. This step needs a Mac with Xcode to build and a phone
    to run — the code is written here, the build is yours.
+
+   **Half done, and the unfinished half is documented below ("The native
+   host, and where it stops").** On the Mac: the app builds and runs on an
+   iPhone, the C++ engine compiles into the target with `-ffp-contract=off`
+   proved in the build log *and* in the generated instructions, the null test
+   passes there (516/516 bit-identical, 24.2M samples, Apple clang on
+   arm64), and the `ModEngine` plugin registers and takes messages. What does
+   not work yet is the audio graph staying alive; no sound has come out of
+   the native engine.
 4. **Parts move over one at a time:** chords first (least timing-critical),
    then melody, bass, arp, then the drums and the sampled instruments
    (`samples/`, 11 MB, decoded natively instead of in the web view).
@@ -909,6 +918,80 @@ native engine finds the asset by id. It goes with the native sampler.
   store, so there is one engine contract and the traces keep proving it. It
   matters less than it sounds, because the web build is not the product
   (below).
+
+### The native host, and where it stops
+
+The first time any of this was built on a Mac. Everything from the page down
+to the DSP works; the audio graph does not stay up. Written down because the
+measurements cost an evening and should not be taken again.
+
+**What is proved, on the phone:**
+
+| | |
+|---|---|
+| C++ in the app target | `-ffp-contract=off` and `-std=c++17` in both response files, and `modsynth.o` holds no fused multiply-add. At `-O2` the same file compiles to 275 of them without the flag and 45 with it — and 45 is the count in the Makefile configuration the null test proves bit-identical, so the iOS build matches the configuration that was *measured*, not just the flag that was asked for |
+| Null test, on this Mac | 516/516 bit-identical, 24,261,632 samples, Apple clang, arm64, Node 22 |
+| Plugin registration | `capacitorDidLoad, bridge=yes, registered=yes` |
+| JS → Swift → C++ | 262 parameters, right values at right indices; matrix and both motion lanes; `dropped=0`, `refused=0`, `failed=0` |
+| Notes reaching the DSP | `notesOn=45` |
+| **The graph staying alive** | **fails** |
+| **Any sound** | **never achieved** |
+
+**Three traps on the way in, each costing a round trip:**
+
+1. **Capacitor does not find a plugin declared in the app target.** It finds
+   the ones in Swift packages (its CLI writes them into `CapApp-SPM`). An
+   app-target `CAPBridgedPlugin` must be handed over with
+   `bridge.registerPluginType` from a `CAPBridgeViewController` subclass —
+   and the subclass must be named where the window is actually built, which
+   is `SceneDelegate`, not `Main.storyboard`. Setting the storyboard's class
+   does nothing; `SceneDelegate` constructs the controller in code.
+2. **`Capacitor.registerPlugin` does not exist in this app.** That is
+   `@capacitor/core`'s JavaScript, and the app has no bundler, so only the
+   injected bridge global is present. `Capacitor.Plugins` holds only what the
+   bridge put there (CapacitorHttp, Console, WebView, CapacitorCookies,
+   SystemBars, Haptics) because it is built from the `PluginHeaders` injected
+   when the web view is configured — before `capacitorDidLoad` runs. The way
+   in is `Capacitor.nativePromise('ModEngine', method, opts)`, which does not
+   consult the headers.
+3. **The worklet reconnects itself.** The mõdSynth engine sleeps after 14 s
+   idle and `wake()` plugs its node back into its rack, undoing the
+   disconnect that silences it. Both engines then play at once.
+
+**Where it stops.** The `AVAudioEngine` renders **34,816 frames — 0.73 s at
+48 kHz — and stops**, identically on every run. Deterministic, so not an
+interruption. The likely cause is that the engine and the WKWebView's own
+`AudioContext` share one `AVAudioSession` and WebKit reconfigures it.
+
+A watchdog that restarts the engine is **the wrong fix** and was tried: it
+restarted 17 times in half a minute, and the restarts are audible — crackles,
+seconds of latency, the whole app sluggish. Worse than the bug.
+
+It also breaks scheduling. A worklet `at` is an absolute frame on the *web*
+clock; rebasing it onto the native engine needs both clocks ticking at the
+same rate, and a stopping engine's does not. Measured: 45 notes applied, **0
+voices ever sounding**, 1.4 ms of CPU per block spent walking an event queue
+that never comes due. Dropping `at` (notes play at the next block boundary)
+is the right trade for an A/B; sample accuracy returns at step 5, where the
+native engine owns the clock and there is only one.
+
+**What to try next, in order:**
+
+1. Own the session once in `AppDelegate` — category and options set before
+   the web view starts, `setActive` never called from the plugin — so WebKit's
+   reconfiguration does not fight it. Cheapest, and the most likely cause.
+2. Stop sharing: suspend the web `AudioContext` while the native engine owns
+   a part. Removes the conflict by construction, but it means native owns
+   everything, which is step 4, not an A/B.
+3. `AUAudioUnit` instead of `AVAudioEngine`, for direct control of the session.
+
+**And a note on the A/B itself.** Running both engines at once, in one
+process, over one audio session, is the hardest configuration there is — and
+it is not the configuration that ships. It may be better to prove the native
+engine *alone* (native owns the chord part; the web engine for that part
+genuinely shut down, not merely disconnected) and compare against a separate
+web build by ear and by Instruments. Less convenient than a switch, far less
+likely to fight itself.
 
 ### Haptics
 
