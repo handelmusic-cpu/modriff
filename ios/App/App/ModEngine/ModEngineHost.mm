@@ -110,6 +110,8 @@ double num(id value, double fallback = 0) {
   os_unfair_lock _pushLock;
   std::atomic<uint64_t> _frames;
   std::atomic<uint32_t> _dropped;
+  std::atomic<uint32_t> _notesOn;
+  std::atomic<float> _peak;
   int _maxFrames;
 }
 
@@ -120,6 +122,8 @@ double num(id value, double fallback = 0) {
     _pushLock = OS_UNFAIR_LOCK_INIT;
     _frames.store(0);
     _dropped.store(0);
+    _notesOn.store(0);
+    _peak.store(0.0f);
     for (int p = 0; p < kMaxParts; p++) {
       _live[p].store(nullptr, std::memory_order_relaxed);
       _matrixScratch[p].reserve(kMaxMatrixRows);
@@ -254,7 +258,8 @@ double num(id value, double fallback = 0) {
   switch (m.type) {
     case MsgType::Param:       p->setParam(m.i, m.v); break;
     case MsgType::ParamAll:    p->setAllParams(m.payload.params, m.i); break;
-    case MsgType::NoteOn:      p->noteOnMsg(m.note, m.vel, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
+    case MsgType::NoteOn:      _notesOn.fetch_add(1, std::memory_order_relaxed);
+                               p->noteOnMsg(m.note, m.vel, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
     case MsgType::NoteOff:     p->noteOffMsg(m.note, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
     case MsgType::Choke:       p->chokeMsg(m.note, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
     case MsgType::Panic:       p->panic(); break;
@@ -311,11 +316,48 @@ double num(id value, double fallback = 0) {
     }
   }
 
+  // Loudest sample this block, held until read. Silence and work are
+  // indistinguishable in a load figure; they are not in this.
+  float pk = 0.0f;
+  for (int i = 0; i < frames; i++) {
+    const float a = left[i] < 0 ? -left[i] : left[i];
+    if (a > pk) pk = a;
+  }
+  float was = _peak.load(std::memory_order_relaxed);
+  while (pk > was && !_peak.compare_exchange_weak(was, pk, std::memory_order_relaxed)) {}
+
   _frames.fetch_add((uint64_t)frames, std::memory_order_relaxed);
+}
+
+// Off the audio graph: no AVAudioEngine, no render callback, no session.
+// Just the DSP, asked whether it produces anything.
+- (float)renderOfflinePeakForPart:(int)part frames:(int)frames {
+  modsynth::Processor *p = (part >= 0 && part < kMaxParts)
+                         ? _live[part].load(std::memory_order_acquire) : nullptr;
+  if (!p) return -1.0f;                        // no processor: a different answer from silence
+  if (frames > _maxFrames) frames = _maxFrames;
+  // Messages are only applied by whoever drains the queue, and here that is
+  // nobody — there is no render callback running. Drain it first, or this
+  // renders a processor that has never been told to play anything and
+  // reports silence, which is the wrong answer for the right reason.
+  Msg m;
+  while (_queue.pop(m)) {
+    modsynth::Processor *q = _live[m.part].load(std::memory_order_acquire);
+    if (q) [self applyMessage:m to:q];
+  }
+  float pk = 0.0f;
+  p->process(_scratchL.data(), _scratchR.data(), frames);
+  for (int i = 0; i < frames; i++) {
+    const float a = _scratchL[i] < 0 ? -_scratchL[i] : _scratchL[i];
+    if (a > pk) pk = a;
+  }
+  return pk;
 }
 
 - (uint64_t)framesRendered { return _frames.load(std::memory_order_relaxed); }
 - (uint32_t)dropped        { return _dropped.load(std::memory_order_relaxed); }
+- (uint32_t)notesOn        { return _notesOn.load(std::memory_order_relaxed); }
+- (float)peakOut           { return _peak.exchange(0.0f, std::memory_order_relaxed); }
 
 - (int)activeVoices {
   int n = 0;
