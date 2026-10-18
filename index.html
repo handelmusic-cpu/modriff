@@ -7290,7 +7290,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.6.1</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.6.2</span>
     </div>
    </div>
   </div>
@@ -7327,7 +7327,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.6.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.6.2</span></div>
  </div>
 </div>
 
@@ -9524,7 +9524,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.6.1';
+const MODRIFF_VERSION = '4.9.9.9.9.6.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -44820,9 +44820,26 @@ function sqDraw(){
   }
   var c=sqCtx();if(!c){sqRafID=requestAnimationFrame(sqDraw);return;}
   try{ _sqQueueTick(c); }catch(e){}
-  // Use seqStep directly — it's always monotonically incrementing
-  // Subtract 1 because seqStep has already advanced past the current step
-  var ds=((sqSeqStep-1)%sqSteps+sqSteps)%sqSteps;
+  // Which step you can actually HEAR right now — not which one the scheduler
+  // has reached.
+  //
+  // sqSeqStep is the scheduler's pointer and sqNextT is when that step will
+  // sound, so the scheduler always runs a lookahead ahead of the audio. This
+  // used to subtract a hard-coded 1, which is only right when the lookahead
+  // happens to be one step. It is not: the lookahead grows on a slower
+  // device and when Timing is set to Steadier, and on the phone that put the
+  // beat dots a full beat — four sixteenths — ahead of the sound.
+  //
+  // Counting back from sqNextT instead is exact at any lookahead, and costs
+  // one divide per frame. ceil, because a step is sounding from its own time
+  // until the next one's. The output latency matters too: audio scheduled at
+  // T is heard at T + outputLatency, so what you hear now was scheduled that
+  // much earlier — small in a browser, not always small on a phone.
+  var _sd=sqSd();
+  var _heard=c.currentTime-(c.outputLatency||c.baseLatency||0);
+  var _ahead=Math.ceil((sqNextT-_heard)/_sd);
+  if(!isFinite(_ahead)||_ahead<1) _ahead=1;
+  var ds=((sqSeqStep-_ahead)%sqSteps+sqSteps)%sqSteps;
   if(ds!==sqDispStep){
     // The grid, the playhead and the step/bar readouts all live inside the drum
     // panel, so none of it is worth a single DOM write when that panel is not

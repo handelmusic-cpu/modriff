@@ -61,8 +61,27 @@ try {
 const app = `${DD}/Build/Products/${process.env.MODRIFF_CONFIG || 'Debug'}-iphoneos/App.app`;
 if (!existsSync(app)) { console.error('built, but no App.app at ' + app); process.exit(1); }
 
+// devicectl reports a locked phone, a revoked trust and a full disk as the
+// same kind of failure: a page of nested JSON with the one English sentence
+// in the middle. Node then prints its own stack on top of that, which says
+// nothing at all. Find the sentence.
+function devicectl(what, args) {
+  try {
+    return sh('xcrun', ['devicectl', ...args]);
+  } catch (e) {
+    const log = ((e.stdout || '') + (e.stderr || '')).toString();
+    const reason = (log.match(/NSLocalizedFailureReason = ([^\n\\]+)/) ||
+                    log.match(/The operation couldn.t be completed\. ([^\n\\]+)/) || [])[1];
+    console.error(`could not ${what}: ${(reason || '').trim() || 'see below'}`);
+    if (/unlock/i.test(log)) console.error('  → unlock the iPhone and run this again.');
+    else if (/trust/i.test(log)) console.error('  → tap Trust on the iPhone and run this again.');
+    else if (!reason) console.error(log.split('\n').slice(0, 12).join('\n'));
+    process.exit(1);
+  }
+}
+
 console.log('installing…');
-sh('xcrun', ['devicectl', 'device', 'install', 'app', '--device', udid, app]);
+devicectl('install', ['device', 'install', 'app', '--device', udid, app]);
 console.log('launching…');
-sh('xcrun', ['devicectl', 'device', 'process', 'launch', '--terminate-existing', '--device', udid, BUNDLE]);
+devicectl('launch', ['device', 'process', 'launch', '--terminate-existing', '--device', udid, BUNDLE]);
 console.log('running on the phone.');
