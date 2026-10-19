@@ -15,10 +15,15 @@ constexpr int kMaxParts = 8;
 // cap is what lets a matrix travel through the queue as a POD. 32 is well
 // clear of the largest factory patch, and setMatrix is told the real count.
 constexpr int kMaxMatrixRows = 32;
-// 256 messages of headroom between the caller's thread and the audio thread.
-// At a 128-frame block that is far more than a buffer's worth of traffic even
-// when a whole chord, its matrix and a patch change arrive together.
-constexpr int kQueueSlots = 256;
+// Headroom between the caller's thread and the audio thread. 256 was not
+// enough: a patch change is a pAll, a matrix, two motion lanes and a burst of
+// parameter writes, and several in a row overran it. The queue drops what
+// will not fit, and the message most likely to be dropped in a burst is the
+// note-off at the end of it — which is a note that hangs.
+//
+// 1024 slots is four batches of the 128 the page sends at once, and costs
+// about 1.4 MB of the message union. Memory is the cheap side of that trade.
+constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
   Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
@@ -35,6 +40,8 @@ struct Msg {
   uint8_t part;
   uint8_t idKind;      // modsynth::NoteId::Kind
   bool hasAt;
+  bool hasAtRel;       // `at` given as frames from now, not an absolute frame
+  double atRel;
   bool hasBeat;
   bool flag;           // sustain on/off
   int32_t i;           // param index | cc number | macro index | motion lane | row/step count
@@ -112,6 +119,10 @@ double num(id value, double fallback = 0) {
   std::atomic<uint32_t> _dropped;
   std::atomic<uint32_t> _notesOn;
   std::atomic<float> _peak;
+  // Frames each processor has rendered, including the warm-up's. Processor
+  // keeps its own frame counter privately and `at` is measured against it, so
+  // the host has to know the same number to turn "in 20 ms" into a frame.
+  uint64_t _partFrames[kMaxParts];
   int _maxFrames;
 }
 
@@ -126,6 +137,7 @@ double num(id value, double fallback = 0) {
     _peak.store(0.0f);
     for (int p = 0; p < kMaxParts; p++) {
       _live[p].store(nullptr, std::memory_order_relaxed);
+      _partFrames[p] = 0;
       _matrixScratch[p].reserve(kMaxMatrixRows);
     }
     _scratchL.assign((size_t)_maxFrames, 0.0f);
@@ -163,7 +175,8 @@ double num(id value, double fallback = 0) {
     p->noteOffMsg(48 + i, modsynth::NoteId::num(90000 + i), true, 4096);
   }
   const int blk = _maxFrames < 512 ? _maxFrames : 512;
-  for (int n = 0; n < 16; n++) p->process(_scratchL.data(), _scratchR.data(), blk);
+  for (int n = 0; n < 16; n++) { p->process(_scratchL.data(), _scratchR.data(), blk);
+                                 _partFrames[part] += (uint64_t)blk; }
   p->panic();
   // panic() silences the voices; the capacity those vectors took stays.
 }
@@ -182,6 +195,9 @@ double num(id value, double fallback = 0) {
   id atVal = message[@"at"];
   m.hasAt = (atVal != nil && atVal != [NSNull null]);
   m.at = num(atVal, 0);
+  id atRelVal = message[@"atRel"];
+  m.hasAtRel = (atRelVal != nil && atRelVal != [NSNull null]);
+  m.atRel = num(atRelVal, 0);
   m.idKind = idKindOf(message[@"id"]);
   m.id = num(message[@"id"], 0);
   m.note = num(message[@"note"], 0);
@@ -255,36 +271,47 @@ double num(id value, double fallback = 0) {
 // Nothing below allocates, frees, locks, or touches Objective-C refcounting.
 
 - (void)applyMessage:(const Msg &)m to:(modsynth::Processor *)p {
-  switch (m.type) {
-    case MsgType::Param:       p->setParam(m.i, m.v); break;
-    case MsgType::ParamAll:    p->setAllParams(m.payload.params, m.i); break;
+  // "In N frames from now" becomes an absolute frame here, against the only
+  // clock that matters — the one Processor schedules against. Sending an
+  // absolute frame from the page cannot work: the web AudioContext and this
+  // engine start at different moments, and a note was landing as late as the
+  // web context was old (measured: eight seconds).
+  Msg mm = m;
+  if (mm.hasAtRel) {
+    mm.at = (double)_partFrames[mm.part] + mm.atRel;
+    mm.hasAt = true;
+  }
+  const Msg &r = mm;
+  switch (r.type) {
+    case MsgType::Param:       p->setParam(r.i, r.v); break;
+    case MsgType::ParamAll:    p->setAllParams(r.payload.params, r.i); break;
     case MsgType::NoteOn:      _notesOn.fetch_add(1, std::memory_order_relaxed);
-                               p->noteOnMsg(m.note, m.vel, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
-    case MsgType::NoteOff:     p->noteOffMsg(m.note, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
-    case MsgType::Choke:       p->chokeMsg(m.note, noteIdFrom(m.idKind, m.id), m.hasAt, m.at); break;
+                               p->noteOnMsg(r.note, r.vel, noteIdFrom(r.idKind, r.id), r.hasAt, r.at); break;
+    case MsgType::NoteOff:     p->noteOffMsg(r.note, noteIdFrom(r.idKind, r.id), r.hasAt, r.at); break;
+    case MsgType::Choke:       p->chokeMsg(r.note, noteIdFrom(r.idKind, r.id), r.hasAt, r.at); break;
     case MsgType::Panic:       p->panic(); break;
     case MsgType::AllOff:      p->allNotesOff(); break;
-    case MsgType::Mw:          p->setMw(m.v); break;
-    case MsgType::Bend:        p->setBend(m.v); break;
-    case MsgType::Aftertouch:  p->setAt(m.v); break;
-    case MsgType::CC:          p->setCC(m.i, m.v); break;
-    case MsgType::Sustain:     p->setSustain(m.flag); break;
-    case MsgType::Macro:       p->setMacro(m.i, m.v); break;
-    case MsgType::Cap:         p->setCap(m.uni, m.poly); break;
-    case MsgType::Tempo:       p->setTempo(m.v, m.hasBeat, m.beat); break;
-    case MsgType::Motion:      p->setMotion(m.i, m.payload.motion, (int)m.vel); break;
+    case MsgType::Mw:          p->setMw(r.v); break;
+    case MsgType::Bend:        p->setBend(r.v); break;
+    case MsgType::Aftertouch:  p->setAt(r.v); break;
+    case MsgType::CC:          p->setCC(r.i, r.v); break;
+    case MsgType::Sustain:     p->setSustain(r.flag); break;
+    case MsgType::Macro:       p->setMacro(r.i, r.v); break;
+    case MsgType::Cap:         p->setCap(r.uni, r.poly); break;
+    case MsgType::Tempo:       p->setTempo(r.v, r.hasBeat, r.beat); break;
+    case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
       // resize() inside the reserved capacity does not allocate, and
       // setMatrix's copy-assign reuses the engine's buffer because warmUp
       // already grew it to kMaxMatrixRows.
-      std::vector<modsynth::MatrixRow> &rows = _matrixScratch[m.part];
-      rows.resize((size_t)m.i);
-      for (int r = 0; r < m.i; r++) {
-        rows[r].s = m.payload.matrix[r][0];
-        rows[r].d = m.payload.matrix[r][1];
-        rows[r].a = m.payload.matrix[r][2];
-        rows[r].u = m.payload.matrix[r][3];
-        rows[r].v = m.payload.matrix[r][4];
+      std::vector<modsynth::MatrixRow> &rows = _matrixScratch[r.part];
+      rows.resize((size_t)r.i);
+      for (int k = 0; k < r.i; k++) {
+        rows[k].s = r.payload.matrix[k][0];
+        rows[k].d = r.payload.matrix[k][1];
+        rows[k].a = r.payload.matrix[k][2];
+        rows[k].u = r.payload.matrix[k][3];
+        rows[k].v = r.payload.matrix[k][4];
       }
       p->setMatrix(rows);
       break;
@@ -310,6 +337,7 @@ double num(id value, double fallback = 0) {
     modsynth::Processor *p = _live[part].load(std::memory_order_acquire);
     if (!p) continue;
     p->process(_scratchL.data(), _scratchR.data(), frames);
+    _partFrames[part] += (uint64_t)frames;
     for (int i = 0; i < frames; i++) {
       left[i]  += _scratchL[i];
       right[i] += _scratchR[i];
@@ -347,6 +375,7 @@ double num(id value, double fallback = 0) {
   }
   float pk = 0.0f;
   p->process(_scratchL.data(), _scratchR.data(), frames);
+  _partFrames[part] += (uint64_t)frames;
   for (int i = 0; i < frames; i++) {
     const float a = _scratchL[i] < 0 ? -_scratchL[i] : _scratchL[i];
     if (a > pk) pk = a;
