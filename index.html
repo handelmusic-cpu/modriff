@@ -3969,15 +3969,15 @@ body .perf-bar { gap:4px 5px; }
    last thing on the page above it — a few pixels apart, so reaching for one
    caught the other. The bar gives the handle its own band, and the page keeps
    clear of it. */
-.perf-bar { padding-top:20px; }
+.perf-bar { padding-top:26px; }
 #page-perform { margin-bottom:14px; }
 /* A real element, not ::before. A pseudo-element cannot take a gesture, and
    this one has to: drawing a grab handle and then not letting anyone pull it
    is worse than drawing nothing. Its hit area is the full width of the bar's
    top edge, so the drag does not require finding a 34px target. */
 #ft-drawer-grip {
- position:absolute; top:0; left:0; right:0; height:18px;
- z-index:2; cursor:pointer;
+ position:absolute; top:0; left:0; right:0; height:24px;
+ z-index:2; cursor:pointer; touch-action:none;
  display:flex; align-items:center; justify-content:center;
  /* It is a <button>, so without this it takes the UA's chrome — which drew a
     full-width white slab across the top of the transport, over the parts row. */
@@ -3991,14 +3991,37 @@ body .perf-bar { gap:4px 5px; }
    open, down (same place) to put it away — and is drawn at 70% of the text
    colour so it reads on both themes. :has() follows the sheet's own .open,
    which half a dozen places in the app set and clear. */
-#ft-drawer-grip::before {
- content:''; width:30px; height:9px;
- background:color-mix(in srgb, var(--text) 70%, transparent);
- clip-path:polygon(50% 0, 100% 100%, 0 100%);
- transition:transform .18s ease, background .12s;
+/* Louder in 4.9.9.9.9.7, because "I didn't know there was a sheet" kept
+   coming back: the triangle is bigger, it is the accent colour rather than a
+   dimmed text grey, and the band it sits in carries a faint wash of the same
+   colour so there is visibly a strip to pull rather than a mark floating on
+   the bar. The band is also the swipe target (see wireFtSheetSwipe), which is
+   why it is 24px rather than 18. */
+#ft-drawer-grip::after {
+ content:''; position:absolute; inset:0; pointer-events:none;
+ background:linear-gradient(to bottom, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+ border-top:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+ border-radius:14px 14px 0 0;
 }
-#ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { background:var(--text); }
-body:has(#ft-more-menu.open) #ft-drawer-grip::before { transform:rotate(180deg); background:var(--text); }
+#ft-drawer-grip::before {
+ content:''; position:relative; z-index:1; width:40px; height:12px;
+ background:var(--accent);
+ clip-path:polygon(50% 0, 100% 100%, 0 100%);
+ transition:transform .18s ease, background .12s, filter .12s;
+ filter:drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 55%, transparent));
+}
+#ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { filter:drop-shadow(0 0 9px var(--accent)); }
+body:has(#ft-more-menu.open) #ft-drawer-grip::before { transform:rotate(180deg); }
+/* Until the sheet has been opened once, the handle breathes. It stops for
+   good on the first open (modo-sheet-seen), so it is a one-time hint and not
+   a thing blinking at the bottom of the screen forever. */
+body.sheet-unseen #ft-drawer-grip::before { animation:ftGripHint 2.4s ease-in-out 3; }
+@keyframes ftGripHint {
+ 0%, 100% { transform:translateY(0) scale(1); }
+ 12% { transform:translateY(-3px) scale(1.12); }
+ 24% { transform:translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce){ body.sheet-unseen #ft-drawer-grip::before { animation:none; } }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -4280,7 +4303,7 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
  background:rgba(8,9,18,.985); border-top:1px solid var(--border2);
  border-radius:14px 14px 0 0;
  padding:12px 12px 14px; box-shadow:0 -10px 30px rgba(0,0,0,.55); z-index:600;
- max-height:min(62vh, 520px); overflow-y:auto;
+ max-height:min(62vh, 520px); overflow-y:auto; overscroll-behavior:contain;
  /* 98.5% opaque already; a blur behind it cost a full-width re-blur per frame
     for nothing anyone could see. See .modal-overlay. */
 }
@@ -6777,14 +6800,20 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   .subnav-dock .subnav-btn { padding-top:3px; padding-bottom:3px; font-size:.5rem; }
   .tab-btn { padding:8px 2px 7px; font-size:.5rem; }
 
-  .perf-bar { padding-top:14px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
-  #ft-drawer-grip { height:11px; }
-  #ft-drawer-grip::before { height:6px; width:24px; }
+  .perf-bar { padding-top:17px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
+  /* Sideways the bar is fighting for every pixel, so the handle keeps the
+     smaller triangle it has always had here — the accent colour and the glow
+     carry the "pull me" on their own, and the beat strip is drawn across this
+     same band (see #ft-beat-dots below). */
+  #ft-drawer-grip { height:15px; }
+  #ft-drawer-grip::before { height:7px; width:28px; }
   body .perf-bar .ft-break { display:none; }
   /* width:auto, not the base rule's 100%: with both left/right insets and a
      width set, the right inset is ignored, so the strip ran 14px past the
      right edge of every landscape phone. */
-  .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; width:auto; top:10px; order:0; height:3px; gap:3px; pointer-events:none; }
+  /* Just under the handle's triangle, not through it: the triangle grew in
+     4.9.9.9.9.7 and at top:10px the dots ran across its middle. */
+  .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; width:auto; top:13px; order:0; height:3px; gap:3px; pointer-events:none; }
   .perf-bar #ft-beat-dots .beat-dot { height:3px; }
   .perf-bar #ft-playstop-btn { width:32px; height:32px; }
   body .perf-bar #ft-chd-btn, body .perf-bar #ft-drum-btn,
@@ -52005,6 +52034,8 @@ function toggleFtMore(e){
   if(e) e.stopPropagation();
   var m = document.getElementById('ft-more-menu'); if(!m) return;
   var open = m.classList.toggle('open');
+  // However it was opened — tap or swipe — the handle stops hinting.
+  if(open && typeof _ftSheetMarkSeen==='function') _ftSheetMarkSeen();
   if(open){
     // Both ◀ halves say how many chords or notes they would take, and the
     // melody one deliberately does not repaint on every note played — see
@@ -52060,6 +52091,102 @@ function ftSmpResample(){
   if(typeof smpRecStart==='function') smpRecStart('app');
   if(typeof smpOpenLibrary==='function') smpOpenLibrary();
 }
+// ── Swiping the sheet open and closed (4.9.9.9.9.7) ─────────────────────
+// The handle has always been a tap (see the note above: a drag-only handle
+// was wrong, and the two paths fought each other). A tap is still the way in
+// — the button stays, and it is louder now — but a drawer that rises from the
+// bottom of the screen should also answer the gesture it looks like it
+// answers. So: swipe up anywhere on the handle band to open, swipe down on
+// the handle or anywhere on the sheet to close.
+//
+// Two different event families on purpose:
+//   · the handle band uses pointer events, because it is touch-action:none
+//     and nothing there scrolls, so a pointermove is always a gesture.
+//   · the sheet uses touch events, because it DOES scroll. A pointermove
+//     inside a scrolling element is cancelled the moment the browser decides
+//     the gesture was a scroll, so the close swipe is only read when the
+//     sheet is already at its top (nothing to scroll up to) — which, with
+//     overscroll-behavior:contain above, means no scroll starts and the
+//     gesture survives. Dragging a knob or typing a patch name inside the
+//     sheet is excluded by hand below.
+var FT_SHEET_SEEN_KEY='modo-sheet-seen';
+// Set by a swipe, read by the click that a browser may send after one. A var,
+// not a let: the handlers below are registered before this line runs, and a
+// let would be in its dead zone for whichever of them fires first (CLAUDE.md).
+var _ftSwiped=false;
+function _ftSheetMarkSeen(){
+ try{ modStore.setItem(FT_SHEET_SEEN_KEY,'1'); }catch(e){}
+ document.body.classList.remove('sheet-unseen');
+}
+(function(){
+ var seen=true;
+ try{ seen = modStore.getItem(FT_SHEET_SEEN_KEY)==='1'; }catch(e){}
+ if(!seen) document.body.classList.add('sheet-unseen');
+})();
+function _ftSheetIsOpen(){ var m=document.getElementById('ft-more-menu'); return !!(m && m.classList.contains('open')); }
+function ftSheetOpen(){
+ _ftSheetMarkSeen();
+ if(!_ftSheetIsOpen()) toggleFtMore();
+}
+function ftSheetClose(){ if(_ftSheetIsOpen()) closeFtMore(); }
+(function wireFtSheetSwipe(){
+ var SWIPE=30;            // px of vertical travel before it counts as one
+ var grip=document.getElementById('ft-drawer-grip');
+ var sheet=document.getElementById('ft-more-menu');
+ if(grip){
+  // The tap path keeps its own onclick; this only ever fires for a drag, and
+  // sets _ftSwiped so the click that may follow one is swallowed.
+  var gx=0, gy=0, gid=null, glive=false;
+  grip.addEventListener('pointerdown', function(e){
+   if(e.pointerType==='mouse' && e.button!==0) return;
+   gid=e.pointerId; gx=e.clientX; gy=e.clientY; glive=true; _ftSwiped=false;
+  });
+  grip.addEventListener('pointermove', function(e){
+   if(!glive || e.pointerId!==gid) return;
+   var dy=e.clientY-gy, dx=e.clientX-gx;
+   if(Math.abs(dy)<SWIPE || Math.abs(dx)>Math.abs(dy)) return;
+   glive=false; _ftSwiped=true;
+   if(dy<0) ftSheetOpen(); else ftSheetClose();
+  });
+  grip.addEventListener('pointerup', function(){ glive=false; });
+  grip.addEventListener('pointercancel', function(){ glive=false; });
+  grip.addEventListener('click', function(e){
+   // The drag already did it. Without this the click toggles it straight
+   // back — the flicker this handle had once before, from the other end.
+   if(_ftSwiped){ _ftSwiped=false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+ }
+ if(sheet){
+  var sx=0, sy=0, slive=false;
+  // What a vertical drag means something else on: the knobs and sliders in
+  // the sheet, the patch name field, and anything that scrolls sideways.
+  var NODRAG='input, select, textarea, [role="slider"]';
+  sheet.addEventListener('touchstart', function(e){
+   if(e.touches.length!==1){ slive=false; return; }
+   var t=e.target;
+   if(t && t.closest && t.closest(NODRAG)){ slive=false; return; }
+   // Only from the top of the sheet: below that, a downward drag is how you
+   // scroll back up through it.
+   if(sheet.scrollTop>1){ slive=false; return; }
+   sx=e.touches[0].clientX; sy=e.touches[0].clientY; slive=true;
+  }, {passive:true});
+  sheet.addEventListener('touchmove', function(e){
+   if(!slive || e.touches.length!==1) return;
+   var dy=e.touches[0].clientY-sy, dx=e.touches[0].clientX-sx;
+   if(dy<SWIPE || Math.abs(dx)>Math.abs(dy)) return;
+   slive=false; _ftSwiped=true;
+   if(e.cancelable) e.preventDefault();
+   ftSheetClose();
+  }, {passive:false});
+  sheet.addEventListener('touchend', function(){ slive=false; }, {passive:true});
+  sheet.addEventListener('touchcancel', function(){ slive=false; }, {passive:true});
+  // A swipe that started on a button must not also press it on the way out.
+  sheet.addEventListener('click', function(e){
+   if(_ftSwiped){ _ftSwiped=false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+ }
+})();
+
 function _ftMoreOutsideClick(e){
   if(_ftMoreIsOpener(e.target)) return;
   // A tutorial card sits over the sheet while it points into it. Its Next
