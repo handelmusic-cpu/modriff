@@ -448,10 +448,40 @@ one of the 344 factory patches can be checked, not a handful.
    arm64), and the `ModEngine` plugin registers and takes messages. What does
    not work yet is the audio graph staying alive; no sound has come out of
    the native engine.
-4. **Parts move over one at a time:** chords first (least timing-critical),
-   then melody, bass, arp, then the drums and the sampled instruments
-   (`samples/`, 11 MB, decoded natively instead of in the web view).
-   mõdFX, reverb and the master bus move with the last of them.
+4. **Everything moves together.** This used to read "parts move over one at
+   a time… mõdFX, reverb and the master bus move with the last of them",
+   and that is wrong. It was tried: the chord part's mõdSynth played
+   natively (4.9.9.9.7, branch `claude/native-audio-session`) and it worked
+   — and sounded wrong, because a part cannot move on its own.
+
+   Native audio leaves through AVAudioEngine and **cannot re-enter a
+   WKWebView's AudioContext**. So the moment any part goes native it is
+   outside everything that is still Web Audio and shared: its own mõdSynth
+   FX rack (`modsynth/fx.js` — convolver, delays, shaper, filters, and the
+   Space and Drive macros that drive them), its part bus, the mixer, mõdFX,
+   the master reverb and the limiter. Measured on the phone: the macros did
+   nothing, mõdFX barely touched the part, and a pad tap was thinner than
+   the same patch auditioned in the editor, which plays through the rack.
+
+   The smallest coherent unit to move is the whole audio output. The work
+   is still done in provable pieces — the FX rack, then the shared chain,
+   then the voices — but the *flip* is one commit, with no half-migrated
+   instrument in between.
+
+   What that means in size, counted: `modsynth/fx.js` is 677 lines, and
+   `index.html` creates Web Audio nodes in 740 places (136 gains, 50
+   oscillators, 45 filters, 20 sample players, 13 shapers, 8 delays, 4
+   convolvers, 3 compressors, 5 panners).
+
+   **And the proof gets weaker, which is worth knowing before it happens.**
+   `dsp.js` could be matched bit for bit because it is plain JavaScript
+   arithmetic — every operation is ours, which is what the null test rests
+   on. `fx.js` is Web Audio *nodes*: the DSP is inside WebKit. Biquads,
+   delays, gains and shaper curves are specified closely enough to match
+   well; `DynamicsCompressorNode` is explicitly implementation-defined and
+   has no answer to match. From the FX rack onward the standard is measured
+   closeness — spectrum and envelope against recorded output, to a stated
+   tolerance — not sample equality.
 5. **The clock moves native.** The sequencer and arp currently schedule
    from JS timers with a lookahead. Once the sound is native, a hiccup on the
    web view's thread can still make a note late; moving the transport into
