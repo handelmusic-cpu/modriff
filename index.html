@@ -6036,8 +6036,9 @@ body .perf-bar .ft-vmt { order:10; }
    same in both. */
 body.mode-basic #page-perform .advanced-only { display:none !important; }
 /* One exception: a mõdSynth voice that's already selected keeps its editor
-   in Basic, so no setup can leave you with a synth you can't reach. Set by
-   msApplyBasicGate(); the extra specificity is what beats the rule above. */
+   in Basic, so no setup can leave you with a synth you can't reach. The class
+   is set by msSyncHost(); the extra specificity is what beats the rule above.
+   Legacy — #modsynth-panel itself is display:none !important since 4.6.0. */
 body.mode-basic #modsynth-panel.advanced-only.ms-force-show { display:block !important; }
 body:not(.mode-basic) .basic-only { display:none !important; }
 body.light-mode .vmt-btn.active { color:#fff; }
@@ -7340,7 +7341,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.1</span>
     </div>
    </div>
   </div>
@@ -7377,7 +7378,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.1</span></div>
  </div>
 </div>
 
@@ -9574,7 +9575,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7';
+const MODRIFF_VERSION = '4.9.9.9.9.7.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -19578,10 +19579,9 @@ function msSyncHost(){
  // In Basic the panel is .advanced-only and would stay hidden even when this
  // page's part IS on mõdSynth. Reveal it only in that case — not merely
  // because some other part uses the synth, which would show the wrong page's
- // editor. msApplyBasicGate() stops Basic from offering the voice at all;
- // this is the escape hatch for setups that already had it selected.
+ // editor. (Legacy either way: the panel this reveals has been
+ // display:none !important since 4.6.0, when Mix › mõdSynth replaced it.)
  panel.classList.toggle('ms-force-show', on);
- if(typeof msApplyBasicGate==='function') msApplyBasicGate();
  // A blank space where the synth should be reads as a missing feature. When
  // this page's part is on some other voice, leave a one-line way in rather
  // than nothing at all.
@@ -20152,6 +20152,7 @@ function msxPickPatch(part, name){
  MSX.state[part]={ patch:name };
  msxSaveState();
  modParamsFlush();
+ if(typeof sndPickSyncAll==='function') sndPickSyncAll();
  msxUiRender();
  if(msxAuditionOn()) msxAudition(part);
 }
@@ -20227,6 +20228,7 @@ function msxApplyValues(part, vals, motion, label, cat){
  MSX.state[part]={ patch:baseName, vals:d, motion:lanes, name:label, cat:cat||'' };
  msxSaveState();
  modParamsFlush();
+ if(typeof sndPickSyncAll==='function') sndPickSyncAll();
 }
 
 // ── The dice ─────────────────────────────────────────────────────────────
@@ -28145,9 +28147,24 @@ function _sndPickReflow(e){ if(_sndPickOpen && !_popOwnScroll(e, _sndPickOpen._p
 // left.
 // Every popover in the app lives on <body> — panels are overflow:hidden for
 // their glow edges and would crop it — so they all place through here.
+// How much of the top of the screen is spoken for. body's padding-top IS the
+// notch strip: the same formula draws body::after over it, at z-index 518 —
+// above every popover here — so anything a list puts in that band is not
+// merely under the status bar on an iPhone, it is under an opaque bar.
+//
+// Measured rather than recomputed from env(), because a custom property
+// holding a calc(env(...)) reads back as the literal text, not as pixels.
+function _popTopKeep(){
+ try{ return parseFloat(getComputedStyle(document.body).paddingTop) || 0; }catch(e){ return 0; }
+}
 function popPlace(anchor, pop){
  if(!anchor || !pop) return;
  const M = 8;
+ // A list anchored to the transport is taller than the screen and opens
+ // upward, so its FIRST entries are the ones that land up here — on the
+ // transport's scale list, Major and Minor. They were unreachable on a
+ // notched iPhone: scrollTop was already 0, so there was nothing to scroll.
+ const TOP = _popTopKeep() + M;
  const b = anchor.getBoundingClientRect();
  // Kept across the re-measure below. Lifting the cap for one measurement
  // makes the list as tall as its contents, which clamps scrollTop to 0, and
@@ -28171,8 +28188,8 @@ function popPlace(anchor, pop){
  const bot = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--botstack')) || 0;
  const below = window.innerHeight - bot - b.bottom - M;
  let y;
- if(h <= below || below >= b.top - M){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
- else { y = Math.max(M, b.top - 4 - h); pop.style.maxHeight = (b.top - M - 4) + 'px'; }
+ if(h <= below || below >= b.top - TOP){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
+ else { y = Math.max(TOP, b.top - 4 - h); pop.style.maxHeight = (b.top - TOP - 4) + 'px'; }
  pop.style.left = x + 'px';
  pop.style.top  = y + 'px';
  pop.style.overflowY = 'auto';
@@ -28442,8 +28459,39 @@ function sndPickSyncLabel(wrap){
  const cur  = wrap.querySelector('.snd-pick-cur');
  if(!host || !cur) return;
  const on = host.querySelector('.tb.active');
- cur.textContent = on ? on.textContent : '—';
+ // "mõdSynth" alone does not say what you are about to hear, and the patch
+ // is two taps away in another tab — so the trigger names it. This is what
+ // makes picking mõdSynth out of the list a sound rather than a destination.
+ if(on && on.dataset && _sndPickWaveOf(on)==='modsynth' && wrap._part){
+  const pn = _msxPatchLabel(wrap._part);
+  cur.textContent = pn ? 'mõdSynth · ' + pn : on.textContent;
+ } else {
+  cur.textContent = on ? on.textContent : '—';
+ }
 }
+// The buttons carry their voice under one of three data attributes, depending
+// on which row built them (wave / arpwave / mlwave).
+function _sndPickWaveOf(b){ return b.dataset.wave || b.dataset.arpwave || b.dataset.mlwave || b.dataset.melwave || null; }
+// What a part's mõdSynth is set to play: its own label if it is a roll or one
+// of yours, otherwise the library patch's name. Empty while the library is
+// still loading, which is the one case the plain label is right for.
+function _msxPatchLabel(part){
+ try{
+  const st = (typeof MSX!=='undefined' && MSX.state[part]) || {};
+  if(st.name) return st.name;
+  if(!(window.MS && MS.PARAM)) return '';
+  const r = msxValuesFor(part);
+  return (r.patch && r.patch.name) || '';
+ }catch(e){ return ''; }
+}
+
+// Every trigger at once. The MutationObserver below only hears the buttons'
+// own class changes, and a part's mõdSynth PATCH changes none of them — so
+// the paths that change it (msxPickPatch, msxApplyValues) call this.
+function sndPickSyncAll(){
+ document.querySelectorAll('.snd-pick').forEach(function(w){ if(w._pop) sndPickSyncLabel(w); });
+}
+window.sndPickSyncAll = sndPickSyncAll;
 
 function sndPickInit(){
  SND_PICK_HOSTS.forEach(spec=>{
@@ -28458,6 +28506,7 @@ function sndPickInit(){
    wrap = document.createElement('div');
    wrap.className = 'snd-pick';
    wrap.id = 'sndpick-' + spec.host;
+   wrap._part = spec.part || null;
    host.parentNode.insertBefore(wrap, host);
    const btn = document.createElement('button');
    btn.className = 'snd-pick-btn';
@@ -45268,7 +45317,17 @@ function sqStop(){
 }
 
 // ── render ──
-function sqRender(){sqRenderMachines();sqRenderGrid();sqRenderPSlots();sqRenderChain();sqUpdateStatus();}
+function sqRender(){sqRenderMachines();sqRenderGrid();sqRenderPSlots();sqRenderChain();sqUpdateStatus();sqAuxSwitchSync();}
+// The transport's Aux switch appears on the one condition that the Aux layer
+// has something on it (_sqAuxHasPart). That was only ever re-asked when a
+// groove loaded or the transport repainted — so a part you programmed by
+// hand, which is what the switch is FOR, left it hidden until something
+// unrelated happened to repaint. Every write to the grid goes through either
+// sqRender (patterns, grooves, swaps, clips, restores) or one of the two live
+// paths that repaint a single cell, so those are the three callers.
+function sqAuxSwitchSync(){
+  if(typeof window._syncAuxTransport==='function') window._syncAuxTransport();
+}
 
 function sqRenderMachines(){
   var row=document.getElementById('sq-machineRow');if(!row)return;row.innerHTML='';
@@ -45561,6 +45620,7 @@ window._sqPlayIn = function(ti, step, accent, vel){
  if(vel > 0) cell.vel = Math.max(1, Math.min(100, Math.round(vel)));
  const el = sqStepEls[ti] && sqStepEls[ti][sIdx];
  if(el) sqRefreshStepEl(el, cell, track.c);
+ sqAuxSwitchSync();
  // Auditioned through sqHitTrack like every other path, so a muted kit stays
  // muted while you play it in.
  try{ sqInitFX(); sqEnsureNoise();
@@ -45576,6 +45636,7 @@ window._sqClearAt = function(step){
   const el=sqStepEls[ti] && sqStepEls[ti][sIdx];
   if(el) sqRefreshStepEl(el, sqGrid[ti][sIdx], tr.c);
  });
+ sqAuxSwitchSync();
 };
 // Which step a hit played in right now would land on. Clamped, because
 // sqDispStep is -1 for the moment between the transport starting and the
@@ -45790,7 +45851,7 @@ function sqAttachStep(el,ti,s,track){
       lastTap = now;
     }
     sqRefreshStepEl(el,cell,track.c);
-    sqMarkSel(); sqSyncInsp();
+    sqMarkSel(); sqSyncInsp(); sqAuxSwitchSync();
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
@@ -51834,7 +51895,6 @@ function setViewMode(mode){
   if(btnB){ btnB.classList.toggle('active', isBasic); }
   if(btnA){ btnA.classList.toggle('active', !isBasic); }
   try{ modStore.setItem('modo-view-mode', mode); }catch(e){}
-  if(typeof msApplyBasicGate==='function') msApplyBasicGate();
   // Basic stacks the playing surfaces and Advanced separates them, so the Play
   // tab has to be laid out again on every switch, not just on a sub-tab tap.
   if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
@@ -51846,27 +51906,20 @@ function setViewMode(mode){
   try{ if(typeof cpRenderUserRow==='function') cpRenderUserRow(); }catch(e){}
 }
 
-// Basic mode hides everything marked .advanced-only, and the mõdSynth editor
-// is one of those — but the voice pickers still offered mõdSynth, so you
-// could select a synth in Basic and have nowhere to edit it. Two halves to
-// the rule: don't offer it, and if something else already selected it (a
-// saved setup, a randomised patch, a preset), show the editor anyway rather
-// than stranding a voice you can't reach.
-function msApplyBasicGate(){
- var isBasic = document.body.classList.contains('mode-basic');
- // Voice dropdowns: drop the option in Basic, but keep it whenever it's the
- // value currently showing, or the select would render blank.
- document.querySelectorAll('select.voice-sel').forEach(function(sel){
-  var opt = Array.prototype.find.call(sel.options, function(o){ return o.value==='modsynth'; });
-  if(!opt) return;
-  var keep = !isBasic || sel.value==='modsynth';
-  opt.hidden = !keep; opt.disabled = !keep;
- });
- // The melody page lists voices as buttons rather than a select.
- document.querySelectorAll('[data-wave="modsynth"]').forEach(function(b){
-  b.style.display = (!isBasic || b.classList.contains('active')) ? '' : 'none';
- });
-}
+// msApplyBasicGate used to live here (4.9.9.9.9.7.1). Live (Basic) hid
+// mõdSynth from every voice picker, because the editor was #modsynth-panel,
+// which is .advanced-only — offering a voice with nowhere to edit it was the
+// bug it was written for. That editor has been dead since 4.6.0 (see the
+// display:none !important on #modsynth-panel): the editor is Mix › mõdSynth
+// now, and Live reaches it exactly as Studio does — which is how "Edit in
+// mõdSynth ›" at the foot of the same picker has been working all along.
+//
+// So the gate was hiding the voice while leaving the way to it in place
+// underneath, and in Live — the default, and the phone's view — the only way
+// to put Chords on mõdSynth was that link and then a second tap on "Play
+// Chords on mõdSynth" in the panel it opened. It is a voice in the list like
+// any other now. The tier gate (freeAllowsVoice) is untouched: that is a
+// different question, still answered where it always was.
 // Attack, release, reverb and strum are off the surface in Basic. This is the
 // way back to them without going to Advanced — Basic is for picking a sound and
 // playing it, but "never" and "not by default" are different promises.
