@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next |
+| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
@@ -1075,6 +1075,42 @@ native engine finds the asset by id. It goes with the native sampler.
   store, so there is one engine contract and the traces keep proving it. It
   matters less than it sounds, because the web build is not the product
   (below).
+
+### Random patches and saved patches (4.9.9.9.9.7)
+
+Two features of the mõdSynth panel, with one architectural consequence
+between them.
+
+**The dice rolls parameters now, not presets.** It used to pick another of
+the 324 factory patches. `modsynth/random.js` rolls the parameters
+themselves: a character first (Keys, Pad, Plucked, Bass, Lead, Bell,
+Texture, biased per part), then the knobs inside that character's bands, in
+*normalised* space so `params.js`'s own curves shape every draw. It starts
+from the schema defaults and writes only what it rolls, so a parameter added
+to `params.js` later keeps its default until somebody puts it in a character
+on purpose. Its header says which parameters are held and why; the rules
+that came out of rendering rolls rather than reading them are marked as
+such, and `tests/modsynth/random.test.js` renders through the real `dsp.js`
+and fails on a roll that is inaudible, infinite, clipping or still ringing
+two seconds after note-off.
+
+**A patch that the library does not have travels as numbers, not as a name.**
+This is the part that constrains the rest. A part's mõdSynth state is
+`{patch, vals, motion}` — the *name* of a library patch plus the edits on
+top — and the engine, this one or a native one, resolves that name against
+the patch library it carries itself (that is why the message is small; see
+"The message, wherever the engine is"). A rolled patch, or one saved under
+`modo-msx-user`, has no name any engine knows: that key lives on one phone.
+So both write the whole parameter set into `vals`, as the diff against
+whichever library patch the part already had, and keep a label beside it for
+the panel to draw. Nothing about the message format, the engine or the
+native side changes — a roll is an edit, as far as they are concerned. The
+same fact gives Undo, setups and share links the new sounds for free, since
+all three snapshot `MSX.state`.
+
+The user bank itself is a *library*, like the sampler's clips: it is not in
+the undo snapshot and does not ride in a share link. Loading one of its
+patches is what lands in the snapshot.
 
 ### The native host, and where it stops
 
