@@ -929,6 +929,29 @@ body.mode-basic #page-perform .key-mode { font-size:.36rem; }
 .key-strip .tg .md-off { display:none !important; }
 .md-fam { display:grid; grid-template-columns:1fr 1fr; gap:0 4px; }
 .md-fam .cp-item { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* A folding family heading. Same look as .cp-sect — it IS a .cp-sect — with
+   a caret that turns and the family's size on the right, so a folded heading
+   still says how much is behind it. The caret is '›', already carried by the
+   font the Tone drawers use it from; a triangle would have needed adding to
+   the symbol subset (see the @font-face note at the top of this file). */
+.cp-fold {
+ display:flex; align-items:center; gap:7px; width:100%; text-align:left;
+ background:none; border-left:0; border-right:0; border-bottom:0; cursor:pointer;
+ font-family:'Outfit',sans-serif; padding-bottom:5px; padding-top:8px;
+}
+.cp-fold:hover { color:var(--text); }
+.cp-fold .cp-fam-name { flex:1 1 auto; min-width:0; }
+.cp-fold .cp-fam-n {
+ flex:none; font-size:.42rem; letter-spacing:0; padding:1px 5px; border-radius:8px;
+ background:rgba(255,255,255,.07); color:var(--muted);
+}
+body.light-mode .cp-fold .cp-fam-n { background:rgba(20,24,50,.07); }
+.cp-caret { flex:none; font-size:.6rem; line-height:1; transition:transform .15s; }
+.cp-fold[aria-expanded="true"] .cp-caret { transform:rotate(90deg); }
+.cp-fold[aria-expanded="true"] { color:var(--text); }
+/* Folded: the heading is there, its scales are not. */
+.cp-fold[aria-expanded="false"] + .md-fam { display:none; }
+@media (prefers-reduced-motion: reduce){ .cp-caret { transition:none; } }
 body.mode-basic .key-strip > .tg { display:none !important; }
 /* The row was the only reason the church modes had a show/hide toggle. */
 body.mode-basic .church-modes-toggle { display:none !important; }
@@ -7341,7 +7364,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.1</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.2</span>
     </div>
    </div>
   </div>
@@ -7378,7 +7401,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.2</span></div>
  </div>
 </div>
 
@@ -9575,7 +9598,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.1';
+const MODRIFF_VERSION = '4.9.9.9.9.7.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11095,9 +11118,22 @@ const EXTRA_SCALES = [
 ];
 // Which family each scale is listed under, in the picker and the Songs menu.
 // The first group is the one the app always had.
+// `open:true` means the scale picker shows this family's scales without being
+// asked; the rest are folded behind their heading. Forty scales in one list
+// is a screen and a half on a phone, and the two families anyone reaches for
+// are at the top of it — so everything below them, your own saved scales
+// included, was a scroll away or off the end entirely.
+//
+// Major and minor pentatonic and the blues scale were inside "Western &
+// symmetrical", which also holds Hijaz and the two symmetrical scales. They
+// are not the same kind of thing and they are not reached for the same
+// amount, so they have their own family — which is also what the mode row on
+// Play has always implied by keeping Maj Pent and Min Pent beside Major and
+// Minor as its four fixed buttons.
 const MODE_FAMILIES = [
- {name:'Modes',                   ids:['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor']},
- {name:'Western & symmetrical',   ids:['hijaz','double_harmonic','whole_tone','diminished','major_pent','minor_pent','blues']},
+ {name:'Modes', open:true,       ids:['major','minor','dorian','phrygian','lydian','mixolydian','locrian','harmonic_minor']},
+ {name:'Pentatonic & blues', open:true, ids:['major_pent','minor_pent','blues']},
+ {name:'Western & symmetrical',   ids:['hijaz','double_harmonic','whole_tone','diminished']},
  {name:'East Asian pentatonic',   ids:['gong','yu','hirajoshi','in_scale']},
  {name:'Indian rāga',             ids:['bhairav','todi','yaman','kafi','asavari','shivaranjani']},
  {name:'Hexatonic',               ids:['african_hex','prometheus','aug_hex']},
@@ -28187,9 +28223,16 @@ function popPlace(anchor, pop){
  // could not be reached. --botstack is their combined height.
  const bot = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--botstack')) || 0;
  const below = window.innerHeight - bot - b.bottom - M;
+ // Opening UPWARD, the list ends just above its trigger — unless the trigger
+ // is itself inside the bottom stack, which the transport's key and mode row
+ // is. Measured against the trigger alone the list ran 59px down over the tab
+ // bar, which paints on top of it: with a few saved scales of your own at the
+ // foot of the scale list, the last two were behind the tabs and no amount of
+ // scrolling brought them up. So the floor is whichever comes first.
+ const floor = Math.min(b.top - 4, window.innerHeight - bot - M);
  let y;
- if(h <= below || below >= b.top - TOP){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
- else { y = Math.max(TOP, b.top - 4 - h); pop.style.maxHeight = (b.top - TOP - 4) + 'px'; }
+ if(h <= below || below >= floor - TOP){ y = b.bottom + 4; pop.style.maxHeight = below + 'px'; }
+ else { y = Math.max(TOP, floor - h); pop.style.maxHeight = (floor - TOP) + 'px'; }
  pop.style.left = x + 'px';
  pop.style.top  = y + 'px';
  pop.style.overflowY = 'auto';
@@ -28271,6 +28314,17 @@ function modeRowSync(){
  if(toggle) toggle.title = 'Fold away everything but Maj, Min and the pentatonics — the ' + fam.name + ' scales come back with + Modes';
 }
 window.modeRowSync = modeRowSync;
+// Whichever family the current scale belongs to is unfolded before the list is
+// shown. Without it, picking a rāga and coming back would show seven folded
+// headings and no sign of which one you are in.
+function mdPickOpenActive(){
+ const pop = document.getElementById('mode-pick-pop'); if(!pop) return;
+ const fam = (typeof modeFamilyOf==='function') ? modeFamilyOf(mode) : null;
+ if(!fam) return;
+ fam.open = true;
+ const h = pop.querySelector('.cp-fold[data-fam="'+(fam.name||'').replace(/"/g,'\\"')+'"]');
+ if(h) h.setAttribute('aria-expanded','true');
+}
 function mdPickSyncLabel(){
  ftKeySync();
  const cur = document.getElementById('mode-pick-cur'); if(!cur) return;
@@ -28375,6 +28429,7 @@ function ftKeyModeOpen(btn){
  cpClose();
  if(wasOpen) return;
  if(typeof sndPickClose==='function') sndPickClose();
+ mdPickOpenActive();
  mdPickSyncLabel();
  wrap._anchor=btn;
  wrap.classList.add('open'); wrap._pop.classList.add('open');
@@ -28403,15 +28458,43 @@ function mdPickInit(){
  const pop = document.createElement('div');
  pop.className = 'chordpick-pop'; pop.id = 'mode-pick-pop';
  // Forty scales as one list was a long scroll with nothing to steer by, so
- // they go by family (MODE_FAMILIES), two to a row.
+ // they go by family (MODE_FAMILIES), two to a row — and since 4.9.9.9.9.7.2
+ // only two of those families are unfolded. The whole list is a screen and a
+ // half on a phone: it opens upward from the transport, so what it pushed off
+ // the end was its last section, which is the one holding the scales you made
+ // yourself. Folded, it fits on the screen with nothing to scroll at all.
+ //
+ // Each heading is the control. A family you are actually in opens itself
+ // (mdPickOpenActive), so the only families you ever have to tap open are the
+ // ones you are not already using.
  MODE_FAMILIES.forEach(function(fam){
-  const head = document.createElement('div');
-  head.className = 'cp-sect'; head.textContent = fam.name;
-  pop.appendChild(head);
   const grid = document.createElement('div');
   grid.className = 'md-fam';
-  fam.ids.forEach(function(k){
-   if(!MODES[k]) return;
+  const ids = fam.ids.filter(function(k){ return !!MODES[k]; });
+  if(!ids.length) return;
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'cp-sect cp-fold';
+  head.dataset.fam = fam.name;
+  head.setAttribute('aria-expanded', fam.open ? 'true' : 'false');
+  head.innerHTML = '<span class="cp-caret" aria-hidden="true">\u203a</span>'
+    + '<span class="cp-fam-name"></span><span class="cp-fam-n" aria-hidden="true"></span>';
+  head.querySelector('.cp-fam-name').textContent = fam.name;
+  head.querySelector('.cp-fam-n').textContent = ids.length;
+  head.addEventListener('click', function(e){
+   e.stopPropagation();
+   const open = head.getAttribute('aria-expanded') !== 'true';
+   head.setAttribute('aria-expanded', open ? 'true' : 'false');
+   fam.open = open;
+   // The list just changed height, which can push it off the top or the
+   // bottom of what it was measured against — same reason snd-tone-head
+   // re-places its popover.
+   popPlace(wrap._anchor || wrap, pop);
+  });
+  pop.appendChild(head);
+
+  ids.forEach(function(k){
    const b = document.createElement('button');
    b.type = 'button'; b.className = 'cp-item'; b.dataset.mode = k;
    b.textContent = MODES[k].label;
@@ -28438,6 +28521,7 @@ function mdPickInit(){
   cpClose();
   if(wasOpen) return;
   if(typeof sndPickClose==='function') sndPickClose();
+  mdPickOpenActive();
   mdPickSyncLabel();
   wrap.classList.add('open'); pop.classList.add('open');
   btn.setAttribute('aria-expanded','true');
