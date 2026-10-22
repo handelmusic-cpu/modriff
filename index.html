@@ -1139,6 +1139,11 @@ body.mode-basic .ps-live-head { display:inline-flex; }
 .ps-panel.ps-noctl > :not(#ps-grid) { display:none !important; }
 /* Live draws the playing surface only. */
 body.mode-basic .ps-studio { display:none !important; }
+/* The mirror of it: Live-only. Reverse lives on the Studio mode row, which
+   Live does not draw, so Live carries its own button on the bottom row.
+   Showing that button in both views instead would put two Reverse controls
+   in Studio, two paint paths to keep in step. */
+body:not(.mode-basic) .ps-liveonly { display:none !important; }
 body.mode-basic .ps-panel { gap:8px; }
 
 /* The Live heading's Melody / Pads switch. */
@@ -7364,7 +7369,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.2</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.3</span>
     </div>
    </div>
   </div>
@@ -7401,7 +7406,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.3</span></div>
  </div>
 </div>
 
@@ -9598,7 +9603,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.2';
+const MODRIFF_VERSION = '4.9.9.9.9.7.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -15661,10 +15666,25 @@ function psBuild(){
   psOpenLoader(PS.sel);
  });
  edit.id='ps-loadbtn';
+ // Reverse, for Live. The Studio mode row has this toggle, and Live does not
+ // draw that row — so until 4.9.9.9.9.7.3 the only way to play a pad
+ // backwards was to leave Live. data-pstog='rev' is the whole wiring:
+ // psRenderDeck already paints every [data-pstog] in the panel from the
+ // selected pad and disables it on an empty one, so this is a second button
+ // on one state, not a copy of it. Labelled in full rather than 'Rev'
+ // because 'Rev' is Reverb on the mõdFX row just below.
+ //
+ // A chip, not a ps-big like the four beside it: six ps-big plus the roll
+ // knob do not fit one line under 430px, and letting them shrink to fit
+ // clipped 'Reverse' at 360. So it wraps either way, and a chip makes the
+ // line it wraps onto 30px instead of 44. Folded Live hides every .ps-row,
+ // so the compact screen pays nothing for it.
+ var rev=psBtn('ps-chip ps-liveonly', 'Reverse', 'Play the selected pad’s sample backwards', function(){ psSet('rev'); });
+ rev.id='ps-rev-live'; rev.dataset.pstog='rev';
  var trim=psBtn('ps-big ps-edit ps-studio', 'Trim…', 'Record, trim or tune the selected pad’s sample in the sampler', function(){ psOpenPad(PS.sel); });
  var clr=psBtn('ps-big ps-studio', 'Clear', 'Empty the selected pad', psClearPad);
  trim.id='ps-trim'; clr.id='ps-clear';
- [hold,roll,psRollKnob(),stop,edit,trim,clr].forEach(function(b){ bot.appendChild(b); });
+ [hold,roll,psRollKnob(),stop,edit,rev,trim,clr].forEach(function(b){ bot.appendChild(b); });
  host.appendChild(bot);
 
  // Bank and quantize — both views.
