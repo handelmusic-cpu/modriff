@@ -16,7 +16,8 @@ are cheaper to make before code than after.
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
-every step ships as a 4.9.x increment (a fourth part where it helps, per the
+every step ships as a 4.9.x increment (a further part where it helps, and a
+trailing lowercase letter for a follow-up to the release just out, per the
 numbering rule in CLAUDE.md).
 
 ---
