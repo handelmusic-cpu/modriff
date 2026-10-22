@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6i</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6j</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6i</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6j</span></div>
  </div>
 </div>
 
@@ -9856,7 +9856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6i';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6j';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -37609,7 +37609,7 @@ function _playChartSlot2(si, ci, atTime){
  const ck=_chordKeyForSlot(slot);
  applyLogicHighlights(ck.deg, ck.label);
  // Auto-regenerate bass line and melody when song loop advances to a new chord (if sync is enabled)
- if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(atTime);
+ if(typeof _bassAutoSync!=='undefined'&&_bassAutoSync) _syncRegenAt(atTime, slot);
 }
 
 // The transport's key arrows (4.5.7). While a song is being performed — Song
@@ -42594,9 +42594,27 @@ function moRestorePrefs(){
 // Regenerating one look-ahead before the chord's own time puts the rewrite in
 // the gap between the last step committed under the old pattern and the first
 // step of the new chord, so the line changes exactly where the chord does.
-function _syncRegenAt(atTime){
+// The chord each part's next line was already written for (_syncPregenNext).
+// Compared by identity, so a jump, an edit or a section change — anything that
+// makes the chord that arrives not the one that was expected — finds no match
+// and writes its line the ordinary way. var: read from _playChartSlot2, which
+// is thousands of lines above.
+var _syncPre = { bl:null, ml:null };
+function _syncRegenAt(atTime, slot){
   var ctx=(typeof getCtx==='function')?getCtx():null;
   var ms=10;
+  // A part whose line for THIS chord was written while the last one played has
+  // it waiting for the chord's first step; rewriting it now would put it back
+  // a loop late (see _blPregen).
+  var preBl = !!slot && _syncPre.bl === slot, preMl = !!slot && _syncPre.ml === slot;
+  if(preBl) _syncPre.bl = null;
+  if(preMl) _syncPre.ml = null;
+  // Where the next chord's line is worked out from: this chord, and when it
+  // starts. Taken now — the song is a chord from moving on by the time the
+  // timeout below runs, but not a lookahead.
+  var startT = (atTime!=null) ? atTime : (ctx ? ctx.currentTime : null);
+  var driving = !!slot && typeof songLoopActive!=='undefined' && songLoopActive && startT!=null;
+  var nextSlot = driving ? _songPeekNextSlot() : null;
   if(atTime!=null && ctx){
     ms=Math.max(0,(atTime-(typeof LOOK_AHEAD!=='undefined'?LOOK_AHEAD:0.1)-ctx.currentTime)*1000);
   }
@@ -42608,9 +42626,41 @@ function _syncRegenAt(atTime){
     // Regenerating on top of that would undo exactly that benefit.
     var blFollowing = (typeof window.blIsFollowOn==='function') && window.blIsFollowOn();
     var mlFollowing = (typeof window.mlIsFollowOn==='function') && window.mlIsFollowOn();
-    if(!blFollowing && typeof window.blGenerate==='function') window.blGenerate();
-    if(!mlFollowing && typeof window.mlGenerate==='function') window.mlGenerate();
+    var reBl = !blFollowing && !preBl, reMl = !mlFollowing && !preMl;
+    if(reBl && typeof window.blGenerate==='function') window.blGenerate();
+    if(reMl && typeof window.mlGenerate==='function') window.mlGenerate();
+    if(driving){
+      // A chord nobody wrote ahead for — the first of a run, or one jumped to —
+      // is sounding now, so its line lands now rather than at the top of the
+      // loop; left pending it would be replaced by the next chord's below.
+      if(reBl && typeof window._blLand==='function') window._blLand();
+      if(reMl && typeof window._mlLand==='function') window._mlLand();
+      // After the line for this chord, not before: that one is written for now
+      // and would replace what is being held for the next chord.
+      try{ _syncPregenNext(slot, startT, nextSlot); }catch(e){}
+    }
   }, ms);
+}
+// Called as the song starts a chord: writes the NEXT chord's line for each part
+// that is free (Follow off) and playing, to take over the moment that chord
+// starts. A chord's own regen (above) only runs after the scheduler has queued
+// its first steps from the previous line, so on its own it is always a loop
+// behind — the bass and melody played every chord over the one before it.
+function _syncPregenNext(slot, startT, next){
+  if(typeof _bassAutoSync==='undefined' || !_bassAutoSync) return;
+  if(!next || next.isRest || !slot) return;
+  var endT = startT + slotTotalMs(slot)/1000;
+  // The chord is played shifted by the live capo; the line has to be written
+  // over what will sound.
+  var capo = (typeof _songBaseRoot!=='undefined' && _songBaseRoot>=0) ? (root - _songBaseRoot) : 0;
+  var rootM = next.rootM + capo, iv = slotIvs(next);
+  // A slash chord's bass note leads the list, as _playChartSlot2 hands it to
+  // setArpChord — the generators read it that way.
+  if(next.bassNote != null) iv = [next.bassNote + capo - rootM].concat(iv);
+  var blFollowing = (typeof window.blIsFollowOn==='function') && window.blIsFollowOn();
+  var mlFollowing = (typeof window.mlIsFollowOn==='function') && window.mlIsFollowOn();
+  _syncPre.bl = (!blFollowing && typeof window._blPregen==='function' && window._blPregen(rootM, iv, endT)) ? next : null;
+  _syncPre.ml = (!mlFollowing && typeof window._mlPregen==='function' && window._mlPregen(rootM, iv, endT)) ? next : null;
 }
 var _bassAutoSync=true;
 function toggleBassSync(){
@@ -48154,6 +48204,10 @@ window._blScheduler = function(){
   }
 
   while(blNextT < horizon){
+    // A line written ahead for a chord (_blPregen) takes over as the first step
+    // of that chord is reached — not at the next top of the loop, which for a
+    // chord of one bar is the chord AFTER it.
+    if(_blPendingAt != null && blNextT >= _blPendingAt - 0.002) _blApplyPending(true);
     // Swing comes off the bar's own step phase, which is the same 16th grid a
     // locked phrase rides, so it is computed before we know which grid the
     // note is coming from.
@@ -48299,7 +48353,7 @@ function blPlay(){
 function blStop(){
   // Stopping is a cycle boundary too: a pending line must not be lost, and
   // the roll must not go on showing a pattern that is no longer next.
-  _blApplyPending();
+  _blApplyPending(true);
   blPlaying = false;
   cancelAnimationFrame(blRafID); blRafID = null;
   blDispStep = -1;
@@ -48969,12 +49023,20 @@ function _blClampLens(){
 // its new line up at the next cycle — Follow mode, which transposes instead of
 // rewriting, is the one that tracks every chord as it lands.
 var _blPendingGrid = null;
+// When a waiting line is meant to take over, if it is for a particular moment
+// and not just "the next time the loop comes round": the start of a chord. Set
+// by _blPregen, held until the scheduler reaches that time, and null for every
+// other pending line — which still lands at the top of the loop, as before.
+var _blPendingAt = null, _blPregenning = false;
 (function(){
  var raw = window.blGenerate;
  window.blGenerate = function(){
   // Here, not in the raw generator: Arrange calls that one with a chord of its
   // own, which must not be "corrected" toward the key.
   if(typeof window._syncLastChordToKey==='function') window._syncLastChordToKey();
+  // A line written now is for now. Whatever was being held for a chord's start
+  // belonged to the chord this replaces.
+  if(!_blPregenning) _blPendingAt = null;
   if(!blPlaying) return raw.apply(this, arguments);
   var live = JSON.parse(JSON.stringify(blGrid));
   var out = raw.apply(this, arguments);
@@ -48994,6 +49056,25 @@ var _blPendingGrid = null;
 // Returns a lock payload rather than touching anything: the grid on screen and
 // the grid being played are both put back exactly as they were, so arranging a
 // twelve-chord chart never disturbs what you are listening to.
+// Writes the next chord's line while the current chord is still sounding, and
+// holds it for that chord's first step. Free mode (Follow off) with Sync on
+// regenerates the bass for each chord, and it used to do it when the chord
+// arrived — by which time the scheduler, a lookahead ahead of the audio, had
+// already queued the new chord's first steps from the old line. The new line
+// then waited for the loop to come round, so the bass played every chord's
+// line over the PREVIOUS chord (measured: 57 of 58 bass notes matched the
+// chord before). Written a chord early it is ready before anything asks.
+window._blPregen = function(rootM, intvs, applyAt){
+ if(!blPlaying) return false;
+ var sR = lastChordRoot, sI = lastChordIntvs;
+ lastChordRoot = rootM; lastChordIntvs = intvs;
+ _blPregenning = true;
+ try{ window.blGenerate(); }
+ finally{ lastChordRoot = sR; lastChordIntvs = sI; _blPregenning = false; }
+ _blPendingAt = applyAt;
+ return true;
+};
+window._blLand = function(){ _blApplyPending(true); };
 window._blLineFor = function(rootM, intvs){
  var saveGrid = blGrid, saveRoot = _blGridRootPc, saveIntvs = _blGridIntvs;
  var saveLCR = lastChordRoot, saveLCI = lastChordIntvs;
@@ -49052,8 +49133,16 @@ function _blQueueWatch(){
  };
  _blQueueRaf = requestAnimationFrame(tick);
 }
-function _blApplyPending(){
+function _blApplyPending(force){
  if(!_blPendingGrid) return;
+ // A line held for a chord's start waits for it, however many times the loop
+ // comes round first. force is the scheduler arriving at that moment, or a
+ // stop; a target already behind the clock is stale and lands at once.
+ if(!force && _blPendingAt != null){
+  var _c0 = (typeof blCtx==='function') ? blCtx() : null;
+  if(blNextT < _blPendingAt - 0.002 && _c0 && _blPendingAt > _c0.currentTime) return;
+ }
+ _blPendingAt = null;
  // A step-count change between the generate and the swap used to THROW THE
  // GENERATED LINE AWAY: the guard compared lengths and dropped the pending
  // grid if they differed. But the pending grid is the one built at the new
@@ -49498,6 +49587,9 @@ window._mlScheduler = function(){
   var following = mlFollow && typeof window._songHasChordWindows==='function'
                   && window._songHasChordWindows();
   while(mlNextT < (typeof schedHorizon==='function'?schedHorizon():ctx.currentTime+0.1)){
+    // See the same line in _blScheduler: a line written ahead for a chord takes
+    // over as that chord's first step is reached.
+    if(_mlPendingAt != null && mlNextT >= _mlPendingAt - 0.002) _mlApplyPending(true);
     var swOff = (typeof window._sqSwingOffset==='function')
       ? window._sqSwingOffset(mlSeqStep, stepSec, swingAmt)
       : ((mlSeqStep % 2 === 1) ? (swingAmt / 100) * stepSec * 0.5 : 0);
@@ -49712,7 +49804,7 @@ function mlPlay(){
 }
 
 function mlStop(){
-  _mlApplyPending();
+  _mlApplyPending(true);
   mlPlaying = false;
   cancelAnimationFrame(mlRafID); mlRafID = null;
   mlDispStep = -1;
@@ -50090,10 +50182,13 @@ function _mlClampLens(){
 }
 
 var _mlPendingGrid = null;
+// See _blPendingAt.
+var _mlPendingAt = null, _mlPregenning = false;
 (function(){
  var raw = window.mlGenerate;
  window.mlGenerate = function(){
   if(typeof window._syncLastChordToKey==='function') window._syncLastChordToKey();
+  if(!_mlPregenning) _mlPendingAt = null;
   if(!mlPlaying) return raw.apply(this, arguments);
   var live = JSON.parse(JSON.stringify(mlGrid));
   var out = raw.apply(this, arguments);
@@ -50107,6 +50202,18 @@ var _mlPendingGrid = null;
 })();
 
 // See _blLineFor — the melody half of Arrange, same contract.
+// See _blPregen — the melody half, for the same reason.
+window._mlPregen = function(rootM, intvs, applyAt){
+ if(!mlPlaying) return false;
+ var sR = lastChordRoot, sI = lastChordIntvs;
+ lastChordRoot = rootM; lastChordIntvs = intvs;
+ _mlPregenning = true;
+ try{ window.mlGenerate(); }
+ finally{ lastChordRoot = sR; lastChordIntvs = sI; _mlPregenning = false; }
+ _mlPendingAt = applyAt;
+ return true;
+};
+window._mlLand = function(){ _mlApplyPending(true); };
 window._mlLineFor = function(rootM, intvs){
  var saveGrid = mlGrid, saveRoot = _mlGridRootPc, saveIntvs = _mlGridIntvs;
  var saveLCR = lastChordRoot, saveLCI = lastChordIntvs;
@@ -50157,8 +50264,14 @@ function _mlQueueWatch(){
  };
  _mlQueueRaf = requestAnimationFrame(tick);
 }
-function _mlApplyPending(){
+function _mlApplyPending(force){
  if(!_mlPendingGrid) return;
+ // See _blApplyPending.
+ if(!force && _mlPendingAt != null){
+  var _c0 = (typeof mlCtx==='function') ? mlCtx() : null;
+  if(mlNextT < _mlPendingAt - 0.002 && _c0 && _mlPendingAt > _c0.currentTime) return;
+ }
+ _mlPendingAt = null;
  // This used to drop the new phrase whenever the step count had changed since
  // it was written — the bug _blApplyPending describes, which was fixed for the
  // bass and never here. The pending grid is the one built at the new length;
@@ -52293,11 +52406,13 @@ const REQUIRED_EXPORTS = {
  _blOnChord:'function', _blClearChords:'function', _songChordWindowAt:'function',
  _songHasChordWindows:'function', blGenerate:'function', setBlGenStyle:'function',
  setBlWave:'function', _blLineFor:'function', _blGenerateRaw:'function',
+ _blOnLiveChord:'function', _blPregen:'function', _blLand:'function',
  // melody generator
  _mlPlaying:'function', _mlCaptureState:'function', _mlRestoreState:'function',
  _mlSetStepsRaw:'function', _mlRenderGrid:'function', _mlGenStyle:'function',
  mlIsFollowOn:'function', mlGenerate:'function', setMlGenStyle:'function',
  setMlWave:'function', _mlLineFor:'function', _mlGenerateRaw:'function',
+ _mlPregen:'function', _mlLand:'function',
  // shared
  _humanT:'function', _humanV:'function', setHumanize:'function',
  prRedraw:'function', prRelayout:'function',
