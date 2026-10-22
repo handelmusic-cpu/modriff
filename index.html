@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6h</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6i</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6h</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6i</span></div>
  </div>
 </div>
 
@@ -9856,7 +9856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6h';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6i';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -32253,7 +32253,9 @@ function exportMidi(){
       // as a full chord, so every rest in the chart came back as a played one.
       if(slot.isRest){ pending+=dur; return; }
       var intvs=[];
-      try{var ext=slot.ext||'triad';intvs=EXTS[ext](slot.triadQ,slot.type7);}catch(e){intvs=[0,4,7];}
+      // slotIvs: a chord with its own notes exports as what it plays, not as
+      // the nearest chord in the old-model fields.
+      try{intvs=slotIvs(slot);}catch(e){intvs=[0,4,7];}
       var notes=intvs.map(function(iv){return Math.max(21,Math.min(108,slot.rootM+iv));});
       // Slash chords carry their bass the way playChartSlot2 sounds it, so the
       // exported chord matches the one printed on the chart.
@@ -34441,6 +34443,8 @@ function playChartSlot(i){
   else { try{ playSlashChord(slot.rootM,intvs,slot.rootM-12,0,true); }catch(e){} }
   }
   if(arpOn){ arpIdx=0; arpDir=1; }
+  // Same as a tap on the Songs chart: the bass and melody follow this chord.
+  _blLiveSlot(slot);
   const ck=_chordKeyForSlot(slot);
   applyLogicHighlights(ck.deg,ck.label);
  });
@@ -37391,7 +37395,8 @@ function _songSig(){
    sections: sections.map(s=>({
     n:s.name, p:secPlays(s),
     sl:(s.slots||[]).map(x=>[x.rootM,x.triadQ,x.type7,x.ext,x.bassNote,
-                             x.bars,x.beats,x.eighths,x.isRest?1:0,x.comp||null,x.voicing||null])
+                             x.bars,x.beats,x.eighths,x.isRest?1:0,x.comp||null,x.voicing||null,
+                             x.ivs?x.ivs.join('.'):null])
    }))
   });
  }catch(e){ return ''; }
@@ -37518,6 +37523,16 @@ function _withSlotVoicing(slot, fn){
  var keep = voicing; voicing = v;
  try{ return fn(); } finally{ voicing = keep; }
 }
+// Hands a chart chord to the generators as the chord now sounding, the way a
+// pad press does (_triggerChordImmediate). The slot goes in whole, so a chord
+// with its own notes (slot.ivs: a typed or imported 13♭9) is followed as what
+// it plays and not as the nearest old-model chord.
+function _blLiveSlot(slot){
+ if(!slot || slot.isRest) return;
+ if(typeof window._blOnLiveChord==='function'){
+  try{ window._blOnLiveChord(slot); }catch(e){}
+ }
+}
 function playChartSlot2(si, ci, atTime){
  const slot = sections[si]?.slots?.[ci];
  // Every slot is a new chord for Vary, even the same chord as the last one.
@@ -37556,6 +37571,16 @@ function _playChartSlot2(si, ci, atTime){
  // _scheduleCompHits), so those hits should decay naturally per the
  // Settings decay knob instead of drone-holding between hits — that's
  // what makes comping sound like playing instead of a static pad.
+ // A chord struck from the chart by hand — a tap on it, the ‹ › arrows, the
+ // builder — is a chord the bass and melody have to follow, exactly as one
+ // from the pads is. Only _playLoopSlot ever published a window for a chart
+ // chord, and it does so for the loop's own chords with a real length and a
+ // next chord to aim at; these hand paths come here without it, so with the
+ // song stopped the bass and melody went on playing over whatever chord was
+ // last in their window (measured: tap Am, bass keeps sounding C and G).
+ // While the loop is running it publishes this chord itself, a moment after
+ // this returns, with the right length — so this stays out of its way.
+ if(!songLoopActive) _blLiveSlot(slot);
  const _comp = _slotComp(slot);
  // As played: held (ring>0, or null = into the next chord) is a held chord;
  // tapped (ring 0) is a struck one that rings out on its own.
@@ -39468,7 +39493,7 @@ function showBassPicker(slot, onChange){
 
  // ── The chord's own tones, as inversions ──
  let intvs=[0,4,7];
- try{ intvs=EXTS[slot.ext||'triad'](slot.triadQ, slot.type7)||intvs; }catch(e){}
+ try{ intvs=slotIvs(slot)||intvs; }catch(e){}
  const seen=new Set();
  const inv=document.createElement('div'); inv.className='dur-preset-grid bp-grid';
  inv.appendChild(mkChip(null,'—','root position'));
@@ -46829,8 +46854,21 @@ window.phraseKey = function(slot){
  // the same key as a slot with no quality at all.
  var q = (slot.triadQ == null) ? '' : slot.triadQ;
  var t = (slot.type7 == null) ? '' : slot.type7;
- return r + '|' + q + '|' + t + '|' +
+ var key = r + '|' + q + '|' + t + '|' +
         (slot.ext||'triad') + '|' + (slot.bassNote!=null ? slot.bassNote : '');
+ // A chord with its own notes shares its old-model fields with the nearest
+ // menu chord (Cmaj7♯11 and Cmaj7 are both "maj7"), so a lock or an Arrange
+ // line made for one answered for the other. The notes go on the key — but
+ // only when they differ from what those fields spell, so every chord that was
+ // already keyed correctly keeps the key its saved locks were filed under.
+ try{
+  if(Array.isArray(slot.ivs) && slot.ivs.length){
+   var legacy = getIntvs(slot.triadQ, slot.type7, slot.ext || 'triad');
+   var a = slot.ivs.join(','), b = legacy.join(',');
+   if(a !== b) key += '|' + a;
+  }
+ }catch(e){}
+ return key;
 };
 function _phraseName(slot){
  try{
@@ -46861,8 +46899,12 @@ function phraseChordList(){
    var k = window.phraseKey(slot);
    if(!k || seen[k]) return;
    seen[k] = 1;
+   // slotIvs, not EXTS: a chord with its own notes (slot.ivs — typed, or from
+   // an imported sheet) is written over as what it plays. The old-model fields
+   // hold only the nearest chord the menu knows, so Arrange wrote a Cmaj7♯11's
+   // line over a plain Cmaj7 and a 13♭9's over a bare dominant.
    var intvs = [0,4,7];
-   try{ intvs = EXTS[slot.ext||'triad'](slot.triadQ, slot.type7) || intvs; }catch(e){}
+   try{ intvs = slotIvs(slot) || intvs; }catch(e){}
    out.push({ key:k, name:_phraseName(slot), rootPc:((slot.rootM%12)+12)%12,
               rootM:slot.rootM, intvs:intvs });
   });
@@ -48494,7 +48536,11 @@ window.blGenerate = function(){
   // with it. Both now come from the chord actually being played.
   var _fifthIv = 7;
   if(hasCT){ for(var _fi=0;_fi<lastChordIntvs.length;_fi++){ var _iv=((lastChordIntvs[_fi]%12)+12)%12; if(_iv>=6 && _iv<=8){ _fifthIv=_iv; break; } } }
-  var fifth = (chordRoot+_fifthIv)%12, third = chordTones.length>1 ? chordTones[1] : ((chordRoot+4)%12);
+  // The chord's own tones, without a slash chord's bass note — which rides at
+  // the front of lastChordIntvs as a negative interval, and made the "third"
+  // below the root itself.
+  var _upTones = hasCT ? lastChordIntvs.filter(function(d){ return d >= 0; }).map(function(d){ return (lastChordRoot+d)%12; }) : chordTones;
+  var fifth = (chordRoot+_fifthIv)%12, third = _upTones.length>1 ? _upTones[1] : ((chordRoot+4)%12);
   var tensionNotes = scaleNotes.filter(function(n){ return chordTones.indexOf(n)<0; });
   if(!tensionNotes.length) tensionNotes = scaleNotes;
 
@@ -49754,9 +49800,17 @@ window.mlGenerate = function(){
   var chordTones = hasCT
     ? lastChordIntvs.map(function(d){ return (lastChordRoot+d)%12; })
     : [rn, (rn+4)%12, (rn+7)%12];
-  var third = chordTones[1]!==undefined ? chordTones[1] : (chordRoot+4)%12;
-  var fifth = chordTones[2]!==undefined ? chordTones[2] : (chordRoot+7)%12;
-  var seventh = chordTones[3];
+  // A slash chord's bass note rides at the FRONT of lastChordIntvs, below the
+  // root (a negative interval — see _playChartSlot2). Counting it as a chord
+  // tone's position made the "third" the root and the "fifth" the third for
+  // every slash chord, so the melody leaned on the wrong notes of exactly the
+  // chords whose bass is already doing something unusual. The chord's own
+  // tones are the non-negative ones.
+  var _upper = hasCT ? lastChordIntvs.filter(function(d){ return d >= 0; }) : [];
+  var _up = _upper.map(function(d){ return (lastChordRoot+d)%12; });
+  var third = _up[1]!==undefined ? _up[1] : (chordRoot+4)%12;
+  var fifth = _up[2]!==undefined ? _up[2] : (chordRoot+7)%12;
+  var seventh = _up[3];
 
   function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
   function weighted(opts){
