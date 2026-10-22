@@ -1,0 +1,237 @@
+/* Level audit: plays one fixed phrase through every voice of every part, with
+   the app's own engine messages, and measures what reaches that part's bus.
+
+   The balance between voices is a property of gain tables (WAVE_GAIN and the
+   per-part tables beside it) that can only be tuned by measuring — a voice
+   that sounds fine in isolation is 10 dB over the one next to it, and reading
+   the table shows nothing. This is the measurement. A voice that drifts from
+   the rest of its part by more than TOL dB fails.
+
+   Run (needs the repo served and Chromium; see CLAUDE.md):
+     python3 -m http.server 8777 --bind 127.0.0.1 &
+     node tests/levels/measure.js                    # every part
+     node tests/levels/measure.js bass,arp           # some parts
+     VOICES=rhodes,pad REPS=5 node tests/levels/measure.js chord
+     OUT=levels.json node tests/levels/measure.js    # keep the numbers
+
+   PATCHES=1 audits the mõdSynth library instead: every patch, through its
+   part's engine, against the app's own voices playing the same notes (poly
+   patches a chord on the chord bus, bass and mono ones a low line on the bass
+   bus). A patch is judged after its MS.PATCH_TRIM (modsynth/patches-levels.js),
+   so this is the check that the table is right; PATCH_TOL (dB, default 3.0)
+   is how far one may sit from its class. SHARD=i/n splits the library over
+   several runs. Takes about 4 s a patch.
+
+   Env: URL (default http://127.0.0.1:8777/index.html), CHROMIUM (default
+   /opt/pw-browsers/chromium), TOL (dB, default 2.5), REPS (repeat each voice
+   and average the power — voices with random phase, supersaw and pad, always
+   take at least 5), VOICES (only these), OUT (write JSON).
+
+   What is compared: RMS over a 2.4 s window at the bus, against the median of
+   the part's own voices. Not across parts — the faders balance those. The bass
+   is compared against its dedicated voices (the shared palette is levelled to
+   them). Peaks are reported; the gain tables hold a transient voice's peak to
+   -5 dBFS at the bus even where that leaves its RMS under (kalimba on bass), so
+   KEEP_UNDER names the voices that may sit below the median for that reason. */
+'use strict';
+const fs = require('fs');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch (e) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); }
+
+const URL = process.env.URL || 'http://127.0.0.1:8777/index.html';
+const TOL = +process.env.TOL || 2.5;
+const REPS = +process.env.REPS || 1;
+const ONLY = process.env.VOICES ? process.env.VOICES.split(',') : null;
+const PARTS = (process.argv[2] || 'chord,mel,melgen,arp,bass').split(',');
+const NOISY = ['supersaw', 'pad'];
+const KEEP_UNDER = { bass: ['kalimba'] };
+const DEDICATED_BASS = ['electric', 'upright', 'upright_real', 'upright2', 'bass_picked', 'bass_motown',
+  'bass_hofner', 'sawtooth', 'acid303', 'square', 'triangle', 'sine'];
+
+function median(a) { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+const db = x => x > 0 ? +(20 * Math.log10(x)).toFixed(1) : -99;
+
+(async () => {
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium',
+    args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'],
+  });
+  const page = await browser.newPage({ viewport: { width: 430, height: 900 } });
+  await page.goto(URL);
+  await page.waitForTimeout(1500);
+  await page.click('.unlock-btn >> text=Start');
+  await page.waitForTimeout(1500);
+
+  const cat = await page.evaluate(() => ({
+    shared: MS_SHARED_VOICES.map(o => o[0]).filter(w => w !== 'sampler' && w !== 'modsynth'),
+    sampled: SAMPLED_WAVES, bassSampled: BASS_SAMPLED,
+  }));
+  // Every sample library, loaded before anything is measured: a sampled voice
+  // that has not arrived plays its synthesized stand-in, and measuring that
+  // would pass a voice that is wrong.
+  const unready = await page.evaluate(async (c) => {
+    const keys = new Set(Object.values(c.sampled));
+    Object.values(c.bassSampled).forEach(x => keys.add(x.lib));
+    keys.forEach(k => { try { preloadSampleInstrument(k); } catch (e) {} });
+    const t0 = performance.now();
+    while (performance.now() - t0 < 60000) {
+      if ([...keys].every(k => SAMPLE_STATE[k] === 'ready')) break;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    return [...keys].filter(k => SAMPLE_STATE[k] !== 'ready');
+  }, cat);
+  if (unready.length) { console.error('sample libraries not ready:', unready.join(', ')); process.exit(2); }
+
+  if (process.env.PATCHES) {
+    const bad = await auditPatches(page);
+    await browser.close();
+    process.exit(bad ? 1 : 0);
+  }
+
+  const results = {};
+  for (const part of PARTS) {
+    const list = part === 'bass' ? DEDICATED_BASS.concat(cat.shared.filter(v => !DEDICATED_BASS.includes(v))) : cat.shared;
+    results[part] = {};
+    for (const v of list) {
+      if (ONLY && !ONLY.includes(v)) continue;
+      const reps = NOISY.includes(v) ? Math.max(REPS, 5) : REPS, runs = [];
+      for (let i = 0; i < reps; i++) runs.push(await page.evaluate(measureOnce, [part, v]));
+      const rms = Math.sqrt(runs.reduce((a, r) => a + r.rms * r.rms, 0) / runs.length);
+      results[part][v] = { rms: db(rms), peak: db(Math.max(...runs.map(r => r.pk))) };
+    }
+  }
+
+  let fail = 0;
+  for (const part of PARTS) {
+    const r = results[part], names = Object.keys(r);
+    if (!names.length) continue;
+    const ref = part === 'bass' && DEDICATED_BASS.some(v => r[v]) ? DEDICATED_BASS.filter(v => r[v]) : names;
+    const m = median(ref.map(v => r[v].rms));
+    console.log(`\n${part}  (median ${m.toFixed(1)} dB RMS)`);
+    for (const v of names) {
+      const dev = r[v].rms - m, keep = (KEEP_UNDER[part] || []).includes(v) && dev < 0;
+      const bad = Math.abs(dev) > TOL && !keep;
+      if (bad) fail++;
+      console.log(`  ${v.padEnd(14)} ${String(r[v].rms).padStart(6)} dB  ${(dev >= 0 ? '+' : '') + dev.toFixed(1).padStart(5)}  peak ${String(r[v].peak).padStart(6)}${bad ? '   <-- off' : ''}`);
+    }
+  }
+  if (process.env.OUT) fs.writeFileSync(process.env.OUT, JSON.stringify(results, null, 1));
+  await browser.close();
+  console.log(fail ? `\n${fail} voice(s) more than ${TOL} dB from their part` : `\nall voices within ${TOL} dB of their part`);
+  process.exit(fail ? 1 : 0);
+})();
+
+// The patch library. The yardstick is the app's own voices through the same
+// phrase: eight synth voices for a chord, the dedicated bass voices for a line.
+async function auditPatches(page) {
+  const tol = +process.env.PATCH_TOL || 3.0;
+  const [si, sn] = (process.env.SHARD || '0/1').split('/').map(Number);
+  const run = (part, voice, patch) => page.evaluate(measurePatchOnce, [part, voice, patch]);
+  const chordRef = median(await (async () => {
+    const out = [];
+    for (const v of ['sine', 'sawtooth', 'square', 'piano', 'rhodes', 'organ', 'pad', 'supersaw']) out.push(db((await run('chord', v, null)).rms));
+    return out;
+  })());
+  const bassRef = median(await (async () => {
+    const out = [];
+    for (const v of DEDICATED_BASS) out.push(db((await run('bass', v, null)).rms));
+    return out;
+  })());
+  const ref = { chord: chordRef, bass: bassRef };
+  console.log(`reference: chord ${chordRef.toFixed(1)} dB, bass ${bassRef.toFixed(1)} dB`);
+  const list = (await page.evaluate(async () => {
+    await getCtx().resume(); await msxLoadLib();
+    return msxAllPatches().map(x => ({ name: x.name,
+      bassy: !!(x.values['voice.mode'] && x.values['voice.mode'] !== 'poly') ||
+             /bass|sub|kick/.test((x.tags || []).join(' ') + String(x.category).toLowerCase()) }));
+  })).filter((_, i) => i % sn === si);
+  let bad = 0;
+  for (const pt of list) {
+    const part = pt.bassy ? 'bass' : 'chord';
+    const r = await run(part, 'modsynth', pt.name);
+    const lvl = db(r.rms), dev = lvl - ref[part];
+    const off = Math.abs(dev) > tol;
+    if (off) bad++;
+    if (off || process.env.VERBOSE) console.log(`  ${pt.name.padEnd(28)} ${part.padEnd(5)} ${String(lvl).padStart(6)} dB  ${(dev >= 0 ? '+' : '') + dev.toFixed(1)}${off ? '   <-- off' : ''}`);
+  }
+  console.log(bad ? `\n${bad} of ${list.length} patches more than ${tol} dB from the app's voices` : `\nall ${list.length} patches within ${tol} dB of the app's voices`);
+  return bad;
+}
+
+// Runs in the page: a voice (patch null) or a mõdSynth patch, one phrase, the
+// part's bus tapped. The chord is [48,55,60,64] and the line is the bass's.
+async function measurePatchOnce([part, voice, patch]) {
+  const ctx = getCtx(); await ctx.resume();
+  const bus = _ensureAllPartBuses(ctx)[part];
+  const E = window.modEngine; let id = 1000 + Math.floor(Math.random() * 1e5);
+  E.send({ v: 1, kind: 'param', part, name: 'voice', value: voice });
+  if (patch) {
+    E.send({ v: 1, kind: 'param', part, name: 'msx', value: { patch } });
+    if (!await msxEnsure(part)) return { rms: 0, pk: 0 };
+    msxApply(part);
+  }
+  stopAll();
+  await new Promise(r => setTimeout(r, 700));
+  const sp = ctx.createScriptProcessor(1024, 2, 2); let ss = 0, n = 0, pk = 0, on = false;
+  sp.onaudioprocess = e => {
+    if (!on) return;
+    for (let c = 0; c < e.inputBuffer.numberOfChannels; c++) {
+      const d = e.inputBuffer.getChannelData(c);
+      for (let i = 0; i < d.length; i++) { const x = d[i]; ss += x * x; n++; const a = Math.abs(x); if (a > pk) pk = a; }
+    }
+  };
+  const z = ctx.createGain(); z.gain.value = 0;
+  bus.connect(sp); sp.connect(z); z.connect(ctx.destination);
+  const T0 = ctx.currentTime + 0.15; on = true;
+  if (part === 'chord') {
+    setTimeout(() => E.send({ v: 1, kind: 'chord', part: 'chord', id: ++id, root: 60, notes: [48, 55, 60, 64], bass: null, vel: 1, at: null, dur: 1.4 }), 150);
+  } else {
+    [36, 43, 40, 43, 36, 43, 40, 43].forEach((m, i) =>
+      E.send({ v: 1, kind: 'note', part: 'bass', id: ++id, note: m, at: T0 + i * 0.3, dur: 0.28, vel: 1, accent: i % 4 === 0, slide: false, from: null }));
+  }
+  await new Promise(r => setTimeout(r, 2600));
+  on = false; bus.disconnect(sp);
+  try { sp.disconnect(); z.disconnect(); } catch (e) {}
+  stopAll(); try { E.send({ v: 1, kind: 'stop', part }); } catch (e) {}
+  return { rms: n ? Math.sqrt(ss / n) : 0, pk };
+}
+
+// Runs in the page. One voice, one fixed phrase, the bus tapped with a
+// ScriptProcessor (deprecated, and the one tap that sees every sample).
+async function measureOnce([part, v]) {
+  const ctx = getCtx(); await ctx.resume();
+  const bus = _ensureAllPartBuses(ctx)[part];
+  const E = window.modEngine; let id = 1000 + Math.floor(Math.random() * 1e5);
+  E.send({ v: 1, kind: 'param', part, name: 'voice', value: v });
+  stopAll();
+  await new Promise(r => setTimeout(r, 250));
+  const sp = ctx.createScriptProcessor(1024, 2, 2); let ss = 0, n = 0, pk = 0, on = false;
+  sp.onaudioprocess = e => {
+    if (!on) return;
+    for (let c = 0; c < e.inputBuffer.numberOfChannels; c++) {
+      const d = e.inputBuffer.getChannelData(c);
+      for (let i = 0; i < d.length; i++) { const x = d[i]; ss += x * x; n++; const a = Math.abs(x); if (a > pk) pk = a; }
+    }
+  };
+  const z = ctx.createGain(); z.gain.value = 0;
+  bus.connect(sp); sp.connect(z); z.connect(ctx.destination);
+  const T0 = ctx.currentTime + 0.15; on = true;
+  const note = (m, t, d, extra) => E.send(Object.assign({ v: 1, kind: 'note', part, id: ++id, note: m, at: t, dur: d }, extra));
+  if (part === 'chord') {
+    setTimeout(() => E.send({ v: 1, kind: 'chord', part: 'chord', id: ++id, root: 60, notes: [60, 64, 67, 71], bass: null, vel: 1, at: null, dur: 1.4 }), 150);
+  } else if (part === 'mel') {
+    [60, 64, 67, 71].forEach((m, i) => setTimeout(() => E.send({ v: 1, kind: 'note', part: 'mel', id: ++id, note: m, vel: 1, dur: 0.5 }), 150 + i * 450));
+  } else if (part === 'melgen') {
+    [72, 76, 79, 76, 72, 76, 79, 84].forEach((m, i) => note(m, T0 + i * 0.3, 0.28, { vel: 0.7, accent: i % 4 === 0 }));
+  } else if (part === 'bass') {
+    [36, 43, 40, 43, 36, 43, 40, 43].forEach((m, i) => note(m, T0 + i * 0.3, 0.28, { vel: 1, accent: i % 4 === 0, slide: false, from: null }));
+  } else if (part === 'arp') {
+    [60, 64, 67, 71, 67, 64, 60, 64, 67, 71, 67, 64].forEach((m, i) => note(m, T0 + i * 0.18, 0.12, { vel: 1, level: 1, pan: 0.5 }));
+  }
+  await new Promise(r => setTimeout(r, 2600));
+  on = false; bus.disconnect(sp);
+  try { sp.disconnect(); z.disconnect(); } catch (e) {}
+  stopAll(); try { E.send({ v: 1, kind: 'stop', part }); } catch (e) {}
+  return { rms: n ? Math.sqrt(ss / n) : 0, pk };
+}
