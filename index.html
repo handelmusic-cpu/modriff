@@ -2702,12 +2702,23 @@ body.light-mode .unlock-logo { --wm-ink:#14162a; --wm-k1:#2a82e6; --wm-k2:#9a52e
  padding:calc(env(safe-area-inset-top, 0px) + 28px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px); }
 .unlock-top, .unlock-mid, .unlock-foot { position:relative; z-index:1; width:100%;
  display:flex; flex-direction:column; align-items:center; }
-.unlock-mid { flex:1 1 auto; justify-content:center; min-height:0; padding:12px 0; }
-.unlock-foot { gap:14px; }
+/* 4.9.9.9.9.7.4: the name sits in the TOP THIRD, not the middle. It was
+   centred in the slack, which on a tall phone put it at half height with a
+   gulf above and below; the top third is where the eye lands first, and the
+   empty middle now belongs to the animated bars. --splash-cy is the logo's
+   centre as a fraction of the screen, and the bars (.unlock-bars) read the
+   same variable so the two can never drift apart. The foot is pushed to the
+   bottom with margin-top:auto, so the thumb zone is exactly where it was. */
+#audio-unlock { --splash-cy:21dvh; }
+.unlock-mid { flex:0 0 auto; justify-content:center; min-height:0; padding:0;
+ height:calc(var(--splash-cy) * 2 - env(safe-area-inset-top, 0px) - 28px - 54px); }
+.unlock-foot { gap:14px; margin-top:auto; }
 .unlock-logo:active { transform:scale(.98); }
 .unlock-logo:focus-visible { outline:2px solid var(--accent); outline-offset:8px; border-radius:12px; }
 @media (max-height:520px){
- #audio-unlock { padding-top:10px; padding-bottom:4px; }
+ #audio-unlock { padding-top:10px; padding-bottom:4px; --splash-cy:50%; }
+ /* A landscape phone has no top third to speak of: back to filling the slack. */
+ .unlock-mid { flex:1 1 auto; height:auto; padding:12px 0; }
  .unlock-logo { width:min(60vw, 420px, 52vh); }
  .unlock-foot { gap:6px; }
  .unlock-btn { min-height:46px; }
@@ -2759,7 +2770,7 @@ body.light-mode .unlock-logo { --wm-ink:#14162a; --wm-k1:#2a82e6; --wm-k2:#9a52e
 .unlock-canvas { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
 /* The splash bars (see the unlock-bars IIFE): a row along 60% of the height,
    each bar a fixed gradient scaled vertically from its foot. */
-.unlock-bars { position:absolute; left:0; right:0; top:40%; height:20%; z-index:0; display:flex; align-items:flex-end; pointer-events:none; }
+.unlock-bars { position:absolute; left:0; right:0; top:calc(var(--splash-cy, 50%) - 10%); height:20%; z-index:0; display:flex; align-items:flex-end; pointer-events:none; }
 .unlock-bars > i { flex:1; margin:0 1.4%; height:100%; border-radius:999px 999px 0 0; opacity:.5;
  transform-origin:50% 100%; transform:scaleY(.2); animation:unlockBar 4s ease-in-out infinite alternate; will-change:transform; }
 @keyframes unlockBar { 0% { transform:scaleY(.2); } 100% { transform:scaleY(1); } }
@@ -3892,26 +3903,69 @@ body.light-mode .perf-bar { background:#e8eaf6; border-top-color:#c2c6de; }
    sheet by ftMountSheetExtras, where Capture already lives in both views.
    The bar used to wrap wherever it ran out of width, which put a different
    set of things on each row at each screen size. */
-.ft-break { display:none; }
-body .perf-bar .ft-break { display:block; flex-basis:100%; height:0; order:15; }
-body .perf-bar #ft-chd-btn,
-body .perf-bar #ft-drum-btn,
-body .perf-bar #ft-aux-btn,
-body .perf-bar #ft-bas-btn,
-body .perf-bar #ft-mel-btn,
-body .perf-bar #ft-arp-btn,
-body .perf-bar #ft-smp-btn { order:20; flex:1 1 0; min-width:0; max-width:92px; }
+/* 4.9.9.9.9.7.4: the bar is three stacked zones, not one flex row that wraps
+   where it runs out of room (and a zero-height .ft-break to say where). The
+   top row is a three-column grid — key and scale hold the left, Play is the
+   middle column so it is centred whatever the sides weigh, tempo and the song
+   switch hold the right. The parts row sits under it with Chords last, which
+   is what lets the song switch say "above Chords" by being right-aligned, and
+   what lets the arp rate stack on its own switch. 480px is five 92px switches
+   and their gaps: on a tablet the bar's contents stay one phone-width column
+   in the middle rather than spreading until Song is nowhere near Chords. */
+body .perf-bar { flex-direction:column; flex-wrap:nowrap; align-items:center; gap:4px; }
+.ft-top, .ft-parts { width:100%; max-width:480px; box-sizing:border-box; }
+.ft-top { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; column-gap:8px; }
+.ft-top-l { display:flex; align-items:center; gap:5px; min-width:0; }
+.ft-top-r { display:flex; align-items:center; justify-content:flex-end; gap:5px; min-width:0; }
+.ft-song-grp { display:flex; align-items:center; gap:3px; flex:none; }
+/* Empty until a song is loaded: the three buttons hide themselves, and a group
+   with nothing visible must not leave its gap behind. */
+.ft-song-grp:not(:has(.ft-btn:not([style*="none"]))) { display:none; }
+/* The right-hand cell is half the bar less Play's half: ~160px at 390. Tempo
+   plus the arrows plus a section name does not fit that at the sizes they
+   have everywhere else, and an overflowing cell does not clip, it slides
+   under Play. So while a song is loaded the group goes compact — narrow
+   arrows, a section name that ellipsizes at ~58px (the full name is on the
+   tooltip and in the Songs tab) and tempo without its "♩=" mark, which is
+   the one part of it that can go without the number being unclear. */
+.perf-bar .ft-song-grp .ft-sect { min-width:24px; padding:4px 4px; }
+.perf-bar .ft-song-grp #ft-song-btn,
+.perf-bar .ft-song-grp #ft-song-btn.songlbl { min-width:0; max-width:58px; padding-left:5px; padding-right:5px; overflow:hidden; text-overflow:ellipsis; }
+.ft-top:has(.ft-song-grp .ft-btn:not([style*="none"])) .ft-bpm-mark { display:none; }
+.ft-top:has(.ft-song-grp .ft-btn:not([style*="none"])) .ft-bpm-val { min-width:28px; padding-left:3px; padding-right:3px; }
+@media (max-width:359px){
+ .ft-top-r { gap:3px; }
+ .perf-bar .ft-song-grp #ft-song-btn, .perf-bar .ft-song-grp #ft-song-btn.songlbl { max-width:44px; padding-left:3px; padding-right:3px; }
+ .perf-bar .ft-song-grp .ft-sect { min-width:22px; padding-left:3px; padding-right:3px; }
+}
+.ft-parts { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,92px); align-items:end; justify-content:center; gap:4px 5px; }
+/* A grid, not a flex row: the Arp column is a stack (rate over switch) and the
+   others are bare switches, and flex counts a button's padding in its share
+   but not a wrapper's, so the Arp column came out 10px narrower than its
+   neighbours. Grid tracks are sized by the track, whatever is in them.
+   The Arp column: the rate on top, the switch under it, as wide as one switch,
+   so the other switches sit level with the switch rather than with the rate. */
+.ft-pcol { display:flex; flex-direction:column; align-items:stretch; gap:3px; min-width:0; }
+body .perf-bar .ft-parts > .ft-btn.arp, body .perf-bar .ft-pcol > .ft-btn.arp { width:100%; min-width:0; max-width:none; flex:0 0 auto; }
+/* Nothing left in the group once Bounce and Stems have moved into the sheet,
+   and :empty does not see the whitespace they leave behind. */
+.perf-bar > .ft-rec-group:not(:has(*)) { display:none; }
+/* The sheet is position:fixed, so its wrapper is only a hook for the outside-tap
+   test; it must not take a row of the column. */
+.perf-bar > .ft-more-wrap { position:absolute; width:0; height:0; }
 /* Six switches when Perc or the Sampler is showing, seven with both: at 390px
    that is about sixty pixels each, and "Chords" and "Sampler" were cut off in
    the middle of a letter at the full size. Smaller, and sized by their words
    rather than shared out equally, so Mel and Arp give Sampler the room. */
 body .perf-bar .ft-btn.arp { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-left:4px; padding-right:4px; }
 body .perf-bar:has(#ft-smp-btn:not([style*="none"])) .ft-btn.arp,
-body .perf-bar:has(#ft-aux-btn:not([style*="none"])) .ft-btn.arp { padding-left:3px; padding-right:3px; font-size:.6rem; letter-spacing:0; flex:1 1 auto; }
+body .perf-bar:has(#ft-aux-btn:not([style*="none"])) .ft-btn.arp { padding-left:3px; padding-right:3px; font-size:.6rem; letter-spacing:0; }
+body .perf-bar:has(#ft-smp-btn:not([style*="none"])) .ft-parts,
+body .perf-bar:has(#ft-aux-btn:not([style*="none"])) .ft-parts { grid-auto-columns:auto; justify-content:stretch; }
 @media (max-width:360px){
- body .perf-bar .ft-btn.arp { padding-left:3px; padding-right:3px; font-size:.6rem; letter-spacing:0; flex:1 1 auto; }
+ body .perf-bar .ft-btn.arp { padding-left:3px; padding-right:3px; font-size:.6rem; letter-spacing:0; }
+ body .perf-bar .ft-parts { grid-auto-columns:auto; justify-content:stretch; }
 }
-body .perf-bar { gap:4px 5px; }
 
 /* ── What T2 looked like, not just how it was arranged ──
    These rules were all gated to mode-basic. The LAYOUT is a Basic idea — two
@@ -3928,23 +3982,25 @@ body .perf-bar { gap:4px 5px; }
 
 /* Play was a bare character at 55% opacity, the same weight as the tempo and
    lighter than any part switch — the one control you hit first and it was the
-   quietest thing on the bar. The mockup's is a filled 40px circle. Purple,
-   not green: the bar's rule is that colour means state and red is reserved
-   for the recorders, and purple is the app's own accent, which is what the
-   mockup used. */
+   quietest thing on the bar. The mockup's is a filled 40px circle. Green since
+   4.9.9.9.9.7.4: it is the one control in the middle of the bar, and go is
+   green. It was purple, the app's accent; red stays the recorders' and purple
+   stays the accent (the beat strip, Live/Studio), so a green Play competes
+   with neither. */
 .perf-bar #ft-playstop-btn {
  width:36px; height:36px; flex:none; padding:0;
  border-radius:50%;
- /* Literal, not var(--modal): that variable is the KEY hue and follows the
-    root note, so in C it is pure red — the one colour this bar reserves for
-    the recorders. The accent purple the mockup used is fixed. */
- background:#a855f7 !important;
- color:#0b0c16;
+ /* Literal, not var(--pg): that variable follows the root note's hue, so
+    "go" would turn orange in some keys and, three semitones on, would be
+    the recorders' red. Play is the same green in every key. */
+ background:#2fd66b !important;
+ color:#06210f;
  opacity:1; font-size:.9rem;
  filter:none;
  display:inline-flex; align-items:center; justify-content:center;
- box-shadow:0 2px 9px rgba(168,85,247,.32) !important;
+ box-shadow:0 2px 12px rgba(47,214,107,.38) !important;
 }
+body.light-mode .perf-bar #ft-playstop-btn { background:#22b455 !important; color:#fff; box-shadow:0 2px 9px rgba(34,180,85,.35) !important; }
 .perf-bar #ft-playstop-btn:active { transform:scale(.93); }
 /* U+25B6 has an emoji presentation, and iOS takes it: the mockup's clean
    triangle arrived on the phone as a blue-and-white emoji ▶️ sitting inside
@@ -3967,7 +4023,8 @@ body .perf-bar { gap:4px 5px; }
 }
 /* Playing, it is the stop button, and stop is not the accent — the accent is
    what you reach for to start. */
-.perf-bar #ft-playstop-btn.tp-stop {
+.perf-bar #ft-playstop-btn.tp-stop,
+body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
  background:var(--border2) !important; color:var(--text);
  box-shadow:none !important;
 }
@@ -3979,7 +4036,7 @@ body .perf-bar { gap:4px 5px; }
    that fill the bar the mockup drew, rather than the 5px dots the old
    in-page version used. */
 .perf-bar #ft-beat-dots {
- order:16; flex:0 0 100%; width:100%; max-width:none;
+ flex:none; width:100%; max-width:480px; box-sizing:border-box;
  gap:5px; margin:0;
 }
 .perf-bar #ft-beat-dots .beat-dot {
@@ -4311,6 +4368,11 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
  width:44px; box-sizing:border-box; line-height:1.35; white-space:nowrap; overflow:hidden;
 }
 .ft-rate-val.free { font-size:.5rem; letter-spacing:-.01em; }
+/* Over the Arp switch (4.9.9.9.9.7.4): as wide as the switch, and shorter than
+   it, so the pair reads as one control with the rate as its header. */
+.ft-pcol .ft-rate { display:block; }
+.ft-pcol .ft-rate-val { width:100%; padding:2px 2px; line-height:1.25; font-size:.66rem; }
+.ft-pcol .ft-rate-val.free { font-size:.5rem; }
 /* The long labels (1/12, 1/16, 1/24, 1/32, 1/16.) give up side padding, not
    width: the box stays 44px so the bar never reflows as the rate changes. */
 .ft-rate-val.long { padding-left:2px; padding-right:2px; letter-spacing:-.02em; }
@@ -4809,6 +4871,50 @@ body.tour-open .tab-page { padding-bottom: 42vh; }
 }
 /* A toast fired during the walkthrough would land on the card; send it to the
    top of the screen. */
+/* ── The toast is a brick ──
+   Styled after the menus in LEGO Star Wars: Battles: a dark panel with a thick
+   yellow rim, a plastic lip under it, glossy light across the top and a row
+   of studs on the upper edge; the Undo button is a yellow brick of its own.
+   Everything is drawn in CSS — no image, no emoji, no extra font. The panel is
+   the same in the light theme: it is a physical object, and it reads on either
+   background because it brings its own rim.
+   The studs are half-ellipses on the top edge (a radial gradient repeated
+   along it), so the toast has no extra elements for a screen reader to meet,
+   and it is pointer-events:none unless it carries an action, as before. */
+#_toast {
+ position:fixed; top:calc(16px + env(safe-area-inset-top,0px)); left:50%;
+ transform:translateX(-50%); z-index:9999; transition:opacity .3s;
+ display:flex; align-items:center; gap:12px;
+ /* max-content: left:50% leaves a shrink-to-fit box half the screen to size
+    itself in, which wrapped a short message into a column. */
+ width:max-content; max-width:calc(100vw - 24px); box-sizing:border-box;
+ padding:10px 18px 12px;
+ border-radius:11px; border:3px solid #ffcf00;
+ background:linear-gradient(180deg,#34477a 0%,#1d2a4e 46%,#141d3a 100%);
+ color:#fff; font-family:'Outfit',sans-serif; font-weight:700; font-size:.72rem;
+ line-height:1.3; letter-spacing:.02em; text-align:center;
+ /* The lip: a hard, un-blurred darker copy of the rim directly beneath, which
+    is what makes a flat rectangle read as a brick standing on its side. */
+ box-shadow:inset 0 2px 0 rgba(255,255,255,.28), inset 0 -3px 0 rgba(0,0,0,.35),
+  0 5px 0 #a67c00, 0 9px 16px rgba(0,0,0,.55);
+ text-shadow:0 1px 0 #0a0f22, 1px 0 0 #0a0f22, -1px 0 0 #0a0f22, 0 -1px 0 #0a0f22, 0 2px 3px rgba(0,0,0,.5);
+}
+#_toast::before {
+ content:''; position:absolute; left:16px; right:16px; top:-10px; height:7px;
+ background:radial-gradient(ellipse 8px 7px at 50% 100%, #ffe35c 0 62%, #d6a900 64% 90%, transparent 92%) 0 0/22px 7px repeat-x;
+ pointer-events:none;
+}
+#_toast.short { text-transform:uppercase; letter-spacing:.1em; font-weight:800; font-size:.68rem; }
+#_toast > span { min-width:0; overflow-wrap:break-word; }
+#_toast ._toast-btn {
+ flex:none; cursor:pointer; touch-action:manipulation;
+ font-family:inherit; font-size:.62rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+ color:#241a00; text-shadow:0 1px 0 rgba(255,255,255,.45);
+ padding:5px 13px 6px; border-radius:7px; border:2px solid #8a6500;
+ background:linear-gradient(180deg,#ffe86a 0%,#ffcf00 55%,#f0b800 100%);
+ box-shadow:inset 0 2px 0 rgba(255,255,255,.55), 0 3px 0 #8a6500;
+}
+#_toast ._toast-btn:active { transform:translateY(2px); box-shadow:inset 0 2px 0 rgba(255,255,255,.35), 0 1px 0 #8a6500; }
 body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-inset-top,0px)); z-index:9200 !important; }
 .variant-ext-row.visible { display:flex; }
 .varm-btn {
@@ -5836,7 +5942,7 @@ body.light-mode .top-stack { background: rgba(232,234,246,.97) !important; }
    is painted in. Grows into whatever the row leaves; the mode name gives way
    first, with an ellipsis, so the semitone steps never get squeezed. */
 .ft-key {
- order:5; flex:1 1 0; min-width:0; max-width:240px; height:40px; align-self:center;
+ flex:1 1 0; min-width:0; height:40px; align-self:center;
  display:flex; align-items:stretch; overflow:hidden; border-radius:10px;
  border:1px solid color-mix(in srgb, var(--pv) 45%, var(--surf2));
  background:color-mix(in srgb, var(--pv) 12%, var(--surf2));
@@ -6836,7 +6942,15 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      same band (see #ft-beat-dots below). */
   #ft-drawer-grip { height:15px; }
   #ft-drawer-grip::before { height:7px; width:28px; }
-  body .perf-bar .ft-break { display:none; }
+  /* Sideways the bar is one long row again: the zones dissolve (display:contents
+     keeps their children as the bar's own flex items), so the order is simply
+     key, Play, tempo, song switch, then the parts with the rate beside Arp.
+     Stacking the rate on Arp and centring Play are portrait ideas — there is
+     no second row here to stack on. */
+  body .perf-bar { flex-direction:row; }
+  .ft-top, .ft-top-l, .ft-top-r, .ft-parts, .ft-pcol { display:contents; }
+  body .perf-bar .ft-parts > .ft-btn.arp, body .perf-bar .ft-pcol > .ft-btn.arp { flex:1 1 0; width:auto; }
+  .ft-pcol .ft-rate-val { width:44px; padding:3px 6px; line-height:1.35; }
   /* width:auto, not the base rule's 100%: with both left/right insets and a
      width set, the right inset is ignored, so the strip ran 14px past the
      right edge of every landscape phone. */
@@ -6845,10 +6959,8 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; width:auto; top:13px; order:0; height:3px; gap:3px; pointer-events:none; }
   .perf-bar #ft-beat-dots .beat-dot { height:3px; }
   .perf-bar #ft-playstop-btn { width:32px; height:32px; }
-  body .perf-bar #ft-chd-btn, body .perf-bar #ft-drum-btn,
-  body .perf-bar #ft-aux-btn, body .perf-bar #ft-bas-btn,
-  body .perf-bar #ft-mel-btn, body .perf-bar #ft-arp-btn,
-  body .perf-bar #ft-smp-btn { max-width:110px; }
+  body .perf-bar .ft-parts > .ft-btn.arp,
+  body .perf-bar .ft-pcol > .ft-btn.arp { max-width:110px; min-width:0; }
   .perf-bar .ft-btn.arp { padding:5px 7px; font-size:.6rem; }
   .perf-bar .ft-vmt .vmt-btn { min-height:26px; }
   .perf-bar .ft-bounce, .perf-bar .ft-stems { padding:5px 8px; font-size:.5rem; }
@@ -6971,7 +7083,7 @@ body.light-mode .subnav-btn.active { color:#1d1f33; }
 body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 26%, #fff); }
 @media (max-width:420px){ .subnav-btn, .subnav-dock .subnav-btn { font-size:.56rem; letter-spacing:.04em; padding:7px 2px 6px; } }
 /* One play button and one record button, everywhere a part has them: a
-   smaller copy of the transport's. Play is the purple circle with a drawn
+   smaller copy of the transport's. Play is the green circle with a drawn
    triangle (a typed ▶ turns into a blue emoji on iOS — see #ft-playstop-btn);
    record is Bounce's red, with the dot drawn rather than typed for the same
    reason. The sampler's pattern play and Rec and each Accomp part's Play in
@@ -7077,39 +7189,33 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      competing with the tab bar for the top of the screen. It lives here now,
      with everything else you touch during a performance. -->
 <div class="perf-bar" id="perf-bar">
- <!-- A zero-height full-width flex item: the only reliable way to force a wrap
-      at a chosen point in a flex row. In Basic it sits between the transport
-      controls and the part switches so the bar reads as two deliberate rows
-      rather than whatever happened to fit. -->
  <button type="button" id="ft-drawer-grip" aria-label="More controls"
    aria-haspopup="true" onclick="toggleFtMore(event)"></button>
- <div class="ft-break" aria-hidden="true"></div>
- <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
+ <!-- Three zones, top to bottom (4.9.9.9.9.7.4). The first row is what you
+      steer with — key and scale on the left, Play dead centre, tempo and the
+      song switch on the right — then the beat strip, then the parts row. The
+      rate and the song switch are placed over the part they belong to: the
+      arp rate sits on top of Arp, and Song and its section arrows sit at the
+      far right, over Chords (Chords is always the last switch). It used to be
+      one flex row that wrapped wherever it ran out of room, with a zero-height
+      "break" element to force the wrap; that put Play at the left edge and
+      left the key and tempo wherever they happened to land. -->
+ <div class="ft-top">
+  <div class="ft-top-l">
+ <!-- Key and mode, on the transport so they are on every tab and a thumb from
+      Play: ‹ and › step the key a semitone, the mode opens the same list the
+      Play tab's key strip does (ftKeyModeOpen). The key strip itself is not
+      shown in Live any more — this replaces it there. -->
+ <div class="ft-key" id="ft-key" role="group" aria-label="Key and mode">
+  <button class="ft-key-step" onclick="ftTranspose(-1)" aria-label="Key down a semitone" title="Key down a semitone">&lsaquo;</button>
+  <span class="ft-key-name" id="ft-key-name" aria-live="polite">C</span>
+  <button class="ft-key-step" onclick="ftTranspose(+1)" aria-label="Key up a semitone" title="Key up a semitone">&rsaquo;</button>
+  <button class="ft-key-mode" id="ft-key-mode" onclick="ftKeyModeOpen(this)" aria-haspopup="true" aria-expanded="false" title="Mode and scale"><span id="ft-key-mode-lbl">Major</span><span id="ft-key-mode-short" aria-hidden="true">Maj</span><span class="ft-key-caret" aria-hidden="true">&#9662;</span></button>
+ </div>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
- <!-- Layer switches, in PARTS order — the same order, and the same colours,
-      as the mixer: Drums, Aux, Bass, Melody Seq, Arp, Sampler, Chords. Chords
-      is last so it sits at the right-hand end, under the thumb. The transport
-      used to run Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran
-      Bass·Melody·Arp, so the same three parts appeared in two different
-      orders; each switch's colour now comes from PARTS (ftTintSwitches). -->
- <!-- The beat meter. setBeatDots() has been painting into nothing since this
-      element was removed in an earlier pass of the bar; it lights up again the
-      moment the host exists. -->
- <div class="beat-dots" id="ft-beat-dots" aria-hidden="true"></div>
- <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
- <!-- Aux Perc only appears when the loaded groove actually wrote one. A switch
-      for a layer with nothing on it is a dead control that has to be explained;
-      this way its presence IS the explanation. -->
- <button class="ft-btn arp off" id="ft-aux-btn" onclick="ftAuxClick()" style="display:none"
-   title="Aux on/off — the second drum layer">Aux</button>
- <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
- <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
- <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Accomp tab, under Arp">Arp</button>
- <!-- The sampler's pattern, as a part. Like Perc it appears only once there is
-      one to switch: a pattern recorded on the pads. -->
- <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftSmpClick()" style="display:none"
-   title="Sampler on/off — the pattern you record on the pads plays with the band">Smp</button>
- <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
+  </div>
+ <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
+  <div class="ft-top-r">
  <!-- The 80px range input that used to sit inline here was permanent transport
       real estate for a value most people set once a session, and a miserable
       target on a phone. The readout IS the control now: drag it like a DAW
@@ -7168,39 +7274,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <div class="ft-pop-note" id="ft-feel-note"></div>
  </div>
  </div>
- <!-- The "Arp" label cost more width than the value it introduced — the
-      readout is the control (same idea as tempo, just above), so it doesn't
-      need one either, and freeing that width is what lets Song (below) fit
-      on this row instead of wrapping to a third. -->
- <!-- The caption is gone and the value is notation now. "Rate 16th" cost 79px
-      of a 430px bar for a control most people set once; a drawn note says the
-      same thing in a third of that, and the name is still on the tooltip and
-      the aria-label. This is most of what let the bar come back to two rows.
-      Fixed width, sized for the widest label, so cycling the rate cannot
-      change the row's width and re-wrap the bar under your thumb. -->
- <div class="ft-rate">
- <!-- Tap for the next division; press and drag up or down (or hold, then
-      drag) to step it either way — see wireFtRate. No onclick: the pointer
-      handlers decide whether a press was a tap or a drag, and a click handler
-      as well would cycle once more at the end of every drag. -->
- <div class="ft-rate-val" id="ft-rate-val"
-      role="slider" tabindex="0" aria-label="Arp rate — tap to cycle, drag to adjust"
-      title="Arp rate — tap to cycle, drag to adjust">♪³</div>
- </div>
- <!-- Capture is in the sheet, with the rest of what you reach for between
-      takes rather than during one — see the Song row there. Bounce stays on
-      the bar in Advanced because arming it is a decision you make at the
-      moment you start playing. -->
- <div class="ft-rec-group">
-  <button class="ft-btn ft-bounce off" id="ft-bounce-btn" onclick="toggleRecording()" aria-label="Bounce audio and MIDI to files"
-   title="Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.">⬤&nbsp;Bounce</button>
-  <!-- Whether this take gets stems is a decision you make reaching for Bounce,
-       so the switch belongs against it. It also lives on the Mix tab's Export
-       panel; both carry data-stemtoggle and _updateStemBtn drives every one,
-       so the two can never disagree. -->
-  <button class="ft-btn ft-stems off" id="ft-stems-btn" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
-   title="Stems — Bounce also writes one .wav per part (Chords, Melody, Drums, Aux Perc, Bass, Melody Seq, Arp) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
- </div>
+   <div class="ft-song-grp">
  <!-- Section navigation, in the thumb zone, so an arrangement move is reachable
       while performing on any tab. Both QUEUE: the section you are on plays out
       its pass and the change happens at the top of the next one, which is the
@@ -7217,20 +7291,77 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <button class="ft-btn ft-sect" id="ft-sect-prev" onclick="songPrevSection()" style="display:none"
    title="Previous section (B key) — queues until the current section finishes its pass"
    aria-label="Previous section">&lsaquo;</button>
- <!-- Key and mode, on the transport so they are on every tab and a thumb from
-      Play: ‹ and › step the key a semitone, the mode opens the same list the
-      Play tab's key strip does (ftKeyModeOpen). The key strip itself is not
-      shown in Live any more — this replaces it there. -->
- <div class="ft-key" id="ft-key" role="group" aria-label="Key and mode">
-  <button class="ft-key-step" onclick="ftTranspose(-1)" aria-label="Key down a semitone" title="Key down a semitone">&lsaquo;</button>
-  <span class="ft-key-name" id="ft-key-name" aria-live="polite">C</span>
-  <button class="ft-key-step" onclick="ftTranspose(+1)" aria-label="Key up a semitone" title="Key up a semitone">&rsaquo;</button>
-  <button class="ft-key-mode" id="ft-key-mode" onclick="ftKeyModeOpen(this)" aria-haspopup="true" aria-expanded="false" title="Mode and scale"><span id="ft-key-mode-lbl">Major</span><span id="ft-key-mode-short" aria-hidden="true">Maj</span><span class="ft-key-caret" aria-hidden="true">&#9662;</span></button>
- </div>
  <button class="ft-btn song-off" id="ft-song-btn" onclick="toggleGlobalSongMode()" style="display:none" title="Play the loaded song's chart automatically">Song</button>
  <button class="ft-btn ft-sect" id="ft-sect-next" onclick="songNextSection()" style="display:none"
    title="Next section (N key) — queues until the current section finishes its pass"
    aria-label="Next section">&rsaquo;</button>
+   </div>
+  </div>
+ </div>
+ <!-- The beat meter. setBeatDots() has been painting into nothing since this
+      element was removed in an earlier pass of the bar; it lights up again the
+      moment the host exists. -->
+ <div class="beat-dots" id="ft-beat-dots" aria-hidden="true"></div>
+ <div class="ft-parts">
+ <!-- Layer switches, in PARTS order — the same order, and the same colours,
+      as the mixer: Drums, Aux, Bass, Melody Seq, Arp, Sampler, Chords. Chords
+      is last so it sits at the right-hand end, under the thumb. The transport
+      used to run Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran
+      Bass·Melody·Arp, so the same three parts appeared in two different
+      orders; each switch's colour now comes from PARTS (ftTintSwitches). -->
+ <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
+ <!-- Aux Perc only appears when the loaded groove actually wrote one. A switch
+      for a layer with nothing on it is a dead control that has to be explained;
+      this way its presence IS the explanation. -->
+ <button class="ft-btn arp off" id="ft-aux-btn" onclick="ftAuxClick()" style="display:none"
+   title="Aux on/off — the second drum layer">Aux</button>
+ <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
+ <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
+  <!-- The arp rate sits on the Arp switch, not in the transport row: the
+       readout is the arp's own clock, and over the switch it controls it reads
+       as part of it. Same drag and tap as before — see wireFtRate. -->
+  <div class="ft-pcol ft-pcol-arp">
+   <div class="ft-rate">
+ <!-- The "Arp" label cost more width than the value it introduced — the
+      readout is the control (same idea as tempo, just above), so it doesn't
+      need one either, and freeing that width is what lets Song (below) fit
+      on this row instead of wrapping to a third. -->
+ <!-- The caption is gone and the value is notation now. "Rate 16th" cost 79px
+      of a 430px bar for a control most people set once; a drawn note says the
+      same thing in a third of that, and the name is still on the tooltip and
+      the aria-label. This is most of what let the bar come back to two rows.
+      Fixed width, sized for the widest label, so cycling the rate cannot
+      change the row's width and re-wrap the bar under your thumb. -->
+ <!-- Tap for the next division; press and drag up or down (or hold, then
+      drag) to step it either way — see wireFtRate. No onclick: the pointer
+      handlers decide whether a press was a tap or a drag, and a click handler
+      as well would cycle once more at the end of every drag. -->
+ <div class="ft-rate-val" id="ft-rate-val"
+      role="slider" tabindex="0" aria-label="Arp rate — tap to cycle, drag to adjust"
+      title="Arp rate — tap to cycle, drag to adjust">♪³</div>
+   </div>
+ <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Accomp tab, under Arp">Arp</button>
+  </div>
+ <!-- The sampler's pattern, as a part. Like Perc it appears only once there is
+      one to switch: a pattern recorded on the pads. -->
+ <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftSmpClick()" style="display:none"
+   title="Sampler on/off — the pattern you record on the pads plays with the band">Smp</button>
+ <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
+ </div>
+ <!-- Capture is in the sheet, with the rest of what you reach for between
+      takes rather than during one — see the Song row there. Bounce stays on
+      the bar in Advanced because arming it is a decision you make at the
+      moment you start playing. -->
+ <div class="ft-rec-group">
+  <button class="ft-btn ft-bounce off" id="ft-bounce-btn" onclick="toggleRecording()" aria-label="Bounce audio and MIDI to files"
+   title="Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.">⬤&nbsp;Bounce</button>
+  <!-- Whether this take gets stems is a decision you make reaching for Bounce,
+       so the switch belongs against it. It also lives on the Mix tab's Export
+       panel; both carry data-stemtoggle and _updateStemBtn drives every one,
+       so the two can never disagree. -->
+  <button class="ft-btn ft-stems off" id="ft-stems-btn" data-stemtoggle onclick="toggleStemExport()" aria-label="Export stems with the bounce"
+   title="Stems — Bounce also writes one .wav per part (Chords, Melody, Drums, Aux Perc, Bass, Melody Seq, Arp) alongside the mix. They come out dry: tapped at each part's own bus, before the reverb send and the master limiter.">Stems</button>
+ </div>
  <div class="ft-more-wrap">
   <!-- The ⋯ is gone. Two buttons a thumb apart that open the same sheet is one
        too many, and the handle is the one that says what it does. -->
@@ -7369,7 +7500,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.3</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.4</span>
     </div>
    </div>
   </div>
@@ -7406,7 +7537,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.4</span></div>
  </div>
 </div>
 
@@ -9603,7 +9734,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.3';
+const MODRIFF_VERSION = '4.9.9.9.9.7.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -31072,16 +31203,19 @@ function showToast(msg, opts){
   // (tappable for seven seconds) caught the swipe meant to open or close the
   // sheet. The bottom is where every control lives now; the top edge, under
   // the notch, has nothing pinned to it.
-  t.style.cssText='position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;'
-   +'transform:translateX(-50%);background:#222;color:#fff;border-radius:8px;padding:8px 14px;'
-   +'font-size:.6rem;z-index:9999;transition:opacity .3s;display:flex;align-items:center;gap:12px;'
-   +'max-width:calc(100vw - 24px);box-shadow:0 6px 22px rgba(0,0,0,.5)';
+  // Its look is in the stylesheet (#_toast, "The toast is a brick") — it was a
+  // cssText string here, which meant restyling it meant editing JS and the
+  // tour's override a few thousand lines up fought it with !important.
   document.body.appendChild(t);
  }
  t.innerHTML='';
  const label=document.createElement('span');
  label.textContent=msg;
  t.appendChild(label);
+ // A few words are a headline and are set like one (capitals, wide tracking);
+ // a sentence — and the press-and-hold tooltips run to a paragraph — stays
+ // in sentence case, because a paragraph in capitals cannot be read.
+ t.classList.toggle('short', String(msg).length<=30);
  // Only a toast offering an action can be tapped — otherwise it stays
  // click-through so it can never swallow a tap meant for the transport it
  // floats above.
@@ -31090,9 +31224,7 @@ function showToast(msg, opts){
   const btn=document.createElement('button');
   btn.type='button';
   btn.textContent=opts.actionLabel||'Undo';
-  btn.style.cssText='flex:none;background:transparent;border:1px solid rgba(255,255,255,.45);'
-   +'color:#fff;border-radius:6px;padding:4px 12px;font-family:inherit;font-size:.58rem;'
-   +'font-weight:600;letter-spacing:.06em;cursor:pointer;touch-action:manipulation';
+  btn.className='_toast-btn';
   btn.addEventListener('click',()=>{
    clearTimeout(t._to);
    t.style.opacity='0'; t.style.pointerEvents='none';
@@ -37583,12 +37715,12 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  },
  'transport': {
  title: 'Transport',
- body: `One <strong>▶ / ■</strong> button starts and stops everything that's switched on — it turns red while playing. <strong>Spacebar</strong> does the same.<br><br>
+ body: `One <strong>▶ / ■</strong> button, green and dead centre, starts and stops everything that's switched on — it turns grey while playing. <strong>Spacebar</strong> does the same. The <strong>key and scale</strong> are on its left: ‹ and › step the key, the scale name opens the list.<br><br>
 <strong>Chords · Drums · Bass · Mel · Arp</strong> are layer switches, not separate play buttons. A <strong>Perc</strong> switch joins them whenever the loaded groove has a second percussion layer to switch. Flip them on and off <em>while the music runs</em> — that's the core performance move: get a song looping, then bring parts in and out.<br><br>
 <strong>⬤&nbsp;Bounce</strong> records what you hear to a .wav and what you played to a .mid, both downloaded when you stop. <strong>Stems</strong> beside it adds one file per part.<br><br>
 <strong>↶ / ↷</strong> undo and redo — notes, patterns, the chart, the mixer and every sound setting (Ctrl/⌘+Z). The <strong>dice</strong> rerolls the whole patch character; if nothing is playing it rerolls key, mode and tempo too.<br><br>
 The <strong>handle</strong> above the bar pulls up a sheet holding what you reach for less often. <strong>◉&nbsp;Capture</strong> is there: it writes the chords you play — by mouse, keyboard or MIDI — into a new Song section you can edit afterwards, and a <strong>◀</strong> appears beside it whenever there are chords you have <em>already</em> played that it could keep instead. Either way the take becomes a loop and starts playing in time: tap Capture again on the downbeat where the loop should come round. With the drums going, the changes snap to the beat; played free, the take is fitted to whole bars and the tempo follows yours. Played round more than once, ◀ keeps one pass. Then MIDI export, the click, <strong>Snap</strong> (how strictly the song and arp wait for the beat), undo and redo, the dice, the light/dark toggle, Setups, Find a control, and the walkthrough and guide.<br><br>
-<strong>Tempo</strong> is the number itself — drag it like a DAW field, or tap it once for a slider with Feel and the bar length beside it. The <strong>arp rate</strong> is the note value next to it; tap to cycle.<br><br>
+<strong>Tempo</strong> is the number itself — drag it like a DAW field, or tap it once for a slider with Feel and the bar length beside it. The <strong>arp rate</strong> is the note value sitting on top of the Arp switch; tap to cycle.<br><br>
 An orange <strong>MUTE</strong> or <strong>SOLO</strong> badge appears here whenever a mixer channel is muted or soloed, so you are never left wondering why something has gone quiet. Tap it to clear.<br><br>
 The row of dots shows where you are in the bar, following whichever engine is actually playing and marking its kick pattern.<br><br>
 <strong>Song</strong> appears once a song is loaded, green while it plays itself; switching it off <strong>holds</strong> on the current chord instead of stopping the song. The chord keeps sounding and the arp keeps running on it, so you can take over by hand — and switching it back on carries on from that same chord rather than jumping to the top. While it runs, the button names the section you are in, and the <strong>‹ ›</strong> either side move to the one before or after — <em>queued</em>: the section you are on plays out its pass and the change lands on the next downbeat, which is the only way a section change is musical. The arrow pulses while it waits. <strong>N</strong> and <strong>B</strong> do the same from the keyboard; <strong>.</strong> and <strong>,</strong> step a single chord straight away instead.`
