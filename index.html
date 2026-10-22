@@ -3937,7 +3937,7 @@ body .perf-bar { flex-direction:column; flex-wrap:nowrap; align-items:center; ga
 .ft-top, .ft-parts { width:100%; max-width:480px; box-sizing:border-box; }
 .ft-top { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; column-gap:8px; }
 .ft-top-l { display:flex; align-items:center; gap:5px; min-width:0; }
-.ft-top-r { display:flex; align-items:center; justify-content:flex-end; gap:5px; min-width:0; }
+.ft-top-r { display:flex; align-items:center; justify-content:flex-start; gap:5px; min-width:0; }
 .ft-song-grp { display:flex; align-items:center; gap:3px; flex:none; }
 /* Empty until a song is loaded: the three buttons hide themselves, and a group
    with nothing visible must not leave its gap behind. */
@@ -3952,16 +3952,26 @@ body .perf-bar { flex-direction:column; flex-wrap:nowrap; align-items:center; ga
    gets the rest. The group shrinks before it spills: the section name is the
    part that ellipsizes, the arrows keep their 24px. Without a song the cell is
    exactly what it was. */
-.ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) {
- display:grid; grid-template-columns:auto minmax(0,auto); grid-template-rows:auto auto;
- column-gap:5px; row-gap:2px; justify-content:end; align-items:center;
-}
-.ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) > .ft-rate { grid-area:1 / 1; }
-.ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) > .ft-bpm { grid-area:2 / 1; justify-self:center; }
-.ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) > .ft-song-grp { grid-area:1 / 2 / 3 / 3; min-width:0; }
+.ft-top-r { gap:4px; }
+/* Tempo and rate hug Play; only Song is pushed to the far right, over Chords. */
+.ft-top-r > .ft-song-grp { margin-left:auto; }
+/* With a song loaded the Song switch is on the row and the tempo gives up its
+   "♩=" — the number is the same number — so tempo, rate and Song fit the cell
+   in the order key, Play, tempo, rate, Song. */
 .ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) .ft-bpm-mark { display:none; }
+/* When the section arrows show as well there is no room for all four in a row
+   (about 160px at 390): tempo stacks over the rate as one narrow column, still
+   next to Play and still before Song, and the group takes the rest. Rows are
+   46px against the key's 40, which is where the extra 6px of bar comes from. */
+.ft-top-r:has(#ft-sect-prev:not([style*="none"])) {
+ display:grid; grid-template-columns:auto minmax(0,1fr); grid-template-rows:auto auto;
+ column-gap:5px; row-gap:2px; justify-content:stretch; align-items:center;
+}
+.ft-top-r:has(#ft-sect-prev:not([style*="none"])) > .ft-bpm { grid-area:1 / 1; justify-self:start; }
+.ft-top-r:has(#ft-sect-prev:not([style*="none"])) > .ft-rate { grid-area:2 / 1; }
+.ft-top-r:has(#ft-sect-prev:not([style*="none"])) > .ft-song-grp { grid-area:1 / 2 / 3 / 3; min-width:0; justify-self:end; margin-left:0; }
 .perf-bar .ft-song-grp .ft-sect { min-width:24px; padding:4px 4px; flex:none; }
-@media (max-width:340px){ .perf-bar .ft-song-grp .ft-sect { min-width:22px; padding:4px 3px; } .ft-top-r { gap:3px; } }
+@media (max-width:340px){ .perf-bar .ft-song-grp .ft-sect { min-width:22px; padding:4px 3px; } .ft-top-r { gap:3px; } .ft-top-r .ft-rate-val { width:38px; } }
 .perf-bar .ft-song-grp #ft-song-btn,
 .perf-bar .ft-song-grp #ft-song-btn.songlbl { flex:0 1 auto; min-width:28px; max-width:58px; padding-left:5px; padding-right:5px; overflow:hidden; text-overflow:ellipsis; }
 .ft-parts { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,92px); align-items:end; justify-content:center; gap:4px 5px; }
@@ -6985,7 +6995,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      no second row here to stack on. */
   body .perf-bar { flex-direction:row; }
   .ft-top, .ft-top-l, .ft-top-r, .ft-parts { display:contents; }
-  .ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) { display:contents; }
+  .ft-top-r:has(#ft-sect-prev:not([style*="none"])) { display:contents; }
   .ft-top-r:has(.ft-song-grp .ft-btn:not([style*="none"])) .ft-bpm-mark { display:inline; }
   body .perf-bar .ft-parts > .ft-btn.arp { flex:1 1 0; width:auto; }
   /* width:auto, not the base rule's 100%: with both left/right insets and a
@@ -7252,30 +7262,6 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   </div>
  <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
   <div class="ft-top-r">
-  <!-- The arp rate, in line with the key and Play (4.9.9.9.9.7.6). It sat on top
-       of the Arp switch for one release, which put a control for the arp on the
-       row of switches and left the steering row without it; the rate is read
-       and nudged with the tempo, so it lives with the tempo. Same drag and tap
-       as ever — see wireFtRate. -->
-  <div class="ft-rate">
- <!-- The "Arp" label cost more width than the value it introduced — the
-      readout is the control (same idea as tempo, just above), so it doesn't
-      need one either, and freeing that width is what lets Song (below) fit
-      on this row instead of wrapping to a third. -->
- <!-- The caption is gone and the value is notation now. "Rate 16th" cost 79px
-      of a 430px bar for a control most people set once; a drawn note says the
-      same thing in a third of that, and the name is still on the tooltip and
-      the aria-label. This is most of what let the bar come back to two rows.
-      Fixed width, sized for the widest label, so cycling the rate cannot
-      change the row's width and re-wrap the bar under your thumb. -->
- <!-- Tap for the next division; press and drag up or down (or hold, then
-      drag) to step it either way — see wireFtRate. No onclick: the pointer
-      handlers decide whether a press was a tap or a drag, and a click handler
-      as well would cycle once more at the end of every drag. -->
- <div class="ft-rate-val" id="ft-rate-val"
-      role="slider" tabindex="0" aria-label="Arp rate — tap to cycle, drag to adjust"
-      title="Arp rate — tap to cycle, drag to adjust">♪³</div>
-   </div>
  <!-- The 80px range input that used to sit inline here was permanent transport
       real estate for a value most people set once a session, and a miserable
       target on a phone. The readout IS the control now: drag it like a DAW
@@ -7334,9 +7320,33 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <div class="ft-pop-note" id="ft-feel-note"></div>
  </div>
  </div>
+  <!-- The arp rate, after the tempo and before Song (4.9.9.9.9.7.6d): key, Play,
+       tempo, rate, Song, left to right. It sat on top of the Arp switch for one
+       release, which put a control for the arp on the row of switches; the rate
+       is read and nudged with the tempo, so it lives beside it. Same drag and
+       tap as ever — see wireFtRate. -->
+  <div class="ft-rate">
+ <!-- The "Arp" label cost more width than the value it introduced — the
+      readout is the control (same idea as tempo, just above), so it doesn't
+      need one either, and freeing that width is what lets Song (below) fit
+      on this row instead of wrapping to a third. -->
+ <!-- The caption is gone and the value is notation now. "Rate 16th" cost 79px
+      of a 430px bar for a control most people set once; a drawn note says the
+      same thing in a third of that, and the name is still on the tooltip and
+      the aria-label. This is most of what let the bar come back to two rows.
+      Fixed width, sized for the widest label, so cycling the rate cannot
+      change the row's width and re-wrap the bar under your thumb. -->
+ <!-- Tap for the next division; press and drag up or down (or hold, then
+      drag) to step it either way — see wireFtRate. No onclick: the pointer
+      handlers decide whether a press was a tap or a drag, and a click handler
+      as well would cycle once more at the end of every drag. -->
+ <div class="ft-rate-val" id="ft-rate-val"
+      role="slider" tabindex="0" aria-label="Arp rate — tap to cycle, drag to adjust"
+      title="Arp rate — tap to cycle, drag to adjust">♪³</div>
+   </div>
   <!-- Song and its section arrows, at the far right of the top row (above Chords,
-       the last switch). While a song is loaded the rate and the tempo stack to
-       make room — see .ft-top-r:has(.ft-song-grp …). -->
+       the last switch). When the section arrows show, tempo and rate stack to
+       make room — see .ft-top-r:has(#ft-sect-prev …). -->
    <div class="ft-song-grp">
  <!-- Section navigation, in the thumb zone, so an arrangement move is reachable
       while performing on any tab. Both QUEUE: the section you are on plays out
@@ -7539,7 +7549,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6c</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6d</span>
     </div>
    </div>
   </div>
@@ -7576,7 +7586,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6d</span></div>
  </div>
 </div>
 
@@ -9773,7 +9783,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6c';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6d';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
