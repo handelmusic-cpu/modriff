@@ -12,7 +12,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // keeps sounding with the ring/silent switch on silent. The default a
         // web view gets (ambient) is muted by it, so on a phone left on silent
         // — most of them — every pad tap was silence with no hint why.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        //
+        // One owner for the session, here, before the web view exists.
+        //
+        // The native engine used to set the category and call setActive from
+        // inside the plugin, with the web view's AudioContext configuring the
+        // same session for itself. Two owners, and the loser stops: measured,
+        // the AVAudioEngine rendered 34,816 frames — 0.73 s at 48 kHz, the
+        // same on every run — and never ran again. Restarting it from a
+        // watchdog only made that audible.
+        //
+        // .mixWithOthers is what lets the two coexist: without it, a session
+        // activation is exclusive and whichever side activates last silences
+        // the other. With it, WebKit starting its AudioContext no longer
+        // takes the hardware away from the engine.
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch {
+            NSLog("[ModRiff] audio session: %@", error.localizedDescription)
+        }
+        // One note out of the C++ engine, three seconds after launch, with
+        // nothing else running. Debug builds only; see ModEngineSelfTest.
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["MODRIFF_SELFTEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { ModEngineSelfTest.run() }
+        }
+        #endif
         return true
     }
 

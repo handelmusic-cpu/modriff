@@ -634,13 +634,13 @@ void Processor::noteOnMsg(double note, double vel, NoteId id, bool hasAt, double
   else noteOn(note, vel, id);
 }
 void Processor::noteOffMsg(double note, NoteId id, bool hasAt, double at_) {
-  if (!id.isNullish()) unqueueOff(id);
+  if (!id.isNullish()) { unqueueOff(id); unqueueOn(id, hasAt && at_ > now() ? at_ : now()); }
   if (hasAt && at_ > now()) queue(at_, 0, note, 0, id);
   else if (!id.isNullish()) noteOffId(id, note);
   else noteOff(note);
 }
 void Processor::chokeMsg(double note, NoteId id, bool hasAt, double at_) {
-  if (!id.isNullish()) unqueueOff(id);
+  if (!id.isNullish()) { unqueueOff(id); unqueueOn(id, hasAt && at_ > now() ? at_ : now()); }
   if (hasAt && at_ > now()) queue(at_, 2, note, 0, id);
   else chokeId(id);
 }
@@ -679,6 +679,16 @@ void Processor::drainQueue(double frameEnd) {
 }
 void Processor::unqueueOff(const NoteId& id) {
   for (int i = (int)evq.size() - 1; i >= 0; i--) if (evq[i].type == 0 && evq[i].id.same(id)) evq.erase(evq.begin() + i);
+}
+// A note-on still waiting in the queue when its own release (or choke) arrives
+// would otherwise start after it: the off found no voice, and unqueueOff has
+// just thrown away the off the page had scheduled for it, so it played until
+// something else stopped it. The page sends a note's on and off together, the
+// on a little ahead, so Stop or the next chord's cut lands in that gap often.
+// `t` is when the release takes effect; an on that would begin then or later
+// never begins.
+void Processor::unqueueOn(const NoteId& id, double t) {
+  for (int i = (int)evq.size() - 1; i >= 0; i--) if (evq[i].type == 1 && evq[i].id.same(id) && evq[i].at >= t) evq.erase(evq.begin() + i);
 }
 void Processor::noteOffId(const NoteId& id, double note) {
   const Snap& Sx = hasS ? S : snapshot();
@@ -986,6 +996,8 @@ void Processor::runGlobal(const Snap& S, double dt) {
     gmod[d] += val * row.a;
   }
 }
+
+void Processor::fxMods(double* out5) const { for (int k = 0; k < 5; k++) out5[k] = gmod[D_FIRST_FX + k]; }
 
 int Processor::activeVoices() const { int c = 0; for (auto& v : voices) if (v->active) c++; return c; }
 

@@ -54,15 +54,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         do {
-            // The app is an instrument: .playback keeps it sounding with the
-            // ring/silent switch on silent, which is where most phones live.
-            // AppDelegate sets the category for the web view's own audio; the
-            // native engine needs the session *active*, which nothing was
-            // doing before, because AVAudioEngine will not start otherwise.
+            // The session is AppDelegate's, deliberately: it is configured
+            // once, before the web view exists, and this plugin never touches
+            // it. Setting the category or calling setActive from here is what
+            // made the engine and WebKit fight over one session, and the
+            // engine lose after 0.73 s.
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
-
             let sampleRate = session.sampleRate
             let engine = AVAudioEngine()
             // The largest block the callback can be handed. IOBufferDuration
@@ -129,7 +126,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         engine = nil
         host = nil
         started = false
-        try? AVAudioSession.sharedInstance().setActive(false)
+        // Not setActive(false): the session belongs to AppDelegate and the
+        // web view is still using it. Deactivating here would silence the
+        // page's own audio as a side effect of stopping the native engine.
         call.resolve(["started": false])
     }
 

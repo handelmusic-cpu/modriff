@@ -62,6 +62,19 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) uint32_t dropped;
 /// Voices sounding across every part, for the diagnostics readout.
 @property (nonatomic, readonly) int activeVoices;
+/// Loudest sample produced since this was last read, and note-ons applied.
+/// Together they answer the one question a load figure cannot: did this
+/// engine actually make a sound? Four rounds of debugging went past a bridge
+/// reporting dropped=0, failed=0 and a healthy load while it produced pure
+/// silence, because nothing measured the output.
+@property (nonatomic, readonly) float peakOut;
+@property (nonatomic, readonly) uint32_t notesOn;
+
+/// Renders `frames` into a throwaway buffer, off the audio graph entirely,
+/// and answers with the loudest sample. It is how "the DSP makes sound" gets
+/// asked separately from "the graph stays alive" — two failures that look
+/// identical from the outside and have nothing to do with each other.
+- (float)renderOfflinePeakForPart:(int)part frames:(int)frames;
 
 @end
 

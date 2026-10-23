@@ -1187,6 +1187,53 @@ genuinely shut down, not merely disconnected) and compare against a separate
 web build by ear and by Instruments. Less convenient than a switch, far less
 likely to fight itself.
 
+### The effects rack, native (4.9.9.9.9.7a — Swift side unbuilt, C++ measured)
+
+The first native chord part played, and Space did nothing. The reason is the
+one the previous commit named: `modsynth/fx.js` is a Web Audio rack, and
+native audio cannot pass through Web Audio. The Space and Drive macros are
+matrix destinations that turn up the rack's reverb, delay and drive; with the
+rack out of the path there was nothing for them to turn. mõdFX did nothing on
+a native mõdSynth for the same reason (the part had no web bus to tap).
+
+`native/modsynth/fxrack.{h,cpp}` is the rack in C++, one per part, run by
+`ModEngineHost` right after that part's voices: drive, chorus, phaser, delay,
+reverb, compressor, OTT, grit, stereo width, master volume. Its parameters are
+`HOST_FX` in the generated `params_gen.h`, in `MS.HOST_PARAMS` order with the
+arp's taken out, and the page sends them as `{t:'fx', i, v}` by wrapping
+`eng.fx.set` (`_modNativeFxPost`). The matrix's five FX outputs are computed
+by the engine that owns the LFOs and macros (`Processor::fxMods`) and handed
+to the rack each block, rather than reported at meter rate as the web does.
+
+What it is not: bit-identical. Web Audio's biquads, compressor and convolver
+are the browser's, so `fxtest.cpp` measures behaviour and level instead —
+the reverb's wet level against the convolver's normalised output on white
+noise (within 3 dB; measured -1.7), the delay's echo time, a harmonic count
+on every drive curve, that every parameter at random never blows up, and that
+the whole rack costs about 2% of a core with everything on (a Mac, not a
+phone). `fxwire.cpp` proves a macro wired to the reverb mix reaches the rack
+through the engine and leaves a tail. `make -C native/modsynth fxcheck`.
+
+Differences, on purpose: the reverb is a feedback delay network, not a
+convolution (a 5-second convolver per part is too dear on a phone) — it will
+sound smoother and less like noise, and needs an ear; Drive and Grit
+oversample 2x; there is no limiter, so the rack ends in a soft clip above 0.9
+until the native engine has a master bus.
+
+**Hung notes (4.9.9.9.9.7b).** The page sends each note's on and its off
+together, the on a little ahead (`msxVoice`). A Stop, or the next chord's
+choke, can arrive in between: the release finds no voice, `unqueueOff` throws
+away the off the page had scheduled, and the queued on then starts and has
+nothing to end it. Reproduced in `native/modsynth/hangtest.cpp` (the old code
+holds the note at a constant 0.138; three scenarios), fixed in `dsp.js` and
+`modsynth.cpp` alike by dropping a queued on that a release or choke has
+overtaken (`unqueueOn`). Found on the phone, as "stuck chord on Stop". The web
+worklet had the same gap and is fixed with it; the null test is unchanged
+(516/516).
+
+Still not native: mõdFX, the mixer, the master reverb and the master limiter.
+A part cannot move on its own; that remains the larger piece.
+
 ### Haptics
 
 Add one method to `modPlatform`, call it from the touch handlers, and let

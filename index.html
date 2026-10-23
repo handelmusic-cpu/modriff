@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6r</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6s</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6r</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6s</span></div>
  </div>
 </div>
 
@@ -9861,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6r';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6s';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10202,6 +10202,225 @@ window.modEngine = window.modEngine || {};
  };
  if(!E.provider) E.provider = 'web';
 })(window.modEngine);
+
+// ── The chord part's mõdSynth, played by the C++ engine ───────────────────
+// Step 3 of docs/v5-architecture.md's audio plan. In the native app the
+// chord part's mõdSynth voice is played by modsynth::Processor through the
+// ModEngine plugin; the AudioWorklet is left loaded but unplugged. Every
+// other part, and every other voice, is untouched.
+//
+// There is no switch. An earlier attempt had one, and running both engines
+// at once over one audio session is what broke it — the engine stopped after
+// 0.73 s every run. The session now has one owner (AppDelegate), and the way
+// back from this is the branch it lives on, not a toggle in the app.
+//
+// The web build keeps the worklet: there is no plugin there, nothing to call,
+// and `native` below is simply false. So does a native build where the engine
+// fails to start — that is the only fallback, and it is automatic.
+//
+// Where it taps in: `node.port.postMessage` on the part's worklet, which is
+// the boundary the mõdSynth panel work (4.9.9.9.7) was verified at and the
+// one modsynth::Processor was written to take. A forwarder, not a translator.
+//
+// var, not let: read from functions declared thousands of lines earlier.
+var MODNAT = { native:false, started:false, starting:null, plugin:null, sr:0,
+               attached:{}, posted:0, failed:0, refused:0, PART:{chord:0} };
+
+function modNativePlugin(){
+ try{
+  if(MODNAT.plugin) return MODNAT.plugin;
+  var C=window.Capacitor; if(!C) return null;
+  // Not Capacitor.Plugins (built from headers injected before an app-target
+  // plugin registers) and not Capacitor.registerPlugin (that is
+  // @capacitor/core's JavaScript, and this app has no bundler). nativePromise
+  // calls a plugin by name through the same bridge and needs neither.
+  if(C.Plugins && C.Plugins.ModEngine) MODNAT.plugin = C.Plugins.ModEngine;
+  else if(typeof C.nativePromise === 'function'){
+   var call=function(m){ return function(o){ return C.nativePromise('ModEngine', m, o||{}); }; };
+   MODNAT.plugin = { start:call('start'), stop:call('stop'),
+                     ensurePart:call('ensurePart'), post:call('post'), stats:call('stats') };
+  }
+  return MODNAT.plugin;
+ }catch(e){ return null; }
+}
+function modNativeAvailable(){
+ try{
+  var C=window.Capacitor;
+  if(!C || typeof C.isNativePlatform!=='function' || !C.isNativePlatform()) return false;
+  return !!modNativePlugin();
+ }catch(e){ return false; }
+}
+
+function modNativeStart(){
+ if(MODNAT.started) return Promise.resolve(true);
+ if(MODNAT.starting) return MODNAT.starting;
+ var p=modNativePlugin();
+ if(!p) return Promise.resolve(false);
+ MODNAT.starting = p.start().then(function(r){
+  MODNAT.sr=(r&&r.sampleRate)||0; MODNAT.started=true;
+  // Builds the processor and grows the containers that would otherwise
+  // allocate inside the render callback.
+  return p.ensurePart({part:MODNAT.PART.chord, warm:true});
+ }).then(function(){ return true; })
+   .catch(function(e){ try{ console.warn('[modNative] start failed', e); }catch(_){} return false; })
+   .then(function(v){ MODNAT.starting=null; return v; });
+ return MODNAT.starting;
+}
+
+// A worklet `at` is an absolute frame on the *web* AudioContext's clock. The
+// native engine counts its own frames, from when its graph started, so the
+// two have different origins and nothing to reconcile them: sending `at`
+// across unchanged made every note land as late as the web context was old.
+// Measured on the phone: about eight seconds.
+//
+// Measuring the difference and subtracting it is what the first version did,
+// and it is fragile — the measurement can fail (it did, leaving the offset at
+// zero, which is exactly the eight seconds), and two counters started by
+// different things can drift.
+//
+// So the page says how far ahead the note is, in frames, and the engine adds
+// that to its own clock when it drains the message. There is then only one
+// clock in the arithmetic and nothing to keep in step.
+function _modNativeAtRel(at){
+ var ctx=(typeof audioCtx!=='undefined')?audioCtx:null;
+ if(!ctx || at==null) return null;
+ var rel = at - ctx.currentTime*ctx.sampleRate;
+ if(!isFinite(rel)) return null;
+ return Math.max(0, Math.round(rel));
+}
+
+function _modNativePost(part, m){
+ var p=modNativePlugin(); if(!p||!m||!m.t) return;
+ var o={ t:m.t, part:MODNAT.PART[part]|0 };
+ if(m.i   !=null) o.i=m.i;
+ if(m.n   !=null) o.n=m.n;
+ if(m.note!=null) o.note=m.note;
+ if(m.vel !=null) o.vel=m.vel;
+ if(m.lane!=null) o.lane=m.lane;
+ if(m.bpm !=null) o.bpm=m.bpm;
+ if(m.beat!=null) o.beat=m.beat;
+ if(m.uni !=null) o.uni=m.uni;
+ if(m.poly!=null) o.poly=m.poly;
+ if(m.rows!=null) o.rows=m.rows;
+ // number, null and absent are three different things to dsp.js and to the
+ // C++; NSDictionary keeps the distinction, so do not flatten it here.
+ if('id' in m)    o.id=(m.id==null)?null:m.id;
+ if(m.at  !=null){ var a=_modNativeAtRel(m.at); if(a!=null) o.atRel=a; }
+ if(m.steps!=null)o.steps=Array.prototype.slice.call(m.steps);
+ if(m.v   !=null) o.v=(typeof m.v==='object'&&m.v.length!=null)
+                     ? Array.prototype.slice.call(m.v) : m.v;
+ MODNAT.posted++;
+ _modNativeQueue(o);
+}
+
+// One bridge call per batch, not per message.
+//
+// Each Capacitor call is a JS→native round trip with a promise of its own,
+// and a patch change is not one message: a 262-float pAll, the matrix, both
+// motion lanes and a burst of parameter writes. Sending those one at a time
+// saturated the bridge — the app stopped answering touches in Play, in both
+// Live and Studio — and overran the engine's 256-slot queue, which drops
+// what will not fit. A dropped note-off is a note that hangs.
+//
+// Flushed on a microtask, so everything a single gesture produces crosses in
+// one call and in order, and nothing waits longer than the current task.
+// Order matters as much as volume: a patch and the note meant to be played
+// with it must not be separated.
+var _MODNAT_BATCH = [];
+function _modNativeQueue(o){
+ _MODNAT_BATCH.push(o);
+ if(_MODNAT_BATCH.length === 1) Promise.resolve().then(_modNativeFlush);
+ // A gesture that produces more than the engine's queue can hold would lose
+ // the tail, so send early rather than drop.
+ else if(_MODNAT_BATCH.length >= 128) _modNativeFlush();
+}
+function _modNativeFlush(){
+ if(!_MODNAT_BATCH.length) return;
+ var p=modNativePlugin(); if(!p){ _MODNAT_BATCH.length=0; return; }
+ var msgs=_MODNAT_BATCH; _MODNAT_BATCH=[];
+ try{
+  p.post({msgs:msgs}).then(function(r){
+   if(r && r.queued!=null && r.queued < msgs.length) MODNAT.refused += (msgs.length-r.queued);
+  }).catch(function(){ MODNAT.failed += msgs.length; });
+ }catch(e){ MODNAT.failed += msgs.length; }
+}
+
+// The effects rack (drive, chorus, phaser, delay, reverb, comp, OTT, grit,
+// width, master) is native too: modsynth::FxRack runs after the part's voices.
+// Its parameters travel as {t:'fx', i, v}, i being the position in
+// MS.HOST_PARAMS with the arp's taken out — the order native/modsynth/
+// gen-params.js writes HOST_FX in, so both sides mean the same slot.
+//
+// Without it the part's audio left the speaker straight from the engine and
+// never met the rack that Space and Drive macros turn up: they did nothing.
+var _MODNAT_FXIX = null;
+function _modNativeFxIndex(){
+ if(_MODNAT_FXIX) return _MODNAT_FXIX;
+ var m={}, n=0;
+ MS.HOST_PARAMS.forEach(function(p){ if(/^(fx|master)\./.test(p.id)) m[p.id]=n++; });
+ return (_MODNAT_FXIX=m);
+}
+function _modNativeFxPost(part, id, value){
+ var ix=_modNativeFxIndex()[id]; if(ix==null) return;
+ var p=MS.PARAM[id]; if(!p) return;
+ _modNativePost(part, {t:'fx', i:ix, v:MS.toNumber(p, value)});
+}
+
+function _modNativeAttach(part, eng){
+ if(MODNAT.attached[part] || !eng || !eng.node || !eng.node.port) return;
+ var port=eng.node.port, orig=port.postMessage.bind(port);
+ MODNAT.attached[part]={port:port, orig:orig, eng:eng};
+ port.postMessage=function(m){ _modNativePost(part,m); return orig(m); };
+ // The rack's own setter, wrapped. FxRack.applyAll calls this.set for every
+ // parameter, so the setAll below hands over the whole rack through it; a
+ // modulation offset (fromMod) is the native engine's to compute, not ours.
+ if(eng.fx && typeof eng.fx.set==='function'){
+  var origFxSet=eng.fx.set.bind(eng.fx);
+  eng.fx.set=function(id, value, fromMod){
+   if(!fromMod) try{ _modNativeFxPost(part, id, value); }catch(e){}
+   return origFxSet(id, value, fromMod);
+  };
+ }
+ // Unplug the worklet's audio and keep it unplugged. The engine sleeps when
+ // idle and wake() plugs its node back into its rack, which silently undoes
+ // this — both engines then sound at once.
+ try{ eng.node.disconnect(eng.fx.input); }catch(e){}
+ if(typeof eng.wake==='function'){
+  var origWake=eng.wake.bind(eng);
+  MODNAT.attached[part].wake=origWake;
+  eng.wake=function(){ var r=origWake(); try{ eng.node.disconnect(eng.fx.input); }catch(e){} return r; };
+ }
+ // Hand over where the worklet already is — every parameter, the matrix and
+ // both motion lanes — through the hook above, so the native engine receives
+ // the same messages the worklet got when it was built.
+ try{ eng.setAll(eng.values); eng.pushMatrix(); eng.pushMotion(0); eng.pushMotion(1); }catch(e){}
+}
+
+// Called when a part's engine is built. Only the chord part goes native, and
+// only in the app; everywhere else this returns at once and the worklet plays
+// as it always has.
+function _modNativeSync(part, eng){
+ if(MODNAT.PART[part]==null) return;
+ if(!modNativeAvailable()) return;
+ eng = eng || ((typeof MSX!=='undefined'&&MSX.eng) ? MSX.eng[part] : null);
+ if(!eng || !eng.ready) return;
+ modNativeStart().then(function(ok){
+  if(ok) _modNativeAttach(part, eng);
+  else try{ console.warn('[modNative] engine did not start — the worklet keeps the part'); }catch(e){}
+ });
+}
+
+window.modNative = {
+ available: modNativeAvailable,
+ stats: function(){
+  var p=modNativePlugin();
+  if(!p) return Promise.resolve({available:false});
+  return p.stats().then(function(s){
+   s.available=true; s.posted=MODNAT.posted; s.failed=MODNAT.failed; s.refused=MODNAT.refused;
+   s.attached=!!MODNAT.attached.chord; return s;
+  });
+ }
+};
 
 // ── PARAMS — the instrument's standing state, named once ──────────────────
 // Everything an engine needs that is not decided per note: each part's
@@ -20528,6 +20747,9 @@ function msxEnsure(part){
   var e=new MS.Engine({ dspUrl:'modsynth/dsp.js' });
   return e.init(ctx, trim).then(function(){
    MSX.eng[part]=e; MSX.trim[part]=trim;
+   // In the app, the chord part's mõdSynth is played by the C++ engine from
+   // here on. No-op for every other part, and on the web.
+   try{ _modNativeSync(part, e); }catch(err){}
    msxApply(part);
    if(MSX_GOV.level) msxSendCap(e);
    if(typeof window.msxUiRefresh==='function') window.msxUiRefresh(part);
