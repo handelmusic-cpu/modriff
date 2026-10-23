@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6q</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6r</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6q</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6r</span></div>
  </div>
 </div>
 
@@ -8151,7 +8151,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="attack" min=".005" max=".8" step=".005" value=".025" oninput="updateSV('attack','atk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="atk-val">25ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="decay" min=".1" max="8" step=".1" value="2.2" oninput="updateSV('decay','dec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="dec-val">2.2s</div></div>
-   <div class="sg"><div class="sl">Reverb Mix</div><input type="range" id="rev-mix" min="0" max="1" step=".01" value=".35" oninput="updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%')"><div class="sv" id="revmix-val">35%</div></div>
+   <div class="sg"><div class="sl">Reverb Mix</div><input type="range" id="rev-mix" min="0" max="1" step=".01" value="0" oninput="updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%')"><div class="sv" id="revmix-val">0%</div></div>
    <div class="sg"><div class="sl">Reverb Size</div><input type="range" id="rev-size" min=".1" max="4" step=".05" value="1.8" oninput="updateSV('rev-size','revsize-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="revsize-val">1.8s</div></div>
   </div>
   <!-- Strum is one control in two parts: whether the chord rolls, and how far.
@@ -8385,7 +8385,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <div class="row">
    <div class="sg"><div class="sl">Attack</div><input type="range" id="mel-attack" min=".005" max=".4" step=".005" value=".015" oninput="updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s')"><div class="sv" id="melatk-val">15ms</div></div>
    <div class="sg"><div class="sl">Release</div><input type="range" id="mel-decay" min=".05" max="4" step=".05" value=".8" oninput="updateSV('mel-decay','meldec-val',v=>(+v).toFixed(1)+'s')"><div class="sv" id="meldec-val">0.8s</div></div>
-   <div class="sg"><div class="sl">Reverb</div><input type="range" id="mel-rev" min="0" max="1" step=".01" value=".3" oninput="updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%')"><div class="sv" id="melrev-val">30%</div></div>
+   <div class="sg"><div class="sl">Reverb</div><input type="range" id="mel-rev" min="0" max="1" step=".01" value="0" oninput="updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%')"><div class="sv" id="melrev-val">0%</div></div>
   </div>
   <div class="row" style="margin-top:4px">
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
@@ -9861,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6q';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6r';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20457,9 +20457,17 @@ function msxMotionFor(part, lane, patch, state){
 // melody sequencer have no slider of their own to turn off — the master was
 // the only place left to ask.
 var MSX_REVERB_PARAM = { chord:'chord.reverb', mel:'mel.reverb' };
+function _msxSendRev(part){
+ var fx=_wp('fx.modfx'), sd=fx && fx.sends && fx.sends[part];
+ return sd ? +sd.rev || 0 : 0;
+}
 function _msxReverbOff(part, v){
  var k=MSX_REVERB_PARAM[part];
  var off = (k && +_wp(k)===0) || (+_wpd('master.rev', .05)===0);
+ // The bass, arp and melody sequencer have no Reverb slider; their strip's
+ // REV is the amount. At 0 the patch's own reverb is off too, so a part is dry
+ // until it is asked to be wet. The arp rides the chord's reverb as well.
+ if(!k && _msxSendRev(part)===0 && (part!=='arp' || !(+_wp('chord.reverb')>0))) off = true;
  if(off && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
 }
 function msxApply(part){
@@ -22502,6 +22510,12 @@ function _webEngineSend(msg){
   // The Reverb slider crossing zero switches the patch's own reverb with it
   // (see _msxReverbOff); moving about above zero changes nothing there.
   if(msg.name === 'reverb' && MSX_REVERB_PARAM[part] && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function') _webMsxState(part);
+  if(part === 'fx' && msg.name === 'modfx' && typeof _webMsxState === 'function'){
+   ['bass','melgen','arp'].forEach(function(p){
+    var a=prev && prev.sends && prev.sends[p], b=msg.value && msg.value.sends && msg.value.sends[p];
+    if(((a&&+a.rev)>0) !== ((b&&+b.rev)>0)) _webMsxState(p);
+   });
+  }
   if(part === 'master' && msg.name === 'rev' && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function'){
    Object.keys(MSX.eng).forEach(function(p){ _webMsxState(p); });
   }
@@ -25087,7 +25101,7 @@ function _webArpBlock(msg){
  // The block shares the chord's reverb send; 0.25 was the fallback for a
  // missing slider, kept for a missing value.
  const _rv = _wp('chord.reverb');
- const revMix = _smpRev(voice, (_rv == null) ? 0.25 : _rv);
+ const revMix = _smpRev(voice, (_rv == null) ? 0 : _rv);
  msg.notes.forEach((midi,idx)=>{
  const strumT = t + idx * 0.012;
  const g = ctx.createGain();
@@ -53248,9 +53262,29 @@ FX_CHANNELS.forEach(ch=>{ fxSends[ch]={rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,l
 // they are built thousands of lines above this block — naming fxSends or
 // fxTargets from up there reads a const inside its temporal dead zone, which
 // throws rather than coming back undefined. So they go through here.
+// One reverb, two places. The Chords and Melody strips' REV encoder and the
+// Reverb slider on each part's Studio panel are the same amount: before, the
+// encoder fed the shared mõdFX room and the slider fed the instrument's own
+// send, so a part could sit in two reverbs at once with no single place that
+// said how wet it was. The slider owns the value (it is what saves and what the
+// engine reads); the encoder reads and writes it. The room's size stays on the
+// Studio panel alone. Parts without a slider of their own keep the mõdFX send.
+var REV_SLIDER_OF = { chord:'rev-mix', mel:'mel-rev' };
+Object.keys(REV_SLIDER_OF).forEach(function(ch){
+ var sl=document.getElementById(REV_SLIDER_OF[ch]);
+ if(sl) sl.addEventListener('input', function(){ if(typeof window.mixSyncFx==='function') window.mixSyncFx(); });
+});
 window.fxSendsAPI = {
- get: function(ch,w){ return (fxSends[ch]&&fxSends[ch][w])||0; },
- set: function(ch,w,v){ fxSetSend(ch,w,v); },
+ get: function(ch,w){
+  var sl = (w==='rev') && REV_SLIDER_OF[ch] && document.getElementById(REV_SLIDER_OF[ch]);
+  if(sl) return parseFloat(sl.value)||0;
+  return (fxSends[ch]&&fxSends[ch][w])||0;
+ },
+ set: function(ch,w,v){
+  var sl = (w==='rev') && REV_SLIDER_OF[ch] && document.getElementById(REV_SLIDER_OF[ch]);
+  if(sl){ sl.value=Math.max(0,Math.min(1,v)); sl.dispatchEvent(new Event('input',{bubbles:true})); return; }
+  fxSetSend(ch,w,v);
+ },
  padOn: function(ch){ return fxTargets.indexOf(ch)>=0; },
  padToggle: function(ch){ fxToggleTarget(ch); }
 };
@@ -54757,6 +54791,10 @@ function fxRestoreState(st){
  if(typeof st.release==='number' && typeof fxSetRelease==='function') fxSetRelease(st.release);
  if(typeof st.padFlt==='number' && st.padFlt>=0 && st.padFlt<=2) fxPadFlt=st.padFlt|0;
  FX_CHANNELS.forEach(ch=>{ if(st.sends[ch]) fxSends[ch]=Object.assign({rev:0,dly:0,drv:0,lmode:0,lcut:1,lres:0,ldrv:0,mix:1},st.sends[ch]); });
+ // Chords and Melody: the REV encoder IS the Studio Reverb slider now (see
+ // REV_SLIDER_OF). An older setup's separate send would keep sounding with no
+ // knob showing it, so it is dropped; the slider's own value is what it saves.
+ ['chord','mel'].forEach(ch=>{ if(fxSends[ch]) fxSends[ch].rev=0; });
  if(typeof synthFilterSync==='function') setTimeout(synthFilterSync,0);
  if(FX_PARAMS[st.x]) fxPadX=st.x;
  if(FX_PARAMS[st.y]) fxPadY=st.y;
