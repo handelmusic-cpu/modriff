@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6p</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6q</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6p</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6q</span></div>
  </div>
 </div>
 
@@ -8539,6 +8539,11 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <div class="sg"><div class="sl">Drive</div><input type="range" id="fx-drive" min="0" max="1" step=".01" value="0" oninput="onFxInput()"><div class="sv" id="fxdrive-val">0%</div></div>
  <div class="sg"><div class="sl">Width</div><input type="range" id="fx-width" min="0" max="1" step=".01" value=".4" oninput="onFxInput()"><div class="sv" id="fxwidth-val">40%</div></div>
  <div class="sg"><div class="sl">Drift</div><input type="range" id="fx-drift" min="0" max="1" step=".01" value=".3" oninput="onFxInput()"><div class="sv" id="fxdrift-val">30%</div></div>
+ </div>
+ <div class="row" style="margin-top:2px">
+  <button class="tb" type="button" onclick="resetSoundShaping()"
+    title="Puts Attack, Release and Reverb (chords and melody) and the Tone macros back to how the app starts. Voices, tempo and the song are not touched.">Reset sound</button>
+  <div class="ss-note">Attack, Release, Reverb and the Tone macros back to their starting values.</div>
  </div>
  <div class="ss-scope">Response <b>how hard you play</b></div>
  <div class="row">
@@ -9856,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6p';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6q';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -19259,6 +19264,22 @@ function driftMul(){
  return d<=0 ? 1 : Math.pow(2,((Math.random()-.5)*d*13)/1200);
 }
 
+// The shaping knobs go back to what the markup starts them at. Read off each
+// slider's own default rather than listed here a second time, so changing a
+// starting value in the markup changes this too. A knob left at an extreme
+// (Attack 0.8 s, Tone 30%) is easy to forget and makes every voice sound like
+// the app is broken; this is the way back without hunting for each one.
+// Only shaping: the voices, tempo, mixer and song stay as they are.
+const SOUND_SHAPING_IDS = ['attack','decay','rev-mix','mel-attack','mel-decay','mel-rev',
+  'fx-cutoff','fx-reso','fx-env','fx-drive','fx-width','fx-drift'];
+function resetSoundShaping(){
+ SOUND_SHAPING_IDS.forEach(id=>{
+  const e=document.getElementById(id); if(!e) return;
+  e.value=e.defaultValue;
+  e.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+ try{ showToast('Sound reset'); }catch(e){}
+}
 function onFxInput(){
  fxCutoff=parseFloat(document.getElementById('fx-cutoff').value);
  fxReso  =parseFloat(document.getElementById('fx-reso').value);
@@ -20166,8 +20187,8 @@ function _releaseChordAt(id, t){
 }
 function _webChordReleaseAt(t){
  const ctx=getCtx(); if(!ctx || !(t>0)) return;
- const dec=(_wp('chord.release')||2.0);
- const atk=(_wp('chord.attack')||0.025);
+ const dec=_smpRel(_wp('chord.voice'), _wp('chord.release')||2.0);
+ const atk=_smpAtk(_wp('chord.voice'), _wp('chord.attack')||0.025);
  activeOscs.forEach(v=>{
   try{
    const relT=Math.max(t, ctx.currentTime, (v.t0!=null ? v.t0 : t) + atk + 0.02);
@@ -20196,8 +20217,8 @@ function releaseSustainedChord(myId){
 function _webChordRelease(){
  const ctx=getCtx(); if(!ctx){ activeOscs=[]; return; }
  const t=ctx.currentTime;
- const dec=(_wp('chord.release')||2.0);
- const atk=(_wp('chord.attack')||0.025);
+ const dec=_smpRel(_wp('chord.voice'), _wp('chord.release')||2.0);
+ const atk=_smpAtk(_wp('chord.voice'), _wp('chord.attack')||0.025);
  activeOscs.forEach(v=>{
  try{
  // A chord is scheduled to start FADE_OUT ahead of the press, plus its strum
@@ -20240,6 +20261,21 @@ const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
                         tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal', pianoreal2:'pianoreal2', marimba:'marimba',
                         kalimba:'kalimba', xylo:'xylo',
                         violin:'violin', clarinet:'clarinet', flute:'flute' };
+
+// What a recording needs from the part's shaping knobs. A sampled note already
+// has its own attack baked into the audio, so an envelope attack on top of it
+// is a swell nobody recorded: Attack at 0.8 s turned Piano 1 into a pad that
+// measured 0.1% above 2 kHz and sounded nothing like the instrument. The
+// release is floored because the opposite mistake is as bad: 0.1 s chops a
+// piano's tail off like a gate. The part's own reverb is turned down because
+// the recording usually has a room in it and the master reverb carries the
+// session; the sliders still decide the synth voices, and are untouched.
+// Functions, not constants: SAMPLED_WAVES is a const declared above and these
+// are only called from notes, long after it has run.
+var SMP_ATTACK_MAX = 0.004, SMP_RELEASE_MIN = 0.6, SMP_REVERB_SCALE = 0.3;
+function _smpAtk(voice, atk){ return SAMPLED_WAVES[voice] ? Math.min(atk, SMP_ATTACK_MAX) : atk; }
+function _smpRel(voice, dec){ return SAMPLED_WAVES[voice] ? Math.max(dec, SMP_RELEASE_MIN) : dec; }
+function _smpRev(voice, rv){  return SAMPLED_WAVES[voice] ? rv * SMP_REVERB_SCALE : rv; }
 
 // ═══════════════════════════════════════
 // mõdSynth ENGINE BRIDGE (4.6.0)
@@ -22307,10 +22343,10 @@ function _webChordOn(msg){
  const intvs=(msg.bass!=null ? [msg.bass] : []).concat(msg.notes).map(n=>n-rootM);
  const slashBass=msg.bass;
  const vol=1; // volume is controlled solely by the Mixer's Chord channel (_mxCh) now
- const atk=_wp('chord.attack')||0.025;
- const dec=sustain?SUSTAIN_DUR:msg.dur;
- const revMix=_wp('chord.reverb')||0;
  const voice=_wp('chord.voice');
+ const atk=_smpAtk(voice, _wp('chord.attack')||0.025);
+ const dec=sustain?SUSTAIN_DUR:msg.dur;
+ const revMix=_smpRev(voice, _wp('chord.reverb')||0);
  const wg=(WAVE_GAIN[voice]||1)*((window.CHORD_SAMPLE_GAIN||{})[voice]||1);   // defined with the arp, further down
  const vsc=msg.vel;
  const _mxCh=_wp('mix.chord');
@@ -22889,10 +22925,10 @@ function _webMelNoteOn(msg){
  const midi=msg.note;
  const sustain=(msg.dur==null);
  const vol=1; // volume is controlled solely by the Mixer's Mel channel (_mxMel) now
- const atk=_wp('mel.attack');
- const dec=sustain ? _wp('mel.release') : msg.dur;
- const revMix=_wp('mel.reverb');
  const voice=_wp('mel.voice');
+ const atk=_smpAtk(voice, _wp('mel.attack'));
+ const dec=sustain ? _smpRel(voice, _wp('mel.release')) : msg.dur;
+ const revMix=_smpRev(voice, _wp('mel.reverb'));
  const wg=(WAVE_GAIN[voice]||1) * (MEL_SAMPLE_TRIM[voice]||1);
  const vsc=msg.vel;
  const now=ctx.currentTime;
@@ -23015,7 +23051,7 @@ function _webMelRelease(id){
  const {g,oscs,mod}=activeMelOscs[midi];
  const ctx=getCtx(); if(!ctx){ delete activeMelOscs[midi]; return; }
  const now=ctx.currentTime;
- const dec=_wp('mel.release');
+ const dec=_smpRel(_wp('mel.voice'), _wp('mel.release'));
  try{
  g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value,now);
  g.gain.exponentialRampToValueAtTime(.0001,now+dec*.5);
@@ -25051,7 +25087,7 @@ function _webArpBlock(msg){
  // The block shares the chord's reverb send; 0.25 was the fallback for a
  // missing slider, kept for a missing value.
  const _rv = _wp('chord.reverb');
- const revMix = (_rv == null) ? 0.25 : _rv;
+ const revMix = _smpRev(voice, (_rv == null) ? 0.25 : _rv);
  msg.notes.forEach((midi,idx)=>{
  const strumT = t + idx * 0.012;
  const g = ctx.createGain();
@@ -25132,10 +25168,10 @@ function _webArpNote(msg){
  const ctx=getCtx(); if(!ctx) return;
  const midi=msg.note, tAdj=msg.at, dur=msg.dur;
  const vol=1; // volume is controlled solely by the Mixer's Arp channel (_mxArp) now
- const atk=_wp('chord.attack');
  const voice=_wp('arp.voice');
+ const atk=_smpAtk(voice, _wp('chord.attack'));
  const wg=(WAVE_GAIN[voice]||1)*(ARP_SAMPLE_GAIN[voice]||1);
- const revMix=_wp('chord.reverb');
+ const revMix=_smpRev(voice, _wp('chord.reverb'));
  const _mxArp=_wp('mix.arp');
  if(!(_mxArp>0)) return;
  const _pk=vol*.55*wg*msg.vel*msg.level*_mxArp*_wp('fx.trim');
