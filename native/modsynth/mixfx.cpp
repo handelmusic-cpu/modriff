@@ -1,0 +1,290 @@
+// See mixfx.h. Read fxBuildChain / fxApplyChannel in index.html beside this:
+// the stages below are that graph's, in its order, fed its finished numbers.
+#include "mixfx.h"
+#include "dspkit.h"
+
+#include <cmath>
+#include <cstring>
+
+namespace modsynth {
+namespace {
+
+using namespace dsp;
+
+constexpr int CHUNK = 32;          // control rate: smoothed values are re-derived this often
+constexpr double FX_REV_SEC = 3.4; // the web chain's room impulse, and its return gain
+constexpr double FX_REV_RET = 2.2;
+constexpr double ISO_LO_HZ = 220, ISO_HI_HZ = 2600;
+constexpr double FMT_Q = 9;
+
+// The drive curve fxApplyChannel builds, x*(k+1)/(1+k|x|) with k = 90*amount,
+// as a lookup the oversampler can use.
+void driveCurve(Curve& c, double amount) {
+  const double k = amount * 90;
+  for (int i = 0; i < CURVE_N; i++) {
+    const double x = (double)i / (CURVE_N - 1) * 2 - 1;
+    c.t[i] = (float)(x * (k + 1) / (1 + k * std::fabs(x)));
+  }
+}
+
+// ── The reverb, for the send ────────────────────────────────────────────────
+// The web chain convolves with _fxRoomIR (3.4 s of noise under a (1-t)^2.6
+// envelope, darkening as it falls). This is the same network the effects rack
+// uses in place of a convolver, fitted to that impulse: its RT60, its level on
+// white noise (the browser normalises a convolver's impulse), and its tone.
+struct Fdn {
+  static constexpr int RN = 8;
+  double sr;
+  Dl line[RN]; double len[RN], g[RN], lp[2] = {0, 0};
+  Dl apL[2], apR[2]; double apLen[2][2];
+  double outScale = 0.1, cut = 0.5;
+
+  explicit Fdn(double sampleRate) : sr(sampleRate) {
+    static const int base[RN] = {1117, 1559, 1993, 2467, 2971, 3469, 3947, 4421};
+    static const int apl[2] = {142, 107}, apr[2] = {162, 121};
+    // The same room the web renders: size 0.5727 on the rack's scale is 3.4 s.
+    const double L = FX_REV_SEC, e = 2.6;
+    const double rt = std::min(8.0, std::max(0.05, L * (1 - std::pow(0.001, 1.0 / e))));
+    const double scale = 0.6 + 0.5727;
+    double mean = 0;
+    for (int i = 0; i < RN; i++) {
+      len[i] = base[i] * sr / 44100.0 * scale;
+      line[i].init((int)(len[i] * 1.1) + 8);
+      g[i] = std::pow(10.0, -3.0 * len[i] / (sr * rt));
+      mean += len[i] / RN;
+    }
+    for (int i = 0; i < 2; i++) {
+      apLen[0][i] = apl[i] * sr / 44100.0; apLen[1][i] = apr[i] * sr / 44100.0;
+      apL[i].init((int)apLen[0][i] + 4); apR[i].init((int)apLen[1][i] + 4);
+    }
+    cut = std::exp(-PI * 2 * 2500.0 / sr);     // the impulse's own darkening, on average
+    const double A = 0.00125 * 44100.0 / sr * std::sqrt(L * sr);
+    outScale = A * 0.5 * std::sqrt(13.8 * mean / (sr * rt)) / std::sqrt((1 - cut) / (1 + cut));
+  }
+
+  inline void tick(double inL, double inR, double& oL, double& oR) {
+    for (int a = 0; a < 2; a++) {
+      const double dl = apL[a].read(apLen[0][a]);
+      const double yl = -0.6 * inL + dl; apL[a].write((float)(inL + 0.6 * yl)); inL = yl;
+      const double dr = apR[a].read(apLen[1][a]);
+      const double yr = -0.6 * inR + dr; apR[a].write((float)(inR + 0.6 * yr)); inR = yr;
+    }
+    double xs[RN], sum = 0;
+    for (int k = 0; k < RN; k++) { xs[k] = line[k].read(len[k]); sum += xs[k]; }
+    const double s2 = sum * (2.0 / RN);
+    static const double sg[RN] = {1, 1, -1, -1, 1, -1, -1, 1};
+    double l = 0, r = 0;
+    for (int k = 0; k < RN; k++) {
+      const double inj = (k & 1) ? inR : inL;
+      line[k].write((float)(inj * sg[k] + g[k] * (xs[k] - s2)));
+      if (k & 1) r += xs[k] * sg[(k + 3) & 7]; else l += xs[k] * sg[(k + 1) & 7];
+    }
+    l *= outScale; r *= outScale;
+    lp[0] = l * (1 - cut) + lp[0] * cut; oL = lp[0];
+    lp[1] = r * (1 - cut) + lp[1] * cut; oR = lp[1];
+  }
+};
+
+}  // namespace
+
+struct MixFx::Impl {
+  double sr;
+  double p[MFX_COUNT];
+  Smooth sm[MFX_COUNT];
+  double pv[MFX_COUNT], cv[MFX_COUNT];      // value at the start / end of this chunk
+
+  BqS lpS1[2], lpS2[2], hpS1[2], hpS2[2];
+  BqC lpC1, lpC2, hpC1, hpC2;
+  Os2 os[2]; Curve curve; double curveAmt = -1; int curveSince = 1 << 20;
+  float dr[2][16] = {}; int dw = 0;           // the clean/dry side, delayed to match the oversampler
+  BqS isoS[4][2]; BqC isoC[4];
+  BqS fmtS[2][2]; BqC fmtC[2];
+  double tremPh = 0, ringPh = 0;
+  Dl dly[2]; double dlyT = 0.25; int dlyTail = 0;
+  Fdn fdn; int rvTail = 0;
+  int drvTail = 0;
+  float x[2][CHUNK], clean[2][CHUNK], tmp[2][CHUNK];
+
+  explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate) {
+    static const double def[MFX_COUNT] = {
+      /*mix*/1, /*tau*/0.02, /*active*/0, /*lp*/18000, 0.7, /*hp*/20, 0.7,
+      /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,
+      /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1 };
+    for (int i = 0; i < MFX_COUNT; i++) { p[i] = def[i]; sm[i].init(sr, 0.02); sm[i].snap(def[i]); pv[i] = cv[i] = def[i]; }
+    sm[MFX_ACTIVE].init(sr, 0.005); sm[MFX_MIX].init(sr, 0.015);
+    dly[0].init((int)(sr * 4.0)); dly[1].init((int)(sr * 4.0));
+    driveCurve(curve, 0);
+    isoC[0] = bqDesign(LP, ISO_LO_HZ, 0.7, sr, true);  isoC[1] = bqDesign(HP, ISO_LO_HZ, 0.7, sr, true);
+    isoC[2] = bqDesign(LP, ISO_HI_HZ, 0.7, sr, true);  isoC[3] = bqDesign(HP, ISO_HI_HZ, 0.7, sr, true);
+    lpC1 = lpC2 = bqDesign(LP, 18000, 0.7, sr, true);
+    hpC1 = hpC2 = bqDesign(HP, 20, 0.7, sr, true);
+  }
+
+  // Step the smoothers one chunk and remember where each started, so gains can
+  // ramp across the chunk instead of stepping at its edge.
+  void controls() {
+    const double tau = std::max(0.002, p[MFX_TAU]);
+    const double k = 1.0 - std::exp(-1.0 / (sr * tau));
+    for (int i = 0; i < MFX_COUNT; i++) {
+      if (i != MFX_ACTIVE && i != MFX_MIX) sm[i].k = k;
+      sm[i].t = p[i];
+      pv[i] = sm[i].v;
+      // CHUNK one-pole steps in one go.
+      sm[i].v += (sm[i].t - sm[i].v) * (1.0 - std::pow(1.0 - sm[i].k, CHUNK));
+      cv[i] = sm[i].v;
+    }
+    lpC1 = bqDesign(LP, cv[MFX_LP_HZ], cv[MFX_LP_Q], sr, true);
+    lpC2 = bqDesign(LP, cv[MFX_LP_HZ], 0.7, sr, true);
+    hpC1 = bqDesign(HP, cv[MFX_HP_HZ], cv[MFX_HP_Q], sr, true);
+    hpC2 = bqDesign(HP, cv[MFX_HP_HZ], 0.7, sr, true);
+    fmtC[0] = bqDesign(BP, cv[MFX_FMT1_HZ], FMT_Q, sr, false);
+    fmtC[1] = bqDesign(BP, cv[MFX_FMT2_HZ], FMT_Q, sr, false);
+    // Rebuilding the curve is 2048 divisions; skip it unless the amount moved.
+    curveSince += CHUNK;
+    if (std::fabs(cv[MFX_DRV_AMT] - curveAmt) > 0.004 && curveSince > 512) {
+      driveCurve(curve, cv[MFX_DRV_AMT]); curveAmt = cv[MFX_DRV_AMT]; curveSince = 0;
+    }
+  }
+  inline float ramp(int idx, int i, int n) const {
+    return (float)(pv[idx] + (cv[idx] - pv[idx]) * ((i + 1) / (double)n));
+  }
+  static inline bool near(double a, double b) { return std::fabs(a - b) < 1e-4; }
+
+  void run(float* L, float* R, int n) {
+    float* io[2] = {L, R};
+    // The clean part, delayed as far as the oversampler delays the chain, so
+    // the two halves of the Mix line up (fxBuildChain's bypDly).
+    for (int i = 0; i < n; i++) {
+      for (int c = 0; c < 2; c++) {
+        dr[c][dw & 15] = io[c][i];
+        clean[c][i] = dr[c][(dw - OS_C / 2) & 15];
+        x[c][i] = io[c][i];
+      }
+      dw++;
+    }
+    const bool live = cv[MFX_ACTIVE] > 1e-4 || p[MFX_ACTIVE] > 0.5;
+    if (!live) { for (int c = 0; c < 2; c++) std::memcpy(io[c], clean[c], sizeof(float) * (size_t)n); return; }
+
+    // Filters: a pair of low-passes, then a pair of high-passes.
+    for (int c = 0; c < 2; c++)
+      for (int i = 0; i < n; i++) {
+        double v = x[c][i];
+        v = bqRun(lpC1, lpS1[c], v); v = bqRun(lpC2, lpS2[c], v);
+        v = bqRun(hpC1, hpS1[c], v); v = bqRun(hpC2, hpS2[c], v);
+        x[c][i] = (float)v;
+      }
+
+    // Drive, a parallel blend. The oversampler hands back the shaped signal and
+    // the input delayed by exactly its own latency, so the blend never combs;
+    // it runs whenever the chain is in, so that holds when the amount moves.
+    for (int c = 0; c < 2; c++)
+      for (int i = 0; i < n; i++) {
+        float dry; const float wet = os[c].run(curve, x[c][i], &dry);
+        x[c][i] = wet * ramp(MFX_DRV_WET, i, n) + dry * ramp(MFX_DRV_DRY, i, n);
+      }
+
+    // Isolator: three bands summed, in place of the signal while it is up.
+    if (cv[MFX_ISO_WET] > 1e-4 || !near(cv[MFX_ISO_DRY], 1)) {
+      for (int i = 0; i < n; i++) {
+        const float w = ramp(MFX_ISO_WET, i, n), d = ramp(MFX_ISO_DRY, i, n);
+        const float gl = ramp(MFX_ISO_LO, i, n), gm = ramp(MFX_ISO_MID, i, n), gh = ramp(MFX_ISO_HI, i, n);
+        for (int c = 0; c < 2; c++) {
+          const double in = x[c][i];
+          const double lo = bqRun(isoC[0], isoS[0][c], in);
+          const double mid = bqRun(isoC[2], isoS[2][c], bqRun(isoC[1], isoS[1][c], in));
+          const double hi = bqRun(isoC[3], isoS[3][c], in);
+          x[c][i] = (float)(w * (lo * gl + mid * gm + hi * gh) + d * in);
+        }
+      }
+    }
+    // Talk filter: two formants, blended in.
+    if (cv[MFX_FMT_WET] > 1e-4 || !near(cv[MFX_FMT_DRY], 1)) {
+      for (int i = 0; i < n; i++) {
+        const float w = ramp(MFX_FMT_WET, i, n), d = ramp(MFX_FMT_DRY, i, n);
+        for (int c = 0; c < 2; c++) {
+          const double in = x[c][i];
+          const double f = bqRun(fmtC[0], fmtS[0][c], in) + 0.8 * bqRun(fmtC[1], fmtS[1][c], in);
+          x[c][i] = (float)(w * f + d * in);
+        }
+      }
+    }
+    // Gate gain, tremolo (a sine on the gain, around its base), pan.
+    {
+      const double tw = 2 * PI * cv[MFX_TREM_HZ] / sr;
+      const double pan = cv[MFX_PAN];
+      const bool panOn = std::fabs(pan) > 1e-4;
+      double gl = 0, gr = 1;                     // StereoPanner on a stereo input (the spec's)
+      double pl = 0, pr = 0;
+      if (panOn) {
+        if (pan <= 0) { const double a = pan + 1; gl = std::cos(a * PI / 2); gr = std::sin(a * PI / 2); }
+        else { pl = std::cos(pan * PI / 2); pr = std::sin(pan * PI / 2); }
+      }
+      for (int i = 0; i < n; i++) {
+        const float g = ramp(MFX_GATE, i, n);
+        const float t = ramp(MFX_TREM_BASE, i, n) + ramp(MFX_TREM_DEPTH, i, n) * (float)std::sin(tremPh);
+        tremPh += tw; if (tremPh > 2 * PI) tremPh -= 2 * PI;
+        float a = x[0][i] * g * t, b = x[1][i] * g * t;
+        if (panOn) {
+          if (pan <= 0) { const float na = a + b * (float)gl, nb = b * (float)gr; a = na; b = nb; }
+          else { const float na = a * (float)pl, nb = b + a * (float)pr; a = na; b = nb; }
+        }
+        x[0][i] = a; x[1][i] = b;
+      }
+    }
+    // Ring mod: the wet side is the signal times a sine.
+    if (cv[MFX_RING_WET] > 1e-4 || !near(cv[MFX_RING_DRY], 1)) {
+      const double rw = 2 * PI * cv[MFX_RING_HZ] / sr;
+      for (int i = 0; i < n; i++) {
+        const float w = ramp(MFX_RING_WET, i, n), d = ramp(MFX_RING_DRY, i, n);
+        const float o = (float)std::sin(ringPh); ringPh += rw; if (ringPh > 2 * PI) ringPh -= 2 * PI;
+        x[0][i] = x[0][i] * (w * o + d); x[1][i] = x[1][i] * (w * o + d);
+      }
+    }
+    // Sends. A branch runs while it has a send, and for its tail after.
+    const bool dlyOn = cv[MFX_DLY_SEND] > 1e-5;
+    if (dlyOn) dlyTail = (int)(14 * sr); else if (dlyTail > 0) dlyTail -= n;
+    const bool rvOn = cv[MFX_REV_SEND] > 1e-5;
+    if (rvOn) rvTail = (int)((FX_REV_SEC + 0.5) * sr); else if (rvTail > 0) rvTail -= n;
+    const double slew = 1.0 - std::exp(-1.0 / (sr * std::max(0.002, p[MFX_TAU])));
+    for (int i = 0; i < n; i++) {
+      const float dg = ramp(MFX_DRY, i, n);
+      double oL = x[0][i] * dg, oR = x[1][i] * dg;
+      if (dlyOn || dlyTail > 0) {
+        dlyT += (std::min(3.9, std::max(0.001, p[MFX_DLY_TIME])) - dlyT) * slew;
+        const double fb = ramp(MFX_DLY_FB, i, n), sd = ramp(MFX_DLY_SEND, i, n);
+        const double yl = dly[0].read(dlyT * sr), yr = dly[1].read(dlyT * sr);
+        dly[0].write((float)(x[0][i] * sd + yl * fb)); dly[1].write((float)(x[1][i] * sd + yr * fb));
+        oL += yl; oR += yr;
+      }
+      if (rvOn || rvTail > 0) {
+        const double sd = ramp(MFX_REV_SEND, i, n);
+        double rl, rr; fdn.tick(x[0][i] * sd, x[1][i] * sd, rl, rr);
+        oL += rl * FX_REV_RET; oR += rr * FX_REV_RET;
+      }
+      x[0][i] = (float)oL; x[1][i] = (float)oR;
+    }
+    // The Mix: the chain against the clean part. Out of circuit (act = 0) it is
+    // all clean; the page crossfades the two in 5 ms as the chain comes and goes.
+    for (int i = 0; i < n; i++) {
+      const float a = ramp(MFX_ACTIVE, i, n) * ramp(MFX_MIX, i, n);
+      io[0][i] = x[0][i] * a + clean[0][i] * (1 - a);
+      io[1][i] = x[1][i] * a + clean[1][i] * (1 - a);
+    }
+  }
+};
+
+MixFx::MixFx(double sr) : d(new Impl(sr)) {}
+MixFx::~MixFx() = default;
+void MixFx::set(int i, double v) { if (i >= 0 && i < MFX_COUNT && std::isfinite(v)) d->p[i] = v; }
+double MixFx::get(int i) const { return (i >= 0 && i < MFX_COUNT) ? d->p[i] : 0; }
+
+void MixFx::process(float* L, float* R, int n) {
+  Impl& s = *d;
+  for (int off = 0; off < n; off += CHUNK) {
+    const int k = std::min(CHUNK, n - off);
+    s.controls();
+    s.run(L + off, R + off, k);
+  }
+}
+
+}  // namespace modsynth

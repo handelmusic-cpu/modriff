@@ -1355,6 +1355,42 @@ call through a stand-in analyser. Expect the native chord to be about 8 dB
 quieter than it was: it now sits where the web chord does. Pan is not done:
 the mixer has no pan control to mirror.
 
+**N1 landed (4.9.9.9.9.7.6t, PR 255); N3 first half is on branch
+`claude/native-mixfx` (4.9.9.9.9.7.6u, unmerged, Swift unbuilt).** The order
+changed from the table: mõdFX came before the master bus, because it is what
+the owner is missing on a native chord and the master bus changes the level of
+everything.
+
+*What N3 is.* `native/modsynth/mixfx.{h,cpp}` is `fxBuildChain`'s signal path
+in C++ — two low-pass and two high-pass biquads, the parallel drive on the 2x
+oversampler, the isolator, the talk filter, gate gain, tremolo, pan, ring mod,
+the delay and reverb sends, and the Mix of chain against the clean part — and
+`dspkit.h` holds the primitives it shares with the effects rack (moved out of
+`fxrack.cpp` unchanged). The host runs it after the strip, and the meter now
+reads after it, as the web's does.
+
+*How the page drives it.* It does not re-implement the pad. `fxApplyChannel`
+already resolves, from the sends, the pad and the release, what every node is
+at; it now also fills a small object from those same variables and posts the
+ones that moved as `{t:'mfx', i, v}` (`_modNativeMfxSync`, `MFX_PARAMS`; the
+order is held to the C++ enum by `tests/modsynth/mixfx-order.test.js`). One
+decision, two places it lands. A part the native engine plays has no web bus
+to listen to, so `_fxPartHeard` says yes for it; without that the chain would
+drop out a second and a half into every pad gesture.
+
+*Measured* (`mixfxtest`): neutral chain flat to 0.2 dB with the two halves of
+the Mix aligned, 24 dB/octave on both filters, drive adds odd harmonics and
+holds level within 0.3 dB, the isolator and talk filter pick their bands, a
+delay echo lands within a sample, the reverb tail is gone by 4 s, 60 random
+settings with knobs moved mid-run stay finite, about 0.6% of a core with
+everything on (a Mac). Page side, in a browser with a stand-in native plugin:
+the resting state posts 32 correct values, and moving the chord's delay,
+drive and reverb sends posts the values `fxApplyChannel` computes.
+
+*Not in it yet:* the worklet effects (stutter, reverse, warp, crush, rate,
+grain, ladder), gate patterns, and the sample-source axes. The page leaves
+their values at rest for a native part, so those pad axes do nothing there.
+
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
 both be native, so measure N3 on the oldest phone available before adding

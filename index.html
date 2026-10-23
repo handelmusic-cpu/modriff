@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6t</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6u</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6u</span></div>
  </div>
 </div>
 
@@ -9861,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6t';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10410,10 +10410,32 @@ function _modNativeMeter(part){
  }});
 }
 
+// mõdFX, native. fxApplyChannel works out the finished value of every node in
+// the chain and hands the ones the native chain has to this; the names are
+// MixFxParam's, in order (native/modsynth/mixfx.h; tests/modsynth/
+// mixfx-order.test.js holds the two together). A value is only sent when it
+// moved, because a pad gesture otherwise posts all 32 every frame.
+var MFX_PARAMS = ['mix','tau','active','lpHz','lpQ','hpHz','hpQ','drvAmt','drvWet','drvDry',
+ 'isoWet','isoDry','isoLo','isoMid','isoHi','fmtWet','fmtDry','fmt1Hz','fmt2Hz','gate',
+ 'tremBase','tremDepth','tremHz','pan','ringHz','ringWet','ringDry',
+ 'dlySend','dlyTime','dlyFb','revSend','dry'];
+MODNAT.mfx = {};
+function _modNativeMfxSync(part, vals){
+ if(!MODNAT.attached[part]) return;
+ var last = MODNAT.mfx[part] || (MODNAT.mfx[part] = {});
+ for(var i=0; i<MFX_PARAMS.length; i++){
+  var k = MFX_PARAMS[i], v = vals[k];
+  if(v==null || !isFinite(v) || last[k]===v) continue;
+  last[k] = v;
+  _modNativePost(part, {t:'mfx', i:i, v:v});
+ }
+}
+
 function _modNativeAttach(part, eng){
  if(MODNAT.attached[part] || !eng || !eng.node || !eng.node.port) return;
  var port=eng.node.port, orig=port.postMessage.bind(port);
  MODNAT.attached[part]={port:port, orig:orig, eng:eng};
+ MODNAT.strip[part]=undefined; MODNAT.mfx[part]={};     // a fresh engine knows nothing yet
  port.postMessage=function(m){ _modNativePost(part,m); return orig(m); };
  // The rack's own setter, wrapped. FxRack.applyAll calls this.set for every
  // parameter, so the setAll below hands over the whole rack through it; a
@@ -10439,6 +10461,8 @@ function _modNativeAttach(part, eng){
  // the same messages the worklet got when it was built.
  try{ eng.setAll(eng.values); eng.pushMatrix(); eng.pushMotion(0); eng.pushMotion(1); }catch(e){}
  try{ _modNativeStripSync(part); }catch(e){}
+ // And mõdFX: have the chain say where it is now.
+ try{ if(typeof fxApplyChannel==='function') fxApplyChannel(part); }catch(e){}
 }
 
 // Called when a part's engine is built. Only the chord part goes native, and
@@ -54514,10 +54538,12 @@ function _fxSetActive(chain, on, now){
   // Not to zero: with the mix below 100% the bypass IS the clean half.
   chain.byp.gain.cancelScheduledValues(t); chain.byp.gain.setTargetAtTime(1-_fxMix(chain.ch, true), t, 0.005);
   chain.active=true;
+  if(MODNAT.attached[chain.ch]) _modNativeMfxSync(chain.ch, {active:1});
   return;
  }
  if(!chain.active) return;
  chain.active=false;
+ if(MODNAT.attached[chain.ch]) _modNativeMfxSync(chain.ch, {active:0});
  const cut=function(){
   if(chain.active) return;
   try{ chain.bus.disconnect(chain.io); }catch(e){}
@@ -54560,6 +54586,9 @@ function _fxHearPoll(){
 }
 function _fxPartHeard(ch){
  if(!_fxHearT && (_fxEngPad().engaged || _fxReleasing)){ _fxHearT = setInterval(_fxHearPoll, 250); _fxHearPoll(); }
+ // A part the native engine plays has no web bus to listen to, and would
+ // read as silent and drop its chain a second and a half into every gesture.
+ if(MODNAT.attached[ch]) return true;
  // No reading yet (the poll has not run, or there is no bus to read): assume
  // it is sounding — engaging the pad must never make something go dry.
  if(!_fxHearAn[ch]) return true;
@@ -54652,6 +54681,9 @@ function fxApplyChannel(ch){
  const P=_fxEngPad(), rel=_fxEngRelease();
  const S = _fxReleasing ? Math.max(0.02, rel/3) : 0.02;
  const v=k=>fxValue(ch,k);
+ // What the native chain is told, taken from the very variables that set the
+ // nodes below, so there is one decision and two places it lands.
+ const nat={mix:_fxMix(ch,true), tau:S};
 
  // A ganged axis owns both the frequency and the Q of the filter it drives;
  // otherwise the separate cutoff/reso/hpf params do, exactly as before.
@@ -54671,6 +54703,8 @@ function fxApplyChannel(ch){
  chain.filt.Q.setTargetAtTime(padLad ? 0.7 : 0.7 + (lpOn ? _fxGangQ(lpV) : v('reso'))*28, t, S);
  chain.hp.frequency.setTargetAtTime(hpHz, t, S);
  if(chain.hp.Q) chain.hp.Q.setTargetAtTime(0.7 + (hpOn ? _fxGangQ(1-hpV) : 0)*20, t, S);
+ nat.lpHz=lpHz; nat.lpQ=padLad ? 0.7 : 0.7 + (lpOn ? _fxGangQ(lpV) : v('reso'))*28;
+ nat.hpHz=hpHz; nat.hpQ=0.7 + (hpOn ? _fxGangQ(1-hpV) : 0)*20;
  // The second stage of each cascade tracks the first at a flat Q, so the pair
  // is 24dB/octave with one resonant peak rather than two.
  if(chain.filt2) chain.filt2.frequency.setTargetAtTime(lpHz, t, S);
@@ -54686,6 +54720,7 @@ function fxApplyChannel(ch){
  const mk = (typeof _curveRmsGain==='function') ? _curveRmsGain(dcurve, 0.2) : 1;
  chain.drvWet.gain.setTargetAtTime(drv*(mk>0.001 ? 1/mk : 1), t, S);
  chain.drvDry.gain.setTargetAtTime(1-drv, t, S);
+ nat.drvAmt=drv; nat.drvWet=drv*(mk>0.001 ? 1/mk : 1); nat.drvDry=1-drv;
 
  // Isolator is only in circuit when an axis is driving it — see the chain
  // comment on why it cannot simply sit there at unity.
@@ -54697,6 +54732,7 @@ function fxApplyChannel(ch){
   chain.isoHiG.gain.setTargetAtTime(g.hi, t, S);
   chain.isoWet.gain.setTargetAtTime(isoOn?1:0, t, S);
   chain.isoDry.gain.setTargetAtTime(isoOn?0:1, t, S);
+  nat.isoWet=isoOn?1:0; nat.isoDry=isoOn?0:1; nat.isoLo=g.lo; nat.isoMid=g.mid; nat.isoHi=g.hi;
  }
 
  // Talk filter: the two formants track one axis through the vowel table, so a
@@ -54710,6 +54746,7 @@ function fxApplyChannel(ch){
    const a = FMT_VOWELS[i0], b2 = FMT_VOWELS[Math.min(FMT_VOWELS.length-1,i0+1)];
    chain.fmt1.frequency.setTargetAtTime(a[0]+(b2[0]-a[0])*fr, t, S);
    chain.fmt2.frequency.setTargetAtTime(a[1]+(b2[1]-a[1])*fr, t, S);
+   nat.fmt1Hz=a[0]+(b2[0]-a[0])*fr; nat.fmt2Hz=a[1]+(b2[1]-a[1])*fr;
   }
   else {
    // Park them back where they started rather than leaving a swept vowel
@@ -54718,11 +54755,13 @@ function fxApplyChannel(ch){
    // cannot check by reading it, and that is how the Grain latch above hid.
    chain.fmt1.frequency.setTargetAtTime(FMT_VOWELS[0][0], t, S);
    chain.fmt2.frequency.setTargetAtTime(FMT_VOWELS[0][1], t, S);
+   nat.fmt1Hz=FMT_VOWELS[0][0]; nat.fmt2Hz=FMT_VOWELS[0][1];
   }
   // Ramped in rather than switched, so arriving on a vowel is a move and not
   // a jump — and 0 leaves the stage bit-identical to absent.
   chain.fmtWet.gain.setTargetAtTime(talkOn?Math.min(1,tv*1.4):0, t, S);
   chain.fmtDry.gain.setTargetAtTime(talkOn?Math.max(0,1-tv*1.2):1, t, S);
+  nat.fmtWet=talkOn?Math.min(1,tv*1.4):0; nat.fmtDry=talkOn?Math.max(0,1-tv*1.2):1;
  }
 
  // Rhythmic gate. The buffer runs free; the axis only picks which pattern the
@@ -54746,6 +54785,8 @@ function fxApplyChannel(ch){
   chain.gatePatAmt.gain.setTargetAtTime(gpOn?gv:0, t, S);
  }
  chain.gate.gain.setTargetAtTime(v('gate') * (gpOn ? Math.max(0,1-v('gatepat')) : 1), t, S);
+ // The native chain has no gate patterns yet, so the pattern's share of the level is not taken off.
+ nat.gate=v('gate');
 
  // Tremolo reaches full depth — at the top the signal is chopped to silence
  // between cycles, which is the point of it.
@@ -54753,6 +54794,8 @@ function fxApplyChannel(ch){
  chain.tremDepth.gain.setTargetAtTime(trm*0.98, t, S);
  chain.trem.gain.setTargetAtTime(1-trm*0.98, t, S);
  chain.tremLfo.frequency.setTargetAtTime(Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate')))), t, S);
+ nat.tremDepth=trm*0.98; nat.tremBase=1-trm*0.98; nat.tremHz=Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate'))));
+ nat.pan=Math.max(-1,Math.min(1, v('pan')*2-1));
 
  if(chain.pan) chain.pan.pan.setTargetAtTime(Math.max(-1,Math.min(1, v('pan')*2-1)), t, S);
 
@@ -54760,6 +54803,7 @@ function fxApplyChannel(ch){
  chain.ringOsc.frequency.setTargetAtTime(_fxRingHz(rng), t, S);
  chain.ringAmt.gain.setTargetAtTime(rng<=0.001?0:1, t, S);
  chain.ringDry.gain.setTargetAtTime(rng<=0.001?1:0, t, S);
+ nat.ringHz=_fxRingHz(rng); nat.ringWet=rng<=0.001?0:1; nat.ringDry=rng<=0.001?1:0;
 
  // Delay and reverb are wet/dry, not sends bolted onto a full dry signal.
  // At the top of either axis the dry drops to 12%, so "all the way up" sounds
@@ -54777,6 +54821,9 @@ function fxApplyChannel(ch){
  chain.revSend.gain.setTargetAtTime(revAmt*1.25, t, S);
  const wet=Math.max(dlyAmt, revAmt);
  if(chain.dry) chain.dry.gain.setTargetAtTime(1-0.88*wet, t, S);
+ nat.dlySend=dlyAmt*1.15; nat.dlyTime=Math.min(3.9,_fxDivSec(v('dtime')));
+ nat.dlyFb=dlyAmt>0.0005 ? Math.min(0.95, v('feedback')*0.95) : 0;
+ nat.revSend=revAmt*1.25; nat.dry=1-0.88*wet;
 
  if(chain.worklet){
   const pr=chain.worklet.parameters;
@@ -54845,6 +54892,7 @@ function fxApplyChannel(ch){
  _fxGateBranch(chain,'fmt',chain.fmtWet,chain.postFmt,  talkOn,         settle+0.08);
  _fxGateBranch(chain,'ring',chain.ringAmt,chain.postRing, rng>0.001,    settle+0.08);
  _fxIdleCheck(ch);
+ if(MODNAT.attached[ch]){ nat.active=chain.active?1:0; _modNativeMfxSync(ch, nat); }
 }
 function fxApplyAll(){ FX_CHANNELS.forEach(fxApplyChannel); }
 

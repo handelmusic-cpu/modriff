@@ -31,31 +31,34 @@ class Strip {
   void setLevel(double g) { target_ = g < 0 ? 0 : g; }
   double level() const { return now_; }
 
-  // In place. Any n. Allocates nothing.
-  void process(float* L, float* R, int n) {
+  // In place. Any n. Allocates nothing. The level, without the meter: the
+  // host puts mõdFX between the two, because the web's meter reads the chain's
+  // output.
+  void gain(float* L, float* R, int n) {
     double g = now_;
     const double t = target_, a = a_;
-    double sq = 0;
     for (int i = 0; i < n; i++) {
       g += (t - g) * a;
       // Settle exactly once it is inaudibly close, so a muted strip is
       // exactly silent and not an exponential tail that never arrives.
       if (std::fabs(t - g) < 1e-7) g = t;
-      const float l = (float)(L[i] * g), r = (float)(R[i] * g);
-      L[i] = l; R[i] = r;
-      sq += (double)l * l + (double)r * r;
+      L[i] = (float)(L[i] * g); R[i] = (float)(R[i] * g);
     }
     now_ = g;
-    if (n > 0) {
-      // Mean over both channels, the way the web meter reads one analyser
-      // of the summed signal's energy. Keep the loudest block since the page
-      // last asked: it polls slower than blocks arrive, and a meter that
-      // reads only the latest block misses everything between.
-      const float rms = (float)std::sqrt(sq / (2.0 * n));
-      float was = rms_.load(std::memory_order_relaxed);
-      while (rms > was && !rms_.compare_exchange_weak(was, rms, std::memory_order_relaxed)) {}
-    }
   }
+  // Mean power over both channels, the way the web meter reads one analyser
+  // of the summed signal's energy. Keep the loudest block since the page
+  // last asked: it polls slower than blocks arrive, and a meter that reads
+  // only the latest block misses everything between.
+  void measure(const float* L, const float* R, int n) {
+    if (n <= 0) return;
+    double sq = 0;
+    for (int i = 0; i < n; i++) sq += (double)L[i] * L[i] + (double)R[i] * R[i];
+    const float rms = (float)std::sqrt(sq / (2.0 * n));
+    float was = rms_.load(std::memory_order_relaxed);
+    while (rms > was && !rms_.compare_exchange_weak(was, rms, std::memory_order_relaxed)) {}
+  }
+  void process(float* L, float* R, int n) { gain(L, R, n); measure(L, R, n); }
 
   // The loudest block RMS since the last call, then reset. Any thread.
   float takeRms() { return rms_.exchange(0.0f, std::memory_order_relaxed); }

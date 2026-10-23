@@ -19,11 +19,13 @@ fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_
 	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc
 hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ hangtest.cpp modsynth.cpp fdlibm.cc
+mixfxtest: mixfxtest.cpp mixfx.cpp mixfx.h dspkit.h
+	$(CXX) $(CXXFLAGS) -o $@ mixfxtest.cpp mixfx.cpp
 striptest: striptest.cpp strip.h
 	$(CXX) $(CXXFLAGS) -o $@ striptest.cpp
-fxcheck: fxtest fxwire hangtest striptest
-	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1
+fxcheck: fxtest fxwire hangtest striptest mixfxtest
+	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1
 
 clean:
-	rm -f render fxtest fxwire hangtest striptest
+	rm -f render fxtest fxwire hangtest striptest mixfxtest
 .PHONY: clean
