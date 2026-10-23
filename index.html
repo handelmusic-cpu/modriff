@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6m</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6n</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6m</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6n</span></div>
  </div>
 </div>
 
@@ -9856,7 +9856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6m';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6n';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20390,10 +20390,24 @@ function msxMotionFor(part, lane, patch, state){
  return arr;
 }
 // Engine side. A whole patch onto a part's engine, from the engine's store.
+// A patch carries its own reverb (202 of the 324 library patches switch it on,
+// median mix 0.3), and nothing outside the patch reached it: the chord's and
+// the melody's Reverb sliders send to the app's rooms, so with the slider at 0
+// a mõdSynth part still sat in a room of its own, and "I turn the reverb off
+// and it's still there" was true. A part whose Reverb is at 0 now has the
+// patch's reverb off too. Above 0 the patch is left as it was made — the
+// slider is a send, not a master for the patch's own mix. Only the parts that
+// have such a slider: the others reach theirs through mõdFX.
+var MSX_REVERB_PARAM = { chord:'chord.reverb', mel:'mel.reverb' };
+function _msxReverbOff(part, v){
+ var k=MSX_REVERB_PARAM[part];
+ if(k && +_wp(k)===0 && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
+}
 function msxApply(part){
  var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
  var state=_wp(part+'.msx') || {};
  var r=msxValuesFor(part, state);
+ _msxReverbOff(part, r.values);
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
@@ -20419,6 +20433,7 @@ function _webMsxState(part){
  var A=MSX.applied[part], state=_wp(part+'.msx') || {};
  if(!A || A.patch!==state.patch){ msxApply(part); return; }
  var r=msxValuesFor(part, state), v=r.values, mtx=false;
+ _msxReverbOff(part, v);
  v['voice.poly'] = Math.min(+v['voice.poly']||8, part==='chord' ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) v[k]=Math.min(+v[k]||1, 4); });
  Object.keys(v).forEach(function(id){
@@ -21161,7 +21176,27 @@ function makeVoice(ctx,midi,gainNode,t0,dur,wv,part){
   } else {
    preloadSampleInstrument(key);
   }
-  wv = (SAMPLE_LIBS[key] && SAMPLE_LIBS[key].fallbackWave) || 'piano';
+  // The stand-in, until the recording is there (or for good, if it never
+  // arrives). Two things used to go wrong here, both heard as "the voice is
+  // broken": a stand-in that is ITSELF a sampled voice (marimba, kalimba and
+  // xylo name Vibes) is not a waveform the synthesis chain below knows, so it
+  // fell to the last branch and played a plain sine; and the caller has
+  // already scaled the note by the sampled voice's WAVE_GAIN, a number
+  // calibrated for a quiet recording, so the stand-in came out at that gain
+  // instead of its own — measured on the melody strip, Vibes' first notes
+  // were 17 dB over the same notes once the samples had loaded.
+  const _asked = wv;
+  let _guard = 0;
+  while(SAMPLED_WAVES[wv] && _guard++ < 4){
+   const _lib = SAMPLE_LIBS[SAMPLED_WAVES[wv]];
+   wv = (_lib && _lib.fallbackWave) || 'piano';
+  }
+  if(SAMPLED_WAVES[wv]) wv = 'piano';
+  const _ratio = (WAVE_GAIN[wv]||1) / (WAVE_GAIN[_asked]||1);
+  if(isFinite(_ratio) && Math.abs(_ratio-1) > 0.01){
+   const _sg = ctx.createGain(); _sg.gain.value = _ratio; _sg.connect(gainNode);
+   gainNode = _sg;
+  }
  }
  // driftMul() detunes each note by a few cents at random — every voice type
  // below derives its frequencies from f, so this one line gives the whole
@@ -22405,6 +22440,9 @@ function _webEngineSend(msg){
   window._webParams[key] = msg.value;
   // A part's mõdSynth state reaches its engine as soon as it changes.
   if(msg.name === 'msx' && typeof _webMsxState === 'function') _webMsxState(part);
+  // The Reverb slider crossing zero switches the patch's own reverb with it
+  // (see _msxReverbOff); moving about above zero changes nothing there.
+  if(msg.name === 'reverb' && MSX_REVERB_PARAM[part] && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function') _webMsxState(part);
   // So do the live controls: mõdFX, the master, mute and solo.
   _webLiveParam(part, msg.name, prev, msg.value);
   return;
