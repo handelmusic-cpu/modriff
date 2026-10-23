@@ -1356,7 +1356,7 @@ quieter than it was: it now sits where the web chord does. Pan is not done:
 the mixer has no pan control to mirror.
 
 **N1 landed (4.9.9.9.9.7.6t, PR 255); N3 first half is on branch
-`claude/native-mixfx` (4.9.9.9.9.7.6u, unmerged, Swift unbuilt).** The order
+`claude/native-mixfx` (4.9.9.9.9.7.6v, unmerged, Swift unbuilt).** The order
 changed from the table: mõdFX came before the master bus, because it is what
 the owner is missing on a native chord and the master bus changes the level of
 everything.
@@ -1387,9 +1387,21 @@ everything on (a Mac). Page side, in a browser with a stand-in native plugin:
 the resting state posts 32 correct values, and moving the chord's delay,
 drive and reverb sends posts the values `fxApplyChannel` computes.
 
-*Not in it yet:* the worklet effects (stutter, reverse, warp, crush, rate,
-grain, ladder), gate patterns, and the sample-source axes. The page leaves
-their values at rest for a native part, so those pad axes do nothing there.
+*N4, the worklet effects (4.9.9.9.9.7.6v).* Stutter, reverse, time warp, bit
+and rate crush, the grain shifter and the Moog and MS-20 ladders are
+`native/modsynth/modfxproc.cpp`, a line-for-line port of `ModFxProc`, the
+worklet in `FX_WORKLET_SRC`. Unlike the rest of the chain this is plain
+arithmetic in the page, so it is held to the JavaScript the way `dsp.js` is:
+`tests/modsynth/modfxproc.test.js` runs the real worklet source out of
+`index.html` and `wkrender` on the same input and the same parameter changes,
+52 runs (every effect alone, together, and 40 random schedules), and every
+output sample is identical. `MixFx` runs it first in the chain, in the
+browser's 128-frame blocks, and `fxApplyChannel` fills the eleven values it
+needs from the same variables that set the worklet's own parameters.
+
+*Not in it yet:* gate patterns (the page ducks the base gate for them; the
+native chain leaves the base alone), and the sample-source axes, which read a
+clip held in the page. Those pad axes do nothing on a native part.
 
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can

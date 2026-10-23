@@ -2,6 +2,7 @@
 // the stages below are that graph's, in its order, fed its finished numbers.
 #include "mixfx.h"
 #include "dspkit.h"
+#include "modfxproc.h"
 
 #include <cmath>
 #include <cstring>
@@ -104,12 +105,14 @@ struct MixFx::Impl {
   Fdn fdn; int rvTail = 0;
   int drvTail = 0;
   float x[2][CHUNK], clean[2][CHUNK], tmp[2][CHUNK];
+  ModFxProc wk; float wkOut[2][128];
 
-  explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate) {
+  explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate), wk(sampleRate) {
     static const double def[MFX_COUNT] = {
       /*mix*/1, /*tau*/0.02, /*active*/0, /*lp*/18000, 0.7, /*hp*/20, 0.7,
       /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,
-      /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1 };
+      /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1,
+      /*worklet*/0, 0, 1, 0, 0, 0, 0.5, 0, 1, 0, 0 };
     for (int i = 0; i < MFX_COUNT; i++) { p[i] = def[i]; sm[i].init(sr, 0.02); sm[i].snap(def[i]); pv[i] = cv[i] = def[i]; }
     sm[MFX_ACTIVE].init(sr, 0.005); sm[MFX_MIX].init(sr, 0.015);
     dly[0].init((int)(sr * 4.0)); dly[1].init((int)(sr * 4.0));
@@ -150,15 +153,27 @@ struct MixFx::Impl {
   }
   static inline bool near(double a, double b) { return std::fabs(a - b) < 1e-4; }
 
-  void run(float* L, float* R, int n) {
+  bool chainLive() const { return cv[MFX_ACTIVE] > 1e-4 || p[MFX_ACTIVE] > 0.5; }
+  ModFxParams wkParams() const {
+    ModFxParams q;
+    q.stutter = p[MFX_STUTTER]; q.reverse = p[MFX_REVERSE]; q.warp = p[MFX_WARP]; q.crush = p[MFX_CRUSH];
+    q.srate = p[MFX_SRATE]; q.grain = p[MFX_GRAIN]; q.grainlen = p[MFX_GRAINLEN];
+    q.fltmode = p[MFX_FLTMODE]; q.fltcut = p[MFX_FLTCUT]; q.fltres = p[MFX_FLTRES]; q.fltdrv = p[MFX_FLTDRV];
+    return q;
+  }
+
+  // `src` is the chain's input (the part after the buffer effects); `L`/`R`
+  // are the part itself, which the clean half of the Mix is made from.
+  void run(float* L, float* R, const float* src0, const float* src1, int n) {
     float* io[2] = {L, R};
+    const float* src[2] = {src0, src1};
     // The clean part, delayed as far as the oversampler delays the chain, so
     // the two halves of the Mix line up (fxBuildChain's bypDly).
     for (int i = 0; i < n; i++) {
       for (int c = 0; c < 2; c++) {
         dr[c][dw & 15] = io[c][i];
         clean[c][i] = dr[c][(dw - OS_C / 2) & 15];
-        x[c][i] = io[c][i];
+        x[c][i] = src[c][i];
       }
       dw++;
     }
@@ -280,10 +295,23 @@ double MixFx::get(int i) const { return (i >= 0 && i < MFX_COUNT) ? d->p[i] : 0;
 
 void MixFx::process(float* L, float* R, int n) {
   Impl& s = *d;
-  for (int off = 0; off < n; off += CHUNK) {
-    const int k = std::min(CHUNK, n - off);
-    s.controls();
-    s.run(L + off, R + off, k);
+  // The buffer effects work in the browser's 128-frame blocks (their k-rate
+  // parameters and mode changes are decided per block); the rest of the chain
+  // works in control-rate chunks inside each.
+  for (int off = 0; off < n; off += 128) {
+    const int k = std::min(128, n - off);
+    float* l = L + off; float* r = R + off;
+    if (s.chainLive()) s.wk.process(l, r, s.wkOut[0], s.wkOut[1], k, s.wkParams());
+    else {
+      s.wk.silence();                      // out of circuit: no input, no history
+      std::memcpy(s.wkOut[0], l, sizeof(float) * (size_t)k);
+      std::memcpy(s.wkOut[1], r, sizeof(float) * (size_t)k);
+    }
+    for (int c0 = 0; c0 < k; c0 += CHUNK) {
+      const int kk = std::min(CHUNK, k - c0);
+      s.controls();
+      s.run(l + c0, r + c0, s.wkOut[0] + c0, s.wkOut[1] + c0, kk);
+    }
   }
 }
 

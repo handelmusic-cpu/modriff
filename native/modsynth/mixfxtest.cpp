@@ -192,7 +192,9 @@ int main() {
         {MFX_DRV_AMT, 0, 1}, {MFX_DRV_WET, 0, 2}, {MFX_DRV_DRY, 0, 1}, {MFX_ISO_WET, 0, 1}, {MFX_ISO_DRY, 0, 1}, {MFX_ISO_LO, 0, 1}, {MFX_ISO_MID, 0, 1}, {MFX_ISO_HI, 0, 1},
         {MFX_FMT_WET, 0, 1}, {MFX_FMT_DRY, 0, 1}, {MFX_FMT1_HZ, 300, 800}, {MFX_FMT2_HZ, 800, 2000}, {MFX_GATE, 0, 1},
         {MFX_TREM_BASE, 0, 1}, {MFX_TREM_DEPTH, 0, 1}, {MFX_TREM_HZ, 0.1, 30}, {MFX_PAN, -1, 1}, {MFX_RING_HZ, 18, 830}, {MFX_RING_WET, 0, 1}, {MFX_RING_DRY, 0, 1},
-        {MFX_DLY_SEND, 0, 1.15}, {MFX_DLY_TIME, 0.01, 3.9}, {MFX_DLY_FB, 0, 0.95}, {MFX_REV_SEND, 0, 1.25}, {MFX_DRY, 0.12, 1}};
+        {MFX_DLY_SEND, 0, 1.15}, {MFX_DLY_TIME, 0.01, 3.9}, {MFX_DLY_FB, 0, 0.95}, {MFX_REV_SEND, 0, 1.25}, {MFX_DRY, 0.12, 1},
+        {MFX_STUTTER, 0, 0.3}, {MFX_REVERSE, 0, 0.3}, {MFX_WARP, 0.4, 2.2}, {MFX_CRUSH, 0, 1}, {MFX_SRATE, 0, 1}, {MFX_GRAIN, 0, 0.6}, {MFX_GRAINLEN, 0, 1},
+        {MFX_FLTMODE, 0, 2.99}, {MFX_FLTCUT, 0, 1}, {MFX_FLTRES, 0, 1}, {MFX_FLTDRV, 0, 1}};
       for (auto& q : r) m.set(q.i, q.lo + (q.hi - q.lo) * (rand() / (double)RAND_MAX));
       std::vector<float> L(48000), R(48000);
       for (int i = 0; i < 48000; i++) L[i] = R[i] = (float)(0.5 * std::sin(0.03 * i * (1 + 0.0002 * i)) + 0.2 * ((rand() / (double)RAND_MAX) - .5));
@@ -203,6 +205,26 @@ int main() {
       for (int i = 0; i < 48000; i++) { if (!std::isfinite(L[i]) || !std::isfinite(R[i])) bad++; peak = std::max(peak, (double)std::fabs(L[i])); }
     }
     check(bad == 0 && peak < 60, "60 random settings, knobs moved mid-run: finite and bounded", peak);
+  }
+  // 13b. The buffer effects are in the path: a stutter repeats its slice, and
+  // out of circuit it does not run (the page unplugs the chain's input).
+  {
+    MixFx* m = make({});
+    const int N = (int)(SR * 3); std::vector<float> L(N), R(N);
+    for (int i = 0; i < N; i++) L[i] = R[i] = (float)(0.3 * std::sin(2 * M_PI * (200 + 0.02 * i / 48.0) * i / SR));
+    const std::vector<float> in = L;
+    for (int off = 0; off < N; off += 128) {
+      if (off == 48000) m->set(MFX_STUTTER, 0.05);        // a 0.2 s slice of the 4 s ring
+      m->process(L.data() + off, R.data() + off, std::min(128, N - off));
+    }
+    // After the slice is captured the output repeats with its period.
+    const int period = (int)(0.05 * 4 * SR);
+    double e = 0, ref = 0;
+    for (int i = 80000; i < 80000 + 4000; i++) { e += std::fabs(L[i] - L[i + period]); ref += std::fabs(L[i]); }
+    check(e < 0.02 * ref, "stutter repeats its slice (the buffer effects are in the chain)", e / ref);
+    double moved = 0; for (int i = 80000; i < 84000; i++) moved += std::fabs(L[i] - in[i]);
+    check(moved > 0.2 * ref, "and it is not the input", moved / ref);
+    delete m;
   }
   // 14. Cost, everything on, per second of audio.
   {

@@ -12,10 +12,10 @@
 //   → isolator → talk filter → gate → tremolo → pan → ring mod
 //   → ( dry | delay | reverb ) → wet/dry Mix against the clean part
 //
-// Not here yet, on purpose, and the page leaves them off for a native part:
-// the worklet effects (stutter, reverse, warp, bit and rate crush, grain, the
-// ladder filter), the rhythmic gate's patterns, and the sample-source axes. See
-// docs/v5-architecture.md, step N4.
+// The worklet effects in front of it all (stutter, reverse, warp, bit and rate
+// crush, grain, the ladder filter) are modfxproc.cpp, a port held bit for bit to
+// the page's worklet source. Not here yet: the rhythmic gate's patterns and the
+// sample-source axes. See docs/v5-architecture.md, step N4.
 //
 // The sound is not bit-identical to Web Audio's: the reverb is a feedback
 // delay network where the browser convolves a noise tail, and the oversampler
@@ -47,6 +47,9 @@ enum MixFxParam {
   MFX_DLY_SEND, MFX_DLY_TIME, MFX_DLY_FB,
   MFX_REV_SEND,
   MFX_DRY,         // the chain's own dry level (ducks as delay or reverb come up)
+  // The buffer effects (ModFxProc): set, not smoothed, as the page sets the worklet's own parameters.
+  MFX_STUTTER, MFX_REVERSE, MFX_WARP, MFX_CRUSH, MFX_SRATE, MFX_GRAIN, MFX_GRAINLEN,
+  MFX_FLTMODE, MFX_FLTCUT, MFX_FLTRES, MFX_FLTDRV,
   MFX_COUNT
 };
 

@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6u</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6v</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6u</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6v</span></div>
  </div>
 </div>
 
@@ -9861,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6u';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6v';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10418,7 +10418,8 @@ function _modNativeMeter(part){
 var MFX_PARAMS = ['mix','tau','active','lpHz','lpQ','hpHz','hpQ','drvAmt','drvWet','drvDry',
  'isoWet','isoDry','isoLo','isoMid','isoHi','fmtWet','fmtDry','fmt1Hz','fmt2Hz','gate',
  'tremBase','tremDepth','tremHz','pan','ringHz','ringWet','ringDry',
- 'dlySend','dlyTime','dlyFb','revSend','dry'];
+ 'dlySend','dlyTime','dlyFb','revSend','dry',
+ 'stutter','reverse','warp','crush','srate','grain','grainlen','fltmode','fltcut','fltres','fltdrv'];
 MODNAT.mfx = {};
 function _modNativeMfxSync(part, vals){
  if(!MODNAT.attached[part]) return;
@@ -54834,6 +54835,8 @@ function fxApplyChannel(ch){
   pr.get('reverse').setValueAtTime(rv<=0.001?0:Math.min(0.99,_fxDivSec(rv)/4), t);
   pr.get('warp').setValueAtTime(_fxWarpRate(v('warp')), t);
   pr.get('crush').setValueAtTime(v('crush'), t);
+  nat.stutter=st<=0.001?0:Math.min(0.99,_fxDivSec(st)/4); nat.reverse=rv<=0.001?0:Math.min(0.99,_fxDivSec(rv)/4);
+  nat.warp=_fxWarpRate(v('warp')); nat.crush=v('crush');
   if(pr.get('fltmode')){
    // The channel's own filter is the floor; an engaged pad axis overrides it
    // on the channels the pad is pointed at, exactly as the sends behave.
@@ -54846,15 +54849,18 @@ function fxApplyChannel(ch){
     pr.get('fltmode').setValueAtTime(P.flt, t);
     pr.get('fltcut').setValueAtTime(Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))), t);
     pr.get('fltres').setValueAtTime(lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95, t);
+    nat.fltmode=P.flt; nat.fltcut=Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))); nat.fltres=lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95;
    } else {
     // The part's own filter only runs while it plays a synth voice.
     pr.get('fltmode').setValueAtTime(_fxEngFilterApplies(ch) ? (L.lmode||0) : 0, t);
     pr.get('fltcut').setValueAtTime(_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut), t);
     pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
+    nat.fltmode=_fxEngFilterApplies(ch) ? (L.lmode||0) : 0; nat.fltcut=_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut); nat.fltres=_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0);
    }
    pr.get('fltdrv').setValueAtTime(_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0), t);
+   nat.fltdrv=_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0);
   }
-  if(pr.get('srate')) pr.get('srate').setValueAtTime(v('srate'), t);
+  if(pr.get('srate')){ pr.get('srate').setValueAtTime(v('srate'), t); nat.srate=v('srate'); }
   if(pr.get('grain')){
    // Cycle length in seconds, so the worklet does not need the tempo. Zero at
    // the bottom of the axis like stutter and reverse, which is what the
@@ -54864,6 +54870,7 @@ function fxApplyChannel(ch){
    const gv = _fxPadDriving(ch,'grain') ? v('grain') : 0;
    pr.get('grain').setValueAtTime(gv<=0.001 ? 0 : Math.max(0.01,_fxDivSec(gv)), t);
    pr.get('grainlen').setValueAtTime(v('grainlen'), t);
+   nat.grain=gv<=0.001 ? 0 : Math.max(0.01,_fxDivSec(gv)); nat.grainlen=v('grainlen');
   }
  }
 
