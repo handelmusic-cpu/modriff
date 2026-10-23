@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6s</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6t</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6t</span></div>
  </div>
 </div>
 
@@ -9861,7 +9861,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6s';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10238,7 +10238,8 @@ function modNativePlugin(){
   else if(typeof C.nativePromise === 'function'){
    var call=function(m){ return function(o){ return C.nativePromise('ModEngine', m, o||{}); }; };
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
-                     ensurePart:call('ensurePart'), post:call('post'), stats:call('stats') };
+                     ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'),
+                     meters:call('meters') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }
@@ -10366,6 +10367,49 @@ function _modNativeFxPost(part, id, value){
  _modNativePost(part, {t:'fx', i:ix, v:MS.toNumber(p, value)});
 }
 
+// The mixer strip, native. On the web a part's level is a gain node after the
+// voices (MSX.trim, set to _msxCal(part) * mix.<part> by msxVoice) that a
+// native part never reaches, so the fader did nothing and the part ran about
+// 8 dB hot. The same number goes to the host, which multiplies by it with a
+// smoother of its own. Only sent when it changes: a fader drag and a patch
+// change both pass through here, a note does not need to.
+MODNAT.strip = {};
+function _modNativeStripSync(part){
+ if(!MODNAT.attached[part]) return;
+ var mx=_wp('mix.'+part); if(mx==null) mx=1;
+ var g=_msxCal(part)*mx;
+ if(!isFinite(g) || MODNAT.strip[part]===g) return;
+ MODNAT.strip[part]=g;
+ _modNativePost(part, {t:'strip', i:0, v:g});
+}
+function _modNativeStripSyncAll(){ Object.keys(MODNAT.attached).forEach(_modNativeStripSync); }
+
+// A stand-in for the AnalyserNode the mixer's meters read, for a part the web
+// does not carry: it fills the buffer with the part's RMS, which is exactly
+// what the meter takes back out. The levels come from the host by polling,
+// at most every 40 ms and never while one call is still out, and only run
+// while a meter is actually reading.
+MODNAT.rms = {}; MODNAT.metersAt = 0; MODNAT.metersBusy = false; MODNAT.meterTap = {};
+function _modNativeMeter(part){
+ if(MODNAT.meterTap[part]) return MODNAT.meterTap[part];
+ return (MODNAT.meterTap[part] = { getFloatTimeDomainData: function(buf){
+  var now = performance.now();
+  if(!MODNAT.metersBusy && now - MODNAT.metersAt > 40){
+   var p = modNativePlugin();
+   if(p && p.meters){
+    MODNAT.metersAt = now; MODNAT.metersBusy = true;
+    p.meters().then(function(r){
+     MODNAT.metersBusy = false;
+     if(r && r.rms) Object.keys(MODNAT.PART).forEach(function(k){
+      var v = r.rms[MODNAT.PART[k]]; if(v != null) MODNAT.rms[k] = v;
+     });
+    }).catch(function(){ MODNAT.metersBusy = false; });
+   }
+  }
+  buf.fill(MODNAT.rms[part] || 0);
+ }});
+}
+
 function _modNativeAttach(part, eng){
  if(MODNAT.attached[part] || !eng || !eng.node || !eng.node.port) return;
  var port=eng.node.port, orig=port.postMessage.bind(port);
@@ -10394,6 +10438,7 @@ function _modNativeAttach(part, eng){
  // both motion lanes — through the hook above, so the native engine receives
  // the same messages the worklet got when it was built.
  try{ eng.setAll(eng.values); eng.pushMatrix(); eng.pushMotion(0); eng.pushMotion(1); }catch(e){}
+ try{ _modNativeStripSync(part); }catch(e){}
 }
 
 // Called when a part's engine is built. Only the chord part goes native, and
@@ -20700,6 +20745,7 @@ function msxApply(part){
  r.values['voice.poly'] = Math.min(+r.values['voice.poly']||8, part==='chord' ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) r.values[k]=Math.min(+r.values[k]||1, 4); });
  eng.setAll(r.values);
+ try{ _modNativeStripSync(part); }catch(e){}   // a new patch brings its own calibration
  eng.syncMatrixFromParams();
  var motion=[];
  for(var lane=0; lane<2; lane++){
@@ -20775,6 +20821,7 @@ function msxVoice(ctx, part, midi, t0, dur, vel){
  var id=MSX.nid++;
  var mx=_wp('mix.'+part); if(mx==null) mx=1;
  try{ MSX.trim[part].gain.setTargetAtTime(_msxCal(part)*mx, Math.max(ctx.currentTime, t0-0.02), 0.01); }catch(e){}
+ try{ _modNativeStripSync(part); }catch(e){}
  if(eng.asleep) eng.wake();
  MSX.busyTill[part]=Math.max(MSX.busyTill[part]||0, t0+Math.max(0.03,dur));
  if(!MSX.sleepT) MSX.sleepT=setInterval(msxSleepSweep, 2000);
@@ -50979,6 +51026,8 @@ const _mixPeak = {};           // id -> {v, hold, holdUntil}
 
 function _mixAnalyserFor(id){
  const ctx=getCtx(); if(!ctx) return null;
+ // A part the native engine plays has no node here to tap.
+ if(MODNAT.attached[id]) return _modNativeMeter(id);
  if(_mixAnalysers[id] && _mixAnalysers[id].context===ctx) return _mixAnalysers[id];
  // Tap the FX chain's output where there is one, so the meter shows what the
  // channel actually sends to the master rather than what it looked like
@@ -54847,6 +54896,7 @@ function _webLiveParam(part, name, prev, value){
   if(part==='fx' && name==='modfx') return _webFxState(prev, value);
   if(part==='fx' && name==='drive') return _webApplyDrive();
   if(part==='master' && name!=='tune') return _webMasterApply();
+  if(part==='mix') _modNativeStripSyncAll();
   if(part==='mix' && name==='muteSolo') return _mixGateBuses();
   if(part==='chord' && name==='reverbSize') return _webReverbSize();
   if(name==='voice' && SYNTH_FILTER_PARTS.indexOf(part)>=0 && fxChains[part]) return fxApplyChannel(part);

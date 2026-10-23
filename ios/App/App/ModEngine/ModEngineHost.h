@@ -76,6 +76,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// identical from the outside and have nothing to do with each other.
 - (float)renderOfflinePeakForPart:(int)part frames:(int)frames;
 
+/// A part's RMS level: the loudest block since this was last called, then
+/// reset. Any thread. The page's mixer meters poll it.
+- (float)meterForPart:(int)part;
+
 @end
 
 NS_ASSUME_NONNULL_END
