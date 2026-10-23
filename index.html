@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6n</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6o</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6n</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6o</span></div>
  </div>
 </div>
 
@@ -9856,7 +9856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6n';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6o';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20396,12 +20396,16 @@ function msxMotionFor(part, lane, patch, state){
 // a mõdSynth part still sat in a room of its own, and "I turn the reverb off
 // and it's still there" was true. A part whose Reverb is at 0 now has the
 // patch's reverb off too. Above 0 the patch is left as it was made — the
-// slider is a send, not a master for the patch's own mix. Only the parts that
-// have such a slider: the others reach theirs through mõdFX.
+// slider is a send, not a master for the patch's own mix. The Master bus
+// reverb at 0 does the same for EVERY part (4.9.9.9.9.7.6o): it was reported
+// as "I had the master reverb down and it's still there", and the bass, arp and
+// melody sequencer have no slider of their own to turn off — the master was
+// the only place left to ask.
 var MSX_REVERB_PARAM = { chord:'chord.reverb', mel:'mel.reverb' };
 function _msxReverbOff(part, v){
  var k=MSX_REVERB_PARAM[part];
- if(k && +_wp(k)===0 && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
+ var off = (k && +_wp(k)===0) || (+_wpd('master.rev', .05)===0);
+ if(off && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
 }
 function msxApply(part){
  var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
@@ -22443,6 +22447,9 @@ function _webEngineSend(msg){
   // The Reverb slider crossing zero switches the patch's own reverb with it
   // (see _msxReverbOff); moving about above zero changes nothing there.
   if(msg.name === 'reverb' && MSX_REVERB_PARAM[part] && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function') _webMsxState(part);
+  if(part === 'master' && msg.name === 'rev' && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function'){
+   Object.keys(MSX.eng).forEach(function(p){ _webMsxState(p); });
+  }
   // So do the live controls: mõdFX, the master, mute and solo.
   _webLiveParam(part, msg.name, prev, msg.value);
   return;
