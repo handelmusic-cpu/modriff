@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6o</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6p</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6o</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6p</span></div>
  </div>
 </div>
 
@@ -8536,7 +8536,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <div class="sg"><div class="sl">Sweep</div><input type="range" id="fx-env" min="0" max="1" step=".01" value=".25" oninput="onFxInput()"><div class="sv" id="fxenv-val">25%</div></div>
  </div>
  <div class="row">
- <div class="sg"><div class="sl">Drive</div><input type="range" id="fx-drive" min="0" max="1" step=".01" value=".18" oninput="onFxInput()"><div class="sv" id="fxdrive-val">18%</div></div>
+ <div class="sg"><div class="sl">Drive</div><input type="range" id="fx-drive" min="0" max="1" step=".01" value="0" oninput="onFxInput()"><div class="sv" id="fxdrive-val">0%</div></div>
  <div class="sg"><div class="sl">Width</div><input type="range" id="fx-width" min="0" max="1" step=".01" value=".4" oninput="onFxInput()"><div class="sv" id="fxwidth-val">40%</div></div>
  <div class="sg"><div class="sl">Drift</div><input type="range" id="fx-drift" min="0" max="1" step=".01" value=".3" oninput="onFxInput()"><div class="sv" id="fxdrift-val">30%</div></div>
  </div>
@@ -9856,7 +9856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6o';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6p';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18316,6 +18316,18 @@ function startFresh(){
 function restoreLastSession(){
  try{
   const st=JSON.parse(modStore.getItem(LAST_SESSION_KEY)||'null');
+  // Once, for the last session only (saved setups are the user's and are left
+  // alone): a session saved before 4.9.9.9.9.7.6p carries the old default
+  // drive or a rolled one, and picking up where you left off would keep the
+  // overdrive that release took out. Clamped to the roll's ceiling; a drive
+  // set higher on purpose is a knob away again.
+  try{
+   if(st && !modStore.getItem('modo-drive-v2')){
+    modStore.setItem('modo-drive-v2','1');
+    const ss=st.settings||st;
+    if(ss && typeof ss.fxDrive==='number' && ss.fxDrive>RND_DRIVE_MAX) ss.fxDrive=RND_DRIVE_MAX;
+   }
+  }catch(e){}
   if(st && applySetup(st)) return true;
  }catch(e){}
  return false;
@@ -19047,7 +19059,14 @@ function buildReverb(){
 // these, most voices went straight from oscillator to gain to limiter —
 // no filter, no stereo image, no saturation, which is the main reason the
 // engine read as "web synth" rather than "instrument".
-let fxCutoff=.88, fxReso=.12, fxEnv=.25, fxDrive=.18, fxWidth=.4, fxDrift=.3;
+// Drive started at .18 until 4.9.9.9.9.7.6p. It is a soft saturator in front of
+// the whole mix (every part, the sampled ones included), and at .18 it adds
+// about 4% harmonic distortion to a tone at a normal level and squashes the loud
+// hits by several dB — heard as "the piano is overdriven and the Bata are
+// clipping" while every meter and every recording read clean, because the
+// squashing happens before the limiter and the master fader. Colour is still
+// there on the knob; it just is not on by default.
+let fxCutoff=.88, fxReso=.12, fxEnv=.25, fxDrive=0, fxWidth=.4, fxDrift=.3;
 // Per-patch loudness trim. A pad with a slow attack and a dark filter is
 // inherently quieter than a piano stab, so without this a dice roll changes
 // how LOUD things are as well as how they sound. Measured per archetype and
@@ -19117,7 +19136,7 @@ function applyDrive(){ modParamsFlush(); }
 // The engine's half, from its copy.
 function _webApplyDrive(){
  if(!window._driveShaper) return;
- const fxDrive=_wpd('fx.drive', .18);
+ const fxDrive=_wpd('fx.drive', 0);
  const curve=_driveCurve(fxDrive, DRIVE_SPAN);
  window._driveShaper.curve=curve;
  if(window._chordDriveShaper){
@@ -30177,6 +30196,11 @@ function _applySettings(s){
 // this applies. The dice BUTTON stays unrestricted too — that press is the
 // user asking to be surprised, and Undo covers it. This is only about what a
 // first-time visitor hears before they have asked for anything.
+var RND_DRIVE_MAX = 0.15;
+// A new step in a pattern starts at 70% velocity (drum cells, and the bass line's
+// notes through BL_STEP_VEL); the melody sequencer already played at mlVol .7.
+// Cells already saved keep what they have. var: read from the drum code above.
+var PR_DEFAULT_VEL = 70;
 const RND_SOFT_WAVES = ['sine','triangle','piano','organ','rhodes','pad'];
 
 // The mõdSynth patch and the drum kit are rolled too, and BOTH were left
@@ -30259,7 +30283,9 @@ function randomizeSettings(opts){
  s.fxCutoff = _rndBand(A.cut||[.3,1],2);
  s.fxReso   = _rndBand(A.reso||[0,.4],2);
  s.fxEnv    = _rndBand(A.env||[0,.7],2);
- s.fxDrive  = _rndBand(A.drive||[0,.5],2);
+ // Capped: a roll used to set the drive anywhere up to .8 on some characters,
+ // which is 20-30% distortion across every part. Colour, not a fault.
+ s.fxDrive  = Math.min(RND_DRIVE_MAX, _rndBand(A.drive||[0,.5],2));
  s.fxWidth  = _rndBand(A.width||[.2,.8],2);
  s.fxDrift  = _rndBand(A.drift||[.1,.7],2);
  s.fxTrim   = A.trim||1; // measured level match so the roll changes tone, not loudness
@@ -34869,7 +34895,7 @@ function buildRandomDemoSong(){
 
  // Groove: a real pattern from the rhythm library, laid into the step grid.
  const steps=16, grid={};
- for(let ti=0;ti<8;ti++){ grid[ti]=[]; for(let x=0;x<steps;x++) grid[ti].push({v:0,r:1,orn:0,vel:100}); }
+ for(let ti=0;ti<8;ti++){ grid[ti]=[]; for(let x=0;x<steps;x++) grid[ti].push({v:0,r:1,orn:0,vel:PR_DEFAULT_VEL}); }
  const r=pick(RHYTHMS);
  for(let x=0;x<steps;x++){
   if(r.kick&&r.kick[x])  grid[0][x].v=1;
@@ -34892,7 +34918,7 @@ function buildRandomDemoSong(){
 function buildDemoSong(){
  var steps=16;
  var grid={};
- for(var ti=0; ti<8; ti++){ grid[ti]=[]; for(var s=0; s<steps; s++) grid[ti].push({v:0,r:1,orn:0,vel:100}); }
+ for(var ti=0; ti<8; ti++){ grid[ti]=[]; for(var s=0; s<steps; s++) grid[ti].push({v:0,r:1,orn:0,vel:PR_DEFAULT_VEL}); }
  var r=RHYTHMS[10]; // Bossa Nova — tasteful, unobtrusive groove for a jazz turnaround
  for(var s2=0; s2<steps; s2++){
   if(r.kick[s2])  grid[0][s2].v=1; // Kick
@@ -43456,6 +43482,7 @@ function sqEnsureNoise(){
 }
 
 // ── sequencer master gain & FX chain ──
+var SQ_BUS_TRIM = 0.5;
 var SQMG=null, sqFxRev=false, sqFxDel=false, sqFxDst=false;
 // The Aux Perc layer runs on the drum engine but is its own channel, so it
 // needs its own bus — a meter, a mõdFX chain and a stem are all tapped at the
@@ -43481,7 +43508,14 @@ function sqInitFX(){
   // position, which sqHitTrack now actually applies. Net result at the default
   // is the same 0.85 the kit has always been at; the difference is that moving
   // the fader, muting or soloing now changes what you hear.
-  SQMG=c.createGain(); SQMG.gain.value=0.85/0.55;
+  // SQ_BUS_TRIM (4.9.9.9.9.7.6p): -6 dB on the kit and the aux layer. Measured
+  // on a session's own stems, the Drums bus ran at -14 dB RMS and the Aux at
+  // -17 against -28 for the chords and -26 to -38 for everything else, with the
+  // kits trimmed to peak +1.5 dBFS on the bus (SQ_TRIM) and the stem export
+  // clipping at 0. The drums were most of the mix, and the loudest thing the
+  // master drive had to squash. The faders keep their positions; this is the
+  // fixed headroom trim, so a mix made before it simply has quieter drums.
+  SQMG=c.createGain(); SQMG.gain.value=0.85/0.55*SQ_BUS_TRIM;
   SQMG.connect(masterDest(c));
   window.SQMG_REF = SQMG;
   // Same headroom trim as the kit, so moving the aux layer off the drum bus
@@ -44948,7 +44982,7 @@ var sqChain=[], sqChainPos=0, sqUsingChain=false;
 var sqStepEls={};
 var sqAudition=false; // default off — tap steps to preview only when audition enabled
 
-function sqMkCell(){return{v:0,r:1,orn:0,vel:100};}
+function sqMkCell(){return{v:0,r:1,orn:0,vel:PR_DEFAULT_VEL};}
 // ── Extending a pattern the lock has lengthened (see seqFillPeriod) ──
 // Both layers, because they share sqSteps: the Aux Perc layer is padded too,
 // and an unextended layer goes silent for the new bars exactly as the kit did.
@@ -47827,6 +47861,8 @@ function _webBassVoice(msg, standIn){
 // reads as an error where moving beat 3 reads as feel.
 var humanizeAmt = 0;                 // 0..1
 var HUMAN_MAX_MS = 14;               // full-scale timing spread, +/- this
+// The bass line's notes start at 70% velocity (see PR_DEFAULT_VEL).
+var BL_STEP_VEL = 0.7;
 var HUMAN_MAX_VEL = 0.28;            // full-scale velocity spread
 window.setHumanize = function(v){
   humanizeAmt = Math.max(0, Math.min(1, +v || 0));
@@ -48275,7 +48311,7 @@ window._blScheduler = function(){
                        : { note: lc.note, oct: lc.oct };
           blPlayNote(lt + _humanT(lidx % 4 === 0), lp.note, lp.oct,
                      stepSec * Math.max(1, lc.len || 1) * 0.92,
-                     _humanV(lc.accent), lc.accent, lc.slide);
+                     BL_STEP_VEL*_humanV(lc.accent), lc.accent, lc.slide);
         }
         _blWalkLastT = _blWalkNextT;
         _blWalkNextT += beatSec;
@@ -48293,7 +48329,7 @@ window._blScheduler = function(){
         var wDur = (blWalkFeel === 'two') ? beatSec * 1.88 : beatSec * 0.92;
         _blWalkLastT = _blWalkNextT;
         blPlayNote(_blWalkNextT + _humanT(beatIdx===0), ((midi % 12) + 12) % 12,
-                   Math.floor(midi / 12) - 1, wDur, _humanV(beatIdx===0), beatIdx === 0, false);
+                   Math.floor(midi / 12) - 1, wDur, BL_STEP_VEL*_humanV(beatIdx===0), beatIdx === 0, false);
       }
       _blWalkNextT += beatSec;
     }
@@ -48383,7 +48419,7 @@ window._blScheduler = function(){
         }
       }
       blPlayNote(blNextT + swOff + _humanT(blSeqStep%4===0), pNote, pOct, dur,
-                 _humanV(cell.accent), cell.accent, cell.slide);
+                 BL_STEP_VEL*_humanV(cell.accent), cell.accent, cell.slide);
     } else {
       _blPrevSlide = false;
     }
