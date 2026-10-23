@@ -1243,7 +1243,121 @@ worklet had the same gap and is fixed with it; the null test is unchanged
 (516/516).
 
 Still not native: mõdFX, the mixer, the master reverb and the master limiter.
-A part cannot move on its own; that remains the larger piece.
+A part cannot move on its own; that remains the larger piece, designed next.
+
+### The native mixer, mõdFX and master bus (design — nothing built yet)
+
+**The problem, as measured on the phone.** A native part leaves through
+AVAudioEngine, so it never touches the web's part bus. Everything that hangs
+off that bus is therefore absent for it: the mixer fader and meter, the
+part's stem, its mõdFX chain, the master drive, the bus reverb, the glue
+compressor and the limiter. The rack (previous section) gave the part its own
+Space and Drive; this section gives it the rest.
+
+**The web graph being replaced, per part** (`index.html`): voice rack →
+`_partDest` bus (unity gain; the tap for meter, stem and mõdFX) →
+`fxBuildChain` (an `AudioWorklet` for stutter, reverse, warp, bit and rate
+crush, grain and the ladder; then 2×2 biquad low/high-pass, parallel drive,
+three-band isolator, two-formant "talk", rhythmic gate, tremolo, pan, ring
+mod, a tempo-synced delay and a send reverb; a bypass path for when nothing
+is on) → `_cmx` level (fader, mute and solo together) → master: drive →
+bus reverb (2.4 s convolver) → glue compressor → limiter → master volume →
+duck → speakers. The chord part enters the master through its own drive and
+its own room pair, not the shared room.
+
+**The shape, in the host.** One signal path per part slot, all in
+`ModEngineHost`, in this order, each stage in plain C++ under
+`native/modsynth/` and measured on the Mac like the rack:
+
+```
+Processor → FxRack (done) → part bus (peak/RMS tap, stem tap)
+          → MixFx chain (mõdFX)  → strip (level, pan, mute/solo, smoothed)
+          → sum → MasterBus: drive → bus reverb → glue comp → limiter
+                  → volume → duck → AVAudioSourceNode
+```
+
+- **The strip is the page's own state, mirrored.** `_cmx(ch)` already folds
+  fader, mute and solo into one number per part and the page already sends
+  `mix.<part>`; the host applies it as a smoothed gain (8 ms one-pole, the
+  rack's smoother) so a fader move never zippers. The page keeps owning the
+  value; native only multiplies. Check at step N1 whether the web voices also
+  scale by it at note time, and do not apply it twice.
+- **Meters and stems come back by polling, not by streaming.** The host keeps
+  per-part peak and RMS (cheap, already how `_peak` works), `stats` returns
+  them, the page polls at the meter rate and feeds the existing strips. A
+  stem bounce needs the sample data: see "What the page can no longer
+  record", below.
+- **mõdFX is a port, in two tiers.** `FX_PARAMS` has ~40 axes; they are not
+  equally dear. Tier 1 is biquad and gain work that matches the browser by
+  construction: the 2×2 cascaded low/high-pass, drive blend (reuse the rack's
+  curves and `Os2`), tremolo, pan, ring mod, the tempo-synced delay, the send
+  reverb (reuse the rack's FDN), gate patterns, isolator, talk. Tier 2 is the
+  worklet — stutter, reverse, warp, crush, rate, grain, ladder — which is
+  already plain per-sample JavaScript (`FX_WORKLET_SRC`) and ports nearly line
+  for line, so it can be null-tested against that source, the way `dsp.js`
+  was. Tier 2 is where "sample source" axes (a clip on the pad) stop: those
+  read a sample buffer that lives in the page, and wait for the sampler to go
+  native (steps 4 and 5).
+- **The pad and the sends talk through one setter.** `fxSetSend`, the pad's
+  axes and the per-part REV encoder all end at the chain's node parameters.
+  Wrap that single point the way `eng.fx.set` was wrapped for the rack
+  (`_modNativeFxPost`): the page posts `{t:'mfx', part, i, v}` and keeps the
+  bundle's `_live` state for the UI. A pad gesture is a stream of values, so
+  the host smooths every one (same 8 ms) and the queue carries only the
+  latest per index per block.
+- **The master bus is one instance, for the native parts only, until the
+  flip.** Same stages as `buildMasterBus` (drive → bus reverb → glue → limiter
+  → volume), reading the same four values the page already holds
+  (`master.on/vol/comp/rev`). The bus reverb reuses the FDN with a 2.4 s
+  setting; the chord's own room pair (which exists so a chord change can drop
+  the old tail) is a second FDN instance on the chord slot, lifted by the
+  same `_chordDamp` signal the page already computes.
+
+**Two worlds until step 4 flips.** While drums, bass, melody and samples are
+still Web Audio, the phone has two masters: the web one and the native one,
+and the speaker gets their sum. That is wrong in two ways, and each needs a
+decision rather than a default:
+
+1. *The limiters do not see each other.* Each is correct alone and the sum
+   can exceed either. Proposed: the native master leaves 3 dB of headroom
+   while any web part is sounding, and the page tells it so (`master.web`).
+   It goes away at the flip, when there is one master.
+2. *What the page can no longer record.* The recorder and the stem bounce tap
+   Web Audio nodes (`_masterOut`, each `_partBuses` entry); a native part is
+   in neither. Options: (a) the host also taps its master and parts into a
+   ring the page drains in `stats`-sized chunks and mixes into the WAV, or
+   (b) record is disabled on a native part with a visible reason, until the
+   flip. (a) is the right one and is also the only one that survives the flip
+   (the host will own the recorder then); (b) is the cheap interim. **Open:
+   which to build first.**
+
+**Steps, each ends in a null or measurement test on the Mac, then the phone:**
+
+| | | proof |
+|---|---|---|
+| N1 | Part bus, strip (level, mute/solo, pan), per-part peak/RMS back to the page's meters | a fader at −6 dB measures −6 dB at the host; solo silences the others, counted |
+| N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | a limiter test on a sum hotter than 0 dBFS; reverb level against the convolver as the rack's was |
+| N3 | mõdFX tier 1, the setter wrap, smoothing | each stage's level and response against the web chain's, `fxtest`-style |
+| N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
+| N5 | Capture of the native master and parts for recording and stems | a bounce of a native chord matches the live sound |
+
+N1–N3 are enough for the owner's complaint: mõdFX reaching the native
+mõdSynth, a fader that moves it, and the master glue on it. N4 adds the
+glitch effects. N5 is the one that cannot wait for the flip if bounces
+matter before it.
+
+**Cost to watch.** The rack measured about 2% of a core with everything on,
+per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
+both be native, so measure N3 on the oldest phone available before adding
+the next part; the answer to "which parts go native" is whatever that phone
+holds without a dropout, not what the Mac does.
+
+**Unbuilt, and risks that are known now:** the Swift/Xcode side of each step
+is compiled only on the owner's Mac; the FDN reverb has been judged by
+number, not ear, and the master bus makes it louder in the mix than any one
+rack; and a pad gesture that sets 11 parameters per frame will overrun a
+queue sized for notes unless the page coalesces by index (the 1024-slot queue
+already dropped a note-off once).
 
 ### Haptics
 
