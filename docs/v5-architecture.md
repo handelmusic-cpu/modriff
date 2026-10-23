@@ -1346,6 +1346,15 @@ mõdSynth, a fader that moves it, and the master glue on it. N4 adds the
 glitch effects. N5 is the one that cannot wait for the flip if bounces
 matter before it.
 
+**N1 status (4.9.9.9.9.7.6t, branch `claude/native-strip`, Swift unbuilt).**
+`native/modsynth/strip.h` is the strip (smoothed level, per-block RMS meter;
+`striptest` measures −6 dB, a ramp not a click, exact silence on mute). The
+host runs it after each part's rack; the page posts `_msxCal(part) * mix.<part>`
+as `{t:'strip'}` when it changes, and the Mix meters read the host's `meters`
+call through a stand-in analyser. Expect the native chord to be about 8 dB
+quieter than it was: it now sits where the web chord does. Pan is not done:
+the mixer has no pan control to mirror.
+
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
 both be native, so measure N3 on the oldest phone available before adding

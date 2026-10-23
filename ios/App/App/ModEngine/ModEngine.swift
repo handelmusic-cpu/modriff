@@ -18,7 +18,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "ensurePart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -162,6 +163,14 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["queued": host.post(msg) ? 1 : 0, "sent": 1])
+    }
+
+    /// Each part's RMS since the last call (the loudest block, then reset), for
+    /// the mixer's meters. Separate from stats so reading one does not clear
+    /// the other.
+    @objc func meters(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        call.resolve(["rms": (0..<8).map { Double(host.meter(forPart: Int32($0))) }])
     }
 
     @objc func stats(_ call: CAPPluginCall) {

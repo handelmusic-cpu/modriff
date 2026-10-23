@@ -8,6 +8,7 @@
 
 #include "modsynth.h"
 #include "fxrack.h"
+#include "strip.h"
 
 namespace {
 
@@ -28,7 +29,7 @@ constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
   Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
-  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx
+  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip
 };
 
 // One message, fixed size, trivially copyable. The union is sized by the
@@ -111,6 +112,9 @@ double num(id value, double fallback = 0) {
   // One effects rack per part, built with its processor (before it is
   // published) and read on the render thread only through _live.
   std::unique_ptr<modsynth::FxRack> _racks[kMaxParts];
+  // And one mixer strip: the level the page folds fader, mute, solo and the
+  // patch calibration into, and the meter beside it. Built with the part.
+  std::unique_ptr<modsynth::Strip> _strips[kMaxParts];
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -155,6 +159,7 @@ double num(id value, double fallback = 0) {
   if (_live[part].load(std::memory_order_acquire)) return YES;
   _parts[part] = std::make_unique<modsynth::Processor>(_sampleRate);
   _racks[part] = std::make_unique<modsynth::FxRack>(_sampleRate);
+  _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
   // Release: everything the constructor wrote is visible before the render
   // thread can see a non-null pointer.
   _live[part].store(_parts[part].get(), std::memory_order_release);
@@ -224,6 +229,7 @@ double num(id value, double fallback = 0) {
   else if ([t isEqualToString:@"cc"])      { m.type = MsgType::CC; m.i = (int32_t)num(message[@"n"], 0); }
   else if ([t isEqualToString:@"cap"])     { m.type = MsgType::Cap; m.uni = num(message[@"uni"], 0); m.poly = num(message[@"poly"], 0); }
   else if ([t isEqualToString:@"fx"])      m.type = MsgType::Fx;      // {i: HOST_FX index, v}
+  else if ([t isEqualToString:@"strip"])   m.type = MsgType::Strip;   // {i: 0 level, v}
   else if ([t isEqualToString:@"tempo"])   {
     m.type = MsgType::Tempo;
     m.v = num(message[@"bpm"], 120);
@@ -308,6 +314,7 @@ double num(id value, double fallback = 0) {
                                if (_racks[r.part]) _racks[r.part]->setTempo(r.v);
                                break;
     case MsgType::Fx:          if (_racks[r.part]) _racks[r.part]->set(r.i, r.v); break;
+    case MsgType::Strip:       if (_strips[r.part] && r.i == 0) _strips[r.part]->setLevel(r.v); break;
     case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
       // resize() inside the reserved capacity does not allocate, and
@@ -355,6 +362,9 @@ double num(id value, double fallback = 0) {
       rack->setMods(mods);
       rack->process(_scratchL.data(), _scratchR.data(), frames);
     }
+    // The strip, last: what the web's trim gain and meter are to a part.
+    if (modsynth::Strip *strip = _strips[part].get())
+      strip->process(_scratchL.data(), _scratchR.data(), frames);
     _partFrames[part] += (uint64_t)frames;
     for (int i = 0; i < frames; i++) {
       left[i]  += _scratchL[i];
@@ -399,6 +409,11 @@ double num(id value, double fallback = 0) {
     if (a > pk) pk = a;
   }
   return pk;
+}
+
+- (float)meterForPart:(int)part {
+  if (part < 0 || part >= kMaxParts || !_strips[part]) return 0.0f;
+  return _strips[part]->takeRms();
 }
 
 - (uint64_t)framesRendered { return _frames.load(std::memory_order_relaxed); }
