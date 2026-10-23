@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "modsynth.h"
+#include "fxrack.h"
 
 namespace {
 
@@ -27,7 +28,7 @@ constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
   Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
-  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo
+  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx
 };
 
 // One message, fixed size, trivially copyable. The union is sized by the
@@ -107,6 +108,9 @@ double num(id value, double fallback = 0) {
 
 @implementation ModEngineHost {
   std::unique_ptr<modsynth::Processor> _parts[kMaxParts];
+  // One effects rack per part, built with its processor (before it is
+  // published) and read on the render thread only through _live.
+  std::unique_ptr<modsynth::FxRack> _racks[kMaxParts];
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -150,6 +154,7 @@ double num(id value, double fallback = 0) {
   if (part < 0 || part >= kMaxParts) return NO;
   if (_live[part].load(std::memory_order_acquire)) return YES;
   _parts[part] = std::make_unique<modsynth::Processor>(_sampleRate);
+  _racks[part] = std::make_unique<modsynth::FxRack>(_sampleRate);
   // Release: everything the constructor wrote is visible before the render
   // thread can see a non-null pointer.
   _live[part].store(_parts[part].get(), std::memory_order_release);
@@ -218,6 +223,7 @@ double num(id value, double fallback = 0) {
   else if ([t isEqualToString:@"macro"])   m.type = MsgType::Macro;
   else if ([t isEqualToString:@"cc"])      { m.type = MsgType::CC; m.i = (int32_t)num(message[@"n"], 0); }
   else if ([t isEqualToString:@"cap"])     { m.type = MsgType::Cap; m.uni = num(message[@"uni"], 0); m.poly = num(message[@"poly"], 0); }
+  else if ([t isEqualToString:@"fx"])      m.type = MsgType::Fx;      // {i: HOST_FX index, v}
   else if ([t isEqualToString:@"tempo"])   {
     m.type = MsgType::Tempo;
     m.v = num(message[@"bpm"], 120);
@@ -298,7 +304,10 @@ double num(id value, double fallback = 0) {
     case MsgType::Sustain:     p->setSustain(r.flag); break;
     case MsgType::Macro:       p->setMacro(r.i, r.v); break;
     case MsgType::Cap:         p->setCap(r.uni, r.poly); break;
-    case MsgType::Tempo:       p->setTempo(r.v, r.hasBeat, r.beat); break;
+    case MsgType::Tempo:       p->setTempo(r.v, r.hasBeat, r.beat);
+                               if (_racks[r.part]) _racks[r.part]->setTempo(r.v);
+                               break;
+    case MsgType::Fx:          if (_racks[r.part]) _racks[r.part]->set(r.i, r.v); break;
     case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
       // resize() inside the reserved capacity does not allocate, and
@@ -337,6 +346,15 @@ double num(id value, double fallback = 0) {
     modsynth::Processor *p = _live[part].load(std::memory_order_acquire);
     if (!p) continue;
     p->process(_scratchL.data(), _scratchR.data(), frames);
+    // The rack: what fx.js is on the web, after the voices. The matrix's FX
+    // destinations (a Space or Drive macro) are read here, from the engine
+    // that computed them, so they apply per block and not at meter rate.
+    if (modsynth::FxRack *rack = _racks[part].get()) {
+      double mods[5];
+      p->fxMods(mods);
+      rack->setMods(mods);
+      rack->process(_scratchL.data(), _scratchR.data(), frames);
+    }
     _partFrames[part] += (uint64_t)frames;
     for (int i = 0; i < frames; i++) {
       left[i]  += _scratchL[i];

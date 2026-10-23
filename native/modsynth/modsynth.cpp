@@ -987,6 +987,8 @@ void Processor::runGlobal(const Snap& S, double dt) {
   }
 }
 
+void Processor::fxMods(double* out5) const { for (int k = 0; k < 5; k++) out5[k] = gmod[D_FIRST_FX + k]; }
+
 int Processor::activeVoices() const { int c = 0; for (auto& v : voices) if (v->active) c++; return c; }
 
 void Processor::process(float* L, float* R, int n) {

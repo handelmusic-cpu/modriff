@@ -173,6 +173,12 @@ class Processor {
   // Renders n frames (n = 128 in the worklet) into L and R, overwriting them.
   void process(float* L, float* R, int n);
 
+  // The matrix's output for the five FX destinations that live in the rack
+  // (drive amount, delay mix, reverb mix, chorus mix, phaser rate), as the
+  // worklet reports them in its meter message. The host hands them to the
+  // rack; the crusher's own is used inside process().
+  void fxMods(double* out5) const;
+
   double sr;
   int activeVoices() const;
 
