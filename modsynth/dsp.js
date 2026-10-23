@@ -942,7 +942,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       // a repeated pitch must not be released by the previous strike's off).
       // A newer off for the same id replaces a queued one rather than adding.
       case 'off':
-        if (m.id != null) this.unqueueOff(m.id);
+        if (m.id != null) { this.unqueueOff(m.id); this.unqueueOn(m.id, m.at != null && m.at > this.now() ? m.at : this.now()); }
         if (m.at != null && m.at > this.now()) this.queue(m.at, 0, m.note, 0, m.id);
         else if (m.id != null) this.noteOffId(m.id, m.note);
         else this.noteOff(m.note);
@@ -952,7 +952,7 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       // the app does — a note-off only starts the patch's own release, which
       // on a pad rang on under the next chord).
       case 'choke':
-        if (m.id != null) this.unqueueOff(m.id);
+        if (m.id != null) { this.unqueueOff(m.id); this.unqueueOn(m.id, m.at != null && m.at > this.now() ? m.at : this.now()); }
         if (m.at != null && m.at > this.now()) this.queue(m.at, 2, m.note, 0, m.id);
         else this.chokeId(m.id);
         break;
@@ -1008,6 +1008,16 @@ class ModSynthProcessor extends AudioWorkletProcessor {
       else if (ev.id != null) this.noteOffId(ev.id, ev.note);
       else this.noteOff(ev.note);
     }
+  }
+
+  /** Drops a queued note-on for this id that would begin at or after `t`, the
+      moment its release takes effect (added for mõdRïff). The page sends a
+      note's on and off together with the on a little ahead; a Stop or a choke
+      that lands in that gap found no voice, threw away the scheduled off, and
+      the queued on then played with nothing to end it. */
+  unqueueOn(id, t) {
+    const q = this.evq;
+    for (let i = q.length - 1; i >= 0; i--) if (q[i].type === 1 && q[i].id === id && q[i].at >= t) q.splice(i, 1);
   }
 
   /** Drops any queued note-off for this id — a newer one replaces it. */

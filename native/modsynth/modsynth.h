@@ -223,6 +223,7 @@ class Processor {
   void queue(double at, int type, double note, double vel, NoteId id);
   void drainQueue(double frameEnd);
   void unqueueOff(const NoteId& id);
+  void unqueueOn(const NoteId& id, double t);
   void noteOffId(const NoteId& id, double note);
   void chokeId(const NoteId& id);
   const Snap& snapshot();

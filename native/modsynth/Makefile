@@ -17,9 +17,11 @@ fxtest: fxtest.cpp fxrack.cpp fxrack.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxtest.cpp fxrack.cpp
 fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc
-fxcheck: fxtest fxwire
-	./fxtest | tail -1 && ./fxwire | tail -1
+hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h
+	$(CXX) $(CXXFLAGS) -o $@ hangtest.cpp modsynth.cpp fdlibm.cc
+fxcheck: fxtest fxwire hangtest
+	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1
 
 clean:
-	rm -f render fxtest fxwire
+	rm -f render fxtest fxwire hangtest
 .PHONY: clean

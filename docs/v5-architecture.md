@@ -1153,6 +1153,17 @@ sound smoother and less like noise, and needs an ear; Drive and Grit
 oversample 2x; there is no limiter, so the rack ends in a soft clip above 0.9
 until the native engine has a master bus.
 
+**Hung notes (4.9.9.9.9.7b).** The page sends each note's on and its off
+together, the on a little ahead (`msxVoice`). A Stop, or the next chord's
+choke, can arrive in between: the release finds no voice, `unqueueOff` throws
+away the off the page had scheduled, and the queued on then starts and has
+nothing to end it. Reproduced in `native/modsynth/hangtest.cpp` (the old code
+holds the note at a constant 0.138; three scenarios), fixed in `dsp.js` and
+`modsynth.cpp` alike by dropping a queued on that a release or choke has
+overtaken (`unqueueOn`). Found on the phone, as "stuck chord on Stop". The web
+worklet had the same gap and is fixed with it; the null test is unchanged
+(516/516).
+
 Still not native: mõdFX, the mixer, the master reverb and the master limiter.
 A part cannot move on its own; that remains the larger piece.
 
