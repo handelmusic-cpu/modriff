@@ -72,6 +72,17 @@ checks.forEach((code, i) => {
 // index.html to tell people an update is ready.
 const ver = /MODRIFF_VERSION\s*=\s*'([^']+)'/.exec(out);
 if (!ver) throw new Error('MODRIFF_VERSION missing from the built index.html');
+// The release label is dotted numbers with at most one lowercase letter on the
+// end (4.9.9.9.9.7.4, then 4.9.9.9.9.7.4a for a follow-up). Nothing compares
+// versions with < or >: the service worker and the update toast only test them
+// for equality, so a letter costs nothing, but a stray "v" or a space would
+// ship as the label on every phone. The two labels people read have to say the
+// same thing as the constant, which is also checked here.
+if (!/^\d+(\.\d+)*[a-z]?$/.test(ver[1])) throw new Error(`MODRIFF_VERSION "${ver[1]}" is not dotted numbers plus an optional lowercase letter`);
+for (const id of ['ft-ver', 'unlock-ver']) {
+  const m = new RegExp(`id="${id}"[^>]*>v([^<]*)<`).exec(out);
+  if (!m || m[1] !== ver[1]) throw new Error(`#${id} says "${m ? m[1] : 'nothing'}" but MODRIFF_VERSION is "${ver[1]}"`);
+}
 
 const kb = n => Math.round(n / 1024) + ' KB';
 console.log(`index.html ${kb(src.length)} → ${kb(out.length)} · v${ver[1]} · ${checks.length} scripts checked`);

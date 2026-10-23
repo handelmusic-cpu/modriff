@@ -12,11 +12,12 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
-| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next |
+| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
-every step ships as a 4.9.x increment (a fourth part where it helps, per the
+every step ships as a 4.9.x increment (a further part where it helps, and a
+trailing lowercase letter for a follow-up to the release just out, per the
 numbering rule in CLAUDE.md).
 
 ---
@@ -448,10 +449,40 @@ one of the 344 factory patches can be checked, not a handful.
    arm64), and the `ModEngine` plugin registers and takes messages. What does
    not work yet is the audio graph staying alive; no sound has come out of
    the native engine.
-4. **Parts move over one at a time:** chords first (least timing-critical),
-   then melody, bass, arp, then the drums and the sampled instruments
-   (`samples/`, 11 MB, decoded natively instead of in the web view).
-   mõdFX, reverb and the master bus move with the last of them.
+4. **Everything moves together.** This used to read "parts move over one at
+   a time… mõdFX, reverb and the master bus move with the last of them",
+   and that is wrong. It was tried: the chord part's mõdSynth played
+   natively (4.9.9.9.7, branch `claude/native-audio-session`) and it worked
+   — and sounded wrong, because a part cannot move on its own.
+
+   Native audio leaves through AVAudioEngine and **cannot re-enter a
+   WKWebView's AudioContext**. So the moment any part goes native it is
+   outside everything that is still Web Audio and shared: its own mõdSynth
+   FX rack (`modsynth/fx.js` — convolver, delays, shaper, filters, and the
+   Space and Drive macros that drive them), its part bus, the mixer, mõdFX,
+   the master reverb and the limiter. Measured on the phone: the macros did
+   nothing, mõdFX barely touched the part, and a pad tap was thinner than
+   the same patch auditioned in the editor, which plays through the rack.
+
+   The smallest coherent unit to move is the whole audio output. The work
+   is still done in provable pieces — the FX rack, then the shared chain,
+   then the voices — but the *flip* is one commit, with no half-migrated
+   instrument in between.
+
+   What that means in size, counted: `modsynth/fx.js` is 677 lines, and
+   `index.html` creates Web Audio nodes in 740 places (136 gains, 50
+   oscillators, 45 filters, 20 sample players, 13 shapers, 8 delays, 4
+   convolvers, 3 compressors, 5 panners).
+
+   **And the proof gets weaker, which is worth knowing before it happens.**
+   `dsp.js` could be matched bit for bit because it is plain JavaScript
+   arithmetic — every operation is ours, which is what the null test rests
+   on. `fx.js` is Web Audio *nodes*: the DSP is inside WebKit. Biquads,
+   delays, gains and shaper curves are specified closely enough to match
+   well; `DynamicsCompressorNode` is explicitly implementation-defined and
+   has no answer to match. From the FX rack onward the standard is measured
+   closeness — spectrum and envelope against recorded output, to a stated
+   tolerance — not sample equality.
 5. **The clock moves native.** The sequencer and arp currently schedule
    from JS timers with a lookahead. Once the sound is native, a hiccup on the
    web view's thread can still make a note late; moving the transport into
@@ -1045,6 +1076,42 @@ native engine finds the asset by id. It goes with the native sampler.
   store, so there is one engine contract and the traces keep proving it. It
   matters less than it sounds, because the web build is not the product
   (below).
+
+### Random patches and saved patches (4.9.9.9.9.7)
+
+Two features of the mõdSynth panel, with one architectural consequence
+between them.
+
+**The dice rolls parameters now, not presets.** It used to pick another of
+the 324 factory patches. `modsynth/random.js` rolls the parameters
+themselves: a character first (Keys, Pad, Plucked, Bass, Lead, Bell,
+Texture, biased per part), then the knobs inside that character's bands, in
+*normalised* space so `params.js`'s own curves shape every draw. It starts
+from the schema defaults and writes only what it rolls, so a parameter added
+to `params.js` later keeps its default until somebody puts it in a character
+on purpose. Its header says which parameters are held and why; the rules
+that came out of rendering rolls rather than reading them are marked as
+such, and `tests/modsynth/random.test.js` renders through the real `dsp.js`
+and fails on a roll that is inaudible, infinite, clipping or still ringing
+two seconds after note-off.
+
+**A patch that the library does not have travels as numbers, not as a name.**
+This is the part that constrains the rest. A part's mõdSynth state is
+`{patch, vals, motion}` — the *name* of a library patch plus the edits on
+top — and the engine, this one or a native one, resolves that name against
+the patch library it carries itself (that is why the message is small; see
+"The message, wherever the engine is"). A rolled patch, or one saved under
+`modo-msx-user`, has no name any engine knows: that key lives on one phone.
+So both write the whole parameter set into `vals`, as the diff against
+whichever library patch the part already had, and keep a label beside it for
+the panel to draw. Nothing about the message format, the engine or the
+native side changes — a roll is an edit, as far as they are concerned. The
+same fact gives Undo, setups and share links the new sounds for free, since
+all three snapshot `MSX.state`.
+
+The user bank itself is a *library*, like the sampler's clips: it is not in
+the undo snapshot and does not ride in a share link. Loading one of its
+patches is what lands in the snapshot.
 
 ### The native host, and where it stops
 

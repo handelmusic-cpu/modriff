@@ -1,13 +1,34 @@
 # mõdRïff — working notes
 
-## Always merge
+## Always merge — in batches
 
 When work is finished and verified, open the pull request **and merge it** —
 don't stop to ask. "Should I PR this?" and "want me to merge?" are not
 questions worth a round trip. Report what shipped instead.
 
-The exception is work that isn't verified yet: an unverified change doesn't
-get merged, it gets finished first.
+**Merge in batches, not one change at a time.** A PR per tweak buried the
+history under merge commits and made the owner review ten tiny diffs for one
+afternoon's work. So: commit each verified change to the session's branch as
+you go (one commit per logical change, with the usual trailers and the version
+label when it bumps one), and open **one** PR for the lot when the batch is done, then merge
+it. A batch is everything asked for in one request or one working session —
+the list the owner gave you, not each line of it. It ends when that list is
+finished, when the owner says to ship, or when the next thing would be
+unrelated to the rest; it never waits on a person to say "merge", and it never
+waits for a "bigger" batch to accumulate.
+
+- The PR title names the range (`v4.9.9.9.9.7.4 – 4.9.9.9.9.7.4b: …`) and the
+  body lists the commits, one line each.
+- Merge commit, not squash: the per-change commits and their version labels are
+  the record of what shipped when.
+- A change that is unverified stays out of the batch until it is finished — it
+  doesn't hold the verified ones back, it just isn't in the PR yet. If it can't
+  be finished this session, leave it on its own branch and say so.
+- Something broken in production is not a batch: fix it, verify it, and ship it
+  on its own straight away.
+
+The exception to merging at all is work that isn't verified yet: an unverified
+change doesn't get merged, it gets finished first.
 
 ## Where this is going
 
@@ -65,22 +86,39 @@ immutable assets, **not** a release number — leave it alone.
 
 ### Numbering
 
-No part of the version goes past 9. After `4.1.9` comes `4.2.0`, not
+No numeric part of the version goes past 9. After `4.1.9` comes `4.2.0`, not
 `4.1.10`; after `4.9.9`, `5.0.0`.
+
+**A build number may end in a lowercase letter** (since 4.9.9.9.9.7.4). The
+dotted numbers had run to seven parts — `4.9.9.9.9.7.3` — because every
+follow-up added another one. A follow-up to the release just out (a fix to what
+it shipped, a tweak to the same feature) now takes a letter instead of another
+part: `4.9.9.9.9.7.4` → `4.9.9.9.9.7.4a` → `4.9.9.9.9.7.4b`. One letter, `a` to
+`z`, lowercase, on the last part only; if a build somehow needs more than
+twenty-six follow-ups, it was a new release and takes the next number. The
+letter goes in all three places the version lives (below), and in the commit
+subject (`v4.9.9.9.9.7.4a: …`).
+
+Nothing orders versions: the service worker and the "update is ready" toast
+compare them for equality only, so a letter costs nothing there.
+`build/build.mjs` enforces the shape — dotted numbers plus an optional lowercase
+letter — and that `#ft-ver`, `#unlock-ver` and `MODRIFF_VERSION` agree, and
+fails the build otherwise.
 
 **Never move to a new major version (`4.x.x` → `5.0.0`) without asking the
 user first** — even when the numbering rule says it is next. That is theirs
 to call; stop and ask before the bump, not after. A change that is a small follow-up to the
 release just out — a fix to what it shipped, a tweak to the same feature —
-adds a fourth part instead of using up the third: `4.1.0` → `4.1.0.1` →
-`4.1.0.2`. A batch of new features is the next third-part number (or the next
-minor, if that would pass 9). The 4.0.x run went to 4.0.21 before this rule
+no longer adds another dotted part (that is what the letter above is for); it
+used to: `4.1.0` → `4.1.0.1` → `4.1.0.2`. A batch of new features is the next
+number at the current depth (or the next minor, if that would pass 9). The 4.0.x run went to 4.0.21 before this rule
 existed and was renumbered 4.1.0.
 
 **5.0.0 is decided: it is the native App Store release** (see
 `docs/v5-architecture.md`). Until that ships, everything stays under 5 — a
-fourth part rather than reaching 5.0.0 early, and past `4.9.9` it is
-`4.9.9.1`, not `5.0.0`. Any *other* major bump still gets asked about.
+letter or a further part rather than reaching 5.0.0 early, and past `4.9.9` it
+is `4.9.9.1` or `4.9.9a`, not `5.0.0`. Any *other* major bump still gets asked
+about.
 
 ## After every edit
 

@@ -231,11 +231,15 @@ public class ModMidi: CAPPlugin, CAPBridgedPlugin {
         // clock and hands us the bytes when they are due, so translating its
         // milliseconds into mach time here would be a second opinion about
         // when a note starts.
-        let ok = data.withUnsafeBufferPointer { buf -> Bool in
-            guard let base = buf.baseAddress else { return false }
-            return MIDIPacketListAdd(&packetList, 1024, packet, 0, data.count, base) != nil
+        // MIDIPacketListAdd returns a non-optional pointer in the current SDK,
+        // so "!= nil" is always true and could never report an overflow. The
+        // list is one MIDIPacket, whose data field holds 256 bytes, so the
+        // length is checked up front instead of trusting the return value.
+        guard data.count <= 256 else { call.reject("message too long for one packet"); return }
+        data.withUnsafeBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+            _ = MIDIPacketListAdd(&packetList, MemoryLayout<MIDIPacketList>.size, packet, 0, data.count, base)
         }
-        guard ok else { call.reject("message too long for one packet"); return }
 
         let status = MIDISend(outPort, dest, &packetList)
         if status == noErr { call.resolve(["ok": true]) }
