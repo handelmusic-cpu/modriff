@@ -1115,6 +1115,17 @@ patches is what lands in the snapshot.
 
 ### The native host, and where it stops
 
+> **Resolved (4.9.9.9.9.7 – 4.9.9.9.9.7b, PR 252).** Everything below is the
+> account of the first Mac build, kept for the measurements. The graph now
+> stays up and the chord part's mõdSynth is heard from the C++ engine on the
+> phone: `AppDelegate` owns the audio session (`.playback` with
+> `.mixWithOthers`; the plugin never touches it), which was the "likely cause"
+> listed first below. Space and Drive work (the rack is native, see "The
+> effects rack, native"), and a note released before it begins no longer
+> hangs. What is left is the larger piece: mõdFX, the mixer, the master reverb
+> and the limiter are still Web Audio, so mõdFX does not reach a native
+> mõdSynth part.
+
 The first time any of this was built on a Mac. Everything from the page down
 to the DSP works; the audio graph does not stay up. Written down because the
 measurements cost an evening and should not be taken again.
