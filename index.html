@@ -7790,7 +7790,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.7</span></div>
  </div>
 </div>
 
@@ -9027,7 +9027,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10016,7 +10016,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.6';
+const MODRIFF_VERSION = '4.9.9.9.9.8.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10413,7 +10413,9 @@ function modNativePlugin(){
    var call=function(m){ return function(o){ return C.nativePromise('ModEngine', m, o||{}); }; };
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
                      ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'),
-                     meters:call('meters'), shareFile:call('shareFile') };
+                     meters:call('meters'), shareFile:call('shareFile'),
+                     captureStart:call('captureStart'), captureRead:call('captureRead'),
+                     captureStop:call('captureStop') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }
@@ -42536,9 +42538,13 @@ function _startStemTaps(ctx){
   Object.keys(STEM_LABELS).forEach(function(part){
     // The native engine plays this part in the host, and its audio never
     // passes through the page's bus (the worklet is unplugged), so a tap here
-    // would write a silent file for a part you can hear. Capturing the host is
-    // v5 step N5, not built; until then say so instead of pretending.
-    if(MODNAT && MODNAT.attached && MODNAT.attached[part]){ _stemSkipped.push({part:part, why:'native'}); return; }
+    // would write a silent file for a part you can hear. The host's own capture
+    // (_natCapStart) carries it instead; where that is not running, say so
+    // instead of pretending.
+    if(MODNAT && MODNAT.attached && MODNAT.attached[part]){
+      if(!_natCapActive()) _stemSkipped.push({part:part, why:'native'});
+      return;
+    }
     var node = buses[part]; if(!node) return;
     var tap = { part:part, node:node, L:[], R:[], F:[] };
     // One part failing to tap must not take the other seven with it.
@@ -42835,6 +42841,9 @@ function _startRecording(){
     try{ console.warn('[rec] start failed', e); }catch(_){}
     return;
   }
+  // The native engine's side of the mix, and its stems. Before the stem taps,
+  // which leave a native part to it. A failure costs the native audio, not the take.
+  try{ _natCapStart(ctx); }catch(e){ _natCap=null; try{ console.warn('[rec] native capture failed to start', e); }catch(_){} }
   // Stems are optional: a failure here costs the stems, not the take. The mix
   // and the .mid are already running and still get saved.
   var stemsFailed=false;
@@ -42844,8 +42853,8 @@ function _startRecording(){
     try{ console.warn('[rec] stem taps failed to start', e); }catch(_){}
   }
   _isRecording=true;_updateRecBtn();
-  // Native-engine parts are not in the mix either (the bus the recorder taps
-  // never carries them), so this is said whether or not stems are on.
+  // Native-engine parts are not in the bus the recorder taps. When the host's
+  // capture is running they come in through that; when it is not, say so.
   var nat=_nativeUncaptured();
   var msg = stemsFailed ? 'Recording the mix — stems could not start'
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
@@ -42853,11 +42862,160 @@ function _startRecording(){
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
   showToast(msg, nat.length ? {ms:5000} : undefined);
 }
-// Labels of parts the native engine is playing. Their audio is made in the
-// host, outside anything the page can tap (v5 step N5 builds the capture), so
-// a bounce would be missing them from the mix and from the stems.
+// ── Native capture (v5 step N5) ─────────────────────────────────────────────
+// The recorder taps Web Audio nodes. A part the native engine plays leaves
+// through the host and is in none of them, so a bounce was missing it — from the
+// mix and from its stem. The host now copies its master (after volume) and each
+// part's own bus into rings (native/modsynth/capture.h); while a take runs the
+// page drains them a few times a second and lays what it gets on the same
+// timeline as the web taps, which is the AudioContext's frame count.
+//
+// The host counts its own frames, so it cannot say where a block belongs on that
+// timeline. The wall clock can: the host reports where its frame 0 sits on it
+// (originMs, the minimum over its render blocks: a callback can start late but
+// never early, so the minimum is the schedule with the jitter out), and the page
+// pairs ctx.currentTime with the wall clock the same way. That is the pairing
+// the engine's own note scheduling already runs on (_modNativeAtRel: the note's
+// distance ahead of currentTime, stamped with the wall clock), so a bounce
+// puts native audio where the live notes were put.
+//
+// currentTime only moves a render buffer at a time and never runs ahead, so a
+// single reading is early by anything up to a buffer (measured: the two clicks
+// of probe scenario H landed up to 7 ms apart). The best reading is the largest
+// ctx-frames-minus-wall-clock seen, so it is sampled densely for the first
+// second of the take. Host and AudioContext frames then run off one device
+// clock, so the offset between them holds for the rest of it.
+var _natCap=null;
+function _natCapActive(){ return !!(_natCap && !_natCap.failed); }
+// Streams a take wants: the master (bit 0) whenever the engine runs, and each
+// attached part's own bus (bit 1+host part) while stems are on.
+function _natCapWant(){
+  var m=1;
+  if(exportStems) Object.keys(MODNAT.attached||{}).forEach(function(p){
+    if(MODNAT.attached[p]) m |= 1<<(1+(MODNAT.PART[p]|0));
+  });
+  return m;
+}
+// Asking again for what is running is harmless (the host leaves it alone), so
+// this is also how a part's stem joins a take already under way.
+function _natCapArm(c){
+  var m=_natCapWant();
+  if(m===c.mask) return Promise.resolve();
+  return modNativePlugin().captureStart({mask:m}).then(function(r){
+    c.mask=m;
+    if(r && r.sampleRate && Math.abs(r.sampleRate-c.sr)>0.5) c.failed='rate';
+  });
+}
+function _natCapStart(ctx){
+  _natCap=null;
+  var p=modNativePlugin();
+  if(!MODNAT.started || !p || typeof p.captureStart!=='function') return;
+  var c={ sr:ctx.sampleRate, mask:0, streams:{}, originMs:0, q:-Infinity, lost:0, failed:false,
+          busy:null, timer:0, refTimer:0 };
+  var sample=function(){
+    var q=ctx.currentTime*c.sr - (performance.timeOrigin+performance.now())*c.sr/1000;
+    if(q>c.q) c.q=q;
+  };
+  sample();
+  c.refTimer=setInterval(sample,10);
+  setTimeout(function(){ clearInterval(c.refTimer); },1000);
+  _natCap=c;
+  _natCapArm(c).catch(function(e){ c.failed='start'; try{ console.warn('[rec] native capture did not start', e); }catch(_){} });
+  c.timer=setInterval(function(){ _natCapPoll(c); },200);
+}
+function _natCapPoll(c){
+  if(c.busy || c.failed) return c.busy||Promise.resolve();
+  var p=modNativePlugin();
+  c.busy=_natCapArm(c).then(function(){ return p.captureRead(); }).then(function(r){ _natCapTake(c,r); })
+    .catch(function(e){ c.failed=c.failed||'read'; try{ console.warn('[rec] native capture read failed', e); }catch(_){} })
+    .then(function(){ c.busy=null; });
+  return c.busy;
+}
+// One drain: decode each stream's block. Where it belongs on the web timeline
+// is worked out at the end (_natCapPlace), when the clock readings are best.
+function _natCapTake(c,r){
+  if(!r) return 0;
+  // The smallest ever reported: later readings can only be later blocks' jitter.
+  if(r.originMs>0 && (!(c.originMs>0) || r.originMs<c.originMs)) c.originMs=+r.originMs;
+  if(r.sampleRate && Math.abs(r.sampleRate-c.sr)>0.5){ c.failed='rate'; return 0; }
+  var got=0;
+  (r.streams||[]).forEach(function(s){
+    c.lost += +s.lost||0;
+    var n=s.frames|0;
+    if(!n) return;
+    var bin=atob(s.data), u=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+    var f=new Float32Array(u.buffer);                       // n left, then n right
+    var st=c.streams[s.id]||(c.streams[s.id]={L:[],R:[],F:[]});
+    st.L.push(f.subarray(0,n)); st.R.push(f.subarray(n,2*n)); st.F.push(+s.frame0);   // host frame, for now
+    got+=n;
+  });
+  return got;
+}
+// Host frame -> AudioContext frame, for every captured block: the wall clock
+// time the host rendered it at, minus the wall clock's offset from the context.
+function _natCapPlace(c){
+  if(!(c.originMs>0) || !isFinite(c.q)){ c.failed=c.failed||'clock'; return; }
+  var base=c.q + c.originMs*c.sr/1000;
+  Object.keys(c.streams).forEach(function(id){
+    var F=c.streams[id].F;
+    for(var i=0;i<F.length;i++) F[i]=Math.round(base + F[i]);
+  });
+}
+// Ends the take on the host's side and drains what is left. Resolves with the
+// capture ({streams, lost, failed}) or null if there was none.
+function _natCapStop(){
+  var c=_natCap; _natCap=null;
+  if(!c) return Promise.resolve(null);
+  clearInterval(c.timer); clearInterval(c.refTimer);
+  var p=modNativePlugin();
+  var drain=function(k){
+    return p.captureRead().then(function(r){ return (_natCapTake(c,r) && k<40) ? drain(k+1) : null; });
+  };
+  return Promise.resolve(c.busy)
+    .then(function(){ return c.failed ? null : p.captureStop(); })
+    .then(function(){ return c.failed ? null : drain(0); })
+    .then(function(){ if(!c.failed) _natCapPlace(c); })
+    .catch(function(e){ c.failed=c.failed||'read'; try{ console.warn('[rec] native capture drain failed', e); }catch(_){} })
+    .then(function(){ return c; });
+}
+// First and last frame (+1) a captured stream covers, for sizing the mix.
+function _natCapExtent(st){
+  var f0=Infinity, fEnd=0;
+  if(st) for(var i=0;i<st.F.length;i++){ f0=Math.min(f0,st.F[i]); fEnd=Math.max(fEnd,st.F[i]+st.L[i].length); }
+  return { f0:f0, fEnd:fEnd };
+}
+// Adds a captured stream into the mix. Added, not set: the web taps wrote the
+// same buffers first, and while a part is moving between engines both can have
+// something to say.
+function _natCapMixInto(st, span, L, R){
+  for(var i=0;i<st.F.length;i++){
+    var at=st.F[i]-span.f0, src=st.L[i], srcR=st.R[i], from=0;
+    if(at<0){ from=-at; at=0; }
+    var len=Math.min(src.length-from, span.n-at);
+    for(var k=0;k<len;k++){ L[at+k]+=src[from+k]; R[at+k]+=srcR[from+k]; }
+  }
+}
+// A captured part bus becomes a stem tap, written by _finishStemTaps like any
+// other, onto the same timeline. A web tap the part already had (it moved
+// between engines mid-take) gives way: the native one carries the sound.
+function _natCapStemTaps(c){
+  Object.keys(MODNAT.PART||{}).forEach(function(part){
+    var st=c.streams[1+(MODNAT.PART[part]|0)];
+    if(!st || !st.F.length) return;
+    _stemTaps=_stemTaps.filter(function(t){
+      if(t.part!==part) return true;
+      try{ if(t.pcm) t.pcm.dispose(); }catch(e){}
+      return false;
+    });
+    _stemTaps.push({ part:part, L:st.L, R:st.R, F:st.F });
+  });
+}
+// What the recorder cannot hear, for a toast: parts the native engine plays when
+// native capture is not running (an older build of the host, or it failed).
 function _nativeUncaptured(){
   var out=[];
+  if(_natCapActive()) return out;
   try{
     Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) out.push(STEM_LABELS[p]||p); });
   }catch(e){}
@@ -42952,14 +43110,18 @@ function _stopRecording(){
   var midiFile=_stopMidiRecording();
   var tap=_recTap;
   _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
+  // Ends the host's capture now, with the web taps, and drains it while they
+  // flush; the file is written when both are in.
+  var natP=_natCapStop();
   // Ask every tap for its last partial block now, at the same moment, so the
   // mix and the stems end together; the timeout below is what lets it arrive.
   if(tap && tap.flush) tap.flush();
   try{ _stemTaps.forEach(function(t){ if(t.pcm && t.pcm.flush) t.pcm.flush(); }); }catch(e){}
   // Let the final buffer flush before tearing the tap down
-  setTimeout(function(){
+  setTimeout(function(){ natP.then(function(nat){
     if(tap) tap.dispose();
-    if(!_recChunksL.length){
+    var natMix=(nat && !nat.failed && nat.streams[0] && nat.streams[0].F.length) ? nat.streams[0] : null;
+    if(!_recChunksL.length && !natMix){
       // The stem taps were made for this take; leaving them connected would keep
       // eight worklets running into the destination for no reason.
       _abandonStemTaps();
@@ -42972,17 +43134,22 @@ function _stopRecording(){
     // stems, so a gap in the mix's own blocks stays where it was too.
     var _F=_recChunksF||[], _stamped=_F.length===_recChunksL.length && _F.every(function(f){ return f!=null && isFinite(f); });
     var span=null;
-    if(_stamped && _F.length){
-      var _f0=Math.min.apply(null,_F), _fEnd=0;
-      for(var q=0;q<_F.length;q++) _fEnd=Math.max(_fEnd, _F[q]+_recChunksL[q].length);
-      span={ f0:_f0, n:_fEnd-_f0 };
-      totalLen=span.n;
+    if(_stamped){
+      // The native master, if there is one, can start before or run past the web
+      // taps (a take of only native parts has no web blocks at all).
+      var _ext=_natCapExtent(natMix), _f0=_ext.f0, _fEnd=_ext.fEnd;
+      for(var q=0;q<_F.length;q++){ _f0=Math.min(_f0,_F[q]); _fEnd=Math.max(_fEnd, _F[q]+_recChunksL[q].length); }
+      if(isFinite(_f0) && _fEnd>_f0){ span={ f0:_f0, n:_fEnd-_f0 }; totalLen=span.n; }
     }
+    // Without stamps on the web blocks there is nothing to line the host up
+    // against; the mix is written as it always was, without it.
+    if(!span) natMix=null;
     var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
     for(var i=0;i<_recChunksL.length;i++){
       var _at = span ? _F[i]-span.f0 : pos;
       fullL.set(_recChunksL[i],_at);fullR.set(_recChunksR[i],_at);pos+=_recChunksL[i].length;
     }
+    if(natMix) _natCapMixInto(natMix, span, fullL, fullR);
     if(!span) span={ f0:null, n:totalLen };
     _recChunksL=[];_recChunksR=[];_recChunksF=[];
     // The stem taps have always thrown away a part that never sounded; the
@@ -43018,6 +43185,12 @@ function _stopRecording(){
     var base=base0;
     var tags=_bounceInfoTags();
     var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
+    // Native parts' stems, from the host's capture, written with the web ones.
+    // Where stems were on but the host's capture was not, the part is named.
+    if(exportStems && span.f0!=null){
+      if(nat && !nat.failed) _natCapStemTaps(nat);
+      else if(nat) Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) _stemSkipped.push({part:p, why:'native'}); });
+    }
     var stems=_finishStemTaps(base,_sr,tags,span);
     files=files.concat(stems);
     // One take, one name. The recorder defaulted to 'modo-performance' and the
@@ -43041,9 +43214,14 @@ function _stopRecording(){
     var sk = stems.skipped || [];
     if(!stems.length && exportStems) done += ' — 0 stems written';
     if(sk.length) done += '. ' + _stemSkipNote(sk);
-    showToast(done, sk.length ? {ms:6000} : undefined);
+    // The host's capture, if it was running, is part of what was saved; say when
+    // it was not whole.
+    var natBad = nat && nat.failed;
+    if(natBad) done += '. The native engine could not be captured, so what it plays is not in the files';
+    else if(nat && nat.lost>0) done += '. The native engine dropped ' + Math.round(nat.lost*1000/_sr) + ' ms of audio while recording';
+    showToast(done, (sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined);
     _deliverFiles(files, { zipName:base, title:base });
-  },150);
+  }); },150);
 }
 function _updateRecBtn(){
   var b=document.getElementById('rec-btn');

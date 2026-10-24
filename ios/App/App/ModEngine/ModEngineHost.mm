@@ -13,6 +13,7 @@
 #include "strip.h"
 #include "mixfx.h"
 #include "master.h"
+#include "capture.h"
 
 namespace {
 
@@ -21,6 +22,14 @@ constexpr int kMaxParts = 8;
 // whose room is the effects rack's own reverb). Every other part goes through
 // the bus room, as everything but the chord does on the web. See master.h.
 constexpr int kDirectPart = 0;
+// Capture streams: the master, then each part's own bus.
+constexpr int kCapStreams = 1 + kMaxParts;
+// 2^19 frames is 10.9 s at 48 kHz: the page drains a few times a second, and
+// this is the slack for the stretches it does not (a backgrounded web view runs
+// its timers about once a second). Two floats a frame, so 4 MB a stream, and
+// only for the streams a take asks for.
+constexpr size_t kCapFrames = 1u << 19;
+constexpr uint32_t kCapReadFrames = 1u << 17;
 // A patch's mod matrix. dsp.js takes however many rows it is given; a fixed
 // cap is what lets a matrix travel through the queue as a POD. 32 is well
 // clear of the largest factory patch, and setMatrix is told the real count.
@@ -130,6 +139,18 @@ double num(id value, double fallback = 0) {
   // parts make ends up here before it leaves.
   std::unique_ptr<modsynth::MasterBus> _master;
   std::vector<float> _roomL, _roomR;     // the sum of the parts that go through the bus room
+  // Capture rings (capture.h), built on first use and kept: the render thread
+  // reads the pointers, and a ring it might still be writing is never freed.
+  std::unique_ptr<modsynth::CaptureRing> _capRings[kCapStreams];
+  std::atomic<modsynth::CaptureRing *> _cap[kCapStreams];
+  os_unfair_lock _capLock;
+  // Where engine frame 0 sits on the wall clock (CLOCK_REALTIME, ms): the
+  // smallest (block's wall time - its frame / rate) seen since the last take
+  // began. A render callback can start late but not early, so the earliest-looking
+  // block is the least delayed, and the minimum over a few hundred of them is
+  // the schedule with the jitter taken out. Reset by the next take.
+  std::atomic<double> _clkOrigin;
+  std::atomic<bool> _clkReset;
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -168,6 +189,9 @@ double num(id value, double fallback = 0) {
     _roomL.assign((size_t)_maxFrames, 0.0f);
     _roomR.assign((size_t)_maxFrames, 0.0f);
     _master = std::make_unique<modsynth::MasterBus>(sampleRate);
+    _capLock = OS_UNFAIR_LOCK_INIT;
+    _clkOrigin.store(1e300); _clkReset.store(false);
+    for (int i = 0; i < kCapStreams; i++) _cap[i].store(nullptr, std::memory_order_relaxed);
   }
   return self;
 }
@@ -383,6 +407,18 @@ double num(id value, double fallback = 0) {
   if (frames <= 0) return;
   if (frames > _maxFrames) frames = _maxFrames;   // never write past the scratch
 
+  // Where this block sits on the wall clock, for the recorder to line the host
+  // up with the page's AudioContext. A clock read and a compare a block.
+  const uint64_t blockFrame = _frames.load(std::memory_order_relaxed);
+  {
+    struct timespec tsNow;
+    clock_gettime(CLOCK_REALTIME, &tsNow);
+    const double off = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6
+                     - (double)blockFrame * 1000.0 / _sampleRate;
+    if (_clkReset.exchange(false, std::memory_order_relaxed)) _clkOrigin.store(1e300, std::memory_order_relaxed);
+    if (off < _clkOrigin.load(std::memory_order_relaxed)) _clkOrigin.store(off, std::memory_order_relaxed);
+  }
+
   Msg m;
   while (_queue.pop(m)) {
     if (m.type == MsgType::Master) { _master->set(m.i, m.v); continue; }   // the bus belongs to no part
@@ -419,6 +455,9 @@ double num(id value, double fallback = 0) {
     // The mixer's pan, after the meter: the web taps the meter upstream of it.
     if (strip) strip->applyPan(_scratchL.data(), _scratchR.data(), frames);
     _partFrames[part] += (uint64_t)frames;
+    // The part's own bus, for a stem: what the web's _partBuses entry carries.
+    if (modsynth::CaptureRing *c = _cap[1 + part].load(std::memory_order_acquire))
+      c->write(_scratchL.data(), _scratchR.data(), frames, blockFrame);
     // The two ways into the master (master.h): the chord part direct, the rest
     // through the bus room.
     float *toL = part == kDirectPart ? left  : _roomL.data();
@@ -432,6 +471,11 @@ double num(id value, double fallback = 0) {
   // The master: drive, bus room, glue compressor, limiter, volume. What the
   // web's buildMasterBus does for the parts the web plays, for these.
   _master->process(left, right, _roomL.data(), _roomR.data(), frames);
+
+  // What leaves for the speaker: the web's _masterOut, for the part of the mix
+  // that is not Web Audio.
+  if (modsynth::CaptureRing *c = _cap[0].load(std::memory_order_acquire))
+    c->write(left, right, frames, blockFrame);
 
   // Loudest sample this block, held until read. Silence and work are
   // indistinguishable in a load figure; they are not in this.
@@ -471,6 +515,51 @@ double num(id value, double fallback = 0) {
     if (a > pk) pk = a;
   }
   return pk;
+}
+
+- (void)startCapture:(uint32_t)mask {
+  os_unfair_lock_lock(&_capLock);
+  bool running = false;
+  for (int i = 0; i < kCapStreams; i++) if (_capRings[i] && _capRings[i]->active()) running = true;
+  if (!running) _clkReset.store(true, std::memory_order_relaxed);   // a new take: measure the clock afresh
+  for (int i = 0; i < kCapStreams; i++) {
+    if (!(mask & (1u << i))) continue;
+    if (!_capRings[i]) {
+      _capRings[i] = std::make_unique<modsynth::CaptureRing>(kCapFrames);
+      _cap[i].store(_capRings[i].get(), std::memory_order_release);
+    }
+    // Asking for a stream that is already running is a no-op: the page adds a
+    // part's stem mid-take, and re-arming the master with it would throw away
+    // everything the take has so far.
+    if (!_capRings[i]->active()) _capRings[i]->arm();
+  }
+  os_unfair_lock_unlock(&_capLock);
+}
+
+- (void)stopCapture {
+  os_unfair_lock_lock(&_capLock);
+  for (int i = 0; i < kCapStreams; i++) if (_capRings[i]) _capRings[i]->stop();
+  os_unfair_lock_unlock(&_capLock);
+}
+
+- (NSDictionary *)readCapture {
+  NSMutableArray *streams = [NSMutableArray array];
+  std::vector<float> l((size_t)kCapReadFrames), r((size_t)kCapReadFrames);
+  os_unfair_lock_lock(&_capLock);
+  for (int i = 0; i < kCapStreams; i++) {
+    if (!_capRings[i]) continue;
+    uint64_t f0 = 0, lost = 0;
+    const size_t got = _capRings[i]->read(l.data(), r.data(), l.size(), f0, lost);
+    if (!got && !lost) continue;
+    NSMutableData *d = [NSMutableData dataWithLength:got * 2 * sizeof(float)];
+    std::memcpy(d.mutableBytes, l.data(), got * sizeof(float));
+    std::memcpy((char *)d.mutableBytes + got * sizeof(float), r.data(), got * sizeof(float));
+    [streams addObject:@{@"id": @(i), @"frame0": @((double)f0), @"frames": @((int)got),
+                         @"lost": @((double)lost), @"data": d}];
+  }
+  os_unfair_lock_unlock(&_capLock);
+  const double origin = _clkOrigin.load(std::memory_order_relaxed);
+  return @{@"streams": streams, @"originMs": @(origin < 1e299 ? origin : 0.0), @"sampleRate": @(_sampleRate)};
 }
 
 - (float)meterForPart:(int)part {

@@ -80,6 +80,28 @@ NS_ASSUME_NONNULL_BEGIN
 /// reset. Any thread. The page's mixer meters poll it.
 - (float)meterForPart:(int)part;
 
+/// Capture for the recorder (v5 step N5). The page's Bounce taps Web Audio
+/// nodes, and a native part is in none of them, so the host copies its own
+/// output into rings the page drains. `mask` says which: bit 0 is the master
+/// (after volume, the last thing before the speaker), bit 1+p is part p's own
+/// bus (after its strip, mõdFX and pan, before the master: the stem).
+/// A stream that is already running is left alone, so a later call can add
+/// streams to a take; one that was stopped starts a new take and forgets
+/// what the last left. Any thread.
+- (void)startCapture:(uint32_t)mask;
+/// Stops writing. What was captured stays readable until the next start.
+- (void)stopCapture;
+/// What has been captured since the last call, per stream:
+/// {streams:[{id, frame0, frames, lost, data}], originMs, sampleRate}.
+/// `data` is `frames` floats of left then `frames` of right. `frame0` is the
+/// engine frame the first sample was rendered at, `lost` how many frames were
+/// overwritten before they were read (frame0 has already moved past them).
+/// `originMs` is where engine frame 0 sits on the wall clock (CLOCK_REALTIME,
+/// ms), so engine frame f was rendered at originMs + f / rate: how the page
+/// turns engine frames into its own AudioContext's. 0 until a block has been
+/// rendered. Any thread.
+- (NSDictionary *)readCapture;
+
 @end
 
 NS_ASSUME_NONNULL_END
