@@ -42,7 +42,12 @@
   };
 
   const KNOB_ARC = 270;            // degrees of travel
-  const KNOB_START = 135;          // where the arc begins, clockwise from 12 o'clock
+  // Where the arc begins, in degrees clockwise from 12 o'clock: 225 is 7:30, so
+  // the 270 degrees of travel run 7:30 -> 12 -> 4:30 and a bipolar knob rests
+  // at the top. It was 135, which is 4:30: the dial started at the bottom
+  // right and ended at the upper right, with its gap at the top right, so a
+  // knob at zero looked already half turned.
+  const KNOB_START = 225;
 
   function polar(cx, cy, r, deg) {
     const a = (deg - 90) * Math.PI / 180;
