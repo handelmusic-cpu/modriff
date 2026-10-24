@@ -1341,13 +1341,12 @@ decision rather than a default:
 | N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | **Landed (4.9.9.9.9.8.6), headroom not built.** Measured against the browser's compressor and chain; reverb level and tail against the convolver |
 | N3 | mõdFX tier 1, the setter wrap, smoothing | each stage's level and response against the web chain's, `fxtest`-style |
 | N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
-| N5 | Capture of the native master and parts for recording and stems | a bounce of a native chord matches the live sound |
+| N5 | Capture of the native master and parts for recording and stems | **Landed (4.9.9.9.9.8.7), not heard on a phone.** The capture is sample-for-sample what the host rendered; a native click and a web click scheduled for one instant land within 1.4 ms in the WAV |
 
-Until N5 lands the recorder says so rather than failing quietly: with a part
-attached to the native engine (`MODNAT.attached`), Bounce toasts that the part
-is not captured (it is missing from the mix too, not just its stem), and
-`_startStemTaps` skips that part's tap and reports it in the "Left out:" line
-(`tests/stems/probe.js`, scenario C). Remove both when N5 captures the host.
+Where the host's capture is not running (an older build of the host, or it
+failed to start) the recorder still says so rather than failing quietly: Bounce
+toasts that the part is not captured, and the stem skip list names it
+(`tests/stems/probe.js`, scenario C).
 
 N1–N3 are enough for the owner's complaint: mõdFX reaching the native
 mõdSynth, a fader that moves it, and the master glue on it. N4 adds the
@@ -1501,11 +1500,52 @@ and costs about 1% of a core on this Mac with everything on.
 - **Headroom between the two masters.** While any part is Web Audio the speaker
   gets the sum of two limiters. Proposed above (`master.web`, 3 dB); not built.
   It disappears at the flip.
-- **N5, capture.** The recorder and stems still do not hear a native part.
+- **N5, capture.** Landed in 4.9.9.9.9.8.7 (below).
 - The native master has no meter yet (`takeRms` exists; nothing reads it). The
   Mix screen's master meter reads the web master.
 - **The ear.** The room, the oversampled drive and the compressor have been
   judged by number. Listen to the native chord with the glue and the room up.
+
+**N5 landed (4.9.9.9.9.8.7; Swift built for the simulator, not run on a phone).**
+Bounce and stems now hear the native engine.
+
+- *The host copies, the page drains.* `native/modsynth/capture.h` is a one-way
+  ring (single writer on the render thread, single reader under the host's
+  control lock; the writer never waits). The host keeps one per stream: the
+  master after volume (what `_masterOut` is for the web tap) and each part's own
+  bus after strip, mõdFX and pan (what `_partBuses` is for a web stem). Rings
+  are 2^19 frames (10.9 s, 4 MB a stream), built the first time they are asked
+  for and kept, so the render thread never frees one it may be writing. The
+  plugin's `captureStart({mask})` / `captureRead()` / `captureStop()` carry
+  them; samples cross the bridge as base64 float32, left then right.
+- *A reader that falls behind loses the oldest audio, and says so.* Every block
+  comes back with the engine frame it was rendered at and a count of frames lost
+  before it, so a gap in the file is a gap, not a splice. The page puts it in the
+  toast ("dropped N ms"). `capturetest` races a writer thread against a sleeping
+  reader on a 2048-frame ring for 6M frames: none torn, none out of order, every
+  frame read or counted lost (it found a real flaw on the way: the tear check
+  has to look at what the writer has *begun*, not what it has published).
+- *One timeline.* The web taps stamp blocks with the AudioContext frame. The
+  host cannot, so the host reports where its frame 0 sits on the wall clock
+  (`originMs`, the minimum over its render blocks: a callback can start late,
+  never early), and the page pairs `ctx.currentTime` with the wall clock, taking
+  the largest ctx-minus-wall seen in the first second (currentTime moves a
+  buffer at a time and never runs ahead; one reading was off by up to 7 ms,
+  the dense maximum is within about 1 ms). That is the pairing note scheduling
+  already runs on (`_modNativeAtRel`). Both clocks run off the device's, so the
+  offset holds for the rest of the take. Placement happens once, at Stop.
+- *Measured.* `hosttest` builds the real `ModEngineHost.mm` on the Mac: the
+  master capture is exactly what `renderInto` returned, a stem added mid-take
+  starts when it was asked for without restarting the master, a 12 s lag
+  reports frames read + lost = frames rendered, Stop stops, the next take starts
+  clean. Probe scenario H (stand-in host, Chrome): a native click and a web click
+  due at one wall-clock instant land 0.3–1.4 ms apart in the mix over five runs,
+  and the native chord gets its own stem.
+- *What it does not settle.* Whether native and web are aligned *as heard* on
+  the phone: the recorder aligns render time to render time, as note scheduling
+  does, so if the two engines' output latencies differ the live sound differs
+  from the file by that. Not measurable here. A stem take with many native parts
+  is a few MB/s over the bridge; unmeasured on a phone.
 
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can

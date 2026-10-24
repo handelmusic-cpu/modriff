@@ -21,6 +21,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "captureStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "captureRead", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "captureStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise)
     ]
 
@@ -188,6 +191,49 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func meters(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         call.resolve(["rms": (0..<8).map { Double(host.meter(forPart: Int32($0))) }])
+    }
+
+    /// Capture for the recorder (v5 step N5). The page's Bounce taps Web Audio
+    /// nodes; a native part is in none of them, so the host copies its output
+    /// into rings (the master, and any parts a stem take asks for) and the page
+    /// drains them. `mask` bit 0 is the master, bit 1+p is part p.
+    @objc func captureStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let mask = UInt32(truncatingIfNeeded: call.getInt("mask") ?? 1)
+        host.startCapture(mask)
+        call.resolve(["mask": Int(mask), "sampleRate": host.sampleRate])
+    }
+
+    /// What has been captured since the last call. Each stream's samples go as
+    /// base64 of left-then-right float32 (the bridge is JSON), with the engine
+    /// frame the first one was rendered at and how many frames were lost to a
+    /// reader that fell behind. `originMs` is where engine frame 0 sits on the wall
+    /// clock, which is how the page puts these on its own timeline.
+    @objc func captureRead(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let r = host.readCapture()
+        var streams: [[String: Any]] = []
+        for case let s as [String: Any] in (r["streams"] as? [Any] ?? []) {
+            guard let data = s["data"] as? Data else { continue }
+            streams.append([
+                "id": s["id"] ?? 0,
+                "frame0": s["frame0"] ?? 0,
+                "frames": s["frames"] ?? 0,
+                "lost": s["lost"] ?? 0,
+                "data": data.base64EncodedString()
+            ])
+        }
+        call.resolve([
+            "streams": streams,
+            "originMs": r["originMs"] ?? 0,
+            "sampleRate": r["sampleRate"] ?? host.sampleRate
+        ])
+    }
+
+    @objc func captureStop(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.stopCapture()
+        call.resolve()
     }
 
     /// Hands a file the page made (a bounce, a stem, a saved pattern) to the

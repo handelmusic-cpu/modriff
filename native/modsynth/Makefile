@@ -28,9 +28,17 @@ striptest: striptest.cpp strip.h
 # The master bus against the browser's compressor and room: see tests/modsynth/master.test.js.
 mastertest: mastertest.cpp master.cpp master.h dspkit.h
 	$(CXX) $(CXXFLAGS) -o $@ mastertest.cpp master.cpp
-fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest
-	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js
+# The capture ring that carries native audio to the recorder (N5), including a
+# writer thread racing a reader.
+capturetest: capturetest.cpp capture.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ capturetest.cpp
+# The capture path through the real ModEngineHost.mm (macOS only).
+HOSTDIR = ../../ios/App/App/ModEngine
+hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest
+	./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js
 
 clean:
-	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest wkrender
+	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest hosttest wkrender
 .PHONY: clean

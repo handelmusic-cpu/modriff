@@ -9,6 +9,9 @@
      D  _startStemTaps throws                          -> must not leave a half-started take
      E  Stems armed, nothing sounds                    -> "Nothing captured" path must dispose taps
      G  The master tap throws                          -> rolls back to idle (no live MIDI recorder)
+     H  A stand-in native host (N5): a click at a known wall-clock instant, and a
+        web click scheduled for the same instant. Both must land at the same place
+        in the mix, and the native chord must get its own stem.
      F  Stems armed, then disarmed mid-take            -> mix only, taps disposed
 
    Run (repo served, Chrome or Chromium available; see CLAUDE.md):
@@ -26,7 +29,7 @@ catch (e) {
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); }
 }
 const URL = process.env.URL || 'http://127.0.0.1:8777/index.html';
-const WHICH = (process.argv[2] || 'A,B,C,D,E,F,G').split(',');
+const WHICH = (process.argv[2] || 'A,B,C,D,E,F,G,H').split(',');
 
 async function fresh(browser) {
   const page = await browser.newPage({ viewport: { width: 430, height: 900 } });
@@ -49,6 +52,11 @@ async function fresh(browser) {
           const sr = dv.getUint32(24, true); let first = -1, pk = 0;
           for (let i = o + 8, n = 0; i + 1 < u.length; i += 4, n++) { const a = Math.abs(dv.getInt16(i, true)) / 32768; if (a > pk) pk = a; if (first < 0 && a > 0.0005) first = n; }
           e.firstSoundS = first < 0 ? null : +(first / sr).toFixed(2); e.peak = +pk.toFixed(3);
+          // Where the first strong positive and strong negative sample sit (ms):
+          // scenario H puts a web click (+) and a native click (-) at one instant.
+          let pos = -1, neg = -1;
+          for (let i = o + 8, n = 0; i + 1 < u.length; i += 4, n++) { const a = dv.getInt16(i, true) / 32768; if (pos < 0 && a > 0.2) pos = n; if (neg < 0 && a < -0.2) neg = n; }
+          e.posMs = pos < 0 ? null : +(pos / sr * 1000).toFixed(2); e.negMs = neg < 0 ? null : +(neg / sr * 1000).toFixed(2); e.frames = dv.getUint32(o + 4, true) / 4;
         }
         window.__files.push(e);
       }
@@ -79,7 +87,7 @@ const sleep = (page, ms) => page.waitForTimeout(ms);
 async function stopAndCollect(page) {
   await page.evaluate(() => toggleRecording());
   await sleep(page, 900);
-  return page.evaluate(() => ({ files: window.__files.map(f => f.name.replace(/^.* - /, '…') + ' ' + f.size + (f.firstSoundS !== undefined ? ' first=' + f.firstSoundS + 's peak=' + f.peak : '')), toasts: window.__toasts }));
+  return page.evaluate(() => ({ files: window.__files.map(f => f.name.replace(/^.* - /, '…') + ' ' + f.size + (f.firstSoundS !== undefined ? ' first=' + f.firstSoundS + 's peak=' + f.peak + ' pos=' + f.posMs + 'ms neg=' + f.negMs + 'ms' : '')), toasts: window.__toasts }));
 }
 function report(tag, o) { console.log('\n== ' + tag + '\n' + JSON.stringify(o, null, 1)); }
 
@@ -136,6 +144,68 @@ const SCEN = {
     const s = await state(page);
     await page.evaluate(() => { window._makePcmTap = window.__mk; });
     return { state: s, toasts: await page.evaluate(() => window.__toasts) };
+  },
+  async H(page) {
+    // The host, stood in for. It counts frames from its own zero and stamps its
+    // latest block with the wall clock, like the real one; its chord plays a quiet
+    // tone throughout and one negative click at an instant fixed in wall time.
+    await page.evaluate(() => {
+      const ctx = getCtx(), sr = ctx.sampleRate;
+      const T0 = performance.timeOrigin + performance.now() - 5000;      // host frame 0 was 5 s ago
+      const wall = () => performance.timeOrigin + performance.now();
+      const frameAt = w => Math.round((w - T0) * sr / 1000);
+      let clickFrame = 0, last = 0, armed = false; window.__capCalls = [];
+      window.__armHost = () => { clickFrame = frameAt(window.__clickWall); };
+      const b64 = f32 => { const u = new Uint8Array(f32.buffer); let s = ''; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); };
+      const stream = (id, f0, n) => {
+        const d = new Float32Array(2 * n);
+        for (let i = 0; i < n; i++) {
+          const f = f0 + i; let v = 0.05 * Math.sin(2 * Math.PI * 440 * f / sr);
+          if (f >= clickFrame && f < clickFrame + 8) v = -0.5;
+          d[i] = v; d[n + i] = v;
+        }
+        return { id, frame0: f0, frames: n, lost: 0, data: b64(d) };
+      };
+      MODNAT.started = true; MODNAT.attached.chord = { port: { postMessage() {} }, orig() {}, eng: {} };
+      _partDest(ctx, 'chord').gain.value = 0;
+      MODNAT.plugin = {
+        post: async () => ({ queued: 0 }), meters: async () => ({ rms: [0, 0, 0, 0, 0, 0, 0, 0] }),
+        captureStart: async o => { window.__capCalls.push(o.mask); if (!armed) { armed = true; last = frameAt(wall()); } return { mask: o.mask, sampleRate: sr }; },
+        captureRead: async () => {
+          const upTo = frameAt(wall()) - 200, n = Math.max(0, upTo - last);
+          const streams = [];
+          if (armed && n > 0) { streams.push(stream(0, last, n)); if (window.__capCalls.some(m => m & 2)) streams.push(stream(1, last, n)); last += n; }
+          return { streams, originMs: T0 + Math.random() * 6, sampleRate: sr };   // a late callback can only make it larger; the page keeps the minimum
+        },
+        captureStop: async () => { armed = false; },
+      };
+    });
+    // The probe's own best reading of how the AudioContext and the wall clock
+    // sit (the largest ctx-minus-wall seen over a second), so the web click is
+    // placed as exactly as a click can be. The recorder is judged against that.
+    await page.evaluate(() => new Promise(res => {
+      const ctx = getCtx(); let q = -Infinity; const t0 = performance.now();
+      const iv = setInterval(() => {
+        q = Math.max(q, ctx.currentTime * ctx.sampleRate - (performance.timeOrigin + performance.now()) * ctx.sampleRate / 1000);
+        if (performance.now() - t0 > 1200) { clearInterval(iv); window.__q = q; res(); }
+      }, 4);
+    }));
+    await page.evaluate(() => {
+      // Both clicks come due 1.8 s from the start of the take, in wall time.
+      window.__clickWall = performance.timeOrigin + performance.now() + 1800;
+    });
+    await page.evaluate(() => { window.__armHost(); });
+    await page.evaluate(() => toggleStemExport());
+    await page.evaluate(() => toggleRecording());
+    await page.evaluate(() => {
+      const ctx = getCtx();
+      const buf = ctx.createBuffer(1, 8, ctx.sampleRate); buf.getChannelData(0).fill(0.5);
+      const src = ctx.createBufferSource(); src.buffer = buf; src.connect(window._masterOut);
+      src.start((window.__q + window.__clickWall * ctx.sampleRate / 1000) / ctx.sampleRate);
+    });
+    await sleep(page, 2600);
+    const calls = await page.evaluate(() => window.__capCalls.slice());
+    return { captureStartMasks: calls, end: await stopAndCollect(page) };
   },
   async E(page) {
     await page.evaluate(() => { toggleStemExport(); toggleRecording(); });
