@@ -15,11 +15,11 @@ Found by reading `ios/`. Two are fixed in this commit, one needs Xcode.
 | `ITSAppUsesNonExemptEncryption = false` | **Added.** Answers export compliance once, so it is not asked on every build. The app has no server and no encryption of its own. |
 | Privacy manifest | `ios/App/App/PrivacyInfo.xcprivacy` is written (no tracking, no collected data, no required-reason APIs in our own code) but **not yet in the target**. In Xcode: drag it into the `App` group, tick the `App` target. Capacitor's own packages carry their own manifests. |
 
-Also decide, because it changes what screenshots are required:
+Decided, and it affects the screenshots:
 
-- `TARGETED_DEVICE_FAMILY = "1,2"` means the app ships for iPad too, and App
-  Store Connect then **requires iPad screenshots** (13": 2064 x 2752). If the
-  app is meant to be iPhone-only, set it to `1` and skip them.
+- `TARGETED_DEVICE_FAMILY = "1,2"` stays: the app ships for iPad too, so App
+  Store Connect **requires iPad screenshots** (13": 2064 x 2752). They are in
+  `docs/app-store/screenshots/` (see Screenshots below).
 - `MARKETING_VERSION` is `1.0` and `CURRENT_PROJECT_VERSION` is `1`. The
   Build number must go up on every upload.
 - The Info.plist `UIRequiredDeviceCapabilities` is `armv7`; App Store Connect
@@ -158,6 +158,12 @@ scaled from it). They are captures of the build at 4.9.9.9.9.7.7j, taken in a ph
 | `6.9in-03-accomp.png` | Accomp: drum sequencer |
 | `6.9in-04-sound.png` | Sound: the mixer |
 | `6.9in-05-songs.png` | Songs: the song builder |
+
+The same five for iPad are in the same folder as `13in-01-splash.png` to
+`13in-05-songs.png`, at **2064 x 2752**, the 13" iPad size App Store Connect
+requires because the app ships for iPad (`TARGETED_DEVICE_FAMILY = "1,2"`;
+smaller iPad sizes are scaled from it). Upload the `6.9in-` set under iPhone 6.9"
+and the `13in-` set under iPad 13".
 
 Two things worth doing before upload, neither of which blocks it: shoot them
 on a real device or simulator so the status bar and safe areas are real, and
