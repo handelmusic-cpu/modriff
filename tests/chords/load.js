@@ -4,7 +4,7 @@
    model) plus getIntvs, which chordFromSlot reads old slots through. */
 'use strict';
 const fs = require('fs'), vm = require('vm'), path = require('path');
-module.exports = function load(){
+module.exports = function load(sandbox){
   const html = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8');
   const a = html.indexOf('const TRIAD = {');
   const b = html.indexOf('// ── END CHORD MODEL ──');
@@ -25,8 +25,8 @@ module.exports = function load(){
   const ireal = grab('IREAL_Q_MAP', 'var') + grab('_irealSymbol') + grab('_irealQ') + grab('_irealPc');
   const src = html.slice(a, b) + g[0] + ireal +
     '\n;({parseChordSymbol, chordFromSlot, chordEngineEvent, chordNotePc, getIntvs, EXTS,' +
-    ' slotIvs, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords,' +
+    ' slotIvs, _slotWriteNotes, _slotFromMenu, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords,' +
     ' slotFromChordSymbol, _legacyFromIvs, spellChord,' +
     ' _irealSymbol, _irealQ, _irealPc, IREAL_Q_MAP});';
-  return vm.runInNewContext(src, {});
+  return vm.runInNewContext(src, Object.assign({}, sandbox || {}));
 };

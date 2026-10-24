@@ -123,8 +123,24 @@ maj7 11ths keep their thirds, as they do in common use.
    build in all twelve roots. It caught 19 real bugs on the first run — the
    worst being that `C♯5` reads back as a C♯ power chord, because an
    accidental glues to the root letter with nothing between them.
-5. **Retire `EXTS`** as the source of truth: the quality menu writes `ivs`
-   too, and `getIntvs` becomes a thin reader for old saves.
+5. **Done (4.9.9.9.9.8.9l).** `EXTS` is a recipe table, not what a chord is.
+   `_slotWriteNotes(slot)` writes the menu's notes onto a slot as `ivs`; a chord
+   placed on the chart (`addToSection`: the pads, the chord pickers) and a quality
+   picked from the menu or the Extensions grid (`_slotFromMenu`, which replaces
+   `_slotForgetNotes`) both carry the notes they were made with. The reason is the
+   one 4.9.2.5 showed: the dominant 11 lost its third in `EXTS` and every saved
+   `C11` changed with it. Now a recipe fixed in the table changes new chords and
+   leaves the chart alone. `tests/chords/stamp.test.js` checks that what is
+   written equals `getIntvs` for every recipe the menu can build, and that a
+   stamped slot ignores a change to the table while an unstamped one does not.
+
+   What this does not do, on purpose: nothing is stamped when a song loads, so an
+   old save (and a slot from a path not yet moved over: the progression
+   templates, the generators, the live-capture recorder) still reads through
+   `getIntvs`, plays exactly as before and keeps its "unsaved" state. `EXTS`
+   and `getIntvs` stay as the recipe and its reader; the live pads
+   (`_triggerChordImmediate`) still build from them, which is right, since a pad
+   is a recipe being played and not a chord on the chart.
 
 ### Importing chord sheets (4.9.3)
 
