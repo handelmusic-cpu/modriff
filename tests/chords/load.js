@@ -25,7 +25,7 @@ module.exports = function load(sandbox){
   const ireal = grab('IREAL_Q_MAP', 'var') + grab('_irealSymbol') + grab('_irealQ') + grab('_irealPc');
   const src = html.slice(a, b) + g[0] + ireal +
     '\n;({parseChordSymbol, chordFromSlot, chordEngineEvent, chordNotePc, getIntvs, EXTS,' +
-    ' slotIvs, _slotWriteNotes, _slotFromMenu, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords,' +
+    ' ocrObservationsToText, slotIvs, _slotWriteNotes, _slotFromMenu, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords,' +
     ' slotFromChordSymbol, _legacyFromIvs, spellChord,' +
     ' _irealSymbol, _irealQ, _irealPc, IREAL_Q_MAP});';
   return vm.runInNewContext(src, Object.assign({}, sandbox || {}));

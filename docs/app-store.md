@@ -138,6 +138,9 @@ If any of that changes, for example an analytics SDK or a sign-in, this answer,
 > Microphone: requested only if you open the Sampler and choose to record.
 > Bluetooth: requested only if you press the Bluetooth button in
 > Settings > MIDI, to pair a Bluetooth MIDI keyboard (not needed to review).
+> Camera: requested only if you choose Camera when importing a chord sheet from
+> a photo (Songs > File > Import a chord sheet). The picture is read on the
+> device and is not stored or sent anywhere.
 >
 > Background audio is enabled so a song keeps playing when the screen locks.
 > Contact: support@modriff.com

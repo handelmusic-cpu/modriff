@@ -7856,7 +7856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9l</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9m</span></div>
  </div>
 </div>
 
@@ -9105,7 +9105,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9l</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9m</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10102,7 +10102,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9l';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9m';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10396,6 +10396,62 @@ window._genQueuePaint = function(part, frac, landed){
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') P.hapticPrepare(); });
  }catch(e){}
 })(window.modPlatform);
+//
+// modOcr — text recognition for a picture of a chord sheet (a photo, a screenshot,
+// a PDF that is a scan or an image export). The iPhone app's ModOcr plugin reads
+// it on the device with Apple's Vision: no network, no account. Elsewhere there is
+// no reader (no OCR engine is bundled, and a page's text cannot be taken from a
+// PDF without one), so available() says no and the import asks for pasted text.
+//   available()   true when a reader is there
+//   read(file)    a File (image or PDF) -> Promise<{text, pages, truncated}>;
+//                 text is what parseChordSheet reads (ocrObservationsToText)
+// A photo is shrunk and re-encoded first, which also bakes in its EXIF
+// orientation and keeps the bridge payload to a few MB; a PDF goes as it is.
+window.modOcr = window.modOcr || (function(){
+ function plugin(){
+  try{ var c = window.Capacitor; var h = c && c.Plugins && c.Plugins.ModOcr;
+       return h && typeof h.recognize === 'function' ? h : null; }catch(e){ return null; }
+ }
+ function toB64(buf){
+  var u = new Uint8Array(buf), s = '', CH = 0x8000;
+  for(var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH));
+  return btoa(s);
+ }
+ function rawB64(file){ return file.arrayBuffer().then(toB64); }
+ function shrunkB64(file){
+  return new Promise(function(res, rej){
+   var url = URL.createObjectURL(file), im = new Image();
+   im.onload = function(){
+    try{
+     var W = im.naturalWidth, H = im.naturalHeight, k = Math.min(1, 3000 / Math.max(W, H));
+     var c = document.createElement('canvas'); c.width = Math.round(W * k); c.height = Math.round(H * k);
+     var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+     g.drawImage(im, 0, 0, c.width, c.height);
+     URL.revokeObjectURL(url);
+     res(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
+    }catch(e){ URL.revokeObjectURL(url); rej(e); }
+   };
+   im.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('unreadable image')); };
+   im.src = url;
+  });
+ }
+ return {
+  available: function(){ return !!plugin(); },
+  read: function(file){
+   var P = plugin();
+   if(!P) return Promise.reject(new Error('no text recognition on this device'));
+   var pdf = /pdf/i.test(file.type || '') || /\.pdf$/i.test(file.name || '');
+   // An image the web view cannot decode (some HEIC) goes through as it is; the
+   // native side reads more formats than a canvas does.
+   var prep = pdf ? rawB64(file) : shrunkB64(file).catch(function(){ return rawB64(file); });
+   return prep.then(function(d){ return P.recognize({data: d, kind: pdf ? 'pdf' : 'image'}); })
+    .then(function(r){
+     var pages = (r && r.pages) || [];
+     return {text: ocrObservationsToText(pages), pages: pages.length, truncated: (r && r.truncated) || 0};
+    });
+  }
+ };
+})();
 //
 // modEngine — the one door every sound goes through on its way to an engine
 // (docs/v5-architecture.md, section 3). The app decides WHAT plays — which
@@ -11752,6 +11808,72 @@ function parseChordSheet(text){
  if(sheet.artist === null) sheet.artist = '';
  sheet.sections = sheet.sections.filter(s => s.chords.length);
  return sheet;
+}
+
+// Text recognition hands back fragments, not lines: a chord sheet has its chords
+// above the lyrics with spaces between them, so "G", "B" and "Cm" arrive as three
+// boxes, each with where it sat on the page. This puts them back in reading order
+// and re-spaces them by where they were, which is what parseChordSheet reads.
+//
+//   pages  [{obs:[{t, x, y, w, h}]}] — a page's fragments, positions 0-1 with the
+//          origin at the top left (ModOcr's own, and the text layer of a PDF's)
+//
+// Two fragments are one line when their centres are within half a line's height.
+// Spacing is by column: one character is the median width of a fragment per
+// character, and a fragment is put at the column its left edge fell on, so a
+// chord sits over the syllable it sat over. A gap of more than two lines' height
+// is kept as a blank line (sections are often separated that way).
+function ocrObservationsToText(pages){
+ // The recogniser reads a square bracket as I, l, | or ! about as often as it
+ // reads it as a bracket, and "[Verse 1]" comes back "IVerse 11" or "IChorusl".
+ // A line that is nothing but one of those ends around a section word is put
+ // back as a header; nothing else is touched, so a lyric that starts with "I"
+ // cannot become one.
+ var SEC = /^(intro|verse|pre-?chorus|chorus|bridge|solo|outro|interlude|refrain|instrumental|tag|coda|hook|break|ending|turnaround|riff)(\s*\d{1,2})?$/i;
+ var header = function(line){
+  var t = line.replace(/^\s+|\s+$/g, '');
+  var m = /^[\[(Il|!](.{3,24}?)[\])Il|!1]$/.exec(t);
+  return (m && SEC.test(m[1].replace(/^\s+|\s+$/g, ''))) ? '[' + m[1].replace(/^\s+|\s+$/g, '') + ']' : line;
+ };
+ var med = function(a){ a = a.slice().sort(function(x, y){ return x - y; }); return a.length ? a[a.length >> 1] : 0; };
+ var texts = [];
+ (pages || []).forEach(function(pg){
+  var obs = (pg && pg.obs) ? pg.obs : (Array.isArray(pg) ? pg : []);
+  var items = [];
+  obs.forEach(function(o){
+   if(!o) return;
+   var t = String(o.t == null ? '' : o.t).replace(/^\s+|\s+$/g, '');
+   if(!t || !isFinite(o.x) || !isFinite(o.y) || !isFinite(o.w) || !isFinite(o.h) || o.h <= 0) return;
+   items.push({t: t, x: o.x, yc: o.y + o.h / 2, w: o.w, h: o.h});
+  });
+  if(!items.length) return;
+  var lineH = med(items.map(function(i){ return i.h; }));
+  var wide = items.filter(function(i){ return i.t.length >= 2; });
+  var charW = med((wide.length ? wide : items).map(function(i){ return i.w / i.t.length; })) || 0.01;
+  var minX = Math.min.apply(null, items.map(function(i){ return i.x; }));
+  items.sort(function(a, b){ return a.yc - b.yc; });
+  var lines = [], cur = null;
+  items.forEach(function(it){
+   if(cur && Math.abs(it.yc - cur.yc) <= 0.5 * lineH){
+    cur.items.push(it);
+    cur.yc += (it.yc - cur.yc) / cur.items.length;
+   } else { cur = {items: [it], yc: it.yc}; lines.push(cur); }
+  });
+  var out = [];
+  lines.forEach(function(ln, li){
+   if(li && ln.yc - lines[li - 1].yc > 2.2 * lineH) out.push('');
+   ln.items.sort(function(a, b){ return a.x - b.x; });
+   var line = '';
+   ln.items.forEach(function(it){
+    var col = Math.round((it.x - minX) / charW);
+    var pad = Math.min(60, Math.max(line ? 1 : 0, col - line.length));
+    line += new Array(pad + 1).join(' ') + it.t;
+   });
+   out.push(header(line));
+  });
+  texts.push(out.join('\n'));
+ });
+ return texts.join('\n\n');
 }
 
 // Which key a list of chords is in: the major or minor scale that contains
@@ -36519,19 +36641,25 @@ function importSetlist(e){
 // rather than asking first (the toast's job, see showToast).
 //
 // A PDF that is a picture of a page (Ultimate Guitar's export is one) has no
-// text in it to read here. The iPhone app reads those with the phone's own
-// text recognition; until then, the text is pasted.
+// text in it to copy. The iPhone app reads those, and photos from the library
+// or the camera, with the phone's own text recognition (modOcr); where there is
+// none, the text is pasted.
 function openChordSheetImport(){
  const ov=document.createElement('div');
  ov.className='csi-overlay';
  ov.innerHTML='<div class="dur-picker-box csi-box" role="dialog" aria-modal="true" aria-labelledby="csi-title">'
   +'<div class="dur-picker-title" id="csi-title">Import a chord sheet</div>'
-  +'<div class="dur-picker-sub">Paste a chord sheet — from Ultimate Guitar, a songbook, anywhere. '
+  +'<div class="dur-picker-sub">Paste a chord sheet — from Ultimate Guitar, a songbook, anywhere'
+  +(modOcr.available() ? ' — or read one from a PDF or a photo' : '')+'. '
   +'Section names in [brackets] become sections; chords are read in order; lyrics are skipped.</div>'
   +'<textarea class="csi-text" spellcheck="false" autocapitalize="off" autocomplete="off" '
   +'placeholder="[Verse]\nG        B\nWhen you were here before…\nC        Cm\n…"></textarea>'
-  +'<div class="csi-row"><button type="button" class="tb csi-file">Open a text file…</button>'
-  +'<input type="file" class="csi-input" accept=".txt,.text,.cho,.chopro,.crd,.pro,text/plain,.pdf,image/*" hidden></div>'
+  +'<div class="csi-row csi-sources"><button type="button" class="tb csi-file">Files…</button>'
+  +(modOcr.available()
+    ? '<button type="button" class="tb csi-photos">Photos</button><button type="button" class="tb csi-camera">Camera</button>' : '')
+  +'<input type="file" class="csi-input" accept=".txt,.text,.cho,.chopro,.crd,.pro,text/plain,.pdf,application/pdf,image/*" hidden>'
+  +'<input type="file" class="csi-input-photos" accept="image/*" hidden>'
+  +'<input type="file" class="csi-input-camera" accept="image/*" capture="environment" hidden></div>'
   +'<div class="csi-preview" aria-live="polite"></div>'
   +'<div class="csi-row csi-actions"><button type="button" class="tb csi-cancel">Cancel</button>'
   +'<button type="button" class="tb active csi-go" disabled>Make the song</button></div>'
@@ -36539,7 +36667,7 @@ function openChordSheetImport(){
  document.body.appendChild(ov);
  const $=sel=>ov.querySelector(sel);
  const ta=$('.csi-text'), pv=$('.csi-preview'), go=$('.csi-go');
- let built=null;
+ let built=null, fromPicture=false;
  const close=()=>{ ov.remove(); document.removeEventListener('keydown', onKey, true); };
  const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
  document.addEventListener('keydown', onKey, true);
@@ -36551,8 +36679,12 @@ function openChordSheetImport(){
   const sheet=parseChordSheet(ta.value);
   built = sheet.sections.length ? songFromChordSheet(sheet) : null;
   go.disabled = !built;
+  // Said under whatever the preview shows, because a picture is the one source
+  // the box is not the author of: the recogniser misreads, and the box is where
+  // that gets fixed.
+  const picNote = fromPicture ? '<div class="csi-note">Read from the picture — fix anything it misread in the box above and this updates.</div>' : '';
   if(!built){
-   pv.innerHTML = ta.value.trim() ? '<div class="csi-note">No chords found yet — a chord line is one where every word is a chord.</div>' : '';
+   pv.innerHTML = (ta.value.trim() ? '<div class="csi-note">No chords found yet — a chord line is one where every word is a chord.</div>' : '') + picNote;
    return;
   }
   const n = built.song.sections.reduce((a,s)=>a+s.slots.length, 0);
@@ -36566,24 +36698,49 @@ function openChordSheetImport(){
   if(sheet.unread.length)
    h+='<div class="csi-note">Not read as chords: '+sheet.unread.slice(0,3).map(l=>'“'+esc(l)+'”').join(', ')
     +(sheet.unread.length>3?' and '+(sheet.unread.length-3)+' more':'')+'</div>';
-  pv.innerHTML=h;
+  pv.innerHTML=h+picNote;
  };
  let t=null;
  ta.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(preview, 120); });
 
- const fileIn=$('.csi-input');
- $('.csi-file').addEventListener('click', ()=>fileIn.click());
- fileIn.addEventListener('change', ()=>{
-  const f=fileIn.files && fileIn.files[0]; fileIn.value='';
-  if(!f) return;
-  if(/^image\//.test(f.type) || /\.pdf$/i.test(f.name)){
+ // Three ways in, one reader. Files takes text, a PDF or a picture; Photos opens
+ // the photo library (and, on iPhone, offers the camera too); Camera opens the
+ // camera straight away. A text file is read as it is. A PDF or picture goes to
+ // the phone's text recognition and what comes back lands in the box, editable,
+ // so a misread chord is a fix and not a re-take.
+ const readPicture=f=>{
+  if(!modOcr.available()){
    showToast('“'+f.name+'” is a picture of the page — copy its text (or the page it came from) and paste it here');
    return;
   }
+  go.disabled=true; built=null;
+  pv.innerHTML='<div class="csi-note">Reading “'+esc(f.name||'the picture')+'”…</div>';
+  modOcr.read(f).then(r=>{
+   if(!ov.isConnected) return;
+   fromPicture=true;
+   ta.value=r.text; preview();
+   if(!r.text.trim()) pv.innerHTML='<div class="csi-note">No text found in that picture. A clearer, straighter photo of the page usually helps.</div>';
+   else if(r.truncated) showToast('Read the first '+r.pages+' of '+r.truncated+' pages');
+  }, err=>{
+   if(!ov.isConnected) return;
+   pv.innerHTML='<div class="csi-note">Could not read that picture'+(err&&err.message?' ('+esc(err.message)+')':'')+'.</div>';
+  });
+ };
+ const takeFile=f=>{
+  if(!f) return;
+  if(/^image\//.test(f.type) || /\.(pdf|png|jpe?g|heic|heif|webp|gif)$/i.test(f.name) || /pdf/i.test(f.type)){ readPicture(f); return; }
   const r=new FileReader();
-  r.onload=()=>{ ta.value=String(r.result||''); preview(); };
+  r.onload=()=>{ fromPicture=false; ta.value=String(r.result||''); preview(); };
   r.readAsText(f);
+ };
+ [['.csi-file','.csi-input'], ['.csi-photos','.csi-input-photos'], ['.csi-camera','.csi-input-camera']].forEach(pair=>{
+  const btn=$(pair[0]), inp=$(pair[1]);
+  if(!btn || !inp) return;
+  btn.addEventListener('click', ()=>inp.click());
+  inp.addEventListener('change', ()=>{ const f=inp.files && inp.files[0]; inp.value=''; takeFile(f); });
  });
+ // Typing in the box makes it the person's text again.
+ ta.addEventListener('input', ()=>{ fromPicture=false; });
 
  go.addEventListener('click', ()=>{
   if(!built) return;
