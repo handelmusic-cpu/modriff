@@ -21,7 +21,12 @@ import * as esbuild from 'esbuild';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OUT  = path.join(ROOT, 'dist');
 // Repo furniture, never served.
-const SKIP = new Set(['.git', '.github', '.vercel', 'build', 'dist', 'node_modules',
+// .claude is where Claude Code keeps launch.json and its session worktrees (each
+// a full checkout with its own node_modules). It was being copied into dist/,
+// and from there into the app: 300 MB, and iOS refused to install it because
+// node_modules/.bin holds absolute symlinks ("absolute symlinks are
+// forbidden"). .DS_Store is Finder's, and the same kind of stray.
+const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'build', 'dist', 'node_modules',
   'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
   'tests', 'docs', 'ios', 'capacitor.config.json',
   // The C++ engine is compiled into the native app, not served to the web one.
