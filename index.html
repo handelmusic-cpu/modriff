@@ -42306,8 +42306,42 @@ function toggleStemExport(){
   }
   exportStems=!exportStems;
   _updateStemBtn();
+  // The taps are made when a take starts, so a switch thrown after Bounce has
+  // been pressed used to change nothing but the button: the take ran on, tapped
+  // nothing, and came out as a mix-only file with no word about why. Bounce
+  // closes the transport sheet, which is where this switch lives, so
+  // "Bounce, then Stems" is the natural order to press them in.
+  // _recTap, not _isRecording: the latter stays true for the 150ms after Stop
+  // while the last block flushes, and a tap made then would never be read.
+  if(_isRecording && _recTap){ _stemsMidTake(); return; }
   showToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
                         : 'Bounce writes the master mix only');
+}
+function _stemsMidTake(){
+  if(!exportStems){
+    _abandonStemTaps();
+    showToast('Stems off — this take is the mix only');
+    return;
+  }
+  try{
+    _startStemTaps(getCtx());
+  }catch(e){
+    _abandonStemTaps();
+    exportStems=false; _updateStemBtn();
+    showToast('Stems could not start — this take is the mix only');
+    try{ console.warn('[rec] stem taps failed mid-take', e); }catch(_){}
+    return;
+  }
+  // A late stem is written onto the mix's timeline (_finishStemTaps places each
+  // block by its frame), so it is silent up to here rather than shifted early.
+  showToast('Stems on from here — each stem starts now, the mix has the whole take'
+            + (_stemSkipped.length ? '. ' + _stemSkipNote(_stemSkipped) : ''), {ms:4500});
+}
+// Stop the taps and forget what they heard — used when stems are switched off
+// mid-take and when a take fails to start. Nothing is written.
+function _abandonStemTaps(){
+  try{ _stemTaps.forEach(function(t){ if(t.pcm) t.pcm.dispose(); }); }catch(e){}
+  _stemTaps=[]; _stemSkipped=[];
 }
 function _updateStemBtn(){
   document.querySelectorAll('[data-stemtoggle]').forEach(function(b){
@@ -42323,17 +42357,44 @@ function _updateStemBtn(){
 // Derived from PARTS, so stems come out in canon order under canon names
 // rather than the fourth ordering and the fourth name for the melody generator.
 var STEM_LABELS = PARTS.reduce(function(o,p){ if(p.mix) o[p.id]=p.stem; return o; }, {});
+// Parts a take could not give a stem to, and why — {part, why:'native'|'error'}.
+// Said out loud when the take starts and again when the files are handed over,
+// so a missing stem is never a mystery. (Parts that were tapped but never made
+// a sound are reported by _finishStemTaps as 'silent'.)
+var _stemSkipped=[];
 function _startStemTaps(ctx){
-  _stemTaps=[];
+  _stemTaps=[]; _stemSkipped=[];
   if(!exportStems) return;
   var buses = _ensureAllPartBuses(ctx);
   Object.keys(STEM_LABELS).forEach(function(part){
+    // The native engine plays this part in the host, and its audio never
+    // passes through the page's bus (the worklet is unplugged), so a tap here
+    // would write a silent file for a part you can hear. Capturing the host is
+    // v5 step N5, not built; until then say so instead of pretending.
+    if(MODNAT && MODNAT.attached && MODNAT.attached[part]){ _stemSkipped.push({part:part, why:'native'}); return; }
     var node = buses[part]; if(!node) return;
     var tap = { part:part, node:node, L:[], R:[], F:[] };
-    // Same helper as the master tap, so stems get the AudioWorklet too.
-    tap.pcm = _makePcmTap(ctx, node, function(L,R,f){ tap.L.push(L); tap.R.push(R); tap.F.push(f); });
+    // One part failing to tap must not take the other seven with it.
+    try{
+      // Same helper as the master tap, so stems get the AudioWorklet too.
+      tap.pcm = _makePcmTap(ctx, node, function(L,R,f){ tap.L.push(L); tap.R.push(R); tap.F.push(f); });
+    }catch(e){ _stemSkipped.push({part:part, why:'error'}); return; }
     _stemTaps.push(tap);
   });
+}
+// "Left out: Chords (native engine, not captured yet); silent: Aux, Bass" for a
+// toast, '' when nothing was skipped. A part that is simply not in use is
+// "silent" and is listed too: the alternative is a folder that is one file
+// short with no word about which.
+function _stemSkipNote(list){
+  if(!list || !list.length) return '';
+  var groups={};
+  list.forEach(function(x){ (groups[x.why] = groups[x.why] || []).push(STEM_LABELS[x.part]||x.part); });
+  var bits=[];
+  if(groups.native) bits.push(groups.native.join(', ')+' (native engine, not captured yet)');
+  if(groups.error)  bits.push('could not tap: '+groups.error.join(', '));
+  if(groups.silent) bits.push('silent: '+groups.silent.join(', '));
+  return 'Left out: ' + bits.join('; ');
 }
 // Stems are tapped at the part bus, which sits before the reverb send and
 // before the master limiter — so they come out dry and unprocessed, which is
@@ -42348,10 +42409,13 @@ function _startStemTaps(ctx){
 function _finishStemTaps(baseName, sampleRate, tags, span){
   var taps=_stemTaps; _stemTaps=[];
   var written=[];
+  // Parts the take could not tap (set when it started) come through to the
+  // caller with the ones found silent here, so the toast can name them all.
+  written.skipped=_stemSkipped.slice(); _stemSkipped=[];
   taps.forEach(function(t){
     if(t.pcm) t.pcm.dispose();
     var total=t.L.reduce(function(a,c){return a+c.length;},0);
-    if(!total) return;
+    if(!total){ written.skipped.push({part:t.part, why:'silent'}); return; }
     var L, R;
     if(span && span.f0!=null && span.n>0 && t.F.every(function(f){ return f!=null && isFinite(f); })){
       L=new Float32Array(span.n); R=new Float32Array(span.n);
@@ -42373,7 +42437,7 @@ function _finishStemTaps(baseName, sampleRate, tags, span){
     }
     // A part that never sounded writes a silent file nobody wants. Skip it.
     var peak=0; for(var j=0;j<L.length;j++){ var a=Math.abs(L[j]); if(a>peak) peak=a; }
-    if(peak < 0.0005) return;
+    if(peak < 0.0005){ written.skipped.push({part:t.part, why:'silent'}); return; }
     // Each stem carries the same tags with its own part name, so the chart and
     // the step counts survive being dragged into a DAW one file at a time.
     var stemTags = Object.assign({}, tags||{});
@@ -42573,6 +42637,11 @@ function _startRecording(){
   buildReverb();
   if(!window._masterLimiter){showToast('Start audio first');return;}
   _startMidiRecording();
+  // Everything from here to the red button is one step: if any of it throws,
+  // the MIDI recorder and the master tap are already live, and a take that
+  // half-started would collect notes and PCM with the button still showing
+  // "Bounce" and no way to stop it from the UI. Roll back to idle instead.
+  try{
   // Each take gets its own arrays and the tap closes over THOSE, not over the
   // live _recChunksL. The teardown below runs 150ms after Stop so the last
   // buffer can flush, which leaves a window where the old tap is still
@@ -42589,9 +42658,43 @@ function _startRecording(){
     _myL.push(L); _myR.push(R); _myF.push(f);
   });
   _recProcessor=_recTap.node; _recSilentGain=_recTap.sg;
-  _startStemTaps(ctx);
+  }catch(e){
+    try{ if(_recTap) _recTap.dispose(); }catch(_){}
+    _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
+    _recChunksL=[];_recChunksR=[];_recChunksF=[];
+    try{ _stopMidiRecording(); }catch(_){}
+    _isRecording=false;_updateRecBtn();
+    showToast('Could not start recording — try again');
+    try{ console.warn('[rec] start failed', e); }catch(_){}
+    return;
+  }
+  // Stems are optional: a failure here costs the stems, not the take. The mix
+  // and the .mid are already running and still get saved.
+  var stemsFailed=false;
+  try{ _startStemTaps(ctx); }
+  catch(e){
+    _abandonStemTaps(); stemsFailed=true;
+    try{ console.warn('[rec] stem taps failed to start', e); }catch(_){}
+  }
   _isRecording=true;_updateRecBtn();
-  showToast(exportStems ? 'Recording — mix + stems…' : 'Recording…');
+  // Native-engine parts are not in the mix either (the bus the recorder taps
+  // never carries them), so this is said whether or not stems are on.
+  var nat=_nativeUncaptured();
+  var msg = stemsFailed ? 'Recording the mix — stems could not start'
+          : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
+  if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
+  else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
+  showToast(msg, nat.length ? {ms:5000} : undefined);
+}
+// Labels of parts the native engine is playing. Their audio is made in the
+// host, outside anything the page can tap (v5 step N5 builds the capture), so
+// a bounce would be missing them from the mix and from the stems.
+function _nativeUncaptured(){
+  var out=[];
+  try{
+    Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) out.push(STEM_LABELS[p]||p); });
+  }catch(e){}
+  return out;
 }
 // What the take actually was — the chart, the tempo, the key and the step
 // count of each sequencer — written into the file itself as a RIFF LIST/INFO
@@ -42689,7 +42792,12 @@ function _stopRecording(){
   // Let the final buffer flush before tearing the tap down
   setTimeout(function(){
     if(tap) tap.dispose();
-    if(!_recChunksL.length){showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;}
+    if(!_recChunksL.length){
+      // The stem taps were made for this take; leaving them connected would keep
+      // eight worklets running into the destination for no reason.
+      _abandonStemTaps();
+      showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;
+    }
     var base0=(document.getElementById('chart-title')?.value||'modo-session');
     var totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
     // The mix sets the timeline every stem is written onto (_finishStemTaps):
@@ -42732,8 +42840,7 @@ function _stopRecording(){
       _isRecording=false;_updateRecBtn();
       // Tear the stem taps down without running them through the file writer;
       // if the mix came back empty the stems are not worth writing either.
-      try{ _stemTaps.forEach(function(t){ if(t.pcm) t.pcm.dispose(); }); }catch(e){}
-      _stemTaps=[];
+      _abandonStemTaps();
       showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
       try{ console.warn('[rec] capture was digitally silent',
         {frames:totalLen, liveSamples:_live, peak:_peak,
@@ -42760,7 +42867,14 @@ function _stopRecording(){
     var parts=[];
     if(stems.length) parts.push(stems.length+' stem'+(stems.length>1?'s':''));
     if(midiFile) parts.push('MIDI');
-    showToast(parts.length ? ('Saved the mix + '+parts.join(' + ')) : 'Saved the mix as a .wav');
+    var done = parts.length ? ('Saved the mix + '+parts.join(' + ')) : 'Saved the mix as a .wav';
+    // Stems were on (or came on mid-take) but some did not make it: say which,
+    // and why. "0 stems" was a silent skip before — a stem under the floor, or
+    // a part the take could not tap, just was not in the folder.
+    var sk = stems.skipped || [];
+    if(!stems.length && exportStems) done += ' — 0 stems written';
+    if(sk.length) done += '. ' + _stemSkipNote(sk);
+    showToast(done, sk.length ? {ms:6000} : undefined);
     _deliverFiles(files, { zipName:base, title:base });
   },150);
 }
