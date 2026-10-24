@@ -1,6 +1,8 @@
+#include <time.h>
 #import "ModEngineHost.h"
 
 #import <os/lock.h>
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -45,6 +47,7 @@ struct Msg {
   bool hasAt;
   bool hasAtRel;       // `at` given as frames from now, not an absolute frame
   double atRel;
+  double ts;           // the page's wall clock (ms) when it made the message; 0 = none
   bool hasBeat;
   bool flag;           // sustain on/off
   int32_t i;           // param index | cc number | macro index | motion lane | row/step count
@@ -212,6 +215,7 @@ double num(id value, double fallback = 0) {
   id atRelVal = message[@"atRel"];
   m.hasAtRel = (atRelVal != nil && atRelVal != [NSNull null]);
   m.atRel = num(atRelVal, 0);
+  m.ts = num(message[@"ts"], 0);
   m.idKind = idKindOf(message[@"id"]);
   m.id = num(message[@"id"], 0);
   m.note = num(message[@"note"], 0);
@@ -295,7 +299,23 @@ double num(id value, double fallback = 0) {
   // web context was old (measured: eight seconds).
   Msg mm = m;
   if (mm.hasAtRel) {
-    mm.at = (double)_partFrames[mm.part] + mm.atRel;
+    // The page measured atRel when it made the message, but the message then
+    // crossed the bridge, and in the background that crossing is slow and
+    // uneven (the page's process is throttled, the hop waits for it). Counting
+    // atRel from the drain moved every note later by however long the hop
+    // took — chords on the native engine went loose while the arp, on the web
+    // engine, did not. The page stamps the wall clock on the message; the
+    // delay is the difference, and comes off the offset. A stamp that is
+    // missing, in the future, or implausibly old is ignored.
+    double rel = mm.atRel;
+    if (mm.ts > 0) {
+      struct timespec tsNow;
+      clock_gettime(CLOCK_REALTIME, &tsNow);
+      const double nowMs = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6;
+      const double delayMs = nowMs - mm.ts;
+      if (delayMs > 0 && delayMs < 5000) rel = std::max(0.0, rel - delayMs * 0.001 * _sampleRate);
+    }
+    mm.at = (double)_partFrames[mm.part] + rel;
     mm.hasAt = true;
   }
   const Msg &r = mm;
