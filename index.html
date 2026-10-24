@@ -205,6 +205,12 @@
    so nothing moves — but a reader who has set their browser text larger now
    gets a larger app instead of being overridden. */
 html { font-size: 125%; }
+/* No double-tap zoom, anywhere. 172 controls already say touch-action:manipulation
+   one by one; the page background, text and panels did not, and a double tap on
+   any of those zoomed the whole app in. It is inherited down the chain by
+   intersection, so this one rule covers everything without taking away pan or
+   the pinch gesture (which Capacitor's web view already switches off). */
+html { touch-action:manipulation; }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
 body {
@@ -4186,10 +4192,13 @@ body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
  border-top:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
  border-radius:14px 14px 0 0;
 }
+/* 4.9.9.9.9.7.8: the word is gone. The pill and its chevron are enough, and
+   "More" read as a label for a button that is already obvious; the chevron now
+   sits in the middle of the pill, over Play. */
 #ft-drawer-grip::before {
- content:'More'; position:relative; z-index:1;
+ content:''; position:relative; z-index:1;
  display:flex; align-items:center; justify-content:flex-start; box-sizing:border-box;
- min-width:100px; height:20px; padding:0 12px 0 16px; margin-top:-1px;
+ min-width:64px; height:20px; padding:0; margin-top:-1px;
  border-radius:11px; background:var(--accent); color:#07080f;
  font:800 10px/1 'Outfit',sans-serif; letter-spacing:.16em; text-transform:uppercase;
  box-shadow:0 2px 0 color-mix(in srgb, var(--accent) 50%, #000), 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
@@ -4197,12 +4206,11 @@ body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
 }
 /* The chevron: two borders of a rotated square, so it is drawn and not typed. */
 #ft-drawer-grip::after {
- content:''; position:absolute; z-index:2; left:calc(50% + 30px); top:8px; width:6px; height:6px;
+ content:''; position:absolute; z-index:2; left:calc(50% - 3px); top:8px; width:6px; height:6px;
  border-top:2px solid #07080f; border-left:2px solid #07080f; border-radius:1px;
  transform:rotate(45deg); transition:transform .18s ease, top .18s ease; pointer-events:none;
 }
 #ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { filter:brightness(1.12); }
-body:has(#ft-more-menu.open) #ft-drawer-grip::before { content:'Close'; }
 body:has(#ft-more-menu.open) #ft-drawer-grip::after { transform:rotate(225deg); top:6px; }
 /* Until the sheet has been opened once, the tab breathes. It stops for good on
    the first open (modo-sheet-seen), so it is a one-time hint and not a thing
@@ -4493,14 +4501,17 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
 .ft-more-menu {
  position:fixed; left:0; right:0; bottom:var(--botstack, 104px);
  display:none; flex-direction:column; gap:7px;
- background:rgba(8,9,18,.985); border-top:1px solid var(--border2);
+ /* Lifted off the page: at rgba(8,9,18) it was three RGB steps from --bg and
+    read as part of the app behind it, so the sheet had no edge. */
+ background:color-mix(in srgb, var(--play-surf) 72%, var(--surf2));
+ border-top:1px solid color-mix(in srgb, var(--accent) 40%, var(--border2));
  border-radius:14px 14px 0 0;
  padding:12px 12px 14px; box-shadow:0 -10px 30px rgba(0,0,0,.55); z-index:600;
  max-height:min(62vh, 520px); overflow-y:auto; overscroll-behavior:contain;
  /* 98.5% opaque already; a blur behind it cost a full-width re-blur per frame
     for nothing anyone could see. See .modal-overlay. */
 }
-body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
+body.light-mode .ft-more-menu { background:#f9faff; border-top-color:color-mix(in srgb, var(--accent) 45%, #c9cde6); box-shadow:0 -10px 30px rgba(30,40,90,.22); }
 /* A label down the left and its controls to the right, the way the mockup
    reads — so the sheet is scannable rather than a list you have to read. */
 .ft-sheet-row { display:flex; align-items:flex-start; gap:10px; }
@@ -4561,7 +4572,16 @@ body.light-mode .ft-sheet-items > .ft-btn.ur, body.light-mode #ft-find-btn.ft-fi
 /* No second handle inside the open sheet: the triangle on the bar flips to
    point down while the sheet is open, so the way out is the way in, in the
    same place. */
-.ft-more-menu.open { display:flex; }
+.ft-more-menu.open { display:flex; animation:ftSheetIn .2s cubic-bezier(.2,.8,.3,1); }
+/* Closing: .open goes at once (everything that asks whether the sheet is open
+   reads it, and must not see a half-closed state); .closing only keeps it
+   painted while it slides away. */
+.ft-more-menu.closing { display:flex; animation:ftSheetOut .15s ease-in forwards; pointer-events:none; }
+@keyframes ftSheetIn  { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:none; } }
+@keyframes ftSheetOut { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(22px); } }
+@media (prefers-reduced-motion: reduce){
+  .ft-more-menu.open, .ft-more-menu.closing { animation:none; }
+}
 /* The full-width rule that used to live here was for the 130px dropdown, where
    one button per line was the only thing that fit. In a screen-wide sheet it
    turned four glyph buttons into four full rows and made the sheet three times
@@ -7054,8 +7074,8 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      carry the "pull me" on their own, and the beat strip is drawn across this
      same band (see #ft-beat-dots below). */
   #ft-drawer-grip { height:15px; }
-  #ft-drawer-grip::before { height:13px; min-width:76px; padding:0 8px 0 10px; font-size:8px; margin-top:0; }
-  #ft-drawer-grip::after { left:calc(50% + 22px); top:4px; width:4px; height:4px; }
+  #ft-drawer-grip::before { height:13px; min-width:48px; padding:0; font-size:8px; margin-top:0; }
+  #ft-drawer-grip::after { left:calc(50% - 2px); top:4px; width:4px; height:4px; }
   /* Sideways the bar is one long row again: the zones dissolve (display:contents
      keeps their children as the bar's own flex items), so the order is simply
      key, Play, tempo, song switch, then the parts with the rate beside Arp.
@@ -7625,14 +7645,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="ft-btn ft-plain" id="ft-help-btn" onclick="openTutorials()" title="Short tutorials, one topic each — plus the one-minute play-along">Tutorials</button>
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
-     <button class="ft-btn ft-plain" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
-       onclick="installApp()" title="Install mõdRïff so it opens on its own and works offline">⤓ Install app</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
     </div>
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.8</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.8a</span>
     </div>
    </div>
   </div>
@@ -7669,7 +7687,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.8a</span></div>
  </div>
 </div>
 
@@ -9879,7 +9897,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.8';
+const MODRIFF_VERSION = '4.9.9.9.9.7.8a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -32519,7 +32537,7 @@ var TUT_LIST = [
   {t:'Tabs', x:'Play, Accomp, Mix, Songs, Settings. Play is where you perform.', el:'.tab-bar', go:function(){ _tutTab('perform'); }},
   {t:'Play / Stop', x:'Starts and stops everything. Space bar too.', el:'#ft-playstop-btn'},
   {t:'Part switches', x:'Bring each part in or out — while it plays.', el:'#ft-chd-btn'},
-  {t:'The sheet', x:'Tap More for capture, export, setups, undo and help.', el:'#ft-drawer-grip'},
+  {t:'The sheet', x:'Tap the bright arrow above Play for capture, export, setups, undo and help.', el:'#ft-drawer-grip'},
   {t:'Find', x:'Jumps to any control by name.', el:'#ft-find-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'views', name:'Live & Studio', steps:[
@@ -53397,7 +53415,9 @@ function _ftMoreIsOpener(t){
 function toggleFtMore(e){
   if(e) e.stopPropagation();
   var m = document.getElementById('ft-more-menu'); if(!m) return;
-  var open = m.classList.toggle('open');
+  var open = !m.classList.contains('open');
+  if(!open){ _ftSheetShut(m); }
+  else { m.classList.remove('closing'); m.classList.add('open'); }
   // However it was opened — tap or swipe — the handle stops hinting.
   if(open && typeof _ftSheetMarkSeen==='function') _ftSheetMarkSeen();
   if(open){
@@ -53418,8 +53438,24 @@ function toggleFtMore(e){
 // hanging open over the tab it just sent you to.
 function closeFtMore(){
   var m = document.getElementById('ft-more-menu');
-  if(m) m.classList.remove('open');
+  if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
+}
+// Takes .open off at once and leaves .closing on for the length of the slide.
+// The timeout is the backstop: animationend does not fire when animations are
+// off (reduced motion) or the page is hidden, and .closing would then keep an
+// invisible, click-eating sheet on screen.
+function _ftSheetShut(m){
+  if(!m.classList.contains('open')) return;
+  m.classList.remove('open');
+  m.classList.add('closing');
+  var done = function(e){
+    if(e && e.target !== m) return;      // a child's animation bubbling up
+    m.classList.remove('closing');
+    m.removeEventListener('animationend', done);
+  };
+  m.addEventListener('animationend', done);
+  setTimeout(done, 260);
 }
 // The sheet is a surface you opened on purpose, so anything in it that takes
 // you somewhere or starts something closes it on the way — the alternative is
@@ -53559,7 +53595,7 @@ function _ftMoreOutsideClick(e){
   // "not on screen" — the Export tutorial ended after its first step.
   if(e.target && e.target.closest && e.target.closest('.tour-wrap, .tour-card')) return;
   var m = document.getElementById('ft-more-menu');
-  if(m) m.classList.remove('open');
+  if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
 
@@ -56672,6 +56708,11 @@ function appIsInstalled(){
       || navigator.standalone === true;
  }catch(e){ return false; }
 }
+// The sheet's "Install app" button is gone (4.9.9.9.9.7.8a): the product is the
+// App Store build, and inside it the button showed anyway, because the web view
+// is neither display-mode:standalone nor navigator.standalone. This still finds
+// nothing to show; it is left so the beforeinstallprompt wiring below stays
+// quiet rather than throwing.
 function _showInstallBtn(on){
  document.querySelectorAll('[data-installbtn]').forEach(b=>{ b.style.display = on ? '' : 'none'; });
 }
