@@ -1712,37 +1712,62 @@ hit is not late. The web fallback is `navigator.vibrate` where it exists
 
 ---
 
-## 4. In-app purchase: "add-on everything"
+## 4. In-app purchase: one Pro unlock
 
-`window.modBilling` is already the right shape (`isPro`, `refresh`,
-`purchase`, `restore`, `provider`), and `FREE_LIMITS` already lists what
-free lacks. What changes is that **Pro is one boolean** and "add-on
-everything" is many products:
+**Decided (owner, 4.9.9.9.9.8.9):** one product, `modriff_pro`, a one-time
+non-consumable, Family Sharing on, universal across iPhone/iPad/Mac. The price
+lives in App Store Connect and is read from the store at run time, never written
+in the page. The earlier plan here, many add-on products plus a bundle, is
+dropped. No subscriptions, ads, accounts or backend.
 
-```js
-modBilling.has(productId)      // sync, from a cache, like isPro today
-modBilling.products()          // [{id, title, price}] for the store sheet
-modBilling.purchase(productId)
-```
+`window.modBilling` keeps the contract it always had (`isPro`, `refresh`,
+`purchase`, `restore`, `provider`) and gains `price()` for the upgrade sheet.
+The iOS provider is StoreKit 2 in Swift behind that contract, answering
+`isPro()` from a cache so a paying user is never locked out offline; a revoked
+or refunded purchase drops to free on the next refresh. App Review requires a
+visible **Restore Purchases** (guideline 3.1.1): it is on the upgrade sheet and
+in Settings. The web build keeps granting everything until the web path goes
+away, as before.
 
-`FREE_LIMITS` keys map to product ids (`modfx` → `com.modriff.modfx`,
-`samples` → a sound pack, `freeModes` → a scale pack…), and `modAllows(f)`
-asks `has()` for the product that unlocks `f`. Keep a bundle product
-("everything") that `has()` treats as owning all of them; an à-la-carte store
-without one turns into a pricing complaint.
+### Where the line is
 
-Native side: StoreKit 2 through a Capacitor plugin (RevenueCat's, or
-`cordova-plugin-purchase`) behind the same `modBilling` contract. App Review
-requires a visible **Restore Purchases** control (already in the contract,
-guideline 3.1.1) and no link out to a web checkout. The web build keeps
-granting everything, as it does today.
+Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
+`freeAllows*` helpers; nothing else decides. To move the line, change the table.
 
-**The web build after the App Store release (owner's direction, not yet
-built):** the web Web Audio path goes away once the app ships. The Vercel
-build may stay up as the free version, with no way to upgrade from it —
-the App Store is the only place to buy. That replaces "the web build keeps
-granting everything" above once it is built; until then the web build is
-unchanged.
+| | Free | Pro |
+|---|---|---|
+| Scales | the 7 church modes + minor pentatonic | everything else, custom scales |
+| mõdFX pad | Filter Sweep, Tape Stop, Dub Delay, Riser | the other patches, axis pickers, saving your own |
+| Audio export | first 90 s (`FREE_AUDIO_EXPORT_SECONDS`), with a message | full song |
+| MIDI export | first 4 bars (`FREE_MIDI_EXPORT_BARS`) | full song |
+| Steps | up to 32, as whole bars of the current meter | up to 64 |
+| Meters | 4/4, 3/4, 12/8 | any |
+| Saved songs | 5 setlist songs (`FREE_SAVE_SLOTS`); Setups unlimited | unlimited |
+| Drum kits | 808, 606, Linn, Jazz | all others, the Aux kit |
+| Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, Bossa Nova, 3/4 Waltz, 12/8 Slow | the rest |
+| Bass / melody styles | Rock, Jazz, Funk, Latin | the rest |
+| Voices | synth waves, Piano 1, Upright 1 | other recorded voices, mõdSynth |
+| Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
+| Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |
+| Stems | none | per-part stems from Bounce |
+
+Fresh-start defaults are all free ones: drums on the Linn, Aux on 606.
+
+### Pro content in a free build
+
+A song or setup made with Pro parts opens in a free build without losing
+anything: the free build mutes or substitutes **at play time** and never writes
+the substitution back. (The older `freeApplyLimits` rewrote the mode, voice and
+step count when the tier dropped; that destroyed the Pro choice on re-save and
+is what this replaces.) One banner names what is missing and opens the upgrade
+sheet.
+
+### After launch (Phase 2, not built)
+
+Key colour mapping (Pro): the chromatic key-to-hue table `MH_HUE` gets a start
+offset so any key can be red, and a circle-of-fifths ordering that reuses the
+same table; both rotatable. Also the EQ, extra themes and melody density
+controls from the brief, and CloudKit sync.
 
 ---
 
