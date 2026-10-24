@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7d</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7e</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7e</span></div>
  </div>
 </div>
 
@@ -9865,7 +9865,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7d';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10674,8 +10674,40 @@ function modParamsSync(){
 // Send any changed state now, not with the next note — for controls that
 // shape what is already sounding.
 function modParamsFlush(){ modParamsSync(); }
+// How far ahead of the audio each timed chord/arp message was handed over, kept
+// per part so a background test can be read afterwards: bass, melody and drums
+// stayed steady in the background and chords and arp did not, and the only way
+// to find out why is to see how late the ones that went wrong were. A lead
+// under 20 ms is late; the count, the worst lead and the last few late ones are
+// kept. Read with leadStats() in the console.
+var _leadStats = {};
+function _leadNote(msg){
+ try{
+  if(!msg || typeof msg.at !== 'number' || typeof audioCtx === 'undefined' || !audioCtx) return;
+  var part = msg.part || msg.kind || '?', lead = msg.at - audioCtx.currentTime;
+  var st = _leadStats[part] || (_leadStats[part] = {n:0, late:0, minLeadMs:1e9, lastLate:[]});
+  st.n++;
+  if(lead*1000 < st.minLeadMs) st.minLeadMs = Math.round(lead*1000);
+  if(lead < 0.02){
+   st.late++;
+   st.lastLate.push({ago_s: null, at: Date.now(), leadMs: Math.round(lead*1000), hidden: document.visibilityState, fast: !!_bgFast, look: LOOK_AHEAD});
+   if(st.lastLate.length > 12) st.lastLate.shift();
+  }
+ }catch(e){}
+}
+window.leadStats = function(){
+ var now = Date.now(), out = {};
+ for(var k in _leadStats){
+  var s = _leadStats[k];
+  out[k] = {n:s.n, late:s.late, minLeadMs:s.minLeadMs,
+            lastLate:s.lastLate.map(function(x){ return {secAgo: Math.round((now-x.at)/100)/10, leadMs:x.leadMs, page:x.hidden, fast:x.fast, look:x.look}; })};
+ }
+ out.bgLog = (window._bgLog || []).slice(-10).map(function(e){ return {secAgo: Math.round((now-e.at)/100)/10, enter:e.enter, leave:e.leave}; });
+ return out;
+};
 function modSend(msg){
  modParamsSync();
+ _leadNote(msg);
  return window.modEngine.send(msg);
 }
 
