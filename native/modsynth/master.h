@@ -29,6 +29,15 @@
 // make-up gain, an averaged detector, adaptive release, 6 ms look-ahead), which
 // is why it can be compared at all.
 //
+// MB_WEB_TRIM is the one stage the web bus does not have. While drums, bass and
+// the rest are still Web Audio the speaker gets this master and the web one
+// added together, and two limiters that each hold -3 dBFS do not hold their sum
+// there. The page works out whether any web part is in the mix and says so as a
+// number of dB (-3 or 0); it is applied after the volume and glides over about
+// a third of a second, slow enough that the chord is never heard to step when a
+// part is muted or soloed. At the flip, when there is one master, nothing is
+// left to send it and it stays 0.
+//
 // Audio thread rules: process() allocates nothing and takes no lock.
 #pragma once
 #include <memory>
@@ -81,6 +90,7 @@ enum MasterParam {
   MB_REV_SEND,     // the bus room's send, linear
   MB_DRV_AMT,      // drive amount, 0..1 (the app's fx.drive)
   MB_DRV_OUT,      // gain after the drive curve: makeup × span, worked out by the page
+  MB_WEB_TRIM,     // dB (<= 0) taken off the output while Web Audio parts share the speaker
   MB_COUNT
 };
 
