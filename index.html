@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7i</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7j</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7i</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7j</span></div>
  </div>
 </div>
 
@@ -9869,7 +9869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7i';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7j';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10699,6 +10699,20 @@ function _leadNote(msg){
   }
  }catch(e){}
 }
+// Errors the page throws are otherwise only in a console nobody is watching on
+// a phone. The last few, with whether the page was hidden when they happened,
+// ride along in Copy diagnostics: a part that goes quiet in the background (the
+// flute arp, once) with every message delivered on time is a part whose note
+// code threw, and this is what would say so.
+var _errLog = [];
+function _errNote(kind, msg, where){
+ try{
+  _errLog.push({at:Date.now(), kind:kind, msg:String(msg).slice(0,200), where:where||'', page:document.visibilityState});
+  if(_errLog.length > 12) _errLog.shift();
+ }catch(e){}
+}
+window.addEventListener('error', function(e){ _errNote('error', e.message, (e.filename||'').split('/').pop()+':'+e.lineno); });
+window.addEventListener('unhandledrejection', function(e){ _errNote('rejection', e.reason && (e.reason.message||e.reason)); });
 window.leadStats = function(){
  var now = Date.now(), out = {};
  for(var k in _leadStats){
@@ -10706,6 +10720,7 @@ window.leadStats = function(){
   out[k] = {n:s.n, late:s.late, minLeadMs:s.minLeadMs,
             lastLate:s.lastLate.map(function(x){ return {secAgo: Math.round((now-x.at)/100)/10, leadMs:x.leadMs, page:x.hidden, fast:x.fast, look:x.look}; })};
  }
+ out.errors = _errLog.map(function(x){ return {secAgo: Math.round((now-x.at)/100)/10, kind:x.kind, msg:x.msg, where:x.where, page:x.page}; });
  out.bgLog = (window._bgLog || []).slice(-10).map(function(e){ return {secAgo: Math.round((now-e.at)/100)/10, enter:e.enter, leave:e.leave}; });
  return out;
 };
@@ -25458,6 +25473,7 @@ tickClock = function(){
  try{ _tickClockInner(); }
  catch(e){
   try{ console.error('tickClock', e); }catch(_){}
+  try{ _errNote('tick', e && (e.stack||e.message||e), 'tickClock'); }catch(_){}
   if(_clockShouldRun()) clockTimer=setTimeout(tickClock,SCHED_INT);
  }
 };
