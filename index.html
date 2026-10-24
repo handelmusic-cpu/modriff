@@ -205,6 +205,12 @@
    so nothing moves — but a reader who has set their browser text larger now
    gets a larger app instead of being overridden. */
 html { font-size: 125%; }
+/* No double-tap zoom, anywhere. 172 controls already say touch-action:manipulation
+   one by one; the page background, text and panels did not, and a double tap on
+   any of those zoomed the whole app in. It is inherited down the chain by
+   intersection, so this one rule covers everything without taking away pan or
+   the pinch gesture (which Capacitor's web view already switches off). */
+html { touch-action:manipulation; }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
 body {
@@ -3671,6 +3677,13 @@ body.mode-basic .part-dice { display:none !important; }
    stops above. */
 .modal-overlay.sheet-mid { align-items:center; }
 .lib-load { max-width:400px; border-radius:var(--r-lg); padding:20px 18px; margin:0 12px; }
+/* 4.9.9.9.9.7.8b: a sheet taller than its overlay used to be cut off at both
+   ends, because it was centred and neither it nor the overlay scrolled. A
+   chord's "All chords…" rhythm list is about 15 rows of 60px, so on an iPhone
+   (and far more sideways) the first and last rows could not be reached. The
+   overlay stops above the transport, so its height is definite and a
+   percentage max-height works; the sheet scrolls inside it. */
+.lib-load { max-height:calc(100% - 24px); overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
 .ll-title { font-family:'Orbitron',sans-serif; font-size:.74rem; font-weight:700;
             color:var(--text); letter-spacing:.05em; margin-bottom:5px; }
 .ll-sub { font-size:.54rem; color:var(--muted); line-height:1.6; margin-bottom:14px; }
@@ -4000,12 +4013,22 @@ body .perf-bar .ft-pcol > .ft-btn.arp { width:100%; min-width:0; max-width:none;
    positioned lets it be placed against the bar itself instead, and the top row
    reserves its width so the group cannot run under it. The row sits 26px down
    the bar (its top padding), hence the offset. */
-body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol { position:static; }
-body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate {
+body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol,
+body.rate-by-play .ft-pcol { position:static; }
+body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate,
+body.rate-by-play .ft-pcol .ft-rate {
  left:calc(50% + 26px); transform:none; bottom:auto;
  top:calc(26px + (var(--ft-r1,40px) - 27px) / 2);
 }
 .ft-top-r:has(#ft-sect-prev:not([style*="none"])) { padding-left:48px; }
+/* The same step-aside when no song is loaded but the chip would land on Play.
+   "Over Arp" puts the chip at Arp's centre, and Arp's column slides left as
+   switches appear: with the Sampler switch showing and Aux not (6 columns,
+   measured 14px of overlap at 390 wide) the chip ended up under Play's right
+   edge. Which combinations collide depends on the width and on which part
+   switches are showing, so a list of :has() cases would be wrong the next
+   time one is added; ftRateClamp() measures and sets body.rate-by-play. */
+body.rate-by-play .ft-top-r { padding-left:48px; }
 .ft-top-r:has(#ft-sect-prev:not([style*="none"])) > .ft-song-grp { max-width:100%; }
 .ft-top-r:has(#ft-sect-prev:not([style*="none"])) #ft-song-btn.songlbl { max-width:84px; }
 .perf-bar .ft-song-grp #ft-song-btn,
@@ -4176,10 +4199,13 @@ body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
  border-top:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
  border-radius:14px 14px 0 0;
 }
+/* 4.9.9.9.9.7.8: the word is gone. The pill and its chevron are enough, and
+   "More" read as a label for a button that is already obvious; the chevron now
+   sits in the middle of the pill, over Play. */
 #ft-drawer-grip::before {
- content:'More'; position:relative; z-index:1;
+ content:''; position:relative; z-index:1;
  display:flex; align-items:center; justify-content:flex-start; box-sizing:border-box;
- min-width:100px; height:20px; padding:0 12px 0 16px; margin-top:-1px;
+ min-width:64px; height:20px; padding:0; margin-top:-1px;
  border-radius:11px; background:var(--accent); color:#07080f;
  font:800 10px/1 'Outfit',sans-serif; letter-spacing:.16em; text-transform:uppercase;
  box-shadow:0 2px 0 color-mix(in srgb, var(--accent) 50%, #000), 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
@@ -4187,12 +4213,20 @@ body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
 }
 /* The chevron: two borders of a rotated square, so it is drawn and not typed. */
 #ft-drawer-grip::after {
- content:''; position:absolute; z-index:2; left:calc(50% + 30px); top:8px; width:6px; height:6px;
+ content:''; position:absolute; z-index:2; left:calc(50% - 3px); top:8px; width:6px; height:6px;
  border-top:2px solid #07080f; border-left:2px solid #07080f; border-radius:1px;
  transform:rotate(45deg); transition:transform .18s ease, top .18s ease; pointer-events:none;
 }
 #ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { filter:brightness(1.12); }
-body:has(#ft-more-menu.open) #ft-drawer-grip::before { content:'Close'; }
+/* The bar's own Live / Studio switch: small, in the handle's band, right of the
+   pill. It is a sibling of the handle (not inside it) so a tap on it is not a
+   tap on the handle, and it sits above the handle's z-index. */
+.perf-bar .ft-vmt-band { position:absolute; top:3px; right:10px; z-index:3; border-radius:9px;
+ background:color-mix(in srgb, var(--surf2) 88%, transparent);
+ border-color:color-mix(in srgb, var(--pv) 45%, var(--surf2)); }
+.perf-bar .ft-vmt-band .vmt-btn { min-height:17px; height:17px; padding:0 8px; font:700 9px/17px 'Outfit',sans-serif;
+ letter-spacing:.08em; text-transform:uppercase; }
+.perf-bar .ft-vmt-band .vmt-btn.active { background:var(--pv); color:#0b0c16; }
 body:has(#ft-more-menu.open) #ft-drawer-grip::after { transform:rotate(225deg); top:6px; }
 /* Until the sheet has been opened once, the tab breathes. It stops for good on
    the first open (modo-sheet-seen), so it is a one-time hint and not a thing
@@ -4483,14 +4517,17 @@ body.light-mode .ft-bpm-pop { background:#f2f3fa; border-color:#c2c6de; box-shad
 .ft-more-menu {
  position:fixed; left:0; right:0; bottom:var(--botstack, 104px);
  display:none; flex-direction:column; gap:7px;
- background:rgba(8,9,18,.985); border-top:1px solid var(--border2);
+ /* Lifted off the page: at rgba(8,9,18) it was three RGB steps from --bg and
+    read as part of the app behind it, so the sheet had no edge. */
+ background:color-mix(in srgb, var(--play-surf) 72%, var(--surf2));
+ border-top:1px solid color-mix(in srgb, var(--accent) 40%, var(--border2));
  border-radius:14px 14px 0 0;
  padding:12px 12px 14px; box-shadow:0 -10px 30px rgba(0,0,0,.55); z-index:600;
  max-height:min(62vh, 520px); overflow-y:auto; overscroll-behavior:contain;
  /* 98.5% opaque already; a blur behind it cost a full-width re-blur per frame
     for nothing anyone could see. See .modal-overlay. */
 }
-body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
+body.light-mode .ft-more-menu { background:#f9faff; border-top-color:color-mix(in srgb, var(--accent) 45%, #c9cde6); box-shadow:0 -10px 30px rgba(30,40,90,.22); }
 /* A label down the left and its controls to the right, the way the mockup
    reads — so the sheet is scannable rather than a list you have to read. */
 .ft-sheet-row { display:flex; align-items:flex-start; gap:10px; }
@@ -4539,7 +4576,6 @@ body.light-mode .ft-more-menu { background:rgba(244,245,252,.985); }
 body.light-mode .ft-sheet-items > .ft-btn.ur, body.light-mode #ft-find-btn.ft-find-ico { color:#14162a; }
 /* Keyboard shortcuts mean nothing on a phone with no keyboard. */
 @media (pointer:coarse) and (hover:none) { #ft-keys-btn { display:none; } }
-.ft-ver-row .ft-sheet-items { justify-content:flex-end; }
 .ft-sheet-sep { height:1px; background:var(--border2); opacity:.6; margin:1px 0; }
 /* The buttons already in the sheet carried this as six inline declarations
    each. One class instead, so a new entry looks like the others without
@@ -4551,7 +4587,16 @@ body.light-mode .ft-sheet-items > .ft-btn.ur, body.light-mode #ft-find-btn.ft-fi
 /* No second handle inside the open sheet: the triangle on the bar flips to
    point down while the sheet is open, so the way out is the way in, in the
    same place. */
-.ft-more-menu.open { display:flex; }
+.ft-more-menu.open { display:flex; animation:ftSheetIn .2s cubic-bezier(.2,.8,.3,1); }
+/* Closing: .open goes at once (everything that asks whether the sheet is open
+   reads it, and must not see a half-closed state); .closing only keeps it
+   painted while it slides away. */
+.ft-more-menu.closing { display:flex; animation:ftSheetOut .15s ease-in forwards; pointer-events:none; }
+@keyframes ftSheetIn  { from { opacity:0; transform:translateY(22px); } to { opacity:1; transform:none; } }
+@keyframes ftSheetOut { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(22px); } }
+@media (prefers-reduced-motion: reduce){
+  .ft-more-menu.open, .ft-more-menu.closing { animation:none; }
+}
 /* The full-width rule that used to live here was for the 130px dropdown, where
    one button per line was the only thing that fit. In a screen-wide sheet it
    turned four glyph buttons into four full rows and made the sheet three times
@@ -4666,6 +4711,12 @@ body { padding-bottom:104px; }
 }
 .ss-scope::after { content:''; flex:1; height:1px; background:var(--border); }
 .ss-scope:first-child { margin-top:0; }
+.ss-scope b { display:none; }
+/* 4.9.9.9.9.7.8b: the green gloss after each heading ("Start in the key a blank
+   page opens on") is gone — it was a second line of explanation under a label
+   that already says what it is, and it took the row's height on every screen.
+   Hidden rather than deleted so the markup and the Find index (which reads
+   .ss-scope text) stay as they were. The rule below only colours it if shown. */
 .ss-scope b { color:var(--pg); font-weight:700; }
 /* --pg is a bright green made for the dark page; on the light one it measured
    2.6:1 against the panel. Same hue, deep enough to read (about 5:1). */
@@ -7044,8 +7095,10 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      carry the "pull me" on their own, and the beat strip is drawn across this
      same band (see #ft-beat-dots below). */
   #ft-drawer-grip { height:15px; }
-  #ft-drawer-grip::before { height:13px; min-width:76px; padding:0 8px 0 10px; font-size:8px; margin-top:0; }
-  #ft-drawer-grip::after { left:calc(50% + 22px); top:4px; width:4px; height:4px; }
+  .perf-bar .ft-vmt-band { top:1px; }
+  .perf-bar .ft-vmt-band .vmt-btn { min-height:13px; height:13px; font-size:8px; line-height:13px; padding:0 6px; }
+  #ft-drawer-grip::before { height:13px; min-width:48px; padding:0; font-size:8px; margin-top:0; }
+  #ft-drawer-grip::after { left:calc(50% - 2px); top:4px; width:4px; height:4px; }
   /* Sideways the bar is one long row again: the zones dissolve (display:contents
      keeps their children as the bar's own flex items), so the order is simply
      key, Play, tempo, song switch, then the parts with the rate beside Arp.
@@ -7053,7 +7106,7 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
      no second row here to stack on. */
   body .perf-bar { flex-direction:row; }
   .ft-top, .ft-top-l, .ft-top-r, .ft-parts, .ft-pcol { display:contents; }
-  .ft-pcol .ft-rate, body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate { position:static; transform:none; }
+  .ft-pcol .ft-rate, body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate, body.rate-by-play .ft-pcol .ft-rate { position:static; transform:none; }
   .ft-top-r:has(#ft-sect-prev:not([style*="none"])) { padding-left:0; }
   .ft-pcol .ft-rate-val { width:44px; }
   .ft-top-r > .ft-song-grp { max-width:none; }
@@ -7129,6 +7182,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 .unlock-ver { font-size:11px; letter-spacing:.16em; color:var(--muted); opacity:.7; margin-left:8px; }
 .unlock-by  { font-size:12px; letter-spacing:.12em; color:var(--muted); opacity:.75; }
 .ft-ver { font-size:.44rem; color:var(--muted); opacity:.6; letter-spacing:.08em; align-self:center; padding:0 4px; }
+.ss-about .about-row { font-size:.5rem; color:var(--text); gap:6px; align-items:baseline; }
+.ss-about .ft-ver { font-size:.5rem; opacity:.85; padding:0; }
+.about-link { color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 
 .ext-picker-box { max-width:440px; max-height:82vh; overflow-y:auto; }
 .ext-grid { grid-template-columns:repeat(4,1fr); gap:6px; }
@@ -7302,6 +7358,18 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 <div class="perf-bar" id="perf-bar">
  <button type="button" id="ft-drawer-grip" aria-label="More controls"
    aria-haspopup="true" onclick="toggleFtMore(event)"></button>
+ <!-- Live / Studio, on the bar itself (4.9.9.9.9.7.8c). It was only in the sheet,
+      which is fine for a thing set once a session and wrong for the one switch
+      that changes what the whole screen is. It sits in the handle's band, to
+      the right of the pill, where there was nothing, so the bar did not get
+      taller. data-vmt, not ids: setViewMode keeps every copy in step, and the
+      sheet's own pair is the other copy. -->
+ <div class="vmt-pill ft-vmt-band" role="group" aria-label="View">
+  <button type="button" class="vmt-btn active" data-vmt="basic" onclick="setViewMode('basic')"
+    title="Live — every playing surface on one screen">Live</button>
+  <button type="button" class="vmt-btn" data-vmt="advanced" onclick="setViewMode('advanced')"
+    title="Studio — the whole rig: extra modes and scales, mõdSynth, the variants row">Studio</button>
+ </div>
  <!-- Three zones, top to bottom (4.9.9.9.9.7.4). The first row is what you
       steer with — key and scale on the left, Play dead centre, tempo and the
       song switch on the right — then the beat strip, then the parts row. The
@@ -7503,9 +7571,9 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
         .mode-basic: hundreds of rules key off that name, and renaming a CSS
         class is not what was wrong with the words on the button. -->
    <div class="vmt-pill ft-vmt" id="ft-vmt" role="group" aria-label="View">
-    <button class="vmt-btn active" id="vmt-basic" onclick="setViewMode('basic')"
+    <button class="vmt-btn active" id="vmt-basic" data-vmt="basic" onclick="setViewMode('basic')"
       title="Live — every playing surface on one screen, nothing between you and it">Live</button>
-    <button class="vmt-btn" id="vmt-adv" onclick="setViewMode('advanced')"
+    <button class="vmt-btn" id="vmt-adv" data-vmt="advanced" onclick="setViewMode('advanced')"
       title="Studio — the whole rig: the extra modes and scales, borrowed chords, mõdSynth, the variants row and the fingering charts">Studio</button>
     </div>
    </div>
@@ -7615,14 +7683,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="ft-btn ft-plain" id="ft-help-btn" onclick="openTutorials()" title="Short tutorials, one topic each — plus the one-minute play-along">Tutorials</button>
      <button class="ft-btn ft-plain" id="ft-guide-btn" onclick="openGuide()" title="Full written guide to every feature">Guide</button>
      <button class="ft-btn ft-plain" id="ft-keys-btn" onclick="openKbShortcuts()" title="Keyboard shortcuts">⌨ Shortcuts</button>
-     <button class="ft-btn ft-plain" data-installbtn style="display:none;background:var(--surf2);border:1px solid var(--border2);color:var(--muted)"
-       onclick="installApp()" title="Install mõdRïff so it opens on its own and works offline">⤓ Install app</button>
      <button class="tips-btn" onclick="showTip('transport',this)" title="What everything in this bar does" aria-label="Explain the transport bar">?</button>
-    </div>
-   </div>
-   <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
-    <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7j</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7720,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7j</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.8c</span></div>
  </div>
 </div>
 
@@ -8885,6 +8946,22 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <div class="sl-empty">No setups saved yet.</div>
  </div>
  </div>
+
+  <!-- About — the version, who made it and where to write. It was the foot of
+       the transport sheet, which meant opening the sheet to find the version
+       number; it lives here so it can be read without leaving Settings.
+       #ft-ver keeps its id and a bare "v…" text node: build/build.mjs checks
+       it against MODRIFF_VERSION, and the boot code paints it by id. -->
+  <div class="settings-section ss-about" id="ss-about">
+   <div class="ss-hdr open">
+    <span>◈ About</span>
+   </div>
+   <div class="ss-body open" id="ss-about-body">
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.8c</span></div>
+    <div class="row about-row">Built by Ben Handel</div>
+    <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
+   </div>
+  </div>
   </div>
 
  </div>
@@ -9869,7 +9946,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7j';
+const MODRIFF_VERSION = '4.9.9.9.9.7.8c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -32509,7 +32586,7 @@ var TUT_LIST = [
   {t:'Tabs', x:'Play, Accomp, Mix, Songs, Settings. Play is where you perform.', el:'.tab-bar', go:function(){ _tutTab('perform'); }},
   {t:'Play / Stop', x:'Starts and stops everything. Space bar too.', el:'#ft-playstop-btn'},
   {t:'Part switches', x:'Bring each part in or out — while it plays.', el:'#ft-chd-btn'},
-  {t:'The sheet', x:'Tap More for capture, export, setups, undo and help.', el:'#ft-drawer-grip'},
+  {t:'The sheet', x:'Tap the bright arrow above Play for capture, export, setups, undo and help.', el:'#ft-drawer-grip'},
   {t:'Find', x:'Jumps to any control by name.', el:'#ft-find-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'views', name:'Live & Studio', steps:[
@@ -53191,10 +53268,10 @@ function sqBuildGroovePresets(){
 function setViewMode(mode){
   var isBasic = mode === 'basic';
   document.body.classList.toggle('mode-basic', isBasic);
-  var btnB = document.getElementById('vmt-basic');
-  var btnA = document.getElementById('vmt-adv');
-  if(btnB){ btnB.classList.toggle('active', isBasic); }
-  if(btnA){ btnA.classList.toggle('active', !isBasic); }
+  // Every switch, by attribute: there is one in the sheet and one on the bar.
+  document.querySelectorAll('[data-vmt]').forEach(function(b){
+    b.classList.toggle('active', (b.getAttribute('data-vmt') === 'basic') === isBasic);
+  });
   try{ modStore.setItem('modo-view-mode', mode); }catch(e){}
   // Basic stacks the playing surfaces and Advanced separates them, so the Play
   // tab has to be laid out again on every switch, not just on a sub-tab tap.
@@ -53387,7 +53464,9 @@ function _ftMoreIsOpener(t){
 function toggleFtMore(e){
   if(e) e.stopPropagation();
   var m = document.getElementById('ft-more-menu'); if(!m) return;
-  var open = m.classList.toggle('open');
+  var open = !m.classList.contains('open');
+  if(!open){ _ftSheetShut(m); }
+  else { m.classList.remove('closing'); m.classList.add('open'); }
   // However it was opened — tap or swipe — the handle stops hinting.
   if(open && typeof _ftSheetMarkSeen==='function') _ftSheetMarkSeen();
   if(open){
@@ -53408,8 +53487,24 @@ function toggleFtMore(e){
 // hanging open over the tab it just sent you to.
 function closeFtMore(){
   var m = document.getElementById('ft-more-menu');
-  if(m) m.classList.remove('open');
+  if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
+}
+// Takes .open off at once and leaves .closing on for the length of the slide.
+// The timeout is the backstop: animationend does not fire when animations are
+// off (reduced motion) or the page is hidden, and .closing would then keep an
+// invisible, click-eating sheet on screen.
+function _ftSheetShut(m){
+  if(!m.classList.contains('open')) return;
+  m.classList.remove('open');
+  m.classList.add('closing');
+  var done = function(e){
+    if(e && e.target !== m) return;      // a child's animation bubbling up
+    m.classList.remove('closing');
+    m.removeEventListener('animationend', done);
+  };
+  m.addEventListener('animationend', done);
+  setTimeout(done, 260);
 }
 // The sheet is a surface you opened on purpose, so anything in it that takes
 // you somewhere or starts something closes it on the way — the alternative is
@@ -53549,7 +53644,7 @@ function _ftMoreOutsideClick(e){
   // "not on screen" — the Export tutorial ended after its first step.
   if(e.target && e.target.closest && e.target.closest('.tour-wrap, .tour-card')) return;
   var m = document.getElementById('ft-more-menu');
-  if(m) m.classList.remove('open');
+  if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
 
@@ -53574,7 +53669,25 @@ function _ftMoreOutsideClick(e){
     st.setProperty('--perfh', perfH + 'px');
     // --botstack is both, for anything that has to clear the whole bottom.
     st.setProperty('--botstack', (tabH + perfH) + 'px');
+    ftRateClamp();
   }
+  // The rate chip is centred on the Arp toggle and Arp's column moves as the
+  // Sampler and Aux switches come and go, so on some combinations it lands on
+  // Play. Take the class off, look at where the chip falls by default, and put
+  // it back only if it overlaps Play (all in one task: nothing paints between,
+  // so there is no flicker). The class makes the chip sit just right of Play,
+  // as it already does with a song loaded.
+  function ftRateClamp(){
+    var rate = document.getElementById('ft-rate-val');
+    var play = document.getElementById('ft-playstop-btn');
+    if(!rate || !play) return;
+    var b = document.body;
+    b.classList.remove('rate-by-play');
+    var r = rate.getBoundingClientRect(), p = play.getBoundingClientRect();
+    if(!r.width || !p.width) return;
+    if(r.bottom > p.top && r.top < p.bottom && r.left < p.right + 6 && r.right > p.left) b.classList.add('rate-by-play');
+  }
+  window._ftRateClamp = ftRateClamp;
   sync();
   if(typeof ResizeObserver !== 'undefined'){
     var ro = new ResizeObserver(sync);
@@ -53585,6 +53698,17 @@ function _ftMoreOutsideClick(e){
     // would sit adrift until something else happened to trigger a resync.
     if(top) ro.observe(top, {box:'border-box'});
     if(perf) ro.observe(perf, {box:'border-box'});
+    // Aux/Sampler/Song switches appear by style.display, which moves Arp
+    // without necessarily resizing the bar; watch the buttons themselves.
+    var arp = document.getElementById('ft-arp-btn');
+    if(arp) ro.observe(arp);
+  }
+  if(typeof MutationObserver !== 'undefined'){
+    var mo = new MutationObserver(ftRateClamp);
+    ['ft-aux-btn','ft-smp-btn','ft-sect-prev'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) mo.observe(el, {attributes:true, attributeFilter:['style','class']});
+    });
   }
   // Kept regardless of ResizeObserver support: rotation is exactly the case
   // above, and it is cheap to be sure of.
@@ -56633,6 +56757,11 @@ function appIsInstalled(){
       || navigator.standalone === true;
  }catch(e){ return false; }
 }
+// The sheet's "Install app" button is gone (4.9.9.9.9.7.8a): the product is the
+// App Store build, and inside it the button showed anyway, because the web view
+// is neither display-mode:standalone nor navigator.standalone. This still finds
+// nothing to show; it is left so the beforeinstallprompt wiring below stays
+// quiet rather than throwing.
 function _showInstallBtn(on){
  document.querySelectorAll('[data-installbtn]').forEach(b=>{ b.style.display = on ? '' : 'none'; });
 }
