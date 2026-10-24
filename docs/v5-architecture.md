@@ -1416,6 +1416,46 @@ rack; and a pad gesture that sets 11 parameters per frame will overrun a
 queue sized for notes unless the page coalesces by index (the 1024-slot queue
 already dropped a note-off once).
 
+### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
+
+What was done, what it showed, and where it stopped, so the next pass starts
+from the evidence and not from the guesses.
+
+Done: `UIBackgroundModes: audio` in Info.plist (without it iOS suspended the
+app and the sound with it); the page no longer ducks or pauses on
+`visibilitychange` in the app (Settings > General > Interface, "Keep playing in
+background", on by default; the web build keeps its pause); the scheduler runs
+3 s ahead while backgrounded, entered on a hidden page *or* on a tick 400 ms
+late; ALIGN_LEAD 1.2 s there (3 s opened a 3 s silence on entering); chord
+comp re-strikes come from the scheduler tick rather than their own timers;
+native messages are stamped with the page's wall clock so the bridge delay
+comes off `atRel`. Tools: Settings > "Copy diagnostics" (build, native render
+stats with the slowest blocks and when, `leadStats()` per part, background
+switch log, the page's errors).
+
+What the measurements said:
+
+- Bass, drums and the melody sequencer hold in the background. They are plain
+  Web Audio nodes scheduled ahead.
+- A mõdSynth part on the web worklet holds. The native chord engine's own
+  numbers are clean in the background (load 5-12 %, nothing dropped, every
+  message on time).
+- **Sampled voices (flute, violin) drop out entirely when the app is left,
+  with every message delivered on time and no error thrown.** That is the
+  open problem; the notes are made and nothing sounds. Not understood. Likely
+  somewhere in WebKit's handling of buffer-source nodes in a throttled page.
+- One block of 40-80 ms on the native audio thread at the moment of
+  backgrounding. Nothing in the render path waits on a lock; this looks like
+  iOS, and nothing in the app prevents it so far.
+- Timing is loose for a moment on coming back (the look-ahead drops from 3 s to
+  the preset and the engines realign).
+
+Where this goes: the web path for background is a patch on a platform that
+throttles it. The real answer is the plan already in this document, every part
+on the native engine, where the audio thread does not care what the page is
+doing. Until then background audio is best-effort: mõdSynth parts hold, sampled
+voices do not.
+
 ### Haptics
 
 Add one method to `modPlatform`, call it from the touch handlers, and let
