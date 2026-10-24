@@ -1746,6 +1746,45 @@ unchanged.
 
 ---
 
+## 5. Long-term goals (parked, not scheduled)
+
+Requested by users; nothing here is started, and none of it holds up 5.0.0.
+
+### Just intonation
+
+Today every pitch is 12-tone equal temperament: `440·2^((n−69)/12)` is
+spelled out in more than one place in `index.html` (`blFreq`, the sampler's
+range maths near `masterTune`, the clip pitch detector), in `modsynth/dsp.js` and in its C++ port. The only
+tuning control is `masterTune` (A4 = 432, 440 …), which moves all twelve notes
+together and changes no interval. Sampled voices are pitched by playback rate
+from the nearest MIDI note, so each would need a cents offset per note.
+
+What was asked for is what the Yamaha Harmony Director (HD-200/300) does for
+band and orchestra teachers: chords sounded pure, so the beating between
+sustained notes goes away (a major third about 14 c flat of equal, a fifth
+about 2 c sharp). A sketch of how it would go here:
+
+1. **One tuning table** — 12 cent offsets from a root, with presets (equal,
+   5-limit just, 7-limit, Pythagorean, quarter-comma meantone). Every pitch
+   calculation reads it; the same single-source-of-truth shape as `PARTS`.
+2. **Chord-following, not a fixed key.** Just intonation tunes intervals
+   against a root, so a fixed "C just" table is wrong the moment the
+   progression leaves C. The root comes from the chord timeline
+   (`_blChordWin` / `window._blOnChord`), which bass and melody already
+   follow. Static first, adaptive second — adaptive is the point.
+3. **Apply per engine.** Web oscillators and sampled voices take it through
+   `.detune`; mõdSynth takes it as a per-note pitch offset in `dsp.js` *and*
+   C++, with `tests/modsynth/null.test.js` confirming they still agree.
+4. **Optional** — a drone / tuning-reference tone, as the Director has.
+
+Open question: glides and pitch bend sit on `.detune` too, so the tuning
+offset has to be summed with them, not set over them. Where it pays off is
+sustained chords (pads, organ, strings); on drums and short samples it does
+nothing. A cheap first spike: pad, organ and chord voices on the web build with
+an Equal/Pure switch, to hear it before touching the native engine.
+
+---
+
 ## Where to start
 
 1. **`modEngine.send`** — every voice through one function on the web
