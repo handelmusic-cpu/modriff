@@ -14,8 +14,9 @@
 //
 // The worklet effects in front of it all (stutter, reverse, warp, bit and rate
 // crush, grain, the ladder filter) are modfxproc.cpp, a port held bit for bit to
-// the page's worklet source. Not here yet: the rhythmic gate's patterns and the
-// sample-source axes. See docs/v5-architecture.md, step N4.
+// the page's worklet source. The rhythmic gate's eight patterns are in the gate
+// stage (GATE_PATTERNS, held to index.html's by tests/modsynth/gatepat.test.js).
+// Not here yet: the sample-source axes. See docs/v5-architecture.md, step N4.
 //
 // The sound is not bit-identical to Web Audio's: the reverb is a feedback
 // delay network where the browser convolves a noise tail, and the oversampler
@@ -50,6 +51,12 @@ enum MixFxParam {
   // The buffer effects (ModFxProc): set, not smoothed, as the page sets the worklet's own parameters.
   MFX_STUTTER, MFX_REVERSE, MFX_WARP, MFX_CRUSH, MFX_SRATE, MFX_GRAIN, MFX_GRAINLEN,
   MFX_FLTMODE, MFX_FLTCUT, MFX_FLTRES, MFX_FLTDRV,
+  // The rhythmic gate's pattern. The gate's gain is the gate value above (already
+  // scaled by the page to leave room) plus the depth times the pattern's 0..1
+  // shape, as the web adds a looping buffer to gate.gain. The pattern is read
+  // as an integer 0..7; the rate is bars per second (1 / the bar's length).
+  // (No parameter names in these comments: the order test reads this enum.)
+  MFX_GATE_PAT, MFX_GATE_PAT_AMT, MFX_GATE_PAT_HZ,
   MFX_COUNT
 };
 

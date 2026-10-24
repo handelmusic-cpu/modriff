@@ -1439,9 +1439,24 @@ output sample is identical. `MixFx` runs it first in the chain, in the
 browser's 128-frame blocks, and `fxApplyChannel` fills the eleven values it
 needs from the same variables that set the worklet's own parameters.
 
-*Not in it yet:* gate patterns (the page ducks the base gate for them; the
-native chain leaves the base alone), and the sample-source axes, which read a
-clip held in the page. Those pad axes do nothing on a native part.
+*Gate patterns (4.9.9.9.9.8.9j).* The rhythmic gate's eight patterns run on a
+native part too: `GATE_PATTERNS` is copied into `mixfx.cpp`
+(`tests/modsynth/gatepat.test.js` fails if either copy moves), three parameters
+were appended to the enum (`gatePat`, `gatePatAmt`, `gatePatHz`), and the gate
+stage adds the pattern to the base gate as the web adds its looping buffer to
+`gate.gain`. The page now sends the base already ducked by the depth
+(`gate * (1 - depth)`), the pattern number from `_fxGatePatIdx` and the bar rate
+as bars per second. Measured (`mixfxtest`): pattern 1 opens on the beat and is
+shut between, pattern 5 gives eight openings a bar, a 1 s bar doubles them, base
+0.4 + depth 0.6 sits at 0.4 shut and 1.0 open, depth 0 changes nothing. The page
+side was driven through the real `fxApplyChannel` with a stand-in chain
+(0.05, 0.3, 0.55 and 0.99 on the axis send patterns 0, 2, 4, 7 and the matching
+gate and depth). Not bit-identical to the web, on purpose: the pattern keeps its
+place in the bar when the pattern number changes, where the web's loop points
+wrap the playhead.
+
+*Not in it yet:* the sample-source axes, which read a clip held in the page.
+Those pad axes do nothing on a native part.
 
 **N2 landed (4.9.9.9.9.8.6, Swift built for the simulator, not yet heard on a
 phone).** `native/modsynth/master.{h,cpp}` is `buildMasterBus` in C++: drive,
@@ -1677,6 +1692,21 @@ doing. Until then background audio is best-effort: mõdSynth parts hold, sampled
 voices do not.
 
 ### Haptics
+
+**Built (4.9.9.9.9.8.9i; the Swift compiles for the simulator, nothing has been felt on a phone).** `modPlatform.haptic(kind)` and
+`hapticPrepare()` are in `index.html`, called from the chord and 7th pads, the
+melody keys, the sample pads (`pad`), the mõdFX pad (`kaoss`, down and while
+dragging, at most one per 110 ms), the Bounce finish (`bounce`) and the sample
+steppers (`tick`). One preference, `modo-haptics`, with a button under Settings >
+General. The native side is `ios/App/App/ModHaptics/ModHaptics.swift`, not the
+stock `@capacitor/haptics`: that plugin builds a fresh generator on every call
+and never prepares it, which is the late first tap this section asks to avoid,
+so `ModHaptics` keeps its generators and prepares them again after each tap.
+`@capacitor/haptics` stays in `package.json` and `Package.swift` for now and is
+unused. Not yet done: knob detents (`tick` is only on the steppers) and the
+Mac `NSHapticFeedbackManager` bundle. The page side was driven with a stand-in
+plugin (throttles, the off switch, a real `pointerdown` on a chord pad); nobody
+has felt it yet.
 
 Add one method to `modPlatform`, call it from the touch handlers, and let
 the wrapper decide what it means:

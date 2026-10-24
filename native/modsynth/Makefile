@@ -42,7 +42,7 @@ warmtest: warmtest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h cap
 trimtest: trimtest.cpp master.cpp master.h dspkit.h
 	$(CXX) $(CXXFLAGS) -o $@ trimtest.cpp master.cpp
 fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest
-	./trimtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js
+	./trimtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 clean:
 	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
