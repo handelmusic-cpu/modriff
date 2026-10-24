@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7b</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7c</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7c</span></div>
  </div>
 </div>
 
@@ -9865,7 +9865,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7b';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -19320,6 +19320,27 @@ document.addEventListener('visibilitychange', function(){
    onAction:function(){ if(!isAnythingPlaying()){ startEverything(); if(typeof syncFixedTransport==='function') syncFixedTransport(); } }
   });
  }
+});
+
+// Playing on while the app is in the background has one catch: iOS slows the
+// page's timers to about one tick a second, and every note here is scheduled by
+// a timer a look-ahead in front of the audio (0.2–0.3 s). A tick that late is
+// a note that was never queued — the "parts drop out entirely" of the first
+// background builds. So while hidden the scheduler runs far enough ahead (3 s)
+// that a one-second tick still lands inside it. SCHED_INT is set to that
+// second too, because the stall watchdog (ensureClockRunning) calls a gap of
+// four intervals a dead clock and realigns, skipping steps; at the usual 25 ms
+// every throttled tick would look like one. Coming back puts the preset back. ALIGN_LEAD moves with
+// LOOK_AHEAD, as its definition requires.
+document.addEventListener('visibilitychange', function(){
+ if(!_bgKeepPlaying()) return;
+ try{
+  if(document.visibilityState === 'hidden'){
+   LOOK_AHEAD = 3; ALIGN_LEAD = 3; SCHED_INT = 1000;
+  } else {
+   setLatencyPreset('auto', {keep:true, silent:true});
+  }
+ }catch(e){}
 });
 
 function _resumeAudioIfNeeded(){
