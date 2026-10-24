@@ -6563,21 +6563,14 @@ body.light-mode .sq-layer-btn, body.light-mode .sq-layer-mute { color:#5a5f78; }
 .mix-strip > .mix-pank     { grid-area:pank; }
 .mix-strip > .mix-pan      { grid-area:pan; }
 .mix-strip > .mix-panval   { grid-area:panv; }
-/* Pan sits on its own thin row between the fader and the sends, outside the
-   Pro-only sends box so Live gets it too. The track lines up under the fader
+/* Pan sits on its own row between the fader and the sends, outside the
+   Pro-only sends box so Live gets it too. The knob is centred under the fader
    and the readout under the level number, so the two read as one column. */
 .mix-pank { font-size:.32rem; font-weight:700; letter-spacing:.06em; color:#5a6090; line-height:1;
  user-select:none; -webkit-user-select:none; }
-.mix-pan { position:relative; height:22px; cursor:ew-resize; touch-action:none; border-radius:4px;
- margin:0 8px; }
+.mix-pan { display:flex; align-items:center; justify-content:center; height:34px; cursor:ns-resize;
+ touch-action:none; border-radius:50%; }
 .mix-pan:focus-visible { outline:2px solid var(--pr); outline-offset:1px; }
-.mix-pan-track { position:absolute; left:0; right:0; top:50%; height:3px; margin-top:-1.5px;
- border-radius:2px; background:rgba(255,255,255,.12); }
-.mix-pan-fill { position:absolute; top:50%; height:3px; margin-top:-1.5px; border-radius:2px; }
-.mix-pan-notch { position:absolute; left:50%; top:50%; width:2px; height:12px; margin:-6px 0 0 -1px;
- border-radius:1px; background:rgba(255,255,255,.35); }
-.mix-pan-cap { position:absolute; top:50%; width:13px; height:13px; margin:-6.5px 0 0 -6.5px;
- border-radius:50%; border:2px solid var(--surf2); box-shadow:0 0 0 1px rgba(0,0,0,.4); }
 .mix-panval { font-size:.46rem; text-align:right; line-height:1.1; white-space:nowrap; width:44px;
  font-variant-numeric:tabular-nums; color:var(--muted); }
 .mix-val { font-size:.46rem; text-align:right; min-height:11px; line-height:1.1;
@@ -7797,7 +7790,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.3</span></div>
  </div>
 </div>
 
@@ -9034,7 +9027,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.2</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.3</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10023,7 +10016,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.2';
+const MODRIFF_VERSION = '4.9.9.9.9.8.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -52159,65 +52152,73 @@ window.mixSetPan = function(id, v){
 };
 function _mixBuildPan(ch, strip){
  var k=document.createElement('div'); k.className='mix-pank'; k.textContent='PAN';
+ // A knob, not a slider (4.9.9.9.9.8.3): it is the same ring as the sends and
+ // the drum knobs, filled outwards from the top so centre is "nothing" and a
+ // hard left or right is a long arc. The wrapper takes the pointer; the canvas
+ // is only paint.
  var el=document.createElement('div'); el.className='mix-pan'; el.tabIndex=0;
  el.setAttribute('role','slider');
  el.setAttribute('aria-valuemin','-100'); el.setAttribute('aria-valuemax','100');
  el.setAttribute('aria-label',ch.label+' pan');
- el.title=ch.label+' pan. Drag left or right; double-tap to centre.';
- var track=document.createElement('div'); track.className='mix-pan-track';
- var fill=document.createElement('div'); fill.className='mix-pan-fill'; fill.style.background=ch.color;
- var notch=document.createElement('div'); notch.className='mix-pan-notch';
- var cap=document.createElement('div'); cap.className='mix-pan-cap'; cap.style.background=ch.color;
- el.appendChild(track); el.appendChild(fill); el.appendChild(notch); el.appendChild(cap);
+ el.title=ch.label+' pan. Drag up or right for right, down or left for left; double-tap to centre.';
+ var cv=document.createElement('canvas'); cv.style.width='32px'; cv.style.height='32px';
+ el.appendChild(cv);
  var out=document.createElement('div'); out.className='mix-panval';
+ var color=_mixResolveColor(ch.color);
  var val=(window.sqMixPan && +window.sqMixPan[ch.id]) || 0;
- // Percentages, not measured pixels, for the reason the fader's cap is
- // (painted before the strip is in the document, where widths read 0).
+ // The knob's own position keeps the unsnapped value while a drag is in
+ // progress: snapping the stored number to centre on every move would make
+ // the detent a wall you could not cross, since each small move would land
+ // back on zero.
+ var raw=val;
  function paint(){
-  var pct=(val+1)*50;
-  cap.style.left=pct+'%';
-  fill.style.left=Math.min(50,pct)+'%'; fill.style.width=Math.abs(pct-50)+'%';
+  sqDrawKnob(cv, val*100, -100, 100, color, {bipolar:true});
   out.textContent=mixPanLabel(val);
   out.style.color = val===0 ? 'var(--muted)' : uiTextColor(ch.color);
   el.setAttribute('aria-valuenow',String(Math.round(val*100)));
   el.setAttribute('aria-valuetext',mixPanLabel(val));
  }
  function set(v){
-  v=Math.max(-1,Math.min(1,v));
+  raw=Math.max(-1,Math.min(1,v));
   // A detent at centre: landing within a few percent of it is centre, since
   // an exact 0 by thumb is otherwise a matter of luck.
-  if(Math.abs(v)<0.05) v=0;
-  val=Math.round(v*100)/100; paint(); window.mixSetPan(ch.id, val);
+  var n = Math.abs(raw)<0.05 ? 0 : raw;
+  var nv = Math.round(n*100)/100;
+  if(nv===val) return;
+  val=nv; paint(); window.mixSetPan(ch.id, val);
  }
- function fromX(clientX){
-  var r=el.getBoundingClientRect(); if(r.width<1) return;
-  set(((clientX-r.left)/r.width)*2-1);
- }
- var lastTap=0, dragging=false;
+ function center(){ raw=0; if(val!==0){ val=0; paint(); window.mixSetPan(ch.id, 0); } }
+ var lastTap=0, dragging=false, lx=0, ly=0;
  el.addEventListener('pointerdown',function(e){
   e.preventDefault();
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
   el.focus({preventScroll:true});
   var now=Date.now();
   // Second tap inside 300ms: back to centre, and no drag until the next press.
-  if(now-lastTap<300){ lastTap=0; dragging=false; set(0); return; }
-  lastTap=now; dragging=true; fromX(e.clientX);
+  if(now-lastTap<300){ lastTap=0; dragging=false; center(); return; }
+  lastTap=now; dragging=true; lx=e.clientX; ly=e.clientY; raw=val;
  });
  el.addEventListener('pointermove',function(e){
   if(!dragging || !el.hasPointerCapture || !el.hasPointerCapture(e.pointerId)) return;
-  fromX(e.clientX);
+  // Right or up is right, as with the other dials (up is more); 120px for the
+  // whole way round the ring, 60px from centre to an end, which leaves room to
+  // park a thumb between a quarter and a half.
+  var d=((e.clientX-lx)+(ly-e.clientY))/120*2;
+  lx=e.clientX; ly=e.clientY;
+  if(Math.abs(d)>0.0005) set(raw+d);
  });
  ['pointerup','pointercancel'].forEach(function(ev){
   el.addEventListener(ev,function(e){ dragging=false; try{ el.releasePointerCapture(e.pointerId); }catch(_){} });
  });
  // A mouse's double-click arrives as one press with a click count, not two
  // quick presses, so it needs its own way to centre.
- el.addEventListener('dblclick',function(e){ e.preventDefault(); set(0); });
+ el.addEventListener('dblclick',function(e){ e.preventDefault(); center(); });
+ el.addEventListener('wheel',function(e){ e.preventDefault(); set(raw+(e.deltaY<0?0.05:-0.05)); },{passive:false});
  el.addEventListener('keydown',function(e){
   var step=e.shiftKey?0.2:0.05;
   if(e.key==='ArrowRight'||e.key==='ArrowUp') set(val+step);
   else if(e.key==='ArrowLeft'||e.key==='ArrowDown') set(val-step);
-  else if(e.key==='Home'||e.key==='Delete'||e.key==='Backspace') set(0);
+  else if(e.key==='Home'||e.key==='Delete'||e.key==='Backspace') center();
   else return;
   e.preventDefault();
  });
