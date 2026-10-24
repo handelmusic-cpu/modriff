@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9h</span></div>
  </div>
 </div>
 
@@ -9059,7 +9059,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9h</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -9605,8 +9605,8 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      <button class="bl-mopt" id="blw-tri" onclick="setBlWave('triangle')">Tri</button>
      <button class="bl-mopt" id="blw-sin" onclick="setBlWave('sine')">Sub</button>
      <button class="bl-mopt" id="blw-elec" onclick="setBlWave('electric')">Elec</button>
-     <button class="bl-mopt" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
-     <button class="bl-mopt active" id="blw-upreal" onclick="setBlWave('upright_real')" title="Upright 1 ◆ — recorded upright bass (SoundFont set). Falls back to the synth Uprt offline">Up 1</button>
+     <button class="bl-mopt active" id="blw-up" onclick="setBlWave('upright')">Uprt</button>
+     <button class="bl-mopt" id="blw-upreal" onclick="setBlWave('upright_real')" title="Upright 1 ◆ — recorded upright bass (SoundFont set). Falls back to the synth Uprt offline">Up 1</button>
      <button class="bl-mopt" id="blw-upright2" onclick="setBlWave('upright2')" title="Upright 2 ◆ — recorded double bass, every semitone from E1 (pjcohen, CC0). Falls back to the synth Uprt offline">Up 2</button>
      <button class="bl-mopt" id="blw-motown" onclick="setBlWave('bass_motown')" title="Motown — fingered P-bass, flatwounds, foam mute: the deep, dead thump under a Jamerson line">Motown</button>
      <button class="bl-mopt" id="blw-hofner" onclick="setBlWave('bass_hofner')" title="Höfner — picked violin bass: woody, round, short — the 60s McCartney sound">Höfner</button>
@@ -10048,7 +10048,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9g';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9h';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18672,10 +18672,14 @@ const VOICE_TYPES = [
 // 4.9.9.5 finished the job at the owner's word: the arp on Sine and the
 // melody sequencer on Triangle — plain waves, free and nothing to download —
 // and the Aux layer's Perc kit free too. Every default is now one free has. Only a fresh start sees them — a restored
-// session, a setup or a song brings its own. The recorded ones are fetched
-// when audio unlocks (see unlockAudio's finish), since a default never goes
-// through the setters that fetch on selection.
-let root=0, mode='major', wave='pianoreal', voicing='close', octShift=0;
+// session, a setup or a song brings its own.
+//
+// 4.9.9.9.9.8.9h, the owner's word again: chords on Piano (synth) and bass on
+// Upright (the synth one, not Upright 1), and the recorded Piano 1 and Upright 1
+// are Pro like every other recording. The defaults are plain synth voices, so
+// there is nothing to fetch when audio unlocks and a first launch makes sound
+// at once, on free as on Pro. The drums moved to the Linn in 4.9.9.9.9.8.9.
+let root=0, mode='major', wave='piano', voicing='close', octShift=0;
 let masterTune=440; // A4 reference pitch — change for 432Hz etc.
 let nashMode=false, showRelMinors=true;
 let melWave='sine', melOctShift=12, melMode='keys', holdMode=false;
@@ -28473,6 +28477,14 @@ window.setArpClock = setArpClock; window.setArpFreeMs = setArpFreeMs; window.arp
  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else setTimeout(wire, 0);
 })();
 function setArpWave(w){
+  // The setter half of the free tier, as setBlWave has it: every way of choosing
+  // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
+  // only a tap met the lock on the button. A restore runs before the tier is
+  // known and gets through; freeApplyLimits moves it back.
+  if(typeof freeAllowsVoice==='function' && !freeAllowsVoice(w)){
+    if(typeof freeBlocked==='function') freeBlocked('That sound');
+    return;
+  }
  arpWave=w;
  document.querySelectorAll('[data-arpwave]').forEach(b=>
   b.classList.toggle('active', b.dataset.arpwave===w));
@@ -30058,6 +30070,14 @@ function syncVoicingUI(){
 }
 window.syncVoicingUI=syncVoicingUI;
 function setWave(w){
+  // The setter half of the free tier, as setBlWave has it: every way of choosing
+  // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
+  // only a tap met the lock on the button. A restore runs before the tier is
+  // known and gets through; freeApplyLimits moves it back.
+  if(typeof freeAllowsVoice==='function' && !freeAllowsVoice(w)){
+    if(typeof freeBlocked==='function') freeBlocked('That sound');
+    return;
+  }
  wave=w;
  syncVoicingUI();
  if(typeof syncSSPreviews==='function') syncSSPreviews();
@@ -31441,10 +31461,19 @@ function _ppPatchItems(hostId, partKey){
  if(partKey === 'bass'){
   try{ VOICE_PARTS.find(function(p){ return p.k === 'bass'; }).opts.slice(0,12).forEach(function(o){ own[o[0]] = 1; }); }catch(e){}
  }
- var items = Array.prototype.filter.call(sel.options, function(o){ return !o.hidden && !o.disabled; }).map(function(o){
-  return { sect: own[o.value] ? 'Bass' : (/◆/.test(o.textContent) ? 'Recorded' : 'Synth & sampler'),
-           label: o.textContent, active: o.value === sel.value,
-           pick: function(){ sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles:true})); } };
+ // A voice free cannot pick is a disabled option (freeApplyLimits), and this
+ // list used to drop every disabled option, so on free the Bass and Melody Seq
+ // Patch dropdowns simply did not have the recorded voices or mõdSynth at all.
+ // They are listed now, locked, and tapping one opens the Pro sheet. hidden is
+ // still dropped: that is an option that is not for this part.
+ var items = Array.prototype.filter.call(sel.options, function(o){ return !o.hidden; }).map(function(o){
+  var lockedByTier = !!o.disabled;
+  var name = (o.dataset && o.dataset.l) ? o.dataset.l : o.textContent;   // without the " (Pro)"
+  return { sect: own[o.value] ? 'Bass' : (/◆/.test(name) ? 'Recorded' : 'Synth & sampler'),
+           label: name, active: o.value === sel.value, locked: lockedByTier,
+           pick: lockedByTier
+             ? function(){ if(typeof proSheet==='function') proSheet(name.replace(/\s*◆$/,'')); }
+             : function(){ sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles:true})); } };
  });
  var secs = _ppSections(['Bass','Recorded','Synth & sampler'], items);
  // The ◈ on the Voices row is the way into this part's sampler; the row is
@@ -42482,6 +42511,14 @@ function buildMelVoicePickers(){
 }
 
 function setMelWave(w){
+  // The setter half of the free tier, as setBlWave has it: every way of choosing
+  // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
+  // only a tap met the lock on the button. A restore runs before the tier is
+  // known and gets through; freeApplyLimits moves it back.
+  if(typeof freeAllowsVoice==='function' && !freeAllowsVoice(w)){
+    if(typeof freeBlocked==='function') freeBlocked('That sound');
+    return;
+  }
  melWave = w;
  if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.querySelectorAll('[data-melwave]').forEach(b=>
@@ -49076,7 +49113,7 @@ var _blStepSecLive = 0;
 // starting point should not be. A restored session carries its own style,
 // so this only decides where a blank one begins.
 var blGenStyle = 'funk';
-var blWave = 'upright_real';
+var blWave = 'upright';
 var blCutoff = 600;
 var blResonance = 2;
 var blOpen = true;
@@ -52160,6 +52197,14 @@ window.mlClear = function(){
 
 // ── melody-sequencer voice selector ──
 window.setMlWave = function(w){
+  // The setter half of the free tier, as setBlWave has it: every way of choosing
+  // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
+  // only a tap met the lock on the button. A restore runs before the tier is
+  // known and gets through; freeApplyLimits moves it back.
+  if(typeof freeAllowsVoice==='function' && !freeAllowsVoice(w)){
+    if(typeof freeBlocked==='function') freeBlocked('That sound');
+    return;
+  }
   mlWave = w;
   if(typeof window._preloadIfSampled==='function') window._preloadIfSampled(w);
   // One sweep of the data attribute, the way every other voice row syncs.
@@ -57747,12 +57792,12 @@ const FREE_LIMITS = {
   modfx:        true,
   fxPatches:    ['Filter Sweep','Tape Stop','Dub Delay','Riser'],
   samples:      false,   // the sampled ◆ voices, except freeVoices below
-  // The two recorded instruments every fresh start plays — Piano 1 on the
-  // chords and Upright 1 on the bass — so a first launch sounds like the real
-  // thing. The whole pitch is the sound; a free tier that only had synth
-  // voices would sell the wrong first impression. Vibes went Pro with the
-  // rest in 4.9.9.9.9.8.9.
-  freeVoices:   ['pianoreal','upright_real'],
+  // No recorded voice is free: Piano 1, Upright 1, Vibes and the rest of the ◆
+  // instruments are Pro, and so is mõdSynth. Free has every synth voice. It
+  // briefly had two (Piano 1 and Upright 1, 4.9.9.4 to 4.9.9.9.9.8.9g) so that a
+  // first launch sounded like the real thing; the owner moved the defaults to
+  // the synth Piano and Upright instead and took them back out (4.9.9.9.9.8.9h).
+  freeVoices:   [],
   freeModes:    ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','minor_pent'],
   sampler:      false,   // recording/importing your OWN clips, and the user pad banks
   modsynth:     false,   // sound design, as opposed to picking a sound
@@ -58439,7 +58484,7 @@ function freeApplyLimits(){
   if(free){
    try{
     const bw = window._blCaptureState().wave;
-    if(bw && !freeAllowsVoice(bw)) window.setBlWave('upright_real');
+    if(bw && !freeAllowsVoice(bw)) window.setBlWave('upright');
    }catch(e){}
   }
   // Drum kits — mõdKit only.
@@ -58475,7 +58520,9 @@ function freeApplyLimits(){
   const gated = sampled.concat(['modsynth']);
   gated.forEach(w=>{
    const lock = free && !freeAllowsVoice(w);
-   document.querySelectorAll('[data-wave="'+w+'"],[data-arpwave="'+w+'"],[data-melwave="'+w+'"]')
+   // data-mlwave is the Melody Seq's row. It was missing from this list, so on
+   // free every recorded voice and mõdSynth sat unlocked in that one picker.
+   document.querySelectorAll('[data-wave="'+w+'"],[data-arpwave="'+w+'"],[data-melwave="'+w+'"],[data-mlwave="'+w+'"]')
     .forEach(b=>b.classList.toggle('tier-locked', lock));
    // The bass's own quick buttons name their voice only in onclick.
    document.querySelectorAll('.bl-mopt[onclick="setBlWave(\''+w+'\')"]')
@@ -58529,6 +58576,15 @@ function freeApplyLimits(){
      setWave(fb);
     }catch(e){}
    }
+   // The other three parts. Only chords and bass were ever brought back, so a
+   // setup or a shared link could leave the arp, the melody keys or the Melody
+   // Seq on a Pro voice for good.
+   try{ if(typeof arpWave!=='undefined' && !freeAllowsVoice(arpWave)) setArpWave('sine'); }catch(e){}
+   try{ if(typeof melWave!=='undefined' && !freeAllowsVoice(melWave)) setMelWave('sine'); }catch(e){}
+   try{
+    const mw=window._mlCaptureState && window._mlCaptureState().wave;
+    if(mw && !freeAllowsVoice(mw) && typeof window.setMlWave==='function') window.setMlWave('triangle');
+   }catch(e){}
   }
  }catch(e){ /* a tier check must never break a render */ }
 }
