@@ -229,6 +229,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve([
             "streams": streams,
             "originMs": r["originMs"] ?? 0,
+            "drainMs": r["drainMs"] ?? 0,
             "sampleRate": r["sampleRate"] ?? host.sampleRate
         ])
     }

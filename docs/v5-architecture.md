@@ -1547,20 +1547,40 @@ Bounce and stems now hear the native engine.
   from the file by that. Not measurable here. A stem take with many native parts
   is a few MB/s over the bridge; unmeasured on a phone.
 
-**N5 correction (4.9.9.9.9.8.7b): the first real bounce had the native chord
-31 ms early.** The first phone bounce (`modo-session 7`) had every stem and the
-mix whole (8 files, 50.29 s each, no dropouts), the native chord in its own
-stem from when it was played. Measured against the `.mid` the same take wrote
-(`tests/stems/bounce-check.py`): web parts sat within a few ms of the log
-(kicks -2.7, melody -2.4, arp +3.9, bass +7.6 ms), the native chord at -31 ms
-with a middle half of 2 ms wide: a constant, not jitter, so the clock alignment.
-The host's origin was the *minimum* of block wall-minus-frame, on the theory
-that a callback can start late but never early. It can: the minimum latches
-onto an early outlier, while a live note is placed using the block that drains
-it (`applyMessage`), a typical one. Now `PhaseTracker` (capture.h): a running
-median by sign steps, 99.87 against a true 100 where the earliest block says
-68.9, within 1 ms after 300 blocks (`capturetest`). Run `bounce-check.py` on the
-next bounce: the chord should now read with the web parts.
+**N5 correction (4.9.9.9.9.8.7b, 7c): the native chord was 31 ms, then 46 ms,
+early in a real bounce.** The first phone bounce (`modo-session 7`) had every
+stem and the mix whole (8 files, 50.29 s each, no dropouts) and the native
+chord in its own stem from when it was played. Measured against the `.mid` the
+same take wrote (`tests/stems/bounce-check.py`): web parts within a few ms of
+the log (kicks -2.7, melody -2.4, arp +3.9, bass +7.6 ms), the native chord at
+-31 ms with a middle half 2 ms wide: a constant, not jitter.
+
+*First guess, wrong (7b).* The host's origin was the minimum of block
+wall-minus-frame ("a callback can start late, never early"); 7b made it a
+running median (`PhaseTracker`, which does track outliers: 99.87 against 100
+where the earliest block says 68.9). The next phone bounce, from 7b (the WAV's
+tag says so), had the chord at **-46 ms**. Different number, same kind of error:
+the estimator was never the whole story.
+
+*What it is.* A note is placed at its block's frame plus its wait, using the
+wall time of the block that *drained* it (`applyMessage`). Working the placement
+through, a note lands at `T + lag + (origin - off_d)`, `off_d` being the drain
+block's phase, `lag` the web clock's (up to a render quantum). Messages are
+drained by the first callback after they arrive, and with bursty callbacks that
+is usually the one after a gap: blocks that place notes are not a sample of all
+blocks, so no average over all blocks (minimum or median) is `off_d`, and the
+error moves with the cadence (-31, then -46).
+
+*The fix.* Measure it: the host averages `off_d - origin` over the note-ons it
+actually placed (`drainMs`), reports it with `originMs`, and the page places
+native audio at `origin + drainMs`. It is exact whatever the origin estimator
+is. `hosttest` reproduces the mechanism with callbacks in bursts of 16 blocks:
+origin-only error -19.1 ms, with `drainMs` (+20.9) +1.8 ms, against +2.4 ms on a
+smooth cadence. Live placement is not touched: it is what the owner has been
+listening to, and whether it is early *as heard* depends on the two engines'
+output latencies, which are not measurable from here. The file now follows the
+MIDI grid, so stems and `.mid` line up in a DAW. Run `bounce-check.py` on the
+next bounce: the chord should read with the web parts.
 
 **Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
 render thread and the plugin then warmed it up, which plays sixteen notes into
