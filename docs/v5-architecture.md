@@ -15,6 +15,8 @@ are cheaper to make before code than after.
 | 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
+**App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
+
 **Versioning, as decided:** 5.0.0 is the native App Store release. Until then
 every step ships as a 4.9.x increment (a further part where it helps, and a
 trailing lowercase letter for a follow-up to the release just out, per the
