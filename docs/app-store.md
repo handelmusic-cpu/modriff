@@ -149,18 +149,18 @@ the app genuinely plays music in the background, which the note above says.
 
 `docs/app-store/screenshots/` holds five at **1320 x 2868**, the 6.9" iPhone
 size, which is the one App Store Connect requires (smaller iPhone sizes are
-scaled from it). They are captures of the build at 4.9.9.9.9.7.7j, taken in a phone-sized browser rather than on a device.
+scaled from it). They are captures of the build at 4.9.9.9.9.7.7j, taken in a phone-sized browser rather than on a device, after pressing Random on the splash screen so every screen has a song, a drum pattern and a chord row in it rather than an empty state.
 
 | file | shows |
 |---|---|
 | `6.9in-01-splash.png` | the splash screen |
-| `6.9in-02-play.png` | Play: chord pads, melody keys, sampler |
-| `6.9in-03-accomp.png` | Accomp: drum sequencer |
-| `6.9in-04-sound.png` | Sound: the mixer |
-| `6.9in-05-songs.png` | Songs: the song builder |
+| `6.9in-02-play.png` | Play: coloured chord pads, melody keys, sampler |
+| `6.9in-03-accomp.png` | Accomp: a drum pattern on the step sequencer |
+| `6.9in-04-songs.png` | Songs: a song with a chord progression |
+| `6.9in-05-sound.png` | Sound: the mixer |
 
 The same five for iPad are in the same folder as `13in-01-splash.png` to
-`13in-05-songs.png`, at **2064 x 2752**, the 13" iPad size App Store Connect
+`13in-05-sound.png`, at **2064 x 2752**, the 13" iPad size App Store Connect
 requires because the app ships for iPad (`TARGETED_DEVICE_FAMILY = "1,2"`;
 smaller iPad sizes are scaled from it). Upload the `6.9in-` set under iPhone 6.9"
 and the `13in-` set under iPad 13".
