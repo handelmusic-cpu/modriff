@@ -1748,12 +1748,13 @@ Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
 | Bass styles | Rock, Jazz, Funk, Latin | the rest |
 | Melody styles | Pop Hook (the default), Rock, Jazz, Funk, Latin | the rest |
 | Live page | the standard layout (Chords, Melody); the Pads and mõdFX widgets are free if a layout has them | adding, swapping, moving or removing widgets |
-| Voices | synth waves, Piano 1, Upright 1 | other recorded voices, mõdSynth |
+| Voices | every synth voice (Piano (synth), Upright, Rhodes, Organ, the waves...) | every recorded voice, Piano 1 and Upright 1 included, and mõdSynth; locked and listed in every picker |
 | Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
 | Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |
 | Stems | none | per-part stems from Bounce |
 
-Fresh-start defaults are all free ones: drums on the Linn, Aux on 606.
+Fresh-start defaults are all free ones: drums on the Linn, Aux on 606, chords on Piano (synth), bass on Upright (the synth one, not Upright 1).
+Every way of choosing a voice refuses a Pro one (the five setters), not just the locked buttons.
 
 ### Pro content in a free build
 

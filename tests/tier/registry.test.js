@@ -45,8 +45,12 @@ eq(['hook','rock','jazz','funk','latin','arpeggio','scalerun','riff','callrespon
 eq(['major','minor','dorian','phrygian','lydian','mixolydian','locrian','minor_pent',
     'major_pent','blues','harmonic_minor','hijaz','whole_tone','pelog','user:mine'].map(T.freeAllowsMode),
    [true,true,true,true,true,true,true,true,false,false,false,false,false,false,false], 'scales');
-eq(['pianoreal','upright_real','vibes','upright2','bass_motown','bass_hofner','bass_picked','jazzgtr','modsynth','sine','saw','square'].map(T.freeAllowsVoice),
-   [true,true,false,false,false,false,false,false,false,true,true,true], 'voices');
+// No recorded voice is free, Piano 1 and Upright 1 included; every synth voice is.
+eq(['pianoreal','upright_real','vibes','upright2','bass_motown','bass_hofner','bass_picked','jazzgtr','modsynth'].map(T.freeAllowsVoice),
+   [false,false,false,false,false,false,false,false,false], 'recorded voices and mõdSynth are Pro');
+eq(['piano','upright','electric','rhodes','organ','pad','sine','saw','square','triangle','supersaw'].map(T.freeAllowsVoice),
+   [true,true,true,true,true,true,true,true,true,true,true], 'synth voices are free');
+eq(T.FREE_LIMITS.freeVoices, [], 'the list of free recorded voices is empty');
 eq(['Filter Sweep','Tape Stop','Dub Delay','Riser','HP Riser','Lo-Fi'].map(T.freeAllowsFxPatch), [true,true,true,true,false,false], 'mõdFX patches');
 eq(['4/4 Basic','Shuffle','Half-Time Rock','4/4 Funk','House','Bossa Nova','3/4 Waltz','12/8 Slow','Trap','6/8 Feel','4/4 Rock'].map(T.freeAllowsGroove),
    [true,true,true,true,true,true,true,true,false,false,false], 'grooves');
@@ -60,7 +64,7 @@ ok([11,33,48,64].every(T.freeAllowsSteps), 'pro: any step count');
 ok(T.slCanAdd(songs(50)), 'pro: unlimited songs');
 ok(['MOD','PERC','909'].every(T.freeAllowsKit), 'pro: every kit');
 ok(['hijaz','user:mine','pelog'].every(T.freeAllowsMode), 'pro: every scale');
-ok(['vibes','upright2','modsynth'].every(T.freeAllowsVoice), 'pro: every voice');
+ok(['pianoreal','upright_real','vibes','upright2','modsynth'].every(T.freeAllowsVoice), 'pro: every voice');
 ok(T.freeAllowsMeter(7, 8) && T.freeAllowsGroove('Trap') && T.freeAllowsFxPatch('Lo-Fi') && T.freeAllowsPad('A', 15), 'pro: meters, grooves, patches, pads');
 ok(['stemExport','fullAudioExport','fullMidiExport','sampler','modsynth'].every(f => T.modAllows(f)), 'pro: gated features on');
 
@@ -74,7 +78,11 @@ T.FREE_LIMITS.fxPatches.forEach(p => has(new RegExp("\\{name:'" + p + "',"), 'm�
 T.FREE_LIMITS.freeModes.forEach(m => has(new RegExp("\\n ?" + m + ": \\{|\\n ?'?" + m + "'?:\\s*\\{|id:'" + m + "'"), 'scale ' + m + ' exists'));
 T.FREE_LIMITS.padBanks.forEach(b => has(new RegExp("PS_BANKS = \\[[^\\]]*'" + b + "'"), 'pad bank ' + b + ' is in PS_BANKS'));
 T.FREE_LIMITS.freeVoices.forEach(v => has(new RegExp("\\b" + v + "\\b"), 'free voice ' + v + ' is referenced'));
-// fresh-start defaults are free ones
+// fresh-start defaults are free ones: synth Piano on the chords, synth Upright on the bass
+has(/let root=0, mode='major', wave='piano',/, 'the default chord voice is Piano (synth)');
+has(/var blWave = 'upright';/, 'the default bass voice is Upright (the synth one, not Upright 1)');
+ok(T.freeAllowsVoice('piano') && T.freeAllowsVoice('upright'), 'both default voices are free');
+has(/<button class="bl-mopt active" id="blw-up" /, 'the bass quick row lights Uprt, the default');
 has(/var sqSwing=0, sqMach='LIN'/, 'the default drum kit is the Linn');
 has(/var sqLayers = \[ \{mach:'LIN'[^\]]*\{mach:'606'/, 'the default layers are Linn and 606');
 ok(T.FREE_LIMITS.drumKits.indexOf('LIN') >= 0 && T.FREE_LIMITS.drumKits.indexOf('606') >= 0, 'both default kits are free');
