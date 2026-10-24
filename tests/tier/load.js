@@ -25,9 +25,18 @@ module.exports = function load(){
     ' freeAllowsSteps, freeClampSteps, freeAllowsMeter, freeAllowsGroove, freeAllowsFxPatch,' +
     ' freeAllowsPad, freeAllowsMode, freeAllowsVoice, freeAllowsArpRate, slCanAdd, _slCount,' +
     ' setTier: function(t){ _modTier = t; } });';
+  // The real voice lists, read out of the page: a hand-written stand-in let a
+  // wrong id ("upright_real2" for upright2) pass a test about Pro bass voices.
+  const keysOf = (head, re) => {
+    const a = html.indexOf(head), b = html.indexOf('};', a);
+    if (a < 0 || b < 0) throw new Error(head + ' not found');
+    const out = {}; let m;
+    while ((m = re.exec(html.slice(a, b)))) out[m[1]] = 1;
+    return out;
+  };
   const sandbox = {
-    SAMPLED_WAVES: { pianoreal:1, vibes:1, rhodes_real:1 },
-    BASS_SAMPLED:  { upright_real:1, upright_real2:1 },
+    SAMPLED_WAVES: keysOf('const SAMPLED_WAVES = {', /(?:^|[{,\s])(\w+):'/g),
+    BASS_SAMPLED:  keysOf('var BASS_SAMPLED = {', /\n (\w+):\s*\{lib:/g),
     console,
   };
   // modTier / _modTier the way the app has them: a var and a reader.
