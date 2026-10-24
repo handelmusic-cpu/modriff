@@ -4580,6 +4580,7 @@ body.light-mode .ft-more-menu { background:#f9faff; border-top-color:color-mix(i
 .ft-sheet-items > .ft-btn { flex:0 1 auto; min-width:64px; }
 /* Export and Parts are few and wide; the icons in More want to stay small. */
 #ft-sheet-export > .ft-btn { flex:1 1 90px; }
+#ft-sheet-file > .ft-btn { flex:1 1 80px; }
 .ft-sheet-items > .ft-btn.ur,
 .ft-sheet-items > .ft-btn.dice { flex:0 0 auto; min-width:40px; padding-left:8px; padding-right:8px; }
 .ft-sheet-items > .tips-btn { flex:0 0 auto; }
@@ -7412,6 +7413,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
      sit in its own row above the tabs — a second, separate control strip
      competing with the tab bar for the top of the screen. It lives here now,
      with everything else you touch during a performance. -->
+<input type="file" id="project-file" accept=".json,application/json" style="display:none" onchange="projectOpenFile(this)">
 <div class="perf-bar" id="perf-bar">
  <button type="button" id="ft-drawer-grip" aria-label="More controls"
    aria-haspopup="true" onclick="toggleFtMore(event)"></button>
@@ -7636,6 +7638,24 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    </div>
 
+   <!-- FILE (4.9.9.9.9.8.2). New, Open and Save for a whole project: the chart and
+        its title, every part's grid and patch, the mixer and the master bus.
+        It is the Setups machinery (captureSetup / applySetup) pointed at one
+        file you name, so a project is a .modriff.json that Setups can also
+        import. It does not carry the setlist (Open must never wipe your
+        songs) or the sampler's audio, which lives on the device. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">File</div>
+    <div class="ft-sheet-items" id="ft-sheet-file">
+     <button class="ft-btn ft-plain" onclick="ftGo(projectNew)"
+       title="Start a blank project — empty chart, fresh patterns and patches. Undo is offered.">New</button>
+     <button class="ft-btn ft-plain" onclick="ftGo(projectOpen)"
+       title="Open a project file saved with Save">Open</button>
+     <button class="ft-btn ft-plain" onclick="ftGo(projectSave)"
+       title="Save this project as a file">Save</button>
+    </div>
+   </div>
+
    <!-- CAPTURE. Both recorders that write back INTO the app rather than out to
         disk, side by side, because they are the same gesture aimed at different
         lanes: play, stop, and what you played is now editable. The row was
@@ -7777,7 +7797,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.0b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.2</span></div>
  </div>
 </div>
 
@@ -9014,7 +9034,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.0b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.2</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10003,7 +10023,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.0b';
+const MODRIFF_VERSION = '4.9.9.9.9.8.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18814,7 +18834,7 @@ function saveLastSession(){
 // Nothing is deleted. Resume still has the last session until the autosave
 // replaces it, and the toast's Undo puts it back straight away — an
 // accidental Start used to cost only the chart; it would now cost the grids.
-function startFresh(){
+function startFresh(quiet){
  var prev = null;
  try{ prev = modStore.getItem(LAST_SESSION_KEY); }catch(e){}
  if(window._sqFactory && typeof window._sqRestoreState==='function') window._sqRestoreState(JSON.parse(JSON.stringify(window._sqFactory)));
@@ -18828,7 +18848,7 @@ function startFresh(){
  }
  var had = false;
  try{ had = !!(prev && JSON.parse(prev)); }catch(e){}
- if(had && typeof showToast==='function'){
+ if(had && !quiet && typeof showToast==='function'){
   showToast('Started fresh', {actionLabel:'Undo', onAction:function(){
    try{ if(applySetup(JSON.parse(prev))) showToast('Back where you left off'); }catch(e){}
   }});
@@ -33418,6 +33438,9 @@ function _setupLiveName(){
 function setupExport(id){
  const st = id ? loadSetupsData().find(x=>x.id===id) : captureSetup(_setupLiveName(),true);
  if(!st){ showToast('Setup not found'); return; }
+ _setupDownload(st);
+}
+function _setupDownload(st){
  try{
   const blob=new Blob([JSON.stringify(st,null,1)],{type:'application/json'});
   // Chromium silently discards a download filename containing non-ASCII and
@@ -33431,6 +33454,105 @@ function setupExport(id){
   modPlatform.saveFile(fname, blob);
   showToast('Exported '+fname);
  }catch(e){ showToast('Export failed'); }
+}
+
+// ── Project: New / Open / Save (4.9.9.9.9.8.2) ──────────────────────────────
+// A project is a setup (captureSetup/applySetup — the one serialiser undo,
+// Last session and share links already use) plus the two things those leave
+// out because they were never "settings": the chart's title and the master
+// bus. They ride in `project`, not in _capSettings, so undo and the dice are
+// not suddenly touching the master level, and a file saved here still opens in
+// Setups > Import (which ignores the extra key).
+// Never carries the setlist: applySetup replaces the setlist when a file has
+// one, and Open must not be the way someone loses their songs. The sampler's
+// clips are in IndexedDB on this device and travel as references only.
+function projectCapture(name){
+ const t=document.getElementById('chart-title');
+ const title=(t&&t.value.trim())||'';
+ const st=captureSetup(name||title||'Untitled project', false);
+ st.project={
+  title:title,
+  master:{ vol:masterVol, comp:masterCompAmt, rev:masterRevAmt, on:masterBusOn, tune:masterTune }
+ };
+ return st;
+}
+function projectApply(st){
+ if(!st) return false;
+ const copy=Object.assign({}, st); delete copy.setlist;
+ if(!applySetup(copy)) return false;
+ const pj=st.project||{};
+ const t=document.getElementById('chart-title');
+ // Older files and Setups exports have no `project`: leave the title alone
+ // rather than blanking it, but a project that was saved untitled clears it.
+ if(t && typeof pj.title==='string') t.value=pj.title;
+ const m=pj.master;
+ if(m && typeof m==='object'){
+  if(typeof m.vol==='number')  masterVol=m.vol;
+  if(typeof m.comp==='number') masterCompAmt=m.comp;
+  if(typeof m.rev==='number')  masterRevAmt=m.rev;
+  if(typeof m.on==='boolean')  masterBusOn=m.on;
+  if(typeof m.tune==='number'&&typeof setMasterTune==='function') setMasterTune(m.tune);
+  try{ applyMasterBus(); syncMasterUI(); }catch(e){}
+ }
+ // The chart on screen is not a saved song of the setlist any more, and the
+ // "unsaved changes" banner compares against the last save.
+ curSetlistIdx=-1;
+ try{ markSongSaved(); }catch(e){}
+ try{ if(typeof renderSetlist==='function') renderSetlist(); if(typeof renderSetlistNav==='function') renderSetlistNav(); }catch(e){}
+ return true;
+}
+function projectSave(){
+ const st=projectCapture();
+ // A project is named by its chart title; untitled ones get the date, so two
+ // saves in a day do not both come out as "Untitled-project".
+ if(!st.project.title) st.name='Project '+new Date().toISOString().slice(0,10);
+ _setupDownload(st);
+ track('project_saved',{});
+}
+function projectNew(){
+ const prev=projectCapture('Before New');
+ try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
+ // What Start Blank does on the splash — the same list, one place: the engines
+ // back to factory, patches and phrase locks cleared, the chord palette
+ // emptied, the key the user chose in Settings. Plus the chart, which the
+ // splash starts without. The mixer, voices and master bus are preferences of
+ // the rig and are left as they are, as Start Blank leaves them.
+ try{ startFresh(true); }catch(e){ console.warn('projectNew', e); }
+ try{ cpPicks=[]; cpSave(); if(typeof cpRenderAll==='function') cpRenderAll(); }catch(e){}
+ try{ applyDefaultKey(); }catch(e){}
+ try{ _doClearChart(); }catch(e){}
+ curSetlistIdx=-1;
+ try{ markSongSaved(); }catch(e){}
+ try{ if(typeof renderSetlist==='function') renderSetlist(); if(typeof renderSetlistNav==='function') renderSetlistNav(); }catch(e){}
+ if(typeof _undoTick==='function') setTimeout(_undoTick, 400);
+ showToast('New project', {actionLabel:'Undo', onAction:function(){
+  if(projectApply(prev)) showToast('Back to your project');
+ }});
+ track('project_new',{});
+}
+function projectOpen(){
+ const f=document.getElementById('project-file'); if(f) f.click();
+}
+function projectOpenFile(input){
+ const f=input&&input.files&&input.files[0];
+ if(!f) return;
+ const rd=new FileReader();
+ rd.onload=function(){
+  let st=null;
+  try{ st=JSON.parse(String(rd.result)); }catch(e){}
+  if(!st || typeof st!=='object' || (st.app && st.app!=='modriff') || !(st.settings||st.sections)){
+   showToast('That file is not a mõdRïff project'); return;
+  }
+  const prev=projectCapture('Before Open');
+  if(projectApply(st)){
+   showToast('Opened '+(st.name||f.name), {actionLabel:'Undo', onAction:function(){
+    if(projectApply(prev)) showToast('Back to your project');
+   }});
+   track('project_opened',{});
+  } else showToast('Could not open that file');
+ };
+ rd.readAsText(f);
+ input.value='';
 }
 function setupImportFile(input){
  const f=input&&input.files&&input.files[0];
