@@ -1354,8 +1354,20 @@ matter before it.
 host runs it after each part's rack; the page posts `_msxCal(part) * mix.<part>`
 as `{t:'strip'}` when it changes, and the Mix meters read the host's `meters`
 call through a stand-in analyser. Expect the native chord to be about 8 dB
-quieter than it was: it now sits where the web chord does. Pan is not done:
-the mixer has no pan control to mirror.
+quieter than it was: it now sits where the web chord does. Pan is not done
+natively: the mixer has a pan control now (web, below), and the native strip
+still has none.
+
+**Mixer pan, web side.** Each strip has a pan control (`sqMixPan`, saved as
+`mixPan`, sent as `mix.pan`). The audio is a `StereoPannerNode` after the
+part's mõdFX chain in `fxBuildChain`, behind a gain forced to two channels (so
+centre is exactly the unpanned level) and followed by a constant-power
+compensation gain. The meter taps upstream of it and stems stay dry and
+centred. Not done natively: `strip.h` needs a smoothed pan stage (same law:
+equal-power with the stereo panner's dual-mono sum compensated by
+`1/sqrt(1+sin(|pan|*pi/2))`) and `ModEngineHost.mm` needs to carry `mix.pan`
+as a strip parameter. Until then a part the native engine plays ignores its
+pan control.
 
 **N1 landed (4.9.9.9.9.7.6t, PR 255); N3 first half is on branch
 `claude/native-mixfx` (4.9.9.9.9.7.6v, unmerged, Swift unbuilt).** The order
