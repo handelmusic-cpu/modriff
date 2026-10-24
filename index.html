@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9h</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9i</span></div>
  </div>
 </div>
 
@@ -8923,6 +8923,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row">
      <button class="tb tb-solo" data-bgplay onclick="toggleBgPlay()" aria-pressed="true">Keep playing in background: ON</button>
     </div>
+    <div class="ss-scope">Touch <b>a tap under your finger on pads, with the sound</b></div>
+    <div class="row">
+     <button class="tb tb-solo" data-haptics onclick="toggleHaptics()" aria-pressed="true">Haptics: ON</button>
+    </div>
     <div class="ss-scope">Show <b>extras you can leave off</b></div>
     <div class="row">
      <button class="tb tb-solo" data-fingtoggle onclick="toggleFingering()" aria-pressed="false"
@@ -9059,7 +9063,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9h</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9i</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10048,7 +10052,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9h';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9i';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10287,6 +10291,60 @@ window._genQueuePaint = function(part, frac, landed){
   P.keepAwake = function(on){ want = !!on; sync(); };
   P._wakeHeld = function(){ return !!lock && !lock.released; };
  }
+})(window.modPlatform);
+//
+// modPlatform.haptic(kind) — a tap under the finger, alongside the sound.
+//   'pad'     a chord, melody or sample pad going down        (heavy)
+//   'kaoss'   the mõdFX pad, down and while dragging          (light)
+//   'bounce'  a Bounce finished writing                       (success)
+//   'tick'    a stepper or detent moving one place            (selection)
+// modPlatform.hapticPrepare() wakes the Taptic Engine for the touch that is
+// starting, so the first hit is not the late one; the native side prepares
+// again after every tap, so this only matters after a pause.
+// Called on pointerdown, never after the note: a buzz that trails the sound
+// by a frame reads as a lag in the instrument, not as feedback.
+// Native: the ModHaptics plugin (kept, prepared generators — the stock
+// @capacitor/haptics builds a new one per call, which is the late first tap).
+// Web: navigator.vibrate where it exists (Android Chrome; iOS Safari has none)
+// and nothing otherwise. One preference, modo-haptics, on unless set to '0'.
+(function(P){
+ var GAP = { pad:0, bounce:0, kaoss:110, tick:40 };   // ms between taps of one kind
+ var VIB = { pad:12, kaoss:5, tick:3, bounce:[18,40,18] };
+ var last = {};
+ var lastPrep = 0;
+ function plugin(){
+  try{ var c = window.Capacitor; var h = c && c.Plugins && c.Plugins.ModHaptics;
+       return h && typeof h.fire === 'function' ? h : null; }catch(e){ return null; }
+ }
+ function wanted(){ try{ return localStorage.getItem('modo-haptics') !== '0'; }catch(e){ return true; } }
+ if(!P.hapticAvailable) P.hapticAvailable = function(){
+  return !!plugin() || (typeof navigator.vibrate === 'function');
+ };
+ if(!P.haptic) P.haptic = function(kind){
+  if(!wanted()) return;
+  var now = Date.now(), gap = GAP[kind];
+  if(gap === undefined) return;
+  if(gap && last[kind] && now - last[kind] < gap) return;
+  last[kind] = now;
+  var h = plugin();
+  if(h){ try{ h.fire({kind:kind}); }catch(e){} return; }
+  try{ if(typeof navigator.vibrate === 'function') navigator.vibrate(VIB[kind]); }catch(e){}
+ };
+ if(!P.hapticPrepare) P.hapticPrepare = function(){
+  var now = Date.now();
+  if(now - lastPrep < 400 || !wanted()) return;
+  lastPrep = now;
+  var h = plugin();
+  if(h && typeof h.prepare === 'function'){ try{ h.prepare(); }catch(e){} }
+ };
+ // A touch anywhere and a return to the app both keep the engine awake, so by
+ // the time a finger is on a pad the generator has usually been prepared by the
+ // touch before it. (The very first tap after a long pause is the one this
+ // cannot save: prepare and impact would be queued in the same event.)
+ try{
+  document.addEventListener('pointerdown', function(){ P.hapticPrepare(); }, { capture:true, passive:true });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') P.hapticPrepare(); });
+ }catch(e){}
 })(window.modPlatform);
 //
 // modEngine — the one door every sound goes through on its way to an engine
@@ -16846,6 +16904,7 @@ function psMakePad(i){
   if(PS.erasing){ psErasePad(i); return; }
   try{ p.setPointerCapture(e.pointerId); }catch(_){}
   p.classList.add('down');
+  _hap('pad');
   psPress(i);
  });
  var up=function(){ if(!p.classList.contains('down')) return; p.classList.remove('down'); psRelease(i); };
@@ -17001,9 +17060,9 @@ function psStepper(k){
   b.addEventListener('pointerdown', function(e){
    if(b.disabled) return;
    e.preventDefault(); try{ b.setPointerCapture(e.pointerId); }catch(_){}
-   put(v+d);
+   if(put(v+d)) _hap('tick');
    stopRep();
-   tmo=setTimeout(function(){ iv=setInterval(function(){ if(!b.isConnected || !put(v+d)) stopRep(); }, 110); }, 420);
+   tmo=setTimeout(function(){ iv=setInterval(function(){ if(!b.isConnected || !put(v+d)) stopRep(); else _hap('tick'); }, 110); }, 420);
   });
   b.addEventListener('pointerup', stopRep); b.addEventListener('pointercancel', stopRep);
   b.addEventListener('lostpointercapture', stopRep);
@@ -19641,6 +19700,26 @@ function copyDiagnostics(){
  try{ window.modNative.stats().then(function(st){ out.native = st; done(); }, function(e){ out.native = String(e); done(); }); }
  catch(e){ out.native = 'unavailable'; done(); }
 }
+// One call for every haptic site: a missing platform layer or a throwing
+// wrapper must never take a pad's sound down with it.
+function _hap(kind){ try{ modPlatform.haptic(kind); }catch(e){} }
+function _hapticsOn(){ try{ return localStorage.getItem('modo-haptics') !== '0'; }catch(e){ return true; } }
+function toggleHaptics(){
+ var on=!_hapticsOn();
+ try{ localStorage.setItem('modo-haptics', on?'1':'0'); }catch(e){}
+ _syncHapticsBtn();
+ if(on) _hap('pad');
+}
+function _syncHapticsBtn(){
+ var can=false, on=_hapticsOn();
+ try{ can=modPlatform.hapticAvailable(); }catch(e){}
+ document.querySelectorAll('[data-haptics]').forEach(function(b){
+  b.textContent = can ? 'Haptics: '+(on?'ON':'OFF') : 'Haptics: not on this device';
+  b.disabled=!can; b.setAttribute('aria-pressed', on?'true':'false'); b.classList.toggle('active', on&&can);
+ });
+}
+window.addEventListener('load', function(){ _syncHapticsBtn(); setTimeout(_syncHapticsBtn, 500); });
+document.addEventListener('click', function(e){ if(e.target && e.target.closest && e.target.closest('#set-subnav,.ss-hdr')) setTimeout(_syncHapticsBtn, 50); });
 function toggleBgPlay(){
  var on=!_bgKeepPlaying();
  try{ localStorage.setItem('modo-bgplay', on?'1':'0'); }catch(e){}
@@ -28587,6 +28666,7 @@ function _wireChordHold(el, trigger){
  el.addEventListener('pointerdown', e=>{
  e.preventDefault(); e.stopPropagation();
  el.classList.add('flash');
+ _hap('pad');
  token = trigger();
  });
  const release=()=>{
@@ -32069,6 +32149,7 @@ function buildMelodyStrip(){
   keyPid=e.pointerId;
   try{ btn.setPointerCapture(e.pointerId); }catch(_){}
   btn.classList.add('held');
+  _hap('pad');
   const y=melTouchY(btn,e);
   melModY=y;
   melPlayIn(midi,melPressure(e),y);
@@ -43513,6 +43594,7 @@ function _stopRecording(){
     if(stems.length) parts.push(stems.length+' stem'+(stems.length>1?'s':''));
     if(midiFile) parts.push('MIDI');
     var done = parts.length ? ('Saved the mix + '+parts.join(' + ')) : 'Saved the mix as a .wav';
+    _hap('bounce');
     // What Pro would have given, said once, with what was kept: the first
     // minute and a half, not a refusal.
     var _cutWhat=[];
@@ -57689,11 +57771,13 @@ function fxWirePad(){
   // Armed: this touch is the take. Begun before the first fxSetPos so the
   // landing position is frame zero rather than lost.
   fxMotionBegin();
+  _hap('kaoss');
   const p=at(e); fxSetPos(p.x,p.y); fxEngage(true); fxSyncAllReadouts();
  });
  pad.addEventListener('pointermove',e=>{
   if(!fxEngaged) return;
   if(e.buttons===0 && !fxHold) return;
+  _hap('kaoss');
   const p=at(e); fxSetPos(p.x,p.y);
  });
  // Release first, then hand over to the loop: fxRelease is what stops a

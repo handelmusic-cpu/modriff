@@ -1678,6 +1678,21 @@ voices do not.
 
 ### Haptics
 
+**Built (4.9.9.9.9.8.9i; Swift unbuilt).** `modPlatform.haptic(kind)` and
+`hapticPrepare()` are in `index.html`, called from the chord and 7th pads, the
+melody keys, the sample pads (`pad`), the mõdFX pad (`kaoss`, down and while
+dragging, at most one per 110 ms), the Bounce finish (`bounce`) and the sample
+steppers (`tick`). One preference, `modo-haptics`, with a button under Settings >
+General. The native side is `ios/App/App/ModHaptics/ModHaptics.swift`, not the
+stock `@capacitor/haptics`: that plugin builds a fresh generator on every call
+and never prepares it, which is the late first tap this section asks to avoid,
+so `ModHaptics` keeps its generators and prepares them again after each tap.
+`@capacitor/haptics` stays in `package.json` and `Package.swift` for now and is
+unused. Not yet done: knob detents (`tick` is only on the steppers) and the
+Mac `NSHapticFeedbackManager` bundle. The page side was driven with a stand-in
+plugin (throttles, the off switch, a real `pointerdown` on a chord pad); nobody
+has felt it yet.
+
 Add one method to `modPlatform`, call it from the touch handlers, and let
 the wrapper decide what it means:
 
