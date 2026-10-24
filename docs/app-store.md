@@ -182,8 +182,9 @@ opaque and square before upload.
 ## In-App Purchase: mõdRïff Pro
 
 The code is in (`ios/App/App/ModBilling/ModBilling.swift`, StoreKit 2, behind
-`window.modBilling`) and has **not been compiled**; this is what it needs from
-the owner's Mac and App Store Connect. The design is in section 4 of
+`window.modBilling`). It compiles for the simulator, but the purchase flow has
+**not been run**; this is what it needs from the owner's Mac and App Store
+Connect to be. The design is in section 4 of
 `v5-architecture.md`.
 
 **App Store Connect** (My Apps > mõdRïff > Monetization > In-App Purchases):

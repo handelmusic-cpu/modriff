@@ -22,8 +22,10 @@ import StoreKit
 /// "StoreKit found nothing" is not that — it is also what an offline first
 /// launch after a reinstall looks like — so it changes nothing.
 ///
-/// Built on the Mac, not here: this file has not been compiled. StoreKit 2
-/// needs iOS 15, which is the project's deployment target.
+/// Compiles for the simulator (Xcode 27.1, both architectures, no warnings from
+/// this file). The purchase flow has NOT been run: that needs the StoreKit test
+/// configuration selected in the scheme, or the product in App Store Connect.
+/// StoreKit 2 needs iOS 15, which is the project's deployment target.
 @objc(ModBilling)
 public class ModBilling: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ModBilling"

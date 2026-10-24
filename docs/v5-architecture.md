@@ -1743,9 +1743,11 @@ Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
 | Steps | up to 32, as whole bars of the current meter | up to 64 |
 | Meters | 4/4, 3/4, 12/8 | any |
 | Saved songs | 5 setlist songs (`FREE_SAVE_SLOTS`); Setups unlimited | unlimited |
-| Drum kits | 808, 606, Linn, Jazz | all others, the Aux kit |
+| Drum kits | 808, 606, Linn, Jazz (the Aux layer takes these too) | all others |
 | Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, Bossa Nova, 3/4 Waltz, 12/8 Slow | the rest |
-| Bass / melody styles | Rock, Jazz, Funk, Latin | the rest |
+| Bass styles | Rock, Jazz, Funk, Latin | the rest |
+| Melody styles | Pop Hook (the default), Rock, Jazz, Funk, Latin | the rest |
+| Live page | the standard layout (Chords, Melody); the Pads and mõdFX widgets are free if a layout has them | adding, swapping, moving or removing widgets |
 | Voices | synth waves, Piano 1, Upright 1 | other recorded voices, mõdSynth |
 | Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
 | Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |
