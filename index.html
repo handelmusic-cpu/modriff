@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7h</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7i</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7h</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7i</span></div>
  </div>
 </div>
 
@@ -9869,7 +9869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7h';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7i';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -25427,6 +25427,7 @@ function tickClock(){
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
  // The pads' pattern sequencer rides the drum clock, so it runs when it does.
  if(sqRunning && typeof window._psScheduler==='function') window._psScheduler();
+ try{ _drainCompPending(); }catch(e){}
  _schedHorizon=null;
  // A song loop finishing its pass mid-tick (window._sqScheduler above, which
  // announces the bar boundary SYNCHRONOUSLY via tickSongLoop) can run all the
@@ -39880,9 +39881,27 @@ function _compRestrike1(slot, atTime){
 }
 
 let songCompTimers = [];
+// The re-strikes of a chord's rhythm (Bossa, Funk, Strum ...) waiting for their
+// turn. Each used to hang on its own setTimeout, woken 80 ms before the hit.
+// In the background iOS stretches a timer to about a second, so the wake-up came
+// after the beat and the re-strike was thrown away: the first hit of a chord
+// sounded in time and the rhythm behind it did not play at all. They are now
+// handed over by the scheduler tick, a look-ahead before they sound, like every
+// other part; the timer stays as the fallback and whichever comes first wins.
+var _compPending = [];
+function _drainCompPending(){
+ if(!_compPending.length) return;
+ var h = schedHorizon();
+ for(var i=0; i<_compPending.length; i++){
+  var e = _compPending[i];
+  if(!e.done && e.hitT <= h){ e.done = true; try{ _compRestrike(e.slot, e.hitT); }catch(err){} }
+ }
+ _compPending = _compPending.filter(function(e){ return !e.done; });
+}
 function _clearCompTimers(){
  songCompTimers.forEach(id=>clearTimeout(id));
  songCompTimers = [];
+ _compPending.length = 0;
 }
 // Schedules the comp re-strikes for the remainder of a slot's duration,
 // beyond the initial attack playChartSlot2() already fired.
@@ -39920,7 +39939,9 @@ function _scheduleCompHits(slot, baseTime){
    // Wake early and schedule at the exact time, so a late timer still lands
    // the note on the beat rather than after it.
    const fireMs = Math.max(0, (hitT - SCHED_LEAD - ctx.currentTime)*1000);
-   songCompTimers.push(setTimeout(function(){ _compRestrike(slot, hitT); }, fireMs));
+   const _ce = {slot:slot, hitT:hitT, done:false};
+   _compPending.push(_ce);
+   songCompTimers.push(setTimeout(function(){ if(_ce.done) return; _ce.done = true; _compRestrike(slot, hitT); }, fireMs));
   });
  }
 }
