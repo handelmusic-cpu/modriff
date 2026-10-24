@@ -158,11 +158,14 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func ensurePart(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         let part = call.getInt("part") ?? 0
-        guard host.ensurePart(Int32(part)) else {
+        // Warmed before it is published: the engine is already running, and a
+        // warm-up played into a part the render thread can see is heard.
+        let ok = (call.getBool("warm") ?? true) ? host.warmUpPart(Int32(part))
+                                                : host.ensurePart(Int32(part))
+        guard ok else {
             call.reject("part \(part) out of range")
             return
         }
-        if call.getBool("warm") ?? true { host.warmUpPart(Int32(part)) }
         call.resolve(["part": part])
     }
 

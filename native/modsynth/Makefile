@@ -36,9 +36,12 @@ capturetest: capturetest.cpp capture.h
 HOSTDIR = ../../ios/App/App/ModEngine
 hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+# The speaker hears nothing while a part is warmed up (macOS only).
+warmtest: warmtest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest
 	./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js
 
 clean:
-	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest hosttest wkrender
+	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest hosttest warmtest wkrender
 .PHONY: clean

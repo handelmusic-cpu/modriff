@@ -44,14 +44,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// **Audio thread only.** Overwrites the buffers.
 - (void)renderInto:(float *)left right:(float *)right frames:(int)frames;
 
-/// Grows the engine's internal containers to their steady-state size by
-/// playing and releasing notes into a throwaway buffer. Call once, before
-/// audio starts. Without it the first few notes of a session would each
+/// Creates the part like ensurePart, but first grows the engine's internal
+/// containers to their steady-state size by playing and releasing notes into a
+/// private buffer, and publishes it to the render thread only afterwards, so
+/// the warm-up is never heard. Does nothing to a part that already exists (the
+/// render thread owns it by then). Without it the first few notes of a session would each
 /// allocate on the render thread as std::vector grows; with it the capacity
 /// is already there and the steady state allocates nothing. See the note in
 /// the implementation — this is the honest version of "the render thread
 /// never allocates", not a claim that it cannot.
-- (void)warmUpPart:(int)part;
+- (BOOL)warmUpPart:(int)part;
 
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is

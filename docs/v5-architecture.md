@@ -1547,6 +1547,16 @@ Bounce and stems now hear the native engine.
   from the file by that. Not measurable here. A stem take with many native parts
   is a few MB/s over the bridge; unmeasured on a phone.
 
+**Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
+render thread and the plugin then warmed it up, which plays sixteen notes into
+it. The engine is already running by then, so every launch started with a burst
+of noise (`warmtest`: peak 0.5-0.65 for about 60 ms, 5 runs of 5) and two
+threads driving one processor and one pair of scratch buffers. `warmUpPart`
+now builds the part, warms it on private buffers and publishes it afterwards
+(peak 0.0000, 8 runs of 8). Found because a phone on 4.9.9.9.9.8.5 reported
+noisy sounds at startup; whether that is the whole of what was heard is for the
+phone to say.
+
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
 both be native, so measure N3 on the oldest phone available before adding

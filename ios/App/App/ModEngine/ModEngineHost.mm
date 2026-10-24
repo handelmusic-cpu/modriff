@@ -196,22 +196,43 @@ double num(id value, double fallback = 0) {
   return self;
 }
 
-- (BOOL)ensurePart:(int)part {
-  if (part < 0 || part >= kMaxParts) return NO;
-  if (_live[part].load(std::memory_order_acquire)) return YES;
+// The objects for a part, not yet visible to the render thread.
+- (void)buildPart:(int)part {
   _parts[part] = std::make_unique<modsynth::Processor>(_sampleRate);
   _racks[part] = std::make_unique<modsynth::FxRack>(_sampleRate);
   _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
   _mixfx[part] = std::make_unique<modsynth::MixFx>(_sampleRate);
-  // Release: everything the constructor wrote is visible before the render
-  // thread can see a non-null pointer.
+}
+
+// Release: everything the constructor (and the warm-up) wrote is visible before
+// the render thread can see a non-null pointer.
+- (void)publishPart:(int)part {
   _live[part].store(_parts[part].get(), std::memory_order_release);
+}
+
+- (BOOL)ensurePart:(int)part {
+  if (part < 0 || part >= kMaxParts) return NO;
+  if (_live[part].load(std::memory_order_acquire)) return YES;
+  [self buildPart:part];
+  [self publishPart:part];
   return YES;
 }
 
-- (void)warmUpPart:(int)part {
-  if (![self ensurePart:part]) return;
+// Builds the part, plays its containers up to size, and only then publishes it.
+//
+// This used to be ensurePart followed by a warm-up of the published processor.
+// The audio engine is already running by then, so the render thread picked up
+// the warm-up's sixteen notes along with everything else and played them: a
+// burst of noise on the speaker at every launch (peak 0.5-0.65 for about 60 ms,
+// measured by warmtest), on top of two threads driving one processor and one
+// pair of scratch buffers. Warmed before it is published, nothing else can see
+// the notes, and the buffers are its own.
+- (BOOL)warmUpPart:(int)part {
+  if (part < 0 || part >= kMaxParts) return NO;
+  if (_live[part].load(std::memory_order_acquire)) return YES;   // the render thread owns it now
+  [self buildPart:part];
   modsynth::Processor *p = _parts[part].get();
+  std::vector<float> sl((size_t)_maxFrames, 0.0f), sr((size_t)_maxFrames, 0.0f);
 
   // Three containers inside the engine grow on demand, and the first growth
   // would be a malloc on the render thread. Each is pushed to its steady-state
@@ -228,10 +249,12 @@ double num(id value, double fallback = 0) {
     p->noteOffMsg(48 + i, modsynth::NoteId::num(90000 + i), true, 4096);
   }
   const int blk = _maxFrames < 512 ? _maxFrames : 512;
-  for (int n = 0; n < 16; n++) { p->process(_scratchL.data(), _scratchR.data(), blk);
+  for (int n = 0; n < 16; n++) { p->process(sl.data(), sr.data(), blk);
                                  _partFrames[part] += (uint64_t)blk; }
   p->panic();
   // panic() silences the voices; the capacity those vectors took stays.
+  [self publishPart:part];
+  return YES;
 }
 
 - (BOOL)post:(NSDictionary *)message {
