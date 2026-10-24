@@ -1240,6 +1240,23 @@ body.mode-basic .lv-off { display:none !important; }
 }
 .lv-add svg { flex:none; color:var(--accent); }
 .lv-add:hover, .lv-add:active { border-color:var(--accent); }
+/* The other drum layer under the Live grid (sqRenderXStrip): thin lanes that
+   fit the width, whatever the step count. A step is a few pixels wide at 64 and
+   twenty at 16, so the height does the tapping work. */
+/* order:7 like the grid rows (data-acrow="roll"): the slot is a flex column and the Accomp page orders its rows, so an unordered strip jumped to the top. */
+.sq-xstrip { order:7; margin:6px 0 2px; padding:6px 8px 8px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); }
+.sq-xhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+.sq-xname { font:700 12px 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.sq-xedit { min-height:32px; padding:0 12px; border:1px solid var(--border2); border-radius:var(--r-sm); background:none; color:var(--text);
+ font:600 12px 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.sq-xlane { display:flex; align-items:center; gap:6px; margin-top:2px; }
+.sq-xl { flex:none; width:22px; font:700 10px 'Outfit',sans-serif; text-align:right; }
+.sq-xrow { flex:1 1 auto; min-width:0; display:flex; gap:1px; }
+.sq-xc { flex:1 1 0; min-width:2px; height:15px; border-radius:2px; background:var(--sq-sur,var(--surf)); border:1px solid var(--sq-bdr,var(--border)); touch-action:manipulation; cursor:pointer; box-sizing:border-box; }
+.sq-xc.b4 { margin-left:2px; }
+.sq-xc.on { background:var(--sq-tc,#888); border-color:var(--sq-tc,#888); }
+.sq-xc.accent { background:var(--sq-tc,#888); border-color:#fff; }
+.sq-xc.head { outline:1px solid rgba(255,255,255,.7); outline-offset:-1px; }
 /* The widget manager sheet. */
 .lv-w-sheet { max-height:82vh; overflow-y:auto; padding-bottom:24px; }
 .lv-w-h { margin:14px 0 6px; font-size:.54rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
@@ -17517,7 +17534,7 @@ function lvNodes(m){
  else if(m==='melody') out = [q('#pf-mel-lbl'), q('#pf-melody-panel')];
  else if(m==='pads') out = [q('#pf-pads-lbl'), q('#pf-pads-panel')];
  else if(m==='fx') out = [q('#pf-fx-panel')];
- else if(m==='drums') out = [lvLabel('drums'), q('#ac-drums-panel .sq-layer-host'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
+ else if(m==='drums') out = [lvLabel('drums'), q('#ac-drums-panel .sq-layer-host'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), lvXStrip(), q('#sq-insp'), q('#sq-insp-hint')];
  else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
  else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
  // The row lives in the song banner; the buttons are found by data-ending and
@@ -17528,6 +17545,13 @@ function lvNodes(m){
  if(out.length) _lvNodes[m] = out;
  return out;
 }
+// The other drum layer, under the grid (4.9.9.9.9.7.9d): made here, not in
+// markup, and filled by the sequencer (sqRenderXStrip). See the note there.
+var _lvX = null;
+function lvXStrip(){
+ if(!_lvX){ _lvX = document.createElement('div'); _lvX.id = 'sq-xstrip'; _lvX.className = 'sq-xstrip lv-made'; }
+ return _lvX;
+}
 // Where the heading's slot controls go. mõdFX names itself in its own head row.
 function lvHead(m){
  if(m==='fx') return document.querySelector('#modfx-panel > .fx-head');
@@ -17537,14 +17561,14 @@ function lvHead(m){
 function lvMark(n){
  // The headings made here have no home to go back to — off the page, they
  // are simply detached.
- if(n._lvHome || !n.parentNode || (n.classList && n.classList.contains('lv-lbl'))) return;
+ if(n._lvHome || !n.parentNode || (n.classList && (n.classList.contains('lv-lbl') || n.classList.contains('lv-made')))) return;
  var c = document.createComment('lv-home');
  n.parentNode.insertBefore(c, n);
  n._lvHome = c;
 }
 function lvHome(n){
  if(n._lvHome && n._lvHome.parentNode){ n._lvHome.parentNode.insertBefore(n, n._lvHome); }
- else if(n.classList && n.classList.contains('lv-lbl') && n.parentNode){ n.parentNode.removeChild(n); }
+ else if(n.classList && (n.classList.contains('lv-lbl') || n.classList.contains('lv-made')) && n.parentNode){ n.parentNode.removeChild(n); }
 }
 function lvContainer(){
  var c = document.getElementById('lv-slots');
@@ -46484,6 +46508,7 @@ function sqDraw(){
       if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
       var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2)e2.classList.add('head');}
       sqPosPlayhead(ds);
+      sqXHead(sqDispStep, ds);
       var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
       var sb=document.getElementById('sq-sBar');if(sb)sb.textContent=Math.floor(ds/4)+1;
     }
@@ -46822,6 +46847,79 @@ function sqRenderGrid(){
   // shorter pattern, a loaded groove — and re-marks the one that survives.
   if(sqSelTi >= sqTc() || sqSelS >= sqSteps){ sqSelTi=-1; sqSelS=-1; }
   sqMarkSel(); sqSyncInsp();
+  sqRenderXStrip();
+}
+
+// ── The other layer, beside the one being edited (Live) ──
+// The grid above is one focus-based instance: sqMach, sqGrid, sqStepEls, the
+// selection and the inspector are single globals (about 140 references), so
+// showing Kit and Aux as two full grids at once would mean threading a layer
+// through every handler in the file. This is the smaller thing that answers
+// "can I see both": under the grid, the layer you are NOT editing as a compact
+// fit-to-width strip — one thin lane per voice, a tap places or clears a step,
+// a heading button switches the grid over to it for velocity, ratchet and
+// pitch. It exists only while the Drums widget is on Live (lvXStrip makes the
+// host; with no host in the document this does nothing). Reads sqLayers[o]
+// directly: the layer that is not focused is never the live view, so its
+// record is always current. Re-run by sqRenderGrid, which a focus switch, a
+// groove, a kit change and a step-count change all go through.
+var sqXEls = {};
+function sqRenderXStrip(){
+  var host = document.getElementById('sq-xstrip'); if(!host) return;
+  host.innerHTML = ''; sqXEls = {};
+  var o = sqFocus ? 0 : 1, L = sqLayers[o], M = SQM[L.mach];
+  if(!M) return;
+  var ch = SQ_LAYER_CH[o], lk = sqLK(L.mach, o);
+  var head = document.createElement('div'); head.className = 'sq-xhead';
+  var nm = document.createElement('span'); nm.className = 'sq-xname';
+  nm.textContent = SQ_LAYER_NAME[o] + (L.on ? '' : ' (muted)');
+  head.appendChild(nm);
+  var ed = document.createElement('button'); ed.type = 'button'; ed.className = 'sq-xedit';
+  ed.textContent = 'Edit ' + SQ_LAYER_NAME[o];
+  ed.title = 'Switch the grid above to the ' + SQ_LAYER_NAME[o] + ' layer';
+  ed.addEventListener('click', function(){ sqSetFocus(o); });
+  head.appendChild(ed);
+  host.appendChild(head);
+  var bw = (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
+  sqRowOrder(M.tracks).forEach(function(ti){
+    var tr = M.tracks[ti];
+    if(!L.grid[ti]) L.grid[ti] = [];
+    while(L.grid[ti].length < sqSteps) L.grid[ti].push(sqMkCell());
+    sqXEls[ti] = {};
+    var lane = document.createElement('div'); lane.className = 'sq-xlane';
+    var lb = document.createElement('span'); lb.className = 'sq-xl'; lb.textContent = tr.s;
+    lb.style.color = uiTextColor(tr.c); lane.appendChild(lb);
+    var row = document.createElement('div'); row.className = 'sq-xrow';
+    for(var s=0; s<sqSteps; s++){
+      var el = document.createElement('div');
+      el.className = 'sq-xc' + (s%bw===0 ? ' b4' : '');
+      el.style.setProperty('--sq-tc', tr.c);
+      var cell = L.grid[ti][s];
+      if(cell.v===2) el.classList.add('accent'); else if(cell.v>0) el.classList.add('on');
+      (function(t2, s2, e2, tr2){
+        e2.addEventListener('pointerup', function(){
+          var c = L.grid[t2][s2];
+          c.v = c.v ? 0 : 1;
+          e2.classList.toggle('on', c.v===1); e2.classList.toggle('accent', c.v===2);
+          sqAuxSwitchSync();
+          if(sqAudition && c.v>0){
+            try{ sqInitFX(); sqEnsureNoise(); sqPlayCell(tr2, c, sqCtx()?sqCtx().currentTime:0, sqGv(lk,t2), sqGp(lk,t2), ch); }catch(e){}
+          }
+        });
+      })(ti, s, el, tr);
+      row.appendChild(el); sqXEls[ti][s] = el;
+    }
+    lane.appendChild(row);
+    host.appendChild(lane);
+  });
+}
+function sqXHead(prev, ds){
+  var k = Object.keys(sqXEls);
+  for(var i=0;i<k.length;i++){
+    var r = sqXEls[k[i]];
+    if(prev>=0 && r[prev]) r[prev].classList.remove('head');
+    if(r[ds]) r[ds].classList.add('head');
+  }
 }
 
 function sqRenderPageDots(){
