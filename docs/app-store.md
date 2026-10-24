@@ -206,9 +206,12 @@ Connect to be. The design is in section 4 of
    "Add to targets" **unchecked**: it must not ship in the app).
 2. Product > Scheme > Edit Scheme > Run > Options > **StoreKit Configuration**
    > ModRiffPro.storekit.
-3. Run on a device or simulator. In the debug build, `setModTier('free')` and
-   `setModTier('pro')` in the web console switch the tier without buying
-   (release builds have no such switch). Debug > StoreKit > Manage
+3. Run on a device or simulator. In a debug build, Settings > About has a
+   **Test as Free / Pro** switch that changes the tier without buying, and
+   remembers the choice across launches. A release build has no such switch
+   (the host defines `__modDebug` only under `#if DEBUG`, and the page ignores
+   the override without it). The same switch shows on a page served from
+   localhost, and never on a deployed one. Debug > StoreKit > Manage
    Transactions lets you refund and Ask-to-Buy a test purchase.
 4. Then the same on a **sandbox account** against the real product, once it
    exists in App Store Connect.
