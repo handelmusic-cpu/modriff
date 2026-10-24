@@ -43,6 +43,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var renderNanosMax: Int64 = 0
     private var renderBlocks: Int64 = 0
     private var renderFrames: Int64 = 0
+    // The last few blocks that took over 2 ms (a block is ~2.7 ms of audio, so
+    // this is most of the budget): the frame count when each started, and how
+    // long it took. maxRenderUs says a stall happened; this says when, so it can
+    // be lined up with what was being done. Preallocated; the render thread only
+    // stores into it.
+    private static let slowSlots = 8
+    private let slowAt = UnsafeMutablePointer<Int64>.allocate(capacity: ModEngine.slowSlots)
+    private let slowUs = UnsafeMutablePointer<Double>.allocate(capacity: ModEngine.slowSlots)
+    private var slowCount: Int64 = 0
 
     private static let signpostLog = OSLog(subsystem: "com.handelmusic.modriff",
                                            category: "modengine")
@@ -93,6 +102,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 os_signpost(.end, log: ModEngine.signpostLog, name: "render")
                 let dt = Int64(DispatchTime.now().uptimeNanoseconds &- t0)
 
+                if dt > 2_000_000 {
+                    let k = Int(self.slowCount % Int64(ModEngine.slowSlots))
+                    self.slowAt[k] = self.renderFrames
+                    self.slowUs[k] = Double(dt) / 1000.0
+                    self.slowCount &+= 1
+                }
                 self.renderNanosTotal &+= dt
                 if dt > self.renderNanosMax { self.renderNanosMax = dt }
                 self.renderBlocks &+= 1
@@ -190,7 +205,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "renderBlocks": Int(blocks),
             "avgRenderUs": Double(renderNanosTotal) / Double(blocks) / 1000.0,
             "maxRenderUs": Double(renderNanosMax) / 1000.0,
-            "load": load
+            "load": load,
+            "slowCount": Int(slowCount),
+            "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
+                ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]
+            }
         ])
     }
 }
