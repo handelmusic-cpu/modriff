@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9e</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9f</span></div>
  </div>
 </div>
 
@@ -9055,7 +9055,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9e</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9f</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10044,7 +10044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9e';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9f';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -31219,7 +31219,12 @@ function randomizeSettings(opts){
  s.sqSwing    = _rndPick([0,0,0,15,25,40,55]);
  s.sqSwing8   = _rndPick([true,true,true,false]);   // mostly eighths
  // BRS (Brush) excluded — see RND_SOFT_MACHINES above.
- s.sqMach     = _rndPick(gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','JAZZ']);
+ // Free rolls free kits only. The voices, the scale and the style all reach their
+ // setters, which refuse a Pro value; the kit goes in through _applySettings'
+ // sqState and never meets one, so 909, MOD and IDM came up in 34 of 80 rolls on a
+ // free build.
+ s.sqMach     = _rndPick((gentle ? RND_SOFT_MACHINES : ['808','909','MOD','606','LIN','IDM','JAZZ'])
+                  .filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); }));
  // _capSettings() snapshotted sqState BEFORE this roll, and _applySettings
  // restores that snapshot AFTER writing the rolled values — and the snapshot
  // carries its own copy of mach/steps/swing, so the restore silently put the
@@ -35760,13 +35765,19 @@ function saveToSetlist(){
  const song={id:Date.now(),title,root,mode,sections:sections.map(s=>({name:s.name,follow:s.follow||'repeat',plays:secPlays(s),slots:s.slots.map(sl=>({...sl}))})),savedAt:new Date().toLocaleDateString(),perfSettings:getSongPerformSettings()};
  song.meta = songMetaSnapshot(song);
  if(songSaveRhythm){
-  // Snapshot current drum pattern
+  // Snapshot current drum pattern and bassline, through the same exported pair
+  // the load below, setups and undo restore from. This used to read sqMach,
+  // sqSteps, sqGrid, blWave, blGrid ... as bare names. Those are locals of the
+  // sequencer's and the bass's own IIFEs and are not visible here, so the first
+  // one threw a ReferenceError, the try/catch swallowed it, and a saved song has
+  // never stored its drums or its bass — while the toast said "Saved with rhythm
+  // & bass". The melody line below always did it this way, which is why melody
+  // was the one part that survived.
   try{
-   song.savedRhythm={mach:sqMach,steps:sqSteps,swing:sqSwing,grid:JSON.parse(JSON.stringify(sqGrid)),vols:JSON.parse(JSON.stringify(sqVols[sqMach]||{})),pitches:JSON.parse(JSON.stringify(sqPitches[sqMach]||{}))};
+   if(typeof window._sqCaptureState==='function') song.savedRhythm=JSON.parse(JSON.stringify(window._sqCaptureState()));
   }catch(e){}
-  // Snapshot current bassline
   try{
-   song.savedBass={wave:blWave,steps:blSteps,grid:JSON.parse(JSON.stringify(blGrid)),cutoff:blCutoff,resonance:blResonance};
+   if(typeof window._blCaptureState==='function') song.savedBass=JSON.parse(JSON.stringify(window._blCaptureState()));
   }catch(e){}
   // Snapshot current melody sequencer
   try{
