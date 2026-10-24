@@ -11,7 +11,7 @@ are cheaper to make before code than after.
 | | piece | state |
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
-| 2 | MIDI Mapping Mode | designed below; builds on the CC-learn system already shipping |
+| 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
 | 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 
@@ -265,7 +265,7 @@ Consequences worth stating plainly:
 
 ### What exists
 
-Shipping now, around `index.html:32700`:
+Before 4.9.9.9.9.8.9k (what the next section replaced; the apply path survived):
 
 - `MIDI_CC_DESTS` — a table of mappable destinations: sliders (by element
   id), the mõdFX pad axes, mixer channels, mõdSynth parameters.
@@ -279,7 +279,51 @@ Shipping now, around `index.html:32700`:
 That apply path is right and stays. What changes is how a target is chosen,
 what a binding can hold, and what can be mapped.
 
-### The mode
+### What was built (4.9.9.9.9.8.9k)
+
+Everything in this section from "The mode" on, except feedback out and a
+`data-map` attribute on every control. Where the build differs from the design:
+
+- **Targets.** Any visible `input[type=range]` with an id is a target, derived at
+  scan time, so every mõdSynth knob and tone macro is mappable with no list. Buttons
+  opt in with `data-map="toggle:…"` (Play/Stop, Hold, mõdFX Hold, Chord under arp)
+  or `"trigger:…"` (the seven chord pads, both halves). The `MIDI_CC_DESTS`
+  catalogue stays, for the Learn list and for labels; the dropdown's keys are
+  converted to `kind:key` strings. More buttons are a one-attribute change each.
+  The mõdFX pad binds its X axis on a tap; Y is on the Learn list.
+- **Bindings** are as designed (`src`, `dst`, `mode`, `min`/`max`, `takeover`),
+  held in `MAPB` and saved under `modo-midi-map`. `min`/`max` are stored but have
+  no control yet. Learn sets `mode` from what moved: a CC, pitch bend or
+  aftertouch on a slider is `abs`; a note or a CC press on a button is `toggle`,
+  on a pad `momentary`. `rel` (and the pickup switch) are chosen per row in
+  Settings > MIDI, not detected from an endless encoder's 63/65 pattern.
+- **Learn** takes the first source that *moves* for a slider (a resting value on
+  connect cannot claim it) and the first press for a button. One source drives one
+  control and one control has one source; rebinding either replaces the old pair.
+- **Interception** is `_mapMidi`, called first in `onMidiMsg` (after the echo
+  check and the monitor log): a bound message is consumed, and while a control is
+  armed everything but a note-off is, so the key that binds a pad does not also
+  play a chord. A binding wins over a controller profile's own mapping.
+- **Migration.** `modo-midi-cc` becomes bindings with `ch: null` on first run and
+  is left in place. The two defaults (CC1 to the mõdFX X axis, CC11 to the chord
+  level) are not written to storage until something is changed.
+- **Setups** carry the map (`midiMap`), and it comes back when a person loads a
+  setup, imports one or opens a project, not when undo or the last-session restore
+  runs (⌘Z quietly taking back a binding would be a surprise).
+- **Tapping** while Map is on arms the control and swallows the tap (a mapped
+  pad cannot be played with a finger in that mode). A long press, or the badge,
+  clears; Esc disarms, then leaves. A transport-sheet row and a Settings > MIDI
+  button turn it on.
+
+Verified in a browser with synthetic messages through `onMidiMsg` (no Playwright
+on this machine): arming does not move the control, the first CC only records
+and the second binds, channel and port are kept, pickup ignores a knob below the
+control and picks up as it crosses, a note toggles Hold and a held pad sends
+pointerdown and pointerup, an unbound note and clock still reach the router,
+long press clears, Esc, the Setups round trip, and the migration. Not tried on a
+phone: a real controller, and the touch feel of arming a 3 px slider.
+
+### The mode (as designed)
 
 A **Map** toggle in the transport sheet. While it is on:
 

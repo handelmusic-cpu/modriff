@@ -5167,6 +5167,36 @@ body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-i
 }
 .midi-cc-x:hover { color:var(--dom); }
 .midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
+.midi-cc-row { flex-wrap:wrap; }
+.midi-map-mode {
+ background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
+ color:var(--text); font-family:'Outfit',sans-serif; font-size:.46rem; padding:3px 4px;
+}
+.midi-map-pick { font-size:.44rem; color:var(--muted); display:inline-flex; align-items:center; gap:3px; }
+
+/* Mapping mode. The outline is drawn on the control itself, the badge floats
+   above it on #map-badges (a layer of its own, so a control's overflow:hidden
+   parent cannot clip it). */
+#map-bar {
+ position:fixed; left:0; right:0; top:0; z-index:9300;
+ display:flex; align-items:center; gap:10px; justify-content:space-between;
+ padding:calc(env(safe-area-inset-top, 0px) + 8px) 16px 8px;
+ background:color-mix(in srgb, var(--accent) 22%, var(--bg)); border-bottom:1px solid var(--accent);
+ font:600 12px/1.3 'Outfit',sans-serif; color:var(--text);
+}
+#map-bar[hidden] { display:none; }
+#map-badges { position:fixed; inset:0; z-index:9290; pointer-events:none; }
+.map-badge {
+ position:absolute; pointer-events:auto; min-width:26px; padding:2px 6px;
+ border-radius:10px; border:1px solid var(--accent); background:var(--bg); color:var(--text);
+ font:700 10px/1.2 'Orbitron',sans-serif; letter-spacing:.04em; cursor:pointer;
+}
+.map-badge.armed { background:var(--accent); color:var(--bg); animation:mapPulse 1s ease-in-out infinite; }
+body.map-on .map-able { outline:1px dashed var(--accent); outline-offset:2px; }
+body.map-on input[type=range].map-able, body.map-on input[type=range].map-armed { outline-offset:8px; }
+body.map-on .map-armed { outline:2px solid var(--accent); outline-offset:2px; animation:mapPulse 1s ease-in-out infinite; }
+@keyframes mapPulse { 50% { opacity:.55; } }
+@media (prefers-reduced-motion:reduce) { .map-badge.armed, body.map-on .map-armed { animation:none; } }
 /* An unstyled native select renders white-on-black against this panel. Matched
    to the mõdFX axis pickers, which are the same control doing the same job. */
 #midi-cc-dest {
@@ -7534,7 +7564,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  </div>
  <button class="ft-ms-led" id="ft-ms-led" style="display:none" onclick="sqClearMuteSolo()" title="Something is muted or soloed. Tap to clear."></button>
   </div>
- <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
+ <button class="ft-btn transport tp-play lit" id="ft-playstop-btn" data-map="toggle:playstop" onclick="ftPlayStop()" title="Play" aria-label="Play">▶</button>
   <div class="ft-top-r">
   <!-- Song and its section arrows, at the far right of the top row (above Chords,
        the last switch). -->
@@ -7671,6 +7701,17 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
        title="Open a project file saved with Save">Open</button>
      <button class="ft-btn ft-plain" onclick="ftGo(projectSave)"
        title="Save this project as a file">Save</button>
+    </div>
+   </div>
+
+   <!-- MAP. Mapping mode for a MIDI controller: outlines every control that can
+        be mapped, tap one, move a knob or press a key. Settings > MIDI has the
+        list of what is bound. -->
+   <div class="ft-sheet-row">
+    <div class="ft-sheet-lbl">MIDI</div>
+    <div class="ft-sheet-items">
+     <button class="ft-btn ft-plain" onclick="toggleMapMode(true)"
+       title="Bind a knob, fader, key or pad on a MIDI controller to any control on screen — tap the control, then move the thing.">Map controls</button>
     </div>
    </div>
 
@@ -7815,7 +7856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9j</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9k</span></div>
  </div>
 </div>
 
@@ -8329,7 +8370,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <div class="row" style="align-items:flex-end">
    <button class="tb active" id="strum-mode-btn" onclick="toggleStrumMode()" title="Roll the chord's notes one after another instead of striking them together">Strum: ON</button>
    <div class="sg"><div class="sl">Strum length</div><input type="range" id="strum-spread" min="0" max=".35" step=".01" value=".12" oninput="updateStrumLabel()"><div class="sv" id="strum-val">120ms</div></div>
-   <button class="tb active" id="chord-layer-btn" onclick="toggleChordLayer()" title="While the arp is running, also hold the full chord underneath it. With the arp off this makes no difference — the chord is already sounding.">Chord under arp: ON</button>
+   <button class="tb active" id="chord-layer-btn" data-map="toggle:chord-under-arp" onclick="toggleChordLayer()" title="While the arp is running, also hold the full chord underneath it. With the arp off this makes no difference — the chord is already sounding.">Chord under arp: ON</button>
   </div>
   <!-- Glide (portamento): each voice of the next chord slides in from the
        matching voice of the last one. And the voicing, beside it: the two are
@@ -8381,7 +8422,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <button class="tb mel-octbtn" onclick="shiftMelOct(-1)" aria-label="Octave down">Oct−</button>
  <span class="oct-pill" id="mel-oct-disp">C5</span>
  <button class="tb mel-octbtn" onclick="shiftMelOct(+1)" aria-label="Octave up">Oct+</button>
- <button class="hold-btn" id="hold-btn" onclick="toggleHold()">Hold</button>
+ <button class="hold-btn" id="hold-btn" data-map="toggle:hold" onclick="toggleHold()">Hold</button>
  </div>
  <!-- Melody chrome, second and last row. Touch Mod, the bend strip's own
       Lock/Continuous switch and the scale disclosure each used to own a full
@@ -8877,11 +8918,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span class="midi-panel-lbl" style="min-width:0">Knobs &amp; sliders:</span>
    <div id="midi-cc-rows"></div>
    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <button class="tb" id="midi-map-btn" onclick="toggleMapMode()">Map controls</button>
     <select id="midi-cc-dest" style="flex:1;min-width:150px"></select>
     <button class="tb" id="midi-cc-learn">Learn</button>
    </div>
    <div style="font-size:.44rem;color:var(--muted);line-height:1.6">
-    Pick a parameter, hit <strong>Learn</strong>, then move the knob or slider you want to use — the next control change binds to it. mõdSynth parameters follow the part selected under <strong>Patch for</strong> in the mõdSynth panel.
+    <strong>Map controls</strong> outlines every control you can map: tap one, then move a knob or press a key or pad on your controller. Sliders, the mõdSynth knobs, the mõdFX pad, Play, Hold and the chord pads can all be mapped. Or pick a parameter here, hit <strong>Learn</strong>, and move the control. Long-press a mapped control, or tap its badge, to clear it.
    </div>
   </div>
  </div>
@@ -9063,7 +9105,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9j</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9k</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10038,6 +10080,14 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <div id="gate-val"></div>
 </div>
 
+<!-- Mapping mode (Settings > MIDI, or Map in the transport sheet): the bar says
+     what it is waiting for, the badge layer shows what each control is bound to. -->
+<div id="map-bar" role="status" hidden>
+ <span id="map-msg">Mapping — tap a control, then move a knob or press a key on your controller.</span>
+ <button type="button" class="tb" onclick="toggleMapMode(false)">Done</button>
+</div>
+<div id="map-badges" aria-hidden="true"></div>
+
 <!-- ══════════════════════════════════════
  SCRIPT
 ══════════════════════════════════════ -->
@@ -10052,7 +10102,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9j';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9k';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -28690,6 +28740,7 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  // 7th strip
  const sevDiv=document.createElement('div');
  sevDiv.className='btn-sev';
+ sevDiv.setAttribute('data-map','trigger:chord7-'+kbNum);
  const sev7Name=noteN+(SUFFIX7[type7]||'');
  sevDiv.innerHTML=`<span class="sl-name">${sev7Name}</span><span class="sl-qual">${QLABEL[type7]||''}</span>`;
  _wireChordHold(sevDiv, ()=>{
@@ -28701,6 +28752,7 @@ function makeSplitBtn(numeral,noteN,triadQ,type7,crm,func,kbNum){
  // Triad area
  const trDiv=document.createElement('div');
  trDiv.className='btn-tri';
+ trDiv.setAttribute('data-map','trigger:chord-'+kbNum);
  // Augmented needs its own symbol: without it an aug triad printed as a bare
  // note name, so Harmonic Minor's ♭III+ and Hijaz's ♭VI+ both read as plain
  // major chords on the button while the numeral above said otherwise.
@@ -33584,7 +33636,8 @@ function captureSetup(name, withSetlist){
  return {
   app:'modriff', v:1, name:(name||'Untitled setup'), ts:Date.now(),
   settings:(typeof proRestoreSetup==='function' ? proRestoreSetup(_capSettings()) : _capSettings()),
-  setlist: (withSetlist===false) ? null : loadSLData()
+  setlist: (withSetlist===false) ? null : loadSLData(),
+  midiMap: (typeof mapGetAll==='function') ? mapGetAll() : []
  };
 }
 
@@ -33632,6 +33685,10 @@ function applySetup(st, opts){
    startEverything();
   }catch(e){} }, 120);
  }
+ // The controller map comes with a setup only when a person loads one
+ // (opts.map): the last-session restore and undo go through here as well, and
+ // ⌘Z quietly taking back a binding made a minute ago would be a surprise.
+ if(opts && opts.map && Array.isArray(st.midiMap) && typeof mapSetAll==='function'){ try{ mapSetAll(st.midiMap); }catch(e){} }
  // Undo treats a load like any other edit, so ⌘Z walks back out of it.
  if(typeof _undoTick==='function') setTimeout(_undoTick, 400);
  return true;
@@ -33699,7 +33756,7 @@ function setupSaveNew(){
 function setupLoad(id){
  const st=loadSetupsData().find(x=>x.id===id);
  if(!st){ showToast('Setup not found'); return; }
- if(applySetup(st)){ renderSetups(); showToast('Loaded — '+st.name); track('setup_loaded',{}); }
+ if(applySetup(st, {map:true})){ renderSetups(); showToast('Loaded — '+st.name); track('setup_loaded',{}); }
  else showToast('Could not load that setup');
 }
 function setupDelete(id){
@@ -33843,7 +33900,7 @@ function projectCapture(name){
 function projectApply(st){
  if(!st) return false;
  const copy=Object.assign({}, st); delete copy.setlist;
- if(!applySetup(copy)) return false;
+ if(!applySetup(copy, {map:true})) return false;
  const pj=st.project||{};
  const t=document.getElementById('chart-title');
  // Older files and Setups exports have no `project`: leave the title alone
@@ -33932,7 +33989,7 @@ function setupImportFile(input){
    // reload the same way a setup saved here does.
    list.push(st); saveSetupsData(list);
    renderSetups();
-   if(applySetup(st)) showToast('Imported & loaded — '+st.name);
+   if(applySetup(st, {map:true})) showToast('Imported & loaded — '+st.name);
    else showToast('Imported, but could not apply it');
    track('setup_imported',{});
   }catch(e){ showToast('That file is not a mõdRïff setup'); }
@@ -37791,7 +37848,7 @@ let midiPanelOpen = false;
 // of Settings. Anything that used to open it now goes there instead, which is
 // also somewhere you can get back to without knowing the badge was a button.
 function toggleMidiPanel(){
- midiCCLearning = null;
+ if(typeof mapDisarm==='function') mapDisarm();
  if(typeof switchTab==='function') switchTab('build');
  if(typeof setSettingsPane==='function') setSettingsPane('midi');
 }
@@ -38092,9 +38149,8 @@ function _slZone(dy){
 // CC to a slider drives the slider and dispatches its input event, which
 // means the existing oninput handler does the work and the on-screen control
 // moves with the knob. One source of truth per parameter.
-let midiCCRoutes = {};
-let midiCCLearning = null;      // destination key waiting for a knob to move
-let midiCCLast = {};            // last value seen per CC, for the panel readout
+// The bindings (MAPB) and the mapping mode are further down, beside the code
+// that reads them.
 
 function midiCCDests(){
  const T = {};
@@ -38180,64 +38236,315 @@ function _midiCCApply(d, norm){
  }
 }
 
-function midiCCOnMessage(cc, val){
- midiCCLast[cc] = val;
- if(midiCCLearning){
-  // A knob only counts once it moves, so a controller streaming a resting
-  // value on connect cannot claim the binding on its own.
-  const dest = midiCCLearning;
-  midiCCLearning = null;
-  // One CC drives one destination: rebinding it replaces whatever it had.
-  Object.keys(midiCCRoutes).forEach(k=>{ if(midiCCRoutes[k]===dest) delete midiCCRoutes[k]; });
-  midiCCRoutes[cc] = dest;
-  midiCCSave();
-  renderMidiCC();
-  return;
+// ── Mapping mode ─────────────────────────────────────────────────────────
+// A binding ties a MIDI source to a control: {src, dst, mode, min, max,
+// takeover}. The design is docs/v5-architecture.md, section 2. What the old
+// two-step learn (pick a name from a list, then move a knob) could not do:
+// reach anything not on the list, bind a note or a button, tell channel 1
+// from channel 2, or leave a fader alone until the hardware knob reaches it.
+//
+//   src  {type:'cc'|'note'|'pb'|'at', ch:0-15|null, num, port:name|null}
+//   dst  'kind:key' — slider:<element id>, fx:x|y, mix:<part>, ms:<param>,
+//        toggle:<name> (a button that flips), trigger:<name> (a pad)
+//   mode abs | rel | toggle | momentary
+//   takeover  jump | pickup — a hardware knob at 20% does not yank a value
+//             sitting at 80% until it passes it
+//
+// Sliders are mappable with no list to keep: any visible input[type=range]
+// with an id is a target, which covers every mõdSynth knob, the tone macros,
+// the reverbs and the rest. Buttons opt in with data-map="toggle:…" or
+// "trigger:…". The apply path is the old one (_midiCCApply): it sets the slider
+// and dispatches its input event, so a mapping needs no per-parameter code.
+//
+// var, not let: onMidiMsg is reached from far away and these are read the
+// moment the first message arrives (the temporal dead zone note in CLAUDE.md).
+var MAPB = [];                                    // the bindings, saved under modo-midi-map
+var MAPS = { on:false, armed:null, seen:{}, timer:0, lp:0, synth:false, badges:{}, labels:null };
+var midiCCLast = {};                              // last value seen per CC, for the panel readout
+
+function _mapKind(dst){ var i = String(dst).indexOf(':'); return i < 0 ? '' : dst.slice(0, i); }
+function _mapKey(dst){ var i = String(dst).indexOf(':'); return i < 0 ? '' : dst.slice(i + 1); }
+function _mapContinuous(dst){ var k = _mapKind(dst); return k === 'slider' || k === 'fx' || k === 'mix' || k === 'ms'; }
+function _mapDstKnown(dst){
+ var k = _mapKind(dst);
+ return !!_mapKey(dst) && ['slider','fx','mix','ms','toggle','trigger'].indexOf(k) >= 0;
+}
+// A catalogue entry ('chordrev') as a data-map string. The catalogue stays for
+// the Learn list and for labels.
+function _mapDstOfCat(key){
+ var d = MIDI_CC_DESTS[key]; if(!d) return null;
+ if(d.slider) return 'slider:' + d.slider;
+ if(d.fx) return 'fx:' + d.fx;
+ if(d.mix) return 'mix:' + d.mix;
+ if(d.ms) return 'slider:ms-' + d.ms.k;
+ return null;
+}
+function _mapDstOfEl(el){
+ if(el.dataset && el.dataset.map) return el.dataset.map;
+ if(el.tagName === 'INPUT' && el.type === 'range' && el.id) return 'slider:' + el.id;
+ return null;
+}
+function _mapEl(dst){
+ var k = _mapKind(dst), key = _mapKey(dst);
+ if(k === 'slider') return document.getElementById(key);
+ try{ return document.querySelector('[data-map="' + String(dst).replace(/"/g, '\\"') + '"]'); }catch(e){ return null; }
+}
+function _mapLabel(dst){
+ if(!MAPS.labels){
+  MAPS.labels = {};
+  Object.keys(MIDI_CC_DESTS).forEach(function(k){ var d = _mapDstOfCat(k); if(d) MAPS.labels[d] = MIDI_CC_DESTS[k].label; });
  }
- const dest = midiCCRoutes[cc];
- if(dest) midiCCApply(dest, val/127);
- renderMidiCCActivity(cc);
+ if(MAPS.labels[dst]) return MAPS.labels[dst];
+ // Named here rather than read off the control: a button's title is a sentence,
+ // and a chord pad's text changes with the key, so neither makes a good row.
+ var fixed = {'toggle:playstop':'Play / Stop', 'toggle:hold':'Hold (melody)', 'toggle:fx-hold':'mõdFX Hold', 'toggle:chord-under-arp':'Chord under arp'};
+ if(fixed[dst]) return fixed[dst];
+ var pm = /^trigger:(chord7?)-(\d+)$/.exec(dst);
+ if(pm) return 'Chord pad ' + (+pm[2] + 1) + (pm[1] === 'chord7' ? ' (7th)' : '');
+ var el = _mapEl(dst);
+ if(el){
+  var t = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+  if(!t && el.tagName === 'INPUT' && el.parentElement){
+   var l = el.parentElement.querySelector('.ms-lbl, label, .lbl');
+   if(l) t = l.textContent;
+  }
+  if(!t) t = el.textContent;
+  t = String(t || '').replace(/\s+/g, ' ').trim();
+  if(t && t.length <= 40) return t;
+ }
+ return _mapKey(dst).replace(/[-_]+/g, ' ');
+}
+function _mapSrcLabel(src, long){
+ var s = src.type === 'cc' ? 'CC ' + src.num : src.type === 'note' ? 'Note ' + src.num
+       : src.type === 'pb' ? 'Pitch bend' : 'Aftertouch';
+ if(src.ch != null) s += ' ch ' + (src.ch + 1);
+ if(long && src.port) s += ' · ' + src.port;
+ return s;
 }
 
-function midiCCSave(){
- try{ modStore.setItem('modo-midi-cc', JSON.stringify(midiCCRoutes)); }catch(e){}
+// What an incoming message is, in the terms a binding uses; null for the
+// messages nothing can bind to (clock, sysex, program change).
+function _mapSrc(e){
+ var d = e.data; if(!d || d.length < 2) return null;
+ var st = d[0], type = st & 0xf0, ch = st & 0x0f, a = d[1], b = d[2] || 0;
+ var port = null; try{ port = _midiPortName(e) || null; }catch(err){}
+ if(type === 0xB0) return {type:'cc', ch:ch, num:a, port:port, norm:b / 127, on:b > 0, raw:b};
+ if(type === 0x90) return {type:'note', ch:ch, num:a, port:port, norm:b / 127, on:b > 0, raw:b};
+ if(type === 0x80) return {type:'note', ch:ch, num:a, port:port, norm:0, on:false, raw:0};
+ if(type === 0xE0){ var v14 = (b << 7) | a; return {type:'pb', ch:ch, num:0, port:port, norm:v14 / 16383, on:v14 > 12000, raw:v14}; }
+ if(type === 0xD0) return {type:'at', ch:ch, num:0, port:port, norm:a / 127, on:a > 63, raw:a};
+ return null;
 }
+function _mapSame(src, s){
+ return src.type === s.type && src.num === s.num
+     && (src.ch == null || src.ch === s.ch) && (src.port == null || src.port === s.port);
+}
+
+// Called first by onMidiMsg. True means the message is spoken for and the
+// normal router must not also play a chord from it.
+function _mapMidi(e){
+ var s = _mapSrc(e); if(!s) return false;
+ var k = s.type + '|' + s.ch + '|' + s.num + '|' + s.port, prev = MAPS.seen[k];
+ if(s.type !== 'note') MAPS.seen[k] = s.norm;
+ if(MAPS.armed){
+  // A note-off still gets through: the key that was held when Map went on
+  // would otherwise ring until the page is reloaded.
+  if(s.type === 'note' && !s.on) return false;
+  _mapLearn(s, prev);
+  return true;
+ }
+ var hit = false;
+ for(var i = 0; i < MAPB.length; i++){
+  var b = MAPB[i];
+  if(!_mapSame(b.src, s)) continue;
+  hit = true;
+  try{ _mapDrive(b, s); }catch(err){}
+  _mapFlash(i);
+ }
+ return hit;
+}
+
+function _mapLearn(s, prev){
+ var a = MAPS.armed, mode = null;
+ if(_mapContinuous(a.dst)){
+  // A knob only counts once it moves, so a controller that streams a resting
+  // value on connect cannot claim the binding by itself.
+  if((s.type === 'cc' || s.type === 'pb' || s.type === 'at') && prev != null && Math.abs(prev - s.norm) > 0.004) mode = 'abs';
+ } else if((s.type === 'note' && s.on) || (s.type === 'cc' && s.on)){
+  mode = _mapKind(a.dst) === 'trigger' ? 'momentary' : 'toggle';
+ }
+ if(mode) _mapBind(a.dst, s, mode);
+}
+
+function _mapBind(dst, s, mode){
+ var src = {type:s.type, ch:s.ch, num:s.num, port:s.port};
+ // One source drives one control and one control has one source: rebinding
+ // either side replaces what it had.
+ MAPB = MAPB.filter(function(b){ return b.dst !== dst && !(b.src.type === src.type && b.src.num === src.num && b.src.ch === src.ch && b.src.port === src.port); });
+ var cont = _mapContinuous(dst);
+ MAPB.push({src:src, dst:dst, mode:mode, min:0, max:1, takeover:(cont && _mapKind(dst) !== 'fx' && _mapKind(dst) !== 'mix') ? 'pickup' : 'jump'});
+ mapDisarm();
+ midiCCSave(); renderMidiCC(); _mapLayout();
+ try{ showToast(_mapSrcLabel(src) + ' → ' + _mapLabel(dst)); }catch(e){}
+}
+function mapDisarm(){
+ if(MAPS.armed && MAPS.armed.el) MAPS.armed.el.classList.remove('map-armed');
+ MAPS.armed = null;
+ _mapBarText(); renderMidiCC();
+}
+function mapArm(dst, el){
+ mapDisarm();
+ MAPS.armed = {dst:dst, el:el || null};
+ if(el) el.classList.add('map-armed');
+ _mapBarText(); renderMidiCC();
+}
+function mapUnbind(i){
+ var b = MAPB[i]; if(!b) return;
+ MAPB.splice(i, 1);
+ midiCCSave(); renderMidiCC(); _mapLayout();
+}
+
+function _mapRead(dst){
+ var k = _mapKind(dst), key = _mapKey(dst);
+ if(k === 'slider' || k === 'ms'){
+  var el = document.getElementById(k === 'ms' ? 'ms-' + key : key); if(!el) return null;
+  var lo = parseFloat(el.min), hi = parseFloat(el.max), v = parseFloat(el.value);
+  return (isFinite(lo) && isFinite(hi) && hi > lo && isFinite(v)) ? (v - lo) / (hi - lo) : null;
+ }
+ if(k === 'fx' && typeof fxPos !== 'undefined') return key === 'x' ? fxPos.x : fxPos.y;
+ return null;
+}
+function _mapApply(dst, norm){
+ norm = Math.max(0, Math.min(1, norm));
+ var k = _mapKind(dst), key = _mapKey(dst);
+ if(k === 'slider') _midiCCApply({slider:key}, norm);
+ else if(k === 'fx') _midiCCApply({fx:key}, norm);
+ else if(k === 'mix') _midiCCApply({mix:key}, norm);
+ else if(k === 'ms'){
+  var c = (typeof MS_CTRLS !== 'undefined') ? MS_CTRLS.filter(function(x){ return x.k === key; })[0] : null;
+  if(c) _midiCCApply({ms:c}, norm);
+ }
+}
+// A press on a button. Synthetic events are flagged so Map mode, which is
+// listening for taps in the capture phase, does not mistake them for a finger.
+function _mapPress(dst, phase){
+ var el = _mapEl(dst); if(!el) return;
+ MAPS.synth = true;
+ try{
+  if(phase === 'click') el.click();
+  else el.dispatchEvent(new PointerEvent(phase === 'down' ? 'pointerdown' : 'pointerup',
+   {bubbles:true, cancelable:true, pointerId:9100, pointerType:'mouse', isPrimary:true, button:0, buttons:phase === 'down' ? 1 : 0}));
+ }catch(e){}
+ MAPS.synth = false;
+}
+
+function _mapDrive(b, s){
+ var k = _mapKind(b.dst);
+ if(b.mode === 'toggle'){
+  if(s.on){ if(k === 'trigger'){ _mapPress(b.dst, 'down'); _mapPress(b.dst, 'up'); } else _mapPress(b.dst, 'click'); }
+  return;
+ }
+ if(b.mode === 'momentary'){
+  // A trigger is held for as long as the key is; a plain button has no such
+  // thing, so it is flipped when the key goes down and flipped back on release.
+  if(k === 'trigger') _mapPress(b.dst, s.on ? 'down' : 'up'); else _mapPress(b.dst, 'click');
+  return;
+ }
+ if(!_mapContinuous(b.dst)) return;
+ if(b.mode === 'rel'){
+  var cur0 = _mapRead(b.dst); if(cur0 == null) return;
+  var delta = s.raw < 64 ? s.raw : s.raw - 128;        // two's complement, as Push sends
+  _mapApply(b.dst, cur0 + delta / 100);
+  return;
+ }
+ var v = b.min + s.norm * (b.max - b.min);
+ if(b.takeover === 'pickup'){
+  var cur = _mapRead(b.dst);
+  if(cur != null){
+   // Something else moved the control (a preset, the screen): the knob has to
+   // find it again.
+   if(b._up && b._val != null && Math.abs(cur - b._val) > 0.02) b._up = false;
+   if(!b._up){
+    var last = b._last; b._last = v;
+    if(Math.abs(v - cur) < 0.03 || (last != null && (last - cur) * (v - cur) <= 0)) b._up = true;
+    else return;
+   }
+  }
+ }
+ _mapApply(b.dst, v);
+ b._val = _mapRead(b.dst);
+}
+
+function _mapFlash(i){
+ var row = document.getElementById('midi-cc-row-' + i);
+ if(!row) return;
+ row.classList.add('lit'); clearTimeout(row._litT);
+ row._litT = setTimeout(function(){ row.classList.remove('lit'); }, 220);
+}
+
+// ── Saving and the old routes ──
+function _mapClean(b){
+ return {src:{type:b.src.type, ch:b.src.ch, num:b.src.num, port:b.src.port || null}, dst:b.dst, mode:b.mode,
+         min:b.min, max:b.max, takeover:b.takeover};
+}
+function _mapValid(b){
+ return b && b.src && ['cc','note','pb','at'].indexOf(b.src.type) >= 0 && typeof b.src.num === 'number'
+     && _mapDstKnown(b.dst) && ['abs','rel','toggle','momentary'].indexOf(b.mode) >= 0;
+}
+function midiCCSave(){
+ try{ modStore.setItem('modo-midi-map', JSON.stringify(MAPB.map(_mapClean))); }catch(e){}
+}
+// Setups carry the map, so a controller layout travels with the sound it was
+// built for; see applySetup's `map` option.
+function mapSetAll(arr){
+ MAPB = (Array.isArray(arr) ? arr : []).filter(_mapValid).map(_mapClean);
+ mapDisarm(); midiCCSave(); renderMidiCC(); _mapLayout();
+}
+function mapGetAll(){ return MAPB.map(_mapClean); }
 function midiCCLoad(){
- // CC1 is the modulation wheel on every controller ever made, and the X axis
- // of the mõdFX pad is the most expressive thing in the app to hand it.
- // CC11 is expression, and keeps the chord level it already had.
- const defaults = {1:'fxx', 11:'mix_chord'};
- let saved = null;
- try{ saved = JSON.parse(modStore.getItem('modo-midi-cc') || 'null'); }catch(e){}
- midiCCRoutes = (saved && typeof saved === 'object') ? saved : defaults;
- // Drop routes naming a destination this build no longer has.
- Object.keys(midiCCRoutes).forEach(cc=>{ if(!MIDI_CC_DESTS[midiCCRoutes[cc]]) delete midiCCRoutes[cc]; });
+ var saved = null;
+ try{ saved = JSON.parse(modStore.getItem('modo-midi-map') || 'null'); }catch(e){}
+ if(Array.isArray(saved)){
+  MAPB = saved.filter(_mapValid).map(_mapClean);
+ } else {
+  // First run of the mapping build: read the old {cc: destination} routes and
+  // write them out as bindings. modo-midi-cc is left where it is, not renamed
+  // and not deleted, so a rollback to an older build still finds its routes.
+  var routes = null, fromOld = false;
+  try{ routes = JSON.parse(modStore.getItem('modo-midi-cc') || 'null'); fromOld = !!(routes && typeof routes === 'object'); }catch(e){}
+  // CC1 is the modulation wheel on every controller ever made, and the X axis
+  // of the mõdFX pad is the most expressive thing in the app to hand it. CC11
+  // is expression, and keeps the chord level it already had.
+  if(!fromOld) routes = {1:'fxx', 11:'mix_chord'};
+  MAPB = [];
+  Object.keys(routes).forEach(function(cc){
+   var dst = _mapDstOfCat(routes[cc]); if(!dst) return;
+   var cont = _mapKind(dst) === 'slider';
+   MAPB.push({src:{type:'cc', ch:null, num:+cc, port:null}, dst:dst, mode:'abs', min:0, max:1, takeover:cont ? 'pickup' : 'jump'});
+  });
+  if(fromOld) midiCCSave();
+ }
  try{ const b=modStore.getItem('modo-midi-bend'); if(b) melBendScope = (b==='mel')?'mel':'all'; }catch(e){}
 }
 
+// A CC that no binding wanted reaches the core router, which only keeps the
+// last value for the readout.
+function midiCCOnMessage(cc, val){ midiCCLast[cc] = val; }
+
+// ── The Learn list in Settings > MIDI ──
 function midiCCLearn(){
  const sel = document.getElementById('midi-cc-dest');
  if(!sel || !sel.value) return;
- midiCCLearning = sel.value;
- renderMidiCC();
+ const dst = _mapDstOfCat(sel.value); if(!dst) return;
+ mapArm(dst, null);
 }
-function midiCCCancelLearn(){ midiCCLearning = null; renderMidiCC(); }
-function midiCCClear(cc){ delete midiCCRoutes[cc]; midiCCSave(); renderMidiCC(); }
-
-// A brief flash on the row a CC just moved, so you can see which knob is
-// which without watching the parameter it lands on.
-function renderMidiCCActivity(cc){
- const row = document.getElementById('midi-cc-row-'+cc);
- if(!row) return;
- row.classList.add('lit');
- clearTimeout(row._litT);
- row._litT = setTimeout(()=>row.classList.remove('lit'), 220);
-}
+function midiCCCancelLearn(){ mapDisarm(); }
 
 function renderMidiCC(){
  const host = document.getElementById('midi-cc-rows');
  const sel  = document.getElementById('midi-cc-dest');
  const btn  = document.getElementById('midi-cc-learn');
+ const mbtn = document.getElementById('midi-map-btn');
  if(sel && !sel.options.length){
   const groups = {};
   Object.keys(MIDI_CC_DESTS).forEach(k=>{
@@ -38254,27 +38561,142 @@ function renderMidiCC(){
    sel.appendChild(og);
   });
  }
+ const learning = !!MAPS.armed;
  if(btn){
-  btn.textContent = midiCCLearning ? 'Move a knob…' : 'Learn';
-  btn.classList.toggle('active', !!midiCCLearning);
-  btn.onclick = midiCCLearning ? midiCCCancelLearn : midiCCLearn;
+  btn.textContent = learning ? 'Move a control…' : 'Learn';
+  btn.classList.toggle('active', learning);
+  btn.onclick = learning ? midiCCCancelLearn : midiCCLearn;
  }
+ if(mbtn){ mbtn.textContent = MAPS.on ? 'Map controls: ON' : 'Map controls'; mbtn.classList.toggle('active', MAPS.on); }
  if(!host) return;
- const ccs = Object.keys(midiCCRoutes).sort((a,b)=>a-b);
- if(!ccs.length){
-  host.innerHTML = '<div class="midi-cc-empty">Nothing mapped. Pick a parameter, hit Learn, then move the knob you want to use.</div>';
+ if(!MAPB.length){
+  host.innerHTML = '<div class="midi-cc-empty">Nothing mapped. Press <strong>Map controls</strong>, tap what you want to control, then move a knob or press a key on your controller. Or pick a parameter below and hit Learn.</div>';
   return;
  }
- host.innerHTML = ccs.map(cc=>{
-  const d = MIDI_CC_DESTS[midiCCRoutes[cc]];
-  return '<div class="midi-cc-row" id="midi-cc-row-'+cc+'">'
-       + '<span class="midi-cc-num">CC '+cc+'</span>'
+ const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ host.innerHTML = MAPB.map((b, i)=>{
+  const cont = _mapContinuous(b.dst);
+  const modes = cont ? [['abs','Absolute'],['rel','Relative']] : [['toggle','Toggle'],['momentary','Hold']];
+  const opts = modes.map(m=>'<option value="'+m[0]+'"'+(b.mode===m[0]?' selected':'')+'>'+m[1]+'</option>').join('');
+  return '<div class="midi-cc-row" id="midi-cc-row-'+i+'">'
+       + '<span class="midi-cc-num" title="'+esc(_mapSrcLabel(b.src, true))+'">'+esc(_mapSrcLabel(b.src))+'</span>'
        + '<span class="midi-cc-arrow">→</span>'
-       + '<span class="midi-cc-dest">'+(d?d.label:'—')+'</span>'
-       + '<button class="midi-cc-x" title="Unmap CC '+cc+'" '
-       + 'onclick="midiCCClear('+cc+')">×</button></div>';
+       + '<span class="midi-cc-dest">'+esc(_mapLabel(b.dst))+'</span>'
+       + '<select class="midi-map-mode" aria-label="Mode" onchange="mapSetMode('+i+',this.value)">'+opts+'</select>'
+       + (cont && b.mode === 'abs'
+          ? '<label class="midi-map-pick" title="Wait for the knob to reach the control before it moves it"><input type="checkbox"'+(b.takeover==='pickup'?' checked':'')+' onchange="mapSetPickup('+i+',this.checked)"> pickup</label>' : '')
+       + '<button class="midi-cc-x" title="Unmap" onclick="mapUnbind('+i+')">×</button></div>';
  }).join('');
 }
+function mapSetMode(i, m){ if(MAPB[i]){ MAPB[i].mode = m; MAPB[i]._up = false; midiCCSave(); renderMidiCC(); } }
+function mapSetPickup(i, on){ if(MAPB[i]){ MAPB[i].takeover = on ? 'pickup' : 'jump'; MAPB[i]._up = false; midiCCSave(); } }
+
+// ── Map mode: tap a control, then move something ──
+// While it is on every mappable control is outlined, and a tap arms the control
+// instead of operating it. Playing, scrolling and switching tabs work as usual
+// (the controls that are not mappable are not touched). Done, or Esc with
+// nothing armed, ends it.
+function _mapMappable(el){
+ if(el.disabled) return false;
+ if(el.closest('#map-bar, #map-badges')) return false;
+ if(!el.getClientRects().length) return false;
+ // A slider's track is 3px tall (the thumb is what you grab), so height only
+ // has to exist; the outline is pushed out around it in the CSS.
+ const r = el.getBoundingClientRect();
+ return r.width > 4 && r.height >= 1;
+}
+function _mapScan(){
+ const out = [];
+ document.querySelectorAll('[data-map], input[type=range][id]').forEach(function(el){
+  if(!_mapMappable(el)) return;
+  const dst = _mapDstOfEl(el); if(!dst || !_mapDstKnown(dst)) return;
+  out.push({el:el, dst:dst});
+ });
+ return out;
+}
+function _mapShort(src){
+ if(src.type === 'cc') return 'CC' + src.num;
+ if(src.type === 'note') return 'N' + src.num;
+ return src.type === 'pb' ? 'PB' : 'AT';
+}
+function _mapLayout(){
+ const host = document.getElementById('map-badges'); if(!host) return;
+ if(!MAPS.on){
+  document.querySelectorAll('.map-able').forEach(function(e){ e.classList.remove('map-able'); });
+  host.innerHTML = ''; MAPS.badges = {};
+  return;
+ }
+ const items = _mapScan(), live = {};
+ document.querySelectorAll('.map-able').forEach(function(e){ e.classList.remove('map-able'); });
+ items.forEach(function(it){
+  it.el.classList.add('map-able');
+  const bi = MAPB.findIndex(function(b){ return b.dst === it.dst; });
+  const armed = MAPS.armed && MAPS.armed.dst === it.dst;
+  if(bi < 0 && !armed) return;
+  const r = it.el.getBoundingClientRect();
+  if(r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return;
+  let bd = MAPS.badges[it.dst];
+  if(!bd){
+   bd = document.createElement('button'); bd.type = 'button'; bd.className = 'map-badge'; bd.setAttribute('data-mapbadge', '1');
+   bd.onclick = function(ev){ ev.stopPropagation(); const j = MAPB.findIndex(function(b){ return b.dst === it.dst; }); if(j >= 0){ mapUnbind(j); try{ showToast('Cleared ' + _mapLabel(it.dst)); }catch(e){} } };
+   host.appendChild(bd); MAPS.badges[it.dst] = bd;
+  }
+  bd.textContent = armed ? '…' : _mapShort(MAPB[bi].src);
+  bd.title = armed ? 'Move a control on your controller' : _mapSrcLabel(MAPB[bi].src, true) + ' — tap to clear';
+  bd.classList.toggle('armed', !!armed);
+  bd.style.left = Math.max(2, Math.min(innerWidth - 44, r.right - 30)) + 'px';
+  bd.style.top = Math.max(2, Math.min(innerHeight - 20, r.top - 8)) + 'px';
+  live[it.dst] = true;
+ });
+ Object.keys(MAPS.badges).forEach(function(d){ if(!live[d]){ MAPS.badges[d].remove(); delete MAPS.badges[d]; } });
+}
+function _mapBarText(){
+ const m = document.getElementById('map-msg'); if(!m) return;
+ m.textContent = MAPS.armed
+  ? 'Move a knob or press a key for: ' + _mapLabel(MAPS.armed.dst)
+  : 'Mapping — tap a control, then move a knob or press a key on your controller.';
+}
+function toggleMapMode(force){
+ const on = force == null ? !MAPS.on : !!force;
+ if(on === MAPS.on) return;
+ MAPS.on = on;
+ if(!on) mapDisarm();
+ document.body.classList.toggle('map-on', on);
+ const bar = document.getElementById('map-bar'); if(bar) bar.hidden = !on;
+ clearInterval(MAPS.timer); MAPS.timer = on ? setInterval(_mapLayout, 400) : 0;
+ _mapBarText(); _mapLayout(); renderMidiCC();
+ if(on && typeof closeFtMore === 'function') closeFtMore();
+}
+(function(){
+ function swallow(e){
+  if(e.type === 'pointerup' || e.type === 'pointercancel'){ clearTimeout(MAPS.lp); }
+  if(!MAPS.on || MAPS.synth) return;
+  const t = e.target && e.target.closest ? e.target : null; if(!t) return;
+  if(t.closest('#map-bar, #map-badges')) return;
+  const el = t.closest('[data-map], input[type=range][id]');
+  if(!el || !_mapMappable(el)) return;
+  const dst = _mapDstOfEl(el); if(!dst || !_mapDstKnown(dst)) return;
+  e.preventDefault(); e.stopPropagation();
+  if(e.type !== 'pointerdown') return;
+  if(MAPS.armed && MAPS.armed.dst === dst){ mapDisarm(); _mapLayout(); return; }
+  mapArm(dst, el); _mapLayout();
+  // A long press clears what the control is bound to.
+  clearTimeout(MAPS.lp);
+  MAPS.lp = setTimeout(function(){
+   const j = MAPB.findIndex(function(b){ return b.dst === dst; });
+   if(j >= 0){ mapUnbind(j); mapDisarm(); _mapLayout(); try{ showToast('Cleared ' + _mapLabel(dst)); }catch(err){} }
+  }, 650);
+ }
+ ['pointerdown','pointerup','pointercancel','mousedown','mouseup','touchstart','touchend','click','dblclick','contextmenu'].forEach(function(t){
+  document.addEventListener(t, swallow, {capture:true, passive:false});
+ });
+ document.addEventListener('keydown', function(e){
+  if(e.key !== 'Escape' || !MAPS.on) return;
+  if(MAPS.armed){ mapDisarm(); _mapLayout(); } else toggleMapMode(false);
+ });
+ window.addEventListener('resize', function(){ if(MAPS.on) _mapLayout(); });
+ window.addEventListener('scroll', function(){ if(MAPS.on) _mapLayout(); }, {capture:true, passive:true});
+})();
 
 function _onMidiCore(e, mm){
  const [st, note, vel] = e.data, type = st & 0xf0;
@@ -38468,6 +38890,10 @@ function onMidiMsg(e){
  // mõdRïff's own MIDI out, arriving back through a loopback bus — see moIsEcho.
  if(typeof moIsEcho==='function' && moIsEcho(e)) return;
  _midiMonLog(e);
+ // A binding made in mapping mode (or an armed control waiting for one) speaks
+ // for the message before the router does, so the key that binds a pad does not
+ // also play a chord.
+ if(_mapMidi(e)) return;
  var d = e.data, st = d[0], type = st & 0xf0, ch = st & 0x0f, note = d[1], vel = d[2];
  var name = _midiPortName(e), prof = midiProfileFor(name);
  var portT = midiPortTargets[name];
@@ -57054,7 +57480,7 @@ function fxBuildPanel(){
   +  '<button class="fx-hold" id="fx-smp-btn" onclick="smpOpenSlot(\'fxpad\')">◈ Sample</button>'
   +  '<button class="fx-hold" id="fx-smp-pwr" onclick="fxSmpToggle()" style="display:none" aria-pressed="true">On</button>'
   +  '<button class="fx-clear" id="fx-smp-eject" onclick="fxSmpEject()" style="display:none" title="Take the clip off the pad. It stays in your library." aria-label="Eject sample">✕</button>'
-  +  '<button class="fx-hold" id="fx-hold-btn" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
+  +  '<button class="fx-hold" id="fx-hold-btn" data-map="toggle:fx-hold" onclick="fxToggleHold()" aria-pressed="false">Hold</button>'
   +  '<button class="fx-hold" id="fx-flt-btn" onclick="fxSetPadFlt()" title="The pad\'s filter: Clean, Moog (four-pole ladder, saturation in the loop) or MS-20 (two-pole, screams rather than peaks). Used by Cutoff, Resonance and LP sweep.">Filter: Clean</button>'
   +  '<button class="fx-clear" onclick="fxClearAll()">Clear</button>'
   // Release sits with the pad's other controls. It had a block of its own at
