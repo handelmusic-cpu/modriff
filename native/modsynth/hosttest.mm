@@ -52,7 +52,7 @@ int main() {
   @autoreleasepool {
     const double sr = 48000;
     ModEngineHost* h = [[ModEngineHost alloc] initWithSampleRate:sr maxFrames:4096];
-    [h ensurePart:0]; [h warmUpPart:0];
+    [h warmUpPart:0];
     [h post:@{@"t": @"on", @"part": @0, @"note": @60, @"vel": @0.8, @"id": @1}];
     [h post:@{@"t": @"on", @"part": @0, @"note": @67, @"vel": @0.8, @"id": @2}];
 
