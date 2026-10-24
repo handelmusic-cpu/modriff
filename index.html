@@ -7038,9 +7038,32 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    getting are read on one axis. */
 .mix-meter { flex:0 0 5px; width:100%; height:5px; border-radius:3px; display:block; }
 
-/* Free tier: locked controls stay visible but inert, so the ceiling is
-   legible rather than mysterious — a control that vanishes reads as a bug. */
-.tier-locked { opacity:.34; pointer-events:none; position:relative; filter:grayscale(.7); }
+/* Free tier: locked controls stay visible, so the ceiling is legible rather
+   than mysterious — a control that vanishes reads as a bug. They used to be
+   inert (pointer-events:none); now a tap on one opens the Pro sheet, which
+   names it (see the interception under "The upgrade sheet"). Their children
+   take no pointer events, so the tap always lands on the locked element and a
+   <select> or <label> inside cannot open or focus. The padlock is drawn, not
+   typed: a mask, so it takes the control's own colour. */
+.tier-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
+.tier-locked * { pointer-events:none; }
+.tier-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
+  background:currentColor; pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat; }
+#_pro-sheet { position:fixed; inset:0; z-index:9650; display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(0,0,0,.72); }
+#_pro-sheet .pro-box { width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:var(--surf);
+  border:1px solid var(--pg); border-radius:16px; padding:18px; color:var(--text); }
+#_pro-sheet .pro-hd { font-family:'Orbitron',sans-serif; font-size:.66rem; font-weight:700; color:var(--pg); margin-bottom:6px; }
+#_pro-sheet .pro-what { font-size:.62rem; font-weight:700; margin-bottom:10px; }
+#_pro-sheet ul { margin:0 0 12px; padding-left:18px; font-size:.54rem; line-height:1.85; color:var(--text); }
+#_pro-sheet .pro-price { font-size:.5rem; color:var(--muted); margin-bottom:10px; }
+#_pro-sheet button { width:100%; padding:9px 14px; border-radius:9px; font-family:'Outfit',sans-serif;
+  font-size:.58rem; font-weight:700; cursor:pointer; touch-action:manipulation; margin-top:6px; }
+#_pro-sheet .pro-buy { border:none; background:var(--pg); color:#07080f; }
+#_pro-sheet .pro-sec { border:1px solid var(--pg); background:transparent; color:var(--text); font-weight:600; }
+#_pro-sheet button:disabled { opacity:.5; cursor:default; }
 
 /* ══ Wide screens ═══════════════════════════════════════════════
    Every panel was capped at 700px at every size, so a 1440x900 laptop showed
@@ -7792,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9e</span></div>
  </div>
 </div>
 
@@ -9029,7 +9052,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.8</span></div>
+    <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
+     <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
+     <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9e</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10018,7 +10044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.8';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13876,9 +13902,16 @@ var SMP_MIME_EXT = {'audio/wav':'wav','audio/wave':'wav','audio/x-wav':'wav','au
 function smpExportSet(){
  showToast('Packing the set…');
  return smpDbAll().then(function(recs){
-  var files=[], clips=[];
+  var files=[], clips=[], left=[], packed=0;
   recs.forEach(function(r){
    if(!r.bytes) return;
+   // Past the caps a clip stays out, and is named in the message below.
+   var nb=r.bytes.byteLength||0, why=null;
+   if(r.dur>EMBED_LIMITS.sampleSeconds) why='longer than '+EMBED_LIMITS.sampleSeconds+' s';
+   else if(nb>EMBED_LIMITS.sampleBytes) why='over '+_smpBytes(EMBED_LIMITS.sampleBytes);
+   else if(packed+nb>EMBED_LIMITS.fileBytes) why='the file is full at '+_smpBytes(EMBED_LIMITS.fileBytes);
+   if(why){ left.push((r.name||'a clip')+' ('+why+')'); return; }
+   packed+=nb;
    var ext=SMP_MIME_EXT[String(r.mime||'').toLowerCase()] || 'wav';
    var path='clips/'+r.id+'.'+ext;
    files.push({name:path, data:new Uint8Array(r.bytes)});
@@ -13904,7 +13937,10 @@ function smpExportSet(){
   var stamp=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   var fname='modriff-set-'+stamp+'.zip';
   modPlatform.saveFile(fname, blob);
-  showToast(fname+' — '+clips.length+' clip'+(clips.length===1?'':'s')+', '+_smpBytes(blob.size));
+  showToast(fname+' — '+clips.length+' clip'+(clips.length===1?'':'s')+', '+_smpBytes(blob.size)
+   + (left.length ? '. Left out, too big to embed: '+left.slice(0,3).join(', ')+(left.length>3?' and '+(left.length-3)+' more':'')
+                   + '. Whoever opens it will not hear them.' : ''),
+   left.length ? {ms:9000} : undefined);
   return blob;
  }).catch(function(e){ showToast('Could not pack the set — '+(e&&e.message||'unknown')); });
 }
@@ -13940,7 +13976,10 @@ function smpImportSetFile(file){
   if(!o) return;
   var byName={};
   o.entries.forEach(function(e){ byName[e.name]=e; });
-  var jobs=(o.set.clips||[]).map(function(c){
+  // Free can receive a set but not keep its recordings: the sampler is Pro, so
+  // the clips stay in the file (which is not touched) and play as silence here.
+  var _skipClips = (typeof modTier==='function' && modTier()==='free');
+  var jobs=(_skipClips ? [] : (o.set.clips||[])).map(function(c){
    var e=byName[c.file]; if(!e) return Promise.resolve();
    return _zipEntryBytes(e).then(function(bytes){
     // A clip arriving under an id this device already uses is a different
@@ -13973,7 +14012,9 @@ function smpImportSetFile(file){
     var ti=document.getElementById('chart-title');
     if(ti && o.set.title) ti.value=o.set.title;
     smpRenderAll();
-    showToast('Set loaded — '+(o.set.clips||[]).length+' clips');
+    var nc=(o.set.clips||[]).length;
+    showToast(_skipClips && nc ? 'Set loaded. Its '+nc+' sample'+(nc===1?' is':'s are')+' part of mõdRïff Pro and stay silent until you unlock it.'
+                               : 'Set loaded — '+nc+' clips');
    });
   });
  }).catch(function(e){ showToast('Could not read that set — '+(e&&e.message||'unknown')); });
@@ -15169,8 +15210,22 @@ function psSubPress(){
 }
 function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
 
+// Free plays the four preset banks, nine pads of each. The user banks are where
+// your own recordings live, which is the Pro part. These two are view prefs
+// (which bank is showing, how many pads are on screen), so putting them back
+// inside the line rewrites nothing of anyone's: the pads and what is on them
+// are untouched. Returns true when it moved something.
+function psTierClamp(){
+ if(modTier()!=='free') return false;
+ var moved=false;
+ if(PS.bank<4){ PS.bank = 4 + (PS.bank%4); moved=true; }
+ if(PS.liveN>FREE_NUMBERS.padCount){ PS.liveN = FREE_NUMBERS.padCount; moved=true; }
+ return moved;
+}
 function psSetBank(b){
- PS.bank = Math.max(0, Math.min(PS_BANKS.length-1, b|0));
+ b = Math.max(0, Math.min(PS_BANKS.length-1, b|0));
+ if(modTier()==='free' && b<4){ freeBlocked('Your own sampler banks'); return; }
+ PS.bank = b;
  psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
@@ -15344,6 +15399,7 @@ function psOpenCopy(){
 }
 function psCloseCopy(){ var ov=document.getElementById('ps-copy'); if(ov) ov.classList.remove('visible'); }
 function psCopyTo(u){
+ if(modTier()==='free'){ freeBlocked('Copying onto a user bank'); return; }
  var from=PS_BANKS[PS.bank], ids=PS_PRESETS[from]; if(!ids) return;
  var fromBank=PS.bank, before={};
  for(var i=0;i<PS_N;i++){
@@ -16723,7 +16779,9 @@ function psLiveHead(){
  psLiveApply();
 }
 function psSetLiveN(n){
- PS.liveN=Math.max(1, Math.min(PS_N, n|0));
+ var max = (modTier()==='free') ? FREE_NUMBERS.padCount : PS_N;
+ if((n|0)>max) freeBlocked('More than '+max+' pads');
+ PS.liveN=Math.max(1, Math.min(max, n|0));
  psSavePrefs(); psLiveApply();
 }
 // How many pads sit in each row, top to bottom, for a pad count. Ten to
@@ -16818,6 +16876,8 @@ function psLit(key, on){
 
 function psRender(){
  if(!_psBuilt) return;
+ psTierClamp();
+ document.querySelectorAll('#ps-panel [data-psside="user"]').forEach(function(b){ b.classList.toggle('tier-locked', modTier()==='free'); });
  for(var i=0;i<PS_N;i++){
   var key=psCurKey(i), s=SMP_SLOTS[key];
   var p=document.querySelector('#ps-grid .ps-pad[data-i="'+i+'"]'); if(!p) continue;
@@ -17584,7 +17644,10 @@ var LV_STD = ['chords','melody'];
 // release; it is filtered out of a saved layout before this comparison, so
 // these are listed without it.)
 var LV_STD_OLD = [['chords','melody','pads','fx'], ['chords','melody','fx','pads']];
-var LV_GATE = {pads:'sampler', fx:'modfx'};
+// Nothing gated by instrument any more: the sampler's preset banks and the
+// mõdFX pad are both free (a few patches, nine pads), so both can be on the Live
+// page. What is Pro is CHANGING the layout (lvSet), not what is in it.
+var LV_GATE = {};
 // var: setPerformMode reads this during boot, long before this line runs in
 // file order would matter for a let. See CLAUDE.md.
 var LV = { slots:null };
@@ -17724,6 +17787,7 @@ function lvMount(){
  add.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="2" y="2.5" width="16" height="4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="2" y="8" width="16" height="4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M10 14.2v4.6M7.7 16.5h4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Add / reorder widgets</span>';
  add.title = 'Choose what is on the Live page, and in what order — up to four instruments';
  add.setAttribute('aria-haspopup','dialog');
+ if(modTier()==='free') add.classList.add('tier-locked');
  add.addEventListener('click', function(){ lvWidgetsOpen(); });
  cont.appendChild(add);
  lvDecorate();
@@ -17921,12 +17985,14 @@ function lvDecorate(){
   var c = document.createElement('span'); c.className = 'lv-ctl';
   var x = document.createElement('button'); x.type='button'; x.className='lv-cb';
   x.textContent='⋯'; x.title='Slot '+(i+1)+': swap, move or remove'; x.setAttribute('aria-label', x.title);
+  if(modTier()==='free') x.classList.add('tier-locked');
   x.addEventListener('click', function(e){ e.stopPropagation(); lvSlotMenu(i, x); });
   c.appendChild(x);
   h.appendChild(c);
  });
 }
 function lvSlotMenu(i, anchor){
+ if(modTier()==='free'){ freeBlocked('Moving or swapping Live widgets'); return; }
  var cur = LV.slots[i], n = LV.slots.length, items = [];
  if(i>0) items.push({label:'↑  Move up', fn:function(){ lvMove(i,-1); }});
  if(i<n-1) items.push({label:'↓  Move down', fn:function(){ lvMove(i,+1); }});
@@ -17948,7 +18014,13 @@ function lvAfter(){
  try{ if(typeof msSyncHost==='function') msSyncHost(); }catch(e){}
 }
 function lvSet(slots){
- LV.slots = lvClamp(slots.slice());
+ var next = lvClamp(slots.slice());
+ // Free gets the standard Live page. Putting it back to the standard is always
+ // allowed — a layout a lapsed Pro user left behind has to have a way out.
+ if(modTier()==='free' && next.join(',')!==LV.slots.join(',') && next.join(',')!==LV_STD.join(',')){
+  freeBlocked('Changing the Live layout'); return;
+ }
+ LV.slots = next;
  lvSave();
  if(typeof setPerformMode==='function') setPerformMode(typeof performMode!=='undefined' ? performMode : 'chords');
  else lvMount();
@@ -18037,6 +18109,7 @@ function lvWidgetsRender(){
  host.appendChild(rs);
 }
 function lvWidgetsOpen(){
+ if(modTier()==='free'){ freeBlocked('Choosing your Live widgets'); return; }
  var m = document.getElementById('lv-widgets-modal');
  if(!m){
   m = document.createElement('div'); m.className = 'modal-overlay'; m.id = 'lv-widgets-modal';
@@ -24440,6 +24513,12 @@ function meterBeatSec(){ return beatSec() * (4 / METER.unit); }
 function setMeter(beats, unit, opts){
  opts = opts || {};
  const res = meterResolve(beats, unit);
+ // Free has three meters. Guarded here, at the one place every route goes
+ // through (the stepper, a groove, a setup, an iReal chart), not on the buttons.
+ if(typeof freeAllowsMeter==='function' && !freeAllowsMeter(res.beats, res.unit)){
+  if(typeof freeBlocked==='function') freeBlocked(res.beats+'/'+res.unit+' time');
+  return false;
+ }
  const perBar = res.beats * Math.max(1, Math.round(16/res.unit));
  if(res.fellBack && opts.quiet !== true && typeof showToast==='function'){
   showToast(res.beats+'/'+unit+' is '+(res.beats*Math.round(16/unit))+' steps — over the '+MAX_STEPS+' limit, so '+meterLabelOf(res));
@@ -24473,6 +24552,18 @@ function setMeter(beats, unit, opts){
 function meterLabelOf(m){ return m.beats + '/' + m.unit; }
 // Step the numerator, keeping the base you asked for wherever it still fits.
 function meterNudge(d){
+ // Free can only be in three meters, and the numerator stepper would have to
+ // pass through 5/4, 6/4... to reach 12/8. So it walks the free list instead.
+ if(typeof modTier==='function' && modTier()==='free'){
+  const ms=FREE_LIMITS.meters.map(function(m){ const g=m.split('/'); return {b:+g[0],u:+g[1],steps:_freeMeterSteps(m)}; })
+   .sort(function(a,b){ return a.steps-b.steps; });
+  let i=ms.findIndex(function(m){ return m.b===METER.beats && m.u===METER.unit; });
+  if(i<0) i=ms.findIndex(function(m){ return m.steps>=meterStepsPerBar(); });
+  const j=Math.max(0,Math.min(ms.length-1,(i<0?0:i)+(d>0?1:-1)));
+  if(j===i){ if(typeof freeBlocked==='function') freeBlocked('Other time signatures'); return; }
+  setMeter(ms[j].b, ms[j].u, {quiet:true});
+  return;
+ }
  const n = Math.max(1, Math.min(32, METER.beats + d));
  setMeter(n, METER.reqUnit || METER.unit, {quiet:true});
 }
@@ -24687,9 +24778,8 @@ function setSeqStepCount(eng, n){
  // Guarded at the setter, not just hidden in the UI: a shared link, a saved
  // setup and the dice all reach this without going near a button.
  if(typeof freeAllowsSteps==='function' && !freeAllowsSteps(n)){
-  const l=(typeof FREE_LIMITS!=='undefined'&&Array.isArray(FREE_LIMITS.stepCounts))?FREE_LIMITS.stepCounts:[16];
-  if(typeof freeBlocked==='function') freeBlocked('Changing the step count');
-  n=l[l.length-1];
+  if(typeof freeBlocked==='function') freeBlocked('That many steps');
+  n=freeClampSteps(n);
  }
  if(stepCountLock){
   ['sq','bl','ml'].forEach(function(e){ _applyStepCount(e, n, e!==eng); });
@@ -32566,7 +32656,7 @@ function tourLayBed(){
   _tourSet(function(){ root = 0; mode = 'major'; if(typeof renderChords==='function') renderChords(); });
   _tourSet(function(){ if(typeof onBpmInput==='function') onBpmInput(100); });
   _tourSet(function(){ if(typeof songLoopActive!=='undefined' && songLoopActive && typeof toggleGlobalSongMode==='function') toggleGlobalSongMode(); });
-  _tourSet(function(){ if(typeof window._sqSetMach==='function') window._sqSetMach('MOD'); });
+  _tourSet(function(){ if(typeof window._sqSetMach==='function') window._sqSetMach('LIN'); });
   _tourSet(function(){
     if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return;
     for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name==='4/4 Rock'){ sqLoadGroove(i); break; }
@@ -33156,7 +33246,6 @@ function openGuide(){
  const pg=document.getElementById('page-help'); if(pg) pg.scrollTop=0;
 }
 function exportMidi(){
-  if(typeof modAllows==='function' && !modAllows('midiExport')) return freeBlocked('MIDI export');
   try{
     var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
     var tempo=Math.round(60000000/bpm);
@@ -33219,8 +33308,17 @@ function exportMidi(){
     }
     if(!allSlots.length){showToast('No chords in song to export');return;}
     var pending=0; // ticks of silence owed to the next note-on (rest slots)
+    // Free writes the first FREE_NUMBERS.midiExportBars bars and says so. The
+    // last chord is shortened to land on the cap, not dropped, so what comes out
+    // is a clean N-bar file rather than N bars minus whatever did not fit.
+    var capTicks=(typeof modAllows==='function' && !modAllows('fullMidiExport'))
+      ? FREE_NUMBERS.midiExportBars*barTicks : Infinity;
+    var elapsed=0, cut=false;
     allSlots.forEach(function(slot){
+      if(elapsed>=capTicks){ cut=true; return; }
       var dur=slotTicks(slot);
+      if(elapsed+dur>capTicks){ dur=capTicks-elapsed; cut=true; }
+      elapsed+=dur;
       // A rest holds its place in the bar without sounding — it used to export
       // as a full chord, so every rest in the chart came back as a played one.
       if(slot.isRest){ pending+=dur; return; }
@@ -33248,7 +33346,8 @@ function exportMidi(){
     var bytes=new Uint8Array(hdr.concat(trk));
     var blob=new Blob([bytes],{type:'audio/midi'});
     modPlatform.saveFile(_dlName((document.getElementById('chart-title')?.value||'modo-chords')+'.mid'), blob);
-    showToast('Chart chords written to .mid');
+    showToast(cut ? 'Free .mid exports are '+FREE_NUMBERS.midiExportBars+' bars. Pro exports the whole song.'
+                  : 'Chart chords written to .mid');
   }catch(e){console.error('MIDI export error',e);showToast('Export failed');}
 }
 // A song link carries the chart and the musical context, nothing else. It used
@@ -33364,7 +33463,7 @@ function _mergeSetlist(mine, incoming){
 function captureSetup(name, withSetlist){
  return {
   app:'modriff', v:1, name:(name||'Untitled setup'), ts:Date.now(),
-  settings:_capSettings(),
+  settings:(typeof proRestoreSetup==='function' ? proRestoreSetup(_capSettings()) : _capSettings()),
   setlist: (withSetlist===false) ? null : loadSLData()
  };
 }
@@ -33383,6 +33482,16 @@ function applySetup(st, opts){
    || (typeof rhythmOn!=='undefined' && rhythmOn);
  try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
  try{ _applySettings(s); }catch(e){ console.warn('setup apply failed',e); return false; }
+ // Free: what the setters refused is put right, what was refused is remembered
+ // for the next save, and the user is told once. See "Pro content in a free build".
+ if(typeof modTier==='function' && modTier()==='free'){
+  try{
+   const labels = proScan(s);
+   if(typeof freeApplyLimits==='function') freeApplyLimits();
+   proKeepSetup(s);
+   if(!(opts && opts.quiet)) proBanner('setup', labels);
+  }catch(e){}
+ } else { _proKeep = null; }
  if(Array.isArray(st.setlist)){
   try{
    setlistData = (opts && opts.mergeSetlist) ? _mergeSetlist(loadSLData(), st.setlist) : st.setlist;
@@ -35667,8 +35776,12 @@ function saveToSetlist(){
  if(curSetlistIdx>=0 && setlistData[curSetlistIdx]){
   // Currently-loaded song — update it in place instead of adding a duplicate entry
   song.id=setlistData[curSetlistIdx].id;
+  // A free build that swapped a Pro scale or sound for a stand-in must not save
+  // the stand-in over the original.
+  if(typeof proKeepSongApply==='function') proKeepSongApply(song, song.id);
   setlistData[curSetlistIdx]=song;
  } else {
+  if(!slCanAdd(setlistData)){ freeBlocked('More than '+FREE_NUMBERS.saveSlots+' saved songs'); return; }
   setlistData.push(song);
   curSetlistIdx=setlistData.length-1;
  }
@@ -35788,6 +35901,14 @@ function showSongSaveDialog(){
 }
 
 function loadSLData(){ try{ return JSON.parse(modStore.getItem('prism-sl')||'[]'); }catch(e){ return []; } }
+// The demo song every device is seeded with is not one of the five.
+function _slCount(list){ return (list||[]).filter(function(s){ return s && !s.isDemo; }).length; }
+// Free holds FREE_NUMBERS.saveSlots songs. Only ADDING is stopped: a setlist
+// that is already longer — a lapsed Pro user's, an imported setup's — is left
+// whole, and nothing here ever deletes a song.
+function slCanAdd(list){
+ return modTier()!=='free' || _slCount(list) < FREE_NUMBERS.saveSlots;
+}
 function saveSLData(d){ try{ modStore.setItem('prism-sl',JSON.stringify(d)); }catch(e){} }
 
 // ── Preloaded demo song (Song Builder) ──
@@ -36132,6 +36253,7 @@ function loadSong(song,idx){
  // inherits the first one's fingerprint and reads as unsaved immediately.
  if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
+ if(typeof proSongLoaded==='function') proSongLoaded(song);
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof syncFixedTransport==='function') syncFixedTransport();
@@ -36165,8 +36287,17 @@ function importSetlist(e){
   try{ d=JSON.parse(ev.target.result); }
   catch(err){ showToast('“'+file.name+'” isn’t readable as a setlist — it should be a .json file exported from Setlist → Export'); return; }
   if(!Array.isArray(d)){ showToast('“'+file.name+'” is valid JSON but not a setlist — expected a list of songs'); return; }
+  // Free keeps the first few and says how many were left behind; the file
+  // itself is untouched, so Pro can bring the rest in later.
+  let left=0;
+  if(modTier()==='free' && _slCount(d)>FREE_NUMBERS.saveSlots){
+   let kept=0; const all=d.length;
+   d=d.filter(function(s){ if(s && s.isDemo) return true; return (kept++)<FREE_NUMBERS.saveSlots; });
+   left=all-d.length;
+  }
   saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav();
-  showToast('Imported '+d.length+' song'+(d.length===1?'':'s')+' from “'+file.name+'”');
+  showToast('Imported '+d.length+' song'+(d.length===1?'':'s')+' from “'+file.name+'”'
+   +(left?'. Free holds '+FREE_NUMBERS.saveSlots+'; '+left+' more are in the file for Pro.':''));
  };
  reader.readAsText(file);
 }
@@ -43300,7 +43431,14 @@ function _stopRecording(){
     var _sr=getCtx().sampleRate;
     var base=base0;
     var tags=_bounceInfoTags();
-    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(fullL,fullR,_sr,tags) }];
+    // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so; the
+    // take itself is whole in memory, only the file is shorter.
+    var _wavL=fullL, _wavR=fullR, _audioCut=false;
+    if(typeof modAllows==='function' && !modAllows('fullAudioExport')){
+      var _capN=Math.round(FREE_NUMBERS.audioExportSeconds*_sr);
+      if(fullL.length>_capN){ _wavL=fullL.subarray(0,_capN); _wavR=fullR.subarray(0,_capN); _audioCut=true; }
+    }
+    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(_wavL,_wavR,_sr,tags) }];
     // Native parts' stems, from the host's capture, written with the web ones.
     // Where stems were on but the host's capture was not, the part is named.
     if(exportStems && span.f0!=null){
@@ -43315,8 +43453,6 @@ function _stopRecording(){
     // that did not look related — 'modo-session 2.wav' beside
     // 'modo-performance-live.mid'. The mix's base wins; the .mid keeps only
     // its -live suffix, which is what distinguishes it.
-    const midiOk = (typeof modAllows!=='function') || modAllows('midiExport');
-    if(midiFile && !midiOk) midiFile = null;
     if(midiFile) files.push({ name:base+'-live.mid', blob:midiFile.blob });
     _isRecording=false;_updateRecBtn();
     // Said before handing over, not after: the share sheet takes the screen,
@@ -43325,6 +43461,12 @@ function _stopRecording(){
     if(stems.length) parts.push(stems.length+' stem'+(stems.length>1?'s':''));
     if(midiFile) parts.push('MIDI');
     var done = parts.length ? ('Saved the mix + '+parts.join(' + ')) : 'Saved the mix as a .wav';
+    // What Pro would have given, said once, with what was kept: the first
+    // minute and a half, not a refusal.
+    var _cutWhat=[];
+    if(_audioCut) _cutWhat.push('the first '+FREE_NUMBERS.audioExportSeconds+' seconds of audio');
+    if(midiFile && midiFile.cut) _cutWhat.push('the first '+FREE_NUMBERS.midiExportBars+' bars of MIDI');
+    if(_cutWhat.length) done += '. Free saves '+_cutWhat.join(' and ')+'; Pro saves the whole take';
     // Stems were on (or came on mid-take) but some did not make it: say which,
     // and why. "0 stems" was a silent skip before — a stem under the floor, or
     // a part the take could not tap, just was not in the folder.
@@ -43519,8 +43661,21 @@ function _buildMidiRecording(){
     function u16(n){return[(n>>8)&0xff,n&0xff];}
     function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
     var LANES=MIDI_LANES; // one lane→channel map for the file and for MIDI out
+    // Free keeps the first FREE_NUMBERS.midiExportBars bars of the take: notes
+    // that start inside it, the last of them cut to the line.
+    var recNotes=_midiRecNotes, midiCut=false;
+    if(typeof modAllows==='function' && !modAllows('fullMidiExport')){
+      var barSteps=16; try{ if(typeof _songBarSteps==='function') barSteps=_songBarSteps()||16; }catch(e){}
+      var capMs=FREE_NUMBERS.midiExportBars*(barSteps/4)*(60000/bpm);
+      recNotes=[];
+      _midiRecNotes.forEach(function(n){
+        if(n.tOn>=capMs){ midiCut=true; return; }
+        if(n.tOff>capMs){ midiCut=true; n=Object.assign({},n,{tOff:capMs}); }
+        recNotes.push(n);
+      });
+    }
     var byLane={};
-    _midiRecNotes.forEach(function(n){ (byLane[n.lane]=byLane[n.lane]||[]).push(n); });
+    recNotes.forEach(function(n){ (byLane[n.lane]=byLane[n.lane]||[]).push(n); });
     function buildTrack(notes,ch,name){
       var evs=[];
       notes.forEach(function(n){
@@ -43594,7 +43749,7 @@ function _buildMidiRecording(){
     var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
     return { name:(document.getElementById('chart-title')?.value||'modo-performance')+'-live.mid',
-             blob:blob, notes:_midiRecNotes.length, lanes:numTracks-1 };
+             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut };
   }catch(e){ console.error('MIDI recording export error',e); return null; }
 }
 // Global hooks called from inside the bass/drum IIFEs (their state isn't
@@ -44513,6 +44668,11 @@ window._sqClearPendGroove = function(){
 // opts.autostart is set only by the groove row's own click handler — the one
 // place a groove change is unambiguously a user asking to hear it.
 function sqLoadGroove(idx, opts){
+  // A saved setup, a shared link and the dice reach this without a button.
+  if(typeof freeAllowsGroove==='function' && RHYTHMS[idx] && !freeAllowsGroove(RHYTHMS[idx].name)){
+    if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove');
+    return;
+  }
   var playing = (typeof window._sqPlaying==='function') && window._sqPlaying();
   if(playing){
     sqPendGroove = idx;
@@ -46236,7 +46396,7 @@ var SQM={
 
 // ── state ──
 var sqBpm=function(){return parseFloat(document.getElementById('bpm').value)||120;};
-var sqSwing=0, sqMach='MOD', sqSteps=16;
+var sqSwing=0, sqMach='LIN', sqSteps=16;
 // ── Aux Perc: the second drum layer ───────────────────────────────────────
 // sqGrid/sqMach are always the FOCUSED layer, so every editing path — the
 // grid renderer, the step menu, the vol/pitch knobs, the pattern slots —
@@ -46248,7 +46408,7 @@ var sqSwing=0, sqMach='MOD', sqSteps=16;
 // turning Aux off silenced the KIT and left the aux playing alone.
 // sqMach/sqGrid stay a view onto the focused layer so every editing path is
 // untouched; identity and the on/off flags live here.
-var sqLayers = [ {mach:'MOD', grid:{}, on:true}, {mach:'PERC', grid:{}, on:true} ];
+var sqLayers = [ {mach:'LIN', grid:{}, on:true}, {mach:'606', grid:{}, on:true} ];
 var sqFocus = 0;
 const SQ_LAYER_CH = ['drum','auxperc'];
 // 'Aux', not 'Aux Perc' (4.2.1): the layer takes any kit, and the old name
@@ -48397,7 +48557,7 @@ window._sqRestoreState = function(st){
    ? { mach: st.aux.mach,
        grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
        on: st.aux.on !== false }
-   : { mach:'PERC', grid:{}, on:true };
+   : { mach:'606', grid:{}, on:true };
  sqPreloadKit(sqLayers[0].mach); sqPreloadKit(sqLayers[1].mach);
  if(st.aux && SQM[st.aux.mach]){
   if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
@@ -50809,6 +50969,7 @@ window.blClear = function(){
 // silently created an unrelated property and left the generator on whatever it
 // was. Anything outside here — the dice, setups, tests — goes through this.
 window.setBlGenStyle = function(st){
+  if(typeof freeAllowsStyle==='function' && !freeAllowsStyle(st)) return;
   blGenStyle = st;
   document.querySelectorAll('[data-blstyle]').forEach(function(x){
     x.classList.toggle('active', x.dataset.blstyle === st);
@@ -50864,6 +51025,7 @@ window.setBlWave = function(w){
 // ── gen style buttons ──
 document.querySelectorAll('[data-blstyle]').forEach(function(b){
   b.addEventListener('click', function(){
+    if(typeof freeAllowsStyle==='function' && !freeAllowsStyle(b.dataset.blstyle)){ if(typeof freeBlocked==='function') freeBlocked('That bass style'); return; }
     var was = blGenStyle;
     blGenStyle = b.dataset.blstyle;
     document.querySelectorAll('[data-blstyle]').forEach(function(x){x.classList.remove('active','gen-queued','gen-landed'); x.style.removeProperty('--q');});
@@ -51895,6 +52057,7 @@ function _mlShapePhrase(){
 }
 
 window.setMlGenStyle = function(st){
+  if(typeof freeAllowsStyle==='function' && !freeAllowsStyle(st,'ml')) return;
   mlGenStyle = st;
   document.querySelectorAll('[data-mlstyle]').forEach(function(x){
     x.classList.toggle('active', x.dataset.mlstyle === st);
@@ -51998,6 +52161,7 @@ window.setMlWave = function(w){
 // ── gen style buttons ──
 document.querySelectorAll('[data-mlstyle]').forEach(function(b){
   b.addEventListener('click', function(){
+    if(typeof freeAllowsStyle==='function' && !freeAllowsStyle(b.dataset.mlstyle,'ml')){ if(typeof freeBlocked==='function') freeBlocked('That melody style'); return; }
     var was = mlGenStyle;
     mlGenStyle = b.dataset.mlstyle;
     document.querySelectorAll('[data-mlstyle]').forEach(function(x){x.classList.remove('active','gen-queued','gen-landed'); x.style.removeProperty('--q');});
@@ -54154,7 +54318,12 @@ function sqBuildGroovePresets(){
     // with near-invisible labels in light mode.
     b.className='groove-btn'
       + (i===sqCurGroove ? ' active' : '')
-      + (i===sqPendGroove ? ' queued' : '');
+      + (i===sqPendGroove ? ' queued' : '')
+      // Set here and not only by freeApplyLimits: this row is rebuilt from
+      // scratch on every groove change, which wiped the lock until the next
+      // tier repaint.
+      + (typeof freeAllowsGroove==='function' && !freeAllowsGroove(r.name) ? ' tier-locked' : '');
+    b.dataset.groove=r.name;
     b.innerHTML='<b>'+r.sig+'</b> '+r.name;
     // A groove that is waiting for the downbeat has to say so, or the tap
     // reads as having done nothing at all for up to a whole bar.
@@ -56339,8 +56508,13 @@ function fxRelease(){
  fxEngage(false);
  if(typeof fxPaintPad==='function') fxPaintPad();
 }
+// Free has the four patches and no axis pickers — the pad is the patch.
+function _fxFreeLocked(p){
+ return modTier()==='free' && (!p || p.user || !freeAllowsFxPatch(p.name));
+}
 function fxSetAxis(which, key){
  if(!FX_PARAMS[key]) return;
+ if(modTier()==='free'){ freeBlocked('Choosing your own axes'); fxSyncUI(); return; }
  if(which==='x') fxPadX=key; else fxPadY=key;
  modParamsFlush();
  if(typeof fxSyncUI==='function') fxSyncUI();
@@ -56511,6 +56685,7 @@ function _fxIsSamplePatch(p){
 // says what is missing, with the way to fix it one tap away.
 function fxPickPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
+ if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)'); return; }
  fxApplyPreset(i);
  if(_fxIsSamplePatch(p) && !(typeof fxSmpLoaded==='function' && fxSmpLoaded())){
   showToast(p.name+' needs a clip on the pad', {
@@ -56521,6 +56696,7 @@ function fxPickPreset(i){
 window.fxPickPreset=fxPickPreset;
 function fxApplyPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
+ if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)'); return; }
  if(FX_PARAMS[p.x]) fxPadX=p.x;
  if(FX_PARAMS[p.y]) fxPadY=p.y;
  // In ADVANCED this deliberately does NOT touch fxTargets. A patch is a pair
@@ -56548,6 +56724,7 @@ function fxApplyPreset(i){
  showToast('mõdFX: '+p.name);
 }
 function fxSaveUserPreset(){
+ if(modTier()==='free'){ freeBlocked('Saving your own mõdFX patch'); return; }
  // Named from what it does, not a counter: "Cutoff × Reverb" tells you what
  // you saved when you come back to it, "My 3" does not.
  const name=FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label;
@@ -56750,10 +56927,10 @@ function fxBuildPanel(){
   // vertical-rl) rendered as a cramped box with its dropdown arrow on its
   // side — unreadable at any width, and worse on a phone.
   + '<div class="fx-axes">'
-  +  '<label class="fx-axis"><span class="fx-axis-tag">X</span>'
+  +  '<label class="fx-axis'+(modTier()==='free'?' tier-locked':'')+'"><span class="fx-axis-tag">X</span>'
   +   '<select id="fx-axis-x" aria-label="X axis parameter" '
   +   'onchange="fxSetAxis(\'x\',this.value)">'+fxAxisMenu('x')+'</select></label>'
-  +  '<label class="fx-axis"><span class="fx-axis-tag">Y</span>'
+  +  '<label class="fx-axis'+(modTier()==='free'?' tier-locked':'')+'"><span class="fx-axis-tag">Y</span>'
   +   '<select id="fx-axis-y" aria-label="Y axis parameter" '
   +   'onchange="fxSetAxis(\'y\',this.value)">'+fxAxisMenu('y')+'</select></label>'
   + '</div>'
@@ -57267,7 +57444,7 @@ function fxSyncUI(){
   const hasClip=(typeof fxSmpLoaded==='function') && fxSmpLoaded();
   const chip=(x,i)=>{
    const smp=_fxIsSamplePatch(x);
-   return '<button class="fx-preset'+(i===cur?' on':'')+(x.user?' user':'')+(smp?' smp':'')+(smp&&!hasClip?' noclip':'')+'"'
+   return '<button class="fx-preset'+(i===cur?' on':'')+(_fxFreeLocked(x)?' tier-locked':'')+(x.user?' user':'')+(smp?' smp':'')+(smp&&!hasClip?' noclip':'')+'"'
     +' onclick="fxPickPreset('+i+')"'
     +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+'"'
     +' aria-label="Preset '+x.name+': '+FX_PARAMS[x.x].label+' on X, '+FX_PARAMS[x.y].label+' on Y">'
@@ -57289,7 +57466,7 @@ function fxSyncUI(){
    +'<div class="fx-pgroup-row">'+sm.map(i=>chip(all[i],i)).join('')+'</div></div>'
    +'<div class="fx-pgroup own"><div class="fx-pgroup-lbl">Yours</div>'
    +'<div class="fx-pgroup-row">'+own.map(i=>chip(all[i],i)).join('')
-   +'<button class="fx-preset add" onclick="fxSaveUserPreset()" aria-label="Save the current axes and channels as a preset">+ Save</button></div></div>';
+   +'<button class="fx-preset add'+(modTier()==='free'?' tier-locked':'')+'" onclick="fxSaveUserPreset()" aria-label="Save the current axes and channels as a preset">+ Save</button></div></div>';
  }
 
  if(typeof lvRecPaintFx==='function') lvRecPaintFx();
@@ -57528,56 +57705,81 @@ function fxOpenPanel(focusCh){
 // is not something a class can enforce.
 // The line: everything you PLAY WITH is free; everything you make WITH IT —
 // your own sounds, your own rig, and the files a DAW needs — is Pro.
+// (Moved in 4.9.9.9.9.8.9 to the owner's list; the table is in
+// docs/v5-architecture.md section 4. Change the table, not the surfaces.)
 //
 // Two things are deliberately free that an obvious split would have taken.
 //
-// The modes. All twelve, including the nine that only appear in Studio. This
-// app is a Chromatic Modal Groovebox and the splash says "Every part, always in
-// key"; charging for the modes charges for the thing it is named after, and
-// Live alone offers three of them. Chord Forms and Fingering go with them —
-// they are how someone learns an instrument here, and a paywall in front of
-// the teaching material is the wrong wall.
+// The modes. The seven church modes, Ionian through Locrian, and the minor
+// pentatonic. This app is a Chromatic Modal Groovebox and the splash says
+// "Every part, always in key"; charging for the modes charges for the thing it
+// is named after, and Live alone offers three of them. Everything else — the
+// harmonic worlds, the other pentatonics, the blues, the 24 scales from
+// around the world, your own scales — is Pro. Chord Forms and Fingering stay
+// free: they are how someone learns an instrument here, and a paywall in front
+// of the teaching material is the wrong wall.
 //
 // The mixdown. Bounce writes the master .wav on free, because somebody who
-// built something they love and cannot get ANY audio out feels cheated, and
-// every .wav a free user shares is the only marketing this app has. What Pro
-// sells is the DAW handoff: one .wav per part, and the .mid. That is a line
-// people understand without resenting — they can hear what they made, they are
-// paying to take it somewhere else.
+// built something they love and cannot get ANY audio out feels cheated.
+// It stops at FREE_NUMBERS.audioExportSeconds and says so, rather than refusing:
+// a minute and a half is enough to share, and the full song is what Pro sells,
+// with the stems and the whole .mid. The .mid is the same shape — free for the
+// first FREE_NUMBERS.midiExportBars bars, a taste of the DAW handoff.
 const FREE_LIMITS = {
-  modfx:        false,   // the X/Y performance pad — the pro headline
+  // The pad is on screen for free; fxPatches below says which patches it has.
+  // Free has no axis pickers and cannot save its own patch, so the four are
+  // the whole pad, not a door to the other twenty-one.
+  modfx:        true,
+  fxPatches:    ['Filter Sweep','Tape Stop','Dub Delay','Riser'],
   samples:      false,   // the sampled ◆ voices, except freeVoices below
-  // Enough real instruments that free sounds good from the first bar. The
-  // whole pitch is the sound; a free tier that only has synth voices sells
-  // the wrong first impression.
-  // Upright 1 joined in 4.9.9.4 as the bass everyone starts on: it is the
-  // default, and a free tier whose first bass is locked is not a free tier.
-  freeVoices:   ['pianoreal','vibes','upright_real'],
-  // The seven church modes — Ionian through Locrian, major and minor among
-  // them. That is one COMPLETE system: every rotation of the same parent
-  // scale, so free is still a whole modal instrument and "every part, always
-  // in key" still means what it says. Pro adds the other harmonic worlds,
-  // which are different systems rather than more of this one: harmonic
-  // minor's raised seventh, Hijaz's augmented second, the pentatonics' five
-  // notes, the blues ♭5.
-  freeModes:    ['major','minor','dorian','phrygian','lydian','mixolydian','locrian'],
-  sampler:      false,   // recording/importing your OWN clips
+  // The two recorded instruments every fresh start plays — Piano 1 on the
+  // chords and Upright 1 on the bass — so a first launch sounds like the real
+  // thing. The whole pitch is the sound; a free tier that only had synth
+  // voices would sell the wrong first impression. Vibes went Pro with the
+  // rest in 4.9.9.9.9.8.9.
+  freeVoices:   ['pianoreal','upright_real'],
+  freeModes:    ['major','minor','dorian','phrygian','lydian','mixolydian','locrian','minor_pent'],
+  sampler:      false,   // recording/importing your OWN clips, and the user pad banks
   modsynth:     false,   // sound design, as opposed to picking a sound
   gridEditors:  false,   // "Chords on the grid", "Notes on the strip", saved layouts
   stemExport:   false,   // one .wav per part
-  midiExport:   false,   // the chart .mid AND the bounce's live .mid
-  mixdownExport: true,   // the master .wav — free, deliberately. See above.
+  fullAudioExport: false, // past FREE_NUMBERS.audioExportSeconds
+  fullMidiExport:  false, // past FREE_NUMBERS.midiExportBars
   chordExtensions: false,      // 6/9, 11, #11, 13, b9, #9, alt, ... are Pro
-  // Four kits, not one: a synth box, a classic box, a real kit and a jazz kit,
-  // so free can find a feel rather than be shown that it cannot.
-  // Perc (4.9.9.5) because it is what the Aux layer starts on: a synth kit,
-  // shaker and tambourine and the like, and free with no Aux kit at all had
-  // a second drum layer it could not use.
-  drumKits:     ['MOD','808','ACU','JAZZ','PERC'],
-  stepCounts:   [16,32],
-  bassStyles:   ['Rock','Jazz','Motown','Funk','Latin','Pedal'],
+  // Four classic boxes and a jazz kit. The Linn is what a fresh start plays
+  // (it was the owner's default at 4.9.6, before mõdKit took over for the free
+  // tier's sake), and 606 is the Aux layer's: the Aux takes free kits only.
+  drumKits:     ['808','606','LIN','JAZZ'],
+  drumGrooves:  ['4/4 Basic','Shuffle','Half-Time Rock','4/4 Funk','House','Bossa Nova','3/4 Waltz','12/8 Slow'],
+  bassStyles:   ['Rock','Jazz','Funk','Latin'],
+  // The melody generator has its own default (Pop Hook), so it cannot share the
+  // bass list: a free first launch has to be on a free style.
+  melodyStyles: ['Hook','Rock','Jazz','Funk','Latin'],
   arpRates:     ['1/8','1/16'],
-  drumPresets:  10
+  // Three meters, and the step counts are derived from them: a whole number of
+  // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
+  meters:       ['4/4','3/4','12/8'],
+  // The sampler's four preset banks (PA-PD) and the first nine pads of each.
+  // The four user banks hold your own recordings, which is the Pro part.
+  padBanks:     ['PA','PB','PC','PD']
+};
+// What a shared set may carry. A set is a zip, and a zip that arrives as a
+// 90 MB message is a zip nobody opens: past these a clip stays out of the file
+// and the sender is told which, at export, so they do not send a song with holes
+// in it without knowing. (Raw bytes today. Packing as AAC or Opus is not done:
+// WebKit has no encoder for either to call from here.)
+const EMBED_LIMITS = {
+  sampleSeconds: 12,
+  sampleBytes:   2*1024*1024,
+  fileBytes:     15*1024*1024
+};
+// The numbers, in one place, so the line can be moved without hunting.
+const FREE_NUMBERS = {
+  stepMax:            32,   // the app's own maximum is 64
+  saveSlots:          5,    // setlist songs; Setups are not counted
+  audioExportSeconds: 90,
+  midiExportBars:     4,
+  padCount:           9
 };
 // The entitlement is ASKED FOR, never stored. It used to be the string
 // localStorage['modo-tier'], which cannot hold a purchase for two reasons: a
@@ -57594,7 +57796,9 @@ const FREE_LIMITS = {
 //
 //   isPro()    synchronous, called on every render — must never block
 //   refresh()  re-ask the store; resolves to the new isPro()
-//   purchase() open the store sheet
+//   price()    the store's own price string for the product, or null until
+//              it is known — never written in this file
+//   purchase() open the store sheet; resolves true when the user now owns Pro
 //   restore()  Apple REQUIRES this as a visible control (3.1.1)
 //   provider   'web' | 'ios' | 'android', for diagnostics
 //
@@ -57605,6 +57809,60 @@ const FREE_LIMITS = {
 var _modTier = 'pro';                       // 'free' | 'pro'; var, read from far away
 function modTier(){ return _modTier; }
 
+// The iPhone app: StoreKit 2 through the ModBilling plugin (ios/App/App/ModBilling).
+// The page starts from window.__modProCached, which the host injects at document
+// start from the last entitlement it proved, so isPro() is right on the first
+// render and offline; the plugin then confirms, and pushes 'entitlement' events
+// for what happens behind the app's back (a refund, Family Sharing, an Ask to
+// Buy approval, a purchase on another device).
+(function(){
+ if(window.modBilling) return;
+ var C = window.Capacitor;
+ try{ if(!C || typeof C.isNativePlatform!=='function' || !C.isNativePlatform()) return; }catch(e){ return; }
+ // Same way through as modNativePlugin: Capacitor.Plugins is built from headers
+ // injected before an app-target plugin registers, so go by name if it is absent.
+ var P = (C.Plugins && C.Plugins.ModBilling) || null;
+ if(!P && typeof C.nativePromise==='function'){
+  var call=function(m){ return function(o){ return C.nativePromise('ModBilling', m, o||{}); }; };
+  P = { status:call('status'), purchase:call('purchase'), restore:call('restore') };
+ }
+ if(!P) return;
+ var st = { pro: window.__modProCached===true, price: null };
+ function apply(r){
+  if(!r) return;
+  if(typeof r.pro==='boolean') st.pro = r.pro;
+  if(r.price) st.price = String(r.price);
+ }
+ window.modBilling = {
+  provider: 'ios',
+  // The debug switch exists only where the host defined __modDebug, which is a
+  // debug build. A release build never has it, so nothing here to find.
+  _dev: null,
+  isPro: function(){ return (this._dev!=null && window.__modDebug===true) ? this._dev==='pro' : st.pro; },
+  price: function(){ return st.price; },
+  refresh: function(){
+   return Promise.resolve(P.status()).then(function(r){ apply(r); return st.pro; }, function(){ return st.pro; });
+  },
+  purchase: function(){
+   return Promise.resolve(P.purchase()).then(function(r){
+    apply(r);
+    if(r && r.pending) showToast('Waiting for approval. Pro unlocks when it is granted.');
+    else if(r && r.error) showToast(r.error==='unavailable' ? 'Pro is not available from the App Store right now' : 'The purchase did not go through');
+    return !!(r && r.pro);
+   });
+  },
+  restore: function(){
+   return Promise.resolve(P.restore()).then(function(r){ apply(r); return !!(r && r.pro); });
+  }
+ };
+ if(typeof P.addListener==='function'){
+  try{ P.addListener('entitlement', function(r){ apply(r); if(typeof window.modBillingChanged==='function') window.modBillingChanged(); }); }catch(e){}
+ }
+ // Confirm once the app is up. If the cache was cold the tier flips here and
+ // every gated surface repaints through modBillingChanged.
+ setTimeout(function(){ if(typeof window.modBillingChanged==='function') window.modBillingChanged(); }, 0);
+})();
+
 if(!window.modBilling){
  window.modBilling = {
   provider: 'web',
@@ -57614,6 +57872,7 @@ if(!window.modBilling){
   _dev: null,
   isPro: function(){ return this._dev == null ? true : this._dev === 'pro'; },
   refresh: function(){ return Promise.resolve(this.isPro()); },
+  price: function(){ return null; },
   purchase: function(){
     if(typeof showToast==='function') showToast('Purchases are only available in the App Store build');
     return Promise.resolve(false);
@@ -57632,13 +57891,15 @@ function _applyTier(){
   try{ pro = !!window.modBilling.isPro(); }catch(e){ pro = true; }
   _modTier = pro ? 'pro' : 'free';
   document.body.classList.toggle('mode-free', _modTier==='free');
-  if(_modTier==='free' && performMode==='fx' && typeof setPerformMode==='function') setPerformMode('chords');
+  // (The pad used to be dropped here on free. It is free now, four patches of
+  // it; see FREE_LIMITS.fxPatches.)
   // Basic stacks mõdFX in with the other playing surfaces, so whether it is on
   // screen at all is a tier question — and this is the first point in boot
   // where the tier is actually known.
-  else if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
+  if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
+  if(typeof proSyncRow==='function') proSyncRow();
 }
 // What a wrapper calls after a purchase, a restore, or an entitlement change
 // it was pushed. Re-asks, then repaints every gated surface.
@@ -57649,7 +57910,8 @@ window.modBillingChanged = function(){
 // Kept as the console handle it has always been, now driving the dev override
 // rather than writing a tier anybody could forge.
 function setModTier(t){
-  try{ if(window.modBilling.provider==='web') window.modBilling._dev = (t==='free') ? 'free' : 'pro'; }catch(e){}
+  // The web provider always takes it; the iOS one only in a debug build.
+  try{ if(window.modBilling.provider==='web' || window.__modDebug===true) window.modBilling._dev = (t==='free') ? 'free' : 'pro'; }catch(e){}
   _applyTier();
 }
 function modAllows(feature){
@@ -57834,13 +58096,45 @@ function freeAllowsKit(id){
  const l=_freeList('drumKits'); if(modTier()!=='free'||!l) return true;
  return l.some(k=>String(k).toLowerCase()===String(id).toLowerCase());
 }
-function freeAllowsStyle(id){
- const l=_freeList('bassStyles'); if(modTier()!=='free'||!l) return true;
+function freeAllowsStyle(id, part){
+ const l=_freeList(part==='ml' ? 'melodyStyles' : 'bassStyles'); if(modTier()!=='free'||!l) return true;
  return l.some(k=>String(k).toLowerCase()===String(id).toLowerCase());
 }
+// Steps per bar of a "b/u" meter, the way setMeter counts them: sixteenths.
+function _freeMeterSteps(m){
+ const g=/^(\d+)\/(\d+)$/.exec(m); if(!g) return 0;
+ return (+g[1]) * Math.max(1, Math.round(16/(+g[2])));
+}
+// Not a list of numbers. The first version was [16,32], and 3/4 Waltz (12
+// steps) and the 12/8 grooves (12 triplet steps, or 24 sixteenths) were free
+// grooves whose own step count the setter refused and rewrote to 32. So: a
+// whole number of bars of any free meter, up to stepMax — 12, 16, 24, 32.
 function freeAllowsSteps(n){
- const l=_freeList('stepCounts'); if(modTier()!=='free'||!l) return true;
- return l.indexOf(+n)>=0;
+ if(modTier()!=='free') return true;
+ n=+n; if(!(n>0) || n>FREE_NUMBERS.stepMax) return false;
+ return FREE_LIMITS.meters.some(function(m){ const b=_freeMeterSteps(m); return b>0 && n%b===0; });
+}
+// The nearest count free is allowed at or below n; what a refused number turns into.
+function freeClampSteps(n){
+ for(let k=Math.min(Math.floor(n),FREE_NUMBERS.stepMax); k>=1; k--) if(freeAllowsSteps(k)) return k;
+ return 16;
+}
+function freeAllowsMeter(beats, unit){
+ if(modTier()!=='free') return true;
+ return FREE_LIMITS.meters.indexOf(beats+'/'+unit)>=0;
+}
+function freeAllowsGroove(name){
+ if(modTier()!=='free') return true;
+ return FREE_LIMITS.drumGrooves.indexOf(String(name))>=0;
+}
+function freeAllowsFxPatch(name){
+ if(modTier()!=='free') return true;
+ return FREE_LIMITS.fxPatches.indexOf(String(name))>=0;
+}
+// bank: 'A'..'D' (yours) or 'PA'..'PD' (preset); pad: 0-15.
+function freeAllowsPad(bank, pad){
+ if(modTier()!=='free') return true;
+ return FREE_LIMITS.padBanks.indexOf(String(bank))>=0 && (pad|0) < FREE_NUMBERS.padCount;
 }
 function freeAllowsMode(m){
  const l=_freeList('freeModes'); if(modTier()!=='free'||!l) return true;
@@ -57874,10 +58168,207 @@ function freeBlocked(what){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  showToast(what+' is part of mõdRïff Pro');
+  showToast(what+' is part of mõdRïff Pro', {actionLabel:'See Pro', onAction:function(){ proSheet(what); }});
  }
  return false;
 }
+
+// ── The upgrade sheet ────────────────────────────────────────────
+// One sheet for every locked thing. A tap on a locked control opens it, named
+// ("Custom scales are part of mõdRïff Pro"); a limit that bites mid-gesture
+// (a sixth song, a longer export) says so in a toast first and offers this
+// from the toast. It is never opened by the app on its own — not at launch, not
+// on a timer — and only one is ever on screen, so a double-tap cannot stack two.
+//
+// The price is the store's string, never ours: modBilling.price() is whatever
+// App Store Connect has for the product in this storefront, in the user's
+// currency. Until it arrives the button just says Unlock.
+function proSheet(what){
+ const old=document.getElementById('_pro-sheet');
+ if(old){
+  const w=old.querySelector('.pro-what');
+  if(w) w.textContent = what ? (what+' is part of mõdRïff Pro') : 'Everything in mõdRïff, unlocked';
+  return;
+ }
+ const ov=document.createElement('div'); ov.id='_pro-sheet';
+ const box=document.createElement('div'); box.className='pro-box';
+ box.setAttribute('role','dialog'); box.setAttribute('aria-modal','true'); box.setAttribute('aria-label','mõdRïff Pro');
+ let price=null; try{ price = window.modBilling.price ? window.modBilling.price() : null; }catch(e){}
+ const esc=function(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'); };
+ box.innerHTML =
+   '<div class="pro-hd">mõdRïff Pro</div>'
+  +'<div class="pro-what">'+(what ? esc(what)+' is part of mõdRïff Pro' : 'Everything in mõdRïff, unlocked')+'</div>'
+  +'<ul>'
+  +'<li>Every scale, including the world scales and your own</li>'
+  +'<li>All drum kits, grooves, bass and melody styles</li>'
+  +'<li>Every recorded instrument, and mõdSynth</li>'
+  +'<li>The whole mõdFX pad, and your own sounds in the sampler</li>'
+  +'<li>Full-length audio and MIDI export, and stems</li>'
+  +'<li>Unlimited saved songs, any time signature, longer patterns</li>'
+  +'</ul>'
+  +'<div class="pro-price">One purchase, yours for good. Family Sharing is on.</div>'
+  +'<button type="button" class="pro-buy" id="_pro-buy">'+(price ? 'Unlock Pro \u2014 '+esc(price) : 'Unlock Pro')+'</button>'
+  +'<button type="button" class="pro-sec" id="_pro-restore">Restore Purchases</button>'
+  +'<button type="button" class="pro-sec" id="_pro-later">Not now</button>';
+ ov.appendChild(box); document.body.appendChild(ov);
+ const close=function(){ ov.remove(); document.removeEventListener('keydown', esc2, true); };
+ const esc2=function(e){ if(e.key==='Escape'){ e.preventDefault(); close(); } };
+ ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+ document.addEventListener('keydown', esc2, true);
+ box.querySelector('#_pro-later').onclick=close;
+ const buy=box.querySelector('#_pro-buy'), rest=box.querySelector('#_pro-restore');
+ buy.onclick=function(){
+  buy.disabled=true; rest.disabled=true;
+  Promise.resolve().then(function(){ return window.modBilling.purchase(); }).then(function(ok){
+   buy.disabled=false; rest.disabled=false;
+   if(ok){ modBillingChanged().then(function(){ close(); showToast('mõdRïff Pro is unlocked. Thank you.'); }); }
+  }).catch(function(){ buy.disabled=false; rest.disabled=false; showToast('The purchase did not go through'); });
+ };
+ rest.onclick=function(){ buy.disabled=true; rest.disabled=true;
+  proRestore().then(function(ok){ buy.disabled=false; rest.disabled=false; if(ok) close(); }); };
+ try{ buy.focus(); }catch(e){}
+ if(typeof track==='function') track('pro_sheet', {what:what||''});
+}
+// ── Pro content in a free build ──────────────────────────────────
+// A song or setup made with Pro parts has to open here without losing any of
+// them. Three rules, in order of how much they matter:
+//   1. Never destroy it. Whatever the free build cannot use is kept: the file
+//      on disk is untouched, and a re-save writes the ORIGINAL back for every
+//      field the user has not changed since loading (_proKeep / _proKeepSong).
+//      The old behaviour — freeApplyLimits rewriting the mode, voice and step
+//      count when the tier dropped — would have saved the stand-in over the
+//      real thing on the next Save.
+//   2. Free stand-ins play, so nothing is silent for no reason and nothing
+//      crashes: the setters refuse the Pro value and freeApplyLimits puts a
+//      free one in its place.
+//   3. Say so once, naming what is missing, with a way to the sheet.
+// var, not let: read from the setup and setlist code, far above.
+var _proKeep = null;        // {orig:{key:value}, co:{key:value}} for the loaded setup
+var _proKeepSong = null;    // {id, orig:{…}, co:{…}} for the loaded song
+
+// What in a settings-shaped blob the free build cannot use, as plain words.
+function proScan(s){
+ if(!s || modTier()!=='free') return [];
+ const out=[];
+ try{
+  const waves={};
+  ['wave','arpWave','melWave','blWave','melgenWave'].forEach(function(k){
+   const w=s[k]; if(w && !freeAllowsVoice(w)) waves[w]=1;
+  });
+  const nW=Object.keys(waves).length;
+  if(nW) out.push(nW+' Pro sound'+(nW===1?'':'s'));
+  if(s.mode && !freeAllowsMode(s.mode)) out.push('a Pro scale');
+  if(s.sqMach && !freeAllowsKit(s.sqMach)) out.push('a Pro drum kit');
+  if(s.meterBeats && s.meterUnit && !freeAllowsMeter(s.meterBeats, s.meterUnit)) out.push('a Pro time signature');
+  if(s.sqSteps && !freeAllowsSteps(s.sqSteps)) out.push('a longer pattern than free allows');
+ }catch(e){}
+ return out;
+}
+function _proJoin(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
+function proBanner(kind, labels){
+ if(!labels.length) return;
+ showToast('This '+kind+' uses '+_proJoin(labels)+'. Free stand-ins play, and your file keeps the originals.',
+           {actionLabel:'See Pro', ms:9000, onAction:function(){ proSheet(''); }});
+}
+// A loaded setup: remember what the free build changed, so a re-save can put
+// it back. Compares every field before and after the setters had their say.
+function proKeepSetup(incoming){
+ _proKeep = null;
+ if(modTier()!=='free') return;
+ try{
+  const now=_capSettings(), orig={}, co={};
+  Object.keys(incoming).forEach(function(k){
+   if(k in now && JSON.stringify(now[k])!==JSON.stringify(incoming[k])){ orig[k]=incoming[k]; co[k]=now[k]; }
+  });
+  if(Object.keys(orig).length) _proKeep={orig:orig, co:co};
+ }catch(e){}
+}
+// At capture time: a field still at its stand-in value was never touched by the
+// user, so the original goes back in.
+function proRestoreSetup(settings){
+ if(!_proKeep || modTier()!=='free' || !settings) return settings;
+ Object.keys(_proKeep.orig).forEach(function(k){
+  if(JSON.stringify(settings[k])===JSON.stringify(_proKeep.co[k])) settings[k]=_proKeep.orig[k];
+ });
+ return settings;
+}
+// Songs keep four things the free build can swap: the scale and the three
+// voices/kit saved with the groove.
+function proSongLoaded(song){
+ _proKeepSong = null;
+ if(modTier()!=='free' || !song) return;
+ try{
+  const probe={ mode:song.mode,
+   sqMach: song.savedRhythm && song.savedRhythm.mach,
+   blWave: song.savedBass && song.savedBass.wave,
+   melgenWave: song.savedMelody && song.savedMelody.wave };
+  const labels=proScan(probe);
+  if(!labels.length) return;
+  freeApplyLimits();                     // the stand-ins go in
+  _proKeepSong={ id:song.id,
+   orig:{ mode:song.mode, kit:probe.sqMach, blWave:probe.blWave, mlWave:probe.melgenWave },
+   co:{ mode:(typeof mode!=='undefined'?mode:null),
+        kit:(typeof window._sqDrumKit==='function'?window._sqDrumKit():null),
+        blWave:(window._blCaptureState?window._blCaptureState().wave:null),
+        mlWave:(window._mlCaptureState?window._mlCaptureState().wave:null) } };
+  proBanner('song', labels);
+ }catch(e){}
+}
+function proKeepSongApply(song, existingId){
+ const k=_proKeepSong;
+ if(!k || modTier()!=='free' || k.id!==existingId) return;
+ if(song.mode===k.co.mode && k.orig.mode) song.mode=k.orig.mode;
+ if(song.savedRhythm && song.savedRhythm.mach===k.co.kit && k.orig.kit) song.savedRhythm.mach=k.orig.kit;
+ if(song.savedBass && song.savedBass.wave===k.co.blWave && k.orig.blWave) song.savedBass.wave=k.orig.blWave;
+ if(song.savedMelody && song.savedMelody.wave===k.co.mlWave && k.orig.mlWave) song.savedMelody.wave=k.orig.mlWave;
+}
+
+// Apple requires this to be a visible control (guideline 3.1.1): it is on the
+// sheet and in Settings > About.
+function proRestore(){
+ return Promise.resolve().then(function(){ return window.modBilling.restore(); }).then(function(ok){
+  return modBillingChanged().then(function(){
+   showToast(ok ? 'mõdRïff Pro restored' : 'No earlier Pro purchase found for this Apple ID');
+   return !!ok;
+  });
+ }).catch(function(){ showToast('Could not reach the App Store'); return false; });
+}
+function proSyncRow(){
+ const row=document.getElementById('pro-row'); if(!row) return;
+ const web = window.modBilling && window.modBilling.provider==='web';
+ const free = modTier()==='free';
+ // The browser build grants everything and cannot sell anything, so there is
+ // nothing to show there — except the dev switch, where it is the test surface.
+ row.style.display = (web && !free) ? 'none' : '';
+ const st=document.getElementById('pro-state'); if(st) st.textContent = free ? 'Free' : 'Unlocked';
+ const up=document.getElementById('pro-upgrade'); if(up) up.style.display = free ? '' : 'none';
+}
+// A tap on a locked control opens the sheet instead of doing the thing. Capture
+// phase on the document, so it runs before the control's own handlers and stops
+// them: the setter-level checks (freeAllowsKit and the rest) are still the real
+// gate for everything that does not come through a tap — a saved setup, a shared
+// link, the dice — and are not relied on here.
+(function(){
+ function locked(e){ const t=e.target; return (t && t.closest && !t.closest('#_pro-sheet')) ? t.closest('.tier-locked') : null; }
+ function nameOf(el){
+  // The visible label first ("Trap"), then the accessible name, then the tooltip.
+  // A tooltip is a sentence ("Load this groove"), which reads wrongly in "X is
+  // part of mõdRïff Pro".
+  const clean=function(t){ return String(t||'').replace(/\s+/g,' ').trim(); };
+  const txt=clean(el.textContent);
+  if(txt && txt.length<=40 && /[A-Za-z0-9]/.test(txt)) return txt;
+  const n=clean(el.getAttribute('data-pro-name')||el.getAttribute('aria-label')||el.getAttribute('title')||txt);
+  return n.length>40 ? n.slice(0,40).trim() : n;
+ }
+ ['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend'].forEach(function(ev){
+  document.addEventListener(ev, function(e){ if(locked(e)) e.stopPropagation(); }, true);
+ });
+ document.addEventListener('click', function(e){
+  const el=locked(e); if(!el) return;
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  proSheet(nameOf(el));
+ }, true);
+})();
 
 function freeApplyLimits(){
  const free = modTier()==='free';
@@ -57908,11 +58399,18 @@ function freeApplyLimits(){
    b.classList.toggle('tier-locked', free && !freeAllowsKit(id));
   });
   // Groove presets — the first few only.
-  const gp=document.querySelectorAll('#sq-groove-presets > *');
-  gp.forEach((b,i)=>{ b.classList.toggle('tier-locked', free && i>=(FREE_LIMITS.drumPresets||6)); });
+  document.querySelectorAll('#sq-groove-presets > [data-groove]').forEach(b=>{
+   b.classList.toggle('tier-locked', free && !freeAllowsGroove(b.dataset.groove));
+  });
+  // The meter steps through the three free ones itself (see meterNudge), so
+  // the base buttons, which can only make others, are locked.
+  document.querySelectorAll('.ft-meter-base').forEach(b=>b.classList.toggle('tier-locked', free));
   // Bass and melody generator styles.
   document.querySelectorAll('[data-blstyle]').forEach(b=>{
    b.classList.toggle('tier-locked', free && !freeAllowsStyle(b.dataset.blstyle));
+  });
+  document.querySelectorAll('[data-mlstyle]').forEach(b=>{
+   b.classList.toggle('tier-locked', free && !freeAllowsStyle(b.dataset.mlstyle, 'ml'));
   });
   // Modes, in both rows. renderChords paints these from `mode`; this is the
   // only thing that says whether they can be reached at all.
@@ -57938,22 +58436,27 @@ function freeApplyLimits(){
    Array.prototype.forEach.call(sel.options, o=>{
     if(gated.indexOf(o.value)<0) return;
     const keep = freeAllowsVoice(o.value) || sel.value===o.value;  // never blank the select
-    o.hidden=!keep; o.disabled=!keep;
+    // Visible and marked rather than hidden: a voice that is not in the list
+    // reads as a missing voice. A native option cannot be tapped to open the
+    // sheet, so the select itself carries the hint in its title.
+    if(o.dataset.l===undefined) o.dataset.l=o.textContent;
+    o.hidden=false; o.disabled=!keep;
+    o.textContent = keep ? o.dataset.l : o.dataset.l+' (Pro)';
    });
   });
+  document.querySelectorAll('.fx-axis').forEach(l=>l.classList.toggle('tier-locked', free));
+  // Sampler pads: put the bank and the pad count back inside the free line.
+  try{ if(typeof psTierClamp==='function' && psTierClamp()){ if(typeof psLiveApply==='function') psLiveApply(); if(typeof psRender==='function') psRender(); } }catch(e){}
   // Exports.
   document.querySelectorAll('[data-stemtoggle]').forEach(b=>
    b.classList.toggle('tier-locked', free && !modAllows('stemExport')));
-  document.querySelectorAll('[data-midiexport]').forEach(b=>
-   b.classList.toggle('tier-locked', free && !modAllows('midiExport')));
   // Step counts beyond the allowed set.
   document.querySelectorAll('#sq-stepsUp,#sq-stepsDn').forEach(b=>
    b.classList.toggle('tier-locked', free));
   // Anything already past a limit when the tier flips has to come back.
   if(free){
    if(typeof window._sqSteps==='function' && !freeAllowsSteps(window._sqSteps())){
-    const l=_freeList('stepCounts')||[16];
-    try{ setSeqStepCount('sq', l[l.length-1]); }catch(e){}
+    try{ setSeqStepCount('sq', freeClampSteps(window._sqSteps())); }catch(e){}
    }
    if(!modAllows('stemExport') && typeof exportStems!=='undefined' && exportStems){
     try{ toggleStemExport(); }catch(e){}
@@ -57963,6 +58466,13 @@ function freeApplyLimits(){
    if(typeof mode!=='undefined' && !freeAllowsMode(mode)){
     try{ mode = (_freeList('freeModes')||['major'])[0]; renderChords(); }catch(e){}
    }
+   // Drum kits: the main one and the Aux. Through the same pickers a tap uses.
+   try{
+    const _dk = (typeof window._sqDrumKit==='function') ? window._sqDrumKit() : null;
+    const _ak = (typeof window._sqAuxKit==='function')  ? window._sqAuxKit()  : null;
+    if(_dk && !freeAllowsKit(_dk)) window._sqPickDrumKit('LIN');
+    if(_ak && !freeAllowsKit(_ak)) window._sqPickAuxKit('606');
+   }catch(e){}
    if(typeof wave!=='undefined' && !freeAllowsVoice(wave)){
     try{
      const fb = (typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[wave])

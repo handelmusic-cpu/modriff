@@ -114,7 +114,7 @@ support@modriff.com
 | Secondary category | Education (it teaches theory by playing) or Entertainment; owner's call |
 | Age rating | Answer **None / No** to every question. Result: **4+** |
 | Made for Kids | No |
-| Price | Owner's call. If add-ons ship (section 4 of `v5-architecture.md`) they are In-App Purchases and need their own listing, screenshot and a visible Restore Purchases |
+| Price | Free app, with one In-App Purchase: **mõdRïff Pro** (below). The price is set in App Store Connect, not in the code |
 
 ## App Privacy ("nutrition label")
 
@@ -178,6 +178,46 @@ progression over a beat.
 1024 x 1024, no transparency, no rounded corners (Apple rounds it). The
 project has `AppIcon-512@2x.png` (1024 px) in `Assets.xcassets`; confirm it is
 opaque and square before upload.
+
+## In-App Purchase: mõdRïff Pro
+
+The code is in (`ios/App/App/ModBilling/ModBilling.swift`, StoreKit 2, behind
+`window.modBilling`). It compiles for the simulator, but the purchase flow has
+**not been run**; this is what it needs from the owner's Mac and App Store
+Connect to be. The design is in section 4 of
+`v5-architecture.md`.
+
+**App Store Connect** (My Apps > mõdRïff > Monetization > In-App Purchases):
+
+- Type **Non-Consumable**, Product ID exactly `modriff_pro`, Reference name
+  "mõdRïff Pro".
+- **Family Sharing: on.** It cannot be turned off once the product is live.
+- Price: the launch price first, raised later. Nothing in the app names a price;
+  the sheet shows whatever the store returns for the user's storefront.
+- Display name and description (the sheet's bullet list is a good source), and
+  a review screenshot of the upgrade sheet (any locked control, tapped).
+- Submit the IAP with the first build; it is reviewed together with the app.
+- **Universal purchase** is automatic when iPhone, iPad and Mac are one app
+  record with one bundle id. Check the Mac build is not a separate record.
+
+**Testing in Xcode, no store account needed:**
+
+1. Add `ios/App/ModRiffPro.storekit` to the project (File > Add Files; leave
+   "Add to targets" **unchecked**: it must not ship in the app).
+2. Product > Scheme > Edit Scheme > Run > Options > **StoreKit Configuration**
+   > ModRiffPro.storekit.
+3. Run on a device or simulator. In the debug build, `setModTier('free')` and
+   `setModTier('pro')` in the web console switch the tier without buying
+   (release builds have no such switch). Debug > StoreKit > Manage
+   Transactions lets you refund and Ask-to-Buy a test purchase.
+4. Then the same on a **sandbox account** against the real product, once it
+   exists in App Store Connect.
+
+**Test matrix** (from the brief): fresh free install; buy; restore on a second
+device; buy, then airplane mode and relaunch (must still be Pro: the answer
+comes from the cache the host injects, not a network call); refund (drops to
+free on the next launch or when the update arrives); Ask to Buy (pending, then
+approved); a Pro-heavy `.modriff.json` opened on a free build.
 
 ## Account steps the owner does
 
