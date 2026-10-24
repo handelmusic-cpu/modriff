@@ -1527,8 +1527,8 @@ Bounce and stems now hear the native engine.
   has to look at what the writer has *begun*, not what it has published).
 - *One timeline.* The web taps stamp blocks with the AudioContext frame. The
   host cannot, so the host reports where its frame 0 sits on the wall clock
-  (`originMs`, the minimum over its render blocks: a callback can start late,
-  never early), and the page pairs `ctx.currentTime` with the wall clock, taking
+  (`originMs`, the running median over its render blocks: see the correction
+  below), and the page pairs `ctx.currentTime` with the wall clock, taking
   the largest ctx-minus-wall seen in the first second (currentTime moves a
   buffer at a time and never runs ahead; one reading was off by up to 7 ms,
   the dense maximum is within about 1 ms). That is the pairing note scheduling
@@ -1546,6 +1546,21 @@ Bounce and stems now hear the native engine.
   does, so if the two engines' output latencies differ the live sound differs
   from the file by that. Not measurable here. A stem take with many native parts
   is a few MB/s over the bridge; unmeasured on a phone.
+
+**N5 correction (4.9.9.9.9.8.7b): the first real bounce had the native chord
+31 ms early.** The first phone bounce (`modo-session 7`) had every stem and the
+mix whole (8 files, 50.29 s each, no dropouts), the native chord in its own
+stem from when it was played. Measured against the `.mid` the same take wrote
+(`tests/stems/bounce-check.py`): web parts sat within a few ms of the log
+(kicks -2.7, melody -2.4, arp +3.9, bass +7.6 ms), the native chord at -31 ms
+with a middle half of 2 ms wide: a constant, not jitter, so the clock alignment.
+The host's origin was the *minimum* of block wall-minus-frame, on the theory
+that a callback can start late but never early. It can: the minimum latches
+onto an early outlier, while a live note is placed using the block that drains
+it (`applyMessage`), a typical one. Now `PhaseTracker` (capture.h): a running
+median by sign steps, 99.87 against a true 100 where the earliest block says
+68.9, within 1 ms after 300 blocks (`capturetest`). Run `bounce-check.py` on the
+next bounce: the chord should now read with the web parts.
 
 **Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
 render thread and the plugin then warmed it up, which plays sixteen notes into

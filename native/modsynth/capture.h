@@ -150,4 +150,26 @@ class CaptureRing {
   uint64_t readPos_ = 0;    // control thread only
 };
 
+// Where the render callbacks sit on the wall clock, as one number. Each block
+// gives `off` = (its wall time - its first frame / rate) in ms; this tracks the
+// median of those, by sign steps: coarse for the first 128 blocks, fine after.
+// The median and not the minimum. The earliest-looking block is an outlier (the
+// engine fills its buffers in bursts), and a minimum put every native note 31 ms
+// early in a real bounce, while a live note is placed using the clock of the
+// block that drains it, which is a typical block. Render thread; no allocation.
+class PhaseTracker {
+ public:
+  void reset() { n_ = 0; est_ = 0; }
+  double update(double off) {
+    if (n_ == 0) est_ = off;
+    else est_ += (off > est_ ? 1.0 : -1.0) * (n_ < 128 ? 0.5 : 0.05);
+    n_++;
+    return est_;
+  }
+  uint32_t count() const { return n_; }
+ private:
+  uint32_t n_ = 0;
+  double est_ = 0;
+};
+
 }  // namespace modsynth

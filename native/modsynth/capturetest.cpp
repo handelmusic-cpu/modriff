@@ -8,6 +8,7 @@
 // frame cannot pass for a good one.
 #include "capture.h"
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -150,6 +151,30 @@ int main() {
     check(read + lostTotal == N, "every frame is read or reported lost", (double)(read + lostTotal));
     printf("     (read %.1f%%, lost %.1f%%, in %llu reads)\n", 100.0 * read / N, 100.0 * lostTotal / N,
            (unsigned long long)reads);
+  }
+
+  // The clock phase: steady callbacks at 100 ms (noise +-0.3), one block in
+  // eight an outlier up to 31 ms early, as a bursty engine's are. A minimum says
+  // 69; the tracker must say ~100, and must get there quickly.
+  {
+    uint32_t x = 12345u;
+    auto rnd = [&] { x ^= x << 13; x ^= x >> 17; x ^= x << 5; return x / 4294967296.0; };
+    PhaseTracker t; double minSeen = 1e9, est = 0, estAfter300 = 0, worstLate = 0;
+    for (int i = 0; i < 4000; i++) {
+      double off = 100.0 + (rnd() - 0.5) * 0.6;
+      if (i % 8 == 5) off -= 31.0 * rnd();
+      minSeen = std::fmin(minSeen, off); est = t.update(off);
+      if (i == 300) estAfter300 = est;
+      if (i > 300) worstLate = std::fmax(worstLate, std::fabs(est - 100.0));
+    }
+    check(minSeen < 75.0, "(the outliers are real: an earliest-block clock would say)", minSeen);
+    check(std::fabs(est - 100.0) < 0.5, "the tracker reports the typical phase, outliers ignored", est);
+    check(std::fabs(estAfter300 - 100.0) < 1.0, "and has it within a second of the take starting (300 blocks)", estAfter300);
+    check(worstLate < 1.0, "and stays within 1 ms of it thereafter", worstLate);
+    // A take that starts on an outlier recovers.
+    PhaseTracker u; u.update(70.0); double e2 = 0;
+    for (int i = 0; i < 200; i++) e2 = u.update(100.0 + (rnd() - 0.5) * 0.6);
+    check(std::fabs(e2 - 100.0) < 1.0, "a take that begins on an outlier block recovers within 200 blocks", e2);
   }
 
   printf("%s\n", fails ? "capturetest FAILED" : "capturetest ok");
