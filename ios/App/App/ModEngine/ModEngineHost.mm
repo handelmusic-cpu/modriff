@@ -161,6 +161,13 @@ double num(id value, double fallback = 0) {
   double _curOff, _drainSum;
   uint32_t _drainN;
   std::atomic<double> _drainMean;
+  // What a take's notes looked like on arrival, for the capture report
+  // (render thread writes, a racy read is fine for a diagnostic): note-ons that
+  // came with a usable stamp and how long they had waited and been scheduled
+  // ahead on average, ones whose stamp was unusable, ones with no schedule at
+  // all, and the smallest and largest callback.
+  double _dDelaySum, _dRelSum;
+  uint32_t _dStamped, _dBadStamp, _dPlain, _cbMin, _cbMax;
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -202,6 +209,7 @@ double num(id value, double fallback = 0) {
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
     _curOff = 0; _drainSum = 0; _drainN = 0; _drainMean.store(0);
+    _dDelaySum = _dRelSum = 0; _dStamped = _dBadStamp = _dPlain = 0; _cbMin = 0xffffffffu; _cbMax = 0;
     for (int i = 0; i < kCapStreams; i++) _cap[i].store(nullptr, std::memory_order_relaxed);
   }
   return self;
@@ -387,14 +395,18 @@ double num(id value, double fallback = 0) {
       if (delayMs > 0 && delayMs < 5000) {
         rel = std::max(0.0, rel - delayMs * 0.001 * _sampleRate);
         if (m.type == MsgType::NoteOn) {
+          _dStamped++; _dDelaySum += delayMs; _dRelSum += mm.atRel * 1000.0 / _sampleRate;
           _drainSum += _curOff - _clk.estimate();
           _drainN++;
           _drainMean.store(_drainSum / (double)_drainN, std::memory_order_relaxed);
         }
       }
     }
+    if (m.type == MsgType::NoteOn && !(mm.ts > 0)) _dBadStamp++;
     mm.at = (double)_partFrames[mm.part] + rel;
     mm.hasAt = true;
+  } else if (m.type == MsgType::NoteOn) {
+    _dPlain++;
   }
   const Msg &r = mm;
   switch (r.type) {
@@ -459,7 +471,10 @@ double num(id value, double fallback = 0) {
     if (_clkReset.exchange(false, std::memory_order_relaxed)) {
       _clk.reset(); _clkOrigin.store(1e300, std::memory_order_relaxed);
       _drainSum = 0; _drainN = 0; _drainMean.store(0, std::memory_order_relaxed);
+      _dDelaySum = _dRelSum = 0; _dStamped = _dBadStamp = _dPlain = 0; _cbMin = 0xffffffffu; _cbMax = 0;
     }
+    if ((uint32_t)frames < _cbMin) _cbMin = (uint32_t)frames;
+    if ((uint32_t)frames > _cbMax) _cbMax = (uint32_t)frames;
     _clkOrigin.store(_clk.update(off), std::memory_order_relaxed);
     _curOff = off;
   }
@@ -605,7 +620,11 @@ double num(id value, double fallback = 0) {
   os_unfair_lock_unlock(&_capLock);
   const double origin = _clkOrigin.load(std::memory_order_relaxed);
   return @{@"streams": streams, @"originMs": @(origin < 1e299 ? origin : 0.0),
-           @"drainMs": @(_drainMean.load(std::memory_order_relaxed)), @"sampleRate": @(_sampleRate)};
+           @"drainMs": @(_drainMean.load(std::memory_order_relaxed)), @"sampleRate": @(_sampleRate),
+           @"diag": @{@"notesStamped": @(_dStamped), @"notesBadStamp": @(_dBadStamp), @"notesUnscheduled": @(_dPlain),
+                      @"meanWaitMs": @(_dStamped ? _dDelaySum / _dStamped : 0.0),
+                      @"meanAheadMs": @(_dStamped ? _dRelSum / _dStamped : 0.0),
+                      @"callbackMin": @(_cbMin == 0xffffffffu ? 0u : _cbMin), @"callbackMax": @(_cbMax)}};
 }
 
 - (float)meterForPart:(int)part {

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Does a bounce put every part where it was played?
 
-Usage:  python3 -I tests/stems/bounce-check.py "modo-session 7.zip"   (or a folder of the unzipped files)
+Usage:  python3 -I tests/stems/bounce-check.py "modo-session 7.zip" [--by-time]   (or a folder of the unzipped files)
+        --by-time adds each part's median per 20 s, to tell a stretch (backgrounding, a stall) from the whole take.
 
 A bounce carries two records of the same take: the stems (what was heard) and
 the .mid (when each part was triggered). For every part that has both, this
@@ -52,8 +53,13 @@ def midi_notes(path):
         out[name] = ev
     return out
 
-def offsets(stem, times, lo=-0.08, hi=0.12):
-    env = np.convolve(np.abs(stem.mean(1)), np.ones(48) / 48, 'same')      # 1 ms
+def envelope(stem):
+    return np.convolve(np.abs(stem.mean(1)), np.ones(48) / 48, 'same')      # 1 ms
+
+def offsets(stem, times, lo=-0.08, hi=0.12, env=None, with_times=False):
+    """ms from each logged time to where the stem's sound starts around it.
+    Pass env=envelope(stem) when calling repeatedly on one stem."""
+    if env is None: env = envelope(stem)
     res = []
     for t in times:
         a, b = int((t + lo) * SR), int((t + hi) * SR)
@@ -61,8 +67,8 @@ def offsets(stem, times, lo=-0.08, hi=0.12):
         seg = env[a:b]; pre = np.median(env[max(0, a - 2400):a]) if a > 2400 else 0
         mx = seg.max()
         if mx < 0.004 or mx < 3 * pre + 0.002: continue
-        res.append((a + int(np.argmax(seg > 0.25 * mx))) / SR - t)
-    return np.array(res) * 1000
+        res.append((t, ((a + int(np.argmax(seg > 0.25 * mx))) / SR - t) * 1000))
+    return res if with_times else np.array([o for _, o in res])
 
 def main(src):
     if os.path.isfile(src):
@@ -81,9 +87,14 @@ def main(src):
         f = stem(label)
         if not f or track not in notes: continue
         times = sorted(set(round(t, 3) for t, n in notes[track] if t > t0 and (track != 'Percussion' or n == 36)))
-        o = offsets(load(f[0]), times)
+        st = load(f[0]); env = envelope(st)
+        ot = offsets(st, times, env=env, with_times=True); o = np.array([x for _, x in ot])
         if len(o) < 3: print('%-16s %5d  (too few clear onsets)' % (label, len(o))); continue
         print('%-16s %5d  %+9.1f  %+.1f .. %+.1f' % (label + (' (kick)' if track == 'Percussion' else ''), len(o), np.median(o), np.percentile(o, 25), np.percentile(o, 75)))
+        if '--by-time' in sys.argv:
+            for a in range(0, int(len(st) / SR) + 1, 20):
+                b = [x for t, x in ot if a <= t < a + 20]
+                if len(b) >= 3: print('      %3d-%3d s  n=%3d  median %+6.1f ms' % (a, a + 20, len(b), np.median(b)))
 
 if __name__ == '__main__':
-    main(sys.argv[1] if len(sys.argv) > 1 else '.')
+    main([a for a in sys.argv[1:] if not a.startswith('--')][0] if [a for a in sys.argv[1:] if not a.startswith('--')] else '.')

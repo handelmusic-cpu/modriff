@@ -230,6 +230,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "streams": streams,
             "originMs": r["originMs"] ?? 0,
             "drainMs": r["drainMs"] ?? 0,
+            "diag": r["diag"] ?? [:],
             "sampleRate": r["sampleRate"] ?? host.sampleRate
         ])
     }

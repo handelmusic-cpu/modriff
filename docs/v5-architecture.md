@@ -1582,6 +1582,28 @@ output latencies, which are not measurable from here. The file now follows the
 MIDI grid, so stems and `.mid` line up in a DAW. Run `bounce-check.py` on the
 next bounce: the chord should read with the web parts.
 
+**N5, still open (4.9.9.9.9.8.7c, 7d): the native chord is 48 ms early *in the
+file*.** The 7c bounce (`modo-session 8`, 129 s, version tag 7c) read the chord
+at **-47.8 ms** against the `.mid`, in every 20 s stretch from the start
+(-51.6, -48.1, -47.0, -48.3, -47.3, -47.7): systemic, not backgrounding. The
+drain-phase correction above changed nothing visible (-46.3 before), so it was
+not the cause, or `drainMs` was near zero on the phone. Web parts: bass +7.2,
+arp -0.6, kicks -3.1 then +12.6 and melody -0.8 then +7 from about 60 s (a step
+in the two step-sequencer parts and not in the arp: probably something changed
+in the take, not the capture). What is not known is whether the *render* of the
+native chord is early (live would then be early too, by that plus the engines'
+latency difference, and the owner finds it sounds right) or my mapping of host
+frames onto the web clock is biased by a constant. Both read the same in a file.
+7d stops guessing: messages are stamped with `Date.now()` (the host's own
+clock, where `performance.timeOrigin + now()` is a different one that could
+disagree by a constant, which would make notes early by exactly that), and a
+bounce with native capture on writes `<name>-capture-report.txt` beside the
+audio: the web clock pairing, origin, drain phase, the two page clocks' skew,
+`baseLatency`/`outputLatency`, and the host's count of stamped / unstamped /
+unscheduled note-ons, their mean wait and lead, and the callback sizes. The
+next bounce's report names the cause. `bounce-check.py --by-time` splits a
+take by 20 s.
+
 **Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
 render thread and the plugin then warmed it up, which plays sixteen notes into
 it. The engine is already running by then, so every launch started with a burst
