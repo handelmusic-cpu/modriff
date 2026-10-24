@@ -7038,9 +7038,32 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    getting are read on one axis. */
 .mix-meter { flex:0 0 5px; width:100%; height:5px; border-radius:3px; display:block; }
 
-/* Free tier: locked controls stay visible but inert, so the ceiling is
-   legible rather than mysterious — a control that vanishes reads as a bug. */
-.tier-locked { opacity:.34; pointer-events:none; position:relative; filter:grayscale(.7); }
+/* Free tier: locked controls stay visible, so the ceiling is legible rather
+   than mysterious — a control that vanishes reads as a bug. They used to be
+   inert (pointer-events:none); now a tap on one opens the Pro sheet, which
+   names it (see the interception under "The upgrade sheet"). Their children
+   take no pointer events, so the tap always lands on the locked element and a
+   <select> or <label> inside cannot open or focus. The padlock is drawn, not
+   typed: a mask, so it takes the control's own colour. */
+.tier-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
+.tier-locked * { pointer-events:none; }
+.tier-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
+  background:currentColor; pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat; }
+#_pro-sheet { position:fixed; inset:0; z-index:9650; display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(0,0,0,.72); }
+#_pro-sheet .pro-box { width:100%; max-width:360px; max-height:88vh; overflow-y:auto; background:var(--surf);
+  border:1px solid var(--pg); border-radius:16px; padding:18px; color:var(--text); }
+#_pro-sheet .pro-hd { font-family:'Orbitron',sans-serif; font-size:.66rem; font-weight:700; color:var(--pg); margin-bottom:6px; }
+#_pro-sheet .pro-what { font-size:.62rem; font-weight:700; margin-bottom:10px; }
+#_pro-sheet ul { margin:0 0 12px; padding-left:18px; font-size:.54rem; line-height:1.85; color:var(--text); }
+#_pro-sheet .pro-price { font-size:.5rem; color:var(--muted); margin-bottom:10px; }
+#_pro-sheet button { width:100%; padding:9px 14px; border-radius:9px; font-family:'Outfit',sans-serif;
+  font-size:.58rem; font-weight:700; cursor:pointer; touch-action:manipulation; margin-top:6px; }
+#_pro-sheet .pro-buy { border:none; background:var(--pg); color:#07080f; }
+#_pro-sheet .pro-sec { border:1px solid var(--pg); background:transparent; color:var(--text); font-weight:600; }
+#_pro-sheet button:disabled { opacity:.5; cursor:default; }
 
 /* ══ Wide screens ═══════════════════════════════════════════════
    Every panel was capped at 700px at every size, so a 1440x900 laptop showed
@@ -7792,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9a</span></div>
  </div>
 </div>
 
@@ -9029,7 +9052,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9</span></div>
+    <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
+     <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
+     <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10018,7 +10044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -57718,7 +57744,9 @@ const FREE_NUMBERS = {
 //
 //   isPro()    synchronous, called on every render — must never block
 //   refresh()  re-ask the store; resolves to the new isPro()
-//   purchase() open the store sheet
+//   price()    the store's own price string for the product, or null until
+//              it is known — never written in this file
+//   purchase() open the store sheet; resolves true when the user now owns Pro
 //   restore()  Apple REQUIRES this as a visible control (3.1.1)
 //   provider   'web' | 'ios' | 'android', for diagnostics
 //
@@ -57738,6 +57766,7 @@ if(!window.modBilling){
   _dev: null,
   isPro: function(){ return this._dev == null ? true : this._dev === 'pro'; },
   refresh: function(){ return Promise.resolve(this.isPro()); },
+  price: function(){ return null; },
   purchase: function(){
     if(typeof showToast==='function') showToast('Purchases are only available in the App Store build');
     return Promise.resolve(false);
@@ -57764,6 +57793,7 @@ function _applyTier(){
   if(typeof setPerformMode==='function' && typeof performMode!=='undefined') setPerformMode(performMode);
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
+  if(typeof proSyncRow==='function') proSyncRow();
 }
 // What a wrapper calls after a purchase, a restore, or an entitlement change
 // it was pushed. Re-asks, then repaints every gated surface.
@@ -58031,10 +58061,113 @@ function freeBlocked(what){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  showToast(what+' is part of mõdRïff Pro');
+  showToast(what+' is part of mõdRïff Pro', {actionLabel:'See Pro', onAction:function(){ proSheet(what); }});
  }
  return false;
 }
+
+// ── The upgrade sheet ────────────────────────────────────────────
+// One sheet for every locked thing. A tap on a locked control opens it, named
+// ("Custom scales are part of mõdRïff Pro"); a limit that bites mid-gesture
+// (a sixth song, a longer export) says so in a toast first and offers this
+// from the toast. It is never opened by the app on its own — not at launch, not
+// on a timer — and only one is ever on screen, so a double-tap cannot stack two.
+//
+// The price is the store's string, never ours: modBilling.price() is whatever
+// App Store Connect has for the product in this storefront, in the user's
+// currency. Until it arrives the button just says Unlock.
+function proSheet(what){
+ const old=document.getElementById('_pro-sheet');
+ if(old){
+  const w=old.querySelector('.pro-what');
+  if(w) w.textContent = what ? (what+' is part of mõdRïff Pro') : 'Everything in mõdRïff, unlocked';
+  return;
+ }
+ const ov=document.createElement('div'); ov.id='_pro-sheet';
+ const box=document.createElement('div'); box.className='pro-box';
+ box.setAttribute('role','dialog'); box.setAttribute('aria-modal','true'); box.setAttribute('aria-label','mõdRïff Pro');
+ let price=null; try{ price = window.modBilling.price ? window.modBilling.price() : null; }catch(e){}
+ const esc=function(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;'); };
+ box.innerHTML =
+   '<div class="pro-hd">mõdRïff Pro</div>'
+  +'<div class="pro-what">'+(what ? esc(what)+' is part of mõdRïff Pro' : 'Everything in mõdRïff, unlocked')+'</div>'
+  +'<ul>'
+  +'<li>Every scale, including the world scales and your own</li>'
+  +'<li>All drum kits, grooves, bass and melody styles</li>'
+  +'<li>Every recorded instrument, and mõdSynth</li>'
+  +'<li>The whole mõdFX pad, and your own sounds in the sampler</li>'
+  +'<li>Full-length audio and MIDI export, and stems</li>'
+  +'<li>Unlimited saved songs, any time signature, longer patterns</li>'
+  +'</ul>'
+  +'<div class="pro-price">One purchase, yours for good. Family Sharing is on.</div>'
+  +'<button type="button" class="pro-buy" id="_pro-buy">'+(price ? 'Unlock Pro \u2014 '+esc(price) : 'Unlock Pro')+'</button>'
+  +'<button type="button" class="pro-sec" id="_pro-restore">Restore Purchases</button>'
+  +'<button type="button" class="pro-sec" id="_pro-later">Not now</button>';
+ ov.appendChild(box); document.body.appendChild(ov);
+ const close=function(){ ov.remove(); document.removeEventListener('keydown', esc2, true); };
+ const esc2=function(e){ if(e.key==='Escape'){ e.preventDefault(); close(); } };
+ ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+ document.addEventListener('keydown', esc2, true);
+ box.querySelector('#_pro-later').onclick=close;
+ const buy=box.querySelector('#_pro-buy'), rest=box.querySelector('#_pro-restore');
+ buy.onclick=function(){
+  buy.disabled=true; rest.disabled=true;
+  Promise.resolve().then(function(){ return window.modBilling.purchase(); }).then(function(ok){
+   buy.disabled=false; rest.disabled=false;
+   if(ok){ modBillingChanged().then(function(){ close(); showToast('mõdRïff Pro is unlocked. Thank you.'); }); }
+  }).catch(function(){ buy.disabled=false; rest.disabled=false; showToast('The purchase did not go through'); });
+ };
+ rest.onclick=function(){ buy.disabled=true; rest.disabled=true;
+  proRestore().then(function(ok){ buy.disabled=false; rest.disabled=false; if(ok) close(); }); };
+ try{ buy.focus(); }catch(e){}
+ if(typeof track==='function') track('pro_sheet', {what:what||''});
+}
+// Apple requires this to be a visible control (guideline 3.1.1): it is on the
+// sheet and in Settings > About.
+function proRestore(){
+ return Promise.resolve().then(function(){ return window.modBilling.restore(); }).then(function(ok){
+  return modBillingChanged().then(function(){
+   showToast(ok ? 'mõdRïff Pro restored' : 'No earlier Pro purchase found for this Apple ID');
+   return !!ok;
+  });
+ }).catch(function(){ showToast('Could not reach the App Store'); return false; });
+}
+function proSyncRow(){
+ const row=document.getElementById('pro-row'); if(!row) return;
+ const web = window.modBilling && window.modBilling.provider==='web';
+ const free = modTier()==='free';
+ // The browser build grants everything and cannot sell anything, so there is
+ // nothing to show there — except the dev switch, where it is the test surface.
+ row.style.display = (web && !free) ? 'none' : '';
+ const st=document.getElementById('pro-state'); if(st) st.textContent = free ? 'Free' : 'Unlocked';
+ const up=document.getElementById('pro-upgrade'); if(up) up.style.display = free ? '' : 'none';
+}
+// A tap on a locked control opens the sheet instead of doing the thing. Capture
+// phase on the document, so it runs before the control's own handlers and stops
+// them: the setter-level checks (freeAllowsKit and the rest) are still the real
+// gate for everything that does not come through a tap — a saved setup, a shared
+// link, the dice — and are not relied on here.
+(function(){
+ function locked(e){ const t=e.target; return (t && t.closest && !t.closest('#_pro-sheet')) ? t.closest('.tier-locked') : null; }
+ function nameOf(el){
+  // The visible label first ("Trap"), then the accessible name, then the tooltip.
+  // A tooltip is a sentence ("Load this groove"), which reads wrongly in "X is
+  // part of mõdRïff Pro".
+  const clean=function(t){ return String(t||'').replace(/\s+/g,' ').trim(); };
+  const txt=clean(el.textContent);
+  if(txt && txt.length<=40 && /[A-Za-z0-9]/.test(txt)) return txt;
+  const n=clean(el.getAttribute('data-pro-name')||el.getAttribute('aria-label')||el.getAttribute('title')||txt);
+  return n.length>40 ? n.slice(0,40).trim() : n;
+ }
+ ['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend'].forEach(function(ev){
+  document.addEventListener(ev, function(e){ if(locked(e)) e.stopPropagation(); }, true);
+ });
+ document.addEventListener('click', function(e){
+  const el=locked(e); if(!el) return;
+  e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  proSheet(nameOf(el));
+ }, true);
+})();
 
 function freeApplyLimits(){
  const free = modTier()==='free';
@@ -58102,7 +58235,12 @@ function freeApplyLimits(){
    Array.prototype.forEach.call(sel.options, o=>{
     if(gated.indexOf(o.value)<0) return;
     const keep = freeAllowsVoice(o.value) || sel.value===o.value;  // never blank the select
-    o.hidden=!keep; o.disabled=!keep;
+    // Visible and marked rather than hidden: a voice that is not in the list
+    // reads as a missing voice. A native option cannot be tapped to open the
+    // sheet, so the select itself carries the hint in its title.
+    if(o.dataset.l===undefined) o.dataset.l=o.textContent;
+    o.hidden=false; o.disabled=!keep;
+    o.textContent = keep ? o.dataset.l : o.dataset.l+' (Pro)';
    });
   });
   document.querySelectorAll('.fx-axis').forEach(l=>l.classList.toggle('tier-locked', free));
