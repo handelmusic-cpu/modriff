@@ -2905,6 +2905,18 @@ body.light-mode .voice-sel { background:#fff; color:#1a1e38; border-color:#c2c6d
  animation:logic-pulse 1.4s ease-in-out infinite;
 }
 .ending-hint { font-size:.4rem; color:var(--muted); letter-spacing:.06em; }
+/* The Endings widget on Live (4.9.9.9.9.7.9b): five buttons across the page,
+   thumb-sized, under a heading that already says "Endings" — so the row's own
+   label and its top rule go. Armed keeps the pulsing orange of .end-btn.armed. */
+body.mode-basic .lv-slot[data-mod="endings"] .ending-row {
+ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px;
+ margin:2px 0 0; padding:0; border-top:0;
+}
+body.mode-basic .lv-slot[data-mod="endings"] .ending-row .ms-lbl { display:none; }
+body.mode-basic .lv-slot[data-mod="endings"] .end-btn {
+ min-height:48px; padding:6px 2px; font-size:12px; letter-spacing:0; white-space:nowrap;
+}
+body.mode-basic .lv-slot[data-mod="endings"] .ending-hint { grid-column:1 / -1; font-size:12px; text-align:center; }
 
 .sec-follow {
  /* Carries a real number now ("×4", "∞"), not a one-character glyph, so it
@@ -9218,7 +9230,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
   <button class="tb end-btn" data-ending="finish" onclick="armEnding('finish')" title="Big finish — the whole band lands on the tonic together, kit and all, and the chord rings out">Big Fin</button>
   <button class="tb end-btn" data-ending="fade"   onclick="armEnding('fade')"   title="Fade — the band plays on while the mix comes down evenly over four bars">Fade</button>
   <button class="tb end-btn" data-ending="cold"   onclick="armEnding('cold')"   title="Cold — the final bar plays out and the whole band stops dead on the downbeat after it">Cold</button>
-  <span class="ending-hint">Queues to the end of the pass</span>
+  <span class="ending-hint">Queues to the end of the pass, or the next bar</span>
  </div>
  </div>
 
@@ -17429,9 +17441,9 @@ function psPatAnim(){
 // came from, marked with a comment node — whenever Play stops being the Live
 // page you are looking at: another tab, or Studio.
 var LV_MAX = 4;              // instruments
-var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq'];
+var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq','endings'];
 var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
-               drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid'};
+               drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid', endings:'Endings'};
 // The sampler's pads sit above the mõdFX pad (4.9.9.9.9.1): the pads are
 // what you strike, the mõdFX pad what you hold over everything, and the
 // thumb that holds it belongs at the foot of the page.
@@ -17505,6 +17517,10 @@ function lvNodes(m){
  else if(m==='drums') out = [lvLabel('drums'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
  else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
  else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
+ // The row lives in the song banner; the buttons are found by data-ending and
+ // _updateEndingUI repaints every one in the document, so moving the row out
+ // leaves nothing to keep in step.
+ else if(m==='endings') out = [lvLabel('endings'), q('.ending-row')];
  out = (out||[]).filter(Boolean);
  if(out.length) _lvNodes[m] = out;
  return out;
@@ -27067,16 +27083,47 @@ let _endLandPending=null;
 // ending's own timers went on firing into the silence too.
 let _endRestore=null;
 
+// An ending armed with no song looping (the Endings widget on Live is the
+// usual way to do that) waits for the drums' next bar line instead of firing
+// the instant it is tapped. It fired immediately before, so "Queues to the end
+// of the pass" was only true inside a song, and on a groove the landing arrived
+// wherever the thumb happened to be — the thing the whole engine exists to
+// avoid. The wait is a timer that wakes a look-ahead before the bar line and
+// hands _runEnding that line's exact audio time, the same thing tickSongLoop
+// does for a song; it re-reads the bar each time it wakes, so a tempo change
+// or a different step count while it waits cannot make it land on a stale one.
+var _endBarTimer=null;     // var: stop paths read it, and can run before this line (CLAUDE.md, TDZ)
+function _endBarCancel(){ if(_endBarTimer){ clearTimeout(_endBarTimer); _endBarTimer=null; } }
+function _endAtBar(id){
+ _endBarCancel();
+ const ctx=getCtx();
+ const nb=(typeof window._sqNextBar==='function') ? window._sqNextBar() : null;
+ // Nothing on the drums to count bars against: there is no bar line, run now.
+ if(!ctx || !nb){ _runEnding(id); return; }
+ const lead=(typeof LOOK_AHEAD==='number' ? LOOK_AHEAD : 0.2)+0.03;
+ const wait=nb.t-ctx.currentTime;
+ if(wait>lead){
+  _endBarTimer=setTimeout(function(){
+   _endBarTimer=null;
+   if(songEnding!==id) return;
+   _endAtBar(id);
+  }, (wait-lead)*1000);
+  return;
+ }
+ _runEnding(id, nb.t);
+}
 function armEnding(id){
  if(!ENDINGS[id]) return;
  // Tapping the armed ending again disarms it — no way to get stuck.
  songEnding = (songEnding===id) ? null : id;
  _updateEndingUI();
  if(songEnding){
-  showToast(ENDINGS[id].label+' armed — finishes at the end of this pass');
-  // Nothing is looping, so there is no "end of pass" to wait for: run it now.
-  if(typeof songLoopActive==='undefined'||!songLoopActive) _runEnding(songEnding);
- } else { _endQueued=null; showToast('Ending cancelled'); }
+  const looping=!(typeof songLoopActive==='undefined'||!songLoopActive);
+  const barred=!looping && typeof window._sqNextBar==='function' && !!window._sqNextBar();
+  showToast(ENDINGS[id].label+' armed — finishes at the end of this '+(looping?'pass':(barred?'bar':'pass')));
+  // Not in a song: the next bar line if the drums are running, else now.
+  if(!looping) _endAtBar(songEnding);
+ } else { _endBarCancel(); _endQueued=null; showToast('Ending cancelled'); }
 }
 function _updateEndingUI(){
  document.querySelectorAll('[data-ending]').forEach(b=>{
@@ -27202,6 +27249,9 @@ function _endingDropRhythm(at){
 // Stop, pressed in the middle of an ending. Called from stopEverything(), so
 // it also covers the spacebar panic stop and a song loop ending under it.
 function _endingAbort(){
+ // An ending still waiting for its bar line goes with the stop: armed and
+ // unfired it would otherwise sit lit with no timer behind it.
+ if(_endBarTimer){ _endBarCancel(); songEnding=null; _updateEndingUI(); }
  if(!_endRestore && !_endingRunning && !_endQueued && !_endLandPending) return;
  _clearEndTimers();
  const r=_endRestore;
