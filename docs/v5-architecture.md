@@ -1338,7 +1338,7 @@ decision rather than a default:
 | | | proof |
 |---|---|---|
 | N1 | Part bus, strip (level, mute/solo, pan), per-part peak/RMS back to the page's meters | a fader at −6 dB measures −6 dB at the host; solo silences the others, counted |
-| N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | a limiter test on a sum hotter than 0 dBFS; reverb level against the convolver as the rack's was |
+| N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | **Landed (4.9.9.9.9.8.6), headroom not built.** Measured against the browser's compressor and chain; reverb level and tail against the convolver |
 | N3 | mõdFX tier 1, the setter wrap, smoothing | each stage's level and response against the web chain's, `fxtest`-style |
 | N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
 | N5 | Capture of the native master and parts for recording and stems | a bounce of a native chord matches the live sound |
@@ -1436,6 +1436,76 @@ needs from the same variables that set the worklet's own parameters.
 *Not in it yet:* gate patterns (the page ducks the base gate for them; the
 native chain leaves the base alone), and the sample-source axes, which read a
 clip held in the page. Those pad axes do nothing on a native part.
+
+**N2 landed (4.9.9.9.9.8.6, Swift built for the simulator, not yet heard on a
+phone).** `native/modsynth/master.{h,cpp}` is `buildMasterBus` in C++: drive,
+the bus room, the glue compressor, the limiter, the volume. `ModEngineHost`
+runs every part's output through it before the speaker, so the native chord is
+no longer ~8 dB hotter than the web's and no longer bypasses the glue.
+
+*Two ways in, as on the web.* Everything but the chord part enters through the
+drive and the bus room; the chord part has its own drive and goes straight to
+the glue, because its room is its own (natively, the effects rack's reverb).
+`kDirectPart` in the host says which. When more parts go native they are
+"room" parts by default, which is what they are on the web.
+
+*The page decides, the bus applies.* `_masterSettings()` returns the finished
+numbers (volume, both thresholds and ratios, the room send; bypass is neutral
+settings, not a rewire), `_driveOutGain()` the drive's makeup. The web nodes
+and `_modNativeMasterSync` both read them, so the two cannot drift; the
+parameter order is held by `tests/modsynth/master-order.test.js`. Sent only
+when they move, handed over whole when the chord attaches, and applied by the
+host without needing a live part.
+
+*The compressor is a port, and it is measured against the browser.*
+`DynamicsCompressorNode` is implementation-defined (above), but the algorithm
+WebKit and Blink share is not a secret: a soft-knee curve found by bisection,
+automatic make-up of 0.6 of the reduction at 0 dBFS, a detector averaged
+instantly down and 2.5 ms back up, a target gain every 32 frames with a
+four-point adaptive release, the asin/sin warp, and 6 ms of look-ahead.
+`tests/modsynth/master-ref.html` builds the real graph on an
+`OfflineAudioContext` and records a level every 10 ms for eight cases (glue,
+limiter, both, bypass, drive, three glue amounts); `master-ref.json` is that
+recording, committed. `native/modsynth/mastertest` renders the same stimulus.
+Result, 96 checks: mean error 0.01 dB over 4.7 s of every dynamics case, the
+worst window under 1 dB, peaks within 1 dB, every step's level within 0.15 dB.
+With the drive on, the window-to-window level ripples by up to 2 dB (the two
+oversamplers' filters differ and the chord's notes beat through the curve), and
+the average per step is still within 0.01 dB. The recording was made in
+Chromium (Blink); the phone's web view is WebKit, whose compressor is the
+same code at the time Blink forked. If the phone ever disagrees, record the
+page there (the header says how) and the test will say by how much.
+
+The first 120 ms is not compared: an offline compressor starts with its
+detector at zero and fades in. The master bus has been running in silence
+long before anything plays, so that is not behaviour to copy.
+
+*The room is a network, fitted to the recording, not to the impulse.* The
+first fit pinned the time the convolver's impulse takes to reach -60 dB
+(2.2 s) and left the network 12 dB under the convolver a second into the tail:
+a convolver with this impulse falls slowly and then collapses where the
+impulse ends, a network falls at one rate. RT60 3.4 s follows the recording
+within about 1 dB for the first 1.6 s after the input stops, and the level on
+steady noise within 0.01 dB (`MASTER_ROOM_RT60`, `MASTER_ROOM_TRIM_DB`). Past
+that it rings on where the convolver stops, 27 dB or more down; at the default
+5% send the whole room is 34 dB under the mix. The network moved from
+`mixfx.cpp` into `dspkit.h` for this; mõdFX's send reverb is the same code with
+the same numbers (`mixfxtest` output is unchanged, timing lines aside).
+
+Also checked: 20 s of +6 dBFS noise through random settings moved every few
+blocks, at block sizes that are not the browser's, stays finite and bounded,
+and costs about 1% of a core on this Mac with everything on.
+
+*Still open, and now sharper:*
+
+- **Headroom between the two masters.** While any part is Web Audio the speaker
+  gets the sum of two limiters. Proposed above (`master.web`, 3 dB); not built.
+  It disappears at the flip.
+- **N5, capture.** The recorder and stems still do not hear a native part.
+- The native master has no meter yet (`takeRms` exists; nothing reads it). The
+  Mix screen's master meter reads the web master.
+- **The ear.** The room, the oversampled drive and the compressor have been
+  judged by number. Listen to the native chord with the glue and the room up.
 
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
