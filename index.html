@@ -6542,8 +6542,9 @@ body.light-mode .sq-layer-btn, body.light-mode .sq-layer-mute { color:#5a5f78; }
  /* The label sits on the fader's row only. Spanning it down past the sends
     made the grid centre it across both, so every channel's name printed
     beside its REV/DLY/DRV block instead of beside the fader it names. */
- grid-template-areas:'lbl fader val ms'
-                     'fx  fx    fx  fx';
+ grid-template-areas:'lbl  fader val  ms'
+                     'pank pan   panv .'
+                     'fx   fx    fx   fx';
  transition:opacity .15s;
  /* The rule goes UNDER the whole strip, not between a fader and its own
     sends: drawn between them, every channel's REV/DLY/DRV read as belonging
@@ -6556,6 +6557,26 @@ body.light-mode .sq-layer-btn, body.light-mode .sq-layer-mute { color:#5a5f78; }
 .mix-strip > .mix-lbl      { grid-area:lbl; }
 .mix-strip > .mix-ms       { grid-area:ms; }
 .mix-strip > .mix-fx       { grid-area:fx; }
+.mix-strip > .mix-pank     { grid-area:pank; }
+.mix-strip > .mix-pan      { grid-area:pan; }
+.mix-strip > .mix-panval   { grid-area:panv; }
+/* Pan sits on its own thin row between the fader and the sends, outside the
+   Pro-only sends box so Live gets it too. The track lines up under the fader
+   and the readout under the level number, so the two read as one column. */
+.mix-pank { font-size:.32rem; font-weight:700; letter-spacing:.06em; color:#5a6090; line-height:1;
+ user-select:none; -webkit-user-select:none; }
+.mix-pan { position:relative; height:22px; cursor:ew-resize; touch-action:none; border-radius:4px;
+ margin:0 8px; }
+.mix-pan:focus-visible { outline:2px solid var(--pr); outline-offset:1px; }
+.mix-pan-track { position:absolute; left:0; right:0; top:50%; height:3px; margin-top:-1.5px;
+ border-radius:2px; background:rgba(255,255,255,.12); }
+.mix-pan-fill { position:absolute; top:50%; height:3px; margin-top:-1.5px; border-radius:2px; }
+.mix-pan-notch { position:absolute; left:50%; top:50%; width:2px; height:12px; margin:-6px 0 0 -1px;
+ border-radius:1px; background:rgba(255,255,255,.35); }
+.mix-pan-cap { position:absolute; top:50%; width:13px; height:13px; margin:-6.5px 0 0 -6.5px;
+ border-radius:50%; border:2px solid var(--surf2); box-shadow:0 0 0 1px rgba(0,0,0,.4); }
+.mix-panval { font-size:.46rem; text-align:right; line-height:1.1; white-space:nowrap; width:44px;
+ font-variant-numeric:tabular-nums; color:var(--muted); }
 .mix-val { font-size:.46rem; text-align:right; min-height:11px; line-height:1.1;
  white-space:nowrap; width:44px;
  /* Tabular figures so the number does not shuffle sideways as it counts. */
@@ -7752,7 +7773,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.9d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.0</span></div>
  </div>
 </div>
 
@@ -8989,7 +9010,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.9d</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.0</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -9978,7 +9999,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.9d';
+const MODRIFF_VERSION = '4.9.9.9.9.8.0';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10726,6 +10747,9 @@ PARAMS.push({part:'transport', name:'bpm', read:function(){ return _pSlider('bpm
 // _fxAppState); the master bus; and the chord reverb's size, as last
 // committed — the reverb is rebuilt when the slider is let go, not on every
 // step of a drag, as it always was.
+// Where each part sits in the stereo field, -1 to 1, centre where absent.
+// An object so a Clear or a setup restore moves them all in one message.
+PARAMS.push({part:'mix', name:'pan', read:function(){ return Object.assign({}, window.sqMixPan || {}); }});
 PARAMS.push({part:'mix', name:'muteSolo', read:function(){ return {mute: window.sqMixMute || {}, solo: window.sqMixSolo || {}}; }});
 PARAMS.push({part:'fx', name:'modfx', read:function(){ return _fxAppState(); }});
 PARAMS.push({part:'master', name:'on',   read:function(){ return masterBusOn; }});
@@ -30617,6 +30641,7 @@ function _capSettings(){
   // and undo both left the mix alone); "everything is undoable" means the
   // mixer is no exception now.
   mixGains: (typeof window.sqMixGainsW==='object' && window.sqMixGainsW) ? Object.assign({},window.sqMixGainsW) : null,
+  mixPan:   (typeof window.sqMixPan==='object' && window.sqMixPan)       ? Object.assign({},window.sqMixPan)   : null,
   mixMute:  (typeof window.sqMixMute==='object' && window.sqMixMute)     ? Object.assign({},window.sqMixMute)  : null,
   mixSolo:  (typeof window.sqMixSolo==='object' && window.sqMixSolo)     ? Object.assign({},window.sqMixSolo)  : null,
 
@@ -30699,7 +30724,10 @@ function _applySettings(s){
  if(s.mixGains && window.sqMixGainsW) Object.assign(window.sqMixGainsW, s.mixGains);
  if(s.mixMute){ window.sqMixMute=Object.assign({},s.mixMute); }
  if(s.mixSolo){ window.sqMixSolo=Object.assign({},s.mixSolo); }
- if(s.mixGains||s.mixMute||s.mixSolo){
+ // A snapshot from before the pan has no mixPan, and leaves it alone, the
+ // way mixGains does: the dice and the presets apply partial snapshots too.
+ if(s.mixPan && typeof s.mixPan==='object'){ window.sqMixPan=Object.assign({},s.mixPan); modParamsFlush(); }
+ if(s.mixGains||s.mixMute||s.mixSolo||s.mixPan){
   if(typeof window.buildMixChannelsInto==='function'){
    document.querySelectorAll('.mix-chan-row').forEach(el=>window.buildMixChannelsInto(el));
   }
@@ -44094,6 +44122,9 @@ function sqApplyMixToNodes(ch, gain){
 // isn't. Mute still wins over solo on the same channel, which is what every
 // desk does and what people expect when they hit both.
 window.sqMixMute = window.sqMixMute || {};
+// Pan per part, -1..1. Absent means centre, so an old setup and an untouched
+// part need no entry. Read by PARAMS (mix.pan) and drawn by the strip.
+window.sqMixPan = window.sqMixPan || {};
 window.sqMixSolo = window.sqMixSolo || {};
 function sqAnySolo(){
   var S=window.sqMixSolo||{};
@@ -51808,6 +51839,87 @@ function _mixBuildFx(ch, valEl){
  // chips are still in Studio's mõdFX panel.
  return box;
 }
+// ── Pan ─────────────────────────────────────────────────────────────────
+// -1 (left) to 1 (right), stored in sqMixPan as hundredths and absent at
+// centre. The audio is a StereoPannerNode after the part's mõdFX chain
+// (fxBuildChain); this only writes the number and flushes it, like the fader.
+function mixPanLabel(v){
+ var n=Math.round(Math.abs(v)*100);
+ return n===0 ? 'C' : (v<0 ? 'L ' : 'R ')+n;
+}
+window.mixSetPan = function(id, v){
+ v=Math.max(-1, Math.min(1, Math.round((+v||0)*100)/100));
+ if(!window.sqMixPan) window.sqMixPan={};
+ if(v===0) delete window.sqMixPan[id]; else window.sqMixPan[id]=v;
+ modParamsFlush();
+};
+function _mixBuildPan(ch, strip){
+ var k=document.createElement('div'); k.className='mix-pank'; k.textContent='PAN';
+ var el=document.createElement('div'); el.className='mix-pan'; el.tabIndex=0;
+ el.setAttribute('role','slider');
+ el.setAttribute('aria-valuemin','-100'); el.setAttribute('aria-valuemax','100');
+ el.setAttribute('aria-label',ch.label+' pan');
+ el.title=ch.label+' pan. Drag left or right; double-tap to centre.';
+ var track=document.createElement('div'); track.className='mix-pan-track';
+ var fill=document.createElement('div'); fill.className='mix-pan-fill'; fill.style.background=ch.color;
+ var notch=document.createElement('div'); notch.className='mix-pan-notch';
+ var cap=document.createElement('div'); cap.className='mix-pan-cap'; cap.style.background=ch.color;
+ el.appendChild(track); el.appendChild(fill); el.appendChild(notch); el.appendChild(cap);
+ var out=document.createElement('div'); out.className='mix-panval';
+ var val=(window.sqMixPan && +window.sqMixPan[ch.id]) || 0;
+ // Percentages, not measured pixels, for the reason the fader's cap is
+ // (painted before the strip is in the document, where widths read 0).
+ function paint(){
+  var pct=(val+1)*50;
+  cap.style.left=pct+'%';
+  fill.style.left=Math.min(50,pct)+'%'; fill.style.width=Math.abs(pct-50)+'%';
+  out.textContent=mixPanLabel(val);
+  out.style.color = val===0 ? 'var(--muted)' : uiTextColor(ch.color);
+  el.setAttribute('aria-valuenow',String(Math.round(val*100)));
+  el.setAttribute('aria-valuetext',mixPanLabel(val));
+ }
+ function set(v){
+  v=Math.max(-1,Math.min(1,v));
+  // A detent at centre: landing within a few percent of it is centre, since
+  // an exact 0 by thumb is otherwise a matter of luck.
+  if(Math.abs(v)<0.05) v=0;
+  val=Math.round(v*100)/100; paint(); window.mixSetPan(ch.id, val);
+ }
+ function fromX(clientX){
+  var r=el.getBoundingClientRect(); if(r.width<1) return;
+  set(((clientX-r.left)/r.width)*2-1);
+ }
+ var lastTap=0, dragging=false;
+ el.addEventListener('pointerdown',function(e){
+  e.preventDefault();
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  el.focus({preventScroll:true});
+  var now=Date.now();
+  // Second tap inside 300ms: back to centre, and no drag until the next press.
+  if(now-lastTap<300){ lastTap=0; dragging=false; set(0); return; }
+  lastTap=now; dragging=true; fromX(e.clientX);
+ });
+ el.addEventListener('pointermove',function(e){
+  if(!dragging || !el.hasPointerCapture || !el.hasPointerCapture(e.pointerId)) return;
+  fromX(e.clientX);
+ });
+ ['pointerup','pointercancel'].forEach(function(ev){
+  el.addEventListener(ev,function(e){ dragging=false; try{ el.releasePointerCapture(e.pointerId); }catch(_){} });
+ });
+ // A mouse's double-click arrives as one press with a click count, not two
+ // quick presses, so it needs its own way to centre.
+ el.addEventListener('dblclick',function(e){ e.preventDefault(); set(0); });
+ el.addEventListener('keydown',function(e){
+  var step=e.shiftKey?0.2:0.05;
+  if(e.key==='ArrowRight'||e.key==='ArrowUp') set(val+step);
+  else if(e.key==='ArrowLeft'||e.key==='ArrowDown') set(val-step);
+  else if(e.key==='Home'||e.key==='Delete'||e.key==='Backspace') set(0);
+  else return;
+  e.preventDefault();
+ });
+ paint();
+ strip.appendChild(k); strip.appendChild(el); strip.appendChild(out);
+}
 function _mixBuildStrip(ch){
  var wrap=document.createElement('div');
  wrap.className='mix-strip'; wrap.title=ch.label;
@@ -51845,6 +51957,7 @@ function _mixBuildStrip(ch){
  var faderRow=document.createElement('div'); faderRow.className='mix-faderrow';
  faderRow.appendChild(fader.el); faderRow.appendChild(meter);
  wrap.appendChild(faderRow); wrap.appendChild(valEl); wrap.appendChild(lbl); wrap.appendChild(btns);
+ _mixBuildPan(ch, wrap);
  if(ch.fx) wrap.appendChild(_mixBuildFx(ch, valEl));
  _mixShowVal(valEl, mixGainLabel(initG));
  return wrap;
@@ -54704,7 +54817,36 @@ function fxBuildChain(ctx, ch){
  const wet=ctx.createGain(); wet.gain.value=_fxMix(ch, true);
  wet.connect(out);
  postRing.connect(dry); dry.connect(wet);
- out.connect(dest);
+ // The mixer's pan, after everything the chain does and after the bypass
+ // joins, so it moves the part whether or not mõdFX is in circuit. The meter
+ // taps `out`, upstream of this, so it keeps reading the part's level and not
+ // the pan law. Stems are taken at the part bus (_partDest), upstream of the
+ // whole chain, so they stay dry and centred: pan is a mix move, and a stem
+ // is the part before the mix.
+ //
+ // StereoPannerNode on a MONO input is an equal-power pan that puts the
+ // centre 3 dB down. On a stereo input it is unity at centre. The part buses
+ // are not guaranteed stereo (a mono voice feeding the bus keeps the bus
+ // mono), so a gain forced to two channels sits in front: it upmixes mono by
+ // copying to both sides, and the panner then always sees stereo. Centre is
+ // exactly the unpanned level, which is what the null measurement checks.
+ const mixPanIn=ctx.createGain();
+ mixPanIn.channelCount=2; mixPanIn.channelCountMode='explicit'; mixPanIn.channelInterpretation='speakers';
+ // The panner sums a dual-mono signal into the side it moves toward, so
+ // hard left is +6 dB on that side (+3 dB in power) against centre. A gain
+ // after it takes that back, 1/sqrt(1+sin(|pan|*pi/2)), which is exactly
+ // constant power for a mono source; centre is 1, so it does not touch the
+ // unpanned level.
+ const mixPan=ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+ const mixPanComp=ctx.createGain();
+ out.connect(mixPanIn);
+ if(mixPan){
+  const p0=_mixPanOf(ch);
+  mixPan.pan.value=p0; mixPanComp.gain.value=_mixPanComp(p0);
+  mixPanIn.connect(mixPan); mixPan.connect(mixPanComp); mixPanComp.connect(dest);
+ }else{
+  mixPanIn.connect(dest);
+ }
  // The way round all of it, for while the channel has nothing for the chain
  // to do. Fed from the part bus by fxInsertAll; see _fxSetActive.
  const byp=ctx.createGain(); byp.gain.value=0;
@@ -54715,7 +54857,7 @@ function fxBuildChain(ctx, ch){
  byp.connect(bypDly); bypDly.connect(out);
 
  const bundle={ctx,ch,io,out,wet,byp,bypDly,drvDly,active:true,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev:null,revSend,
-               trem,tremLfo,tremDepth,pan,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
+               trem,tremLfo,tremDepth,pan,mixPan,mixPanComp,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
                isoLoG,isoMidG,isoHiG,isoWet,isoDry,
                fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt,
                // The far side of each optional branch, so _fxGateBranch has
@@ -55419,6 +55561,26 @@ function _webFxState(prev, F){
 // _webEngineSend after the value is stored; a flush during start-up can get
 // here before the chains' own declarations have run, and there is nothing
 // to apply to yet then.
+// The mixer's pan for one part, -1 (left) to 1 (right), from the engine's
+// copy (mix.pan, one object for every part). Missing is centre: a setup from
+// before the pan existed, or a part nobody touched.
+function _mixPanOf(ch){
+ var P=_wp('mix.pan'), v=P && P[ch];
+ return (v==null || !isFinite(v)) ? 0 : Math.max(-1, Math.min(1, +v));
+}
+function _mixPanComp(p){ return 1/Math.sqrt(1+Math.sin(Math.abs(p)*Math.PI/2)); }
+// Applied to every chain that exists; one built later reads it for itself in
+// fxBuildChain. A short glide so a drag does not zipper.
+function _webMixPan(){
+ Object.keys(fxChains).forEach(function(ch){
+  var c=fxChains[ch]; if(!c || !c.mixPan) return;
+  var p=_mixPanOf(ch), t=c.ctx.currentTime;
+  try{
+   c.mixPan.pan.setTargetAtTime(p, t, 0.015);
+   c.mixPanComp.gain.setTargetAtTime(_mixPanComp(p), t, 0.015);
+  }catch(e){}
+ });
+}
 function _webLiveParam(part, name, prev, value){
  try{
   if(part==='fx' && name==='modfx') return _webFxState(prev, value);
@@ -55426,6 +55588,7 @@ function _webLiveParam(part, name, prev, value){
   if(part==='master' && name!=='tune') return _webMasterApply();
   if(part==='mix') _modNativeStripSyncAll();
   if(part==='mix' && name==='muteSolo') return _mixGateBuses();
+  if(part==='mix' && name==='pan') return _webMixPan();
   if(part==='chord' && name==='reverbSize') return _webReverbSize();
   if(name==='voice' && SYNTH_FILTER_PARTS.indexOf(part)>=0 && fxChains[part]) return fxApplyChannel(part);
  }catch(e){}
