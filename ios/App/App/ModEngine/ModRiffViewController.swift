@@ -1,8 +1,9 @@
 import Capacitor
 import UIKit
+import WebKit
 
 /// The bridge view controller, subclassed for one reason: to register the
-/// app-target plugins — ModEngine, and ModMidi beside it.
+/// app-target plugins — ModEngine, with ModMidi and ModBilling beside it.
 ///
 /// Capacitor finds the plugins that live in Swift packages — the ones the CLI
 /// writes into CapApp-SPM's Package.swift — by itself. It does **not** find a
@@ -23,7 +24,23 @@ class ModRiffViewController: CAPBridgeViewController {
         let ok = bridge != nil
         bridge?.registerPluginType(ModEngine.self)
         bridge?.registerPluginType(ModMidi.self)
+        bridge?.registerPluginType(ModBilling.self)
+
+        // Two facts the page needs before its first line runs, because
+        // window.modBilling answers isPro() synchronously on every render:
+        //   __modProCached — the last entitlement StoreKit proved, so a paying
+        //     user is Pro on the first frame, offline, with no round trip.
+        //   __modDebug — set in debug builds only. It is what allows the
+        //     setModTier('free'|'pro') test switch on the iOS provider; a
+        //     release build never defines it, so there is no switch to find.
+        var boot = "window.__modProCached=\(ModBilling.cachedEntitlement ? "true" : "false");"
+        #if DEBUG
+        boot += "window.__modDebug=true;"
+        #endif
+        webView?.configuration.userContentController.addUserScript(
+            WKUserScript(source: boot, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
         NSLog("[ModRiff] capacitorDidLoad, bridge=%@, plugins=%@",
-              ok ? "yes" : "nil", ok ? "ModEngine ModMidi" : "none")
+              ok ? "yes" : "nil", ok ? "ModEngine ModMidi ModBilling" : "none")
     }
 }
