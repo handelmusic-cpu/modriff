@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7c</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7d</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7d</span></div>
  </div>
 </div>
 
@@ -9865,7 +9865,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7c';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7d';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -19332,16 +19332,40 @@ document.addEventListener('visibilitychange', function(){
 // four intervals a dead clock and realigns, skipping steps; at the usual 25 ms
 // every throttled tick would look like one. Coming back puts the preset back. ALIGN_LEAD moves with
 // LOOK_AHEAD, as its definition requires.
+var _bgFast = false, _bgCalm = 0;
+function _bgEnterFast(why){
+ if(_bgFast) return;
+ _bgFast = true; _bgCalm = 0;
+ LOOK_AHEAD = 3; ALIGN_LEAD = 3; SCHED_INT = 1000;
+ try{ (window._bgLog = window._bgLog || []).push({at:Date.now(), enter:why}); }catch(e){}
+}
+function _bgLeaveFast(why){
+ if(!_bgFast) return;
+ _bgFast = false; _bgCalm = 0;
+ try{ setLatencyPreset('auto', {keep:true, silent:true}); }catch(e){}
+ try{ (window._bgLog = window._bgLog || []).push({at:Date.now(), leave:why}); }catch(e){}
+}
 document.addEventListener('visibilitychange', function(){
  if(!_bgKeepPlaying()) return;
- try{
-  if(document.visibilityState === 'hidden'){
-   LOOK_AHEAD = 3; ALIGN_LEAD = 3; SCHED_INT = 1000;
-  } else {
-   setLatencyPreset('auto', {keep:true, silent:true});
-  }
- }catch(e){}
+ if(document.visibilityState === 'hidden') _bgEnterFast('hidden');
+ else _bgLeaveFast('visible');
 });
+// The event is not enough on its own. With the audio background mode the page
+// is not reliably reported hidden, and the 7.7c build, which switched only on
+// that event, still dropped a hit in every three while the app was away. So the
+// scheduler also watches its own ticks: one that arrives 400 ms later than it
+// asked for is a throttled timer whatever the page says, and the look-ahead
+// grows then. It goes back once the page is visible and three ticks in a row
+// arrive on time. Called from tickClock with how long the last wait really was.
+function _bgThrottleWatch(waited){
+ if(!_bgKeepPlaying()) return;
+ var late = waited - SCHED_INT;
+ if(!_bgFast){
+  if(late > 400 && waited < 30000) _bgEnterFast('late tick '+Math.round(late)+'ms');
+ } else if(late < 150 && document.visibilityState === 'visible'){
+  if(++_bgCalm >= 3) _bgLeaveFast('calm');
+ } else _bgCalm = 0;
+}
 
 function _resumeAudioIfNeeded(){
  if(!audioCtx) return;
@@ -25319,7 +25343,7 @@ let _clockLastTick = 0;
 var _clockArmedAt = 0, _clockByTimer = false;
 function _tickClockTimer(){ _clockByTimer = true; tickClock(); }
 function tickClock(){
- if(_clockByTimer && _clockArmedAt) _latNoteGap(Date.now() - _clockArmedAt);
+ if(_clockByTimer && _clockArmedAt){ _latNoteGap(Date.now() - _clockArmedAt); try{ _bgThrottleWatch(Date.now() - _clockArmedAt); }catch(e){} }
  _clockByTimer = false; _clockArmedAt = 0;
  _clockLastTick = Date.now();
  _clockStopRequested=false;
