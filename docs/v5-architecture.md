@@ -1321,9 +1321,16 @@ and the speaker gets their sum. That is wrong in two ways, and each needs a
 decision rather than a default:
 
 1. *The limiters do not see each other.* Each is correct alone and the sum
-   can exceed either. Proposed: the native master leaves 3 dB of headroom
-   while any web part is sounding, and the page tells it so (`master.web`).
-   It goes away at the flip, when there is one master.
+   can exceed either. **Built (4.9.9.9.9.8.8):** the native master takes 3 dB
+   off its output while any web part is in the mix (`MB_WEB_TRIM`, parameter 8
+   of the master message, so no new message type). "In the mix" is read from
+   the mixer, not the meters: a part that is not muted, not shut out by a solo,
+   with its fader above zero. A level that followed the signal would dip the
+   chord on every drum hit. The trim glides over about a third of a second, so
+   a mute or solo is never heard as a step. It goes away at the flip, when
+   there is no web part left to count. What it does not do: the web side is
+   untouched, so the sum of the two limited signals can still pass -3 dBFS when
+   peaks coincide; 3 dB is the plan's proposed amount, not a measured ceiling.
 2. *What the page can no longer record.* The recorder and the stem bounce tap
    Web Audio nodes (`_masterOut`, each `_partBuses` entry); a native part is
    in neither. Options: (a) the host also taps its master and parts into a
@@ -1338,7 +1345,7 @@ decision rather than a default:
 | | | proof |
 |---|---|---|
 | N1 | Part bus, strip (level, mute/solo, pan), per-part peak/RMS back to the page's meters | a fader at −6 dB measures −6 dB at the host; solo silences the others, counted |
-| N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | **Landed (4.9.9.9.9.8.6), headroom not built.** Measured against the browser's compressor and chain; reverb level and tail against the convolver |
+| N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | **Landed (4.9.9.9.9.8.6), headroom 4.9.9.9.9.8.8.** Measured against the browser's compressor and chain; reverb level and tail against the convolver |
 | N3 | mõdFX tier 1, the setter wrap, smoothing | each stage's level and response against the web chain's, `fxtest`-style |
 | N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
 | N5 | Capture of the native master and parts for recording and stems | **Landed (4.9.9.9.9.8.7), not heard on a phone.** The capture is sample-for-sample what the host rendered; a native click and a web click scheduled for one instant land within 1.4 ms in the WAV |
@@ -1497,8 +1504,10 @@ and costs about 1% of a core on this Mac with everything on.
 
 *Still open, and now sharper:*
 
-- **Headroom between the two masters.** While any part is Web Audio the speaker
-  gets the sum of two limiters. Proposed above (`master.web`, 3 dB); not built.
+- **Headroom between the two masters.** Built in 4.9.9.9.9.8.8 (3 dB, above).
+  Not heard on a phone, and the 3 dB is a guess at the right amount: if the
+  chord reads too quiet next to the drums, or the sum still crunches on a loud
+  take, it is one number in `_modNativeMasterSync`.
   It disappears at the flip.
 - **N5, capture.** Landed in 4.9.9.9.9.8.7 (below).
 - The native master has no meter yet (`takeRms` exists; nothing reads it). The

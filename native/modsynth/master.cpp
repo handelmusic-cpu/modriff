@@ -214,17 +214,18 @@ struct MasterBus::Impl {
   Fdn room;
   DriveCurve curve; double curveAmt = -1;
   Os2 os[2][2];                                      // [group][channel]
-  Smooth vol, send;
+  Smooth vol, send, webTrim;
   std::atomic<float> rms{0.0f};
 
   explicit Impl(double sampleRate)
       : sr(sampleRate), glue(sampleRate), lim(sampleRate), room(sampleRate, MASTER_ROOM_SECONDS, MASTER_ROOM_SCALE, MASTER_ROOM_RT60) {
     // The state buildMasterBus + _webMasterApply leave a fresh page in:
     // master on, volume .72, glue .35 (threshold -13 dB, ratio 3.25), room 5%.
-    const double def[MB_COUNT] = {0.72, -13, 3.25, -3, 20, 0.05, 0, kSpan};
+    const double def[MB_COUNT] = {0.72, -13, 3.25, -3, 20, 0.05, 0, kSpan, 0};
     for (int i = 0; i < MB_COUNT; i++) p[i] = def[i];
     vol.init(sr, 0.008); vol.snap(p[MB_VOL]);
     send.init(sr, 0.008); send.snap(p[MB_REV_SEND]);
+    webTrim.init(sr, 0.12); webTrim.snap(1.0);
     curve.build(0);
     curveAmt = 0;
   }
@@ -234,6 +235,7 @@ struct MasterBus::Impl {
     glue.set(p[MB_CMP_TH], kGlueKnee, p[MB_CMP_RATIO], kGlueAttack, kGlueRelease);
     lim.set(p[MB_LIM_TH], kLimKnee, p[MB_LIM_RATIO], kLimAttack, kLimRelease);
     vol.t = p[MB_VOL]; send.t = p[MB_REV_SEND];
+    webTrim.t = dbToLin(p[MB_WEB_TRIM] > 0 ? 0 : p[MB_WEB_TRIM]);
 
     const double out = p[MB_DRV_OUT];
     const bool shape = curveAmt > 0;
@@ -262,7 +264,7 @@ struct MasterBus::Impl {
     lim.process(L, R, n);
     double sq = 0;
     for (int i = 0; i < n; i++) {
-      const double v = vol.next();
+      const double v = vol.next() * webTrim.next();
       L[i] = (float)(L[i] * v); R[i] = (float)(R[i] * v);
       sq += (double)L[i] * L[i] + (double)R[i] * R[i];
     }

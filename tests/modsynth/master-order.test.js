@@ -20,7 +20,7 @@ const js = m ? [...m[1].matchAll(/'([A-Za-z0-9]+)'/g)].map(x => x[1]) : [];
 // written out so a rename on one side shows up here.
 const pairs = {
   vol: 'VOL', compTh: 'CMP_TH', compRatio: 'CMP_RATIO', limTh: 'LIM_TH', limRatio: 'LIM_RATIO',
-  revSend: 'REV_SEND', drvAmt: 'DRV_AMT', drvOut: 'DRV_OUT'
+  revSend: 'REV_SEND', drvAmt: 'DRV_AMT', drvOut: 'DRV_OUT', webTrim: 'WEB_TRIM'
 };
 
 let fail = 0;
