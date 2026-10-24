@@ -81,5 +81,18 @@ ok(T.FREE_LIMITS.drumKits.indexOf('LIN') >= 0 && T.FREE_LIMITS.drumKits.indexOf(
 ok(T.FREE_LIMITS.bassStyles.indexOf('Funk') >= 0, 'the default bass style (funk) is free');
 ok(T.FREE_LIMITS.melodyStyles.indexOf('Hook') >= 0, 'the default melody style (hook) is free');
 
+// ── 6. The Free/Pro test switch exists only in a debug build or on a local page
+T.window.__modDebug = undefined;
+eq(['modriff.vercel.app','www.modriff.com','localhost.evil.com','127.0.0.1.evil.com','evil-localhost','10.0.0.5'].map(h => T.devTierAvailable(h)),
+   [false,false,false,false,false,false], 'a deployed or look-alike host never gets the switch');
+eq(['localhost','127.0.0.1','[::1]'].map(h => T.devTierAvailable(h)), [true,true,true], 'a page served from this machine does');
+T.window.__modDebug = true;
+ok(T.devTierAvailable('modriff.vercel.app') === true, 'a debug build gets it whatever the host');
+T.window.__modDebug = 'true';
+ok(T.devTierAvailable('modriff.vercel.app') === false, 'only the boolean the host sets counts, not a string');
+T.window.__modDebug = undefined;
+T.location.hostname = 'modriff.vercel.app';
+ok(T.devTierAvailable() === false, 'with no argument it reads the page host: a deployed release build has none');
+
 console.log(fail ? ('\n' + fail + ' FAILED, ' + pass + ' passed') : ('all ' + pass + ' passed'));
 process.exit(fail ? 1 : 0);
