@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7a</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.7b</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.7b</span></div>
  </div>
 </div>
 
@@ -9865,7 +9865,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.7a';
+const MODRIFF_VERSION = '4.9.9.9.9.7.7b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10057,6 +10057,25 @@ window._genQueuePaint = function(part, frac, landed){
 (function(P){
  if(!P.provider) P.provider = 'web';
  if(!P.saveFile) P.saveFile = function(name, blob){
+  // In the iPhone app a download link does nothing (WKWebView drops it) while
+  // the toast still says Saved. The native share sheet is the way out of the
+  // app to Files, AirDrop and the rest; the link is the fallback.
+  try{
+   var pl = (typeof modNativeAvailable==='function' && modNativeAvailable()) ? modNativePlugin() : null;
+   if(pl && typeof pl.shareFile==='function'){
+    var fr = new FileReader();
+    fr.onload = function(){
+     var b64 = String(fr.result).split(',')[1] || '';
+     pl.shareFile({name:name, data:b64}).catch(function(e){
+      try{ showToast('Could not open the share sheet'); }catch(_){}
+      try{ console.warn('[shareFile]', e); }catch(_){}
+     });
+    };
+    fr.onerror = function(){ try{ showToast('Could not read the file to share'); }catch(_){} };
+    fr.readAsDataURL(blob);
+    return;
+   }
+  }catch(e){}
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a'); a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -10243,7 +10262,7 @@ function modNativePlugin(){
    var call=function(m){ return function(o){ return C.nativePromise('ModEngine', m, o||{}); }; };
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
                      ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'),
-                     meters:call('meters') };
+                     meters:call('meters'), shareFile:call('shareFile') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }

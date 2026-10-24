@@ -2,6 +2,7 @@ import AVFoundation
 import Capacitor
 import Foundation
 import os.signpost
+import UIKit
 
 /// The native mõdSynth, as the web view sees it.
 ///
@@ -19,7 +20,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "ensurePart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -186,6 +188,43 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func meters(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         call.resolve(["rms": (0..<8).map { Double(host.meter(forPart: Int32($0))) }])
+    }
+
+    /// Hands a file the page made (a bounce, a stem, a saved pattern) to the
+    /// system share sheet. WKWebView ignores `<a download>`, so on the phone
+    /// the web path "saved" with a toast and wrote nothing. The page sends the
+    /// bytes as base64; they go to a temporary file because the share sheet
+    /// wants a URL, and from there to Files, AirDrop, Messages and the rest.
+    @objc func shareFile(_ call: CAPPluginCall) {
+        guard let rawName = call.getString("name"),
+              let b64 = call.getString("data"),
+              let data = Data(base64Encoded: b64) else {
+            call.reject("shareFile needs a name and base64 data")
+            return
+        }
+        let name = (rawName as NSString).lastPathComponent
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            call.reject("could not write \(name): \(error.localizedDescription)")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let vc = self?.bridge?.viewController else {
+                call.reject("no view controller to present from")
+                return
+            }
+            let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            // iPad requires an anchor for the popover.
+            sheet.popoverPresentationController?.sourceView = vc.view
+            sheet.popoverPresentationController?.sourceRect =
+                CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
+            sheet.completionWithItemsHandler = { _, _, _, _ in
+                try? FileManager.default.removeItem(at: url)
+            }
+            vc.present(sheet, animated: true) { call.resolve() }
+        }
     }
 
     @objc func stats(_ call: CAPPluginCall) {
