@@ -1,0 +1,170 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>master bus reference</title>
+<!--
+  The browser's own answer for the master bus, to measure native/modsynth/master.cpp
+  against. Served by any static server; open it in a browser and call
+  window.refRun(spec) from the console (or a driver), or load it with
+  ?auto=1 to run every case in CASES and put the result in #out as JSON.
+
+  The graph is buildMasterBus() in index.html, node for node, built on an
+  OfflineAudioContext with the settings _webMasterApply() would give it:
+
+     drive -> busIn -> glue compressor -> limiter -> master volume
+
+  The bus reverb is left out of the dynamics cases (its impulse is random
+  noise, so only its level and decay are comparable, not its samples) and has
+  its own case, "rev".
+
+  The stimulus is deterministic so the C++ side can generate the same samples:
+  a three-note chord (220, 330 and 440 Hz in the left channel, 221, 331 and 441
+  in the right) stepped through a list of peak levels, then silence, so both
+  the attack into each level and the release after the last are in the record.
+  The numbers that come back are a level every WIN seconds: RMS over both
+  channels, in dB, and the window's peak.
+-->
+<body><pre id="out">idle</pre>
+<script>
+'use strict';
+const SR = 48000, WIN = 0.01;
+
+// Peak level of each 0.6 s step, dBFS, then 1.2 s of silence.
+const STEPS_DB = [-30, -20, -12, -6, -3, 0, 3, -12];
+const STEP_S = 0.6, TAIL_S = 1.2;
+
+function stimulus(){
+  const n = Math.round((STEPS_DB.length * STEP_S + TAIL_S) * SR);
+  const L = new Float32Array(n), R = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const step = Math.floor(i / (STEP_S * SR));
+    if (step >= STEPS_DB.length) break;
+    const a = Math.pow(10, STEPS_DB[step] / 20) / 3, t = i / SR;
+    L[i] = a * (Math.sin(2*Math.PI*220*t) + Math.sin(2*Math.PI*330*t) + Math.sin(2*Math.PI*440*t));
+    R[i] = a * (Math.sin(2*Math.PI*221*t) + Math.sin(2*Math.PI*331*t) + Math.sin(2*Math.PI*441*t));
+  }
+  return { L, R, n };
+}
+
+// Same two formulas as index.html's _driveCurve / _curveRmsGain.
+function driveCurve(amount, span){
+  const n = span > 1 ? 8192 : 1024, c = new Float32Array(n), k = amount*amount*45;
+  for (let i = 0; i < n; i++) {
+    const x = ((i*2)/(n-1) - 1) * span;
+    c[i] = (k < 0.01 ? x : (1+k)*x/(1+k*Math.abs(x))) / span;
+  }
+  return c;
+}
+function curveRmsGain(curve, amp, span){
+  span = span > 1 ? span : 1;
+  const N = 1024; let a = 0, b = 0;
+  for (let i = 0; i < N; i++) {
+    const x = amp * Math.sin(2*Math.PI*i/N);
+    const idx = Math.max(0, Math.min(curve.length-1, Math.round((x/span + 1)/2 * (curve.length-1))));
+    const y = curve[idx] * span; a += x*x; b += y*y;
+  }
+  return a > 0 ? Math.sqrt(b/a) : 1;
+}
+
+function windows(L, R, n){
+  const w = Math.round(WIN * SR), out = { rmsDb: [], peak: [] };
+  for (let s = 0; s + w <= n; s += w) {
+    let q = 0, pk = 0;
+    for (let i = s; i < s + w; i++) { q += L[i]*L[i] + R[i]*R[i]; pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i])); }
+    out.rmsDb.push(Math.round(20*Math.log10(Math.sqrt(q/(2*w)) + 1e-12) * 10) / 10);
+    out.peak.push(Math.round(pk * 1e4) / 1e4);
+  }
+  return out;
+}
+
+// spec: { stage:'comp'|'lim'|'chain', compAmt, vol, on, drive }
+async function refRun(spec){
+  const { L, R, n } = stimulus();
+  const ctx = new OfflineAudioContext(2, n, SR);
+  const buf = ctx.createBuffer(2, n, SR);
+  buf.copyToChannel(L, 0); buf.copyToChannel(R, 1);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+
+  const on = spec.on !== false, compAmt = spec.compAmt ?? 0.35, vol = spec.vol ?? 0.72, drive = spec.drive ?? 0;
+  const comp = ctx.createDynamicsCompressor();
+  comp.knee.value = 22; comp.attack.value = 0.012; comp.release.value = 0.22;
+  comp.threshold.value = on ? (-6 - compAmt*20) : 0;
+  comp.ratio.value = on ? (1.5 + compAmt*5) : 1;
+  const lim = ctx.createDynamicsCompressor();
+  lim.threshold.value = on ? -3 : 0; lim.knee.value = 1; lim.ratio.value = on ? 20 : 1;
+  lim.attack.value = 0.001; lim.release.value = 0.1;
+  const out = ctx.createGain(); out.gain.value = vol;
+
+  let head = src;
+  if (drive > 0) {
+    const SPAN = 4, cur = driveCurve(drive, SPAN);
+    const dIn = ctx.createGain(); dIn.gain.value = 1 / SPAN;
+    const sh = ctx.createWaveShaper(); sh.curve = cur; sh.oversample = drive > 0.05 ? '2x' : 'none';
+    const dOut = ctx.createGain(); const g = curveRmsGain(cur, 0.2, SPAN);
+    dOut.gain.value = (g > 0.001 ? 1/g : 1) * SPAN;
+    head.connect(dIn); dIn.connect(sh); sh.connect(dOut); head = dOut;
+  }
+  if (spec.stage === 'lim') { head.connect(lim); lim.connect(out); }
+  else if (spec.stage === 'comp') { head.connect(comp); comp.connect(out); }
+  else { head.connect(comp); comp.connect(lim); lim.connect(out); }
+  out.connect(ctx.destination);
+  src.start();
+  const r = await ctx.startRendering();
+  return Object.assign({ spec }, windows(r.getChannelData(0), r.getChannelData(1), n));
+}
+
+// The bus room on its own: seeded white noise (the same generator in C++) for 2 s,
+// then silence, through _makeRoomIR(2.4) as a convolver. Its impulse is random,
+// so only the level and the way it dies away are comparable, and that is what
+// the numbers are: 100 ms RMS windows.
+function noise(n, seed){
+  const a = new Float32Array(n); let x = seed >>> 0;
+  for (let i = 0; i < n; i++) { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; a[i] = ((x / 4294967296) * 2 - 1) * 0.3; }
+  return a;
+}
+async function refRoom(){
+  const n = 5 * SR, ctx = new OfflineAudioContext(2, n, SR);
+  const buf = ctx.createBuffer(2, n, SR);
+  const nl = noise(2 * SR, 12345), nr = noise(2 * SR, 67890);
+  buf.copyToChannel(nl, 0); buf.copyToChannel(nr, 1);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const conv = ctx.createConvolver();
+  // _makeRoomIR, verbatim.
+  const len = Math.floor(SR * 2.4), ir = ctx.createBuffer(2, len, SR);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch); let lp = 0; const pre = Math.floor(SR * 0.018);
+    for (let i = 0; i < len; i++) {
+      if (i < pre) { d[i] = 0; continue; }
+      const t = (i - pre) / (len - pre), env = Math.pow(1 - t, 2.6);
+      lp += ((Math.random() * 2 - 1) - lp) * (0.34 - 0.26 * t); d[i] = lp * env;
+    }
+  }
+  conv.buffer = ir; src.connect(conv); conv.connect(ctx.destination); src.start();
+  const r = await ctx.startRendering();
+  const L = r.getChannelData(0), R = r.getChannelData(1), w = SR / 10, out = [];
+  for (let s = 0; s + w <= n; s += w) {
+    let q = 0; for (let i = s; i < s + w; i++) q += L[i]*L[i] + R[i]*R[i];
+    out.push(Math.round(20 * Math.log10(Math.sqrt(q / (2 * w)) + 1e-12) * 10) / 10);
+  }
+  return { spec: { stage: 'room' }, rmsDb100: out };
+}
+window.refRoom = refRoom;
+
+const CASES = [
+  { stage: 'comp', compAmt: 0.35 }, { stage: 'comp', compAmt: 0 }, { stage: 'comp', compAmt: 1 },
+  { stage: 'lim' },
+  { stage: 'chain', compAmt: 0.35 }, { stage: 'chain', compAmt: 1, vol: 1 },
+  { stage: 'chain', on: false },
+  { stage: 'chain', compAmt: 0.35, drive: 0.5 },
+];
+
+window.refRun = refRun; window.CASES = CASES; window.WIN = WIN; window.STEPS_DB = STEPS_DB;
+if (location.search.includes('auto=1')) {
+  (async () => {
+    const all = [];
+    for (const c of CASES) all.push(await refRun(c));
+    all.push(await refRoom());
+    document.getElementById('out').textContent = JSON.stringify(all);
+    window.REF_ALL = all;
+  })();
+}
+</script>

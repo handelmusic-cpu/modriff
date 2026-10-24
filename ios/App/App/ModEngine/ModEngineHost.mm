@@ -12,10 +12,15 @@
 #include "fxrack.h"
 #include "strip.h"
 #include "mixfx.h"
+#include "master.h"
 
 namespace {
 
 constexpr int kMaxParts = 8;
+// The one part that reaches the master bus by its own way in (the chord part,
+// whose room is the effects rack's own reverb). Every other part goes through
+// the bus room, as everything but the chord does on the web. See master.h.
+constexpr int kDirectPart = 0;
 // A patch's mod matrix. dsp.js takes however many rows it is given; a fixed
 // cap is what lets a matrix travel through the queue as a POD. 32 is well
 // clear of the largest factory patch, and setMatrix is told the real count.
@@ -32,7 +37,7 @@ constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
   Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
-  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip, Mfx
+  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip, Mfx, Master
 };
 
 // One message, fixed size, trivially copyable. The union is sized by the
@@ -121,6 +126,10 @@ double num(id value, double fallback = 0) {
   std::unique_ptr<modsynth::Strip> _strips[kMaxParts];
   // And the part's mõdFX chain, after the strip: the web's fxBuildChain.
   std::unique_ptr<modsynth::MixFx> _mixfx[kMaxParts];
+  // The master bus: one for the whole engine, built with it. Everything the
+  // parts make ends up here before it leaves.
+  std::unique_ptr<modsynth::MasterBus> _master;
+  std::vector<float> _roomL, _roomR;     // the sum of the parts that go through the bus room
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -156,6 +165,9 @@ double num(id value, double fallback = 0) {
     }
     _scratchL.assign((size_t)_maxFrames, 0.0f);
     _scratchR.assign((size_t)_maxFrames, 0.0f);
+    _roomL.assign((size_t)_maxFrames, 0.0f);
+    _roomR.assign((size_t)_maxFrames, 0.0f);
+    _master = std::make_unique<modsynth::MasterBus>(sampleRate);
   }
   return self;
 }
@@ -239,6 +251,7 @@ double num(id value, double fallback = 0) {
   else if ([t isEqualToString:@"fx"])      m.type = MsgType::Fx;      // {i: HOST_FX index, v}
   else if ([t isEqualToString:@"strip"])   m.type = MsgType::Strip;   // {i: 0 level, 1 pan, v}
   else if ([t isEqualToString:@"mfx"])     m.type = MsgType::Mfx;     // {i: MixFxParam, v}
+  else if ([t isEqualToString:@"master"])  m.type = MsgType::Master;  // {i: MasterParam, v}
   else if ([t isEqualToString:@"tempo"])   {
     m.type = MsgType::Tempo;
     m.v = num(message[@"bpm"], 120);
@@ -345,6 +358,7 @@ double num(id value, double fallback = 0) {
                                }
                                break;
     case MsgType::Mfx:         if (_mixfx[r.part]) _mixfx[r.part]->set(r.i, r.v); break;
+    case MsgType::Master:      break;   // applied where the queue is drained: it needs no part
     case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
       // resize() inside the reserved capacity does not allocate, and
@@ -371,6 +385,7 @@ double num(id value, double fallback = 0) {
 
   Msg m;
   while (_queue.pop(m)) {
+    if (m.type == MsgType::Master) { _master->set(m.i, m.v); continue; }   // the bus belongs to no part
     modsynth::Processor *p = _live[m.part].load(std::memory_order_acquire);
     if (p) [self applyMessage:m to:p];            // a message for a part that
                                                   // does not exist is dropped
@@ -378,6 +393,8 @@ double num(id value, double fallback = 0) {
 
   std::memset(left, 0, sizeof(float) * (size_t)frames);
   std::memset(right, 0, sizeof(float) * (size_t)frames);
+  std::memset(_roomL.data(), 0, sizeof(float) * (size_t)frames);
+  std::memset(_roomR.data(), 0, sizeof(float) * (size_t)frames);
 
   for (int part = 0; part < kMaxParts; part++) {
     modsynth::Processor *p = _live[part].load(std::memory_order_acquire);
@@ -402,11 +419,19 @@ double num(id value, double fallback = 0) {
     // The mixer's pan, after the meter: the web taps the meter upstream of it.
     if (strip) strip->applyPan(_scratchL.data(), _scratchR.data(), frames);
     _partFrames[part] += (uint64_t)frames;
+    // The two ways into the master (master.h): the chord part direct, the rest
+    // through the bus room.
+    float *toL = part == kDirectPart ? left  : _roomL.data();
+    float *toR = part == kDirectPart ? right : _roomR.data();
     for (int i = 0; i < frames; i++) {
-      left[i]  += _scratchL[i];
-      right[i] += _scratchR[i];
+      toL[i] += _scratchL[i];
+      toR[i] += _scratchR[i];
     }
   }
+
+  // The master: drive, bus room, glue compressor, limiter, volume. What the
+  // web's buildMasterBus does for the parts the web plays, for these.
+  _master->process(left, right, _roomL.data(), _roomR.data(), frames);
 
   // Loudest sample this block, held until read. Silence and work are
   // indistinguishable in a load figure; they are not in this.
@@ -434,6 +459,7 @@ double num(id value, double fallback = 0) {
   // reports silence, which is the wrong answer for the right reason.
   Msg m;
   while (_queue.pop(m)) {
+    if (m.type == MsgType::Master) { _master->set(m.i, m.v); continue; }
     modsynth::Processor *q = _live[m.part].load(std::memory_order_acquire);
     if (q) [self applyMessage:m to:q];
   }

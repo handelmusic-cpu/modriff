@@ -28,63 +28,9 @@ void driveCurve(Curve& c, double amount) {
   }
 }
 
-// ── The reverb, for the send ────────────────────────────────────────────────
-// The web chain convolves with _fxRoomIR (3.4 s of noise under a (1-t)^2.6
-// envelope, darkening as it falls). This is the same network the effects rack
-// uses in place of a convolver, fitted to that impulse: its RT60, its level on
-// white noise (the browser normalises a convolver's impulse), and its tone.
-struct Fdn {
-  static constexpr int RN = 8;
-  double sr;
-  Dl line[RN]; double len[RN], g[RN], lp[2] = {0, 0};
-  Dl apL[2], apR[2]; double apLen[2][2];
-  double outScale = 0.1, cut = 0.5;
-
-  explicit Fdn(double sampleRate) : sr(sampleRate) {
-    static const int base[RN] = {1117, 1559, 1993, 2467, 2971, 3469, 3947, 4421};
-    static const int apl[2] = {142, 107}, apr[2] = {162, 121};
-    // The same room the web renders: size 0.5727 on the rack's scale is 3.4 s.
-    const double L = FX_REV_SEC, e = 2.6;
-    const double rt = std::min(8.0, std::max(0.05, L * (1 - std::pow(0.001, 1.0 / e))));
-    const double scale = 0.6 + 0.5727;
-    double mean = 0;
-    for (int i = 0; i < RN; i++) {
-      len[i] = base[i] * sr / 44100.0 * scale;
-      line[i].init((int)(len[i] * 1.1) + 8);
-      g[i] = std::pow(10.0, -3.0 * len[i] / (sr * rt));
-      mean += len[i] / RN;
-    }
-    for (int i = 0; i < 2; i++) {
-      apLen[0][i] = apl[i] * sr / 44100.0; apLen[1][i] = apr[i] * sr / 44100.0;
-      apL[i].init((int)apLen[0][i] + 4); apR[i].init((int)apLen[1][i] + 4);
-    }
-    cut = std::exp(-PI * 2 * 2500.0 / sr);     // the impulse's own darkening, on average
-    const double A = 0.00125 * 44100.0 / sr * std::sqrt(L * sr);
-    outScale = A * 0.5 * std::sqrt(13.8 * mean / (sr * rt)) / std::sqrt((1 - cut) / (1 + cut));
-  }
-
-  inline void tick(double inL, double inR, double& oL, double& oR) {
-    for (int a = 0; a < 2; a++) {
-      const double dl = apL[a].read(apLen[0][a]);
-      const double yl = -0.6 * inL + dl; apL[a].write((float)(inL + 0.6 * yl)); inL = yl;
-      const double dr = apR[a].read(apLen[1][a]);
-      const double yr = -0.6 * inR + dr; apR[a].write((float)(inR + 0.6 * yr)); inR = yr;
-    }
-    double xs[RN], sum = 0;
-    for (int k = 0; k < RN; k++) { xs[k] = line[k].read(len[k]); sum += xs[k]; }
-    const double s2 = sum * (2.0 / RN);
-    static const double sg[RN] = {1, 1, -1, -1, 1, -1, -1, 1};
-    double l = 0, r = 0;
-    for (int k = 0; k < RN; k++) {
-      const double inj = (k & 1) ? inR : inL;
-      line[k].write((float)(inj * sg[k] + g[k] * (xs[k] - s2)));
-      if (k & 1) r += xs[k] * sg[(k + 3) & 7]; else l += xs[k] * sg[(k + 1) & 7];
-    }
-    l *= outScale; r *= outScale;
-    lp[0] = l * (1 - cut) + lp[0] * cut; oL = lp[0];
-    lp[1] = r * (1 - cut) + lp[1] * cut; oR = lp[1];
-  }
-};
+// The send reverb is dsp::Fdn, fitted to the web chain's 3.4 s room impulse: size
+// 0.5727 on the rack's scale, which is the 0.6 + size delay-length factor.
+constexpr double FX_REV_SCALE = 0.6 + 0.5727;
 
 }  // namespace
 
@@ -107,7 +53,7 @@ struct MixFx::Impl {
   float x[2][CHUNK], clean[2][CHUNK], tmp[2][CHUNK];
   ModFxProc wk; float wkOut[2][128];
 
-  explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate), wk(sampleRate) {
+  explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate, FX_REV_SEC, FX_REV_SCALE), wk(sampleRate) {
     static const double def[MFX_COUNT] = {
       /*mix*/1, /*tau*/0.02, /*active*/0, /*lp*/18000, 0.7, /*hp*/20, 0.7,
       /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,

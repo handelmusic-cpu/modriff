@@ -1,6 +1,7 @@
-// DSP primitives shared by the effects rack (fxrack.cpp) and the mõdFX chain
-// (mixfx.cpp): a smoother, Web Audio's biquad definitions, a lookup curve, a
-// 2x oversampler and a fractional delay line. Moved out of fxrack.cpp as they
+// DSP primitives shared by the effects rack (fxrack.cpp), the mõdFX chain
+// (mixfx.cpp) and the master bus (master.cpp): a smoother, Web Audio's biquad
+// definitions, a lookup curve, a 2x oversampler, a fractional delay line and
+// the reverb network. Moved out of fxrack.cpp as they
 // were; nothing in them changed, and fxtest still measures the rack the same.
 #pragma once
 #include <algorithm>
@@ -103,7 +104,8 @@ struct Os2 {
   float sh[OS_LEN] = {};              // shaped, high-rate history
   float dry[16] = {}; int dw = 0;
   // One base-rate sample in; shaped out, and the matching delayed dry.
-  inline float run(const Curve& c, float x, float* dryOut) {
+  template <class C>
+  inline float run(const C& c, float x, float* dryOut) {
     const float* h = taps();
     for (int k = OS_LEN / 2; k > 0; k--) xh[k] = xh[k - 1];
     xh[0] = x;
@@ -136,6 +138,64 @@ struct Dl {
     return b[(size_t)(i & mask)] * (1 - fr) + b[(size_t)((i + 1) & mask)] * fr;
   }
   void clear() { std::fill(b.begin(), b.end(), 0.f); }
+};
+
+// ── The reverb network ──────────────────────────────────────────────────────
+// What the web convolves a noise impulse for (a (1-t)^2.6 envelope, darkening as
+// it falls), as an 8-line feedback delay network fitted to that impulse: its
+// RT60, its level on white noise (the browser normalises a convolver's impulse)
+// and its tone. mõdFX's send reverb (3.4 s) and the master bus (2.4 s) are two
+// instances; `scale` stretches the delay lengths, as the rack's size knob does.
+struct Fdn {
+  static constexpr int RN = 8;
+  double sr;
+  Dl line[RN]; double len[RN], g[RN], lp[2] = {0, 0};
+  Dl apL[2], apR[2]; double apLen[2][2];
+  double outScale = 0.1, cut = 0.5;
+
+  // `rt60` overrides the decay time the impulse's length would give (<= 0: use it).
+  Fdn(double sampleRate, double seconds, double scale, double rt60 = 0) : sr(sampleRate) {
+    static const int base[RN] = {1117, 1559, 1993, 2467, 2971, 3469, 3947, 4421};
+    static const int apl[2] = {142, 107}, apr[2] = {162, 121};
+    const double L = seconds, e = 2.6;
+    const double rt = rt60 > 0 ? rt60 : std::min(8.0, std::max(0.05, L * (1 - std::pow(0.001, 1.0 / e))));
+    double mean = 0;
+    for (int i = 0; i < RN; i++) {
+      len[i] = base[i] * sr / 44100.0 * scale;
+      line[i].init((int)(len[i] * 1.1) + 8);
+      g[i] = std::pow(10.0, -3.0 * len[i] / (sr * rt));
+      mean += len[i] / RN;
+    }
+    for (int i = 0; i < 2; i++) {
+      apLen[0][i] = apl[i] * sr / 44100.0; apLen[1][i] = apr[i] * sr / 44100.0;
+      apL[i].init((int)apLen[0][i] + 4); apR[i].init((int)apLen[1][i] + 4);
+    }
+    cut = std::exp(-PI * 2 * 2500.0 / sr);     // the impulse's own darkening, on average
+    const double A = 0.00125 * 44100.0 / sr * std::sqrt(L * sr);
+    outScale = A * 0.5 * std::sqrt(13.8 * mean / (sr * rt)) / std::sqrt((1 - cut) / (1 + cut));
+  }
+
+  inline void tick(double inL, double inR, double& oL, double& oR) {
+    for (int a = 0; a < 2; a++) {
+      const double dl = apL[a].read(apLen[0][a]);
+      const double yl = -0.6 * inL + dl; apL[a].write((float)(inL + 0.6 * yl)); inL = yl;
+      const double dr = apR[a].read(apLen[1][a]);
+      const double yr = -0.6 * inR + dr; apR[a].write((float)(inR + 0.6 * yr)); inR = yr;
+    }
+    double xs[RN], sum = 0;
+    for (int k = 0; k < RN; k++) { xs[k] = line[k].read(len[k]); sum += xs[k]; }
+    const double s2 = sum * (2.0 / RN);
+    static const double sg[RN] = {1, 1, -1, -1, 1, -1, -1, 1};
+    double l = 0, r = 0;
+    for (int k = 0; k < RN; k++) {
+      const double inj = (k & 1) ? inR : inL;
+      line[k].write((float)(inj * sg[k] + g[k] * (xs[k] - s2)));
+      if (k & 1) r += xs[k] * sg[(k + 3) & 7]; else l += xs[k] * sg[(k + 1) & 7];
+    }
+    l *= outScale; r *= outScale;
+    lp[0] = l * (1 - cut) + lp[0] * cut; oL = lp[0];
+    lp[1] = r * (1 - cut) + lp[1] * cut; oR = lp[1];
+  }
 };
 
 }  // namespace dsp

@@ -25,9 +25,12 @@ wkrender: wkrender.cpp modfxproc.cpp modfxproc.h jsnum.h fdlibm.cc
 	$(CXX) $(CXXFLAGS) -o $@ wkrender.cpp modfxproc.cpp fdlibm.cc
 striptest: striptest.cpp strip.h
 	$(CXX) $(CXXFLAGS) -o $@ striptest.cpp
-fxcheck: fxtest fxwire hangtest striptest mixfxtest
-	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1
+# The master bus against the browser's compressor and room: see tests/modsynth/master.test.js.
+mastertest: mastertest.cpp master.cpp master.h dspkit.h
+	$(CXX) $(CXXFLAGS) -o $@ mastertest.cpp master.cpp
+fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest
+	./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js
 
 clean:
-	rm -f render fxtest fxwire hangtest striptest mixfxtest wkrender
+	rm -f render fxtest fxwire hangtest striptest mixfxtest mastertest wkrender
 .PHONY: clean

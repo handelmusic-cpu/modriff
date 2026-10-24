@@ -7790,7 +7790,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.6</span></div>
  </div>
 </div>
 
@@ -9027,7 +9027,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <span>◈ About</span>
    </div>
    <div class="ss-body open" id="ss-about-body">
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.5</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.6</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10016,7 +10016,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.5';
+const MODRIFF_VERSION = '4.9.9.9.9.8.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10614,6 +10614,29 @@ function _modNativeMfxSync(part, vals){
  }
 }
 
+// The master bus, native. The parts the native engine plays leave through
+// modsynth::MasterBus (drive, bus room, glue compressor, limiter, volume), not
+// through the web's, which they cannot reach. The numbers are the web's own:
+// _masterSettings and _driveOutGain decide, the nodes and the host both read.
+// Names are MasterParam's, in order (native/modsynth/master.h;
+// tests/modsynth/master-order.test.js holds the two together). Sent only when
+// they move, except for `force`, which hands over all of them (a fresh engine
+// knows nothing).
+var MASTER_PARAMS = ['vol','compTh','compRatio','limTh','limRatio','revSend','drvAmt','drvOut'];
+MODNAT.master = {};
+function _modNativeMasterSync(force){
+ if(!MODNAT.started) return;
+ if(force) MODNAT.master = {};
+ var s=_masterSettings(), amt=+_wpd('fx.drive', 0);
+ s.drvAmt=amt; s.drvOut=_driveOutGain(amt);
+ for(var i=0; i<MASTER_PARAMS.length; i++){
+  var k=MASTER_PARAMS[i], v=s[k];
+  if(v==null || !isFinite(v) || MODNAT.master[k]===v) continue;
+  MODNAT.master[k]=v;
+  _modNativePost('chord', {t:'master', i:i, v:v});
+ }
+}
+
 function _modNativeAttach(part, eng){
  if(MODNAT.attached[part] || !eng || !eng.node || !eng.node.port) return;
  var port=eng.node.port, orig=port.postMessage.bind(port);
@@ -10644,6 +10667,7 @@ function _modNativeAttach(part, eng){
  // the same messages the worklet got when it was built.
  try{ eng.setAll(eng.values); eng.pushMatrix(); eng.pushMotion(0); eng.pushMotion(1); }catch(e){}
  try{ _modNativeStripSync(part); }catch(e){}
+ try{ _modNativeMasterSync(true); }catch(e){}
  // And mõdFX: have the chain say where it is now.
  try{ if(typeof fxApplyChannel==='function') fxApplyChannel(part); }catch(e){}
 }
@@ -19798,10 +19822,16 @@ function _webApplyDrive(){
  // exactly that much so Drive changes character and not loudness: the dice
  // must never come out louder or quieter, only different.
  if(window._driveOut){
-  const g=_curveRmsGain(curve,DRIVE_PROBE_AMP,DRIVE_SPAN);
-  window._driveOut.gain.value = (g>0.001 ? 1/g : 1) * DRIVE_SPAN;
+  window._driveOut.gain.value = _driveOutGain(fxDrive);
   if(window._chordDriveOut) window._chordDriveOut.gain.value = window._driveOut.gain.value;
  }
+}
+// The gain after the drive curve: the span given back, and the makeup that keeps
+// loudness constant. Its own function because the native master bus is handed
+// the same number (_modNativeMasterSync) and must not work it out a second way.
+function _driveOutGain(amount){
+ const g=_curveRmsGain(_driveCurve(amount,DRIVE_SPAN),DRIVE_PROBE_AMP,DRIVE_SPAN);
+ return (g>0.001 ? 1/g : 1) * DRIVE_SPAN;
 }
 
 // Builds the per-voice post-chain (lowpass + stereo placement) and returns
@@ -20061,21 +20091,35 @@ function applyMasterBus(){ modParamsFlush(); }
 // The engine's half, from its copies.
 function _webMasterApply(){
  if(!window._masterOut) return;
- const on=_wpd('master.on', true), vol=_wpd('master.vol', .72), compAmt=_wpd('master.comp', .35), revAmt=_wpd('master.rev', .05);
- window._masterOut.gain.value = vol;
+ const s=_masterSettings();
+ window._masterOut.gain.value = s.vol;
  // Bypass = neutral settings, not a rewire: a disconnect mid-note would click.
  if(window._masterComp){
   const cm=window._masterComp;
-  cm.threshold.value = on ? (-6 - compAmt*20) : 0;
-  cm.ratio.value     = on ? (1.5 + compAmt*5) : 1;
+  cm.threshold.value = s.compTh;
+  cm.ratio.value     = s.compRatio;
  }
- if(window._masterRevSend) window._masterRevSend.gain.value = on ? revAmt : 0;
- if(window._chordRoomSend) window._chordRoomSend.gain.value = on ? revAmt*CHORD_ROOM_K : 0;
+ if(window._masterRevSend) window._masterRevSend.gain.value = s.revSend;
+ if(window._chordRoomSend) window._chordRoomSend.gain.value = s.revSend*CHORD_ROOM_K;
  if(window._masterLimiter){
   const l=window._masterLimiter;
-  l.threshold.value = on ? -3 : 0;
-  l.ratio.value     = on ? 20 : 1;
+  l.threshold.value = s.limTh;
+  l.ratio.value     = s.limRatio;
  }
+}
+// What every stage of the master is set to, from the four master settings and
+// the on switch. One place decides, and two engines read it: the nodes above,
+// and the native bus (_modNativeMasterSync), so they cannot drift.
+function _masterSettings(){
+ const on=_wpd('master.on', true), compAmt=_wpd('master.comp', .35), revAmt=_wpd('master.rev', .05);
+ return {
+  vol: _wpd('master.vol', .72),
+  compTh: on ? (-6 - compAmt*20) : 0,
+  compRatio: on ? (1.5 + compAmt*5) : 1,
+  limTh: on ? -3 : 0,
+  limRatio: on ? 20 : 1,
+  revSend: on ? revAmt : 0
+ };
 }
 function toggleMasterBus(){ masterBusOn=!masterBusOn; applyMasterBus(); syncMasterUI(); }
 function onMasterInput(){
@@ -55898,6 +55942,9 @@ function _webMixPan(){
  });
 }
 function _webLiveParam(part, name, prev, value){
+ // The native master takes the same settings, whether or not the web's master
+ // bus exists yet (it is built on the first touch; the native one is always up).
+ if((part==='master' && name!=='tune') || (part==='fx' && name==='drive')) try{ _modNativeMasterSync(); }catch(e){}
  try{
   if(part==='fx' && name==='modfx') return _webFxState(prev, value);
   if(part==='fx' && name==='drive') return _webApplyDrive();
