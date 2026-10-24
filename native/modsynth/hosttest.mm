@@ -5,7 +5,10 @@
 // much it lost; Stop ends the writing). The Swift above it only moves bytes.
 #import <Foundation/Foundation.h>
 #import "ModEngineHost.h"
+#include <algorithm>
 #include <cmath>
+#include <unistd.h>
+#include <time.h>
 #include <cstdio>
 #include <vector>
 

@@ -145,12 +145,12 @@ double num(id value, double fallback = 0) {
   std::atomic<modsynth::CaptureRing *> _cap[kCapStreams];
   os_unfair_lock _capLock;
   // Where engine frame 0 sits on the wall clock (CLOCK_REALTIME, ms): the
-  // smallest (block's wall time - its frame / rate) seen since the last take
-  // began. A render callback can start late but not early, so the earliest-looking
-  // block is the least delayed, and the minimum over a few hundred of them is
-  // the schedule with the jitter taken out. Reset by the next take.
+  // running median of (a block's wall time - its frame / rate) since the last
+  // take began (capture.h, PhaseTracker, for why a median and not a minimum).
+  // Reset by the next take.
   std::atomic<double> _clkOrigin;
   std::atomic<bool> _clkReset;
+  modsynth::PhaseTracker _clk;    // the estimate behind it; render thread only
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -438,8 +438,8 @@ double num(id value, double fallback = 0) {
     clock_gettime(CLOCK_REALTIME, &tsNow);
     const double off = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6
                      - (double)blockFrame * 1000.0 / _sampleRate;
-    if (_clkReset.exchange(false, std::memory_order_relaxed)) _clkOrigin.store(1e300, std::memory_order_relaxed);
-    if (off < _clkOrigin.load(std::memory_order_relaxed)) _clkOrigin.store(off, std::memory_order_relaxed);
+    if (_clkReset.exchange(false, std::memory_order_relaxed)) { _clk.reset(); _clkOrigin.store(1e300, std::memory_order_relaxed); }
+    _clkOrigin.store(_clk.update(off), std::memory_order_relaxed);
   }
 
   Msg m;
