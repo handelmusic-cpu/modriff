@@ -160,11 +160,48 @@ Three kinds of input, three readers:
 | input | example | reader |
 |---|---|---|
 | text | pasted from a website, a `.txt`, ChordPro | `parseChordSheet` — **shipped** |
-| a picture of a chord sheet | UG's PDF export, a photo of a songbook page | the phone's text recognition (Apple Vision, `VNRecognizeTextRequest`, on device, free) → the same parser. Needs the iOS app: a small Capacitor plugin returning the page's lines top to bottom |
+| a picture of a chord sheet | UG's PDF export, a photo of a songbook page | **built (4.9.9.9.9.8.9m)**: the phone's text recognition (Apple Vision, on device, free) → the same parser. "Text recognition, built" below |
 | a lead sheet | Real Book page: chords over a staff, superscript qualities, 1st/2nd endings | text recognition is not enough — it cannot see bars, endings or which chord sits where on the staff, and it mangles stacked superscripts. This needs a vision model reading the page into a structured chart (sections, bars, chords per bar, endings), with every chord it returns validated by `parseChordSymbol` before it is used. Network and a per-page cost; a candidate for an add-on |
 
 The parser already reads lead-sheet spelling (`DMI`, `GMI7`, `EMI7(♭5)`,
 `B♭9`) and sections lettered `[A]` `[B]` `[C]`.
+
+#### Text recognition, built (4.9.9.9.9.8.9m)
+
+The import dialog has three ways in: **Files** (text, a PDF or a picture),
+**Photos** (the library) and **Camera** (straight to the camera, a
+`capture="environment"` input). Photos and Camera appear only where the reader
+exists; elsewhere a picture still gets the old "paste its text" message.
+
+- `ios/App/App/ModOcr/ModOcr.swift`, registered in `ModRiffViewController`: one
+  method, `recognize({data, kind: 'image' | 'pdf'})`, returning the page's
+  fragments as `{t, x, y, w, h}` (0 to 1, top-left origin), not a transcript.
+  Language correction is off (it turns "Bm7" into a word). A PDF is drawn a page
+  at a time with PDFKit (capped at 8 pages) and a page that has a text layer is
+  read from it instead of recognised. If the accurate recogniser throws it
+  falls back to the fast one.
+- `modOcr` on the page (platform layer) shrinks a photo to 3000 px and re-encodes
+  it, which also bakes in its EXIF orientation, and hands a PDF over whole.
+- `ocrObservationsToText` (in the chord-model block, so it is tested on its own)
+  puts fragments back into lines (centres within half a line's height), spaces
+  them by the column they sat in, keeps a wide gap as a blank line, and puts back
+  a section bracket read as I, l, | or 1 ("IVerse 11" is "[Verse 1]"). What it
+  returns is `parseChordSheet`'s input, shown in the dialog's box and editable,
+  so a misread chord is a fix, not a re-take.
+- `NSCameraUsageDescription` is in `Info.plist` (without it iOS ends the app when
+  the camera opens); the photo library needs none (it is the out-of-process picker).
+
+Verified here: `tests/chords/ocr.test.js` (both real sheets cut into boxes,
+jittered and shuffled, come back as the same chart); the dialog in a browser with
+a stand-in plugin (all three inputs, an image and a PDF, a text file still read
+as text, a failure message, the note clearing when you type); the Swift compiles
+for the simulator; and Vision itself, run from a command-line copy of the
+plugin's logic on a rendered chord sheet as a PNG, a PDF and a skewed JPEG. That
+last run only worked with the **fast** recogniser (the accurate one could not
+start on that Mac), so it read the lyrics and some chords and missed others, and
+it is where the bracket repair came from. **Not known:** how well the accurate
+recogniser reads a real photo or the Ultimate Guitar export. That is the first
+thing to try on the phone, with the Photos, Camera and Files routes in turn.
 
 ### Importing from iReal Pro, and dropping the bundled standards (4.9.9.9.9.4)
 
@@ -1922,8 +1959,8 @@ an Equal/Pure switch, to hear it before touching the native engine.
    written (4.9.9.9.9.6) and verified on the web side; the Swift is unbuilt
    until a Mac compiles it. Mapping Mode next, on top of it.
 6. **iOS shell** — the Capacitor project is in `ios/` (4.9.3), with the
-   app icon and `.playback` audio (sound with the silent switch on). Still to
-   come: the Swift audio host, haptics, IAP, text recognition for picture
-   imports. Every build needs a Mac with Xcode: `npm install`, then
+   app icon and `.playback` audio (sound with the silent switch on). Written
+   since: the Swift audio host, haptics (4.9.9.9.9.8.9i), IAP, text recognition
+   for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
 7. **Remaining parts native, then the clock** — ships as 5.0.0.
