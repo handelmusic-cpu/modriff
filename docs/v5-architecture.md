@@ -1343,6 +1343,12 @@ decision rather than a default:
 | N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
 | N5 | Capture of the native master and parts for recording and stems | a bounce of a native chord matches the live sound |
 
+Until N5 lands the recorder says so rather than failing quietly: with a part
+attached to the native engine (`MODNAT.attached`), Bounce toasts that the part
+is not captured (it is missing from the mix too, not just its stem), and
+`_startStemTaps` skips that part's tap and reports it in the "Left out:" line
+(`tests/stems/probe.js`, scenario C). Remove both when N5 captures the host.
+
 N1–N3 are enough for the owner's complaint: mõdFX reaching the native
 mõdSynth, a fader that moves it, and the master glue on it. N4 adds the
 glitch effects. N5 is the one that cannot wait for the flip if bounces
