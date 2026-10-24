@@ -7622,7 +7622,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    </div>
    <div class="ft-sheet-row ft-sheet-nolbl ft-ver-row">
     <div class="ft-sheet-items">
-     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6y</span>
+     <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.7.6z</span>
     </div>
    </div>
   </div>
@@ -7659,7 +7659,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6y</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.7.6z</span></div>
  </div>
 </div>
 
@@ -8758,6 +8758,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row def-key-row">
      <select id="def-key-root" class="def-key-sel" onchange="setDefaultKey()" aria-label="Default key"></select>
      <select id="def-key-mode" class="def-key-sel" onchange="setDefaultKey()" aria-label="Default mode or scale"></select>
+    </div>
+    <div class="ss-scope" data-bgplay-hint style="display:none">Leaving the app <b>keep the music going or pause it</b></div>
+    <div class="row">
+     <button class="tb tb-solo" data-bgplay style="display:none" onclick="toggleBgPlay()" aria-pressed="true">Keep playing in background: ON</button>
     </div>
     <div class="ss-scope">Show <b>extras you can leave off</b></div>
     <div class="row">
@@ -9861,7 +9865,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.7.6y';
+const MODRIFF_VERSION = '4.9.9.9.9.7.6z';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -19235,11 +19239,31 @@ function _duckAudio(down){
  }catch(e){ try{ d.gain.value = down ? 0.0001 : 1; }catch(_){ } }
 }
 // In the iPhone app the audio session is a background one (UIBackgroundModes
-// audio), so leaving the app is not a suspend and there is nothing to duck or
-// pause for: the music carries on until the user stops it.
-var _inNativeApp = (function(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } })();
+// audio), so leaving the app is not a suspend: the music can carry on. That is
+// a setting (Settings › General), on by default, because some people want the
+// old pause. It is looked up when the event fires, not once at load —
+// window.Capacitor is not guaranteed to exist yet when this script runs, and a
+// value fixed too early is how the pause kept happening in the app.
+function _inNativeApp(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } }
+function _bgKeepPlaying(){
+ if(!_inNativeApp()) return false;
+ try{ return localStorage.getItem('modo-bgplay') !== '0'; }catch(e){ return true; }
+}
+function toggleBgPlay(){
+ var on=!_bgKeepPlaying();
+ try{ localStorage.setItem('modo-bgplay', on?'1':'0'); }catch(e){}
+ _syncBgPlayBtn();
+}
+function _syncBgPlayBtn(){
+ document.querySelectorAll('[data-bgplay]').forEach(function(b){
+  var app=_inNativeApp(); b.style.display=app?'':'none';
+  var on=_bgKeepPlaying(); b.textContent='Keep playing in background: '+(on?'ON':'OFF'); b.setAttribute('aria-pressed', on?'true':'false'); b.classList.toggle('active', on);
+ });
+ document.querySelectorAll('[data-bgplay-hint]').forEach(function(h){ h.style.display=_inNativeApp()?'':'none'; });
+}
+window.addEventListener('load', function(){ setTimeout(_syncBgPlayBtn, 300); });
 document.addEventListener('visibilitychange', function(){
- if(_inNativeApp) return;
+ if(_bgKeepPlaying()) return;
  if(document.visibilityState === 'hidden') _duckAudio(true);
 });
 
@@ -19260,7 +19284,7 @@ var _bgPauseIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 var _bgPaused = false;
 document.addEventListener('visibilitychange', function(){
- if(!_bgPauseIOS || _inNativeApp) return;
+ if(!_bgPauseIOS || _bgKeepPlaying()) return;
  if(document.visibilityState === 'hidden'){
   if(typeof isAnythingPlaying!=='function' || !isAnythingPlaying()) return;
   _bgPaused = true;
