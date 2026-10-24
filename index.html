@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9d</span></div>
  </div>
 </div>
 
@@ -9055,7 +9055,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9c</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9d</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10044,7 +10044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9c';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9d';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13902,9 +13902,16 @@ var SMP_MIME_EXT = {'audio/wav':'wav','audio/wave':'wav','audio/x-wav':'wav','au
 function smpExportSet(){
  showToast('Packing the set…');
  return smpDbAll().then(function(recs){
-  var files=[], clips=[];
+  var files=[], clips=[], left=[], packed=0;
   recs.forEach(function(r){
    if(!r.bytes) return;
+   // Past the caps a clip stays out, and is named in the message below.
+   var nb=r.bytes.byteLength||0, why=null;
+   if(r.dur>EMBED_LIMITS.sampleSeconds) why='longer than '+EMBED_LIMITS.sampleSeconds+' s';
+   else if(nb>EMBED_LIMITS.sampleBytes) why='over '+_smpBytes(EMBED_LIMITS.sampleBytes);
+   else if(packed+nb>EMBED_LIMITS.fileBytes) why='the file is full at '+_smpBytes(EMBED_LIMITS.fileBytes);
+   if(why){ left.push((r.name||'a clip')+' ('+why+')'); return; }
+   packed+=nb;
    var ext=SMP_MIME_EXT[String(r.mime||'').toLowerCase()] || 'wav';
    var path='clips/'+r.id+'.'+ext;
    files.push({name:path, data:new Uint8Array(r.bytes)});
@@ -13930,7 +13937,10 @@ function smpExportSet(){
   var stamp=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   var fname='modriff-set-'+stamp+'.zip';
   modPlatform.saveFile(fname, blob);
-  showToast(fname+' — '+clips.length+' clip'+(clips.length===1?'':'s')+', '+_smpBytes(blob.size));
+  showToast(fname+' — '+clips.length+' clip'+(clips.length===1?'':'s')+', '+_smpBytes(blob.size)
+   + (left.length ? '. Left out, too big to embed: '+left.slice(0,3).join(', ')+(left.length>3?' and '+(left.length-3)+' more':'')
+                   + '. Whoever opens it will not hear them.' : ''),
+   left.length ? {ms:9000} : undefined);
   return blob;
  }).catch(function(e){ showToast('Could not pack the set — '+(e&&e.message||'unknown')); });
 }
@@ -13966,7 +13976,10 @@ function smpImportSetFile(file){
   if(!o) return;
   var byName={};
   o.entries.forEach(function(e){ byName[e.name]=e; });
-  var jobs=(o.set.clips||[]).map(function(c){
+  // Free can receive a set but not keep its recordings: the sampler is Pro, so
+  // the clips stay in the file (which is not touched) and play as silence here.
+  var _skipClips = (typeof modTier==='function' && modTier()==='free');
+  var jobs=(_skipClips ? [] : (o.set.clips||[])).map(function(c){
    var e=byName[c.file]; if(!e) return Promise.resolve();
    return _zipEntryBytes(e).then(function(bytes){
     // A clip arriving under an id this device already uses is a different
@@ -13999,7 +14012,9 @@ function smpImportSetFile(file){
     var ti=document.getElementById('chart-title');
     if(ti && o.set.title) ti.value=o.set.title;
     smpRenderAll();
-    showToast('Set loaded — '+(o.set.clips||[]).length+' clips');
+    var nc=(o.set.clips||[]).length;
+    showToast(_skipClips && nc ? 'Set loaded. Its '+nc+' sample'+(nc===1?' is':'s are')+' part of mõdRïff Pro and stay silent until you unlock it.'
+                               : 'Set loaded — '+nc+' clips');
    });
   });
  }).catch(function(e){ showToast('Could not read that set — '+(e&&e.message||'unknown')); });
@@ -57734,6 +57749,16 @@ const FREE_LIMITS = {
   // The sampler's four preset banks (PA-PD) and the first nine pads of each.
   // The four user banks hold your own recordings, which is the Pro part.
   padBanks:     ['PA','PB','PC','PD']
+};
+// What a shared set may carry. A set is a zip, and a zip that arrives as a
+// 90 MB message is a zip nobody opens: past these a clip stays out of the file
+// and the sender is told which, at export, so they do not send a song with holes
+// in it without knowing. (Raw bytes today. Packing as AAC or Opus is not done:
+// WebKit has no encoder for either to call from here.)
+const EMBED_LIMITS = {
+  sampleSeconds: 12,
+  sampleBytes:   2*1024*1024,
+  fileBytes:     15*1024*1024
 };
 // The numbers, in one place, so the line can be moved without hunting.
 const FREE_NUMBERS = {
