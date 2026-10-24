@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9i</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9j</span></div>
  </div>
 </div>
 
@@ -9063,7 +9063,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9i</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9j</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10052,7 +10052,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9i';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9j';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10696,7 +10696,8 @@ var MFX_PARAMS = ['mix','tau','active','lpHz','lpQ','hpHz','hpQ','drvAmt','drvWe
  'isoWet','isoDry','isoLo','isoMid','isoHi','fmtWet','fmtDry','fmt1Hz','fmt2Hz','gate',
  'tremBase','tremDepth','tremHz','pan','ringHz','ringWet','ringDry',
  'dlySend','dlyTime','dlyFb','revSend','dry',
- 'stutter','reverse','warp','crush','srate','grain','grainlen','fltmode','fltcut','fltres','fltdrv'];
+ 'stutter','reverse','warp','crush','srate','grain','grainlen','fltmode','fltcut','fltres','fltdrv',
+ 'gatePat','gatePatAmt','gatePatHz'];
 MODNAT.mfx = {};
 function _modNativeMfxSync(part, vals){
  if(!MODNAT.attached[part]) return;
@@ -56360,15 +56361,20 @@ function fxApplyChannel(ch){
    const bpm=_wp('transport.bpm')||100;
    const barSec=(60/bpm)*4;
    try{ chain.gatePat.playbackRate.setTargetAtTime(span/barSec, t, 0.05); }catch(e){}
+   // The native chain runs the same pattern from its own table (native/
+   // modsynth/mixfx.cpp), a bar of it per bar: its rate is bars per second.
+   nat.gatePat=pi; nat.gatePatHz=1/barSec;
   }
+  nat.gatePatAmt=gpOn?gv:0;
   // The pattern ADDS to gate.gain, so the base has to duck out of its way by
   // exactly as much as the pattern is contributing — otherwise a pattern at
   // full depth just adds gain on top of an already-open gate.
   chain.gatePatAmt.gain.setTargetAtTime(gpOn?gv:0, t, S);
  }
  chain.gate.gain.setTargetAtTime(v('gate') * (gpOn ? Math.max(0,1-v('gatepat')) : 1), t, S);
- // The native chain has no gate patterns yet, so the pattern's share of the level is not taken off.
- nat.gate=v('gate');
+ // The same level the web node has as its own value; the pattern's share is
+ // added on top natively (MFX_GATE_PAT_AMT), as the buffer adds to gate.gain.
+ nat.gate=v('gate') * (gpOn ? Math.max(0,1-v('gatepat')) : 1);
 
  // Tremolo reaches full depth — at the top the signal is chopped to silence
  // between cycles, which is the point of it.

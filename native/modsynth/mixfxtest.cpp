@@ -131,6 +131,59 @@ int main() {
     const double s1 = amp(r, 800), s2 = amp(r, 1200), c = amp(r, 1000);
     check(s1 > 0.05 && s2 > 0.05 && c < 0.01, "ring mod: sidebands at 800 and 1200, none at 1000", c); delete m;
   }
+  // 8b. Gate patterns: the page's eight bar-long patterns, one bit per sixteenth.
+  // A steady tone through the gate closed at its base with the pattern added
+  // opens only on the bits, in the right places, and at the right speed.
+  {
+    // Peak of |x| over [t, t+w) seconds.
+    auto pk = [](const std::vector<float>& y, double t, double w) {
+      double m = 0; const size_t a = (size_t)(t * SR), b = std::min(y.size(), (size_t)((t + w) * SR));
+      for (size_t i = a; i < b; i++) m = std::max(m, (double)std::fabs(y[i]));
+      return m;
+    };
+    // How many separate openings in one bar starting at `t0`, seen through 5 ms windows.
+    auto pulses = [&](const std::vector<float>& y, double t0, double bar) {
+      int n = 0; bool was = false;
+      for (double t = t0; t < t0 + bar; t += 0.005) {
+        const bool on = pk(y, t, 0.005) > 0.25;
+        if (on && !was) n++;
+        was = on;
+      }
+      return n;
+    };
+    // Pattern 0 is one hit a beat: 125 ms open at 0, 0.5, 1.0 and 1.5 s of a 2 s bar.
+    MixFx* m = make({{MFX_GATE, 0}, {MFX_GATE_PAT, 0}, {MFX_GATE_PAT_AMT, 1}, {MFX_GATE_PAT_HZ, 0.5}});
+    auto y = run(m, 1000, 0.5, 6);
+    // The pattern is free-running, so find the bar's start from the first opening in the last full bar.
+    double t0 = -1; for (double t = 4; t < 6; t += 0.001) if (pk(y, t, 0.002) > 0.25) { t0 = t; break; }
+    // Land on a beat: an opening is the start of a step, and the first one found after a closed gap is a beat.
+    const double open = pk(y, t0 + 0.05, 0.02), shut = pk(y, t0 + 0.25, 0.1);
+    check(t0 > 0 && open > 0.4 && shut < 0.005, "gate pattern 1: open on the beat, shut between", shut);
+    check(pulses(y, 4.0, 2.0) >= 4 && pulses(y, 4.0, 2.0) <= 5, "pattern 1: four openings in a 2 s bar", pulses(y, 4.0, 2.0));
+    delete m;
+    // Pattern 4 is every other sixteenth, eight openings a bar.
+    m = make({{MFX_GATE, 0}, {MFX_GATE_PAT, 4}, {MFX_GATE_PAT_AMT, 1}, {MFX_GATE_PAT_HZ, 0.5}});
+    y = run(m, 1000, 0.5, 6);
+    check(pulses(y, 4.0, 2.0) >= 8 && pulses(y, 4.0, 2.0) <= 9, "pattern 5: eight openings in a bar", pulses(y, 4.0, 2.0));
+    delete m;
+    // Twice the bar rate, twice the openings in the same two seconds.
+    m = make({{MFX_GATE, 0}, {MFX_GATE_PAT, 0}, {MFX_GATE_PAT_AMT, 1}, {MFX_GATE_PAT_HZ, 1.0}});
+    y = run(m, 1000, 0.5, 6);
+    check(pulses(y, 4.0, 2.0) >= 8 && pulses(y, 4.0, 2.0) <= 9, "a 1 s bar: twice as many openings", pulses(y, 4.0, 2.0));
+    delete m;
+    // The base and the pattern add: base 0.4 with depth 0.6 sits at 0.4 shut and 1.0 open.
+    m = make({{MFX_GATE, 0.4}, {MFX_GATE_PAT, 4}, {MFX_GATE_PAT_AMT, 0.6}, {MFX_GATE_PAT_HZ, 0.5}});
+    y = run(m, 1000, 0.5, 6);
+    double hi = 0, lo = 9;
+    for (double t = 4; t < 5.97; t += 0.01) { const double v = pk(y, t, 0.01) / 0.5; hi = std::max(hi, v); lo = std::min(lo, v); }
+    check(std::fabs(hi - 1.0) < 0.05 && std::fabs(lo - 0.4) < 0.05, "base 0.4 + depth 0.6: shut at 0.4, open at 1.0", lo);
+    delete m;
+    // Depth 0 is the plain gate: the pattern number and rate change nothing.
+    m = make({{MFX_GATE, 1}, {MFX_GATE_PAT, 3}, {MFX_GATE_PAT_AMT, 0}, {MFX_GATE_PAT_HZ, 0.7}});
+    y = run(m, 1000, 0.5, 2);
+    check(std::fabs(amp(y, 1000) - 0.5) < 0.02, "depth 0: the pattern does nothing", amp(y, 1000));
+    delete m;
+  }
   // 9. Pan: a stereo input panned hard left leaves the right empty (the spec's panner).
   {
     MixFx* m = make({{MFX_PAN, -1}});

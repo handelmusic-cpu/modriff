@@ -28,6 +28,39 @@ void driveCurve(Curve& c, double amount) {
   }
 }
 
+// Eight bar-long gate patterns, one bit per sixteenth: GATE_PATTERNS in
+// index.html, copied. tests/modsynth/gatepat.test.js reads both and fails if
+// either moves.
+constexpr int GATE_PAT_COUNT = 8;
+const unsigned char GATE_PATTERNS[GATE_PAT_COUNT][16] = {
+  {1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0},
+  {0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0},
+  {1,0,1,1, 0,0,1,0, 1,0,1,1, 0,0,1,0},
+  {1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,1,0},
+  {1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0},
+  {1,0,0,1, 0,0,1,0, 0,1,0,0, 1,0,0,1},
+  {1,1,1,1, 1,1,0,0, 1,1,0,0, 1,0,1,0},
+  {1,1,0,1, 1,0,1,1, 0,1,1,0, 1,1,0,1}
+};
+
+// The pattern's shape inside one sixteenth: the web bakes it into a buffer with
+// a 3 ms ramp (at least 4 samples) on each edge of an open step, so a run of
+// open steps still dips between them and a rhythm is not made of clicks.
+// `f` is how far through the step we are, 0..1. The edge is a fraction of the
+// step, as the buffer's 3 ms is a fraction of its 125 ms step, so it stretches
+// with the tempo the way the web's does when the loop is played faster or slower.
+inline double gateShape(double sr, int pat, double ph) {
+  const double stepN = std::round(0.125 * sr);
+  const double edge = std::max(4.0, std::round(sr * 0.003)) / stepN;
+  const double s = ph * 16.0;
+  int step = (int)s; if (step > 15) step = 15;
+  if (!GATE_PATTERNS[pat][step]) return 0.0;
+  const double f = s - step;
+  if (f < edge) return f / edge;
+  if (f > 1.0 - edge) return (1.0 - f) / edge;
+  return 1.0;
+}
+
 // The send reverb is dsp::Fdn, fitted to the web chain's 3.4 s room impulse: size
 // 0.5727 on the rack's scale, which is the 0.6 + size delay-length factor.
 constexpr double FX_REV_SCALE = 0.6 + 0.5727;
@@ -46,7 +79,7 @@ struct MixFx::Impl {
   float dr[2][16] = {}; int dw = 0;           // the clean/dry side, delayed to match the oversampler
   BqS isoS[4][2]; BqC isoC[4];
   BqS fmtS[2][2]; BqC fmtC[2];
-  double tremPh = 0, ringPh = 0;
+  double tremPh = 0, ringPh = 0, gatePh = 0;   // gatePh: where in the bar the pattern is, 0..1
   Dl dly[2]; double dlyT = 0.25; int dlyTail = 0;
   Fdn fdn; int rvTail = 0;
   int drvTail = 0;
@@ -58,7 +91,8 @@ struct MixFx::Impl {
       /*mix*/1, /*tau*/0.02, /*active*/0, /*lp*/18000, 0.7, /*hp*/20, 0.7,
       /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,
       /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1,
-      /*worklet*/0, 0, 1, 0, 0, 0, 0.5, 0, 1, 0, 0 };
+      /*worklet*/0, 0, 1, 0, 0, 0, 0.5, 0, 1, 0, 0,
+      /*gate pattern*/0, 0, 0.5 };
     for (int i = 0; i < MFX_COUNT; i++) { p[i] = def[i]; sm[i].init(sr, 0.02); sm[i].snap(def[i]); pv[i] = cv[i] = def[i]; }
     sm[MFX_ACTIVE].init(sr, 0.005); sm[MFX_MIX].init(sr, 0.015);
     dly[0].init((int)(sr * 4.0)); dly[1].init((int)(sr * 4.0));
@@ -180,8 +214,18 @@ struct MixFx::Impl {
         if (pan <= 0) { const double a = pan + 1; gl = std::cos(a * PI / 2); gr = std::sin(a * PI / 2); }
         else { pl = std::cos(pan * PI / 2); pr = std::sin(pan * PI / 2); }
       }
+      // The pattern runs free whether or not it is audible, as the web's buffer
+      // does: it keeps its place in the bar, and bringing it in later picks it
+      // up wherever it is. The pattern number is read as set, not smoothed (a
+      // glide between pattern 2 and pattern 6 would pass through the ones
+      // between); the depth is smoothed, so it comes in without a click.
+      const int pat = std::max(0, std::min(GATE_PAT_COUNT - 1, (int)std::floor(p[MFX_GATE_PAT] + 0.5)));
+      const bool patOn = cv[MFX_GATE_PAT_AMT] > 1e-4 || pv[MFX_GATE_PAT_AMT] > 1e-4;
       for (int i = 0; i < n; i++) {
-        const float g = ramp(MFX_GATE, i, n);
+        float g = ramp(MFX_GATE, i, n);
+        const double hz = pv[MFX_GATE_PAT_HZ] + (cv[MFX_GATE_PAT_HZ] - pv[MFX_GATE_PAT_HZ]) * ((i + 1) / (double)n);
+        if (patOn) g += ramp(MFX_GATE_PAT_AMT, i, n) * (float)gateShape(sr, pat, gatePh);
+        gatePh += hz / sr; if (gatePh >= 1.0) gatePh -= std::floor(gatePh);
         const float t = ramp(MFX_TREM_BASE, i, n) + ramp(MFX_TREM_DEPTH, i, n) * (float)std::sin(tremPh);
         tremPh += tw; if (tremPh > 2 * PI) tremPh -= 2 * PI;
         float a = x[0][i] * g * t, b = x[1][i] * g * t;
