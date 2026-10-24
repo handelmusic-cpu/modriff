@@ -7815,7 +7815,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9c</span></div>
  </div>
 </div>
 
@@ -9055,7 +9055,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10044,7 +10044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9b';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -33435,7 +33435,7 @@ function _mergeSetlist(mine, incoming){
 function captureSetup(name, withSetlist){
  return {
   app:'modriff', v:1, name:(name||'Untitled setup'), ts:Date.now(),
-  settings:_capSettings(),
+  settings:(typeof proRestoreSetup==='function' ? proRestoreSetup(_capSettings()) : _capSettings()),
   setlist: (withSetlist===false) ? null : loadSLData()
  };
 }
@@ -33454,6 +33454,16 @@ function applySetup(st, opts){
    || (typeof rhythmOn!=='undefined' && rhythmOn);
  try{ if(typeof stopEverything==='function') stopEverything(); }catch(e){}
  try{ _applySettings(s); }catch(e){ console.warn('setup apply failed',e); return false; }
+ // Free: what the setters refused is put right, what was refused is remembered
+ // for the next save, and the user is told once. See "Pro content in a free build".
+ if(typeof modTier==='function' && modTier()==='free'){
+  try{
+   const labels = proScan(s);
+   if(typeof freeApplyLimits==='function') freeApplyLimits();
+   proKeepSetup(s);
+   if(!(opts && opts.quiet)) proBanner('setup', labels);
+  }catch(e){}
+ } else { _proKeep = null; }
  if(Array.isArray(st.setlist)){
   try{
    setlistData = (opts && opts.mergeSetlist) ? _mergeSetlist(loadSLData(), st.setlist) : st.setlist;
@@ -35738,6 +35748,9 @@ function saveToSetlist(){
  if(curSetlistIdx>=0 && setlistData[curSetlistIdx]){
   // Currently-loaded song — update it in place instead of adding a duplicate entry
   song.id=setlistData[curSetlistIdx].id;
+  // A free build that swapped a Pro scale or sound for a stand-in must not save
+  // the stand-in over the original.
+  if(typeof proKeepSongApply==='function') proKeepSongApply(song, song.id);
   setlistData[curSetlistIdx]=song;
  } else {
   if(!slCanAdd(setlistData)){ freeBlocked('More than '+FREE_NUMBERS.saveSlots+' saved songs'); return; }
@@ -36212,6 +36225,7 @@ function loadSong(song,idx){
  // inherits the first one's fingerprint and reads as unsaved immediately.
  if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
+ if(typeof proSongLoaded==='function') proSongLoaded(song);
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof syncFixedTransport==='function') syncFixedTransport();
@@ -58177,6 +58191,100 @@ function proSheet(what){
  try{ buy.focus(); }catch(e){}
  if(typeof track==='function') track('pro_sheet', {what:what||''});
 }
+// ── Pro content in a free build ──────────────────────────────────
+// A song or setup made with Pro parts has to open here without losing any of
+// them. Three rules, in order of how much they matter:
+//   1. Never destroy it. Whatever the free build cannot use is kept: the file
+//      on disk is untouched, and a re-save writes the ORIGINAL back for every
+//      field the user has not changed since loading (_proKeep / _proKeepSong).
+//      The old behaviour — freeApplyLimits rewriting the mode, voice and step
+//      count when the tier dropped — would have saved the stand-in over the
+//      real thing on the next Save.
+//   2. Free stand-ins play, so nothing is silent for no reason and nothing
+//      crashes: the setters refuse the Pro value and freeApplyLimits puts a
+//      free one in its place.
+//   3. Say so once, naming what is missing, with a way to the sheet.
+// var, not let: read from the setup and setlist code, far above.
+var _proKeep = null;        // {orig:{key:value}, co:{key:value}} for the loaded setup
+var _proKeepSong = null;    // {id, orig:{…}, co:{…}} for the loaded song
+
+// What in a settings-shaped blob the free build cannot use, as plain words.
+function proScan(s){
+ if(!s || modTier()!=='free') return [];
+ const out=[];
+ try{
+  const waves={};
+  ['wave','arpWave','melWave','blWave','melgenWave'].forEach(function(k){
+   const w=s[k]; if(w && !freeAllowsVoice(w)) waves[w]=1;
+  });
+  const nW=Object.keys(waves).length;
+  if(nW) out.push(nW+' Pro sound'+(nW===1?'':'s'));
+  if(s.mode && !freeAllowsMode(s.mode)) out.push('a Pro scale');
+  if(s.sqMach && !freeAllowsKit(s.sqMach)) out.push('a Pro drum kit');
+  if(s.meterBeats && s.meterUnit && !freeAllowsMeter(s.meterBeats, s.meterUnit)) out.push('a Pro time signature');
+  if(s.sqSteps && !freeAllowsSteps(s.sqSteps)) out.push('a longer pattern than free allows');
+ }catch(e){}
+ return out;
+}
+function _proJoin(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
+function proBanner(kind, labels){
+ if(!labels.length) return;
+ showToast('This '+kind+' uses '+_proJoin(labels)+'. Free stand-ins play, and your file keeps the originals.',
+           {actionLabel:'See Pro', ms:9000, onAction:function(){ proSheet(''); }});
+}
+// A loaded setup: remember what the free build changed, so a re-save can put
+// it back. Compares every field before and after the setters had their say.
+function proKeepSetup(incoming){
+ _proKeep = null;
+ if(modTier()!=='free') return;
+ try{
+  const now=_capSettings(), orig={}, co={};
+  Object.keys(incoming).forEach(function(k){
+   if(k in now && JSON.stringify(now[k])!==JSON.stringify(incoming[k])){ orig[k]=incoming[k]; co[k]=now[k]; }
+  });
+  if(Object.keys(orig).length) _proKeep={orig:orig, co:co};
+ }catch(e){}
+}
+// At capture time: a field still at its stand-in value was never touched by the
+// user, so the original goes back in.
+function proRestoreSetup(settings){
+ if(!_proKeep || modTier()!=='free' || !settings) return settings;
+ Object.keys(_proKeep.orig).forEach(function(k){
+  if(JSON.stringify(settings[k])===JSON.stringify(_proKeep.co[k])) settings[k]=_proKeep.orig[k];
+ });
+ return settings;
+}
+// Songs keep four things the free build can swap: the scale and the three
+// voices/kit saved with the groove.
+function proSongLoaded(song){
+ _proKeepSong = null;
+ if(modTier()!=='free' || !song) return;
+ try{
+  const probe={ mode:song.mode,
+   sqMach: song.savedRhythm && song.savedRhythm.mach,
+   blWave: song.savedBass && song.savedBass.wave,
+   melgenWave: song.savedMelody && song.savedMelody.wave };
+  const labels=proScan(probe);
+  if(!labels.length) return;
+  freeApplyLimits();                     // the stand-ins go in
+  _proKeepSong={ id:song.id,
+   orig:{ mode:song.mode, kit:probe.sqMach, blWave:probe.blWave, mlWave:probe.melgenWave },
+   co:{ mode:(typeof mode!=='undefined'?mode:null),
+        kit:(typeof window._sqDrumKit==='function'?window._sqDrumKit():null),
+        blWave:(window._blCaptureState?window._blCaptureState().wave:null),
+        mlWave:(window._mlCaptureState?window._mlCaptureState().wave:null) } };
+  proBanner('song', labels);
+ }catch(e){}
+}
+function proKeepSongApply(song, existingId){
+ const k=_proKeepSong;
+ if(!k || modTier()!=='free' || k.id!==existingId) return;
+ if(song.mode===k.co.mode && k.orig.mode) song.mode=k.orig.mode;
+ if(song.savedRhythm && song.savedRhythm.mach===k.co.kit && k.orig.kit) song.savedRhythm.mach=k.orig.kit;
+ if(song.savedBass && song.savedBass.wave===k.co.blWave && k.orig.blWave) song.savedBass.wave=k.orig.blWave;
+ if(song.savedMelody && song.savedMelody.wave===k.co.mlWave && k.orig.mlWave) song.savedMelody.wave=k.orig.mlWave;
+}
+
 // Apple requires this to be a visible control (guideline 3.1.1): it is on the
 // sheet and in Settings > About.
 function proRestore(){
@@ -58320,6 +58428,13 @@ function freeApplyLimits(){
    if(typeof mode!=='undefined' && !freeAllowsMode(mode)){
     try{ mode = (_freeList('freeModes')||['major'])[0]; renderChords(); }catch(e){}
    }
+   // Drum kits: the main one and the Aux. Through the same pickers a tap uses.
+   try{
+    const _dk = (typeof window._sqDrumKit==='function') ? window._sqDrumKit() : null;
+    const _ak = (typeof window._sqAuxKit==='function')  ? window._sqAuxKit()  : null;
+    if(_dk && !freeAllowsKit(_dk)) window._sqPickDrumKit('LIN');
+    if(_ak && !freeAllowsKit(_ak)) window._sqPickAuxKit('606');
+   }catch(e){}
    if(typeof wave!=='undefined' && !freeAllowsVoice(wave)){
     try{
      const fb = (typeof SAMPLED_WAVES!=='undefined' && SAMPLED_WAVES[wave])
