@@ -237,7 +237,7 @@ double num(id value, double fallback = 0) {
   else if ([t isEqualToString:@"cc"])      { m.type = MsgType::CC; m.i = (int32_t)num(message[@"n"], 0); }
   else if ([t isEqualToString:@"cap"])     { m.type = MsgType::Cap; m.uni = num(message[@"uni"], 0); m.poly = num(message[@"poly"], 0); }
   else if ([t isEqualToString:@"fx"])      m.type = MsgType::Fx;      // {i: HOST_FX index, v}
-  else if ([t isEqualToString:@"strip"])   m.type = MsgType::Strip;   // {i: 0 level, v}
+  else if ([t isEqualToString:@"strip"])   m.type = MsgType::Strip;   // {i: 0 level, 1 pan, v}
   else if ([t isEqualToString:@"mfx"])     m.type = MsgType::Mfx;     // {i: MixFxParam, v}
   else if ([t isEqualToString:@"tempo"])   {
     m.type = MsgType::Tempo;
@@ -339,7 +339,11 @@ double num(id value, double fallback = 0) {
                                if (_racks[r.part]) _racks[r.part]->setTempo(r.v);
                                break;
     case MsgType::Fx:          if (_racks[r.part]) _racks[r.part]->set(r.i, r.v); break;
-    case MsgType::Strip:       if (_strips[r.part] && r.i == 0) _strips[r.part]->setLevel(r.v); break;
+    case MsgType::Strip:       if (_strips[r.part]) {
+                                 if (r.i == 0) _strips[r.part]->setLevel(r.v);
+                                 else if (r.i == 1) _strips[r.part]->setPan(r.v);
+                               }
+                               break;
     case MsgType::Mfx:         if (_mixfx[r.part]) _mixfx[r.part]->set(r.i, r.v); break;
     case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
@@ -389,12 +393,14 @@ double num(id value, double fallback = 0) {
       rack->process(_scratchL.data(), _scratchR.data(), frames);
     }
     // The strip: what the web's trim gain is to a part, then mõdFX, then the
-    // meter, which on the web reads the chain's output.
+    // meter, which on the web reads the chain's output, then the pan.
     modsynth::Strip *strip = _strips[part].get();
     if (strip) strip->gain(_scratchL.data(), _scratchR.data(), frames);
     if (modsynth::MixFx *fx = _mixfx[part].get())
       fx->process(_scratchL.data(), _scratchR.data(), frames);
     if (strip) strip->measure(_scratchL.data(), _scratchR.data(), frames);
+    // The mixer's pan, after the meter: the web taps the meter upstream of it.
+    if (strip) strip->applyPan(_scratchL.data(), _scratchR.data(), frames);
     _partFrames[part] += (uint64_t)frames;
     for (int i = 0; i < frames; i++) {
       left[i]  += _scratchL[i];

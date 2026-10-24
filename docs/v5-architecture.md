@@ -1360,20 +1360,34 @@ matter before it.
 host runs it after each part's rack; the page posts `_msxCal(part) * mix.<part>`
 as `{t:'strip'}` when it changes, and the Mix meters read the host's `meters`
 call through a stand-in analyser. Expect the native chord to be about 8 dB
-quieter than it was: it now sits where the web chord does. Pan is not done
-natively: the mixer has a pan control now (web, below), and the native strip
-still has none.
+quieter than it was: it now sits where the web chord does. Pan landed in
+4.9.9.9.9.8.4 (below).
 
 **Mixer pan, web side.** Each strip has a pan control (`sqMixPan`, saved as
 `mixPan`, sent as `mix.pan`). The audio is a `StereoPannerNode` after the
 part's mõdFX chain in `fxBuildChain`, behind a gain forced to two channels (so
 centre is exactly the unpanned level) and followed by a constant-power
 compensation gain. The meter taps upstream of it and stems stay dry and
-centred. Not done natively: `strip.h` needs a smoothed pan stage (same law:
-equal-power with the stereo panner's dual-mono sum compensated by
-`1/sqrt(1+sin(|pan|*pi/2))`) and `ModEngineHost.mm` needs to carry `mix.pan`
-as a strip parameter. Until then a part the native engine plays ignores its
-pan control.
+centred.
+
+**Mixer pan, native side (4.9.9.9.9.8.4, branch `claude/native-pan`, Swift
+unbuilt).** `Strip::applyPan` in `strip.h` is the same law: Web Audio's
+stereo-input panner (left of centre the right channel folds into the left and
+is attenuated, right of centre the mirror) times
+`1/sqrt(1+sin(|pan|*pi/2))`, smoothed with the strip's 8 ms one-pole on the
+pan value (the web glides gain and pan separately at 15 ms; the steady state
+is the same). It runs after the meter, because the web's meter taps upstream of
+the pan, and centre touches nothing, so an unpanned strip is bit for bit the
+signal. The host carries it as `{t:'strip', i:1, v}` beside the level's
+`i:0`; `_modNativeStripSync` posts it from `mix.pan` (via `_mixPanOf`) only
+when it changes, and forgets it with the level when a fresh engine attaches.
+`striptest` measures it: centre is unity bit for bit, hard left and right put
+a dual-mono 1.0 in one channel at sqrt(2), the law matches an independent
+write-out of the web's at ten positions (worst difference 6e-8, float
+rounding), dual mono keeps the centre's power at every position, and a step
+from centre to hard right moves by at most 2 x the one-pole's step per sample.
+The small change in `ModEngineHost.mm` (the `Strip` case and one call after
+the meter) is not compiled until the owner builds it in Xcode.
 
 **N1 landed (4.9.9.9.9.7.6t, PR 255); N3 first half is on branch
 `claude/native-mixfx` (4.9.9.9.9.7.6v, unmerged, Swift unbuilt).** The order
