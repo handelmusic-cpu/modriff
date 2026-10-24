@@ -1,6 +1,8 @@
+#include <time.h>
 #import "ModEngineHost.h"
 
 #import <os/lock.h>
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -9,6 +11,7 @@
 #include "modsynth.h"
 #include "fxrack.h"
 #include "strip.h"
+#include "mixfx.h"
 
 namespace {
 
@@ -29,7 +32,7 @@ constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
   Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
-  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip
+  Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip, Mfx
 };
 
 // One message, fixed size, trivially copyable. The union is sized by the
@@ -44,6 +47,7 @@ struct Msg {
   bool hasAt;
   bool hasAtRel;       // `at` given as frames from now, not an absolute frame
   double atRel;
+  double ts;           // the page's wall clock (ms) when it made the message; 0 = none
   bool hasBeat;
   bool flag;           // sustain on/off
   int32_t i;           // param index | cc number | macro index | motion lane | row/step count
@@ -115,6 +119,8 @@ double num(id value, double fallback = 0) {
   // And one mixer strip: the level the page folds fader, mute, solo and the
   // patch calibration into, and the meter beside it. Built with the part.
   std::unique_ptr<modsynth::Strip> _strips[kMaxParts];
+  // And the part's mõdFX chain, after the strip: the web's fxBuildChain.
+  std::unique_ptr<modsynth::MixFx> _mixfx[kMaxParts];
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -160,6 +166,7 @@ double num(id value, double fallback = 0) {
   _parts[part] = std::make_unique<modsynth::Processor>(_sampleRate);
   _racks[part] = std::make_unique<modsynth::FxRack>(_sampleRate);
   _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
+  _mixfx[part] = std::make_unique<modsynth::MixFx>(_sampleRate);
   // Release: everything the constructor wrote is visible before the render
   // thread can see a non-null pointer.
   _live[part].store(_parts[part].get(), std::memory_order_release);
@@ -208,6 +215,7 @@ double num(id value, double fallback = 0) {
   id atRelVal = message[@"atRel"];
   m.hasAtRel = (atRelVal != nil && atRelVal != [NSNull null]);
   m.atRel = num(atRelVal, 0);
+  m.ts = num(message[@"ts"], 0);
   m.idKind = idKindOf(message[@"id"]);
   m.id = num(message[@"id"], 0);
   m.note = num(message[@"note"], 0);
@@ -230,6 +238,7 @@ double num(id value, double fallback = 0) {
   else if ([t isEqualToString:@"cap"])     { m.type = MsgType::Cap; m.uni = num(message[@"uni"], 0); m.poly = num(message[@"poly"], 0); }
   else if ([t isEqualToString:@"fx"])      m.type = MsgType::Fx;      // {i: HOST_FX index, v}
   else if ([t isEqualToString:@"strip"])   m.type = MsgType::Strip;   // {i: 0 level, v}
+  else if ([t isEqualToString:@"mfx"])     m.type = MsgType::Mfx;     // {i: MixFxParam, v}
   else if ([t isEqualToString:@"tempo"])   {
     m.type = MsgType::Tempo;
     m.v = num(message[@"bpm"], 120);
@@ -290,7 +299,23 @@ double num(id value, double fallback = 0) {
   // web context was old (measured: eight seconds).
   Msg mm = m;
   if (mm.hasAtRel) {
-    mm.at = (double)_partFrames[mm.part] + mm.atRel;
+    // The page measured atRel when it made the message, but the message then
+    // crossed the bridge, and in the background that crossing is slow and
+    // uneven (the page's process is throttled, the hop waits for it). Counting
+    // atRel from the drain moved every note later by however long the hop
+    // took — chords on the native engine went loose while the arp, on the web
+    // engine, did not. The page stamps the wall clock on the message; the
+    // delay is the difference, and comes off the offset. A stamp that is
+    // missing, in the future, or implausibly old is ignored.
+    double rel = mm.atRel;
+    if (mm.ts > 0) {
+      struct timespec tsNow;
+      clock_gettime(CLOCK_REALTIME, &tsNow);
+      const double nowMs = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6;
+      const double delayMs = nowMs - mm.ts;
+      if (delayMs > 0 && delayMs < 5000) rel = std::max(0.0, rel - delayMs * 0.001 * _sampleRate);
+    }
+    mm.at = (double)_partFrames[mm.part] + rel;
     mm.hasAt = true;
   }
   const Msg &r = mm;
@@ -315,6 +340,7 @@ double num(id value, double fallback = 0) {
                                break;
     case MsgType::Fx:          if (_racks[r.part]) _racks[r.part]->set(r.i, r.v); break;
     case MsgType::Strip:       if (_strips[r.part] && r.i == 0) _strips[r.part]->setLevel(r.v); break;
+    case MsgType::Mfx:         if (_mixfx[r.part]) _mixfx[r.part]->set(r.i, r.v); break;
     case MsgType::Motion:      p->setMotion(r.i, r.payload.motion, (int)r.vel); break;
     case MsgType::Matrix: {
       // resize() inside the reserved capacity does not allocate, and
@@ -362,9 +388,13 @@ double num(id value, double fallback = 0) {
       rack->setMods(mods);
       rack->process(_scratchL.data(), _scratchR.data(), frames);
     }
-    // The strip, last: what the web's trim gain and meter are to a part.
-    if (modsynth::Strip *strip = _strips[part].get())
-      strip->process(_scratchL.data(), _scratchR.data(), frames);
+    // The strip: what the web's trim gain is to a part, then mõdFX, then the
+    // meter, which on the web reads the chain's output.
+    modsynth::Strip *strip = _strips[part].get();
+    if (strip) strip->gain(_scratchL.data(), _scratchR.data(), frames);
+    if (modsynth::MixFx *fx = _mixfx[part].get())
+      fx->process(_scratchL.data(), _scratchR.data(), frames);
+    if (strip) strip->measure(_scratchL.data(), _scratchR.data(), frames);
     _partFrames[part] += (uint64_t)frames;
     for (int i = 0; i < frames; i++) {
       left[i]  += _scratchL[i];

@@ -1355,6 +1355,54 @@ call through a stand-in analyser. Expect the native chord to be about 8 dB
 quieter than it was: it now sits where the web chord does. Pan is not done:
 the mixer has no pan control to mirror.
 
+**N1 landed (4.9.9.9.9.7.6t, PR 255); N3 first half is on branch
+`claude/native-mixfx` (4.9.9.9.9.7.6v, unmerged, Swift unbuilt).** The order
+changed from the table: mõdFX came before the master bus, because it is what
+the owner is missing on a native chord and the master bus changes the level of
+everything.
+
+*What N3 is.* `native/modsynth/mixfx.{h,cpp}` is `fxBuildChain`'s signal path
+in C++ — two low-pass and two high-pass biquads, the parallel drive on the 2x
+oversampler, the isolator, the talk filter, gate gain, tremolo, pan, ring mod,
+the delay and reverb sends, and the Mix of chain against the clean part — and
+`dspkit.h` holds the primitives it shares with the effects rack (moved out of
+`fxrack.cpp` unchanged). The host runs it after the strip, and the meter now
+reads after it, as the web's does.
+
+*How the page drives it.* It does not re-implement the pad. `fxApplyChannel`
+already resolves, from the sends, the pad and the release, what every node is
+at; it now also fills a small object from those same variables and posts the
+ones that moved as `{t:'mfx', i, v}` (`_modNativeMfxSync`, `MFX_PARAMS`; the
+order is held to the C++ enum by `tests/modsynth/mixfx-order.test.js`). One
+decision, two places it lands. A part the native engine plays has no web bus
+to listen to, so `_fxPartHeard` says yes for it; without that the chain would
+drop out a second and a half into every pad gesture.
+
+*Measured* (`mixfxtest`): neutral chain flat to 0.2 dB with the two halves of
+the Mix aligned, 24 dB/octave on both filters, drive adds odd harmonics and
+holds level within 0.3 dB, the isolator and talk filter pick their bands, a
+delay echo lands within a sample, the reverb tail is gone by 4 s, 60 random
+settings with knobs moved mid-run stay finite, about 0.6% of a core with
+everything on (a Mac). Page side, in a browser with a stand-in native plugin:
+the resting state posts 32 correct values, and moving the chord's delay,
+drive and reverb sends posts the values `fxApplyChannel` computes.
+
+*N4, the worklet effects (4.9.9.9.9.7.6v).* Stutter, reverse, time warp, bit
+and rate crush, the grain shifter and the Moog and MS-20 ladders are
+`native/modsynth/modfxproc.cpp`, a line-for-line port of `ModFxProc`, the
+worklet in `FX_WORKLET_SRC`. Unlike the rest of the chain this is plain
+arithmetic in the page, so it is held to the JavaScript the way `dsp.js` is:
+`tests/modsynth/modfxproc.test.js` runs the real worklet source out of
+`index.html` and `wkrender` on the same input and the same parameter changes,
+52 runs (every effect alone, together, and 40 random schedules), and every
+output sample is identical. `MixFx` runs it first in the chain, in the
+browser's 128-frame blocks, and `fxApplyChannel` fills the eleven values it
+needs from the same variables that set the worklet's own parameters.
+
+*Not in it yet:* gate patterns (the page ducks the base gate for them; the
+native chain leaves the base alone), and the sample-source axes, which read a
+clip held in the page. Those pad axes do nothing on a native part.
+
 **Cost to watch.** The rack measured about 2% of a core with everything on,
 per part, on a Mac. A part now carries rack + mõdFX, and the chord and arp can
 both be native, so measure N3 on the oldest phone available before adding
@@ -1367,6 +1415,46 @@ number, not ear, and the master bus makes it louder in the mix than any one
 rack; and a pad gesture that sets 11 parameters per frame will overrun a
 queue sized for notes unless the page coalesces by index (the 1024-slot queue
 already dropped a note-off once).
+
+### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
+
+What was done, what it showed, and where it stopped, so the next pass starts
+from the evidence and not from the guesses.
+
+Done: `UIBackgroundModes: audio` in Info.plist (without it iOS suspended the
+app and the sound with it); the page no longer ducks or pauses on
+`visibilitychange` in the app (Settings > General > Interface, "Keep playing in
+background", on by default; the web build keeps its pause); the scheduler runs
+3 s ahead while backgrounded, entered on a hidden page *or* on a tick 400 ms
+late; ALIGN_LEAD 1.2 s there (3 s opened a 3 s silence on entering); chord
+comp re-strikes come from the scheduler tick rather than their own timers;
+native messages are stamped with the page's wall clock so the bridge delay
+comes off `atRel`. Tools: Settings > "Copy diagnostics" (build, native render
+stats with the slowest blocks and when, `leadStats()` per part, background
+switch log, the page's errors).
+
+What the measurements said:
+
+- Bass, drums and the melody sequencer hold in the background. They are plain
+  Web Audio nodes scheduled ahead.
+- A mõdSynth part on the web worklet holds. The native chord engine's own
+  numbers are clean in the background (load 5-12 %, nothing dropped, every
+  message on time).
+- **Sampled voices (flute, violin) drop out entirely when the app is left,
+  with every message delivered on time and no error thrown.** That is the
+  open problem; the notes are made and nothing sounds. Not understood. Likely
+  somewhere in WebKit's handling of buffer-source nodes in a throttled page.
+- One block of 40-80 ms on the native audio thread at the moment of
+  backgrounding. Nothing in the render path waits on a lock; this looks like
+  iOS, and nothing in the app prevents it so far.
+- Timing is loose for a moment on coming back (the look-ahead drops from 3 s to
+  the preset and the engines realign).
+
+Where this goes: the web path for background is a patch on a platform that
+throttles it. The real answer is the plan already in this document, every part
+on the native engine, where the audio thread does not care what the page is
+doing. Until then background audio is best-effort: mõdSynth parts hold, sampled
+voices do not.
 
 ### Haptics
 
