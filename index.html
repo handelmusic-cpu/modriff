@@ -17428,18 +17428,20 @@ function psPatAnim(){
 // borrows the real thing; the grids go back to Accomp — to the exact place they
 // came from, marked with a comment node — whenever Play stops being the Live
 // page you are looking at: another tab, or Studio.
-var LV_MAX = 4;              // instruments; the key strip does not count
-var LV_ORDER = ['key','chords','melody','pads','fx','drums','bass','melseq'];
-var LV_NAME = {key:'Key', chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
+var LV_MAX = 4;              // instruments
+var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq'];
+var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
                drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid'};
 // The sampler's pads sit above the mõdFX pad (4.9.9.9.9.1): the pads are
 // what you strike, the mõdFX pad what you hold over everything, and the
 // thumb that holds it belongs at the foot of the page.
-var LV_STD = ['key','chords','melody','pads','fx'];
+var LV_STD = ['chords','melody','pads','fx'];
 // The standard before that. A layout saved as exactly this was the standard
 // layout, not a choice, so it follows the standard; any other saved order
-// is somebody's own and is left alone.
-var LV_STD_OLD = ['key','chords','melody','fx','pads'];
+// is somebody's own and is left alone. (The Key widget went in 4.9.9.9.9.7.9;
+// it is filtered out of a saved layout before this comparison, so the old
+// standards are listed without it.)
+var LV_STD_OLD = ['chords','melody','fx','pads'];
 var LV_GATE = {pads:'sampler', fx:'modfx'};
 // var: setPerformMode reads this during boot, long before this line runs in
 // file order would matter for a let. See CLAUDE.md.
@@ -17454,28 +17456,21 @@ var LV = { slots:null };
   var pads = false; try{ pads = (JSON.parse(modStore.getItem('modo-ps')||'{}')||{}).slot==='pads'; }catch(e){}
   // The sampler is part of the first page, above the mõdFX pad. A layout
   // that swapped it in for the melody keeps that.
-  s = pads ? ['key', 'chords', 'pads', 'fx'] : LV_STD.slice();
+  s = pads ? ['chords', 'pads', 'fx'] : LV_STD.slice();
  } else if(s.join(',') === LV_STD_OLD.join(',')){
   s = LV_STD.slice();
  }
- // The key strip became a slot in v4.0.3. A layout saved before then has no
- // 'key' in it, and that must not read as "taken off": it goes in once, at
- // the top, where it always was — and after that it stays wherever it is put,
- // including nowhere.
- var seen = false; try{ seen = modStore.getItem('modo-live-key')==='1'; }catch(e){}
- if(!seen){
-  if(s.indexOf('key') < 0) s.unshift('key');
-  try{ modStore.setItem('modo-live-key','1'); }catch(e){}
- }
+ // The Key widget is gone (4.9.9.9.9.7.9). A saved layout that still lists
+ // 'key' loses it in the filter above — the strip has been hidden on Play since
+ // 4.9.4, the transport's key menu does its job — and 'modo-live-key', the
+ // flag the old migration left behind, is simply never read again. It is not
+ // removed: nothing gains from deleting a key, and a downgrade would still
+ // find it.
  LV.slots = s;
 })();
 function lvSave(){ try{ modStore.setItem('modo-live-slots', JSON.stringify(LV.slots)); }catch(e){} }
-// Up to four instruments, plus the key if it is on the page.
-function lvCount(s){ return (s||LV.slots).filter(function(m){ return m!=='key'; }).length; }
-function lvClamp(s){
- var n=0;
- return s.filter(function(m){ if(m==='key') return true; return ++n <= LV_MAX; });
-}
+function lvCount(s){ return (s||LV.slots).length; }
+function lvClamp(s){ return s.slice(0, LV_MAX); }
 function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
 function lvAllowed(m){ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g); }
 function lvActive(){
@@ -17506,7 +17501,6 @@ function lvNodes(m){
  else if(m==='drums') out = [lvLabel('drums'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
  else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
  else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
- else if(m==='key') out = [q('#page-perform > .key-strip')];
  out = (out||[]).filter(Boolean);
  if(out.length) _lvNodes[m] = out;
  return out;
@@ -17565,7 +17559,7 @@ function lvMount(){
   cont.appendChild(slot);
  });
  // Instruments not in a slot are off the Live page, including their headings.
- ['key','chords','melody','pads','fx'].forEach(function(m){
+ ['chords','melody','pads','fx'].forEach(function(m){
   if(!lvHas(m) || !lvAllowed(m)) lvNodes(m).forEach(function(n){ n.classList.add('lv-off'); });
  });
  // At the foot of the page, always (4.9.9.9.9.7.5). It was a dashed "+ Add
@@ -17788,8 +17782,6 @@ function lvSlotMenu(i, anchor){
  LV_ORDER.forEach(function(m){
   if(m===cur) return;
   var j = LV.slots.indexOf(m);
-  // The key's slot cannot become a fifth instrument; it can swap with one.
-  if(cur==='key' && j<0 && lvCount()>=LV_MAX) return;
   items.push({ label: '⇄  '+LV_NAME[m] + (j>=0 ? '  (swap with slot '+(j+1)+')' : '') + (lvAllowed(m)?'':'  · Pro'),
                fn: function(){ lvPick(i, m); } });
  });
@@ -17832,12 +17824,10 @@ function lvPick(i, m){
 }
 function lvAddMenu(anchor){
  var full = lvCount() >= LV_MAX;
- var free = LV_ORDER.filter(function(m){ return !lvHas(m) && (m==='key' || !full); });
+ var free = LV_ORDER.filter(function(m){ return !lvHas(m) && !full; });
  var items = free.map(function(m){
-  // The key goes back on top, where you would look for it; an instrument goes
-  // on the end.
   return { label: LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'),
-           fn: function(){ if(m==='key') lvSet(['key'].concat(LV.slots)); else lvPick(LV.slots.length, m); } };
+           fn: function(){ lvPick(LV.slots.length, m); } };
  });
  items.push({ label:'↺  Back to the standard layout', fn: function(){ lvSet(LV_STD); } });
  gridClipMenu(anchor, 'Add to the Live page', items);
@@ -17865,7 +17855,7 @@ function lvWidgetsRender(){
  var list = mk('div','lv-w-list');
  LV.slots.forEach(function(m, i){
   var row = mk('div','lv-w-row');
-  row.appendChild(mk('span','lv-w-n', LV_NAME[m] + (m==='key' ? ' strip' : '') ));
+  row.appendChild(mk('span','lv-w-n', LV_NAME[m] ));
   if(!lvAllowed(m)) row.appendChild(mk('span','lv-w-pro','Pro'));
   var ctl = mk('span','lv-w-ctl');
   ctl.appendChild(btn('↑','Move '+LV_NAME[m]+' up', function(){ lvMove(i,-1); }, i===0));
@@ -17880,12 +17870,10 @@ function lvWidgetsRender(){
   host.appendChild(mk('div','lv-w-h','Add' + (full ? ' · the page holds four — take one off to add another' : '')));
   var pool = mk('div','lv-w-pool');
   free.forEach(function(m){
-   // The key strip is not an instrument and never counts against the four.
-   var blocked = full && m!=='key';
    var b = mk('button','lv-w-add', '+ '+LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'));
-   b.type='button'; b.disabled = blocked;
+   b.type='button'; b.disabled = full;
    b.addEventListener('click', function(){
-    if(m==='key') lvSet(['key'].concat(LV.slots)); else lvPick(LV.slots.length, m);
+    lvPick(LV.slots.length, m);
     lvWidgetsRender();
    });
    pool.appendChild(b);
