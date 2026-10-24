@@ -1693,7 +1693,7 @@ voices do not.
 
 ### Haptics
 
-**Built (4.9.9.9.9.8.9i; Swift unbuilt).** `modPlatform.haptic(kind)` and
+**Built (4.9.9.9.9.8.9i; the Swift compiles for the simulator, nothing has been felt on a phone).** `modPlatform.haptic(kind)` and
 `hapticPrepare()` are in `index.html`, called from the chord and 7th pads, the
 melody keys, the sample pads (`pad`), the mõdFX pad (`kaoss`, down and while
 dragging, at most one per 110 ms), the Bounce finish (`bounce`) and the sample
