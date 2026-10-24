@@ -151,6 +151,16 @@ double num(id value, double fallback = 0) {
   std::atomic<double> _clkOrigin;
   std::atomic<bool> _clkReset;
   modsynth::PhaseTracker _clk;    // the estimate behind it; render thread only
+  // How far from that origin the blocks that actually placed notes were, on
+  // average (ms), over the take. A message waits for the next callback and is
+  // placed from that block's wall time (applyMessage), so the blocks that place
+  // notes are the first after a gap, not a sample of all blocks: a median or a
+  // minimum over every block misses by the difference, and a real bounce had the
+  // native chord 31 ms and then 46 ms early. The page shifts the native audio
+  // later by this much. Render thread writes; any thread reads _drainMean.
+  double _curOff, _drainSum;
+  uint32_t _drainN;
+  std::atomic<double> _drainMean;
   // Read by the render thread, written by whoever calls ensurePart. The
   // unique_ptr above owns it; this is the audio thread's view of whether it
   // exists yet, published with release so the object is fully built first.
@@ -191,6 +201,7 @@ double num(id value, double fallback = 0) {
     _master = std::make_unique<modsynth::MasterBus>(sampleRate);
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
+    _curOff = 0; _drainSum = 0; _drainN = 0; _drainMean.store(0);
     for (int i = 0; i < kCapStreams; i++) _cap[i].store(nullptr, std::memory_order_relaxed);
   }
   return self;
@@ -373,7 +384,14 @@ double num(id value, double fallback = 0) {
       clock_gettime(CLOCK_REALTIME, &tsNow);
       const double nowMs = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6;
       const double delayMs = nowMs - mm.ts;
-      if (delayMs > 0 && delayMs < 5000) rel = std::max(0.0, rel - delayMs * 0.001 * _sampleRate);
+      if (delayMs > 0 && delayMs < 5000) {
+        rel = std::max(0.0, rel - delayMs * 0.001 * _sampleRate);
+        if (m.type == MsgType::NoteOn) {
+          _drainSum += _curOff - _clk.estimate();
+          _drainN++;
+          _drainMean.store(_drainSum / (double)_drainN, std::memory_order_relaxed);
+        }
+      }
     }
     mm.at = (double)_partFrames[mm.part] + rel;
     mm.hasAt = true;
@@ -438,8 +456,12 @@ double num(id value, double fallback = 0) {
     clock_gettime(CLOCK_REALTIME, &tsNow);
     const double off = (double)tsNow.tv_sec * 1000.0 + (double)tsNow.tv_nsec / 1e6
                      - (double)blockFrame * 1000.0 / _sampleRate;
-    if (_clkReset.exchange(false, std::memory_order_relaxed)) { _clk.reset(); _clkOrigin.store(1e300, std::memory_order_relaxed); }
+    if (_clkReset.exchange(false, std::memory_order_relaxed)) {
+      _clk.reset(); _clkOrigin.store(1e300, std::memory_order_relaxed);
+      _drainSum = 0; _drainN = 0; _drainMean.store(0, std::memory_order_relaxed);
+    }
     _clkOrigin.store(_clk.update(off), std::memory_order_relaxed);
+    _curOff = off;
   }
 
   Msg m;
@@ -582,7 +604,8 @@ double num(id value, double fallback = 0) {
   }
   os_unfair_lock_unlock(&_capLock);
   const double origin = _clkOrigin.load(std::memory_order_relaxed);
-  return @{@"streams": streams, @"originMs": @(origin < 1e299 ? origin : 0.0), @"sampleRate": @(_sampleRate)};
+  return @{@"streams": streams, @"originMs": @(origin < 1e299 ? origin : 0.0),
+           @"drainMs": @(_drainMean.load(std::memory_order_relaxed)), @"sampleRate": @(_sampleRate)};
 }
 
 - (float)meterForPart:(int)part {

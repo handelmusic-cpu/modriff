@@ -175,7 +175,7 @@ const SCEN = {
           const upTo = frameAt(wall()) - 200, n = Math.max(0, upTo - last);
           const streams = [];
           if (armed && n > 0) { streams.push(stream(0, last, n)); if (window.__capCalls.some(m => m & 2)) streams.push(stream(1, last, n)); last += n; }
-          return { streams, originMs: T0 + (Math.random() - 0.5) * 2, sampleRate: sr };   // the host's running estimate, a little noisy
+          return { streams, originMs: T0 + (Math.random() - 0.5) * 2, drainMs: 0, sampleRate: sr };   // the host's running estimate, a little noisy
         },
         captureStop: async () => { armed = false; },
       };

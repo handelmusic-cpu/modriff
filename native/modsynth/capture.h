@@ -167,6 +167,7 @@ class PhaseTracker {
     return est_;
   }
   uint32_t count() const { return n_; }
+  double estimate() const { return est_; }
  private:
   uint32_t n_ = 0;
   double est_ = 0;

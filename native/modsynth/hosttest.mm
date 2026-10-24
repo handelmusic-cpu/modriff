@@ -122,6 +122,70 @@ int main() {
     d = [h readCapture];
     Got n2 = take(d, 0);
     check(n2.l.size() == 128 && n2.first == again && n2.lost == 0, "the next take begins at its own first frame, with nothing left over", n2.first - again);
+
+    // Where a note lands against where it was meant to, when callbacks come in
+    // bursts. A message waits for the next callback and is placed from that
+    // block's wall time, so on a bursty engine the notes are placed from the
+    // first block after a gap: audibly nothing, but the file put them 31 and 46
+    // ms early on the phone, because the clock origin was a typical block.
+    // origin + drainMs must put each note where it was meant (its stamp plus its
+    // offset), whatever the cadence. Measured on the stem of a part, as the mean
+    // error over 24 notes against each note's intended wall time; the same
+    // patch's attack is in both, so a bursty run is judged against a smooth one.
+    {
+      auto nowMs = [] { struct timespec t; clock_gettime(CLOCK_REALTIME, &t); return t.tv_sec * 1000.0 + t.tv_nsec / 1e6; };
+      auto run = [&](int K, double* errNoShift) {
+        ModEngineHost* g = [[ModEngineHost alloc] initWithSampleRate:sr maxFrames:4096];
+        [g warmUpPart:0];
+        std::vector<float> gl(4096), gr(4096);
+        [g startCapture:1 | 2];
+        const double blockMs = 128.0 * 1000 / sr, cyc = K * blockMs;
+        const int per = (int)std::ceil(450.0 / cyc), NOTES = 24;
+        struct Note { double target; };
+        std::vector<Note> notes;
+        double S = nowMs() + 30;
+        uint32_t seed = 987654321u;
+        auto rnd = [&] { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed / 4294967296.0; };
+        for (int c = 0; c < NOTES * per + 4; c++) {
+          if (c % per == 1 && (int)notes.size() < NOTES) {            // a message arrives somewhere in the gap
+            const double at = S + (c - 1) * cyc + 0.3 * cyc + rnd() * 0.5 * cyc;
+            while (nowMs() < at) {}
+            const double ts = nowMs();
+            const double rel = 6000;                                  // 125 ms ahead
+            const int id = 1000 + (int)notes.size();
+            [g post:@{@"t": @"on", @"part": @0, @"note": @60, @"vel": @0.9, @"id": @(id), @"atRel": @(rel), @"ts": @(ts)}];
+            [g post:@{@"t": @"off", @"part": @0, @"note": @60, @"id": @(id), @"atRel": @(rel + 4800), @"ts": @(ts)}];
+            notes.push_back({ts + rel * 1000 / sr});
+          }
+          const double due = S + c * cyc;
+          while (nowMs() < due) {}
+          for (int j = 0; j < K; j++) [g renderInto:gl.data() right:gr.data() frames:128];
+        }
+        std::vector<Got> pp;
+        NSDictionary* dd = drain(g, pp);
+        const double origin = [dd[@"originMs"] doubleValue], shift = [dd[@"drainMs"] doubleValue];
+        const Got& st = pp[1];
+        double sum = 0, sum0 = 0; int n = 0;
+        for (const Note& nt : notes) {
+          const double fexp = (nt.target - origin) * sr / 1000;
+          const long a = (long)(fexp - 0.03 * sr - st.first), b = (long)(fexp + 0.10 * sr - st.first);
+          if (a < 0 || b >= (long)st.l.size()) continue;
+          float mx = 0; for (long i = a; i < b; i++) mx = std::fmax(mx, std::fabs(st.l[i]));
+          if (mx < 0.005f) continue;
+          long on = a; while (on < b && std::fabs(st.l[on]) < 0.25f * mx) on++;
+          const double wall = origin + (st.first + on) * 1000 / sr;
+          sum += wall + shift - nt.target; sum0 += wall - nt.target; n++;
+        }
+        printf("     K=%2d: %2d notes, origin-only error %+6.1f ms, with drainMs (%+.1f) %+6.1f ms\n", K, n, n ? sum0 / n : 0, shift, n ? sum / n : 0);
+        if (errNoShift) *errNoShift = n ? sum0 / n : 0;
+        return n ? sum / n : 1e9;
+      };
+      double raw16 = 0;
+      const double smooth = run(1, nullptr);
+      const double bursty = run(16, &raw16);
+      check(std::fabs(bursty - smooth) < 3.0, "a bursty engine puts a note where a smooth one does (ms apart, with drainMs)", bursty - smooth);
+      check(std::fabs(raw16 - smooth) > 8.0, "(and without it the bursty run would have been 8+ ms off)", raw16 - smooth);
+    }
   }
   printf("%s\n", fails ? "hosttest FAILED" : "hosttest ok");
   return fails ? 1 : 0;

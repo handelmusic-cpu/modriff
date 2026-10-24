@@ -101,7 +101,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// `originMs` is where engine frame 0 sits on the wall clock (CLOCK_REALTIME,
 /// ms), so engine frame f was rendered at originMs + f / rate: how the page
 /// turns engine frames into its own AudioContext's. 0 until a block has been
-/// rendered. Any thread.
+/// rendered. `drainMs` is how far (ms) the blocks that placed notes sat from
+/// that origin on average: notes are placed from the block that drains them,
+/// the audio is `drainMs` earlier than the origin says, and the caller adds it
+/// back. Any thread.
 - (NSDictionary *)readCapture;
 
 @end
