@@ -6630,7 +6630,9 @@ body.light-mode .sq-layer-btn, body.light-mode .sq-layer-mute { color:#5a5f78; }
    target is easier to hit than a 19px one. */
 /* Side by side now, not stacked: a row has width to spend and no height to
    spare, which is the exact opposite of the column this was written for. */
-.mix-ms { display:flex; flex-direction:row; gap:3px; width:auto; }
+.mix-ms { display:flex; flex-direction:row; flex-wrap:wrap; justify-content:center; gap:3px; width:auto; }
+.mix-strip:not(.mix-master) .mix-msb.mix-eqb { width:55px; }
+.mix-strip:not(.mix-master) .mix-msb.mix-eqb.on { background:rgba(0,0,0,.28); border-color:var(--pg); color:var(--pg); }
 .mix-msb {
  width:26px; height:22px; padding:0; line-height:1;
  font-family:'Outfit',sans-serif; font-size:.42rem; font-weight:700;
@@ -7869,7 +7871,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9u</span></div>
  </div>
 </div>
 
@@ -9137,7 +9139,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9u</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10134,7 +10136,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9t';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11210,7 +11212,7 @@ var MFX_PARAMS = ['mix','tau','active','lpHz','lpQ','hpHz','hpQ','drvAmt','drvWe
  'tremBase','tremDepth','tremHz','pan','ringHz','ringWet','ringDry',
  'dlySend','dlyTime','dlyFb','revSend','dry',
  'stutter','reverse','warp','crush','srate','grain','grainlen','fltmode','fltcut','fltres','fltdrv',
- 'gatePat','gatePatAmt','gatePatHz'];
+ 'gatePat','gatePatAmt','gatePatHz','eqLo','eqMid','eqMidHz','eqHi'];
 MODNAT.mfx = {};
 function _modNativeMfxSync(part, vals){
  if(!MODNAT.attached[part]) return;
@@ -11431,6 +11433,7 @@ PARAMS.push({part:'transport', name:'bpm', read:function(){ return _pSlider('bpm
 // Where each part sits in the stereo field, -1 to 1, centre where absent.
 // An object so a Clear or a setup restore moves them all in one message.
 PARAMS.push({part:'mix', name:'pan', read:function(){ return Object.assign({}, window.sqMixPan || {}); }});
+PARAMS.push({part:'mix', name:'eq', read:function(){ return JSON.parse(JSON.stringify(window.sqMixEq || {})); }});
 PARAMS.push({part:'mix', name:'muteSolo', read:function(){ return {mute: window.sqMixMute || {}, solo: window.sqMixSolo || {}}; }});
 PARAMS.push({part:'fx', name:'modfx', read:function(){ return _fxAppState(); }});
 PARAMS.push({part:'master', name:'on',   read:function(){ return masterBusOn; }});
@@ -21009,30 +21012,66 @@ function toggleMasterBus(){ masterBusOn=!masterBusOn; applyMasterBus(); syncMast
 // A dialog of four sliders rather than a strip of knobs: the mixer row is full,
 // and an EQ is something you open, set and leave. The sliders are the page's
 // ordinary ranges, so they are mappable to a controller while it is open.
+// The panel is one dialog for the master and for every part: `_eqCtx` is whichever
+// is open ({title, sub, get(), set(o)}), and the sliders read and write through it.
+var _eqCtx = null;
+function _eqMasterCtx(){
+ return {title:'Master EQ', sub:'Three bands on the whole mix, after the glue compressor and before the limiter.',
+         get:function(){ return masterEq; }, set:function(o){ eqSet(o); }};
+}
 function eqSyncUI(){
+ const cur=(_eqCtx || _eqMasterCtx()).get();
  const fmt=v=>(v>0?'+':'')+v.toFixed(1)+' dB';
  [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
-  const e=document.getElementById(k[1]); if(e && +e.value!==masterEq[k[0]]) e.value=masterEq[k[0]];
-  const v=document.getElementById(k[1]+'-v'); if(v) v.textContent=fmt(masterEq[k[0]]);
+  const e=document.getElementById(k[1]); if(e && +e.value!==cur[k[0]]) e.value=cur[k[0]];
+  const v=document.getElementById(k[1]+'-v'); if(v) v.textContent=fmt(cur[k[0]]);
  });
  const f=document.getElementById('mb-eq-hz');
  if(f){
-  const pos=Math.log(masterEq.midHz/EQ_MID_MIN)/Math.log(EQ_MID_MAX/EQ_MID_MIN);
+  const pos=Math.log(cur.midHz/EQ_MID_MIN)/Math.log(EQ_MID_MAX/EQ_MID_MIN);
   if(Math.abs(+f.value-pos)>0.002) f.value=pos;
   const v=document.getElementById('mb-eq-hz-v');
-  if(v) v.textContent=masterEq.midHz>=1000 ? (masterEq.midHz/1000).toFixed(2)+' kHz' : Math.round(masterEq.midHz)+' Hz';
+  if(v) v.textContent=cur.midHz>=1000 ? (cur.midHz/1000).toFixed(2)+' kHz' : Math.round(cur.midHz)+' Hz';
  }
  const b=document.getElementById('mb-eq-btn'); if(b) b.classList.toggle('on', !eqIsFlat());
+ mixEqSyncButtons();
 }
-function openMasterEq(){
+// A part's EQ, written the way the pan is: a number in the mixer's state, flushed.
+window.mixEqSet = function(id, o){
+ var cur=Object.assign({lo:0, mid:0, midHz:1000, hi:0}, (window.sqMixEq && window.sqMixEq[id]) || {});
+ if(o && 'lo' in o)    cur.lo    = eqClamp(o.lo,  -EQ_RANGE, EQ_RANGE, 0);
+ if(o && 'mid' in o)   cur.mid   = eqClamp(o.mid, -EQ_RANGE, EQ_RANGE, 0);
+ if(o && 'hi' in o)    cur.hi    = eqClamp(o.hi,  -EQ_RANGE, EQ_RANGE, 0);
+ if(o && 'midHz' in o) cur.midHz = eqClamp(o.midHz, EQ_MID_MIN, EQ_MID_MAX, 1000);
+ if(!window.sqMixEq) window.sqMixEq={};
+ if(!cur.lo && !cur.mid && !cur.hi) delete window.sqMixEq[id]; else window.sqMixEq[id]=cur;
+ modParamsFlush();
+ try{ eqSyncUI(); }catch(e){}
+};
+window.mixEqGet = function(id){
+ return Object.assign({lo:0, mid:0, midHz:1000, hi:0}, (window.sqMixEq && window.sqMixEq[id]) || {});
+};
+function mixEqSyncButtons(){
+ document.querySelectorAll('[data-mixeq]').forEach(function(b){
+  var e=window.sqMixEq && window.sqMixEq[b.dataset.mixeq];
+  b.classList.toggle('on', !!(e && (e.lo || e.mid || e.hi)));
+ });
+}
+function openPartEq(id, label){
+ openEqPanel({title:label+' EQ', sub:'Three bands on this part only: after its mõdFX, before its pan.',
+              get:function(){ return window.mixEqGet(id); }, set:function(o){ window.mixEqSet(id, o); }});
+}
+function openMasterEq(){ openEqPanel(_eqMasterCtx()); }
+function openEqPanel(ctx){
  if(document.querySelector('.eq-overlay')) return;
+ _eqCtx=ctx;
  const ov=document.createElement('div');
  ov.className='csi-overlay eq-overlay';
  const row=(id,label,min,max,step,hint)=>'<div class="eq-row"><label for="'+id+'">'+label+'<small>'+hint+'</small></label>'
   +'<input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'"><span class="eq-val" id="'+id+'-v"></span></div>';
  ov.innerHTML='<div class="dur-picker-box eq-box" role="dialog" aria-modal="true" aria-labelledby="eq-title">'
-  +'<div class="dur-picker-title" id="eq-title">Master EQ</div>'
-  +'<div class="dur-picker-sub">Three bands on the whole mix, after the glue compressor and before the limiter.</div>'
+  +'<div class="dur-picker-title" id="eq-title"></div>'
+  +'<div class="dur-picker-sub" id="eq-sub"></div>'
   +row('mb-eq-lo','Low','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 120 Hz')
   +row('mb-eq-mid','Mid','-'+EQ_RANGE,EQ_RANGE,0.5,'peak')
   +row('mb-eq-hz','Mid at','0','1',0.001,'200 Hz to 5 kHz')
@@ -21040,21 +21079,22 @@ function openMasterEq(){
   +'<div class="csi-row csi-actions"><button type="button" class="tb eq-reset">Flat</button>'
   +'<button type="button" class="tb active eq-done">Done</button></div></div>';
  document.body.appendChild(ov);
- const close=()=>{ ov.remove(); document.removeEventListener('keydown', onKey, true); };
+ ov.querySelector('#eq-title').textContent=ctx.title; ov.querySelector('#eq-sub').textContent=ctx.sub;
+ const close=()=>{ ov.remove(); _eqCtx=null; document.removeEventListener('keydown', onKey, true); };
  const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
  document.addEventListener('keydown', onKey, true);
  ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
  ov.querySelector('.eq-done').addEventListener('click', close);
- ov.querySelector('.eq-reset').addEventListener('click', ()=>eqSet({lo:0, mid:0, hi:0, midHz:1000}));
+ ov.querySelector('.eq-reset').addEventListener('click', ()=>ctx.set({lo:0, mid:0, hi:0, midHz:1000}));
  [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
-  document.getElementById(k[1]).addEventListener('input', e=>{ const o={}; o[k[0]]=parseFloat(e.target.value); eqSet(o); });
+  document.getElementById(k[1]).addEventListener('input', e=>{ const o={}; o[k[0]]=parseFloat(e.target.value); ctx.set(o); });
  });
  document.getElementById('mb-eq-hz').addEventListener('input', e=>{
-  eqSet({midHz: EQ_MID_MIN*Math.pow(EQ_MID_MAX/EQ_MID_MIN, parseFloat(e.target.value))});
+  ctx.set({midHz: EQ_MID_MIN*Math.pow(EQ_MID_MAX/EQ_MID_MIN, parseFloat(e.target.value))});
  });
  // Double-tap a slider to bring that band back to flat.
  ov.querySelectorAll('input[type=range]').forEach(function(r){
-  r.addEventListener('dblclick', ()=>{ if(r.id==='mb-eq-hz') eqSet({midHz:1000}); else { const o={}; o[({'mb-eq-lo':'lo','mb-eq-mid':'mid','mb-eq-hi':'hi'})[r.id]]=0; eqSet(o); } });
+  r.addEventListener('dblclick', ()=>{ if(r.id==='mb-eq-hz') ctx.set({midHz:1000}); else { const o={}; o[({'mb-eq-lo':'lo','mb-eq-mid':'mid','mb-eq-hi':'hi'})[r.id]]=0; ctx.set(o); } });
  });
  eqSyncUI();
 }
@@ -31686,6 +31726,7 @@ function _capSettings(){
   // mixer is no exception now.
   mixGains: (typeof window.sqMixGainsW==='object' && window.sqMixGainsW) ? Object.assign({},window.sqMixGainsW) : null,
   mixPan:   (typeof window.sqMixPan==='object' && window.sqMixPan)       ? Object.assign({},window.sqMixPan)   : null,
+  mixEq:    (typeof window.sqMixEq==='object' && window.sqMixEq)         ? JSON.parse(JSON.stringify(window.sqMixEq)) : null,
   mixMute:  (typeof window.sqMixMute==='object' && window.sqMixMute)     ? Object.assign({},window.sqMixMute)  : null,
   mixSolo:  (typeof window.sqMixSolo==='object' && window.sqMixSolo)     ? Object.assign({},window.sqMixSolo)  : null,
 
@@ -31771,7 +31812,9 @@ function _applySettings(s){
  // A snapshot from before the pan has no mixPan, and leaves it alone, the
  // way mixGains does: the dice and the presets apply partial snapshots too.
  if(s.mixPan && typeof s.mixPan==='object'){ window.sqMixPan=Object.assign({},s.mixPan); modParamsFlush(); }
- if(s.mixGains||s.mixMute||s.mixSolo||s.mixPan){
+ // And before the strip EQs: the same, a snapshot without mixEq leaves them be.
+ if(s.mixEq && typeof s.mixEq==='object'){ window.sqMixEq=JSON.parse(JSON.stringify(s.mixEq)); modParamsFlush(); }
+ if(s.mixGains||s.mixMute||s.mixSolo||s.mixPan||s.mixEq){
   if(typeof window.buildMixChannelsInto==='function'){
    document.querySelectorAll('.mix-chan-row').forEach(el=>window.buildMixChannelsInto(el));
   }
@@ -46297,6 +46340,10 @@ window.sqMixMute = window.sqMixMute || {};
 // Pan per part, -1..1. Absent means centre, so an old setup and an untouched
 // part need no entry. Read by PARAMS (mix.pan) and drawn by the strip.
 window.sqMixPan = window.sqMixPan || {};
+// Each part's own EQ (4.9.9.9.9.8.9u): {lo, mid, midHz, hi} in dB, absent = flat.
+// Same shape as the master's (masterEq) and the same three bands; it sits on the
+// part's strip, after its mõdFX and before its pan. Read by PARAMS (mix.eq).
+window.sqMixEq = window.sqMixEq || {};
 window.sqMixSolo = window.sqMixSolo || {};
 function sqAnySolo(){
   var S=window.sqMixSolo||{};
@@ -54141,6 +54188,12 @@ function _mixBuildStrip(ch){
  mB.onclick=function(){ sqToggleMute(ch.id); };
  sB.onclick=function(){ sqToggleSolo(ch.id); };
  btns.appendChild(mB); btns.appendChild(sB);
+ // The part's own EQ: three bands on this strip, lit when any is off flat.
+ var eB=document.createElement('button'); eB.className='mix-msb mix-eqb'; eB.textContent='EQ'; eB.dataset.mixeq=ch.id;
+ eB.title='EQ for '+ch.label+' — low shelf, a movable peak and high shelf.'; eB.setAttribute('aria-label',ch.label+' EQ');
+ eB.onclick=function(){ openPartEq(ch.id, ch.label); };
+ var _e0=window.sqMixEq && window.sqMixEq[ch.id]; eB.classList.toggle('on', !!(_e0 && (_e0.lo||_e0.mid||_e0.hi)));
+ btns.appendChild(eB);
  var meter=document.createElement('canvas');
  meter.className='mix-meter'; meter.dataset.mixmeter=ch.id;
  meter.setAttribute('aria-hidden','true');
@@ -57076,7 +57129,7 @@ function fxBuildChain(ctx, ch){
  byp.connect(bypDly); bypDly.connect(out);
 
  const bundle={ctx,ch,io,out,wet,byp,bypDly,drvDly,active:true,filt,filt2,hp,hp2,worklet,shaper,drvWet,drvDry,gate,dly,dlyFb,dlySend,rev:null,revSend,
-               trem,tremLfo,tremDepth,pan,mixPan,mixPanComp,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
+               trem,tremLfo,tremDepth,pan,mixPan,mixPanComp,mixPanIn,ringOsc,ringAmt,ringDry,dry,revRet,dlyRet,
                isoLoG,isoMidG,isoHiG,isoWet,isoDry,
                fmt1,fmt2,fmt1G,fmt2G,fmtWet,fmtDry,gatePat,gatePatAmt,
                // The far side of each optional branch, so _fxGateBranch has
@@ -57084,6 +57137,7 @@ function fxBuildChain(ctx, ch){
                postDrive,postIso,postFmt,postRing,
                _live:{},_relT:{}};
  fxChains[ch]=bundle;
+ try{ _webMixEq(); }catch(e){}
  return bundle;
 }
 
@@ -57636,6 +57690,8 @@ function fxApplyChannel(ch){
  chain.tremLfo.frequency.setTargetAtTime(Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate')))), t, S);
  nat.tremDepth=trm*0.98; nat.tremBase=1-trm*0.98; nat.tremHz=Math.max(0.1, 1/Math.max(0.02,_fxDivSec(v('tremrate'))));
  nat.pan=Math.max(-1,Math.min(1, v('pan')*2-1));
+ // The strip's own EQ (not mõdFX's): read from the mixer, whatever the pad is doing.
+ var _eq=_mixEqOf(ch); nat.eqLo=_eq.lo; nat.eqMid=_eq.mid; nat.eqMidHz=_eq.midHz; nat.eqHi=_eq.hi;
 
  if(chain.pan) chain.pan.pan.setTargetAtTime(Math.max(-1,Math.min(1, v('pan')*2-1)), t, S);
 
@@ -57805,6 +57861,59 @@ function _webMixPan(){
   }catch(e){}
  });
 }
+// ── A part's EQ ──
+// Three biquads after the part's mõdFX chain (`out`) and before its pan, built
+// the first time a band is moved and taken out of the graph again once flat, so
+// eight idle strips cost nothing. At 0 dB a biquad is the identity, which is what
+// makes both swaps (in before the gains move, out after they have glided back)
+// seamless.
+function _mixEqOf(ch){
+ var P=_wp('mix.eq'), v=P && P[ch];
+ var n=function(x,lo,hi,d){ x=+x; return isFinite(x) ? Math.max(lo,Math.min(hi,x)) : d; };
+ return {lo:n(v&&v.lo,-12,12,0), mid:n(v&&v.mid,-12,12,0), midHz:n(v&&v.midHz,200,5000,1000), hi:n(v&&v.hi,-12,12,0)};
+}
+function _webMixEq(){
+ Object.keys(fxChains).forEach(function(ch){
+  var c=fxChains[ch]; if(!c || !c.out || !c.mixPanIn) return;
+  var e=_mixEqOf(ch), flat=!e.lo && !e.mid && !e.hi, ctx=c.ctx, t=ctx.currentTime;
+  if(!flat && !c.eqLive){
+   if(!c.eqN){
+    var lo=ctx.createBiquadFilter(); lo.type='lowshelf'; lo.frequency.value=120; lo.gain.value=0;
+    var mid=ctx.createBiquadFilter(); mid.type='peaking'; mid.frequency.value=1000; mid.Q.value=0.9; mid.gain.value=0;
+    var hi=ctx.createBiquadFilter(); hi.type='highshelf'; hi.frequency.value=8000; hi.gain.value=0;
+    lo.connect(mid); mid.connect(hi); hi.connect(c.mixPanIn);
+    c.eqN={lo:lo, mid:mid, hi:hi};
+   }
+   clearTimeout(c.eqT);
+   try{ c.out.disconnect(c.mixPanIn); }catch(err){}
+   c.out.connect(c.eqN.lo); c.eqLive=true;
+  }
+  if(c.eqN){
+   c.eqN.lo.gain.setTargetAtTime(e.lo, t, 0.02);
+   c.eqN.mid.gain.setTargetAtTime(e.mid, t, 0.02);
+   c.eqN.mid.frequency.setTargetAtTime(e.midHz, t, 0.02);
+   c.eqN.hi.gain.setTargetAtTime(e.hi, t, 0.02);
+  }
+  if(flat && c.eqLive){
+   clearTimeout(c.eqT);
+   c.eqT=setTimeout(function(){
+    var e2=_mixEqOf(ch); if(e2.lo || e2.mid || e2.hi || !c.eqLive) return;
+    try{ c.out.disconnect(c.eqN.lo); }catch(err){}
+    c.out.connect(c.mixPanIn); c.eqLive=false;
+   }, 160);
+  }
+ });
+ // The parts the native engine plays have the same three bands inside their
+ // chain (MixFx), always in circuit. fxApplyChannel sends them with the rest at
+ // attach; a change comes through here.
+ try{
+  Object.keys(MODNAT.attached).forEach(function(part){
+   if(!MODNAT.attached[part]) return;
+   var e=_mixEqOf(part);
+   _modNativeMfxSync(part, {eqLo:e.lo, eqMid:e.mid, eqMidHz:e.midHz, eqHi:e.hi});
+  });
+ }catch(err){}
+}
 function _webLiveParam(part, name, prev, value){
  // The native master takes the same settings, whether or not the web's master
  // bus exists yet (it is built on the first touch; the native one is always up).
@@ -57816,6 +57925,7 @@ function _webLiveParam(part, name, prev, value){
   if(part==='mix'){ _modNativeStripSyncAll(); _modNativeMasterSync(); }
   if(part==='mix' && name==='muteSolo') return _mixGateBuses();
   if(part==='mix' && name==='pan') return _webMixPan();
+  if(part==='mix' && name==='eq') return _webMixEq();
   if(part==='chord' && name==='reverbSize') return _webReverbSize();
   if(name==='voice' && SYNTH_FILTER_PARTS.indexOf(part)>=0 && fxChains[part]) return fxApplyChannel(part);
  }catch(e){}

@@ -1925,8 +1925,20 @@ smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
 holds the coefficients to the browser's own `getFrequencyResponse` (within
 0.05 dB over five settings and ten frequencies) and the bus to what the filters
 should do to a tone (0.5 dB); an EQ at zero is bit-identical to none.
-Not built: per-part EQ, and the EQ's sliders are mappable to a controller only
-while the panel is open.
+**Every part has one too (4.9.9.9.9.8.9u).** An EQ button on each mixer strip (under
+M and S) opens the same panel for that part: the same three bands, after the part's
+mõdFX chain and before its pan, so the pad's filters and the strip's EQ are
+independent. State is `window.sqMixEq` (`{part: {lo, mid, midHz, hi}}`, absent =
+flat), the engine's copy `mix.eq`, and it rides in a setup (`mixEq`) and in undo with
+the rest of the mixer. Web: three biquads built the first time a band moves and
+taken out of the graph again once flat (a biquad at 0 dB is the identity, so both
+swaps are seamless), so eight idle strips cost nothing. Native: four parameters
+appended to the mõdFX message (`eqLo`, `eqMid`, `eqMidHz`, `eqHi`); the stage is the
+last thing in `MixFx` and runs whether or not the chain is in (the chain's own
+early-out would otherwise have skipped it), and is not run at all while flat.
+`eqtest.cpp` holds it to the browser's filter responses with the chain out and in,
+and checks flat is bit-identical to none. Not built: the sliders are mappable to a
+controller only while a panel is open.
 
 **iCloud sync: built, off in every build until the iCloud capability is on
 (4.9.9.9.9.8.9q).** CloudKit, the user's own private database: the developer has

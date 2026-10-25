@@ -40,8 +40,8 @@ hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h cap
 warmtest: warmtest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 # The master EQ against the browser's BiquadFilterNode responses.
-eqtest: eqtest.cpp master.cpp master.h dspkit.h
-	$(CXX) $(CXXFLAGS) -o $@ eqtest.cpp master.cpp
+eqtest: eqtest.cpp master.cpp master.h dspkit.h mixfx.cpp mixfx.h modfxproc.cpp modfxproc.h fdlibm.cc
+	$(CXX) $(CXXFLAGS) -o $@ eqtest.cpp master.cpp mixfx.cpp modfxproc.cpp fdlibm.cc
 trimtest: trimtest.cpp master.cpp master.h dspkit.h
 	$(CXX) $(CXXFLAGS) -o $@ trimtest.cpp master.cpp
 fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest eqtest

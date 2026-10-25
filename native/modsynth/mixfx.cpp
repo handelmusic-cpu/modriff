@@ -84,6 +84,9 @@ struct MixFx::Impl {
   Fdn fdn; int rvTail = 0;
   int drvTail = 0;
   float x[2][CHUNK], clean[2][CHUNK], tmp[2][CHUNK];
+  // The strip's EQ. State is per band and channel; the coefficients are redone
+  // only when a gain or the peak's frequency moved.
+  BqC eqC[3]; BqS1 eqS[3][2]; double eqLast[4] = {1e9, 1e9, 1e9, 1e9};
   ModFxProc wk; float wkOut[2][128];
 
   explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate, FX_REV_SEC, FX_REV_SCALE), wk(sampleRate) {
@@ -92,7 +95,7 @@ struct MixFx::Impl {
       /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,
       /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1,
       /*worklet*/0, 0, 1, 0, 0, 0, 0.5, 0, 1, 0, 0,
-      /*gate pattern*/0, 0, 0.5 };
+      /*gate pattern*/0, 0, 0.5, /*eq*/0, 0, 1000, 0 };
     for (int i = 0; i < MFX_COUNT; i++) { p[i] = def[i]; sm[i].init(sr, 0.02); sm[i].snap(def[i]); pv[i] = cv[i] = def[i]; }
     sm[MFX_ACTIVE].init(sr, 0.005); sm[MFX_MIX].init(sr, 0.015);
     dly[0].init((int)(sr * 4.0)); dly[1].init((int)(sr * 4.0));
@@ -140,6 +143,30 @@ struct MixFx::Impl {
     q.srate = p[MFX_SRATE]; q.grain = p[MFX_GRAIN]; q.grainlen = p[MFX_GRAINLEN];
     q.fltmode = p[MFX_FLTMODE]; q.fltcut = p[MFX_FLTCUT]; q.fltres = p[MFX_FLTRES]; q.fltdrv = p[MFX_FLTDRV];
     return q;
+  }
+
+  // The part's EQ, on the finished part (after the Mix, or the clean part when the
+  // chain is out). Bands at 0 dB are not run, and their state is cleared so they
+  // come back from silence.
+  void eqStage(float* L, float* R, int n) {
+    const double g[3] = {cv[MFX_EQ_LO], cv[MFX_EQ_MID], cv[MFX_EQ_HI]};
+    const double hz = cv[MFX_EQ_MID_HZ];
+    if (std::fabs(g[0]) < 0.005 && std::fabs(g[1]) < 0.005 && std::fabs(g[2]) < 0.005) {
+      for (int b = 0; b < 3; b++) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); }
+      eqLast[0] = eqLast[1] = eqLast[2] = eqLast[3] = 1e9;
+      return;
+    }
+    if (std::fabs(g[0] - eqLast[0]) > 1e-4 || std::fabs(g[1] - eqLast[1]) > 1e-4 ||
+        std::fabs(g[2] - eqLast[2]) > 1e-4 || std::fabs(hz - eqLast[3]) > 1e-3) {
+      eqC[0] = eqDesign(EQ_LOW, 120.0, g[0], 0, sr);
+      eqC[1] = eqDesign(EQ_PEAK, hz, g[1], 0.9, sr);
+      eqC[2] = eqDesign(EQ_HIGH, 8000.0, g[2], 0, sr);
+      eqLast[0] = g[0]; eqLast[1] = g[1]; eqLast[2] = g[2]; eqLast[3] = hz;
+    }
+    for (int b = 0; b < 3; b++) {
+      if (std::fabs(g[b]) < 0.005) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); continue; }
+      for (int i = 0; i < n; i++) { L[i] = (float)bqRun1(eqC[b], eqS[b][0], L[i]); R[i] = (float)bqRun1(eqC[b], eqS[b][1], R[i]); }
+    }
   }
 
   // `src` is the chain's input (the part after the buffer effects); `L`/`R`
@@ -301,6 +328,7 @@ void MixFx::process(float* L, float* R, int n) {
       const int kk = std::min(CHUNK, k - c0);
       s.controls();
       s.run(l + c0, r + c0, s.wkOut[0] + c0, s.wkOut[1] + c0, kk);
+      s.eqStage(l + c0, r + c0, kk);
     }
   }
 }
