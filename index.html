@@ -7869,7 +7869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9p</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9q</span></div>
  </div>
 </div>
 
@@ -8994,6 +8994,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row">
      <button class="tb tb-solo" data-haptics onclick="toggleHaptics()" aria-pressed="true">Haptics: ON</button>
     </div>
+    <div class="ss-scope">iCloud <b>keep songs, setups and patches in step across your devices</b></div>
+    <div class="row">
+     <button class="tb tb-solo" data-sync onclick="toggleSync()" aria-pressed="false">iCloud sync: OFF</button>
+     <button class="tb" data-sync-now onclick="modSync.syncNow()" style="display:none">Sync now</button>
+    </div>
+    <div class="ss-note" data-sync-status style="font-size:.46rem;color:var(--muted);line-height:1.6;margin:2px 0 6px"></div>
     <div class="ss-scope">Show <b>extras you can leave off</b></div>
     <div class="row">
      <button class="tb tb-solo" data-fingtoggle onclick="toggleFingering()" aria-pressed="false"
@@ -9130,7 +9136,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9p</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9q</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10127,7 +10133,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9p';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9q';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10497,6 +10503,340 @@ window.modOcr = window.modOcr || (function(){
   }
  };
 })();
+// ── SYNC ENGINE ──────────────────────────────────────────────────────────
+// iCloud sync (CloudKit, private database), as the page sees it. The plugin
+// (ModCloud.swift) only moves records; every decision is here, in plain
+// JavaScript with its dependencies passed in, so tests/sync/ runs it against a
+// fake CloudKit and two simulated devices.
+//
+// What syncs is what a person made, not how a device is set up: the setlist, the
+// saved setups, the mõdSynth patches you saved, imported iReal charts, and two
+// look-and-feel choices (key colours, master EQ). Ports, latency, MIDI routes,
+// what a device plays in the background and the like are the device's own.
+//
+// THE UNIT IS THE ITEM, not the key. A whole-document sync cannot tell "this
+// song was deleted here" from "this song has not arrived yet", and two devices
+// each adding a song would lose one. So each song, setup, patch or chart is one
+// record, and the engine finds what changed by comparing what is stored with
+// what it last saw (a hash per item, kept in modo-sync-meta, which is NOT synced):
+//   new or changed  -> upsert, stamped with the time it was noticed
+//   gone            -> delete
+// The two-device rules, all in apply():
+//   - a remote change replaces the local item unless the local item has an edit
+//     that has not been sent yet and is newer (then the local one wins and goes
+//     up on the next push);
+//   - a remote delete removes the local item unless it has an unsent edit
+//     (then it is kept, and goes up again);
+//   - a push the server refuses because the record moved on comes back as a
+//     conflict: the newer of the two wins, by `modified`.
+// Time is each device's own clock, so two edits seconds apart on clocks that
+// disagree can go the wrong way round. Nothing here can fix that; it is the
+// reason a conflict is resolved by "newer wins" and never by merging fields.
+//
+// Order of a list is not synced: a song that arrives is added to the end.
+//
+// Self-contained, var and function declarations only, so a test can lift it out
+// of index.html and the page can call it before the rest of the script has run.
+var SYNC_META_KEY = 'modo-sync-meta';
+function syncHash(s){
+ var h = 0x811c9dc5, h2 = 0x01000193;
+ for(var i = 0; i < s.length; i++){
+  var c = s.charCodeAt(i);
+  h ^= c; h = Math.imul(h, 0x01000193) >>> 0;
+  h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0;
+ }
+ return ('00000000' + h.toString(16)).slice(-8) + ('00000000' + h2.toString(16)).slice(-8);
+}
+// A record name: ASCII only and at most 255 characters on the CloudKit side, and
+// an item's own id can be a patch name or a title in any script, so it is hashed.
+function syncRid(coll, id){ return coll.name + ':' + syncHash(String(id)); }
+
+// deps: {store:{getItem,setItem} (the raw store: writing through the page's hooked
+//        one would mark everything dirty again), plugin:{push,pull}, collections,
+//        now(), onApplied(collName)}
+function modSyncCreate(deps){
+ var store = deps.store, plugin = deps.plugin, now = deps.now || function(){ return Date.now(); };
+ var colls = deps.collections, byName = {};
+ colls.forEach(function(c){ byName[c.name] = c; });
+ var meta = null;
+ function loadMeta(){
+  if(meta) return meta;
+  try{ meta = JSON.parse(store.getItem(SYNC_META_KEY) || 'null'); }catch(e){ meta = null; }
+  if(!meta || typeof meta !== 'object' || !meta.c) meta = {c:{}};
+  return meta;
+ }
+ function saveMeta(){ try{ store.setItem(SYNC_META_KEY, JSON.stringify(meta)); }catch(e){} }
+ function cm(c){ var m = loadMeta(); return m.c[c.name] || (m.c[c.name] = {}); }
+
+ // The items of a collection as {id: {item, payload}}, or null if the key does
+ // not hold what it should (a damaged value is left alone, never "synced away").
+ function readColl(c){
+  var raw = store.getItem(c.key);
+  if(c.kind === 'doc'){
+   if(raw == null) return {};
+   var d = {}; d[''] = {item:raw, payload:String(raw)}; return d;
+  }
+  var arr; try{ arr = JSON.parse(raw || '[]'); }catch(e){ return null; }
+  if(!Array.isArray(arr)) return null;
+  var out = {};
+  arr.forEach(function(it){
+   if(!it || typeof it !== 'object' || (c.skip && c.skip(it))) return;
+   var id; try{ id = c.idOf(it); }catch(e){ id = null; }
+   if(id == null || id === '') return;
+   out[String(id)] = {item:it, payload:JSON.stringify(it)};
+  });
+  return out;
+ }
+
+ // Find what changed since the last look, and note it.
+ function diff(){
+  var changed = 0;
+  colls.forEach(function(c){
+   var cur = readColl(c); if(cur === null) return;
+   var m = cm(c), t = now();
+   Object.keys(cur).forEach(function(id){
+    var h = syncHash(cur[id].payload), e = m[id];
+    if(!e){ m[id] = {h:h, mod:t, sent:false, rm:0, rid:syncRid(c, id)}; changed++; }
+    else if(e.h !== h){ e.h = h; e.mod = t; e.sent = false; e.gone = false; changed++; }
+    else if(e.gone){ e.gone = false; e.sent = false; e.mod = t; changed++; }   // it came back
+   });
+   Object.keys(m).forEach(function(id){
+    if(cur[id] || m[id].gone) return;
+    // A doc that is absent is not a deletion (a preference never "unset"); only a
+    // list item that was here and is not.
+    if(c.kind === 'doc') return;
+    m[id].gone = true; m[id].sent = false; m[id].mod = t; changed++;
+   });
+  });
+  if(changed) saveMeta();
+  return changed;
+ }
+
+ function pending(){
+  var n = 0, m = loadMeta();
+  colls.forEach(function(c){ var x = m.c[c.name] || {}; Object.keys(x).forEach(function(id){ if(!x[id].sent) n++; }); });
+  return n;
+ }
+
+ // Remote -> local for one record. Returns the collection touched, or null.
+ function applyChange(ch, touched){
+  var c = byName[String(ch.rid).split(':')[0]]; if(!c) return;
+  var m = cm(c), item, id;
+  if(c.kind === 'doc'){ id = ''; item = String(ch.payload); }
+  else {
+   try{ item = JSON.parse(ch.payload); id = String(c.idOf(item)); }catch(e){ return; }
+   if(!item || typeof item !== 'object') return;
+  }
+  var e = m[id], remoteMod = +ch.modified || 0;
+  if(e && !e.sent && !e.gone && e.mod >= remoteMod){ e.rm = remoteMod; return; }   // my edit is newer: it will go up
+  if(e && e.gone && !e.sent && e.mod >= remoteMod){ e.rm = remoteMod; return; }    // my delete is newer
+  if(e && e.h === syncHash(ch.payload) && e.sent){ e.rm = remoteMod; e.mod = remoteMod; return; }   // already the same (our own write coming back)
+  writeItem(c, id, item);
+  m[id] = {h:syncHash(c.kind === 'doc' ? item : JSON.stringify(item)), mod:remoteMod, sent:true, rm:remoteMod, rid:ch.rid, gone:false};
+  touched[c.name] = true;
+ }
+ function applyDelete(rid, touched){
+  var c = byName[String(rid).split(':')[0]]; if(!c || c.kind === 'doc') return;
+  var m = cm(c);
+  var id = Object.keys(m).filter(function(k){ return m[k].rid === rid; })[0];
+  if(id === undefined) return;
+  var e = m[id];
+  if(!e.sent && !e.gone){ e.rm = 0; return; }       // I changed it since: keep mine, it goes up again
+  removeItem(c, id); delete m[id]; touched[c.name] = true;
+ }
+ function writeItem(c, id, item){
+  if(c.kind === 'doc'){ store.setItem(c.key, String(item)); return; }
+  var arr; try{ arr = JSON.parse(store.getItem(c.key) || '[]'); }catch(e){ arr = []; }
+  if(!Array.isArray(arr)) arr = [];
+  var at = -1;
+  arr.forEach(function(x, i){ try{ if(x && String(c.idOf(x)) === id && !(c.skip && c.skip(x))) at = i; }catch(e){} });
+  if(at >= 0) arr[at] = item; else arr.push(item);
+  store.setItem(c.key, JSON.stringify(arr));
+ }
+ function removeItem(c, id){
+  var arr; try{ arr = JSON.parse(store.getItem(c.key) || '[]'); }catch(e){ return; }
+  if(!Array.isArray(arr)) return;
+  store.setItem(c.key, JSON.stringify(arr.filter(function(x){ try{ return !(x && String(c.idOf(x)) === id && !(c.skip && c.skip(x))); }catch(e){ return true; } })));
+ }
+
+ // Local -> remote. Resolves to how many records went up.
+ function push(){
+  var cur = {}, recs = [], dels = [], idx = {};
+  colls.forEach(function(c){
+   var items = readColl(c) || {}, m = cm(c);
+   Object.keys(m).forEach(function(id){
+    var e = m[id]; if(e.sent) return;
+    if(e.gone){ dels.push(e.rid); idx[e.rid] = {c:c, id:id}; return; }
+    if(!items[id]) return;
+    recs.push({rid:e.rid, payload:items[id].payload, modified:e.mod, base:e.rm || 0});
+    idx[e.rid] = {c:c, id:id};
+   });
+  });
+  if(!recs.length && !dels.length) return Promise.resolve(0);
+  return Promise.resolve(plugin.push({records:recs, deletes:dels})).then(function(res){
+   res = res || {};
+   var sent = 0, touched = {};
+   (res.saved || []).forEach(function(rid){ var k = idx[rid]; if(!k) return; var e = cm(k.c)[k.id]; if(e){ e.sent = true; e.rm = e.mod; sent++; } });
+   (res.deleted || []).forEach(function(rid){ var k = idx[rid]; if(!k) return; delete cm(k.c)[k.id]; sent++; });
+   var redo = [];
+   (res.conflicts || []).forEach(function(cf){
+    var k = idx[cf.rid]; if(!k) return;
+    var e = cm(k.c)[k.id]; if(!e) return;
+    var remoteMod = +cf.modified || 0;
+    if(remoteMod > e.mod){
+     // The server's copy is newer than my edit: it wins.
+     applyChange({rid:cf.rid, payload:cf.payload, modified:remoteMod}, touched);
+     var e2 = cm(k.c)[k.id]; if(e2){ e2.sent = true; }
+    } else {
+     // Mine is newer: send it again against the version I now know about.
+     e.rm = remoteMod; e.sent = false; redo.push(cf.rid);
+    }
+   });
+   saveMeta();
+   Object.keys(touched).forEach(function(n){ if(deps.onApplied) deps.onApplied(n); });
+   if(redo.length) return push().then(function(n){ return sent + n; });
+   return sent;
+  });
+ }
+
+ // Remote -> local, everything the server has that I have not seen.
+ function pull(){
+  return Promise.resolve(plugin.pull({})).then(function(res){
+   res = res || {};
+   var touched = {};
+   (res.changes || []).forEach(function(ch){ applyChange(ch, touched); });
+   (res.deleted || []).forEach(function(rid){ applyDelete(rid, touched); });
+   saveMeta();
+   Object.keys(touched).forEach(function(n){ if(deps.onApplied) deps.onApplied(n); });
+   return (res.changes || []).length + (res.deleted || []).length;
+  });
+ }
+
+ var running = null, again = false;
+ // One pass: look, send, fetch. A call while one is running asks for another
+ // pass straight after it, so a change made mid-sync is not left behind.
+ function sync(){
+  if(running){ again = true; return running; }
+  running = Promise.resolve().then(function(){ diff(); return push(); })
+   .then(function(up){ return pull().then(function(down){ return {up:up, down:down}; }); })
+   .then(function(r){ running = null; if(again){ again = false; return sync().then(function(r2){ return {up:r.up + r2.up, down:r.down + r2.down}; }); } return r; },
+         function(e){ running = null; again = false; throw e; });
+  return running;
+ }
+ return {diff:diff, push:push, pull:pull, sync:sync, pending:pending, meta:function(){ return loadMeta(); }, reset:function(){ meta = {c:{}}; saveMeta(); }};
+}
+// ── END SYNC ENGINE ──
+
+// What syncs (see the engine's header for why these and not the rest). The test
+// reads this table out of the page.
+var SYNC_COLLECTIONS = [
+ {name:'sl',     key:'prism-sl',         kind:'list', idOf:function(x){ return x.id; }, skip:function(x){ return !!x.isDemo; }},
+ {name:'setups', key:'modo-setups',      kind:'list', idOf:function(x){ return x.id; }},
+ {name:'msx',    key:'modo-msx-user',    kind:'list', idOf:function(x){ return x.name; }},
+ {name:'ireal',  key:'modo-ireal-songs', kind:'list', idOf:function(x){ return String(x.title) + '|' + String(x.composer || ''); }},
+ {name:'keyhue', key:'modo-keyhue',      kind:'doc'},
+ {name:'eq',     key:'modo-mastereq',    kind:'doc'}
+];
+
+// modSync — the page's side of iCloud sync. Off until the person turns it on
+// (Settings > General > iCloud): their songs going to a server is not a thing to
+// do on a default. The ModCloud plugin does the CloudKit; where it is missing
+// (the web, or a build made without the iCloud entitlement) this says so and
+// does nothing.
+//   available()   the plugin is there to ask
+//   enable(on)    the switch; starts the first sync when turned on
+//   syncNow()     one pass, for the button
+//   touch()       a synced key was written: sync soon
+//   state         {s:'off'|'idle'|'syncing'|'error'|'unavailable', last, err, reason, pending}
+var modSync = (function(){
+ var keys = {}; SYNC_COLLECTIONS.forEach(function(c){ keys[c.key] = true; });
+ // The raw store, taken before the hook below goes on: the engine writes what
+ // arrives from iCloud through this, so applying a remote change does not look
+ // like a local edit.
+ var st = window.modStore;
+ var rawGet = st.getItem.bind(st), rawSet = st.setItem.bind(st);
+ var S = {s:'off', last:0, err:'', reason:'', pending:0};
+ var eng = null, on = false, timer = 0, poll = 0, retry = 0;
+ try{ on = localStorage.getItem('modo-sync-on') === '1'; }catch(e){}
+ function plugin(){ return modCapPlugin('ModCloud', ['status','push','pull']); }
+ function engine(){
+  if(eng) return eng;
+  var p = plugin(); if(!p) return null;
+  eng = modSyncCreate({store:{getItem:rawGet, setItem:rawSet}, plugin:p, collections:SYNC_COLLECTIONS,
+   now:function(){ return Date.now(); }, onApplied:reloaded});
+  return eng;
+ }
+ // The app holds some of these in memory; after a remote change it must read
+ // them again and redraw what shows them.
+ function reloaded(name){
+  try{
+   if(name === 'sl'){ setlistData = loadSLData(); if(typeof renderSetlist==='function') renderSetlist(); if(typeof renderSetlistNav==='function') renderSetlistNav(); if(typeof renderSetlistPerform==='function') renderSetlistPerform(); }
+   else if(name === 'setups'){ if(typeof renderSetups==='function') renderSetups(); }
+   else if(name === 'msx'){ var u = JSON.parse(rawGet('modo-msx-user') || '[]'); if(Array.isArray(u)) MSX_USER = u; if(typeof msxUiRender==='function') msxUiRender(); }
+   else if(name === 'ireal'){ _irealSongs = null; if(typeof libRender==='function' && document.querySelector('.lib-tabs')) libRender(); }
+   else if(name === 'keyhue'){ khLoad(); khRender(); mhApply(root); }
+   else if(name === 'eq'){ eqLoad(); applyMasterBus(); eqSyncUI(); }
+  }catch(e){}
+ }
+ function render(){
+  document.querySelectorAll('[data-sync]').forEach(function(b){
+   var ok = !!plugin();
+   b.textContent = ok ? 'iCloud sync: ' + (on ? 'ON' : 'OFF') : 'iCloud sync: iPhone app only';
+   b.disabled = !ok; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('active', on && ok);
+  });
+  document.querySelectorAll('[data-sync-status]').forEach(function(e){
+   var t = '';
+   if(!plugin()) t = '';
+   else if(!on) t = 'Songs, setups and saved patches stay on this device.';
+   else if(S.s === 'unavailable') t = S.reason || 'iCloud is not available.';
+   else if(S.s === 'syncing') t = 'Syncing…';
+   else if(S.s === 'error') t = 'Could not sync' + (S.err ? ' (' + S.err + ')' : '') + '. Will try again.';
+   else t = S.last ? 'Synced ' + ago(S.last) + (S.pending ? ' · ' + S.pending + ' waiting' : '') : 'Ready.';
+   e.textContent = t; e.style.display = t ? '' : 'none';
+  });
+  document.querySelectorAll('[data-sync-now]').forEach(function(b){ b.style.display = (plugin() && on) ? '' : 'none'; b.disabled = S.s === 'syncing'; });
+ }
+ function ago(t){
+  var d = Math.max(0, Math.round((Date.now() - t) / 1000));
+  return d < 45 ? 'just now' : d < 3600 ? Math.round(d / 60) + ' min ago' : d < 86400 ? Math.round(d / 3600) + ' h ago' : Math.round(d / 86400) + ' d ago';
+ }
+ function run(){
+  if(!on) return Promise.resolve();
+  var e = engine(); if(!e){ S.s = 'unavailable'; S.reason = 'iCloud sync is part of the iPhone app.'; render(); return Promise.resolve(); }
+  S.s = 'syncing'; render();
+  return Promise.resolve(plugin().status()).then(function(r){
+   if(!r || !r.available){ S.s = 'unavailable'; S.reason = (r && r.reason) || 'iCloud is not available.'; render(); return; }
+   return e.sync().then(function(){ S.s = 'idle'; S.last = Date.now(); S.err = ''; S.pending = e.pending(); render(); });
+  }).catch(function(err){
+   S.s = 'error'; S.err = String(err && err.message || err).slice(0, 60); S.pending = e ? e.pending() : 0; render();
+   clearTimeout(retry); retry = setTimeout(run, 60000);
+  });
+ }
+ function touch(){ if(!on) return; clearTimeout(timer); timer = setTimeout(run, 4000); }
+ function enable(v){
+  on = !!v;
+  try{ localStorage.setItem('modo-sync-on', on ? '1' : '0'); }catch(e){}
+  clearInterval(poll);
+  if(on){
+   // Every five minutes while the app is open and in front, and whenever it comes
+   // back to the front or the network does: no push notifications, so this is
+   // how a change made on the other device is noticed.
+   poll = setInterval(function(){ if(document.visibilityState === 'visible') run(); }, 300000);
+   run();
+  } else { clearTimeout(timer); clearTimeout(retry); S.s = 'off'; }
+  render();
+ }
+ // The hook: a write to a synced key schedules a pass.
+ var orig = st.setItem;
+ st.setItem = function(k, v){ orig.call(st, k, v); if(keys[k]) touch(); };
+ document.addEventListener('visibilitychange', function(){ if(on && document.visibilityState === 'visible') run(); });
+ window.addEventListener('online', function(){ if(on) run(); });
+ window.addEventListener('load', function(){ render(); if(on) setTimeout(run, 1500); });
+ document.addEventListener('click', function(e){ if(e.target && e.target.closest && e.target.closest('#set-subnav,.ss-hdr')) setTimeout(render, 50); });
+ return {available:function(){ return !!plugin(); }, enable:enable, syncNow:run, touch:touch, render:render, state:S,
+         isOn:function(){ return on; }, resetAll:function(){ var e = engine(); if(e){ e.reset(); return run(); } }};
+})();
+function toggleSync(){ modSync.enable(!modSync.isOn()); }
 //
 // modEngine — the one door every sound goes through on its way to an engine
 // (docs/v5-architecture.md, section 3). The app decides WHAT plays — which

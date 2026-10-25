@@ -14,7 +14,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
    is one command: it builds, syncs and installs). It is a **Debug** build, which
    is what gives you the Free/Pro switch in section 1.
 2. Open the app and look at Settings > About. It should say
-   **v4.9.9.9.9.8.9n**. If it says anything older, the build did not install.
+   **v4.9.9.9.9.8.9q**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
    or Bluetooth), a real Ultimate Guitar PDF of a song you know, a songbook or
    lead sheet to photograph, and a second Apple device if you want to test
@@ -155,7 +155,26 @@ result worth writing down.
 Whatever it manages is the floor. It says how many native parts fit; it does
 not say the app has to run well there.
 
-## 8. Things that are just worth noticing
+## 8. Key colours, the master EQ, iCloud (4.9.9.9.9.8.9o to 9q)
+
+| # | do | you should see |
+|---|---|---|
+| 8.1 | Settings > General > Key colours, pick **Circle of fifths** | the twelve swatches re-order; keys a fifth apart are neighbours in colour; the whole app's accent follows the key you are in |
+| 8.2 | "Red is" > A | A is red, B♭ orange, round the wheel; the page colour changes with it |
+| 8.3 | Force-quit and reopen | the choice is kept |
+| 8.4 | Settings > About > Test as **Free** | the control is dimmed, the app plays the original colours (C red); tapping it says it is Pro; back to Pro and your choice returns |
+| 8.5 | Mixer > **EQ** on the master strip | a panel with Low, Mid, Mid at, High; the button lights once anything is off flat |
+| 8.6 | Play something with bass and cymbals; drag Low up and High down | the bass swells and the top softens, smoothly, no zipper noise; **Flat** puts it back |
+| 8.7 | Master EQ with the chord part native (and again with drums/bass on web) | the EQ moves **everything**, the native chord included, and a +12 dB boost does not clip (the limiter is after it) |
+| 8.8 | Bounce with an EQ set | the file has the EQ in it |
+| 8.9 | Settings > General > iCloud | "iCloud sync: OFF" with a line saying nothing leaves the device. **If the iCloud capability is not on in this build** it will say it is not enabled when you turn it on, and that is the right answer; skip 8.10 to 8.14 |
+| 8.10 | (capability on, two devices, one Apple ID) turn sync on at both | "Synced just now" on both |
+| 8.11 | Save a setup on device 1 | it is on device 2 within a few seconds of opening the app, or after the next 5-minute check |
+| 8.12 | Delete a song on device 2 | it is gone from device 1 and stays gone |
+| 8.13 | Edit the same song on both, device 2 last | device 2's version wins on both; nothing is duplicated |
+| 8.14 | Airplane mode, make a change, turn it off | it goes up on its own, and the line says "waiting" while it cannot |
+
+## 9. Things that are just worth noticing
 
 - The splash, the first launch, the permission prompts (microphone for the
   sampler, camera for chord sheets, Bluetooth only when you press its button).

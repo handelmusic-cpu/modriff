@@ -14,6 +14,7 @@ are cheaper to make before code than after.
 | 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
 | 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
+| 5 | Phase 2 | key colours, master EQ and iCloud sync **built** (4.9.9.9.9.8.9o to 9q); see "After launch". Extra themes and melody density not built |
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
@@ -1919,6 +1920,77 @@ holds the coefficients to the browser's own `getFrequencyResponse` (within
 should do to a tone (0.5 dB); an EQ at zero is bit-identical to none.
 Not built: per-part EQ, and the EQ's sliders are mappable to a controller only
 while the panel is open.
+
+**iCloud sync: built, off in every build until the iCloud capability is on
+(4.9.9.9.9.8.9q).** CloudKit, the user's own private database: the developer has
+no access to what is in it, and there is no server and no account of ours.
+
+*What syncs:* the setlist (`prism-sl`, not the demo song), saved setups
+(`modo-setups`), saved mõdSynth patches (`modo-msx-user`), imported iReal charts
+(`modo-ireal-songs`), and two look-and-feel choices (`modo-keyhue`,
+`modo-mastereq`). Not synced, on purpose: anything that is about a device (MIDI
+ports and routes, latency, haptics, background play, the Free/Pro test switch),
+and the sampler's own recordings (large, and in IndexedDB; the next piece if it is
+wanted). The table is `SYNC_COLLECTIONS`; adding a key is one line and a test.
+
+*The unit is the item, not the key.* A whole-key sync cannot tell "deleted here"
+from "has not arrived yet", and two devices each adding a song would lose one. So
+each song, setup, patch or chart is one record, and the engine finds what changed
+by comparing what is stored with what it last saw (a hash per item, kept in
+`modo-sync-meta`, which is itself never synced). New or changed is an upsert,
+stamped with the time it was noticed; gone is a delete. The rules for two devices:
+a remote change replaces the local item unless the local one has an unsent edit
+that is newer; a remote delete removes the item unless it has an unsent edit; a
+push the server refuses because the record moved on comes back as a conflict, and
+the newer by `modified` wins. Never a merge of fields. Order in a list is not
+synced (a song that arrives goes to the end). Two devices' clocks are the arbiter,
+so two edits seconds apart on clocks that disagree can go the wrong way.
+
+*Pieces.* `modSyncCreate` (between `SYNC ENGINE` markers in `index.html`) is plain
+JavaScript with its dependencies passed in. `modSync` is the page's glue: the
+switch (Settings > General > iCloud, default **off**: someone's songs going to a
+server is not for a default), a hook on `modStore.setItem` that schedules a pass 4
+seconds after a synced key is written, a pass on launch, whenever the app comes to
+the front or the network returns, and every 5 minutes while it is open (there are
+no push notifications; that would need the remote-notification background mode and
+a subscription, and is the first thing to add if five minutes is too slow).
+`ios/App/App/ModCloud/ModCloud.swift` only moves records: `status`, `push` (with a
+base version per record, which is how a conflict is found), `pull` (by change
+token, kept in UserDefaults; an expired token reads the zone again). One private
+zone `modriff`, one record type `Doc` (`payload` as an asset so a long song is not
+stopped by the 1 MB record limit, `modified`, `v`); record names are hashed
+ASCII, because an item's id can be a patch name in any script.
+
+*Why it is off.* Everything in `ModCloud.swift` that touches CloudKit is inside
+`#if MODRIFF_CLOUDKIT`. Asking CloudKit for a container in an app signed without
+the iCloud entitlement raises an exception and ends the app, and CloudKit is not
+available to a free (Personal Team) account. So no build has it until you do this,
+once, with a paid Developer Program membership:
+
+1. Xcode > the App target > Signing & Capabilities > + Capability > iCloud > tick
+   **CloudKit** and add the container `iCloud.com.handelmusic.modriff`.
+2. Build Settings > Swift Compiler - Custom Flags > Active Compilation Conditions:
+   add `MODRIFF_CLOUDKIT` (Debug and Release).
+3. Run on two devices signed in to the same Apple ID, turn on Settings > General >
+   iCloud on both. CloudKit makes the record type and its fields in the
+   *Development* environment the first time a record is saved.
+4. **Before the App Store build:** CloudKit Dashboard > the container > Deploy
+   Schema Changes to Production. Without this the shipped app cannot save a record.
+
+*Verified here:* `tests/sync/engine.test.js` runs the engine against a fake
+CloudKit that refuses a save made against an old version, with simulated devices:
+a song arriving once and a quiet second pass, edits to different songs on two
+devices both surviving, a delete that stays deleted, the later of two edits to one
+song winning either way round, an unsent edit against a remote delete, preferences
+as a whole value, what is left alone (the demo song, a damaged value, items with no
+id), a failed push waiting for the next pass, a pass asked for mid-pass, a first
+sync on two devices that each have things, and a fuzz of three devices with random
+edits and deletes that must end identical (40 rounds). Five deliberate breakages
+of the engine were each caught. The page glue was driven in a browser with a
+stand-in plugin (off by default, on, a write schedules a pass, an unsynced key does
+not, a remote item arrives, signed out, a network failure, off again). The Swift
+builds for the simulator with and without the flag. **Not done:** a single record
+has never been saved to CloudKit, because there is no entitlement to do it with.
 
 Not built: extra themes and melody density controls from the brief.
 
