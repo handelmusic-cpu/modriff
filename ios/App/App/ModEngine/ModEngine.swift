@@ -442,8 +442,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         func samples(_ d: Data) -> [Int16] {
-            var a = [Int16](repeating: 0, count: d.count / 2)
-            a.withUnsafeMutableBytes { d.copyBytes(to: $0, count: a.count * 2) }
+            // The count is read before `a` is borrowed for writing: reading it
+            // inside the closure is an overlapping access and does not compile.
+            let n = d.count / 2
+            var a = [Int16](repeating: 0, count: n)
+            a.withUnsafeMutableBytes { _ = d.copyBytes(to: $0, count: n * 2) }
             return a
         }
         do {
