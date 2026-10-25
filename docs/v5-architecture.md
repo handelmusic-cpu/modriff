@@ -1832,6 +1832,19 @@ voices do not.
 
 ### Haptics
 
+**4.9.9.9.9.9.0i changes (unbuilt natively; the page side was driven with a stand-in
+plugin).** The melody keys and the Strip (formerly Bend) buzz one level under a pad:
+a new `medium` kind, `UIImpactFeedbackGenerator(.medium)`; the Strip buzzes on touch
+and on every note it slides onto, and a Slide (formerly Continuous) glide ticks as it
+passes each scale note. The mõdFX pad's buzz follows the finger: the 110 ms gap
+closes towards 30 ms as it moves faster (`modPlatform.haptic(kind, src, gapMs)`).
+"Bounce done" is now **System** (`system`), which also carries switches (a tick on
+pointerdown for pressed-state buttons, checkboxes, the part switches, Hold, and
+anything labelled ": ON / OFF") and knobs (`knobTick`: a tick per sixteenth of
+travel, one at each end). A saved `bounce` off is read as `system`. Until a build
+with the `medium` case is installed, the native side answers it with the selection
+tick, which is lighter than intended, not broken.
+
 **Built (4.9.9.9.9.8.9i), felt on an iPhone 17 Pro Max (4.9.9.9.9.8.9s) and
 switchable per instrument (4.9.9.9.9.8.9t).** Settings > General > Touch has the
 master Haptics switch and, under it while it is on, one button per instrument:
