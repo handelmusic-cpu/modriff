@@ -1925,6 +1925,15 @@ smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
 holds the coefficients to the browser's own `getFrequencyResponse` (within
 0.05 dB over five settings and ten frequencies) and the bus to what the filters
 should do to a tone (0.5 dB); an EQ at zero is bit-identical to none.
+**The panel draws what it does (4.9.9.9.9.8.9v).** A curve from 20 Hz to 20 kHz,
+plus and minus 12 dB, filled to the 0 dB line, with a dot for each band that can be
+dragged (a shelf up and down, the peak both ways). The sliders run High, Mid, Mid at,
+Low, top to bottom, the way a spectrum reads. `eqResponseDb` is the same cookbook
+filter the nodes and the native EQ use, evaluated on the unit circle, and
+`tests/eq/curve.test.js` holds it to the browser's `getFrequencyResponse` (the table
+`eqtest.cpp` uses), so the picture, the web nodes and the native EQ answer to one set
+of numbers.
+
 **Every part has one too (4.9.9.9.9.8.9u).** An EQ button on each mixer strip (under
 M and S) opens the same panel for that part: the same three bands, after the part's
 mõdFX chain and before its pan, so the pad's filters and the strip's EQ are

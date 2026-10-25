@@ -5169,6 +5169,7 @@ body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-i
 .midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
 .midi-cc-row { flex-wrap:wrap; }
 .eq-box { width:min(420px, calc(100vw - 32px)); }
+.eq-curve { display:block; width:100%; height:120px; margin:8px 0 4px; border-radius:8px; background:var(--surf2); touch-action:none; cursor:crosshair; }
 .eq-row { display:grid; grid-template-columns:96px 1fr 70px; align-items:center; gap:10px; margin:12px 0; }
 .eq-row label { display:flex; flex-direction:column; font:600 .62rem 'Outfit',sans-serif; color:var(--text); }
 .eq-row label small { font-weight:400; font-size:.46rem; color:var(--muted); }
@@ -7871,7 +7872,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9u</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9v</span></div>
  </div>
 </div>
 
@@ -9139,7 +9140,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9u</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9v</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10136,7 +10137,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9u';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9v';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -21012,6 +21013,103 @@ function toggleMasterBus(){ masterBusOn=!masterBusOn; applyMasterBus(); syncMast
 // A dialog of four sliders rather than a strip of knobs: the mixer row is full,
 // and an EQ is something you open, set and leave. The sliders are the page's
 // ordinary ranges, so they are mappable to a controller while it is open.
+// ── EQ CURVE ──
+// What the three bands do to the signal, as a number at any frequency: the same
+// audio-eq-cookbook forms the browser's BiquadFilterNode and the native EQ use
+// (shelf slope 1, the peak's Q 0.9), evaluated on the unit circle. Only for drawing
+// the panel's curve; tests/eq/curve.test.js holds it to the browser's own
+// getFrequencyResponse.
+function eqBandDb(kind, f0, gainDb, q, f, sr){
+ if(!gainDb) return 0;
+ var A=Math.pow(10, gainDb/40), w0=2*Math.PI*f0/sr, c=Math.cos(w0), s=Math.sin(w0);
+ var b0,b1,b2,a0,a1,a2;
+ if(kind==='peak'){
+  var al=s/(2*q);
+  b0=1+al*A; b1=-2*c; b2=1-al*A; a0=1+al/A; a1=-2*c; a2=1-al/A;
+ } else {
+  var al2=s/2*Math.SQRT2, t=2*Math.sqrt(A)*al2;
+  if(kind==='low'){
+   b0=A*((A+1)-(A-1)*c+t); b1=2*A*((A-1)-(A+1)*c); b2=A*((A+1)-(A-1)*c-t);
+   a0=(A+1)+(A-1)*c+t; a1=-2*((A-1)+(A+1)*c); a2=(A+1)+(A-1)*c-t;
+  } else {
+   b0=A*((A+1)+(A-1)*c+t); b1=-2*A*((A-1)+(A+1)*c); b2=A*((A+1)+(A-1)*c-t);
+   a0=(A+1)-(A-1)*c+t; a1=2*((A-1)-(A+1)*c); a2=(A+1)-(A-1)*c-t;
+  }
+ }
+ var w=2*Math.PI*f/sr, cr=Math.cos(w), ci=-Math.sin(w), c2r=Math.cos(2*w), c2i=-Math.sin(2*w);
+ var nr=b0+b1*cr+b2*c2r, ni=b1*ci+b2*c2i, dr=a0+a1*cr+a2*c2r, di=a1*ci+a2*c2i;
+ return 10*Math.log10((nr*nr+ni*ni)/(dr*dr+di*di));
+}
+// e: {lo, mid, midHz, hi} in dB and Hz. The three bands, added.
+function eqResponseDb(e, f, sr){
+ sr=sr||48000;
+ return eqBandDb('low', 120, e.lo, 0, f, sr) + eqBandDb('peak', e.midHz, e.mid, 0.9, f, sr) + eqBandDb('high', 8000, e.hi, 0, f, sr);
+}
+// ── END EQ CURVE ──
+
+// The curve at the top of the panel, drawn from the same numbers the sliders hold.
+// 20 Hz to 20 kHz across, plus and minus the range up and down; the three dots are
+// the bands, and can be dragged (up and down for a shelf, both ways for the peak).
+var EQ_CV = {W:0, H:0, drag:null};
+function eqDrawCurve(){
+ const cv=document.getElementById('eq-curve'); if(!cv) return;
+ const cur=(_eqCtx || _eqMasterCtx()).get();
+ const r=cv.getBoundingClientRect(); if(r.width<10) return;
+ const dpr=Math.min(3, window.devicePixelRatio||1), W=Math.round(r.width), H=Math.round(r.height);
+ if(cv.width!==Math.round(W*dpr) || cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+ EQ_CV.W=W; EQ_CV.H=H;
+ const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+ const cs=getComputedStyle(document.documentElement);
+ const hue=(cs.getPropertyValue('--kh')||'200').trim(), ink=(c,a)=>(typeof uiInk==='function')?uiInk(a):'rgba(255,255,255,'+a+')';
+ const col='hsl('+hue+',80%,62%)', colFill='hsla('+hue+',80%,62%,.22)';
+ const L0=Math.log(20), L1=Math.log(20000), pad=10, mid=H/2, span=mid-pad;
+ const X=f=>Math.round((Math.log(f)-L0)/(L1-L0)*W*2)/2;
+ const Y=db=>mid-Math.max(-EQ_RANGE*1.3,Math.min(EQ_RANGE*1.3,db))/EQ_RANGE*span;
+ // grid: the 0 dB line a little stronger, 6 dB steps, a mark each decade and octave-ish
+ g.lineWidth=1; g.font='500 9px Outfit, system-ui, sans-serif'; g.textBaseline='top';
+ [-12,-6,0,6,12].forEach(function(db){
+  g.strokeStyle=ink(0, db===0?0.30:0.10); g.beginPath(); g.moveTo(0,Y(db)+.5); g.lineTo(W,Y(db)+.5); g.stroke();
+ });
+ [[50,'50'],[100,'100'],[200,''],[500,'500'],[1000,'1k'],[2000,''],[5000,'5k'],[10000,'10k']].forEach(function(t){
+  g.strokeStyle=ink(0,0.07); g.beginPath(); g.moveTo(X(t[0])+.5,0); g.lineTo(X(t[0])+.5,H); g.stroke();
+  if(t[1]){ g.fillStyle=ink(0,0.42); g.fillText(t[1], X(t[0])+3, H-12); }
+ });
+ g.fillStyle=ink(0,0.42); g.textBaseline='top'; g.fillText('+'+EQ_RANGE, 3, Y(EQ_RANGE)-2); g.fillText('-'+EQ_RANGE, 3, Y(-EQ_RANGE)-9);
+ // the curve, filled to the 0 dB line
+ const pts=[]; for(let x=0;x<=W;x+=2){ const f=Math.exp(L0+(x/W)*(L1-L0)); pts.push([x, Y(eqResponseDb(cur,f))]); }
+ g.beginPath(); g.moveTo(0,mid); pts.forEach(function(p){ g.lineTo(p[0],p[1]); }); g.lineTo(W,mid); g.closePath();
+ g.fillStyle=colFill; g.fill();
+ g.beginPath(); pts.forEach(function(p,i){ if(i) g.lineTo(p[0],p[1]); else g.moveTo(p[0],p[1]); });
+ g.strokeStyle=col; g.lineWidth=2; g.lineJoin='round'; g.stroke();
+ // the three bands' handles, where each one sits on its own curve
+ EQ_CV.dots=[['lo',120,cur.lo],['mid',cur.midHz,cur.mid],['hi',8000,cur.hi]].map(function(d){
+  const x=X(d[1]), y=Y(d[2]);
+  g.beginPath(); g.arc(x,y,5,0,Math.PI*2); g.fillStyle=d[2]?col:'rgba(0,0,0,.4)'; g.fill();
+  g.lineWidth=1.5; g.strokeStyle=ink(0,0.85); g.stroke();
+  return {k:d[0], x:x, y:y};
+ });
+}
+function _eqWireCurve(cv){
+ const pos=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+ const set=o=>{ (_eqCtx||_eqMasterCtx()).set(o); };
+ const fromX=x=>{ const L0=Math.log(20), L1=Math.log(20000); return Math.exp(L0+Math.max(0,Math.min(1,x/EQ_CV.W))*(L1-L0)); };
+ const fromY=y=>{ const pad=10, mid=EQ_CV.H/2; return Math.round(((mid-y)/(mid-pad))*EQ_RANGE*2)/2; };   // half-dB steps
+ cv.addEventListener('pointerdown', function(e){
+  const p=pos(e); let best=null, bd=1e9;
+  (EQ_CV.dots||[]).forEach(function(d){ const dd=Math.hypot(d.x-p.x, d.y-p.y); if(dd<bd){ bd=dd; best=d; } });
+  if(!best || bd>28) return;                      // a thumb is wider than a dot
+  EQ_CV.drag=best.k; try{ cv.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault();
+ });
+ cv.addEventListener('pointermove', function(e){
+  if(!EQ_CV.drag) return;
+  const p=pos(e), db=Math.max(-EQ_RANGE, Math.min(EQ_RANGE, fromY(p.y))), o={};
+  if(EQ_CV.drag==='mid'){ o.mid=db; o.midHz=Math.max(EQ_MID_MIN, Math.min(EQ_MID_MAX, fromX(p.x))); }
+  else o[EQ_CV.drag]=db;
+  set(o);
+ });
+ ['pointerup','pointercancel'].forEach(function(t){ cv.addEventListener(t, function(e){ EQ_CV.drag=null; try{ cv.releasePointerCapture(e.pointerId); }catch(err){} }); });
+}
+
 // The panel is one dialog for the master and for every part: `_eqCtx` is whichever
 // is open ({title, sub, get(), set(o)}), and the sliders read and write through it.
 var _eqCtx = null;
@@ -21035,6 +21133,7 @@ function eqSyncUI(){
  }
  const b=document.getElementById('mb-eq-btn'); if(b) b.classList.toggle('on', !eqIsFlat());
  mixEqSyncButtons();
+ try{ eqDrawCurve(); }catch(e){}
 }
 // A part's EQ, written the way the pan is: a number in the mixer's state, flushed.
 window.mixEqSet = function(id, o){
@@ -21072,14 +21171,17 @@ function openEqPanel(ctx){
  ov.innerHTML='<div class="dur-picker-box eq-box" role="dialog" aria-modal="true" aria-labelledby="eq-title">'
   +'<div class="dur-picker-title" id="eq-title"></div>'
   +'<div class="dur-picker-sub" id="eq-sub"></div>'
-  +row('mb-eq-lo','Low','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 120 Hz')
+  +'<canvas class="eq-curve" id="eq-curve" aria-label="The EQ curve" role="img"></canvas>'
+  // High at the top, low at the bottom, the way a spectrum reads.
+  +row('mb-eq-hi','High','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 8 kHz')
   +row('mb-eq-mid','Mid','-'+EQ_RANGE,EQ_RANGE,0.5,'peak')
   +row('mb-eq-hz','Mid at','0','1',0.001,'200 Hz to 5 kHz')
-  +row('mb-eq-hi','High','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 8 kHz')
+  +row('mb-eq-lo','Low','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 120 Hz')
   +'<div class="csi-row csi-actions"><button type="button" class="tb eq-reset">Flat</button>'
   +'<button type="button" class="tb active eq-done">Done</button></div></div>';
  document.body.appendChild(ov);
  ov.querySelector('#eq-title').textContent=ctx.title; ov.querySelector('#eq-sub').textContent=ctx.sub;
+ _eqWireCurve(ov.querySelector('#eq-curve'));
  const close=()=>{ ov.remove(); _eqCtx=null; document.removeEventListener('keydown', onKey, true); };
  const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
  document.addEventListener('keydown', onKey, true);
