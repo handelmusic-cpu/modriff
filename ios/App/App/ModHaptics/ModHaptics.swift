@@ -11,8 +11,9 @@ import UIKit
 /// meant to arrive with the sound — so the generators here are kept, prepared
 /// when a finger lands on a grid, and prepared again straight after each tap.
 ///
-/// The four kinds are the table in docs/v5-architecture.md ("Haptics"):
-///   pad     heavy impact       chord, melody and sample pads, on pointerdown
+/// The five kinds are the table in docs/v5-architecture.md ("Haptics"):
+///   pad     heavy impact       chord and sample pads, on pointerdown
+///   medium  medium impact      melody keys and the strip's notes: one step under a pad
 ///   kaoss   light impact       the mõdFX pad
 ///   bounce  success            a Bounce finished writing
 ///   tick    selection          steppers and detents
@@ -33,6 +34,7 @@ public class ModHaptics: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private var heavy: UIImpactFeedbackGenerator?
+    private var medium: UIImpactFeedbackGenerator?
     private var light: UIImpactFeedbackGenerator?
     private var notice: UINotificationFeedbackGenerator?
     private var select: UISelectionFeedbackGenerator?
@@ -47,6 +49,7 @@ public class ModHaptics: CAPPlugin, CAPBridgedPlugin {
     private func makeGenerators() {
         if heavy != nil { return }
         heavy = UIImpactFeedbackGenerator(style: .heavy)
+        medium = UIImpactFeedbackGenerator(style: .medium)
         light = UIImpactFeedbackGenerator(style: .light)
         notice = UINotificationFeedbackGenerator()
         select = UISelectionFeedbackGenerator()
@@ -54,7 +57,7 @@ public class ModHaptics: CAPPlugin, CAPBridgedPlugin {
 
     private func prepareAll() {
         makeGenerators()
-        heavy?.prepare(); light?.prepare(); select?.prepare()
+        heavy?.prepare(); medium?.prepare(); light?.prepare(); select?.prepare()
     }
 
     /// A finger has landed on a grid. Wakes the engine so the first hit is not
@@ -72,6 +75,9 @@ public class ModHaptics: CAPPlugin, CAPBridgedPlugin {
             case "pad":
                 self.heavy?.impactOccurred()
                 self.heavy?.prepare()
+            case "medium":
+                self.medium?.impactOccurred()
+                self.medium?.prepare()
             case "kaoss":
                 self.light?.impactOccurred()
                 self.light?.prepare()
