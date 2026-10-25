@@ -24,7 +24,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "captureStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureRead", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureStop", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "fileAppend", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -273,6 +275,67 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
             sheet.completionWithItemsHandler = { _, _, _, _ in
                 try? FileManager.default.removeItem(at: url)
+            }
+            vc.present(sheet, animated: true) { call.resolve() }
+        }
+    }
+
+    /// One piece of a file the page is handing over. shareFile above takes the
+    /// whole file as a single base64 string, which for a long bounce is a
+    /// string of well over a hundred megabytes crossing the bridge; the web
+    /// content process was killed for memory and the page came back at its
+    /// start screen with nothing shared. The page now sends ~1 MB at a time
+    /// (`first` truncates), then asks for the sheet with shareFiles.
+    @objc func fileAppend(_ call: CAPPluginCall) {
+        guard let rawName = call.getString("name"),
+              let b64 = call.getString("data"),
+              let data = Data(base64Encoded: b64) else {
+            call.reject("fileAppend needs a name and base64 data")
+            return
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent((rawName as NSString).lastPathComponent)
+        do {
+            if call.getBool("first") ?? false {
+                try? FileManager.default.removeItem(at: url)
+                guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+                    call.reject("could not create \(url.lastPathComponent)")
+                    return
+                }
+            }
+            let h = try FileHandle(forWritingTo: url)
+            defer { try? h.close() }
+            try h.seekToEnd()
+            try h.write(contentsOf: data)
+            call.resolve()
+        } catch {
+            call.reject("could not write \(url.lastPathComponent): \(error.localizedDescription)")
+        }
+    }
+
+    /// One share sheet for every file already written with fileAppend, so a
+    /// take with stems and MIDI is one "Save to Files" and not a zip made in
+    /// the page (a second full copy of the take in memory).
+    @objc func shareFiles(_ call: CAPPluginCall) {
+        let names = (call.getArray("names", String.self) ?? [])
+            .map { ($0 as NSString).lastPathComponent }
+        let urls = names.map { FileManager.default.temporaryDirectory.appendingPathComponent($0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if urls.isEmpty {
+            call.reject("shareFiles found nothing to share")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let vc = self?.bridge?.viewController else {
+                call.reject("no view controller to present from")
+                return
+            }
+            let sheet = UIActivityViewController(activityItems: urls, applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = vc.view
+            sheet.popoverPresentationController?.sourceRect =
+                CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
+            sheet.completionWithItemsHandler = { _, _, _, _ in
+                urls.forEach { try? FileManager.default.removeItem(at: $0) }
             }
             vc.present(sheet, animated: true) { call.resolve() }
         }
