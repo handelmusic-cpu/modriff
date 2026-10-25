@@ -7920,7 +7920,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4d</span></div>
  </div>
 </div>
 
@@ -9221,7 +9221,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4c</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4d</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10253,7 +10253,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.4c';
+const MODRIFF_VERSION = '4.9.9.9.9.9.4d';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10473,33 +10473,39 @@ window._genQueuePaint = function(part, frac, landed){
  // 768 KB is a multiple of 3, so every piece but the last is whole base64.
  var CHUNK = 768 * 1024;
  function b64Of(buf){
-  var u = new Uint8Array(buf), s = '';
+  var u = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf), s = '';
   for(var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
   return btoa(s);
  }
- function sendChunked(pl, name, blob){
+ P.b64Of = b64Of;
+ function sendChunked(pl, name, blob, folder){
   var off = 0;
   function next(){
    if(off >= blob.size && off > 0) return Promise.resolve();
    var end = Math.min(blob.size, off + CHUNK), first = off === 0;
    return blob.slice(off, end).arrayBuffer().then(function(buf){
-    return pl.fileAppend({name:name, data:b64Of(buf), first:first});
+    return pl.fileAppend({name:name, data:b64Of(buf), first:first, folder:folder||''});
    }).then(function(){ off = end; if(off >= blob.size) return; return next(); });
   }
   return next();
  }
  // Resolves true once the sheet is up; false when this build of the app has no
  // chunked path (an older native binary), so the caller can use the old one.
- P.saveFiles = function(list){
+ // `opts.folder` keeps the files in that folder under Documents (the Files app
+ // shows it) instead of the temporary directory; `opts.onSaved` runs once every
+ // file is written and before the sheet opens. A file with no blob is already
+ // there, written by the recorder.
+ P.saveFiles = function(list, opts){
+  opts = opts || {};
   var pl = (typeof modNativeAvailable==='function' && modNativeAvailable()) ? modNativePlugin() : null;
   if(!pl || typeof pl.fileAppend!=='function' || typeof pl.shareFiles!=='function') return Promise.resolve(false);
   var names = [], chain = Promise.resolve();
   list.forEach(function(f, i){
    var nm = String(f.name).replace(/[\/\\]/g, '_');
    names.push(nm);
-   chain = chain.then(function(){ return sendChunked(pl, nm, f.blob); });
+   if(f.blob) chain = chain.then(function(){ return sendChunked(pl, nm, f.blob, opts.folder); });
   });
-  return chain.then(function(){ return pl.shareFiles({names:names}); }).then(function(){ return true; }, function(e){
+  return chain.then(function(){ try{ if(opts.onSaved) opts.onSaved(); }catch(e){} return pl.shareFiles({names:names, folder:opts.folder||''}); }).then(function(){ return true; }, function(e){
    var msg = String((e && (e.message || e.code)) || e);
    // An app binary from before the chunked path rejects as unimplemented.
    if(/unimplemented|not implemented/i.test(msg)) return false;
@@ -11171,7 +11177,7 @@ window.modEngine = window.modEngine || {};
 // one modsynth::Processor was written to take. A forwarder, not a translator.
 //
 // var, not let: read from functions declared thousands of lines earlier.
-var MODNAT = { native:false, started:false, starting:null, plugin:null, sr:0,
+var MODNAT = { stream:false, native:false, started:false, starting:null, plugin:null, sr:0,
                attached:{}, posted:0, failed:0, refused:0, PART:{chord:0} };
 
 function modNativePlugin(){
@@ -11185,10 +11191,18 @@ function modNativePlugin(){
   if(C.Plugins && C.Plugins.ModEngine) MODNAT.plugin = C.Plugins.ModEngine;
   else if(typeof C.nativePromise === 'function'){
    var call=function(m){ return function(o){ return C.nativePromise('ModEngine', m, o||{}); }; };
+   // Whether this build of the app has the file methods the recorder streams
+   // through. Asked once, with a call that does nothing: a binary from before
+   // them rejects it, and a take must not start writing to a place that is not
+   // there. Until it answers, a take is held in memory as it always was.
+   setTimeout(function(){
+    try{ MODNAT.plugin.fileDelete({names:[]}).then(function(){ MODNAT.stream=true; }, function(){ MODNAT.stream=false; }); }catch(e){ MODNAT.stream=false; }
+   }, 0);
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
                      ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'),
                      meters:call('meters'), shareFile:call('shareFile'),
                      fileAppend:call('fileAppend'), shareFiles:call('shareFiles'),
+                     fileDelete:call('fileDelete'), wavFinish:call('wavFinish'), pcmAdd:call('pcmAdd'),
                      captureStart:call('captureStart'), captureRead:call('captureRead'),
                      captureStop:call('captureStop') };
   }
@@ -11202,6 +11216,10 @@ function modNativeAvailable(){
   return !!modNativePlugin();
  }catch(e){ return false; }
 }
+
+// The plugin is built the first time anything asks, which can be the moment a
+// bounce starts; asking once at load means the stream probe has answered by then.
+window.addEventListener('load', function(){ setTimeout(function(){ try{ modNativeAvailable(); }catch(e){} }, 1500); });
 
 function modNativeStart(){
  if(MODNAT.started) return Promise.resolve(true);
@@ -44766,7 +44784,7 @@ function _stemsMidTake(){
 // Stop the taps and forget what they heard — used when stems are switched off
 // mid-take and when a take fails to start. Nothing is written.
 function _abandonStemTaps(){
-  try{ _stemTaps.forEach(function(t){ if(t.pcm) t.pcm.dispose(); }); }catch(e){}
+  try{ _stemTaps.forEach(function(t){ if(t.pcm) t.pcm.dispose(); if(t.sink) t.sink.discard(); }); }catch(e){}
   _stemTaps=[]; _stemSkipped=[];
 }
 function _updateStemBtn(){
@@ -44807,7 +44825,11 @@ function _startStemTaps(ctx){
     // One part failing to tap must not take the other seven with it.
     try{
       // Same helper as the master tap, so stems get the AudioWorklet too.
-      tap.pcm = _makePcmTap(ctx, node, function(L,R,f){ tap.L.push(L); tap.R.push(R); tap.F.push(f); });
+      if(_canStreamRec()){ try{ tap.sink=_makePcmSink('rec-'+_recTake+'-'+part+'.pcm'); }catch(e){ tap.sink=null; } }
+      tap.pcm = _makePcmTap(ctx, node, function(L,R,f){
+        if(tap.sink){ tap.sink.put(L,R,f); return; }
+        tap.L.push(L); tap.R.push(R); tap.F.push(f);
+      });
     }catch(e){ _stemSkipped.push({part:part, why:'error'}); return; }
     _stemTaps.push(tap);
   });
@@ -44839,6 +44861,10 @@ function _stemSkipNote(list){
 function _finishStemTaps(baseName, sampleRate, tags, span){
   var taps=_stemTaps; _stemTaps=[];
   var written=[];
+  // Taps that streamed to disk are finished by _finishSinkTaps, which has to
+  // wait on the host; the caller does that with what is left here.
+  written.sinkTaps=taps.filter(function(t){ return t.sink; });
+  taps=taps.filter(function(t){ return !t.sink; });
   // Parts the take could not tap (set when it started) come through to the
   // caller with the ones found silent here, so the toast can name them all.
   written.skipped=_stemSkipped.slice(); _stemSkipped=[];
@@ -45019,8 +45045,17 @@ function _downloadOne(name, blob){ modPlatform.saveFile(_dlName(name), blob); }
 // the activation has expired — so the zip is behind it.
 async function _deliverFiles(list, opts){
  opts = opts || {};
- const files=(list||[]).filter(f=>f && f.blob);
+ const files=(list||[]).filter(f=>f && (f.blob || f.native));
  if(!files.length) return;
+ // Files the recorder already wrote to Documents/Bounces: keep them there, send
+ // what is still in the page across, and open the sheet on all of it. Nothing
+ // below can lose them; the sheet is only a way to move them.
+ if(opts.folder){
+  let ok=false;
+  try{ ok = await modPlatform.saveFiles(files.map(function(f){ return {name:_dlName(f.name), blob:f.blob}; }), {folder:opts.folder, onSaved:opts.onSaved}); }catch(e){}
+  if(!ok) showToast('The files are in Files > mõdRïff > Bounces, but the share sheet would not open');
+  return;
+ }
  if(files.length===1){ _downloadOne(files[0].name, files[0].blob); return; }
 
  // In the app: every file in one native share sheet, written in pieces. The
@@ -45088,10 +45123,15 @@ function _startRecording(){
   // with audio in it that had been captured before it began.
   var _myL=[], _myR=[], _myF=[];
   _recChunksL=_myL;_recChunksR=_myR;_recChunksF=_myF;
+  _recTake=Date.now().toString(36);
+  var _mySink=null;
+  try{ if(_canStreamRec()) _mySink=_makePcmSink('rec-'+_recTake+'-mix.pcm'); }catch(e){ _mySink=null; }
+  _recSink=_mySink;
   // Tap the final node, after Master Vol — tapping the limiter would bounce a
   // file that doesn't match what you just heard.
   _recTapNode = window._masterOut || window._masterLimiter;
   _recTap = _makePcmTap(ctx, _recTapNode, function(L,R,f){
+    if(_mySink){ _mySink.put(L,R,f); return; }
     _myL.push(L); _myR.push(R); _myF.push(f);
   });
   _recProcessor=_recTap.node; _recSilentGain=_recTap.sg;
@@ -45099,6 +45139,8 @@ function _startRecording(){
     try{ if(_recTap) _recTap.dispose(); }catch(_){}
     _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
     _recChunksL=[];_recChunksR=[];_recChunksF=[];
+    try{ if(_recSink) _recSink.discard(); }catch(_){}
+    _recSink=null;
     try{ _stopMidiRecording(); }catch(_){}
     _isRecording=false;_updateRecBtn();
     showToast('Could not start recording — try again');
@@ -45223,9 +45265,17 @@ function _natCapTake(c,r){
     var bin=atob(s.data), u=new Uint8Array(bin.length);
     for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
     var f=new Float32Array(u.buffer);                       // n left, then n right
+    got+=n;
+    // A block of digital silence is not kept. The host captures its master on
+    // every take, and with nothing playing in it that was 8 bytes a frame of
+    // zeros held in the page for the length of the take, mixed in as nothing at
+    // the end. The mix and the stems are laid by frame stamp, so a block left
+    // out stays silence where it was. Below 16-bit's last step is silence.
+    var quiet=true;
+    for(var qi=0; qi<f.length; qi++){ if(f[qi]>0.00003 || f[qi]<-0.00003){ quiet=false; break; } }
+    if(quiet) return;
     var st=c.streams[s.id]||(c.streams[s.id]={L:[],R:[],F:[]});
     st.L.push(f.subarray(0,n)); st.R.push(f.subarray(n,2*n)); st.F.push(+s.frame0);   // host frame, for now
-    got+=n;
   });
   return got;
 }
@@ -45306,7 +45356,12 @@ function _natCapMixInto(st, span, L, R){
 function _natCapStemTaps(c){
   Object.keys(MODNAT.PART||{}).forEach(function(part){
     var st=c.streams[1+(MODNAT.PART[part]|0)];
-    if(!st || !st.F.length) return;
+    if(!st || !st.F.length){
+      // Captured, but nothing in it (_natCapTake keeps no silence): the same
+      // "silent" a part gets when its file would have been all zeros.
+      if(MODNAT.attached && MODNAT.attached[part]) _stemSkipped.push({part:part, why:'silent'});
+      return;
+    }
     _stemTaps=_stemTaps.filter(function(t){
       if(t.part!==part) return true;
       try{ if(t.pcm) t.pcm.dispose(); }catch(e){}
@@ -45410,8 +45465,142 @@ function _floatsToWavBlob(left,right,sampleRate,tags){
   }
   return new Blob([view],{type:'audio/wav'});
 }
+
+// ── Streaming a take to disk ────────────────────────────────────────────────
+// A bounce used to be held in the page as 32-bit floats until Stop: a mix and
+// every stem, about 2.7 MB a second, so ten minutes was past a gigabyte and
+// iOS ended the web content process; the app came back at its start screen
+// with nothing saved and nothing to say why. In the app each track is now
+// converted to 16-bit as it arrives and appended to a temporary file on the
+// native side a block at a time, so the page holds a quarter of a megabyte per
+// track however long the take runs. Stop has the host put the pieces together
+// (wavFinish) into Documents/Bounces, where they stay.
+function _canStreamRec(){
+  try{
+    if(!(typeof modNativeAvailable==='function' && modNativeAvailable()) || MODNAT.stream!==true) return false;
+    var pl=modNativePlugin();
+    return !!(pl && pl.fileAppend && pl.wavFinish && pl.pcmAdd && pl.fileDelete && pl.shareFiles && modPlatform.b64Of);
+  }catch(e){ return false; }
+}
+var _recSink=null, _recTake='';
+// Where this take's files are kept: Documents/Bounces/<title> <date and time>.
+function _recFolderFor(base){
+  var d=new Date(), z=function(n){ return (n<10?'0':'')+n; };
+  return 'Bounces/'+_safeName(_dlName(base)).replace(/\s+$/,'')+' '+d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+'.'+z(d.getMinutes())+'.'+z(d.getSeconds());
+}
+// One track's writer. Blocks arrive with the context frame they start at; the
+// writer lays them end to end, fills a gap with silence and trims an overlap,
+// exactly as the in-memory path placed them, and remembers where the track
+// began and ended so the files can be lined up afterwards.
+function _makePcmSink(name){
+  var pl=modNativePlugin(), FR=65536;
+  var s={ name:name, buf:new Int16Array(FR*2), n:0, first:null, next:null, frames:0, peak:0, live:0,
+          q:Promise.resolve(), failed:null, wrote:false };
+  function flush(){
+    if(!s.n) return;
+    var data=modPlatform.b64Of(new Uint8Array(s.buf.buffer,0,s.n*4)), first=!s.wrote;
+    s.wrote=true; s.n=0;
+    // One at a time and in order; a failure is remembered, not thrown into the
+    // audio thread's message handler.
+    s.q=s.q.then(function(){ return pl.fileAppend({name:name, data:data, first:first}); })
+           .catch(function(e){ s.failed=s.failed||e; });
+  }
+  function zeros(k){
+    while(k>0){ var m=Math.min(k,FR-s.n); s.buf.fill(0,s.n*2,(s.n+m)*2); s.n+=m; k-=m; if(s.n>=FR) flush(); }
+  }
+  s.put=function(L,R,f){
+    var len=L.length; if(!len) return;
+    var at=(f!=null && isFinite(f)) ? f : (s.next==null?0:s.next);
+    if(s.first==null){ s.first=at; s.next=at; }
+    var from=0;
+    if(at<s.next){ from=s.next-at; if(from>=len) return; }
+    else if(at>s.next) zeros(at-s.next);
+    var b=s.buf, n=s.n, pk=s.peak, lv=s.live;
+    for(var i=from;i<len;i++){
+      var l=L[i], r=R[i];
+      l=l>1?1:(l<-1?-1:l); r=r>1?1:(r<-1?-1:r);
+      var al=l<0?-l:l, ar=r<0?-r:r;
+      if(al>pk) pk=al; if(ar>pk) pk=ar;
+      if(al>=0.0005) lv++;
+      // The same scaling _floatsToWavBlob uses, so a streamed file is the file
+      // the in-memory path would have written.
+      b[n*2]=l<0?l*0x8000:l*0x7FFF; b[n*2+1]=r<0?r*0x8000:r*0x7FFF;
+      if(++n>=FR){ s.n=n; flush(); n=0; }
+    }
+    s.n=n; s.peak=pk; s.live=lv; s.frames+=len-from; s.next=at+len;
+  };
+  s.drain=function(){ flush(); return s.q; };
+  s.discard=function(){
+    s.n=0;
+    s.q=s.q.then(function(){ return pl.fileDelete({names:[name]}); }).catch(function(){});
+  };
+  return s;
+}
+// The 44-byte header, with the LIST/INFO tags between fmt and data, for a file
+// of `numFrames` 16-bit stereo frames. _floatsToWavBlob writes the same bytes
+// ahead of its samples.
+function _wavHeaderBytes(numFrames, sampleRate, tags){
+  var dataSize=numFrames*4, info=_riffInfoChunk(tags), infoLen=info?info.length:0;
+  var buf=new ArrayBuffer(44+infoLen), view=new DataView(buf);
+  function ws(off,s){ for(var i=0;i<s.length;i++) view.setUint8(off+i,s.charCodeAt(i)); }
+  ws(0,'RIFF'); view.setUint32(4,36+infoLen+dataSize,true); ws(8,'WAVE');
+  ws(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+  view.setUint16(22,2,true); view.setUint32(24,sampleRate,true);
+  view.setUint32(28,sampleRate*4,true); view.setUint16(32,4,true); view.setUint16(34,16,true);
+  if(info) new Uint8Array(buf).set(info,36);
+  ws(36+infoLen,'data'); view.setUint32(40+infoLen,dataSize,true);
+  return new Uint8Array(buf);
+}
+// The mix: the streamed web taps, with the host's own capture (when it had
+// anything to say) added on at its place in the timeline.
+async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
+  var pl=modNativePlugin(), hdr=_wavHeaderBytes(nOut, sr, tags), name=_dlName(base+'.wav');
+  await sink.drain();
+  await pl.wavFinish({ pcm:sink.name, name:name, header:modPlatform.b64Of(hdr), folder:folder,
+    leadBytes:Math.max(0,sink.first-span.f0)*4, skipBytes:Math.max(0,span.f0-sink.first)*4, dataBytes:nOut*4 });
+  if(natMix){
+    for(var i=0;i<natMix.F.length;i++){
+      var at=natMix.F[i]-span.f0, src=natMix.L[i], srcR=natMix.R[i], from=0;
+      if(at<0){ from=-at; at=0; }
+      var len=Math.min(src.length-from, nOut-at);
+      if(len<=0) continue;
+      var pcm=new Int16Array(len*2);
+      for(var k=0;k<len;k++){
+        var l=Math.max(-1,Math.min(1,src[from+k])), r=Math.max(-1,Math.min(1,srcR[from+k]));
+        pcm[k*2]=l<0?l*0x8000:l*0x7FFF; pcm[k*2+1]=r<0?r*0x8000:r*0x7FFF;
+      }
+      await pl.pcmAdd({ name:name, folder:folder, offset:hdr.length+at*4, data:modPlatform.b64Of(new Uint8Array(pcm.buffer)) });
+    }
+  }
+  return { name:base+'.wav', native:true };
+}
+// Stems that were streamed: each is placed on the mix's timeline by where its
+// first block began, like _finishStemTaps does for the in-memory ones, and a
+// part that never sounded writes nothing.
+async function _finishSinkTaps(written, taps, base, sr, tags, span, folder){
+  var pl=modNativePlugin(), drop=[];
+  for(var i=0;i<taps.length;i++){
+    var t=taps[i], sk=t.sink;
+    if(t.pcm) t.pcm.dispose();
+    try{ await sk.drain(); }catch(e){}
+    if(sk.failed || !sk.frames || sk.peak<0.0005){
+      written.skipped.push({part:t.part, why: sk.failed?'error':'silent'}); drop.push(sk.name); continue;
+    }
+    var stemTags=Object.assign({}, tags||{});
+    if(stemTags.INAM) stemTags.INAM += ' — ' + STEM_LABELS[t.part];
+    var hdr=_wavHeaderBytes(span.n, sr, stemTags), nm=base+' - '+STEM_LABELS[t.part]+'.wav';
+    try{
+      await pl.wavFinish({ pcm:sk.name, name:_dlName(nm), header:modPlatform.b64Of(hdr), folder:folder,
+        leadBytes:Math.max(0,sk.first-span.f0)*4, skipBytes:Math.max(0,span.f0-sk.first)*4, dataBytes:span.n*4 });
+      written.push({ name:nm, native:true });
+    }catch(e){ written.skipped.push({part:t.part, why:'error'}); drop.push(sk.name); }
+  }
+  if(drop.length){ try{ pl.fileDelete({names:drop}); }catch(e){} }
+}
 function _stopRecording(){
   var midiFile=_stopMidiRecording();
+  // Taken now, not 150ms from now: a take started inside that window sets its own.
+  var sink=_recSink; _recSink=null;
   var tap=_recTap;
   _recTap=null;_recProcessor=null;_recSilentGain=null;_recTapNode=null;
   // Ends the host's capture now, with the web taps, and drains it while they
@@ -45422,17 +45611,44 @@ function _stopRecording(){
   if(tap && tap.flush) tap.flush();
   try{ _stemTaps.forEach(function(t){ if(t.pcm && t.pcm.flush) t.pcm.flush(); }); }catch(e){}
   // Let the final buffer flush before tearing the tap down
-  setTimeout(function(){ natP.then(function(nat){
+  setTimeout(function(){ natP.then(async function(nat){
     if(tap) tap.dispose();
     var natMix=(nat && !nat.failed && nat.streams[0] && nat.streams[0].F.length) ? nat.streams[0] : null;
-    if(!_recChunksL.length && !natMix){
+    if(!(sink ? sink.frames : _recChunksL.length) && !natMix){
+      if(sink) sink.discard();
       // The stem taps were made for this take; leaving them connected would keep
       // eight worklets running into the destination for no reason.
       _abandonStemTaps();
       showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;
     }
     var base0=(document.getElementById('chart-title')?.value||'modo-session');
-    var totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
+    var totalLen, span=null, fullL=null, fullR=null;
+    var folder = sink ? _recFolderFor(base0) : '';
+    if(sink){
+      // Streamed: the mix is already on the host's disk. Only its extent and
+      // whether it held any sound are needed here.
+      try{ await sink.drain(); }catch(e){ sink.failed=sink.failed||e; }
+      if(sink.failed){
+        sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
+        showToast('Could not write the bounce to disk — nothing was saved');
+        try{ console.warn('[rec] stream failed', sink.failed); }catch(e){}
+        return;
+      }
+      var _sf0=sink.first, _sfEnd=sink.next, _sx=_natCapExtent(natMix);
+      _sf0=Math.min(_sf0,_sx.f0); _sfEnd=Math.max(_sfEnd,_sx.fEnd);
+      span={ f0:_sf0, n:_sfEnd-_sf0 }; totalLen=span.n;
+      if(sink.live<64){
+        sink.discard();
+        _isRecording=false;_updateRecBtn();
+        _abandonStemTaps();
+        showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
+        try{ console.warn('[rec] capture was digitally silent',
+          {frames:totalLen, liveSamples:sink.live, peak:sink.peak,
+           tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
+        return;
+      }
+    } else {
+    totalLen=_recChunksL.reduce(function(a,c){return a+c.length;},0);
     // The mix sets the timeline every stem is written onto (_finishStemTaps):
     // its first block's frame, and its length. Laid out by stamp like the
     // stems, so a gap in the mix's own blocks stays where it was too.
@@ -45448,7 +45664,8 @@ function _stopRecording(){
     // Without stamps on the web blocks there is nothing to line the host up
     // against; the mix is written as it always was, without it.
     if(!span) natMix=null;
-    var fullL=new Float32Array(totalLen),fullR=new Float32Array(totalLen),pos=0;
+    var pos=0;
+    fullL=new Float32Array(totalLen); fullR=new Float32Array(totalLen);
     for(var i=0;i<_recChunksL.length;i++){
       var _at = span ? _F[i]-span.f0 : pos;
       fullL.set(_recChunksL[i],_at);fullR.set(_recChunksR[i],_at);pos+=_recChunksL[i].length;
@@ -45485,17 +45702,30 @@ function _stopRecording(){
          tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
       return;
     }
+    }
     var _sr=getCtx().sampleRate;
     var base=base0;
     var tags=_bounceInfoTags();
     // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so; the
     // take itself is whole in memory, only the file is shorter.
-    var _wavL=fullL, _wavR=fullR, _audioCut=false;
+    var _audioCut=false, _capN=Infinity, files;
     if(typeof modAllows==='function' && !modAllows('fullAudioExport')){
-      var _capN=Math.round(FREE_NUMBERS.audioExportSeconds*_sr);
-      if(fullL.length>_capN){ _wavL=fullL.subarray(0,_capN); _wavR=fullR.subarray(0,_capN); _audioCut=true; }
+      _capN=Math.round(FREE_NUMBERS.audioExportSeconds*_sr);
     }
-    var files=[{ name:base+'.wav', blob:_floatsToWavBlob(_wavL,_wavR,_sr,tags) }];
+    if(sink){
+      var _nOut=Math.min(span.n,_capN); _audioCut=span.n>_capN;
+      try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder) ]; }
+      catch(e){
+        sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
+        showToast('Could not write the bounce to disk — nothing was saved');
+        try{ console.warn('[rec] finishing the mix failed', e); }catch(_){}
+        return;
+      }
+    } else {
+      var _wavL=fullL, _wavR=fullR;
+      if(fullL.length>_capN){ _wavL=fullL.subarray(0,_capN); _wavR=fullR.subarray(0,_capN); _audioCut=true; }
+      files=[{ name:base+'.wav', blob:_floatsToWavBlob(_wavL,_wavR,_sr,tags) }];
+    }
     // Native parts' stems, from the host's capture, written with the web ones.
     // Where stems were on but the host's capture was not, the part is named.
     if(exportStems && span.f0!=null){
@@ -45503,6 +45733,10 @@ function _stopRecording(){
       else if(nat) Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) _stemSkipped.push({part:p, why:'native'}); });
     }
     var stems=_finishStemTaps(base,_sr,tags,span);
+    if(stems.sinkTaps && stems.sinkTaps.length){
+      try{ await _finishSinkTaps(stems, stems.sinkTaps, base, _sr, tags, span, folder); }
+      catch(e){ try{ console.warn('[rec] finishing the stems failed', e); }catch(_){} }
+    }
     files=files.concat(stems);
     if(nat && !nat.failed && nat.lat) files.push({ name:base+'-capture-report.txt', blob:new Blob([_natCapReport(nat,_sr)],{type:'text/plain'}) });
     // One take, one name. The recorder defaulted to 'modo-performance' and the
@@ -45518,6 +45752,9 @@ function _stopRecording(){
     if(stems.length) parts.push(stems.length+' stem'+(stems.length>1?'s':''));
     if(midiFile) parts.push('MIDI');
     var done = parts.length ? ('Mix + '+parts.join(' + ')+' ready to save') : 'Mix ready to save as a .wav';
+    // Written to the app's Bounces folder before the sheet opens, so this one is
+    // true: it is in Files > On My iPhone > mõdRïff > Bounces whatever the sheet does.
+    if(folder) done = 'Saved to Files > mõdRïff > Bounces: mix' + (parts.length ? ' + '+parts.join(' + ') : '');
     _hap('bounce','system');
     // What Pro would have given, said once, with what was kept: the first
     // minute and a half, not a refusal.
@@ -45536,8 +45773,11 @@ function _stopRecording(){
     var natBad = nat && nat.failed;
     if(natBad) done += '. The native engine could not be captured, so what it plays is not in the files';
     else if(nat && nat.lost>0) done += '. The native engine dropped ' + Math.round(nat.lost*1000/_sr) + ' ms of audio while recording';
-    showToast(done, (sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined);
-    _deliverFiles(files, { zipName:base, title:base });
+    var _toastOpts=(sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined;
+    // With a folder the toast waits for the blob files to be written too and is
+    // said just before the sheet takes the screen.
+    if(!folder) showToast(done, _toastOpts);
+    _deliverFiles(files, { zipName:base, title:base, folder:folder, onSaved:function(){ showToast(done, _toastOpts); } });
   }); },150);
 }
 function _updateRecBtn(){

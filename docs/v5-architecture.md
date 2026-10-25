@@ -1910,6 +1910,27 @@ hit is not late. The web fallback is `navigator.vibrate` where it exists
 
 ---
 
+### Bounce: streamed to disk, kept in Documents/Bounces (4.9.9.9.9.9.4d)
+
+A bounce held the mix and every stem in the page as 32-bit floats until Stop
+(about 2.7 MB a second with stems), so a ten-minute take passed a gigabyte and
+iOS ended the web content process: the app came back at its start screen with
+nothing saved. In the app each track is now converted to 16-bit as it arrives
+and appended to a temporary file by the host (`ModEngine.fileAppend`); at Stop
+`wavFinish` builds each .wav on disk (header from the page, silence for a late
+start, cut or padded to the mix's length) into `Documents/Bounces/<title>
+<date time>/`, `pcmAdd` lays the host's own capture onto the mix, and the share
+sheet opens on those same files (`shareFiles` with a `folder`). `Info.plist`
+carries `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`, so the
+folder shows in Files under On My iPhone. A cancelled or failed share loses
+nothing.
+
+The page asks once, with a no-op `fileDelete`, whether the app it runs in has
+these methods (`MODNAT.stream`); an older binary keeps the in-memory path.
+The host's capture drops blocks of digital silence (`_natCapTake`): its master
+is captured on every take and was otherwise eight bytes a frame of zeros.
+Unbuilt Swift as of this entry; measured in a browser with a stand-in host only.
+
 ## 4. In-app purchase: one Pro unlock
 
 **Decided (owner, 4.9.9.9.9.8.9):** one product, `modriff_pro`, a one-time
