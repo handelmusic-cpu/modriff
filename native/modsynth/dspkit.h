@@ -55,6 +55,35 @@ inline double bqRun(const BqC& c, BqS& s, double x) {
   return y;
 }
 
+// The two shelves and the peak, as Web Audio's BiquadFilterNode defines them (the
+// audio-eq-cookbook forms its spec gives: shelf slope S = 1, a peak's Q linear,
+// gain in dB). Used by the master EQ. tests: eqtest.cpp against the browser's own
+// getFrequencyResponse.
+enum EqKind { EQ_LOW, EQ_HIGH, EQ_PEAK };
+inline BqC eqDesign(EqKind k, double f, double gainDb, double q, double sr) {
+  f = clampd(f, 10.0, sr * 0.49);
+  const double A = std::pow(10.0, gainDb / 40.0);
+  const double w0 = 2 * PI * f / sr, c = std::cos(w0), s = std::sin(w0);
+  double b0, b1, b2, a0, a1, a2;
+  if (k == EQ_PEAK) {
+    const double al = s / (2 * std::max(q, 1e-4));
+    b0 = 1 + al * A; b1 = -2 * c; b2 = 1 - al * A;
+    a0 = 1 + al / A; a1 = -2 * c; a2 = 1 - al / A;
+  } else {
+    const double al = s / 2 * std::sqrt(2.0), t = 2 * std::sqrt(A) * al;
+    if (k == EQ_LOW) {
+      b0 = A * ((A + 1) - (A - 1) * c + t); b1 = 2 * A * ((A - 1) - (A + 1) * c); b2 = A * ((A + 1) - (A - 1) * c - t);
+      a0 = (A + 1) + (A - 1) * c + t;       a1 = -2 * ((A - 1) + (A + 1) * c);    a2 = (A + 1) + (A - 1) * c - t;
+    } else {
+      b0 = A * ((A + 1) + (A - 1) * c + t); b1 = -2 * A * ((A - 1) + (A + 1) * c); b2 = A * ((A + 1) + (A - 1) * c - t);
+      a0 = (A + 1) - (A - 1) * c + t;       a1 = 2 * ((A - 1) - (A + 1) * c);      a2 = (A + 1) - (A - 1) * c - t;
+    }
+  }
+  BqC o;
+  o.b0 = b0 / a0; o.b1 = b1 / a0; o.b2 = b2 / a0; o.a1 = a1 / a0; o.a2 = a2 / a0;
+  return o;
+}
+
 // Direct form I, for the phaser: its coefficients move every few samples, and
 // the transposed form above carries state that stops meaning anything when
 // they do — with feedback around the chain that grew without bound.

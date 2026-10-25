@@ -138,6 +138,10 @@ If any of that changes, for example an analytics SDK or a sign-in, this answer,
 > Microphone: requested only if you open the Sampler and choose to record.
 > Bluetooth: requested only if you press the Bluetooth button in
 > Settings > MIDI, to pair a Bluetooth MIDI keyboard (not needed to review).
+> iCloud sync is optional and off by default. When it is on, songs, setups and
+> saved patches are kept in the person's own private iCloud (CloudKit) database;
+> the developer has no access to it. (Not in a build until the iCloud capability
+> is added; see docs/v5-architecture.md, "iCloud sync".)
 > Camera: requested only if you choose Camera when importing a chord sheet from
 > a photo (Songs > File > Import a chord sheet). The picture is read on the
 > device and is not stored or sent anywhere.
