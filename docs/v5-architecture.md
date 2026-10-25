@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
-| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27). The C++ engine is in the target (`-ffp-contract=off`, null test 516/516) and the chord part is heard from it: `AppDelegate` owns the audio session, which cleared the old 0.73 s stop ("The native host, and where it stops", kept for its measurements). Native steps landed: the effects rack, the part strip with pan (N1), mõdFX (N3, N4), the master bus (N2) and capture for Bounce and stems (N5); **still open** are the 48 ms offset of the native chord in a bounced file and the other parts going native. Every part's notes already go through `modEngine`: chords (4.9.9.6), live melody (.7), melody sequencer (.8), bass (.9), arp (4.9.9.9.1), drums and Aux (.2), legacy Rhythm and click (.3), the knobs (4.9.9.9.4–.7), the sampler (4.9.9.9.9). Patches a native engine cannot resolve by name travel as values in the same message (4.9.9.9.9.7). Haptics, MIDI, picture import and iCloud sync are written; what a Mac has not compiled is marked unbuilt where it is described |
+| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27). The C++ engine is in the target (`-ffp-contract=off`, null test 516/516) and the chord part is heard from it: `AppDelegate` owns the audio session, which cleared the old 0.73 s stop ("The native host, and where it stops", kept for its measurements). Native steps landed: the effects rack, the part strip with pan (N1), mõdFX (N3, N4), the master bus (N2) and capture for Bounce and stems (N5); **still open** is the rest of the parts going native (the offset once reported for the native chord in a bounced file was the checker's, see N5). Every part's notes already go through `modEngine`: chords (4.9.9.6), live melody (.7), melody sequencer (.8), bass (.9), arp (4.9.9.9.1), drums and Aux (.2), legacy Rhythm and click (.3), the knobs (4.9.9.9.4–.7), the sampler (4.9.9.9.9). Patches a native engine cannot resolve by name travel as values in the same message (4.9.9.9.9.7). Haptics, MIDI, picture import and iCloud sync are written; what a Mac has not compiled is marked unbuilt where it is described |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 | 5 | Phase 2 | key colours, master EQ and iCloud sync **built** (4.9.9.9.9.8.9o to 9q); see "After launch". Extra themes and melody density not built |
 
@@ -1669,6 +1669,11 @@ Bounce and stems now hear the native engine.
   from the file by that. Not measurable here. A stem take with many native parts
   is a few MB/s over the bridge; unmeasured on a phone.
 
+> **Superseded:** the 31 and 46 ms below were `bounce-check.py` misreading a
+> chord's decaying tail; see "N5, resolved" further down. The account is kept
+> because the mechanism it describes (a note placed from the block that drained it)
+> is real, only small.
+
 **N5 correction (4.9.9.9.9.8.7b, 7c): the native chord was 31 ms, then 46 ms,
 early in a real bounce.** The first phone bounce (`modo-session 7`) had every
 stem and the mix whole (8 files, 50.29 s each, no dropouts) and the native
@@ -1704,7 +1709,7 @@ output latencies, which are not measurable from here. The file now follows the
 MIDI grid, so stems and `.mid` line up in a DAW. Run `bounce-check.py` on the
 next bounce: the chord should read with the web parts.
 
-**N5, still open (4.9.9.9.9.8.7c, 7d): the native chord is 48 ms early *in the
+**N5, was open (4.9.9.9.9.8.7c, 7d; resolved below): the native chord read 48 ms early *in the
 file*.** The 7c bounce (`modo-session 8`, 129 s, version tag 7c) read the chord
 at **-47.8 ms** against the `.mid`, in every 20 s stretch from the start
 (-51.6, -48.1, -47.0, -48.3, -47.3, -47.7): systemic, not backgrounding. The
@@ -1726,40 +1731,29 @@ unscheduled note-ons, their mean wait and lead, and the callback sizes. The
 next bounce's report names the cause. `bounce-check.py --by-time` splits a
 take by 20 s.
 
-**N5, the capture report's first reading (bounce `modo-session 9`, tag 4.9.9.9.9.8.8,
-about 60 s).** The native chord reads **-25.6 ms** against the `.mid` (middle half
--26.7 .. -24.1, every 20 s stretch -24.5, -26.4, -23.7): half what it was, still
-constant. The web parts in the same take: arp -0.4, bass +7.8, melody +6.9, kick
-+13.3 (a kick's onset reads late on a 25% threshold, so those are not errors to
-chase). What the report rules out:
+**N5, resolved (4.9.9.9.9.8.9w): the native chord was never early. The checker
+was.** Bounce 9 (-25.6 ms) and a following take (chord -79.1 and arp -80.0, the
+arp being a web part that had read -0.4 the time before) made it visible: -80.0 is
+exactly the edge of `bounce-check.py`'s search window (80 ms before the logged
+time), and 92% of that take's arp notes and 57% of its chords sat on it. The finder
+took the first sample above 25% of the window's peak; when the previous note is
+still ringing at the window's start that is sample 0, whatever the real onset is,
+and a decaying chord tail does it by a different amount each time. The finder now
+takes the rising crossing nearest the logged time and skips a note whose stem never
+dips (`tests/stems/offsets.test.py`: a chord 15 ms late read -32.5 with the old
+finder, +15.0 with the new).
 
-- *The drain phase.* `drainMs` is 0.011 ms, so the 7c correction had nothing to
-  correct on this phone. The host's callbacks are 128 frames, min and max (no
-  bursts show), 88 notes stamped, none unstamped, none unscheduled, mean wait
-  7.1 ms, mean lead 653 ms.
-- *The page's two clocks.* `Date.now()` minus `performance.timeOrigin + now()` is
-  0.00 ms at the start and the end of the take, so the stamp is not the cause (and
-  switching the stamp to `Date.now()` in 7d is the likeliest reason -48 became -26,
-  though no bounce was taken in between to say so).
-- *Dropped audio.* 0.00 ms lost to a slow reader.
-- *The log.* The chord is logged at `atTime`, the exact context time it was
-  scheduled for (`logChordPlay`), the same ruler as the other lanes.
-
-What is left is the pairing itself: `ctx.currentTime` against `Date.now()`
-(`c.q`, the largest reading in the first second, sampled by a 10 ms
-`setInterval`) and the host's origin. A 25 ms constant is about 1200 frames, which
-is the size of a WebKit hardware buffer and not of a 128-frame render quantum, so
-the first thing to suspect is that `currentTime` on the phone moves in steps far
-larger than the 7 ms measured with the stand-in. The report does not carry the
-step size, so it cannot tell. **Next, in order:** (1) **built (4.9.9.9.9.8.9w):** the report has
-a `web clock steps` line, the min, median and max move of `ctx.currentTime` seen by
-the `q` sampler (driven through the real `_natCapStart` and `_natCapReport` with a
-stand-in plugin: 97 moves in a second, 5.8 to 11.6 ms, in desktop Chrome; the
-phone's is the number that matters); (2) one more bounce, and `bounce-check.py --by-time` on it; (3) if
-the step is the size of the error, take `q` from a source that does not step (the
-render thread stamping its own wall clock into a one-sample message), and not from
-a longer sampling window. Until then the file is 25 ms early on the native chord
-and live playback, which the owner hears as right, is untouched.
+Re-run on every bounce taken, the native chord reads: session 7 +0.1 ms (was
+-31.3), session 8 +0.1 (-47.8), the Dm-G-C-Am take -0.3 (-46.3), session 9 -0.1
+(-25.6), the B-E-B take +0.3. The web parts hardly move (arp -0.5 to +3.9, bass
++7 to +10, melody -2 to +5, kick -3 to +19: onset-threshold differences between
+timbres, not placement). So the placement was right from 4.9.9.9.9.8.7 on, and the
+sequence above (the 31 ms, the median origin, `drainMs`, the `Date.now()` stamp)
+was chasing a number the measuring tool made. None of it is wrong and `drainMs`
+measures 0.004 to 0.011 ms on the phone, but none of it was needed. Whether native
+and web are aligned *as heard*, which the file cannot say, is still the owner's
+ear (who finds it right). The capture report's `web clock steps` line (9w) stays;
+it is cheap and answers the clock question for good.
 
 **Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
 render thread and the plugin then warmed it up, which plays sixteen notes into
@@ -2122,8 +2116,7 @@ an Equal/Pure switch, to hear it before touching the native engine.
    for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
 7. **Remaining parts native, then the clock** — ships as 5.0.0. Open before
-   that: the native chord's 26 ms offset in a bounced file (N5, narrowed in 4.9.9.9.9.8.8; next step under "N5, the capture report's first reading"), the sampled
-   voices dropping out in the background, and the things that need a paid
-   developer account or a phone and cannot be settled from here (CloudKit,
-   StoreKit, MIDI hardware: `docs/phone-test-checklist.md` lists what to check
-   on the device).
+   that: the sampled voices dropping out in the background (parked for the next
+   session), and the things that need a paid developer account or a phone and
+   cannot be settled from here (CloudKit, StoreKit, MIDI hardware:
+   `docs/phone-test-checklist.md` lists what to check on the device).

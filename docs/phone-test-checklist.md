@@ -108,7 +108,7 @@ are the open questions from the notes.
 | 5.3 | Settings > General > Copy diagnostics, with chords playing | the native block has `dropped`, `refused` and `failed` at 0, a block load (should be well under 50%) and the slowest block times |
 | 5.4 | Drive the mõdFX pad on the chord part: Filter, Delay, Reverb, Audio Gate patterns | each audibly does what it says; Audio Gate gives the rhythmic chop at the song's tempo |
 | 5.5 | **Bounce with Stems on** for about two minutes with chords, drums, bass and melody playing, then stop | you get a mix `.wav`, a `.mid`, one stem per part, **and a `-capture-report.txt`** |
-| 5.6 | AirDrop or share the bounce to the Mac and run `python3 -I tests/stems/bounce-check.py "<the zip or folder>" --by-time` | each part's offset against the `.mid`. **The native chord was -25.6 ms in the last one (-47.8 before 4.9.9.9.9.8.8).** Send the whole output and the capture report (its new `web clock steps` line is the one wanted) |
+| 5.6 | AirDrop or share the bounce to the Mac and run `python3 -I tests/stems/bounce-check.py "<the zip or folder>" --by-time` | each part's offset against the `.mid`. **The native chord reads within about a millisecond of the grid** (every bounce so far, once the checker was fixed in 9w); the web parts sit within a few ms to +19 (a kick or a soft attack reads late). A part pinned at exactly -80.0 is a stem that never goes quiet, not an offset. Send the output only if the chord is off by more than 5 ms |
 | 5.7 | Listen to the bounced mix | the chord is as loud as it was live, and not clipped |
 | 5.8 | A loud passage: all parts on, Space and Drive up | no crackle or dropout. If there is, copy diagnostics straight away |
 
