@@ -7920,7 +7920,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4e</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4f</span></div>
  </div>
 </div>
 
@@ -9221,7 +9221,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4e</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4f</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10253,7 +10253,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.4e';
+const MODRIFF_VERSION = '4.9.9.9.9.9.4f';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -28970,11 +28970,18 @@ function _endingLand(at, opts){
  const t=(at!=null && isFinite(at))?Math.max(at,now):now;
  const band=(typeof window._sqPlaying==='function' && window._sqPlaying());
  const sustain=opts.sustain!==false;
+ // Read before the rhythm is dropped: dropping it is what stops the bass.
+ const bassOn=(typeof window._blPlaying==='function' && window._blPlaying());
  _endingDropRhythm(t);
  if(band) _endingBandHit(t, opts.hit||{});
  const tok=_endingLandChord(t, sustain);
  const until=()=>{ const c=getCtx(); return Math.max(0,(t-(c?c.currentTime:0))*1000); };
  const hold=opts.holdMs||0;
+ // The bass lands with the band, on the tonic's root — the last note of the
+ // song. A stab is choked with the chord, so it is held as long as the chord.
+ if(bassOn && typeof window._blEndNote==='function'){
+  try{ window._blEndNote(rootMidi(), t, hold/1000 + (sustain ? 0.4 : 0)); }catch(e){}
+ }
  if(!sustain){
   // A stab: choked where it is, not left to decay.
   _endLater(()=>_endingFinish(opts), until()+hold);
@@ -51719,6 +51726,19 @@ window._blLiveOff = function(midi){
   if(!ctx) return;
   // The bass is one voice, so letting go is not of a note but of the voice.
   modSend({v: 1, kind: 'release', part: 'bass', at: null});
+};
+// The bass's note in an ending's landing: the tonic's root, at `at`, held for
+// durSec. _endingDropRhythm stops the bass a look-ahead before the downbeat, and
+// the landing chord's own low note is the chord voice's, not the bass's — so a
+// song that finished on an ending ended with the bass player gone and the
+// bottom of the last chord played by a synth pad. Nothing here when the bass
+// was not playing: that would add a part nobody had switched on.
+window._blEndNote = function(rootPc, at, durSec){
+  var ctx = blCtx(); if(!ctx) return;
+  var pc = ((rootPc % 12) + 12) % 12;
+  // Out of a slide: the landing is its own note, not a glide from the last step.
+  _blPrevSlide = false; _blPrevFreq = 0;
+  blPlayNote(at, pc, blOct, Math.max(0.2, durSec || 1), 0.9, true, false);
 };
 window._webBassRelease = function(){
   var ctx = blCtx();
