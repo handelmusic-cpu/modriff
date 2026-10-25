@@ -1784,7 +1784,7 @@ already dropped a note-off once).
 after the app ships. Leaving the app pauses everything under the duck and the
 song remembers its chord; coming back resumes by itself, once the audio context
 is running again (it waits up to two seconds, then offers a Resume button).
-"Keep playing in background" is off by default and stays as an opt-in for
+"Keep playing in background" was an opt-in; as of 9y it is off and its control is hidden (_bgKeepPlaying() returns false); it was for
 testing, `modo-bgplay` = `'1'`. `UIBackgroundModes: audio` stays in Info.plist
 because the app does play audio. `SceneDelegate` posts `modriff-background` /
 `modriff-foreground` to the page, because `visibilitychange` is not reliable
