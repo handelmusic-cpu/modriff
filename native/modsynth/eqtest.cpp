@@ -7,6 +7,7 @@
 //   2. the master bus with the EQ set does to a quiet tone what the three
 //      filters should, to 0.5 dB, and an unused EQ changes nothing at all.
 #include "master.h"
+#include "mixfx.h"
 #include "dspkit.h"
 #include <cmath>
 #include <cstdio>
@@ -60,6 +61,24 @@ static double busGain(double hz, double lo, double mid, double midHz, double hi)
   return run(true) - run(false);
 }
 
+// Gain of one part's strip EQ (MixFx's last four parameters) on a tone, in dB, with
+// the mõdFX chain in or out: the EQ is the strip's and runs either way.
+static double partGain(double hz, double lo, double mid, double midHz, double hi, bool chainIn, bool setEq = true) {
+  auto run = [&](bool eqOn) {
+    MixFx m(SR);
+    m.set(MFX_TAU, 0.002); m.set(MFX_ACTIVE, chainIn ? 1 : 0);
+    if (eqOn) { m.set(MFX_EQ_LO, lo); m.set(MFX_EQ_MID, mid); m.set(MFX_EQ_MID_HZ, midHz); m.set(MFX_EQ_HI, hi); }
+    const int N = (int)(SR * 1.0);
+    std::vector<float> L(N), R(N);
+    for (int i = 0; i < N; i++) L[i] = R[i] = (float)(0.2 * std::sin(2 * PI_ * hz * i / SR));
+    for (int off = 0; off < N; off += 128) m.process(L.data() + off, R.data() + off, std::min(128, N - off));
+    double s = 0; int k = 0;
+    for (int i = N / 2; i < N; i++) { s += (double)L[i] * L[i]; k++; }
+    return 10 * std::log10(s / k + 1e-30);
+  };
+  return run(setEq) - run(false);
+}
+
 int main() {
   for (const Ref& r : REFS) {
     const BqC lo = eqDesign(EQ_LOW, 120, r.lo, 0, SR), mid = eqDesign(EQ_PEAK, r.midHz, r.mid, 0.9, SR), hi = eqDesign(EQ_HIGH, 8000, r.hi, 0, SR);
@@ -81,6 +100,33 @@ int main() {
     }
     char b[120]; snprintf(b, sizeof b, "through the bus within 0.5 dB: %s", r.name);
     check(worst < 0.5, b, worst);
+  }
+  // The same three bands on a part's strip, with the chain out and in.
+  for (bool chainIn : {false, true}) {
+    for (int k : {4, 0, 3}) {
+      const Ref& r = REFS[k];
+      double worst = 0;
+      for (int i : {1, 3, 4, 7, 8}) {
+        const double got = partGain(F[i], r.lo, r.mid, r.midHz, r.hi, chainIn);
+        worst = std::max(worst, std::fabs(got - r.db[i]));
+      }
+      char b[140]; snprintf(b, sizeof b, "a part's EQ, chain %s, within 0.5 dB: %s", chainIn ? "in" : "out", r.name);
+      check(worst < 0.5, b, worst);
+    }
+  }
+  {
+    // Flat: bit-identical to no EQ settings at all, chain out and in.
+    for (bool chainIn : {false, true}) {
+      MixFx a(SR), b(SR);
+      a.set(MFX_ACTIVE, chainIn); b.set(MFX_ACTIVE, chainIn);
+      b.set(MFX_EQ_LO, 0); b.set(MFX_EQ_MID, 0); b.set(MFX_EQ_HI, 0); b.set(MFX_EQ_MID_HZ, 3000);
+      const int N = 4096; std::vector<float> L1(N), R1(N), L2, R2;
+      for (int i = 0; i < N; i++) L1[i] = R1[i] = (float)(0.3 * std::sin(0.05 * i));
+      L2 = L1; R2 = R1;
+      for (int off = 0; off < N; off += 128) { a.process(L1.data() + off, R1.data() + off, 128); b.process(L2.data() + off, R2.data() + off, 128); }
+      int diff = 0; for (int i = 0; i < N; i++) if (L1[i] != L2[i] || R1[i] != R2[i]) diff++;
+      check(diff == 0, chainIn ? "a flat part EQ is bit-identical to none (chain in)" : "a flat part EQ is bit-identical to none (chain out)", diff);
+    }
   }
   // Unused: a bus with the EQ params at zero is the bus without them, to the bit.
   {

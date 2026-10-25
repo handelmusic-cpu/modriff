@@ -167,6 +167,9 @@ not say the app has to run well there.
 | 8.6 | Play something with bass and cymbals; drag Low up and High down | the bass swells and the top softens, smoothly, no zipper noise; **Flat** puts it back |
 | 8.7 | Master EQ with the chord part native (and again with drums/bass on web) | the EQ moves **everything**, the native chord included, and a +12 dB boost does not clip (the limiter is after it) |
 | 8.8 | Bounce with an EQ set | the file has the EQ in it |
+| 8.8a | Mixer: tap **EQ** under M and S on the Bass strip, boost Low | only the bass gets heavier; the button lights; the master EQ is a separate button on the master strip |
+| 8.8b | The same on the chord part (it is the native one) | the chord part changes, with its mõdFX pad moving filters on top of it; flattening it gives back the original sound |
+| 8.8c | Put an EQ on a part, save a Setup, change the EQ, load the Setup | the part's EQ comes back |
 | 8.9 | Settings > General > iCloud | "iCloud sync: OFF" with a line saying nothing leaves the device. **If the iCloud capability is not on in this build** it will say it is not enabled when you turn it on, and that is the right answer; skip 8.10 to 8.14 |
 | 8.10 | (capability on, two devices, one Apple ID) turn sync on at both | "Synced just now" on both |
 | 8.11 | Save a setup on device 1 | it is on device 2 within a few seconds of opening the app, or after the next 5-minute check |

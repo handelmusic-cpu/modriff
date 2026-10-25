@@ -14,7 +14,8 @@
 //
 // The worklet effects in front of it all (stutter, reverse, warp, bit and rate
 // crush, grain, the ladder filter) are modfxproc.cpp, a port held bit for bit to
-// the page's worklet source. The rhythmic gate's eight patterns are in the gate
+// the page's worklet source. The strip's EQ (last four parameters) is after the whole
+// chain and the Mix, and runs whether or not the chain is in. The rhythmic gate's eight patterns are in the gate
 // stage (GATE_PATTERNS, held to index.html's by tests/modsynth/gatepat.test.js).
 // Not here yet: the sample-source axes. See docs/v5-architecture.md, step N4.
 //
@@ -57,6 +58,11 @@ enum MixFxParam {
   // as an integer 0..7; the rate is bars per second (1 / the bar's length).
   // (No parameter names in these comments: the order test reads this enum.)
   MFX_GATE_PAT, MFX_GATE_PAT_AMT, MFX_GATE_PAT_HZ,
+  // The part's own EQ, the mixer strip's: a low shelf at 120 Hz, a peak at the given
+  // frequency, a high shelf at 8 kHz, gains in dB. Always in circuit (it is the
+  // strip's, not mõdFX's: the Mix and the chain's on/off do not touch it) and not
+  // run at all while it is flat.
+  MFX_EQ_LO, MFX_EQ_MID, MFX_EQ_MID_HZ, MFX_EQ_HI,
   MFX_COUNT
 };
 
