@@ -1877,6 +1877,7 @@ Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
 | Live page | the standard layout (Chords, Melody); the Pads and mõdFX widgets are free if a layout has them | adding, swapping, moving or removing widgets |
 | Voices | every synth voice (Piano (synth), Upright, Rhodes, Organ, the waves...) | every recorded voice, Piano 1 and Upright 1 included, and mõdSynth; locked and listed in every picker |
 | Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
+| Key colours | the original: C red, one colour step a semitone | choose which key is red, and a circle-of-fifths order (`KH`, `khColor`; saved as `modo-keyhue`; free ignores what is saved without erasing it) |
 | Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |
 | Stems | none | per-part stems from Bounce |
 
@@ -1892,12 +1893,17 @@ step count when the tier dropped; that destroyed the Pro choice on re-save and
 is what this replaces.) One banner names what is missing and opens the upgrade
 sheet.
 
-### After launch (Phase 2, not built)
+### After launch (Phase 2)
 
-Key colour mapping (Pro): the chromatic key-to-hue table `MH_HUE` gets a start
-offset so any key can be red, and a circle-of-fifths ordering that reuses the
-same table; both rotatable. Also the EQ, extra themes and melody density
-controls from the brief, and CloudKit sync.
+**Key colour mapping: built (4.9.9.9.9.8.9o).** The chromatic key-to-hue table
+`MH_HUE` gets a start offset so any key can be red, and a circle-of-fifths
+ordering that reuses the same table (`khIndex`: the semitone distance from the
+red key, times 7 mod 12 for fifths). Settings > General > Key colours has the two
+modes, a "Red is" picker and a twelve-key strip drawn from the same function the
+page colour is, so it cannot disagree with it. Pro; a free build plays the
+original mapping and keeps what is saved.
+
+Not built: extra themes and melody density controls from the brief.
 
 ---
 

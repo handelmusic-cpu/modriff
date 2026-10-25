@@ -5168,6 +5168,12 @@ body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-i
 .midi-cc-x:hover { color:var(--dom); }
 .midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
 .midi-cc-row { flex-wrap:wrap; }
+.kh-red { display:inline-flex; align-items:center; gap:6px; font-size:.5rem; color:var(--muted); margin-left:10px; }
+.kh-red select { background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif; font-size:.52rem; padding:4px 6px; }
+.kh-strip { display:grid; grid-template-columns:repeat(12,1fr); gap:2px; margin:6px 0 4px; }
+.kh-sw { text-align:center; padding:7px 0; border-radius:4px; font:700 .42rem 'Outfit',sans-serif; color:#10121c; letter-spacing:.02em; }
+.kh-sw.cur { outline:2px solid var(--text); outline-offset:1px; }
+.kh-ctl.kh-locked { opacity:.55; }
 .midi-map-mode {
  background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm);
  color:var(--text); font-family:'Outfit',sans-serif; font-size:.46rem; padding:3px 4px;
@@ -7856,7 +7862,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9n</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9o</span></div>
  </div>
 </div>
 
@@ -8948,6 +8954,18 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
       <button class="tb" id="theme-light" onclick="setTheme('light')">Light</button>
      </div>
     </div>
+    <!-- Key colours (Pro, 4.9.9.9.9.8.9o): which key is which colour. -->
+    <div class="ss-scope">Key colours <b>which key is which colour</b></div>
+    <div class="kh-ctl" id="kh-ctl">
+     <div class="row">
+      <div class="tg">
+       <button class="tb active" data-khmode="chromatic" onclick="khSetMode('chromatic')" title="One step round the colour wheel per semitone">Chromatic</button>
+       <button class="tb" data-khmode="fifths" onclick="khSetMode('fifths')" title="One step per fifth, so neighbours in the circle of fifths are neighbours in colour">Circle of fifths</button>
+      </div>
+      <label class="kh-red">Red is <select id="kh-start" onchange="khSetStart(+this.value)" aria-label="Which key is red"></select></label>
+     </div>
+     <div class="kh-strip" id="kh-strip" aria-hidden="true"></div>
+    </div>
     <!-- The key Start Blank opens on (4.9.4). It was always C major, which for
          anyone who lives in E♭ or D minor meant two taps before the first
          chord, every session. Resume, a shared link and the demos still
@@ -9105,7 +9123,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9n</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9o</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10102,7 +10120,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9n';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9o';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -45494,10 +45512,93 @@ const MH_HUE = [0, 25, 48, 72, 96, 128, 162, 198, 228, 255, 282, 315];
 const MH_LT  = [60, 59, 56, 53, 50, 53, 56, 60, 63, 62, 60, 59];
 const MH_SAT = [85, 84, 82, 81, 79, 81, 82, 85, 83, 80, 80, 83];
 
+// Which colour a key is (Pro). The table above runs round the colour wheel once,
+// and a key's place on it was always its pitch class from C: C red, C♯ orange,
+// D yellow. Two settings move that without a second table:
+//   start  which key is the red end (0 = C, as it always was; 9 = A is red,
+//          B♭ orange, and so on round) — "rotate"
+//   mode   'chromatic' walks the wheel a semitone at a time (the original);
+//          'fifths' walks it a fifth at a time, so keys that are close in the
+//          circle of fifths are close in colour, which is what a player who
+//          thinks in keys rather than in notes wants to see.
+// Saved as a device preference under modo-keyhue. A free build ignores what is
+// saved and plays the original mapping, without rewriting it, so the choice is
+// still there when Pro comes back (see "Pro content in a free build").
+var KH = {mode:'chromatic', start:0};
+function khLoad(){
+  try{
+    const v = JSON.parse(modStore.getItem('modo-keyhue') || 'null');
+    if(v && (v.mode==='chromatic' || v.mode==='fifths')) KH.mode = v.mode;
+    if(v && Number.isInteger(v.start)) KH.start = ((v.start % 12) + 12) % 12;
+  }catch(e){}
+}
+function khCfg(){
+  return (typeof modAllows==='function' && !modAllows('keyColours')) ? {mode:'chromatic', start:0} : KH;
+}
+// A key's place on the wheel, 0-11.
+function khIndex(pc, cfg){
+  cfg = cfg || khCfg();
+  const d = (((pc - cfg.start) % 12) + 12) % 12;
+  return cfg.mode === 'fifths' ? (d * 7) % 12 : d;     // 7 is its own inverse mod 12
+}
+function khColor(pc, cfg){
+  const i = khIndex(pc, cfg);
+  return {h:MH_HUE[i], s:MH_SAT[i], l:MH_LT[i]};
+}
+khLoad();
+
+function khSave(){ try{ modStore.setItem('modo-keyhue', JSON.stringify({mode:KH.mode, start:KH.start})); }catch(e){} }
+function _khChanged(){
+  khSave(); khRender();
+  // The pad's canvas reads the hue once and keeps it; everything else is CSS
+  // custom properties and follows by itself.
+  try{ if(typeof fxInvalidatePad==='function') fxInvalidatePad(); }catch(e){}
+  try{ mhApply(root); }catch(e){}
+}
+function khSetMode(m){
+  if(!modAllows('keyColours')) return freeBlocked('Key colours');
+  if(m !== 'chromatic' && m !== 'fifths') return;
+  KH.mode = m; _khChanged();
+}
+function khSetStart(n){
+  if(!modAllows('keyColours')) return freeBlocked('Key colours');
+  KH.start = ((Math.round(n) % 12) + 12) % 12; _khChanged();
+}
+// The settings control: the two modes, which key is red, and the twelve keys as
+// they will be coloured, the current one ringed. Drawn from khColor so what it
+// shows is by construction what mhApply will do.
+function khRender(){
+  const host = document.getElementById('kh-ctl'); if(!host) return;
+  const locked = !modAllows('keyColours'), cfg = locked ? KH : khCfg();
+  host.classList.toggle('kh-locked', locked);
+  host.querySelectorAll('[data-khmode]').forEach(b=>{
+    b.classList.toggle('active', b.dataset.khmode === cfg.mode);
+  });
+  const sel = document.getElementById('kh-start');
+  if(sel){
+    if(!sel.options.length) for(let i=0;i<12;i++){ const o=document.createElement('option'); o.value=i; o.textContent=PS_NOTE_NAMES[i]; sel.appendChild(o); }
+    sel.value = String(cfg.start);
+  }
+  const strip = document.getElementById('kh-strip');
+  if(strip){
+    strip.innerHTML = '';
+    for(let pc=0; pc<12; pc++){
+      const c = khColor(pc, cfg), d = document.createElement('div');
+      d.className = 'kh-sw' + (pc === (((root % 12) + 12) % 12) ? ' cur' : '');
+      d.style.background = 'hsl('+c.h+','+c.s+'%,'+c.l+'%)';
+      d.textContent = PS_NOTE_NAMES[pc];
+      strip.appendChild(d);
+    }
+  }
+}
+document.addEventListener('click', function(e){ if(e.target && e.target.closest && e.target.closest('#set-subnav,.ss-hdr')) setTimeout(khRender, 50); });
+window.addEventListener('load', function(){ khRender(); setTimeout(khRender, 500); });
+
 function mhApply(rootNote) {
   if(typeof window.prThemeChanged==='function') setTimeout(window.prThemeChanged,0);
   const r = ((rootNote % 12) + 12) % 12;
-  const h = MH_HUE[r], s = MH_SAT[r], l = MH_LT[r];
+  const kc = khColor(r), h = kc.h, s = kc.s, l = kc.l;
+  try{ khRender(); }catch(e){}
   const el = document.documentElement;
   el.style.setProperty('--kh', h);
   el.style.setProperty('--ks', s + '%');
@@ -58523,6 +58624,7 @@ const FREE_LIMITS = {
   fullAudioExport: false, // past FREE_NUMBERS.audioExportSeconds
   fullMidiExport:  false, // past FREE_NUMBERS.midiExportBars
   chordExtensions: false,      // 6/9, 11, #11, 13, b9, #9, alt, ... are Pro
+  keyColours:   false,         // which key is which colour: the start key and the fifths order
   // Four classic boxes and a jazz kit. The Linn is what a fresh start plays
   // (it was the owner's default at 4.9.6, before mõdKit took over for the free
   // tier's sake), and 606 is the Aux layer's: the Aux takes free kits only.
@@ -58677,6 +58779,9 @@ function _applyTier(){
   if(typeof fxSyncAllReadouts==='function') fxSyncAllReadouts();
   if(typeof freeApplyLimits==='function') freeApplyLimits();
   if(typeof proSyncRow==='function') proSyncRow();
+  // The key colours are a Pro setting: free plays the original mapping and the
+  // control shows what is saved, locked.
+  try{ if(typeof khRender==='function'){ khRender(); mhApply(root); } }catch(e){}
 }
 // What a wrapper calls after a purchase, a restore, or an entitlement change
 // it was pushed. Re-asks, then repaints every gated surface.
