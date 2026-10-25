@@ -1832,6 +1832,15 @@ voices do not.
 
 ### Haptics
 
+**4.9.9.9.9.9.2: System is everything that is not an instrument.** Steppers moved
+into it (a saved `steps` off is read as `system`), and every tap on a button, tab,
+switch, select, checkbox or drum-grid cell now ticks under System. It fires when
+the finger lifts, and only for a tap: a touch that moves more than 10 px or is
+cancelled by a scroll is a swipe, not a press. The instruments (chord and sample
+pads, melody keys and strip, the mõdFX pad, knobs, steppers) keep their own
+buzz and mark themselves `data-hap-own`, or match `HAP_OWN`, so they are not
+doubled.
+
 **4.9.9.9.9.9.0i changes (unbuilt natively; the page side was driven with a stand-in
 plugin).** The melody keys and the Strip (formerly Bend) buzz one level under a pad:
 a new `medium` kind, `UIImpactFeedbackGenerator(.medium)`; the Strip buzzes on touch
