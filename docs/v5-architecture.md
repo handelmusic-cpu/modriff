@@ -1726,6 +1726,41 @@ unscheduled note-ons, their mean wait and lead, and the callback sizes. The
 next bounce's report names the cause. `bounce-check.py --by-time` splits a
 take by 20 s.
 
+**N5, the capture report's first reading (bounce `modo-session 9`, tag 4.9.9.9.9.8.8,
+about 60 s).** The native chord reads **-25.6 ms** against the `.mid` (middle half
+-26.7 .. -24.1, every 20 s stretch -24.5, -26.4, -23.7): half what it was, still
+constant. The web parts in the same take: arp -0.4, bass +7.8, melody +6.9, kick
++13.3 (a kick's onset reads late on a 25% threshold, so those are not errors to
+chase). What the report rules out:
+
+- *The drain phase.* `drainMs` is 0.011 ms, so the 7c correction had nothing to
+  correct on this phone. The host's callbacks are 128 frames, min and max (no
+  bursts show), 88 notes stamped, none unstamped, none unscheduled, mean wait
+  7.1 ms, mean lead 653 ms.
+- *The page's two clocks.* `Date.now()` minus `performance.timeOrigin + now()` is
+  0.00 ms at the start and the end of the take, so the stamp is not the cause (and
+  switching the stamp to `Date.now()` in 7d is the likeliest reason -48 became -26,
+  though no bounce was taken in between to say so).
+- *Dropped audio.* 0.00 ms lost to a slow reader.
+- *The log.* The chord is logged at `atTime`, the exact context time it was
+  scheduled for (`logChordPlay`), the same ruler as the other lanes.
+
+What is left is the pairing itself: `ctx.currentTime` against `Date.now()`
+(`c.q`, the largest reading in the first second, sampled by a 10 ms
+`setInterval`) and the host's origin. A 25 ms constant is about 1200 frames, which
+is the size of a WebKit hardware buffer and not of a 128-frame render quantum, so
+the first thing to suspect is that `currentTime` on the phone moves in steps far
+larger than the 7 ms measured with the stand-in. The report does not carry the
+step size, so it cannot tell. **Next, in order:** (1) **built (4.9.9.9.9.8.9w):** the report has
+a `web clock steps` line, the min, median and max move of `ctx.currentTime` seen by
+the `q` sampler (driven through the real `_natCapStart` and `_natCapReport` with a
+stand-in plugin: 97 moves in a second, 5.8 to 11.6 ms, in desktop Chrome; the
+phone's is the number that matters); (2) one more bounce, and `bounce-check.py --by-time` on it; (3) if
+the step is the size of the error, take `q` from a source that does not step (the
+render thread stamping its own wall clock into a one-sample message), and not from
+a longer sampling window. Until then the file is 25 ms early on the native chord
+and live playback, which the owner hears as right, is untouched.
+
 **Warm-up was audible (4.9.9.9.9.8.7a).** `ensurePart` published a part to the
 render thread and the plugin then warmed it up, which plays sixteen notes into
 it. The engine is already running by then, so every launch started with a burst
@@ -2087,7 +2122,7 @@ an Equal/Pure switch, to hear it before touching the native engine.
    for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
 7. **Remaining parts native, then the clock** — ships as 5.0.0. Open before
-   that: the native chord's 48 ms offset in a bounced file (N5), the sampled
+   that: the native chord's 26 ms offset in a bounced file (N5, narrowed in 4.9.9.9.9.8.8; next step under "N5, the capture report's first reading"), the sampled
    voices dropping out in the background, and the things that need a paid
    developer account or a phone and cannot be settled from here (CloudKit,
    StoreKit, MIDI hardware: `docs/phone-test-checklist.md` lists what to check
