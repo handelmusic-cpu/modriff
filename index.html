@@ -7869,7 +7869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9t</span></div>
  </div>
 </div>
 
@@ -8994,6 +8994,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row">
      <button class="tb tb-solo" data-haptics onclick="toggleHaptics()" aria-pressed="true">Haptics: ON</button>
     </div>
+    <div class="row" id="haptic-srcs" style="display:none;flex-wrap:wrap;gap:6px" role="group" aria-label="Which instruments buzz"></div>
     <div class="ss-scope">iCloud <b>keep songs, setups and patches in step across your devices</b></div>
     <div class="row">
      <button class="tb tb-solo" data-sync onclick="toggleSync()" aria-pressed="false">iCloud sync: OFF</button>
@@ -9136,7 +9137,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9s</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9t</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10133,7 +10134,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9s';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10421,8 +10422,16 @@ window._genQueuePaint = function(part, frac, landed){
  if(!P.hapticAvailable) P.hapticAvailable = function(){
   return !!plugin() || (typeof navigator.vibrate === 'function');
  };
- if(!P.haptic) P.haptic = function(kind){
-  if(!wanted()) return;
+ // Which instruments buzz (4.9.9.9.9.8.9t): each call site names its own, and the
+ // ones switched off in Settings are skipped. Stored as the list that is OFF, so a
+ // source added later is on without anyone having to turn it on.
+ function srcOn(src){
+  if(!src) return true;
+  try{ var off = JSON.parse(localStorage.getItem('modo-haptics-off') || '[]'); return !(off && off.indexOf(src) >= 0); }catch(e){ return true; }
+ }
+ if(!P.hapticSrcOn) P.hapticSrcOn = srcOn;
+ if(!P.haptic) P.haptic = function(kind, src){
+  if(!wanted() || !srcOn(src)) return;
   var now = Date.now(), gap = GAP[kind];
   if(gap === undefined) return;
   if(gap && last[kind] && now - last[kind] < gap) return;
@@ -12119,7 +12128,7 @@ function _sheetChordWords(line){
 function parseChordSheet(text){
  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
  const sheet = {title:'', artist:'', sections:[], unread:[]};
- let cur = null, lastChordLine = null, sawContent = false;
+ let cur = null, lastChordLine = null, sawContent = false, legend = false;
  const open = name => { cur = {name: name, chords: []}; sheet.sections.push(cur); lastChordLine = null; };
  const add = chords => {
   if(!cur) open('Intro');
@@ -12163,7 +12172,15 @@ function parseChordSheet(text){
    t.replace(/\[([^\]]+)\]/g, (_, c) => { if(parseChordSymbol(c.trim())) inl.push(c.trim()); return ''; });
    if(inl.length){ add(inl); sawContent = true; continue; }
   }
+  // Ultimate Guitar's PDF puts the shapes the song uses under a "CHORDS" heading
+  // before the song starts: "G D C" and a diagram each. It is a legend, not
+  // music, and read as chords it became an Intro of its own. A bare "Chords"
+  // line makes the chord line right after it a legend, so it is skipped. Only
+  // before anything has been read: a section called Chords later is a section.
+  if(!sawContent && sheet.title && /^chords?:?$/i.test(t)){ legend = true; continue; }
   const chords = _sheetChordWords(t);
+  if(chords && legend && !cur){ legend = false; continue; }
+  legend = false;
   if(chords){ add(chords); sawContent = true; continue; }
   // "(x3, very short)" on its own line repeats the chord line above it.
   m = /(?:^|[\s(,])x\s*(\d+)\b|\b(\d+)\s*x(?:$|[\s),])/i.exec(t);
@@ -17497,7 +17514,7 @@ function psMakePad(i){
   if(PS.erasing){ psErasePad(i); return; }
   try{ p.setPointerCapture(e.pointerId); }catch(_){}
   p.classList.add('down');
-  _hap('pad');
+  _hap('pad','pads');
   psPress(i);
  });
  var up=function(){ if(!p.classList.contains('down')) return; p.classList.remove('down'); psRelease(i); };
@@ -17653,9 +17670,9 @@ function psStepper(k){
   b.addEventListener('pointerdown', function(e){
    if(b.disabled) return;
    e.preventDefault(); try{ b.setPointerCapture(e.pointerId); }catch(_){}
-   if(put(v+d)) _hap('tick');
+   if(put(v+d)) _hap('tick','steps');
    stopRep();
-   tmo=setTimeout(function(){ iv=setInterval(function(){ if(!b.isConnected || !put(v+d)) stopRep(); else _hap('tick'); }, 110); }, 420);
+   tmo=setTimeout(function(){ iv=setInterval(function(){ if(!b.isConnected || !put(v+d)) stopRep(); else _hap('tick','steps'); }, 110); }, 420);
   });
   b.addEventListener('pointerup', stopRep); b.addEventListener('pointercancel', stopRep);
   b.addEventListener('lostpointercapture', stopRep);
@@ -20296,7 +20313,21 @@ function copyDiagnostics(){
 }
 // One call for every haptic site: a missing platform layer or a throwing
 // wrapper must never take a pad's sound down with it.
-function _hap(kind){ try{ modPlatform.haptic(kind); }catch(e){} }
+function _hap(kind, src){ try{ modPlatform.haptic(kind, src); }catch(e){} }
+// The instruments that can buzz, in the order Settings shows them; the kind is
+// what each one feels like (the pad hit is the firm one) so a test taps the real thing.
+var HAPTIC_SRCS = [['chords','Chords','pad'], ['melody','Melody','pad'], ['pads','Sample pads','pad'],
+                   ['fx','mõdFX pad','kaoss'], ['steps','Steppers','tick'], ['bounce','Bounce done','bounce']];
+function toggleHapticSrc(src){
+ var off; try{ off = JSON.parse(localStorage.getItem('modo-haptics-off') || '[]'); }catch(e){ off = []; }
+ if(!Array.isArray(off)) off = [];
+ var i = off.indexOf(src);
+ if(i >= 0) off.splice(i, 1); else off.push(src);
+ try{ localStorage.setItem('modo-haptics-off', JSON.stringify(off)); }catch(e){}
+ _syncHapticsBtn();
+ // Turning one on is the test of it, with the feel that instrument has.
+ if(i >= 0){ var k = HAPTIC_SRCS.filter(function(x){ return x[0]===src; })[0]; _hap(k ? k[2] : 'pad', src); }
+}
 function _hapticsOn(){ try{ return localStorage.getItem('modo-haptics') !== '0'; }catch(e){ return true; } }
 function toggleHaptics(){
  var on=!_hapticsOn();
@@ -20313,6 +20344,21 @@ function toggleHaptics(){
 function _syncHapticsBtn(){
  var can=false, on=_hapticsOn();
  try{ can=modPlatform.hapticAvailable(); }catch(e){}
+ var host=document.getElementById('haptic-srcs');
+ if(host){
+  host.style.display = (can && on) ? '' : 'none';
+  if(!host.firstChild){
+   HAPTIC_SRCS.forEach(function(k){
+    var b=document.createElement('button'); b.type='button'; b.className='tb'; b.dataset.hsrc=k[0]; b.textContent=k[1];
+    b.onclick=function(){ toggleHapticSrc(k[0]); };
+    host.appendChild(b);
+   });
+  }
+  host.querySelectorAll('[data-hsrc]').forEach(function(b){
+   var o=true; try{ o=modPlatform.hapticSrcOn(b.dataset.hsrc); }catch(e){}
+   b.classList.toggle('active', o); b.setAttribute('aria-pressed', o?'true':'false');
+  });
+ }
  document.querySelectorAll('[data-haptics]').forEach(function(b){
   b.textContent = can ? 'Haptics: '+(on?'ON':'OFF') : 'Haptics: not on this device';
   b.disabled=!can; b.setAttribute('aria-pressed', on?'true':'false'); b.classList.toggle('active', on&&can);
@@ -29367,7 +29413,7 @@ function _wireChordHold(el, trigger){
  el.addEventListener('pointerdown', e=>{
  e.preventDefault(); e.stopPropagation();
  el.classList.add('flash');
- _hap('pad');
+ _hap('pad','chords');
  token = trigger();
  });
  const release=()=>{
@@ -32852,7 +32898,7 @@ function buildMelodyStrip(){
   keyPid=e.pointerId;
   try{ btn.setPointerCapture(e.pointerId); }catch(_){}
   btn.classList.add('held');
-  _hap('pad');
+  _hap('pad','melody');
   const y=melTouchY(btn,e);
   melModY=y;
   melPlayIn(midi,melPressure(e),y);
@@ -44711,7 +44757,7 @@ function _stopRecording(){
     if(stems.length) parts.push(stems.length+' stem'+(stems.length>1?'s':''));
     if(midiFile) parts.push('MIDI');
     var done = parts.length ? ('Saved the mix + '+parts.join(' + ')) : 'Saved the mix as a .wav';
-    _hap('bounce');
+    _hap('bounce','bounce');
     // What Pro would have given, said once, with what was kept: the first
     // minute and a half, not a refusal.
     var _cutWhat=[];
@@ -58983,13 +59029,13 @@ function fxWirePad(){
   // Armed: this touch is the take. Begun before the first fxSetPos so the
   // landing position is frame zero rather than lost.
   fxMotionBegin();
-  _hap('kaoss');
+  _hap('kaoss','fx');
   const p=at(e); fxSetPos(p.x,p.y); fxEngage(true); fxSyncAllReadouts();
  });
  pad.addEventListener('pointermove',e=>{
   if(!fxEngaged) return;
   if(e.buttons===0 && !fxHold) return;
-  _hap('kaoss');
+  _hap('kaoss','fx');
   const p=at(e); fxSetPos(p.x,p.y);
  });
  // Release first, then hand over to the loop: fxRelease is what stops a

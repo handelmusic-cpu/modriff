@@ -21,6 +21,24 @@ const same = (got, want, msg) => {
   ok(g === w, msg + '\n    want ' + w + '\n    got  ' + g);
 };
 
+// ── Party in the U.S.A.: a PDF with a text layer ────────────────────────────
+// Ultimate Guitar's PDF export, first three pages, as the phone's PDFKit reads the
+// text layer (the file in sheets/ is that text, not the PDF). It starts with a
+// legend, "CHORDS" over "G D C" and a diagram for each, which is not music: read
+// as chords it became an Intro of its own in the first on-phone import.
+{
+  const sh = sheetOf('party.pdftext.txt');
+  const names = sh.sections.map(s => s.name);
+  ok(sh.title === 'Party In The Usa' && sh.artist === 'Miley Cyrus', 'party title/artist: ' + sh.title + ' / ' + sh.artist);
+  ok(names[0] === 'Intro' && sh.sections[0].chords.join(' ') === 'F# C# B F# C# B', 'the legend is not an Intro; the real Intro is F# C# B twice: ' + JSON.stringify(sh.sections[0]));
+  ok(names.filter(n => n === 'Intro').length === 1, 'one Intro, not two');
+  same(shape(sh).slice(0, 3), [
+    'Intro: F# C# B F# C# B',
+    'Verse 1: G D C G D C G D G D G C G C',
+    'Pre-Chorus 1: G D G D G D C C C',
+  ], 'party: intro, verse 1 and pre-chorus 1, as printed');
+}
+
 // ── Creep ───────────────────────────────────────────────────────────────────
 {
   const sh = sheetOf('creep.ocr.txt');
