@@ -26,7 +26,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "captureStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "shareFile", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "fileAppend", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "fileDelete", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "wavFinish", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -293,8 +296,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("fileAppend needs a name and base64 data")
             return
         }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent((rawName as NSString).lastPathComponent)
+        let url = dirURL(call).appendingPathComponent((rawName as NSString).lastPathComponent)
         do {
             if call.getBool("first") ?? false {
                 try? FileManager.default.removeItem(at: url)
@@ -319,7 +321,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func shareFiles(_ call: CAPPluginCall) {
         let names = (call.getArray("names", String.self) ?? [])
             .map { ($0 as NSString).lastPathComponent }
-        let urls = names.map { FileManager.default.temporaryDirectory.appendingPathComponent($0) }
+        let dir = dirURL(call)
+        let kept = (call.getString("folder") ?? "").isEmpty == false
+        let urls = names.map { dir.appendingPathComponent($0) }
             .filter { FileManager.default.fileExists(atPath: $0.path) }
         if urls.isEmpty {
             call.reject("shareFiles found nothing to share")
@@ -334,10 +338,128 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             sheet.popoverPresentationController?.sourceView = vc.view
             sheet.popoverPresentationController?.sourceRect =
                 CGRect(x: vc.view.bounds.midX, y: vc.view.bounds.midY, width: 1, height: 1)
+            // Files kept in a folder stay whatever the sheet does; temporary ones
+            // are cleared once it closes.
             sheet.completionWithItemsHandler = { _, _, _, _ in
-                urls.forEach { try? FileManager.default.removeItem(at: $0) }
+                if !kept { urls.forEach { try? FileManager.default.removeItem(at: $0) } }
             }
             vc.present(sheet, animated: true) { call.resolve() }
+        }
+    }
+
+    /// Where a call's files live: the temporary directory, or with `folder` a
+    /// folder under Documents, which (with the file-sharing keys in Info.plist)
+    /// is what the Files app shows under On My iPhone > mõdRïff. A bounce is
+    /// written there as it is made, so the share sheet is an extra copy and a
+    /// failed or cancelled share loses nothing.
+    private func dirURL(_ call: CAPPluginCall) -> URL {
+        guard let folder = call.getString("folder"), !folder.isEmpty,
+              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        else { return FileManager.default.temporaryDirectory }
+        var url = docs
+        for part in folder.split(separator: "/") {
+            let c = (String(part) as NSString).lastPathComponent
+            if c.isEmpty || c == ".." || c == "." { continue }
+            url.appendPathComponent(c)
+        }
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func tmpURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent((name as NSString).lastPathComponent)
+    }
+
+    @objc func fileDelete(_ call: CAPPluginCall) {
+        for n in call.getArray("names", String.self) ?? [] {
+            try? FileManager.default.removeItem(at: tmpURL(n))
+        }
+        call.resolve()
+    }
+
+    /// Makes the final .wav from the raw 16-bit stereo PCM the page streamed to
+    /// a temporary file while the take ran (fileAppend). A long bounce used to
+    /// be held in the page as 32-bit floats, a mix and every stem, about
+    /// 2.7 MB a second; at ten minutes the web content process was killed and
+    /// the app came back at its start screen. Now the page keeps one block at
+    /// a time and this puts the pieces together on disk: the header the page
+    /// built, `leadBytes` of silence (a stem that started late), the PCM from
+    /// `skipBytes` on, cut or padded with silence to exactly `dataBytes`.
+    @objc func wavFinish(_ call: CAPPluginCall) {
+        guard let pcm = call.getString("pcm"), let name = call.getString("name"),
+              let hb64 = call.getString("header"), let header = Data(base64Encoded: hb64),
+              let total = call.getInt("dataBytes") else {
+            call.reject("wavFinish needs pcm, name, header and dataBytes")
+            return
+        }
+        let lead = max(0, call.getInt("leadBytes") ?? 0)
+        let skip = max(0, call.getInt("skipBytes") ?? 0)
+        let src = tmpURL(pcm)
+        let dst = dirURL(call).appendingPathComponent((name as NSString).lastPathComponent)
+        do {
+            try? FileManager.default.removeItem(at: dst)
+            guard FileManager.default.createFile(atPath: dst.path, contents: nil) else {
+                call.reject("could not create \(dst.lastPathComponent)")
+                return
+            }
+            let out = try FileHandle(forWritingTo: dst)
+            defer { try? out.close() }
+            try out.write(contentsOf: header)
+            let zeros = Data(count: 1 << 20)
+            func pad(_ count: Int) throws {
+                var k = count
+                while k > 0 { let m = min(k, zeros.count); try out.write(contentsOf: zeros.prefix(m)); k -= m }
+            }
+            var left = total
+            let l = min(lead, left)
+            try pad(l)
+            left -= l
+            if let inp = try? FileHandle(forReadingFrom: src) {
+                defer { try? inp.close() }
+                try inp.seek(toOffset: UInt64(skip))
+                while left > 0 {
+                    let chunk = try inp.read(upToCount: min(left, 1 << 20)) ?? Data()
+                    if chunk.isEmpty { break }
+                    try out.write(contentsOf: chunk)
+                    left -= chunk.count
+                }
+            }
+            try pad(left)
+            try? FileManager.default.removeItem(at: src)
+            call.resolve(["bytes": total])
+        } catch {
+            call.reject("could not build \(dst.lastPathComponent): \(error.localizedDescription)")
+        }
+    }
+
+    /// Adds 16-bit stereo PCM into a file already written, at a byte offset,
+    /// clipping at full scale. The host's own capture of the native engine is
+    /// laid onto the web mix this way once the take is over.
+    @objc func pcmAdd(_ call: CAPPluginCall) {
+        guard let name = call.getString("name"), let b64 = call.getString("data"),
+              let add = Data(base64Encoded: b64), let off = call.getInt("offset"), off >= 0 else {
+            call.reject("pcmAdd needs name, data and offset")
+            return
+        }
+        func samples(_ d: Data) -> [Int16] {
+            var a = [Int16](repeating: 0, count: d.count / 2)
+            a.withUnsafeMutableBytes { d.copyBytes(to: $0, count: a.count * 2) }
+            return a
+        }
+        do {
+            let h = try FileHandle(forUpdating: dirURL(call).appendingPathComponent((name as NSString).lastPathComponent))
+            defer { try? h.close() }
+            try h.seek(toOffset: UInt64(off))
+            let cur = samples(try h.read(upToCount: add.count) ?? Data())
+            var mix = samples(add)
+            for i in 0..<min(cur.count, mix.count) {
+                mix[i] = Int16(max(-32768, min(32767, Int32(cur[i]) + Int32(mix[i]))))
+            }
+            try h.seek(toOffset: UInt64(off))
+            try h.write(contentsOf: mix.withUnsafeBytes { Data($0) })
+            call.resolve()
+        } catch {
+            call.reject("could not add to \(name): \(error.localizedDescription)")
         }
     }
 
