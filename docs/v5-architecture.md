@@ -1780,6 +1780,18 @@ already dropped a note-off once).
 
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
 
+**Decision (4.9.9.9.9.8.9x): not for 5.0.0.** Background play is punted until
+after the app ships. Leaving the app pauses everything under the duck and the
+song remembers its chord; coming back resumes by itself, once the audio context
+is running again (it waits up to two seconds, then offers a Resume button).
+"Keep playing in background" is off by default and stays as an opt-in for
+testing, `modo-bgplay` = `'1'`. `UIBackgroundModes: audio` stays in Info.plist
+because the app does play audio. `SceneDelegate` posts `modriff-background` /
+`modriff-foreground` to the page, because `visibilitychange` is not reliable
+once that mode is on and something is playing; either signal alone is enough.
+The Swift side is unbuilt. The open problem below (sampled voices dropping out)
+is what has to be solved to turn the default back on.
+
 What was done, what it showed, and where it stopped, so the next pass starts
 from the evidence and not from the guesses.
 
