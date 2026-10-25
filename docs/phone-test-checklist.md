@@ -14,7 +14,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
    is one command: it builds, syncs and installs). It is a **Debug** build, which
    is what gives you the Free/Pro switch in section 1.
 2. Open the app and look at Settings > About. It should say
-   **v4.9.9.9.9.8.9v**. If it says anything older, the build did not install.
+   **v4.9.9.9.9.8.9w**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
    or Bluetooth), a real Ultimate Guitar PDF of a song you know, a songbook or
    lead sheet to photograph, and a second Apple device if you want to test
@@ -108,7 +108,7 @@ are the open questions from the notes.
 | 5.3 | Settings > General > Copy diagnostics, with chords playing | the native block has `dropped`, `refused` and `failed` at 0, a block load (should be well under 50%) and the slowest block times |
 | 5.4 | Drive the mõdFX pad on the chord part: Filter, Delay, Reverb, Audio Gate patterns | each audibly does what it says; Audio Gate gives the rhythmic chop at the song's tempo |
 | 5.5 | **Bounce with Stems on** for about two minutes with chords, drums, bass and melody playing, then stop | you get a mix `.wav`, a `.mid`, one stem per part, **and a `-capture-report.txt`** |
-| 5.6 | AirDrop or share the bounce to the Mac and run `python3 -I tests/stems/bounce-check.py "<the zip or folder>" --by-time` | each part's offset against the `.mid`. **The native chord was -47.8 ms in the last one.** Send the whole output and the capture report |
+| 5.6 | AirDrop or share the bounce to the Mac and run `python3 -I tests/stems/bounce-check.py "<the zip or folder>" --by-time` | each part's offset against the `.mid`. **The native chord was -25.6 ms in the last one (-47.8 before 4.9.9.9.9.8.8).** Send the whole output and the capture report (its new `web clock steps` line is the one wanted) |
 | 5.7 | Listen to the bounced mix | the chord is as loud as it was live, and not clipped |
 | 5.8 | A loud passage: all parts on, Space and Drive up | no crackle or dropout. If there is, copy diagnostics straight away |
 
