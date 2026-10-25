@@ -10,8 +10,12 @@ finds where the stem's sound starts around each logged note and reports the
 median offset in ms. Web parts sit within a few ms of their log (a soft attack
 reads later). The native chord should sit with them; if it is off by a constant
 with a tight spread, the capture's clock alignment is off, not the playing.
-It found the 31 ms the host's earliest-block clock put on the first real
-bounce (4.9.9.9.9.8.7), which is why this exists.
+A stem with a ringing tail (an arp, a pad) used to read early or pinned at
+-80.0 ms, because the finder took the first sample over the threshold and that is
+the window's edge when the last note has not died; it now takes the rising
+crossing nearest the log and skips a stem that never dips (offsets.test.py holds
+that). Every "native chord is 31/46/48/25 ms early" before 4.9.9.9.9.8.9w was
+that artifact, and the chord reads within a millisecond in all five bounces.
 
 Needs numpy. Only looks at notes after the first 'Chords' sound, so parts that
 had not started yet are not counted as missing.
@@ -67,7 +71,17 @@ def offsets(stem, times, lo=-0.08, hi=0.12, env=None, with_times=False):
         seg = env[a:b]; pre = np.median(env[max(0, a - 2400):a]) if a > 2400 else 0
         mx = seg.max()
         if mx < 0.004 or mx < 3 * pre + 0.002: continue
-        res.append((t, ((a + int(np.argmax(seg > 0.25 * mx))) / SR - t) * 1000))
+        # The rising crossing nearest the logged time. The first sample above the
+        # threshold is not it: when the previous note is still ringing at the
+        # window's start that is sample 0, every note reads exactly -lo, and a
+        # 92% pile-up at -80.0 ms was once taken for a constant offset. A stem
+        # that never dips below the threshold has no onset to find: skipped.
+        up = seg > 0.25 * mx
+        rises = np.where(up[1:] & ~up[:-1])[0] + 1
+        if not up[0]: rises = np.concatenate(([int(np.argmax(up))], rises[rises > np.argmax(up)]))
+        if len(rises) == 0: continue
+        k = rises[np.argmin(np.abs(rises - (t - (t + lo)) * SR))]
+        res.append((t, ((a + int(k)) / SR - t) * 1000))
     return res if with_times else np.array([o for _, o in res])
 
 def main(src):
