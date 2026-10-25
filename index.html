@@ -7872,7 +7872,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9w</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9x</span></div>
  </div>
 </div>
 
@@ -8989,9 +8989,9 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row">
      <button class="tb tb-solo" onclick="copyDiagnostics()">Copy diagnostics</button>
     </div>
-    <div class="ss-scope" data-bgplay-hint>Leaving the app <b>keep the music going or pause it</b></div>
+    <div class="ss-scope" data-bgplay-hint>Leaving the app <b>pauses the music and picks up when you return; keeping it playing is experimental</b></div>
     <div class="row">
-     <button class="tb tb-solo" data-bgplay onclick="toggleBgPlay()" aria-pressed="true">Keep playing in background: ON</button>
+     <button class="tb tb-solo" data-bgplay onclick="toggleBgPlay()" aria-pressed="false">Keep playing in background: OFF</button>
     </div>
     <div class="ss-scope">Touch <b>a tap under your finger on pads, with the sound</b></div>
     <div class="row">
@@ -9140,7 +9140,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9w</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9x</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10137,7 +10137,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9w';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9x';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20283,14 +20283,20 @@ function _duckAudio(down){
 }
 // In the iPhone app the audio session is a background one (UIBackgroundModes
 // audio), so leaving the app is not a suspend: the music can carry on. That is
-// a setting (Settings › General), on by default, because some people want the
-// old pause. It is looked up when the event fires, not once at load —
+// a setting (Settings › General), and it is OFF by default: sampled voices
+// (flute, violin) drop out entirely once the app is left, with every message
+// delivered and no error (docs/v5-architecture.md, "Playing on while the app
+// is in the background"), and a song that loses half its band the moment you
+// answer a text is worse than one that stops. So the default is the clean
+// version of the same thing: leaving pauses, coming back picks up where it was.
+// The switch stays for testing and for the day the sampled voices are fixed.
+// It is looked up when the event fires, not once at load —
 // window.Capacitor is not guaranteed to exist yet when this script runs, and a
 // value fixed too early is how the pause kept happening in the app.
 function _inNativeApp(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } }
 function _bgKeepPlaying(){
  if(!_inNativeApp()) return false;
- try{ return localStorage.getItem('modo-bgplay') !== '0'; }catch(e){ return true; }
+ try{ return localStorage.getItem('modo-bgplay') === '1'; }catch(e){ return false; }
 }
 // Everything needed to read a background-audio test without a cable and a
 // console: the build, the native engine's render timing (and which blocks ran
@@ -20398,29 +20404,60 @@ document.addEventListener('visibilitychange', function(){
 // whatever the realignment on return made of a clock that had stopped mid-bar.
 //
 // So on iOS, leaving is a pause: everything stops cleanly under the duck
-// above, the song remembers the chord it was on, and coming back offers to
-// carry on from there. Desktop and Android keep an audible tab running in the
-// background, so they are left alone. The iOS test is repeated here rather
-// than reusing _isIOS, a const declared much further down the file.
+// above, the song remembers the chord it was on, and coming back carries on
+// from there. In the iPhone app that is automatic (the audio session is already
+// ours, so nothing needs a tap); in a Safari tab iOS wants a gesture before a
+// context will run again, so there coming back offers a Resume button instead.
+// Desktop and Android keep an audible tab running in the background, so they
+// are left alone. The iOS test is repeated here rather than reusing _isIOS, a
+// const declared much further down the file.
+//
+// Two signals reach this, not one. visibilitychange is the page's own, but with
+// the audio background mode on and something playing, WebKit does not reliably
+// call the page hidden (the 7.7c build, which trusted the event alone, never
+// noticed it had been left). SceneDelegate therefore also posts
+// modriff-background / modriff-foreground from the app's own lifecycle. Either
+// may arrive first or both; _bgPaused makes the second a no-op.
 var _bgPauseIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 var _bgPaused = false;
-document.addEventListener('visibilitychange', function(){
- if(!_bgPauseIOS || _bgKeepPlaying()) return;
- if(document.visibilityState === 'hidden'){
-  if(typeof isAnythingPlaying!=='function' || !isAnythingPlaying()) return;
-  _bgPaused = true;
-  try{ if(songLoopActive && typeof _songCueAt==='function') _songCueAt(songLoopSection, songLoopSlot); }catch(e){}
-  try{ stopEverything(); }catch(e){}
-  try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
- } else if(document.visibilityState === 'visible' && _bgPaused){
-  _bgPaused = false;
-  if(typeof showToast==='function') showToast('Paused while you were away', {
-   actionLabel:'▶ Resume', ms:8000,
-   onAction:function(){ if(!isAnythingPlaying()){ startEverything(); if(typeof syncFixedTransport==='function') syncFixedTransport(); } }
-  });
+function _bgAway(){
+ if(_bgKeepPlaying() || !(_bgPauseIOS || _inNativeApp()) || _bgPaused) return;
+ if(typeof isAnythingPlaying!=='function' || !isAnythingPlaying()) return;
+ _bgPaused = true;
+ // The visibilitychange duck covers the page's own event; this one covers the
+ // native signal, which has no other reason to duck.
+ _duckAudio(true);
+ try{ if(songLoopActive && typeof _songCueAt==='function') _songCueAt(songLoopSection, songLoopSlot); }catch(e){}
+ try{ stopEverything(); }catch(e){}
+ try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
+}
+function _bgBack(){
+ if(!_bgPaused) return;
+ _bgPaused = false;
+ var go = function(){ if(!isAnythingPlaying()){ startEverything(); if(typeof syncFixedTransport==='function') syncFixedTransport(); } };
+ if(!_inNativeApp()){
+  if(typeof showToast==='function') showToast('Paused while you were away', { actionLabel:'▶ Resume', ms:8000, onAction:go });
+  return;
  }
+ // Not before the context is running again: startEverything on a suspended one
+ // schedules a bar into a clock that is not moving. _resumeAudioIfNeeded (its
+ // own listeners, on this same event) is what brings it back; this waits for
+ // that, up to two seconds, and only then falls back to asking.
+ _duckAudio(false);
+ var tries = 0;
+ (function wait(){
+  if(isAnythingPlaying()) return;
+  if(_audioRunning()) return go();
+  if(++tries < 20) return setTimeout(wait, 100);
+  if(typeof showToast==='function') showToast('Paused while you were away', { actionLabel:'▶ Resume', ms:8000, onAction:go });
+ })();
+}
+document.addEventListener('visibilitychange', function(){
+ if(document.visibilityState === 'hidden') _bgAway(); else if(document.visibilityState === 'visible') _bgBack();
 });
+window.addEventListener('modriff-background', _bgAway);
+window.addEventListener('modriff-foreground', function(){ _resumeAudioIfNeeded(); _bgBack(); });
 
 // Playing on while the app is in the background has one catch: iOS slows the
 // page's timers to about one tick a second, and every note here is scheduled by
