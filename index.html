@@ -5168,6 +5168,13 @@ body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-i
 .midi-cc-x:hover { color:var(--dom); }
 .midi-cc-empty { font-size:.44rem; color:var(--muted); line-height:1.6; }
 .midi-cc-row { flex-wrap:wrap; }
+.eq-box { width:min(420px, calc(100vw - 32px)); }
+.eq-row { display:grid; grid-template-columns:96px 1fr 70px; align-items:center; gap:10px; margin:12px 0; }
+.eq-row label { display:flex; flex-direction:column; font:600 .62rem 'Outfit',sans-serif; color:var(--text); }
+.eq-row label small { font-weight:400; font-size:.46rem; color:var(--muted); }
+.eq-row input[type=range] { width:100%; }
+.eq-val { text-align:right; font:700 .54rem 'Orbitron',sans-serif; color:var(--pg); }
+.mix-msb.mix-eqb.on { background:rgba(0,0,0,.28); border-color:var(--pg); color:var(--pg); }
 .kh-red { display:inline-flex; align-items:center; gap:6px; font-size:.5rem; color:var(--muted); margin-left:10px; }
 .kh-red select { background:var(--surf2); border:1px solid var(--border2); border-radius:var(--r-sm); color:var(--text); font-family:'Outfit',sans-serif; font-size:.52rem; padding:4px 6px; }
 .kh-strip { display:grid; grid-template-columns:repeat(12,1fr); gap:2px; margin:6px 0 4px; }
@@ -7862,7 +7869,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9o</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9p</span></div>
  </div>
 </div>
 
@@ -9123,7 +9130,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9o</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9p</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10120,7 +10127,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9o';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9p';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10862,7 +10869,8 @@ function _modNativeMfxSync(part, vals){
 // tests/modsynth/master-order.test.js holds the two together). Sent only when
 // they move, except for `force`, which hands over all of them (a fresh engine
 // knows nothing).
-var MASTER_PARAMS = ['vol','compTh','compRatio','limTh','limRatio','revSend','drvAmt','drvOut','webTrim'];
+var MASTER_PARAMS = ['vol','compTh','compRatio','limTh','limRatio','revSend','drvAmt','drvOut','webTrim',
+ 'eqLo','eqMid','eqMidHz','eqHi'];
 MODNAT.master = {};
 // Whether any part still on Web Audio is in the mix: one that is not muted (or
 // shut out by a solo elsewhere) and has its fader up. That is when the speaker
@@ -11067,6 +11075,7 @@ PARAMS.push({part:'master', name:'on',   read:function(){ return masterBusOn; }}
 PARAMS.push({part:'master', name:'vol',  read:function(){ return masterVol; }});
 PARAMS.push({part:'master', name:'comp', read:function(){ return masterCompAmt; }});
 PARAMS.push({part:'master', name:'rev',  read:function(){ return masterRevAmt; }});
+PARAMS.push({part:'master', name:'eq',   read:function(){ return Object.assign({}, masterEq); }});
 var _revSizeNow = null;
 PARAMS.push({part:'chord', name:'reverbSize', read:function(){ if(_revSizeNow == null) _revSizeNow = _pSlider('rev-size'); return _revSizeNow; }});
 // An engine value, or the app's own default for it if the snapshot has not
@@ -20408,6 +20417,34 @@ function syncFxLabels(){
 // Bus reverb 18 -> 5 in 4.9.9: one shared room under every part, and at 18
 // it washed the whole mix before any part's own send was touched.
 let masterBusOn=true, masterVol=.72, masterCompAmt=.35, masterRevAmt=.05;
+// The master EQ (4.9.9.9.9.8.9p): a low shelf at 120 Hz, a peak you can move, a
+// high shelf at 8 kHz, in dB. Between the glue compressor and the limiter, so a
+// boost cannot get past the limiter. A device preference (modo-mastereq) as well
+// as part of a project, because an EQ that forgot itself at every launch would be
+// set up again every session. var: read from the engine's side as the page loads.
+var masterEq = {lo:0, mid:0, midHz:1000, hi:0};
+var EQ_RANGE = 12, EQ_MID_MIN = 200, EQ_MID_MAX = 5000;
+function eqLoad(){
+ try{
+  const v = JSON.parse(modStore.getItem('modo-mastereq') || 'null');
+  if(v && typeof v === 'object') eqSet(v, true);
+ }catch(e){}
+}
+function eqClamp(v, lo, hi, d){ v = +v; return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; }
+// Takes any subset of {lo, mid, midHz, hi}; `quiet` skips the save and the push
+// (the loader and a project restore push once at the end themselves).
+function eqSet(o, quiet){
+ if(!o) return;
+ if('lo' in o)    masterEq.lo    = eqClamp(o.lo,  -EQ_RANGE, EQ_RANGE, 0);
+ if('mid' in o)   masterEq.mid   = eqClamp(o.mid, -EQ_RANGE, EQ_RANGE, 0);
+ if('hi' in o)    masterEq.hi    = eqClamp(o.hi,  -EQ_RANGE, EQ_RANGE, 0);
+ if('midHz' in o) masterEq.midHz = eqClamp(o.midHz, EQ_MID_MIN, EQ_MID_MAX, 1000);
+ if(quiet) return;
+ try{ modStore.setItem('modo-mastereq', JSON.stringify(masterEq)); }catch(e){}
+ applyMasterBus();
+ try{ eqSyncUI(); }catch(e){}
+}
+function eqIsFlat(){ return !masterEq.lo && !masterEq.mid && !masterEq.hi; }
 var CHORD_ROOM_K = 3;
 
 // Single source of truth for "where does audio go". Building the bus on demand
@@ -20443,7 +20480,13 @@ function buildMasterBus(){
  // separate parts sound like one performance instead of stacked layers.
  const comp=c.createDynamicsCompressor();
  comp.knee.value=22; comp.attack.value=0.012; comp.release.value=0.22;
- comp.connect(lim);
+ // The master EQ sits between the glue and the limiter: three biquads that are
+ // flat (0 dB, so bit-for-bit pass-through) until a knob moves.
+ const eqLo=c.createBiquadFilter(); eqLo.type='lowshelf';  eqLo.frequency.value=120;  eqLo.gain.value=0;
+ const eqMid=c.createBiquadFilter(); eqMid.type='peaking'; eqMid.frequency.value=1000; eqMid.Q.value=0.9; eqMid.gain.value=0;
+ const eqHi=c.createBiquadFilter(); eqHi.type='highshelf'; eqHi.frequency.value=8000; eqHi.gain.value=0;
+ comp.connect(eqLo); eqLo.connect(eqMid); eqMid.connect(eqHi); eqHi.connect(lim);
+ window._masterEq={lo:eqLo, mid:eqMid, hi:eqHi};
 
  // Bus reverb — one shared space for the whole mix, distinct from the
  // existing per-voice sends, which only ever wet individual instruments.
@@ -20521,10 +20564,19 @@ function _webMasterApply(){
  }
  if(window._masterRevSend) window._masterRevSend.gain.value = s.revSend;
  if(window._chordRoomSend) window._chordRoomSend.gain.value = s.revSend*CHORD_ROOM_K;
+
  if(window._masterLimiter){
   const l=window._masterLimiter;
   l.threshold.value = s.limTh;
   l.ratio.value     = s.limRatio;
+ }
+ // A glide, not a set: a knob dragged across a shelf is a stream of values.
+ if(window._masterEq){
+  const e=window._masterEq, t=window._masterOut.context.currentTime;
+  e.lo.gain.setTargetAtTime(s.eqLo, t, 0.02);
+  e.mid.gain.setTargetAtTime(s.eqMid, t, 0.02);
+  e.mid.frequency.setTargetAtTime(s.eqMidHz, t, 0.02);
+  e.hi.gain.setTargetAtTime(s.eqHi, t, 0.02);
  }
 }
 // What every stage of the master is set to, from the four master settings and
@@ -20532,16 +20584,74 @@ function _webMasterApply(){
 // and the native bus (_modNativeMasterSync), so they cannot drift.
 function _masterSettings(){
  const on=_wpd('master.on', true), compAmt=_wpd('master.comp', .35), revAmt=_wpd('master.rev', .05);
+ const eq=_wpd('master.eq', null) || {lo:0, mid:0, midHz:1000, hi:0};
  return {
   vol: _wpd('master.vol', .72),
   compTh: on ? (-6 - compAmt*20) : 0,
   compRatio: on ? (1.5 + compAmt*5) : 1,
   limTh: on ? -3 : 0,
   limRatio: on ? 20 : 1,
-  revSend: on ? revAmt : 0
+  revSend: on ? revAmt : 0,
+  // The EQ is the user's tone, not the glue and limiter that the bus switch
+  // bypasses: Master Bus OFF leaves it in, as it leaves the volume.
+  eqLo: eq.lo, eqMid: eq.mid, eqMidHz: eq.midHz, eqHi: eq.hi
  };
 }
 function toggleMasterBus(){ masterBusOn=!masterBusOn; applyMasterBus(); syncMasterUI(); }
+
+// ── The master EQ's panel ──
+// A dialog of four sliders rather than a strip of knobs: the mixer row is full,
+// and an EQ is something you open, set and leave. The sliders are the page's
+// ordinary ranges, so they are mappable to a controller while it is open.
+function eqSyncUI(){
+ const fmt=v=>(v>0?'+':'')+v.toFixed(1)+' dB';
+ [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
+  const e=document.getElementById(k[1]); if(e && +e.value!==masterEq[k[0]]) e.value=masterEq[k[0]];
+  const v=document.getElementById(k[1]+'-v'); if(v) v.textContent=fmt(masterEq[k[0]]);
+ });
+ const f=document.getElementById('mb-eq-hz');
+ if(f){
+  const pos=Math.log(masterEq.midHz/EQ_MID_MIN)/Math.log(EQ_MID_MAX/EQ_MID_MIN);
+  if(Math.abs(+f.value-pos)>0.002) f.value=pos;
+  const v=document.getElementById('mb-eq-hz-v');
+  if(v) v.textContent=masterEq.midHz>=1000 ? (masterEq.midHz/1000).toFixed(2)+' kHz' : Math.round(masterEq.midHz)+' Hz';
+ }
+ const b=document.getElementById('mb-eq-btn'); if(b) b.classList.toggle('on', !eqIsFlat());
+}
+function openMasterEq(){
+ if(document.querySelector('.eq-overlay')) return;
+ const ov=document.createElement('div');
+ ov.className='csi-overlay eq-overlay';
+ const row=(id,label,min,max,step,hint)=>'<div class="eq-row"><label for="'+id+'">'+label+'<small>'+hint+'</small></label>'
+  +'<input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'"><span class="eq-val" id="'+id+'-v"></span></div>';
+ ov.innerHTML='<div class="dur-picker-box eq-box" role="dialog" aria-modal="true" aria-labelledby="eq-title">'
+  +'<div class="dur-picker-title" id="eq-title">Master EQ</div>'
+  +'<div class="dur-picker-sub">Three bands on the whole mix, after the glue compressor and before the limiter.</div>'
+  +row('mb-eq-lo','Low','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 120 Hz')
+  +row('mb-eq-mid','Mid','-'+EQ_RANGE,EQ_RANGE,0.5,'peak')
+  +row('mb-eq-hz','Mid at','0','1',0.001,'200 Hz to 5 kHz')
+  +row('mb-eq-hi','High','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 8 kHz')
+  +'<div class="csi-row csi-actions"><button type="button" class="tb eq-reset">Flat</button>'
+  +'<button type="button" class="tb active eq-done">Done</button></div></div>';
+ document.body.appendChild(ov);
+ const close=()=>{ ov.remove(); document.removeEventListener('keydown', onKey, true); };
+ const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
+ document.addEventListener('keydown', onKey, true);
+ ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
+ ov.querySelector('.eq-done').addEventListener('click', close);
+ ov.querySelector('.eq-reset').addEventListener('click', ()=>eqSet({lo:0, mid:0, hi:0, midHz:1000}));
+ [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
+  document.getElementById(k[1]).addEventListener('input', e=>{ const o={}; o[k[0]]=parseFloat(e.target.value); eqSet(o); });
+ });
+ document.getElementById('mb-eq-hz').addEventListener('input', e=>{
+  eqSet({midHz: EQ_MID_MIN*Math.pow(EQ_MID_MAX/EQ_MID_MIN, parseFloat(e.target.value))});
+ });
+ // Double-tap a slider to bring that band back to flat.
+ ov.querySelectorAll('input[type=range]').forEach(function(r){
+  r.addEventListener('dblclick', ()=>{ if(r.id==='mb-eq-hz') eqSet({midHz:1000}); else { const o={}; o[({'mb-eq-lo':'lo','mb-eq-mid':'mid','mb-eq-hi':'hi'})[r.id]]=0; eqSet(o); } });
+ });
+ eqSyncUI();
+}
 function onMasterInput(){
  const g=id=>{ const e=document.getElementById(id); return e?parseFloat(e.value):null; };
  const v=g('mb-vol');   if(v!=null) masterVol=v;
@@ -34073,7 +34183,7 @@ function projectCapture(name){
  const st=captureSetup(name||title||'Untitled project', false);
  st.project={
   title:title,
-  master:{ vol:masterVol, comp:masterCompAmt, rev:masterRevAmt, on:masterBusOn, tune:masterTune }
+  master:{ vol:masterVol, comp:masterCompAmt, rev:masterRevAmt, on:masterBusOn, tune:masterTune, eq:Object.assign({}, masterEq) }
  };
  return st;
 }
@@ -34092,6 +34202,7 @@ function projectApply(st){
   if(typeof m.comp==='number') masterCompAmt=m.comp;
   if(typeof m.rev==='number')  masterRevAmt=m.rev;
   if(typeof m.on==='boolean')  masterBusOn=m.on;
+  if(m.eq && typeof m.eq==='object') eqSet(m.eq);
   if(typeof m.tune==='number'&&typeof setMasterTune==='function') setMasterTune(m.tune);
   try{ applyMasterBus(); syncMasterUI(); }catch(e){}
  }
@@ -45125,6 +45236,7 @@ if(typeof buildVoicePickers==='function') buildVoicePickers();
 if(typeof syncSSPreviews==='function') syncSSPreviews();
 if(typeof syncStrumUI==='function') syncStrumUI();
 if(typeof midiCCLoad==='function'){ midiCCLoad(); }
+try{ eqLoad(); }catch(e){}
 try{ setMidiMode(midiMode); setMidiCh10(midiCh10); }catch(e){}
 if(typeof setSettingsPane==='function'){
  var _sp=null; try{ _sp=modStore.getItem('modo-settings-pane'); }catch(e){}
@@ -53682,7 +53794,13 @@ function _mixBuildMaster(){
  clip.title='Lights and stays lit if the master ever hits full scale. Tap to clear.';
  clip.setAttribute('aria-label','Clip indicator — tap to clear');
  clip.onclick=function(){ mixClipReset(); };
- btns.appendChild(bus); btns.appendChild(clip);
+ var eqb=document.createElement('button');
+ eqb.className='mix-msb mix-eqb'; eqb.id='mb-eq-btn'; eqb.textContent='EQ';
+ eqb.title='Master EQ — low shelf, a movable peak and high shelf, ahead of the limiter.';
+ eqb.setAttribute('aria-label','Master EQ');
+ eqb.onclick=function(){ openMasterEq(); };
+ eqb.classList.toggle('on', !eqIsFlat());
+ btns.appendChild(bus); btns.appendChild(eqb); btns.appendChild(clip);
  var fx=document.createElement('div'); fx.className='mix-fx';
  [['comp','GLU','glue compressor',function(){return masterCompAmt;},function(v){masterCompAmt=v;}],
   ['rev','REV','bus reverb',      function(){return masterRevAmt;}, function(v){masterRevAmt=v;}]

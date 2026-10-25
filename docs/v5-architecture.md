@@ -1903,6 +1903,23 @@ modes, a "Red is" picker and a twelve-key strip drawn from the same function the
 page colour is, so it cannot disagree with it. Pro; a free build plays the
 original mapping and keeps what is saved.
 
+**Master EQ: built (4.9.9.9.9.8.9p).** Three bands on the whole mix: a low shelf
+at 120 Hz, a peak (Q 0.9) that moves from 200 Hz to 5 kHz, a high shelf at 8 kHz,
+plus or minus 12 dB. It sits between the glue compressor and the limiter, so a
+boost cannot get past the limiter, and the Master Bus switch leaves it in (the
+switch bypasses the glue, room and limiter; the EQ is the user's tone, like the
+volume). Opened from **EQ** on the master strip in the mixer. Free: the doc's
+tier table has no row for it, so it is not locked; one entry in `FREE_LIMITS`
+would. Saved as a device preference (`modo-mastereq`) and in a project file.
+Native: three parameters appended to the master message (`eqLo`, `eqMid`,
+`eqMidHz`, `eqHi`), a band is not run at all while it is at 0 dB, the gains are
+smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
+holds the coefficients to the browser's own `getFrequencyResponse` (within
+0.05 dB over five settings and ten frequencies) and the bus to what the filters
+should do to a tone (0.5 dB); an EQ at zero is bit-identical to none.
+Not built: per-part EQ, and the EQ's sliders are mappable to a controller only
+while the panel is open.
+
 Not built: extra themes and melody density controls from the brief.
 
 ---

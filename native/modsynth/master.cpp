@@ -207,10 +207,24 @@ struct DriveCurve {
 };
 }  // namespace
 
+namespace {
+// One band of the master EQ, with Web Audio's own definitions for the three
+// kinds (the audio-eq-cookbook forms its spec gives: shelf slope S = 1, a
+// peak's Q linear). Direct form I, because the coefficients move whenever the
+// knob does and the transposed form's state stops meaning anything when they
+// change under it.
+constexpr double EQ_LO_HZ = 120.0, EQ_HI_HZ = 8000.0, EQ_MID_Q = 0.9;
+}  // namespace
+
 struct MasterBus::Impl {
   double sr;
   double p[MB_COUNT];
   Dynamics glue, lim;
+  // The EQ: gains are smoothed (a knob drag is a stream of values), the
+  // coefficients are rebuilt once a block while any of them is moving.
+  Smooth eqG[3], eqHz;
+  BqC eqC[3]; BqS1 eqS[3][2];
+  bool eqOn = false;
   Fdn room;
   DriveCurve curve; double curveAmt = -1;
   Os2 os[2][2];                                      // [group][channel]
@@ -221,13 +235,35 @@ struct MasterBus::Impl {
       : sr(sampleRate), glue(sampleRate), lim(sampleRate), room(sampleRate, MASTER_ROOM_SECONDS, MASTER_ROOM_SCALE, MASTER_ROOM_RT60) {
     // The state buildMasterBus + _webMasterApply leave a fresh page in:
     // master on, volume .72, glue .35 (threshold -13 dB, ratio 3.25), room 5%.
-    const double def[MB_COUNT] = {0.72, -13, 3.25, -3, 20, 0.05, 0, kSpan, 0};
+    const double def[MB_COUNT] = {0.72, -13, 3.25, -3, 20, 0.05, 0, kSpan, 0, 0, 0, 1000, 0};
     for (int i = 0; i < MB_COUNT; i++) p[i] = def[i];
     vol.init(sr, 0.008); vol.snap(p[MB_VOL]);
     send.init(sr, 0.008); send.snap(p[MB_REV_SEND]);
     webTrim.init(sr, 0.12); webTrim.snap(1.0);
     curve.build(0);
     curveAmt = 0;
+    for (int b = 0; b < 3; b++) { eqG[b].init(sr, 0.02); eqG[b].snap(0); }
+    eqHz.init(sr, 0.02); eqHz.snap(1000);
+  }
+
+  // Step the EQ's smoothers a block (CHUNK one-pole steps in one go) and redo the
+  // three filters. A band at 0 dB is not run at all, so an unused EQ costs nothing.
+  void eqBlock(int n) {
+    const double tg[3] = {p[MB_EQ_LO], p[MB_EQ_MID], p[MB_EQ_HI]};
+    bool any = false;
+    const double step = 1.0 - std::pow(1.0 - eqHz.k, n);
+    for (int b = 0; b < 3; b++) {
+      eqG[b].t = tg[b];
+      eqG[b].v += (eqG[b].t - eqG[b].v) * (1.0 - std::pow(1.0 - eqG[b].k, n));
+      if (std::fabs(eqG[b].v) < 0.005 && std::fabs(tg[b]) < 0.005) eqG[b].v = 0;
+      if (eqG[b].v != 0) any = true;
+    }
+    eqHz.t = p[MB_EQ_MID_HZ]; eqHz.v += (eqHz.t - eqHz.v) * step;
+    eqOn = any;
+    if (!any) return;
+    eqC[0] = eqDesign(EQ_LOW, EQ_LO_HZ, eqG[0].v, 0, sr);
+    eqC[1] = eqDesign(EQ_PEAK, eqHz.v, eqG[1].v, EQ_MID_Q, sr);
+    eqC[2] = eqDesign(EQ_HIGH, EQ_HI_HZ, eqG[2].v, 0, sr);
   }
 
   void process(float* L, float* R, const float* rL, const float* rR, int n) {
@@ -261,6 +297,15 @@ struct MasterBus::Impl {
       R[i] = (float)(x[0][1] + x[1][1] + wr);
     }
     glue.process(L, R, n);
+    eqBlock(n);
+    if (eqOn) {
+      for (int b = 0; b < 3; b++) {
+        if (eqG[b].v == 0) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); continue; }   // out of circuit: no stale state to come back to
+        for (int i = 0; i < n; i++) { L[i] = (float)bqRun1(eqC[b], eqS[b][0], L[i]); R[i] = (float)bqRun1(eqC[b], eqS[b][1], R[i]); }
+      }
+    } else {
+      for (int b = 0; b < 3; b++) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); }
+    }
     lim.process(L, R, n);
     double sq = 0;
     for (int i = 0; i < n; i++) {

@@ -4,7 +4,7 @@
 //   direct ── drive ─────────────────────────────────────┐
 //   room ──── drive ─┬────────────────────────────────┐  ↓
 //                    └→ send → reverb network ────────┴→ glue compressor
-//                                                         → limiter → volume
+//                                          → EQ → limiter → volume
 //
 // Two inputs because the web has two ways in. Everything but the chord part
 // enters `_masterDest`: through the drive, then dry and through the bus room.
@@ -91,6 +91,13 @@ enum MasterParam {
   MB_DRV_AMT,      // drive amount, 0..1 (the app's fx.drive)
   MB_DRV_OUT,      // gain after the drive curve: makeup × span, worked out by the page
   MB_WEB_TRIM,     // dB (<= 0) taken off the output while Web Audio parts share the speaker
+  // The master EQ, between the glue compressor and the limiter (a boost can
+  // never pass the limiter), three bands: a low shelf at 120 Hz, a peak at the
+  // given frequency, a high shelf at 8 kHz. Gains in dB, 0 is out of circuit.
+  MB_EQ_LO,
+  MB_EQ_MID,
+  MB_EQ_MID_HZ,
+  MB_EQ_HI,
   MB_COUNT
 };
 
