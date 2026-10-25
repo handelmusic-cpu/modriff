@@ -12,7 +12,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
-| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27): the C++ engine compiles into the target with `-ffp-contract=off`, the null test passes on the Mac, and the `ModEngine` plugin registers and takes messages — but the audio graph stops after 0.73 s and nothing has yet been heard from it ("The native host, and where it stops"). Native audio decided, plan below; `modEngine` door open: **chords** (4.9.9.6), the **live melody** (4.9.9.7), the **melody sequencer** (4.9.9.8), the **bass** (4.9.9.9), the **arp** (4.9.9.9.1), the **drum kit and Aux** (4.9.9.9.2), the **legacy Rhythm and the click** (4.9.9.9.3) through it; knobs steps 1–2 landed — `PARAMS`, the `state`/`param` messages (4.9.9.9.4), every voice reading its store (4.9.9.9.5), Mega patches (4.9.9.9.6), the mõdSynth panel (4.9.9.9.7); live controls and the sampler next. Patches a native engine cannot resolve by name — rolled, or saved under `modo-msx-user` — travel as values inside the same message (4.9.9.9.9.7, "Random patches and saved patches") |
+| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27). The C++ engine is in the target (`-ffp-contract=off`, null test 516/516) and the chord part is heard from it: `AppDelegate` owns the audio session, which cleared the old 0.73 s stop ("The native host, and where it stops", kept for its measurements). Native steps landed: the effects rack, the part strip with pan (N1), mõdFX (N3, N4), the master bus (N2) and capture for Bounce and stems (N5); **still open** are the 48 ms offset of the native chord in a bounced file and the other parts going native. Every part's notes already go through `modEngine`: chords (4.9.9.6), live melody (.7), melody sequencer (.8), bass (.9), arp (4.9.9.9.1), drums and Aux (.2), legacy Rhythm and click (.3), the knobs (4.9.9.9.4–.7), the sampler (4.9.9.9.9). Patches a native engine cannot resolve by name travel as values in the same message (4.9.9.9.9.7). Haptics, MIDI, picture import and iCloud sync are written; what a Mac has not compiled is marked unbuilt where it is described |
 | 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
 | 5 | Phase 2 | key colours, master EQ and iCloud sync **built** (4.9.9.9.9.8.9o to 9q); see "After launch". Extra themes and melody density not built |
 
@@ -1345,7 +1345,7 @@ worklet had the same gap and is fixed with it; the null test is unchanged
 Still not native: mõdFX, the mixer, the master reverb and the master limiter.
 A part cannot move on its own; that remains the larger piece, designed next.
 
-### The native mixer, mõdFX and master bus (design — nothing built yet)
+### The native mixer, mõdFX and master bus (N1–N5 built; the flip is not)
 
 **The problem, as measured on the phone.** A native part leaves through
 AVAudioEngine, so it never touches the web's part bus. Everything that hangs
@@ -1442,10 +1442,10 @@ decision rather than a default:
 
 | | | proof |
 |---|---|---|
-| N1 | Part bus, strip (level, mute/solo, pan), per-part peak/RMS back to the page's meters | a fader at −6 dB measures −6 dB at the host; solo silences the others, counted |
+| N1 | Part bus, strip (level, mute/solo, pan), per-part peak/RMS back to the page's meters | **Landed (4.9.9.9.9.7.6t, pan 4.9.9.9.9.8.4).** A fader at −6 dB measures −6 dB at the host; solo silences the others, counted |
 | N2 | Master bus: drive, bus reverb, glue, limiter, volume, with the two-worlds headroom | **Landed (4.9.9.9.9.8.6), headroom 4.9.9.9.9.8.8.** Measured against the browser's compressor and chain; reverb level and tail against the convolver |
-| N3 | mõdFX tier 1, the setter wrap, smoothing | each stage's level and response against the web chain's, `fxtest`-style |
-| N4 | mõdFX tier 2, the worklet port | null test against `FX_WORKLET_SRC` run offline in node |
+| N3 | mõdFX tier 1, the setter wrap, smoothing | **Landed (4.9.9.9.9.7.6v).** Each stage's level and response against the web chain's, `fxtest`-style |
+| N4 | mõdFX tier 2, the worklet port | **Landed (4.9.9.9.9.7.6v).** Null test against `FX_WORKLET_SRC` run offline in node |
 | N5 | Capture of the native master and parts for recording and stems | **Landed (4.9.9.9.9.8.7), not heard on a phone.** The capture is sample-for-sample what the host rendered; a native click and a web click scheduled for one instant land within 1.4 ms in the WAV |
 
 Where the host's capture is not running (an older build of the host, or it
@@ -2086,4 +2086,9 @@ an Equal/Pure switch, to hear it before touching the native engine.
    since: the Swift audio host, haptics (4.9.9.9.9.8.9i), IAP, text recognition
    for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
-7. **Remaining parts native, then the clock** — ships as 5.0.0.
+7. **Remaining parts native, then the clock** — ships as 5.0.0. Open before
+   that: the native chord's 48 ms offset in a bounced file (N5), the sampled
+   voices dropping out in the background, and the things that need a paid
+   developer account or a phone and cannot be settled from here (CloudKit,
+   StoreKit, MIDI hardware: `docs/phone-test-checklist.md` lists what to check
+   on the device).

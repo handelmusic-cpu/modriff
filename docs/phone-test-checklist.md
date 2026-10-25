@@ -14,7 +14,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
    is one command: it builds, syncs and installs). It is a **Debug** build, which
    is what gives you the Free/Pro switch in section 1.
 2. Open the app and look at Settings > About. It should say
-   **v4.9.9.9.9.8.9q**. If it says anything older, the build did not install.
+   **v4.9.9.9.9.8.9v**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
    or Bluetooth), a real Ultimate Guitar PDF of a song you know, a songbook or
    lead sheet to photograph, and a second Apple device if you want to test
