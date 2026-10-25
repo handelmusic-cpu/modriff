@@ -7856,7 +7856,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9m</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.8.9n</span></div>
  </div>
 </div>
 
@@ -9105,7 +9105,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9m</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.8.9n</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10102,7 +10102,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.8.9m';
+const MODRIFF_VERSION = '4.9.9.9.9.8.9n';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -10145,6 +10145,27 @@ window.modPlatform = window.modPlatform || {};
 // category natively (AppDelegate.swift); this covers the web build too.
 try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
 
+// modCapPlugin(name, methods) — a Capacitor plugin by name, or null.
+// Capacitor.Plugins is built from headers injected before an app-target plugin
+// registers, so a plugin declared in the app (ModMidi, ModHaptics, ModOcr, and
+// ModEngine and ModBilling further down) is often not in it at all, which looks
+// exactly like a device that cannot do the thing. The bridge's own nativePromise
+// and addListener reach a plugin by name regardless, so a proxy is built from
+// those for the methods the caller lists. Only inside the native app: on the web
+// there is no Capacitor and the answer is null, as it always was.
+window.modCapPlugin = function(name, methods){
+ try{
+  var C = window.Capacitor; if(!C) return null;
+  if(C.Plugins && C.Plugins[name]) return C.Plugins[name];
+  if(typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return null;
+  if(typeof C.nativePromise !== 'function') return null;
+  var P = {};
+  (methods || []).forEach(function(m){ P[m] = function(o){ return C.nativePromise(name, m, o || {}); }; });
+  if(typeof C.addListener === 'function') P.addListener = function(ev, cb){ return C.addListener(name, ev, cb); };
+  return P;
+ }catch(e){ return null; }
+};
+
 // ── Web MIDI, where there is none: CoreMIDI behind the spec's own API ─────
 // WebKit has never shipped Web MIDI and Apple has refused it over
 // fingerprinting. Safari does not have it, every browser on iOS runs Safari's
@@ -10167,8 +10188,7 @@ try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch
 (function(){
  try{
   if(navigator.requestMIDIAccess) return;
-  var cap = window.Capacitor;
-  var P = cap && cap.Plugins && cap.Plugins.ModMidi;
+  var P = modCapPlugin('ModMidi', ['start','list','send','openBluetooth']);
   if(!P || typeof P.start !== 'function') return;
 
   // A spec MIDIInput/MIDIOutput is an EventTarget, but the app only ever
@@ -10363,8 +10383,8 @@ window._genQueuePaint = function(part, frac, landed){
  var last = {};
  var lastPrep = 0;
  function plugin(){
-  try{ var c = window.Capacitor; var h = c && c.Plugins && c.Plugins.ModHaptics;
-       return h && typeof h.fire === 'function' ? h : null; }catch(e){ return null; }
+  var h = modCapPlugin('ModHaptics', ['fire','prepare']);
+  return h && typeof h.fire === 'function' ? h : null;
  }
  function wanted(){ try{ return localStorage.getItem('modo-haptics') !== '0'; }catch(e){ return true; } }
  if(!P.hapticAvailable) P.hapticAvailable = function(){
@@ -10409,8 +10429,8 @@ window._genQueuePaint = function(part, frac, landed){
 // orientation and keeps the bridge payload to a few MB; a PDF goes as it is.
 window.modOcr = window.modOcr || (function(){
  function plugin(){
-  try{ var c = window.Capacitor; var h = c && c.Plugins && c.Plugins.ModOcr;
-       return h && typeof h.recognize === 'function' ? h : null; }catch(e){ return null; }
+  var h = modCapPlugin('ModOcr', ['recognize']);
+  return h && typeof h.recognize === 'function' ? h : null;
  }
  function toB64(buf){
   var u = new Uint8Array(buf), s = '', CH = 0x8000;
