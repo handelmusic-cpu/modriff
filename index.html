@@ -5744,6 +5744,10 @@ body.map-on .kb-wrap:has(.map-armed) { outline:2px solid var(--accent); outline-
 .sq-step .rd i { display:block; width:3px; height:3px; border-radius:50%; background:rgba(255,255,255,.8); font-style:normal; }
 /* A tuplet (a ratchet spread over more than its step) draws its hits as dashes. */
 .sq-step .rd.tp i { width:4px; height:2px; border-radius:1px; }
+/* The steps an earlier tuplet in the lane spans: still there, not sounding. */
+.sq-step.covered { opacity:.28; background-image:repeating-linear-gradient(135deg, transparent 0 4px, rgba(255,255,255,.08) 4px 5px); cursor:not-allowed; }
+/* The stretch picked on the ruler for a fill. */
+.sq-rcell.fillsel { background:var(--accent); color:#07080f; border-radius:3px; }
 .sq-step .ob { position:absolute; top:1px; left:2px; font-size:.3rem; color:rgba(255,220,80,.9); font-weight:700; pointer-events:none; line-height:1; }
 /* A step pitched off the lane shows its offset, top right, so a melodic tom
    run is readable on the grid without selecting each hit. */
@@ -7916,7 +7920,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.2</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.3</span></div>
  </div>
 </div>
 
@@ -9217,7 +9221,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.2</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.3</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -9673,6 +9677,15 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
        never written into a setup or a shared link — so they were forgotten on
        this tab and lost on reload. The readout below reflects the drum
        channel's real state and opens the panel that owns it. -->
+  <!-- Making the pattern longer, and what goes in the new bars. Duplicate doubles
+       it by copying; Fill writes a fill over a stretch you pick on the ruler;
+       Tuplets says whether a tuplet keeps the steps it spans to itself. -->
+  <button class="seq-rbtn" id="sq-dupextBtn" onclick="window._sqDuplicateExtend&&window._sqDuplicateExtend()"
+   title="Double the pattern by copying it onto the steps after it — both layers, up to 64 steps. Undo takes it back.">Duplicate ×2</button>
+  <button class="seq-rbtn" id="sq-fillBtn" onclick="window._sqFillToggle&&window._sqFillToggle()"
+   title="Write a fill over part of the pattern: tap this, then the first and last step on the ruler. The hats drop out and a snare or tom run climbs in. Undo, or tap again, for another.">Fill…</button>
+  <button class="seq-rbtn active" id="sq-tupcoverBtn" aria-pressed="true" onclick="window._sqSetTupCover&&window._sqSetTupCover(!window._sqTupCover())"
+   title="Cover: the steps a tuplet spans are greyed out and silent, and a tuplet cannot be placed over another. Free: everything plays, overlaps included.">Tuplets: Cover</button>
   <button class="sq-clrbtn" id="sq-clearBtn" aria-label="Clear this pattern"
    title="Clears every step on the layer you are editing — the other layer is left alone. Undo puts it back.">CLR</button>
 </div>
@@ -10240,7 +10253,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.2';
+const MODRIFF_VERSION = '4.9.9.9.9.9.3';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -48763,6 +48776,132 @@ function sqExtendLayers(old, n){
     if(n>=bar*2) _sqFill(L.grid, tracks, L.mach, Math.max(old, n-beat), n);
   });
 }
+// ── Tuplet cover ──
+// A tuplet is `r` hits across `rs` steps, starting on its own step. The steps it
+// spans are its to fill, so with cover on (the default) they are greyed out and
+// do not play: a 3:4 dropped after a 5:4 cannot pile its hits on the first one's.
+// It is not destructive — what was on a covered step stays in the pattern, and
+// comes back the moment the tuplet is shortened or removed. Off, everything
+// sounds, overlaps included. Kept on the drum page beside the grid it governs,
+// since it is a way of editing the drums and not a preference about the app.
+var sqTupCover = true;
+try{ sqTupCover = localStorage.getItem('modo-tupcover') !== '0'; }catch(e){}
+function _sqIsTup(c){ return !!c && c.v>0 && (c.r||1)>1 && (c.rs||1)>1; }
+// Is step s inside the span of an earlier tuplet in this lane? An earlier tuplet
+// that is itself covered does not count, so the first of a chain wins.
+function _sqIsCovered(row, s){
+  if(!sqTupCover || !row) return false;
+  for(var k=1;k<8 && s-k>=0;k++){
+    var c=row[s-k];
+    if(_sqIsTup(c) && c.rs>k && !_sqIsCovered(row, s-k)) return true;
+  }
+  return false;
+}
+// The first other tuplet that a tuplet starting at step s and spanning rs steps
+// would run into, or -1. Used to refuse the clash rather than paint it grey.
+function _sqTupClash(row, s, rs){
+  for(var k=1;k<rs && s+k<row.length;k++) if(_sqIsTup(row[s+k])) return s+k;
+  return -1;
+}
+function sqPaintCover(){
+  for(var ti in sqStepEls){
+    var row=sqGrid[ti], els=sqStepEls[ti]; if(!row || !els) continue;
+    for(var s=0;s<row.length;s++){
+      var el=els[s]; if(el) el.classList.toggle('covered', _sqIsCovered(row, s));
+    }
+  }
+}
+window._sqTupCover = function(){ return sqTupCover; };
+window._sqSetTupCover = function(on){
+  sqTupCover = !!on;
+  try{ localStorage.setItem('modo-tupcover', sqTupCover ? '1' : '0'); }catch(e){}
+  var b=document.getElementById('sq-tupcoverBtn');
+  if(b){ b.textContent='Tuplets: '+(sqTupCover?'Cover':'Free'); b.setAttribute('aria-pressed', sqTupCover?'true':'false'); b.classList.toggle('active', sqTupCover); }
+  sqPaintCover();
+};
+
+// ── Duplicate to extend ──
+// Doubles the pattern: the steps after it are a copy of the steps before, on both
+// layers, up to the 64 a pattern can hold. Lengthening by hand leaves the new
+// steps empty (the variation and fill come from the other parts growing past the
+// drums, see sqExtendLayers); this is the way to say "play it again" and then
+// change what you like. Steps Linked carries the other parts along as it does for
+// any lengthening, and Undo takes them back.
+window._sqDuplicateExtend = function(){
+  var old=sqSteps;
+  if(old>=MAX_STEPS){ if(typeof showToast==='function') showToast('A pattern holds '+MAX_STEPS+' steps at most'); return; }
+  withUndo('Drum pattern doubled',
+    function(){ sqStashFocused(); return {n:old, g:sqLayers.map(function(L){ return JSON.parse(JSON.stringify(L.grid||{})); })}; },
+    function(sn){
+      if(typeof stepCountLock!=='undefined' && stepCountLock) ['sq','bl','ml'].forEach(function(e){ _applyStepCount(e, sn.n, false); });
+      else _applyStepCount('sq', sn.n, false);
+      sqLayers.forEach(function(L,i){ L.grid=JSON.parse(JSON.stringify(sn.g[i]||{})); });
+      sqGrid=sqLayers[sqFocus].grid; sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid));
+      sqEnsureGrid(); sqRenderGrid();
+    },
+    function(){
+      setSeqStepCount('sq', Math.min(MAX_STEPS, old*2));
+      var n=sqSteps; if(n<=old) return;     // the free tier said no: nothing to copy into
+      sqStashFocused();
+      sqLayers.forEach(function(L){
+        var M=SQM[L.mach]; if(!M || !L.grid) return;
+        for(var ti=0;ti<M.tracks.length;ti++){
+          var row=L.grid[ti]; if(!row) continue;
+          while(row.length<n) row.push(sqMkCell());
+          for(var s2=old;s2<n;s2++) row[s2]=sqCellClone(row[s2%old]);
+        }
+      });
+      sqGrid=sqLayers[sqFocus].grid; sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid));
+      sqRenderGrid();
+    });
+};
+
+// ── Fill over a section ──
+// Pick a stretch of the grid — tap the first step on the ruler, then the last —
+// and the kit layer gets a fill written over it (the same generator the pattern
+// uses when it grows: hats drop out, a snare roll or toms climb in). Tap Fill
+// again, or Undo, for another; a new tap on the ruler starts again.
+var _sqFillPick = null;            // null: off. {a:step|-1}: picking
+function _sqFillPaint(a, b){
+  var cells=document.querySelectorAll('.sq-gruler .sq-rcell');
+  cells.forEach(function(c,i){ c.classList.toggle('fillsel', a>=0 && i>=a && i<=(b==null?a:b)); });
+  var btn=document.getElementById('sq-fillBtn');
+  if(btn){
+    btn.classList.toggle('active', !!_sqFillPick);
+    btn.textContent = !_sqFillPick ? 'Fill…' : (_sqFillPick.a<0 ? 'Fill: first step' : 'Fill: last step');
+  }
+}
+window._sqFillToggle = function(){
+  if(_sqFillPick){ _sqFillPick=null; _sqFillPaint(-1); return; }
+  _sqFillPick={a:-1}; _sqFillPaint(-1);
+  if(typeof showToast==='function') showToast('Tap the first and the last step of the fill on the ruler');
+};
+function sqFillPickTap(st){
+  if(_sqFillPick.a<0){ _sqFillPick.a=st; _sqFillPaint(st); return; }
+  var a=Math.min(_sqFillPick.a, st), b=Math.max(_sqFillPick.a, st);
+  _sqFillPick=null;
+  if(b-a<1){ _sqFillPaint(-1); if(typeof showToast==='function') showToast('A fill needs at least two steps'); return; }
+  _sqFillPaint(a, b);
+  window._sqFillRange(a, b+1);
+  setTimeout(function(){ _sqFillPaint(-1); }, 900);
+}
+window._sqFillRange = function(a, b){
+  withUndo('Fill written',
+    function(){ sqStashFocused(); return JSON.parse(JSON.stringify(sqLayers[0].grid||{})); },
+    function(g){
+      sqLayers[0].grid=JSON.parse(JSON.stringify(g));
+      if(sqFocus===0){ sqGrid=sqLayers[0].grid; sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid)); }
+      sqRenderGrid();
+    },
+    function(){
+      sqStashFocused();
+      var L=sqLayers[0], M=SQM[L.mach]; if(!M || !L.grid) return;
+      for(var ti=0;ti<M.tracks.length;ti++){ var row=L.grid[ti]; if(!row) continue; while(row.length<b) row.push(sqMkCell()); }
+      _sqFill(L.grid, M.tracks, L.mach, a, Math.min(b, sqSteps));
+      if(sqFocus===0){ sqGrid=L.grid; sqMachGrids[sqMach]=JSON.parse(JSON.stringify(sqGrid)); }
+      sqRenderGrid();
+    });
+};
 // Rows and columns for the grid clipboard (see GRID CLIPBOARD). A cell is
 // {v, vel, r, orn}; copies are plain clones so the clipboard never aliases a
 // live cell that a later edit would change under it.
@@ -49337,7 +49476,7 @@ function _sqFireLayer(mach, grid, s, at, ch){
   }
   M.tracks.forEach(function(track,ti){
     var cell=grid[ti]&&grid[ti][s];
-    if(cell&&cell.v>0)sqPlayCell(track,cell,at,sqGv(lk,ti)*(hum ? window._humanV(cell.v===2, part) : 1),sqGp(lk,ti),ch);
+    if(cell&&cell.v>0&&!_sqIsCovered(grid[ti],s))sqPlayCell(track,cell,at,sqGv(lk,ti)*(hum ? window._humanV(cell.v===2, part) : 1),sqGp(lk,ti),ch);
   });
 }
 function sqFireStep(s,t){
@@ -49747,7 +49886,7 @@ function sqRenderGrid(){
     rc.textContent=(rs%_bw===0)?String((rs%_bar)/_bw+1):'';
     // The ruler is the column handle: every lane at this step.
     rc.title='Step '+(rs+1)+' — copy, paste or clear it on every lane';
-    (function(st,el){ el.addEventListener('click',function(e){ e.stopPropagation(); sqColMenu(st,el); }); })(rs,rc);
+    (function(st,el){ el.addEventListener('click',function(e){ e.stopPropagation(); if(_sqFillPick){ sqFillPickTap(st); return; } sqColMenu(st,el); }); })(rs,rc);
     rrow.appendChild(rc);
   }
   gInner.appendChild(rrow);
@@ -49848,6 +49987,8 @@ function sqRenderGrid(){
   if(sqSelTi >= sqTc() || sqSelS >= sqSteps){ sqSelTi=-1; sqSelS=-1; }
   sqMarkSel(); sqSyncInsp();
   sqRenderXStrip();
+  sqPaintCover();
+  if(_sqFillPick) _sqFillPaint(_sqFillPick.a);
 }
 
 // ── The other layer, beside the one being edited (Live) ──
@@ -49976,6 +50117,7 @@ function sqMakeStepEl(cell,color,s){
   return el;
 }
 function sqRefreshStepEl(el,cell,color){
+  setTimeout(sqPaintCover,0);   // this cell may have started or ended a tuplet's span
   el.classList.remove('on','accent');
   if(cell.v===2)el.classList.add('accent');else if(cell.v===1)el.classList.add('on');
   el.style.borderColor=cell.v>0?color:'';
@@ -50170,12 +50312,31 @@ function sqSyncInsp(){
   // steps; leave the steps it covers empty (or let them play over it). Aux has
   // the same, which is how a triplet figure goes over a straight kit.
   var tg=_prGroup('Tuplet');
-  [[1,1,'—','No tuplet'],[3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
-   [3,4,'3:4','Triplet — three even hits across four steps (a quarter-note triplet)'],
-   [5,4,'5:4','Quintuplet — five even hits across four steps (one beat)'],
-   [6,4,'6:4','Sextuplet — six even hits across four steps (one beat)']].forEach(function(o){
+  // hits : steps. Each is `r` even hits spread across `rs` steps starting here.
+  var TUP=[[1,1,'—','No tuplet'],
+   [3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
+   [3,4,'3:4','Triplet — three across four steps (a quarter-note triplet)'],
+   [3,8,'3:8','Triplet — three across eight steps (a half-note triplet: three in two beats)'],
+   [5,4,'5:4','Quintuplet — five across four steps (one beat)'],
+   [5,8,'5:8','Quintuplet — five across eight steps (two beats)'],
+   [6,4,'6:4','Sextuplet — six across four steps (one beat)'],
+   [7,4,'7:4','Septuplet — seven across four steps (one beat)'],
+   [7,8,'7:8','Septuplet — seven across eight steps (two beats)'],
+   [2,3,'2:3','Duplet — two across three steps: the dotted-eighth feel, a hemiola against the triplets'],
+   [4,3,'4:3','Four across three steps: a quick run that fits in a dotted eighth'],
+   [4,5,'4:5','Four across five steps: a little behind the beat, landing on the next'],
+   [5,6,'5:6','Five across six steps']];
+  TUP.forEach(function(o){
     var on=(o[0]===1) ? (!(cell.rs>1)) : ((cell.r||1)===o[0] && (cell.rs||1)===o[1]);
-    tg.appendChild(_prBtn(o[2],on,o[3],function(){ cell.r=o[0]; cell.rs=o[1]; redraw(); }));
+    tg.appendChild(_prBtn(o[2],on,o[3],function(){
+      // With cover on, a tuplet may not run into another one: the covered steps
+      // would be silent, and the second tuplet with them. Say where, and stop.
+      if(sqTupCover && o[1]>1){
+        var hit=_sqTupClash(sqGrid[sqSelTi]||[], sqSelS, o[1]);
+        if(hit>=0){ if(typeof showToast==='function') showToast(o[2]+' would run into the tuplet at step '+(hit+1)+' — shorten that one, or switch Tuplets to Free'); return; }
+      }
+      cell.r=o[0]; cell.rs=o[1]; redraw();
+    }));
   });
   host.appendChild(tg);
 
@@ -50237,6 +50398,10 @@ function sqAttachStep(el,ti,s,track){
   });
   el.addEventListener('pointerup',function(){
     if(moved)return;
+    if(_sqIsCovered(sqGrid[ti], s)){
+      if(typeof showToast==='function') showToast('Covered by the tuplet before it — shorten or clear that one, or switch Tuplets to Free');
+      return;
+    }
     var now=Date.now(), cell=sqGrid[ti][s];
     // One tap toggles, which is what a kit is for: laying a beat down and
     // taking bits of it out again. Making that cost two taps, the way the
