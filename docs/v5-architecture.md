@@ -1791,7 +1791,14 @@ voices do not.
 
 ### Haptics
 
-**Built (4.9.9.9.9.8.9i; the Swift compiles for the simulator, nothing has been felt on a phone).** `modPlatform.haptic(kind)` and
+**Built (4.9.9.9.9.8.9i), felt on an iPhone 17 Pro Max (4.9.9.9.9.8.9s) and
+switchable per instrument (4.9.9.9.9.8.9t).** Settings > General > Touch has the
+master Haptics switch and, under it while it is on, one button per instrument:
+Chords, Melody, Sample pads, mõdFX pad, Steppers, Bounce done. Each call site
+names its instrument (`_hap(kind, src)`); the ones switched off are kept as a list
+of what is *off* (`modo-haptics-off`), so an instrument added later is on without
+anyone turning it on. Haptics are free: there is no row for them in `FREE_LIMITS`.
+The paragraph below is the build as first written, when nothing had been felt. `modPlatform.haptic(kind)` and
 `hapticPrepare()` are in `index.html`, called from the chord and 7th pads, the
 melody keys, the sample pads (`pad`), the mõdFX pad (`kaoss`, down and while
 dragging, at most one per 110 ms), the Bounce finish (`bounce`) and the sample
