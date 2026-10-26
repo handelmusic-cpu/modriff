@@ -1881,7 +1881,7 @@ Two things measured on the way, so nobody rediscovers them:
   quantum's automation from the ramp's start: a few samples of phase on a 48 Hz
   tone, 30 dB), and the 808 clap (one sample at a burst that lands exactly on a
   frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
-  beatbox) play their real decoded samples through the buffer store: all 37
+  beatbox) play their real decoded samples through the buffer store: all 35
   lanes, 69 to 184 dB.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
