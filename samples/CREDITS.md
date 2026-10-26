@@ -15,59 +15,12 @@ removed. The encode brickwalled at ~7.5 kHz, which costs an upright bass almost
 nothing (99% of its energy sits below 1.8 kHz) but strips a piano of the
 5-15 kHz brilliance that makes it sound like a piano.
 
-## samples/piano — "Piano ◆" (pianoreal)
+## samples/piano — removed (4.9.9.9.9.9.4h)
 
-Supplied by the project owner from a separate source, NOT from the SoundFont
-library above. Provenance and licence are the owner's to record here.
-
-28 notes on a minor-third grid (C, D#, F#, A) covering MIDI 24-108, C1 to C8 —
-the whole keyboard. Source was 44.1 kHz 16-bit stereo WAV; shipped as stereo
-mp3 (VBR q5) with a 12 kHz cutoff, trimmed where each note decays below
--65 dBFS with a 200 ms fade. 1.28 MB for the set.
-
-Measured -50 dB band edge: 8.2 kHz median (5.9-10.2 kHz across the set), so it
-is a dark piano — nearer a felt-damped upright than a bright grand. That is
-above the 7.5 kHz ceiling that got the old set pulled, and the rolloff varies
-per note rather than sitting at one fixed frequency, which is natural
-decay rather than a codec wall. The synthesized voice is still available as
-"Piano (synth)".
-
-The D#4 anchor was supplied separately (labelled "ModernPiano5_D4" but
-measuring 622.25 Hz, which is D#, not D). Its harmonic profile differs from its
-neighbour C4 by 7.1 dB mean across H2-H6 — less than the 13.2 dB that C4 and
-F#4 already differ from each other — so it sits inside the set's own
-note-to-note variation. With it the grid is complete: 29 anchors, and no note
-is ever pitch-shifted more than 1.5 semitones.
-
-Which instruments ship, and which SoundFont each comes from, was decided
-against that same ceiling rather than by preference.
-
-| instrument      | dir                | source     |
-|-----------------|--------------------|------------|
-| Upright Bass    | `samples/bass/`     | FluidR3_GM |
-| Vibraphone      | `samples/vibes/`    | MusyngKite |
-| Jazz Guitar     | `samples/jazzgtr/`  | FluidR3_GM |
-| Nylon Guitar    | `samples/nylongtr/` | MusyngKite |
-| Tenor Sax       | `samples/tenorsax/` | MusyngKite |
-| Muted Trumpet   | `samples/mutetpt/`  | MusyngKite |
-
-MusyngKite wins almost everywhere it was compared — tenor sax 10.5 kHz against
-FluidR3's 5.5, vibraphone 5.7 against 3.7, muted trumpet 13.7 against 12.6 —
-but its jazz guitar TRUNCATES at 1.34 s where FluidR3's runs the full 3.13 s,
-which is fatal for a comping instrument, so that one stays on FluidR3.
-
-Measured band edge on a middle-register note from these sources:
-
-    muted trumpet 12.6 kHz    trumpet        8.4 kHz
-    PIANO          7.5 kHz    flute          5.8 kHz   <- piano is clipped
-    tenor sax      5.5 kHz    nylon guitar   4.8 kHz
-    JAZZ GUITAR    4.5 kHz    VIBRAPHONE     3.7 kHz
-    Rhodes         2.1 kHz    upright bass   0.8 kHz
-
-Both are dark instruments by nature, so the encode never reaches anything they
-were going to produce and they arrive intact -- which is exactly what the piano
-could not do. Tenor sax, nylon guitar and Rhodes would also fit comfortably and
-are the obvious next additions.
+"Piano 1" (`pianoreal`) was supplied by the project owner from a separate source
+whose origin and licence were never recorded, so it could not be shown to be
+redistributable and was taken out of the app and the repository. Saved choices of
+it land on the remaining recorded piano (`WAVE_RENAMED`), which is now just "Piano". The set still exists in git history.
 
 ## samples/violin — "Violin ◆" (violin)
 
@@ -344,7 +297,7 @@ that sat under the upper notes. 416 KB.
 Sits beside Upright 1 (samples/bass, the FluidR3_GM SoundFont set above), not
 in place of it.
 
-## samples/piano2 — "Piano 2 ◆"
+## samples/piano2 — "Piano ◆" (pianoreal2; labelled "Piano 2" until Piano 1 was removed)
 
 "88 piano keys, long reverb" by **TEDAgame** (https://freesound.org/people/TEDAgame/,
 pack https://freesound.org/people/TEDAgame/packs/25405/), released under
