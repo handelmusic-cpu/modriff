@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5e</span></div>
  </div>
 </div>
 
@@ -8681,6 +8681,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="sg"><div class="sl">Reverb</div><input type="range" id="mel-rev" min="0" max="1" step=".01" value="0" oninput="updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%')"><div class="sv" id="melrev-val">0%</div></div>
   </div>
   <div class="row" style="margin-top:4px">
+   <button class="tb" id="mel-mono-btn" onclick="toggleMelMono()" title="Poly: every key sounds. Mono: one note at a time, the newest key wins and it slides from note to note over the glide time">Mode: Poly</button>
+   <div class="sg"><div class="sl">Glide time</div><input type="range" id="mel-glide-time" min="0" max="1000" step="10" value="120" disabled oninput="setMelGlideTime(this.value)"><div class="sv" id="mel-glide-val">120ms</div></div>
+  </div>
+  <div class="row" style="margin-top:4px">
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
   </div>
   </div>
@@ -9237,7 +9241,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5d</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5e</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10274,7 +10278,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5d';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12152,6 +12156,8 @@ var PARAMS = [
  {part:'mel',    name:'reverb',     read:function(){ return _pSlider('mel-rev'); }},
  {part:'mel',    name:'voice',      read:function(){ return melWave; }},
  {part:'mel',    name:'velSense',   read:function(){ return _pSlider('vel-sense'); }},
+ {part:'mel',    name:'mono',       read:function(){ return melMono; }},
+ {part:'mel',    name:'glideTime',  read:function(){ return melGlideTime; }},
  {part:'mel',    name:'mod',        read:function(){ return melModOn; }},
  {part:'mel',    name:'modDest',    read:function(){ return melModDest; }},
  {part:'mel',    name:'modDepth',   read:function(){ return melModDepth; }},
@@ -23117,11 +23123,23 @@ function _msxReverbOff(part, v){
  if(!k && _msxSendRev(part)===0 && (part!=='arp' || !(+_wp('chord.reverb')>0))) off = true;
  if(off && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
 }
+// The melody's Mono / Poly switch, on a mõdSynth patch: Mono is the engine's Legato
+// with the switch's Glide, Poly is its Poly. Untouched (null) the patch is left as
+// it was made. The patch's own edits are not written to: this is applied to the
+// values the engine is handed.
+function _msxMelVoice(part, v){
+ if(part!=='mel') return;
+ var m=_wp('mel.mono');
+ if(m==null || !MS.PARAM['voice.mode']) return;
+ v['voice.mode'] = m ? 'legato' : 'poly';
+ if(m){ if(MS.PARAM['voice.glide']) v['voice.glide'] = +_wp('mel.glideTime')||0; if(MS.PARAM['voice.glideAuto']) v['voice.glideAuto'] = 0; }
+}
 function msxApply(part){
  var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
  var state=_wp(part+'.msx') || {};
  var r=msxValuesFor(part, state);
  _msxReverbOff(part, r.values);
+ _msxMelVoice(part, r.values);
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
@@ -23149,6 +23167,7 @@ function _webMsxState(part){
  if(!A || A.patch!==state.patch){ msxApply(part); return; }
  var r=msxValuesFor(part, state), v=r.values, mtx=false;
  _msxReverbOff(part, v);
+ _msxMelVoice(part, v);
  v['voice.poly'] = Math.min(+v['voice.poly']||8, part==='chord' ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) v[k]=Math.min(+v[k]||1, 4); });
  Object.keys(v).forEach(function(id){
@@ -25162,6 +25181,8 @@ function _webEngineSend(msg){
   window._webParams[key] = msg.value;
   // A part's mõdSynth state reaches its engine as soon as it changes.
   if(msg.name === 'msx' && typeof _webMsxState === 'function') _webMsxState(part);
+  // Mono/Poly and its glide reach a mõdSynth melody's engine at once (_msxMelVoice).
+  if(part === 'mel' && (msg.name === 'mono' || msg.name === 'glideTime') && typeof _webMsxState === 'function') _webMsxState(part);
   // The Reverb slider crossing zero switches the patch's own reverb with it
   // (see _msxReverbOff); moving about above zero changes nothing there.
   if(msg.name === 'reverb' && MSX_REVERB_PARAM[part] && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function') _webMsxState(part);
@@ -25214,7 +25235,7 @@ function _webEngineSend(msg){
   const glide = (msg.id != null && bendContOsc && bendContOsc._modId === msg.id);
   if(kind === 'note')    return _webMelNoteOn(msg);
   if(kind === 'glide')   return _webMelGlideOn(msg);
-  if(kind === 'release') return glide ? _webMelGlideStop() : _webMelRelease(msg.id);
+  if(kind === 'release') return glide ? _webMelGlideStop() : _webMelRelease(msg.id, msg.fade);
   if(kind === 'param'){
    if(msg.name === 'bend')   return _webBendPart('mel', msg.value);
    if(msg.name === 'accent') return _webMelAccent(msg.value);
@@ -25573,6 +25594,71 @@ const MEL_SAMPLE_TRIM = {vibes:0.846, jazzgtr:0.888, nylongtr:0.869, tenorsax:1.
 // left that note hanging on the external synth.
 var _melLive = {};
 var _melNoteSeq = 0;
+// ── Mono / Poly for the live melody ──
+// null: the voice plays as it was built (a mõdSynth patch keeps its own Mode);
+// false: polyphonic, a mõdSynth patch forced to Poly; true: one voice that slides
+// from note to note over melGlideTime, newest key wins and letting go of it falls
+// back to the key still down, as on a hardware mono synth. var, not let: read from
+// functions declared thousands of lines away (CLAUDE.md, "Temporal dead zone").
+var melMono = null, melGlideTime = 0.12;
+// The keys down (oldest first, with how hard and where on the strip), the pitch the
+// mono voice is on and when it last sounded: what a slide starts from.
+var _melHeld = [], _melHeldInfo = {}, _melSounding = null, _melSoundT = 0;
+var MEL_MONO_FADE = 0.025;
+// A mõdSynth patch does its own mono: its engine has Legato and a Glide, so the page
+// only sets those (see _msxMelVoice) and lets every key through. Anything else is
+// made mono here, at the door, so web voices, recorded voices and a native engine
+// all follow the one rule.
+function _melMonoPage(){ return melMono===true && melWave!=='modsynth'; }
+function _melMonoStart(msg, midi, pressure, modY){
+ _melHeld = _melHeld.filter(function(m){ return m!==midi; }); _melHeld.push(midi);
+ _melHeldInfo[midi] = {p:pressure, y:modY};
+ var now = performance.now(), from = null;
+ // Only from a note that is sounding or has only just stopped: a slide out of
+ // silence has nothing to come from.
+ if(_melSounding!=null && _melSounding!==midi && now-_melSoundT < 2500) from = _melSounding;
+ Object.keys(_melLive).forEach(function(k){
+  if(+k===midi) return;
+  modSend({v: 1, kind: 'release', part: 'mel', id: _melLive[k], at: null, fade: MEL_MONO_FADE});
+  delete _melLive[k];
+  if(typeof window._melCapRelease==='function') window._melCapRelease(+k);
+ });
+ if(from!=null && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideTime; }
+ _melSounding = midi; _melSoundT = now;
+}
+// Each voice of the note starts `semis` away and slides to its own pitch over
+// `dur`: the chord glide's method (glideApply), on .detune, which oscillators and
+// sample players both have. A mõdSynth stand-in has its engine's Glide instead.
+function _melGlideApply(nodes, semis, t0, dur){
+ var cents = semis*100;
+ if(!cents || Math.abs(cents)>2400 || !(dur>0)) return;
+ (nodes||[]).forEach(function(nd){
+  if(!nd || !nd.detune || nd._msx) return;
+  if(nd.frequency && nd.frequency.value < 20) return;      // an LFO, not a pitch
+  try{
+   var base = nd._bendBase!==undefined ? nd._bendBase + _webBend.mel : nd.detune.value;
+   nd.detune.setValueAtTime(base + cents, t0);
+   nd.detune.linearRampToValueAtTime(base, t0 + dur);
+  }catch(e){}
+ });
+}
+function toggleMelMono(){ setMelMono(melMono===true ? false : true); }
+function setMelMono(v){
+ melMono = (v===null) ? null : !!v;
+ _melHeld = []; _melHeldInfo = {}; _melSounding = null;
+ syncMelMonoUI(); modParamsFlush();
+}
+function setMelGlideTime(ms){
+ melGlideTime = Math.max(0, Math.min(1.5, (+ms||0)/1000));
+ syncMelMonoUI(); modParamsFlush();
+}
+function syncMelMonoUI(){
+ var b=document.getElementById('mel-mono-btn');
+ if(b){ b.textContent='Mode: '+(melMono===true?'Mono':'Poly'); b.classList.toggle('active', melMono===true); }
+ var sl=document.getElementById('mel-glide-time');
+ if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true; }
+ var lv=document.getElementById('mel-glide-val'); if(lv) lv.textContent=Math.round(melGlideTime*1000)+'ms';
+}
 function playMelNote(midi,pressure,sustain,modY){
  if(!window.modEngine.ready()) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -25583,6 +25669,7 @@ function playMelNote(midi,pressure,sustain,modY){
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
               y: modY==null ? melModY : modY};
+ if(_melMonoPage()) _melMonoStart(msg, midi, pressure, modY);
  _melLive[midi] = msg.id;
  modSend(msg);
  return msg.id;
@@ -25654,6 +25741,7 @@ function _webMelNoteOn(msg){
    o.detune.setValueAtTime(o._bendBase + _webBend.mel, startT);
   }catch(e){} });
  }
+ if(msg.glideFrom!=null) _melGlideApply(oscs, msg.glideFrom-midi, startT, msg.glideTime);
  activeMelOscs[midi]={oscs,g,mod,id:msg.id};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
 }
@@ -25705,6 +25793,13 @@ function melPlayIn(midi, pressure, y){
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(typeof window._blStripLets==='function' && window._blStripLets(midi)) return;
+ // Mono: the key is no longer down; if it was the one sounding and another is
+ // still held, that one comes back (after this note has been let go, below).
+ var back = null;
+ if(_melMonoPage()){
+  _melHeld = _melHeld.filter(function(m){ return m!==midi; }); delete _melHeldInfo[midi];
+  if(_melSounding===midi){ _melSoundT = performance.now(); if(_melHeld.length) back = _melHeld[_melHeld.length-1]; }
+ }
  // Before the early return below: a note whose voice has already been reaped
  // still has to close its captured length, or a held note comes back as a
  // sixteenth.
@@ -25712,9 +25807,10 @@ function releaseMelNote(midi){
  const id=_melLive[midi];
  if(id==null) return;
  delete _melLive[midi];
- modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+ modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null, fade: back!=null ? MEL_MONO_FADE : undefined});
+ if(back!=null){ var inf=_melHeldInfo[back]||{}; playMelNote(back, inf.p, true, inf.y); }
 }
-function _webMelRelease(id){
+function _webMelRelease(id, fade){
  const midi=_webMelById(id);
  if(midi==null) return;
  const {g,oscs,mod}=activeMelOscs[midi];
@@ -25723,16 +25819,17 @@ function _webMelRelease(id){
  const dec=_smpRel(_wp('mel.voice'), _wp('mel.release'));
  try{
  g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value,now);
- g.gain.exponentialRampToValueAtTime(.0001,now+dec*.5);
+ const fadeT = fade!=null ? fade : dec*.5;
+ g.gain.exponentialRampToValueAtTime(.0001,now+fadeT);
  // mõdSynth's stand-in carries the engine's note-off, and the engine shapes
  // its own release — so it is told the key came up when it came up. Held back
  // to the end of this fade, a mono or legato patch went on sounding the
  // released top note for 0.45 s before falling back to the key still down.
- oscs.forEach(o=>{try{o.stop(o._msx ? now : now+dec*.5+.05);}catch(e){}});
+ oscs.forEach(o=>{try{o.stop(o._msx ? now : now+fadeT+.05);}catch(e){}});
  // The mod LFOs are free-running oscillators, not scheduled voices — left
  // alone they'd tick on past the note that owns them until reapVoice cuts
  // the graph, which for a sustained note is a 45s ceiling away.
- if(mod) mod.stop(now+dec*.5+.1);
+ if(mod) mod.stop(now+fadeT+.1);
  }catch(e){}
  delete activeMelOscs[midi];
 }
@@ -32911,6 +33008,7 @@ function _capSettings(){
   // musical context + character toggles
   root, mode, voicing, vary:voiceVary, bpm:_sv('bpm'),
   glideOn: chordGlideOn, glideT: chordGlideTime,
+  melMono, melGlideT: melGlideTime,
   // Stored as a pair rather than a string so an older setup, which has
   // neither, restores as 4/4 without needing to be parsed or migrated.
   meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
@@ -33103,6 +33201,7 @@ function _applySettings(s){
  _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
  _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
  if(s.glideOn!=null){ chordGlideOn=!!s.glideOn; if(s.glideT>0) chordGlideTime=+s.glideT; syncGlideUI(); }
+ if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT; _melHeld=[]; _melHeldInfo={}; _melSounding=null; syncMelMonoUI(); }
 
  // Melody envelope + FX
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
