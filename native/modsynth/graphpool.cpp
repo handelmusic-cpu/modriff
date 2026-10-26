@@ -112,7 +112,7 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
       s.g.render(n);
       for (int e = 0; e < ne; e++) {
         const int code = s.g.extId(e);
-        if (code < 0 || code >= kMaxParts || !busL[code]) continue;
+        if (code < 0 || code >= kBuses || !busL[code]) continue;
         const float *l = s.g.extBuf(e, 0), *rr = s.g.extBuf(e, 1);
         if (touched) touched[code] = true;
         float *bl = busL[code] + off, *br = busR[code] + off;

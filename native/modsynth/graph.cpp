@@ -606,12 +606,24 @@ void Graph::render(int frames) {
       case T_OSC: {
         n.nch = 1;
         const float *fq = n.p[0].buf, *dc = n.p[1].buf;
+        // A browser starts a source at the first whole frame at or after its
+        // start time, with no allowance for rounding: 1.1 s is 52800.00000000001
+        // frames, so it begins a frame later than 0.1 s does. Matching that
+        // exactly (a one-sample shift of a saw is a 10% error) is why there is no
+        // epsilon here.
         const double startF = n.start * sr_, stopF = n.stop * sr_;
+        const double firstF = std::ceil(startF);
+        // A browser reads a moving frequency (events on it, or a signal into it)
+        // sample by sample, and in that mode it does not apply the sub-sample
+        // start: the first frame begins at phase 0 (measured: 440 Hz's first
+        // step is sin(2 pi 440 / 48000) wherever in the frame the start falls).
+        // A still frequency is read once and the start is applied.
+        const bool aRate = !n.p[0].ev.empty() || !n.p[0].mods.empty() || !n.p[1].ev.empty() || !n.p[1].mods.empty();
         int qoff = 0;  // where in this block the oscillator began, for its first block only
         for (int s = 0; s < frames; s++) {
           const double fr = (double)(frame_ + s);
-          const double delta = fr - startF;  // frames since the (fractional) start
-          const bool on = n.hasStart() && delta > -1e-6 && (!n.hasStop() || fr < stopF - 1e-6);
+          const double delta = firstF - startF;  // how far into a frame it already is when it begins
+          const bool on = n.hasStart() && fr >= firstF && (!n.hasStop() || fr < stopF);
           if (!on) { n.out[0][s] = 0; continue; }
           if (!n.started) qoff = s;
           // A browser oscillator that begins part-way through a render quantum
@@ -624,7 +636,7 @@ void Graph::render(int frames) {
           const double f = fq[s - qoff] * detuneRatio(dc[s - qoff]);
           // ...and starts between frames: the first frame is already `delta`
           // of a frame into the cycle.
-          if (!n.started) { n.started = true; n.phase = std::max(0.0, delta) * f / sr_; n.phase -= std::floor(n.phase); }
+          if (!n.started) { n.started = true; n.phase = aRate ? 0.0 : delta * f / sr_; n.phase -= std::floor(n.phase); }
           n.out[0][s] = n.wave->read(n.phase, std::fabs(f));
           n.phase += f / sr_;
           n.phase -= std::floor(n.phase);
@@ -666,14 +678,15 @@ void Graph::render(int frames) {
         if (B && B->nch > 1) n.nch = 2;
         const float *rate = n.p[0].buf, *dc = n.p[1].buf;
         const double startF = n.start * sr_, stopF = n.stop * sr_;
+        const double firstF = std::ceil(startF);
         for (int s = 0; s < frames; s++) {
           for (int c = 0; c < n.nch; c++) n.out[c][s] = 0;
           const double fr = (double)(frame_ + s);
-          const double delta = fr - startF;
-          if (!B || !n.hasStart() || delta <= -1e-6 || (n.hasStop() && fr >= stopF - 1e-6)) continue;
+          const double delta = firstF - startF;
+          if (!B || !n.hasStart() || fr < firstF || (n.hasStop() && fr >= stopF)) continue;
           // The buffer is read from where it would be `delta` of a frame after
           // its start, as a browser does for a start between frames.
-          if (!n.started) { n.started = true; n.pos = n.offset * B->sr + std::max(0.0, delta) * rate[s] * rateMul * detuneRatio(dc[s]); }
+          if (!n.started) { n.started = true; n.pos = n.offset * B->sr + delta * rate[s] * rateMul * detuneRatio(dc[s]); }
           double lo = 0, hi = B->len;
           if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * B->sr; hi = std::min<double>(n.loopEnd * B->sr, B->len); }
           if (n.pos >= hi) { if (n.loop) n.pos = lo + std::fmod(n.pos - lo, std::max(1.0, hi - lo)); else continue; }
@@ -762,7 +775,7 @@ bool Graph::finished() const {
   for (const Node &n : d.nodes) {
     if (n.type != T_OSC && n.type != T_BUF) continue;
     if (!n.hasStart()) continue;                     // never started: nothing to wait for
-    const bool stopped = n.hasStop() && (double)frame_ >= n.stop * sr_ - 1e-6;
+    const bool stopped = n.hasStop() && (double)frame_ >= n.stop * sr_;
     const bool ranOut = n.type == T_BUF && !n.loop && n.started && (!n.buf || n.pos >= n.buf->len);
     if (!stopped && !ranOut) return false;
   }

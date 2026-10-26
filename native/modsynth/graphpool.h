@@ -29,6 +29,10 @@ class GraphPool {
  public:
   static constexpr int kMaxVoices = 64;
   static constexpr int kMaxParts = 8;       // codes 0..7 are part buses
+  static constexpr int kMasterBus = 8;      // code 8: straight into the master (the click)
+  static constexpr int kChordRoom = 9;      // code 9: what the chord voices send to the chord's own reverb
+  static constexpr int kRoom = 10;          // code 10: what the other voices send to the shared reverb
+  static constexpr int kBuses = 11;
   static constexpr int kEditCap = 256;      // pending edit records per voice
   GraphPool();
   ~GraphPool();
@@ -50,9 +54,9 @@ class GraphPool {
   // (the voice finished) or the voice's queue is full.
   bool edit(int handle, const double *inc, size_t len);
 
-  // Render thread. Adds `frames` of every playing voice into busL[part] /
-  // busR[part], starting at the block's engine frame `frame0`. A bus pointer
-  // may be null (that part's voices are skipped). `touched[part]`, if given, is
+  // Render thread. Adds `frames` of every playing voice into busL[code] /
+  // busR[code], starting at the block's engine frame `frame0`. A bus pointer
+  // may be null (that bus's voices are skipped). `touched[code]`, if given, is
   // set for every part a voice wrote into this block, so the host knows which
   // parts have something to run through their strip and mõdFX.
   void render(uint64_t frame0, int frames, float *const *busL, float *const *busR, bool *touched = nullptr);

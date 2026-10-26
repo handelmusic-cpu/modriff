@@ -99,6 +99,7 @@ function Rec(opts){
   // front of it, or null when it is not one the host knows. A null is counted
   // in `unresolved` and the connection is dropped.
   this._resolve = opts.resolve || null;
+  this.debug = !!opts.debug;
   this.onEdit = opts.onEdit || null;     // called once when edits start to pile up
   this._dirty = false;
   this._realCtx = opts.realCtx || null;  // buffers are made by it, so they stay real
@@ -155,7 +156,10 @@ function Rec(opts){
     set value(v){
       // The attribute is setValueAtTime(v, currentTime) in effect; before any
       // event it is also just the starting value.
-      if(!this.ev.length) this.v0 = v;
+      // With nothing else on the param this is only its starting value, not an
+      // event: a browser reads a param with no events as still (and a source
+      // starting between frames is then applied to the sub-sample).
+      if(!this.ev.length){ this.v0 = v; if(self.sent) this._emit(OP.set, v, self.currentTime, 0); return; }
       this._push(KIND.set, v, self.currentTime, 0);
       this._emit(OP.set, v, self.currentTime, 0);
     }
@@ -293,6 +297,7 @@ Rec.prototype._sinkFor = function(real){
   if(r == null){
     const k = (real && real.constructor && real.constructor.name) || typeof real;
     this.unresolved[k] = (this.unresolved[k] || 0) + 1;
+    if(this.debug){ const st = (new Error().stack || '').split('\n').slice(3, 6).map(x => x.trim()); (this.where = this.where || []).push(st); }
     return null;
   }
   const code = typeof r === 'number' ? r : r.code;

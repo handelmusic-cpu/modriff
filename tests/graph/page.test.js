@@ -26,7 +26,10 @@ const root = path.join(__dirname, '..', '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'graph-page-'));
 const SR = 48000, SECONDS = 3.2;
 const PART = process.argv[2] || 'drum';
-const CODE = { chord: 0, mel: 1, melgen: 2, bass: 3, arp: 4, drum: 5, auxperc: 6, sampler: 7 }[PART];
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',').map(Number) : null;   // keep these events (debugging)
+// The buses the host would sum for this part: its own, and the two rooms it can send to.
+const BUSES = p => [{ chord: 0, mel: 1, melgen: 2, bass: 3, arp: 4, drum: 5, auxperc: 6, sampler: 7, click: 8 }[p], 9, 10].join(',');
+const CODE = { chord: 0, mel: 1, melgen: 2, bass: 3, arp: 4, drum: 5, auxperc: 6, sampler: 7, click: 8 }[PART];
 
 // Each part's pattern: messages as modEngine takes them, at seconds from the start.
 const PATTERNS = {
@@ -43,6 +46,19 @@ const PATTERNS = {
     [2.10, { kind: 'hit', part: 'drum', id: 10, kit: '909', lane: 1, vel: 0.9, accent: false, pitch: 0, dyn: null }],
   ],
 };
+
+PATTERNS.auxperc = PATTERNS.drum.slice(0, 5).map(([t, m]) => [t, Object.assign({}, m, { part: 'auxperc' })]);
+PATTERNS.bass = [[0.1, 36, 0.4], [0.6, 38, 0.4], [1.1, 41, 0.3], [1.5, 36, 0.8]].map(([t, n, d], i) =>
+  [t, { kind: 'note', part: 'bass', id: i + 1, note: n, vel: 0.9, dur: d, slide: false, from: null }]);
+PATTERNS.melgen = [[0.1, 64, 0.3], [0.5, 67, 0.3], [0.9, 71, 0.5], [1.5, 69, 0.6]].map(([t, n, d], i) =>
+  [t, { kind: 'note', part: 'melgen', id: i + 1, note: n, vel: 0.8, dur: d, accent: i === 2 }]);
+PATTERNS.arp = [[0.1, 60, 0.2], [0.35, 64, 0.2], [0.6, 67, 0.2], [0.85, 72, 0.3]].map(([t, n, d], i) =>
+  [t, { kind: 'note', part: 'arp', id: i + 1, note: n, vel: 0.8, dur: d, level: 1, pan: i % 2 ? 0.3 : -0.3 }]);
+PATTERNS.mel = [[0.1, 72, 0.6], [0.9, 76, 0.8]].map(([t, n, d], i) =>
+  [t, { kind: 'note', part: 'mel', id: i + 1, note: n, vel: 0.8, dur: d, y: 0.2 }]);
+PATTERNS.chord = [[0.1, 60, [60, 64, 67], 1.0], [1.3, 65, [65, 69, 72], 1.2]].map(([t, r, notes, d], i) =>
+  [t, { kind: 'chord', part: 'chord', id: i + 1, root: r, notes, bass: null, vel: 0.8, dur: d }]);
+PATTERNS.click = [[0.1, false], [0.6, true], [1.1, false]].map(([t, a], i) => [t, { kind: 'hit', part: 'click', id: i + 1, accent: a }]);
 
 function serve() {
   return new Promise(res => {
@@ -61,19 +77,28 @@ async function pageRun(a) {
   audioCtx = offline;                                  // the page's own context, for this run
   const sink = offline.createGain(); sink.connect(offline.destination);
   masterDest = function () { return sink; };           // the master chain is not what is being compared
+  // The two rooms a voice can send to are stand-ins that go straight to the
+  // output, so what is compared includes the sends (with their levels).
+  const room = offline.createGain(); room.connect(offline.destination);
+  window._chordRevFeed = room; reverbNode = room;
+  Object.assign(window._webParams, { 'chord.reverb': 0.4, 'mel.reverb': 0.5 });
   const events = [];
   if (mode === 'graph') {
+    MODGRAPH.debug = true;
     modGraphEnable({
       graphBuf: m => events.push({ type: 1, frame: 0, gid: 0, payload: [m.id, m.sampleRate, m.channels.length, 0, m.channels.map(c => c) ] , b64: m.channels }),
       graphBegin: m => events.push({ type: 2, frame: Math.round(m.base * sr), gid: m.gid, b64: m.program }),
       graphEdit: m => events.push({ type: 3, frame: 0, gid: m.gid, b64: m.increments }),
     }, [part]);
   }
-  if (part === 'drum' || part === 'auxperc') window._sqEnsureBus();
+  // Buses are built before the voices in both runs, so the random numbers the
+  // voices draw (detune, phase) come in the same order in both.
+  _ensureAllPartBuses(offline);
+  { let q = 13579 >>> 0; Math.random = function () { q = (q + 0x6D2B79F5) >>> 0; let t = q; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   for (const [at, msg] of pattern) window.modEngine.send(Object.assign({ v: 1, at }, msg));
   await Promise.resolve(); await Promise.resolve();
   if (mode === 'graph') {
-    return { events, stat: { sent: MODGRAPH.sent, fell: MODGRAPH.fellBack, why: MODGRAPH.why, edits: MODGRAPH.edits, empty: MODGRAPH.empty } };
+    return { events, last: MODGRAPH.last || null, stat: { sent: MODGRAPH.sent, fell: MODGRAPH.fellBack, why: MODGRAPH.why, edits: MODGRAPH.edits, empty: MODGRAPH.empty } };
   }
   const b = await offline.startRendering();
   const L = b.getChannelData(0), R = b.getChannelData(1), o = new Float32Array(L.length * 2);
@@ -90,7 +115,7 @@ async function pageRun(a) {
     const errs = []; page.on('pageerror', e => errs.push(String(e)));
     page.on('console', m => { if (m.type() === 'warning' && /modGraph|modEngine/.test(m.text())) errs.push(m.text()); });
     await page.goto(url); await page.waitForTimeout(1200);
-    const r = await page.evaluate(pageRun, { mode, part: PART, pattern: PATTERNS[PART], sr: SR, seconds: SECONDS });
+    const r = await page.evaluate(pageRun, { mode, part: PART, pattern: process.env.EVENTS ? JSON.parse(process.env.EVENTS) : ONLY ? PATTERNS[PART].filter((_, i) => ONLY.includes(i)) : PATTERNS[PART], sr: SR, seconds: SECONDS });
     await page.close();
     r.errs = errs;
     return r;
@@ -98,6 +123,7 @@ async function pageRun(a) {
   const real = await run('real'), g = await run('graph');
   if (g.errs.length) console.log('page said:', g.errs.slice(0, 4));
   console.log('page sent', JSON.stringify(g.stat));
+  if (g.last) console.log('last fallback:', JSON.stringify(g.last));
   // the script graphmix reads
   const out = [];
   let n = 0;
@@ -114,7 +140,7 @@ async function pageRun(a) {
   }
   const sf = path.join(tmp, 'script.f64'), of = path.join(tmp, 'out.f32');
   fs.writeFileSync(sf, Buffer.from(Float64Array.from([n, ...out]).buffer));
-  execFileSync(path.join(root, 'native/modsynth/graphmix'), [sf, String(CODE), String(SECONDS), of]);
+  execFileSync(path.join(root, 'native/modsynth/graphmix'), [sf, BUSES(PART), String(SECONDS), of]);
   const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0)), ref = Float32Array.from(real.f32);
   let a = 0, e = 0, pk = 0, pn = 0;
   for (let i = 0; i < ref.length; i++) { a += ref[i] ** 2; e += (ref[i] - nat[i]) ** 2; pk = Math.max(pk, Math.abs(ref[i])); pn = Math.max(pn, Math.abs(nat[i])); }

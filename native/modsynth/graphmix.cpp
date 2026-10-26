@@ -1,7 +1,8 @@
 // Plays what the page sent to the host, through the pool, and writes one part's
 // bus. For tests/graph/page.test.js: the page's stand-in plugin records its
 // messages, and this is the host.
-//   graphmix <script.f64> <part> <seconds> <out.f32>
+//   graphmix <script.f64> <bus[,bus...]> <seconds> <out.f32>
+// The named buses are summed into the one output.
 // script: [n, then per event: type, frame, gid, len, payload...]
 //   type 1  buffer  payload [id, sampleRate, nch, len, ch0..., ch1...]
 //   type 2  begin   payload = the program; `frame` is the engine frame it starts
@@ -19,7 +20,8 @@ int main(int argc, char **argv) {
   std::vector<double> d; double v;
   while (fread(&v, sizeof v, 1, f) == 1) d.push_back(v);
   fclose(f);
-  const int part = atoi(argv[2]);
+  std::vector<int> parts;
+  for (const char *c = argv[2]; *c;) { parts.push_back(atoi(c)); while (*c && *c != ',') c++; if (*c == ',') c++; }
   const long total = (long)(atof(argv[3]) * 48000.0);
   modsynth::GraphPool pool;
   std::map<int, int> handle;
@@ -50,14 +52,18 @@ int main(int argc, char **argv) {
     if (it == handle.end() || !pool.edit(it->second, e.inc.data(), e.inc.size())) { fprintf(stderr, "edit for gid %d refused\n", e.gid); return 1; }
   }
   std::vector<float> out; out.reserve(total * 2);
-  std::vector<float> bl[modsynth::GraphPool::kMaxParts], br[modsynth::GraphPool::kMaxParts];
-  float *pl[modsynth::GraphPool::kMaxParts], *pr[modsynth::GraphPool::kMaxParts];
-  for (int i = 0; i < modsynth::GraphPool::kMaxParts; i++) { bl[i].assign(128, 0.f); br[i].assign(128, 0.f); pl[i] = bl[i].data(); pr[i] = br[i].data(); }
+  std::vector<float> bl[modsynth::GraphPool::kBuses], br[modsynth::GraphPool::kBuses];
+  float *pl[modsynth::GraphPool::kBuses], *pr[modsynth::GraphPool::kBuses];
+  for (int i = 0; i < modsynth::GraphPool::kBuses; i++) { bl[i].assign(128, 0.f); br[i].assign(128, 0.f); pl[i] = bl[i].data(); pr[i] = br[i].data(); }
   for (long done = 0; done < total;) {
     const int nf = (int)std::min<long>(128, total - done);
-    for (int i = 0; i < modsynth::GraphPool::kMaxParts; i++) { std::fill(bl[i].begin(), bl[i].end(), 0.f); std::fill(br[i].begin(), br[i].end(), 0.f); }
+    for (int i = 0; i < modsynth::GraphPool::kBuses; i++) { std::fill(bl[i].begin(), bl[i].end(), 0.f); std::fill(br[i].begin(), br[i].end(), 0.f); }
     pool.render((uint64_t)done, nf, pl, pr);
-    for (int i = 0; i < nf; i++) { out.push_back(bl[part][i]); out.push_back(br[part][i]); }
+    for (int i = 0; i < nf; i++) {
+      float l = 0, r = 0;
+      for (int q : parts) { l += bl[q][i]; r += br[q][i]; }
+      out.push_back(l); out.push_back(r);
+    }
     done += nf;
   }
   FILE *o = fopen(argv[4], "wb");

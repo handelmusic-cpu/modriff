@@ -11653,6 +11653,7 @@ function Rec(opts){
   // front of it, or null when it is not one the host knows. A null is counted
   // in `unresolved` and the connection is dropped.
   this._resolve = opts.resolve || null;
+  this.debug = !!opts.debug;
   this.onEdit = opts.onEdit || null;     // called once when edits start to pile up
   this._dirty = false;
   this._realCtx = opts.realCtx || null;  // buffers are made by it, so they stay real
@@ -11709,7 +11710,10 @@ function Rec(opts){
     set value(v){
       // The attribute is setValueAtTime(v, currentTime) in effect; before any
       // event it is also just the starting value.
-      if(!this.ev.length) this.v0 = v;
+      // With nothing else on the param this is only its starting value, not an
+      // event: a browser reads a param with no events as still (and a source
+      // starting between frames is then applied to the sub-sample).
+      if(!this.ev.length){ this.v0 = v; if(self.sent) this._emit(OP.set, v, self.currentTime, 0); return; }
       this._push(KIND.set, v, self.currentTime, 0);
       this._emit(OP.set, v, self.currentTime, 0);
     }
@@ -11847,6 +11851,7 @@ Rec.prototype._sinkFor = function(real){
   if(r == null){
     const k = (real && real.constructor && real.constructor.name) || typeof real;
     this.unresolved[k] = (this.unresolved[k] || 0) + 1;
+    if(this.debug){ const st = (new Error().stack || '').split('\n').slice(3, 6).map(x => x.trim()); (this.where = this.where || []).push(st); }
     return null;
   }
   const code = typeof r === 'number' ? r : r.code;
@@ -11961,10 +11966,11 @@ if(typeof module !== 'undefined') module.exports = Rec;
 //
 // var, not let: getCtx() reads _mgScope from far away (see CLAUDE.md).
 var _mgScope = null;
+var _mgRpwOwner = {};
 var MODGRAPH = { on:false, plugin:null, parts:{}, gid:0, flushing:false, pending:[], bypass:false,
                  sent:0, fellBack:0, edits:0, empty:0, why:{},
                  // The host's part slots: a graph names a bus by one of these.
-                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7} };
+                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10} };
 // Which messages make a new sound (the rest only change one that exists, and
 // reach the host through the recorder's own edits).
 var _MG_KINDS = { hit:1, note:1, chord:1 };
@@ -11987,6 +11993,11 @@ function _mgResolve(node){
  if(node === window.ML_MG_REF) return {code:C.melgen,  gain:node.gain.value};
  var pb = window._partBuses || {};
  for(var p in pb) if(pb[p] === node && C[p] != null) return {code:C[p], gain:node.gain.value};
+ // The two rooms a voice sends to (the chord's own, and the shared one).
+ if(node === window._chordRevFeed) return {code:C.chordRoom, gain:1};
+ if(node === reverbNode) return {code:C.room, gain:1};
+ // Straight into the master, past every part's strip: the click.
+ if(node === masterDest(audioCtx)) return {code:C.master, gain:1};
  return null;
 }
 
@@ -12000,13 +12011,18 @@ function _mgB64(typed){
 function _mgRun(msg, play){
  var real = audioCtx;
  if(!real) return play();
- var rec = new GraphRec({ sampleRate:real.sampleRate, realCtx:real, destCode:255, resolve:_mgResolve, onEdit:_mgDirty,
+ // The part buses are built lazily by whoever first plays into them, on the
+ // context that is current: build them now, on the real one, so a voice
+ // recorded first does not make its bus out of the recorder.
+ try{ _ensureAllPartBuses(real); }catch(e){}
+ var rec = new GraphRec({ debug:MODGRAPH.debug, sampleRate:real.sampleRate, realCtx:real, destCode:255, resolve:_mgResolve, onEdit:_mgDirty,
                           timeSource:function(){ return real.currentTime; } });
  var prev = _mgScope, ok = true;
  _mgScope = rec;
  try{ play(); }catch(e){ ok = false; try{ console.warn('[modGraph] voice failed while recording', e); }catch(_){} }
  finally{ _mgScope = prev; }
  var bad = Object.keys(rec.unsupported).concat(Object.keys(rec.unresolved));
+ if(bad.length && MODGRAPH.debug) MODGRAPH.last = { part:msg.part, unsupported:rec.unsupported, unresolved:rec.unresolved, where:rec.where };
  if(ok && !bad.length){
   // A hit that built nothing (muted, or no sample yet) is not a voice.
   if(rec.nodes.length <= 1){ MODGRAPH.empty++; return; }
@@ -21503,6 +21519,8 @@ function _driveOutGain(amount){
 // bit-identical and there is finally something to tap.
 window._partBuses = window._partBuses || {};
 function _partDest(ctx, part){
+ // Recorded: the bus is the real one, which the graph names to the host.
+ if(ctx && ctx === _mgScope) ctx = audioCtx;
  const master = masterDest(ctx);
  if(!part || !ctx) return master;
  // Bass and the Melody sequencer build their buses inside their own IIFEs
@@ -22053,13 +22071,14 @@ document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 function feedChordRev(node,mix){
  if(!window._chordRevFeed) return feedRev(node,mix);
  if(mix<.01) return null;
- const g=audioCtx.createGain(); g.gain.value=mix;
+ // On the recorder when one is open, so the send is part of the recorded graph.
+ const g=(_mgScope||audioCtx).createGain(); g.gain.value=mix;
  node.connect(g); g.connect(window._chordRevFeed);
  return g;
 }
 function feedRev(node,mix){
  if(!reverbNode||mix<.01) return null;
- const g=audioCtx.createGain(); g.gain.value=mix;
+ const g=(_mgScope||audioCtx).createGain(); g.gain.value=mix;
  node.connect(g); g.connect(reverbNode);
  return g;
 }
@@ -22142,7 +22161,11 @@ function reapVoice(oscs, nodes, endSec){
 const _RPW_POOL=8;
 let _rpwCache=null, _rpwCtx=null;
 function _randPhaseWave(ctx,type,i){
- if(_rpwCtx!==ctx){ _rpwCache={}; _rpwCtx=ctx; }
+ // A recorded voice's waves are the recorder's own kind, kept across notes the
+ // way the real ones are (the pool is built once, so the random phases come in
+ // the same order whichever context the voice is built on).
+ const _own = (ctx && ctx._realCtx) ? _mgRpwOwner : ctx;
+ if(_rpwCtx!==_own){ _rpwCache={}; _rpwCtx=_own; }
  const key=type;
  if(!_rpwCache[key]){
   const pool=[];

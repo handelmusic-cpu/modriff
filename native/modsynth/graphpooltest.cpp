@@ -54,10 +54,10 @@ static V bufprog(int id, double start, int code) {
 }
 
 struct Bus {
-  std::vector<float> l[GraphPool::kMaxParts], r[GraphPool::kMaxParts];
-  float *pl[GraphPool::kMaxParts], *pr[GraphPool::kMaxParts];
+  std::vector<float> l[GraphPool::kBuses], r[GraphPool::kBuses];
+  float *pl[GraphPool::kBuses], *pr[GraphPool::kBuses];
   explicit Bus(int n) {
-    for (int i = 0; i < GraphPool::kMaxParts; i++) { l[i].assign(n, 0.f); r[i].assign(n, 0.f); pl[i] = l[i].data(); pr[i] = r[i].data(); }
+    for (int i = 0; i < GraphPool::kBuses; i++) { l[i].assign(n, 0.f); r[i].assign(n, 0.f); pl[i] = l[i].data(); pr[i] = r[i].data(); }
   }
 };
 
@@ -66,8 +66,8 @@ static void run(GraphPool &pool, Bus &b, int total, const std::vector<int> &bloc
   uint64_t f = 0; size_t k = 0;
   while ((int)f < total) {
     const int n = std::min(blocks[k++ % blocks.size()], total - (int)f);
-    float *bl[GraphPool::kMaxParts], *br[GraphPool::kMaxParts];
-    for (int i = 0; i < GraphPool::kMaxParts; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
+    float *bl[GraphPool::kBuses], *br[GraphPool::kBuses];
+    for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
     pool.render(f, n, bl, br);
     f += n;
   }
@@ -113,8 +113,8 @@ int main() {
     GraphPool pool; Bus b(512);
     V p = sine(440, 0.0, 0.3, 0.5, 5);
     pool.begin(p.data(), p.size(), 0.0, 0);
-    bool t[8] = {};
-    float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+    bool t[GraphPool::kBuses] = {};
+    float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
     pool.render(0, 128, bl, br, t);
     CHECK(t[5] && !t[0] && !t[1] && !t[2] && !t[3] && !t[4] && !t[6] && !t[7], "only part 5 is touched");
   }
@@ -146,7 +146,7 @@ int main() {
     uint64_t f = 4800; size_t k = 0;
     while ((int)f < N) {
       const int n = std::min(odd[k++ % odd.size()], N - (int)f);
-      float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b2.pl[i] + f; br[i] = b2.pr[i] + f; }
+      float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b2.pl[i] + f; br[i] = b2.pr[i] + f; }
       pool.render(f, n, bl, br); f += n;
     }
     double tailEnergy = 0; for (int i = 7200 + 200; i < N; i++) tailEnergy += std::fabs(b2.l[0][i]);
@@ -187,7 +187,7 @@ int main() {
     for (int note = 0; note < 600; note++) {
       if (pool.begin(p.data(), p.size(), 0.0, f) < 0) refused++;
       for (int blk = 0; blk < 4; blk++) {
-        float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+        float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
         pool.render(f, 128, bl, br); f += 128;
       }
     }
@@ -210,11 +210,11 @@ int main() {
     });
     uint64_t f = 0;
     while (!stop.load()) {
-      float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+      float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
       pool.render(f, 128, bl, br); f += 128;
     }
     control.join();
-    for (int i = 0; i < 400; i++) { float *bl[8], *br[8]; for (int j = 0; j < 8; j++) { bl[j] = b.pl[j]; br[j] = b.pr[j]; } pool.render(f, 128, bl, br); f += 128; }
+    for (int i = 0; i < 400; i++) { float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int j = 0; j < GraphPool::kBuses; j++) { bl[j] = b.pl[j]; br[j] = b.pr[j]; } pool.render(f, 128, bl, br); f += 128; }
     CHECK(pool.active() == 0, "after the storm every voice has retired (%d left)", pool.active());
   }
 
@@ -262,7 +262,7 @@ int main() {
     uint64_t f = 5000; size_t k = 0;
     while ((int)f < N) {
       const int n = std::min(odd[k++ % odd.size()], N - (int)f);
-      float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
+      float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
       pool.render(f, n, bl, br); f += n;
     }
     auto ref = alone(p, {}, N);
