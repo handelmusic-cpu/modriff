@@ -44,12 +44,17 @@ class Graph {
   // Renders `frames` (at most kQuantum) and advances the graph's clock.
   void render(int frames);
 
-  // The host's endpoints (the recorder's createExt, in node order). `ext(i)`
-  // is the i-th; its id is the recorder's own node id, which is what the
-  // host maps to a part bus.
+  // The host's endpoints (the recorder's createExt, in node order). `extId(i)`
+  // is the i-th one's code: the host part slot its signal belongs to, or a send.
   int extCount() const;
   int extId(int i) const;
   const float *extBuf(int i, int ch) const;  // valid until the next render
+
+  // True once nothing can sound any more: every source has stopped (or a
+  // one-shot buffer has run out) and the host endpoints have been silent for
+  // as long as the longest delay line. A graph with a source that has no stop
+  // time is never finished: it is waiting for the edit that stops it.
+  bool finished() const;
 
   double sampleRate() const { return sr_; }
   uint64_t frame() const { return frame_; }
@@ -60,6 +65,7 @@ class Graph {
   const char *err_ = "";
   double sr_ = 48000;
   uint64_t frame_ = 0;
+  uint64_t quiet_ = 0, tail_ = 0;  // frames of silence so far; frames needed
 };
 
 }  // namespace modsynth

@@ -44,11 +44,11 @@ async function pageRun(args) {
   const g = ctx.createGain();
   g.connect(ctx.destination);
   // The caller's own envelope, as playChord builds it: attack, hold, decay.
-  // t0 sits on a 128-frame boundary on purpose. A browser's oscillator that
-  // starts mid-quantum reads its first quantum's frequency-modulation samples
-  // from the wrong end (measured: a 0.1 rad carrier phase offset with FM at
-  // frame 480, none at frame 512), and that is a quirk worth not copying.
-  const t0 = 512 / sr, atk = 0.02, hold = 0.8, dec = 0.6;
+  // t0 is not on a 128-frame boundary (frame 480) on purpose: a browser's
+  // oscillator that starts part-way through a render quantum reads that
+  // quantum's frequency-modulation samples from the wrong end, and the
+  // interpreter reproduces that (see graph.cpp). Aligned starts do not show it.
+  const t0 = 0.01, atk = 0.02, hold = 0.8, dec = 0.6;
   g.gain.setValueAtTime(0, t0);
   g.gain.linearRampToValueAtTime(0.4, t0 + atk);
   g.gain.setValueAtTime(0.4, t0 + atk + 0.01);
@@ -124,12 +124,11 @@ for (const [wave, midi, release] of CASES) {
     const snr = 10 * Math.log10(eRef / Math.max(eErr, 1e-30));
     const row = { wave, midi, release: release || undefined, snrDb: +snr.toFixed(1), peakRef: +peakRef.toFixed(3), peakNat: +peakNat.toFixed(3), worstWindowDb: +worst.toFixed(2), unsupported: rec.unsupported };
     report.push(row);
-    // What is held: the render is the browser's to within -60 dB (the piano's
-    // filter sweep is the least exact, around -67: a browser's biquad takes
-    // its frequency per block, ours too, but the browser's ramp reads it at a
-    // different frame), no 10 ms window off by more than 0.1 dB, same peak.
+    // What is held: the render is the browser's to within -75 dB (the weakest
+    // voice, a plain sawtooth, is 76; the rest are 80 to 114), no 10 ms window
+    // off by more than 0.1 dB, same peak.
     const bad = [];
-    if (snr < 60) bad.push('snr ' + snr.toFixed(1) + ' dB');
+    if (snr < 75) bad.push('snr ' + snr.toFixed(1) + ' dB');
     if (worst > 0.1) bad.push('window ' + worst.toFixed(2) + ' dB');
     if (Math.abs(peakNat - peakRef) > 0.005 * Math.max(peakRef, 0.01)) bad.push('peak ' + peakNat + ' vs ' + peakRef);
     if (Object.keys(rec.unsupported).length) bad.push('unsupported ' + JSON.stringify(rec.unsupported));

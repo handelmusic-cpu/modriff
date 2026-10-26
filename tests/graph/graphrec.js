@@ -29,7 +29,8 @@
      shp    : oversample (0 none 1 2x 2 4x), nCurve, curve...
      pan    : params pan
      del    : maxDelay;  params delayTime
-     ext    : an endpoint that belongs to the host (the part bus, a send); id only
+     ext    : an endpoint that belongs to the host (a part's bus, a send); its
+              code: the host's part slot (0..7) or a send (100 and up)
 
    Event kinds: 0 set, 1 linear ramp, 2 exponential ramp, 3 target (tc is the
    time constant). Times are the context's own, absolute; the caller subtracts
@@ -194,7 +195,7 @@ function Rec(opts){
     }
   }
 
-  this.destination = this.createExt('destination');
+  this.destination = this.createExt('destination', 0);
   this.listener = {};
 
   this.createGain = () => new Node('gain', [1]);
@@ -242,9 +243,9 @@ function Rec(opts){
 
 // An endpoint that is the host's, not the graph's: a part bus, a reverb send.
 // `name` is how the host knows it. Param edges into one are not meaningful.
-Rec.prototype.createExt = function(name){
+Rec.prototype.createExt = function(name, code){
   const self = this;
-  const n = { kind: 'ext', id: this.nodes.length, name, context: this, params: {},
+  const n = { kind: 'ext', id: this.nodes.length, name, code: code == null ? 0 : code, context: this, params: {},
     connect(){ throw new Error('an ext endpoint is a destination only'); } };
   this.nodes.push(n);
   return n;
@@ -263,7 +264,7 @@ Rec.prototype.program = function(){
   });
   const pushParam = p => { out.push(p.v0, p.ev.length); p.ev.forEach(e => out.push(e.kind, e.v, e.t, e.tc)); };
   nodes.forEach(n => {
-    if(n.kind === 'ext'){ out.push(T.ext, n.id); return; }
+    if(n.kind === 'ext'){ out.push(T.ext, n.code); return; }
     out.push(T[n.kind]);
     if(n.kind === 'osc'){
       out.push(n.wave);

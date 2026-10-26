@@ -235,7 +235,7 @@ struct Edge { int from, to, param; };
 
 struct Node {
   int type = 0;
-  int recId = 0;
+  int code = 0;
   int nch = 1;                     // channels of out[]
   float out[2][Q];
   std::vector<Edge> in;            // audio inputs (param < 0)
@@ -304,6 +304,10 @@ bool Graph::load(const double *p, size_t len, double timeBase) {
       pr.ev.push_back(ev);
     }
     pr.prepare();
+    // Room for edits that arrive while it plays (a release is a handful of
+    // events on one param), so applying them on the render thread never
+    // allocates.
+    pr.ev.reserve(pr.ev.size() + 16);
     return true;
   };
   auto readParams = [&](Node &n, int count) -> bool {
@@ -320,7 +324,7 @@ bool Graph::load(const double *p, size_t len, double timeBase) {
     switch (n.type) {
       case T_EXT:
         if (!need(1)) { good = false; break; }
-        n.recId = (int)p[i++]; n.nch = 2; d.ext.push_back(k);
+        n.code = (int)p[i++]; n.nch = 2; d.ext.push_back(k);
         break;
       case T_GAIN: good = readParams(n, 1); break;
       case T_OSC: {
@@ -408,6 +412,10 @@ bool Graph::load(const double *p, size_t len, double timeBase) {
     for (int o : outs[q[h]]) if (--indeg[o] == 0) q.push_back(o);
   }
   if ((int)d.order.size() != nNodes) { err_ = "cycle in graph"; return false; }
+  quiet_ = 0;
+  tail_ = 4 * Q;
+  for (const Node &n : d.nodes)
+    if (n.type == T_DEL) tail_ = std::max<uint64_t>(tail_, (uint64_t)std::ceil(n.maxDelay * sr_) + 4 * Q);
   err_ = "";
   return true;
 }
@@ -443,7 +451,7 @@ bool Graph::apply(const double *p, size_t len, double timeBase) {
 }
 
 int Graph::extCount() const { return (int)d_->ext.size(); }
-int Graph::extId(int i) const { return d_->nodes[d_->ext[i]].recId; }
+int Graph::extId(int i) const { return d_->nodes[d_->ext[i]].code; }
 const float *Graph::extBuf(int i, int ch) const { return d_->nodes[d_->ext[i]].out[ch ? 1 : 0]; }
 
 namespace {
@@ -577,11 +585,25 @@ void Graph::render(int frames) {
       case T_OSC: {
         n.nch = 1;
         const float *fq = n.p[0].buf, *dc = n.p[1].buf;
+        const double startF = n.start * sr_, stopF = n.stop * sr_;
+        int qoff = 0;  // where in this block the oscillator began, for its first block only
         for (int s = 0; s < frames; s++) {
-          const double t = t0 + s * dt;
-          const bool on = n.start >= 0 && t >= n.start && (n.stop < 0 || t < n.stop);
-          if (!on) { n.out[0][s] = 0; if (n.start >= 0 && t < n.start) n.phase = 0; continue; }
-          const double f = fq[s] * detuneRatio(dc[s]);
+          const double fr = (double)(frame_ + s);
+          const double delta = fr - startF;  // frames since the (fractional) start
+          const bool on = n.start >= 0 && delta > -1e-6 && (n.stop < 0 || fr < stopF - 1e-6);
+          if (!on) { n.out[0][s] = 0; continue; }
+          if (!n.started) qoff = s;
+          // A browser oscillator that begins part-way through a render quantum
+          // reads that quantum's frequency and detune samples from the start of
+          // the quantum, not from where it began: the first frame it makes
+          // gets the value meant for frame 0. It is a quirk (a 0.1 rad phase
+          // offset on an FM voice, measured), but it is what the page sounds
+          // like, so it is what the page's recording is held to. It lasts the
+          // one block.
+          const double f = fq[s - qoff] * detuneRatio(dc[s - qoff]);
+          // ...and starts between frames: the first frame is already `delta`
+          // of a frame into the cycle.
+          if (!n.started) { n.started = true; n.phase = std::max(0.0, delta) * f / sr_; n.phase -= std::floor(n.phase); }
           n.out[0][s] = n.wave->read(n.phase, std::fabs(f));
           n.phase += f / sr_;
           n.phase -= std::floor(n.phase);
@@ -620,22 +642,24 @@ void Graph::render(int frames) {
         const Buffer *B = (n.bufIdx >= 0 && n.bufIdx < (int)d.bufs.size()) ? &d.bufs[n.bufIdx] : nullptr;
         if (B && B->nch > 1) n.nch = 2;
         const float *rate = n.p[0].buf, *dc = n.p[1].buf;
+        const double startF = n.start * sr_, stopF = n.stop * sr_;
         for (int s = 0; s < frames; s++) {
-          const double t = t0 + s * dt;
           for (int c = 0; c < n.nch; c++) n.out[c][s] = 0;
-          if (!B || n.start < 0 || t < n.start || (n.stop >= 0 && t >= n.stop)) {
-            if (n.start >= 0 && t < n.start) n.pos = n.offset * sr_;
-            continue;
-          }
-          if (!n.started) { n.started = true; n.pos = n.offset * B->len * 0 + n.offset * sr_; }
+          const double fr = (double)(frame_ + s);
+          const double delta = fr - startF;
+          if (!B || n.start < 0 || delta <= -1e-6 || (n.stop >= 0 && fr >= stopF - 1e-6)) continue;
+          // The buffer is read from where it would be `delta` of a frame after
+          // its start, as a browser does for a start between frames.
+          if (!n.started) { n.started = true; n.pos = n.offset * sr_ + std::max(0.0, delta) * rate[s] * detuneRatio(dc[s]); }
           double lo = 0, hi = B->len;
           if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * sr_; hi = std::min<double>(n.loopEnd * sr_, B->len); }
           if (n.pos >= hi) { if (n.loop) n.pos = lo + std::fmod(n.pos - lo, std::max(1.0, hi - lo)); else continue; }
-          const int i0 = (int)n.pos; const double fr = n.pos - i0;
-          const int i1 = std::min(i0 + 1, B->len - 1);
+          const int i0 = (int)n.pos; const double fr2 = n.pos - i0;
+          int i1 = i0 + 1;
+          if (i1 >= B->len) i1 = n.loop ? (int)lo : B->len - 1;
           for (int c = 0; c < n.nch; c++) {
             const std::vector<float> &dv = B->d[B->nch > 1 ? c : 0];
-            n.out[c][s] = (float)(dv[i0] + (dv[i1] - dv[i0]) * fr);
+            n.out[c][s] = (float)(dv[i0] + (dv[i1] - dv[i0]) * fr2);
           }
           n.pos += rate[s] * detuneRatio(dc[s]);
         }
@@ -700,7 +724,27 @@ void Graph::render(int frames) {
       }
     }
   }
+  double pk = 0;
+  for (int e : d.ext) {
+    const Node &n = d.nodes[e];
+    for (int c = 0; c < 2; c++)
+      for (int s2 = 0; s2 < frames; s2++) pk = std::max(pk, (double)std::fabs(n.out[c][s2]));
+  }
+  if (pk < 1e-6) quiet_ += frames; else quiet_ = 0;
   frame_ += frames;
+}
+
+bool Graph::finished() const {
+  const Impl &d = *d_;
+  for (const Node &n : d.nodes) {
+    if (n.type != T_OSC && n.type != T_BUF) continue;
+    if (n.start < 0) continue;                       // never started: nothing to wait for
+    const bool stopped = n.stop >= 0 && (double)frame_ >= n.stop * sr_ - 1e-6;
+    const bool ranOut = n.type == T_BUF && !n.loop && n.started && n.bufIdx >= 0 &&
+                        n.bufIdx < (int)d.bufs.size() && n.pos >= d.bufs[n.bufIdx].len;
+    if (!stopped && !ranOut) return false;
+  }
+  return quiet_ >= tail_;
 }
 
 }  // namespace modsynth

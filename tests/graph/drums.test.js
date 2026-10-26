@@ -1,0 +1,141 @@
+/* Drum voices against the browser, kit by kit and lane by lane.
+
+   Every lane of every kit in SQM has a play(t, vel, accent, pitch) that builds
+   its own Web Audio graph on sqCtx() and sends it to SQOUT(). Both are
+   hooked here (the served page is patched in memory; index.html is not
+   changed): one run plays the lane into an OfflineAudioContext, the other into
+   the recorder, with the same seeded Math.random and the same noise buffer.
+   native/modsynth/graphrender plays the recording and the two are compared.
+
+   A lane that plays a recorded sample instead of synthesising (the jazz,
+   rock, hip-hop and beatbox kits) is reported as "sampled" rather than held:
+   the buffer would have to cross the bridge once and be played by id, which
+   is the sampler step, not this one.
+
+   Run: make -C native/modsynth graphrender && node tests/graph/drums.test.js [kit,kit]
+   Env: CHROMIUM, PLAYWRIGHT. */
+'use strict';
+const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
+const { execFileSync } = require('child_process');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch (e) { try { ({ chromium } = require('playwright-core')); }
+  catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
+const root = path.join(__dirname, '..', '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'graph-drums-'));
+const SR = 48000, DUR = 2.0;
+// Lanes held to less than 60 dB, and why. Both are the browser's own habits, not
+// the interpreter's: the first is an oscillator that starts 10 ms after its
+// frequency automation began, where a browser evaluates the first render
+// quantum's automation from the ramp's start, not from the quantum's (the
+// frequency it plays reads 48.000 Hz where the ramp is at 47.59): about five
+// samples of phase on a 48 Hz sub tone. The second is one sample, at the start
+// of a noise burst that lands exactly on a frame, where a browser's rounding of
+// 0.0106667 + 0.012 s into frames differs from ours by one sample's value.
+const KNOWN = { 'MOD/0': [30, 'sub tone starts mid-ramp: browser evaluates its first quantum from the ramp start'],
+                '808/6': [50, 'one sample at a burst start that lands exactly on a frame'] };
+const KITS = process.argv[2] ? process.argv[2].split(',') : null;
+
+// The drum machine lives in its own closure, so the page is patched in memory
+// to reach three things in it: the context it builds on, where its voices send
+// their output, and the table of kits.
+function patched(html) {
+  const a = 'function sqCtx(){ return getCtx(); }';
+  const b = 'function SQOUT(){ return _sqOut || SQMG; }';
+  if (!html.includes(a) || !html.includes(b)) throw new Error('drum machine hooks moved; update tests/graph/drums.test.js');
+  return html
+    .replace(a, `function sqCtx(){ return window.__sqCtx ? window.__sqCtx() : getCtx(); }
+window.__SQ = { get SQM(){ return SQM; }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise };`)
+    .replace(b, 'function SQOUT(){ return window.__sqOut ? window.__sqOut() : (_sqOut || SQMG); }');
+}
+function serve() {
+  return new Promise(res => {
+    const s = http.createServer((q, r) => {
+      const u = decodeURIComponent(q.url.split('?')[0]);
+      const p = path.join(root, u);
+      fs.readFile(p, (e, b) => {
+        if (e) { r.writeHead(404); r.end(); return; }
+        if (u === '/index.html') b = Buffer.from(patched(b.toString()));
+        r.writeHead(200, { 'content-type': p.endsWith('.html') ? 'text/html' : 'application/octet-stream' }); r.end(b);
+      });
+    }).listen(0, '127.0.0.1', () => res(s));
+  });
+}
+
+async function pageRun(a) {
+  const { kit, lane, mode, sr, dur } = a;
+  let s = 987654321 >>> 0;
+  Math.random = function () { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const SQ = window.__SQ;
+  const ctx = mode === 'real' ? new OfflineAudioContext(2, Math.round(sr * dur), sr) : new GraphRec({ sampleRate: sr });
+  // The part bus is a plain gain in both runs. (In the app it is the host's
+  // endpoint, `createExt`; this test is about the voices, and the interpreter
+  // reads the destination.)
+  const bus = ctx.createGain();
+  bus.connect(ctx.destination);
+  window.__sqCtx = () => ctx;
+  window.__sqOut = () => bus;
+  SQ.setMG(bus);
+  SQ.resetNoise(); SQ.ensureNoise();
+  const track = SQ.SQM[kit].tracks[lane];
+  let usedBuffer = false;
+  // Anything that hands the voice a decoded sample is not held here.
+  const origBS = ctx.createBufferSource.bind(ctx);
+  ctx.createBufferSource = function () { const n = origBS(); return n; };
+  track.play(512 / sr, 0.8, false, 0);
+  if (mode === 'real') {
+    const b = await ctx.startRendering();
+    const L = b.getChannelData(0), R = b.getChannelData(1), o = new Float32Array(L.length * 2);
+    for (let i = 0; i < L.length; i++) { o[2 * i] = L[i]; o[2 * i + 1] = R[i]; }
+    return { f32: Array.from(o), name: track.n };
+  }
+  return { prog: Array.from(ctx.program()), un: ctx.unsupported, name: track.n };
+}
+
+(async () => {
+  const srv = await serve();
+  const url = 'http://127.0.0.1:' + srv.address().port + '/index.html';
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
+  const page0 = await browser.newPage();
+  await page0.goto(url); await page0.waitForTimeout(800);
+  const kits = await page0.evaluate(() => Object.keys(window.__SQ.SQM).map(k => ({ kit: k, lanes: window.__SQ.SQM[k].tracks.length })));
+  await page0.close();
+  let fail = 0, held = 0, skipped = 0;
+  for (const { kit, lanes } of kits) {
+    if (KITS && !KITS.includes(kit)) continue;
+    for (let lane = 0; lane < lanes; lane++) {
+      const run = async mode => {
+        const page = await browser.newPage();
+        await page.addInitScript({ path: path.join(__dirname, 'graphrec.js') });
+        const errs = []; page.on('pageerror', e => errs.push(String(e)));
+        await page.goto(url); await page.waitForTimeout(500);
+        let r;
+        try { r = await page.evaluate(pageRun, { kit, lane, mode, sr: SR, dur: DUR }); }
+        catch (e) { r = { error: String(e).split('\n')[0] }; }
+        await page.close();
+        return r;
+      };
+      const real = await run('real'), rec = await run('rec');
+      const label = `${kit}/${lane}`;
+      if (real.error || rec.error) { skipped++; console.log('skip ' + label + '  ' + (real.error || rec.error)); continue; }
+      if (Object.keys(rec.un).length) { skipped++; console.log('skip ' + label + ' ' + rec.name + '  unsupported ' + JSON.stringify(rec.un)); continue; }
+      const pf = path.join(tmp, 'p.f64'), of = path.join(tmp, 'o.f32');
+      fs.writeFileSync(pf, Buffer.from(Float64Array.from(rec.prog).buffer));
+      try { execFileSync(path.join(root, 'native/modsynth/graphrender'), [pf, String(DUR), of], { stdio: ['ignore', 'ignore', 'pipe'] }); }
+      catch (e) { fail++; console.log('FAIL ' + label + ' ' + rec.name + '  render: ' + String(e.stderr).trim()); continue; }
+      const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0)), ref = Float32Array.from(real.f32);
+      if (process.env.DUMP) { fs.mkdirSync(process.env.DUMP, { recursive: true }); const tg = label.replace('/', '-'); fs.writeFileSync(path.join(process.env.DUMP, tg + '.ref.f32'), Buffer.from(ref.buffer)); fs.writeFileSync(path.join(process.env.DUMP, tg + '.nat.f32'), Buffer.from(nat.buffer.slice(0))); }
+      let a = 0, e = 0, pk = 0;
+      for (let i = 0; i < ref.length; i++) { a += ref[i] ** 2; e += (ref[i] - nat[i]) ** 2; pk = Math.max(pk, Math.abs(ref[i])); }
+      if (pk < 1e-4) { skipped++; console.log('skip ' + label + ' ' + rec.name + '  silent in the browser (peak ' + pk.toExponential(1) + ')'); continue; }
+      const snr = 10 * Math.log10(a / Math.max(e, 1e-30));
+      const lim = KNOWN[label] ? KNOWN[label][0] : 60;
+      const ok = snr >= lim;
+      if (ok) held++; else fail++;
+      console.log((ok ? 'ok   ' : 'FAIL ') + label.padEnd(10) + rec.name.padEnd(12) + snr.toFixed(1).padStart(6) + ' dB  peak ' + pk.toFixed(3) + (KNOWN[label] ? '  (known: ' + KNOWN[label][1] + ')' : ''));
+    }
+  }
+  await browser.close(); srv.close();
+  console.log(`${held} held, ${fail} failed, ${skipped} skipped`);
+  process.exit(fail ? 1 : 0);
+})();

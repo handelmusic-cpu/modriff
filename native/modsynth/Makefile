@@ -55,3 +55,6 @@ clean:
 # tests/graph/voices.test.js holds it to the browser's render of the same voice.
 graphrender: graphrender.cpp graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ graphrender.cpp graph.cpp
+# The voice pool the host calls: begin/edit from one thread, render from another.
+graphpooltest: graphpooltest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ graphpooltest.cpp graphpool.cpp graph.cpp
