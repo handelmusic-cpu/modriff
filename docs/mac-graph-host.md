@@ -1,5 +1,10 @@
 # The graph path, host half: a brief for the session on the Mac
 
+> **Status (v4.9.9.9.9.9.5c, branch `claude/graph-host`):** sections 1 and 2 are done: checks run on the
+> Mac (the sampler path found a loop-wrap bug, fixed), the host half written and built for the simulator
+> and the phone, buses 9 and 10 as wet-only returns (see "The host half is written" in
+> `docs/v5-architecture.md`). Section 3 (listening on the phone) is the open part.
+
 Branch `claude/native-voices` (v4.9.9.9.9.9.5b). The page can play a part through
 recorded Web Audio graphs and the C++ side that plays them is written and
 measured on Linux against Chromium. What is missing is the iOS host that calls it.

@@ -55,7 +55,7 @@ int main() {
     {
       ModEngineHost *h = fresh();
       CHECK([h ensureGraphPart:0], "ensureGraphPart(0)");
-      CHECK(![h ensureGraphPart:8] && ![h ensureGraphPart:-1], "out-of-range parts are refused");
+      CHECK(![h ensureGraphPart:11] && ![h ensureGraphPart:-1], "out-of-range parts are refused");
       NSDictionary *d = [h beginGraph:1 program:sine(440, -1e9, 0.3, 0) timestampMs:0];
       CHECK([d[@"handle"] intValue] >= 0, "beginGraph answers a handle (%d)", [d[@"handle"] intValue]);
       Run r = render(h, 40, 256);
@@ -74,7 +74,7 @@ int main() {
     // Bus 8: straight into the master, no strip, so no graph part needed.
     {
       ModEngineHost *h = fresh();
-      [h ensureGraphPart:5];
+      CHECK([h ensureGraphPart:8], "ensureGraphPart(8): the click's bus, no strip");
       [h beginGraph:1 program:sine(440, -1e9, 0.3, 8) timestampMs:0];
       Run r = render(h, 40, 256);
       CHECK(r.peak > 0.05, "bus 8 (the click) reaches the master (peak %.3f)", r.peak);

@@ -1930,6 +1930,34 @@ no Processor, so:
    do-nothing `graphBuf` call, as it does for the file methods (`fileDelete`), so
    an old binary falls back to Web Audio.
 
+**The host half is written (v4.9.9.9.9.9.5c), built, and measured offline; heard on a phone: not yet.**
+`ModEngineHost` owns the pool; `graphProbe`, `graphBuf`, `graphBegin`, `graphEdit` are plugin
+methods; `ensurePart {graph: true}` builds a part's strip and mõdFX with no Processor and no
+rack (codes 8 to 10 are buses and only switch the pool on); `renderInto:` plays the pool before
+the part loop, runs a graph part while it has voices and for 8 s of mõdFX tail, and applies strip
+and mõdFX messages to a part with no Processor. What differs from the list above, and why:
+
+- **Buses 9 and 10 are wet-only reverb returns, not inputs of the rack or the bus room.** The rack's
+  reverb adds a tail to a dry input at the rack's own mix, and the bus room input is dry and
+  roomed together; the graph carries the raw send (voice x mix), which the web feeds to a
+  ConvolverNode whose output is the tail alone. `FxRack::setSendReverb/processSend` is that
+  convolver as the rack's network, wet only, at unit gain, fitted to the page's impulse
+  (noise falling as (1-t)^2.5 over 1.8 s): `tests/graph/sendreverb.test.js` holds it to a
+  browser ConvolverNode, 0.3 dB on steady noise and +1.2 / -3.1 dB per 100 ms over the first
+  1.2 s of the tail. Bus 9 (the chord's room) returns to the direct path, as the web's pair does
+  into the glue; bus 10 (the shared room) returns into the bus room sum, as the web's
+  convolver feeds `masterDest`. Not yet followed: the page's `chord.reverbSize` slider (the
+  rooms are 1.8 s).
+- A voice's start frame is `(ts - offset) * rate / 1000` with `offset` the wall-clock offset of the
+  last block (the one `applyMessage` uses to place a note), published each block.
+- A throwaway pool plays a short tone at the first `ensurePart {graph}` to warm code and heap.
+- A loop point within 1e-6 of a frame snaps to it (`graph.cpp`): current Chrome wraps a looping
+  clip at a loop end that the page computed as 0.6000000000000001 s, the interpreter did not.
+
+`native/modsynth/graphhosttest` (26 checks) drives the real `ModEngineHost.mm` off the audio
+graph: a part with no Processor, buses 8 to 10, the strip, tails, a missing clip (-2 and its id),
+edits, a part with both. Run `make -C native/modsynth graphhosttest && native/modsynth/graphhosttest`.
+
 **The page side is built, off (v4.9.9.9.9.9.5 on), and measured without a host.**
 `index.html` carries `GraphRec` (a copy of `tests/graph/graphrec.js`;
 `inline.test.js` fails if they drift) and a small module, `modGraphEnable(plugin,

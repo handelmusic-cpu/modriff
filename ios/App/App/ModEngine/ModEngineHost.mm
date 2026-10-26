@@ -321,6 +321,13 @@ double num(id value, double fallback = 0) {
 // the mixer's meter and fader, mõdFX, Bounce and the stems work on it as they
 // do on any other part. Allocates, so off the audio thread; published last.
 - (BOOL)ensureGraphPart:(int)part {
+  // 8, 9 and 10 are buses, not parts (the click and the legacy Rhythm are "part" 8
+  // to the page): no strip to build, but the render thread has to have them.
+  if (part >= kMaxParts && part < modsynth::GraphPool::kBuses) {
+    [self warmGraphPool];
+    _graphOn.store(true, std::memory_order_release);
+    return YES;
+  }
   if (part < 0 || part >= kMaxParts) return NO;
   if (_graphLive[part].load(std::memory_order_acquire)) return YES;
   if (!_strips[part]) _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
