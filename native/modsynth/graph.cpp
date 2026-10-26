@@ -12,6 +12,10 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr int Q = Graph::kQuantum;
+#ifndef MODSYNTH_BIQUAD_STEP
+#define MODSYNTH_BIQUAD_STEP 8
+#endif
+constexpr int kBiquadStep = MODSYNTH_BIQUAD_STEP;
 
 enum NodeType { T_GAIN = 1, T_OSC, T_BIQ, T_BUF, T_SHP, T_PAN, T_DEL, T_EXT };
 enum EvKind { EV_SET = 0, EV_LIN, EV_EXP, EV_TGT };
@@ -36,13 +40,26 @@ struct Param {
   // runs from the previous event to its own time.
   double at(double t) {
     while (cur < ev.size() && ev[cur].t <= t) cur++;
-    if (cur == 0) {
+    return eval(t, cur);
+  }
+
+  // The same, for any t, without touching the cursor (an edit asks about a
+  // time that may be behind it).
+  double valueAt(double t) const {
+    size_t k = 0;
+    while (k < ev.size() && ev[k].t <= t) k++;
+    return eval(t, k);
+  }
+
+  // `k` is the number of events at or before t.
+  double eval(double t, size_t k) const {
+    if (k == 0) {
       // Before the first event: the intrinsic value, unless the first event is
       // a ramp (the recorder anchors those, so it is not expected).
       return v0;
     }
-    const Ev &e = ev[cur - 1];
-    const Ev *n = cur < ev.size() ? &ev[cur] : nullptr;
+    const Ev &e = ev[k - 1];
+    const Ev *n = k < ev.size() ? &ev[k] : nullptr;
     if (n && (n->kind == EV_LIN || n->kind == EV_EXP)) {
       const double base = e.kind == EV_TGT ? e.start : e.v;
       const double span = n->t - e.t;
@@ -57,6 +74,37 @@ struct Param {
       return e.v + (e.start - e.v) * std::exp(-(t - e.t) / e.tc);
     }
     return e.v;
+  }
+
+  // An edit after load. Events go in after every event at or before their
+  // time; `start` of a target is recomputed for the whole list, which is short.
+  void insert(int kind, double v, double t, double tc) {
+    size_t i = ev.size();
+    while (i > 0 && ev[i - 1].t > t) i--;
+    ev.insert(ev.begin() + i, Ev{kind, v, t, tc, 0});
+    prepare();
+    cur = 0;
+  }
+  void cancel(double t) {
+    ev.erase(std::remove_if(ev.begin(), ev.end(), [t](const Ev &e) { return e.t >= t; }), ev.end());
+    prepare();
+    cur = 0;
+  }
+  // Drop everything after t and hold the value reached at t, if something was
+  // in progress there. A ramp ending after t is cut short (the same kind of
+  // ramp, ending at t on the value reached, so the stretch before t still
+  // ramps); a target still decaying becomes a set at t; a param sitting at a
+  // set value has nothing to hold. See graphrec.js.
+  void hold(double t) {
+    size_t k = 0;
+    while (k < ev.size() && ev[k].t <= t) k++;
+    const bool ramp = k < ev.size() && (ev[k].kind == EV_LIN || ev[k].kind == EV_EXP);
+    const bool tgt = k > 0 && ev[k - 1].kind == EV_TGT;
+    const int kind = ramp ? ev[k].kind : EV_SET;
+    const double v = (ramp || tgt) ? eval(t, k) : 0.0;
+    ev.erase(std::remove_if(ev.begin(), ev.end(), [t](const Ev &e) { return e.t > t; }), ev.end());
+    if (ramp || tgt) insert(kind, v, t, 0);
+    else { prepare(); cur = 0; }
   }
 
   // Fills in each event's `start` (a target's departure value). Run once at load.
@@ -364,6 +412,36 @@ bool Graph::load(const double *p, size_t len, double timeBase) {
   return true;
 }
 
+bool Graph::apply(const double *p, size_t len, double timeBase) {
+  Impl &d = *d_;
+  if (len % 6) { err_ = "bad increment length"; return false; }
+  for (size_t i = 0; i < len; i += 6) {
+    const int id = (int)p[i], pi = (int)p[i + 1], op = (int)p[i + 2];
+    const double v = p[i + 3], t = p[i + 4] - timeBase, tc = p[i + 5];
+    if (id < 0 || id >= (int)d.nodes.size()) { err_ = "increment to unknown node"; return false; }
+    Node &n = d.nodes[id];
+    if (pi < 0) {
+      if (op == 6) n.stop = t;
+      else if (op == 7) n.start = t;
+      else { err_ = "bad node op"; return false; }
+      continue;
+    }
+    if (pi >= (int)n.p.size()) { err_ = "increment to missing param"; return false; }
+    Param &pr = n.p[pi];
+    switch (op) {
+      case 0: pr.insert(EV_SET, v, t, 0); break;
+      case 1: pr.insert(EV_LIN, v, t, 0); break;
+      case 2: pr.insert(EV_EXP, v, t, 0); break;
+      case 3: pr.insert(EV_TGT, v, t, tc); break;
+      case 4: pr.cancel(t); break;
+      case 5: pr.hold(t); break;
+      default: err_ = "bad param op"; return false;
+    }
+  }
+  err_ = "";
+  return true;
+}
+
 int Graph::extCount() const { return (int)d_->ext.size(); }
 int Graph::extId(int i) const { return d_->nodes[d_->ext[i]].recId; }
 const float *Graph::extBuf(int i, int ch) const { return d_->nodes[d_->ext[i]].out[ch ? 1 : 0]; }
@@ -512,15 +590,27 @@ void Graph::render(int frames) {
       }
       case T_BIQ: {
         n.nch = inCh ? inCh : 1;
-        biquadCoeffs(n, sr_, n.p[0].buf[0] * detuneRatio(n.p[1].buf[0]), n.p[2].buf[0], n.p[3].buf[0]);
-        const double *c = n.bq;
-        for (int ch = 0; ch < n.nch; ch++) {
-          double *z = n.st[ch];
-          for (int s = 0; s < frames; s++) {
-            const double x = inCh ? sum[ch][s] : 0.0;
-            const double y = c[0] * x + c[1] * z[0] + c[2] * z[1] - c[3] * z[2] - c[4] * z[3];
-            z[1] = z[0]; z[0] = x; z[3] = z[2]; z[2] = y;
-            n.out[ch][s] = (float)y;
+        // A browser recomputes a biquad's coefficients for every frame while
+        // any of its params is moving. `kBiquadStep` is how often we do: 1 is
+        // the browser's own, and costs a cos, a sin and a pow a sample. Measured
+        // on a lowpass sweep (tests/graph/edits.test.js): 1 gives 72.4 dB against
+        // the browser, 4 gives 71.9, 8 about 70, 16 gives 65.1. 8 is the default:
+        // the loss is far below anything heard and it is an eighth of the cost.
+        // A param holding still costs one computation a block.
+        const bool moving = !n.p[0].ev.empty() || !n.p[0].mods.empty() || !n.p[1].ev.empty() || !n.p[2].ev.empty() || !n.p[3].ev.empty();
+        const int step = moving ? kBiquadStep : frames;
+        for (int s0 = 0; s0 < frames; s0 += step) {
+          const int e = std::min(frames, s0 + step);
+          biquadCoeffs(n, sr_, n.p[0].buf[s0] * detuneRatio(n.p[1].buf[s0]), n.p[2].buf[s0], n.p[3].buf[s0]);
+          const double *c = n.bq;
+          for (int ch = 0; ch < n.nch; ch++) {
+            double *z = n.st[ch];
+            for (int s = s0; s < e; s++) {
+              const double x = inCh ? sum[ch][s] : 0.0;
+              const double y = c[0] * x + c[1] * z[0] + c[2] * z[1] - c[3] * z[2] - c[4] * z[3];
+              z[1] = z[0]; z[0] = x; z[3] = z[2]; z[2] = y;
+              n.out[ch][s] = (float)y;
+            }
           }
         }
         break;

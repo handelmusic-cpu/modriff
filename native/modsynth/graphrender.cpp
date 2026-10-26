@@ -1,6 +1,8 @@
 // Renders a recorded graph (tests/graph/graphrec.js) to raw float32, for
 // tests/graph/voices.test.js to hold against the browser's render of the same
-// voice.   graphrender <program.f64> <seconds> <out.f32>
+// voice.   graphrender <program.f64> <seconds> <out.f32> [increments.f64]
+// With increments, they are applied once the graph is loaded, as a live edit
+// (a release) that was recorded after the program was sent.
 // The program's first host endpoint is written, left and right interleaved.
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +19,14 @@ int main(int argc, char **argv) {
   fclose(f);
   modsynth::Graph g;
   if (!g.load(prog.data(), prog.size(), 0.0)) { fprintf(stderr, "load: %s\n", g.error()); return 1; }
+  if (argc > 4) {
+    FILE *fi = fopen(argv[4], "rb");
+    if (!fi) { perror("increments"); return 2; }
+    std::vector<double> inc;
+    while (fread(&v, sizeof v, 1, fi) == 1) inc.push_back(v);
+    fclose(fi);
+    if (!g.apply(inc.data(), inc.size(), 0.0)) { fprintf(stderr, "apply: %s\n", g.error()); return 1; }
+  }
   if (g.extCount() < 1) { fprintf(stderr, "no endpoint\n"); return 1; }
   const long total = (long)(atof(argv[2]) * g.sampleRate());
   std::vector<float> out;

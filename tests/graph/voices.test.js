@@ -36,7 +36,7 @@ function serve() {
 
 // Runs in the page. mode 'real' renders with an OfflineAudioContext; 'rec' records.
 async function pageRun(args) {
-  const { wave, midi, mode, sr, dur, seed } = args;
+  const { wave, midi, mode, sr, dur, seed, release } = args;
   let s = seed >>> 0;
   Math.random = function () { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   window._webParams = Object.assign(window._webParams || {}, { 'master.tune': 440, 'fx.drift': 0, 'chord.glide': false, 'chord.glideTime': 0 });
@@ -52,14 +52,32 @@ async function pageRun(args) {
   g.gain.setValueAtTime(0, t0);
   g.gain.linearRampToValueAtTime(0.4, t0 + atk);
   g.gain.setValueAtTime(0.4, t0 + atk + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + atk + hold + dec);
-  makeVoice(ctx, midi, g, t0, atk + hold + dec, wave, 'chord');
+  let oscs;
+  if (release) {
+    // A held note: it sustains until a release that is only decided later, the
+    // way a chord on a held pad is. The voice is built to ring for the whole
+    // second; the release then arrives as edits to a graph that is already
+    // sent, exactly as _webChordReleaseAt makes them.
+    oscs = makeVoice(ctx, midi, g, t0, 1.4, wave, 'chord');
+  } else {
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + atk + hold + dec);
+    oscs = makeVoice(ctx, midi, g, t0, atk + hold + dec, wave, 'chord');
+  }
+  let prog = null;
+  if (mode !== 'real' && release) prog = Array.from(ctx.program());
+  if (release) {
+    const relT = 0.5, rdec = 0.5;
+    g.gain.cancelAndHoldAtTime(relT);
+    g.gain.exponentialRampToValueAtTime(0.0001, relT + rdec);
+    (oscs || []).forEach(o => { try { o.stop(relT + rdec + 0.05); } catch (e) {} });
+  }
   if (mode === 'real') {
     const b = await ctx.startRendering();
     const L = b.getChannelData(0), R = b.getChannelData(1), out = new Float32Array(L.length * 2);
     for (let i = 0; i < L.length; i++) { out[2 * i] = L[i]; out[2 * i + 1] = R[i]; }
     return { f32: Array.from(out) };
   }
+  if (release) return { prog, inc: Array.from(ctx.takeIncrements()), unsupported: ctx.unsupported };
   return { prog: Array.from(ctx.program()), unsupported: ctx.unsupported };
 }
 
@@ -69,7 +87,9 @@ async function pageRun(args) {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
   let fail = 0;
   const report = [];
-  for (const wave of WAVES) for (const midi of MIDI) {
+  const CASES = [];
+for (const wave of WAVES) { for (const midi of MIDI) CASES.push([wave, midi, false]); CASES.push([wave, 60, true]); }
+for (const [wave, midi, release] of CASES) {
     // A fresh page per run: makeVoice caches its noise buffer on first use and
     // that buffer belongs to whichever context made it.
     const run = async mode => {
@@ -77,18 +97,21 @@ async function pageRun(args) {
       await page.addInitScript({ path: path.join(__dirname, 'graphrec.js') });
       await page.goto(url);
       await page.waitForTimeout(600);
-      const r = await page.evaluate(pageRun, { wave, midi, mode, sr: SR, dur: DUR, seed: 12345 + midi });
+      const r = await page.evaluate(pageRun, { wave, midi, mode, sr: SR, dur: DUR, seed: 12345 + midi, release });
       await page.close();
       return r;
     };
     const real = await run('real');
     const rec = await run('rec');
-    const pf = path.join(tmp, `${wave}-${midi}.f64`), of = path.join(tmp, `${wave}-${midi}.f32`);
+    const tag = `${wave}-${midi}${release ? '-rel' : ''}`;
+    const pf = path.join(tmp, `${tag}.f64`), of = path.join(tmp, `${tag}.f32`);
     fs.writeFileSync(pf, Buffer.from(Float64Array.from(rec.prog).buffer));
-    execFileSync(path.join(root, 'native/modsynth/graphrender'), [pf, String(DUR), of]);
+    const args = [pf, String(DUR), of];
+    if (release) { const inf = path.join(tmp, `${tag}.inc.f64`); fs.writeFileSync(inf, Buffer.from(Float64Array.from(rec.inc).buffer)); args.push(inf); }
+    execFileSync(path.join(root, 'native/modsynth/graphrender'), args);
     const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0));
     const ref = Float32Array.from(real.f32);
-    if (process.env.DUMP) { fs.mkdirSync(process.env.DUMP, { recursive: true }); fs.writeFileSync(path.join(process.env.DUMP, `${wave}-${midi}.ref.f32`), Buffer.from(ref.buffer)); fs.writeFileSync(path.join(process.env.DUMP, `${wave}-${midi}.nat.f32`), Buffer.from(nat.buffer.slice(0))); fs.writeFileSync(path.join(process.env.DUMP, `${wave}-${midi}.f64`), fs.readFileSync(pf)); }
+    if (process.env.DUMP) { fs.mkdirSync(process.env.DUMP, { recursive: true }); fs.writeFileSync(path.join(process.env.DUMP, `${tag}.ref.f32`), Buffer.from(ref.buffer)); fs.writeFileSync(path.join(process.env.DUMP, `${tag}.nat.f32`), Buffer.from(nat.buffer.slice(0))); fs.writeFileSync(path.join(process.env.DUMP, `${tag}.f64`), fs.readFileSync(pf)); }
     const n = Math.min(nat.length, ref.length);
     let eRef = 0, eErr = 0, peakRef = 0, peakNat = 0;
     for (let i = 0; i < n; i++) { eRef += ref[i] * ref[i]; const d = ref[i] - nat[i]; eErr += d * d; peakRef = Math.max(peakRef, Math.abs(ref[i])); peakNat = Math.max(peakNat, Math.abs(nat[i])); }
@@ -99,7 +122,7 @@ async function pageRun(args) {
       if (a > 1e-10) worst = Math.max(worst, Math.abs(10 * Math.log10((b + 1e-20) / a)));
     }
     const snr = 10 * Math.log10(eRef / Math.max(eErr, 1e-30));
-    const row = { wave, midi, snrDb: +snr.toFixed(1), peakRef: +peakRef.toFixed(3), peakNat: +peakNat.toFixed(3), worstWindowDb: +worst.toFixed(2), unsupported: rec.unsupported };
+    const row = { wave, midi, release: release || undefined, snrDb: +snr.toFixed(1), peakRef: +peakRef.toFixed(3), peakNat: +peakNat.toFixed(3), worstWindowDb: +worst.toFixed(2), unsupported: rec.unsupported };
     report.push(row);
     // What is held: the render is the browser's to within -60 dB (the piano's
     // filter sweep is the least exact, around -67: a browser's biquad takes

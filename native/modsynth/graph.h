@@ -36,6 +36,11 @@ class Graph {
   bool load(const double *prog, size_t len, double timeBase);
   const char *error() const { return err_; }
 
+  // Edits to a graph already loaded and possibly playing (a release, a choke,
+  // a source's stop): the recorder's increments, 6 numbers each. Applied
+  // between renders. Times are the context's, shifted by the same timeBase.
+  bool apply(const double *inc, size_t len, double timeBase);
+
   // Renders `frames` (at most kQuantum) and advances the graph's clock.
   void render(int frames);
 

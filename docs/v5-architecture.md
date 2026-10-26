@@ -1844,9 +1844,22 @@ Two things measured on the way, so nobody rediscovers them:
   `disconnect`. A voice that uses one stays on Web Audio until it is taken out
   or added. Wave-shaper oversampling is read but not applied yet (the drive
   voices want the 2x oversampler already in `dspkit.h`).
-- A held note is changed *after* it starts (release, glide, choke), so the
-  recorder has to keep a live handle on a graph it has already sent and forward
-  later parameter changes as small messages. Not built.
+- **Live edits are built.** A held note is changed after it starts (release,
+  choke, glide, a source's `stop`), so the recorder keeps a handle on a graph
+  it has sent and writes each later call as a six-number increment
+  (`takeIncrements`); `Graph::apply` runs them. `cancelAndHoldAtTime` is the
+  browser's rule, not the obvious one: it cuts a ramp in progress short at the
+  cancel time on the value reached, turns a target still decaying into a set,
+  and leaves a param that is sitting at a set value alone (so a release ramp
+  added afterwards starts from the earlier set, exactly as in a browser; an
+  earlier version that always held got a sustained note's release wrong by
+  34 dB). Measured: a release on six real voices, 24 to 113 dB, and
+  `tests/graph/edits.test.js` (a choke mid-decay, a target mid-settle, the
+  cancel-then-set path, an early stop, chained automation, a filter sweep with
+  a shaper and a pan, a delay), all within the 60 dB tolerance.
+- A browser recomputes a biquad's coefficients every frame while a param moves.
+  We do it every 8 frames (`MODSYNTH_BIQUAD_STEP`): measured on a lowpass sweep,
+  every frame 72.4 dB, every 8 about 70, every 16 65.1. An eighth of the cost.
 - Then, in this order, each measured the same way: the drum kits
   (`_webDrumVoice`), the bass voice, sample playback and the sampler pads
   (buffers need ids so a clip crosses once), the per-note effects around a voice

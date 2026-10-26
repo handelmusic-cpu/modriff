@@ -36,8 +36,19 @@
    its base. cancelScheduledValues is applied here, at record time, so the
    program never carries a cancel.
 
-   Not recorded and said so in `unsupported`: setValueCurveAtTime,
-   cancelAndHoldAtTime, disconnect, createConvolver, createDynamicsCompressor.
+   LIVE EDITS. A held note is changed after it has been sent: a release, a
+   choke, a glide, a source's stop(). program() marks the graph as sent; from
+   then every such call is still applied to the recorder's own timeline (so a
+   later read of `.value` is the honest current value) and also written down as
+   an increment, which takeIncrements() hands over as a Float64Array of
+   [ node, param (-1 = the node itself), op, v, t, tc ] records:
+     op 0 set, 1 linear ramp, 2 exponential ramp, 3 target, 4 cancel (t),
+        5 cancelAndHold (t), 6 stop (t), 7 start (t)
+   Both ends run the same timeline algorithm, so `.value` read here agrees with
+   what the native side will do with the edit.
+
+   Not recorded and said so in `unsupported`: setValueCurveAtTime, disconnect,
+   createConvolver, createDynamicsCompressor.
    A graph that uses one is not sent; it stays on Web Audio. */
 (function(root){
 'use strict';
@@ -62,23 +73,55 @@ function Rec(opts){
   this.edges = [];
   this.bufs = [];           // AudioBuffer stand-ins, by identity
   this.unsupported = {};
+  this.sent = false;
+  this.inc = [];
   const nope = what => { self.unsupported[what] = (self.unsupported[what]||0) + 1; };
   this._nope = nope;
 
+  const OP = { set:0, lin:1, exp:2, tgt:3, cancel:4, hold:5, stop:6, start:7 };
   class Param {
     constructor(node, name, v0){
       this.node = node; this.name = name; this.v0 = v0; this.ev = [];
       this.defaultValue = v0;
     }
-    _cur(){ // the value a ramp with no earlier event starts from
-      return this.ev.length ? this.ev[this.ev.length-1].v : this.v0;
+    _pi(){ return PARAMS[this.node.kind].indexOf(this.name); }
+    _emit(op, v, t, tc){ if(self.sent) self.inc.push(this.node.id, this._pi(), op, v, t, tc); }
+    // The timeline's value at time t, by the same rules native/modsynth/graph.cpp
+    // uses (set, ramps run from the previous event, a target decays from the
+    // value it left).
+    valueAt(t){
+      const ev = this.ev;
+      let k = 0; while(k < ev.length && ev[k].t <= t) k++;
+      if(k === 0) return this.v0;
+      const e = ev[k-1], n = k < ev.length ? ev[k] : null;
+      const startOf = i => {
+        if(ev[i].kind !== KIND.tgt) return ev[i].v;
+        if(i === 0) return this.v0;
+        const p = ev[i-1];
+        if(p.kind !== KIND.tgt) return p.v;
+        return p.v + (startOf(i-1) - p.v) * (p.tc <= 0 ? 0 : Math.exp(-(ev[i].t - p.t) / p.tc));
+      };
+      if(n && (n.kind === KIND.lin || n.kind === KIND.exp)){
+        const base = e.kind === KIND.tgt ? startOf(k-1) : e.v, span = n.t - e.t;
+        if(span <= 0) return n.v;
+        const x = (t - e.t) / span;
+        if(n.kind === KIND.lin) return base + (n.v - base) * x;
+        if(base === 0 || (base < 0) !== (n.v < 0) || n.v === 0) return base;
+        return base * Math.pow(n.v / base, x);
+      }
+      if(e.kind === KIND.tgt){
+        if(e.tc <= 0) return e.v;
+        return e.v + (startOf(k-1) - e.v) * Math.exp(-(t - e.t) / e.tc);
+      }
+      return e.v;
     }
-    get value(){ return this._cur(); }
+    get value(){ return this.valueAt(self.currentTime); }
     set value(v){
       // The attribute is setValueAtTime(v, currentTime) in effect; before any
       // event it is also just the starting value.
       if(!this.ev.length) this.v0 = v;
       this._push(KIND.set, v, self.currentTime, 0);
+      this._emit(OP.set, v, self.currentTime, 0);
     }
     _push(kind, v, t, tc){
       // Insert after every event at or before t, the way the spec orders ties.
@@ -87,14 +130,36 @@ function Rec(opts){
       this.ev.splice(i, 0, { kind, v, t, tc });
     }
     _anchor(){ // a ramp with nothing before it starts at "now", from the held value
-      if(!this.ev.length) this._push(KIND.set, this.v0, self.currentTime, 0);
+      if(!this.ev.length){ this._push(KIND.set, this.v0, self.currentTime, 0); this._emit(OP.set, this.v0, self.currentTime, 0); }
     }
-    setValueAtTime(v, t){ this._push(KIND.set, v, t, 0); return this; }
-    linearRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.lin, v, t, 0); return this; }
-    exponentialRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.exp, v, t, 0); return this; }
-    setTargetAtTime(v, t, tc){ this._push(KIND.tgt, v, t, tc); return this; }
-    cancelScheduledValues(t){ this.ev = this.ev.filter(e => e.t < t); return this; }
-    cancelAndHoldAtTime(){ nope('cancelAndHoldAtTime'); return this; }
+    setValueAtTime(v, t){ this._push(KIND.set, v, t, 0); this._emit(OP.set, v, t, 0); return this; }
+    linearRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.lin, v, t, 0); this._emit(OP.lin, v, t, 0); return this; }
+    exponentialRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.exp, v, t, 0); this._emit(OP.exp, v, t, 0); return this; }
+    setTargetAtTime(v, t, tc){ this._push(KIND.tgt, v, t, tc); this._emit(OP.tgt, v, t, tc); return this; }
+    cancelScheduledValues(t){ this.ev = this.ev.filter(e => e.t < t); this._emit(OP.cancel, 0, t, 0); return this; }
+    // Drops everything after t and holds the value the timeline had reached at
+    // t -- but only when something was in progress there: a ramp that ends
+    // after t (it is cut short at t, see below), or a target still decaying. A param that is simply sitting at a
+    // set value has nothing to hold, and the browser leaves it so; a release
+    // ramp added afterwards then starts from that earlier set, not from t.
+    // (That is what the app's own releases get from a browser, so it is what
+    // is recorded. cancelScheduledValues alone lets a param fall back to its
+    // last set value: a choke that way made a hat briefly louder.)
+    cancelAndHoldAtTime(t){
+      let k = 0; while(k < this.ev.length && this.ev[k].t <= t) k++;
+      const e1 = k ? this.ev[k-1] : null, e2 = k < this.ev.length ? this.ev[k] : null;
+      const ramp = e2 && (e2.kind === KIND.lin || e2.kind === KIND.exp);
+      const tgt = e1 && e1.kind === KIND.tgt;
+      const v = (ramp || tgt) ? this.valueAt(t) : 0;
+      const kind = ramp ? e2.kind : KIND.set;
+      this.ev = this.ev.filter(e => e.t <= t);
+      // The ramp in progress is not dropped but cut short: the same kind of
+      // ramp, ending at t on the value it had reached. Dropping it would leave
+      // the param flat from the ramp's start to t.
+      if(ramp || tgt) this._push(kind, v, t, 0);
+      this._emit(OP.hold, 0, t, 0);
+      return this;
+    }
     setValueCurveAtTime(){ nope('setValueCurveAtTime'); return this; }
     // An audio-rate connection into this param is recorded by connect().
   }
@@ -119,8 +184,14 @@ function Rec(opts){
   }
   class Source extends Node {
     constructor(type, params){ super(type, params); this._start = -1; this._stop = -1; this.onended = null; }
-    start(t, off){ this._start = (t == null) ? self.currentTime : t; if(off != null) this._offset = off; }
-    stop(t){ this._stop = (t == null) ? self.currentTime : t; }
+    start(t, off){
+      this._start = (t == null) ? self.currentTime : t; if(off != null) this._offset = off;
+      if(self.sent) self.inc.push(this.id, -1, OP.start, 0, this._start, 0);
+    }
+    stop(t){
+      this._stop = (t == null) ? self.currentTime : t;
+      if(self.sent) self.inc.push(this.id, -1, OP.stop, 0, this._stop, 0);
+    }
   }
 
   this.destination = this.createExt('destination');
@@ -215,7 +286,13 @@ Rec.prototype.program = function(){
   });
   out.push(this.edges.length);
   this.edges.forEach(e => out.push(e[0], e[1], e[2]));
+  this.sent = true;
   return Float64Array.from(out);
+};
+
+// Edits made since the program (or the last call), as 6-number records.
+Rec.prototype.takeIncrements = function(){
+  const a = Float64Array.from(this.inc); this.inc = []; return a;
 };
 
 Rec.PARAMS = PARAMS; Rec.T = T; Rec.MAGIC = MAGIC;
