@@ -57,7 +57,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     const bad = [], noSynth = [];
     Object.keys(parts).forEach(k => {
       const [set, get] = parts[k], start = get();
-      ['modsynth', 'vibes', 'pianoreal', 'upright_real', 'upright2'].forEach(v => { try { set(v); } catch (e) {} if (get() === v) bad.push(k + ':' + v); set(start); });
+      ['modsynth', 'vibes', 'pianoreal2', 'upright_real', 'upright2'].forEach(v => { try { set(v); } catch (e) {} if (get() === v) bad.push(k + ':' + v); set(start); });
       set('square'); if (get() !== 'square') noSynth.push(k); set(start);
     });
     return { bad, noSynth };
@@ -114,7 +114,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   // ── 5. A Pro setup with recorded voices comes back to synth ones on free, and keeps the originals
   const keep = await page.evaluate(async () => {
     setModTier('pro'); document.getElementById('_pro-sheet') && document.getElementById('_pro-sheet').remove();
-    setWave('pianoreal'); setArpWave('flute'); setMelWave('vibes'); window.setMlWave('tenorsax'); window.setBlWave('upright2');
+    setWave('pianoreal2'); setArpWave('flute'); setMelWave('vibes'); window.setMlWave('tenorsax'); window.setBlWave('upright2');
     const st = captureSetup('Recorded rig', false);
     setModTier('free'); await new Promise(x => setTimeout(x, 200));
     applySetup(st, { quiet: true }); await new Promise(x => setTimeout(x, 300));
@@ -123,7 +123,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     return { live, kept: { chords: again.wave, arp: again.arpWave, mel: again.melWave, seq: again.melgenWave, bass: again.blWave } };
   });
   check(Object.values(keep.live).every(w => ['piano','sine','triangle','upright','electric','square','sawtooth','rhodes','organ','pad','supersaw'].includes(w)), 'on free every part is on a synth voice again', JSON.stringify(keep.live));
-  check(keep.kept.chords === 'pianoreal' && keep.kept.arp === 'flute' && keep.kept.mel === 'vibes' && keep.kept.seq === 'tenorsax' && keep.kept.bass === 'upright2',
+  check(keep.kept.chords === 'pianoreal2' && keep.kept.arp === 'flute' && keep.kept.mel === 'vibes' && keep.kept.seq === 'tenorsax' && keep.kept.bass === 'upright2',
         're-saving there keeps all five recorded voices', JSON.stringify(keep.kept));
 
   check(errs.length === 0, 'no page errors', errs.slice(0, 2).join(' | '));

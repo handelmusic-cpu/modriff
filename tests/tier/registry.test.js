@@ -46,7 +46,7 @@ eq(['major','minor','dorian','phrygian','lydian','mixolydian','locrian','minor_p
     'major_pent','blues','harmonic_minor','hijaz','whole_tone','pelog','user:mine'].map(T.freeAllowsMode),
    [true,true,true,true,true,true,true,true,false,false,false,false,false,false,false], 'scales');
 // No recorded voice is free, Piano 1 and Upright 1 included; every synth voice is.
-eq(['pianoreal','upright_real','vibes','upright2','bass_motown','bass_hofner','bass_picked','jazzgtr','modsynth'].map(T.freeAllowsVoice),
+eq(['pianoreal2','upright_real','vibes','upright2','bass_motown','bass_hofner','bass_picked','jazzgtr','modsynth'].map(T.freeAllowsVoice),
    [false,false,false,false,false,false,false,false,false], 'recorded voices and mõdSynth are Pro');
 eq(['piano','upright','electric','rhodes','organ','pad','sine','saw','square','triangle','supersaw'].map(T.freeAllowsVoice),
    [true,true,true,true,true,true,true,true,true,true,true], 'synth voices are free');
@@ -64,7 +64,7 @@ ok([11,33,48,64].every(T.freeAllowsSteps), 'pro: any step count');
 ok(T.slCanAdd(songs(50)), 'pro: unlimited songs');
 ok(['MOD','PERC','909'].every(T.freeAllowsKit), 'pro: every kit');
 ok(['hijaz','user:mine','pelog'].every(T.freeAllowsMode), 'pro: every scale');
-ok(['pianoreal','upright_real','vibes','upright2','modsynth'].every(T.freeAllowsVoice), 'pro: every voice');
+ok(['pianoreal2','upright_real','vibes','upright2','modsynth'].every(T.freeAllowsVoice), 'pro: every voice');
 ok(T.freeAllowsMeter(7, 8) && T.freeAllowsGroove('Trap') && T.freeAllowsFxPatch('Lo-Fi') && T.freeAllowsPad('A', 15), 'pro: meters, grooves, patches, pads');
 ok(['stemExport','fullAudioExport','fullMidiExport','sampler','modsynth'].every(f => T.modAllows(f)), 'pro: gated features on');
 
@@ -88,6 +88,20 @@ has(/var sqLayers = \[ \{mach:'LIN'[^\]]*\{mach:'606'/, 'the default layers are 
 ok(T.FREE_LIMITS.drumKits.indexOf('LIN') >= 0 && T.FREE_LIMITS.drumKits.indexOf('606') >= 0, 'both default kits are free');
 ok(T.FREE_LIMITS.bassStyles.indexOf('Funk') >= 0, 'the default bass style (funk) is free');
 ok(T.FREE_LIMITS.melodyStyles.indexOf('Hook') >= 0, 'the default melody style (hook) is free');
+
+// ── 5b. Piano 1 is gone, and nothing still points at it
+{
+  const fs = require('fs'), path = require('path');
+  const root = path.join(__dirname, '..', '..');
+  ok(!fs.existsSync(path.join(root, 'samples', 'piano')), 'samples/piano (Piano 1, no recorded licence) is removed');
+  ok(!html.split('\n').some(l => !/^\s*\/\//.test(l) && /samples\/piano\//.test(l)), 'no code in index.html reads samples/piano/ (comments may still name it)');
+  ok(!/pianoreal(?!2)['"]\s*:\s*\{dir/.test(html), 'SAMPLE_LIBS has no pianoreal entry');
+  ok(/var WAVE_RENAMED = \{ pianoreal:'pianoreal2' \};/.test(html), 'a saved pianoreal is renamed to pianoreal2');
+  ok((html.match(/if\(WAVE_RENAMED\[w\]\) w = WAVE_RENAMED\[w\];/g) || []).length === 4, 'the chord, arp, melody and Melody Seq setters apply WAVE_RENAMED');
+  const lib = /pianoreal2:\{dir:'(samples\/piano2)'/.exec(html);
+  ok(!!lib, 'Piano 2 is still a recorded voice');
+  if (lib) ok(fs.readdirSync(path.join(root, 'samples', 'piano2')).filter(f => /\.mp3$/.test(f)).length >= 40, 'Piano 2 files are all present');
+}
 
 // ── 6. The Free/Pro test switch exists only in a debug build or on a local page
 T.window.__modDebug = undefined;

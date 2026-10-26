@@ -7929,7 +7929,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4h</span></div>
  </div>
 </div>
 
@@ -9230,7 +9230,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4h</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
@@ -10264,7 +10264,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.4g';
+const MODRIFF_VERSION = '4.9.9.9.9.9.4h';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13086,7 +13086,6 @@ const WAVE_GAIN = {
  // against tenor sax. Raw, the clarinet came in 10.3 dB hot and the flute 3.4.
  clarinet:0.36,
  flute:0.701,
- pianoreal:1.096,  // was 4.2 (9.4 dB hot), then 1.42
  // Measured (4.2.9) the same way: four chords on the chord bus. At 1.42 Piano 2
  // read -21.5 dB RMS against Piano 1's -29.3 (it keeps its room and sustains),
  // and Marimba -20.4 against Vibes' -27.0, the mallet voice it sits beside.
@@ -13154,6 +13153,12 @@ var BASS_SAMPLED = {
 // setBlWave reads it, so a setup, an autosave or a shared link from before the
 // change plays a bass rather than a silent part labelled "bass_slap".
 var BASS_RENAMED = { bass_slap:'bass_picked' };
+// Voices that no longer exist, and the one a saved choice lands on instead.
+// Piano 1 was removed (no recorded licence); anyone who had it selected, in a
+// setup, an autosave, an undo snapshot or a shared link, gets the recorded
+// piano that remains rather than the synth fallback. Applied in every voice
+// setter, because every way of choosing a voice ends in one.
+var WAVE_RENAMED = { pianoreal:'pianoreal2' };
 
 // ═══════════════════════════════════════
 // SAMPLE ENGINE — real instrument samples (progressive enhancement)
@@ -13245,20 +13250,10 @@ const SAMPLE_LIBS = {
  violin:   {dir:'samples/violin',   fallbackWave:'pad', rr:3,
             notes:['G3','A3','C4','E4','G4','A4','C5','E5','G5','A5',
                    'C6','E6','G6','A6','C7']},
- // A real piano, at last — see the note above about why the first attempt was
- // removed. This set is 44.1k stereo WAV rather than the mp3s that failed, and
- // it covers the whole keyboard, C1 to C8. It is still a DARK piano: measured
- // -50 dB band edge is 8.2 kHz median, against the 7.5 kHz that got the old
- // set pulled, so it reads closer to a felt-damped upright than a bright
- // grand. That is a real instrument being a bit muted, which is a different
- // thing from a bright instrument with its top end amputated — and it is a
- // long way from a synthesized piano.
- // The grid is complete: every anchor is a real recording and nothing is ever
- // pitch-shifted more than 1.5 semitones.
- pianoreal:{dir:'samples/piano',   fallbackWave:'piano',
-            notes:['C1','Ds1','Fs1','A1','C2','Ds2','Fs2','A2','C3','Ds3','Fs3','A3',
-                   'C4','Ds4','Fs4','A4','C5','Ds5','Fs5','A5','C6','Ds6','Fs6','A6',
-                   'C7','Ds7','Fs7','A7','C8']},
+ // Piano 1 (pianoreal) was here, and is gone: samples/CREDITS.md recorded that
+ // its source and licence were never written down, and a recorded piano that
+ // cannot be traced to a licence does not ship. Piano 2 below is the recorded
+ // piano. A saved choice of 'pianoreal' lands on it (WAVE_RENAMED).
  // Piano 2 (4.2.9): TEDAgame's CC0 "88 piano keys, long reverb" — an old
  // upright, recorded with its room. The piano itself is far out of tune
  // (keys up to ±50 cents), so its names say nothing reliable about pitch:
@@ -15695,6 +15690,13 @@ function smpApplyState(st){
  if(st && typeof st==='object'){
   Object.keys(st).forEach(function(k){
    if(psIsPresetKey(k) && !st[k].edited) return;
+   // Pads that named the removed Piano 1 note: a plain pad moves to Piano 2's
+   // note, a spread one is dropped (its tuning was worked out against the old
+   // file, and a pad that is quietly a semitone out is worse than an empty one).
+   if(st[k] && String(st[k].id).replace(/^factory:/,'')==='n-piano'){
+    if(st[k].across) return;
+    st[k] = Object.assign({}, st[k], {id:'factory:n-piano2'});
+   }
    SMP_SLOTS[k]=Object.assign(smpNewSlot(), st[k]);
   });
  }
@@ -16394,7 +16396,7 @@ function psLoadKit(i, ids, name){
 //    by the smallest step, so a change of key does not jump an octave.
 // Any sound can be spread: a kick or a clap with no pitch of its own starts
 // at its own sound on the root and is retuned from there.
-var PS_NOTE_LIBS = {'n-piano':'pianoreal','n-piano2':'pianoreal2','n-vibes':'vibes','n-nylon':'nylongtr',
+var PS_NOTE_LIBS = {'n-piano2':'pianoreal2','n-vibes':'vibes','n-nylon':'nylongtr',
  'n-jazzg':'jazzgtr','n-sax':'tenorsax','n-tpt':'mutetpt','n-flute':'flute','n-clar':'clarinet',
  'n-violin':'violin','n-bass':'bass','n-upright2':'bassup2','n-marimba':'marimba',
  'n-kalimba':'kalimba','n-xylo':'xylo'};
@@ -16835,7 +16837,8 @@ var _PS_NOTE = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
 function _psNoteFile(dir, have, midi){
  var best=null, bd=99;
  have.forEach(function(nm){
-  var m=_PS_NOTE[nm[0]] + (parseInt(nm.slice(1),10)+1)*12, d=Math.abs(m-midi);
+  var pm=/^([A-G])(s?)(\d+)$/.exec(nm);
+  var m=_PS_NOTE[pm[1]] + (pm[2]?1:0) + (parseInt(pm[3],10)+1)*12, d=Math.abs(m-midi);
   if(d<bd){ bd=d; best={file:dir+'/'+nm+'.mp3', midi:m}; }
  });
  return best;
@@ -16850,10 +16853,13 @@ var PS_INST = {
  nylon:  {dir:'samples/nylongtr', have:_psNames([2,3,4,5])},
  bass:   {dir:'samples/bass',     have:_psNames([1,2,3,4])},
  flute:  {dir:'samples/flute',    have:_psNames([4,5,6],'CEA')},
- // The piano set is in minor thirds (C, D♯, F♯, A) and names the sharps
- // 'Ds'; only C and A are read here, which is never more than three
- // semitones from any note.
- piano:  {dir:'samples/piano',    have:_psNames([1,2,3,4,5,6,7],'CA')},
+ // The recorded piano is Piano 2, on a whole-tone grid (C♯ D♯ F G A B per
+ // octave, 'Cs'/'Ds' for the sharps), so no note is ever more than a semitone
+ // from a real file. The key stays 'piano' because the Piano Comp phrase below
+ // names it; it used to read the removed Piano 1 set, which is why that loop
+ // sounds different now.
+ piano:  {dir:'samples/piano2',   have:[1,2,3,4,5,6,7].reduce(function(a,o){
+            ['Cs','Ds','F','G','A','B'].forEach(function(l){ a.push(l+o); }); return a; },[])},
  jazzg:  {dir:'samples/jazzgtr',  have:_psNames([2,3,4,5])},
  clar:   {dir:'samples/clarinet', have:_psNames([3,4,5,6],'DF')},
  violin: {dir:'samples/violin',   have:_psNames([4,5,6],'CEGA')},
@@ -17182,7 +17188,6 @@ var PS_FACTORY_KIT = [
  {id:'powerup',  name:'Power Up',    cat:'fx', file:'samples/sfx/powerup.mp3',   gain:.4},
  {id:'achieve',  name:'Achievement', cat:'fx', file:'samples/sfx/achieve.mp3',   gain:.5},
  // ── Single notes, for building your own ──
- {id:'n-piano',  name:'Piano · C4',       cat:'notes', file:'samples/piano/C4.mp3',    key:0},
  {id:'n-piano2', name:'Piano 2 · Cs4',    cat:'notes', file:'samples/piano2/Cs4.mp3',  key:1},
  {id:'n-marimba',name:'Marimba · C3',     cat:'notes', file:'samples/marimba/C3.mp3',  key:0},
  {id:'n-kalimba',name:'Kalimba · C5',     cat:'notes', file:'samples/kalimba/C5.mp3',  key:0},
@@ -22315,7 +22320,7 @@ function _webChordRelease(){
 // reached at all — offline, or a blocked request). The fallback is deliberate:
 // selecting one of these should never produce silence.
 const SAMPLED_WAVES = { vibes:'vibes', jazzgtr:'jazzgtr', nylongtr:'nylongtr',
-                        tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal:'pianoreal', pianoreal2:'pianoreal2', marimba:'marimba',
+                        tenorsax:'tenorsax', mutetpt:'mutetpt', pianoreal2:'pianoreal2', marimba:'marimba',
                         kalimba:'kalimba', xylo:'xylo',
                         violin:'violin', clarinet:'clarinet', flute:'flute' };
 
@@ -27310,7 +27315,7 @@ function _webArpBlock(msg){
 // time even started at the body (see _sampleOnset), so they came out 7-14 dB
 // under every other arp voice. Measured on the arp bus against sine, piano and
 // muted trumpet at -38 dB: these bring them back in line.
-const ARP_SAMPLE_GAIN = {clarinet:4.2, flute:4.288, violin:2.066, tenorsax:1.842, pianoreal:0.737, piano:1.103, vibes:0.772, xylo:0.55, kalimba:0.572, jazzgtr:0.837, nylongtr:0.808, mutetpt:1.161, sine:1.135, sawtooth:1.135, square:1.122, supersaw:0.704, pad:0.617};
+const ARP_SAMPLE_GAIN = {clarinet:4.2, flute:4.288, violin:2.066, tenorsax:1.842, piano:1.103, vibes:0.772, xylo:0.55, kalimba:0.572, jazzgtr:0.837, nylongtr:0.808, mutetpt:1.161, sine:1.135, sawtooth:1.135, square:1.122, supersaw:0.704, pad:0.617};
 // The same shortfall on a chord, smaller because a chord note is long enough
 // for most of the swell: measured -45/-44 dB for clarinet and flute against
 // -36 to -40 for the rest on C-E-G at the default envelope.
@@ -28397,7 +28402,7 @@ const MS_SHARED_VOICES=[
  ['piano','Piano (synth)'],['rhodes','Rhodes'],['organ','Organ'],['pad','Pad'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','mõdSynth'],
- ['pianoreal','Piano 1 ◆'],['pianoreal2','Piano 2 ◆'],
+ ['pianoreal2','Piano 2 ◆'],
  ['vibes','Vibes ◆'],['marimba','Marimba ◆'],['xylo','Xylophone ◆'],['kalimba','Kalimba ◆'],['jazzgtr','Jazz Gtr ◆'],['nylongtr','Nylon ◆'],
  ['tenorsax','Tenor Sax ◆'],['mutetpt','Mute Tpt ◆'],['violin','Violin ◆'],['clarinet','Clarinet ◆'],['flute','Flute ◆'],
  // Last, and reached the same way as any other voice: picking it here is how
@@ -29946,6 +29951,7 @@ window.setArpClock = setArpClock; window.setArpFreeMs = setArpFreeMs; window.arp
  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire); else setTimeout(wire, 0);
 })();
 function setArpWave(w){
+  if(WAVE_RENAMED[w]) w = WAVE_RENAMED[w];
   // The setter half of the free tier, as setBlWave has it: every way of choosing
   // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
   // only a tap met the lock on the button. A restore runs before the tier is
@@ -31556,6 +31562,7 @@ function syncVoicingUI(){
 }
 window.syncVoicingUI=syncVoicingUI;
 function setWave(w){
+  if(WAVE_RENAMED[w]) w = WAVE_RENAMED[w];
   // The setter half of the free tier, as setBlWave has it: every way of choosing
   // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
   // only a tap met the lock on the button. A restore runs before the tier is
@@ -44633,6 +44640,7 @@ function buildMelVoicePickers(){
 }
 
 function setMelWave(w){
+  if(WAVE_RENAMED[w]) w = WAVE_RENAMED[w];
   // The setter half of the free tier, as setBlWave has it: every way of choosing
   // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
   // only a tap met the lock on the button. A restore runs before the tier is
@@ -55040,6 +55048,7 @@ window.mlClear = function(){
 
 // ── melody-sequencer voice selector ──
 window.setMlWave = function(w){
+  if(WAVE_RENAMED[w]) w = WAVE_RENAMED[w];
   // The setter half of the free tier, as setBlWave has it: every way of choosing
   // a voice ends here — a tap, a saved setup, a shared link, the dice, MIDI — and
   // only a tap met the lock on the button. A restore runs before the tier is
