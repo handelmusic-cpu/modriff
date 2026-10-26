@@ -2,8 +2,16 @@
 
 Note samples are rendered from the **FluidR3_GM** and **MusyngKite** SoundFonts, redistributed by the
 [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) project
-(Benjamin Gleitzman), licensed under
-[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/us/).
+(Benjamin Gleitzman). Its README gives the two SoundFonts different licences
+(checked 2026-10-26): **FluidR3_GM is
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)** (upright bass,
+Motown, Hofner, jazz guitar), and **MusyngKite is
+[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)**, the
+share-alike one (vibes, nylon guitar, tenor sax, muted trumpet, and the scratch
+effect built from the sax). An earlier version of this file called all of them
+CC BY 3.0; that was wrong for MusyngKite. A Polyphone listing of Musyng Kite
+says personal use only, which the README does not; the sets stay NEEDS-CONFIRM
+in SOURCES.csv until that is settled or they are replaced.
 
 Every natural note (C D E F G A B) is included across bass octaves 1-4; the
 app pitch-shifts each sample at playback time to cover the sharps/flats in
