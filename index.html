@@ -7363,6 +7363,13 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 .ft-ver { font-size:.44rem; color:var(--muted); opacity:.6; letter-spacing:.08em; align-self:center; padding:0 4px; }
 .ss-about .about-row { font-size:.5rem; color:var(--text); gap:6px; align-items:baseline; }
 .ss-about .ft-ver { font-size:.5rem; opacity:.85; padding:0; }
+/* The in-app credits: scrolls inside About so the rest of Settings stays where it was. */
+.credits-list { max-height:55vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:6px 4px 6px 0; border-top:1px solid var(--border, rgba(255,255,255,.12)); }
+.credits-list[hidden] { display:none; }
+.credits-list h4 { margin:10px 0 4px; font-size:.42rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+.credits-item { margin:0 0 9px; font-size:.46rem; line-height:1.45; color:var(--text); overflow-wrap:anywhere; }
+.credits-item b { font-weight:600; }
+.credits-item .cr-line { color:var(--muted); }
 .about-link { color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 
 .ext-picker-box { max-width:440px; max-height:82vh; overflow-y:auto; }
@@ -7929,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4i</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4j</span></div>
  </div>
 </div>
 
@@ -9230,8 +9237,11 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4i</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4j</span></div>
     <div class="row about-row">Built by Ben Handel</div>
+    <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
+     <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
+    <div class="credits-list" id="credits-list" hidden></div>
     <div class="row about-row">Support <a class="about-link" href="mailto:support@modriff.com">support@modriff.com</a></div>
    </div>
   </div>
@@ -10264,7 +10274,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.4i';
+const MODRIFF_VERSION = '4.9.9.9.9.9.4j';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -61345,6 +61355,119 @@ function proKeepSongApply(song, existingId){
  if(song.savedRhythm && song.savedRhythm.mach===k.co.kit && k.orig.kit) song.savedRhythm.mach=k.orig.kit;
  if(song.savedBass && song.savedBass.wave===k.co.blWave && k.orig.blWave) song.savedBass.wave=k.orig.blWave;
  if(song.savedMelody && song.savedMelody.wave===k.co.mlWave && k.orig.mlWave) song.savedMelody.wave=k.orig.mlWave;
+}
+
+// Settings > About > Credits. One table, drawn on demand; no network and no
+// links (a tap on one would take the user out of the app), so every URL is
+// plain text. Each entry is a credit_group of samples/SOURCES.csv, and
+// check.sh fails if a group whose licence requires credit has no entry here.
+// CC BY asks for the author, a link to the licence and a note of what was
+// changed, which is what the lines below carry.
+const CREDITS_TABLE = [
+ {id:'soundfont', kind:'sounds', name:'SoundFont instruments',
+  used:'Upright 1, Motown, Hofner, Jazz guitar, Vibes, Nylon guitar, Tenor sax, Muted trumpet, the Jazz kit cymbals and kick, the scratch effect',
+  by:'Benjamin Gleitzman (midi-js-soundfonts), rendered from the FluidR3_GM and MusyngKite SoundFonts; the Jazz kit percussion is the FluidR3_GM bank as published by WebAudioFont (Sergey Surikov)',
+  lic:'CC BY 3.0', licUrl:'https://creativecommons.org/licenses/by/3.0/',
+  src:'https://github.com/gleitz/midi-js-soundfonts',
+  changes:'Natural notes only, re-encoded to mp3, and pitch-shifted by the app to fill the gaps. The electric bass tones are shaped by the app as they load. The scratch effect is the Tenor sax C4 moved back and forth.'},
+ {id:'vsco2', kind:'sounds', name:'Violin, Clarinet, Flute',
+  used:'Violin, Clarinet, Flute',
+  by:'Versilian Studios, Chamber Orchestra 2 Community Edition (CC0), as redistributed by Nicholas Brosowsky (tonejs-instruments)',
+  lic:'CC BY 3.0', licUrl:'https://creativecommons.org/licenses/by/3.0/',
+  src:'https://github.com/nbrosowsky/tonejs-instruments',
+  changes:'Trimmed to 3.2 s with a fade, high-passed at 45 Hz, mono, re-encoded to mp3.'},
+ {id:'vcsl', kind:'sounds', name:'Versilian Community Sample Library',
+  used:'The Rock, Hip-Hop, Studio, Latin Perc, Hand Drums, Orchestral, Middle East, West Africa, Samba and Bells & FX kits',
+  by:'Versilian Studios / Sam Gossner',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/',
+  src:'https://github.com/sgossner/VCSL',
+  changes:'Mono, trimmed to the attack and the tail, peak-normalised, re-encoded to mp3; some kits equalised or compressed.'},
+ {id:'tr808', kind:'sounds', name:'TR-808',
+  used:'The Real 808 kit, the phrase sampler 808 and the tape-stop effect',
+  by:'Michael Fischer (Technopolis, 1994), recorded from a Roland TR-808, via @fluid-music/tr-808',
+  lic:'Free to use with no licensing restrictions, as stated with the original files', licUrl:'',
+  src:'https://www.npmjs.com/package/@fluid-music/tr-808',
+  changes:'Converted to mono mp3 and trimmed of trailing silence.'},
+ {id:'freesound-giddster', kind:'sounds', name:'Beatbox', used:'Beatbox kit', by:'giddster (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/giddster/packs/24693/',
+  changes:'Mono, high-passed at 30 Hz, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-pjcohen', kind:'sounds', name:'Upright 2', used:'Upright 2', by:'pjcohen (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/pjcohen/packs/21521/',
+  changes:'Placed by measured pitch, trimmed, faded, high-passed, re-encoded to mp3.'},
+ {id:'freesound-tedagame', kind:'sounds', name:'Piano', used:'Piano', by:'TEDAgame (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/TEDAgame/packs/25405/',
+  changes:'Each note tuned to exact pitch, shortened to 5 s, re-encoded to mp3.'},
+ {id:'freesound-joesh2', kind:'sounds', name:'Marimba', used:'Marimba', by:'joesh2 (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/joesh2/packs/32432/',
+  changes:'Tuned to exact pitch, shortened to 2 s, re-encoded to mp3.'},
+ {id:'freesound-ixwolf', kind:'sounds', name:'Picked bass', used:'Picked bass', by:'Ixwolf (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/Ixwolf/packs/44244/',
+  changes:'Tuned to exact pitch, trimmed, faded, re-encoded to mp3.'},
+ {id:'freesound-mmiron', kind:'sounds', name:'Tabla', used:'Tabla kit', by:'mmiron (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/mmiron/packs/8162/',
+  changes:'Mono, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-infinita08', kind:'sounds', name:'Djembe', used:'Djembe kit', by:'Infinita08 (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/Infinita08/packs/26031/',
+  changes:'Mono, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-sassaby', kind:'sounds', name:'Bata, Maracatu, Salsa', used:'Bata, Maracatu and Salsa kits', by:'sassaby (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/sassaby/packs/28352/ and https://freesound.org/people/sassaby/packs/38391/',
+  changes:'Mono, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-menegass', kind:'sounds', name:'Medieval', used:'Medieval kit', by:'menegass (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/menegass/packs/5824/',
+  changes:'Mono, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-iyankc', kind:'sounds', name:'Udu', used:'Clay Drums kit (udu)', by:'iyankc (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/iyankc/',
+  changes:'Mono, trimmed, normalised, re-encoded to mp3.'},
+ {id:'freesound-hollandm', kind:'sounds', name:'Kalimba', used:'Kalimba', by:'hollandm (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/hollandm/packs/38696/',
+  changes:'Tuned to exact pitch, trimmed, faded, high-passed, re-encoded to mp3.'},
+ {id:'freesound-sgossner', kind:'sounds', name:'Xylophone', used:'Xylophone', by:'sgossner, Versilian Studios (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/sgossner/packs/21065/',
+  changes:'Tuned to exact pitch, trimmed, faded, high-passed, re-encoded to mp3.'},
+ {id:'freesound-plotzki', kind:'sounds', name:'Samba loops', used:'Samba Band and Samba Loops', by:'plotzki (Freesound)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://freesound.org/people/plotzki/packs/2301/',
+  changes:'Used whole, re-encoded to mp3.'},
+ {id:'zzfx', kind:'sounds', name:'ZzFX sound effects', used:'Coin, Laser, Jump, Power-up, Explosion, Game Over', by:'Frank Force (ZzFX)',
+  lic:'MIT', licUrl:'https://github.com/KilledByAPixel/ZzFX/blob/master/LICENSE', src:'https://github.com/KilledByAPixel/ZzFX',
+  changes:'Each effect is one ZzFX parameter set rendered to a file and normalised.'},
+ {id:'uisfx', kind:'sounds', name:'uisfx sound effects', used:'Level up, Scan, Achieve', by:'Romain Simon (uisfx)',
+  lic:'CC0 1.0', licUrl:'https://creativecommons.org/publicdomain/zero/1.0/', src:'https://github.com/romainsimon/uisfx',
+  changes:'Re-encoded and normalised.'},
+ {id:'outfit', kind:'fonts', name:'Outfit', used:'Interface text', by:'The Outfit Project Authors',
+  lic:'SIL Open Font License 1.1', licUrl:'', src:'https://github.com/Outfitio/Outfit-Fonts',
+  notice:'Copyright 2021 The Outfit Project Authors. Licence text: fonts/OFL-Outfit.txt', changes:'Latin subsets only.'},
+ {id:'orbitron', kind:'fonts', name:'Orbitron', used:'Display text', by:'The Orbitron Project Authors',
+  lic:'SIL Open Font License 1.1', licUrl:'', src:'https://github.com/theleagueof/orbitron',
+  notice:'Copyright 2018 The Orbitron Project Authors. Licence text: fonts/OFL-Orbitron.txt', changes:'Latin subset only.'},
+ {id:'dejavu', kind:'fonts', name:'DejaVu Sans symbols', used:'Arrows, play and stop shapes and check marks, so iOS draws them as text', by:'Bitstream, Inc. and the DejaVu fonts team',
+  lic:'Bitstream Vera licence; DejaVu changes are public domain', licUrl:'', src:'https://dejavu-fonts.github.io/',
+  notice:'Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc. Licence text: fonts/LICENSE-DejaVu.txt',
+  changes:'A subset of 25 glyphs.'}
+];
+function creditsRender(box){
+ const mk=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!==undefined) e.textContent=txt; return e; };
+ const kinds=[['sounds','Sounds'],['fonts','Fonts']];
+ kinds.forEach(function(k){
+  box.appendChild(mk('h4','',k[1]));
+  CREDITS_TABLE.filter(function(c){ return c.kind===k[0]; }).forEach(function(c){
+   const it=mk('div','credits-item');
+   const h=mk('b','',c.name); it.appendChild(h);
+   const row=function(label,txt){ if(!txt) return; it.appendChild(document.createElement('br')); const sp=mk('span','cr-line',label+': '); it.appendChild(sp); it.appendChild(document.createTextNode(txt)); };
+   row('Used for',c.used); row('By',c.by);
+   row('Licence', c.licUrl ? c.lic+', '+c.licUrl : c.lic);
+   row('Notice',c.notice); row('Source',c.src); row('Changes',c.changes);
+   box.appendChild(it);
+  });
+ });
+}
+function creditsToggle(){
+ const box=document.getElementById('credits-list'), btn=document.getElementById('credits-btn');
+ if(!box||!btn) return;
+ const open=box.hidden;
+ if(open && !box.firstChild) creditsRender(box);
+ box.hidden=!open;
+ btn.setAttribute('aria-expanded',String(open));
+ btn.textContent=open?'Hide':'Show';
 }
 
 // Apple requires this to be a visible control (guideline 3.1.1): it is on the
