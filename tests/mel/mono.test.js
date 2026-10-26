@@ -125,6 +125,38 @@ function serve() {
   ok(r.ui.btn === 'Mode: Mono' && r.ui.sl === '350' && !r.ui.dis && r.uiPoly.btn === 'Mode: Poly' && r.uiPoly.dis, 'the button and the glide slider follow the mode', JSON.stringify([r.ui, r.uiPoly]));
   ok(!r.webErr && r.web && r.web.built && r.webReleased, 'the real web voice builds when a slide is asked for, and the short release takes it down', r.webErr || JSON.stringify([r.web, r.webReleased]));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
+  // The strip's two-finger zoom: Mono only. In Poly the keys keep the default width and
+  // a second finger reaches its key (a chord), instead of being read as a pinch.
+  const z = await page.evaluate(() => {
+    const wrap = document.querySelector('.mel-keys-wrap'), kk = document.getElementById('melody-keys');
+    const key = kk.querySelector('button, .mel-key') || kk.firstElementChild;
+    const kw = () => parseFloat(kk.style.getPropertyValue('--mel-kw'));
+    const pe = (type, id, x) => new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: 10, bubbles: true, cancelable: true });
+    const pinch = () => {
+      let reached = 0; const spy = () => reached++;
+      document.addEventListener('pointerdown', spy);
+      key.dispatchEvent(pe('pointerdown', 11, 100)); key.dispatchEvent(pe('pointerdown', 12, 160));
+      document.removeEventListener('pointerdown', spy);
+      wrap.dispatchEvent(pe('pointermove', 12, 300));
+      const w = kw();
+      key.dispatchEvent(pe('pointerup', 12, 300)); key.dispatchEvent(pe('pointerup', 11, 100));
+      return { w, reached };
+    };
+    const o = {};
+    _melKw = null; melMono = false; melApplyKeyW(); o.auto = kw();
+    _melKw = 70; melApplyKeyW(); o.polyWithSaved = kw();
+    o.poly = pinch(); o.polyAfter = kw();
+    setMelMono(true); o.monoSaved = kw();
+    _melKw = null; melApplyKeyW(); o.mono = pinch();
+    setMelMono(false); o.back = kw();
+    _melKw = null; melApplyKeyW();
+    return o;
+  });
+  ok(z.polyWithSaved === z.auto && z.polyAfter === z.auto, 'Poly keeps the default key width even with a saved zoom', JSON.stringify(z));
+  ok(z.poly.w === z.auto && z.poly.reached === 2, 'Poly: two fingers are two key presses, not a pinch', JSON.stringify(z.poly));
+  ok(z.monoSaved === 70, 'Mono brings the player\'s own width back', JSON.stringify(z));
+  ok(z.mono.w > z.auto && z.mono.reached === 1, 'Mono: two fingers zoom the strip', JSON.stringify(z.mono));
+  ok(z.back === z.auto, 'and back in Poly the width is the default again', JSON.stringify(z));
   await browser.close(); srv.close();
   process.exit(fail ? 1 : 0);
 })();
