@@ -29,7 +29,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "fileDelete", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "wavFinish", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphProbe", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -165,13 +169,74 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         let part = call.getInt("part") ?? 0
         // Warmed before it is published: the engine is already running, and a
         // warm-up played into a part the render thread can see is heard.
-        let ok = (call.getBool("warm") ?? true) ? host.warmUpPart(Int32(part))
+        // `graph: true` is a part played as recorded Web Audio graphs: a strip and
+        // mõdFX with no engine and no rack behind them (nothing to warm, no
+        // Processor to build).
+        let ok = (call.getBool("graph") ?? false) ? host.ensureGraphPart(Int32(part))
+               : (call.getBool("warm") ?? true) ? host.warmUpPart(Int32(part))
                                                 : host.ensurePart(Int32(part))
         guard ok else {
             call.reject("part \(part) out of range")
             return
         }
         call.resolve(["part": part])
+    }
+
+    // MARK: - The graph path
+    //
+    // The page records a voice as a Web Audio graph and sends it as numbers
+    // (`_mgSend` in index.html); the host plays it with the C++ interpreter. The
+    // page asks `graphProbe` once before it turns the path on, so a binary
+    // without these methods is left on Web Audio. Order matters and Capacitor
+    // keeps it: a clip (graphBuf), then the graph that names it (graphBegin), then
+    // its edits (graphEdit).
+
+    /// Does nothing and resolves: the answer is that the method exists.
+    @objc func graphProbe(_ call: CAPPluginCall) {
+        call.resolve(["graph": true])
+    }
+
+    /// A decoded clip, once: `channels` are base64 float32, one or two.
+    @objc func graphBuf(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let id = call.getInt("id"), let sr = call.getDouble("sampleRate"),
+              let b64 = call.getArray("channels", String.self), !b64.isEmpty else {
+            call.reject("graphBuf needs id, sampleRate and channels")
+            return
+        }
+        let chans = b64.compactMap { Data(base64Encoded: $0) }
+        guard chans.count == b64.count, host.putGraphBuffer(Int32(id), sampleRate: sr, channels: chans) else {
+            call.reject("graphBuf could not read the clip")
+            return
+        }
+        call.resolve()
+    }
+
+    /// Starts a voice. `program` is base64 float64; `ts` is the page's wall
+    /// clock (ms) when it opened the voice. Resolves `handle` (>= 0), `-2` with
+    /// `unknownBuffer` when a clip it names is missing (the page sends that clip
+    /// again), or `-1` when it was refused or the pool is full.
+    @objc func graphBegin(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let gid = call.getInt("gid"), let b64 = call.getString("program"),
+              let program = Data(base64Encoded: b64) else {
+            call.reject("graphBegin needs gid and program")
+            return
+        }
+        let r = host.beginGraph(Int32(gid), program: program, timestampMs: call.getDouble("ts") ?? 0)
+        call.resolve(["handle": r["handle"] ?? -1, "unknownBuffer": r["unknownBuffer"] ?? -1])
+    }
+
+    /// A change to a voice that has begun. Resolves `ok` false when it has
+    /// already finished.
+    @objc func graphEdit(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let gid = call.getInt("gid"), let b64 = call.getString("increments"),
+              let inc = Data(base64Encoded: b64) else {
+            call.reject("graphEdit needs gid and increments")
+            return
+        }
+        call.resolve(["ok": host.editGraph(Int32(gid), increments: inc)])
     }
 
     /// One worklet-shaped message. Parsed into a POD and queued here, on
@@ -484,6 +549,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "avgRenderUs": Double(renderNanosTotal) / Double(blocks) / 1000.0,
             "maxRenderUs": Double(renderNanosMax) / 1000.0,
             "load": load,
+            "graph": host.graphStats(),
             "slowCount": Int(slowCount),
             "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
                 ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]

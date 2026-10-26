@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <cmath>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -14,6 +16,7 @@
 #include "mixfx.h"
 #include "master.h"
 #include "capture.h"
+#include "graphpool.h"
 
 namespace {
 
@@ -185,6 +188,31 @@ double num(id value, double fallback = 0) {
   // the host has to know the same number to turn "in 20 ms" into a frame.
   uint64_t _partFrames[kMaxParts];
   int _maxFrames;
+
+  // ── The graph path (graphpool.h): voices the page recorded as Web Audio
+  // graphs, played by the interpreter with no Processor behind them. ──
+  // begin/edit and the table below belong to whoever holds _graphLock (the
+  // control thread: the one that receives the page's calls); render() belongs
+  // to the render thread, which never takes the lock.
+  modsynth::GraphPool _graphs;
+  os_unfair_lock _graphLock;
+  std::map<int, int> _gidHandle;          // the page's voice id -> the pool's handle
+  // A part played as graphs: it has a strip and mõdFX (and a capture ring) but
+  // no Processor and no rack. Published with release once they are built.
+  std::atomic<bool> _graphLive[kMaxParts];
+  std::atomic<bool> _graphOn;             // any graph part exists: the render thread has buses to zero
+  // Frames of mõdFX tail still to run on a graph part after its last voice
+  // sounded (a Processor part runs always; this one only when it has something).
+  int64_t _graphTail[kMaxParts];
+  // The two reverbs the graph voices send to (buses 9 and 10), fitted to the
+  // page's convolver (FxRack::setSendReverb), and how long each has still to ring.
+  std::unique_ptr<modsynth::FxRack> _roomRack[2];
+  int64_t _roomTail[2];
+  // The block-start offset of the wall clock from the engine's frames (ms), as
+  // _curOff, for the control thread to turn a voice's stamp into a frame the way
+  // applyMessage does for a note. NaN until a block has run.
+  std::atomic<double> _curOffPub;
+  std::vector<float> _gbus;               // kBuses pairs of scratch buffers, _maxFrames each
 }
 
 - (instancetype)initWithSampleRate:(double)sampleRate maxFrames:(int)maxFrames {
@@ -206,6 +234,14 @@ double num(id value, double fallback = 0) {
     _roomL.assign((size_t)_maxFrames, 0.0f);
     _roomR.assign((size_t)_maxFrames, 0.0f);
     _master = std::make_unique<modsynth::MasterBus>(sampleRate);
+    _graphLock = OS_UNFAIR_LOCK_INIT;
+    _graphOn.store(false);
+    _curOffPub.store(std::nan(""));
+    for (int p = 0; p < kMaxParts; p++) { _graphLive[p].store(false, std::memory_order_relaxed); _graphTail[p] = 0; }
+    // Bus 9 is the chord's own room, bus 10 the shared one: both are the page's
+    // buildReverb impulse, noise falling as (1-t)^2.5 over chord.reverbSize (1.8 s).
+    for (int k = 0; k < 2; k++) { _roomRack[k] = std::make_unique<modsynth::FxRack>(sampleRate); _roomRack[k]->setSendReverb(1.8, 2.5); _roomTail[k] = 0; }
+    _gbus.assign((size_t)modsynth::GraphPool::kBuses * 2 * (size_t)_maxFrames, 0.0f);
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
     _curOff = 0; _drainSum = 0; _drainN = 0; _drainMean.store(0);
@@ -219,8 +255,10 @@ double num(id value, double fallback = 0) {
 - (void)buildPart:(int)part {
   _parts[part] = std::make_unique<modsynth::Processor>(_sampleRate);
   _racks[part] = std::make_unique<modsynth::FxRack>(_sampleRate);
-  _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
-  _mixfx[part] = std::make_unique<modsynth::MixFx>(_sampleRate);
+  // A part that was a graph part first already has these, and the render thread
+  // may be reading them: keep them.
+  if (!_strips[part]) _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
+  if (!_mixfx[part]) _mixfx[part] = std::make_unique<modsynth::MixFx>(_sampleRate);
 }
 
 // Release: everything the constructor (and the warm-up) wrote is visible before
@@ -274,6 +312,118 @@ double num(id value, double fallback = 0) {
   // panic() silences the voices; the capacity those vectors took stays.
   [self publishPart:part];
   return YES;
+}
+
+// ── The graph path, control side ─────────────────────────────────────────
+
+// A part that has no Processor: its strip and mõdFX (what a Processor part gets
+// in buildPart), no engine and no rack, and the capture ring every part has, so
+// the mixer's meter and fader, mõdFX, Bounce and the stems work on it as they
+// do on any other part. Allocates, so off the audio thread; published last.
+- (BOOL)ensureGraphPart:(int)part {
+  if (part < 0 || part >= kMaxParts) return NO;
+  if (_graphLive[part].load(std::memory_order_acquire)) return YES;
+  if (!_strips[part]) _strips[part] = std::make_unique<modsynth::Strip>(_sampleRate);
+  if (!_mixfx[part]) _mixfx[part] = std::make_unique<modsynth::MixFx>(_sampleRate);
+  [self warmGraphPool];
+  _graphOn.store(true, std::memory_order_release);
+  _graphLive[part].store(true, std::memory_order_release);
+  return YES;
+}
+
+// The pool's first voices would pay for first-touch memory and cold code on the
+// render thread. A throwaway pool plays a short tone for a few blocks here, on
+// the caller's thread, so the code paths and the allocator are warm; it is
+// discarded, so it is never heard and nothing the render thread owns is touched.
+- (void)warmGraphPool {
+  static std::atomic<bool> done{false};
+  if (done.exchange(true)) return;
+  modsynth::GraphPool pool;
+  // ext(bus 0) <- gain <- sine, in graph.h's program layout (as graphpooltest builds one).
+  std::vector<double> p = {0x6d6f6467, _sampleRate, 3, 0};
+  p.push_back(8); p.push_back(0);
+  p.push_back(2); p.push_back(0); p.push_back(0); p.push_back(-1e9);
+  p.push_back(440); p.push_back(0); p.push_back(0); p.push_back(0);
+  p.push_back(1); p.push_back(0.1); p.push_back(0);
+  p.push_back(2);
+  p.push_back(1); p.push_back(2); p.push_back(-1);
+  p.push_back(2); p.push_back(0); p.push_back(-1);
+  if (pool.begin(p.data(), p.size(), 0.0, 0) < 0) return;
+  const int n = _maxFrames < 512 ? _maxFrames : 512;
+  std::vector<float> l((size_t)modsynth::GraphPool::kBuses * (size_t)n), r(l.size());
+  float *bl[modsynth::GraphPool::kBuses], *br[modsynth::GraphPool::kBuses];
+  for (int b = 0; b < modsynth::GraphPool::kBuses; b++) { bl[b] = l.data() + (size_t)b * n; br[b] = r.data() + (size_t)b * n; }
+  for (int k = 0; k < 8; k++) pool.render((uint64_t)k * (uint64_t)n, n, bl, br);
+}
+
+// A decoded clip, once; the graph that names it comes after.
+- (BOOL)putGraphBuffer:(int)bufId sampleRate:(double)sr channels:(NSArray<NSData *> *)channels {
+  if (![channels isKindOfClass:[NSArray class]] || channels.count < 1) return NO;
+  const size_t len = channels[0].length / sizeof(float);
+  if (len == 0) return NO;
+  std::vector<float> c0(len), c1;
+  std::memcpy(c0.data(), channels[0].bytes, len * sizeof(float));
+  if (channels.count > 1 && channels[1].length / sizeof(float) >= len) {
+    c1.resize(len);
+    std::memcpy(c1.data(), channels[1].bytes, len * sizeof(float));
+  }
+  os_unfair_lock_lock(&_graphLock);
+  _graphs.buffers().put(bufId, sr, c1.empty() ? 1 : 2, (int)len, c0.data(), c1.empty() ? nullptr : c1.data());
+  os_unfair_lock_unlock(&_graphLock);
+  return YES;
+}
+
+// Starts a voice. `ts` is the page's wall clock (ms) at the moment it opened the
+// voice, and the program's times count from there. The engine frame for that
+// moment is worked out the way applyMessage places a note: the wall clock minus
+// the offset the last block saw (a few ms in the past by now; the pool catches
+// a late voice up). Answers {handle} (>= 0), or handle -2 with the clip the pool
+// lacks (the page sends it again), or -1 for a program refused or no free slot.
+- (NSDictionary *)beginGraph:(int)gid program:(NSData *)program timestampMs:(double)ts {
+  const size_t n = program.length / sizeof(double);
+  if (n == 0) return @{@"handle": @(-1), @"unknownBuffer": @(-1)};
+  std::vector<double> prog(n);
+  std::memcpy(prog.data(), program.bytes, n * sizeof(double));
+  uint64_t start = _frames.load(std::memory_order_relaxed);
+  const double off = _curOffPub.load(std::memory_order_relaxed);
+  if (ts > 0 && !std::isnan(off)) {
+    const double f = (ts - off) * _sampleRate / 1000.0;
+    // A stamp far from now is a bad clock, not a note: play it at once.
+    if (f > (double)start - 5.0 * _sampleRate && f < (double)start + 5.0 * _sampleRate) start = f > 0 ? (uint64_t)f : 0;
+  }
+  os_unfair_lock_lock(&_graphLock);
+  const int h = _graphs.begin(prog.data(), n, 0.0, start);
+  const int unknown = h == -2 ? _graphs.unknownBuffer() : -1;
+  if (h >= 0) {
+    _gidHandle[gid] = h;
+    // gids only ever grow; a voice's edits come within seconds of its start.
+    while (_gidHandle.size() > 4096) _gidHandle.erase(_gidHandle.begin());
+  }
+  os_unfair_lock_unlock(&_graphLock);
+  return @{@"handle": @(h), @"unknownBuffer": @(unknown)};
+}
+
+// Later changes to a voice that has begun (release, choke, glide, a stop). NO if
+// the voice has already finished: the handle is dropped and the edit is moot.
+- (BOOL)editGraph:(int)gid increments:(NSData *)increments {
+  const size_t n = increments.length / sizeof(double);
+  if (n == 0) return YES;
+  std::vector<double> inc(n);
+  std::memcpy(inc.data(), increments.bytes, n * sizeof(double));
+  os_unfair_lock_lock(&_graphLock);
+  bool ok = false;
+  auto it = _gidHandle.find(gid);
+  if (it != _gidHandle.end()) {
+    ok = _graphs.edit(it->second, inc.data(), n);
+    if (!ok) _gidHandle.erase(it);
+  }
+  os_unfair_lock_unlock(&_graphLock);
+  return ok;
+}
+
+- (NSDictionary *)graphStats {
+  return @{@"voices": @(_graphs.active()), @"dropped": @((double)_graphs.dropped()),
+           @"lateEdits": @((double)_graphs.lateEdits())};
 }
 
 - (BOOL)post:(NSDictionary *)message {
@@ -477,6 +627,7 @@ double num(id value, double fallback = 0) {
     if ((uint32_t)frames > _cbMax) _cbMax = (uint32_t)frames;
     _clkOrigin.store(_clk.update(off), std::memory_order_relaxed);
     _curOff = off;
+    _curOffPub.store(off, std::memory_order_relaxed);
   }
 
   Msg m;
@@ -485,6 +636,13 @@ double num(id value, double fallback = 0) {
     modsynth::Processor *p = _live[m.part].load(std::memory_order_acquire);
     if (p) [self applyMessage:m to:p];            // a message for a part that
                                                   // does not exist is dropped
+    else if (_graphLive[m.part].load(std::memory_order_acquire)) {
+      // A graph part has no Processor but it has a strip and mõdFX, and the
+      // page sets those the same way (fader, mute, solo, pan, the effects).
+      if (m.type == MsgType::Strip && _strips[m.part]) {
+        if (m.i == 0) _strips[m.part]->setLevel(m.v); else if (m.i == 1) _strips[m.part]->setPan(m.v);
+      } else if (m.type == MsgType::Mfx && _mixfx[m.part]) _mixfx[m.part]->set(m.i, m.v);
+    }
   }
 
   std::memset(left, 0, sizeof(float) * (size_t)frames);
@@ -492,19 +650,45 @@ double num(id value, double fallback = 0) {
   std::memset(_roomL.data(), 0, sizeof(float) * (size_t)frames);
   std::memset(_roomR.data(), 0, sizeof(float) * (size_t)frames);
 
+  // The graph voices, into one pair of buses a part (0..7) and the three that
+  // belong to no part (8 the master, 9 the chord's room, 10 the shared room).
+  // Zeroed only once there is a graph part: until then this costs nothing.
+  const bool graphOn = _graphOn.load(std::memory_order_acquire);
+  constexpr int kBuses = modsynth::GraphPool::kBuses;
+  float *gl[kBuses], *gr[kBuses];
+  bool touched[kBuses];
+  for (int b = 0; b < kBuses; b++) {
+    gl[b] = _gbus.data() + (size_t)(2 * b) * (size_t)_maxFrames;
+    gr[b] = gl[b] + _maxFrames;
+    touched[b] = false;
+  }
+  if (graphOn) {
+    std::memset(_gbus.data(), 0, sizeof(float) * (size_t)(2 * kBuses) * (size_t)_maxFrames);
+    _graphs.render(blockFrame, frames, gl, gr, touched);
+  }
+  const int64_t kPartTail = (int64_t)(8.0 * _sampleRate);    // mõdFX tails: a reverb or delay outlives its last voice
+
   for (int part = 0; part < kMaxParts; part++) {
     modsynth::Processor *p = _live[part].load(std::memory_order_acquire);
-    if (!p) continue;
-    p->process(_scratchL.data(), _scratchR.data(), frames);
+    const bool gpart = graphOn && _graphLive[part].load(std::memory_order_acquire);
+    if (gpart) { if (touched[part]) _graphTail[part] = kPartTail; else if (_graphTail[part] > 0) _graphTail[part] -= frames; }
+    if (!p && !(gpart && _graphTail[part] > 0)) continue;
+    if (p) p->process(_scratchL.data(), _scratchR.data(), frames);
+    else { std::memset(_scratchL.data(), 0, sizeof(float) * (size_t)frames); std::memset(_scratchR.data(), 0, sizeof(float) * (size_t)frames); }
     // The rack: what fx.js is on the web, after the voices. The matrix's FX
     // destinations (a Space or Drive macro) are read here, from the engine
     // that computed them, so they apply per block and not at meter rate.
-    if (modsynth::FxRack *rack = _racks[part].get()) {
+    if (modsynth::FxRack *rack = p ? _racks[part].get() : nullptr) {
       double mods[5];
       p->fxMods(mods);
       rack->setMods(mods);
       rack->process(_scratchL.data(), _scratchR.data(), frames);
     }
+    // A part played as graphs adds its bus here, after the rack (a graph voice is a
+    // web voice, which never had one) and before the strip, as a Processor's
+    // output meets it. A part with both (a Processor patch and web-style voices)
+    // gets both.
+    if (gpart) for (int i = 0; i < frames; i++) { _scratchL[i] += gl[part][i]; _scratchR[i] += gr[part][i]; }
     // The strip: what the web's trim gain is to a part, then mõdFX, then the
     // meter, which on the web reads the chain's output, then the pan.
     modsynth::Strip *strip = _strips[part].get();
@@ -525,6 +709,27 @@ double num(id value, double fallback = 0) {
     for (int i = 0; i < frames; i++) {
       toL[i] += _scratchL[i];
       toR[i] += _scratchR[i];
+    }
+  }
+
+  if (graphOn) {
+    // Bus 8: straight into the master with no strip (the click, the legacy
+    // Rhythm), the way the chord's direct path enters.
+    for (int i = 0; i < frames; i++) { left[i] += gl[8][i]; right[i] += gr[8][i]; }
+    // Buses 9 and 10 are sends, so what comes back is the reverb's tail alone.
+    // 9 is the chord's own room, which on the web meets the master at the glue
+    // compressor with no drive of its own in front: the direct path. 10 is the
+    // shared room, which the web's convolver feeds into the master's input
+    // (the drive, the dry path and the bus room): the room sum.
+    // A reverb runs while its send has signal and for its tail afterwards.
+    const int64_t kRoomTail = (int64_t)(4.0 * _sampleRate);
+    float *rl[2] = {gl[9], gl[10]}, *rr[2] = {gr[9], gr[10]};
+    for (int k = 0; k < 2; k++) {
+      if (touched[9 + k]) _roomTail[k] = kRoomTail; else if (_roomTail[k] > 0) _roomTail[k] -= frames;
+      if (_roomTail[k] <= 0) continue;
+      _roomRack[k]->processSend(rl[k], rr[k], frames);
+      float *toL = k == 0 ? left : _roomL.data(), *toR = k == 0 ? right : _roomR.data();
+      for (int i = 0; i < frames; i++) { toL[i] += rl[k][i]; toR[i] += rr[k][i]; }
     }
   }
 
