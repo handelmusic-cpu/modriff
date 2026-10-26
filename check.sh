@@ -84,7 +84,48 @@ if stack:
         print('NESTING: <%s> opened at line %d is never closed' % (tag, line))
 ok = ok and depth_ok
 
+# ── Sample provenance ────────────────────────────────────────────────────
+# samples/SOURCES.csv is the record of where every shipped sound, font and icon
+# came from. It only stays true if a new file cannot arrive without a row, a
+# changed file cannot keep its old hash, a file with no recorded source cannot
+# ship, and a licence that asks for credit cannot be missing from the
+# Settings > About > Credits table (CREDITS_TABLE in index.html).
+import csv, hashlib
+prov_ok = True
+with io.open('samples/SOURCES.csv', encoding='utf-8', newline='') as fh:
+    prov_rows = list(csv.DictReader(fh))
+prov_by_path = {r['path']: r for r in prov_rows}
+DOC_FILES = {'samples/CREDITS.md', 'samples/SOURCES.csv', 'samples/README.md'}
+for root in ('samples', 'fonts'):
+    for d, _, fs_ in os.walk(root):
+        for f in sorted(fs_):
+            pth = os.path.join(d, f)
+            if f.startswith('.') or pth in DOC_FILES: continue
+            if pth not in prov_by_path:
+                print('PROVENANCE: %s is not in samples/SOURCES.csv' % pth)
+                prov_ok = False
+credit_ids = set(re.findall(r"\{id:'([\w-]+)', *kind:", s))
+unknown = {}
+for r in prov_rows:
+    pth = r['path']
+    if not os.path.isfile(pth):
+        print('PROVENANCE: %s is in SOURCES.csv but not on disk' % pth); prov_ok = False
+        continue
+    if hashlib.sha256(open(pth, 'rb').read()).hexdigest() != r['sha256']:
+        print('PROVENANCE: %s changed since its row was written (sha256 differs)' % pth); prov_ok = False
+    if r['status'] not in ('VERIFIED', 'NEEDS-CONFIRM', 'UNKNOWN'):
+        print('PROVENANCE: %s has status %r' % (pth, r['status'])); prov_ok = False
+    if r['status'] == 'UNKNOWN':
+        unknown[r['pack']] = unknown.get(r['pack'], 0) + 1
+    if r['attribution_required'] == 'yes' and r['credit_group'] not in credit_ids:
+        print('PROVENANCE: %s needs attribution but credit_group %r has no entry in CREDITS_TABLE' % (pth, r['credit_group']))
+        prov_ok = False
+for pk, cnt in sorted(unknown.items()):
+    print('PROVENANCE: %d file(s) of "%s" have no recorded source or licence (UNKNOWN)' % (cnt, pk))
+    prov_ok = False
+ok = ok and prov_ok
+
 print(('OK' if ok else 'ERRORS')+' — %d script blocks checked, markup nesting %s'
-      % (n, 'balanced' if depth_ok else 'BROKEN'))
+      % (n, 'balanced' if depth_ok else 'BROKEN') + ('' if prov_ok else '; sample provenance FAILED'))
 sys.exit(0 if ok else 1)
 PY
