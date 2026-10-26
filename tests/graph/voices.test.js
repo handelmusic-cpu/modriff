@@ -14,6 +14,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { execFileSync } = require('child_process');
+const { writeBuffers } = require('./common.js');
 let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (e) { try { ({ chromium } = require('playwright-core')); }
@@ -77,8 +78,10 @@ async function pageRun(args) {
     for (let i = 0; i < L.length; i++) { out[2 * i] = L[i]; out[2 * i + 1] = R[i]; }
     return { f32: Array.from(out) };
   }
-  if (release) return { prog, inc: Array.from(ctx.takeIncrements()), unsupported: ctx.unsupported };
-  return { prog: Array.from(ctx.program()), unsupported: ctx.unsupported };
+  const plain = list => list.map(b => ({ id: b.id, sampleRate: b.sampleRate, channels: b.channels.map(c => Array.from(c)) }));
+  if (release) return { prog, inc: Array.from(ctx.takeIncrements()), bufs: plain(ctx.takeNewBuffers()), unsupported: ctx.unsupported };
+  const program = Array.from(ctx.program());
+  return { prog: program, bufs: plain(ctx.takeNewBuffers()), unsupported: ctx.unsupported };
 }
 
 (async () => {
@@ -107,7 +110,9 @@ for (const [wave, midi, release] of CASES) {
     const pf = path.join(tmp, `${tag}.f64`), of = path.join(tmp, `${tag}.f32`);
     fs.writeFileSync(pf, Buffer.from(Float64Array.from(rec.prog).buffer));
     const args = [pf, String(DUR), of];
-    if (release) { const inf = path.join(tmp, `${tag}.inc.f64`); fs.writeFileSync(inf, Buffer.from(Float64Array.from(rec.inc).buffer)); args.push(inf); }
+    const bf = path.join(tmp, `${tag}.buf.f64`); writeBuffers(bf, rec.bufs || []);
+    if (release) { const inf = path.join(tmp, `${tag}.inc.f64`); fs.writeFileSync(inf, Buffer.from(Float64Array.from(rec.inc).buffer)); args.push(inf); } else args.push('-');
+    args.push(bf);
     execFileSync(path.join(root, 'native/modsynth/graphrender'), args);
     const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0));
     const ref = Float32Array.from(real.f32);

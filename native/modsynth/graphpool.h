@@ -33,9 +33,15 @@ class GraphPool {
   GraphPool();
   ~GraphPool();
 
+  // The audio the voices play, by id. The control thread puts a clip here
+  // before the first graph that names it (the page sends it once).
+  BufferStore &buffers() { return store_; }
+
   // Control thread. Parses `prog` into a free slot and schedules it to start at
-  // engine frame `startFrame`. Returns a handle, or -1 if the program is
-  // refused or every slot is busy (the note is dropped, and counted).
+  // engine frame `startFrame`. Returns a handle; -1 if the program is refused
+  // or every slot is busy (the note is dropped, and counted); -2 if it names a
+  // buffer id the store does not have (unknownBuffer() says which, so the page
+  // can send that clip again and retry).
   int begin(const double *prog, size_t len, double timeBase, uint64_t startFrame);
 
   // Control thread (the same one as begin). Queues the recorder's increments
@@ -45,9 +51,13 @@ class GraphPool {
   bool edit(int handle, const double *inc, size_t len);
 
   // Render thread. Adds `frames` of every playing voice into busL[part] /
-  // busR[part], starting at the block's engine frame `frame0`.
-  void render(uint64_t frame0, int frames, float *const *busL, float *const *busR);
+  // busR[part], starting at the block's engine frame `frame0`. A bus pointer
+  // may be null (that part's voices are skipped). `touched[part]`, if given, is
+  // set for every part a voice wrote into this block, so the host knows which
+  // parts have something to run through their strip and mõdFX.
+  void render(uint64_t frame0, int frames, float *const *busL, float *const *busR, bool *touched = nullptr);
 
+  int unknownBuffer() const { return unknownBuf_.load(std::memory_order_relaxed); }
   int active() const;                       // voices playing or waiting to start
   uint64_t dropped() const { return dropped_.load(std::memory_order_relaxed); }
   uint64_t lateEdits() const { return lateEdits_.load(std::memory_order_relaxed); }
@@ -55,6 +65,8 @@ class GraphPool {
  private:
   struct Slot;
   std::unique_ptr<Slot[]> slots_;
+  BufferStore store_;
+  std::atomic<int> unknownBuf_{-1};
   std::atomic<uint64_t> dropped_{0}, lateEdits_{0};
 };
 

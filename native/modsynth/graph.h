@@ -17,10 +17,33 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace modsynth {
+
+// Decoded audio the graphs play (a drum hit, a sampled note), kept by id and
+// shared: one copy however many voices are playing it. Written by the control
+// thread; a Graph takes its own reference when it loads, so the render thread
+// never touches the store and a dropped clip lives until its last voice ends.
+struct AudioData {
+  int nch = 0, len = 0;
+  double sr = 48000;
+  std::vector<float> d[2];
+};
+class BufferStore {
+ public:
+  void put(int id, double sr, int nch, int len, const float *ch0, const float *ch1);
+  void drop(int id);
+  void clear();
+  std::shared_ptr<const AudioData> get(int id) const;
+  int count() const;
+ private:
+  mutable std::mutex mu_;
+  std::map<int, std::shared_ptr<const AudioData>> m_;
+};
 
 class Graph {
  public:
@@ -32,8 +55,10 @@ class Graph {
 
   // Takes the recorder's program. Times in it are the context's; `timeBase`
   // is subtracted so 0 is where this graph starts. False if the program is
-  // malformed or a cycle was found, with error() saying which.
-  bool load(const double *prog, size_t len, double timeBase);
+  // malformed, a cycle was found, or it names a buffer id the store does not
+  // have (error() says "unknown buffer"; see unknownBuffer()).
+  bool load(const double *prog, size_t len, double timeBase, const BufferStore *store = nullptr);
+  int unknownBuffer() const { return unknownBuf_; }
   const char *error() const { return err_; }
 
   // Edits to a graph already loaded and possibly playing (a release, a choke,
@@ -65,6 +90,7 @@ class Graph {
   const char *err_ = "";
   double sr_ = 48000;
   uint64_t frame_ = 0;
+  int unknownBuf_ = -1;
   uint64_t quiet_ = 0, tail_ = 0;  // frames of silence so far; frames needed
 };
 

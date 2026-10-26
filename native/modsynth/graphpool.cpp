@@ -28,8 +28,10 @@ int GraphPool::begin(const double *prog, size_t len, double timeBase, uint64_t s
     Slot &s = slots_[i];
     int expect = FREE;
     if (!s.state.compare_exchange_strong(expect, LOADING, std::memory_order_acquire)) continue;
-    if (!s.g.load(prog, len, timeBase)) {
+    if (!s.g.load(prog, len, timeBase, &store_)) {
+      const int unknown = s.g.unknownBuffer();
       s.state.store(FREE, std::memory_order_release);
+      if (unknown >= 0) { unknownBuf_.store(unknown, std::memory_order_relaxed); return -2; }
       dropped_.fetch_add(1, std::memory_order_relaxed);
       return -1;
     }
@@ -64,7 +66,7 @@ bool GraphPool::edit(int handle, const double *inc, size_t len) {
   return true;
 }
 
-void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *const *busR) {
+void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *const *busR, bool *touched) {
   for (int i = 0; i < kMaxVoices; i++) {
     Slot &s = slots_[i];
     int st = s.state.load(std::memory_order_acquire);
@@ -94,6 +96,7 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
         const int code = s.g.extId(e);
         if (code < 0 || code >= kMaxParts || !busL[code]) continue;
         const float *l = s.g.extBuf(e, 0), *rr = s.g.extBuf(e, 1);
+        if (touched) touched[code] = true;
         float *bl = busL[code] + off, *br = busR[code] + off;
         for (int k = 0; k < n; k++) { bl[k] += l[k]; br[k] += rr[k]; }
       }

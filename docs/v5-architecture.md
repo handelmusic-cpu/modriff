@@ -1833,38 +1833,87 @@ Two things measured on the way, so nobody rediscovers them:
    boundary so it compares the maths and not the quirk; on a phone a note
    starts wherever it starts and the difference is inaudible.
 
-**What this is not yet, and the order from here**
+**Built since, all measured here** (`tests/graph/`, `native/modsynth/graph*`):
 
-- Not wired into the page or the host. `ModEngineHost.mm` is Objective-C++ and
-  nothing here edits it unbuilt; the host change is small (a pool of `Graph`
-  voices per part, each rendered into the part's rack input, retired when its
-  gain tail is silent) and is listed for the Mac session, not made.
-- Unsupported nodes are refused by the recorder, loudly: `createConvolver`,
-  `createDynamicsCompressor`, `setValueCurveAtTime`, `cancelAndHoldAtTime`,
-  `disconnect`. A voice that uses one stays on Web Audio until it is taken out
-  or added. Wave-shaper oversampling is read but not applied yet (the drive
-  voices want the 2x oversampler already in `dspkit.h`).
-- **Live edits are built.** A held note is changed after it starts (release,
-  choke, glide, a source's `stop`), so the recorder keeps a handle on a graph
-  it has sent and writes each later call as a six-number increment
-  (`takeIncrements`); `Graph::apply` runs them. `cancelAndHoldAtTime` is the
-  browser's rule, not the obvious one: it cuts a ramp in progress short at the
-  cancel time on the value reached, turns a target still decaying into a set,
-  and leaves a param that is sitting at a set value alone (so a release ramp
-  added afterwards starts from the earlier set, exactly as in a browser; an
-  earlier version that always held got a sustained note's release wrong by
-  34 dB). Measured: a release on six real voices, 24 to 113 dB, and
-  `tests/graph/edits.test.js` (a choke mid-decay, a target mid-settle, the
-  cancel-then-set path, an early stop, chained automation, a filter sweep with
-  a shaper and a pan, a delay), all within the 60 dB tolerance.
-- A browser recomputes a biquad's coefficients every frame while a param moves.
-  We do it every 8 frames (`MODSYNTH_BIQUAD_STEP`): measured on a lowpass sweep,
-  every frame 72.4 dB, every 8 about 70, every 16 65.1. An eighth of the cost.
-- Then, in this order, each measured the same way: the drum kits
-  (`_webDrumVoice`), the bass voice, sample playback and the sampler pads
-  (buffers need ids so a clip crosses once), the per-note effects around a voice
-  (`voiceFx`, the chord room feed). The flip is the commit that routes every
-  part this way and deletes the web path.
+- **Live edits.** A held note is changed after it starts (release, choke,
+  glide, a source's `stop`), so the recorder keeps a handle on a graph it has
+  sent and writes each later call as a six-number increment (`takeIncrements`);
+  `Graph::apply` runs them. `cancelAndHoldAtTime` is the browser's rule, not the
+  obvious one: it cuts a ramp in progress short at the cancel time on the value
+  reached, turns a target still decaying into a set, and leaves a param that is
+  sitting at a set value alone (so a release ramp added afterwards starts from
+  the earlier set, exactly as in a browser; an earlier version that always held
+  got a sustained note's release wrong by 34 dB). Held to the browser:
+  a release on six real voices, and `tests/graph/edits.test.js` (a choke
+  mid-decay, a target mid-settle, cancel-then-set, an early stop, chained
+  automation, a filter sweep with a shaper and a pan, a delay): 70 to 112 dB.
+- **Two browser habits copied, because the page's own sound has them.** A source
+  that starts between frames starts sub-sample (a noise burst 155 to 171 dB, an
+  oscillator 94 dB against the browser); and an oscillator that starts part-way
+  through a render quantum reads that quantum's frequency and detune from the
+  start of the quantum. Copying the second took the piano from 67 to 94-100 dB
+  and an FM voice from 20 to 106 dB. The voice test now starts its notes at frame
+  480 on purpose.
+- **A biquad** recomputes its coefficients every 8 frames while a param moves
+  (`MODSYNTH_BIQUAD_STEP`): measured on a lowpass sweep, every frame 72.4 dB,
+  every 8 about 70, every 16 65.1.
+- **Recorded audio is by id.** A decoded clip crosses once (`takeNewBuffers`,
+  `BufferStore`) and a graph names it; a graph that names an id the host lacks is
+  refused with -2 and the id, so the page sends the clip again and retries. A
+  clip at another rate plays at its own pace.
+- **The pool** (`graphpool.{h,cpp}`) is what the host calls: `begin`/`edit` from
+  the control thread, `render` from the render thread, a slot state machine so
+  the render thread never allocates, locks or frees. A voice starts at an engine
+  frame, applies queued edits at a block start, sums into its part's bus by ext
+  code, and retires when its sources have stopped and the tail has gone quiet.
+  `graphpooltest`: 24 checks (exact sums with starts between blocks, edits
+  before and after start, retirement, a full pool, slot reuse over 600 notes, a
+  control thread racing the render thread, recorded audio and a half-rate clip),
+  clean under ThreadSanitizer.
+- **Drums.** `tests/graph/drums.test.js` plays every lane of every kit in `SQM`
+  into a browser `OfflineAudioContext` and through the recorder and interpreter
+  (two hooks patched into the served page in memory; `index.html` is untouched).
+  Results are at the end of this section.
+
+**Host integration: what the Mac session does** (Objective-C++, not edited here,
+so it is not built). `ModEngineHost.mm` already runs a part as Processor, then
+rack, then strip, mõdFX, meter, pan, then the master (lines ~470 to 530). A graph
+part has no Processor, so:
+
+1. Own a `modsynth::GraphPool _graphs`. Three new messages on the plugin, all
+   taking the page's arrays as numbers or base64: `graphBuf {id, sampleRate,
+   channels}` into `_graphs.buffers().put`; `graph {gid, program, timeBase, at/ts}`
+   into `_graphs.begin(...)`, with `startFrame` worked out the way every other
+   message's `at` already is (`_partFrames`, the wall-clock stamp); `graphEdit
+   {gid, increments}` into `_graphs.edit(handle, ...)`. The page picks `gid`; the
+   host keeps `gid` to pool handle in a table only the control thread touches and
+   forgets a `gid` when `edit` says the handle is stale. `begin` returning -2
+   means "send `_graphs.unknownBuffer()` again": reply with that id.
+2. In `renderInto:`, before the part loop, zero a pair of bus buffers per part
+   and call `_graphs.render(blockFrame, frames, busL, busR, touched)`.
+3. In the loop, a part runs if it has a Processor **or** `touched[part]`: a
+   Processor part adds its bus after its rack (the rack is a mõdSynth patch's own
+   Space and Drive, and web voices never had one); a graph-only part starts from
+   silence. Strip, mõdFX, meter, pan, capture and the master are unchanged.
+4. Attach a part without a Processor: create its strip and mõdFX (as attach does
+   now) but no engine and no rack, and register its capture ring, so Bounce and
+   stems keep working for it.
+5. Warm up the pool before audio starts (render a few blocks with a silent graph)
+   so the first note does not pay for first-touch memory, as `warmUp` does for
+   the Processors.
+
+**Still to do, in this order, each measured the same way.** The page side: a
+`modGraph` module that runs a voice into a recorder instead of the real context
+for the parts the host plays, sends the clip, program and edits, and keeps the
+recorder alive to forward the release. The per-note effects around a voice
+(`voiceFx`, the chord room feed, `feedChordRev`) go to ext codes for the part's
+sends; the bus reverb is already native (`master.cpp`), so the chord room send
+needs a decision (the effects rack's reverb is the likeliest home, as it is for
+a mõdSynth chord today). Then the sample voices through the same graph (the
+recorded instruments, the sampler pads: the buffer plumbing is done), the bass
+and the click and Rhythm voices (same node set; not yet run through a test of
+their own), and finally the flip itself: the commit that sends every part this
+way and deletes the web path.
 
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
 

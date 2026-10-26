@@ -249,7 +249,7 @@ struct Node {
   double bq[5] = {1, 0, 0, 0, 0};
   double st[2][4] = {};            // x1 x2 y1 y2 per channel
   // buffer source
-  int bufIdx = -1;
+  std::shared_ptr<const AudioData> buf;
   bool loop = false;
   double loopStart = 0, loopEnd = 0, offset = 0, pos = 0;
   // shaper
@@ -260,7 +260,6 @@ struct Node {
   size_t dlw = 0;
 };
 
-struct Buffer { int nch = 0; int len = 0; std::vector<float> d[2]; };
 
 inline double detuneRatio(double c) { return std::pow(2.0, c / 1200.0); }
 
@@ -268,31 +267,41 @@ inline double detuneRatio(double c) { return std::pow(2.0, c / 1200.0); }
 
 struct Graph::Impl {
   std::vector<Node> nodes;
-  std::vector<Buffer> bufs;
   std::vector<int> order;
   std::vector<int> ext;  // node indices
 };
 
+void BufferStore::put(int id, double sr, int nch, int len, const float *ch0, const float *ch1) {
+  auto a = std::make_shared<AudioData>();
+  a->sr = sr; a->nch = nch < 2 ? 1 : 2; a->len = len;
+  a->d[0].assign(ch0, ch0 + len);
+  if (a->nch == 2) a->d[1].assign(ch1 ? ch1 : ch0, (ch1 ? ch1 : ch0) + len);
+  std::lock_guard<std::mutex> lk(mu_);
+  m_[id] = std::move(a);
+}
+void BufferStore::drop(int id) { std::lock_guard<std::mutex> lk(mu_); m_.erase(id); }
+void BufferStore::clear() { std::lock_guard<std::mutex> lk(mu_); m_.clear(); }
+std::shared_ptr<const AudioData> BufferStore::get(int id) const {
+  std::lock_guard<std::mutex> lk(mu_);
+  auto it = m_.find(id);
+  return it == m_.end() ? nullptr : it->second;
+}
+int BufferStore::count() const { std::lock_guard<std::mutex> lk(mu_); return (int)m_.size(); }
+
 Graph::Graph() : d_(new Impl) {}
 Graph::~Graph() = default;
 
-bool Graph::load(const double *p, size_t len, double timeBase) {
+bool Graph::load(const double *p, size_t len, double timeBase, const BufferStore *store) {
   Impl &d = *d_;
-  d.nodes.clear(); d.bufs.clear(); d.order.clear(); d.ext.clear();
+  d.nodes.clear(); d.order.clear(); d.ext.clear();
+  unknownBuf_ = -1;
   frame_ = 0;
   size_t i = 0;
   auto need = [&](size_t n) { return i + n <= len; };
   if (!need(4) || p[0] != 0x6d6f6467) { err_ = "bad magic"; return false; }
   sr_ = p[1];
-  const int nNodes = (int)p[2], nBufs = (int)p[3];
+  const int nNodes = (int)p[2];
   i = 4;
-  for (int b = 0; b < nBufs; b++) {
-    if (!need(2)) { err_ = "short buffer"; return false; }
-    Buffer B; B.nch = (int)p[i++]; B.len = (int)p[i++];
-    if (B.nch < 1 || B.nch > 2 || !need((size_t)B.nch * B.len)) { err_ = "bad buffer"; return false; }
-    for (int c = 0; c < B.nch; c++) { B.d[c].resize(B.len); for (int k = 0; k < B.len; k++) B.d[c][k] = (float)p[i++]; }
-    d.bufs.push_back(std::move(B));
-  }
   d.nodes.resize(nNodes);
   auto readParam = [&](Param &pr) -> bool {
     if (!need(2)) return false;
@@ -355,7 +364,14 @@ bool Graph::load(const double *p, size_t len, double timeBase) {
         break;
       case T_BUF:
         if (!need(7)) { good = false; break; }
-        n.bufIdx = (int)p[i++]; n.loop = p[i++] != 0; n.loopStart = p[i++]; n.loopEnd = p[i++];
+        {
+          const int id = (int)p[i++];
+          if (id >= 0) {
+            if (store) n.buf = store->get(id);
+            if (!n.buf) { unknownBuf_ = id; err_ = "unknown buffer"; return false; }
+          }
+        }
+        n.loop = p[i++] != 0; n.loopStart = p[i++]; n.loopEnd = p[i++];
         n.start = p[i++]; n.stop = p[i++]; n.offset = p[i++];
         if (n.start >= 0) n.start -= timeBase;
         if (n.stop >= 0) n.stop -= timeBase;
@@ -639,7 +655,9 @@ void Graph::render(int frames) {
       }
       case T_BUF: {
         n.nch = 1;
-        const Buffer *B = (n.bufIdx >= 0 && n.bufIdx < (int)d.bufs.size()) ? &d.bufs[n.bufIdx] : nullptr;
+        const AudioData *B = n.buf.get();
+        // A buffer recorded at another rate plays at its own pace, resampled.
+        const double rateMul = B ? B->sr / sr_ : 1.0;
         if (B && B->nch > 1) n.nch = 2;
         const float *rate = n.p[0].buf, *dc = n.p[1].buf;
         const double startF = n.start * sr_, stopF = n.stop * sr_;
@@ -650,9 +668,9 @@ void Graph::render(int frames) {
           if (!B || n.start < 0 || delta <= -1e-6 || (n.stop >= 0 && fr >= stopF - 1e-6)) continue;
           // The buffer is read from where it would be `delta` of a frame after
           // its start, as a browser does for a start between frames.
-          if (!n.started) { n.started = true; n.pos = n.offset * sr_ + std::max(0.0, delta) * rate[s] * detuneRatio(dc[s]); }
+          if (!n.started) { n.started = true; n.pos = n.offset * B->sr + std::max(0.0, delta) * rate[s] * rateMul * detuneRatio(dc[s]); }
           double lo = 0, hi = B->len;
-          if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * sr_; hi = std::min<double>(n.loopEnd * sr_, B->len); }
+          if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * B->sr; hi = std::min<double>(n.loopEnd * B->sr, B->len); }
           if (n.pos >= hi) { if (n.loop) n.pos = lo + std::fmod(n.pos - lo, std::max(1.0, hi - lo)); else continue; }
           const int i0 = (int)n.pos; const double fr2 = n.pos - i0;
           int i1 = i0 + 1;
@@ -661,7 +679,7 @@ void Graph::render(int frames) {
             const std::vector<float> &dv = B->d[B->nch > 1 ? c : 0];
             n.out[c][s] = (float)(dv[i0] + (dv[i1] - dv[i0]) * fr2);
           }
-          n.pos += rate[s] * detuneRatio(dc[s]);
+          n.pos += rate[s] * rateMul * detuneRatio(dc[s]);
         }
         break;
       }
@@ -740,8 +758,7 @@ bool Graph::finished() const {
     if (n.type != T_OSC && n.type != T_BUF) continue;
     if (n.start < 0) continue;                       // never started: nothing to wait for
     const bool stopped = n.stop >= 0 && (double)frame_ >= n.stop * sr_ - 1e-6;
-    const bool ranOut = n.type == T_BUF && !n.loop && n.started && n.bufIdx >= 0 &&
-                        n.bufIdx < (int)d.bufs.size() && n.pos >= d.bufs[n.bufIdx].len;
+    const bool ranOut = n.type == T_BUF && !n.loop && n.started && (!n.buf || n.pos >= n.buf->len);
     if (!stopped && !ranOut) return false;
   }
   return quiet_ >= tail_;

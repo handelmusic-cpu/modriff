@@ -17,6 +17,7 @@
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { execFileSync } = require('child_process');
+const { writeBuffers } = require('./common.js');
 let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (e) { try { ({ chromium } = require('playwright-core')); }
@@ -89,7 +90,8 @@ async function pageRun(a) {
     for (let i = 0; i < L.length; i++) { o[2 * i] = L[i]; o[2 * i + 1] = R[i]; }
     return { f32: Array.from(o), name: track.n };
   }
-  return { prog: Array.from(ctx.program()), un: ctx.unsupported, name: track.n };
+  const program = Array.from(ctx.program());
+  return { prog: program, bufs: ctx.takeNewBuffers().map(b => ({ id: b.id, sampleRate: b.sampleRate, channels: b.channels.map(c => Array.from(c)) })), un: ctx.unsupported, name: track.n };
 }
 
 (async () => {
@@ -121,7 +123,8 @@ async function pageRun(a) {
       if (Object.keys(rec.un).length) { skipped++; console.log('skip ' + label + ' ' + rec.name + '  unsupported ' + JSON.stringify(rec.un)); continue; }
       const pf = path.join(tmp, 'p.f64'), of = path.join(tmp, 'o.f32');
       fs.writeFileSync(pf, Buffer.from(Float64Array.from(rec.prog).buffer));
-      try { execFileSync(path.join(root, 'native/modsynth/graphrender'), [pf, String(DUR), of], { stdio: ['ignore', 'ignore', 'pipe'] }); }
+      const bf = path.join(tmp, 'b.f64'); writeBuffers(bf, rec.bufs || []);
+      try { execFileSync(path.join(root, 'native/modsynth/graphrender'), [pf, String(DUR), of, '-', bf], { stdio: ['ignore', 'ignore', 'pipe'] }); }
       catch (e) { fail++; console.log('FAIL ' + label + ' ' + rec.name + '  render: ' + String(e.stderr).trim()); continue; }
       const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0)), ref = Float32Array.from(real.f32);
       if (process.env.DUMP) { fs.mkdirSync(process.env.DUMP, { recursive: true }); const tg = label.replace('/', '-'); fs.writeFileSync(path.join(process.env.DUMP, tg + '.ref.f32'), Buffer.from(ref.buffer)); fs.writeFileSync(path.join(process.env.DUMP, tg + '.nat.f32'), Buffer.from(nat.buffer.slice(0))); }

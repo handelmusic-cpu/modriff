@@ -13,6 +13,9 @@ from its render callback.
 | `fdlibm.cc` | V8's own `sin`/`cos`/`tan`/`exp`/`log2`/`pow` (fdlibm, from V8 12.4 as Node 22 runs it). Licence in `LICENSE.v8` |
 | `params_gen.h` | the parameter slots and defaults, generated from `modsynth/params.js` by `gen-params.js`. Committed, so a build needs no Node |
 | `render.cpp` | a command-line renderer that replays a recorded message script; the null test drives it |
+| `graph.h`, `graph.cpp` | the graph interpreter: plays a Web Audio graph the page recorded (`tests/graph/graphrec.js`). Not a port and not a null test; held to the browser's own render of the same voice, see below |
+| `graphpool.h`, `graphpool.cpp` | the pool of those graphs the host calls: `begin`/`edit` from the control thread, `render` from the render thread |
+| `graphrender.cpp`, `graphpooltest.cpp` | the command-line renderer the graph tests drive, and the pool's own test |
 
 ## The null test
 
@@ -75,3 +78,30 @@ building the wavetables (13 ms) and parsing the script:
   as the worklet does.
 - The meter and load reports the worklet posts back. The host reads
   `activeVoices()`, and the Swift side measures its own load.
+
+
+## The graph interpreter
+
+Everything that is not mõdSynth is, on the web, a Web Audio graph built per note
+(the synth voices, every drum, the bass, the samples). Rather than rewriting each
+in C++, the page records the graph a voice builds (`tests/graph/graphrec.js`, a
+stand-in `AudioContext`) and this plays it. `docs/v5-architecture.md`, "The graph
+interpreter", has the reasoning and the numbers.
+
+```sh
+make -C native/modsynth graphrender graphpooltest
+native/modsynth/graphpooltest                 # the pool: 24 checks
+node tests/graph/voices.test.js               # real makeVoice, 9 voices, against Chromium
+node tests/graph/edits.test.js                # releases, chokes, ramps, filters, delay
+node tests/graph/drums.test.js [kit,kit]      # every lane of every kit (about 25 minutes)
+```
+
+The three node tests need Chromium (`/opt/pw-browsers/chromium`, or `CHROMIUM=`)
+and Playwright. They compare each render with the browser's, signal to error in
+dB; a result under the tolerance in the test fails it.
+
+Two things from the browser that the interpreter copies on purpose, because the
+page's own sound has them: a source that starts between frames starts
+sub-sample (`start()` at a fractional frame), and an oscillator that starts
+part-way through a render quantum reads that quantum's frequency and detune
+from the start of the quantum.

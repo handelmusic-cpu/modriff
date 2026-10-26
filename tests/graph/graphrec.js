@@ -12,8 +12,7 @@
    the other end is the render host and a number array crosses the bridge
    without a parser. Layout, all doubles:
 
-     [ MAGIC, sr, nNodes, nBufs ]
-     nBufs   x [ nCh, len, ch0..., ch1... ]
+     [ MAGIC, sr, nNodes, 0 ]
      nNodes  x node record
      nEdges, nEdges x [ from, to, toParam (-1 = audio input) ]
 
@@ -24,7 +23,7 @@
      osc    : wave (0 sine 1 square 2 saw 3 triangle 4 custom), if custom
               nPartials, re..., im...;  start, stop (-1 = unset);  params frequency detune
      biq    : filter type;  params frequency detune Q gain
-     buf    : buffer index (-1 none), loop, loopStart, loopEnd, start, stop, offset;
+     buf    : buffer id (-1 none), loop, loopStart, loopEnd, start, stop, offset;
               params playbackRate detune
      shp    : oversample (0 none 1 2x 2 4x), nCurve, curve...
      pan    : params pan
@@ -36,6 +35,15 @@
    time constant). Times are the context's own, absolute; the caller subtracts
    its base. cancelScheduledValues is applied here, at record time, so the
    program never carries a cancel.
+
+   BUFFERS. A recorded sample is not in the program: it is named by a number,
+   and its audio crosses once, ahead of the first graph that uses it
+   (Rec.takeNewBuffers() hands the ones not yet announced, as
+   {id, sampleRate, channels:[Float32Array...]}). The host keeps them in a
+   store and a graph refers to them by id; a graph that names an id the host
+   does not have is refused, and the page sends the audio again. The ids come
+   from a registry on the page (a WeakMap on the AudioBuffer), so one decoded
+   clip is one id for as long as it lives.
 
    LIVE EDITS. A held note is changed after it has been sent: a release, a
    choke, a glide, a source's stop(). program() marks the graph as sent; from
@@ -64,6 +72,13 @@ const WAVE = { sine:0, square:1, sawtooth:2, triangle:3 };
 const BIQ = { lowpass:0, highpass:1, bandpass:2, lowshelf:3, highshelf:4, peaking:5, notch:6, allpass:7 };
 const OVS = { none:0, '2x':1, '4x':2 };
 const KIND = { set:0, lin:1, exp:2, tgt:3 };
+
+// One id per decoded buffer, for the life of the buffer; and which ids the host
+// has been told about. Shared by every recorder on the page.
+const bufIds = new WeakMap();
+let nextBufId = 1;
+const announced = new Set();
+function bufId(b){ let id = bufIds.get(b); if(id == null){ id = nextBufId++; bufIds.set(b, id); } return id; }
 
 function Rec(opts){
   opts = opts || {};
@@ -254,14 +269,7 @@ Rec.prototype.createExt = function(name, code){
 Rec.prototype.program = function(){
   const out = [];
   const nodes = this.nodes;
-  // buffers, deduplicated by identity
-  const bufIdx = new Map(); const bufs = [];
-  nodes.forEach(n => { if(n.kind === 'buf' && n.buffer && !bufIdx.has(n.buffer)){ bufIdx.set(n.buffer, bufs.length); bufs.push(n.buffer); } });
-  out.push(MAGIC, this.sampleRate, nodes.length, bufs.length);
-  bufs.forEach(b => {
-    out.push(b.numberOfChannels, b.length);
-    for(let c = 0; c < b.numberOfChannels; c++){ const d = b.getChannelData(c); for(let i = 0; i < d.length; i++) out.push(d[i]); }
-  });
+  out.push(MAGIC, this.sampleRate, nodes.length, 0);
   const pushParam = p => { out.push(p.v0, p.ev.length); p.ev.forEach(e => out.push(e.kind, e.v, e.t, e.tc)); };
   nodes.forEach(n => {
     if(n.kind === 'ext'){ out.push(T.ext, n.code); return; }
@@ -276,7 +284,7 @@ Rec.prototype.program = function(){
     } else if(n.kind === 'biq'){
       out.push(n.ftype);
     } else if(n.kind === 'buf'){
-      out.push(n.buffer ? bufIdx.get(n.buffer) : -1, n.loop ? 1 : 0, n.loopStart, n.loopEnd, n._start, n._stop, n._offset || 0);
+      out.push(n.buffer ? bufId(n.buffer) : -1, n.loop ? 1 : 0, n.loopStart, n.loopEnd, n._start, n._stop, n._offset || 0);
     } else if(n.kind === 'shp'){
       const c = n.curve ? Array.from(n.curve) : [];
       out.push(OVS[n.oversample] || 0, c.length); c.forEach(v => out.push(v));
@@ -292,6 +300,24 @@ Rec.prototype.program = function(){
 };
 
 // Edits made since the program (or the last call), as 6-number records.
+// Buffers this recorder's graph uses that the host has not been sent yet. Call
+// it before sending the program, send what it returns first, and a buffer then
+// goes over once however many notes play it.
+Rec.prototype.takeNewBuffers = function(){
+  const out = [];
+  this.nodes.forEach(n => {
+    if(n.kind !== 'buf' || !n.buffer) return;
+    const id = bufId(n.buffer);
+    if(announced.has(id)) return;
+    announced.add(id);
+    const chans = []; for(let c = 0; c < n.buffer.numberOfChannels; c++) chans.push(Float32Array.from(n.buffer.getChannelData(c)));
+    out.push({ id, sampleRate: n.buffer.sampleRate, channels: chans });
+  });
+  return out;
+};
+// The host lost its store (a new engine): every buffer has to be sent again.
+Rec.forgetBuffers = function(){ announced.clear(); };
+
 Rec.prototype.takeIncrements = function(){
   const a = Float64Array.from(this.inc); this.inc = []; return a;
 };

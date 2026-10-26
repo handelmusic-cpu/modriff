@@ -38,6 +38,21 @@ static V sine(double hz, double start, double stop, double amp, int code,
   return p;
 }
 
+
+// ext(code) <- gain(1) <- buffer source(id), one-shot, at the graph's own rate.
+static V bufprog(int id, double start, int code) {
+  V p = {0x6d6f6467, SR, 3, 0};
+  p.push_back(8); p.push_back(code);                                       // 0: ext
+  p.push_back(4); p.push_back(id); p.push_back(0); p.push_back(0); p.push_back(0);   // 1: buf, no loop
+  p.push_back(start); p.push_back(-1); p.push_back(0);                     // start, stop, offset
+  param(p, 1); param(p, 0);
+  p.push_back(1); param(p, 1);                                             // 2: gain
+  p.push_back(2);
+  p.push_back(1); p.push_back(2); p.push_back(-1);
+  p.push_back(2); p.push_back(0); p.push_back(-1);
+  return p;
+}
+
 struct Bus {
   std::vector<float> l[GraphPool::kMaxParts], r[GraphPool::kMaxParts];
   float *pl[GraphPool::kMaxParts], *pr[GraphPool::kMaxParts];
@@ -91,6 +106,17 @@ int main() {
     bool silent = true; for (int i = 0; i < N; i++) if (b.l[0][i] != 0 || b.l[3][i] != 0) silent = false;
     CHECK(silent, "other parts' buses stay silent");
     CHECK(pool.active() == 0, "the voice retired after its stop (%d active)", pool.active());
+  }
+
+  // 1b. `touched` says which parts had a voice write into them this block.
+  {
+    GraphPool pool; Bus b(512);
+    V p = sine(440, 0.0, 0.3, 0.5, 5);
+    pool.begin(p.data(), p.size(), 0.0, 0);
+    bool t[8] = {};
+    float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+    pool.render(0, 128, bl, br, t);
+    CHECK(t[5] && !t[0] && !t[1] && !t[2] && !t[3] && !t[4] && !t[6] && !t[7], "only part 5 is touched");
   }
 
   // 2. two voices in one part sum.
@@ -190,6 +216,38 @@ int main() {
     control.join();
     for (int i = 0; i < 400; i++) { float *bl[8], *br[8]; for (int j = 0; j < 8; j++) { bl[j] = b.pl[j]; br[j] = b.pr[j]; } pool.render(f, 128, bl, br); f += 128; }
     CHECK(pool.active() == 0, "after the storm every voice has retired (%d left)", pool.active());
+  }
+
+
+  // 8. recorded audio is played by id: refused until the clip is in the store,
+  // then played at its own rate, once, and the voice retires when it runs out.
+  {
+    GraphPool pool; Bus b(N);
+    V p = bufprog(7, 0.0, 3);
+    CHECK(pool.begin(p.data(), p.size(), 0.0, 0) == -2, "an unknown buffer id is refused with -2");
+    CHECK(pool.unknownBuffer() == 7, "and the id is reported (%d)", pool.unknownBuffer());
+    std::vector<float> clip(3000);
+    for (int i = 0; i < 3000; i++) clip[i] = (float)i / 3000.f;
+    pool.buffers().put(7, SR, 1, 3000, clip.data(), nullptr);
+    CHECK(pool.begin(p.data(), p.size(), 0.0, 500) >= 0, "begin once the clip is stored");
+    run(pool, b, N, odd);
+    int bad = 0;
+    for (int i = 0; i < N; i++) { float want = (i >= 500 && i < 3500) ? clip[i - 500] : 0.f; if (std::fabs(b.l[3][i] - want) > 1e-6f) bad++; }
+    CHECK(bad == 0, "the clip plays through unchanged: %d samples differ", bad);
+    CHECK(b.r[3][1000] == b.l[3][1000], "a mono clip is centred");
+    CHECK(pool.active() == 0, "the voice retired when the clip ran out (%d)", pool.active());
+    // a clip at another rate plays at its own pace: 24 kHz plays at half speed
+    GraphPool pool2; Bus b2(N);
+    std::vector<float> slow(1000);
+    for (int i = 0; i < 1000; i++) slow[i] = std::sin(2 * 3.14159265358979 * 440 * i / 24000.0);
+    pool2.buffers().put(9, 24000.0, 1, 1000, slow.data(), nullptr);
+    V p2 = bufprog(9, 0.0, 2);
+    pool2.begin(p2.data(), p2.size(), 0.0, 0);
+    run(pool2, b2, 4000, odd);
+    // twice as many output samples as the clip has; sample 2k lands on clip[k]
+    int bad2 = 0;
+    for (int k = 1; k < 900; k++) if (std::fabs(b2.l[2][2 * k] - slow[k]) > 1e-5f) bad2++;
+    CHECK(bad2 == 0, "a 24 kHz clip plays at half speed: %d samples off", bad2);
   }
 
   printf("%d checks, %d failed\n", checks, fails);
