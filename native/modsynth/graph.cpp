@@ -688,7 +688,16 @@ void Graph::render(int frames) {
           // its start, as a browser does for a start between frames.
           if (!n.started) { n.started = true; n.pos = std::round(n.offset * B->sr) + delta * rate[s] * rateMul * detuneRatio(dc[s]); }
           double lo = 0, hi = B->len;
-          if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * B->sr; hi = std::min<double>(n.loopEnd * B->sr, B->len); }
+          // A loop point arrives as seconds the page computed (0.4 * 1.5 is
+          // 0.6000000000000001), so in frames it can sit a few 1e-12 off a whole
+          // number. A playhead that lands exactly on the whole frame is then
+          // "before the end" and reads the sample past the loop for a frame at
+          // every wrap (a tick, 0.03 of full scale on the page test's clip).
+          // The browser wraps there; so snap a point that close to a frame.
+          if (n.loop && n.loopEnd > n.loopStart) {
+            const auto snap = [](double f) { const double r = std::round(f); return std::fabs(f - r) < 1e-6 ? r : f; };
+            lo = snap(n.loopStart * B->sr); hi = std::min<double>(snap(n.loopEnd * B->sr), B->len);
+          }
           if (n.pos >= hi) { if (n.loop) n.pos = lo + std::fmod(n.pos - lo, std::max(1.0, hi - lo)); else continue; }
           const int i0 = (int)n.pos; const double fr2 = n.pos - i0;
           int i1 = i0 + 1;
