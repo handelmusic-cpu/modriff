@@ -35,7 +35,11 @@ const SR = 48000, DUR = 2.0;
 // 0.0106667 + 0.012 s into frames differs from ours by one sample's value.
 const KNOWN = { 'MOD/0': [30, 'sub tone starts mid-ramp: browser evaluates its first quantum from the ramp start'],
                 '808/6': [50, 'one sample at a burst start that lands exactly on a frame'] };
-const KITS = process.argv[2] ? process.argv[2].split(',') : null;
+// SAMPLED=1 loads the recorded drum samples first and runs only the kits that
+// play them (jazz, rock, hip-hop, beatbox): without it those lanes play their
+// synthesised stand-ins, which is what every other run here has measured.
+const SAMPLED = !!process.env.SAMPLED;
+const KITS = process.argv[2] ? process.argv[2].split(',') : (SAMPLED ? ['JAZZ', 'ROCK', 'HIPHOP', 'BEATBOX'] : null);
 
 // The drum machine lives in its own closure, so the page is patched in memory
 // to reach three things in it: the context it builds on, where its voices send
@@ -46,7 +50,8 @@ function patched(html) {
   if (!html.includes(a) || !html.includes(b)) throw new Error('drum machine hooks moved; update tests/graph/drums.test.js');
   return html
     .replace(a, `function sqCtx(){ return window.__sqCtx ? window.__sqCtx() : getCtx(); }
-window.__SQ = { get SQM(){ return SQM; }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise };`)
+window.__SQ = { get SQM(){ return SQM; }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise,
+  loadSamples(){ preloadDrumSamples(); Object.keys(DRUM_SAMPLES_LAZY).forEach(_drumLoadOne); }, get buffers(){ return DRUM_BUFFERS; }, get lazyCount(){ return Object.keys(DRUM_SAMPLES_LAZY).length; } };`)
     .replace(b, 'function SQOUT(){ return window.__sqOut ? window.__sqOut() : (_sqOut || SQMG); }');
 }
 function serve() {
@@ -64,10 +69,22 @@ function serve() {
 }
 
 async function pageRun(a) {
-  const { kit, lane, mode, sr, dur } = a;
+  const { kit, lane, mode, sr, dur, samples } = a;
   let s = 987654321 >>> 0;
   Math.random = function () { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const SQ = window.__SQ;
+  if (samples) {
+    // Decoded by the page's own context, as the app does; wait for them all.
+    window.getCtx && window.getCtx();
+    SQ.loadSamples();
+    // Every file a kit can ask for: a lane that finds its take still loading
+    // plays its stand-in instead, and the two runs would not agree.
+    const want = 7 + SQ.lazyCount;
+    for (let i = 0; i < 600 && Object.keys(SQ.buffers).length < want; i++) await new Promise(r => setTimeout(r, 100));
+    if (Object.keys(SQ.buffers).length < want) throw new Error('drum samples did not load (' + Object.keys(SQ.buffers).length + ')');
+    // the generator above used Math.random for nothing; reseed so both runs match
+    s = 987654321 >>> 0;
+  }
   const ctx = mode === 'real' ? new OfflineAudioContext(2, Math.round(sr * dur), sr) : new GraphRec({ sampleRate: sr });
   // The part bus is a plain gain in both runs. (In the app it is the host's
   // endpoint, `createExt`; this test is about the voices, and the interpreter
@@ -111,8 +128,10 @@ async function pageRun(a) {
         await page.addInitScript({ path: path.join(__dirname, 'graphrec.js') });
         const errs = []; page.on('pageerror', e => errs.push(String(e)));
         await page.goto(url); await page.waitForTimeout(500);
+        // The page makes its audio context on the first tap (the unlock screen).
+        if (SAMPLED) { await page.click('.unlock-btn >> text=Random'); await page.waitForTimeout(1500); }
         let r;
-        try { r = await page.evaluate(pageRun, { kit, lane, mode, sr: SR, dur: DUR }); }
+        try { r = await page.evaluate(pageRun, { kit, lane, mode, sr: SR, dur: DUR, samples: SAMPLED }); }
         catch (e) { r = { error: String(e).split('\n')[0] }; }
         await page.close();
         return r;

@@ -1873,7 +1873,16 @@ Two things measured on the way, so nobody rediscovers them:
 - **Drums.** `tests/graph/drums.test.js` plays every lane of every kit in `SQM`
   into a browser `OfflineAudioContext` and through the recorder and interpreter
   (two hooks patched into the served page in memory; `index.html` is untouched).
-  Results are at the end of this section.
+  **All 256 lanes of 36 kits hold**, 69 to 175 dB against the browser (the
+  weakest are a cymbal and a hat at 76 to 81 dB: a filtered noise through a
+  sweeping band). Two lanes are held to a lower, stated limit because the
+  browser itself does something odd there: the mõdKit kick, whose sub tone
+  starts 10 ms after its frequency ramp began (a browser evaluates that first
+  quantum's automation from the ramp's start: a few samples of phase on a 48 Hz
+  tone, 30 dB), and the 808 clap (one sample at a burst that lands exactly on a
+  frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
+  beatbox) play their real decoded samples through the buffer store: all 37
+  lanes, 69 to 184 dB.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
 so it is not built). `ModEngineHost.mm` already runs a part as Processor, then
