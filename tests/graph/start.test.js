@@ -47,6 +47,7 @@ function stubScript(withGraph) {
 
   for (const withGraph of [false, true]) {
     const page = await browser.newPage();
+    const gl = []; page.on('console', m => { if (m.text().startsWith('GCHECK')) gl.push(m.text()); });
     await page.addInitScript(stubScript(withGraph));
     await page.goto(url); await page.waitForTimeout(1500);
     const r = await page.evaluate(async withGraph => {
@@ -91,6 +92,12 @@ function stubScript(withGraph) {
       ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
+    }
+    if (withGraph) {
+      // gcheck: the phone check prints one verdict line (plus the one that says to play).
+      await page.evaluate(() => { gcheck(['drum'], 1); });
+      await page.waitForTimeout(1800);
+      ok(gl.length === 2 && /^GCHECK running 1s/.test(gl[0]) && /^GCHECK FAIL drum 1s \| sent 0 .*nothing was sent/.test(gl[1]), 'gcheck prints two short lines and says when nothing was played', JSON.stringify(gl));
     }
     await page.close();
   }
