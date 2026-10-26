@@ -62,6 +62,16 @@ function stubScript(withGraph) {
         out.ensure = window.__calls.filter(c => c[0] === 'ensurePart').map(c => c[1]);
         out.probes = window.__calls.filter(c => c[0] === 'graphProbe').length;
         out.strip = MODNAT.strip;
+        // A mõdSynth engine built on a part that is played as graphs has no Processor on
+        // the host: it must stay on its worklet (not be unplugged and forwarded), while
+        // the chord, which has one, is still handed over.
+        const fake = () => { const e = { ready: true, unplugged: 0, values: [], fx: { input: {} }, node: { port: { postMessage() {} }, disconnect() { e.unplugged++; } },
+                              setAll() {}, pushMatrix() {}, pushMotion() {} }; return e; };
+        const eb = fake(), ec = fake();
+        _modNativeSync('bass', eb); _modNativeSync('chord', ec);
+        await new Promise(r => setTimeout(r, 200));
+        out.bassMsxUnplugged = eb.unplugged; out.bassMsxAttached = !!MODNAT.attached.bass.port;
+        out.chordMsxUnplugged = ec.unplugged;
         // a bass part on a mõdSynth patch is the Processor's, and keeps the calibrated level
         window._webParams['bass.voice'] = 'modsynth';
         out.bassOnGraphWhenModsynth = _mgOnGraph('bass');
@@ -77,6 +87,8 @@ function stubScript(withGraph) {
       ok(r.on === true && r.probes === 1, 'the path is on, after one probe', JSON.stringify({ on: r.on, probes: r.probes }));
       ok(r.graphFlags.drum && r.graphFlags.bass && r.onGraph.drum && r.onGraph.bass, 'both parts are marked as graph parts');
       ok(r.ensure.some(e => e.part === 5 && e.graph === true) && r.ensure.some(e => e.part === 3 && e.graph === true), 'ensurePart was asked for each part by its slot, as a graph part', JSON.stringify(r.ensure));
+      ok(r.bassMsxUnplugged === 0 && !r.bassMsxAttached, 'a mõdSynth engine on a graph part stays on its worklet (not unplugged)', JSON.stringify({ u: r.bassMsxUnplugged, a: r.bassMsxAttached }));
+      ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
     }
