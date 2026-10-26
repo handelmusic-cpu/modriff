@@ -48,6 +48,14 @@ class FxRack {
   // In place. Any n; the rack works in short chunks internally.
   void process(float* L, float* R, int n);
 
+  // A reverb send, for the graph path's rooms: the page's voices carry their send
+  // level in the graph, so what comes back is the tail alone at unit gain, the way
+  // a ConvolverNode's output is. setSendReverb fits it to an impulse of noise
+  // falling as (1-t)^exponent over `seconds`; processSend replaces L and R (the
+  // send's sum) with the tail. Use an instance for this and nothing else.
+  void setSendReverb(double seconds, double exponent);
+  void processSend(float* L, float* R, int n);
+
  private:
   struct Impl;
   std::unique_ptr<Impl> d;

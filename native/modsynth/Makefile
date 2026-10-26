@@ -15,6 +15,8 @@ params_gen.h: ../../modsynth/params.js gen-params.js
 # reaches it through the engine. Neither is a null test (see fxrack.h).
 fxtest: fxtest.cpp fxrack.cpp fxrack.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxtest.cpp fxrack.cpp
+sendtest: sendtest.cpp fxrack.cpp fxrack.h params_gen.h
+	$(CXX) $(CXXFLAGS) -o $@ sendtest.cpp fxrack.cpp
 fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc
 hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h
@@ -48,7 +50,7 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 clean:
-	rm -f eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.

@@ -153,6 +153,8 @@ struct FxRack::Impl {
   Dl rvPreL, rvPreR; double rvPreT = 0.01; Smooth rvWet; double rvOutScale = 0.1, rvCut = 0.5;
   Dl apL[2], apR[2]; double apLen[2][2]; double rvSideW = 1; bool rvRun = false; int rvTail = 0; double rvRt = 2;
   double rvSizeCache = -1, rvDecayCache = -1, rvDampCache = -1;
+  double rvRtMul = 1;       // send mode: the fitted RT60 as a multiple of the convolver's -60 dB point
+  bool rvWetOnly = false;   // processSend: the output is the tail alone, not input + tail
   // ── Compressor / OTT / Grit / width / master ──
   Comp comp; bool cpOnV = false;
   struct Band { BqC c[4]; BqS s[4][2]; int n = 2; Comp k; double pre = 1, post = 1; };
@@ -264,7 +266,7 @@ struct FxRack::Impl {
         const double e = 1 + (12 - decay) * 0.35;
         // The convolver's tail falls as (1-t)^e over L seconds; the time that
         // takes to reach -60 dB is where the network's own RT60 is put.
-        rvRt = clampd(L * (1 - std::pow(0.001, 1.0 / e)), 0.05, 8);
+        rvRt = clampd(rvRtMul * L * (1 - std::pow(0.001, 1.0 / e)), 0.05, 8);
         const double scale = 0.6 + size * 1.0;
         for (int i = 0; i < RN; i++) {
           rvLen[i] = std::min(baseLen(i) * scale, (double)rv[i].mask - 4);
@@ -418,7 +420,11 @@ struct FxRack::Impl {
   }
 
   void reverb(float* L, float* R, int n) {
-    if (!rvRun) { rvWet.v = 0; return; }
+    if (!rvRun) {
+      rvWet.v = 0;
+      if (rvWetOnly) { std::memset(L, 0, sizeof(float) * (size_t)n); std::memset(R, 0, sizeof(float) * (size_t)n); }
+      return;
+    }
     for (int i = 0; i < n; i++) {
       rvCurSlew();
       const double wg = rvWet.next();
@@ -451,7 +457,9 @@ struct FxRack::Impl {
       rvLp[0] = oL * (1 - rvCut) + rvLp[0] * rvCut; oL = rvLp[0];
       rvLp[1] = oR * (1 - rvCut) + rvLp[1] * rvCut; oR = rvLp[1];
       const double mid = (oL + oR) * 0.5, side = (oL - oR) * 0.5 * rvSideW;
-      L[i] += (float)(wg * (mid + side)); R[i] += (float)(wg * (mid - side));
+      // The input was read into the pre-delay above, so a send can overwrite it.
+      if (rvWetOnly) { L[i] = (float)(wg * (mid + side)); R[i] = (float)(wg * (mid - side)); }
+      else { L[i] += (float)(wg * (mid + side)); R[i] += (float)(wg * (mid - side)); }
     }
   }
   void rvCurSlew() {
@@ -518,6 +526,40 @@ FxRack::~FxRack() = default;
 void FxRack::set(int i, double v) { if (i >= 0 && i < HOST_FX_COUNT) d->p[i] = v; }
 void FxRack::setMods(const double* m5) { for (int i = 0; i < 5; i++) d->m[i] = m5[i]; }
 void FxRack::setTempo(double bpm) { d->bpm = bpm > 0 ? bpm : 120; }
+
+void FxRack::setSendReverb(double seconds, double exponent) {
+  Impl& s = *d;
+  // The page's reverbs are a convolver over noise that falls as (1-t)^exponent
+  // for `seconds` (buildReverb: 2.5 over chord.reverbSize). The rack's reverb is
+  // fitted to that shape from size and decay (controls(), above), so ask for the
+  // inverse of those two maps. Undamped: the page's impulse is plain noise.
+  s.p[s.x.rvOn] = 1;
+  s.p[s.x.rvSize] = clampd((seconds - 0.25) / 5.5, 0, 1);
+  s.p[s.x.rvDecay] = clampd(12 - (exponent - 1) / 0.35, HOST_FX[s.x.rvDecay].min, HOST_FX[s.x.rvDecay].max);
+  s.p[s.x.rvDamp] = 0;
+  s.p[s.x.rvPre] = 0;
+  s.p[s.x.rvWidth] = 1;
+  // A network falls at one rate throughout and this convolver's impulse falls
+  // slowly at first, then collapses where the impulse ends (as master.h found for
+  // the bus room), so the -60 dB point is the wrong thing to pin. Measured against
+  // a ConvolverNode on the page's impulse (tests/graph/sendreverb.test.js): an RT60
+  // 1.8 times that point and 3.5 dB more level than the unit-gain fit holds the
+  // first 1.2 s of the tail (all of it that sits less than 22 dB down) to within
+  // +1.2 / -3.1 dB, and the level on steady noise to 0.3 dB.
+  s.rvRtMul = 1.8; s.rvSizeCache = -1;
+  s.p[s.x.rvMix] = 1.5 / 1.4;     // controls() puts 1.4 on the mix; 1.5 is the measured trim
+}
+
+void FxRack::processSend(float* L, float* R, int n) {
+  Impl& s = *d;
+  s.rvWetOnly = true;
+  for (int off = 0; off < n; off += CHUNK) {
+    const int k = std::min(CHUNK, n - off);
+    s.controls();
+    s.reverb(L + off, R + off, k);
+  }
+  s.rvWetOnly = false;
+}
 
 void FxRack::process(float* L, float* R, int n) {
   Impl& s = *d;
