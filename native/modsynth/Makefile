@@ -50,3 +50,8 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 clean:
 	rm -f eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
+
+# The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
+# tests/graph/voices.test.js holds it to the browser's render of the same voice.
+graphrender: graphrender.cpp graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -o $@ graphrender.cpp graph.cpp

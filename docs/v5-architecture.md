@@ -1778,6 +1778,81 @@ rack; and a pad gesture that sets 11 parameters per frame will overrun a
 queue sized for notes unless the page coalesces by index (the 1024-slot queue
 already dropped a note-off once).
 
+### The graph interpreter: the voices go native without being rewritten (branch `claude/native-voices`, C++ and page-side only)
+
+**The change of plan.** The flip was written as "port every voice to C++". Counted
+(above): `makeVoice` is 900 lines, the drum kits another 260 plus their tables,
+the bass voice, sample playback and the sampler pads, and each is a Web Audio
+*node graph*, not arithmetic, so none of it can be null tested. Rewriting that
+is a rewrite of the instrument, with a new bug per voice.
+
+What the page already does for a note is build a small graph of nodes
+(oscillators, gains, biquads, buffer sources, shapers, a panner, a delay) and
+automate their parameters. Counted over `index.html`, the voices use seven node
+types (gain, oscillator, biquad, buffer source, wave shaper, stereo panner,
+delay) and the AudioParam methods set, linear, exponential, target and cancel;
+the rest of the file's `create*` calls are the master chain, analysers and the
+recorder, which are not voices. So instead of porting each voice:
+
+- **`tests/graph/graphrec.js`** is a stand-in `AudioContext`. A voice is called
+  with it instead of the real context and it *writes down* what the voice
+  builds: nodes, connections, every parameter's timeline, buffers. The output is
+  one flat number array (layout in the file's header), so it crosses the bridge
+  with no parser. The voice code stays the single source of truth: change
+  `makeVoice` and the native sound changes with it.
+- **`native/modsynth/graph.{h,cpp}`** reads that array and plays it, in 128-frame
+  quanta, with the browser's AudioParam timeline (set, linear, exponential,
+  target; audio-rate modulation summed on top), a band-limited wavetable
+  oscillator built the way a browser builds a PeriodicWave (three tables an
+  octave, crossfaded, normalised by the real peak), RBJ biquads, a wave
+  shaper, a stereo panner, a delay, and buffer playback.
+- Endpoints that belong to the host (a part's bus, a reverb send) are `ext`
+  nodes the recorder hands out by name; the interpreter exposes their summed
+  output for the host to route.
+
+**Measured, against the browser's own render of the same voice**
+(`make -C native/modsynth graphrender && node tests/graph/voices.test.js`):
+the real `makeVoice` is run into an `OfflineAudioContext` and into the recorder,
+with one seeded `Math.random`, and the C++ render is compared with Chromium's.
+Nine voices (sine, triangle, square, saw, supersaw, pad, piano, organ, rhodes) at
+C3, C4 and C5, 27 renders: signal-to-error 67 to 114 dB, no 10 ms window off by
+more than 0.01 dB, peaks identical. The piano is the least exact (67 to 69 dB;
+its filter sweep is the one place the browser's per-sample ramp and our
+per-block coefficients part ways). That is near sample-exact with no null test
+to lean on; the tolerance the test holds is 60 dB.
+
+Two things measured on the way, so nobody rediscovers them:
+
+1. A browser normalises a PeriodicWave by its *real* peak, not the largest table
+   sample. A saw sampled on a 4096-point table reads 4% low, and every saw and
+   square came out 4% too loud until the peak was found on an 8x finer grid.
+2. **A browser oscillator that starts in the middle of a render quantum reads
+   its first quantum's frequency-modulation samples from the wrong end** (frame
+   480: a 0.1 rad carrier phase offset with FM; frame 512: none). It is a
+   browser quirk and not copied. The test starts its notes on a quantum
+   boundary so it compares the maths and not the quirk; on a phone a note
+   starts wherever it starts and the difference is inaudible.
+
+**What this is not yet, and the order from here**
+
+- Not wired into the page or the host. `ModEngineHost.mm` is Objective-C++ and
+  nothing here edits it unbuilt; the host change is small (a pool of `Graph`
+  voices per part, each rendered into the part's rack input, retired when its
+  gain tail is silent) and is listed for the Mac session, not made.
+- Unsupported nodes are refused by the recorder, loudly: `createConvolver`,
+  `createDynamicsCompressor`, `setValueCurveAtTime`, `cancelAndHoldAtTime`,
+  `disconnect`. A voice that uses one stays on Web Audio until it is taken out
+  or added. Wave-shaper oversampling is read but not applied yet (the drive
+  voices want the 2x oversampler already in `dspkit.h`).
+- A held note is changed *after* it starts (release, glide, choke), so the
+  recorder has to keep a live handle on a graph it has already sent and forward
+  later parameter changes as small messages. Not built.
+- Then, in this order, each measured the same way: the drum kits
+  (`_webDrumVoice`), the bass voice, sample playback and the sampler pads
+  (buffers need ids so a clip crosses once), the per-note effects around a voice
+  (`voiceFx`, the chord room feed). The flip is the commit that routes every
+  part this way and deletes the web path.
+
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
 
 **Decision (4.9.9.9.9.8.9x): not for 5.0.0.** Background play is punted until
