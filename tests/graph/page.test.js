@@ -1,0 +1,135 @@
+/* The page's own path to the native host, end to end, without a host.
+
+   The real page runs a pattern of hits through window.modEngine.send twice, on
+   an OfflineAudioContext standing in for the page's context:
+     reference  the web engine as it is, rendered by the browser;
+     graph      the same messages with the graph path on and a stand-in plugin
+                that records what the page sends the host (programs, clips,
+                edits). native/modsynth/graphmix then plays those messages
+                through the voice pool, as the host would, and writes the part's
+                bus.
+   The two are compared. What is being held is the wiring: the voice built on a
+   recorder, the bus named to the host with its fixed gain, times made relative
+   to the note, the choke that reaches a voice already sent as an edit, and the
+   pool placing each voice at its frame.
+
+   Run: make -C native/modsynth graphmix && node tests/graph/page.test.js [part]
+   Env: CHROMIUM, PLAYWRIGHT. */
+'use strict';
+const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
+const { execFileSync } = require('child_process');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch (e) { try { ({ chromium } = require('playwright-core')); }
+  catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
+const root = path.join(__dirname, '..', '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'graph-page-'));
+const SR = 48000, SECONDS = 3.2;
+const PART = process.argv[2] || 'drum';
+const CODE = { chord: 0, mel: 1, melgen: 2, bass: 3, arp: 4, drum: 5, auxperc: 6, sampler: 7 }[PART];
+
+// Each part's pattern: messages as modEngine takes them, at seconds from the start.
+const PATTERNS = {
+  drum: [
+    [0.10, { kind: 'hit', part: 'drum', id: 1, kit: '808', lane: 0, vel: 0.9, accent: false, pitch: 0, dyn: null }],
+    [0.35, { kind: 'hit', part: 'drum', id: 2, kit: '808', lane: 4, vel: 0.7, accent: false, pitch: 0, dyn: null }],
+    [0.50, { kind: 'hit', part: 'drum', id: 3, kit: '808', lane: 1, vel: 0.9, accent: true, pitch: 0, dyn: null }],
+    [0.75, { kind: 'hit', part: 'drum', id: 4, kit: '808', lane: 5, vel: 0.8, accent: false, pitch: 0, dyn: null }],   // open hat
+    [1.00, { kind: 'hit', part: 'drum', id: 5, kit: '808', lane: 4, vel: 0.8, accent: false, pitch: 0, dyn: null }],   // closed hat: chokes it
+    [1.20, { kind: 'hit', part: 'drum', id: 6, kit: '808', lane: 6, vel: 0.8, accent: false, pitch: 0, dyn: null }],
+    [1.45, { kind: 'hit', part: 'drum', id: 7, kit: '808', lane: 2, vel: 0.8, accent: false, pitch: -2, dyn: null }],
+    [1.70, { kind: 'hit', part: 'drum', id: 8, kit: '808', lane: 7, vel: 0.8, accent: false, pitch: 0, dyn: null }],
+    [2.10, { kind: 'hit', part: 'drum', id: 9, kit: '909', lane: 0, vel: 1.0, accent: false, pitch: 0, dyn: null }],
+    [2.10, { kind: 'hit', part: 'drum', id: 10, kit: '909', lane: 1, vel: 0.9, accent: false, pitch: 0, dyn: null }],
+  ],
+};
+
+function serve() {
+  return new Promise(res => {
+    const s = http.createServer((q, r) => {
+      const p = path.join(root, decodeURIComponent(q.url.split('?')[0]));
+      fs.readFile(p, (e, b) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'content-type': p.endsWith('.html') ? 'text/html' : 'application/octet-stream' }); r.end(b); } });
+    }).listen(0, '127.0.0.1', () => res(s));
+  });
+}
+
+async function pageRun(a) {
+  const { mode, part, pattern, sr, seconds } = a;
+  let s = 24680 >>> 0;
+  Math.random = function () { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const offline = new OfflineAudioContext(2, Math.round(sr * seconds), sr);
+  audioCtx = offline;                                  // the page's own context, for this run
+  const sink = offline.createGain(); sink.connect(offline.destination);
+  masterDest = function () { return sink; };           // the master chain is not what is being compared
+  const events = [];
+  if (mode === 'graph') {
+    modGraphEnable({
+      graphBuf: m => events.push({ type: 1, frame: 0, gid: 0, payload: [m.id, m.sampleRate, m.channels.length, 0, m.channels.map(c => c) ] , b64: m.channels }),
+      graphBegin: m => events.push({ type: 2, frame: Math.round(m.base * sr), gid: m.gid, b64: m.program }),
+      graphEdit: m => events.push({ type: 3, frame: 0, gid: m.gid, b64: m.increments }),
+    }, [part]);
+  }
+  if (part === 'drum' || part === 'auxperc') window._sqEnsureBus();
+  for (const [at, msg] of pattern) window.modEngine.send(Object.assign({ v: 1, at }, msg));
+  await Promise.resolve(); await Promise.resolve();
+  if (mode === 'graph') {
+    return { events, stat: { sent: MODGRAPH.sent, fell: MODGRAPH.fellBack, why: MODGRAPH.why, edits: MODGRAPH.edits, empty: MODGRAPH.empty } };
+  }
+  const b = await offline.startRendering();
+  const L = b.getChannelData(0), R = b.getChannelData(1), o = new Float32Array(L.length * 2);
+  for (let i = 0; i < L.length; i++) { o[2 * i] = L[i]; o[2 * i + 1] = R[i]; }
+  return { f32: Array.from(o) };
+}
+
+(async () => {
+  const srv = await serve();
+  const url = 'http://127.0.0.1:' + srv.address().port + '/index.html';
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
+  const run = async mode => {
+    const page = await browser.newPage();
+    const errs = []; page.on('pageerror', e => errs.push(String(e)));
+    page.on('console', m => { if (m.type() === 'warning' && /modGraph|modEngine/.test(m.text())) errs.push(m.text()); });
+    await page.goto(url); await page.waitForTimeout(1200);
+    const r = await page.evaluate(pageRun, { mode, part: PART, pattern: PATTERNS[PART], sr: SR, seconds: SECONDS });
+    await page.close();
+    r.errs = errs;
+    return r;
+  };
+  const real = await run('real'), g = await run('graph');
+  if (g.errs.length) console.log('page said:', g.errs.slice(0, 4));
+  console.log('page sent', JSON.stringify(g.stat));
+  // the script graphmix reads
+  const out = [];
+  let n = 0;
+  const push = (type, frame, gid, payload) => { out.push(type, frame, gid, payload.length, ...payload); n++; };
+  for (const e of g.events) {
+    if (e.type === 1) {
+      const chans = e.b64.map(b => Array.from(new Float32Array(Buffer.from(b, 'base64').buffer.slice(0))));
+      const payload = [e.payload[0], e.payload[1], chans.length, chans[0].length]; chans.forEach(c => c.forEach(v => payload.push(v)));
+      push(1, 0, 0, payload);
+    } else {
+      const buf = Buffer.from(e.b64, 'base64');
+      push(e.type, e.frame, e.gid, Array.from(new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length))));
+    }
+  }
+  const sf = path.join(tmp, 'script.f64'), of = path.join(tmp, 'out.f32');
+  fs.writeFileSync(sf, Buffer.from(Float64Array.from([n, ...out]).buffer));
+  execFileSync(path.join(root, 'native/modsynth/graphmix'), [sf, String(CODE), String(SECONDS), of]);
+  const nat = new Float32Array(fs.readFileSync(of).buffer.slice(0)), ref = Float32Array.from(real.f32);
+  let a = 0, e = 0, pk = 0, pn = 0;
+  for (let i = 0; i < ref.length; i++) { a += ref[i] ** 2; e += (ref[i] - nat[i]) ** 2; pk = Math.max(pk, Math.abs(ref[i])); pn = Math.max(pn, Math.abs(nat[i])); }
+  // level per 50 ms, to see where a miss is
+  const W = SR * 0.05 * 2; let worst = 0, at = 0;
+  for (let w = 0; w + W <= ref.length; w += W) {
+    let x = 0, y = 0; for (let i = w; i < w + W; i++) { x += ref[i] ** 2; y += nat[i] ** 2; }
+    // only windows that are audible: a tail at -80 dBFS is judged by the overall figure
+    if (x / (W / 2) > 1e-5) { const d = Math.abs(10 * Math.log10((y + 1e-20) / x)); if (d > worst) { worst = d; at = w / 2 / SR; } }
+  }
+  if (process.env.DUMP) { fs.mkdirSync(process.env.DUMP, { recursive: true }); fs.writeFileSync(path.join(process.env.DUMP, 'ref.f32'), Buffer.from(ref.buffer)); fs.writeFileSync(path.join(process.env.DUMP, 'nat.f32'), Buffer.from(nat.buffer.slice(0))); }
+  const snr = 10 * Math.log10(a / Math.max(e, 1e-30));
+  console.log(`${PART}: ${g.stat.sent} voices, ${g.stat.edits} edits, peak ${pk.toFixed(3)} vs ${pn.toFixed(3)}, ${snr.toFixed(1)} dB, worst 50 ms window ${worst.toFixed(2)} dB at ${at.toFixed(2)} s`);
+  const ok = pk > 0.01 && g.stat.fell === 0 && snr >= 60 && worst < 0.5;
+  console.log(ok ? 'ok' : 'FAIL');
+  await browser.close(); srv.close();
+  process.exit(ok ? 0 : 1);
+})();

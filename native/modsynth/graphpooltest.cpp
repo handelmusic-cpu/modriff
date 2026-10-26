@@ -29,7 +29,7 @@ static V sine(double hz, double start, double stop, double amp, int code,
               std::vector<std::array<double, 4>> gainEv = {}) {
   V p = {0x6d6f6467, SR, 3, 0};
   p.push_back(8); p.push_back(code);                                      // 0: ext
-  p.push_back(2); p.push_back(0); p.push_back(start); p.push_back(stop);  // 1: osc, sine
+  p.push_back(2); p.push_back(0); p.push_back(start); p.push_back(stop);  // 1: osc, sine (-1e9 = unset)
   param(p, hz); param(p, 0);
   p.push_back(1); param(p, amp, gainEv);                                  // 2: gain
   p.push_back(2);                                                         // two edges
@@ -44,7 +44,7 @@ static V bufprog(int id, double start, int code) {
   V p = {0x6d6f6467, SR, 3, 0};
   p.push_back(8); p.push_back(code);                                       // 0: ext
   p.push_back(4); p.push_back(id); p.push_back(0); p.push_back(0); p.push_back(0);   // 1: buf, no loop
-  p.push_back(start); p.push_back(-1); p.push_back(0);                     // start, stop, offset
+  p.push_back(start); p.push_back(-1e9); p.push_back(0);                  // start, stop (unset), offset
   param(p, 1); param(p, 0);
   p.push_back(1); param(p, 1);                                             // 2: gain
   p.push_back(2);
@@ -134,7 +134,7 @@ int main() {
   // 3. a voice with no stop time plays until an edit stops it, then retires.
   {
     GraphPool pool; Bus b(N);
-    V p = sine(330, 0.0, -1, 0.5, 0);
+    V p = sine(330, 0.0, -1e9, 0.5, 0);
     int h = pool.begin(p.data(), p.size(), 0.0, 0);
     run(pool, b, 4800, odd);   // 0.1 s: still sounding
     CHECK(pool.active() == 1, "an unstopped voice is still active");
@@ -172,7 +172,7 @@ int main() {
   // 5. a full pool drops, and counts it.
   {
     GraphPool pool;
-    V p = sine(200, 0.0, -1, 0.1, 0);
+    V p = sine(200, 0.0, -1e9, 0.1, 0);
     int ok = 0;
     for (int i = 0; i < GraphPool::kMaxVoices + 5; i++) if (pool.begin(p.data(), p.size(), 0.0, 0) >= 0) ok++;
     CHECK(ok == GraphPool::kMaxVoices, "%d voices fit", ok);
@@ -199,7 +199,7 @@ int main() {
     GraphPool pool; Bus b(1 << 16);
     std::atomic<bool> stop{false};
     std::thread control([&] {
-      V p = sine(300, 0.0, -1, 0.05, 1);
+      V p = sine(300, 0.0, -1e9, 0.05, 1);
       V inc = {1, -1, 6, 0, 0.02, 0};
       for (int i = 0; i < 3000; i++) {
         int h = pool.begin(p.data(), p.size(), 0.0, 0);
@@ -248,6 +248,27 @@ int main() {
     int bad2 = 0;
     for (int k = 1; k < 900; k++) if (std::fabs(b2.l[2][2 * k] - slow[k]) > 1e-5f) bad2++;
     CHECK(bad2 == 0, "a 24 kHz clip plays at half speed: %d samples off", bad2);
+  }
+
+
+  // 9. a voice that reaches the host late (its origin is already in the past)
+  // is caught up, not started from its beginning: what sounds now is what
+  // would be sounding had it arrived on time, and what was missed is dropped.
+  {
+    GraphPool pool; Bus b(N);
+    V p = sine(440, 0.0, 0.4, 0.5, 6);
+    pool.begin(p.data(), p.size(), 0.0, 1000);
+    // the first block the pool sees begins at frame 5000: 4000 frames late
+    uint64_t f = 5000; size_t k = 0;
+    while ((int)f < N) {
+      const int n = std::min(odd[k++ % odd.size()], N - (int)f);
+      float *bl[8], *br[8]; for (int i = 0; i < 8; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
+      pool.render(f, n, bl, br); f += n;
+    }
+    auto ref = alone(p, {}, N);
+    int bad = 0;
+    for (int i = 5000; i < N; i++) { const float want = ref[i - 1000]; if (std::fabs(b.l[6][i] - want) > 1e-6f) bad++; }
+    CHECK(bad == 0, "a late voice is caught up to where it should be: %d samples differ", bad);
   }
 
   printf("%d checks, %d failed\n", checks, fails);

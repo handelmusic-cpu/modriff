@@ -11,6 +11,9 @@ namespace modsynth {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+// "No start / no stop" in a program. Not -1: once times are relative to the
+// note a start before the note's own origin is a small negative number.
+constexpr double kUnset = -1e9;
 constexpr int Q = Graph::kQuantum;
 #ifndef MODSYNTH_BIQUAD_STEP
 #define MODSYNTH_BIQUAD_STEP 8
@@ -242,7 +245,9 @@ struct Node {
   std::vector<Param> p;            // by the recorder's param order
   // oscillator
   const Wave *wave = nullptr;
-  double start = -1, stop = -1, phase = 0;
+  double start = kUnset, stop = kUnset, phase = 0;
+  bool hasStart() const { return start > kUnset / 2; }
+  bool hasStop() const { return stop > kUnset / 2; }
   bool started = false;
   // biquad
   int ftype = 0;
@@ -352,8 +357,8 @@ bool Graph::load(const double *p, size_t len, double timeBase, const BufferStore
         }
         if (!need(2)) { good = false; break; }
         n.start = p[i++]; n.stop = p[i++];
-        if (n.start >= 0) n.start -= timeBase;
-        if (n.stop >= 0) n.stop -= timeBase;
+        if (n.hasStart()) n.start -= timeBase;
+        if (n.hasStop()) n.stop -= timeBase;
         good = readParams(n, 2);
         break;
       }
@@ -373,8 +378,8 @@ bool Graph::load(const double *p, size_t len, double timeBase, const BufferStore
         }
         n.loop = p[i++] != 0; n.loopStart = p[i++]; n.loopEnd = p[i++];
         n.start = p[i++]; n.stop = p[i++]; n.offset = p[i++];
-        if (n.start >= 0) n.start -= timeBase;
-        if (n.stop >= 0) n.stop -= timeBase;
+        if (n.hasStart()) n.start -= timeBase;
+        if (n.hasStop()) n.stop -= timeBase;
         good = readParams(n, 2);
         break;
       case T_SHP: {
@@ -606,7 +611,7 @@ void Graph::render(int frames) {
         for (int s = 0; s < frames; s++) {
           const double fr = (double)(frame_ + s);
           const double delta = fr - startF;  // frames since the (fractional) start
-          const bool on = n.start >= 0 && delta > -1e-6 && (n.stop < 0 || fr < stopF - 1e-6);
+          const bool on = n.hasStart() && delta > -1e-6 && (!n.hasStop() || fr < stopF - 1e-6);
           if (!on) { n.out[0][s] = 0; continue; }
           if (!n.started) qoff = s;
           // A browser oscillator that begins part-way through a render quantum
@@ -665,7 +670,7 @@ void Graph::render(int frames) {
           for (int c = 0; c < n.nch; c++) n.out[c][s] = 0;
           const double fr = (double)(frame_ + s);
           const double delta = fr - startF;
-          if (!B || n.start < 0 || delta <= -1e-6 || (n.stop >= 0 && fr >= stopF - 1e-6)) continue;
+          if (!B || !n.hasStart() || delta <= -1e-6 || (n.hasStop() && fr >= stopF - 1e-6)) continue;
           // The buffer is read from where it would be `delta` of a frame after
           // its start, as a browser does for a start between frames.
           if (!n.started) { n.started = true; n.pos = n.offset * B->sr + std::max(0.0, delta) * rate[s] * rateMul * detuneRatio(dc[s]); }
@@ -756,8 +761,8 @@ bool Graph::finished() const {
   const Impl &d = *d_;
   for (const Node &n : d.nodes) {
     if (n.type != T_OSC && n.type != T_BUF) continue;
-    if (n.start < 0) continue;                       // never started: nothing to wait for
-    const bool stopped = n.stop >= 0 && (double)frame_ >= n.stop * sr_ - 1e-6;
+    if (!n.hasStart()) continue;                     // never started: nothing to wait for
+    const bool stopped = n.hasStop() && (double)frame_ >= n.stop * sr_ - 1e-6;
     const bool ranOut = n.type == T_BUF && !n.loop && n.started && (!n.buf || n.pos >= n.buf->len);
     if (!stopped && !ranOut) return false;
   }

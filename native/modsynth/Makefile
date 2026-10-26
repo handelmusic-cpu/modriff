@@ -58,3 +58,6 @@ graphrender: graphrender.cpp graph.cpp graph.h
 # The voice pool the host calls: begin/edit from one thread, render from another.
 graphpooltest: graphpooltest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ graphpooltest.cpp graphpool.cpp graph.cpp
+# Plays what the page sent, through the pool, for tests/graph/page.test.js.
+graphmix: graphmix.cpp graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ graphmix.cpp graphpool.cpp graph.cpp

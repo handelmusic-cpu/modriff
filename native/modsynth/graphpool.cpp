@@ -6,6 +6,9 @@
 namespace modsynth {
 
 namespace {
+// Longest delay a voice is caught up over: past this it starts from its beginning
+// rather than spend a burst of CPU on a note nobody would still be waiting for.
+constexpr uint64_t kMaxCatchUp = 48000;
 enum State : int { FREE = 0, LOADING, READY, PLAYING };
 }
 
@@ -70,10 +73,12 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
   for (int i = 0; i < kMaxVoices; i++) {
     Slot &s = slots_[i];
     int st = s.state.load(std::memory_order_acquire);
+    bool first = false;
     if (st == READY) {
       if (s.startFrame >= frame0 + (uint64_t)frames) continue;   // not yet
       s.state.store(PLAYING, std::memory_order_relaxed);
       st = PLAYING;
+      first = true;
     }
     if (st != PLAYING) continue;
 
@@ -86,6 +91,19 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
     }
     s.rd.store(r, std::memory_order_release);
 
+    // A voice that arrives after its origin (the bridge takes a few ms) is
+    // caught up: its clock is run forward, unheard, to where it should be, so
+    // what sounds from here is what would be sounding had it come on time. A
+    // note the page scheduled ahead is never late; this only eats the delay.
+    if (first && s.startFrame < frame0) {
+      uint64_t late = std::min<uint64_t>(frame0 - s.startFrame, kMaxCatchUp);
+      while (late > 0) {
+        const int n = (int)std::min<uint64_t>(late, (uint64_t)Graph::kQuantum);
+        s.g.render(n);
+        late -= (uint64_t)n;
+      }
+      s.startFrame = frame0;
+    }
     int off = s.startFrame > frame0 ? (int)(s.startFrame - frame0) : 0;
     int left = frames - off;
     const int ne = s.g.extCount();

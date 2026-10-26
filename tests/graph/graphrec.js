@@ -21,7 +21,7 @@
      param order per type is PARAMS below and must match native/modsynth/graph.cpp.
      gain   : params gain
      osc    : wave (0 sine 1 square 2 saw 3 triangle 4 custom), if custom
-              nPartials, re..., im...;  start, stop (-1 = unset);  params frequency detune
+              nPartials, re..., im...;  start, stop (-1e9 = unset);  params frequency detune
      biq    : filter type;  params frequency detune Q gain
      buf    : buffer id (-1 none), loop, loopStart, loopEnd, start, stop, offset;
               params playbackRate detune
@@ -72,6 +72,9 @@ const WAVE = { sine:0, square:1, sawtooth:2, triangle:3 };
 const BIQ = { lowpass:0, highpass:1, bandpass:2, lowshelf:3, highshelf:4, peaking:5, notch:6, allpass:7 };
 const OVS = { none:0, '2x':1, '4x':2 };
 const KIND = { set:0, lin:1, exp:2, tgt:3 };
+// "No start() / no stop()" in a program. Not -1: times are relative to the
+// note, so a start just before its origin is a small negative number.
+const UNSET = -1e9;
 
 // One id per decoded buffer, for the life of the buffer; and which ids the host
 // has been told about. Shared by every recorder on the page.
@@ -84,7 +87,23 @@ function Rec(opts){
   opts = opts || {};
   const self = this;
   this.sampleRate = opts.sampleRate || 48000;
-  this.currentTime = opts.time || 0;
+  // `currentTime` is the page's real clock when there is one (the voice code
+  // reads it for "now"), a settable number otherwise. `base` is what the program
+  // subtracts from every time: the moment the note's graph was opened.
+  this._time = opts.time || 0;
+  this._timeSource = opts.timeSource || null;
+  Object.defineProperty(this, 'currentTime', { get(){ return self._timeSource ? self._timeSource() : self._time; }, set(v){ self._time = v; } });
+  this.base = opts.base != null ? opts.base : this.currentTime;
+  // How the page's own shared nodes (a part's bus, a send) are named to the
+  // host: resolve(realNode) returns a code, {code, gain} to put a fixed gain in
+  // front of it, or null when it is not one the host knows. A null is counted
+  // in `unresolved` and the connection is dropped.
+  this._resolve = opts.resolve || null;
+  this.onEdit = opts.onEdit || null;     // called once when edits start to pile up
+  this._dirty = false;
+  this._realCtx = opts.realCtx || null;  // buffers are made by it, so they stay real
+  this.unresolved = {};
+  this._sinks = {};
   this.nodes = [];
   this.edges = [];
   this.bufs = [];           // AudioBuffer stand-ins, by identity
@@ -93,6 +112,7 @@ function Rec(opts){
   this.inc = [];
   const nope = what => { self.unsupported[what] = (self.unsupported[what]||0) + 1; };
   this._nope = nope;
+  const touch = () => { if(self.onEdit && !self._dirty){ self._dirty = true; self.onEdit(self); } };
 
   const OP = { set:0, lin:1, exp:2, tgt:3, cancel:4, hold:5, stop:6, start:7 };
   class Param {
@@ -101,7 +121,7 @@ function Rec(opts){
       this.defaultValue = v0;
     }
     _pi(){ return PARAMS[this.node.kind].indexOf(this.name); }
-    _emit(op, v, t, tc){ if(self.sent) self.inc.push(this.node.id, this._pi(), op, v, t, tc); }
+    _emit(op, v, t, tc){ if(self.sent){ self.inc.push(this.node.id, this._pi(), op, v, t, tc); touch(); } }
     // The timeline's value at time t, by the same rules native/modsynth/graph.cpp
     // uses (set, ramps run from the previous event, a target decays from the
     // value it left).
@@ -191,26 +211,34 @@ function Rec(opts){
     }
     connect(dst){
       if(dst instanceof Param) self.edges.push([this.id, dst.node.id, PARAMS[dst.node.kind].indexOf(dst.name)]);
-      else self.edges.push([this.id, dst.id, -1]);
+      else if(dst && dst.context === self) self.edges.push([this.id, dst.id, -1]);
+      else {
+        // One of the page's own nodes, outside this graph.
+        const sink = self._sinkFor(dst);
+        if(sink) self.edges.push([this.id, sink.id, -1]);
+      }
       return dst;
     }
-    disconnect(){ nope('disconnect'); }
+    // Taking a voice out of its graph is what the page does to clean up after
+    // one has ended, and the host retires a finished voice by itself. Before
+    // the program is sent it would be surgery, which a program cannot carry.
+    disconnect(){ if(!self.sent) nope('disconnect'); }
     addEventListener(){}
     removeEventListener(){}
   }
   class Source extends Node {
-    constructor(type, params){ super(type, params); this._start = -1; this._stop = -1; this.onended = null; }
+    constructor(type, params){ super(type, params); this._start = UNSET; this._stop = UNSET; this.onended = null; }
     start(t, off){
       this._start = (t == null) ? self.currentTime : t; if(off != null) this._offset = off;
-      if(self.sent) self.inc.push(this.id, -1, OP.start, 0, this._start, 0);
+      if(self.sent){ self.inc.push(this.id, -1, OP.start, 0, this._start, 0); touch(); }
     }
     stop(t){
       this._stop = (t == null) ? self.currentTime : t;
-      if(self.sent) self.inc.push(this.id, -1, OP.stop, 0, this._stop, 0);
+      if(self.sent){ self.inc.push(this.id, -1, OP.stop, 0, this._stop, 0); touch(); }
     }
   }
 
-  this.destination = this.createExt('destination', 0);
+  this.destination = this.createExt('destination', opts.destCode != null ? opts.destCode : 0);
   this.listener = {};
 
   this.createGain = () => new Node('gain', [1]);
@@ -240,6 +268,7 @@ function Rec(opts){
     return s;
   };
   this.createBuffer = (nCh, len, sr) => {
+    if(self._realCtx) return self._realCtx.createBuffer(nCh, len, sr);
     const chans = []; for(let c = 0; c < nCh; c++) chans.push(new Float32Array(len));
     return { numberOfChannels: nCh, length: len, sampleRate: sr, duration: len/sr,
              getChannelData: c => chans[c], _chans: chans };
@@ -256,6 +285,29 @@ function Rec(opts){
   this.createAnalyser = () => { nope('createAnalyser'); return new Node('gain', [1]); };
 }
 
+// The graph's own name for one of the page's real nodes: an ext endpoint, with
+// a fixed gain in front when the node is a bus that carries one. Made once per
+// (code, gain), so a hundred voices into one bus share one endpoint.
+Rec.prototype._sinkFor = function(real){
+  const r = this._resolve ? this._resolve(real) : null;
+  if(r == null){
+    const k = (real && real.constructor && real.constructor.name) || typeof real;
+    this.unresolved[k] = (this.unresolved[k] || 0) + 1;
+    return null;
+  }
+  const code = typeof r === 'number' ? r : r.code;
+  const g = (typeof r === 'object' && r.gain != null && r.gain !== 1) ? r.gain : null;
+  const key = code + ':' + g;
+  if(this._sinks[key]) return this._sinks[key];
+  const ext = this.createExt('code' + code, code);
+  let head = ext;
+  if(g != null){
+    const gn = this.createGain(); gn.gain.value = g; gn.connect(ext); head = gn;
+  }
+  this._sinks[key] = head;
+  return head;
+};
+
 // An endpoint that is the host's, not the graph's: a part bus, a reverb send.
 // `name` is how the host knows it. Param edges into one are not meaningful.
 Rec.prototype.createExt = function(name, code){
@@ -266,11 +318,13 @@ Rec.prototype.createExt = function(name, code){
   return n;
 };
 
-Rec.prototype.program = function(){
+Rec.prototype.program = function(base){
+  const B = base != null ? base : this.base;
   const out = [];
   const nodes = this.nodes;
   out.push(MAGIC, this.sampleRate, nodes.length, 0);
-  const pushParam = p => { out.push(p.v0, p.ev.length); p.ev.forEach(e => out.push(e.kind, e.v, e.t, e.tc)); };
+  const pushParam = p => { out.push(p.v0, p.ev.length); p.ev.forEach(e => out.push(e.kind, e.v, e.t - B, e.tc)); };
+  const rel = t => (t > UNSET / 2 ? t - B : t);
   nodes.forEach(n => {
     if(n.kind === 'ext'){ out.push(T.ext, n.code); return; }
     out.push(T[n.kind]);
@@ -280,11 +334,11 @@ Rec.prototype.program = function(){
         const w = n.wavetable || { re: [0], im: [0] };
         out.push(w.re.length); w.re.forEach(v => out.push(v)); w.im.forEach(v => out.push(v));
       }
-      out.push(n._start, n._stop);
+      out.push(rel(n._start), rel(n._stop));
     } else if(n.kind === 'biq'){
       out.push(n.ftype);
     } else if(n.kind === 'buf'){
-      out.push(n.buffer ? bufId(n.buffer) : -1, n.loop ? 1 : 0, n.loopStart, n.loopEnd, n._start, n._stop, n._offset || 0);
+      out.push(n.buffer ? bufId(n.buffer) : -1, n.loop ? 1 : 0, n.loopStart, n.loopEnd, rel(n._start), rel(n._stop), n._offset || 0);
     } else if(n.kind === 'shp'){
       const c = n.curve ? Array.from(n.curve) : [];
       out.push(OVS[n.oversample] || 0, c.length); c.forEach(v => out.push(v));
@@ -318,8 +372,11 @@ Rec.prototype.takeNewBuffers = function(){
 // The host lost its store (a new engine): every buffer has to be sent again.
 Rec.forgetBuffers = function(){ announced.clear(); };
 
-Rec.prototype.takeIncrements = function(){
-  const a = Float64Array.from(this.inc); this.inc = []; return a;
+Rec.prototype.takeIncrements = function(base){
+  const B = base != null ? base : this.base;
+  const a = Float64Array.from(this.inc);
+  for(let i = 4; i < a.length; i += 6) a[i] -= B;
+  this.inc = []; this._dirty = false; return a;
 };
 
 Rec.PARAMS = PARAMS; Rec.T = T; Rec.MAGIC = MAGIC;
