@@ -20,7 +20,7 @@ nothing (99% of its energy sits below 1.8 kHz) but strips a piano of the
 "Piano 1" (`pianoreal`) was supplied by the project owner from a separate source
 whose origin and licence were never recorded, so it could not be shown to be
 redistributable and was taken out of the app and the repository. Saved choices of
-it land on Piano 2 (`WAVE_RENAMED`). The set still exists in git history.
+it land on the remaining recorded piano (`WAVE_RENAMED`), which is now just "Piano". The set still exists in git history.
 
 ## samples/violin — "Violin ◆" (violin)
 
@@ -297,7 +297,7 @@ that sat under the upper notes. 416 KB.
 Sits beside Upright 1 (samples/bass, the FluidR3_GM SoundFont set above), not
 in place of it.
 
-## samples/piano2 — "Piano 2 ◆"
+## samples/piano2 — "Piano ◆" (pianoreal2; labelled "Piano 2" until Piano 1 was removed)
 
 "88 piano keys, long reverb" by **TEDAgame** (https://freesound.org/people/TEDAgame/,
 pack https://freesound.org/people/TEDAgame/packs/25405/), released under

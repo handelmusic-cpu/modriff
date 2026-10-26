@@ -1967,7 +1967,7 @@ Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
 | Bass styles | Rock, Jazz, Funk, Latin | the rest |
 | Melody styles | Pop Hook (the default), Rock, Jazz, Funk, Latin | the rest |
 | Live page | the standard layout (Chords, Melody); the Pads and mõdFX widgets are free if a layout has them | adding, swapping, moving or removing widgets |
-| Voices | every synth voice (Piano (synth), Upright, Rhodes, Organ, the waves...) | every recorded voice, Piano 2 and Upright 1 included, and mõdSynth; locked and listed in every picker |
+| Voices | every synth voice (Piano (synth), Upright, Rhodes, Organ, the waves...) | every recorded voice, Piano and Upright 1 included, and mõdSynth; locked and listed in every picker |
 | Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
 | Key colours | the original: C red, one colour step a semitone | choose which key is red, and a circle-of-fifths order (`KH`, `khColor`; saved as `modo-keyhue`; free ignores what is saved without erasing it) |
 | Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |

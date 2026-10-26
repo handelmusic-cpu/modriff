@@ -45,7 +45,7 @@ eq(['hook','rock','jazz','funk','latin','arpeggio','scalerun','riff','callrespon
 eq(['major','minor','dorian','phrygian','lydian','mixolydian','locrian','minor_pent',
     'major_pent','blues','harmonic_minor','hijaz','whole_tone','pelog','user:mine'].map(T.freeAllowsMode),
    [true,true,true,true,true,true,true,true,false,false,false,false,false,false,false], 'scales');
-// No recorded voice is free, Piano 1 and Upright 1 included; every synth voice is.
+// No recorded voice is free, Piano and Upright 1 included; every synth voice is.
 eq(['pianoreal2','upright_real','vibes','upright2','bass_motown','bass_hofner','bass_picked','jazzgtr','modsynth'].map(T.freeAllowsVoice),
    [false,false,false,false,false,false,false,false,false], 'recorded voices and mõdSynth are Pro');
 eq(['piano','upright','electric','rhodes','organ','pad','sine','saw','square','triangle','supersaw'].map(T.freeAllowsVoice),
@@ -99,8 +99,8 @@ ok(T.FREE_LIMITS.melodyStyles.indexOf('Hook') >= 0, 'the default melody style (h
   ok(/var WAVE_RENAMED = \{ pianoreal:'pianoreal2' \};/.test(html), 'a saved pianoreal is renamed to pianoreal2');
   ok((html.match(/if\(WAVE_RENAMED\[w\]\) w = WAVE_RENAMED\[w\];/g) || []).length === 4, 'the chord, arp, melody and Melody Seq setters apply WAVE_RENAMED');
   const lib = /pianoreal2:\{dir:'(samples\/piano2)'/.exec(html);
-  ok(!!lib, 'Piano 2 is still a recorded voice');
-  if (lib) ok(fs.readdirSync(path.join(root, 'samples', 'piano2')).filter(f => /\.mp3$/.test(f)).length >= 40, 'Piano 2 files are all present');
+  ok(!!lib, 'the recorded Piano (pianoreal2) is still a recorded voice');
+  if (lib) ok(fs.readdirSync(path.join(root, 'samples', 'piano2')).filter(f => /\.mp3$/.test(f)).length >= 40, 'the recorded Piano files are all present');
 }
 
 // ── 6. The Free/Pro test switch exists only in a debug build or on a local page
