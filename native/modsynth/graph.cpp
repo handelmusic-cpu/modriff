@@ -686,7 +686,7 @@ void Graph::render(int frames) {
           if (!B || !n.hasStart() || fr < firstF || (n.hasStop() && fr >= stopF)) continue;
           // The buffer is read from where it would be `delta` of a frame after
           // its start, as a browser does for a start between frames.
-          if (!n.started) { n.started = true; n.pos = n.offset * B->sr + delta * rate[s] * rateMul * detuneRatio(dc[s]); }
+          if (!n.started) { n.started = true; n.pos = std::round(n.offset * B->sr) + delta * rate[s] * rateMul * detuneRatio(dc[s]); }
           double lo = 0, hi = B->len;
           if (n.loop && n.loopEnd > n.loopStart) { lo = n.loopStart * B->sr; hi = std::min<double>(n.loopEnd * B->sr, B->len); }
           if (n.pos >= hi) { if (n.loop) n.pos = lo + std::fmod(n.pos - lo, std::max(1.0, hi - lo)); else continue; }

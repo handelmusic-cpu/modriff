@@ -1911,18 +1911,68 @@ part has no Processor, so:
    so the first note does not pay for first-touch memory, as `warmUp` does for
    the Processors.
 
-**Still to do, in this order, each measured the same way.** The page side: a
-`modGraph` module that runs a voice into a recorder instead of the real context
-for the parts the host plays, sends the clip, program and edits, and keeps the
-recorder alive to forward the release. The per-note effects around a voice
-(`voiceFx`, the chord room feed, `feedChordRev`) go to ext codes for the part's
-sends; the bus reverb is already native (`master.cpp`), so the chord room send
-needs a decision (the effects rack's reverb is the likeliest home, as it is for
-a mõdSynth chord today). Then the sample voices through the same graph (the
-recorded instruments, the sampler pads: the buffer plumbing is done), the bass
-and the click and Rhythm voices (same node set; not yet run through a test of
-their own), and finally the flip itself: the commit that sends every part this
-way and deletes the web path.
+**The page side is built, off (v4.9.9.9.9.9.5 on), and measured without a host.**
+`index.html` carries `GraphRec` (a copy of `tests/graph/graphrec.js`;
+`inline.test.js` fails if they drift) and a small module, `modGraphEnable(plugin,
+parts)`, that is the only thing that turns it on; nothing in the app calls it, so
+`getCtx()` and every message are exactly as before. For a part it is on for, the
+page builds the voice on a recorder instead of the real context, names the page's
+own bus nodes to the host (a part's bus with the fixed gain it carries, the two
+rooms, the master), and sends the program, any new clip, and later edits (a
+release, a choke, a glide, a source's `stop`) as `graphBuf`, `graphBegin`,
+`graphEdit` on the plugin. A voice that reaches a node it cannot name, or uses a
+node type a program cannot carry, is not sent; it is built again on the real
+context, so a gap is a sound that stays on Web Audio, never a missing note. A part
+on a mõdSynth patch is left alone (the Processor plays those).
+
+`tests/graph/page.test.js` is the proof. The real page runs a pattern through
+`window.modEngine.send` twice on an `OfflineAudioContext` standing in for its own:
+as the web engine is, and with the graph path on and a stand-in plugin whose
+messages `native/modsynth/graphmix` plays through the pool as the host would. The
+two are compared on the buses the host would sum. All of these hold, peaks
+identical and **no fallbacks** (`sh tests/graph/page-all.sh`):
+
+| path | what it runs | result |
+|---|---|---|
+| drum, auxperc | 808 and 909 lanes, an open hat choked by a closed one | 71 / 97 dB |
+| bass, melgen, arp, mel | notes, a bass slide path, voices on the chord rooms | 110 / 67 / 90 / 82 dB |
+| chord | a held chord with the Sub, the chord room and a release | 75 dB |
+| click, rhythm | straight into the master | 70 / 128 dB |
+| sampler | a clip, a looping window with a release, a re-pitched clip | 156 dB |
+| mel glide | the bend strip's glissando, `hz` and `y` changed while it sounds | 76 dB |
+| recorded voices | piano, violin, flute, upright bass, the jazz kit's samples | 98 / 64 / 92 / 88 / 61 dB |
+
+Things this turned up, each of them a browser habit now copied in
+`graph.cpp`: a source starts at the first whole frame at or after its start time
+with no allowance for rounding (1.1 s begins a frame after 0.1 s does); a moving
+frequency is read sample by sample and then the start is not applied sub-sample;
+a buffer source's `offset` is rounded to a whole frame. And things on the page
+side: lazy buses were being built on whatever context was current (a recorder),
+caches keyed by context identity regenerated their random data per note, and two
+reverb sends were made on the real context instead of the recorder.
+
+**Codes the host maps** (`GraphPool::kBuses` = 11): 0 to 7 a part's bus
+(chord, mel, melgen, bass, arp, drum, auxperc, sampler), 8 straight into the
+master (the click and the legacy Rhythm), 9 the chord's own room send, 10 the
+shared room send. The sends carry their level (`mix`) in the graph; the host feeds
+each into the reverb the part already has natively (the effects rack's for the
+chord, the master bus room for the rest).
+
+**Level and strip, per part, before the flip.** The web voices scale themselves at
+note time by the part's fader and mute (`_wp('mix.<part>')`), so for a graph part
+the page must send the host's strip a level of 1 and let only pan, mõdFX and the
+meter come from the host; sending the fader as well would apply it twice. The
+existing `_modNativeStripSync` is written for the mõdSynth path, where the voices
+do not scale themselves, and needs a switch per part.
+
+**Still to do.** The Objective-C++ host half (above; not built here). Wiring the
+page to call `modGraphEnable` for the native app once the plugin has the three
+methods, with a probe like `fileDelete`'s so an old binary falls back. The strip
+level switch above. mõdSynth on the parts other than the chord (the Processor
+already supports it; the page's `MODNAT.PART` has only the chord). `AudioWorklet`
+voices the recorder cannot hold: the mõdSynth web voice, and mõdFX's own worklet
+effects (those are native already, N3 and N4). Then the flip itself: the commit
+that turns it on for every part and deletes the web path.
 
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
 
