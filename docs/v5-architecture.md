@@ -1885,31 +1885,50 @@ Two things measured on the way, so nobody rediscovers them:
   lanes, 69 to 184 dB.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
-so it is not built). `ModEngineHost.mm` already runs a part as Processor, then
-rack, then strip, mõdFX, meter, pan, then the master (lines ~470 to 530). A graph
-part has no Processor, so:
+so not built). `ModEngineHost.mm` already runs a part as Processor, then rack,
+then strip, mõdFX, meter, pan, then the master (`renderInto:`). A graph part has
+no Processor, so:
 
-1. Own a `modsynth::GraphPool _graphs`. Three new messages on the plugin, all
-   taking the page's arrays as numbers or base64: `graphBuf {id, sampleRate,
-   channels}` into `_graphs.buffers().put`; `graph {gid, program, timeBase, at/ts}`
-   into `_graphs.begin(...)`, with `startFrame` worked out the way every other
-   message's `at` already is (`_partFrames`, the wall-clock stamp); `graphEdit
-   {gid, increments}` into `_graphs.edit(handle, ...)`. The page picks `gid`; the
-   host keeps `gid` to pool handle in a table only the control thread touches and
-   forgets a `gid` when `edit` says the handle is stale. `begin` returning -2
-   means "send `_graphs.unknownBuffer()` again": reply with that id.
-2. In `renderInto:`, before the part loop, zero a pair of bus buffers per part
-   and call `_graphs.render(blockFrame, frames, busL, busR, touched)`.
+1. Own a `modsynth::GraphPool _graphs`. Three new plugin methods, all taking what
+   the page sends (`_mgSend`, `_mgFlush` in `index.html`):
+   - `graphBuf {id, sampleRate, channels: [base64 Float32...]}` into
+     `_graphs.buffers().put(id, sr, nch, len, ch0, ch1)`.
+   - `graphBegin {gid, program: base64 Float64, base, ts}` into
+     `_graphs.begin(program, n, 0.0, startFrame)`. The program's times are
+     seconds from the moment the page opened the voice, so `timeBase` is 0.
+     `ts` is that moment on the page's wall clock (ms, with fractions, the same
+     clock the host already uses to place every other message), so `startFrame`
+     is the engine frame at wall-clock `ts`, worked out the way `mm.at` is. It is
+     a few ms in the past by the time the bridge delivers it: the pool catches a
+     late voice up (up to a second) rather than playing it from its start.
+     `begin` returns -2 for a clip it does not hold: answer with
+     `_graphs.unknownBuffer()` and the page sends that clip again.
+   - `graphEdit {gid, increments: base64 Float64}` into `_graphs.edit(handle,
+     inc, n)`. The page picks `gid`; keep `gid` to pool handle in a table only the
+     control thread touches, and drop a `gid` when `edit` says it is stale.
+   All three on the control thread (the one that drains plugin calls), in the
+   order the page sent them: a clip, then the graph that names it, then its edits.
+2. In `renderInto:`, before the part loop, zero `kBuses` (11) pairs of scratch
+   buffers and call `_graphs.render(blockFrame, frames, busL, busR, touched)`.
 3. In the loop, a part runs if it has a Processor **or** `touched[part]`: a
    Processor part adds its bus after its rack (the rack is a mõdSynth patch's own
-   Space and Drive, and web voices never had one); a graph-only part starts from
+   Space and Drive; web voices never had one); a graph-only part starts from
    silence. Strip, mõdFX, meter, pan, capture and the master are unchanged.
-4. Attach a part without a Processor: create its strip and mõdFX (as attach does
-   now) but no engine and no rack, and register its capture ring, so Bounce and
-   stems keep working for it.
-5. Warm up the pool before audio starts (render a few blocks with a silent graph)
-   so the first note does not pay for first-touch memory, as `warmUp` does for
-   the Processors.
+4. Buses 8, 9, 10 are not parts: 8 (the click, the legacy Rhythm) goes into the
+   master the way the chord's direct path does, with no strip; 9 (the chord room
+   send) feeds the effects rack's reverb of part 0; 10 (the shared room send)
+   feeds the master bus room (`_roomL/_roomR`). Their level is already in the
+   graph. Until the host does this the pool ignores them and the reverb on those
+   voices is silent, so do it before the page turns the path on.
+5. Attach a part without a Processor: its strip and mõdFX (as attach does now)
+   but no engine and no rack, and its capture ring, so Bounce and stems keep
+   working. The plugin's `ensurePart` is the place.
+6. Warm the pool before audio starts (load and render a few blocks of a silent
+   graph) so the first note does not pay for first-touch memory, as `warmUp`
+   does for the Processors.
+7. Probe: the page should not turn the path on until the plugin answers a
+   do-nothing `graphBuf` call, as it does for the file methods (`fileDelete`), so
+   an old binary falls back to Web Audio.
 
 **The page side is built, off (v4.9.9.9.9.9.5 on), and measured without a host.**
 `index.html` carries `GraphRec` (a copy of `tests/graph/graphrec.js`;
