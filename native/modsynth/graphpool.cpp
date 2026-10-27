@@ -36,6 +36,7 @@ int GraphPool::begin(const double *prog, size_t len, double timeBase, uint64_t s
       s.state.store(FREE, std::memory_order_release);
       if (unknown >= 0) { unknownBuf_.store(unknown, std::memory_order_relaxed); return -2; }
       dropped_.fetch_add(1, std::memory_order_relaxed);
+      droppedRefused_.fetch_add(1, std::memory_order_relaxed);
       return -1;
     }
     s.startFrame = startFrame;
@@ -47,6 +48,7 @@ int GraphPool::begin(const double *prog, size_t len, double timeBase, uint64_t s
     return (int)((gen << 8) | (uint32_t)i);
   }
   dropped_.fetch_add(1, std::memory_order_relaxed);
+  droppedBusy_.fetch_add(1, std::memory_order_relaxed);
   return -1;
 }
 
@@ -70,6 +72,7 @@ bool GraphPool::edit(int handle, const double *inc, size_t len) {
 }
 
 void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *const *busR, bool *touched) {
+  int playing = 0;
   for (int i = 0; i < kMaxVoices; i++) {
     Slot &s = slots_[i];
     int st = s.state.load(std::memory_order_acquire);
@@ -81,6 +84,7 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
       first = true;
     }
     if (st != PLAYING) continue;
+    playing++;
 
     // Edits queued before this block take effect at its start.
     uint32_t r = s.rd.load(std::memory_order_relaxed);
@@ -124,6 +128,7 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
       s.state.store(FREE, std::memory_order_release);
     }
   }
+  if (playing > peak_.load(std::memory_order_relaxed)) peak_.store(playing, std::memory_order_relaxed);
 }
 
 int GraphPool::active() const {

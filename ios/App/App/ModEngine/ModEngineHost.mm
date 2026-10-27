@@ -432,7 +432,8 @@ double num(id value, double fallback = 0) {
 
 - (NSDictionary *)graphStats {
   return @{@"voices": @(_graphs.active()), @"dropped": @((double)_graphs.dropped()),
-           @"lateEdits": @((double)_graphs.lateEdits())};
+           @"droppedBusy": @((double)_graphs.droppedBusy()), @"droppedRefused": @((double)_graphs.droppedRefused()),
+           @"peakVoices": @(_graphs.peakActive()), @"lateEdits": @((double)_graphs.lateEdits())};
 }
 
 - (BOOL)post:(NSDictionary *)message {
