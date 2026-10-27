@@ -46431,6 +46431,22 @@ function _natCapExtent(st){
   if(st) for(var i=0;i<st.F.length;i++){ f0=Math.min(f0,st.F[i]); fEnd=Math.max(fEnd,st.F[i]+st.L[i].length); }
   return { f0:f0, fEnd:fEnd };
 }
+// How many samples of a captured stream are above the floor, counted up to
+// `cap`. The streamed bounce asks this of the host's master as well as of the
+// web tap: with Native sound on the page's own master carries nothing, so a
+// take can be all host and the web side digitally silent — which the check
+// used to read as a dead capture ("Bounce came back silent") over a take that
+// was playing.
+function _natCapLive(st, cap){
+  var live=0;
+  if(st) for(var i=0;i<st.L.length;i++){
+    var L=st.L[i], R=st.R[i];
+    for(var k=0;k<L.length;k++){
+      if((L[k]>=0.0005 || L[k]<=-0.0005 || R[k]>=0.0005 || R[k]<=-0.0005) && ++live>=cap) return live;
+    }
+  }
+  return live;
+}
 // Adds a captured stream into the mix. Added, not set: the web taps wrote the
 // same buffers first, and while a part is moving between engines both can have
 // something to say.
@@ -46649,7 +46665,7 @@ async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
   var pl=modNativePlugin(), hdr=_wavHeaderBytes(nOut, sr, tags), name=_dlName(base+'.wav');
   await sink.drain();
   await pl.wavFinish({ pcm:sink.name, name:name, header:modPlatform.b64Of(hdr), folder:folder,
-    leadBytes:Math.max(0,sink.first-span.f0)*4, skipBytes:Math.max(0,span.f0-sink.first)*4, dataBytes:nOut*4 });
+    leadBytes:Math.max(0,(sink.first==null?span.f0:sink.first)-span.f0)*4, skipBytes:Math.max(0,span.f0-(sink.first==null?span.f0:sink.first))*4, dataBytes:nOut*4 });
   if(natMix){
     for(var i=0;i<natMix.F.length;i++){
       var at=natMix.F[i]-span.f0, src=natMix.L[i], srcR=natMix.R[i], from=0;
@@ -46726,16 +46742,25 @@ function _stopRecording(){
         try{ console.warn('[rec] stream failed', sink.failed); }catch(e){}
         return;
       }
-      var _sf0=sink.first, _sfEnd=sink.next, _sx=_natCapExtent(natMix);
-      _sf0=Math.min(_sf0,_sx.f0); _sfEnd=Math.max(_sfEnd,_sx.fEnd);
+      // sink.first is null when the web tap wrote nothing (a take played wholly
+      // by the host); Math.min(null, x) is 0, which would have made the mix
+      // start at frame 0 of the context and run for as long as it had been up.
+      var _sx=_natCapExtent(natMix);
+      var _sf0=sink.first==null ? _sx.f0 : Math.min(sink.first,_sx.f0);
+      var _sfEnd=sink.next==null ? _sx.fEnd : Math.max(sink.next,_sx.fEnd);
       span={ f0:_sf0, n:_sfEnd-_sf0 }; totalLen=span.n;
-      if(sink.live<64){
+      var _natLive=_natCapLive(natMix, 64);
+      if(sink.live<64 && _natLive<64){
         sink.discard();
         _isRecording=false;_updateRecBtn();
         _abandonStemTaps();
-        showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
+        // A host capture that failed (its sample rate or clock) leaves a take
+        // played by the engine looking exactly like a dead tap; name it.
+        showToast(nat && nat.failed
+          ? 'Bounce came back silent — the native engine could not be captured ('+nat.failed+'). Turn Native sound off in Settings to bounce the web sound.'
+          : 'Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
         try{ console.warn('[rec] capture was digitally silent',
-          {frames:totalLen, liveSamples:sink.live, peak:sink.peak,
+          {frames:totalLen, liveSamples:sink.live, nativeLive:_natLive, nativeFailed:nat&&nat.failed, peak:sink.peak,
            tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
         return;
       }
