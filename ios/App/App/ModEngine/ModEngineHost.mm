@@ -183,6 +183,7 @@ double num(id value, double fallback = 0) {
   std::atomic<uint32_t> _dropped;
   std::atomic<uint32_t> _notesOn;
   std::atomic<float> _peak;
+  std::atomic<float> _masterRms;           // the loudest block's RMS out of the master, held until read (the mixer's master meter)
   // Frames each processor has rendered, including the warm-up's. Processor
   // keeps its own frame counter privately and `at` is measured against it, so
   // the host has to know the same number to turn "in 20 ms" into a frame.
@@ -224,6 +225,7 @@ double num(id value, double fallback = 0) {
     _dropped.store(0);
     _notesOn.store(0);
     _peak.store(0.0f);
+    _masterRms.store(0.0f);
     for (int p = 0; p < kMaxParts; p++) {
       _live[p].store(nullptr, std::memory_order_relaxed);
       _partFrames[p] = 0;
@@ -752,9 +754,16 @@ double num(id value, double fallback = 0) {
   // Loudest sample this block, held until read. Silence and work are
   // indistinguishable in a load figure; they are not in this.
   float pk = 0.0f;
+  double sq = 0.0;
   for (int i = 0; i < frames; i++) {
     const float a = left[i] < 0 ? -left[i] : left[i];
     if (a > pk) pk = a;
+    sq += (double)left[i] * left[i] + (double)right[i] * right[i];
+  }
+  {
+    const float rms = (float)std::sqrt(sq / (2.0 * (double)frames));
+    float held = _masterRms.load(std::memory_order_relaxed);
+    while (rms > held && !_masterRms.compare_exchange_weak(held, rms, std::memory_order_relaxed)) {}
   }
   float was = _peak.load(std::memory_order_relaxed);
   while (pk > was && !_peak.compare_exchange_weak(was, pk, std::memory_order_relaxed)) {}
@@ -840,6 +849,7 @@ double num(id value, double fallback = 0) {
 }
 
 - (float)meterForPart:(int)part {
+  if (part == kMaxParts) return _masterRms.exchange(0.0f, std::memory_order_relaxed);   // the master, one past the parts
   if (part < 0 || part >= kMaxParts || !_strips[part]) return 0.0f;
   return _strips[part]->takeRms();
 }

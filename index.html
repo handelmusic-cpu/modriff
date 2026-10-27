@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5o</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5p</span></div>
  </div>
 </div>
 
@@ -9246,7 +9246,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5o</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5p</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10283,7 +10283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5o';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5p';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11421,6 +11421,28 @@ function _modNativeStripSyncAll(){ Object.keys(MODNAT.attached).forEach(_modNati
 // attached to it, or it is played as recorded graphs (and not on a patch).
 function _modNativeCarries(part){ var a = MODNAT.attached[part]; return !!a && (!!a.port || _mgOnGraph(part)); }
 MODNAT.rms = {}; MODNAT.metersAt = 0; MODNAT.metersBusy = false; MODNAT.meterTap = {};
+// The mixer's master meter when the host is playing something: the web master's RMS and
+// the host master's, added as powers (two masters sum at the speaker). Reading the web
+// master alone left the meter dead once every part was native.
+var _mnMasterTap = null, _mnTmp = new Float32Array(256);
+function _modNativeMasterMeter(web){
+ if(!_mnMasterTap){
+  var hostTap = null;
+  _mnMasterTap = { web:null, getFloatTimeDomainData:function(buf){
+   hostTap = hostTap || _modNativeMeter('__master');
+   hostTap.getFloatTimeDomainData(_mnTmp);             // polls the host; its value is the master's
+   var h = _mnTmp[0] || 0, w = 0;
+   if(_mnMasterTap.web){
+    _mnMasterTap.web.getFloatTimeDomainData(_mnTmp);
+    var q = 0; for(var i=0;i<_mnTmp.length;i++) q += _mnTmp[i]*_mnTmp[i];
+    w = Math.sqrt(q / _mnTmp.length);
+   }
+   buf.fill(Math.sqrt(w*w + h*h));
+  } };
+ }
+ _mnMasterTap.web = web;
+ return _mnMasterTap;
+}
 function _modNativeMeter(part){
  if(MODNAT.meterTap[part]) return MODNAT.meterTap[part];
  return (MODNAT.meterTap[part] = { getFloatTimeDomainData: function(buf){
@@ -11431,9 +11453,12 @@ function _modNativeMeter(part){
     MODNAT.metersAt = now; MODNAT.metersBusy = true;
     p.meters().then(function(r){
      MODNAT.metersBusy = false;
-     if(r && r.rms) Object.keys(MODNAT.PART).forEach(function(k){
-      var v = r.rms[MODNAT.PART[k]]; if(v != null) MODNAT.rms[k] = v;
-     });
+     if(r && r.rms){
+      Object.keys(MODNAT.PART).forEach(function(k){
+       var v = r.rms[MODNAT.PART[k]]; if(v != null) MODNAT.rms[k] = v;
+      });
+      if(r.rms[8] != null) MODNAT.rms.__master = r.rms[8];      // an older binary sends eight
+     }
     }).catch(function(){ MODNAT.metersBusy = false; });
    }
   }
@@ -12118,10 +12143,12 @@ function _graphStatusText(cb){
  if(!MODGRAPH.on){ cb(_graphPathWanted() ? (MODGRAPH.failed ? 'Not available in this build of the app.' : 'Starting…') : 'Off. Every part plays through Web Audio.'); return; }
  window.modNative.stats().then(function(s){
   var g = s.graph || {}, slow = s.slowCount || 0, drop = g.dropped || 0, late = g.lateEdits || 0;
-  var clean = MODGRAPH.sent > 0 && !MODGRAPH.fellBack && !drop && !late && !slow;
+  var miss = s.missed || 0;
+  var clean = MODGRAPH.sent > 0 && !MODGRAPH.fellBack && !drop && !late && !miss;
   cb((clean ? 'Clean. ' : MODGRAPH.sent ? 'Check these. ' : 'Nothing played yet. ') +
      MODGRAPH.sent + ' notes sent · ' + MODGRAPH.fellBack + ' fell back to Web Audio · ' + drop + ' dropped by the engine · ' +
-     late + ' late edits · ' + slow + ' slow blocks (worst ' + (Math.round((s.maxRenderUs||0)/100)/10) + ' ms) · load ' + Math.round((s.load||0)*100) + '%');
+     late + ' late edits · ' + miss + ' blocks missed their deadline · ' + slow + ' of ' + (s.renderBlocks||0) + ' blocks over 2 ms (worst ' +
+     (Math.round((s.maxRenderUs||0)/100)/10) + ' ms) · load ' + Math.round((s.load||0)*100) + '%');
  }, function(){ cb('Engine not answering.'); });
 }
 function _graphPathSync(){
@@ -56117,12 +56144,17 @@ function _mixAnalyserFor(id){
 }
 function _mixMasterAnalyserGet(){
  const ctx=getCtx(); if(!ctx) return null;
- if(_mixMasterAnalyser && _mixMasterAnalyser.context===ctx) return _mixMasterAnalyser;
- const src=window._masterOut || window._masterLimiter;
- if(!src) return null;
- const an=ctx.createAnalyser(); an.fftSize=256; an.smoothingTimeConstant=0.5;
- try{ src.connect(an); }catch(e){ return null; }
- _mixMasterAnalyser=an;
+ let an=null;
+ if(_mixMasterAnalyser && _mixMasterAnalyser.context===ctx) an=_mixMasterAnalyser;
+ else {
+  const src=window._masterOut || window._masterLimiter;
+  if(!src) return null;
+  an=ctx.createAnalyser(); an.fftSize=256; an.smoothingTimeConstant=0.5;
+  try{ src.connect(an); }catch(e){ return null; }
+  _mixMasterAnalyser=an;
+ }
+ // With the host playing a part, the master it makes is part of what is heard.
+ if(MODNAT.started && Object.keys(MODNAT.attached).some(_modNativeCarries)) return _modNativeMasterMeter(an);
  return an;
 }
 

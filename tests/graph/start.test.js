@@ -82,6 +82,12 @@ function stubScript(withGraph) {
         out.meterHost = _mixAnalyserFor('bass') === MODNAT.meterTap.bass;
         window._webParams['bass.voice'] = 'modsynth';
         { const an = _mixAnalyserFor('bass'); out.meterWebOnPatch = an !== MODNAT.meterTap.bass && !!an; }
+        // The master meter adds the host master's RMS (slot 8 of meters) to the web master's.
+        masterDest(getCtx());
+        MODNAT.plugin.meters = () => Promise.resolve({ rms: [0, 0, 0, 0, 0, 0, 0, 0, 0.3] });
+        { const m = _mixMasterAnalyserGet(), b = new Float32Array(256); m.getFloatTimeDomainData(b);
+          await new Promise(r => setTimeout(r, 150)); m.getFloatTimeDomainData(b);
+          out.masterMeter = { host: typeof m.web !== 'undefined', rms: Math.round(_mixLevel(m) * 1000) / 1000 }; }
         out.bassOnGraphWhenModsynth = _mgOnGraph('bass');
         window._webParams['bass.voice'] = 'upright';
       }
@@ -99,6 +105,7 @@ function stubScript(withGraph) {
       ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
+      ok(r.masterMeter.host && Math.abs(r.masterMeter.rms - 0.3) < 0.02, 'the master meter includes the host master', JSON.stringify(r.masterMeter));
       ok(r.meterHost && r.meterWebOnPatch, 'the mixer meter reads the host for a graph part and the web bus for one on a patch', JSON.stringify([r.meterHost, r.meterWebOnPatch]));
     }
     // The Settings switch: the app starts the path itself, no console.
