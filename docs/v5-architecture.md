@@ -1930,7 +1930,7 @@ no Processor, so:
    do-nothing `graphBuf` call, as it does for the file methods (`fileDelete`), so
    an old binary falls back to Web Audio.
 
-**The host half is written (v4.9.9.9.9.9.5c), built, and measured offline; heard on a phone: not yet.**
+**The host half is written (v4.9.9.9.9.9.5c), built, and measured offline; heard on a phone (drums and bass by ear and by counter, the click, the sampler and the chord by ear; mel, arp, melgen and Aux, and every part at once, not yet).**
 `ModEngineHost` owns the pool; `graphProbe`, `graphBuf`, `graphBegin`, `graphEdit` are plugin
 methods; `ensurePart {graph: true}` builds a part's strip and mõdFX with no Processor and no
 rack (codes 8 to 10 are buses and only switch the pool on); `renderInto:` plays the pool before
@@ -2011,6 +2011,27 @@ the page must send the host's strip a level of 1 and let only pan, mõdFX and th
 meter come from the host; sending the fader as well would apply it twice. The
 existing `_modNativeStripSync` is written for the mõdSynth path, where the voices
 do not scale themselves, and needs a switch per part.
+
+**Found on the phone, 5d to 5m.**
+- A mõdSynth patch on a part played as graphs has no Processor on the host: `MODNAT.proc`
+  says which parts have one, and only those are handed over (5d). Without it bass and mel on a
+  patch were silent after `modGraphStart`.
+- The click entered the master through `masterDest`, the drive and the bus room, so every beat had
+  reverb. It enters at the glue now (`_masterComp`), and that node resolves to bus 8 (5g).
+- `gcheck(parts, secs)` is in the page: it clears the console and prints one PASS or FAIL line with
+  the counters, because Safari's inspector buried the objects.
+- Melody Mono / Poly with a glide time (5e), and the strip's two-finger zoom is Mono only (5f):
+  in Poly a second finger was read as a pinch and a chord never sounded.
+- **The sampler's microphone (5h to 5m).** The page's plugin wrapper lists method names by hand, so a
+  new native method must be added there or the page cannot see it (`micPermission` was missing and
+  iOS was never asked). With iOS granted, the web view's `getUserMedia` still failed with an
+  `InvalidStateError`: it worked when everything was Web Audio, and the native engine now owns the
+  audio session. Inside the app the take is recorded from a second `AVAudioEngine`'s input node
+  (`micStart`, `micRead`, `micStop`, polled every 50 ms); a binary without them, or a browser, still
+  uses `getUserMedia`. The session is `.playAndRecord` from launch (5j; `.mixWithOthers`,
+  `.defaultToSpeaker`, `.allowBluetoothA2DP`), kept because the second engine needs it.
+- mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
+  library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
 **Still to do.** The Objective-C++ host half (above; not built here). Wiring the
 page to call `modGraphEnable` for the native app once the plugin has the three
