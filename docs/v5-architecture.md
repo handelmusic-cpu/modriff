@@ -1778,6 +1778,270 @@ rack; and a pad gesture that sets 11 parameters per frame will overrun a
 queue sized for notes unless the page coalesces by index (the 1024-slot queue
 already dropped a note-off once).
 
+### The graph interpreter: the voices go native without being rewritten (branch `claude/native-voices`, C++ and page-side only)
+
+**The change of plan.** The flip was written as "port every voice to C++". Counted
+(above): `makeVoice` is 900 lines, the drum kits another 260 plus their tables,
+the bass voice, sample playback and the sampler pads, and each is a Web Audio
+*node graph*, not arithmetic, so none of it can be null tested. Rewriting that
+is a rewrite of the instrument, with a new bug per voice.
+
+What the page already does for a note is build a small graph of nodes
+(oscillators, gains, biquads, buffer sources, shapers, a panner, a delay) and
+automate their parameters. Counted over `index.html`, the voices use seven node
+types (gain, oscillator, biquad, buffer source, wave shaper, stereo panner,
+delay) and the AudioParam methods set, linear, exponential, target and cancel;
+the rest of the file's `create*` calls are the master chain, analysers and the
+recorder, which are not voices. So instead of porting each voice:
+
+- **`tests/graph/graphrec.js`** is a stand-in `AudioContext`. A voice is called
+  with it instead of the real context and it *writes down* what the voice
+  builds: nodes, connections, every parameter's timeline, buffers. The output is
+  one flat number array (layout in the file's header), so it crosses the bridge
+  with no parser. The voice code stays the single source of truth: change
+  `makeVoice` and the native sound changes with it.
+- **`native/modsynth/graph.{h,cpp}`** reads that array and plays it, in 128-frame
+  quanta, with the browser's AudioParam timeline (set, linear, exponential,
+  target; audio-rate modulation summed on top), a band-limited wavetable
+  oscillator built the way a browser builds a PeriodicWave (three tables an
+  octave, crossfaded, normalised by the real peak), RBJ biquads, a wave
+  shaper, a stereo panner, a delay, and buffer playback.
+- Endpoints that belong to the host (a part's bus, a reverb send) are `ext`
+  nodes the recorder hands out by name; the interpreter exposes their summed
+  output for the host to route.
+
+**Measured, against the browser's own render of the same voice**
+(`make -C native/modsynth graphrender && node tests/graph/voices.test.js`):
+the real `makeVoice` is run into an `OfflineAudioContext` and into the recorder,
+with one seeded `Math.random`, and the C++ render is compared with Chromium's.
+Nine voices (sine, triangle, square, saw, supersaw, pad, piano, organ, rhodes) at
+C3, C4 and C5, 27 renders: signal-to-error 67 to 114 dB, no 10 ms window off by
+more than 0.01 dB, peaks identical. The piano is the least exact (67 to 69 dB;
+its filter sweep is the one place the browser's per-sample ramp and our
+per-block coefficients part ways). That is near sample-exact with no null test
+to lean on; the tolerance the test holds is 60 dB.
+
+Two things measured on the way, so nobody rediscovers them:
+
+1. A browser normalises a PeriodicWave by its *real* peak, not the largest table
+   sample. A saw sampled on a 4096-point table reads 4% low, and every saw and
+   square came out 4% too loud until the peak was found on an 8x finer grid.
+2. **A browser oscillator that starts in the middle of a render quantum reads
+   its first quantum's frequency-modulation samples from the wrong end** (frame
+   480: a 0.1 rad carrier phase offset with FM; frame 512: none). It is a
+   browser quirk and not copied. The test starts its notes on a quantum
+   boundary so it compares the maths and not the quirk; on a phone a note
+   starts wherever it starts and the difference is inaudible.
+
+**Built since, all measured here** (`tests/graph/`, `native/modsynth/graph*`):
+
+- **Live edits.** A held note is changed after it starts (release, choke,
+  glide, a source's `stop`), so the recorder keeps a handle on a graph it has
+  sent and writes each later call as a six-number increment (`takeIncrements`);
+  `Graph::apply` runs them. `cancelAndHoldAtTime` is the browser's rule, not the
+  obvious one: it cuts a ramp in progress short at the cancel time on the value
+  reached, turns a target still decaying into a set, and leaves a param that is
+  sitting at a set value alone (so a release ramp added afterwards starts from
+  the earlier set, exactly as in a browser; an earlier version that always held
+  got a sustained note's release wrong by 34 dB). Held to the browser:
+  a release on six real voices, and `tests/graph/edits.test.js` (a choke
+  mid-decay, a target mid-settle, cancel-then-set, an early stop, chained
+  automation, a filter sweep with a shaper and a pan, a delay): 70 to 112 dB.
+- **Two browser habits copied, because the page's own sound has them.** A source
+  that starts between frames starts sub-sample (a noise burst 155 to 171 dB, an
+  oscillator 94 dB against the browser); and an oscillator that starts part-way
+  through a render quantum reads that quantum's frequency and detune from the
+  start of the quantum. Copying the second took the piano from 67 to 94-100 dB
+  and an FM voice from 20 to 106 dB. The voice test now starts its notes at frame
+  480 on purpose.
+- **A biquad** recomputes its coefficients every 8 frames while a param moves
+  (`MODSYNTH_BIQUAD_STEP`): measured on a lowpass sweep, every frame 72.4 dB,
+  every 8 about 70, every 16 65.1.
+- **Recorded audio is by id.** A decoded clip crosses once (`takeNewBuffers`,
+  `BufferStore`) and a graph names it; a graph that names an id the host lacks is
+  refused with -2 and the id, so the page sends the clip again and retries. A
+  clip at another rate plays at its own pace.
+- **The pool** (`graphpool.{h,cpp}`) is what the host calls: `begin`/`edit` from
+  the control thread, `render` from the render thread, a slot state machine so
+  the render thread never allocates, locks or frees. A voice starts at an engine
+  frame, applies queued edits at a block start, sums into its part's bus by ext
+  code, and retires when its sources have stopped and the tail has gone quiet.
+  `graphpooltest`: 24 checks (exact sums with starts between blocks, edits
+  before and after start, retirement, a full pool, slot reuse over 600 notes, a
+  control thread racing the render thread, recorded audio and a half-rate clip),
+  clean under ThreadSanitizer.
+- **Drums.** `tests/graph/drums.test.js` plays every lane of every kit in `SQM`
+  into a browser `OfflineAudioContext` and through the recorder and interpreter
+  (two hooks patched into the served page in memory; `index.html` is untouched).
+  **All 256 lanes of 36 kits hold**, 69 to 175 dB against the browser (the
+  weakest are a cymbal and a hat at 76 to 81 dB: a filtered noise through a
+  sweeping band). Two lanes are held to a lower, stated limit because the
+  browser itself does something odd there: the mõdKit kick, whose sub tone
+  starts 10 ms after its frequency ramp began (a browser evaluates that first
+  quantum's automation from the ramp's start: a few samples of phase on a 48 Hz
+  tone, 30 dB), and the 808 clap (one sample at a burst that lands exactly on a
+  frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
+  beatbox) play their real decoded samples through the buffer store: all 35
+  lanes, 69 to 184 dB.
+
+**Host integration: what the Mac session does** (Objective-C++, not edited here,
+so not built). `ModEngineHost.mm` already runs a part as Processor, then rack,
+then strip, mõdFX, meter, pan, then the master (`renderInto:`). A graph part has
+no Processor, so:
+
+1. Own a `modsynth::GraphPool _graphs`. Three new plugin methods, all taking what
+   the page sends (`_mgSend`, `_mgFlush` in `index.html`):
+   - `graphBuf {id, sampleRate, channels: [base64 Float32...]}` into
+     `_graphs.buffers().put(id, sr, nch, len, ch0, ch1)`.
+   - `graphBegin {gid, program: base64 Float64, base, ts}` into
+     `_graphs.begin(program, n, 0.0, startFrame)`. The program's times are
+     seconds from the moment the page opened the voice, so `timeBase` is 0.
+     `ts` is that moment on the page's wall clock (ms, with fractions, the same
+     clock the host already uses to place every other message), so `startFrame`
+     is the engine frame at wall-clock `ts`, worked out the way `mm.at` is. It is
+     a few ms in the past by the time the bridge delivers it: the pool catches a
+     late voice up (up to a second) rather than playing it from its start.
+     `begin` returns -2 for a clip it does not hold: answer with
+     `_graphs.unknownBuffer()` and the page sends that clip again.
+   - `graphEdit {gid, increments: base64 Float64}` into `_graphs.edit(handle,
+     inc, n)`. The page picks `gid`; keep `gid` to pool handle in a table only the
+     control thread touches, and drop a `gid` when `edit` says it is stale.
+   All three on the control thread (the one that drains plugin calls), in the
+   order the page sent them: a clip, then the graph that names it, then its edits.
+2. In `renderInto:`, before the part loop, zero `kBuses` (11) pairs of scratch
+   buffers and call `_graphs.render(blockFrame, frames, busL, busR, touched)`.
+3. In the loop, a part runs if it has a Processor **or** `touched[part]`: a
+   Processor part adds its bus after its rack (the rack is a mõdSynth patch's own
+   Space and Drive; web voices never had one); a graph-only part starts from
+   silence. Strip, mõdFX, meter, pan, capture and the master are unchanged.
+4. Buses 8, 9, 10 are not parts: 8 (the click, the legacy Rhythm) goes into the
+   master the way the chord's direct path does, with no strip; 9 (the chord room
+   send) feeds the effects rack's reverb of part 0; 10 (the shared room send)
+   feeds the master bus room (`_roomL/_roomR`). Their level is already in the
+   graph. Until the host does this the pool ignores them and the reverb on those
+   voices is silent, so do it before the page turns the path on.
+5. Attach a part without a Processor: its strip and mõdFX (as attach does now)
+   but no engine and no rack, and its capture ring, so Bounce and stems keep
+   working. The plugin's `ensurePart` is the place.
+6. Warm the pool before audio starts (load and render a few blocks of a silent
+   graph) so the first note does not pay for first-touch memory, as `warmUp`
+   does for the Processors.
+7. Probe: the page should not turn the path on until the plugin answers a
+   do-nothing `graphBuf` call, as it does for the file methods (`fileDelete`), so
+   an old binary falls back to Web Audio.
+
+**The host half is written (v4.9.9.9.9.9.5c), built, and measured offline; heard on a phone (drums and bass by ear and by counter, the click, the sampler and the chord by ear; mel, arp, melgen and Aux, and every part at once, not yet).**
+`ModEngineHost` owns the pool; `graphProbe`, `graphBuf`, `graphBegin`, `graphEdit` are plugin
+methods; `ensurePart {graph: true}` builds a part's strip and mõdFX with no Processor and no
+rack (codes 8 to 10 are buses and only switch the pool on); `renderInto:` plays the pool before
+the part loop, runs a graph part while it has voices and for 8 s of mõdFX tail, and applies strip
+and mõdFX messages to a part with no Processor. What differs from the list above, and why:
+
+- **Buses 9 and 10 are wet-only reverb returns, not inputs of the rack or the bus room.** The rack's
+  reverb adds a tail to a dry input at the rack's own mix, and the bus room input is dry and
+  roomed together; the graph carries the raw send (voice x mix), which the web feeds to a
+  ConvolverNode whose output is the tail alone. `FxRack::setSendReverb/processSend` is that
+  convolver as the rack's network, wet only, at unit gain, fitted to the page's impulse
+  (noise falling as (1-t)^2.5 over 1.8 s): `tests/graph/sendreverb.test.js` holds it to a
+  browser ConvolverNode, 0.3 dB on steady noise and +1.2 / -3.1 dB per 100 ms over the first
+  1.2 s of the tail. Bus 9 (the chord's room) returns to the direct path, as the web's pair does
+  into the glue; bus 10 (the shared room) returns into the bus room sum, as the web's
+  convolver feeds `masterDest`. Not yet followed: the page's `chord.reverbSize` slider (the
+  rooms are 1.8 s).
+- A voice's start frame is `(ts - offset) * rate / 1000` with `offset` the wall-clock offset of the
+  last block (the one `applyMessage` uses to place a note), published each block.
+- A throwaway pool plays a short tone at the first `ensurePart {graph}` to warm code and heap.
+- A loop point within 1e-6 of a frame snaps to it (`graph.cpp`): current Chrome wraps a looping
+  clip at a loop end that the page computed as 0.6000000000000001 s, the interpreter did not.
+
+`native/modsynth/graphhosttest` (26 checks) drives the real `ModEngineHost.mm` off the audio
+graph: a part with no Processor, buses 8 to 10, the strip, tails, a missing clip (-2 and its id),
+edits, a part with both. Run `make -C native/modsynth graphhosttest && native/modsynth/graphhosttest`.
+
+**The page side is built, off (v4.9.9.9.9.9.5 on), and measured without a host.**
+`index.html` carries `GraphRec` (a copy of `tests/graph/graphrec.js`;
+`inline.test.js` fails if they drift) and a small module, `modGraphEnable(plugin,
+parts)`, that is the only thing that turns it on; nothing in the app calls it, so
+`getCtx()` and every message are exactly as before. For a part it is on for, the
+page builds the voice on a recorder instead of the real context, names the page's
+own bus nodes to the host (a part's bus with the fixed gain it carries, the two
+rooms, the master), and sends the program, any new clip, and later edits (a
+release, a choke, a glide, a source's `stop`) as `graphBuf`, `graphBegin`,
+`graphEdit` on the plugin. A voice that reaches a node it cannot name, or uses a
+node type a program cannot carry, is not sent; it is built again on the real
+context, so a gap is a sound that stays on Web Audio, never a missing note. A part
+on a mõdSynth patch is left alone (the Processor plays those).
+
+`tests/graph/page.test.js` is the proof. The real page runs a pattern through
+`window.modEngine.send` twice on an `OfflineAudioContext` standing in for its own:
+as the web engine is, and with the graph path on and a stand-in plugin whose
+messages `native/modsynth/graphmix` plays through the pool as the host would. The
+two are compared on the buses the host would sum. All of these hold, peaks
+identical and **no fallbacks** (`sh tests/graph/page-all.sh`):
+
+| path | what it runs | result |
+|---|---|---|
+| drum, auxperc | 808 and 909 lanes, an open hat choked by a closed one | 71 / 97 dB |
+| bass, melgen, arp, mel | notes, a bass slide path, voices on the chord rooms | 110 / 67 / 90 / 82 dB |
+| chord | a held chord with the Sub, the chord room and a release | 75 dB |
+| click, rhythm | straight into the master | 70 / 128 dB |
+| sampler | a clip, a looping window with a release, a re-pitched clip | 156 dB |
+| mel glide | the bend strip's glissando, `hz` and `y` changed while it sounds | 76 dB |
+| recorded voices | piano, violin, flute, upright bass, the jazz kit's samples | 98 / 64 / 92 / 88 / 61 dB |
+
+Things this turned up, each of them a browser habit now copied in
+`graph.cpp`: a source starts at the first whole frame at or after its start time
+with no allowance for rounding (1.1 s begins a frame after 0.1 s does); a moving
+frequency is read sample by sample and then the start is not applied sub-sample;
+a buffer source's `offset` is rounded to a whole frame. And things on the page
+side: lazy buses were being built on whatever context was current (a recorder),
+caches keyed by context identity regenerated their random data per note, and two
+reverb sends were made on the real context instead of the recorder.
+
+**Codes the host maps** (`GraphPool::kBuses` = 11): 0 to 7 a part's bus
+(chord, mel, melgen, bass, arp, drum, auxperc, sampler), 8 straight into the
+master (the click and the legacy Rhythm), 9 the chord's own room send, 10 the
+shared room send. The sends carry their level (`mix`) in the graph; the host feeds
+each into the reverb the part already has natively (the effects rack's for the
+chord, the master bus room for the rest).
+
+**Level and strip, per part, before the flip.** The web voices scale themselves at
+note time by the part's fader and mute (`_wp('mix.<part>')`), so for a graph part
+the page must send the host's strip a level of 1 and let only pan, mõdFX and the
+meter come from the host; sending the fader as well would apply it twice. The
+existing `_modNativeStripSync` is written for the mõdSynth path, where the voices
+do not scale themselves, and needs a switch per part.
+
+**Found on the phone, 5d to 5m.**
+- A mõdSynth patch on a part played as graphs has no Processor on the host: `MODNAT.proc`
+  says which parts have one, and only those are handed over (5d). Without it bass and mel on a
+  patch were silent after `modGraphStart`.
+- The click entered the master through `masterDest`, the drive and the bus room, so every beat had
+  reverb. It enters at the glue now (`_masterComp`), and that node resolves to bus 8 (5g).
+- `gcheck(parts, secs)` is in the page: it clears the console and prints one PASS or FAIL line with
+  the counters, because Safari's inspector buried the objects.
+- Melody Mono / Poly with a glide time (5e), and the strip's two-finger zoom is Mono only (5f):
+  in Poly a second finger was read as a pinch and a chord never sounded.
+- **The sampler's microphone (5h to 5m).** The page's plugin wrapper lists method names by hand, so a
+  new native method must be added there or the page cannot see it (`micPermission` was missing and
+  iOS was never asked). With iOS granted, the web view's `getUserMedia` still failed with an
+  `InvalidStateError`: it worked when everything was Web Audio, and the native engine now owns the
+  audio session. Inside the app the take is recorded from a second `AVAudioEngine`'s input node
+  (`micStart`, `micRead`, `micStop`, polled every 50 ms); a binary without them, or a browser, still
+  uses `getUserMedia`. The session is `.playAndRecord` from launch (5j; `.mixWithOthers`,
+  `.defaultToSpeaker`, `.allowBluetoothA2DP`), kept because the second engine needs it.
+- mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
+  library sits 1 to 4 dB under the app's own voices; the owner has let it be.
+
+**Still to do.** The Objective-C++ host half (above; not built here). Wiring the
+page to call `modGraphEnable` for the native app once the plugin has the three
+methods, with a probe like `fileDelete`'s so an old binary falls back. The strip
+level switch above. mõdSynth on the parts other than the chord (the Processor
+already supports it; the page's `MODNAT.PART` has only the chord). `AudioWorklet`
+voices the recorder cannot hold: the mõdSynth web voice, and mõdFX's own worklet
+effects (those are native already, N3 and N4). Then the flip itself: the commit
+that turns it on for every part and deletes the web path.
+
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
 
 **Decision (4.9.9.9.9.8.9x): not for 5.0.0.** Background play is punted until

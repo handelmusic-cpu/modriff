@@ -29,8 +29,29 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "shareFiles", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "fileDelete", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "wavFinish", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphProbe", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micRead", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micStop", returnType: CAPPluginReturnPromise)
     ]
+
+    // The sampler's microphone take. The web view's getUserMedia was granted by iOS
+    // and still failed on the phone (InvalidStateError), so the app opens its own
+    // input: a second AVAudioEngine whose input node is tapped, the samples kept
+    // here until the page reads them. The session is already play-and-record
+    // (AppDelegate), so opening it changes nothing for the output engine.
+    private var micEngine: AVAudioEngine?
+    private let micLock = NSLock()
+    private var micL: [Float] = []
+    private var micR: [Float] = []
+    private var micRate: Double = 0
+    private static let micMaxFrames = 48_000 * 60     // a reader that has stopped asking does not grow this forever
 
     /// Capacitor calls this when it registers the plugin. It is the only
     /// proof that a CAPBridgedPlugin declared in the app target — rather than
@@ -165,13 +186,74 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         let part = call.getInt("part") ?? 0
         // Warmed before it is published: the engine is already running, and a
         // warm-up played into a part the render thread can see is heard.
-        let ok = (call.getBool("warm") ?? true) ? host.warmUpPart(Int32(part))
+        // `graph: true` is a part played as recorded Web Audio graphs: a strip and
+        // mõdFX with no engine and no rack behind them (nothing to warm, no
+        // Processor to build).
+        let ok = (call.getBool("graph") ?? false) ? host.ensureGraphPart(Int32(part))
+               : (call.getBool("warm") ?? true) ? host.warmUpPart(Int32(part))
                                                 : host.ensurePart(Int32(part))
         guard ok else {
             call.reject("part \(part) out of range")
             return
         }
         call.resolve(["part": part])
+    }
+
+    // MARK: - The graph path
+    //
+    // The page records a voice as a Web Audio graph and sends it as numbers
+    // (`_mgSend` in index.html); the host plays it with the C++ interpreter. The
+    // page asks `graphProbe` once before it turns the path on, so a binary
+    // without these methods is left on Web Audio. Order matters and Capacitor
+    // keeps it: a clip (graphBuf), then the graph that names it (graphBegin), then
+    // its edits (graphEdit).
+
+    /// Does nothing and resolves: the answer is that the method exists.
+    @objc func graphProbe(_ call: CAPPluginCall) {
+        call.resolve(["graph": true])
+    }
+
+    /// A decoded clip, once: `channels` are base64 float32, one or two.
+    @objc func graphBuf(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let id = call.getInt("id"), let sr = call.getDouble("sampleRate"),
+              let b64 = call.getArray("channels", String.self), !b64.isEmpty else {
+            call.reject("graphBuf needs id, sampleRate and channels")
+            return
+        }
+        let chans = b64.compactMap { Data(base64Encoded: $0) }
+        guard chans.count == b64.count, host.putGraphBuffer(Int32(id), sampleRate: sr, channels: chans) else {
+            call.reject("graphBuf could not read the clip")
+            return
+        }
+        call.resolve()
+    }
+
+    /// Starts a voice. `program` is base64 float64; `ts` is the page's wall
+    /// clock (ms) when it opened the voice. Resolves `handle` (>= 0), `-2` with
+    /// `unknownBuffer` when a clip it names is missing (the page sends that clip
+    /// again), or `-1` when it was refused or the pool is full.
+    @objc func graphBegin(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let gid = call.getInt("gid"), let b64 = call.getString("program"),
+              let program = Data(base64Encoded: b64) else {
+            call.reject("graphBegin needs gid and program")
+            return
+        }
+        let r = host.beginGraph(Int32(gid), program: program, timestampMs: call.getDouble("ts") ?? 0)
+        call.resolve(["handle": r["handle"] ?? -1, "unknownBuffer": r["unknownBuffer"] ?? -1])
+    }
+
+    /// A change to a voice that has begun. Resolves `ok` false when it has
+    /// already finished.
+    @objc func graphEdit(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let gid = call.getInt("gid"), let b64 = call.getString("increments"),
+              let inc = Data(base64Encoded: b64) else {
+            call.reject("graphEdit needs gid and increments")
+            return
+        }
+        call.resolve(["ok": host.editGraph(Int32(gid), increments: inc)])
     }
 
     /// One worklet-shaped message. Parsed into a POD and queued here, on
@@ -466,6 +548,99 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Asks iOS for the microphone itself, so the permission sheet comes from the
+    /// app and the app gets its row in Settings. Left to the web view, getUserMedia
+    /// was refused without iOS ever being asked (no sheet, no row, nothing to
+    /// switch on), and the sampler could not record. Resolves with the answer; it
+    /// does not open the microphone.
+    @objc func micPermission(_ call: CAPPluginCall) {
+        let session = AVAudioSession.sharedInstance()
+        func status(_ p: AVAudioSession.RecordPermission) -> String {
+            switch p {
+            case .granted: return "granted"
+            case .denied: return "denied"
+            default: return "undetermined"
+            }
+        }
+        if session.recordPermission == .undetermined {
+            session.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    call.resolve(["granted": granted, "status": granted ? "granted" : "denied"])
+                }
+            }
+        } else {
+            let st = status(session.recordPermission)
+            call.resolve(["granted": st == "granted", "status": st])
+        }
+    }
+
+    /// This app's page in the Settings app: where the microphone switch is once iOS
+    /// has been told no, after which it never asks again.
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { call.resolve(["opened": false]); return }
+            UIApplication.shared.open(url, options: [:]) { ok in call.resolve(["opened": ok]) }
+        }
+    }
+
+    @objc func micStart(_ call: CAPPluginCall) {
+        stopMic()
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            call.reject("no microphone input")
+            return
+        }
+        micLock.lock(); micL.removeAll(keepingCapacity: true); micR.removeAll(keepingCapacity: true); micRate = format.sampleRate; micLock.unlock()
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let self = self, let ch = buffer.floatChannelData else { return }
+            let n = Int(buffer.frameLength)
+            let left = ch[0]
+            let right = buffer.format.channelCount > 1 ? ch[1] : ch[0]
+            self.micLock.lock()
+            if self.micL.count < ModEngine.micMaxFrames {
+                self.micL.append(contentsOf: UnsafeBufferPointer(start: left, count: n))
+                self.micR.append(contentsOf: UnsafeBufferPointer(start: right, count: n))
+            }
+            self.micLock.unlock()
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            call.reject("microphone engine: \(error.localizedDescription)")
+            return
+        }
+        micEngine = engine
+        call.resolve(["sampleRate": format.sampleRate, "channels": Int(format.channelCount)])
+    }
+
+    /// The samples gathered since the last read: left then right, float32, base64.
+    @objc func micRead(_ call: CAPPluginCall) {
+        micLock.lock()
+        let l = micL, r = micR, rate = micRate
+        micL.removeAll(keepingCapacity: true); micR.removeAll(keepingCapacity: true)
+        micLock.unlock()
+        var data = Data(capacity: (l.count + r.count) * 4)
+        l.withUnsafeBufferPointer { data.append(UnsafeBufferPointer(start: $0.baseAddress, count: l.count)) }
+        r.withUnsafeBufferPointer { data.append(UnsafeBufferPointer(start: $0.baseAddress, count: r.count)) }
+        call.resolve(["frames": l.count, "sampleRate": rate, "data": data.base64EncodedString()])
+    }
+
+    @objc func micStop(_ call: CAPPluginCall) {
+        stopMic()
+        call.resolve()
+    }
+
+    private func stopMic() {
+        guard let engine = micEngine else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        micEngine = nil
+    }
+
     @objc func stats(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         let blocks = max(renderBlocks, 1)
@@ -484,6 +659,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "avgRenderUs": Double(renderNanosTotal) / Double(blocks) / 1000.0,
             "maxRenderUs": Double(renderNanosMax) / 1000.0,
             "load": load,
+            "graph": host.graphStats(),
             "slowCount": Int(slowCount),
             "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
                 ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]

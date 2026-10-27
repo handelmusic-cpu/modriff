@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.4k</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5m</span></div>
  </div>
 </div>
 
@@ -8681,6 +8681,10 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="sg"><div class="sl">Reverb</div><input type="range" id="mel-rev" min="0" max="1" step=".01" value="0" oninput="updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%')"><div class="sv" id="melrev-val">0%</div></div>
   </div>
   <div class="row" style="margin-top:4px">
+   <button class="tb" id="mel-mono-btn" onclick="toggleMelMono()" title="Poly: every key sounds. Mono: one note at a time, the newest key wins and it slides from note to note over the glide time">Mode: Poly</button>
+   <div class="sg"><div class="sl">Glide time</div><input type="range" id="mel-glide-time" min="0" max="1000" step="10" value="120" disabled oninput="setMelGlideTime(this.value)"><div class="sv" id="mel-glide-val">120ms</div></div>
+  </div>
+  <div class="row" style="margin-top:4px">
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
   </div>
   </div>
@@ -9237,7 +9241,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.4k</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5m</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10274,7 +10278,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.4k';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5m';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11199,7 +11203,14 @@ window.modEngine = window.modEngine || {};
 //
 // var, not let: read from functions declared thousands of lines earlier.
 var MODNAT = { stream:false, native:false, started:false, starting:null, plugin:null, sr:0,
-               attached:{}, posted:0, failed:0, refused:0, PART:{chord:0} };
+               attached:{}, posted:0, failed:0, refused:0, PART:{chord:0},
+               // Parts the host has built a Processor for. PART only names a part's
+               // slot (modGraphStart sets it for a part played as graphs, which has a
+               // strip and no engine); a mõdSynth patch can only be handed to the
+               // host when a Processor is there to take it, or it is unplugged from
+               // Web Audio and its notes go nowhere (bass and mel on a patch, after
+               // modGraphStart, were silent).
+               proc:{} };
 
 function modNativePlugin(){
  try{
@@ -11225,7 +11236,15 @@ function modNativePlugin(){
                      fileAppend:call('fileAppend'), shareFiles:call('shareFiles'),
                      fileDelete:call('fileDelete'), wavFinish:call('wavFinish'), pcmAdd:call('pcmAdd'),
                      captureStart:call('captureStart'), captureRead:call('captureRead'),
-                     captureStop:call('captureStop') };
+                     captureStop:call('captureStop'),
+                     // The graph path (modGraphStart); an older binary has none of these.
+                     graphProbe:call('graphProbe'), graphBuf:call('graphBuf'),
+                     graphBegin:call('graphBegin'), graphEdit:call('graphEdit'),
+                     // The microphone's permission, asked of iOS by the app; and the app's
+                     // page in Settings. A method missing from this list is a method the page
+                     // cannot see: the sampler took the "no plugin method" branch and never asked.
+                     micPermission:call('micPermission'), openSettings:call('openSettings'),
+                     micStart:call('micStart'), micRead:call('micRead'), micStop:call('micStop') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }
@@ -11252,7 +11271,7 @@ function modNativeStart(){
   // Builds the processor and grows the containers that would otherwise
   // allocate inside the render callback.
   return p.ensurePart({part:MODNAT.PART.chord, warm:true});
- }).then(function(){ return true; })
+ }).then(function(){ MODNAT.proc.chord = true; return true; })
    .catch(function(e){ try{ console.warn('[modNative] start failed', e); }catch(_){} return false; })
    .then(function(v){ MODNAT.starting=null; return v; });
  return MODNAT.starting;
@@ -11370,7 +11389,10 @@ MODNAT.strip = {}; MODNAT.stripPan = {};
 function _modNativeStripSync(part){
  if(!MODNAT.attached[part]) return;
  var mx=_wp('mix.'+part); if(mx==null) mx=1;
- var g=_msxCal(part)*mx;
+ // A part played as recorded graphs is built from the web's own voices, which
+ // scale themselves by the fader and mute at note time: the host's strip must
+ // not do it a second time.
+ var g=_mgOnGraph(part) ? 1 : _msxCal(part)*mx;
  if(isFinite(g) && MODNAT.strip[part]!==g){
   MODNAT.strip[part]=g;
   _modNativePost(part, {t:'strip', i:0, v:g});
@@ -11481,9 +11503,10 @@ function _modNativeMasterSync(force){
 }
 
 function _modNativeAttach(part, eng){
- if(MODNAT.attached[part] || !eng || !eng.node || !eng.node.port) return;
+ var wasGraph = MODNAT.attached[part] && MODNAT.attached[part].graph;
+ if((MODNAT.attached[part] && !wasGraph) || !eng || !eng.node || !eng.node.port) return;
  var port=eng.node.port, orig=port.postMessage.bind(port);
- MODNAT.attached[part]={port:port, orig:orig, eng:eng};
+ MODNAT.attached[part]={port:port, orig:orig, eng:eng, graph:!!wasGraph};
  MODNAT.strip[part]=undefined; MODNAT.stripPan[part]=undefined; MODNAT.mfx[part]={};     // a fresh engine knows nothing yet
  port.postMessage=function(m){ _modNativePost(part,m); return orig(m); };
  // The rack's own setter, wrapped. FxRack.applyAll calls this.set for every
@@ -11519,7 +11542,7 @@ function _modNativeAttach(part, eng){
 // only in the app; everywhere else this returns at once and the worklet plays
 // as it always has.
 function _modNativeSync(part, eng){
- if(MODNAT.PART[part]==null) return;
+ if(MODNAT.PART[part]==null || !MODNAT.proc[part]) return;
  if(!modNativeAvailable()) return;
  eng = eng || ((typeof MSX!=='undefined'&&MSX.eng) ? MSX.eng[part] : null);
  if(!eng || !eng.ready) return;
@@ -11550,6 +11573,593 @@ window.modNative = {
   });
  }
 };
+
+// <graphrec>  (kept identical to tests/graph/graphrec.js; tests/graph/inline.test.js fails if they differ)
+/* A stand-in AudioContext that writes down the graph it is given instead of
+   playing it, so the native engine can play the same graph.
+
+   Why this exists (docs/v5-architecture.md, "The graph interpreter"): the page
+   builds every note as a small Web Audio graph — makeVoice alone is 900 lines
+   of oscillators, gains and filters — and rewriting each voice in C++ by hand
+   is a rewrite of the instrument. This records what the voice *builds* and
+   sends that, so the voice code stays the single source of truth and the
+   native side is one interpreter for a handful of node types.
+
+   The output is one flat Float64Array ("program") rather than JSON, because
+   the other end is the render host and a number array crosses the bridge
+   without a parser. Layout, all doubles:
+
+     [ MAGIC, sr, nNodes, 0 ]
+     nNodes  x node record
+     nEdges, nEdges x [ from, to, toParam (-1 = audio input) ]
+
+   node record: [ type, ...intrinsics, ...params ]
+     every param is  [ v0, nEvents, nEvents x [ kind, v, t, tc ] ]
+     param order per type is PARAMS below and must match native/modsynth/graph.cpp.
+     gain   : params gain
+     osc    : wave (0 sine 1 square 2 saw 3 triangle 4 custom), if custom
+              nPartials, re..., im...;  start, stop (-1e9 = unset);  params frequency detune
+     biq    : filter type;  params frequency detune Q gain
+     buf    : buffer id (-1 none), loop, loopStart, loopEnd, start, stop, offset;
+              params playbackRate detune
+     shp    : oversample (0 none 1 2x 2 4x), nCurve, curve...
+     pan    : params pan
+     del    : maxDelay;  params delayTime
+     ext    : an endpoint that belongs to the host (a part's bus, a send); its
+              code: the host's part slot (0..7) or a send (100 and up)
+
+   Event kinds: 0 set, 1 linear ramp, 2 exponential ramp, 3 target (tc is the
+   time constant). Times are the context's own, absolute; the caller subtracts
+   its base. cancelScheduledValues is applied here, at record time, so the
+   program never carries a cancel.
+
+   BUFFERS. A recorded sample is not in the program: it is named by a number,
+   and its audio crosses once, ahead of the first graph that uses it
+   (Rec.takeNewBuffers() hands the ones not yet announced, as
+   {id, sampleRate, channels:[Float32Array...]}). The host keeps them in a
+   store and a graph refers to them by id; a graph that names an id the host
+   does not have is refused, and the page sends the audio again. The ids come
+   from a registry on the page (a WeakMap on the AudioBuffer), so one decoded
+   clip is one id for as long as it lives.
+
+   LIVE EDITS. A held note is changed after it has been sent: a release, a
+   choke, a glide, a source's stop(). program() marks the graph as sent; from
+   then every such call is still applied to the recorder's own timeline (so a
+   later read of `.value` is the honest current value) and also written down as
+   an increment, which takeIncrements() hands over as a Float64Array of
+   [ node, param (-1 = the node itself), op, v, t, tc ] records:
+     op 0 set, 1 linear ramp, 2 exponential ramp, 3 target, 4 cancel (t),
+        5 cancelAndHold (t), 6 stop (t), 7 start (t)
+   Both ends run the same timeline algorithm, so `.value` read here agrees with
+   what the native side will do with the edit.
+
+   Not recorded and said so in `unsupported`: setValueCurveAtTime, disconnect,
+   createConvolver, createDynamicsCompressor.
+   A graph that uses one is not sent; it stays on Web Audio. */
+(function(root){
+'use strict';
+
+const MAGIC = 0x6d6f6467; // 'modg'
+const T = { gain:1, osc:2, biq:3, buf:4, shp:5, pan:6, del:7, ext:8 };
+const PARAMS = {
+  gain:['gain'], osc:['frequency','detune'], biq:['frequency','detune','Q','gain'],
+  buf:['playbackRate','detune'], shp:[], pan:['pan'], del:['delayTime'], ext:[]
+};
+const WAVE = { sine:0, square:1, sawtooth:2, triangle:3 };
+const BIQ = { lowpass:0, highpass:1, bandpass:2, lowshelf:3, highshelf:4, peaking:5, notch:6, allpass:7 };
+const OVS = { none:0, '2x':1, '4x':2 };
+const KIND = { set:0, lin:1, exp:2, tgt:3 };
+// "No start() / no stop()" in a program. Not -1: times are relative to the
+// note, so a start just before its origin is a small negative number.
+const UNSET = -1e9;
+
+// One id per decoded buffer, for the life of the buffer; and which ids the host
+// has been told about. Shared by every recorder on the page.
+const bufIds = new WeakMap();
+let nextBufId = 1;
+const announced = new Set();
+function bufId(b){ let id = bufIds.get(b); if(id == null){ id = nextBufId++; bufIds.set(b, id); } return id; }
+
+function Rec(opts){
+  opts = opts || {};
+  const self = this;
+  this.sampleRate = opts.sampleRate || 48000;
+  // `currentTime` is the page's real clock when there is one (the voice code
+  // reads it for "now"), a settable number otherwise. `base` is what the program
+  // subtracts from every time: the moment the note's graph was opened.
+  this._time = opts.time || 0;
+  this._timeSource = opts.timeSource || null;
+  Object.defineProperty(this, 'currentTime', { get(){ return self._timeSource ? self._timeSource() : self._time; }, set(v){ self._time = v; } });
+  this.base = opts.base != null ? opts.base : this.currentTime;
+  // How the page's own shared nodes (a part's bus, a send) are named to the
+  // host: resolve(realNode) returns a code, {code, gain} to put a fixed gain in
+  // front of it, or null when it is not one the host knows. A null is counted
+  // in `unresolved` and the connection is dropped.
+  this._resolve = opts.resolve || null;
+  this.debug = !!opts.debug;
+  this.onEdit = opts.onEdit || null;     // called once when edits start to pile up
+  this._dirty = false;
+  this._realCtx = opts.realCtx || null;  // buffers are made by it, so they stay real
+  this.unresolved = {};
+  this._sinks = {};
+  this.nodes = [];
+  this.edges = [];
+  this.bufs = [];           // AudioBuffer stand-ins, by identity
+  this.unsupported = {};
+  this.sent = false;
+  this.inc = [];
+  const nope = what => { self.unsupported[what] = (self.unsupported[what]||0) + 1; };
+  this._nope = nope;
+  const touch = () => { if(self.onEdit && !self._dirty){ self._dirty = true; self.onEdit(self); } };
+
+  const OP = { set:0, lin:1, exp:2, tgt:3, cancel:4, hold:5, stop:6, start:7 };
+  class Param {
+    constructor(node, name, v0){
+      this.node = node; this.name = name; this.v0 = v0; this.ev = [];
+      this.defaultValue = v0;
+    }
+    _pi(){ return PARAMS[this.node.kind].indexOf(this.name); }
+    _emit(op, v, t, tc){ if(self.sent){ self.inc.push(this.node.id, this._pi(), op, v, t, tc); touch(); } }
+    // The timeline's value at time t, by the same rules native/modsynth/graph.cpp
+    // uses (set, ramps run from the previous event, a target decays from the
+    // value it left).
+    valueAt(t){
+      const ev = this.ev;
+      let k = 0; while(k < ev.length && ev[k].t <= t) k++;
+      if(k === 0) return this.v0;
+      const e = ev[k-1], n = k < ev.length ? ev[k] : null;
+      const startOf = i => {
+        if(ev[i].kind !== KIND.tgt) return ev[i].v;
+        if(i === 0) return this.v0;
+        const p = ev[i-1];
+        if(p.kind !== KIND.tgt) return p.v;
+        return p.v + (startOf(i-1) - p.v) * (p.tc <= 0 ? 0 : Math.exp(-(ev[i].t - p.t) / p.tc));
+      };
+      if(n && (n.kind === KIND.lin || n.kind === KIND.exp)){
+        const base = e.kind === KIND.tgt ? startOf(k-1) : e.v, span = n.t - e.t;
+        if(span <= 0) return n.v;
+        const x = (t - e.t) / span;
+        if(n.kind === KIND.lin) return base + (n.v - base) * x;
+        if(base === 0 || (base < 0) !== (n.v < 0) || n.v === 0) return base;
+        return base * Math.pow(n.v / base, x);
+      }
+      if(e.kind === KIND.tgt){
+        if(e.tc <= 0) return e.v;
+        return e.v + (startOf(k-1) - e.v) * Math.exp(-(t - e.t) / e.tc);
+      }
+      return e.v;
+    }
+    get value(){ return this.valueAt(self.currentTime); }
+    set value(v){
+      // The attribute is setValueAtTime(v, currentTime) in effect; before any
+      // event it is also just the starting value.
+      // With nothing else on the param this is only its starting value, not an
+      // event: a browser reads a param with no events as still (and a source
+      // starting between frames is then applied to the sub-sample).
+      if(!this.ev.length){ this.v0 = v; if(self.sent) this._emit(OP.set, v, self.currentTime, 0); return; }
+      this._push(KIND.set, v, self.currentTime, 0);
+      this._emit(OP.set, v, self.currentTime, 0);
+    }
+    _push(kind, v, t, tc){
+      // Insert after every event at or before t, the way the spec orders ties.
+      let i = this.ev.length;
+      while(i > 0 && this.ev[i-1].t > t) i--;
+      this.ev.splice(i, 0, { kind, v, t, tc });
+    }
+    _anchor(){ // a ramp with nothing before it starts at "now", from the held value
+      if(!this.ev.length){ this._push(KIND.set, this.v0, self.currentTime, 0); this._emit(OP.set, this.v0, self.currentTime, 0); }
+    }
+    setValueAtTime(v, t){ this._push(KIND.set, v, t, 0); this._emit(OP.set, v, t, 0); return this; }
+    linearRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.lin, v, t, 0); this._emit(OP.lin, v, t, 0); return this; }
+    exponentialRampToValueAtTime(v, t){ this._anchor(); this._push(KIND.exp, v, t, 0); this._emit(OP.exp, v, t, 0); return this; }
+    setTargetAtTime(v, t, tc){ this._push(KIND.tgt, v, t, tc); this._emit(OP.tgt, v, t, tc); return this; }
+    cancelScheduledValues(t){ this.ev = this.ev.filter(e => e.t < t); this._emit(OP.cancel, 0, t, 0); return this; }
+    // Drops everything after t and holds the value the timeline had reached at
+    // t -- but only when something was in progress there: a ramp that ends
+    // after t (it is cut short at t, see below), or a target still decaying. A param that is simply sitting at a
+    // set value has nothing to hold, and the browser leaves it so; a release
+    // ramp added afterwards then starts from that earlier set, not from t.
+    // (That is what the app's own releases get from a browser, so it is what
+    // is recorded. cancelScheduledValues alone lets a param fall back to its
+    // last set value: a choke that way made a hat briefly louder.)
+    cancelAndHoldAtTime(t){
+      let k = 0; while(k < this.ev.length && this.ev[k].t <= t) k++;
+      const e1 = k ? this.ev[k-1] : null, e2 = k < this.ev.length ? this.ev[k] : null;
+      const ramp = e2 && (e2.kind === KIND.lin || e2.kind === KIND.exp);
+      const tgt = e1 && e1.kind === KIND.tgt;
+      const v = (ramp || tgt) ? this.valueAt(t) : 0;
+      const kind = ramp ? e2.kind : KIND.set;
+      this.ev = this.ev.filter(e => e.t <= t);
+      // The ramp in progress is not dropped but cut short: the same kind of
+      // ramp, ending at t on the value it had reached. Dropping it would leave
+      // the param flat from the ramp's start to t.
+      if(ramp || tgt) this._push(kind, v, t, 0);
+      this._emit(OP.hold, 0, t, 0);
+      return this;
+    }
+    setValueCurveAtTime(){ nope('setValueCurveAtTime'); return this; }
+    // An audio-rate connection into this param is recorded by connect().
+  }
+
+  class Node {
+    constructor(type, params){
+      this.kind = type; this.id = self.nodes.length; self.nodes.push(this);
+      this.context = self;
+      this.params = {};
+      const names = PARAMS[type];
+      names.forEach((n, i) => { this.params[n] = new Param(this, n, params[i]); this[n] = this.params[n]; });
+      this.numberOfInputs = 1; this.numberOfOutputs = 1;
+    }
+    connect(dst){
+      if(dst instanceof Param) self.edges.push([this.id, dst.node.id, PARAMS[dst.node.kind].indexOf(dst.name)]);
+      else if(dst && dst.context === self) self.edges.push([this.id, dst.id, -1]);
+      else {
+        // One of the page's own nodes, outside this graph.
+        const sink = self._sinkFor(dst);
+        if(sink) self.edges.push([this.id, sink.id, -1]);
+      }
+      return dst;
+    }
+    // Taking a voice out of its graph is what the page does to clean up after
+    // one has ended, and the host retires a finished voice by itself. Before
+    // the program is sent it would be surgery, which a program cannot carry.
+    disconnect(){ if(!self.sent) nope('disconnect'); }
+    addEventListener(){}
+    removeEventListener(){}
+  }
+  class Source extends Node {
+    constructor(type, params){ super(type, params); this._start = UNSET; this._stop = UNSET; this.onended = null; }
+    start(t, off){
+      this._start = (t == null) ? self.currentTime : t; if(off != null) this._offset = off;
+      if(self.sent){ self.inc.push(this.id, -1, OP.start, 0, this._start, 0); touch(); }
+    }
+    stop(t){
+      this._stop = (t == null) ? self.currentTime : t;
+      if(self.sent){ self.inc.push(this.id, -1, OP.stop, 0, this._stop, 0); touch(); }
+    }
+  }
+
+  this.destination = this.createExt('destination', opts.destCode != null ? opts.destCode : 0);
+  this.listener = {};
+
+  this.createGain = () => new Node('gain', [1]);
+  this.createOscillator = () => {
+    const o = new Source('osc', [440, 0]);
+    o.wave = 0; o.wavetable = null;
+    Object.defineProperty(o, 'type', {
+      get(){ return o._typeName || 'sine'; },
+      set(v){ o._typeName = v; o.wave = (v === 'custom') ? 4 : WAVE[v]; o.wavetable = null; }
+    });
+    o.setPeriodicWave = pw => { o.wave = 4; o.wavetable = pw; o._typeName = 'custom'; };
+    return o;
+  };
+  this.createPeriodicWave = (re, im) => ({ re: Array.from(re), im: Array.from(im) });
+  this.createBiquadFilter = () => {
+    const b = new Node('biq', [350, 0, 1, 0]);
+    b.ftype = 0;
+    Object.defineProperty(b, 'type', {
+      get(){ return b._typeName || 'lowpass'; },
+      set(v){ b._typeName = v; b.ftype = BIQ[v]; }
+    });
+    return b;
+  };
+  this.createBufferSource = () => {
+    const s = new Source('buf', [1, 0]);
+    s.buffer = null; s.loop = false; s.loopStart = 0; s.loopEnd = 0;
+    return s;
+  };
+  this.createBuffer = (nCh, len, sr) => {
+    if(self._realCtx) return self._realCtx.createBuffer(nCh, len, sr);
+    const chans = []; for(let c = 0; c < nCh; c++) chans.push(new Float32Array(len));
+    return { numberOfChannels: nCh, length: len, sampleRate: sr, duration: len/sr,
+             getChannelData: c => chans[c], _chans: chans };
+  };
+  this.createWaveShaper = () => {
+    const w = new Node('shp', []);
+    w.curve = null; w.oversample = 'none';
+    return w;
+  };
+  this.createStereoPanner = () => new Node('pan', [0]);
+  this.createDelay = (max) => { const d = new Node('del', [0]); d.maxDelay = max == null ? 1 : max; return d; };
+  this.createConvolver = () => { nope('createConvolver'); return new Node('gain', [1]); };
+  this.createDynamicsCompressor = () => { nope('createDynamicsCompressor'); return new Node('gain', [1]); };
+  this.createAnalyser = () => { nope('createAnalyser'); return new Node('gain', [1]); };
+}
+
+// The graph's own name for one of the page's real nodes: an ext endpoint, with
+// a fixed gain in front when the node is a bus that carries one. Made once per
+// (code, gain), so a hundred voices into one bus share one endpoint.
+Rec.prototype._sinkFor = function(real){
+  const r = this._resolve ? this._resolve(real) : null;
+  if(r == null){
+    const k = (real && real.constructor && real.constructor.name) || typeof real;
+    this.unresolved[k] = (this.unresolved[k] || 0) + 1;
+    if(this.debug){ const st = (new Error().stack || '').split('\n').slice(3, 6).map(x => x.trim()); (this.where = this.where || []).push(st); }
+    return null;
+  }
+  const code = typeof r === 'number' ? r : r.code;
+  const g = (typeof r === 'object' && r.gain != null && r.gain !== 1) ? r.gain : null;
+  const key = code + ':' + g;
+  if(this._sinks[key]) return this._sinks[key];
+  const ext = this.createExt('code' + code, code);
+  let head = ext;
+  if(g != null){
+    const gn = this.createGain(); gn.gain.value = g; gn.connect(ext); head = gn;
+  }
+  this._sinks[key] = head;
+  return head;
+};
+
+// An endpoint that is the host's, not the graph's: a part bus, a reverb send.
+// `name` is how the host knows it. Param edges into one are not meaningful.
+Rec.prototype.createExt = function(name, code){
+  const self = this;
+  const n = { kind: 'ext', id: this.nodes.length, name, code: code == null ? 0 : code, context: this, params: {},
+    connect(){ throw new Error('an ext endpoint is a destination only'); } };
+  this.nodes.push(n);
+  return n;
+};
+
+Rec.prototype.program = function(base){
+  const B = base != null ? base : this.base;
+  const out = [];
+  const nodes = this.nodes;
+  out.push(MAGIC, this.sampleRate, nodes.length, 0);
+  const pushParam = p => { out.push(p.v0, p.ev.length); p.ev.forEach(e => out.push(e.kind, e.v, e.t - B, e.tc)); };
+  const rel = t => (t > UNSET / 2 ? t - B : t);
+  nodes.forEach(n => {
+    if(n.kind === 'ext'){ out.push(T.ext, n.code); return; }
+    out.push(T[n.kind]);
+    if(n.kind === 'osc'){
+      out.push(n.wave);
+      if(n.wave === 4){
+        const w = n.wavetable || { re: [0], im: [0] };
+        out.push(w.re.length); w.re.forEach(v => out.push(v)); w.im.forEach(v => out.push(v));
+      }
+      out.push(rel(n._start), rel(n._stop));
+    } else if(n.kind === 'biq'){
+      out.push(n.ftype);
+    } else if(n.kind === 'buf'){
+      out.push(n.buffer ? bufId(n.buffer) : -1, n.loop ? 1 : 0, n.loopStart, n.loopEnd, rel(n._start), rel(n._stop), n._offset || 0);
+    } else if(n.kind === 'shp'){
+      const c = n.curve ? Array.from(n.curve) : [];
+      out.push(OVS[n.oversample] || 0, c.length); c.forEach(v => out.push(v));
+    } else if(n.kind === 'del'){
+      out.push(n.maxDelay);
+    }
+    PARAMS[n.kind].forEach(k => pushParam(n.params[k]));
+  });
+  out.push(this.edges.length);
+  this.edges.forEach(e => out.push(e[0], e[1], e[2]));
+  this.sent = true;
+  return Float64Array.from(out);
+};
+
+// Edits made since the program (or the last call), as 6-number records.
+// Buffers this recorder's graph uses that the host has not been sent yet. Call
+// it before sending the program, send what it returns first, and a buffer then
+// goes over once however many notes play it.
+Rec.prototype.takeNewBuffers = function(){
+  const out = [];
+  this.nodes.forEach(n => {
+    if(n.kind !== 'buf' || !n.buffer) return;
+    const id = bufId(n.buffer);
+    if(announced.has(id)) return;
+    announced.add(id);
+    const chans = []; for(let c = 0; c < n.buffer.numberOfChannels; c++) chans.push(Float32Array.from(n.buffer.getChannelData(c)));
+    out.push({ id, sampleRate: n.buffer.sampleRate, channels: chans });
+  });
+  return out;
+};
+// The host lost its store (a new engine): every buffer has to be sent again.
+Rec.forgetBuffers = function(){ announced.clear(); };
+
+Rec.prototype.takeIncrements = function(base){
+  const B = base != null ? base : this.base;
+  const a = Float64Array.from(this.inc);
+  for(let i = 4; i < a.length; i += 6) a[i] -= B;
+  this.inc = []; this._dirty = false; return a;
+};
+
+Rec.PARAMS = PARAMS; Rec.T = T; Rec.MAGIC = MAGIC;
+root.GraphRec = Rec;
+if(typeof module !== 'undefined') module.exports = Rec;
+})(typeof window !== 'undefined' ? window : globalThis);
+// </graphrec>
+
+// ── The graph path: the voices go native without being rewritten ──────────
+// docs/v5-architecture.md, "The graph interpreter". A voice here is a function
+// that builds a small Web Audio graph on getCtx() and sends it to a bus. For a
+// part the native host plays, the same function is run against GraphRec (above)
+// instead of the real context, which writes the graph down; the graph and its
+// later edits (a release, a choke) go to the host, and the host plays them.
+// The voice code is not changed and not copied: change a voice and the native
+// sound changes with it.
+//
+// It is off. `modGraphEnable(plugin, parts)` turns it on for the named parts;
+// nothing in the app calls that yet (the host side is not built), and the tests
+// do it with a stand-in plugin. When it is off getCtx() is exactly what it was.
+//
+// The shared nodes a voice connects to (a part's bus, SQMG) are the page's
+// real nodes, which a recorder cannot hold; `_mgResolve` names each one to the
+// host (the part's slot, and the fixed gain the real bus carries). A voice that
+// reaches a node it cannot name, or uses a node type a program cannot carry, is
+// not sent: it is run again on the real context, so a gap in the mapping is a
+// sound that stays on Web Audio, never a note that goes missing.
+//
+// var, not let: getCtx() reads _mgScope from far away (see CLAUDE.md).
+var _mgScope = null;
+var _mgRpwOwner = {};
+var MODGRAPH = { on:false, plugin:null, parts:{}, gid:0, flushing:false, pending:[], bypass:false,
+                 sent:0, fellBack:0, edits:0, empty:0, why:{},
+                 // The host's part slots: a graph names a bus by one of these.
+                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10} };
+// Which messages make a new sound (the rest only change one that exists, and
+// reach the host through the recorder's own edits).
+var _MG_KINDS = { hit:1, note:1, chord:1, clip:1, glide:1 };
+
+function modGraphEnable(plugin, parts){
+ MODGRAPH.plugin = plugin || null;
+ MODGRAPH.on = !!plugin;
+ MODGRAPH.parts = {};
+ (parts || []).forEach(function(p){ MODGRAPH.parts[p] = true; });
+ MODGRAPH.sent = MODGRAPH.fellBack = MODGRAPH.edits = MODGRAPH.empty = 0; MODGRAPH.why = {};
+}
+
+// Whether a part is being played as recorded graphs right now: the path is on
+// for it and it is not on a mõdSynth patch (which the Processor plays).
+function _mgOnGraph(part){
+ var a = MODNAT.attached[part];
+ return !!(a && a.graph && MODGRAPH.on && MODGRAPH.parts[part] && _wp(part + '.voice') !== 'modsynth');
+}
+
+// The app's way in (nothing calls it yet): start the native engine, check that
+// this build of the host has the graph methods, name each part's host slot,
+// make its strip and mõdFX, and turn the path on. Resolves false, changing
+// nothing, on a build without them, and the page plays as it always has.
+function modGraphStart(parts){
+ var P = modNativePlugin();
+ if(!P || !P.graphProbe) return Promise.resolve(false);
+ return modNativeStart().then(function(ok){
+  if(!ok) return false;
+  return P.graphProbe({}).then(function(){ return true; }, function(){ return false; });
+ }).then(function(ok){
+  if(!ok) return false;
+  parts.forEach(function(p){
+   if(MODNAT.PART[p] == null) MODNAT.PART[p] = MODGRAPH.CODE[p];
+   var was = MODNAT.attached[p];
+   if(!was) MODNAT.attached[p] = {graph:true}; else was.graph = true;
+  });
+  return Promise.all(parts.map(function(p){ return P.ensurePart({part:MODGRAPH.CODE[p], warm:true, graph:true}); })).then(function(){
+   modGraphEnable(P, parts);
+   parts.forEach(function(p){ try{ _modNativeStripSync(p); }catch(e){} try{ if(typeof fxApplyChannel==='function') fxApplyChannel(p); }catch(e){} });
+   try{ _modNativeMasterSync(true); }catch(e){}
+   return true;
+  });
+ }).catch(function(e){ try{ console.warn('[modGraph] did not start', e); }catch(_){} return false; });
+}
+
+// A phone check that fits on one line. Safari's inspector buries the object that
+// stats() and MODGRAPH print, so this clears the console, starts the path for
+// `parts`, waits `secs` while the player plays, and prints a single verdict:
+//   GCHECK PASS drum,bass 30s | sent 87 fell back 0 | host dropped 0 late 0 | slow blocks 0 | load 4%
+// A FAIL line names what was wrong. Counters are the window's own (stats are
+// read before and after). No top-level await in Safari's console: call it as
+// gcheck(['drum'], 30) and read the one line that follows.
+window.gcheck = function(parts, secs){
+ parts = parts || ['drum']; secs = secs || 30;
+ var P = window.modNative;
+ var line = function(t){ try{ console.log('GCHECK ' + t); }catch(e){} };
+ try{ console.clear(); }catch(e){}
+ var snap = function(){ return P.stats().then(function(s){ return {slow:s.slowCount||0, dropped:(s.graph&&s.graph.dropped)||0, late:(s.graph&&s.graph.lateEdits)||0, load:s.load||0, max:s.maxRenderUs||0}; }); };
+ P.stats().then(function(s0){
+  if(!s0.available){ line('FAIL not the native app'); return; }
+  return modGraphStart(parts).then(function(ok){
+   if(!ok){ line('FAIL the host has no graph path'); return; }
+   return snap().then(function(a){
+    line('running ' + secs + 's: play ' + parts.join(',') + ' now');
+    return new Promise(function(r){ setTimeout(r, secs*1000); }).then(snap).then(function(b){
+     var why = Object.keys(MODGRAPH.why).map(function(k){ return k + ' x' + MODGRAPH.why[k]; }).join(', ');
+     var bad = [];
+     if(!MODGRAPH.sent) bad.push('nothing was sent (did you play?)');
+     if(MODGRAPH.fellBack) bad.push(MODGRAPH.fellBack + ' fell back to Web Audio' + (why ? ' (' + why + ')' : ''));
+     if(b.dropped - a.dropped) bad.push((b.dropped - a.dropped) + ' notes dropped by the host');
+     if(b.late - a.late) bad.push((b.late - a.late) + ' late edits');
+     if(b.slow - a.slow) bad.push((b.slow - a.slow) + ' slow render blocks (max ' + Math.round(b.max/1000*10)/10 + ' ms)');
+     line((bad.length ? 'FAIL ' : 'PASS ') + parts.join(',') + ' ' + secs + 's | sent ' + MODGRAPH.sent +
+          ' fell back ' + MODGRAPH.fellBack + ' | host dropped ' + (b.dropped - a.dropped) + ' late ' + (b.late - a.late) +
+          ' | slow blocks ' + (b.slow - a.slow) + ' | load ' + Math.round(b.load*100) + '%' + (bad.length ? ' | ' + bad.join('; ') : ''));
+    });
+   });
+  });
+ }).catch(function(e){ line('FAIL ' + (e && e.message || e)); });
+};
+
+// The host's name for one of the page's real nodes, or null.
+function _mgResolve(node){
+ if(!node) return null;
+ var C = MODGRAPH.CODE;
+ if(node === window.SQMG_REF)  return {code:C.drum,    gain:node.gain.value};
+ if(node === window.SQAUX_REF) return {code:C.auxperc, gain:node.gain.value};
+ if(node === window.BL_MG_REF) return {code:C.bass,    gain:node.gain.value};
+ if(node === window.ML_MG_REF) return {code:C.melgen,  gain:node.gain.value};
+ var pb = window._partBuses || {};
+ for(var p in pb) if(pb[p] === node && C[p] != null) return {code:C[p], gain:node.gain.value};
+ // The two rooms a voice sends to (the chord's own, and the shared one).
+ if(node === window._chordRevFeed) return {code:C.chordRoom, gain:1};
+ if(node === reverbNode) return {code:C.room, gain:1};
+ // Straight into the master, past every part's strip: the click. It enters at the
+ // glue, dry (see _webClick); masterDest, the drive and bus room, still maps here
+ // for a voice that connects to it.
+ if(node === masterDest(audioCtx) || (window._masterComp && node === window._masterComp)) return {code:C.master, gain:1};
+ return null;
+}
+
+function _mgB64(typed){
+ var u = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength), s = '';
+ for(var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+ return btoa(s);
+}
+
+// Run one message's voice against a recorder, and send what it built.
+function _mgRun(msg, play){
+ var real = audioCtx;
+ if(!real) return play();
+ // The part buses are built lazily by whoever first plays into them, on the
+ // context that is current: build them now, on the real one, so a voice
+ // recorded first does not make its bus out of the recorder.
+ try{ _ensureAllPartBuses(real); }catch(e){}
+ var rec = new GraphRec({ debug:MODGRAPH.debug, sampleRate:real.sampleRate, realCtx:real, destCode:255, resolve:_mgResolve, onEdit:_mgDirty,
+                          timeSource:function(){ return real.currentTime; } });
+ var prev = _mgScope, ok = true;
+ _mgScope = rec;
+ try{ play(); }catch(e){ ok = false; try{ console.warn('[modGraph] voice failed while recording', e); }catch(_){} }
+ finally{ _mgScope = prev; }
+ var bad = Object.keys(rec.unsupported).concat(Object.keys(rec.unresolved));
+ if(bad.length && MODGRAPH.debug) MODGRAPH.last = { part:msg.part, unsupported:rec.unsupported, unresolved:rec.unresolved, where:rec.where };
+ if(ok && !bad.length){
+  // A hit that built nothing (muted, or no sample yet) is not a voice.
+  if(rec.nodes.length <= 1){ MODGRAPH.empty++; return; }
+  try{ _mgSend(rec); return; }catch(e){ try{ console.warn('[modGraph] send failed', e); }catch(_){} }
+ }
+ MODGRAPH.fellBack++;
+ bad.forEach(function(k){ MODGRAPH.why[k] = (MODGRAPH.why[k]||0) + 1; });
+ // The real context plays it instead.
+ MODGRAPH.bypass = true;
+ try{ play(); } finally{ MODGRAPH.bypass = false; }
+}
+
+function _mgSend(rec){
+ var P = MODGRAPH.plugin;
+ rec.gid = ++MODGRAPH.gid;
+ var bufs = rec.takeNewBuffers();
+ bufs.forEach(function(b){
+  P.graphBuf({ id:b.id, sampleRate:b.sampleRate, channels:b.channels.map(_mgB64) });
+ });
+ // The graph's time 0 is the moment it was opened; `ts` is that moment on the
+ // wall clock (Date.now(), as every other native message stamps), which is how
+ // the host lines its own clock up with the page's.
+ P.graphBegin({ gid:rec.gid, program:_mgB64(rec.program()), base:rec.base, ts:Date.now() });
+ MODGRAPH.sent++;
+}
+
+// A voice that is already sent has been changed (released, choked): its edits
+// go as one message, once the code that made them has finished.
+function _mgDirty(rec){
+ MODGRAPH.pending.push(rec);
+ if(MODGRAPH.flushing) return;
+ MODGRAPH.flushing = true;
+ Promise.resolve().then(_mgFlush);
+}
+function _mgFlush(){
+ MODGRAPH.flushing = false;
+ var list = MODGRAPH.pending; MODGRAPH.pending = [];
+ list.forEach(function(rec){
+  var inc = rec.takeIncrements();
+  if(!inc.length || !MODGRAPH.plugin) return;
+  try{ MODGRAPH.plugin.graphEdit({ gid:rec.gid, increments:_mgB64(inc) }); MODGRAPH.edits++; }catch(e){}
+ });
+}
 
 // ── PARAMS — the instrument's standing state, named once ──────────────────
 // Everything an engine needs that is not decided per note: each part's
@@ -11589,6 +12199,8 @@ var PARAMS = [
  {part:'mel',    name:'reverb',     read:function(){ return _pSlider('mel-rev'); }},
  {part:'mel',    name:'voice',      read:function(){ return melWave; }},
  {part:'mel',    name:'velSense',   read:function(){ return _pSlider('vel-sense'); }},
+ {part:'mel',    name:'mono',       read:function(){ return melMono; }},
+ {part:'mel',    name:'glideTime',  read:function(){ return melGlideTime; }},
  {part:'mel',    name:'mod',        read:function(){ return melModOn; }},
  {part:'mel',    name:'modDest',    read:function(){ return melModDest; }},
  {part:'mel',    name:'modDepth',   read:function(){ return melModDepth; }},
@@ -14423,16 +15035,28 @@ function smpRecStart(kind){
   _smpBeginTap(ctx, node, 'app', null);
   return;
  }
- if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showToast('This device will not open a microphone'); return;
- }
  // Every one of these three off, deliberately. They are tuned for speech on a
  // call: AGC rides the level of a sustained note, noise suppression eats the
  // tail of anything quiet, and echo cancellation will duck the mic whenever
  // the app itself is playing — which is exactly when you are sampling along
  // with it.
  _micGraceUntil = Date.now() + 15000;          // the permission sheet can sit there a while
- navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
+ // In the app iOS is asked by the app first (ModEngine.micPermission): the web view's
+ // own request was refused without a sheet ever showing, which left the app with no
+ // microphone row in Settings to switch on. A build without the method goes straight
+ // on, as the browser does.
+ var _np = (typeof modNativePlugin==='function') ? modNativePlugin() : null;
+ var _ask = (_np && _np.micPermission) ? _np.micPermission({}) : Promise.resolve({granted:true, status:'no plugin method'});
+ var _micSaid = '';
+ _ask = _ask.then(function(r){ _micSaid = (r && r.status) || 'no answer'; return r; },
+                  function(e){ _micSaid = 'plugin error: ' + ((e && (e.message || e.code)) || e); return {granted:true}; });
+ // The web view's own microphone: what a browser uses, and what the app falls back to
+ // when its binary has no native one.
+ var viaWeb = function(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+   _micGraceUntil = 0; showToast('This device will not open a microphone'); return null;
+  }
+  return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
                                              autoGainControl:false}})
   .then(function(stream){
    _micGraceUntil = Date.now() + 4000;
@@ -14451,8 +15075,65 @@ function smpRecStart(kind){
     }
     setTimeout(wait, 80);
    })();
-  })
-  .catch(function(){ _micGraceUntil = 0; showToast('Microphone blocked — allow it in your settings'); });
+  });
+ };
+ _ask.then(function(r){
+  if(r && r.granted === false){
+   // Told no once, iOS never shows the sheet again: the switch is in Settings.
+   // Say so and open the app's page there instead of leaving a toast to act on.
+   showToast('Microphone is ' + (r.status || 'off') + ' for mõdRïff — opening Settings');
+   if(_np && _np.openSettings) setTimeout(function(){ try{ _np.openSettings({}); }catch(e){} }, 1200);
+   _micGraceUntil = 0;
+   return null;
+  }
+  // The app's own input, through its audio engine. The web view's getUserMedia
+  // was granted by iOS and still failed with an InvalidStateError on the phone, so
+  // inside the app the take is recorded natively and read in blocks (ModEngine.micStart).
+  if(_np && _np.micStart){
+   return _np.micStart({}).then(function(info){
+    _micGraceUntil = 0;
+    _smpBeginNativeMic(ctx, _np, info || {});
+   }, function(e){ _micSaid += '; native mic: ' + ((e && (e.message || e.code)) || e); return viaWeb(); });
+  }
+  return viaWeb();
+ })
+  .catch(function(e){
+   _micGraceUntil = 0;
+   // The reason, so a refusal can be told from a missing input or a busy one.
+   var why = (e && e.name ? e.name : 'error') + '; iOS: ' + (_micSaid || '?');
+   showToast('Microphone blocked (' + why + ')');
+  });
+}
+// A take from the app's own microphone input (ModEngine.micStart / micRead / micStop):
+// the host collects the samples and this polls for them every 50 ms, the way the
+// bounce reads the capture rings. It records at the input's rate, not the context's.
+function _smpBeginNativeMic(ctx, np, info){
+ var sr = info.sampleRate || ctx.sampleRate, L=[], R=[], peak=0, frames=0, busy=false;
+ var f32 = function(b64){
+  var bin = atob(b64), u = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return new Float32Array(u.buffer);
+ };
+ var poll = setInterval(function(){
+  if(busy) return;
+  busy = true;
+  np.micRead({}).then(function(r){
+   busy = false;
+   if(!r || !r.frames) return;
+   var all = f32(r.data), n = r.frames;
+   var l = new Float32Array(all.subarray(0, n)), rr = new Float32Array(all.subarray(n, 2*n));
+   L.push(l); R.push(rr); frames += n;
+   for(var i=0;i<n;i+=16){ var a=Math.abs(l[i]); if(a>peak) peak=a; }
+   if(!_smpRec) return;
+   _smpRec.peak = peak; _smpRec.frames = frames;
+   if(frames/sr >= SMP_REC_MAX) smpRecStop();
+  }, function(){ busy = false; });
+ }, 50);
+ var tap = { dispose: function(){ clearInterval(poll); try{ np.micStop({}); }catch(e){} } };
+ _smpRec = {ctx:ctx, tap:tap, node:null, stream:null, kind:'mic', L:L, R:R,
+            peak:0, frames:0, t0:Date.now(), sr:sr};
+ smpRenderAll();
+ _smpMeterTick();
 }
 function _smpBeginTap(ctx, node, kind, stream){
  var L=[], R=[], peak=0, frames=0;
@@ -14487,12 +15168,13 @@ function smpRecStop(){
   }
   var n=0, i;
   for(i=0;i<rec.L.length;i++) n+=rec.L[i].length;
-  if(n < rec.ctx.sampleRate*0.05){ showToast('Too short to keep'); smpRenderAll(); return; }
+  var sr = rec.sr || rec.ctx.sampleRate;
+  if(n < sr*0.05){ showToast('Too short to keep'); smpRenderAll(); return; }
   var L=new Float32Array(n), R=new Float32Array(n), o=0;
   for(i=0;i<rec.L.length;i++){ L.set(rec.L[i],o); R.set(rec.R[i],o); o+=rec.L[i].length; }
-  var buf=rec.ctx.createBuffer(2,n,rec.ctx.sampleRate);
+  var buf=rec.ctx.createBuffer(2,n,sr);
   buf.copyToChannel(L,0); buf.copyToChannel(R,1);
-  var blob=_floatsToWavBlob(L,R,rec.ctx.sampleRate,null);
+  var blob=_floatsToWavBlob(L,R,sr,null);
   blob.arrayBuffer().then(function(bytes){
    var name = (rec.kind==='app'?'Resample ':'Take ')+(SMP_LIB.length+1);
    var clip = smpAddClip({name:name, src:rec.kind}, buf, bytes, 'audio/wav');
@@ -14511,7 +15193,7 @@ function _smpMeterTick(){
  var tm=document.getElementById('smp-rec-time');
  if(_smpRec){
   if(el) el.style.width=Math.round(Math.min(1,_smpRec.peak)*100)+'%';
-  if(tm) tm.textContent=(_smpRec.frames/_smpRec.ctx.sampleRate).toFixed(1)+'s';
+  if(tm) tm.textContent=(_smpRec.frames/(_smpRec.sr||_smpRec.ctx.sampleRate)).toFixed(1)+'s';
   requestAnimationFrame(_smpMeterTick);
  } else {
   if(el) el.style.width='0%';
@@ -20271,6 +20953,9 @@ function _withAudio(ctx, go){
 }
 
 function getCtx(){
+ // While a voice is being recorded for the native host, the voice code builds
+ // its graph on the recorder (see the graph path, near modEngine).
+ if(_mgScope) return _mgScope;
  if(!audioCtx) return null;
  if(audioCtx.state!=='running' && audioCtx.state!=='closed') _withAudio(audioCtx);
  return audioCtx.state==='closed'?null:audioCtx;
@@ -21001,6 +21686,8 @@ function _driveOutGain(amount){
 // bit-identical and there is finally something to tap.
 window._partBuses = window._partBuses || {};
 function _partDest(ctx, part){
+ // Recorded: the bus is the real one, which the graph names to the host.
+ if(ctx && ctx === _mgScope) ctx = audioCtx;
  const master = masterDest(ctx);
  if(!part || !ctx) return master;
  // Bass and the Melody sequencer build their buses inside their own IIFEs
@@ -21551,13 +22238,14 @@ document.getElementById('rev-size').addEventListener('change',rebuildReverb);
 function feedChordRev(node,mix){
  if(!window._chordRevFeed) return feedRev(node,mix);
  if(mix<.01) return null;
- const g=audioCtx.createGain(); g.gain.value=mix;
+ // On the recorder when one is open, so the send is part of the recorded graph.
+ const g=(_mgScope||audioCtx).createGain(); g.gain.value=mix;
  node.connect(g); g.connect(window._chordRevFeed);
  return g;
 }
 function feedRev(node,mix){
  if(!reverbNode||mix<.01) return null;
- const g=audioCtx.createGain(); g.gain.value=mix;
+ const g=(_mgScope||audioCtx).createGain(); g.gain.value=mix;
  node.connect(g); g.connect(reverbNode);
  return g;
 }
@@ -21640,7 +22328,11 @@ function reapVoice(oscs, nodes, endSec){
 const _RPW_POOL=8;
 let _rpwCache=null, _rpwCtx=null;
 function _randPhaseWave(ctx,type,i){
- if(_rpwCtx!==ctx){ _rpwCache={}; _rpwCtx=ctx; }
+ // A recorded voice's waves are the recorder's own kind, kept across notes the
+ // way the real ones are (the pool is built once, so the random phases come in
+ // the same order whichever context the voice is built on).
+ const _own = (ctx && ctx._realCtx) ? _mgRpwOwner : ctx;
+ if(_rpwCtx!==_own){ _rpwCache={}; _rpwCtx=_own; }
  const key=type;
  if(!_rpwCache[key]){
   const pool=[];
@@ -22544,11 +23236,23 @@ function _msxReverbOff(part, v){
  if(!k && _msxSendRev(part)===0 && (part!=='arp' || !(+_wp('chord.reverb')>0))) off = true;
  if(off && MS.PARAM['fx.reverb.on']) v['fx.reverb.on']=0;
 }
+// The melody's Mono / Poly switch, on a mõdSynth patch: Mono is the engine's Legato
+// with the switch's Glide, Poly is its Poly. Untouched (null) the patch is left as
+// it was made. The patch's own edits are not written to: this is applied to the
+// values the engine is handed.
+function _msxMelVoice(part, v){
+ if(part!=='mel') return;
+ var m=_wp('mel.mono');
+ if(m==null || !MS.PARAM['voice.mode']) return;
+ v['voice.mode'] = m ? 'legato' : 'poly';
+ if(m){ if(MS.PARAM['voice.glide']) v['voice.glide'] = +_wp('mel.glideTime')||0; if(MS.PARAM['voice.glideAuto']) v['voice.glideAuto'] = 0; }
+}
 function msxApply(part){
  var eng=MSX.eng[part]; if(!eng || !eng.ready) return;
  var state=_wp(part+'.msx') || {};
  var r=msxValuesFor(part, state);
  _msxReverbOff(part, r.values);
+ _msxMelVoice(part, r.values);
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
@@ -22576,6 +23280,7 @@ function _webMsxState(part){
  if(!A || A.patch!==state.patch){ msxApply(part); return; }
  var r=msxValuesFor(part, state), v=r.values, mtx=false;
  _msxReverbOff(part, v);
+ _msxMelVoice(part, v);
  v['voice.poly'] = Math.min(+v['voice.poly']||8, part==='chord' ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) v[k]=Math.min(+v[k]||1, 4); });
  Object.keys(v).forEach(function(id){
@@ -24578,6 +25283,9 @@ function _webChordSubOn(){
 }
 function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
+ // A part the native host plays through recorded graphs: the voice is built on a recorder.
+ // (A part on a mõdSynth patch is built from an AudioWorklet, which a recorder does not hold: the native engine's own Processor plays those.)
+ if(MODGRAPH.on && !_mgScope && !MODGRAPH.bypass && msg && msg.v === 1 && MODGRAPH.parts[part] && _MG_KINDS[kind] && msg.voice !== 'modsynth' && !(part !== 'drum' && part !== 'auxperc' && _wp(part + '.voice') === 'modsynth')) return _mgRun(msg, function(){ _webEngineSend(msg); });
  if(msg && msg.v === 1 && kind === 'state' && msg.params){ Object.assign(window._webParams, msg.params); return; }
  // A part-level param that is not one of the live controls below (bend,
  // accent) is standing state: kept, and read when the next voice is built.
@@ -24586,6 +25294,8 @@ function _webEngineSend(msg){
   window._webParams[key] = msg.value;
   // A part's mõdSynth state reaches its engine as soon as it changes.
   if(msg.name === 'msx' && typeof _webMsxState === 'function') _webMsxState(part);
+  // Mono/Poly and its glide reach a mõdSynth melody's engine at once (_msxMelVoice).
+  if(part === 'mel' && (msg.name === 'mono' || msg.name === 'glideTime') && typeof _webMsxState === 'function') _webMsxState(part);
   // The Reverb slider crossing zero switches the patch's own reverb with it
   // (see _msxReverbOff); moving about above zero changes nothing there.
   if(msg.name === 'reverb' && MSX_REVERB_PARAM[part] && (+prev===0) !== (+msg.value===0) && typeof _webMsxState === 'function') _webMsxState(part);
@@ -24638,7 +25348,7 @@ function _webEngineSend(msg){
   const glide = (msg.id != null && bendContOsc && bendContOsc._modId === msg.id);
   if(kind === 'note')    return _webMelNoteOn(msg);
   if(kind === 'glide')   return _webMelGlideOn(msg);
-  if(kind === 'release') return glide ? _webMelGlideStop() : _webMelRelease(msg.id);
+  if(kind === 'release') return glide ? _webMelGlideStop() : _webMelRelease(msg.id, msg.fade);
   if(kind === 'param'){
    if(msg.name === 'bend')   return _webBendPart('mel', msg.value);
    if(msg.name === 'accent') return _webMelAccent(msg.value);
@@ -24997,6 +25707,72 @@ const MEL_SAMPLE_TRIM = {vibes:0.846, jazzgtr:0.888, nylongtr:0.869, tenorsax:1.
 // left that note hanging on the external synth.
 var _melLive = {};
 var _melNoteSeq = 0;
+// ── Mono / Poly for the live melody ──
+// null: the voice plays as it was built (a mõdSynth patch keeps its own Mode);
+// false: polyphonic, a mõdSynth patch forced to Poly; true: one voice that slides
+// from note to note over melGlideTime, newest key wins and letting go of it falls
+// back to the key still down, as on a hardware mono synth. var, not let: read from
+// functions declared thousands of lines away (CLAUDE.md, "Temporal dead zone").
+var melMono = null, melGlideTime = 0.12;
+// The keys down (oldest first, with how hard and where on the strip), the pitch the
+// mono voice is on and when it last sounded: what a slide starts from.
+var _melHeld = [], _melHeldInfo = {}, _melSounding = null, _melSoundT = 0;
+var MEL_MONO_FADE = 0.025;
+// A mõdSynth patch does its own mono: its engine has Legato and a Glide, so the page
+// only sets those (see _msxMelVoice) and lets every key through. Anything else is
+// made mono here, at the door, so web voices, recorded voices and a native engine
+// all follow the one rule.
+function _melMonoPage(){ return melMono===true && melWave!=='modsynth'; }
+function _melMonoStart(msg, midi, pressure, modY){
+ _melHeld = _melHeld.filter(function(m){ return m!==midi; }); _melHeld.push(midi);
+ _melHeldInfo[midi] = {p:pressure, y:modY};
+ var now = performance.now(), from = null;
+ // Only from a note that is sounding or has only just stopped: a slide out of
+ // silence has nothing to come from.
+ if(_melSounding!=null && _melSounding!==midi && now-_melSoundT < 2500) from = _melSounding;
+ Object.keys(_melLive).forEach(function(k){
+  if(+k===midi) return;
+  modSend({v: 1, kind: 'release', part: 'mel', id: _melLive[k], at: null, fade: MEL_MONO_FADE});
+  delete _melLive[k];
+  if(typeof window._melCapRelease==='function') window._melCapRelease(+k);
+ });
+ if(from!=null && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideTime; }
+ _melSounding = midi; _melSoundT = now;
+}
+// Each voice of the note starts `semis` away and slides to its own pitch over
+// `dur`: the chord glide's method (glideApply), on .detune, which oscillators and
+// sample players both have. A mõdSynth stand-in has its engine's Glide instead.
+function _melGlideApply(nodes, semis, t0, dur){
+ var cents = semis*100;
+ if(!cents || Math.abs(cents)>2400 || !(dur>0)) return;
+ (nodes||[]).forEach(function(nd){
+  if(!nd || !nd.detune || nd._msx) return;
+  if(nd.frequency && nd.frequency.value < 20) return;      // an LFO, not a pitch
+  try{
+   var base = nd._bendBase!==undefined ? nd._bendBase + _webBend.mel : nd.detune.value;
+   nd.detune.setValueAtTime(base + cents, t0);
+   nd.detune.linearRampToValueAtTime(base, t0 + dur);
+  }catch(e){}
+ });
+}
+function toggleMelMono(){ setMelMono(melMono===true ? false : true); }
+function setMelMono(v){
+ melMono = (v===null) ? null : !!v;
+ _melHeld = []; _melHeldInfo = {}; _melSounding = null;
+ try{ melApplyKeyW(); syncMelScrollCue(); }catch(e){}   // Poly: the default width; Mono: the player's own
+ syncMelMonoUI(); modParamsFlush();
+}
+function setMelGlideTime(ms){
+ melGlideTime = Math.max(0, Math.min(1.5, (+ms||0)/1000));
+ syncMelMonoUI(); modParamsFlush();
+}
+function syncMelMonoUI(){
+ var b=document.getElementById('mel-mono-btn');
+ if(b){ b.textContent='Mode: '+(melMono===true?'Mono':'Poly'); b.classList.toggle('active', melMono===true); }
+ var sl=document.getElementById('mel-glide-time');
+ if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true; }
+ var lv=document.getElementById('mel-glide-val'); if(lv) lv.textContent=Math.round(melGlideTime*1000)+'ms';
+}
 function playMelNote(midi,pressure,sustain,modY){
  if(!window.modEngine.ready()) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -25007,6 +25783,7 @@ function playMelNote(midi,pressure,sustain,modY){
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
               y: modY==null ? melModY : modY};
+ if(_melMonoPage()) _melMonoStart(msg, midi, pressure, modY);
  _melLive[midi] = msg.id;
  modSend(msg);
  return msg.id;
@@ -25078,6 +25855,7 @@ function _webMelNoteOn(msg){
    o.detune.setValueAtTime(o._bendBase + _webBend.mel, startT);
   }catch(e){} });
  }
+ if(msg.glideFrom!=null) _melGlideApply(oscs, msg.glideFrom-midi, startT, msg.glideTime);
  activeMelOscs[midi]={oscs,g,mod,id:msg.id};
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_mrv].concat(mod?mod.nodes:[]),_mdur);
 }
@@ -25129,6 +25907,13 @@ function melPlayIn(midi, pressure, y){
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(typeof window._blStripLets==='function' && window._blStripLets(midi)) return;
+ // Mono: the key is no longer down; if it was the one sounding and another is
+ // still held, that one comes back (after this note has been let go, below).
+ var back = null;
+ if(_melMonoPage()){
+  _melHeld = _melHeld.filter(function(m){ return m!==midi; }); delete _melHeldInfo[midi];
+  if(_melSounding===midi){ _melSoundT = performance.now(); if(_melHeld.length) back = _melHeld[_melHeld.length-1]; }
+ }
  // Before the early return below: a note whose voice has already been reaped
  // still has to close its captured length, or a held note comes back as a
  // sixteenth.
@@ -25136,9 +25921,10 @@ function releaseMelNote(midi){
  const id=_melLive[midi];
  if(id==null) return;
  delete _melLive[midi];
- modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null});
+ modSend({v: 1, kind: 'release', part: 'mel', id: id, at: null, fade: back!=null ? MEL_MONO_FADE : undefined});
+ if(back!=null){ var inf=_melHeldInfo[back]||{}; playMelNote(back, inf.p, true, inf.y); }
 }
-function _webMelRelease(id){
+function _webMelRelease(id, fade){
  const midi=_webMelById(id);
  if(midi==null) return;
  const {g,oscs,mod}=activeMelOscs[midi];
@@ -25147,16 +25933,17 @@ function _webMelRelease(id){
  const dec=_smpRel(_wp('mel.voice'), _wp('mel.release'));
  try{
  g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(g.gain.value,now);
- g.gain.exponentialRampToValueAtTime(.0001,now+dec*.5);
+ const fadeT = fade!=null ? fade : dec*.5;
+ g.gain.exponentialRampToValueAtTime(.0001,now+fadeT);
  // mõdSynth's stand-in carries the engine's note-off, and the engine shapes
  // its own release — so it is told the key came up when it came up. Held back
  // to the end of this fade, a mono or legato patch went on sounding the
  // released top note for 0.45 s before falling back to the key still down.
- oscs.forEach(o=>{try{o.stop(o._msx ? now : now+dec*.5+.05);}catch(e){}});
+ oscs.forEach(o=>{try{o.stop(o._msx ? now : now+fadeT+.05);}catch(e){}});
  // The mod LFOs are free-running oscillators, not scheduled voices — left
  // alone they'd tick on past the note that owns them until reapVoice cuts
  // the graph, which for a sustained note is a 45s ceiling away.
- if(mod) mod.stop(now+dec*.5+.1);
+ if(mod) mod.stop(now+fadeT+.1);
  }catch(e){}
  delete activeMelOscs[midi];
 }
@@ -27081,7 +27868,10 @@ function _webClick(msg){
  const g=ctx.createGain();
  g.gain.setValueAtTime(vol,t);
  g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
- g.connect(masterDest(ctx));
+ // To the glue, dry: masterDest is the drive, which feeds the bus room, and a click
+ // with a room around it smears the beat it is there to mark. (The chord room's
+ // returns enter here too, for the same reason: past the drive and the room.)
+ g.connect(window._masterComp || masterDest(ctx));
  const osc=ctx.createOscillator();
  osc.type='sine'; osc.frequency.value=freq;
  osc.connect(g);
@@ -27513,12 +28303,16 @@ let drumKit = 'classic'; // 'classic' | '808' | '909' | 'brush'
 // sequencer's noise voices use.
 let _drumNoiseBuf=null, _drumNoiseCtx=null;
 function _drumNoise(ctx){
- if(_drumNoiseBuf && _drumNoiseCtx===ctx) return _drumNoiseBuf;
+ // Keyed on the real context when the voice is being recorded (the buffer is a
+ // real one either way), so a hit does not make, and send, a noise buffer of
+ // its own.
+ const own=ctx._realCtx||ctx;
+ if(_drumNoiseBuf && _drumNoiseCtx===own) return _drumNoiseBuf;
  const len=Math.floor(ctx.sampleRate*0.5);
  const b=ctx.createBuffer(1,len,ctx.sampleRate);
  const d=b.getChannelData(0);
  for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
- _drumNoiseCtx=ctx; _drumNoiseBuf=b;
+ _drumNoiseCtx=own; _drumNoiseBuf=b;
  return b;
 }
 // A looping source onto the shared buffer, opened at a random point so
@@ -32331,6 +33125,7 @@ function _capSettings(){
   // musical context + character toggles
   root, mode, voicing, vary:voiceVary, bpm:_sv('bpm'),
   glideOn: chordGlideOn, glideT: chordGlideTime,
+  melMono, melGlideT: melGlideTime,
   // Stored as a pair rather than a string so an older setup, which has
   // neither, restores as 4/4 without needing to be parsed or migrated.
   meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
@@ -32523,6 +33318,7 @@ function _applySettings(s){
  _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
  _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
  if(s.glideOn!=null){ chordGlideOn=!!s.glideOn; if(s.glideT>0) chordGlideTime=+s.glideT; syncGlideUI(); }
+ if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT; _melHeld=[]; _melHeldInfo={}; _melSounding=null; try{ melApplyKeyW(); }catch(e){} syncMelMonoUI(); }
 
  // Melody envelope + FX
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
@@ -33642,10 +34438,14 @@ function melAutoKeyW(){
 }
 function melApplyKeyW(){
  const k=document.getElementById('melody-keys'); if(!k) return;
- k.style.setProperty('--mel-kw', (_melKw!=null ? _melKw : melAutoKeyW())+'px');
+ // The player's own width only counts in Mono. In Poly two fingers are two notes, so
+ // the keys sit at the default width (the one that fits an octave) and the pinch
+ // below is off: a chord played on the strip was being read as a zoom, which let the
+ // first note go and resized the keys under the second.
+ k.style.setProperty('--mel-kw', ((melMono===true && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
  try{ invalidateMelScrollMax(); }catch(e){}
 }
-window.addEventListener('resize', function(){ if(_melKw==null) melApplyKeyW(); });
+window.addEventListener('resize', function(){ if(_melKw==null || melMono!==true) melApplyKeyW(); });
 window.addEventListener('load', melApplyKeyW);
 // Two fingers on the strip. Capture phase on the scroller, so the second finger
 // is taken before any key sees it, and the first finger's note is let go.
@@ -33656,7 +34456,7 @@ window.addEventListener('load', melApplyKeyW);
   const pts=new Map(); let pinch=null, cancelling=false;
   const dist=()=>{ const a=[...pts.values()]; return a.length<2 ? 0 : Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y) || 1; };
   wrap.addEventListener('pointerdown', function(e){
-   if(e.pointerType!=='touch') return;
+   if(e.pointerType!=='touch' || melMono!==true) return;
    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, t:e.target});
    if(pts.size===2){
     e.stopPropagation(); e.preventDefault();
@@ -33697,7 +34497,7 @@ window.addEventListener('load', melApplyKeyW);
   wrap.addEventListener('pointerup', end, true); wrap.addEventListener('pointercancel', end, true);
   // Without this the browser takes a two-finger move as a scroll, and cancels
   // the pointers the pinch is reading.
-  wrap.addEventListener('touchmove', function(e){ if(e.touches.length>=2 || pinch) e.preventDefault(); }, {passive:false});
+  wrap.addEventListener('touchmove', function(e){ if(melMono===true && (e.touches.length>=2 || pinch)) e.preventDefault(); }, {passive:false});
  }
  wire(); document.addEventListener('DOMContentLoaded', wire); window.addEventListener('load', wire);
 })();

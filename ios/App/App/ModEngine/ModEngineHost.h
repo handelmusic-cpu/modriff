@@ -55,6 +55,29 @@ NS_ASSUME_NONNULL_BEGIN
 /// never allocates", not a claim that it cannot.
 - (BOOL)warmUpPart:(int)part;
 
+// ── The graph path ──────────────────────────────────────────────────────
+// The page records a note's Web Audio graph and sends it as numbers; the host
+// plays it with the C++ interpreter (graphpool.h), into the part's own bus, so
+// the part has a strip and mõdFX but no Processor. All of these on the control
+// thread (the one plugin calls arrive on), in the order the page sent them: a
+// clip, then the graph that names it, then its edits.
+
+/// A part played as graphs: strip and mõdFX, no engine, no rack. Off the audio
+/// thread. NO if `part` is out of range.
+- (BOOL)ensureGraphPart:(int)part;
+/// A decoded clip by id, as float32 channels (one or two). Once per clip.
+- (BOOL)putGraphBuffer:(int)bufId sampleRate:(double)sr channels:(NSArray<NSData *> *)channels;
+/// Starts a voice from a program (little-endian float64s). `timestampMs` is the
+/// page's wall clock when it opened the voice. Answers {handle, unknownBuffer}:
+/// handle >= 0 when it began, -2 when the program names a clip the host lacks
+/// (unknownBuffer says which, and the page sends it again), -1 when it was
+/// refused or the pool is full.
+- (NSDictionary *)beginGraph:(int)gid program:(NSData *)program timestampMs:(double)ts;
+/// Later changes to a voice (float64 increments). NO if it has finished.
+- (BOOL)editGraph:(int)gid increments:(NSData *)increments;
+/// {voices, dropped, lateEdits}: what the pool is playing and what it refused.
+- (NSDictionary *)graphStats;
+
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is
 /// what a message's `at` is measured against.

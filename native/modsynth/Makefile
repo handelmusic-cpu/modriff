@@ -15,6 +15,8 @@ params_gen.h: ../../modsynth/params.js gen-params.js
 # reaches it through the engine. Neither is a null test (see fxrack.h).
 fxtest: fxtest.cpp fxrack.cpp fxrack.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxtest.cpp fxrack.cpp
+sendtest: sendtest.cpp fxrack.cpp fxrack.h params_gen.h
+	$(CXX) $(CXXFLAGS) -o $@ sendtest.cpp fxrack.cpp
 fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc
 hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h
@@ -34,6 +36,9 @@ capturetest: capturetest.cpp capture.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ capturetest.cpp
 # The capture path through the real ModEngineHost.mm (macOS only).
 HOSTDIR = ../../ios/App/App/ModEngine
+graphhosttest: graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+
 hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 # The speaker hears nothing while a part is warmed up (macOS only).
@@ -48,5 +53,16 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 clean:
-	rm -f eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
+
+# The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
+# tests/graph/voices.test.js holds it to the browser's render of the same voice.
+graphrender: graphrender.cpp graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -o $@ graphrender.cpp graph.cpp
+# The voice pool the host calls: begin/edit from one thread, render from another.
+graphpooltest: graphpooltest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ graphpooltest.cpp graphpool.cpp graph.cpp
+# Plays what the page sent, through the pool, for tests/graph/page.test.js.
+graphmix: graphmix.cpp graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ graphmix.cpp graphpool.cpp graph.cpp
