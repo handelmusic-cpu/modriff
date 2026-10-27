@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5t</span></div>
  </div>
 </div>
 
@@ -9246,7 +9246,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5s</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5t</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10283,7 +10283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5s';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11202,20 +11202,31 @@ window.modEngine = window.modEngine || {};
 // and `native` below is simply false. So does a native build where the engine
 // fails to start — that is the only fallback, and it is automatic.
 //
+// Every part that has a mõdSynth is a part here (4.9.9.9.9.9.5t): the chord, the
+// melody keys, the Melody Seq, the bass and the arp each get a Processor and a rack
+// of their own in the host, built the first time that part's engine is. The chord
+// alone used to be: the others stayed on their worklets, so a bass on a patch was
+// the one part in a native-sound session that still played from Web Audio.
+//
 // Where it taps in: `node.port.postMessage` on the part's worklet, which is
 // the boundary the mõdSynth panel work (4.9.9.9.7) was verified at and the
 // one modsynth::Processor was written to take. A forwarder, not a translator.
 //
 // var, not let: read from functions declared thousands of lines earlier.
 var MODNAT = { stream:false, native:false, started:false, starting:null, plugin:null, sr:0,
-               attached:{}, posted:0, failed:0, refused:0, PART:{chord:0},
+               attached:{}, posted:0, failed:0, refused:0,
+               // A part's slot in the host. The same numbers as MODGRAPH.CODE, which
+               // names the buses a recorded graph sums into: a part played as graphs
+               // and the same part on a patch share a strip, so they must agree
+               // (tests/graph/page.test.js holds them to each other).
+               PART:{chord:0, mel:1, melgen:2, bass:3, arp:4},
                // Parts the host has built a Processor for. PART only names a part's
                // slot (modGraphStart sets it for a part played as graphs, which has a
                // strip and no engine); a mõdSynth patch can only be handed to the
                // host when a Processor is there to take it, or it is unplugged from
                // Web Audio and its notes go nowhere (bass and mel on a patch, after
                // modGraphStart, were silent).
-               proc:{} };
+               proc:{}, procPending:{} };
 
 function modNativePlugin(){
  try{
@@ -11391,13 +11402,24 @@ function _modNativeFxPost(part, id, value){
 // smoother of its own. Only sent when it changes: a fader drag and a patch
 // change both pass through here, a note does not need to.
 MODNAT.strip = {}; MODNAT.stripPan = {};
+// The fixed gain of the web bus a part's mõdSynth is plugged into. Bass and the Melody
+// Seq build theirs inside their own IIFEs with a level (0.36 and 0.6; _partDest hands
+// them back) and the rest are unity taps. The worklet's trim goes through it on the web,
+// so the host's strip has to as well: without it the bass on a patch ran 2.8 dB hot
+// (1/0.36) and the Melody Seq 4.4 dB. _mixBase is what _mixGateBuses keeps while a mute
+// or solo has the live gain at zero; the mute itself is already in mix.<part>.
+function _modNativeBusGain(part){
+ var b=null; try{ b=_allPartBuses()[part]; }catch(e){}
+ var g=b ? (b._mixBase!=null ? b._mixBase : (b.gain ? b.gain.value : 1)) : 1;
+ return (isFinite(g) && g>0) ? g : 1;
+}
 function _modNativeStripSync(part){
  if(!MODNAT.attached[part]) return;
  var mx=_wp('mix.'+part); if(mx==null) mx=1;
  // A part played as recorded graphs is built from the web's own voices, which
  // scale themselves by the fader and mute at note time: the host's strip must
  // not do it a second time.
- var g=_mgOnGraph(part) ? 1 : _msxCal(part)*mx;
+ var g=_mgOnGraph(part) ? 1 : _msxCal(part)*mx*_modNativeBusGain(part);
  if(isFinite(g) && MODNAT.strip[part]!==g){
   MODNAT.strip[part]=g;
   _modNativePost(part, {t:'strip', i:0, v:g});
@@ -11419,7 +11441,12 @@ function _modNativeStripSyncAll(){ Object.keys(MODNAT.attached).forEach(_modNati
 // while a meter is actually reading.
 // Whether the host is what makes this part's sound right now: a Processor is
 // attached to it, or it is played as recorded graphs (and not on a patch).
-function _modNativeCarries(part){ var a = MODNAT.attached[part]; return !!a && (!!a.port || _mgOnGraph(part)); }
+// A Processor part answers by its voice: the engine stays attached after the part is
+// set to a web voice (the worklet is built once), and then the sound is on the web bus.
+function _modNativeCarries(part){
+ var a = MODNAT.attached[part]; if(!a) return false;
+ return (!!a.port && _wp(part + '.voice') === 'modsynth') || _mgOnGraph(part);
+}
 MODNAT.rms = {}; MODNAT.metersAt = 0; MODNAT.metersBusy = false; MODNAT.meterTap = {};
 // The mixer's master meter when the host is playing something: the web master's RMS and
 // the host master's, added as powers (two masters sum at the speaker). Reading the web
@@ -11514,7 +11541,7 @@ function _modNativeWebInMix(){
  var ch=window.MIX_CHANNELS||[];
  for(var i=0; i<ch.length; i++){
   var id=ch[i].id;
-  if(MODNAT.attached[id]) continue;
+  if(_modNativeCarries(id)) continue;
   if(M[id] || (anySolo && !So[id])) continue;
   var mx=_wp('mix.'+id); if(mx==null) mx=1;
   if(mx>0.001) return true;
@@ -11571,17 +11598,39 @@ function _modNativeAttach(part, eng){
  try{ if(typeof fxApplyChannel==='function') fxApplyChannel(part); }catch(e){}
 }
 
-// Called when a part's engine is built. Only the chord part goes native, and
-// only in the app; everywhere else this returns at once and the worklet plays
-// as it always has.
+// The host builds a part's Processor the first time its engine is wanted, not at
+// launch: five of them cost the audio thread next to nothing idle (2 us a block
+// each, measured) but each one is warmed up on build, and a part that never
+// leaves its web voice should not pay for that. The chord's is built by
+// modNativeStart, ahead of everything, as it always was.
+function _modNativeEnsureProc(part){
+ if(MODNAT.proc[part]) return Promise.resolve(true);
+ if(MODNAT.procPending[part]) return MODNAT.procPending[part];
+ var p=modNativePlugin();
+ if(!p) return Promise.resolve(false);
+ return (MODNAT.procPending[part] = p.ensurePart({part:MODNAT.PART[part], warm:true}).then(function(){
+  MODNAT.proc[part]=true; return true;
+ }, function(e){
+  try{ console.warn('[modNative] no processor for '+part, e); }catch(_){} return false;
+ }).then(function(v){ MODNAT.procPending[part]=null; return v; }));
+}
+
+// Called when a part's engine is built. In the app every part with a mõdSynth is
+// played by the host from here on; everywhere else this returns at once and the
+// worklet plays as it always has.
 function _modNativeSync(part, eng){
- if(MODNAT.PART[part]==null || !MODNAT.proc[part]) return;
+ if(MODNAT.PART[part]==null) return;
  if(!modNativeAvailable()) return;
  eng = eng || ((typeof MSX!=='undefined'&&MSX.eng) ? MSX.eng[part] : null);
  if(!eng || !eng.ready) return;
  modNativeStart().then(function(ok){
-  if(ok) _modNativeAttach(part, eng);
-  else try{ console.warn('[modNative] engine did not start — the worklet keeps the part'); }catch(e){}
+  if(!ok){ try{ console.warn('[modNative] engine did not start — the worklet keeps the part'); }catch(e){} return; }
+  return _modNativeEnsureProc(part).then(function(has){
+   // Not attached without a Processor: the worklet would be unplugged and its
+   // notes would go nowhere.
+   if(has) _modNativeAttach(part, eng);
+   else try{ console.warn('[modNative] the host has no processor for '+part+' — the worklet keeps it'); }catch(e){}
+  });
  });
 }
 
@@ -45847,7 +45896,7 @@ function _startStemTaps(ctx){
     // would write a silent file for a part you can hear. The host's own capture
     // (_natCapStart) carries it instead; where that is not running, say so
     // instead of pretending.
-    if(MODNAT && MODNAT.attached && MODNAT.attached[part]){
+    if(MODNAT && _modNativeCarries(part)){
       if(!_natCapActive()) _stemSkipped.push({part:part, why:'native'});
       return;
     }
@@ -46230,7 +46279,7 @@ function _natCapActive(){ return !!(_natCap && !_natCap.failed); }
 function _natCapWant(){
   var m=1;
   if(exportStems) Object.keys(MODNAT.attached||{}).forEach(function(p){
-    if(MODNAT.attached[p]) m |= 1<<(1+(MODNAT.PART[p]|0));
+    if(_modNativeCarries(p)) m |= 1<<(1+(MODNAT.PART[p]|0));
   });
   return m;
 }
@@ -46390,7 +46439,7 @@ function _natCapStemTaps(c){
     if(!st || !st.F.length){
       // Captured, but nothing in it (_natCapTake keeps no silence): the same
       // "silent" a part gets when its file would have been all zeros.
-      if(MODNAT.attached && MODNAT.attached[part]) _stemSkipped.push({part:part, why:'silent'});
+      if(_modNativeCarries(part)) _stemSkipped.push({part:part, why:'silent'});
       return;
     }
     _stemTaps=_stemTaps.filter(function(t){
@@ -46407,7 +46456,7 @@ function _nativeUncaptured(){
   var out=[];
   if(_natCapActive()) return out;
   try{
-    Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) out.push(STEM_LABELS[p]||p); });
+    Object.keys(MODNAT.attached||{}).forEach(function(p){ if(_modNativeCarries(p)) out.push(STEM_LABELS[p]||p); });
   }catch(e){}
   return out;
 }
@@ -46761,7 +46810,7 @@ function _stopRecording(){
     // Where stems were on but the host's capture was not, the part is named.
     if(exportStems && span.f0!=null){
       if(nat && !nat.failed) _natCapStemTaps(nat);
-      else if(nat) Object.keys(MODNAT.attached||{}).forEach(function(p){ if(MODNAT.attached[p]) _stemSkipped.push({part:p, why:'native'}); });
+      else if(nat) Object.keys(MODNAT.attached||{}).forEach(function(p){ if(_modNativeCarries(p)) _stemSkipped.push({part:p, why:'native'}); });
     }
     var stems=_finishStemTaps(base,_sr,tags,span);
     if(stems.sinkTaps && stems.sinkTaps.length){
@@ -60313,6 +60362,9 @@ function _webLiveParam(part, name, prev, value){
   if(part==='fx' && name==='drive') return _webApplyDrive();
   if(part==='master' && name!=='tune') return _webMasterApply();
   if(part==='mix'){ _modNativeStripSyncAll(); _modNativeMasterSync(); }
+ // A part going to or from a mõdSynth patch changes who scales it: the host's strip
+ // (a patch) or the voice itself (recorded graphs).
+ if(name==='voice') try{ _modNativeStripSync(part); _modNativeMasterSync(); }catch(e){}
   if(part==='mix' && name==='muteSolo') return _mixGateBuses();
   if(part==='mix' && name==='pan') return _webMixPan();
   if(part==='mix' && name==='eq') return _webMixEq();

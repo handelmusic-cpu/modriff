@@ -2047,16 +2047,28 @@ do not scale themselves, and needs a switch per part.
 - One dense session dropped 184 of 884 notes (and one block took 17.5 ms against a 5 ms budget); a
   second, the same kind of playing, dropped none (most voices at once 26 of 64, worst block 4.8 ms).
   Not explained. If it recurs the status line says whether the pool was full or programs were refused.
+- **mõdSynth on every part (5t; page only, unheard on a phone).** `MODNAT.PART` names all five parts that
+  have a mõdSynth (chord 0, mel 1, melgen 2, bass 3, arp 4: the same slots as `MODGRAPH.CODE`), and
+  `_modNativeSync` asks the host for a Processor in a part's slot (`ensurePart {part, warm:true}`, no
+  `graph`) the first time its engine is built, then unplugs the worklet as it always did for the chord.
+  The host needed nothing: `ModEngineHost` already ran a Processor, rack and strip per slot, and a slot
+  with a Processor and graph voices both (a graph part set to a patch) sums them. Idle, five Processors
+  with racks cost 2 us a block each (x86, `-O2`), so they are built lazily only to skip the warm-up. What
+  changed with it: the host strip's level is `_msxCal * fader * the web bus's gain` (bass 0.36, Melody Seq 0.6
+  are real buses with a level; the worklet's trim went through them on the web, the host's strip did not,
+  so the bass on a patch would have run 2.8 dB hot), a voice change re-sends the strip (a graph voice scales
+  itself, a patch does not), and "the host plays this part" (`_modNativeCarries`: meter, stems, the master's web trim)
+  now asks the part's voice, because an engine stays attached after the part is set to a
+  web voice. `tests/graph/parts.test.js` holds it. Not yet heard: the Processor's parts all at once.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
 **Still to do.** The Objective-C++ host half (above; not built here). Wiring the
 page to call `modGraphEnable` for the native app once the plugin has the three
 methods, with a probe like `fileDelete`'s so an old binary falls back. The strip
-level switch above. mõdSynth on the parts other than the chord (the Processor
-already supports it; the page's `MODNAT.PART` has only the chord). `AudioWorklet`
-voices the recorder cannot hold: the mõdSynth web voice, and mõdFX's own worklet
-effects (those are native already, N3 and N4). Then the flip itself: the commit
+level switch above. (mõdSynth on the parts other than the chord: done, 5t.) The
+`AudioWorklet` voices the recorder cannot hold are now only mõdFX's own worklet
+effects (native already, N3 and N4). Then the flip itself: the commit
 that turns it on for every part and deletes the web path.
 
 ### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
