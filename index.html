@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5x</span></div>
  </div>
 </div>
 
@@ -9246,7 +9246,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5x</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10283,7 +10283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5t';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5x';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16728,6 +16728,18 @@ function _webSmpBuf(ctx, asset, rev, stretch){
  if(stretch) return PS_WARP[psWarpKey(asset, rev, stretch)] || null;
  return rev ? psRevBuf(ctx, asset) : (window._webAssets[asset] || null);
 }
+
+// A loop point that falls on a whole frame, spelled as exactly that frame's time. The
+// fraction times the duration is not: 0.4 * 1.5 is 0.6000000000000001, a few 1e-12 of a
+// frame past the frame it means. A browser decides for itself whether a playhead that
+// lands on that frame has reached the loop end, and they do not agree (Chrome 153 reads
+// the sample past the end for one frame at every wrap, a tick; the Chrome before it
+// wrapped), so the page asks for the frame it means and the browser and the native
+// interpreter (tests/graph/page.test.js, sampler) have nothing to disagree about.
+function _smpLoopSec(sec, buf){
+ var f = sec*buf.sampleRate, r = Math.round(f);
+ return Math.abs(f - r) < 1e-6 ? r/buf.sampleRate : sec;
+}
 function _webClipOn(m){
  var ctx = getCtx(); if(!ctx) return;
  var buf = _webSmpBuf(ctx, m.asset, !!m.rev, m.stretch); if(!buf) return;
@@ -16746,9 +16758,9 @@ function _webClipOn(m){
  g.gain.linearRampToValueAtTime(lvl, t+FD);
  var end = null;
  if(m.loop==='window'){
-  src.loop = true; src.loopStart = m.from*buf.duration; src.loopEnd = m.to*buf.duration;
+  src.loop = true; src.loopStart = _smpLoopSec(m.from*buf.duration, buf); src.loopEnd = _smpLoopSec(m.to*buf.duration, buf);
  } else if(m.loop==='hold'){
-  src.loop = true; src.loopStart = m.loopA*buf.duration; src.loopEnd = m.loopB*buf.duration;
+  src.loop = true; src.loopStart = _smpLoopSec(m.loopA*buf.duration, buf); src.loopEnd = _smpLoopSec(m.loopB*buf.duration, buf);
  } else {
   end = t + win/rate;
   g.gain.setValueAtTime(lvl, Math.max(t+FD, end-0.004));
@@ -46419,6 +46431,22 @@ function _natCapExtent(st){
   if(st) for(var i=0;i<st.F.length;i++){ f0=Math.min(f0,st.F[i]); fEnd=Math.max(fEnd,st.F[i]+st.L[i].length); }
   return { f0:f0, fEnd:fEnd };
 }
+// How many samples of a captured stream are above the floor, counted up to
+// `cap`. The streamed bounce asks this of the host's master as well as of the
+// web tap: with Native sound on the page's own master carries nothing, so a
+// take can be all host and the web side digitally silent — which the check
+// used to read as a dead capture ("Bounce came back silent") over a take that
+// was playing.
+function _natCapLive(st, cap){
+  var live=0;
+  if(st) for(var i=0;i<st.L.length;i++){
+    var L=st.L[i], R=st.R[i];
+    for(var k=0;k<L.length;k++){
+      if((L[k]>=0.0005 || L[k]<=-0.0005 || R[k]>=0.0005 || R[k]<=-0.0005) && ++live>=cap) return live;
+    }
+  }
+  return live;
+}
 // Adds a captured stream into the mix. Added, not set: the web taps wrote the
 // same buffers first, and while a part is moving between engines both can have
 // something to say.
@@ -46637,7 +46665,7 @@ async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
   var pl=modNativePlugin(), hdr=_wavHeaderBytes(nOut, sr, tags), name=_dlName(base+'.wav');
   await sink.drain();
   await pl.wavFinish({ pcm:sink.name, name:name, header:modPlatform.b64Of(hdr), folder:folder,
-    leadBytes:Math.max(0,sink.first-span.f0)*4, skipBytes:Math.max(0,span.f0-sink.first)*4, dataBytes:nOut*4 });
+    leadBytes:Math.max(0,(sink.first==null?span.f0:sink.first)-span.f0)*4, skipBytes:Math.max(0,span.f0-(sink.first==null?span.f0:sink.first))*4, dataBytes:nOut*4 });
   if(natMix){
     for(var i=0;i<natMix.F.length;i++){
       var at=natMix.F[i]-span.f0, src=natMix.L[i], srcR=natMix.R[i], from=0;
@@ -46714,16 +46742,25 @@ function _stopRecording(){
         try{ console.warn('[rec] stream failed', sink.failed); }catch(e){}
         return;
       }
-      var _sf0=sink.first, _sfEnd=sink.next, _sx=_natCapExtent(natMix);
-      _sf0=Math.min(_sf0,_sx.f0); _sfEnd=Math.max(_sfEnd,_sx.fEnd);
+      // sink.first is null when the web tap wrote nothing (a take played wholly
+      // by the host); Math.min(null, x) is 0, which would have made the mix
+      // start at frame 0 of the context and run for as long as it had been up.
+      var _sx=_natCapExtent(natMix);
+      var _sf0=sink.first==null ? _sx.f0 : Math.min(sink.first,_sx.f0);
+      var _sfEnd=sink.next==null ? _sx.fEnd : Math.max(sink.next,_sx.fEnd);
       span={ f0:_sf0, n:_sfEnd-_sf0 }; totalLen=span.n;
-      if(sink.live<64){
+      var _natLive=_natCapLive(natMix, 64);
+      if(sink.live<64 && _natLive<64){
         sink.discard();
         _isRecording=false;_updateRecBtn();
         _abandonStemTaps();
-        showToast('Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
+        // A host capture that failed (its sample rate or clock) leaves a take
+        // played by the engine looking exactly like a dead tap; name it.
+        showToast(nat && nat.failed
+          ? 'Bounce came back silent — the native engine could not be captured ('+nat.failed+'). Turn Native sound off in Settings to bounce the web sound.'
+          : 'Bounce came back silent — nothing was captured. Stop and start audio, then try again.');
         try{ console.warn('[rec] capture was digitally silent',
-          {frames:totalLen, liveSamples:sink.live, peak:sink.peak,
+          {frames:totalLen, liveSamples:sink.live, nativeLive:_natLive, nativeFailed:nat&&nat.failed, peak:sink.peak,
            tapKind:tap&&tap.kind, ctx:getCtx()&&getCtx().state}); }catch(e){}
         return;
       }

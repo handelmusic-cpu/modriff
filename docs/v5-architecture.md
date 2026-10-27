@@ -2060,6 +2060,26 @@ do not scale themselves, and needs a switch per part.
   itself, a patch does not), and "the host plays this part" (`_modNativeCarries`: meter, stems, the master's web trim)
   now asks the part's voice, because an engine stays attached after the part is set to a
   web voice. `tests/graph/parts.test.js` holds it. Not yet heard: the Processor's parts all at once.
+- **The sampler graph test failed at 58.8 dB (5u).** Three frames of 144,000 differed, each the wrap of a looping
+  clip: the page asks for a loop end of `0.4 * 1.5`, which is 0.6000000000000001, and Chrome 153 reads the
+  sample past the end for that frame (a tick) where the Chrome the interpreter was matched to wrapped. The
+  page now spells a loop point that lands on a frame as that frame's time (`_smpLoopSec`), so browser and
+  interpreter agree whatever the browser does with noise; 155.7 dB again. `graph.cpp`'s snap stays.
+- **Every part on mõdSynth, on the phone (5t): clean** (9,440 notes, 0 dropped, 2 of 156,932 blocks over 2 ms,
+  worst 2.5 ms, load 11%, most voices at once 47 of 64). Heard: the Pluck category (not Lo-fi Pluck), Stab Keys,
+  Metal Bell and DX Bell Stack peaked too loud; the mellow patches sat fine.
+- **Patch levels recalibrated (5w).** The trims matched flat RMS on one four-note chord, so a bright, transient
+  patch read as loud as a pad and was heard as much louder (K-weighted and played as a Melody Seq line the plucks and
+  bells sat a median 3 dB over the library; 3 to 5 dB higher peaks). `tests/levels/trims.js` now writes
+  `modsynth/patches-levels.js`: K-weighted (BS.1770) loudness against the app's own voices, the lower of a chord and a
+  line for a polyphonic patch, a peak ceiling (-12 dBFS unity parts, -6 bass), the median patch of each class left
+  where it was. Spread across the 324 patches 3.0 dB to 0.65 dB; 70 moved more than 2 dB (43 down, 27 up).
+  Some of the patches heard as too loud (Dark Pluck, Sine Pluck, Stab Keys, Metal Bell) measure about right and moved
+  less than 1 dB: the measurement and the ear disagree there, so say by name which is still too loud. 5v's flat 3 dB
+  cut on 18 patches is gone (the table is regenerated, not patched). The per-part offsets are unchanged on purpose:
+  `MSX_BUS_CAL` x the bus gain makes the same patch 8 dB hotter on Melody Seq and bass than on chord and arp, because a
+  part's mõdSynth sits at the level of that part's built-in voices and the faders were set against that; flattening it
+  drops every Melody Seq patch about 7 dB, which is a mix decision, not a calibration one.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
