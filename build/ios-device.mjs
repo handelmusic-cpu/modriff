@@ -49,6 +49,14 @@ try {
     process.env.MODRIFF_CONFIG || 'Debug',
     '-destination', `'id=${udid}'`, '-derivedDataPath', DD,
     '-allowProvisioningUpdates', 'build',
+    // The C++ engine is real-time DSP: the Debug configuration compiles it with
+    // -O0, which measured 38% load and 32,000 render blocks over 2 ms (worst 162 ms)
+    // against 3% and a 10 ms worst once optimised, so an optimised Debug build is the
+    // default here. It keeps what only a Debug build has (the Free/Pro "Test as"
+    // switch, the debug flag); a Release build asks the App Store for Pro and a
+    // developer account has not bought it. MODRIFF_OPT=0 turns this off, for stepping
+    // through the C++ in Xcode.
+    ...(process.env.MODRIFF_OPT === '0' ? [] : ['GCC_OPTIMIZATION_LEVEL=s', 'SWIFT_OPTIMIZATION_LEVEL=-O']),
   ].join(' '), { stdio: ['ignore', 'pipe', 'pipe'] });
 } catch (e) {
   // xcodebuild buries the one useful line in a few hundred; show those.
