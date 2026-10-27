@@ -2065,6 +2065,14 @@ do not scale themselves, and needs a switch per part.
   sample past the end for that frame (a tick) where the Chrome the interpreter was matched to wrapped. The
   page now spells a loop point that lands on a frame as that frame's time (`_smpLoopSec`), so browser and
   interpreter agree whatever the browser does with noise; 155.7 dB again. `graph.cpp`'s snap stays.
+- **Every part on mõdSynth, on the phone (5t): clean** (9,440 notes, 0 dropped, 2 of 156,932 blocks over 2 ms,
+  worst 2.5 ms, load 11%, most voices at once 47 of 64). Heard: the Pluck category (not Lo-fi Pluck), Stab Keys,
+  Metal Bell and DX Bell Stack peaked too loud; the mellow patches sat fine. Measured: those patches are RMS-matched
+  to the library but K-weighted and played as a Melody Seq line they run +2 to +6 dB (median +3.1) over it; the chord
+  phrase the trims were measured on shows nothing, and Lo-fi Pluck (+4.5) measures like the rest and was fine, so the
+  numbers do not separate them cleanly. 5v cuts those 18 trims by 3 dB (`modsynth/patches-levels.js`, noted there).
+  The same patch is also 8 to 9 dB hotter on Melody Seq and bass than on chord and arp (`MSX_BUS_CAL`, calibrated for
+  bass-class patches), which a pluck on those parts makes worse; not changed.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
