@@ -2080,7 +2080,7 @@ do not scale themselves, and needs a switch per part.
   `MSX_BUS_CAL` x the bus gain makes the same patch 8 dB hotter on Melody Seq and bass than on chord and arp, because a
   part's mõdSynth sits at the level of that part's built-in voices and the faders were set against that; flattening it
   drops every Melody Seq patch about 7 dB, which is a mix decision, not a calibration one.
-- **A late Processor was 20 s late (found on the phone, fixed in 5x; unbuilt).** With Native sound on and the arp
+- **A late Processor was 20 s late (found on the phone, fixed in 5y; unbuilt).** With Native sound on and the arp
   playing as graphs, switching it to a mõdSynth patch was silent for about 20 s and then played, and kept playing for
   about 20 s after Stop. The page was right (the stand-in plugin shows arp notes at slot 4 from 0.2 s after the
   switch, each 0.17 s ahead). The host's `_partFrames[part]` is the Processor's clock, `applyMessage` places a note at
