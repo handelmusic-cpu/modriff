@@ -35,8 +35,23 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micRead", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micStop", returnType: CAPPluginReturnPromise)
     ]
+
+    // The sampler's microphone take. The web view's getUserMedia was granted by iOS
+    // and still failed on the phone (InvalidStateError), so the app opens its own
+    // input: a second AVAudioEngine whose input node is tapped, the samples kept
+    // here until the page reads them. The session is already play-and-record
+    // (AppDelegate), so opening it changes nothing for the output engine.
+    private var micEngine: AVAudioEngine?
+    private let micLock = NSLock()
+    private var micL: [Float] = []
+    private var micR: [Float] = []
+    private var micRate: Double = 0
+    private static let micMaxFrames = 48_000 * 60     // a reader that has stopped asking does not grow this forever
 
     /// Capacitor calls this when it registers the plugin. It is the only
     /// proof that a CAPBridgedPlugin declared in the app target — rather than
@@ -566,6 +581,64 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             guard let url = URL(string: UIApplication.openSettingsURLString) else { call.resolve(["opened": false]); return }
             UIApplication.shared.open(url, options: [:]) { ok in call.resolve(["opened": ok]) }
         }
+    }
+
+    @objc func micStart(_ call: CAPPluginCall) {
+        stopMic()
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            call.reject("no microphone input")
+            return
+        }
+        micLock.lock(); micL.removeAll(keepingCapacity: true); micR.removeAll(keepingCapacity: true); micRate = format.sampleRate; micLock.unlock()
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let self = self, let ch = buffer.floatChannelData else { return }
+            let n = Int(buffer.frameLength)
+            let left = ch[0]
+            let right = buffer.format.channelCount > 1 ? ch[1] : ch[0]
+            self.micLock.lock()
+            if self.micL.count < ModEngine.micMaxFrames {
+                self.micL.append(contentsOf: UnsafeBufferPointer(start: left, count: n))
+                self.micR.append(contentsOf: UnsafeBufferPointer(start: right, count: n))
+            }
+            self.micLock.unlock()
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            call.reject("microphone engine: \(error.localizedDescription)")
+            return
+        }
+        micEngine = engine
+        call.resolve(["sampleRate": format.sampleRate, "channels": Int(format.channelCount)])
+    }
+
+    /// The samples gathered since the last read: left then right, float32, base64.
+    @objc func micRead(_ call: CAPPluginCall) {
+        micLock.lock()
+        let l = micL, r = micR, rate = micRate
+        micL.removeAll(keepingCapacity: true); micR.removeAll(keepingCapacity: true)
+        micLock.unlock()
+        var data = Data(capacity: (l.count + r.count) * 4)
+        l.withUnsafeBufferPointer { data.append(UnsafeBufferPointer(start: $0.baseAddress, count: l.count)) }
+        r.withUnsafeBufferPointer { data.append(UnsafeBufferPointer(start: $0.baseAddress, count: r.count)) }
+        call.resolve(["frames": l.count, "sampleRate": rate, "data": data.base64EncodedString()])
+    }
+
+    @objc func micStop(_ call: CAPPluginCall) {
+        stopMic()
+        call.resolve()
+    }
+
+    private func stopMic() {
+        guard let engine = micEngine else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        micEngine = nil
     }
 
     @objc func stats(_ call: CAPPluginCall) {

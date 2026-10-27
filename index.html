@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5l</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5m</span></div>
  </div>
 </div>
 
@@ -9241,7 +9241,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5l</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5m</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10278,7 +10278,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5l';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5m';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11243,7 +11243,8 @@ function modNativePlugin(){
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
-                     micPermission:call('micPermission'), openSettings:call('openSettings') };
+                     micPermission:call('micPermission'), openSettings:call('openSettings'),
+                     micStart:call('micStart'), micRead:call('micRead'), micStop:call('micStop') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }
@@ -15034,9 +15035,6 @@ function smpRecStart(kind){
   _smpBeginTap(ctx, node, 'app', null);
   return;
  }
- if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-  showToast('This device will not open a microphone'); return;
- }
  // Every one of these three off, deliberately. They are tuned for speech on a
  // call: AGC rides the level of a sustained note, noise suppression eats the
  // tail of anything quiet, and echo cancellation will duck the mic whenever
@@ -15046,26 +15044,21 @@ function smpRecStart(kind){
  // In the app iOS is asked by the app first (ModEngine.micPermission): the web view's
  // own request was refused without a sheet ever showing, which left the app with no
  // microphone row in Settings to switch on. A build without the method goes straight
- // to getUserMedia, as the browser does.
+ // on, as the browser does.
  var _np = (typeof modNativePlugin==='function') ? modNativePlugin() : null;
  var _ask = (_np && _np.micPermission) ? _np.micPermission({}) : Promise.resolve({granted:true, status:'no plugin method'});
  var _micSaid = '';
  _ask = _ask.then(function(r){ _micSaid = (r && r.status) || 'no answer'; return r; },
                   function(e){ _micSaid = 'plugin error: ' + ((e && (e.message || e.code)) || e); return {granted:true}; });
- _ask.then(function(r){
-  if(r && r.granted === false){
-   // Told no once, iOS never shows the sheet again: the switch is in Settings.
-   // Say so and open the app's page there instead of leaving a toast to act on.
-   showToast('Microphone is ' + (r.status || 'off') + ' for mõdRïff — opening Settings');
-   if(_np && _np.openSettings) setTimeout(function(){ try{ _np.openSettings({}); }catch(e){} }, 1200);
-   _micGraceUntil = 0;
-   return null;
+ // The web view's own microphone: what a browser uses, and what the app falls back to
+ // when its binary has no native one.
+ var viaWeb = function(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+   _micGraceUntil = 0; showToast('This device will not open a microphone'); return null;
   }
   return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
-                                             autoGainControl:false}});
- })
+                                             autoGainControl:false}})
   .then(function(stream){
-   if(!stream) return;               // refused above, and already said
    _micGraceUntil = Date.now() + 4000;
    // Start the take only once the context's clock is moving again — a tap on
    // a frozen context records nothing — resuming it while we wait. If it never
@@ -15082,15 +15075,65 @@ function smpRecStart(kind){
     }
     setTimeout(wait, 80);
    })();
-  })
+  });
+ };
+ _ask.then(function(r){
+  if(r && r.granted === false){
+   // Told no once, iOS never shows the sheet again: the switch is in Settings.
+   // Say so and open the app's page there instead of leaving a toast to act on.
+   showToast('Microphone is ' + (r.status || 'off') + ' for mõdRïff — opening Settings');
+   if(_np && _np.openSettings) setTimeout(function(){ try{ _np.openSettings({}); }catch(e){} }, 1200);
+   _micGraceUntil = 0;
+   return null;
+  }
+  // The app's own input, through its audio engine. The web view's getUserMedia
+  // was granted by iOS and still failed with an InvalidStateError on the phone, so
+  // inside the app the take is recorded natively and read in blocks (ModEngine.micStart).
+  if(_np && _np.micStart){
+   return _np.micStart({}).then(function(info){
+    _micGraceUntil = 0;
+    _smpBeginNativeMic(ctx, _np, info || {});
+   }, function(e){ _micSaid += '; native mic: ' + ((e && (e.message || e.code)) || e); return viaWeb(); });
+  }
+  return viaWeb();
+ })
   .catch(function(e){
    _micGraceUntil = 0;
-   // The reason, so a refusal can be told from a missing input or a busy one:
-   // NotAllowedError is iOS's answer once Don't Allow has been tapped (the prompt
-   // never comes back; Settings > mõdRïff > Microphone is the only way).
+   // The reason, so a refusal can be told from a missing input or a busy one.
    var why = (e && e.name ? e.name : 'error') + '; iOS: ' + (_micSaid || '?');
    showToast('Microphone blocked (' + why + ')');
   });
+}
+// A take from the app's own microphone input (ModEngine.micStart / micRead / micStop):
+// the host collects the samples and this polls for them every 50 ms, the way the
+// bounce reads the capture rings. It records at the input's rate, not the context's.
+function _smpBeginNativeMic(ctx, np, info){
+ var sr = info.sampleRate || ctx.sampleRate, L=[], R=[], peak=0, frames=0, busy=false;
+ var f32 = function(b64){
+  var bin = atob(b64), u = new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return new Float32Array(u.buffer);
+ };
+ var poll = setInterval(function(){
+  if(busy) return;
+  busy = true;
+  np.micRead({}).then(function(r){
+   busy = false;
+   if(!r || !r.frames) return;
+   var all = f32(r.data), n = r.frames;
+   var l = new Float32Array(all.subarray(0, n)), rr = new Float32Array(all.subarray(n, 2*n));
+   L.push(l); R.push(rr); frames += n;
+   for(var i=0;i<n;i+=16){ var a=Math.abs(l[i]); if(a>peak) peak=a; }
+   if(!_smpRec) return;
+   _smpRec.peak = peak; _smpRec.frames = frames;
+   if(frames/sr >= SMP_REC_MAX) smpRecStop();
+  }, function(){ busy = false; });
+ }, 50);
+ var tap = { dispose: function(){ clearInterval(poll); try{ np.micStop({}); }catch(e){} } };
+ _smpRec = {ctx:ctx, tap:tap, node:null, stream:null, kind:'mic', L:L, R:R,
+            peak:0, frames:0, t0:Date.now(), sr:sr};
+ smpRenderAll();
+ _smpMeterTick();
 }
 function _smpBeginTap(ctx, node, kind, stream){
  var L=[], R=[], peak=0, frames=0;
@@ -15125,12 +15168,13 @@ function smpRecStop(){
   }
   var n=0, i;
   for(i=0;i<rec.L.length;i++) n+=rec.L[i].length;
-  if(n < rec.ctx.sampleRate*0.05){ showToast('Too short to keep'); smpRenderAll(); return; }
+  var sr = rec.sr || rec.ctx.sampleRate;
+  if(n < sr*0.05){ showToast('Too short to keep'); smpRenderAll(); return; }
   var L=new Float32Array(n), R=new Float32Array(n), o=0;
   for(i=0;i<rec.L.length;i++){ L.set(rec.L[i],o); R.set(rec.R[i],o); o+=rec.L[i].length; }
-  var buf=rec.ctx.createBuffer(2,n,rec.ctx.sampleRate);
+  var buf=rec.ctx.createBuffer(2,n,sr);
   buf.copyToChannel(L,0); buf.copyToChannel(R,1);
-  var blob=_floatsToWavBlob(L,R,rec.ctx.sampleRate,null);
+  var blob=_floatsToWavBlob(L,R,sr,null);
   blob.arrayBuffer().then(function(bytes){
    var name = (rec.kind==='app'?'Resample ':'Take ')+(SMP_LIB.length+1);
    var clip = smpAddClip({name:name, src:rec.kind}, buf, bytes, 'audio/wav');
@@ -15149,7 +15193,7 @@ function _smpMeterTick(){
  var tm=document.getElementById('smp-rec-time');
  if(_smpRec){
   if(el) el.style.width=Math.round(Math.min(1,_smpRec.peak)*100)+'%';
-  if(tm) tm.textContent=(_smpRec.frames/_smpRec.ctx.sampleRate).toFixed(1)+'s';
+  if(tm) tm.textContent=(_smpRec.frames/(_smpRec.sr||_smpRec.ctx.sampleRate)).toFixed(1)+'s';
   requestAnimationFrame(_smpMeterTick);
  } else {
   if(el) el.style.width='0%';
