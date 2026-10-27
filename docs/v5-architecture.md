@@ -2080,6 +2080,15 @@ do not scale themselves, and needs a switch per part.
   `MSX_BUS_CAL` x the bus gain makes the same patch 8 dB hotter on Melody Seq and bass than on chord and arp, because a
   part's mõdSynth sits at the level of that part's built-in voices and the faders were set against that; flattening it
   drops every Melody Seq patch about 7 dB, which is a mix decision, not a calibration one.
+- **A late Processor was 20 s late (found on the phone, fixed in 5x; unbuilt).** With Native sound on and the arp
+  playing as graphs, switching it to a mõdSynth patch was silent for about 20 s and then played, and kept playing for
+  about 20 s after Stop. The page was right (the stand-in plugin shows arp notes at slot 4 from 0.2 s after the
+  switch, each 0.17 s ahead). The host's `_partFrames[part]` is the Processor's clock, `applyMessage` places a note at
+  `_partFrames + atRel`, and the render loop advanced it for a part that was running only for its graph voices and mõdFX
+  tail, with no Processor. A Processor built later (5t builds them on first use) started at zero and every note was as
+  late as the part had been running. The chord never showed it: its Processor exists from launch. It now advances only
+  while a Processor exists. `graphhosttest` has a check (a graph part runs 4 s, is given a Processor, its first note
+  sounds within half a second); the Mac has not built it.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
