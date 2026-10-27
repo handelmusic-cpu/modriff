@@ -74,7 +74,14 @@ function stubScript(withGraph) {
         out.bassMsxUnplugged = eb.unplugged; out.bassMsxAttached = !!MODNAT.attached.bass.port;
         out.chordMsxUnplugged = ec.unplugged;
         // a bass part on a mõdSynth patch is the Processor's, and keeps the calibrated level
+        // The mixer's meter for each: the host's while it plays the part, the web bus's when
+        // the part is on a patch (the worklet is the web's).
+        if(!getCtx()) audioCtx = new AudioContext();
+        _ensureAllPartBuses(getCtx());
+        window._webParams['bass.voice'] = 'upright';
+        out.meterHost = _mixAnalyserFor('bass') === MODNAT.meterTap.bass;
         window._webParams['bass.voice'] = 'modsynth';
+        { const an = _mixAnalyserFor('bass'); out.meterWebOnPatch = an !== MODNAT.meterTap.bass && !!an; }
         out.bassOnGraphWhenModsynth = _mgOnGraph('bass');
         window._webParams['bass.voice'] = 'upright';
       }
@@ -92,6 +99,7 @@ function stubScript(withGraph) {
       ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
+      ok(r.meterHost && r.meterWebOnPatch, 'the mixer meter reads the host for a graph part and the web bus for one on a patch', JSON.stringify([r.meterHost, r.meterWebOnPatch]));
     }
     // The Settings switch: the app starts the path itself, no console.
     {
