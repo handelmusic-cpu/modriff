@@ -63,9 +63,10 @@ function stubScript(withGraph) {
         out.ensure = window.__calls.filter(c => c[0] === 'ensurePart').map(c => c[1]);
         out.probes = window.__calls.filter(c => c[0] === 'graphProbe').length;
         out.strip = MODNAT.strip;
-        // A mõdSynth engine built on a part that is played as graphs has no Processor on
-        // the host: it must stay on its worklet (not be unplugged and forwarded), while
-        // the chord, which has one, is still handed over.
+        // A mõdSynth engine built on a part that is played as graphs: the host builds the
+        // part its Processor (a second ensurePart, without graph:true) and takes the
+        // worklet over, as it does the chord's. Until 4.9.9.9.9.9.5t it stayed on its
+        // worklet, because only the chord had one.
         const fake = () => { const e = { ready: true, unplugged: 0, values: [], fx: { input: {} }, node: { port: { postMessage() {} }, disconnect() { e.unplugged++; } },
                               setAll() {}, pushMatrix() {}, pushMotion() {} }; return e; };
         const eb = fake(), ec = fake();
@@ -73,15 +74,17 @@ function stubScript(withGraph) {
         await new Promise(r => setTimeout(r, 200));
         out.bassMsxUnplugged = eb.unplugged; out.bassMsxAttached = !!MODNAT.attached.bass.port;
         out.chordMsxUnplugged = ec.unplugged;
+        out.bassProcAsked = window.__calls.filter(c => c[0] === 'ensurePart' && c[1].part === 3 && !c[1].graph).length;
+        out.bassStillGraph = !!MODNAT.attached.bass.graph;
         // a bass part on a mõdSynth patch is the Processor's, and keeps the calibrated level
-        // The mixer's meter for each: the host's while it plays the part, the web bus's when
-        // the part is on a patch (the worklet is the web's).
+        // The mixer's meter for each: the host's while it plays the part, as graphs or as a
+        // patch; the web bus's once the part is a patch's but set to a voice the web plays.
         if(!getCtx()) audioCtx = new AudioContext();
         _ensureAllPartBuses(getCtx());
         window._webParams['bass.voice'] = 'upright';
         out.meterHost = _mixAnalyserFor('bass') === MODNAT.meterTap.bass;
         window._webParams['bass.voice'] = 'modsynth';
-        { const an = _mixAnalyserFor('bass'); out.meterWebOnPatch = an !== MODNAT.meterTap.bass && !!an; }
+        { const an = _mixAnalyserFor('bass'); out.meterHostOnPatch = an === MODNAT.meterTap.bass; }
         // The master meter adds the host master's RMS (slot 8 of meters) to the web master's.
         masterDest(getCtx());
         MODNAT.plugin.meters = () => Promise.resolve({ rms: [0, 0, 0, 0, 0, 0, 0, 0, 0.3] });
@@ -101,12 +104,12 @@ function stubScript(withGraph) {
       ok(r.on === true && r.probes === 1, 'the path is on, after one probe', JSON.stringify({ on: r.on, probes: r.probes }));
       ok(r.graphFlags.drum && r.graphFlags.bass && r.onGraph.drum && r.onGraph.bass, 'both parts are marked as graph parts');
       ok(r.ensure.some(e => e.part === 5 && e.graph === true) && r.ensure.some(e => e.part === 3 && e.graph === true), 'ensurePart was asked for each part by its slot, as a graph part', JSON.stringify(r.ensure));
-      ok(r.bassMsxUnplugged === 0 && !r.bassMsxAttached, 'a mõdSynth engine on a graph part stays on its worklet (not unplugged)', JSON.stringify({ u: r.bassMsxUnplugged, a: r.bassMsxAttached }));
-      ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
+      ok(r.bassMsxUnplugged > 0 && r.bassMsxAttached && r.bassProcAsked === 1 && r.bassStillGraph, 'a mõdSynth engine on a graph part gets a Processor and is handed to the host (and stays a graph part)', JSON.stringify({ u: r.bassMsxUnplugged, a: r.bassMsxAttached, asked: r.bassProcAsked, g: r.bassStillGraph }));
+      ok(r.chordMsxUnplugged > 0, 'and so is the chord, as before', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
       ok(r.masterMeter.host && Math.abs(r.masterMeter.rms - 0.3) < 0.02, 'the master meter includes the host master', JSON.stringify(r.masterMeter));
-      ok(r.meterHost && r.meterWebOnPatch, 'the mixer meter reads the host for a graph part and the web bus for one on a patch', JSON.stringify([r.meterHost, r.meterWebOnPatch]));
+      ok(r.meterHost && r.meterHostOnPatch, 'the mixer meter reads the host for a graph part and for one on a patch', JSON.stringify([r.meterHost, r.meterHostOnPatch]));
     }
     // The Settings switch: the app starts the path itself, no console.
     {
