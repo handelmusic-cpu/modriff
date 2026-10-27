@@ -33,7 +33,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "graphProbe", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
     ]
 
     /// Capacitor calls this when it registers the plugin. It is the only
@@ -528,6 +530,41 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         } catch {
             call.reject("could not add to \(name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Asks iOS for the microphone itself, so the permission sheet comes from the
+    /// app and the app gets its row in Settings. Left to the web view, getUserMedia
+    /// was refused without iOS ever being asked (no sheet, no row, nothing to
+    /// switch on), and the sampler could not record. Resolves with the answer; it
+    /// does not open the microphone.
+    @objc func micPermission(_ call: CAPPluginCall) {
+        let session = AVAudioSession.sharedInstance()
+        func status(_ p: AVAudioSession.RecordPermission) -> String {
+            switch p {
+            case .granted: return "granted"
+            case .denied: return "denied"
+            default: return "undetermined"
+            }
+        }
+        if session.recordPermission == .undetermined {
+            session.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    call.resolve(["granted": granted, "status": granted ? "granted" : "denied"])
+                }
+            }
+        } else {
+            let st = status(session.recordPermission)
+            call.resolve(["granted": st == "granted", "status": st])
+        }
+    }
+
+    /// This app's page in the Settings app: where the microphone switch is once iOS
+    /// has been told no, after which it never asks again.
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { call.resolve(["opened": false]); return }
+            UIApplication.shared.open(url, options: [:]) { ok in call.resolve(["opened": ok]) }
         }
     }
 

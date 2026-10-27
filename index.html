@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5i</span></div>
  </div>
 </div>
 
@@ -9241,7 +9241,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5i</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10278,7 +10278,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5g';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5i';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -15039,9 +15039,26 @@ function smpRecStart(kind){
  // the app itself is playing — which is exactly when you are sampling along
  // with it.
  _micGraceUntil = Date.now() + 15000;          // the permission sheet can sit there a while
- navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
-                                             autoGainControl:false}})
+ // In the app iOS is asked by the app first (ModEngine.micPermission): the web view's
+ // own request was refused without a sheet ever showing, which left the app with no
+ // microphone row in Settings to switch on. A build without the method goes straight
+ // to getUserMedia, as the browser does.
+ var _np = (typeof modNativePlugin==='function') ? modNativePlugin() : null;
+ var _ask = (_np && _np.micPermission) ? _np.micPermission({}) : Promise.resolve({granted:true});
+ _ask.then(function(r){
+  if(r && r.granted === false){
+   // Told no once, iOS never shows the sheet again: the switch is in Settings.
+   // Say so and open the app's page there instead of leaving a toast to act on.
+   showToast('Microphone is ' + (r.status || 'off') + ' for mõdRïff — opening Settings');
+   if(_np && _np.openSettings) setTimeout(function(){ try{ _np.openSettings({}); }catch(e){} }, 1200);
+   _micGraceUntil = 0;
+   return null;
+  }
+  return navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false,
+                                             autoGainControl:false}});
+ })
   .then(function(stream){
+   if(!stream) return;               // refused above, and already said
    _micGraceUntil = Date.now() + 4000;
    // Start the take only once the context's clock is moving again — a tap on
    // a frozen context records nothing — resuming it while we wait. If it never
@@ -15059,7 +15076,14 @@ function smpRecStart(kind){
     setTimeout(wait, 80);
    })();
   })
-  .catch(function(){ _micGraceUntil = 0; showToast('Microphone blocked — allow it in your settings'); });
+  .catch(function(e){
+   _micGraceUntil = 0;
+   // The reason, so a refusal can be told from a missing input or a busy one:
+   // NotAllowedError is iOS's answer once Don't Allow has been tapped (the prompt
+   // never comes back; Settings > mõdRïff > Microphone is the only way).
+   var why = e && e.name ? ' (' + e.name + ')' : '';
+   showToast('Microphone blocked' + why + ' — allow it in Settings › mõdRïff › Microphone');
+  });
 }
 function _smpBeginTap(ctx, node, kind, stream){
  var L=[], R=[], peak=0, frames=0;
