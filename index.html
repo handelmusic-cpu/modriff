@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5u</span></div>
  </div>
 </div>
 
@@ -9246,7 +9246,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5u</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10283,7 +10283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5t';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16728,6 +16728,18 @@ function _webSmpBuf(ctx, asset, rev, stretch){
  if(stretch) return PS_WARP[psWarpKey(asset, rev, stretch)] || null;
  return rev ? psRevBuf(ctx, asset) : (window._webAssets[asset] || null);
 }
+
+// A loop point that falls on a whole frame, spelled as exactly that frame's time. The
+// fraction times the duration is not: 0.4 * 1.5 is 0.6000000000000001, a few 1e-12 of a
+// frame past the frame it means. A browser decides for itself whether a playhead that
+// lands on that frame has reached the loop end, and they do not agree (Chrome 153 reads
+// the sample past the end for one frame at every wrap, a tick; the Chrome before it
+// wrapped), so the page asks for the frame it means and the browser and the native
+// interpreter (tests/graph/page.test.js, sampler) have nothing to disagree about.
+function _smpLoopSec(sec, buf){
+ var f = sec*buf.sampleRate, r = Math.round(f);
+ return Math.abs(f - r) < 1e-6 ? r/buf.sampleRate : sec;
+}
 function _webClipOn(m){
  var ctx = getCtx(); if(!ctx) return;
  var buf = _webSmpBuf(ctx, m.asset, !!m.rev, m.stretch); if(!buf) return;
@@ -16746,9 +16758,9 @@ function _webClipOn(m){
  g.gain.linearRampToValueAtTime(lvl, t+FD);
  var end = null;
  if(m.loop==='window'){
-  src.loop = true; src.loopStart = m.from*buf.duration; src.loopEnd = m.to*buf.duration;
+  src.loop = true; src.loopStart = _smpLoopSec(m.from*buf.duration, buf); src.loopEnd = _smpLoopSec(m.to*buf.duration, buf);
  } else if(m.loop==='hold'){
-  src.loop = true; src.loopStart = m.loopA*buf.duration; src.loopEnd = m.loopB*buf.duration;
+  src.loop = true; src.loopStart = _smpLoopSec(m.loopA*buf.duration, buf); src.loopEnd = _smpLoopSec(m.loopB*buf.duration, buf);
  } else {
   end = t + win/rate;
   g.gain.setValueAtTime(lvl, Math.max(t+FD, end-0.004));

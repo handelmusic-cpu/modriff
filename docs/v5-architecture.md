@@ -2060,6 +2060,11 @@ do not scale themselves, and needs a switch per part.
   itself, a patch does not), and "the host plays this part" (`_modNativeCarries`: meter, stems, the master's web trim)
   now asks the part's voice, because an engine stays attached after the part is set to a
   web voice. `tests/graph/parts.test.js` holds it. Not yet heard: the Processor's parts all at once.
+- **The sampler graph test failed at 58.8 dB (5u).** Three frames of 144,000 differed, each the wrap of a looping
+  clip: the page asks for a loop end of `0.4 * 1.5`, which is 0.6000000000000001, and Chrome 153 reads the
+  sample past the end for that frame (a tick) where the Chrome the interpreter was matched to wrapped. The
+  page now spells a loop point that lands on a frame as that frame's time (`_smpLoopSec`), so browser and
+  interpreter agree whatever the browser does with noise; 155.7 dB again. `graph.cpp`'s snap stays.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
