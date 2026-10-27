@@ -28,7 +28,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // takes the hardware away from the engine.
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            // .playAndRecord, not .playback, since the sampler's microphone: with the
+            // session held as playback, the web view's getUserMedia failed with an
+            // InvalidStateError (it has to move the session to record itself, and
+            // two owners of one session is the fight described above). Holding the
+            // record-capable category from the start leaves it nothing to change.
+            // Nothing is captured until a recording starts. .defaultToSpeaker keeps
+            // the output on the speaker (this category defaults to the earpiece);
+            // .allowBluetoothA2DP keeps headphones on the music profile, not the
+            // phone-call one. It still sounds with the ring/silent switch on silent.
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
             try session.setActive(true)
         } catch {
             NSLog("[ModRiff] audio session: %@", error.localizedDescription)
