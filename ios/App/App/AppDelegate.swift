@@ -39,6 +39,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // phone-call one. It still sounds with the ring/silent switch on silent.
             try session.setCategory(.playAndRecord, mode: .default,
                                     options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
+            // A small hardware buffer, asked for. Under .playback the engine was handed
+            // 128-frame blocks (2.7 ms); under play-and-record iOS chose about 1,100
+            // (23 ms), which is that much more delay between touching a key or a pad
+            // and hearing it. 5 ms is a request, not a promise: iOS rounds it to what
+            // the hardware does, and the Native sound line in Settings shows what it gave.
+            try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
             NSLog("[ModRiff] audio session: %@", error.localizedDescription)

@@ -83,6 +83,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private let slowAt = UnsafeMutablePointer<Int64>.allocate(capacity: ModEngine.slowSlots)
     private let slowUs = UnsafeMutablePointer<Double>.allocate(capacity: ModEngine.slowSlots)
     private var slowCount: Int64 = 0
+    private var missedCount: Int64 = 0          // blocks that took longer than the audio they made (an underrun, if the buffer behind was empty)
 
     private static let signpostLog = OSLog(subsystem: "com.handelmusic.modriff",
                                            category: "modengine")
@@ -133,6 +134,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 os_signpost(.end, log: ModEngine.signpostLog, name: "render")
                 let dt = Int64(DispatchTime.now().uptimeNanoseconds &- t0)
 
+                if Double(dt) > Double(frameCount) / host.sampleRate * 1e9 { self.missedCount &+= 1 }
                 if dt > 2_000_000 {
                     let k = Int(self.slowCount % Int64(ModEngine.slowSlots))
                     self.slowAt[k] = self.renderFrames
@@ -280,7 +282,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// the other.
     @objc func meters(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
-        call.resolve(["rms": (0..<8).map { Double(host.meter(forPart: Int32($0))) }])
+        // 0..<8 the parts, 8 the master
+        call.resolve(["rms": (0..<9).map { Double(host.meter(forPart: Int32($0))) }])
     }
 
     /// Capture for the recorder (v5 step N5). The page's Bounce taps Web Audio
@@ -661,6 +664,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "load": load,
             "graph": host.graphStats(),
             "slowCount": Int(slowCount),
+            "missed": Int(missedCount),
             "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
                 ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]
             }

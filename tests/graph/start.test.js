@@ -74,7 +74,20 @@ function stubScript(withGraph) {
         out.bassMsxUnplugged = eb.unplugged; out.bassMsxAttached = !!MODNAT.attached.bass.port;
         out.chordMsxUnplugged = ec.unplugged;
         // a bass part on a mõdSynth patch is the Processor's, and keeps the calibrated level
+        // The mixer's meter for each: the host's while it plays the part, the web bus's when
+        // the part is on a patch (the worklet is the web's).
+        if(!getCtx()) audioCtx = new AudioContext();
+        _ensureAllPartBuses(getCtx());
+        window._webParams['bass.voice'] = 'upright';
+        out.meterHost = _mixAnalyserFor('bass') === MODNAT.meterTap.bass;
         window._webParams['bass.voice'] = 'modsynth';
+        { const an = _mixAnalyserFor('bass'); out.meterWebOnPatch = an !== MODNAT.meterTap.bass && !!an; }
+        // The master meter adds the host master's RMS (slot 8 of meters) to the web master's.
+        masterDest(getCtx());
+        MODNAT.plugin.meters = () => Promise.resolve({ rms: [0, 0, 0, 0, 0, 0, 0, 0, 0.3] });
+        { const m = _mixMasterAnalyserGet(), b = new Float32Array(256); m.getFloatTimeDomainData(b);
+          await new Promise(r => setTimeout(r, 150)); m.getFloatTimeDomainData(b);
+          out.masterMeter = { host: typeof m.web !== 'undefined', rms: Math.round(_mixLevel(m) * 1000) / 1000 }; }
         out.bassOnGraphWhenModsynth = _mgOnGraph('bass');
         window._webParams['bass.voice'] = 'upright';
       }
@@ -92,6 +105,31 @@ function stubScript(withGraph) {
       ok(r.chordMsxUnplugged > 0, 'and the chord, which has a Processor, is still handed to the host', String(r.chordMsxUnplugged));
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
+      ok(r.masterMeter.host && Math.abs(r.masterMeter.rms - 0.3) < 0.02, 'the master meter includes the host master', JSON.stringify(r.masterMeter));
+      ok(r.meterHost && r.meterWebOnPatch, 'the mixer meter reads the host for a graph part and the web bus for one on a patch', JSON.stringify([r.meterHost, r.meterWebOnPatch]));
+    }
+    // The Settings switch: the app starts the path itself, no console.
+    {
+      const t = await page.evaluate(async () => {
+        const o = {};
+        toggleGraphPath(); await new Promise(r => setTimeout(r, 600));
+        o.saved = localStorage.getItem('modo-graph-path');
+        o.on = MODGRAPH.on; o.parts = Object.keys(MODGRAPH.parts).sort(); o.failed = !!MODGRAPH.failed;
+        o.btn = document.querySelector('[data-graphpath]').textContent;
+        await new Promise(r => _graphStatusText(t => { o.status = t; r(); }));
+        toggleGraphPath(); await new Promise(r => setTimeout(r, 100));
+        o.savedOff = localStorage.getItem('modo-graph-path'); o.btnOff = document.querySelector('[data-graphpath]').textContent;
+        await new Promise(r => _graphStatusText(t => { o.statusOff = t; r(); }));
+        return o;
+      });
+      if (withGraph) {
+        ok(t.saved === '1' && t.on && t.btn === 'Native sound: ON', 'the Settings switch turns the path on and keeps the choice', JSON.stringify(t));
+        ok(['arp','auxperc','bass','chord','click','drum','mel','melgen','sampler'].join() === t.parts.join(), 'every part, the click included, is played as graphs', JSON.stringify(t.parts));
+        ok(/^Nothing played yet\. 0 notes sent/.test(t.status), 'the status line reads the counters', t.status);
+        ok(t.savedOff === '0' && t.btnOff === 'Native sound: OFF' && /off after you restart/.test(t.statusOff), 'switching it off says it waits for a restart', JSON.stringify(t));
+      } else {
+        ok(t.failed && !t.on && /^Not available in this build/.test(t.status), 'an older host: the switch says it is not available and changes nothing', JSON.stringify(t));
+      }
     }
     if (withGraph) {
       // gcheck: the phone check prints one verdict line (plus the one that says to play).

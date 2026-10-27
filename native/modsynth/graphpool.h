@@ -65,13 +65,21 @@ class GraphPool {
   int active() const;                       // voices playing or waiting to start
   uint64_t dropped() const { return dropped_.load(std::memory_order_relaxed); }
   uint64_t lateEdits() const { return lateEdits_.load(std::memory_order_relaxed); }
+  // Why notes were dropped (dropped() is both): every slot was in use, or the
+  // program was refused (it did not parse or was too big). And the most voices
+  // that were playing at once, for telling a pool that is too small from voices
+  // that never end.
+  uint64_t droppedBusy() const { return droppedBusy_.load(std::memory_order_relaxed); }
+  uint64_t droppedRefused() const { return droppedRefused_.load(std::memory_order_relaxed); }
+  int peakActive() const { return peak_.load(std::memory_order_relaxed); }
 
  private:
   struct Slot;
   std::unique_ptr<Slot[]> slots_;
   BufferStore store_;
   std::atomic<int> unknownBuf_{-1};
-  std::atomic<uint64_t> dropped_{0}, lateEdits_{0};
+  std::atomic<uint64_t> dropped_{0}, lateEdits_{0}, droppedBusy_{0}, droppedRefused_{0};
+  std::atomic<int> peak_{0};
 };
 
 }  // namespace modsynth

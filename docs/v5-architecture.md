@@ -2030,6 +2030,23 @@ do not scale themselves, and needs a switch per part.
   (`micStart`, `micRead`, `micStop`, polled every 50 ms); a binary without them, or a browser, still
   uses `getUserMedia`. The session is `.playAndRecord` from launch (5j; `.mixWithOthers`,
   `.defaultToSpeaker`, `.allowBluetoothA2DP`), kept because the second engine needs it.
+- **Native sound switch and status line (5n to 5s).** Settings › Interface › Native sound starts the
+  graph path for every part (the click included) at launch and prints the counters, so the console
+  is not needed: notes sent, fell back, dropped (split into no free voice and refused, with the most
+  voices at once), late edits, blocks that missed their deadline, load, and the block size.
+- **The Debug build is not a test of the engine.** Xcode's Debug configuration compiles the C++ at
+  `-O0`: 38% load, 32,116 blocks over 2 ms, worst block 162 ms; the same session optimised was 3% to
+  17% and a worst of 8 ms. `ios:device` now builds Debug with `GCC_OPTIMIZATION_LEVEL=s` (Release
+  would be fast too but asks the App Store for Pro and has no Test-as-Pro switch). `MODRIFF_OPT=0`
+  turns it off.
+- **Play-and-record made the audio blocks 1,100 frames (23 ms) instead of 128 (2.7 ms).** The session
+  now asks for a 5 ms buffer (`setPreferredIOBufferDuration`); the phone gives 240 frames. Check the
+  block size on the status line after any change to the session.
+- The mixer's master meter adds the host's master RMS (slot 8 of `meters`) to the web master's, and a
+  part played as graphs that is on a mõdSynth patch keeps its web meter (its worklet is the web's).
+- One dense session dropped 184 of 884 notes (and one block took 17.5 ms against a 5 ms budget); a
+  second, the same kind of playing, dropped none (most voices at once 26 of 64, worst block 4.8 ms).
+  Not explained. If it recurs the status line says whether the pool was full or programs were refused.
 - mõdSynth sounding louder than the other voices: not reproduced. By K-weighted momentary loudness the
   library sits 1 to 4 dB under the app's own voices; the owner has let it be.
 
