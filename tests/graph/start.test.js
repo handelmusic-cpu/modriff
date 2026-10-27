@@ -93,6 +93,29 @@ function stubScript(withGraph) {
       ok(r.strip.drum === 1 && r.strip.bass === 1, 'the host strip level for a graph part is 1 (the voices scale themselves)', JSON.stringify(r.strip));
       ok(r.bassOnGraphWhenModsynth === false, 'a part on a mõdSynth patch is not a graph part');
     }
+    // The Settings switch: the app starts the path itself, no console.
+    {
+      const t = await page.evaluate(async () => {
+        const o = {};
+        toggleGraphPath(); await new Promise(r => setTimeout(r, 600));
+        o.saved = localStorage.getItem('modo-graph-path');
+        o.on = MODGRAPH.on; o.parts = Object.keys(MODGRAPH.parts).sort(); o.failed = !!MODGRAPH.failed;
+        o.btn = document.querySelector('[data-graphpath]').textContent;
+        await new Promise(r => _graphStatusText(t => { o.status = t; r(); }));
+        toggleGraphPath(); await new Promise(r => setTimeout(r, 100));
+        o.savedOff = localStorage.getItem('modo-graph-path'); o.btnOff = document.querySelector('[data-graphpath]').textContent;
+        await new Promise(r => _graphStatusText(t => { o.statusOff = t; r(); }));
+        return o;
+      });
+      if (withGraph) {
+        ok(t.saved === '1' && t.on && t.btn === 'Native sound: ON', 'the Settings switch turns the path on and keeps the choice', JSON.stringify(t));
+        ok(['arp','auxperc','bass','chord','click','drum','mel','melgen','sampler'].join() === t.parts.join(), 'every part, the click included, is played as graphs', JSON.stringify(t.parts));
+        ok(/^Nothing played yet\. 0 notes sent/.test(t.status), 'the status line reads the counters', t.status);
+        ok(t.savedOff === '0' && t.btnOff === 'Native sound: OFF' && /off after you restart/.test(t.statusOff), 'switching it off says it waits for a restart', JSON.stringify(t));
+      } else {
+        ok(t.failed && !t.on && /^Not available in this build/.test(t.status), 'an older host: the switch says it is not available and changes nothing', JSON.stringify(t));
+      }
+    }
     if (withGraph) {
       // gcheck: the phone check prints one verdict line (plus the one that says to play).
       await page.evaluate(() => { gcheck(['drum'], 1); });

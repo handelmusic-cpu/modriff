@@ -7936,7 +7936,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5m</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5n</span></div>
  </div>
 </div>
 
@@ -9094,6 +9094,11 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row">
      <button class="tb tb-solo" onclick="copyDiagnostics()">Copy diagnostics</button>
     </div>
+    <div class="ss-scope">Native sound <b>play every part from the app's own engine (testing)</b></div>
+    <div class="row">
+     <button class="tb tb-solo" data-graphpath onclick="toggleGraphPath()" aria-pressed="false">Native sound: OFF</button>
+    </div>
+    <div class="ss-note" data-graphpath-status style="font-size:.46rem;color:var(--muted);line-height:1.6;margin:2px 0 6px"></div>
     <div class="ss-scope">Touch <b>a tap under your finger on pads, with the sound</b></div>
     <div class="row">
      <button class="tb tb-solo" data-haptics onclick="toggleHaptics()" aria-pressed="true">Haptics: ON</button>
@@ -9241,7 +9246,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5m</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5n</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10278,7 +10283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5m';
+const MODRIFF_VERSION = '4.9.9.9.9.9.5n';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12074,6 +12079,61 @@ window.gcheck = function(parts, secs){
   });
  }).catch(function(e){ line('FAIL ' + (e && e.message || e)); });
 };
+
+// ── Native sound: the app switches the graph path on itself ──────────────
+// A saved preference (modo-graph-path), read at launch: when it is on, every part is
+// played as recorded graphs by the native engine (modGraphStart), the click included.
+// It is off by default and the app only; a build whose binary has no graph methods
+// leaves it off and says so. Turning it off takes effect when the app restarts (the
+// parts' strips are the host's by then). The status line under the switch is what
+// gcheck prints, kept up to date, so nothing needs the console.
+var _GRAPH_ALL = ['chord','mel','melgen','bass','arp','drum','auxperc','sampler'];
+function _graphPathWanted(){ try{ return localStorage.getItem('modo-graph-path') === '1'; }catch(e){ return false; } }
+function modGraphStartAll(){
+ return modGraphStart(_GRAPH_ALL).then(function(ok){
+  // The click is a message of its own part, with no host slot of its own (it sits on the
+  // master bus), so it is let through here rather than given a strip by modGraphStart.
+  if(ok) MODGRAPH.parts.click = true; else MODGRAPH.failed = true;
+  try{ _graphPathSync(); }catch(e){}
+  return ok;
+ });
+}
+function toggleGraphPath(){
+ var on = !_graphPathWanted();
+ try{ localStorage.setItem('modo-graph-path', on ? '1' : '0'); }catch(e){}
+ if(on){
+  if(!modNativeAvailable()){ showToast('Native sound is for the iPhone app'); }
+  else modGraphStartAll().then(function(ok){ showToast(ok ? 'Native sound on' : 'This build of the app has no native sound yet'); });
+ } else {
+  showToast(MODGRAPH.on ? 'Native sound turns off when you restart the app' : 'Native sound off');
+ }
+ _graphPathSync();
+}
+function _graphStatusText(cb){
+ if(!modNativeAvailable()){ cb('Only in the iPhone app.'); return; }
+ if(MODGRAPH.on && !_graphPathWanted()){ cb('Still on; off after you restart the app.'); return; }
+ if(!MODGRAPH.on){ cb(_graphPathWanted() ? (MODGRAPH.failed ? 'Not available in this build of the app.' : 'Starting…') : 'Off. Every part plays through Web Audio.'); return; }
+ window.modNative.stats().then(function(s){
+  var g = s.graph || {}, slow = s.slowCount || 0, drop = g.dropped || 0, late = g.lateEdits || 0;
+  var clean = MODGRAPH.sent > 0 && !MODGRAPH.fellBack && !drop && !late && !slow;
+  cb((clean ? 'Clean. ' : MODGRAPH.sent ? 'Check these. ' : 'Nothing played yet. ') +
+     MODGRAPH.sent + ' notes sent · ' + MODGRAPH.fellBack + ' fell back to Web Audio · ' + drop + ' dropped by the engine · ' +
+     late + ' late edits · ' + slow + ' slow blocks (worst ' + (Math.round((s.maxRenderUs||0)/100)/10) + ' ms) · load ' + Math.round((s.load||0)*100) + '%');
+ }, function(){ cb('Engine not answering.'); });
+}
+function _graphPathSync(){
+ var on = _graphPathWanted();
+ document.querySelectorAll('[data-graphpath]').forEach(function(b){
+  b.textContent = 'Native sound: ' + (on ? 'ON' : 'OFF'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('active', on);
+ });
+ var el = document.querySelector('[data-graphpath-status]');
+ if(el) _graphStatusText(function(t){ el.textContent = t; });
+}
+window.addEventListener('load', function(){ _graphPathSync(); });
+document.addEventListener('click', function(e){ if(e.target && e.target.closest && e.target.closest('#set-subnav,.ss-hdr')) setTimeout(_graphPathSync, 50); });
+setInterval(function(){ var el = document.querySelector('[data-graphpath-status]'); if(el && el.offsetParent) _graphPathSync(); }, 1500);
+// At launch, once the native engine has had its turn to start.
+setTimeout(function(){ try{ if(modNativeAvailable() && _graphPathWanted()) modGraphStartAll(); }catch(e){} }, 300);
 
 // The host's name for one of the page's real nodes, or null.
 function _mgResolve(node){
@@ -21227,6 +21287,7 @@ function copyDiagnostics(){
  var out = { version: MODRIFF_VERSION, at: new Date().toISOString(), bgKeep: _bgKeepPlaying(), lead: null, native: null };
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
+ try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
  var done = function(){
   var txt = JSON.stringify(out);
   var ok = function(){ try{ showToast('Diagnostics copied'); }catch(e){} };
