@@ -69,7 +69,7 @@ function serve() {
     CR.key = 'strum'; CR.def = null;
     bankLoad(e4); o.chordLoaded = [/^u:/.test(CR.key), CR.def && CR.def.name, CR.on];
     o.counts = BANK_KINDS.map(k => rhyBankList(k[0]).length).join();
-    o.toasts = toasts.filter(t => /^Kept /.test(t));
+    o.toasts = toasts.filter(t => /^Saved /.test(t));
     o.nothing = (() => { window.mlClear(); const n = toasts.length; const x = bankSave('mel', 'Empty'); return [x, toasts.slice(n).join('|')]; })();
 
     // Starters and the widget.
@@ -99,8 +99,8 @@ function serve() {
   ok(r.melCleared && r.melBack && r.melChord, 'a melody line is kept with its chords', JSON.stringify([r.melCleared, r.melBack, r.melChord]));
   ok(r.chordLoaded[0] && r.chordLoaded[1] === 'Pocket' && r.chordLoaded[2], 'a chord rhythm is kept and loading it puts it on the pads (and arms it)', JSON.stringify(r.chordLoaded));
   ok(r.counts === '1,1,1,1', 'one entry of each kind', r.counts);
-  ok(r.toasts.length === 4 && /My boom/.test(r.toasts[0]), 'keeping says what was kept', JSON.stringify(r.toasts));
-  ok(r.nothing[0] === null && /Nothing in melody/.test(r.nothing[1]), 'nothing is kept from an empty part', JSON.stringify(r.nothing));
+  ok(r.toasts.length === 4 && /My boom/.test(r.toasts[0]), 'saving says what was saved', JSON.stringify(r.toasts));
+  ok(r.nothing[0] === null && /Nothing in the melody line to save/.test(r.nothing[1]), 'nothing is kept from an empty part', JSON.stringify(r.nothing));
   ok(r.lists[0] === 'My boom' && r.lists[1] === 'My funk' && r.lists[2] === 'Chordy' && r.settings.join() === '1,1,1', 'the starter lists (Settings, the Styles widget\'s rotation) carry the entries', JSON.stringify([r.lists, r.settings]));
   ok(/^bank:/.test(r.cur) && r.widgetName === 'My funk' && !/^bank:/.test(r.curAfterEdit), 'the widget names a kept pattern while it is what is there, and not once it has been changed', JSON.stringify([r.cur, r.widgetName, r.curAfterEdit]));
   ok(r.starterLoaded, 'a kept pattern can be the starter a part is switched on with', '');
@@ -130,7 +130,7 @@ function serve() {
     o.afterUndo = rhyBankList('drums').length;
     return o;
   });
-  ok(ui.tabs === 'Chords,Drums,Bass,Melody' && ui.on === 'Chords' && ui.rows.join() === 'Offbeat', 'the bank sheet: a tab per kind, the entries of that kind', JSON.stringify(ui));
+  ok(ui.tabs === 'Chords,Drums,Bassline,Melody' && ui.on === 'Chords' && ui.rows.join() === 'Offbeat', 'the bank sheet: a tab per kind, the entries of that kind', JSON.stringify(ui));
   ok(ui.emptyDrums && ui.kept.join() === 'Typed name' && ui.rowsAfter.join() === 'Typed name', 'keep the part under a name typed in the sheet', JSON.stringify([ui.emptyDrums, ui.kept, ui.rowsAfter]));
   ok(ui.afterDelete === 0 && ui.afterUndo === 1, 'delete, and Undo brings it back', JSON.stringify([ui.afterDelete, ui.afterUndo]));
 

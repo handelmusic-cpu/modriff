@@ -177,10 +177,10 @@ not say the app has to run well there.
 | 8.13 | Edit the same song on both, device 2 last | device 2's version wins on both; nothing is duplicated |
 | 8.14 | Airplane mode, make a change, turn it off | it goes up on its own, and the line says "waiting" while it cannot |
 
-## 9. The rhythm and live-page batch (4.9.9.9.9.9.6 to 6h)
+## 9. The rhythm and live-page batch (4.9.9.9.9.9.6 to 6m)
 
 None of this touches the native engine; it is touch, layout and the clock, which a
-desktop browser cannot judge. Footer should say **v4.9.9.9.9.9.6h**.
+desktop browser cannot judge. Footer should say **v4.9.9.9.9.9.6m**.
 
 | # | do | you should see |
 |---|---|---|
@@ -191,13 +191,13 @@ desktop browser cannot judge. Footer should say **v4.9.9.9.9.9.6h**.
 | 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Accomp > Melody |
 | 9.6 | Accomp > Melody, tap a second row on a lit step of the roll | the step becomes a chord; tap a chord note to take it away; Play: the chord sounds together |
 | 9.7 | Switch **Bass**, **Mel** and **Drums** (off then on) on the transport over empty parts | a funk bass line, a pop hook, a 4/4 beat. Settings > Starter patterns changes which |
-| 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last; **Endings: shown / hidden** at the foot |
-| 9.9 | Styles widget: tap > on Bass, Melody and Drums; tap + to keep what is there | the style changes and the part switches on; + asks for a name and Rhythm bank lists it |
+| 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last;  |
+| 9.9 | Styles widget: tap a style's name for the list, or the arrows to step; Save drum pattern / bassline / melody line saves what is there | the style changes and the part switches on; Save asks for a name and Pattern save lists it |
 | 9.10 | Aux grid: tap cells (off, on, accent), pick A2 and change it, pick A1; start the beat and pick A2 | each pattern comes back as it was; a pick while playing waits for the loop; the kit is untouched |
-| 9.11 | Chords: **Rhythm** bar, switch it **On**, tap a chord | the chord plays as the rhythm, on the tempo, and keeps going with **Latch**; with Latch off it stops when you lift; **Stop** ends it; a playing song silences it |
-| 9.12 | **Draw**: tap steps, tap a hit to select it, Accent, Ratchet, Length, **Audition** | the roll shows what you drew, the playhead runs in time, **Use on the pads** applies it |
-| 9.13 | Songs > Build, a chord > Rhythm > **Draw…**, **Use for this chord**, play the song | that chord plays your rhythm; the others carry on as they were |
-| 9.14 | Rhythm bank: keep a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
+| 9.11 | Chords: Rhythm bar, switch it on (it says Tap a chord), tap a chord | the chord plays as the rhythm, on the tempo, and keeps going with **Keep going**; with that off it stops when you lift; **Stop** ends it; a playing song silences it |
+| 9.12 | **Edit rhythm**: tap steps, tap a hit to select it, Accent, Ratchet, Length, Swing, **Audition** | the roll shows what you drew, the playhead runs in time, **Save** saves it and plays the chords with it |
+| 9.13 | Songs > Build, a chord > Rhythm > **Draw…**, **Save**, play the song | that chord plays your rhythm; the others carry on as they were |
+| 9.14 | Pattern save: save a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
 
 ## 10. Things that are just worth noticing
 

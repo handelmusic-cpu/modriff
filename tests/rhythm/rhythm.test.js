@@ -178,11 +178,29 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
   ok(lv.offNoRun, 'not armed: a chord tap does not start it', '');
   ok(lv.stop[0] && !lv.stop[1], 'Stop ends it', JSON.stringify(lv.stop));
 
+  // Swing: a rhythm's own swing moves the swung steps; Feel follows the app's.
+  const swg = await page.evaluate(async () => {
+    const o = {}; const sent = []; window.modSend = m => { sent.push(JSON.parse(JSON.stringify(m))); };
+    document.getElementById('bpm').value = 200;
+    const d = rhyBlank(16); d.cells[0].on = 1; d.cells[2].on = 1; d.cells[6].on = 1; d.swing = 60;
+    CR.def = rhyNorm(d); CR.key = rhyRegister(CR.def); CR.on = true; CR.latch = true; chordsEnabled = true;
+    const stepSec = clockStepSec(); clockSetEpoch(audioCtx); const epoch = CLOCK_EPOCH;
+    setArpChord(60, [0, 4, 7], 'tonic'); crOnChordTap(60, [0, 4, 7]);
+    await new Promise(r => setTimeout(r, 1700)); crStop();
+    const hits = sent.filter(m => m.kind === 'chord' && m.part === 'chord').map(m => ((m.at - epoch) / stepSec) % 16);
+    const frac = hits.map(h => +(h - Math.floor(h + 1e-6)).toFixed(2));
+    o.swungFrac = frac.filter(f => f > 0.3).length; o.straight = frac.filter(f => f < 0.05).length;
+    o.expect = 0.6;
+    o.firstSwung = frac.find(f => f > 0.3);
+    return o;
+  });
+  ok(swg.swungFrac > 0 && Math.abs(swg.firstSwung - 0.6) < 0.06 && swg.straight > 0, 'a rhythm\'s own swing delays its swung steps (60%) and leaves the others on the grid', JSON.stringify(swg));
+
   // ── The roll ──
   const ed = await page.evaluate(async () => {
     const o = {};
     let used = null;
-    const box = rhyEdit({ title: 'Test', def: rhyBlank(16), useLabel: 'Use it', onUse: d => { used = d; } });
+    const box = rhyEdit({ title: 'Test', def: rhyBlank(16), onUse: d => { used = d; } });
     const cv = box.sheet.querySelector('canvas.rhy-canvas');
     const r = cv.getBoundingClientRect(), cw = r.width / 16;
     const tap = (i) => { const x = r.left + (i + 0.5) * cw, y = r.top + 40; cv.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true })); cv.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true })); };
@@ -200,16 +218,22 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
     o.after24 = box.sheet.querySelector('canvas.rhy-canvas').style.width;
     [...box.sheet.querySelectorAll('.rhy-seg')[0].querySelectorAll('button')].find(b => b.textContent === '16').click();
     box.sheet.querySelector('.rhy-name').value = 'Mine'; box.sheet.querySelector('.rhy-name').dispatchEvent(new Event('input'));
-    btn('Use it').click();
-    o.used = used && { name: used.name, steps: used.steps, cells: used.cells.map((c, i) => c.on ? [i, c.acc, c.rat, c.len] : null).filter(Boolean) };
+    // Swing: Own shows a slider; set it.
+    btn('Own').click(); const sw = box.sheet.querySelector('.rhy-swing'); o.swingShown = sw.style.display !== 'none'; sw.value = 45; sw.dispatchEvent(new Event('input'));
+    btn('Save').click();
+    o.used = used && { name: used.name, steps: used.steps, swing: used.swing, cells: used.cells.map((c, i) => c.on ? [i, c.acc, c.rat, c.len] : null).filter(Boolean) };
     o.closed = !document.querySelector('.rhy-sheet');
     // Save to my rhythms writes the bank once.
-    RHY_BANK.length = 0;
-    const box2 = rhyEdit({ title: 'T2', def: used, onUse: () => { } });
-    [...box2.sheet.querySelectorAll('button')].find(b => b.textContent === 'Save to my rhythms').click();
-    [...box2.sheet.querySelectorAll('button')].find(b => b.textContent === 'Save to my rhythms').click();
+    o.savedByUse = rhyBankList('chord').length;
+    // Saving the same rhythm again is the entry already there; a rhythm with no name gets one.
+    let used2 = null;
+    const box2 = rhyEdit({ title: 'T2', def: used, onUse: d => { used2 = d; } });
+    [...box2.sheet.querySelectorAll('button')].find(b => b.textContent === 'Save').click();
     o.saved = rhyBankList('chord').length;
-    box2.close();
+    let used3 = null; const d3 = rhyBlank(16); d3.cells[1].on = 1;
+    const box5 = rhyEdit({ title: 'T5', def: d3, onUse: d => { used3 = d; } });
+    [...box5.sheet.querySelectorAll('button')].find(b => b.textContent === 'Save').click();
+    o.autoName = used3 && used3.name; o.bank2 = rhyBankList('chord').length;
     // Audition does not start while a song is playing, and an empty roll has nothing to hear.
     const box3 = rhyEdit({ title: 'T3', def: rhyBlank(16), onUse: () => { } });
     [...box3.sheet.querySelectorAll('button')].find(b => b.textContent.indexOf('Audition') >= 0).click();
@@ -226,7 +250,8 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
   ok(ed.used && ed.used.name === 'Mine' && ed.used.steps === 16 && JSON.stringify(ed.used.cells) === JSON.stringify([[0, 0, 1, 0], [4, 1, 2, 2], [8, 0, 1, 0]]),
     'tap adds a hit, tap selects, a second tap removes; accent, ratchet and length edit the selected one; Use hands back the rhythm', JSON.stringify(ed.used));
   ok(ed.closed, 'Use closes the roll', '');
-  ok(ed.saved === 1, 'Save to my rhythms keeps it once', String(ed.saved));
+  ok(ed.savedByUse === 1 && ed.saved === 1 && /^Rhythm \d+$/.test(ed.autoName) && ed.bank2 === 2, 'Save is one button: it saves to Pattern save once (the same rhythm again is the entry already there) and an unnamed rhythm gets a name', JSON.stringify([ed.savedByUse, ed.saved, ed.autoName, ed.bank2]));
+  ok(ed.swingShown && ed.used.swing === 45, 'the roll has a swing control (Feel or Own, with an amount) and it is saved with the rhythm', JSON.stringify([ed.swingShown, ed.used && ed.used.swing]));
   ok(!ed.emptyAudition, 'an empty roll has nothing to audition', '');
   ok(ed.auditioning && ed.playhead >= 0 && ed.stoppedOnClose, 'audition runs on the clock with a playhead, and ends when the roll closes', JSON.stringify([ed.auditioning, ed.playhead, ed.stoppedOnClose]));
 
@@ -238,12 +263,12 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
   ok(bar0.exists && bar0.visible && bar0.on === 'Off' && bar0.name === 'Strum' && bar0.latch === 'true' && bar0.mapOn === 'toggle:chord-rhythm', 'the Rhythm bar is under the chord pads on Live: off, Strum, latched, mappable', JSON.stringify(bar0));
   await page.click('#cr-on');
   const armed = await page.evaluate(() => ({ txt: document.getElementById('cr-on').textContent, run: CR.run, on: CR.on }));
-  ok(armed.txt === 'Armed' && armed.on && !armed.run, 'switched on with no chord yet, it is armed and waits for a tap', JSON.stringify(armed));
+  ok(armed.txt === 'Tap a chord' && armed.on && !armed.run, 'switched on with no chord yet, it says Tap a chord and waits', JSON.stringify(armed));
   const pad = await page.evaluate(() => { const b = document.querySelector('#chords-diatonic > *').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
   await page.mouse.move(pad.x, pad.y); await page.mouse.down(); await page.waitForTimeout(120); await page.mouse.up();
   await page.waitForTimeout(1500);
   const played = await page.evaluate(() => ({ txt: document.getElementById('cr-on').textContent, run: CR.run, cls: document.getElementById('cr-on').className, chords: window.__sent.filter(m => m.kind === 'chord' && m.part === 'chord').length, root: CR.chord && CR.chord.root }));
-  ok(played.run && played.txt === 'On' && /run/.test(played.cls) && played.chords >= 4, 'tapping a chord pad starts the rhythm on it (a real tap on a real pad)', JSON.stringify(played));
+  ok(played.run && played.txt === 'Playing' && /run/.test(played.cls) && played.chords >= 4, 'tapping a chord pad starts the rhythm on it (a real tap on a real pad)', JSON.stringify(played));
   await page.click('#cr-latch');
   const hold = await page.evaluate(() => ({ latch: CR.latch, pressed: document.getElementById('cr-latch').getAttribute('aria-pressed') }));
   ok(!hold.latch && hold.pressed === 'false', 'Latch toggles', JSON.stringify(hold));
@@ -259,9 +284,9 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
   await page.click('#cr-draw'); await page.waitForTimeout(200);
   const roll = await page.evaluate(() => ({ open: !!document.querySelector('.rhy-sheet'), hits: [...document.querySelectorAll('.rhy-sheet .rhy-hint')].map(h => h.textContent)[0] }));
   ok(roll.open, 'Draw opens the roll on the rhythm the pads use', JSON.stringify(roll));
-  await page.evaluate(() => [...document.querySelectorAll('.rhy-sheet button')].find(b => b.textContent === 'Use on the pads').click());
+  await page.evaluate(() => [...document.querySelectorAll('.rhy-sheet button')].find(b => b.textContent === 'Save').click());
   const used = await page.evaluate(() => ({ key: CR.key, custom: /^u:/.test(CR.key) || CR.key === 'bossa', def: !!CR.def || CR.key === 'bossa' }));
-  ok(used.custom, 'Use on the pads sets the rhythm', JSON.stringify(used));
+  ok(used.custom, 'Save in the pads\' roll sets the chord rhythm', JSON.stringify(used));
 
   // The roll opened from Song Build fires that chord, not the last one tapped.
   const sb = await page.evaluate(async () => {
