@@ -91,7 +91,10 @@ function serve() {
 
     // Glide off: single notes still go mono, but nothing slides.
     melGlideOn = false; reset(); playMelNote(60, .8, true); playMelNote(65, .8, true);
-    out.glideOff = notes()[1].glideFrom; melGlideOn = true;
+    out.glideOff = notes()[1].glideFrom;
+    // ...and a mõdSynth patch, which glides in its engine, is told a glide time of nothing.
+    const gp = PARAMS.find(q => q.part === 'mel' && q.name === 'glideTime');
+    out.engineGlide = [gp.read(), (melGlideOn = true, gp.read())];
 
     // Eight voices, then the oldest is let go to make room for the ninth.
     melMono = false; melAuto = false; reset();
@@ -159,6 +162,7 @@ function serve() {
   ok(r.scale[0] < r.scale[1] && r.scale[1] < r.scale[2] && r.scale[2] < r.scale[3] && r.scale[3] === r.scale[4] && Math.abs(r.scale[2] - 0.3) < 1e-4 && r.scaleDown === r.scale[2],
     'the slide is longer for a bigger leap (an octave takes the Glide time, up or down, and it stops growing past two)', JSON.stringify([r.scale, r.scaleDown]));
   ok(r.glideOff == null, 'Glide off: no slide', String(r.glideOff));
+  ok(r.engineGlide[0] === 0 && r.engineGlide[1] > 0, 'Glide off reaches a mõdSynth patch as a glide time of nothing', JSON.stringify(r.engineGlide));
   ok(r.cap8.notes === 8 && r.cap8.rels === 0 && r.cap9.notes === 9 && r.cap9.rels.length === 1 && r.cap9.rels[0] === r.cap9.oldest && r.cap9.live === 8, 'eight voices; the ninth lets the oldest go', JSON.stringify([r.cap8, r.cap9]));
   ok(r.msx.notes === 2 && r.msx.rels === 0 && !r.msx.glide, 'a mõdSynth patch: every key goes through and nothing is cut by the page', JSON.stringify(r.msx));
   ok(r.msxMono['voice.mode'] === 'legato' && near(r.msxMono['voice.glide'], 0.3) && r.msxMono['voice.glideAuto'] === 0, 'Mono hands its engine Legato and the Glide', JSON.stringify(r.msxMono));
