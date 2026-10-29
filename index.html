@@ -7973,7 +7973,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6b</span></div>
  </div>
 </div>
 
@@ -8556,6 +8556,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <span class="oct-pill" id="mel-oct-disp">C5</span>
  <button class="tb mel-octbtn" onclick="shiftMelOct(+1)" aria-label="Octave up">Oct+</button>
  <button class="hold-btn" id="hold-btn" data-map="toggle:hold" onclick="toggleHold()">Hold</button>
+ <!-- Portamento between single notes. Here, on the strip's own row, because Live shows this
+      panel and has no other melody controls; the Mode and the Glide time are in the voice
+      settings under the keys. It reads off while the strip is Poly, where a slide has no
+      meaning (and while Auto is playing a chord, it simply does not apply). -->
+ <button class="hold-btn" id="mel-glide-btn" type="button" onclick="toggleMelGlide()"
+  title="Glide: single notes slide into each other, longer for a bigger leap. Off in Poly, and while a chord is held in Auto">Glide</button>
  </div>
  <!-- Melody chrome, second and last row. Touch Mod, the bend strip's own
       Lock/Continuous switch and the scale disclosure each used to own a full
@@ -9283,7 +9289,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10320,7 +10326,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6a';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12377,7 +12383,7 @@ var PARAMS = [
  {part:'mel',    name:'reverb',     read:function(){ return _pSlider('mel-rev'); }},
  {part:'mel',    name:'voice',      read:function(){ return melWave; }},
  {part:'mel',    name:'velSense',   read:function(){ return _pSlider('vel-sense'); }},
- {part:'mel',    name:'mono',       read:function(){ return melMono; }},
+ {part:'mel',    name:'mono',       read:function(){ return _melMonoEff(); }},
  {part:'mel',    name:'glideTime',  read:function(){ return melGlideTime; }},
  {part:'mel',    name:'mod',        read:function(){ return melModOn; }},
  {part:'mel',    name:'modDest',    read:function(){ return melModDest; }},
@@ -23474,7 +23480,7 @@ function msxApply(part){
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
- r.values['voice.poly'] = Math.min(+r.values['voice.poly']||8, part==='chord' ? 8 : 6);
+ r.values['voice.poly'] = Math.min(+r.values['voice.poly']||8, (part==='chord' || part==='mel') ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) r.values[k]=Math.min(+r.values[k]||1, 4); });
  eng.setAll(r.values);
  try{ _modNativeStripSync(part); }catch(e){}   // a new patch brings its own calibration
@@ -25931,16 +25937,55 @@ var _melNoteSeq = 0;
 // from note to note over melGlideTime, newest key wins and letting go of it falls
 // back to the key still down, as on a hardware mono synth. var, not let: read from
 // functions declared thousands of lines away (CLAUDE.md, "Temporal dead zone").
-var melMono = null, melGlideTime = 0.12;
+//
+// Mono is the default since 4.9.9.9.9.9.6b, and with it melAuto: a second key going
+// down while another is still held makes that moment polyphonic — up to
+// MEL_MAX_VOICES notes, no glide, nobody stolen — and when every finger is up the
+// strip is a mono voice again. The mode the player chose (melMono, and the key
+// width that follows it) does not move; only what the notes do does, which is why
+// this is _melPolyEp (an episode) and not a flip of melMono.
+var melMono = true, melGlideTime = 0.12, melAuto = true, melGlideOn = true;
+var MEL_MAX_VOICES = 8;
+var _melPolyEp = false;        // a chord is being played on a mono voice
+var _melDown = {};             // pitch -> true while its key is physically down
+var _melOrder = [];            // pitches in the order their voices began, for the voice cap
 // The keys down (oldest first, with how hard and where on the strip), the pitch the
 // mono voice is on and when it last sounded: what a slide starts from.
 var _melHeld = [], _melHeldInfo = {}, _melSounding = null, _melSoundT = 0;
 var MEL_MONO_FADE = 0.025;
+// What `mono` means to the engine right now: the player's setting, except that a
+// mõdSynth patch (whose Mono is the engine's own Legato) is told Poly for the length
+// of a poly episode, so the chord is not played one note at a time.
+function _melMonoEff(){ return (melMono===true && _melPolyEp) ? false : melMono; }
+// How long a slide takes: the Glide time is what an octave costs. A leap longer
+// than that takes longer and a step takes less, so the pitch moves at a rate
+// rather than in a fixed time (a fixed time makes a semitone crawl and a tenth
+// lurch). Floored well above zero: a one-semitone slide that takes 4 ms is a
+// click, not a slide. A mõdSynth patch glides inside the engine on a fixed time
+// constant, so it is not scaled.
+function melGlideFor(semis){
+ var n = Math.min(24, Math.abs(semis||0));
+ return melGlideTime * (0.35 + 0.65*n/12);
+}
+// The strip's two-finger zoom needs two fingers to mean "zoom", which in Auto they do
+// not: they mean a chord. So zoom is Mono's alone, where it always was.
+function _melPinchOK(){ return melMono===true && !melAuto; }
+function _melFingers(){
+ var n = 0;
+ for(var k in _melDown) if(_melDown[k] && _melLive[k]!=null) n++;
+ return n;
+}
+function _melSetPolyEp(on){
+ if(_melPolyEp===on) return;
+ _melPolyEp = on;
+ if(!on){ _melHeld = []; _melHeldInfo = {}; }
+ modParamsFlush();          // a mõdSynth patch changes mode with it
+}
 // A mõdSynth patch does its own mono: its engine has Legato and a Glide, so the page
 // only sets those (see _msxMelVoice) and lets every key through. Anything else is
 // made mono here, at the door, so web voices, recorded voices and a native engine
 // all follow the one rule.
-function _melMonoPage(){ return melMono===true && melWave!=='modsynth'; }
+function _melMonoPage(){ return melMono===true && !_melPolyEp && melWave!=='modsynth'; }
 function _melMonoStart(msg, midi, pressure, modY){
  _melHeld = _melHeld.filter(function(m){ return m!==midi; }); _melHeld.push(midi);
  _melHeldInfo[midi] = {p:pressure, y:modY};
@@ -25954,7 +25999,7 @@ function _melMonoStart(msg, midi, pressure, modY){
   delete _melLive[k];
   if(typeof window._melCapRelease==='function') window._melCapRelease(+k);
  });
- if(from!=null && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideTime; }
+ if(from!=null && melGlideOn && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideFor(midi-from); }
  _melSounding = midi; _melSoundT = now;
 }
 // Each voice of the note starts `semis` away and slides to its own pitch over
@@ -25973,9 +26018,32 @@ function _melGlideApply(nodes, semis, t0, dur){
   }catch(e){}
  });
 }
-function toggleMelMono(){ setMelMono(melMono===true ? false : true); }
-function setMelMono(v){
+// Polyphony stops at MEL_MAX_VOICES: the oldest voice is let go to make room for
+// the next, the way a hardware poly synth steals, rather than the new note being
+// refused. _melOrder is pruned against _melLive because panic and Stop paths
+// clear _melLive without telling it.
+function _melCapVoices(incoming){
+ _melOrder = _melOrder.filter(function(m){ return _melLive[m]!=null; });
+ while(_melOrder.length >= MEL_MAX_VOICES){
+  var old = _melOrder.shift();
+  if(old===incoming) continue;
+  modSend({v: 1, kind: 'release', part: 'mel', id: _melLive[old], at: null, fade: MEL_MONO_FADE});
+  delete _melLive[old]; delete _melDown[old];
+  if(typeof window._melCapRelease==='function') window._melCapRelease(old);
+  markMelKeyOff(old);
+ }
+}
+// Auto (the default: mono, and poly while a chord is held) -> Mono -> Poly.
+function toggleMelMono(){
+ if(melAuto && melMono===true) setMelMono(true, false);
+ else if(melMono===true) setMelMono(false);
+ else setMelMono(true, true);
+}
+function toggleMelGlide(){ melGlideOn = !melGlideOn; syncMelMonoUI(); }
+function setMelMono(v, auto){
  melMono = (v===null) ? null : !!v;
+ melAuto = (v===true) && (auto!==false);
+ _melPolyEp = false; _melDown = {}; _melOrder = [];
  _melHeld = []; _melHeldInfo = {}; _melSounding = null;
  try{ melApplyKeyW(); syncMelScrollCue(); }catch(e){}   // Poly: the default width; Mono: the player's own
  syncMelMonoUI(); modParamsFlush();
@@ -25986,11 +26054,14 @@ function setMelGlideTime(ms){
 }
 function syncMelMonoUI(){
  var b=document.getElementById('mel-mono-btn');
- if(b){ b.textContent='Mode: '+(melMono===true?'Mono':'Poly'); b.classList.toggle('active', melMono===true); }
+ if(b){ b.textContent='Mode: '+(melMono===true ? (melAuto?'Auto':'Mono') : 'Poly'); b.classList.toggle('active', melMono===true); }
+ var gb=document.getElementById('mel-glide-btn');
+ if(gb){ gb.classList.toggle('active', melGlideOn && melMono===true); gb.setAttribute('aria-pressed', (melGlideOn && melMono===true)?'true':'false'); gb.textContent='Glide'; }
  var sl=document.getElementById('mel-glide-time');
- if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true; }
+ if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true || !melGlideOn; }
  var lv=document.getElementById('mel-glide-val'); if(lv) lv.textContent=Math.round(melGlideTime*1000)+'ms';
 }
+syncMelMonoUI();
 function playMelNote(midi,pressure,sustain,modY){
  if(!window.modEngine.ready()) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -26001,8 +26072,15 @@ function playMelNote(midi,pressure,sustain,modY){
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
               y: modY==null ? melModY : modY};
+ // A second key while one is down: a chord, so this stretch of playing is poly.
+ // Hold is left out on purpose — a latched note is still in _melLive after the
+ // finger has gone, and counting it would make every note after the first a chord.
+ if(melAuto && melMono===true && !_melPolyEp && _melFingers()>0 && !_melDown[midi]) _melSetPolyEp(true);
  if(_melMonoPage()) _melMonoStart(msg, midi, pressure, modY);
+ else _melCapVoices(midi);
+ _melDown[midi] = true;
  _melLive[midi] = msg.id;
+ _melOrder = _melOrder.filter(function(m){ return m!==midi; }); _melOrder.push(midi);
  modSend(msg);
  return msg.id;
 }
@@ -26125,6 +26203,13 @@ function melPlayIn(midi, pressure, y){
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(typeof window._blStripLets==='function' && window._blStripLets(midi)) return;
+ delete _melDown[midi];
+ if(_melPolyEp && _melFingers()===0){
+  _melSetPolyEp(false);
+  // The next single note slides from the last of the chord to leave, not from
+  // whichever note began it.
+  _melSounding = midi; _melSoundT = performance.now();
+ }
  // Mono: the key is no longer down; if it was the one sounding and another is
  // still held, that one comes back (after this note has been let go, below).
  var back = null;
@@ -33343,7 +33428,7 @@ function _capSettings(){
   // musical context + character toggles
   root, mode, voicing, vary:voiceVary, bpm:_sv('bpm'),
   glideOn: chordGlideOn, glideT: chordGlideTime,
-  melMono, melGlideT: melGlideTime,
+  melMono, melGlideT: melGlideTime, melAuto, melGlideOn,
   // Stored as a pair rather than a string so an older setup, which has
   // neither, restores as 4/4 without needing to be parsed or migrated.
   meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
@@ -33536,7 +33621,11 @@ function _applySettings(s){
  _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
  _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
  if(s.glideOn!=null){ chordGlideOn=!!s.glideOn; if(s.glideT>0) chordGlideTime=+s.glideT; syncGlideUI(); }
- if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT; _melHeld=[]; _melHeldInfo={}; _melSounding=null; try{ melApplyKeyW(); }catch(e){} syncMelMonoUI(); }
+ if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT;
+  // A setup saved before Auto existed chose its mode on purpose: Mono stays Mono.
+  melAuto = (s.melAuto!==undefined) ? !!s.melAuto && melMono===true : false;
+  melGlideOn = (s.melGlideOn!==undefined) ? !!s.melGlideOn : true;
+  _melPolyEp=false; _melDown={}; _melOrder=[]; _melHeld=[]; _melHeldInfo={}; _melSounding=null; try{ melApplyKeyW(); }catch(e){} syncMelMonoUI(); }
 
  // Melody envelope + FX
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
@@ -34660,10 +34749,10 @@ function melApplyKeyW(){
  // the keys sit at the default width (the one that fits an octave) and the pinch
  // below is off: a chord played on the strip was being read as a zoom, which let the
  // first note go and resized the keys under the second.
- k.style.setProperty('--mel-kw', ((melMono===true && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
+ k.style.setProperty('--mel-kw', ((_melPinchOK() && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
  try{ invalidateMelScrollMax(); }catch(e){}
 }
-window.addEventListener('resize', function(){ if(_melKw==null || melMono!==true) melApplyKeyW(); });
+window.addEventListener('resize', function(){ if(_melKw==null || !_melPinchOK()) melApplyKeyW(); });
 window.addEventListener('load', melApplyKeyW);
 // Two fingers on the strip. Capture phase on the scroller, so the second finger
 // is taken before any key sees it, and the first finger's note is let go.
@@ -34674,7 +34763,7 @@ window.addEventListener('load', melApplyKeyW);
   const pts=new Map(); let pinch=null, cancelling=false;
   const dist=()=>{ const a=[...pts.values()]; return a.length<2 ? 0 : Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y) || 1; };
   wrap.addEventListener('pointerdown', function(e){
-   if(e.pointerType!=='touch' || melMono!==true) return;
+   if(e.pointerType!=='touch' || !_melPinchOK()) return;
    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, t:e.target});
    if(pts.size===2){
     e.stopPropagation(); e.preventDefault();
@@ -34715,7 +34804,7 @@ window.addEventListener('load', melApplyKeyW);
   wrap.addEventListener('pointerup', end, true); wrap.addEventListener('pointercancel', end, true);
   // Without this the browser takes a two-finger move as a scroll, and cancels
   // the pointers the pinch is reading.
-  wrap.addEventListener('touchmove', function(e){ if(melMono===true && (e.touches.length>=2 || pinch)) e.preventDefault(); }, {passive:false});
+  wrap.addEventListener('touchmove', function(e){ if(_melPinchOK() && (e.touches.length>=2 || pinch)) e.preventDefault(); }, {passive:false});
  }
  wire(); document.addEventListener('DOMContentLoaded', wire); window.addEventListener('load', wire);
 })();
