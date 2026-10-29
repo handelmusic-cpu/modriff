@@ -7973,7 +7973,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6a</span></div>
  </div>
 </div>
 
@@ -9283,7 +9283,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10320,7 +10320,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16982,10 +16982,37 @@ function psTierClamp(){
  if(PS.liveN>FREE_NUMBERS.padCount){ PS.liveN = FREE_NUMBERS.padCount; moved=true; }
  return moved;
 }
+// How many pads the loaded kit needs: up to the last one that has a sound on it,
+// in the bank on screen (4.9.9.9.9.9.6a). Called when a whole set arrives — a kit
+// loaded, a bank switched to — never when a single clip lands on a pad, because
+// someone who has just added six empty pads to fill them must not have them
+// taken away by the first sound they drop on pad 2. Only the count changes: a
+// pad keeps its index, its slot, its Caps Lock key and its MIDI note, so
+// nothing a hand or a controller learned moves when the grid grows or shrinks.
+// A kit passes its own extent (upTo): pads past it keep their sounds, hidden,
+// and the + button brings them back. An empty bank leaves the count where it
+// is. Returns true when it changed.
+function psFitPads(upTo){
+ var top = (upTo != null) ? upTo-1 : -1;
+ if(upTo == null){
+  for(var i=0;i<PS_N;i++){ var sl=SMP_SLOTS[psCurKey(i)]; if(sl && sl.id) top = i; }
+  // A factory bank is installed into SMP_SLOTS when it is first drawn, which
+  // is after the switch to it — so read its length from the table.
+  var pre = PS_PRESETS && PS_PRESETS[PS_BANKS[PS.bank]];
+  if(pre) top = Math.max(top, pre.length-1);
+ }
+ if(top < 0) return false;
+ var max = (modTier()==='free') ? FREE_NUMBERS.padCount : PS_N;
+ var n = Math.max(1, Math.min(max, top+1));
+ if(n === PS.liveN) return false;
+ PS.liveN = n; psSavePrefs(); psLiveApply();
+ return true;
+}
 function psSetBank(b){
  b = Math.max(0, Math.min(PS_BANKS.length-1, b|0));
  if(modTier()==='free' && b<4){ freeBlocked('Your own sampler banks'); return; }
  PS.bank = b;
+ psFitPads();
  psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
@@ -17261,7 +17288,7 @@ function psLoadKit(i, ids, name){
  var what = PS_LOOP_SETS[name] ? name : name+' kit';
  var n=Math.min(ids.length, PS_N-i);
  for(var k=0;k<n;k++) psLoadClip(i+k, ids[k], true);
- if(PS.liveN < i+n) psSetLiveN(i+n);
+ psFitPads(i+n);     // grows past the pads on screen, and since 4.9.9.9.9.9.6a shrinks to a smaller kit
  psCloseLoader(); psRender();
  showToast(what+' → pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
