@@ -85,7 +85,7 @@ function serve() {
     row('bass').querySelectorAll('.st-step')[0].click();      // previous: back where it was
     row('bass').querySelectorAll('.st-step')[0].click();      // and one more back
     o.rotPrev = { style: _blGenStyle(), expect: list[(at - 1 + list.length) % list.length] };
-    row('mel').querySelector('.st-name').click();             // tapping the name is next
+    row('mel').querySelectorAll('.st-step')[1].click();       // the arrow is next
     const ml = starterList('mel').map(x => x.id);
     o.melName = { style: _mlGenStyle(), enabled: mlEnabled };
     // Drums rotate through the groove table.
@@ -108,7 +108,7 @@ function serve() {
   ok(r.rowText.bass.length > 0 && r.rowText.off === true, 'the Styles widget names the style and dims a part that is off', JSON.stringify(r.rowText));
   ok(r.rotNext.style === r.rotNext.expect && r.rotNext.enabled && r.rotNext.has, 'next style: the part goes to it, is switched on, and has the line', JSON.stringify(r.rotNext));
   ok(r.rotPrev.style === r.rotPrev.expect, 'previous style steps back through the list', JSON.stringify(r.rotPrev));
-  ok(r.melName.style !== 'riff' && r.melName.enabled, 'tapping the style name is next', JSON.stringify(r.melName));
+  ok(r.melName.style !== 'riff' && r.melName.enabled, 'the arrow beside the name is next', JSON.stringify(r.melName));
   ok(r.drumRot.now === r.drumRot.expect && r.drumRot.label === r.drumRot.expect, 'Drums rotate through the groove table', JSON.stringify(r.drumRot));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
   await browser.close(); srv.close();
