@@ -131,6 +131,19 @@ int main() {
       Run r = render(h, 20, 256);
       CHECK(r.peak > 0.05 && r.finite, "a part with both a graph and a Processor plays (peak %.3f)", r.peak);
     }
+    // A part that played as graphs for a while and is then given a Processor (the arp, set to a
+    // mõdSynth patch after twenty seconds): its first note sounds when it was asked for, not
+    // as many seconds late as the part had been running. The Processor's clock is its own.
+    {
+      ModEngineHost *h = fresh();
+      [h ensureGraphPart:4];
+      [h beginGraph:1 program:sine(440, 0.05, 0.3, 4) timestampMs:0];
+      render(h, 750, 256);                                   // 4 s: the graph part runs, the voice is long over
+      CHECK([h warmUpPart:4], "a Processor is built for a part that has been running as graphs");
+      CHECK([h post:@{@"t": @"on", @"part": @4, @"note": @60, @"vel": @0.9, @"id": @1, @"atRel": @2400}], "a note 50 ms ahead is queued");
+      Run r = render(h, 100, 256);                           // 0.53 s
+      CHECK(r.peak > 0.005 && r.finite, "and it sounds within half a second, not seconds late (peak %.4f)", r.peak);
+    }
     // A late stamp: a voice stamped now plays at once, one stamped far off is not lost.
     {
       ModEngineHost *h = fresh();

@@ -708,7 +708,14 @@ double num(id value, double fallback = 0) {
     if (strip) strip->measure(_scratchL.data(), _scratchR.data(), frames);
     // The mixer's pan, after the meter: the web taps the meter upstream of it.
     if (strip) strip->applyPan(_scratchL.data(), _scratchR.data(), frames);
-    _partFrames[part] += (uint64_t)frames;
+    // Only while there is a Processor: this is the Processor's own clock (applyMessage
+    // places a note on it), and a part played as graphs runs here for its voices and
+    // their tail with no Processor, a clock that is not the Processor's. One built
+    // later (a part set to a mõdSynth patch after it had been playing as graphs) started
+    // at zero and was handed notes that many seconds late: the arp, switched to a patch
+    // after about twenty seconds of playing, was silent for twenty seconds and kept
+    // playing for twenty after Stop.
+    if (p) _partFrames[part] += (uint64_t)frames;
     // The part's own bus, for a stem: what the web's _partBuses entry carries.
     if (modsynth::CaptureRing *c = _cap[1 + part].load(std::memory_order_acquire))
       c->write(_scratchL.data(), _scratchR.data(), frames, blockFrame);
