@@ -2415,6 +2415,13 @@ once, with a paid Developer Program membership:
 4. **Before the App Store build:** CloudKit Dashboard > the container > Deploy
    Schema Changes to Production. Without this the shipped app cannot save a record.
 
+*Prepared, waiting on Apple (6q, branch `claude/icloud-capability-6q`, not merged).* Steps 1 and 2 are done in the project file:
+`App.entitlements` (container `iCloud.com.handelmusic.modriff`, CloudKit), `CODE_SIGN_ENTITLEMENTS`, the iCloud system capability and
+`MODRIFF_CLOUDKIT` in Debug and Release. The simulator build passes with CloudKit compiled in. A device build fails to sign with
+"PLA Update available": the account holder has to accept the latest Program License Agreement at developer.apple.com, after which
+`xcodebuild ... -allowProvisioningUpdates` (or Xcode) registers the container and the App ID. The branch stays unmerged until a device build
+signs, because merged it would stop every phone build.
+
 *Verified here:* `tests/sync/engine.test.js` runs the engine against a fake
 CloudKit that refuses a save made against an old version, with simulated devices:
 a song arriving once and a quiet second pass, edits to different songs on two
