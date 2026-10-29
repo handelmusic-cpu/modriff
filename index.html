@@ -1291,6 +1291,9 @@ body.mode-basic .lv-off { display:none !important; }
 .st-step, .st-name { border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
  font-family:'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
 .st-step { flex:0 0 44px; font-size:1.1rem; line-height:1; }
+.st-keep { font-size:.9rem; color:var(--muted); }
+.st-bank { align-self:center; min-height:40px; padding:0 18px; border:1px solid var(--border2); border-radius:999px; background:none; color:var(--muted);
+ font:600 .52rem 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; touch-action:manipulation; }
 .st-name { flex:1 1 auto; min-width:0; padding:0 10px; font-size:.62rem; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .st-step:active, .st-name:active { border-color:var(--accent); }
 .lv-add:hover, .lv-add:active { border-color:var(--accent); }
@@ -3424,6 +3427,16 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
 .rhy-btn.on { border-color:var(--accent); color:var(--accent); }
 .rhy-btn.rhy-primary { background:var(--accent); border-color:var(--accent); color:#0a0a12; }
 /* The Rhythm bar under the chord pads (crSyncUI). */
+.rb-save { display:flex; gap:8px; margin:2px 0 10px; }
+.rb-save .rhy-name { flex:1 1 auto; }
+.rb-list { display:flex; flex-direction:column; gap:6px; }
+.rb-empty { padding:18px 8px; text-align:center; font-size:.55rem; color:var(--muted); }
+.rb-row { display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); }
+.rb-name { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.rb-name b { font:600 .64rem 'Outfit',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rb-name span { font-size:.45rem; color:var(--muted); }
+.rb-b { flex:0 0 auto; min-height:40px; padding:0 10px; border:1px solid var(--border2); border-radius:var(--r-sm); background:none; color:var(--text); font:600 .52rem 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.rb-del { color:var(--muted); }
 .cr-bar { display:flex; gap:6px; align-items:stretch; margin:8px 0 4px; }
 .cr-bar button { min-height:40px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
  font:600 .58rem 'Outfit',sans-serif; letter-spacing:.04em; cursor:pointer; touch-action:manipulation; }
@@ -8023,7 +8036,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6h</span></div>
  </div>
 </div>
 
@@ -9374,7 +9387,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6h</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10411,7 +10424,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6g';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6h';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -44545,6 +44558,146 @@ function _rhyRound(g, x, y, w, h, r){
 }
 window.rhyEdit = rhyEdit;
 
+// ── The bank, across the parts ──
+// What the bank holds, and how each kind is taken from the part and put back. A 'chord' entry is a drawn rhythm
+// (above); the others are the pattern a sequencer has, without its sound: the kit's grid and lane levels, and a
+// bass or melody line with the chord it was written over — loading one never changes a voice, a filter or the
+// Aux layer. Loading is the same act as picking a style on the Live page, so the Styles widget rotates through
+// your entries too (starterList).
+var BANK_KINDS = [['chord','Chords'],['drums','Drums'],['bass','Bass'],['mel','Melody']];
+var BANK_PART_NAME = {chord:'Chord rhythm', drums:'Drums', bass:'Bass', mel:'Melody'};
+function bankClone(o){ return JSON.parse(JSON.stringify(o)); }
+function bankCapture(kind){
+ try{
+  if(kind==='chord'){
+   var d = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, 16);
+   if(!rhyHasHits(d)) return null;
+   return d;
+  }
+  if(kind==='drums') return (typeof window._sqKitTemplate==='function') ? window._sqKitTemplate() : null;
+  var c = (kind==='bass') ? window._blCaptureState() : window._mlCaptureState();
+  return {steps:c.steps, oct:c.oct, genStyle:c.genStyle, grid:bankClone(c.grid), gridRootPc:c.gridRootPc, gridIntvs:bankClone(c.gridIntvs)};
+ }catch(e){ return null; }
+}
+function bankHasNotes(kind, d){
+ if(kind==='chord') return rhyHasHits(d);
+ var g = d && d.grid; if(!g) return false;
+ if(Array.isArray(g)) return g.some(function(c){ return c && c.v; });
+ return Object.keys(g).some(function(k){ return (g[k]||[]).some(function(c){ return c && c.v>0; }); });
+}
+// Put an entry on its part. Returns true if it took.
+function bankApply(e){
+ var kind = e.kind, d = bankClone(e.data);
+ try{
+  if(kind==='chord'){ crSetRhythm(rhyId(d), Object.assign({}, d, {name:e.name})); return true; }
+  if(kind==='drums') return !!(typeof window._sqApplyKitTemplate==='function' && window._sqApplyKitTemplate(d));
+  var tag = kind==='bass' ? 'bl' : 'ml';
+  var cur = (kind==='bass') ? window._blCaptureState().steps : window._mlCaptureState().steps;
+  // The step count goes through the link, so Steps Linked moves the drums and the other line with it.
+  if(d.steps && d.steps !== cur && typeof setSeqStepCount==='function') setSeqStepCount(tag, d.steps);
+  if(kind==='bass') window._blRestoreState(d); else window._mlRestoreState(d);
+  return true;
+ }catch(err){ return false; }
+}
+// The entry loaded last on each part and what the part looked like then, so the Styles widget can name it for as
+// long as it is still what is there.
+var BANK_LOADED = {drums:null, bass:null, mel:null};
+function bankSig(kind){ var d = bankCapture(kind); return d ? JSON.stringify(d.grid) : null; }
+function bankLoad(e){
+ if(!bankApply(e)) return false;
+ if(e.kind !== 'chord'){
+  BANK_LOADED[e.kind] = {id:e.id, sig:null};
+  // After the swap has landed (a running beat takes it at the loop's wrap), not before.
+  setTimeout(function(){ if(BANK_LOADED[e.kind] && BANK_LOADED[e.kind].id===e.id) BANK_LOADED[e.kind].sig = bankSig(e.kind); try{ starterWidgetSync(); }catch(x){} }, e.kind==='drums' ? 2600 : 60);
+ }
+ return true;
+}
+function bankSave(kind, name){
+ var d = bankCapture(kind);
+ if(!d || !bankHasNotes(kind, d)){ showToast('Nothing in '+BANK_PART_NAME[kind].toLowerCase()+' to keep yet'); return null; }
+ var nm = String(name||'').trim() || (kind==='chord' ? (d.name || crLabel()) : BANK_PART_NAME[kind]+' '+(rhyBankList(kind).length+1));
+ if(kind==='chord') d.name = nm;
+ var e = rhyBankAdd(kind, nm, d);
+ try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){}
+ showToast('Kept '+nm);
+ return e;
+}
+function bankMeta(e){
+ if(e.kind==='chord') return (e.data.steps||16)+' steps';
+ var n = e.data.steps||16;
+ return n+' steps'+(e.kind==='drums' && e.data.mach ? ' · '+((typeof window._sqMachines==='function' && window._sqMachines()[e.data.mach]) ? window._sqMachines()[e.data.mach].label : e.data.mach) : '');
+}
+// A name, asked for in a small sheet; the callback gets what was typed (possibly empty = let the app name it).
+function bankAsk(title, value, ok, cb){
+ var box = _sbSheet(title);
+ var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'rhy-name'; inp.maxLength = 28; inp.value = value || '';
+ inp.placeholder = 'Name it'; inp.style.width = '100%'; inp.setAttribute('aria-label', title);
+ box.body.appendChild(inp);
+ var go = document.createElement('button'); go.type = 'button'; go.className = 'rhy-btn rhy-primary'; go.textContent = ok; go.style.width = '100%'; go.style.marginTop = '10px';
+ go.addEventListener('click', function(){ var v = inp.value; box.close(); cb(v); });
+ inp.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); go.click(); } });
+ box.body.appendChild(go);
+ box.addCancel('Cancel');
+ setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+}
+var _bankTab = 'chord';
+function rhyBankOpen(kind){
+ if(kind) _bankTab = kind;
+ var box = _sbSheet(null, 'lib-sheet');
+ var grip = document.createElement('div'); grip.className = 'lib-grip'; box.sheet.insertBefore(grip, box.sheet.firstChild);
+ var top = document.createElement('div'); top.className = 'lib-top';
+ var t = document.createElement('div'); t.className = 'modal-title'; t.textContent = 'Rhythm bank';
+ var x = document.createElement('button'); x.type = 'button'; x.className = 'smp-x'; x.textContent = 'Close'; x.addEventListener('click', box.close);
+ top.appendChild(t); top.appendChild(x); box.sheet.insertBefore(top, grip.nextSibling);
+ var tabs = document.createElement('div'); tabs.className = 'lib-tabs'; box.body.appendChild(tabs);
+ var saveRow = document.createElement('div'); saveRow.className = 'rb-save'; box.body.appendChild(saveRow);
+ var list = document.createElement('div'); list.className = 'rb-list'; box.body.appendChild(list);
+ function paint(){
+  tabs.innerHTML = '';
+  BANK_KINDS.forEach(function(k){
+   var b = document.createElement('button'); b.type = 'button'; b.textContent = k[1];
+   if(_bankTab===k[0]) b.className = 'on';
+   b.addEventListener('click', function(){ _bankTab = k[0]; paint(); });
+   tabs.appendChild(b);
+  });
+  saveRow.innerHTML = '';
+  var nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.className = 'rhy-name'; nameIn.maxLength = 28; nameIn.placeholder = 'Name it'; nameIn.setAttribute('aria-label', 'Name for what you keep');
+  var keep = document.createElement('button'); keep.type = 'button'; keep.className = 'rhy-btn rhy-primary'; keep.style.flex = '0 0 auto';
+  keep.textContent = _bankTab==='chord' ? 'Keep the pads’ rhythm' : 'Keep '+BANK_PART_NAME[_bankTab].toLowerCase()+' as it is';
+  keep.addEventListener('click', function(){ if(bankSave(_bankTab, nameIn.value)){ paint(); } });
+  saveRow.appendChild(nameIn); saveRow.appendChild(keep);
+  list.innerHTML = '';
+  var items = rhyBankList(_bankTab);
+  if(!items.length){
+   var em = document.createElement('div'); em.className = 'rb-empty';
+   em.textContent = _bankTab==='chord' ? 'No rhythms kept yet. Draw one, or keep the one the chord pads are on.' : 'Nothing kept yet. Set the part up the way you like it and keep it here.';
+   list.appendChild(em);
+  }
+  items.forEach(function(e){
+   var row = document.createElement('div'); row.className = 'rb-row';
+   var nm = document.createElement('div'); nm.className = 'rb-name';
+   var b1 = document.createElement('b'); b1.textContent = e.name; var sp = document.createElement('span'); sp.textContent = bankMeta(e);
+   nm.appendChild(b1); nm.appendChild(sp);
+   var ld = document.createElement('button'); ld.type = 'button'; ld.className = 'rb-b'; ld.textContent = 'Load';
+   ld.addEventListener('click', function(){ if(bankLoad(e)){ showToast('Loaded '+e.name); box.close(); } else showToast('Could not load that'); });
+   var rn = document.createElement('button'); rn.type = 'button'; rn.className = 'rb-b'; rn.textContent = 'Rename';
+   rn.addEventListener('click', function(){ bankAsk('Rename', e.name, 'Rename', function(v){ if(String(v).trim()){ rhyBankRename(e.id, v); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){} } paint(); }); });
+   var dl = document.createElement('button'); dl.type = 'button'; dl.className = 'rb-b rb-del'; dl.textContent = 'Delete'; dl.setAttribute('aria-label', 'Delete '+e.name);
+   dl.addEventListener('click', function(){
+    var copy = bankClone(e);
+    rhyBankDelete(e.id); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){}
+    paint();
+    showToast('Deleted '+e.name, {actionLabel:'Undo', onAction:function(){ RHY_BANK.push(copy); rhyBankSave(); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){} }});
+   });
+   row.appendChild(nm); row.appendChild(ld); row.appendChild(rn); row.appendChild(dl);
+   list.appendChild(row);
+  });
+ }
+ paint();
+ return box;
+}
+window.rhyBankOpen = rhyBankOpen;
+
 // ── The Rhythm bar ──
 var CR_NOTES = {bars:'One hit at the top of each bar', backbeat:'Beats 1 and 3', charleston:'Beat 1 and the &-of-2 — the jazz comp',
  strum:'Every beat', bossa:'Syncopated, four hits to the bar', eighths:'Every eighth — driving', skank:'The off-beats only — reggae, ska',
@@ -44595,6 +44748,7 @@ function crPickOpen(){
   add(e.name, 'Yours · ' + e.data.steps + ' steps', CR.on && CR.key===id, function(){ crSetRhythm(id, Object.assign({}, e.data, {name:e.name})); });
  });
  add('Draw a new rhythm…', 'Accents, ratchets and lengths on a one-lane roll', false, function(){ crEditOpen(true); });
+ add('Rhythm bank…', 'Keep, rename and load the rhythms and patterns you made', false, function(){ rhyBankOpen('chord'); });
  box.body.appendChild(list);
  box.addCancel('Close');
 }
@@ -48955,6 +49109,8 @@ function starterList(part){
    out.push({id:id, label:b.textContent.trim()});
   });
  }
+ // What you kept in the rhythm bank for this part comes after the built-in styles.
+ try{ rhyBankList(part).forEach(function(e){ out.push({id:'bank:'+e.id, label:e.name}); }); }catch(e){}
  return out;
 }
 function starterLabel(part, id){
@@ -48964,6 +49120,11 @@ function starterLabel(part, id){
 // The style the part is on right now. Drums can be on a groove that is not in the
 // list (a pattern drawn by hand), which reads as Custom and rotates from the start.
 function starterCurrent(part){
+ // A kept pattern is named for as long as it is still what is on the part.
+ try{
+  var L = BANK_LOADED[part];
+  if(L && L.sig && rhyBankGet(L.id) && L.sig===bankSig(part)) return 'bank:'+L.id;
+ }catch(e){}
  if(part==='drums'){
   var r = (typeof RHYTHMS!=='undefined' && typeof sqCurGroove==='number') ? RHYTHMS[sqCurGroove] : null;
   return r ? r.name : null;
@@ -48980,6 +49141,7 @@ function starterHasPattern(part){
 // beat is running, as a groove always has); Bass and Mel set the style and
 // generate over the last chord, which a running part takes at its next loop.
 function starterLoad(part, id){
+ if(String(id).indexOf('bank:')===0){ var be = rhyBankGet(String(id).slice(5)); return !!(be && bankLoad(be)); }
  if(part==='drums'){
   if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return false;
   var idx = -1;
@@ -49039,9 +49201,21 @@ function starterWidgetNode(){
   prev.addEventListener('click', function(){ starterRotate(part, -1); });
   next.addEventListener('click', function(){ starterRotate(part, +1); });
   name.addEventListener('click', function(){ starterRotate(part, +1); });
-  row.appendChild(lbl); row.appendChild(prev); row.appendChild(name); row.appendChild(next);
+  var keep = document.createElement('button'); keep.type = 'button'; keep.className = 'st-step st-keep';
+  keep.textContent = '+'; keep.title = 'Keep this '+STARTER_PART[part].toLowerCase()+' pattern in the rhythm bank';
+  keep.setAttribute('aria-label', keep.title);
+  keep.addEventListener('click', function(){
+   var d = bankCapture(part);
+   if(!d || !bankHasNotes(part, d)){ showToast('Nothing in '+STARTER_PART[part].toLowerCase()+' to keep yet'); return; }
+   bankAsk('Keep '+STARTER_PART[part].toLowerCase()+' pattern', '', 'Keep', function(v){ bankSave(part, v); });
+  });
+  row.appendChild(lbl); row.appendChild(prev); row.appendChild(name); row.appendChild(next); row.appendChild(keep);
   box.appendChild(row);
  });
+ var bk = document.createElement('button'); bk.type = 'button'; bk.className = 'st-bank'; bk.textContent = 'Rhythm bank';
+ bk.title = 'The rhythms and patterns you kept: chords, drums, bass, melody';
+ bk.addEventListener('click', function(){ rhyBankOpen(); });
+ box.appendChild(bk);
  _starterNode = box;
  return box;
 }
@@ -49077,6 +49251,7 @@ function starterSettingsBuild(){
  });
  starterSettingsSync();
 }
+function starterSettingsRebuild(){ var h = document.getElementById('ss-starters-body'); if(h){ h._built = false; starterSettingsBuild(); } }
 function starterSetStyle(part, id){
  if(!starterList(part).some(function(x){ return x.id===id; })) return;
  STARTERS[part] = id; starterSave();
@@ -51768,6 +51943,33 @@ window._sqKitHasHits = function(){
 // switch appears and disappears on this, so it reads the grid rather than the
 // groove table — a part you programmed by hand counts exactly as much as one
 // that arrived with a groove.
+// The kit layer as a template for the bank: its grid, its machine and the lane levels, and nothing of the Aux or the
+// song chain. Applying one while the beat is running waits for the loop to come round, like a groove.
+window._sqKitTemplate = function(){
+  sqStashFocused();
+  var K=sqLayers[0], lk=sqLK(K.mach,0);
+  return {steps:sqSteps, mach:K.mach, grid:JSON.parse(JSON.stringify(K.grid||{})),
+          vols:JSON.parse(JSON.stringify(sqVols[lk]||{})), pitches:JSON.parse(JSON.stringify(sqPitches[lk]||{}))};
+};
+var sqPendTpl=null;
+function sqApplyKitTemplateNow(t){
+  if(!t || !SQM[t.mach]) return false;
+  sqStashFocused();
+  var on=sqLayers[0].on, lk=sqLK(t.mach,0);
+  if(t.steps) sqSteps=t.steps;
+  sqLayers[0]={mach:t.mach, grid:JSON.parse(JSON.stringify(t.grid||{})), on:on};
+  sqVols[lk]=JSON.parse(JSON.stringify(t.vols||{}));
+  sqPitches[lk]=JSON.parse(JSON.stringify(t.pitches||{}));
+  sqPreloadKit(t.mach);
+  if(sqFocus===0){ sqMach=t.mach; sqGrid=sqLayers[0].grid; }
+  sqEnsureGrid(); sqSyncUI(); sqRender();
+  return true;
+}
+window._sqApplyKitTemplate = function(t){
+  if(!t || !SQM[t.mach]) return false;
+  if(sqPlaying){ sqPendTpl=t; return 'queued'; }
+  return sqApplyKitTemplateNow(t);
+};
 window._sqAuxHasPart = function(){
   var g = sqLayers[1].grid;
   for(var k in g){
@@ -52225,6 +52427,7 @@ function sqFlushPending(){
   // way everything else crosses that boundary — through window.
   if(typeof window._sqFlushGroove==='function' && window._sqFlushGroove()) did=true;
   if(sqPendMach){sqDoSwap(sqPendMach);did=true;}
+  if(sqPendTpl){var _tp=sqPendTpl;sqPendTpl=null;sqApplyKitTemplateNow(_tp);did=true;}
   if(sqPendPat!==null){var idx=sqPendPat;sqPendPat=null;sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatPlay(idx);did=true;}
   // The Aux sequencer's queue is its own: A-patterns change on the loop wrap, whatever
   // the kit's patterns are doing.
@@ -57525,6 +57728,12 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('m
     var f = window.phraseFold(o.note, o.oct, shift, ML_GEN_LO, ML_GEN_HI);
     o.note = f.note; o.oct = f.oct;
    }
+   // The other notes of a chord on this step go where the first one does.
+   if(o.v && c.more && c.more.length) o.more = c.more.map(function(e){
+    var q = {note:e.note, oct:e.oct};
+    if(shift){ var f2 = window.phraseFold(q.note, q.oct, shift, ML_GEN_LO, ML_GEN_HI); q.note = f2.note; q.oct = f2.oct; }
+    return q;
+   });
    g.push(o);
   }
   return { steps: mlSteps, grid: g };
@@ -59578,7 +59787,7 @@ const REQUIRED_EXPORTS = {
  _sqEnsureGrid:'function', _sqRenderGrid:'function', _sqTracks:'function',
  _sqMachines:'function', _sqHit:'function',
  // bassline
- _sqKitHasHits:'function', _blHasNotes:'function', _mlHasNotes:'function',
+ _sqKitHasHits:'function', _sqKitTemplate:'function', _sqApplyKitTemplate:'function', _blHasNotes:'function', _mlHasNotes:'function',
  _blPlaying:'function', _blCaptureState:'function', _blRestoreState:'function',
  _blSetStepsRaw:'function', _blEnsureGrid:'function', _blRenderGrid:'function',
  _blGenStyle:'function', blIsFollowOn:'function', _blWalkFeel:'function',
