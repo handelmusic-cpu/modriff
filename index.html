@@ -7973,7 +7973,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6c</span></div>
  </div>
 </div>
 
@@ -9289,7 +9289,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10326,7 +10326,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6b';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -55298,6 +55298,16 @@ window._mlParams = function(){ return {voice: mlWave}; };
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
 function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
+// More than one note on a step (4.9.9.9.9.9.6c). The first note is the cell's own
+// note/oct, which is everything that already reads a cell; the rest are
+// cell.more, [{note, oct}] — so a line with no chords is byte-for-byte what it was,
+// and anything that does not know about chords simply sees the first note.
+var ML_MAX_VOICES = 8;
+var _mlPrev = null;   // the note before this one: {midi, endT, poly}, for the slide
+function mlExtras(c){ return (c && c.v && c.more && c.more.length) ? c.more : null; }
+// Explicit Mono is one note at a time, so it plays the first of a chord and the
+// roll moves a note rather than adding one. Auto and Poly keep chords.
+function mlPolyAllowed(){ return !(melMono === true && !melAuto); }
 
 function mlEnsureGrid(){
   while(mlGrid.length < mlSteps) mlGrid.push(mlMkCell());
@@ -55316,7 +55326,7 @@ var _mlNoteSeq = 0;
 // other. Measured by playing one fixed line through each voice into the part's
 // bus; a voice not listed is already level.
 var MELGEN_VOICE_TRIM = {piano:1.142, pad:0.47, vibes:0.704, xylo:0.531, kalimba:1.708, jazzgtr:0.876, nylongtr:1.421, tenorsax:0.891, violin:0.846, clarinet:1.799, flute:1.116, triangle:0.917, supersaw:0.939};
-function mlPlayNote(t, note, oct, dur, vol, accent){
+function mlPlayNote(t, note, oct, dur, vol, accent, glide){
   if(!window.modEngine.ready()) return;
   var midi = note + (oct+1)*12;
   // Its own lane, not the strip's. They are separate parts with separate
@@ -55337,8 +55347,12 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
     _midiRecNotes.push({lane:'melgen',note:_mlMidi,vel:_mlVel,tOn:_mlOn,tOff:_mlOn+_mlDur});
   }catch(e){}
   if(_moTookMel) return;
-  modSend({v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
-                         vel: vol, accent: !!accent, at: t, dur: dur});
+  var _mlMsg = {v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
+                         vel: vol, accent: !!accent, at: t, dur: dur};
+  // Portamento from the step before, in mono (see _mlScheduler); the engine slides
+  // from `glideFrom` over `glideTime`, as it does for the strip's notes.
+  if(glide){ _mlMsg.glideFrom = glide.from; _mlMsg.glideTime = glide.time; }
+  modSend(_mlMsg);
 }
 // The Web Audio engine's sequencer note. In this closure because the voice,
 // its bus and the sequencer's own voice choice live here.
@@ -55363,7 +55377,10 @@ window._webMelgenNote = function(msg){
   g.connect(mg);
   if(typeof _regKill==='function') _regKill(g, 'melgen');
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
-  if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+  if(typeof makeVoice === 'function'){
+    var nodes = makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+    if(msg.glideFrom != null && msg.glideTime > 0) _melGlideApply(nodes, msg.glideFrom - midi, t, msg.glideTime);
+  }
 };
 
 // ── scheduler integration — registered into the shared clock, same pattern as bassline ──
@@ -55401,32 +55418,58 @@ window._mlScheduler = function(){
       var len = Math.max(1, cell.len || 1);
       var maxDur = swOff > 0 ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
-      var pn = cell.note, po = cell.oct, skip = false;
-      if(lock){
-        if(lockShift){
-          var lf = window.phraseFold(pn, po, lockShift, ML_GEN_LO, ML_GEN_HI);
-          pn = lf.note; po = lf.oct;
-        }
-      }else if(following){
-        // Same re-rooting as the bass: intervals are measured from the pitch
-        // class the phrase was written over, so the shape survives the move.
-        // The hand-drawn exemption is gone here for the same reason — see the
-        // long note on the bass.
-        if(wf){
-          if(wf.rest) skip = true;
-          else {
+      // Where a written pitch sounds on this step: re-rooted onto the chord by
+      // Follow, folded by a lock, or nowhere (null) over a rest. The main note and
+      // every extra note of a chord go through the same door, so a chord keeps its
+      // shape when the progression moves.
+      var mapOne = function(pn, po){
+        if(lock){
+          if(lockShift){
+            var lf = window.phraseFold(pn, po, lockShift, ML_GEN_LO, ML_GEN_HI);
+            return {pn: lf.note, po: lf.oct};
+          }
+        }else if(following){
+          // Same re-rooting as the bass: intervals are measured from the pitch
+          // class the phrase was written over, so the shape survives the move.
+          // The hand-drawn exemption is gone here for the same reason — see the
+          // long note on the bass.
+          if(wf){
+            if(wf.rest) return null;
             var ref = pn + (po + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
             var outPc = window._followRemapPc(pn, _mlGridRootPc, _mlGridIntvs, wf,
                           (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
             var rg = window._followRange(pn + (po + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
             var abs = window._followNearIn(outPc, ref, rg[0], rg[1]);
-            pn = ((abs % 12) + 12) % 12;
-            po = Math.floor(abs / 12) - 1;
+            return {pn: ((abs % 12) + 12) % 12, po: Math.floor(abs / 12) - 1};
           }
         }
+        return {pn: pn, po: po};
+      };
+      var main = mapOne(cell.note, cell.oct);
+      if(main){
+        var tOn = mlNextT + swOff + window._humanT(mlSeqStep%4===0,'melgen');
+        var vel = mlVol * window._humanV(cell.accent,'melgen');
+        // A step with more than one note is a chord (up to ML_MAX_VOICES of them):
+        // every note sounds, none slides, and each is turned down by the square root
+        // of how many there are so a chord is not louder than the line around it.
+        // Explicit Mono plays the first note only.
+        var xs = mlPolyAllowed() ? mlExtras(cell) : null;
+        var nVoices = xs ? Math.min(ML_MAX_VOICES, 1 + xs.length) : 1;
+        var fromM = null;
+        if(nVoices === 1 && _mlPrev && !_mlPrev.poly && melGlideOn && melMono !== false
+           && (mlNextT - _mlPrev.endT) <= stepSec * 1.01) fromM = _mlPrev.midi;
+        var toM = main.pn + (main.po + 1) * 12;
+        // The slide is longer for a bigger leap (melGlideFor) but never longer than
+        // the note it lands on, or the note would still be on its way when it ended.
+        var glide = (fromM != null && fromM !== toM) ? {from: fromM, time: Math.min(melGlideFor(toM - fromM), dur * 0.8)} : null;
+        var vScale = 1 / Math.sqrt(nVoices);
+        mlPlayNote(tOn, main.pn, main.po, dur, vel * vScale, cell.accent, glide);
+        for(var xi = 0; xi < nVoices - 1; xi++){
+          var m2 = mapOne(xs[xi].note, xs[xi].oct);
+          if(m2) mlPlayNote(tOn, m2.pn, m2.po, dur, vel * vScale, cell.accent);
+        }
+        _mlPrev = {midi: toM, endT: mlNextT + stepSec * len, poly: nVoices > 1};
       }
-      if(!skip) mlPlayNote(mlNextT + swOff + window._humanT(mlSeqStep%4===0,'melgen'), pn, po, dur,
-                           mlVol * window._humanV(cell.accent,'melgen'), cell.accent);
     }
     mlNextT += stepSec;
     mlSeqStep++;
@@ -55468,15 +55511,21 @@ function _mlDisplayWindow(x){
 }
 function _mlDisplayMidi(x){
   var c = mlGrid[x]; if(!c) return null;
+  return _mlDisplayOf(x, c.note, c.oct);
+}
+// Where a written pitch on step x is drawn: the main note and each note of a chord
+// go through the same lookup, so a chord is drawn where Follow will sound it.
+function _mlDisplayOf(x, note, oct){
+  var c = mlGrid[x]; if(!c) return null;
   var wf = _mlDisplayWindow(x);
   if(wf && wf.pcs){
-    var ref = c.note + (c.oct + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
-    var outPc = window._followRemapPc(c.note, _mlGridRootPc, _mlGridIntvs, wf,
+    var ref = note + (oct + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+    var outPc = window._followRemapPc(note, _mlGridRootPc, _mlGridIntvs, wf,
                   (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
-    var rg = window._followRange(c.note + (c.oct + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
+    var rg = window._followRange(note + (oct + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
     return window._followNearIn(outPc, ref, rg[0], rg[1]);
   }
-  var abs = c.note + (c.oct + 1) * 12;
+  var abs = note + (oct + 1) * 12;
   // See the bass roll's _blDisplayMidi — a hand-placed note is drawn where it
   // was placed, and now that the roll runs C3-C7 rather than the generator's
   // G3-C6 there is somewhere for it to be drawn.
@@ -55484,6 +55533,19 @@ function _mlDisplayMidi(x){
   if(abs > ML_GEN_HI) abs -= 12;
   if(abs < ML_GEN_LO) abs += 12;
   return abs;
+}
+// Add `midi` to a step that already has a note. Ignores a pitch the step already
+// sounds, and stops at ML_MAX_VOICES. The audition plays the note alone.
+function _mlAddNote(c, midi){
+  var note = ((midi % 12) + 12) % 12, oct = Math.floor(midi / 12) - 1;
+  if(c.note === note && c.oct === oct) return false;
+  var xs = c.more || (c.more = []);
+  for(var i = 0; i < xs.length; i++) if(xs[i].note === note && xs[i].oct === oct) return false;
+  if(1 + xs.length >= ML_MAX_VOICES){ if(!xs.length) delete c.more; return false; }
+  xs.push({note: note, oct: oct});
+  c.usr = 1;
+  if(typeof mlPreviewNote === 'function') mlPreviewNote({note: note, oct: oct, len: c.len, accent: c.accent, v: 1});
+  return true;
 }
 function mlPrInit(){
   if(typeof prRegister!=='function') return;
@@ -55498,12 +55560,27 @@ function mlPrInit(){
     // Follow moves this line onto each chord exactly as it does the bass, so
     // the roll has to draw the sounding pitch for the same reason.
     displayMidi: function(x){ return _mlDisplayMidi(x); },
+    // The other notes of a chord on this step, where each is drawn.
+    extras: function(x){
+      var c = mlGrid[x], xs = mlPolyAllowed() ? mlExtras(c) : null; if(!xs) return null;
+      return xs.map(function(e){ return _mlDisplayOf(x, e.note, e.oct); });
+    },
+    // A second note arriving with the first (a chord played into an armed roll)
+    // joins the step instead of replacing it.
+    addAt: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      if(!c.v || !mlPolyAllowed()) return this.setAt(step, midi);
+      _mlAddNote(c, midi);
+      if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
+      if(typeof mlRedraw==='function') mlRedraw();
+    },
     playStep: function(){ return mlPlaying ? mlDispStep : -1; },
     // See the bass roll's setAt — typing a note writes, it does not toggle.
     setAt: function(step, midi, accent){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      c.v = 1; c.usr = 1;
+      c.v = 1; c.usr = 1; delete c.more;
       c.note = ((midi%12)+12)%12;
       c.oct  = Math.floor(midi/12)-1;
       // Only a gesture that carried force speaks to the accent. A path with
@@ -55516,7 +55593,7 @@ function mlPrInit(){
     clearAt: function(step){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      c.v = 0; c.usr = 0;
+      c.v = 0; c.usr = 0; delete c.more;
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
       if(typeof mlRedraw==='function') mlRedraw();
     },
@@ -55524,8 +55601,26 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       var cur = _mlDisplayMidi(step);
-      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
+      var poly = mlPolyAllowed();
+      if(c.v && cur === midi){
+        // Take away the first note; the next note of a chord, if there is one,
+        // steps up into its place.
+        var nx = (poly && c.more && c.more.length) ? c.more.shift() : null;
+        if(nx){ c.note = nx.note; c.oct = nx.oct; if(!c.more.length) delete c.more; }
+        else { c.v = 0; c.usr = 0; delete c.more; }
+      }
+      else if(c.v && poly){
+        // A lit step, a different row: that is a second note, so the step becomes a
+        // chord (up to eight notes). Tapping one of the chord's notes takes it
+        // away again. Explicit Mono keeps the older behaviour, below, where the tap
+        // moves the one note.
+        var xi = -1;
+        (c.more || []).forEach(function(e, i){ if(_mlDisplayOf(step, e.note, e.oct) === midi) xi = i; });
+        if(xi >= 0){ c.more.splice(xi, 1); if(!c.more.length) delete c.more; }
+        else { _mlAddNote(c, midi); c.usr = 1; }
+      }
       else {
+        delete c.more;
         c.v = 1;
         var raw = midi;   // see the bass roll's toggle — a tap is yours, so
                           // it is stored at the pitch you tapped
@@ -55582,7 +55677,7 @@ function mlPlay(){
     }
     mlEnsureGrid();
     mlMG();
-    mlPlaying = true; mlDispStep = -1;
+    mlPlaying = true; mlDispStep = -1; _mlPrev = null;
     var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
     var _mlStepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
     // On beat 1 of the drums' actual bar — see seqEntryTime.
@@ -56017,7 +56112,9 @@ window._mlLineFor = function(rootM, intvs){
   lastChordIntvs = (intvs && intvs.length) ? intvs : [0,4,7];
   window._mlGenerateRaw();
   out = { steps: mlSteps, grid: mlGrid.map(function(c){
-   return { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1, accent:!!c.accent };
+   var o = { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1, accent:!!c.accent };
+   if(c.more && c.more.length) o.more = c.more.map(function(e){ return {note:e.note, oct:e.oct}; });
+   return o;
   }) };
  }catch(e){ out = null; }
  mlGrid = saveGrid; _mlGridRootPc = saveRoot; _mlGridIntvs = saveIntvs;
@@ -56314,7 +56411,9 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('m
  apply: function(lock){
   mlSteps = lock.steps;
   mlGrid = lock.grid.map(function(c){
-   return { v:c.v, note:c.note, oct:c.oct, len:c.len, accent:!!c.accent, usr:1 };
+   var o = { v:c.v, note:c.note, oct:c.oct, len:c.len, accent:!!c.accent, usr:1 };
+   if(c.more && c.more.length) o.more = c.more.map(function(e){ return {note:e.note, oct:e.oct}; });
+   return o;
   });
   _mlGridRootPc = lock.rootPc;
   var d = document.getElementById('ml-stepsdisp'); if(d) d.textContent = mlSteps;
@@ -57535,6 +57634,18 @@ function prDraw(id){
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
+  // The other notes of a chord on this step (the melody roll), drawn like the
+  // first but without its hand-placed outline or selection ring.
+  if(typeof cfg.extras === 'function'){
+   const ex = cfg.extras(x);
+   if(ex) ex.forEach(function(em){
+    const er = cfg.hi - em;
+    if(er < 0 || er >= rows) return;
+    g.fillStyle = c.accent ? T.accent : T.note;
+    _prRound(g, x*colW+1.5, PR_RULER_H + er*PR_ROW_H + 1.5, Math.max(1, c.len||1)*colW - 3, PR_ROW_H-3, 3);
+    g.fill();
+   });
+  }
   // Ask the engine where this step will actually sound; fall back to the cell's
   // own pitch for engines that do not re-root.
   let midi = c.note + (c.oct+1)*12;
@@ -57833,16 +57944,19 @@ function prWire(id){
 // enough to put one back exactly as it was — including usr, which decides
 // whether Generate is allowed to overwrite it. Toggling twice would restore
 // the pitch but not that.
-const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide'];
+const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide','more'];
 function _prSnap(cfg, step){
  const c = cfg.cell(step); if(!c) return null;
  const o = {};
- _PR_CELL_KEYS.forEach(k=>{ o[k] = c[k]; });
+ _PR_CELL_KEYS.forEach(k=>{ o[k] = (k==='more' && c.more) ? c.more.map(e=>({note:e.note, oct:e.oct})) : c[k]; });
  return o;
 }
 function _prRestore(cfg, step, snap){
  const c = cfg.cell(step); if(!c || !snap) return;
- _PR_CELL_KEYS.forEach(k=>{ c[k] = snap[k]; });
+ _PR_CELL_KEYS.forEach(k=>{
+  if(k==='more'){ if(snap.more) c.more = snap.more.map(e=>({note:e.note, oct:e.oct})); else delete c.more; }
+  else c[k] = snap[k];
+ });
 }
 
 // ═══════════════════════════════════════
@@ -58216,6 +58330,7 @@ function _recFold(cfg, midi){
 
 // Returns true when it consumed the note, so the caller knows whether the
 // live voice should also sound it.
+var _recLast = {id:null, step:null, t:0};
 function noteInputWrite(midi, accent, vel){
  if(!_recArm) return false;
  if(_recIsDrums(_recArm)){
@@ -58224,7 +58339,18 @@ function noteInputWrite(midi, accent, vel){
  }
  const cfg = PR_ENGINES[_recArm]; if(!cfg || typeof cfg.setAt!=='function') return false;
  const running = _recPlayStep(_recArm) >= 0;
+ // A second key within 50 ms of the first is a chord: it joins the step the
+ // first one wrote, which step entry has already stepped past, so the cursor is
+ // left where it is.
+ const nowMs = performance.now();
+ if(typeof cfg.addAt === 'function' && _recLast.id === _recArm && _recLast.step != null && nowMs - _recLast.t < 50){
+  cfg.addAt(_recLast.step, _recFold(cfg, midi));
+  _recLast.t = nowMs;
+  _recRepaint(_recArm);
+  return true;
+ }
  const step = _recStepFor(_recArm);
+ _recLast = {id: _recArm, step: step, t: nowMs};
  cfg.setAt(step, _recFold(cfg, midi), accent);
  // Only step entry moves a cursor. While playing, the playhead is the cursor
  // and moving anything would fight it.
