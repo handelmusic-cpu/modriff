@@ -37,9 +37,46 @@
     }
     var want = (s < 1.06) ? base
       : 'width=' + Math.round(w / s) + ', initial-scale=' + s.toFixed(3) + ', viewport-fit=cover';
+    // While a text field has focus the page may not scale past where it is now
+    // (see the focus guard below). Appended here, not set from outside, so fit()
+    // running on a resize (the keyboard opening is one) does not undo it.
+    if(typing) want += ', maximum-scale=' + Math.max(1, s).toFixed(3);
     if(meta.getAttribute('content') !== want) meta.setAttribute('content', want);
     document.documentElement.dataset.fit = s < 1.06 ? '1' : s.toFixed(2);
   }
+  // Unwanted zoom, two causes (4.9.9.9.9.9.6).
+  //  1. iOS zooms the page in on any field whose text is under 16px when it takes
+  //     focus, and this app's fields are .52–.62rem (10–12px). Raising them to 16px
+  //     would rebuild every row they sit in, so instead the page is told it may not
+  //     scale past 1 for as long as a field is focused, then released a moment
+  //     after blur — the pinch gesture is still there the rest of the time.
+  //  2. touch-action:manipulation switches off double-tap but not pinch, so two
+  //     fingers landing on a pad, key or knob (a chord played with two thumbs)
+  //     could be read by Safari as a pinch. gesturestart is Safari's name for
+  //     that, and cancelling it there leaves the touch events themselves alone —
+  //     the melody strip's own two-finger zoom reads touches and is unaffected.
+  //     Bare text and the page background are not guarded: that is still the
+  //     route to bigger text.
+  var typing = false, typingTimer = 0;
+  function isField(t){ return !!(t && t.closest && t.closest('input:not([type=range]):not([type=checkbox]):not([type=radio]),select,textarea,[contenteditable=true]')); }
+  document.addEventListener('focusin', function(e){
+    if(!isField(e.target)) return;
+    clearTimeout(typingTimer);
+    if(!typing){ typing = true; fit(); }
+  });
+  document.addEventListener('focusout', function(){
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function(){
+      if(isField(document.activeElement)) return;
+      typing = false; fit();
+    }, 250);
+  });
+  function guarded(t){
+    return !!(t && t.closest && t.closest('button,canvas,svg,input,select,textarea,label,summary,[onclick],[role],[draggable],[data-pad],.pad,.key'));
+  }
+  ['gesturestart','gesturechange'].forEach(function(n){
+    document.addEventListener(n, function(e){ if(guarded(e.target)) e.preventDefault(); }, {passive:false});
+  });
   fit();
   window.addEventListener('orientationchange', function(){ setTimeout(fit, 60); });
   window.addEventListener('resize', fit);
@@ -1244,13 +1281,41 @@ body.mode-basic .lv-off { display:none !important; }
  letter-spacing:.1em; text-transform:uppercase; cursor:pointer; touch-action:manipulation;
 }
 .lv-add svg { flex:none; color:var(--accent); }
+.lv-foot { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; }
+/* Styles widget (starterWidgetNode): a card per part in that part's own colour (--pc, from PARTS). */
+.st-widget { display:flex; flex-direction:column; gap:8px; width:100%; margin:2px 0 6px; }
+.st-row { --pc:var(--accent); display:flex; flex-direction:column; gap:6px; padding:8px 10px 10px; border:1px solid color-mix(in srgb, var(--pc) 35%, var(--border2));
+ border-left:4px solid var(--pc); border-radius:var(--r-md); background:color-mix(in srgb, var(--pc) 7%, var(--surf2)); }
+.st-row.off { opacity:.62; }
+.st-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.st-part { font:700 .56rem 'Outfit',sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--pc); }
+.st-save { min-height:34px; padding:0 12px; border:1px solid color-mix(in srgb, var(--pc) 55%, transparent); border-radius:999px; background:none; color:var(--pc);
+ font:600 .5rem 'Outfit',sans-serif; letter-spacing:.06em; cursor:pointer; touch-action:manipulation; }
+.st-pick { display:flex; align-items:stretch; gap:6px; min-height:44px; }
+.st-step, .st-name { border:1px solid color-mix(in srgb, var(--pc) 40%, var(--border2)); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
+ font-family:'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.st-step { flex:0 0 44px; font-size:1.1rem; line-height:1; color:var(--pc); }
+.st-name { flex:1 1 auto; min-width:0; padding:0 12px; font-size:.64rem; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.st-name::after { content:' \25BE'; color:var(--pc); }
+.st-step:active, .st-name:active, .st-save:active { background:color-mix(in srgb, var(--pc) 20%, var(--surf2)); }
+.st-bank { align-self:center; min-height:40px; padding:0 18px; border:1px solid var(--border2); border-radius:999px; background:none; color:var(--muted);
+ font:600 .52rem 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; touch-action:manipulation; }
+.st-name { flex:1 1 auto; min-width:0; padding:0 10px; font-size:.62rem; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.st-step:active, .st-name:active { border-color:var(--accent); }
 .lv-add:hover, .lv-add:active { border-color:var(--accent); }
 /* The other drum layer under the Live grid (sqRenderXStrip): thin lanes that
    fit the width, whatever the step count. A step is a few pixels wide at 64 and
    twenty at 16, so the height does the tapping work. */
 /* order:7 like the grid rows (data-acrow="roll"): the slot is a flex column and the Accomp page orders its rows, so an unordered strip jumped to the top. */
 .sq-xstrip { order:7; margin:6px 0 2px; padding:6px 8px 8px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); }
-.sq-xhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+.sq-xhead { display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
+.sq-xhead .sq-xname { margin-right:auto; }
+.sq-xmute { flex:none; width:32px; height:32px; border:1px solid var(--border2); border-radius:50%; background:none; color:var(--muted); font-size:.7rem; cursor:pointer; touch-action:manipulation; }
+.sq-xmute.on { color:var(--tc, var(--accent)); border-color:var(--tc, var(--accent)); }
+/* The Aux row of eight patterns is the same slot as the Drum Patterns panel's, a little smaller to fit a strip. */
+.sq-xslots { margin:2px 0 6px; gap:4px; }
+.sq-xslots .sq-pslot { width:36px; height:34px; }
+.lv-slot .sq-xc { height:20px; }
 .sq-xname { font:700 12px 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
 .sq-xedit { min-height:32px; padding:0 12px; border:1px solid var(--border2); border-radius:var(--r-sm); background:none; color:var(--text);
  font:600 12px 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
@@ -3350,6 +3415,49 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
  margin-left:3px; opacity:1; color:var(--accent) !important;
 }
 .ci-more:hover { text-decoration:underline; text-underline-offset:2px; }
+/* ── The rhythm roll (rhyEdit): one lane, an inspector under it ── */
+.modal-sheet.rhy-sheet { max-width:640px; }
+.rhy-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.rhy-lbl { flex:0 0 74px; font:700 .5rem 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.rhy-name, .rhy-from { flex:1 1 auto; min-width:0; min-height:40px; padding:6px 10px; border-radius:var(--r-sm);
+ background:var(--surf2); color:var(--text); border:1px solid var(--border2); font:600 15px 'Outfit',sans-serif; }
+.rhy-seg { display:flex; flex:1; gap:1px; min-width:0; flex-wrap:wrap; padding:2px; background:var(--bg); border:1px solid var(--border2); border-radius:var(--r-md); }
+.rhy-seg button { flex:1 1 auto; min-width:0; padding:9px 6px; cursor:pointer; border:none; background:none; border-radius:calc(var(--r-sm) - 1px);
+ color:var(--text); opacity:.78; font-family:'Outfit',sans-serif; font-size:.63rem; touch-action:manipulation; white-space:nowrap; }
+.rhy-seg button.on { background:var(--accent); color:#0a0a12; font-weight:700; opacity:1; }
+.rhy-roll { margin-top:10px; overflow-x:auto; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--bg); -webkit-overflow-scrolling:touch; }
+.rhy-canvas { display:block; touch-action:pan-x; }
+.rhy-swing { flex:1 1 auto; min-width:0; }
+.rhy-swval { flex:0 0 40px; font:600 .55rem 'Outfit',sans-serif; color:var(--muted); text-align:right; }
+.rhy-hint { margin-top:6px; font-size:.5rem; color:var(--muted); min-height:1.2em; }
+.rhy-btn { flex:1 1 0; min-height:44px; padding:0 12px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
+ font:600 .6rem 'Outfit',sans-serif; letter-spacing:.04em; cursor:pointer; touch-action:manipulation; }
+.rhy-btn.on { border-color:var(--accent); color:var(--accent); }
+.rhy-btn.rhy-primary { background:var(--accent); border-color:var(--accent); color:#0a0a12; }
+/* The Rhythm bar under the chord pads (crSyncUI). */
+.rb-save { display:flex; gap:8px; margin:2px 0 10px; }
+.rb-save .rhy-name { flex:1 1 auto; }
+.rb-list { display:flex; flex-direction:column; gap:6px; }
+.rb-empty { padding:18px 8px; text-align:center; font-size:.55rem; color:var(--muted); }
+.rb-row { display:flex; align-items:center; gap:6px; padding:6px 8px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); }
+.rb-name { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.rb-name b { font:600 .64rem 'Outfit',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rb-name span { font-size:.45rem; color:var(--muted); }
+.rb-b { flex:0 0 auto; min-height:40px; padding:0 10px; border:1px solid var(--border2); border-radius:var(--r-sm); background:none; color:var(--text); font:600 .52rem 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.rb-del { color:var(--muted); }
+.cr-bar { display:flex; flex-wrap:wrap; gap:6px; align-items:stretch; margin:8px 0 4px; }
+.cr-bar button { min-height:40px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
+ font:600 .58rem 'Outfit',sans-serif; letter-spacing:.04em; cursor:pointer; touch-action:manipulation; }
+.cr-pick { flex:1 1 100%; min-width:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; padding:2px 10px; text-align:left; }
+.cr-lbl { font-size:.42rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+.cr-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.62rem; }
+.cr-sw { flex:1 1 0; min-width:0; padding:0 8px; white-space:nowrap; }
+.cr-sw.on { border-color:var(--accent); color:var(--accent); }
+.cr-sw.run { background:var(--accent); border-color:var(--accent); color:#0a0a12; }
+@keyframes crPulse { 0%,100% { opacity:1; } 50% { opacity:.72; } }
+.cr-sw.run { animation:crPulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce){ .cr-sw.run { animation:none; } }
+
 .ci-extras { display:flex; flex:0 0 auto; align-items:stretch; }
 /* TYPE A CHORD. The Type row below covers the qualities the menu has names
    for; this covers the rest of harmony. It borrows .ci-seg's frame so it
@@ -7936,7 +8044,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.5y</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6n</span></div>
  </div>
 </div>
 
@@ -8298,6 +8406,20 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
       there; Advanced keeps it, where it distinguishes four sections. -->
  <div class="chord-section-lbl basic-hide">Diatonic <button class="tips-btn" onclick="showTip('chords',this)" title="How chords work">?</button></div>
  <div class="chords-grid" id="chords-diatonic"></div>
+ <!-- The chord rhythm (4.9.9.9.9.9.6g): what the pads above play when they are tapped. Rhythm names it and opens
+      the list (the built-ins, the ones you drew, Draw a new one); the switch arms it, so the next chord you tap
+      is played as the rhythm, on the tempo, until you stop it; Latch keeps it going after the finger lifts (off:
+      it plays while the chord is held); Draw opens the roll on this rhythm. A song that is playing has the chords
+      to itself. -->
+ <div class="cr-bar" id="cr-bar" role="group" aria-label="Chord rhythm">
+  <button type="button" class="cr-pick" id="cr-pick" onclick="crPickOpen()" title="Choose the rhythm the chord pads play">
+   <span class="cr-lbl">Rhythm</span><span class="cr-name" id="cr-name">Strum</span></button>
+  <button type="button" class="cr-sw" id="cr-on" data-map="toggle:chord-rhythm" onclick="crToggleOn()" aria-pressed="false"
+   title="Play the chord pads as a rhythm, on the tempo">Off</button>
+  <button type="button" class="cr-sw" id="cr-latch" data-map="toggle:chord-rhythm-latch" onclick="crToggleLatch()" aria-pressed="true"
+   title="Keep going: the rhythm carries on after you lift your finger, until Stop or another chord. Off: it plays only while you hold the chord">Keep going</button>
+  <button type="button" class="cr-sw cr-draw" id="cr-draw" onclick="crEditOpen()" title="Edit this rhythm on a roll: add, remove and shape the hits, swing, and save it">Edit rhythm</button>
+ </div>
 
  <!-- Borrowed chords by function -->
  <div class="advanced-only">
@@ -8519,6 +8641,12 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <span class="oct-pill" id="mel-oct-disp">C5</span>
  <button class="tb mel-octbtn" onclick="shiftMelOct(+1)" aria-label="Octave up">Oct+</button>
  <button class="hold-btn" id="hold-btn" data-map="toggle:hold" onclick="toggleHold()">Hold</button>
+ <!-- Portamento between single notes. Here, on the strip's own row, because Live shows this
+      panel and has no other melody controls; the Mode and the Glide time are in the voice
+      settings under the keys. It reads off while the strip is Poly, where a slide has no
+      meaning (and while Auto is playing a chord, it simply does not apply). -->
+ <button class="hold-btn" id="mel-glide-btn" data-melglide type="button" onclick="toggleMelGlide()"
+  title="Glide: single notes slide into each other, longer for a bigger leap. Off in Poly, and while a chord is held in Auto">Glide</button>
  </div>
  <!-- Melody chrome, second and last row. Touch Mod, the bend strip's own
       Lock/Continuous switch and the scale disclosure each used to own a full
@@ -8681,7 +8809,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <div class="sg"><div class="sl">Reverb</div><input type="range" id="mel-rev" min="0" max="1" step=".01" value="0" oninput="updateSV('mel-rev','melrev-val',v=>Math.round(v*100)+'%')"><div class="sv" id="melrev-val">0%</div></div>
   </div>
   <div class="row" style="margin-top:4px">
-   <button class="tb" id="mel-mono-btn" onclick="toggleMelMono()" title="Poly: every key sounds. Mono: one note at a time, the newest key wins and it slides from note to note over the glide time">Mode: Poly</button>
+   <button class="tb" id="mel-mono-btn" data-melmode onclick="toggleMelMono()" title=""Poly: every key sounds. Mono: one note at a time, the newest key wins and it slides from note to note over the glide time">Mode: Poly</button>
    <div class="sg"><div class="sl">Glide time</div><input type="range" id="mel-glide-time" min="0" max="1000" step="10" value="120" disabled oninput="setMelGlideTime(this.value)"><div class="sv" id="mel-glide-val">120ms</div></div>
   </div>
   <div class="row" style="margin-top:4px">
@@ -9196,6 +9324,27 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     </div>
    </div>
   </div>
+  <!-- Starter patterns (4.9.9.9.9.9.6d): what Drums, Bass and Mel load when they are
+       switched on over an empty part. -->
+  <div class="settings-section" id="ss-starters">
+   <div class="ss-hdr open" onclick="toggleSS('starters')">
+    <span>Starter patterns</span>
+    <div class="ss-preview" id="ss-starters-preview"></div>
+   </div>
+   <div class="ss-body open" id="ss-starters-body">
+    <div class="row">
+     <button class="tb active" id="starter-on-btn" type="button" onclick="toggleStarters()"
+       title="Switching Drums, Bass or Mel on over an empty part writes this pattern into it. A part that already has something in it is never touched.">Load a pattern when a part is switched on: ON</button>
+    </div>
+    <div class="ss-scope">Drums <b>the groove</b></div>
+    <div class="row"><select id="starter-drums" class="def-key-sel" onchange="starterSetStyle('drums',this.value)" aria-label="Starter drum groove"></select></div>
+    <div class="ss-scope">Bass <b>the style</b></div>
+    <div class="row"><select id="starter-bass" class="def-key-sel" onchange="starterSetStyle('bass',this.value)" aria-label="Starter bass style"></select></div>
+    <div class="ss-scope">Melody <b>the pattern</b></div>
+    <div class="row"><select id="starter-mel" class="def-key-sel" onchange="starterSetStyle('mel',this.value)" aria-label="Starter melody pattern"></select></div>
+    <div class="ss-hint">The Styles widget on the Live page rotates a part through the same lists.</div>
+   </div>
+  </div>
    <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
   <div class="settings-section pro-only" id="ss-layouts">
    <div class="ss-hdr open" onclick="toggleSS('layouts')">
@@ -9246,7 +9395,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.5y</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6n</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -9726,7 +9875,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 <!-- Patterns -->
 <div class="sq-song" data-acrow="extra">
   <div class="sq-songhdr">
-    <span class="sq-songtitle" style="font-size:.55rem">Drum Patterns</span>
+    <span class="sq-songtitle" id="sq-ptitle" style="font-size:.55rem">Drum Patterns</span>
     <div style="display:flex;gap:5px">
       <button class="sq-sbtn" id="sq-saveBtn" style="font-size:.55rem">Save</button>
       <button class="sq-sbtn" id="sq-dupBtn" style="font-size:.55rem">Dup</button>
@@ -9734,7 +9883,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     </div>
   </div>
   <div class="sq-pslots" id="sq-pslots"></div>
-  <div class="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:var(--muted)">(hold pattern to add)</span></div>
+  <div class="sq-chainlbl" id="sq-chainlbl" style="font-size:.48rem">Song chain <span style="font-size:.42rem;color:var(--muted)">(hold pattern to add)</span></div>
   <div class="sq-chainrow" id="sq-chainRow"></div>
 </div>
 
@@ -10014,6 +10163,14 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span class="bl-pl pf-info" id="ml-follow-hint" style="font-size:.4rem;color:var(--muted)">Phrase moves onto each chord</span>
    <button class="tips-btn" onclick="showTip('melgen',this)">?</button>
   </div>
+  <!-- Voices (4.9.9.9.9.9.6c): the same Mode and Glide as the strip's, so the sequencer's line can be set from
+       this page as well. Auto plays a chord (two notes on a step) as poly and everything else as one voice that
+       slides into the next note; Mono plays the first note of a chord; Poly plays them all and does not slide. -->
+  <div class="ac-inline-row ac-w-gen" data-acrow="behave">
+   <button class="bl-genbtn" type="button" data-melmode onclick="toggleMelMono()" title="Auto: single notes slide into each other, a step with more than one note plays as a chord. Mono: one note at a time. Poly: every note, no slide">Mode: Auto</button>
+   <button class="bl-genbtn" type="button" data-melglide onclick="toggleMelGlide()" title="Slide from note to note — longer for a bigger leap. Off in Poly and across a chord">Glide</button>
+   <span class="bl-pl pf-info" style="font-size:.4rem;color:var(--muted)">Auto: one voice that slides; a chord plays poly</span>
+  </div>
   <!-- See the bass page — same row, same meaning. -->
   <div class="pl-row pro-only ac-w-arr" data-acrow="chips">
    <span class="pl-lbl">Lines per chord</span>
@@ -10283,7 +10440,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.5y';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6n';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12340,8 +12497,9 @@ var PARAMS = [
  {part:'mel',    name:'reverb',     read:function(){ return _pSlider('mel-rev'); }},
  {part:'mel',    name:'voice',      read:function(){ return melWave; }},
  {part:'mel',    name:'velSense',   read:function(){ return _pSlider('vel-sense'); }},
- {part:'mel',    name:'mono',       read:function(){ return melMono; }},
- {part:'mel',    name:'glideTime',  read:function(){ return melGlideTime; }},
+ {part:'mel',    name:'mono',       read:function(){ return _melMonoEff(); }},
+ // Glide off reaches the engine as a glide time of nothing: a mõdSynth patch glides inside the engine, which knows only the time.
+ {part:'mel',    name:'glideTime',  read:function(){ return melGlideOn ? melGlideTime : 0; }},
  {part:'mel',    name:'mod',        read:function(){ return melModOn; }},
  {part:'mel',    name:'modDest',    read:function(){ return melModDest; }},
  {part:'mel',    name:'modDepth',   read:function(){ return melModDepth; }},
@@ -16945,10 +17103,37 @@ function psTierClamp(){
  if(PS.liveN>FREE_NUMBERS.padCount){ PS.liveN = FREE_NUMBERS.padCount; moved=true; }
  return moved;
 }
+// How many pads the loaded kit needs: up to the last one that has a sound on it,
+// in the bank on screen (4.9.9.9.9.9.6a). Called when a whole set arrives — a kit
+// loaded, a bank switched to — never when a single clip lands on a pad, because
+// someone who has just added six empty pads to fill them must not have them
+// taken away by the first sound they drop on pad 2. Only the count changes: a
+// pad keeps its index, its slot, its Caps Lock key and its MIDI note, so
+// nothing a hand or a controller learned moves when the grid grows or shrinks.
+// A kit passes its own extent (upTo): pads past it keep their sounds, hidden,
+// and the + button brings them back. An empty bank leaves the count where it
+// is. Returns true when it changed.
+function psFitPads(upTo){
+ var top = (upTo != null) ? upTo-1 : -1;
+ if(upTo == null){
+  for(var i=0;i<PS_N;i++){ var sl=SMP_SLOTS[psCurKey(i)]; if(sl && sl.id) top = i; }
+  // A factory bank is installed into SMP_SLOTS when it is first drawn, which
+  // is after the switch to it — so read its length from the table.
+  var pre = PS_PRESETS && PS_PRESETS[PS_BANKS[PS.bank]];
+  if(pre) top = Math.max(top, pre.length-1);
+ }
+ if(top < 0) return false;
+ var max = (modTier()==='free') ? FREE_NUMBERS.padCount : PS_N;
+ var n = Math.max(1, Math.min(max, top+1));
+ if(n === PS.liveN) return false;
+ PS.liveN = n; psSavePrefs(); psLiveApply();
+ return true;
+}
 function psSetBank(b){
  b = Math.max(0, Math.min(PS_BANKS.length-1, b|0));
  if(modTier()==='free' && b<4){ freeBlocked('Your own sampler banks'); return; }
  PS.bank = b;
+ psFitPads();
  psSavePrefs(); psRender(); psWarpPrime();
 }
 function psSetQuant(q){
@@ -17224,7 +17409,7 @@ function psLoadKit(i, ids, name){
  var what = PS_LOOP_SETS[name] ? name : name+' kit';
  var n=Math.min(ids.length, PS_N-i);
  for(var k=0;k<n;k++) psLoadClip(i+k, ids[k], true);
- if(PS.liveN < i+n) psSetLiveN(i+n);
+ psFitPads(i+n);     // grows past the pads on screen, and since 4.9.9.9.9.9.6a shrinks to a smaller kit
  psCloseLoader(); psRender();
  showToast(what+' → pads '+psPadName(i)+'–'+psPadName(i+n-1));
 }
@@ -19339,7 +19524,7 @@ function psPatAnim(){
 }
 
 // ═══════════════════════════════════════
-// LIVE SLOTS — up to four instruments, any of them, in any order
+// LIVE SLOTS — every instrument at once, in any order
 // ═══════════════════════════════════════
 // The Live view of Play used to be fixed: chords, melody, mõdFX. Now it is
 // up to four slots, and each holds any of seven instruments — the three
@@ -19353,10 +19538,13 @@ function psPatAnim(){
 // borrows the real thing; the grids go back to Accomp — to the exact place they
 // came from, marked with a comment node — whenever Play stops being the Live
 // page you are looking at: another tab, or Studio.
-var LV_MAX = 4;              // instruments
-var LV_ORDER = ['chords','melody','pads','fx','drums','bass','melseq','endings'];
+// No cap on how many widgets Live shows (4.9.9.9.9.9.6l; it was four, then the ten there are). Each one is the real
+// element moved into its slot, so a widget can be on the page once; that, not a number, is the limit.
+var LV_MAX = Infinity;
+var LV_ORDER = ['chords','melody','pads','fx','drums','aux','bass','melseq','endings','styles'];
 var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
-               drums:'Drum grid', bass:'Bass grid', melseq:'Melody grid', endings:'Endings'};
+               drums:'Drum grid', aux:'Aux grid', bass:'Bass grid', melseq:'Melody grid', endings:'Endings',
+               styles:'Styles'};
 // The sampler's pads sit above the mõdFX pad (4.9.9.9.9.1): the pads are
 // what you strike, the mõdFX pad what you hold over everything, and the
 // thumb that holds it belongs at the foot of the page.
@@ -19365,13 +19553,20 @@ var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
 // sampler and mõdFX were on the first page for everyone, including the
 // players who only wanted to play chords, and each of them is one tap away
 // under "Add / reorder widgets".
-var LV_STD = ['chords','melody'];
+//
+// 4.9.9.9.9.9.6d: Live shows everything at once, one under another on a page that
+// scrolls — playing surfaces first, then the Styles rotator, the sampler and mõdFX,
+// the three grids, and Endings last, under the thumb at the end of a song. Four at
+// a time was a choice the player made for them: the part they wanted was the one
+// that was not on the page. A layout somebody chose themselves is left as it is.
+var LV_STD = ['chords','melody','styles','pads','fx','drums','aux','bass','melseq','endings'];
 // The standards before that. A layout saved as exactly one of these was the
 // standard layout, not a choice, so it follows the standard; any other saved
 // order is somebody's own and is left alone. (The Key widget went in the same
 // release; it is filtered out of a saved layout before this comparison, so
 // these are listed without it.)
-var LV_STD_OLD = [['chords','melody','pads','fx'], ['chords','melody','fx','pads']];
+var LV_STD_OLD = [['chords','melody','pads','fx'], ['chords','melody','fx','pads'], ['chords','melody'],
+                  ['chords','melody','styles','pads','fx','drums','bass','melseq','endings']];
 // Nothing gated by instrument any more: the sampler's preset banks and the
 // mõdFX pad are both free (a few patches, nine pads), so both can be on the Live
 // page. What is Pro is CHANGING the layout (lvSet), not what is in it.
@@ -19401,6 +19596,8 @@ var LV = { slots:null };
  LV.slots = s;
 })();
 function lvSave(){ try{ modStore.setItem('modo-live-slots', JSON.stringify(LV.slots)); }catch(e){} }
+// Endings are on the Live page like the rest; take them off with the widget's own menu (or Add / reorder widgets).
+function lvShows(m){ return lvHas(m) && lvAllowed(m); }
 function lvCount(s){ return (s||LV.slots).length; }
 function lvClamp(s){ return s.slice(0, LV_MAX); }
 function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
@@ -19430,13 +19627,17 @@ function lvNodes(m){
  else if(m==='melody') out = [q('#pf-mel-lbl'), q('#pf-melody-panel')];
  else if(m==='pads') out = [q('#pf-pads-lbl'), q('#pf-pads-panel')];
  else if(m==='fx') out = [q('#pf-fx-panel')];
- else if(m==='drums') out = [lvLabel('drums'), q('#ac-drums-panel .sq-layer-host'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), lvXStrip(), q('#sq-insp'), q('#sq-insp-hint')];
+ else if(m==='drums') out = [lvLabel('drums'), q('#sq-page-dots'), q('#ac-drums-panel .sq-grid-wrap'), q('#ac-drums-panel .sq-phbar'), q('#sq-insp'), q('#sq-insp-hint')];
+ // The Aux sequencer: always the Aux layer, with its own roll and its own patterns.
+ else if(m==='aux') out = [lvLabel('aux'), lvXStrip()];
  else if(m==='bass') out = [lvLabel('bass'), q('#bm-bass-panel .pr-host')];
  else if(m==='melseq') out = [lvLabel('melseq'), q('#bm-melody-panel .pr-host')];
  // The row lives in the song banner; the buttons are found by data-ending and
  // _updateEndingUI repaints every one in the document, so moving the row out
  // leaves nothing to keep in step.
  else if(m==='endings') out = [lvLabel('endings'), q('.ending-row')];
+ // Rotate Drums, Bass and Melody through their styles (starterWidgetNode).
+ else if(m==='styles') out = [lvLabel('styles'), (typeof starterWidgetNode==='function') ? starterWidgetNode() : null];
  out = (out||[]).filter(Boolean);
  if(out.length) _lvNodes[m] = out;
  return out;
@@ -19493,8 +19694,11 @@ function lvMount(){
  cont.innerHTML = '';
  if(!on){ cont.style.display='none'; lvStudioCapture(); lvAfter(); return; }
  cont.style.display = '';
+ // The Drum grid is the Kit and the Aux grid is the Aux layer, each always its own
+ // (the Kit/Aux switch is not on Live), so the one editable grid has to be on the Kit.
+ if((lvShows('drums') || lvShows('aux')) && typeof window._sqSetFocus==='function'){ try{ window._sqSetFocus(0); }catch(e){} }
  LV.slots.forEach(function(m, i){
-  if(!lvAllowed(m)) return;
+  if(!lvShows(m)) return;
   var slot = document.createElement('section');
   slot.className = 'lv-slot'; slot.dataset.mod = m; slot.dataset.i = String(i);
   slot.setAttribute('aria-label', LV_NAME[m]);
@@ -19504,7 +19708,7 @@ function lvMount(){
  });
  // Instruments not in a slot are off the Live page, including their headings.
  ['chords','melody','pads','fx'].forEach(function(m){
-  if(!lvHas(m) || !lvAllowed(m)) lvNodes(m).forEach(function(n){ n.classList.add('lv-off'); });
+  if(!lvShows(m)) lvNodes(m).forEach(function(n){ n.classList.add('lv-off'); });
  });
  // At the foot of the page, always (4.9.9.9.9.7.5). It was a dashed "+ Add
  // instrument" that only existed while there was room for another one, so on a
@@ -19514,11 +19718,13 @@ function lvMount(){
  var add = document.createElement('button');
  add.type = 'button'; add.className = 'lv-add';
  add.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="2" y="2.5" width="16" height="4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="2" y="8" width="16" height="4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M10 14.2v4.6M7.7 16.5h4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Add / reorder widgets</span>';
- add.title = 'Choose what is on the Live page, and in what order — up to four instruments';
+ add.title = 'Choose what is on the Live page, and in what order';
  add.setAttribute('aria-haspopup','dialog');
  if(modTier()==='free') add.classList.add('tier-locked');
  add.addEventListener('click', function(){ lvWidgetsOpen(); });
- cont.appendChild(add);
+ var foot = document.createElement('div'); foot.className = 'lv-foot';
+ foot.appendChild(add);
+ cont.appendChild(foot);
  lvDecorate();
  // mõdFX's dot is in a heading the pad panel rebuilds; make sure it is there.
  try{ lvRecPaintFx(); }catch(e){}
@@ -19756,7 +19962,7 @@ function lvSlotMenu(i, anchor){
 // Things that have to happen once the instruments are where they will be.
 function lvAfter(){
  try{ if(typeof prRelayout==='function'){ prRelayout('bl'); prRelayout('ml'); } }catch(e){}
- try{ if(typeof window._sqRenderGrid==='function' && lvHas('drums') && lvActive()) window._sqRenderGrid(); }catch(e){}
+ try{ if(typeof window._sqRenderGrid==='function' && (lvHas('drums') || lvHas('aux')) && lvActive()) window._sqRenderGrid(); }catch(e){}
  try{ if(typeof msSyncHost==='function') msSyncHost(); }catch(e){}
 }
 function lvSet(slots){
@@ -19821,7 +20027,7 @@ function lvWidgetsRender(){
   return b;
  };
  var n = lvCount();
- host.appendChild(mk('div','lv-w-h','On the Live page · '+n+' of '+LV_MAX+' instruments'));
+ host.appendChild(mk('div','lv-w-h','On the Live page · '+n+' of '+LV_ORDER.length+' widgets, one under another'));
  var list = mk('div','lv-w-list');
  LV.slots.forEach(function(m, i){
   var row = mk('div','lv-w-row');
@@ -19837,7 +20043,7 @@ function lvWidgetsRender(){
  var full = n >= LV_MAX;
  var free = LV_ORDER.filter(function(m){ return !lvHas(m); });
  if(free.length){
-  host.appendChild(mk('div','lv-w-h','Add' + (full ? ' · the page holds four — take one off to add another' : '')));
+  host.appendChild(mk('div','lv-w-h','Add'));
   var pool = mk('div','lv-w-pool');
   free.forEach(function(m){
    var b = mk('button','lv-w-add', '+ '+LV_NAME[m] + (lvAllowed(m)?'':'  · Pro'));
@@ -20564,6 +20770,7 @@ function setDrumsEnabled(on){
 }
 function ftDrumClick(){
  setDrumsEnabled(!drumsEnabled);
+ if(drumsEnabled) starterOnEnable('drums');
  if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
 }
 // The aux layer's own on/off. It lives in the sequencer (sqLayers[1].on) rather
@@ -21157,6 +21364,7 @@ function _resyncEngines(){
  var c=getCtx(); if(!c) return;
  if(rhythmOn) rhythmNextBeat = clockAlignTo(c, rhythmStepSec||clockStepSec(), ALIGN_LEAD);
  if(arpOn) arpNextBeat = clockAlignTo(c, arpStepSec(), ALIGN_LEAD);
+ if(typeof crResync==='function') crResync();
  if(typeof window._sqPlaying==='function' && window._sqPlaying() && typeof window._sqResync==='function') window._sqResync();
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blResync==='function') window._blResync();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlResync==='function') window._mlResync();
@@ -23124,6 +23332,9 @@ function _webChordReleaseAt(t){
 // natural decay-curve release instead of stopAll()'s instant fade, and only
 // if nothing has interrupted it since (myId still matches the live one).
 function releaseSustainedChord(myId){
+ // A finger coming off the chord that started the rhythm ends it, in hold mode — before the check below, which
+ // the rhythm's own re-strikes have made fail by changing the live id.
+ try{ crOnRelease(myId); }catch(e){}
  if(myId == null || myId !== _chordLiveId) return;
  _chordLiveId = null;
  // Capture wants to know how long the chord was held — see _capOnRelease.
@@ -23410,7 +23621,7 @@ function msxApply(part){
  // Phones: the instrument was built for a laptop — sixteen notes of eight-
  // line unison on two oscillators. Capped per part here so a patch can never
  // ask the audio thread for more than a phone can render in time.
- r.values['voice.poly'] = Math.min(+r.values['voice.poly']||8, part==='chord' ? 8 : 6);
+ r.values['voice.poly'] = Math.min(+r.values['voice.poly']||8, (part==='chord' || part==='mel') ? 8 : 6);
  ['osc1.uni','osc2.uni','osc3.uni'].forEach(function(k){ if(MS.PARAM[k]) r.values[k]=Math.min(+r.values[k]||1, 4); });
  eng.setAll(r.values);
  try{ _modNativeStripSync(part); }catch(e){}   // a new patch brings its own calibration
@@ -25243,7 +25454,7 @@ function _chordDamp(t, midis){
 // skipStop is gone in all but name: no caller ever passed true, and a chord
 // message always replaces the part's chord. The slot is kept so the seven
 // positional arguments every call site passes still line up.
-function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
+function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass,velMul){
  // How long it rings after the attack, unless held.
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
  let dec=chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw;
@@ -25264,7 +25475,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
  const msg = chordEngineEvent({root: rootM, ivs: intvs, bass: slash ? slashBass : null}, rootM, {
   part: 'chord',
   ivs: intvs,
-  vel: velScale(pressure||0),
+  // velMul: a rhythm's own accents (a drawn rhythm's plain hit is a little under an accent).
+  vel: velScale(pressure||0) * (velMul==null ? 1 : velMul),
   at: atTime==null ? null : atTime,
   dur: sustain ? null : dec
  });
@@ -25867,16 +26079,55 @@ var _melNoteSeq = 0;
 // from note to note over melGlideTime, newest key wins and letting go of it falls
 // back to the key still down, as on a hardware mono synth. var, not let: read from
 // functions declared thousands of lines away (CLAUDE.md, "Temporal dead zone").
-var melMono = null, melGlideTime = 0.12;
+//
+// Mono is the default since 4.9.9.9.9.9.6b, and with it melAuto: a second key going
+// down while another is still held makes that moment polyphonic — up to
+// MEL_MAX_VOICES notes, no glide, nobody stolen — and when every finger is up the
+// strip is a mono voice again. The mode the player chose (melMono, and the key
+// width that follows it) does not move; only what the notes do does, which is why
+// this is _melPolyEp (an episode) and not a flip of melMono.
+var melMono = true, melGlideTime = 0.12, melAuto = true, melGlideOn = true;
+var MEL_MAX_VOICES = 8;
+var _melPolyEp = false;        // a chord is being played on a mono voice
+var _melDown = {};             // pitch -> true while its key is physically down
+var _melOrder = [];            // pitches in the order their voices began, for the voice cap
 // The keys down (oldest first, with how hard and where on the strip), the pitch the
 // mono voice is on and when it last sounded: what a slide starts from.
 var _melHeld = [], _melHeldInfo = {}, _melSounding = null, _melSoundT = 0;
 var MEL_MONO_FADE = 0.025;
+// What `mono` means to the engine right now: the player's setting, except that a
+// mõdSynth patch (whose Mono is the engine's own Legato) is told Poly for the length
+// of a poly episode, so the chord is not played one note at a time.
+function _melMonoEff(){ return (melMono===true && _melPolyEp) ? false : melMono; }
+// How long a slide takes: the Glide time is what an octave costs. A leap longer
+// than that takes longer and a step takes less, so the pitch moves at a rate
+// rather than in a fixed time (a fixed time makes a semitone crawl and a tenth
+// lurch). Floored well above zero: a one-semitone slide that takes 4 ms is a
+// click, not a slide. A mõdSynth patch glides inside the engine on a fixed time
+// constant, so it is not scaled.
+function melGlideFor(semis){
+ var n = Math.min(24, Math.abs(semis||0));
+ return melGlideTime * (0.35 + 0.65*n/12);
+}
+// The strip's two-finger zoom needs two fingers to mean "zoom", which in Auto they do
+// not: they mean a chord. So zoom is Mono's alone, where it always was.
+function _melPinchOK(){ return melMono===true && !melAuto; }
+function _melFingers(){
+ var n = 0;
+ for(var k in _melDown) if(_melDown[k] && _melLive[k]!=null) n++;
+ return n;
+}
+function _melSetPolyEp(on){
+ if(_melPolyEp===on) return;
+ _melPolyEp = on;
+ if(!on){ _melHeld = []; _melHeldInfo = {}; }
+ modParamsFlush();          // a mõdSynth patch changes mode with it
+}
 // A mõdSynth patch does its own mono: its engine has Legato and a Glide, so the page
 // only sets those (see _msxMelVoice) and lets every key through. Anything else is
 // made mono here, at the door, so web voices, recorded voices and a native engine
 // all follow the one rule.
-function _melMonoPage(){ return melMono===true && melWave!=='modsynth'; }
+function _melMonoPage(){ return melMono===true && !_melPolyEp && melWave!=='modsynth'; }
 function _melMonoStart(msg, midi, pressure, modY){
  _melHeld = _melHeld.filter(function(m){ return m!==midi; }); _melHeld.push(midi);
  _melHeldInfo[midi] = {p:pressure, y:modY};
@@ -25890,7 +26141,7 @@ function _melMonoStart(msg, midi, pressure, modY){
   delete _melLive[k];
   if(typeof window._melCapRelease==='function') window._melCapRelease(+k);
  });
- if(from!=null && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideTime; }
+ if(from!=null && melGlideOn && melGlideTime>0.004){ msg.glideFrom = from; msg.glideTime = melGlideFor(midi-from); }
  _melSounding = midi; _melSoundT = now;
 }
 // Each voice of the note starts `semis` away and slides to its own pitch over
@@ -25909,9 +26160,32 @@ function _melGlideApply(nodes, semis, t0, dur){
   }catch(e){}
  });
 }
-function toggleMelMono(){ setMelMono(melMono===true ? false : true); }
-function setMelMono(v){
+// Polyphony stops at MEL_MAX_VOICES: the oldest voice is let go to make room for
+// the next, the way a hardware poly synth steals, rather than the new note being
+// refused. _melOrder is pruned against _melLive because panic and Stop paths
+// clear _melLive without telling it.
+function _melCapVoices(incoming){
+ _melOrder = _melOrder.filter(function(m){ return _melLive[m]!=null; });
+ while(_melOrder.length >= MEL_MAX_VOICES){
+  var old = _melOrder.shift();
+  if(old===incoming) continue;
+  modSend({v: 1, kind: 'release', part: 'mel', id: _melLive[old], at: null, fade: MEL_MONO_FADE});
+  delete _melLive[old]; delete _melDown[old];
+  if(typeof window._melCapRelease==='function') window._melCapRelease(old);
+  markMelKeyOff(old);
+ }
+}
+// Auto (the default: mono, and poly while a chord is held) -> Mono -> Poly.
+function toggleMelMono(){
+ if(melAuto && melMono===true) setMelMono(true, false);
+ else if(melMono===true) setMelMono(false);
+ else setMelMono(true, true);
+}
+function toggleMelGlide(){ melGlideOn = !melGlideOn; syncMelMonoUI(); modParamsFlush(); }
+function setMelMono(v, auto){
  melMono = (v===null) ? null : !!v;
+ melAuto = (v===true) && (auto!==false);
+ _melPolyEp = false; _melDown = {}; _melOrder = [];
  _melHeld = []; _melHeldInfo = {}; _melSounding = null;
  try{ melApplyKeyW(); syncMelScrollCue(); }catch(e){}   // Poly: the default width; Mono: the player's own
  syncMelMonoUI(); modParamsFlush();
@@ -25921,12 +26195,20 @@ function setMelGlideTime(ms){
  syncMelMonoUI(); modParamsFlush();
 }
 function syncMelMonoUI(){
- var b=document.getElementById('mel-mono-btn');
- if(b){ b.textContent='Mode: '+(melMono===true?'Mono':'Poly'); b.classList.toggle('active', melMono===true); }
+ // The strip's own buttons and the melody sequencer page's: one state, however many places show it.
+ document.querySelectorAll('[data-melmode]').forEach(function(b){
+  b.textContent='Mode: '+(melMono===true ? (melAuto?'Auto':'Mono') : 'Poly');
+  b.classList.toggle('active', melMono===true); b.classList.toggle('on', melMono===true);
+ });
+ document.querySelectorAll('[data-melglide]').forEach(function(gb){
+  var on = melGlideOn && melMono===true;
+  gb.classList.toggle('active', on); gb.classList.toggle('on', on); gb.setAttribute('aria-pressed', on?'true':'false'); gb.textContent='Glide';
+ });
  var sl=document.getElementById('mel-glide-time');
- if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true; }
+ if(sl){ sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true || !melGlideOn; }
  var lv=document.getElementById('mel-glide-val'); if(lv) lv.textContent=Math.round(melGlideTime*1000)+'ms';
 }
+syncMelMonoUI();
 function playMelNote(midi,pressure,sustain,modY){
  if(!window.modEngine.ready()) return;
  if(typeof renderFingering==='function') renderFingering(midi);
@@ -25937,8 +26219,15 @@ function playMelNote(midi,pressure,sustain,modY){
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
               y: modY==null ? melModY : modY};
+ // A second key while one is down: a chord, so this stretch of playing is poly.
+ // Hold is left out on purpose — a latched note is still in _melLive after the
+ // finger has gone, and counting it would make every note after the first a chord.
+ if(melAuto && melMono===true && !_melPolyEp && _melFingers()>0 && !_melDown[midi]) _melSetPolyEp(true);
  if(_melMonoPage()) _melMonoStart(msg, midi, pressure, modY);
+ else _melCapVoices(midi);
+ _melDown[midi] = true;
  _melLive[midi] = msg.id;
+ _melOrder = _melOrder.filter(function(m){ return m!==midi; }); _melOrder.push(midi);
  modSend(msg);
  return msg.id;
 }
@@ -26061,6 +26350,13 @@ function melPlayIn(midi, pressure, y){
 function releaseMelNote(midi){
  markMelKeyOff(midi);
  if(typeof window._blStripLets==='function' && window._blStripLets(midi)) return;
+ delete _melDown[midi];
+ if(_melPolyEp && _melFingers()===0){
+  _melSetPolyEp(false);
+  // The next single note slides from the last of the chord to leave, not from
+  // whichever note began it.
+  _melSounding = midi; _melSoundT = performance.now();
+ }
  // Mono: the key is no longer down; if it was the one sounding and another is
  // still held, that one comes back (after this note has been let go, below).
  var back = null;
@@ -28077,7 +28373,7 @@ function _transportRunning(){
  return !!(rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying()));
 }
 function _clockShouldRun(){
- return !!(rhythmOn || _arpSounding() || metronomeOn
+ return !!(rhythmOn || _arpSounding() || metronomeOn || crActive()
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
    || (typeof window._blPlaying==='function' && window._blPlaying())
    || (typeof window._mlPlaying==='function' && window._mlPlaying()));
@@ -28099,11 +28395,13 @@ function tickClock(){
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
  var blRunning=(typeof window._blPlaying==='function'&&window._blPlaying());
  var mlRunning=(typeof window._mlPlaying==='function'&&window._mlPlaying());
- if(!rhythmOn&&!_arpSounding()&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn) return;
+ if(!rhythmOn&&!_arpSounding()&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn&&!crActive()) return;
  // Only run Vibe rhythm when sequencer is NOT playing (one or the other)
  if(!sqRunning) scheduleRhythm();
  scheduleArp();
  scheduleMetronome();
+ // Behind its own guard: it sits ahead of the sequencers in the tick, and a fault in it must not starve them.
+ try{ scheduleChordRhythm(); }catch(e){ try{ _errNote('tick', e && (e.stack||e.message||e), 'chordRhythm'); }catch(_){} }
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
@@ -32841,6 +33139,7 @@ function toggleHold(){
 
 // ─── FIXED TRANSPORT ───────────────────────────────────────────────────────
 function syncFixedTransport(){
+ try{ starterWidgetSync(); }catch(e){}
  if(typeof _syncAuxTransport==='function') _syncAuxTransport();
  if(typeof syncFeelUI==='function') syncFeelUI();
  // The step cursor only exists while the transport is stopped — once it runs,
@@ -33279,7 +33578,7 @@ function _capSettings(){
   // musical context + character toggles
   root, mode, voicing, vary:voiceVary, bpm:_sv('bpm'),
   glideOn: chordGlideOn, glideT: chordGlideTime,
-  melMono, melGlideT: melGlideTime,
+  melMono, melGlideT: melGlideTime, melAuto, melGlideOn,
   // Stored as a pair rather than a string so an older setup, which has
   // neither, restores as 4/4 without needing to be parsed or migrated.
   meterBeats: (typeof METER!=='undefined') ? METER.beats : 4,
@@ -33472,7 +33771,11 @@ function _applySettings(s){
  _setSlider('rev-mix',s.rev,()=>updateSV('rev-mix','revmix-val',v=>Math.round(v*100)+'%'));
  _setSlider('strum-spread',s.strum,()=>{ if(typeof updateStrumLabel==='function') updateStrumLabel(); });
  if(s.glideOn!=null){ chordGlideOn=!!s.glideOn; if(s.glideT>0) chordGlideTime=+s.glideT; syncGlideUI(); }
- if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT; _melHeld=[]; _melHeldInfo={}; _melSounding=null; try{ melApplyKeyW(); }catch(e){} syncMelMonoUI(); }
+ if(s.melMono!==undefined){ melMono = s.melMono===null ? null : !!s.melMono; if(s.melGlideT>=0) melGlideTime=+s.melGlideT;
+  // A setup saved before Auto existed chose its mode on purpose: Mono stays Mono.
+  melAuto = (s.melAuto!==undefined) ? !!s.melAuto && melMono===true : false;
+  melGlideOn = (s.melGlideOn!==undefined) ? !!s.melGlideOn : true;
+  _melPolyEp=false; _melDown={}; _melOrder=[]; _melHeld=[]; _melHeldInfo={}; _melSounding=null; try{ melApplyKeyW(); }catch(e){} syncMelMonoUI(); }
 
  // Melody envelope + FX
  _setSlider('mel-attack',s.mAtk,()=>updateSV('mel-attack','melatk-val',v=>v<.1?(v*1000).toFixed(0)+'ms':(+v).toFixed(2)+'s'));
@@ -34596,10 +34899,10 @@ function melApplyKeyW(){
  // the keys sit at the default width (the one that fits an octave) and the pinch
  // below is off: a chord played on the strip was being read as a zoom, which let the
  // first note go and resized the keys under the second.
- k.style.setProperty('--mel-kw', ((melMono===true && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
+ k.style.setProperty('--mel-kw', ((_melPinchOK() && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
  try{ invalidateMelScrollMax(); }catch(e){}
 }
-window.addEventListener('resize', function(){ if(_melKw==null || melMono!==true) melApplyKeyW(); });
+window.addEventListener('resize', function(){ if(_melKw==null || !_melPinchOK()) melApplyKeyW(); });
 window.addEventListener('load', melApplyKeyW);
 // Two fingers on the strip. Capture phase on the scroller, so the second finger
 // is taken before any key sees it, and the first finger's note is let go.
@@ -34610,7 +34913,7 @@ window.addEventListener('load', melApplyKeyW);
   const pts=new Map(); let pinch=null, cancelling=false;
   const dist=()=>{ const a=[...pts.values()]; return a.length<2 ? 0 : Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y) || 1; };
   wrap.addEventListener('pointerdown', function(e){
-   if(e.pointerType!=='touch' || melMono!==true) return;
+   if(e.pointerType!=='touch' || !_melPinchOK()) return;
    pts.set(e.pointerId, {x:e.clientX, y:e.clientY, t:e.target});
    if(pts.size===2){
     e.stopPropagation(); e.preventDefault();
@@ -34651,7 +34954,7 @@ window.addEventListener('load', melApplyKeyW);
   wrap.addEventListener('pointerup', end, true); wrap.addEventListener('pointercancel', end, true);
   // Without this the browser takes a two-finger move as a scroll, and cancels
   // the pointers the pinch is reading.
-  wrap.addEventListener('touchmove', function(e){ if(melMono===true && (e.touches.length>=2 || pinch)) e.preventDefault(); }, {passive:false});
+  wrap.addEventListener('touchmove', function(e){ if(_melPinchOK() && (e.touches.length>=2 || pinch)) e.preventDefault(); }, {passive:false});
  }
  wire(); document.addEventListener('DOMContentLoaded', wire); window.addEventListener('load', wire);
 })();
@@ -37164,6 +37467,7 @@ function sbSyncAddHint(){
 // slot that does not simply follows the song, which is what every existing
 // chart does and keeps doing.
 function _slotComp(slot){
+ rhyEnsureSlot(slot);
  var c = slot && slot.comp;
  return (c && COMP_PATTERNS[c]) ? c : songCompStyle;
 }
@@ -37417,12 +37721,18 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
   // the song at once, which was a chord-by-chord job before (4.5.7).
   var rx=document.createElement('span'); rx.className='ci-extras';
   rx.appendChild(_ciMoreBtn('More ▾', function(){ sbCompMore(slot, repaint); }));
+  var drawB=_ciMoreBtn('Draw…', function(){ sbDrawRhythm(slot, repaint); });
+  drawB.title='Draw a rhythm for this chord on a roll: accents, ratchets, lengths';
+  rx.appendChild(drawB);
   var allB=_ciMoreBtn('All chords…', function(){ sbCompAll(repaint); });
   allB.title='Set one rhythm on every chord in the song';
   rx.appendChild(allB);
-  var _rRow=_ciSeg('Rhythm', SB_COMP_MAIN,
+  // A rhythm drawn for this chord is a tile of its own, lit, so the row says what the chord plays.
+  var rhyOpts = SB_COMP_MAIN.slice();
+  if(slot.compDef) rhyOpts.push([slot.comp, slot.compDef.name || 'Drawn']);
+  var _rRow=_ciSeg('Rhythm', rhyOpts,
    function(k){ return _slotComp(slot)===k; },
-   function(k){ slot.comp=k; repaint(); },
+   function(k){ if(!(slot.compDef && k===slot.comp)) sbSetComp(slot, k); repaint(); },
    rx);
   _rRow.querySelector('.ci-seg').classList.add('ci-grid4');
   body.appendChild(_rRow);
@@ -37502,11 +37812,24 @@ function sbCompAll(repaint){
   var b=document.createElement('button'); b.type='button'; b.className='ll-act';
   b.innerHTML='<b>'+o[1]+'</b><span>'+o[2]+'</span>';
   b.addEventListener('click', function(){
-   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; if(o[0]==null) delete x.comp; else x.comp=o[0]; }); });
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; sbSetComp(x, o[0]); }); });
    box.close();
    if(typeof repaint==='function') repaint();
    try{ renderChartSeq(); }catch(e){}
    showToast(o[1]+' on all '+n+' chord'+(n===1?'':'s'));
+  });
+  list.appendChild(b);
+ });
+ rhyBankList('chord').forEach(function(e){
+  var b=document.createElement('button'); b.type='button'; b.className='ll-act';
+  b.innerHTML='<b></b><span>Yours · '+e.data.steps+' steps</span>'; b.firstChild.textContent=e.name;
+  b.addEventListener('click', function(){
+   var d=Object.assign({}, e.data, {name:e.name});
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; sbSetComp(x, 'u', d); }); });
+   box.close();
+   if(typeof repaint==='function') repaint();
+   try{ renderChartSeq(); }catch(err){}
+   showToast(e.name+' on all '+n+' chord'+(n===1?'':'s'));
   });
   list.appendChild(b);
  });
@@ -37545,7 +37868,7 @@ function sbCompMore(slot, repaint){
   var b=document.createElement('button'); b.type='button'; b.className='ll-act';
   b.innerHTML='<b>'+label+'</b><span>'+note+'</span>';
   if((k==null?null:k)===(slot.comp||null)) b.classList.add('primary');
-  b.addEventListener('click', function(){ slot.comp=k; box.close(); repaint(); });
+  b.addEventListener('click', function(){ sbSetComp(slot, k); box.close(); repaint(); });
   list.appendChild(b);
  };
  add('charleston','Charleston','Beat 1 and the &-of-2 — the jazz comp');
@@ -37558,8 +37881,36 @@ function sbCompMore(slot, repaint){
    : 'One strike, held to the next chord');
  add(null,'Follow the song','Whatever the song comp is set to ('
    +((COMP_PATTERNS[songCompStyle]||{}).label||songCompStyle)+')');
+ // The rhythms you drew and kept, and a way to draw another.
+ rhyBankList('chord').forEach(function(e){
+  var b=document.createElement('button'); b.type='button'; b.className='ll-act';
+  b.innerHTML='<b></b><span>Yours · '+e.data.steps+' steps</span>'; b.firstChild.textContent=e.name;
+  if(slot.compDef && rhyId(slot.compDef)===rhyId(e.data)) b.classList.add('primary');
+  b.addEventListener('click', function(){ sbSetComp(slot, 'u', Object.assign({}, e.data, {name:e.name})); box.close(); repaint(); });
+  list.appendChild(b);
+ });
+ var dr=document.createElement('button'); dr.type='button'; dr.className='ll-act';
+ dr.innerHTML='<b>Draw a rhythm…</b><span>Accents, ratchets and lengths on a one-lane roll</span>';
+ dr.addEventListener('click', function(){ box.close(); sbDrawRhythm(slot, repaint); });
+ list.appendChild(dr);
  box.body.appendChild(list);
  box.addCancel('Close');
+}
+// The roll for one chord: what it plays now (a built-in's hits, or the rhythm drawn for it) is where it starts.
+function sbDrawRhythm(slot, repaint){
+ var def = slot.compDef ? rhyNorm(slot.compDef) : rhyFromBuiltin(_slotComp(slot), 16);
+ if(!slot.compDef && !rhyHasHits(def)) def = rhyBlank(16);
+ // The roll fires this chord: its root, its notes, and the slash bass an octave under the root as the song plays it.
+ var chord = null;
+ try{
+  if(!slot.isRest){
+   var iv = slotIvs(slot).slice();
+   if(slot.bassNote!=null) iv.unshift(slot.bassNote - 12 - slot.rootM);
+   chord = {root:slot.rootM, intvs:iv};
+  }
+ }catch(e){ chord = null; }
+ rhyEdit({title:'Rhythm for '+(slot.label||'this chord'), def:def, chord:chord, saveHint:'Save this rhythm and put it on '+(slot.label||'this chord'),
+  onUse:function(d){ sbSetComp(slot, 'u', d); repaint(); showToast('Saved '+(d.name||'rhythm')+' and put it on '+(slot.label||'this chord')); }});
 }
 
 // ── Section options ──────────────────────────────────────────────────────
@@ -40798,7 +41149,8 @@ function _mapLabel(dst){
  if(MAPS.labels[dst]) return MAPS.labels[dst];
  // Named here rather than read off the control: a button's title is a sentence,
  // and a chord pad's text changes with the key, so neither makes a good row.
- var fixed = {'toggle:playstop':'Play / Stop', 'toggle:hold':'Hold (melody)', 'toggle:fx-hold':'mõdFX Hold', 'toggle:chord-under-arp':'Chord under arp'};
+ var fixed = {'toggle:playstop':'Play / Stop', 'toggle:hold':'Hold (melody)', 'toggle:fx-hold':'mõdFX Hold', 'toggle:chord-under-arp':'Chord under arp',
+              'toggle:chord-rhythm':'Chord rhythm', 'toggle:chord-rhythm-latch':'Chord rhythm latch'};
  if(fixed[dst]) return fixed[dst];
  var pm = /^trigger:(chord7?)-(\d+)$/.exec(dst);
  if(pm) return 'Chord pad ' + (+pm[2] + 1) + (pm[1] === 'chord7' ? ' (7th)' : '');
@@ -41667,6 +42019,7 @@ function _songSig(){
     n:s.name, p:secPlays(s),
     sl:(s.slots||[]).map(x=>[x.rootM,x.triadQ,x.type7,x.ext,x.bassNote,
                              x.bars,x.beats,x.eighths,x.isRest?1:0,x.comp||null,x.voicing||null,
+                             x.compDef?rhyId(x.compDef):null,
                              x.ivs?x.ivs.join('.'):null])
    }))
   });
@@ -42468,6 +42821,9 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  playChord(rootM, voicedIntvs, false, pressure, sustain);
  }
 
+ // The chord rhythm (the Rhythm bar on the chord pads) takes the chord from here: what it re-strikes is the chord
+ // just tapped, on the master clock.
+ try{ crOnChordTap(lastChordRoot, lastChordIntvs); }catch(e){}
  if(arpOn){
  const hasRhythm = rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying());
  if(snapMode === 'off' || !hasRhythm){
@@ -43570,10 +43926,11 @@ document.querySelectorAll('[data-compstyle]').forEach(function(b){
 // Re-strikes the currently-held chord slot without the side effects that
 // belong only to a genuine chord change (arp phase reset, logic-mode
 // highlight, bass auto-regen) — those already happened on the first attack.
-function _compRestrike(slot, atTime){
- return _withSlotVoicing(slot, function(){ return _compRestrike1(slot, atTime); });
+function _compRestrike(slot, atTime, opt){
+ return _withSlotVoicing(slot, function(){ return _compRestrike1(slot, atTime, opt); });
 }
-function _compRestrike1(slot, atTime){
+// opt: {vel, lenSec} from a drawn rhythm — how hard, and how long it is held (0 or none rings and decays).
+function _compRestrike1(slot, atTime, opt){
  if(!songLoopActive || !slot || slot.isRest) return;
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
@@ -43585,16 +43942,16 @@ function _compRestrike1(slot, atTime){
  // _compRestrike is only ever scheduled for comp styles with hits (never
  // 'sustain' — see _scheduleCompHits), so a re-strike always decays
  // naturally per the Settings decay knob rather than holding flat.
+ // A drawn rhythm brings its own level for the hit and, if it is gated, how long to hold it (see rhyCompile).
+ const velMul = (opt && opt.vel!=null) ? opt.vel : null;
+ const lenSec = (opt && opt.lenSec>0) ? opt.lenSec : 0, gated = lenSec>0;
  if(wetDry < .99){
   stopAll(atTime);
-  if(playBass !== null){
-   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, false, atTime);
-  } else {
-   playChord(playRoot, voicedIntvs, false, 0, false, atTime);
-  }
+  const id = playChord(playRoot, voicedIntvs, false, 0, gated, atTime, playBass !== null ? playBass-12 : undefined, velMul);
+  if(gated && id!=null) _releaseChordAt(id, atTime+lenSec);
  } else if(playBass !== null){
   // arpOn + wetDry≈1: still re-strike the sustained bass pedal note under the arp
-  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true, atTime); }catch(e){}
+  try{ playChord(playRoot, voicedIntvs, false, 0, true, atTime, playBass-12, velMul); }catch(e){}
  }
 }
 
@@ -43612,7 +43969,7 @@ function _drainCompPending(){
  var h = schedHorizon();
  for(var i=0; i<_compPending.length; i++){
   var e = _compPending[i];
-  if(!e.done && e.hitT <= h){ e.done = true; try{ _compRestrike(e.slot, e.hitT); }catch(err){} }
+  if(!e.done && e.hitT <= h){ e.done = true; try{ _compRestrike(e.slot, e.hitT, e.opt); }catch(err){} }
  }
  _compPending = _compPending.filter(function(e){ return !e.done; });
 }
@@ -43634,6 +43991,29 @@ function _scheduleCompHits(slot, baseTime){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
  const beatSecL = 60/bpm;
  const eighthSec = beatSecL*0.5;
+ // A rhythm somebody drew has its own length (its steps) and its own level, ratchet and gate on every hit,
+ // and repeats from the start of the chord; the built-ins below are untouched.
+ if(pat.custom){
+  const stepSec = beatSecL/4;
+  const slotLen = (typeof slotTotalMs==='function') ? slotTotalMs(slot)/1000 : (slot.bars||1)*_songBarSteps()*stepSec;
+  const loop = pat.steps*stepSec;
+  const bt = (baseTime != null) ? baseTime : ctx.currentTime;
+  for(let r=0; r*loop < slotLen - 0.01; r++){
+   pat.ev.forEach(function(e){
+    if(r===0 && e.p===0) return; // the initial attack, already fired
+    const sAmt = (pat.swing!=null) ? pat.swing : ((typeof window._sqSwingVal==='function') ? window._sqSwingVal() : 0);
+    const sOff = (typeof window._sqSwingOffset==='function') ? window._sqSwingOffset(Math.floor(e.p + 1e-9), stepSec, sAmt) : 0;
+    const hitT = bt + r*loop + e.p*stepSec + sOff;
+    if(hitT >= bt + slotLen - 0.01) return;
+    const opt = {vel:e.v, lenSec: e.len>0 ? e.len*stepSec : 0};
+    const fireMs = Math.max(0, (hitT - SCHED_LEAD - ctx.currentTime)*1000);
+    const _ce = {slot:slot, hitT:hitT, done:false, opt:opt};
+    _compPending.push(_ce);
+    songCompTimers.push(setTimeout(function(){ if(_ce.done) return; _ce.done = true; _compRestrike(slot, hitT, opt); }, fireMs));
+   });
+  }
+  return;
+ }
  // A bar is however many steps the sequencer is running, not a hardcoded
  // eight eighths. slotTotalMs() already worked this out; using a different
  // bar length here meant that at any step count other than 16 the comp hits
@@ -43663,6 +44043,776 @@ function _scheduleCompHits(slot, baseTime){
   });
  }
 }
+
+
+// ═══════════════════════════════════════════════════════════
+// CHORD RHYTHMS — custom patterns, the bank, the roll, the live engine (4.9.9.9.9.9.6f)
+// ═══════════════════════════════════════════════════════════
+// A chord rhythm used to be a fixed list of hit positions (COMP_PATTERNS, in eighths)
+// that only a song could play. Now a rhythm is also something you draw: one lane of
+// sixteenth steps, each step a hit that can be an accent, a ratchet (2 to 4 re-strikes
+// inside the step) and gated (a length in steps; otherwise it rings and decays as a comp
+// hit always has). The built-in rhythms are kept exactly as they were; a drawn one is
+//
+//     {name, steps, cells:[{on, acc, rat, len}]}
+//
+// and is compiled into the same COMP_PATTERNS table under a name made from its content
+// ('u:' + a hash of the cells), so the song engine finds it the way it finds Strum, and
+// two chords that carry the same drawn rhythm share one entry. A chord that uses one
+// carries its definition in slot.compDef as well: a song shared as a link or a file
+// brings its rhythms with it instead of falling back to the song's comp on another phone.
+//
+// var, not let: the Live bar is built during boot and the song engine reads these from
+// thousands of lines away (CLAUDE.md, "Temporal dead zone").
+var RHY_STEP_OPTS = [8, 12, 16, 24, 32];
+var RHY_NORMAL_VEL = 0.85;     // a plain hit; an accent is 1.0, which is what every built-in hit has
+function rhyBlank(steps){
+ var c = [], n = steps || 16;
+ for(var i=0;i<n;i++) c.push({on:0, acc:0, rat:1, len:0});
+ return {name:'', steps:n, cells:c, swing:null};
+}
+function rhyClone(d){ return JSON.parse(JSON.stringify(d)); }
+// A built-in rhythm drawn out: its hit positions (eighths of a bar, halves allowed) onto sixteenths.
+function rhyFromBuiltin(key, steps){
+ var def = rhyBlank(steps || 16), p = COMP_PATTERNS[key];
+ def.name = (p && p.label) || key;
+ if(p && p.custom && p.cells){ return rhyClone({name:p.label, steps:p.steps, cells:p.cells}); }
+ if(p && p.hits) p.hits.forEach(function(h){
+  var i = Math.round(h*2);
+  if(i >= 0 && i < def.steps) def.cells[i].on = 1;
+ });
+ return def;
+}
+// Normalised, so an edit that changes nothing does not make a new rhythm.
+function rhyNorm(def){
+ var steps = RHY_STEP_OPTS.indexOf(def.steps|0) >= 0 ? (def.steps|0) : 16, cells = [];
+ for(var i=0;i<steps;i++){
+  var c = (def.cells && def.cells[i]) || {};
+  var on = c.on ? 1 : 0;
+  cells.push({on:on, acc:on && c.acc ? 1 : 0, rat:on ? Math.max(1, Math.min(4, c.rat|0 || 1)) : 1, len:on ? Math.max(0, Math.min(8, c.len|0)) : 0});
+ }
+ // swing: null follows the app's Feel; a number (0-70, percent) is this rhythm's own.
+ var sw = (def.swing==null || isNaN(+def.swing)) ? null : Math.max(0, Math.min(70, Math.round(+def.swing)));
+ return {name:String(def.name||'').slice(0, 28), steps:steps, cells:cells, swing:sw};
+}
+function rhyId(def){
+ var d = rhyNorm(def), s = d.steps + ':' + d.cells.map(function(c){
+  return c.on ? (c.acc ? 'A' : 'x') + (c.rat>1 ? c.rat : '') + (c.len ? 'l'+c.len : '') : '.';
+ }).join('') + (d.swing!=null ? '|s'+d.swing : '');
+ var h = 2166136261;
+ for(var i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+ return 'u:' + h.toString(36);
+}
+function rhyHasHits(def){ return !!(def && def.cells && def.cells.some(function(c){ return c && c.on; })); }
+// The events of a drawn rhythm, in sixteenths: p (where, fractional for a ratchet), v (how hard), len (the gate in
+// steps, 0 for ring). A ratchet's re-strikes are short (a stutter, not a pile-up); the last of them takes the
+// cell's own length.
+function rhyCompile(def){
+ var d = rhyNorm(def), ev = [];
+ d.cells.forEach(function(c, i){
+  if(!c.on) return;
+  var base = c.acc ? 1.0 : RHY_NORMAL_VEL;
+  for(var k=0;k<c.rat;k++){
+   var last = k === c.rat-1;
+   ev.push({p: i + k/c.rat, v: k===0 ? base : base*0.82,
+            len: (c.rat>1 && !last) ? 0.8/c.rat : (c.len || 0)});
+  }
+ });
+ return {label: d.name || 'Custom', custom:true, steps:d.steps, cells:d.cells, ev:ev, swing:d.swing,
+         hits: ev.map(function(e){ return e.p/2; })};
+}
+// Make a drawn rhythm known to the song engine. Returns the name to put on a chord.
+function rhyRegister(def){
+ var id = rhyId(def);
+ var cur = COMP_PATTERNS[id];
+ var nm = String(def.name||'').slice(0, 28) || 'Custom';
+ if(!cur){ var p = rhyCompile(def); p.label = nm; COMP_PATTERNS[id] = p; }
+ else if(cur.custom && nm !== cur.label) cur.label = nm;
+ return id;
+}
+// A chord's own rhythm: its definition is made known on the way through, which is what lets a song loaded
+// from anywhere play it.
+function rhyEnsureSlot(slot){
+ var c = slot && slot.comp;
+ if(c && c.charAt(0)==='u' && c.charAt(1)===':' && slot.compDef && !COMP_PATTERNS[c]){
+  var id = rhyRegister(slot.compDef);
+  if(id !== c){ slot.comp = id; }
+ }
+}
+// Put rhythm `k` on a chord: a built-in by name, a drawn one by its definition, null to follow the song.
+function sbSetComp(slot, k, def){
+ if(k==null){ delete slot.comp; delete slot.compDef; return; }
+ if(def){ slot.comp = rhyRegister(def); slot.compDef = rhyNorm(def); }
+ else { slot.comp = k; delete slot.compDef; }
+}
+
+// ── The bank ──
+// Rhythms and patterns you keep, across the parts: 'chord' rhythms (a drawn rhythm as above) and the
+// 'drums', 'bass' and 'mel' patterns that arrive with the sequencers. One list, one key, one set of rules.
+var RHY_BANK = [];
+var RHY_BANK_KEY = 'modo-rhythm-bank';
+(function(){
+ try{
+  var a = JSON.parse(modStore.getItem(RHY_BANK_KEY) || '[]');
+  if(Array.isArray(a)) RHY_BANK = a.filter(function(e){ return e && e.id && e.kind && e.data; });
+ }catch(e){}
+})();
+function rhyBankSave(){ try{ modStore.setItem(RHY_BANK_KEY, JSON.stringify(RHY_BANK)); }catch(e){} }
+function rhyBankList(kind){ return RHY_BANK.filter(function(e){ return !kind || e.kind===kind; }); }
+function rhyBankGet(id){ for(var i=0;i<RHY_BANK.length;i++) if(RHY_BANK[i].id===id) return RHY_BANK[i]; return null; }
+function rhyBankAdd(kind, name, data){
+ var e = {id:'b'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36), kind:kind, name:String(name||'').slice(0, 28) || 'Untitled', data:data, t:Date.now()};
+ RHY_BANK.push(e); rhyBankSave();
+ return e;
+}
+function rhyBankRename(id, name){ var e = rhyBankGet(id); if(!e) return; e.name = String(name||'').slice(0, 28) || e.name; rhyBankSave(); }
+function rhyBankDelete(id){ RHY_BANK = RHY_BANK.filter(function(e){ return e.id!==id; }); rhyBankSave(); }
+window.rhyBankList = rhyBankList; window.rhyBankGet = rhyBankGet; window.rhyBankAdd = rhyBankAdd;
+
+// ── Playing a hit ──
+// One strike of a chord at an exact time, at a level, optionally gated. The song's comp and the live engine both
+// come through here. `chord` is {root, intvs (above the root; a slash bass rides as a negative interval, as in
+// lastChordIntvs), } — the same shape setArpChord keeps.
+function rhyStrike(root, intvs, atTime, vel, lenSec){
+ var uppers = intvs.filter(function(d){ return d >= 0; });
+ var lows = intvs.filter(function(d){ return d < 0; });
+ // A slash chord's bass rides in lastChordIntvs as a negative interval from the root, and root + it is already the
+ // sounding pitch (_triggerChordImmediate wrote it an octave down), so it is the floor the voicing clears as-is.
+ var bass = lows.length ? root + Math.min.apply(null, lows) : null;
+ var voiced = autoInvOn ? smartVoiceLead(root, uppers, bass) : uppers;
+ var gated = lenSec > 0;
+ var id = playChord(root, voiced, false, 0, gated, atTime, bass, vel);
+ // A gated hit is held and let go at the end of its length, on the Release knob; an ungated one rings and decays
+ // as every comp hit always has.
+ if(gated && id!=null) _releaseChordAt(id, atTime + lenSec);
+ return id;
+}
+
+// ── The live engine ──
+// A rhythm that plays the chord you tapped, on the master clock, without a song. State is one object; the
+// scheduler is a tick consumer like the arp's and the sequencers' (tickClock calls scheduleChordRhythm).
+//   on     armed: a chord tap starts the rhythm
+//   latch  true: it goes on after the finger lifts, until Stop or another chord;
+//          false: it plays while the chord is held
+//   key    which rhythm ('strum', or 'u:…' for a drawn one, with def)
+// A song always wins: while one is playing, the song's own comp sounds and this one stays quiet (its grid keeps
+// counting, so it comes back in time, and a latched rhythm is picked up again when the song stops).
+var CR = { on:false, latch:true, key:'strum', def:null, run:false, nextT:0, step:0, chord:null,
+           tapId:null, tapT:0, preview:null, previewChord:null, runBefore:false };
+var CR_KEY = 'modo-chord-rhythm';
+(function(){
+ try{
+  var o = JSON.parse(modStore.getItem(CR_KEY) || 'null');
+  if(o){
+   if(typeof o.on==='boolean') CR.on = o.on;
+   if(typeof o.latch==='boolean') CR.latch = o.latch;
+   if(typeof o.key==='string') CR.key = o.key;
+   if(o.def && o.def.cells) CR.def = rhyNorm(o.def);
+  }
+ }catch(e){}
+})();
+function crSave(){ try{ modStore.setItem(CR_KEY, JSON.stringify({on:CR.on, latch:CR.latch, key:CR.key, def:CR.def})); }catch(e){} }
+// The rhythm now selected, as events in sixteenths and a loop length. 'sustain' and 'played' have no hits, so
+// they are no rhythm: the chord is simply held.
+function crPattern(){
+ if(CR.preview) return CR.preview;
+ var key = CR.key, p = null;
+ if(key && key.charAt(0)==='u' && key.charAt(1)===':' && CR.def){ p = COMP_PATTERNS[rhyRegister(CR.def)]; }
+ else p = COMP_PATTERNS[key];
+ if(!p || !p.hits) return null;
+ if(p.custom) return {steps:p.steps, ev:p.ev, swing:p.swing};
+ var n = _songBarSteps(), ev = [];
+ p.hits.forEach(function(h){ if(h*2 < n) ev.push({p:h*2, v:1.0, len:0}); });
+ return {steps:n, ev:ev};
+}
+function crLabel(){
+ var p = null;
+ if(CR.key && CR.key.charAt(0)==='u' && CR.def) return CR.def.name || 'Custom';
+ p = COMP_PATTERNS[CR.key];
+ return p ? p.label : 'Rhythm';
+}
+function crSongOn(){ return typeof songLoopActive!=='undefined' && songLoopActive; }
+// Line the grid up: the next sixteenth the master clock has, counted in the pattern from the bar line (the drums'
+// own bar when they are running, the clock's when they are not).
+function crAlign(){
+ var ctx = getCtx(), pat = crPattern(); if(!ctx || !pat) return false;
+ var stepSec = clockStepSec();
+ var E = seqEntryTime(ctx, stepSec, pat.steps);
+ var k = Math.max(0, Math.floor((E.t - (ctx.currentTime + 0.03)) / stepSec));
+ CR.nextT = E.t - k*stepSec;
+ var n = pat.steps;
+ CR.step = (((E.step - k) % n) + n) % n;
+ return true;
+}
+function crStart(){
+ var pat = crPattern(); if(!pat || !getCtx()) return;
+ var others = isAnythingPlaying() || metronomeOn;
+ if(!crAlign()) return;
+ CR.run = true;
+ if(typeof crSyncUI==='function') crSyncUI();
+ // Alone, the rhythm is what keeps the clock going; with anything else running the clock is theirs and its
+ // downbeat is not ours to move.
+ if(!others) startClock(); else if(typeof ensureClockRunning==='function') ensureClockRunning();
+}
+function crStop(){ CR.run = false; if(typeof crSyncUI==='function') crSyncUI(); }
+function crResync(){ if(CR.run) crAlign(); }
+function crActive(){ return !!(CR && CR.run); }
+// A chord tapped by hand (_triggerChordImmediate). Sets what the rhythm plays and, when armed, starts it.
+function crOnChordTap(rootM, intvs){
+ CR.chord = {root:rootM, intvs:intvs.slice()};
+ var ctx = getCtx();
+ CR.tapT = ctx ? ctx.currentTime + FADE_OUT : 0;
+ CR.tapId = (typeof _chordLiveId!=='undefined') ? _chordLiveId : null;
+ if(!CR.on || crSongOn() || CR.preview) return;
+ if(!CR.run) crStart();
+}
+// A held chord's finger came up. In hold mode that is the end of the rhythm; latched, it goes on.
+function crOnRelease(id){
+ if(CR.on && !CR.latch && CR.run && id!=null && id === CR.tapId) crStop();
+}
+function scheduleChordRhythm(){
+ if(!CR.run) return;
+ var ctx = getCtx(), pat = crPattern();
+ if(!ctx || !pat){ CR.run = false; return; }
+ var song = crSongOn() && !CR.preview;
+ var chord = CR.preview ? (CR.previewChord || CR.chord) : CR.chord;
+ var h = schedHorizon();
+ var guard = 0;
+ while(CR.nextT < h && guard++ < 256){
+  var stepSec = clockStepSec();
+  var k = CR.step % pat.steps;
+  if(!song && chord && (CR.preview || chordsEnabled)){
+   // The rhythm's own swing if it has one, otherwise the app's Feel.
+   var amt = (pat.swing!=null) ? pat.swing : ((typeof window._sqSwingVal==='function') ? window._sqSwingVal() : 0);
+   var swing = (typeof window._sqSwingOffset==='function') ? window._sqSwingOffset(k, stepSec, amt) : 0;
+   for(var i=0;i<pat.ev.length;i++){
+    var e = pat.ev[i];
+    if(Math.floor(e.p + 1e-9) !== k) continue;
+    var t = CR.nextT + (e.p - k) * stepSec + swing;
+    // The tap that started or changed this chord has already sounded it, on the finger: a hit a few ms after it
+    // would be a flam on the same chord.
+    if(!CR.preview && t > CR.tapT - 0.01 && t < CR.tapT + 0.06) continue;
+    try{ rhyStrike(chord.root, chord.intvs, t, e.v, e.len > 0 ? e.len * stepSec : 0); }catch(err){}
+   }
+  }
+  CR.nextT += stepSec; CR.step++;
+ }
+ if(CR.nextT < ctx.currentTime - 1){ crAlign(); }   // the timer chain was starved long enough to lose the grid
+}
+// Where the playhead is, for the roll (a step index, or -1).
+function crPlayStep(){
+ if(!CR.run) return -1;
+ var ctx = getCtx(), pat = crPattern(); if(!ctx || !pat) return -1;
+ var stepSec = clockStepSec();
+ var ahead = Math.round((CR.nextT - ctx.currentTime) / stepSec);
+ return ((CR.step - ahead) % pat.steps + pat.steps) % pat.steps;
+}
+// Audition a drawn rhythm on the current chord, on the clock, until it is stopped. Nothing is written anywhere.
+function crPreviewStart(def, chord){
+ var c = rhyCompile(def);
+ if(!c.ev.length) return false;
+ CR.runBefore = CR.run;
+ CR.preview = {steps:c.steps, ev:c.ev, swing:c.swing};
+ // The chord it is for (a chord of the song, when the roll was opened from Song Build), else the one just tapped.
+ CR.previewChord = chord || CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()};
+ var others = isAnythingPlaying() || metronomeOn;
+ if(!crAlign()){ CR.preview = null; return false; }
+ CR.run = true;
+ if(!others) startClock(); else if(typeof ensureClockRunning==='function') ensureClockRunning();
+ return true;
+}
+function crPreviewUpdate(def){
+ if(!CR.preview) return;
+ var c = rhyCompile(def);
+ var stepsChanged = c.steps !== CR.preview.steps;
+ CR.preview = {steps:c.steps, ev:c.ev, swing:c.swing};
+ if(stepsChanged) crAlign();
+}
+function crPreviewStop(){
+ if(!CR.preview) return;
+ CR.preview = null; CR.previewChord = null;
+ // What was running before the audition, if anything, goes on (on the grid again); otherwise the engine rests.
+ if(CR.runBefore && CR.on && CR.chord && crPattern()) crAlign(); else crStop();
+ CR.runBefore = false;
+}
+function crPreviewOn(){ return !!CR.preview; }
+window.crOnChordTap = crOnChordTap; window.crOnRelease = crOnRelease; window.crStop = crStop; window.crStart = crStart;
+
+// ── The roll: one lane, drawn ──
+// A single-lane piano roll for a chord rhythm. A step is a sixteenth; a hit is a bar standing on it — tall for
+// an accent, lower for a plain hit, as many slices as its ratchet, as wide as its gate. Tap an empty step to put
+// a hit there; tap a hit to select it (and edit it underneath); tap the selected hit again to take it away.
+// Audition plays what is drawn on the current chord, on the master clock, and shows the playhead.
+// opts: {title, def, useLabel, onUse(def), chord:{root, intvs}} — chord is what Audition and a tap on a step play
+// (the chord being edited in Song Build); without one it is the chord last tapped.
+var _rhyOpen = null;
+function rhyEdit(opts){
+ opts = opts || {};
+ var def = rhyNorm(opts.def || rhyBlank(16));
+ var sel = -1;
+ var box = _sbSheet(opts.title || 'Rhythm', 'rhy-sheet');
+ _rhyOpen = box;
+ var raf = 0;
+ box.onClose = function(){ cancelAnimationFrame(raf); crPreviewStop(); _rhyOpen = null; };
+ var body = box.body;
+ var mk = function(tag, cls, txt){ var e = document.createElement(tag); if(cls) e.className = cls; if(txt!=null) e.textContent = txt; return e; };
+
+ // Name, and the step count.
+ var top = mk('div', 'rhy-row');
+ var nameIn = mk('input', 'rhy-name'); nameIn.type = 'text'; nameIn.maxLength = 28; nameIn.placeholder = 'Name this rhythm';
+ nameIn.value = def.name; nameIn.setAttribute('aria-label', 'Rhythm name');
+ nameIn.addEventListener('input', function(){ def.name = nameIn.value; });
+ top.appendChild(nameIn);
+ body.appendChild(top);
+ var stepRow = mk('div', 'rhy-row');
+ stepRow.appendChild(mk('span', 'rhy-lbl', 'Steps'));
+ var stepSeg = mk('div', 'rhy-seg');
+ stepRow.appendChild(stepSeg);
+ body.appendChild(stepRow);
+ // Swing: follow the app's Feel, or this rhythm's own amount (it is saved with the rhythm).
+ var swRow = mk('div', 'rhy-row');
+ swRow.appendChild(mk('span', 'rhy-lbl', 'Swing'));
+ var swSeg = mk('div', 'rhy-seg'); swRow.appendChild(swSeg);
+ var swIn = mk('input', 'rhy-swing'); swIn.type = 'range'; swIn.min = 0; swIn.max = 70; swIn.step = 1; swIn.setAttribute('aria-label', 'Swing amount');
+ var swVal = mk('span', 'rhy-swval');
+ swRow.appendChild(swIn); swRow.appendChild(swVal);
+ body.appendChild(swRow);
+ function syncSwing(){
+  swSeg.innerHTML = '';
+  [[null, 'Feel', 'Follow the swing set on the tempo bar'], [0, 'Own', 'This rhythm has its own swing']].forEach(function(o){
+   var on = o[0]===null ? def.swing==null : def.swing!=null;
+   var b = mk('button', on ? 'on' : '', o[1]); b.type = 'button'; b.title = o[2]; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+   b.addEventListener('click', function(){
+    if(o[0]===null) def.swing = null; else if(def.swing==null) def.swing = 30;
+    syncSwing(); pushPreview();
+   });
+   swSeg.appendChild(b);
+  });
+  swIn.style.display = swVal.style.display = def.swing==null ? 'none' : '';
+  if(def.swing!=null){ swIn.value = def.swing; swVal.textContent = def.swing + '%'; }
+ }
+ swIn.addEventListener('input', function(){ def.swing = +swIn.value; swVal.textContent = def.swing + '%'; pushPreview(); });
+
+ // Start from a rhythm that exists.
+ var fromRow = mk('div', 'rhy-row');
+ fromRow.appendChild(mk('span', 'rhy-lbl', 'Start from'));
+ var from = mk('select', 'rhy-from'); from.setAttribute('aria-label', 'Start from an existing rhythm');
+ var o0 = mk('option', null, 'Choose…'); o0.value = ''; from.appendChild(o0);
+ var gB = mk('optgroup'); gB.label = 'Built in';
+ Object.keys(COMP_PATTERNS).forEach(function(k){
+  var p = COMP_PATTERNS[k]; if(!p.hits || p.custom) return;
+  var o = mk('option', null, p.label); o.value = 'b:' + k; gB.appendChild(o);
+ });
+ from.appendChild(gB);
+ var mine = rhyBankList('chord');
+ if(mine.length){
+  var gM = mk('optgroup'); gM.label = 'My rhythms';
+  mine.forEach(function(e){ var o = mk('option', null, e.name); o.value = 'u:' + e.id; gM.appendChild(o); });
+  from.appendChild(gM);
+ }
+ fromRow.appendChild(from);
+ body.appendChild(fromRow);
+ from.addEventListener('change', function(){
+  var v = from.value; if(!v) return;
+  var next = null;
+  if(v.indexOf('b:') === 0) next = rhyFromBuiltin(v.slice(2), def.steps);
+  else { var e = rhyBankGet(v.slice(2)); if(e) next = rhyNorm(e.data); }
+  from.value = '';
+  if(!next) return;
+  var keepName = def.name;
+  def = rhyNorm(next); def.name = keepName || next.name || '';
+  nameIn.value = def.name; sel = -1; rebuildSteps(); syncSwing(); syncInsp(); relayout(); pushPreview();
+ });
+
+ // The roll.
+ var wrap = mk('div', 'rhy-roll');
+ var cv = mk('canvas', 'rhy-canvas'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Rhythm roll: one lane of steps');
+ wrap.appendChild(cv);
+ body.appendChild(wrap);
+ var hint = mk('div', 'rhy-hint');
+ body.appendChild(hint);
+ var insp = mk('div', 'rhy-insp');
+ body.appendChild(insp);
+
+ // Audition and clear.
+ var tr = mk('div', 'rhy-row rhy-tr');
+ var aud = mk('button', 'rhy-btn', '▶ Audition'); aud.type = 'button';
+ aud.title = 'Hear it on the current chord, in time with the tempo';
+ var clr = mk('button', 'rhy-btn', 'Clear'); clr.type = 'button';
+ tr.appendChild(aud); tr.appendChild(clr);
+ body.appendChild(tr);
+
+ // One button: it saves the rhythm to Pattern save and puts it to work where the roll was opened from.
+ var foot = mk('div', 'rhy-row rhy-foot');
+ var use = mk('button', 'rhy-btn rhy-primary', 'Save'); use.type = 'button';
+ use.title = opts.saveHint || 'Save this rhythm and use it';
+ foot.appendChild(use);
+ body.appendChild(foot);
+ box.addCancel('Close');
+
+ function cellW(){ var avail = wrap.clientWidth || 320; return Math.max(24, Math.floor(avail / def.steps)); }
+ var RULER = 14, LANE = 64;
+ function relayout(){
+  var cw = cellW(), dpr = Math.min(2, window.devicePixelRatio || 1), W = cw * def.steps, H = RULER + LANE;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+ }
+ function css(v, fb){ var s = getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return s || fb; }
+ function draw(){
+  var g = cv.getContext('2d'), cw = cellW(), W = cw * def.steps, H = RULER + LANE;
+  var acc = css('--accent', '#f66'), txt = css('--text', '#eee'), mut = css('--muted', '#889'), bd = css('--border2', '#334'), surf = css('--surf2', '#161826');
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = surf; g.fillRect(0, RULER, W, LANE);
+  var barSteps = (typeof meterStepsPerBar === 'function') ? meterStepsPerBar() : 16;
+  g.font = '600 9px Outfit, sans-serif'; g.textBaseline = 'middle';
+  for(var i = 0; i <= def.steps; i++){
+   var x = i * cw, beat = i % 4 === 0, bar = barSteps > 0 && i % barSteps === 0;
+   g.strokeStyle = bar ? mut : (beat ? bd : bd); g.globalAlpha = bar ? .9 : (beat ? .7 : .28);
+   g.lineWidth = bar ? 1.5 : 1;
+   g.beginPath(); g.moveTo(x + .5, RULER); g.lineTo(x + .5, H); g.stroke(); g.globalAlpha = 1;
+   if(beat && i < def.steps){ g.fillStyle = mut; g.fillText(String(Math.floor(i / 4) + 1), x + 3, RULER / 2); }
+  }
+  var ph = crPlayStep();
+  def.cells.forEach(function(c, i){
+   if(!c.on) return;
+   var x = i * cw + 1.5, w = (c.len > 0 ? Math.min(c.len, def.steps - i) : 1) * cw - 3;
+   var h = c.acc ? LANE - 8 : Math.round(LANE * .6), y = RULER + LANE - h - 4;
+   g.fillStyle = acc; g.globalAlpha = c.acc ? 1 : .72;
+   if(c.rat > 1){
+    // Slices: each re-strike is its own bar.
+    var sw = (cw - 3) / c.rat;
+    for(var k = 0; k < c.rat; k++){ _rhyRound(g, x + k * sw, y, Math.max(2, sw - 1.5), h, 2); g.fill(); }
+    if(c.len > 1){ g.globalAlpha = .35; _rhyRound(g, x + cw - 3, y + h - 5, w - cw + 3, 5, 2); g.fill(); }
+   } else { _rhyRound(g, x, y, Math.max(3, w), h, 3); g.fill(); }
+   g.globalAlpha = 1;
+   if(i === sel){ g.strokeStyle = txt; g.lineWidth = 2; _rhyRound(g, x - 1, y - 1, Math.max(3, w) + 2, h + 2, 4); g.stroke(); }
+  });
+  if(ph >= 0 && CR.preview){ g.fillStyle = txt; g.globalAlpha = .85; g.fillRect(ph * cw, RULER, 2, LANE); g.globalAlpha = 1; g.fillRect(ph * cw - 2, 0, 6, 3); }
+ }
+ var moved = false, px = 0, py = 0;
+ cv.addEventListener('pointerdown', function(e){ moved = false; px = e.clientX; py = e.clientY; });
+ cv.addEventListener('pointermove', function(e){ if(Math.abs(e.clientX - px) + Math.abs(e.clientY - py) > 8) moved = true; });
+ cv.addEventListener('pointercancel', function(){ moved = true; });
+ cv.addEventListener('pointerup', function(e){
+  if(moved) return;
+  var r = cv.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / (r.width / def.steps));
+  if(i < 0 || i >= def.steps || e.clientY - r.top < RULER) return;
+  var c = def.cells[i];
+  if(!c.on){ c.on = 1; c.acc = 0; c.rat = 1; c.len = 0; sel = i; strikeOne(i); }
+  else if(sel === i){ c.on = 0; c.acc = 0; c.rat = 1; c.len = 0; sel = -1; }
+  else { sel = i; }
+  syncInsp(); draw(); pushPreview();
+ });
+ function strikeOne(i){
+  // Not while it is playing: the audition is the feedback then.
+  if(crPreviewOn()) return;
+  try{
+   var ch = opts.chord || CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()}, ctx = getCtx(); if(!ctx) return;
+   var c = def.cells[i];
+   rhyStrike(ch.root, ch.intvs, ctx.currentTime + 0.01, c.acc ? 1.0 : RHY_NORMAL_VEL, 0);
+  }catch(e){}
+ }
+ function pushPreview(){ if(crPreviewOn()){ if(rhyHasHits(def)) crPreviewUpdate(def); else { crPreviewStop(); syncAud(); } } }
+ function rebuildSteps(){
+  stepSeg.innerHTML = '';
+  RHY_STEP_OPTS.forEach(function(n){
+   var b = mk('button', n === def.steps ? 'on' : '', String(n)); b.type = 'button';
+   b.setAttribute('aria-pressed', n === def.steps ? 'true' : 'false');
+   b.addEventListener('click', function(){
+    if(n === def.steps) return;
+    var cells = [];
+    for(var i = 0; i < n; i++) cells.push(def.cells[i] ? def.cells[i] : {on:0, acc:0, rat:1, len:0});
+    def.steps = n; def.cells = cells; if(sel >= n) sel = -1;
+    rebuildSteps(); syncInsp(); relayout(); pushPreview();
+   });
+   stepSeg.appendChild(b);
+  });
+ }
+ function seg(label, opts2, isOn, pick){
+  var row = mk('div', 'rhy-row');
+  row.appendChild(mk('span', 'rhy-lbl', label));
+  var s = mk('div', 'rhy-seg');
+  opts2.forEach(function(o){
+   var b = mk('button', isOn(o[0]) ? 'on' : '', o[1]); b.type = 'button'; b.title = o[2] || '';
+   b.setAttribute('aria-pressed', isOn(o[0]) ? 'true' : 'false');
+   b.addEventListener('click', function(){ pick(o[0]); syncInsp(); draw(); pushPreview(); });
+   s.appendChild(b);
+  });
+  row.appendChild(s);
+  return row;
+ }
+ function syncInsp(){
+  insp.innerHTML = '';
+  if(sel < 0 || !def.cells[sel] || !def.cells[sel].on){
+   sel = -1;
+   hint.textContent = rhyHasHits(def) ? 'Tap a hit to edit it. Tap the selected hit again to take it away.' : 'Tap a step to put a hit on it.';
+   return;
+  }
+  var c = def.cells[sel];
+  hint.textContent = 'Step ' + (sel + 1) + ' selected.';
+  insp.appendChild(seg('Level', [[0, 'Plain', 'A plain hit'], [1, 'Accent', 'An accent: louder']], function(v){ return (c.acc ? 1 : 0) === v; }, function(v){ c.acc = v; }));
+  insp.appendChild(seg('Ratchet', [[1, '×1', 'One strike'], [2, '×2', 'Two inside the step'], [3, '×3', 'Three inside the step'], [4, '×4', 'Four inside the step']],
+   function(v){ return c.rat === v; }, function(v){ c.rat = v; }));
+  var room = def.steps - sel;
+  insp.appendChild(seg('Length', [[0, 'Ring', 'Rings out and decays, as a rhythm hit always has'], [1, '1', 'Held one step'], [2, '2', 'Held two steps'], [4, '4', 'Held four steps'], [8, '8', 'Held eight steps']].filter(function(o){ return o[0] <= room; }),
+   function(v){ return c.len === v; }, function(v){ c.len = v; }));
+ }
+ function syncAud(){ aud.textContent = crPreviewOn() ? '■ Stop' : '▶ Audition'; aud.classList.toggle('on', crPreviewOn()); }
+ aud.addEventListener('click', function(){
+  if(crPreviewOn()){ crPreviewStop(); syncAud(); draw(); return; }
+  if(crSongOn()){ showToast('Stop the song to audition — it is playing its own rhythm'); return; }
+  if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
+  if(!getCtx()){ showToast('Tap anywhere to start the sound first'); return; }
+  if(crPreviewStart(def, opts.chord)){ syncAud(); tick(); }
+ });
+ function tick(){
+  cancelAnimationFrame(raf);
+  if(!crPreviewOn()){ syncAud(); draw(); return; }
+  draw(); raf = requestAnimationFrame(tick);
+ }
+ clr.addEventListener('click', function(){
+  def.cells.forEach(function(c){ c.on = 0; c.acc = 0; c.rat = 1; c.len = 0; });
+  sel = -1; syncInsp(); draw(); pushPreview();
+ });
+ function committed(){
+  var d = rhyNorm(def);
+  if(!d.name) d.name = 'Rhythm ' + (rhyBankList('chord').length + 1);
+  return d;
+ }
+ use.addEventListener('click', function(){
+  if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
+  var d = committed();
+  // Saved once: the same rhythm saved again is the entry already there.
+  var id = rhyId(d), dup = rhyBankList('chord').filter(function(e){ return rhyId(e.data) === id; })[0];
+  if(dup) d.name = dup.name; else rhyBankAdd('chord', d.name, d);
+  try{ starterSettingsRebuild(); }catch(x){}
+  box.close();
+  if(typeof opts.onUse === 'function') opts.onUse(d);
+ });
+ rebuildSteps(); syncSwing(); syncInsp(); syncAud();
+ relayout();
+ window.addEventListener('resize', relayout);
+ var prevClose = box.onClose;
+ box.onClose = function(){ window.removeEventListener('resize', relayout); prevClose(); };
+ return box;
+}
+function _rhyRound(g, x, y, w, h, r){
+ r = Math.min(r, w / 2, h / 2);
+ g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+ g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+window.rhyEdit = rhyEdit;
+
+// ── The bank, across the parts ──
+// What the bank holds, and how each kind is taken from the part and put back. A 'chord' entry is a drawn rhythm
+// (above); the others are the pattern a sequencer has, without its sound: the kit's grid and lane levels, and a
+// bass or melody line with the chord it was written over — loading one never changes a voice, a filter or the
+// Aux layer. Loading is the same act as picking a style on the Live page, so the Styles widget rotates through
+// your entries too (starterList).
+var BANK_KINDS = [['chord','Chords'],['drums','Drums'],['bass','Bassline'],['mel','Melody']];
+var BANK_SAVE_LABEL = {chord:'Save chord rhythm', drums:'Save drum pattern', bass:'Save bassline', mel:'Save melody line'};
+var BANK_PART_NAME = {chord:'Chord rhythm', drums:'Drum pattern', bass:'Bassline', mel:'Melody line'};
+function bankClone(o){ return JSON.parse(JSON.stringify(o)); }
+function bankCapture(kind){
+ try{
+  if(kind==='chord'){
+   var d = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, 16);
+   if(!rhyHasHits(d)) return null;
+   return d;
+  }
+  if(kind==='drums') return (typeof window._sqKitTemplate==='function') ? window._sqKitTemplate() : null;
+  var c = (kind==='bass') ? window._blCaptureState() : window._mlCaptureState();
+  return {steps:c.steps, oct:c.oct, genStyle:c.genStyle, grid:bankClone(c.grid), gridRootPc:c.gridRootPc, gridIntvs:bankClone(c.gridIntvs)};
+ }catch(e){ return null; }
+}
+function bankHasNotes(kind, d){
+ if(kind==='chord') return rhyHasHits(d);
+ var g = d && d.grid; if(!g) return false;
+ if(Array.isArray(g)) return g.some(function(c){ return c && c.v; });
+ return Object.keys(g).some(function(k){ return (g[k]||[]).some(function(c){ return c && c.v>0; }); });
+}
+// Put an entry on its part. Returns true if it took.
+function bankApply(e){
+ var kind = e.kind, d = bankClone(e.data);
+ try{
+  if(kind==='chord'){ crSetRhythm(rhyId(d), Object.assign({}, d, {name:e.name})); return true; }
+  if(kind==='drums') return !!(typeof window._sqApplyKitTemplate==='function' && window._sqApplyKitTemplate(d));
+  var tag = kind==='bass' ? 'bl' : 'ml';
+  var cur = (kind==='bass') ? window._blCaptureState().steps : window._mlCaptureState().steps;
+  // The step count goes through the link, so Steps Linked moves the drums and the other line with it.
+  if(d.steps && d.steps !== cur && typeof setSeqStepCount==='function') setSeqStepCount(tag, d.steps);
+  if(kind==='bass') window._blRestoreState(d); else window._mlRestoreState(d);
+  return true;
+ }catch(err){ return false; }
+}
+// The entry loaded last on each part and what the part looked like then, so the Styles widget can name it for as
+// long as it is still what is there.
+var BANK_LOADED = {drums:null, bass:null, mel:null};
+function bankSig(kind){ var d = bankCapture(kind); return d ? JSON.stringify(d.grid) : null; }
+function bankLoad(e){
+ if(!bankApply(e)) return false;
+ if(e.kind !== 'chord'){
+  BANK_LOADED[e.kind] = {id:e.id, sig:null};
+  // After the swap has landed (a running beat takes it at the loop's wrap), not before.
+  setTimeout(function(){ if(BANK_LOADED[e.kind] && BANK_LOADED[e.kind].id===e.id) BANK_LOADED[e.kind].sig = bankSig(e.kind); try{ starterWidgetSync(); }catch(x){} }, e.kind==='drums' ? 2600 : 60);
+ }
+ return true;
+}
+function bankSave(kind, name){
+ var d = bankCapture(kind);
+ if(!d || !bankHasNotes(kind, d)){ showToast('Nothing in the '+BANK_PART_NAME[kind].toLowerCase()+' to save yet'); return null; }
+ var nm = String(name||'').trim() || (kind==='chord' ? (d.name || crLabel()) : BANK_PART_NAME[kind]+' '+(rhyBankList(kind).length+1));
+ if(kind==='chord') d.name = nm;
+ var e = rhyBankAdd(kind, nm, d);
+ try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){}
+ showToast('Saved '+nm);
+ return e;
+}
+function bankMeta(e){
+ if(e.kind==='chord') return (e.data.steps||16)+' steps';
+ var n = e.data.steps||16;
+ return n+' steps'+(e.kind==='drums' && e.data.mach ? ' · '+((typeof window._sqMachines==='function' && window._sqMachines()[e.data.mach]) ? window._sqMachines()[e.data.mach].label : e.data.mach) : '');
+}
+// A name, asked for in a small sheet; the callback gets what was typed (possibly empty = let the app name it).
+function bankAsk(title, value, ok, cb){
+ var box = _sbSheet(title);
+ var inp = document.createElement('input'); inp.type = 'text'; inp.className = 'rhy-name'; inp.maxLength = 28; inp.value = value || '';
+ inp.placeholder = 'Name it'; inp.style.width = '100%'; inp.setAttribute('aria-label', title);
+ box.body.appendChild(inp);
+ var go = document.createElement('button'); go.type = 'button'; go.className = 'rhy-btn rhy-primary'; go.textContent = ok; go.style.width = '100%'; go.style.marginTop = '10px';
+ go.addEventListener('click', function(){ var v = inp.value; box.close(); cb(v); });
+ inp.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); go.click(); } });
+ box.body.appendChild(go);
+ box.addCancel('Cancel');
+ setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+}
+var _bankTab = 'chord';
+function rhyBankOpen(kind){
+ if(kind) _bankTab = kind;
+ var box = _sbSheet(null, 'lib-sheet');
+ var grip = document.createElement('div'); grip.className = 'lib-grip'; box.sheet.insertBefore(grip, box.sheet.firstChild);
+ var top = document.createElement('div'); top.className = 'lib-top';
+ var t = document.createElement('div'); t.className = 'modal-title'; t.textContent = 'Pattern save';
+ var x = document.createElement('button'); x.type = 'button'; x.className = 'smp-x'; x.textContent = 'Close'; x.addEventListener('click', box.close);
+ top.appendChild(t); top.appendChild(x); box.sheet.insertBefore(top, grip.nextSibling);
+ var tabs = document.createElement('div'); tabs.className = 'lib-tabs'; box.body.appendChild(tabs);
+ var saveRow = document.createElement('div'); saveRow.className = 'rb-save'; box.body.appendChild(saveRow);
+ var list = document.createElement('div'); list.className = 'rb-list'; box.body.appendChild(list);
+ function paint(){
+  tabs.innerHTML = '';
+  BANK_KINDS.forEach(function(k){
+   var b = document.createElement('button'); b.type = 'button'; b.textContent = k[1];
+   if(_bankTab===k[0]) b.className = 'on';
+   b.addEventListener('click', function(){ _bankTab = k[0]; paint(); });
+   tabs.appendChild(b);
+  });
+  saveRow.innerHTML = '';
+  var nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.className = 'rhy-name'; nameIn.maxLength = 28; nameIn.placeholder = 'Name it'; nameIn.setAttribute('aria-label', 'Name for what you save');
+  var keep = document.createElement('button'); keep.type = 'button'; keep.className = 'rhy-btn rhy-primary'; keep.style.flex = '0 0 auto';
+  keep.textContent = BANK_SAVE_LABEL[_bankTab];
+  keep.addEventListener('click', function(){ if(bankSave(_bankTab, nameIn.value)){ paint(); } });
+  saveRow.appendChild(nameIn); saveRow.appendChild(keep);
+  list.innerHTML = '';
+  var items = rhyBankList(_bankTab);
+  if(!items.length){
+   var em = document.createElement('div'); em.className = 'rb-empty';
+   em.textContent = _bankTab==='chord' ? 'No chord rhythms saved yet. Edit one, or save the one that is on now.' : 'Nothing saved yet. Set the part up the way you like it and save it here.';
+   list.appendChild(em);
+  }
+  items.forEach(function(e){
+   var row = document.createElement('div'); row.className = 'rb-row';
+   var nm = document.createElement('div'); nm.className = 'rb-name';
+   var b1 = document.createElement('b'); b1.textContent = e.name; var sp = document.createElement('span'); sp.textContent = bankMeta(e);
+   nm.appendChild(b1); nm.appendChild(sp);
+   var ld = document.createElement('button'); ld.type = 'button'; ld.className = 'rb-b'; ld.textContent = 'Load';
+   ld.addEventListener('click', function(){ if(bankLoad(e)){ showToast('Loaded '+e.name); box.close(); } else showToast('Could not load that'); });
+   var rn = document.createElement('button'); rn.type = 'button'; rn.className = 'rb-b'; rn.textContent = 'Rename';
+   rn.addEventListener('click', function(){ bankAsk('Rename', e.name, 'Rename', function(v){ if(String(v).trim()){ rhyBankRename(e.id, v); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){} } paint(); }); });
+   var dl = document.createElement('button'); dl.type = 'button'; dl.className = 'rb-b rb-del'; dl.textContent = 'Delete'; dl.setAttribute('aria-label', 'Delete '+e.name);
+   dl.addEventListener('click', function(){
+    var copy = bankClone(e);
+    rhyBankDelete(e.id); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){}
+    paint();
+    showToast('Deleted '+e.name, {actionLabel:'Undo', onAction:function(){ RHY_BANK.push(copy); rhyBankSave(); try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){} }});
+   });
+   row.appendChild(nm); row.appendChild(ld); row.appendChild(rn); row.appendChild(dl);
+   list.appendChild(row);
+  });
+ }
+ paint();
+ return box;
+}
+window.rhyBankOpen = rhyBankOpen;
+
+// ── The Rhythm bar ──
+var CR_NOTES = {bars:'One hit at the top of each bar', backbeat:'Beats 1 and 3', charleston:'Beat 1 and the &-of-2 — the jazz comp',
+ strum:'Every beat', bossa:'Syncopated, four hits to the bar', eighths:'Every eighth — driving', skank:'The off-beats only — reggae, ska',
+ tresillo:'3-3-2', gallop:'An eighth and two sixteenths', clave:'Son clave, 3-2', push:'Leans into the next bar', funk:'Sixteenth-note stabs'};
+function crSyncUI(){
+ var on = document.getElementById('cr-on'), lt = document.getElementById('cr-latch'), nm = document.getElementById('cr-name');
+ if(nm) nm.textContent = crLabel();
+ if(on){
+  on.textContent = CR.on ? (CR.run && !CR.preview ? 'Playing' : 'Tap a chord') : 'Off';
+  on.classList.toggle('on', CR.on); on.classList.toggle('run', CR.on && CR.run && !CR.preview);
+  on.setAttribute('aria-pressed', CR.on ? 'true' : 'false');
+  on.title = CR.on ? 'The chord pads play the rhythm. Tap to switch it off' : 'Switch on: the next chord you tap plays as the rhythm, on the tempo';
+ }
+ if(lt){ lt.classList.toggle('on', CR.latch); lt.setAttribute('aria-pressed', CR.latch ? 'true' : 'false'); }
+}
+// Switched on: with a chord already tapped it starts at once, on the grid; otherwise it waits for the next tap
+// ("Armed"). Switched off it stops.
+function crToggleOn(){
+ CR.on = !CR.on;
+ if(!CR.on) crStop();
+ else if(CR.chord && !CR.run && !crSongOn() && crPattern()) crStart();
+ crSave(); crSyncUI();
+}
+function crToggleLatch(){ CR.latch = !CR.latch; crSave(); crSyncUI(); }
+// Choose a rhythm for the pads. Choosing one is asking to hear it, so it arms it.
+function crSetRhythm(key, def){
+ CR.key = key; CR.def = def ? rhyNorm(def) : null; CR.on = true;
+ if(CR.run) crAlign(); else if(CR.chord && !crSongOn() && crPattern()) crStart();
+ crSave(); crSyncUI();
+}
+function crPickOpen(){
+ var box = _sbSheet('Chord rhythm');
+ var list = document.createElement('div');
+ var add = function(label, note, on, fn){
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'll-act';
+  b.innerHTML = '<b></b><span></span>'; b.firstChild.textContent = label; b.lastChild.textContent = note;
+  if(on) b.classList.add('primary');
+  b.addEventListener('click', function(){ box.close(); fn(); });
+  list.appendChild(b);
+ };
+ add('Off', 'The chord pads play the chord, as they always have', !CR.on, function(){ CR.on = false; crStop(); crSave(); crSyncUI(); });
+ Object.keys(CR_NOTES).forEach(function(k){
+  if(!COMP_PATTERNS[k]) return;
+  add(COMP_PATTERNS[k].label, CR_NOTES[k], CR.on && CR.key===k, function(){ crSetRhythm(k, null); });
+ });
+ rhyBankList('chord').forEach(function(e){
+  var id = rhyId(e.data);
+  add(e.name, 'Yours · ' + e.data.steps + ' steps', CR.on && CR.key===id, function(){ crSetRhythm(id, Object.assign({}, e.data, {name:e.name})); });
+ });
+ add('Draw a new rhythm…', 'Accents, ratchets and lengths on a one-lane roll', false, function(){ crEditOpen(true); });
+ add('Pattern save…', 'Save, rename and load the rhythms and patterns you made', false, function(){ rhyBankOpen('chord'); });
+ box.body.appendChild(list);
+ box.addCancel('Close');
+}
+// The roll on the rhythm the pads are using (or a blank one).
+function crEditOpen(fresh){
+ var def = null;
+ if(!fresh){
+  def = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, 16);
+  if(!rhyHasHits(def)) def = null;
+ }
+ rhyEdit({title:'Chord rhythm', def:def || rhyBlank(16), saveHint:'Save this rhythm and play the chords with it',
+  onUse:function(d){ crSetRhythm(rhyRegister(d), d); showToast('Saved '+(d.name||'rhythm')+' as the chord rhythm'); }});
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ crSyncUI(); }); else crSyncUI();
+window.crSyncUI = crSyncUI; window.crToggleOn = crToggleOn; window.crToggleLatch = crToggleLatch;
+window.crPickOpen = crPickOpen; window.crEditOpen = crEditOpen;
 
 // A bar is however many sixteenth steps the sequencer is running — that IS the
 // time signature (16 = 4/4, 12 = 3/4, 20 = 5/4). Three call sites read a bare
@@ -45041,6 +46191,8 @@ function stopEverything(){
  // reloads the arp chord for the pad-press-during-a-song case.
  arpSounding=false;
  arpIdx=0; arpDir=1; arpGateIdx=0;
+ // The chord rhythm is a transport layer too: Stop ends it (it is armed still, and a chord tap starts it again).
+ try{ crPreviewStop(); crStop(); }catch(e){}
  clearTimeout(clockTimer);
  if(_isRecording) _stopRecording();
  Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
@@ -47906,6 +49058,7 @@ function blToggle(){ if(window._blToggleImpl) window._blToggleImpl(); }
 function blPlay(){ if(window._blPlayImpl) window._blPlayImpl(); }
 function ftBassClick(){
   blEnabled=!blEnabled;
+  if(blEnabled) starterOnEnable('bass');   // before the part starts, so its first loop has the line
   var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
   if(blEnabled&&masterPlaying){
     if(!(typeof window._blPlaying==='function'&&window._blPlaying())&&typeof window._blPlayImpl==='function') window._blPlayImpl();
@@ -47942,6 +49095,7 @@ function mlGenerateAndArm(){
 }
 function ftMelClick(){
   mlEnabled=!mlEnabled;
+  if(mlEnabled) starterOnEnable('mel');
   var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
   if(mlEnabled&&masterPlaying){
     if(!(typeof window._mlPlaying==='function'&&window._mlPlaying())&&typeof window._mlPlayImpl==='function') window._mlPlayImpl();
@@ -47951,6 +49105,260 @@ function ftMelClick(){
   syncFixedTransport();
   track('melody_seq_toggled', {enabled:mlEnabled});
 }
+
+// ═══════════════════════════════════════
+// STARTER PATTERNS (4.9.9.9.9.9.6d)
+// ═══════════════════════════════════════
+// Switching Drums, Bass or Mel on in the transport used to give you whatever was
+// in the part — and in a fresh session that is nothing, so the switch lit up and
+// the music did not change. Now a part that is switched on with an empty pattern
+// is given its starter: a 4/4 beat, a funk bass line, a pop hook. A part that
+// already has something in it is never touched — the load is for the empty case,
+// not a way to lose a pattern with one tap.
+//
+// The starter is a style name, not a stored pattern, so it is the same list the
+// part's own page offers (the groove table, the Style and Pattern buttons) and
+// there is no second table to keep in step with them. It is chosen in Settings
+// (General › Starter patterns) and can be turned off there. The Styles widget on
+// the Live page rotates a part through the same list with a tap.
+//
+// var, not let: ftDrumClick, ftBassClick and ftMelClick are declared above this and
+// the first press can only come after load, but the Live widget is mounted during
+// boot — before this line runs in file order — and reads these (CLAUDE.md,
+// "Temporal dead zone").
+var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook' };
+(function(){
+ try{
+  var o = JSON.parse(modStore.getItem('modo-starters')||'null');
+  if(o){
+   if(typeof o.on==='boolean') STARTERS.on = o.on;
+   ['drums','bass','mel'].forEach(function(k){ if(typeof o[k]==='string') STARTERS[k] = o[k]; });
+  }
+ }catch(e){}
+})();
+function starterSave(){ try{ modStore.setItem('modo-starters', JSON.stringify(STARTERS)); }catch(e){} }
+var STARTER_PART = { drums:'Drums', bass:'Bass', mel:'Melody' };
+// What each part's Save is called, and the colour it wears everywhere else in the app (PARTS). The colours are
+// read when the widget is built, with the same values as a fallback: PARTS is a const further down and the Live page
+// is mounted during boot.
+var STARTER_SAVE = { drums:'Save drum pattern', bass:'Save bassline', mel:'Save melody line' };
+var STARTER_COLOR_FALLBACK = { drums:'#ff5a5f', bass:'#ffd23f', mel:'#5fdc6a' };
+function starterColor(part){
+ var id = part==='drums' ? 'drum' : part==='bass' ? 'bass' : 'melgen';
+ try{ var p = PARTS.find(function(q){ return q.id===id; }); if(p && p.color) return p.color; }catch(e){}
+ return STARTER_COLOR_FALLBACK[part];
+}
+// Tapping a style's name opens the list of everything the part can be: the built-in styles, then what you saved.
+function starterPickOpen(part){
+ var list = starterList(part), cur = starterCurrent(part);
+ var box = _sbSheet(STARTER_PART[part]+' style');
+ var wrap = document.createElement('div');
+ var add = function(x){
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'll-act';
+  b.innerHTML = '<b></b>'; b.firstChild.textContent = x.label;
+  if(x.id===cur) b.classList.add('primary');
+  b.addEventListener('click', function(){ box.close(); starterApply(part, x); });
+  wrap.appendChild(b);
+ };
+ var built = list.filter(function(x){ return String(x.id).indexOf('bank:')!==0; });
+ var mine = list.filter(function(x){ return String(x.id).indexOf('bank:')===0; });
+ built.forEach(add);
+ if(mine.length){
+  var h = document.createElement('div'); h.className = 'll-sec'; h.textContent = 'Saved by you';
+  h.style.cssText = 'margin:12px 4px 4px;font:700 .5rem Outfit,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)';
+  wrap.appendChild(h); mine.forEach(add);
+ }
+ box.body.appendChild(wrap);
+ box.addCancel('Close');
+ // The one that is on, in view.
+ var on = wrap.querySelector('.primary'); if(on && on.scrollIntoView) try{ on.scrollIntoView({block:'center'}); }catch(e){}
+}
+// [{id, label}] for a part, in the order its own page lists them. A free-tier
+// player is offered only what the free tier allows, so rotating never lands on a
+// style that would answer with a "Pro" toast.
+function starterList(part){
+ var out = [];
+ if(part==='drums'){
+  if(typeof RHYTHMS==='undefined') return out;
+  RHYTHMS.forEach(function(r){
+   if(typeof freeAllowsGroove==='function' && !freeAllowsGroove(r.name)) return;
+   out.push({id:r.name, label:r.name});
+  });
+ } else {
+  var attr = part==='bass' ? 'data-blstyle' : 'data-mlstyle';
+  document.querySelectorAll('['+attr+']').forEach(function(b){
+   var id = b.getAttribute(attr);
+   if(typeof freeAllowsStyle==='function' && !freeAllowsStyle(id, part==='mel' ? 'ml' : undefined)) return;
+   out.push({id:id, label:b.textContent.trim()});
+  });
+ }
+ // What you kept in the rhythm bank for this part comes after the built-in styles.
+ try{ rhyBankList(part).forEach(function(e){ out.push({id:'bank:'+e.id, label:e.name}); }); }catch(e){}
+ return out;
+}
+function starterLabel(part, id){
+ var l = starterList(part).filter(function(x){ return x.id===id; })[0];
+ return l ? l.label : id;
+}
+// The style the part is on right now. Drums can be on a groove that is not in the
+// list (a pattern drawn by hand), which reads as Custom and rotates from the start.
+function starterCurrent(part){
+ // A kept pattern is named for as long as it is still what is on the part.
+ try{
+  var L = BANK_LOADED[part];
+  if(L && L.sig && rhyBankGet(L.id) && L.sig===bankSig(part)) return 'bank:'+L.id;
+ }catch(e){}
+ if(part==='drums'){
+  var r = (typeof RHYTHMS!=='undefined' && typeof sqCurGroove==='number') ? RHYTHMS[sqCurGroove] : null;
+  return r ? r.name : null;
+ }
+ if(part==='bass') return (typeof window._blGenStyle==='function') ? window._blGenStyle() : null;
+ return (typeof window._mlGenStyle==='function') ? window._mlGenStyle() : null;
+}
+function starterHasPattern(part){
+ if(part==='drums') return typeof window._sqKitHasHits==='function' && window._sqKitHasHits();
+ if(part==='bass') return typeof window._blHasNotes==='function' && window._blHasNotes();
+ return typeof window._mlHasNotes==='function' && window._mlHasNotes();
+}
+// Put `id` on the part and write it. Drums load the groove (at the next bar if the
+// beat is running, as a groove always has); Bass and Mel set the style and
+// generate over the last chord, which a running part takes at its next loop.
+function starterLoad(part, id){
+ if(String(id).indexOf('bank:')===0){ var be = rhyBankGet(String(id).slice(5)); return !!(be && bankLoad(be)); }
+ if(part==='drums'){
+  if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return false;
+  var idx = -1;
+  for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===id){ idx = i; break; }
+  if(idx<0) return false;
+  sqLoadGroove(idx);
+  return true;
+ }
+ if(part==='bass'){
+  if(typeof window.setBlGenStyle!=='function' || typeof window.blGenerate!=='function') return false;
+  window.setBlGenStyle(id); window.blGenerate();
+  return true;
+ }
+ if(typeof window.setMlGenStyle!=='function' || typeof window.mlGenerate!=='function') return false;
+ window.setMlGenStyle(id); window.mlGenerate();
+ return true;
+}
+// The switch just went on. Called from the transport's three buttons.
+function starterOnEnable(part){
+ if(!STARTERS.on || starterHasPattern(part)) return;
+ if(starterLoad(part, STARTERS[part])){
+  try{ showToast(STARTER_PART[part]+': '+starterLabel(part, STARTERS[part])); }catch(e){}
+  starterWidgetSync();
+ }
+}
+// Next (+1) or previous (-1) style on the Live page. Rotating is asking to hear
+// it, so a part that is switched off is switched on — after the new style is in,
+// so the switch finds a pattern there and does not load the starter over it.
+function starterRotate(part, dir){
+ var list = starterList(part); if(!list.length) return;
+ var cur = starterCurrent(part), at = -1;
+ for(var i=0;i<list.length;i++) if(list[i].id===cur){ at = i; break; }
+ starterApply(part, list[(at<0 ? (dir>0 ? 0 : list.length-1) : (at + dir + list.length) % list.length)]);
+}
+// Put a chosen style on the part and switch the part on (see starterRotate).
+function starterApply(part, next){
+ if(!starterLoad(part, next.id)) return;
+ if(part==='drums' && typeof drumsEnabled!=='undefined' && !drumsEnabled) ftDrumClick();
+ else if(part==='bass' && !blEnabled) ftBassClick();
+ else if(part==='mel' && !mlEnabled) ftMelClick();
+ try{ showToast(STARTER_PART[part]+': '+next.label); }catch(e){}
+ starterWidgetSync();
+}
+// What the Live page shows: one row per part, ‹ name ›. The row is made once and
+// kept; Settings and the transport repaint it by name through starterWidgetSync.
+var _starterNode = null;
+function starterWidgetNode(){
+ if(_starterNode) return _starterNode;
+ var box = document.createElement('div');
+ box.className = 'st-widget lv-made'; box.id = 'st-widget';
+ ['drums','bass','mel'].forEach(function(part){
+  var row = document.createElement('div'); row.className = 'st-row'; row.dataset.part = part;
+  row.style.setProperty('--pc', starterColor(part));
+  var head = document.createElement('div'); head.className = 'st-head';
+  var lbl = document.createElement('span'); lbl.className = 'st-part'; lbl.textContent = STARTER_PART[part];
+  var save = document.createElement('button'); save.type = 'button'; save.className = 'st-save'; save.textContent = STARTER_SAVE[part];
+  save.title = 'Save what is on '+STARTER_PART[part].toLowerCase()+' now, under a name, so you can load it again';
+  save.addEventListener('click', function(){
+   var d = bankCapture(part);
+   if(!d || !bankHasNotes(part, d)){ showToast('Nothing in '+STARTER_PART[part].toLowerCase()+' to save yet'); return; }
+   bankAsk(STARTER_SAVE[part], '', 'Save', function(v){ bankSave(part, v); });
+  });
+  head.appendChild(lbl); head.appendChild(save);
+  var pick = document.createElement('div'); pick.className = 'st-pick';
+  var prev = document.createElement('button'); prev.type = 'button'; prev.className = 'st-step';
+  prev.textContent = '‹'; prev.setAttribute('aria-label', 'Previous '+STARTER_PART[part]+' style');
+  var name = document.createElement('button'); name.type = 'button'; name.className = 'st-name';
+  name.title = 'Choose the '+STARTER_PART[part].toLowerCase()+' style from a list';
+  var next = document.createElement('button'); next.type = 'button'; next.className = 'st-step';
+  next.textContent = '›'; next.setAttribute('aria-label', 'Next '+STARTER_PART[part]+' style');
+  prev.addEventListener('click', function(){ starterRotate(part, -1); });
+  next.addEventListener('click', function(){ starterRotate(part, +1); });
+  name.addEventListener('click', function(){ starterPickOpen(part); });
+  pick.appendChild(prev); pick.appendChild(name); pick.appendChild(next);
+  row.appendChild(head); row.appendChild(pick);
+  box.appendChild(row);
+ });
+ var bk = document.createElement('button'); bk.type = 'button'; bk.className = 'st-bank'; bk.textContent = 'Pattern save';
+ bk.title = 'Everything you saved: chord rhythms, drum patterns, basslines, melody lines';
+ bk.addEventListener('click', function(){ rhyBankOpen(); });
+ box.appendChild(bk);
+ _starterNode = box;
+ return box;
+}
+// Not called while the node is built: the Live page is mounted during boot, before
+// the groove table (a const) and the part switches (lets) have run, and reading a
+// binding in its dead zone throws. It is called from syncFixedTransport, which runs
+// after every switch and on every load, and from here on.
+function starterWidgetSync(){
+ if(!_starterNode) return;
+ try{
+  _starterNode.querySelectorAll('.st-row').forEach(function(row){
+   var part = row.dataset.part, cur = starterCurrent(part);
+   var nm = row.querySelector('.st-name');
+   nm.textContent = cur ? starterLabel(part, cur) : 'Custom';
+   var on = part==='drums' ? !!drumsEnabled : part==='bass' ? !!blEnabled : !!mlEnabled;
+   row.classList.toggle('off', !on);
+  });
+ }catch(e){}
+}
+// Settings › General › Starter patterns.
+function starterSettingsBuild(){
+ var host = document.getElementById('ss-starters-body'); if(!host || host._built) return;
+ host._built = true;
+ ['drums','bass','mel'].forEach(function(part){
+  var sel = document.getElementById('starter-'+part); if(!sel) return;
+  sel.innerHTML = '';
+  var list = starterList(part);
+  // A saved starter the tier no longer offers is kept in the list, so the menu
+  // does not quietly show something else than what will load.
+  if(!list.some(function(x){ return x.id===STARTERS[part]; })) list.unshift({id:STARTERS[part], label:starterLabel(part, STARTERS[part])});
+  list.forEach(function(x){ var o = document.createElement('option'); o.value = x.id; o.textContent = x.label; sel.appendChild(o); });
+  sel.value = STARTERS[part];
+ });
+ starterSettingsSync();
+}
+function starterSettingsRebuild(){ var h = document.getElementById('ss-starters-body'); if(h){ h._built = false; starterSettingsBuild(); } }
+function starterSetStyle(part, id){
+ if(!starterList(part).some(function(x){ return x.id===id; })) return;
+ STARTERS[part] = id; starterSave();
+}
+function toggleStarters(){ STARTERS.on = !STARTERS.on; starterSave(); starterSettingsSync(); }
+function starterSettingsSync(){
+ var b = document.getElementById('starter-on-btn');
+ if(b){ b.textContent = 'Load a pattern when a part is switched on: '+(STARTERS.on?'ON':'OFF'); b.classList.toggle('active', STARTERS.on); b.setAttribute('aria-pressed', STARTERS.on?'true':'false'); }
+ ['drums','bass','mel'].forEach(function(part){
+  var sel = document.getElementById('starter-'+part); if(sel){ sel.disabled = !STARTERS.on; }
+ });
+}
+window.starterRotate = starterRotate; window.starterOnEnable = starterOnEnable;
+window.starterWidgetSync = starterWidgetSync; window.toggleStarters = toggleStarters;
+window.starterSetStyle = starterSetStyle; window.starterSettingsBuild = starterSettingsBuild;
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', starterSettingsBuild);
+else starterSettingsBuild();
 // The pads' pattern is a part like Bass and Mel: a switch here, in or out at
 // the next bar, and the transport's Play and Stop are its play and stop. It
 // used to have only its own ▶ on the pad panel, which started the whole band
@@ -50118,6 +51526,58 @@ var sqGrid={}, sqVols={}, sqPitches={}, sqMachGrids={}, sqShapes={};
 window._sqParams = function(){ return {shapes: sqShapes}; };
 var SQ_NUM_P=8, sqPats=[], sqCurPat=0;
 for(var _pi=0;_pi<SQ_NUM_P;_pi++) sqPats.push(null);
+// ── The Aux sequencer's own patterns (4.9.9.9.9.9.6e) ──
+// Kit and Aux are two sequencers that happen to share a clock, so each has its own
+// bank of eight patterns: A1-A8 hold the Aux layer's grid, kit and lane levels and
+// nothing of the kit's, and choosing one never touches P1-P8 (which are the kit's,
+// and the song chain's). Until now a pattern slot held whichever layer was being
+// looked at when it was saved, so an Aux pattern could not be kept apart from the beat
+// it sat on, and a pre-made aux line had nowhere to live. A queued pick, like the
+// kit's, waits for the top of the loop.
+var SQ_AUX_N=8, sqAuxPats=[], sqAuxCur=0, sqAuxPend=null;
+for(var _ai=0;_ai<SQ_AUX_N;_ai++) sqAuxPats.push(null);
+function sqAuxSavePat(idx){
+  sqStashFocused();
+  var L=sqLayers[1], lk=sqLK(L.mach,1);
+  sqAuxPats[idx]={steps:sqSteps, mach:L.mach, grid:JSON.parse(JSON.stringify(L.grid||{})),
+    vols:JSON.parse(JSON.stringify(sqVols[lk]||{})), pitches:JSON.parse(JSON.stringify(sqPitches[lk]||{}))};
+}
+function sqAuxLoadPat(idx){
+  var p=sqAuxPats[idx]; if(!p||!SQM[p.mach]) return false;
+  sqStashFocused();
+  var on=sqLayers[1].on, lk=sqLK(p.mach,1);
+  sqLayers[1]={mach:p.mach, grid:JSON.parse(JSON.stringify(p.grid||{})), on:on};
+  sqVols[lk]=JSON.parse(JSON.stringify(p.vols||{}));
+  sqPitches[lk]=JSON.parse(JSON.stringify(p.pitches||{}));
+  sqPreloadKit(p.mach);
+  // The grid being edited is the Aux layer's: it has to follow the swap, or the next
+  // stash would write the old layer back over the pattern just loaded.
+  if(sqFocus===1){ sqMach=p.mach; sqGrid=sqLayers[1].grid; sqEnsureGrid(); }
+  return true;
+}
+// A slot was tapped. Stopped, the Aux layer is kept in the slot it was in and the
+// chosen one loads (an empty slot keeps what is on screen, so it starts as a copy to
+// vary); playing, the choice waits for the loop to come round, and a second tap on
+// the queued slot calls it off.
+function sqAuxPick(idx){
+  if(!sqPlaying){
+    sqAuxSavePat(sqAuxCur); sqAuxCur=idx; sqAuxPend=null;
+    if(sqAuxPats[idx]) sqAuxLoadPat(idx);
+    sqRender();
+  } else {
+    sqAuxPend = (sqAuxPend===idx) ? null : idx;
+    sqRenderPSlots();
+  }
+}
+function sqAuxNextKit(dir){
+  var keys=Object.keys(SQM).filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); });
+  if(!keys.length) return;
+  var at=keys.indexOf(sqLayers[1].mach), nk=keys[((at<0?0:at)+(dir||1)+keys.length)%keys.length];
+  sqStashFocused();
+  sqLayers[1].mach=nk; sqPreloadKit(nk);
+  if(sqFocus===1){ sqMach=nk; sqEnsureGrid(); }
+  sqRender();
+}
 var sqPlaying=false, sqSchedID=null, sqRafID=null;
   window._sqPlaying=function(){return sqPlaying;};
   window._sqPlayingVal=false;
@@ -50558,10 +52018,48 @@ window._sqToggleLayer = sqToggleLayer;
 window._sqSetLayerOn = sqSetLayerOn;
 window._sqSyncLayerUI = sqSyncLayerUI;
 window._sqLayerOn = function(i){ return !!sqLayers[i ? 1 : 0].on; };
+// Whether the kit (layer 0) has a single hit on it, whichever layer is being looked at.
+// sqGrid is the focused layer's, so it is stashed first to make the record current.
+window._sqKitHasHits = function(){
+  sqStashFocused();
+  var g = sqLayers[0].grid;
+  for(var k in g){
+    var row = g[k]; if(!row) continue;
+    for(var s=0;s<row.length;s++) if(row[s] && row[s].v>0) return true;
+  }
+  return false;
+};
 // Whether the second layer has anything on it at all. The transport's Perc
 // switch appears and disappears on this, so it reads the grid rather than the
 // groove table — a part you programmed by hand counts exactly as much as one
 // that arrived with a groove.
+// The kit layer as a template for the bank: its grid, its machine and the lane levels, and nothing of the Aux or the
+// song chain. Applying one while the beat is running waits for the loop to come round, like a groove.
+window._sqKitTemplate = function(){
+  sqStashFocused();
+  var K=sqLayers[0], lk=sqLK(K.mach,0);
+  return {steps:sqSteps, mach:K.mach, grid:JSON.parse(JSON.stringify(K.grid||{})),
+          vols:JSON.parse(JSON.stringify(sqVols[lk]||{})), pitches:JSON.parse(JSON.stringify(sqPitches[lk]||{}))};
+};
+var sqPendTpl=null;
+function sqApplyKitTemplateNow(t){
+  if(!t || !SQM[t.mach]) return false;
+  sqStashFocused();
+  var on=sqLayers[0].on, lk=sqLK(t.mach,0);
+  if(t.steps) sqSteps=t.steps;
+  sqLayers[0]={mach:t.mach, grid:JSON.parse(JSON.stringify(t.grid||{})), on:on};
+  sqVols[lk]=JSON.parse(JSON.stringify(t.vols||{}));
+  sqPitches[lk]=JSON.parse(JSON.stringify(t.pitches||{}));
+  sqPreloadKit(t.mach);
+  if(sqFocus===0){ sqMach=t.mach; sqGrid=sqLayers[0].grid; }
+  sqEnsureGrid(); sqSyncUI(); sqRender();
+  return true;
+}
+window._sqApplyKitTemplate = function(t){
+  if(!t || !SQM[t.mach]) return false;
+  if(sqPlaying){ sqPendTpl=t; return 'queued'; }
+  return sqApplyKitTemplateNow(t);
+};
 window._sqAuxHasPart = function(){
   var g = sqLayers[1].grid;
   for(var k in g){
@@ -51019,7 +52517,11 @@ function sqFlushPending(){
   // way everything else crosses that boundary — through window.
   if(typeof window._sqFlushGroove==='function' && window._sqFlushGroove()) did=true;
   if(sqPendMach){sqDoSwap(sqPendMach);did=true;}
+  if(sqPendTpl){var _tp=sqPendTpl;sqPendTpl=null;sqApplyKitTemplateNow(_tp);did=true;}
   if(sqPendPat!==null){var idx=sqPendPat;sqPendPat=null;sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatPlay(idx);did=true;}
+  // The Aux sequencer's queue is its own: A-patterns change on the loop wrap, whatever
+  // the kit's patterns are doing.
+  if(sqAuxPend!==null){var aix=sqAuxPend;sqAuxPend=null;sqAuxSavePat(sqAuxCur);sqAuxCur=aix;if(sqAuxPats[aix]) sqAuxLoadPat(aix);did=true;sqRender();}
   if(!did&&sqUsingChain&&sqChain.length>0){sqChainPos=(sqChainPos+1)%sqChain.length;var ni=sqChain[sqChainPos];sqSavePat(sqCurPat);sqCurPat=ni;if(sqPats[ni])sqLoadPatPlay(ni);}
   sqDispStep=-1;
   // Flushed as the scheduler queues the new loop's first step, a lookahead
@@ -51453,36 +52955,58 @@ function sqRenderGrid(){
   if(_sqFillPick) _sqFillPaint(_sqFillPick.a);
 }
 
-// ── The other layer, beside the one being edited (Live) ──
+// ── The Aux sequencer on Live ──
 // The grid above is one focus-based instance: sqMach, sqGrid, sqStepEls, the
 // selection and the inspector are single globals (about 140 references), so
 // showing Kit and Aux as two full grids at once would mean threading a layer
-// through every handler in the file. This is the smaller thing that answers
-// "can I see both": under the grid, the layer you are NOT editing as a compact
-// fit-to-width strip — one thin lane per voice, a tap places or clears a step,
-// a heading button switches the grid over to it for velocity, ratchet and
-// pitch. It exists only while the Drums widget is on Live (lvXStrip makes the
-// host; with no host in the document this does nothing). Reads sqLayers[o]
-// directly: the layer that is not focused is never the live view, so its
-// record is always current. Re-run by sqRenderGrid, which a focus switch, a
-// groove, a kit change and a step-count change all go through.
+// through every handler in the file. This is the smaller thing that gives Aux a
+// sequencer of its own beside the kit's: its own widget, always the Aux layer, a
+// fit-to-width roll with one lane per voice (a tap steps a cell off > on > accent),
+// its own kit, its mute dot and its own bank of eight patterns, A1-A8. It exists
+// only while the Aux widget is on Live (lvXStrip makes the host; with no host in
+// the document this does nothing). While the Aux widget is up the main grid stays on
+// the Kit (lvMount asks for it), so the two are never the same layer; if one ever
+// is, the record is stashed first so the roll still reads the live cells. Re-run by
+// sqRenderGrid, which a focus switch, a groove, a kit change, a pattern and a
+// step-count change all go through.
 var sqXEls = {};
 function sqRenderXStrip(){
   var host = document.getElementById('sq-xstrip'); if(!host) return;
   host.innerHTML = ''; sqXEls = {};
-  var o = sqFocus ? 0 : 1, L = sqLayers[o], M = SQM[L.mach];
+  sqStashFocused();
+  var o = 1, L = sqLayers[o], M = SQM[L.mach];
   if(!M) return;
   var ch = SQ_LAYER_CH[o], lk = sqLK(L.mach, o);
   var head = document.createElement('div'); head.className = 'sq-xhead';
+  var mute = document.createElement('button'); mute.type = 'button'; mute.className = 'sq-xmute' + (L.on ? ' on' : '');
+  mute.textContent = L.on ? '\u25CF' : '\u25CB';
+  mute.title = (L.on ? 'Mute ' : 'Play ') + SQ_LAYER_NAME[o]; mute.setAttribute('aria-label', mute.title);
+  mute.addEventListener('click', function(){ sqToggleLayer(o); sqRenderXStrip(); });
+  head.appendChild(mute);
   var nm = document.createElement('span'); nm.className = 'sq-xname';
   nm.textContent = SQ_LAYER_NAME[o] + (L.on ? '' : ' (muted)');
   head.appendChild(nm);
-  var ed = document.createElement('button'); ed.type = 'button'; ed.className = 'sq-xedit';
-  ed.textContent = 'Edit ' + SQ_LAYER_NAME[o];
-  ed.title = 'Switch the grid above to the ' + SQ_LAYER_NAME[o] + ' layer';
-  ed.addEventListener('click', function(){ sqSetFocus(o); });
-  head.appendChild(ed);
+  var kit = document.createElement('button'); kit.type = 'button'; kit.className = 'sq-xedit';
+  kit.textContent = M.label + ' \u203A';
+  kit.title = 'Next kit for the Aux layer'; kit.setAttribute('aria-label', 'Aux kit: ' + M.label + '. Tap for the next kit');
+  kit.addEventListener('click', function(){ sqAuxNextKit(1); });
+  head.appendChild(kit);
+  var sv = document.createElement('button'); sv.type = 'button'; sv.className = 'sq-xedit';
+  sv.textContent = 'Save'; sv.title = 'Keep the Aux roll in pattern A' + (sqAuxCur + 1);
+  sv.addEventListener('click', function(){ sqAuxSavePat(sqAuxCur); sqRenderPSlots(); showToast('Saved Aux pattern A' + (sqAuxCur + 1)); });
+  head.appendChild(sv);
+  var cl = document.createElement('button'); cl.type = 'button'; cl.className = 'sq-xedit';
+  cl.textContent = 'Clr'; cl.title = 'Empty the Aux roll and pattern A' + (sqAuxCur + 1);
+  cl.addEventListener('click', function(){
+    var before = JSON.parse(JSON.stringify(sqLayers[1].grid || {})), saved = sqAuxPats[sqAuxCur] ? JSON.parse(JSON.stringify(sqAuxPats[sqAuxCur])) : null;
+    sqLayers[1].grid = {}; sqAuxPats[sqAuxCur] = null; sqRender(); sqAuxSwitchSync();
+    showToast('Aux roll cleared', {actionLabel:'Undo', onAction:function(){ sqLayers[1].grid = before; sqAuxPats[sqAuxCur] = saved; sqRender(); sqAuxSwitchSync(); }});
+  });
+  head.appendChild(cl);
   host.appendChild(head);
+  var slots = document.createElement('div'); slots.className = 'sq-pslots sq-xslots'; slots.id = 'sq-axslots';
+  host.appendChild(slots);
+  sqFillSlots(slots, 'aux');
   var bw = (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
   sqRowOrder(M.tracks).forEach(function(ti){
     var tr = M.tracks[ti];
@@ -51502,7 +53026,9 @@ function sqRenderXStrip(){
       (function(t2, s2, e2, tr2){
         e2.addEventListener('pointerup', function(){
           var c = L.grid[t2][s2];
-          c.v = c.v ? 0 : 1;
+          // Off, on, accent, off: no press-and-hold or timing to learn, and an accent
+          // is one more tap on a cell that is already lit.
+          c.v = ((c.v||0) + 1) % 3;
           e2.classList.toggle('on', c.v===1); e2.classList.toggle('accent', c.v===2);
           sqAuxSwitchSync();
           if(sqAudition && c.v>0){
@@ -51914,25 +53440,47 @@ function sqAttachStep(el,ti,s,track){
 
 // ── pattern slots ──
 function sqRenderPSlots(){
-  var el=document.getElementById('sq-pslots');if(!el)return;el.innerHTML='';
-  for(var i=0;i<SQ_NUM_P;i++){
+  // The Drum Patterns panel follows the layer being edited: the kit's P1-P8 (and the
+  // song chain under them), or the Aux sequencer's A1-A8. The Live Aux roll carries
+  // its own copy of the Aux row.
+  var aux = sqFocus===1;
+  var ttl=document.getElementById('sq-ptitle'); if(ttl) ttl.textContent = aux ? 'Aux Patterns' : 'Drum Patterns';
+  ['sq-chainlbl','sq-chainRow'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display = aux ? 'none' : ''; });
+  var el=document.getElementById('sq-pslots'); if(el) sqFillSlots(el, aux ? 'aux' : 'kit');
+  var ax=document.getElementById('sq-axslots'); if(ax) sqFillSlots(ax, 'aux');
+}
+// One row of eight slots for a bank. 'kit' is the original behaviour untouched
+// (hold a slot to add it to the song chain); 'aux' is the Aux sequencer's bank, which
+// has no chain.
+function sqFillSlots(el, which){
+  el.innerHTML='';
+  var aux = which==='aux', N = aux ? SQ_AUX_N : SQ_NUM_P, bank = aux ? sqAuxPats : sqPats;
+  for(var i=0;i<N;i++){
     (function(idx){
-      var p=sqPats[idx];
+      var p=bank[idx];
       var slot=document.createElement('div');slot.className='sq-pslot';
       if(p)slot.classList.add('has');
-      if(idx===sqCurPat)slot.classList.add('edit');
-      var isPlay=(sqUsingChain&&sqChain[sqChainPos]===idx)||(sqPlaying&&!sqUsingChain&&idx===sqCurPat);
+      var cur = aux ? sqAuxCur : sqCurPat;
+      if(idx===cur)slot.classList.add('edit');
+      var isPlay = aux ? (sqPlaying && idx===sqAuxCur)
+                       : ((sqUsingChain&&sqChain[sqChainPos]===idx)||(sqPlaying&&!sqUsingChain&&idx===sqCurPat));
       if(isPlay)slot.classList.add('playing');
-      if(sqPendPat===idx)slot.classList.add('nextup');
-      if(sqChain.indexOf(idx)>=0&&!isPlay)slot.classList.add('inchain');
-      slot.innerHTML=(idx+1)+(p?'<small>'+(p.steps||16)+' st</small>':'');
-      var ht=null;
-      slot.addEventListener('pointerdown',function(){ht=setTimeout(function(){ht=null;sqChain.push(idx);sqRenderPSlots();sqRenderChain();sqUpdateStatus();},400);});
-      slot.addEventListener('pointerup',function(){if(ht){clearTimeout(ht);ht=null;}});
-      slot.addEventListener('click',function(){
-        if(!sqPlaying){sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatEd(idx);else sqEnsureGrid();sqRender();}
-        else{sqPendPat=idx;sqRenderPSlots();sqUpdateStatus();}
-      });
+      if((aux ? sqAuxPend : sqPendPat)===idx)slot.classList.add('nextup');
+      if(!aux && sqChain.indexOf(idx)>=0&&!isPlay)slot.classList.add('inchain');
+      slot.innerHTML=(aux?'A':'')+(idx+1)+(p?'<small>'+(p.steps||16)+' st</small>':'');
+      slot.setAttribute('role','button');
+      slot.setAttribute('aria-label',(aux?'Aux pattern ':'Pattern ')+(idx+1)+(p?'':' (empty)'));
+      if(aux){
+        slot.addEventListener('click',function(){ sqAuxPick(idx); });
+      } else {
+        var ht=null;
+        slot.addEventListener('pointerdown',function(){ht=setTimeout(function(){ht=null;sqChain.push(idx);sqRenderPSlots();sqRenderChain();sqUpdateStatus();},400);});
+        slot.addEventListener('pointerup',function(){if(ht){clearTimeout(ht);ht=null;}});
+        slot.addEventListener('click',function(){
+          if(!sqPlaying){sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatEd(idx);else sqEnsureGrid();sqRender();}
+          else{sqPendPat=idx;sqRenderPSlots();sqUpdateStatus();}
+        });
+      }
       el.appendChild(slot);
     })(i);
   }
@@ -52042,11 +53590,17 @@ function sqWire(){
   if(stDn)stDn.addEventListener('click',function(){setSeqStepCount('sq',sqSteps-1);});
 
   var sav=document.getElementById('sq-saveBtn');
-  if(sav)sav.addEventListener('click',function(){sqSavePat(sqCurPat);sqRenderPSlots();});
+  if(sav)sav.addEventListener('click',function(){if(sqFocus===1){sqAuxSavePat(sqAuxCur);showToast('Saved Aux pattern A'+(sqAuxCur+1));} else sqSavePat(sqCurPat);sqRenderPSlots();});
   var dup=document.getElementById('sq-dupBtn');
-  if(dup)dup.addEventListener('click',function(){sqSavePat(sqCurPat);var tgt=-1;for(var i=0;i<SQ_NUM_P;i++)if(!sqPats[i]){tgt=i;break;}if(tgt<0)tgt=(sqCurPat+1)%SQ_NUM_P;sqPats[tgt]=JSON.parse(JSON.stringify(sqPats[sqCurPat]));sqCurPat=tgt;sqRenderPSlots();});
+  if(dup)dup.addEventListener('click',function(){
+    if(sqFocus===1){ sqAuxSavePat(sqAuxCur);var at=-1;for(var ai=0;ai<SQ_AUX_N;ai++)if(!sqAuxPats[ai]){at=ai;break;}if(at<0)at=(sqAuxCur+1)%SQ_AUX_N;sqAuxPats[at]=JSON.parse(JSON.stringify(sqAuxPats[sqAuxCur]));sqAuxCur=at;sqRenderPSlots();return; }
+    sqSavePat(sqCurPat);var tgt=-1;for(var i=0;i<SQ_NUM_P;i++)if(!sqPats[i]){tgt=i;break;}if(tgt<0)tgt=(sqCurPat+1)%SQ_NUM_P;sqPats[tgt]=JSON.parse(JSON.stringify(sqPats[sqCurPat]));sqCurPat=tgt;sqRenderPSlots();});
   var clrs=document.getElementById('sq-clrSongBtn');
-  if(clrs)clrs.addEventListener('click',function(){sqChain=[];sqChainPos=0;sqUsingChain=false;sqRenderPSlots();sqRenderChain();sqUpdateStatus();});
+  if(clrs)clrs.addEventListener('click',function(){
+    // On the Aux layer Clr empties the Aux pattern in the slot being edited and the roll with it;
+    // on the kit it has always cleared the song chain.
+    if(sqFocus===1){ sqStashFocused(); sqLayers[1].grid={}; sqGrid=sqLayers[1].grid; sqAuxPats[sqAuxCur]=null; sqEnsureGrid(); sqRender(); return; }
+    sqChain=[];sqChainPos=0;sqUsingChain=false;sqRenderPSlots();sqRenderChain();sqUpdateStatus();});
 
   // Beat pagination dots: update active dot as user scrolls
   var gsc=document.getElementById('sq-gScroll');
@@ -52062,6 +53616,10 @@ function sqWire(){
     // swapped that old kit back in. Only the autosave's stash, a few hundred
     // ms later, usually got there first.
     sqStashFocused();
+    // A groove writes the Aux layer too (its shaker, its congas). What was there is
+    // put in the Aux pattern slot it was playing from first, so loading a beat is
+    // never the way a pre-made Aux line is lost.
+    if(window._sqAuxHasPart()) sqAuxSavePat(sqAuxCur);
     var r = e.detail.rhythm;
     var steps = e.detail.steps;
     sqSteps = steps;
@@ -52327,7 +53885,10 @@ window._sqCaptureState = function(){
   machGrids: sqMachGrids,
   kitOn: K.on !== false,
   aux: { mach: A.mach, grid: A.grid, on: A.on !== false,
-         vols: sqVols[sqLK(A.mach,1)] || {}, pitches: sqPitches[sqLK(A.mach,1)] || {} }
+         vols: sqVols[sqLK(A.mach,1)] || {}, pitches: sqPitches[sqLK(A.mach,1)] || {} },
+  // The Aux sequencer's own patterns, only once there is one (a state with none is
+  // what every earlier version wrote, and restores the same way).
+  auxPats: sqAuxPats.some(Boolean) ? sqAuxPats : undefined, auxCur: sqAuxCur
  };
 };
 // The counterpart _sqCaptureState never had: two call sites (song load, and
@@ -52379,6 +53940,12 @@ window._sqRestoreState = function(st){
  if(st.aux && SQM[st.aux.mach]){
   if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
   if(st.aux.pitches) sqPitches[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.pitches));
+ }
+ // Absent: the bank is left as it is, so loading an older rig does not empty patterns made since.
+ if(Array.isArray(st.auxPats)){
+  sqAuxPats = st.auxPats.slice(0, SQ_AUX_N).map(function(p){ return p ? JSON.parse(JSON.stringify(p)) : null; });
+  while(sqAuxPats.length < SQ_AUX_N) sqAuxPats.push(null);
+  sqAuxCur = Math.max(0, Math.min(SQ_AUX_N-1, st.auxCur|0)); sqAuxPend = null;
  }
  sqEnsureGrid();
  sqSyncUI(); sqRenderGrid();
@@ -52785,6 +54352,8 @@ var _blGridRootPc = 0;
 var _blGridIntvs = [0,4,7];
 var blPlaying = false;
  window._blPlaying = function(){ return blPlaying; };
+ // Whether the line has a single note in it: Starter patterns load only into an empty part.
+ window._blHasNotes = function(){ for(var i=0;i<blGrid.length;i++) if(blGrid[i] && blGrid[i].v) return true; return false; };
 // See window._sqResync — same fix, same reason, for the bass step clock.
 window._blResync = function(){
   var c=blCtx(); if(!c) return;
@@ -55126,6 +56695,8 @@ var ML_GEN_LO = 55, ML_GEN_HI = 84;
 var ML_PR_LO = 48, ML_PR_HI = 96;        // C3-C7, four octaves
 var mlPlaying = false;
 window._mlPlaying = function(){ return mlPlaying; };
+// See _blHasNotes.
+window._mlHasNotes = function(){ for(var i=0;i<mlGrid.length;i++) if(mlGrid[i] && mlGrid[i].v) return true; return false; };
 // See window._sqResync — same fix, same reason, for the melody-gen step clock.
 window._mlResync = function(){
   var c=mlCtx(); if(!c) return;
@@ -55145,6 +56716,16 @@ window._mlParams = function(){ return {voice: mlWave}; };
 var mlVol = 0.7; // fixed baseline — volume is controlled solely by the Mixer's Mel channel now
 
 function mlMkCell(){ return {note:0, oct:mlOct, len:1, accent:false, v:0, usr:0}; }
+// More than one note on a step (4.9.9.9.9.9.6c). The first note is the cell's own
+// note/oct, which is everything that already reads a cell; the rest are
+// cell.more, [{note, oct}] — so a line with no chords is byte-for-byte what it was,
+// and anything that does not know about chords simply sees the first note.
+var ML_MAX_VOICES = 8;
+var _mlPrev = null;   // the note before this one: {midi, endT, poly}, for the slide
+function mlExtras(c){ return (c && c.v && c.more && c.more.length) ? c.more : null; }
+// Explicit Mono is one note at a time, so it plays the first of a chord and the
+// roll moves a note rather than adding one. Auto and Poly keep chords.
+function mlPolyAllowed(){ return !(melMono === true && !melAuto); }
 
 function mlEnsureGrid(){
   while(mlGrid.length < mlSteps) mlGrid.push(mlMkCell());
@@ -55163,7 +56744,7 @@ var _mlNoteSeq = 0;
 // other. Measured by playing one fixed line through each voice into the part's
 // bus; a voice not listed is already level.
 var MELGEN_VOICE_TRIM = {piano:1.142, pad:0.47, vibes:0.704, xylo:0.531, kalimba:1.708, jazzgtr:0.876, nylongtr:1.421, tenorsax:0.891, violin:0.846, clarinet:1.799, flute:1.116, triangle:0.917, supersaw:0.939};
-function mlPlayNote(t, note, oct, dur, vol, accent){
+function mlPlayNote(t, note, oct, dur, vol, accent, glide){
   if(!window.modEngine.ready()) return;
   var midi = note + (oct+1)*12;
   // Its own lane, not the strip's. They are separate parts with separate
@@ -55184,8 +56765,12 @@ function mlPlayNote(t, note, oct, dur, vol, accent){
     _midiRecNotes.push({lane:'melgen',note:_mlMidi,vel:_mlVel,tOn:_mlOn,tOff:_mlOn+_mlDur});
   }catch(e){}
   if(_moTookMel) return;
-  modSend({v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
-                         vel: vol, accent: !!accent, at: t, dur: dur});
+  var _mlMsg = {v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
+                         vel: vol, accent: !!accent, at: t, dur: dur};
+  // Portamento from the step before, in mono (see _mlScheduler); the engine slides
+  // from `glideFrom` over `glideTime`, as it does for the strip's notes.
+  if(glide){ _mlMsg.glideFrom = glide.from; _mlMsg.glideTime = glide.time; }
+  modSend(_mlMsg);
 }
 // The Web Audio engine's sequencer note. In this closure because the voice,
 // its bus and the sequencer's own voice choice live here.
@@ -55210,7 +56795,10 @@ window._webMelgenNote = function(msg){
   g.connect(mg);
   if(typeof _regKill==='function') _regKill(g, 'melgen');
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
-  if(typeof makeVoice === 'function') makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+  if(typeof makeVoice === 'function'){
+    var nodes = makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+    if(msg.glideFrom != null && msg.glideTime > 0) _melGlideApply(nodes, msg.glideFrom - midi, t, msg.glideTime);
+  }
 };
 
 // ── scheduler integration — registered into the shared clock, same pattern as bassline ──
@@ -55248,32 +56836,58 @@ window._mlScheduler = function(){
       var len = Math.max(1, cell.len || 1);
       var maxDur = swOff > 0 ? (stepSec - swOff) * 0.95 : stepSec * len * 0.92;
       var dur = Math.min(stepSec * len * 0.92, maxDur);
-      var pn = cell.note, po = cell.oct, skip = false;
-      if(lock){
-        if(lockShift){
-          var lf = window.phraseFold(pn, po, lockShift, ML_GEN_LO, ML_GEN_HI);
-          pn = lf.note; po = lf.oct;
-        }
-      }else if(following){
-        // Same re-rooting as the bass: intervals are measured from the pitch
-        // class the phrase was written over, so the shape survives the move.
-        // The hand-drawn exemption is gone here for the same reason — see the
-        // long note on the bass.
-        if(wf){
-          if(wf.rest) skip = true;
-          else {
+      // Where a written pitch sounds on this step: re-rooted onto the chord by
+      // Follow, folded by a lock, or nowhere (null) over a rest. The main note and
+      // every extra note of a chord go through the same door, so a chord keeps its
+      // shape when the progression moves.
+      var mapOne = function(pn, po){
+        if(lock){
+          if(lockShift){
+            var lf = window.phraseFold(pn, po, lockShift, ML_GEN_LO, ML_GEN_HI);
+            return {pn: lf.note, po: lf.oct};
+          }
+        }else if(following){
+          // Same re-rooting as the bass: intervals are measured from the pitch
+          // class the phrase was written over, so the shape survives the move.
+          // The hand-drawn exemption is gone here for the same reason — see the
+          // long note on the bass.
+          if(wf){
+            if(wf.rest) return null;
             var ref = pn + (po + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
             var outPc = window._followRemapPc(pn, _mlGridRootPc, _mlGridIntvs, wf,
                           (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
             var rg = window._followRange(pn + (po + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
             var abs = window._followNearIn(outPc, ref, rg[0], rg[1]);
-            pn = ((abs % 12) + 12) % 12;
-            po = Math.floor(abs / 12) - 1;
+            return {pn: ((abs % 12) + 12) % 12, po: Math.floor(abs / 12) - 1};
           }
         }
+        return {pn: pn, po: po};
+      };
+      var main = mapOne(cell.note, cell.oct);
+      if(main){
+        var tOn = mlNextT + swOff + window._humanT(mlSeqStep%4===0,'melgen');
+        var vel = mlVol * window._humanV(cell.accent,'melgen');
+        // A step with more than one note is a chord (up to ML_MAX_VOICES of them):
+        // every note sounds, none slides, and each is turned down by the square root
+        // of how many there are so a chord is not louder than the line around it.
+        // Explicit Mono plays the first note only.
+        var xs = mlPolyAllowed() ? mlExtras(cell) : null;
+        var nVoices = xs ? Math.min(ML_MAX_VOICES, 1 + xs.length) : 1;
+        var fromM = null;
+        if(nVoices === 1 && _mlPrev && !_mlPrev.poly && melGlideOn && melMono !== false
+           && (mlNextT - _mlPrev.endT) <= stepSec * 1.01) fromM = _mlPrev.midi;
+        var toM = main.pn + (main.po + 1) * 12;
+        // The slide is longer for a bigger leap (melGlideFor) but never longer than
+        // the note it lands on, or the note would still be on its way when it ended.
+        var glide = (fromM != null && fromM !== toM) ? {from: fromM, time: Math.min(melGlideFor(toM - fromM), dur * 0.8)} : null;
+        var vScale = 1 / Math.sqrt(nVoices);
+        mlPlayNote(tOn, main.pn, main.po, dur, vel * vScale, cell.accent, glide);
+        for(var xi = 0; xi < nVoices - 1; xi++){
+          var m2 = mapOne(xs[xi].note, xs[xi].oct);
+          if(m2) mlPlayNote(tOn, m2.pn, m2.po, dur, vel * vScale, cell.accent);
+        }
+        _mlPrev = {midi: toM, endT: mlNextT + stepSec * len, poly: nVoices > 1};
       }
-      if(!skip) mlPlayNote(mlNextT + swOff + window._humanT(mlSeqStep%4===0,'melgen'), pn, po, dur,
-                           mlVol * window._humanV(cell.accent,'melgen'), cell.accent);
     }
     mlNextT += stepSec;
     mlSeqStep++;
@@ -55315,15 +56929,21 @@ function _mlDisplayWindow(x){
 }
 function _mlDisplayMidi(x){
   var c = mlGrid[x]; if(!c) return null;
+  return _mlDisplayOf(x, c.note, c.oct);
+}
+// Where a written pitch on step x is drawn: the main note and each note of a chord
+// go through the same lookup, so a chord is drawn where Follow will sound it.
+function _mlDisplayOf(x, note, oct){
+  var c = mlGrid[x]; if(!c) return null;
   var wf = _mlDisplayWindow(x);
   if(wf && wf.pcs){
-    var ref = c.note + (c.oct + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
-    var outPc = window._followRemapPc(c.note, _mlGridRootPc, _mlGridIntvs, wf,
+    var ref = note + (oct + 1) * 12 + ((wf.rootPc - _mlGridRootPc) % 12 + 12) % 12;
+    var outPc = window._followRemapPc(note, _mlGridRootPc, _mlGridIntvs, wf,
                   (typeof window._songScalePcs==='function') ? window._songScalePcs() : null);
-    var rg = window._followRange(c.note + (c.oct + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
+    var rg = window._followRange(note + (oct + 1) * 12, ML_GEN_LO, ML_GEN_HI, ML_PR_LO, ML_PR_HI);
     return window._followNearIn(outPc, ref, rg[0], rg[1]);
   }
-  var abs = c.note + (c.oct + 1) * 12;
+  var abs = note + (oct + 1) * 12;
   // See the bass roll's _blDisplayMidi — a hand-placed note is drawn where it
   // was placed, and now that the roll runs C3-C7 rather than the generator's
   // G3-C6 there is somewhere for it to be drawn.
@@ -55331,6 +56951,19 @@ function _mlDisplayMidi(x){
   if(abs > ML_GEN_HI) abs -= 12;
   if(abs < ML_GEN_LO) abs += 12;
   return abs;
+}
+// Add `midi` to a step that already has a note. Ignores a pitch the step already
+// sounds, and stops at ML_MAX_VOICES. The audition plays the note alone.
+function _mlAddNote(c, midi){
+  var note = ((midi % 12) + 12) % 12, oct = Math.floor(midi / 12) - 1;
+  if(c.note === note && c.oct === oct) return false;
+  var xs = c.more || (c.more = []);
+  for(var i = 0; i < xs.length; i++) if(xs[i].note === note && xs[i].oct === oct) return false;
+  if(1 + xs.length >= ML_MAX_VOICES){ if(!xs.length) delete c.more; return false; }
+  xs.push({note: note, oct: oct});
+  c.usr = 1;
+  if(typeof mlPreviewNote === 'function') mlPreviewNote({note: note, oct: oct, len: c.len, accent: c.accent, v: 1});
+  return true;
 }
 function mlPrInit(){
   if(typeof prRegister!=='function') return;
@@ -55345,12 +56978,27 @@ function mlPrInit(){
     // Follow moves this line onto each chord exactly as it does the bass, so
     // the roll has to draw the sounding pitch for the same reason.
     displayMidi: function(x){ return _mlDisplayMidi(x); },
+    // The other notes of a chord on this step, where each is drawn.
+    extras: function(x){
+      var c = mlGrid[x], xs = mlPolyAllowed() ? mlExtras(c) : null; if(!xs) return null;
+      return xs.map(function(e){ return _mlDisplayOf(x, e.note, e.oct); });
+    },
+    // A second note arriving with the first (a chord played into an armed roll)
+    // joins the step instead of replacing it.
+    addAt: function(step, midi){
+      mlEnsureGrid();
+      var c = mlGrid[step]; if(!c) return;
+      if(!c.v || !mlPolyAllowed()) return this.setAt(step, midi);
+      _mlAddNote(c, midi);
+      if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
+      if(typeof mlRedraw==='function') mlRedraw();
+    },
     playStep: function(){ return mlPlaying ? mlDispStep : -1; },
     // See the bass roll's setAt — typing a note writes, it does not toggle.
     setAt: function(step, midi, accent){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      c.v = 1; c.usr = 1;
+      c.v = 1; c.usr = 1; delete c.more;
       c.note = ((midi%12)+12)%12;
       c.oct  = Math.floor(midi/12)-1;
       // Only a gesture that carried force speaks to the accent. A path with
@@ -55363,7 +57011,7 @@ function mlPrInit(){
     clearAt: function(step){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
-      c.v = 0; c.usr = 0;
+      c.v = 0; c.usr = 0; delete c.more;
       if(typeof mlUpdateEmptyHint==='function') mlUpdateEmptyHint();
       if(typeof mlRedraw==='function') mlRedraw();
     },
@@ -55371,8 +57019,26 @@ function mlPrInit(){
       mlEnsureGrid();
       var c = mlGrid[step]; if(!c) return;
       var cur = _mlDisplayMidi(step);
-      if(c.v && cur === midi){ c.v = 0; c.usr = 0; }
+      var poly = mlPolyAllowed();
+      if(c.v && cur === midi){
+        // Take away the first note; the next note of a chord, if there is one,
+        // steps up into its place.
+        var nx = (poly && c.more && c.more.length) ? c.more.shift() : null;
+        if(nx){ c.note = nx.note; c.oct = nx.oct; if(!c.more.length) delete c.more; }
+        else { c.v = 0; c.usr = 0; delete c.more; }
+      }
+      else if(c.v && poly){
+        // A lit step, a different row: that is a second note, so the step becomes a
+        // chord (up to eight notes). Tapping one of the chord's notes takes it
+        // away again. Explicit Mono keeps the older behaviour, below, where the tap
+        // moves the one note.
+        var xi = -1;
+        (c.more || []).forEach(function(e, i){ if(_mlDisplayOf(step, e.note, e.oct) === midi) xi = i; });
+        if(xi >= 0){ c.more.splice(xi, 1); if(!c.more.length) delete c.more; }
+        else { _mlAddNote(c, midi); c.usr = 1; }
+      }
       else {
+        delete c.more;
         c.v = 1;
         var raw = midi;   // see the bass roll's toggle — a tap is yours, so
                           // it is stored at the pitch you tapped
@@ -55429,7 +57095,7 @@ function mlPlay(){
     }
     mlEnsureGrid();
     mlMG();
-    mlPlaying = true; mlDispStep = -1;
+    mlPlaying = true; mlDispStep = -1; _mlPrev = null;
     var bpmNow = parseFloat(document.getElementById('bpm').value) || 120;
     var _mlStepSec = 60 / bpmNow / 4 * (typeof mlRateMul!=='undefined'?mlRateMul:1);
     // On beat 1 of the drums' actual bar — see seqEntryTime.
@@ -55864,7 +57530,9 @@ window._mlLineFor = function(rootM, intvs){
   lastChordIntvs = (intvs && intvs.length) ? intvs : [0,4,7];
   window._mlGenerateRaw();
   out = { steps: mlSteps, grid: mlGrid.map(function(c){
-   return { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1, accent:!!c.accent };
+   var o = { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1, accent:!!c.accent };
+   if(c.more && c.more.length) o.more = c.more.map(function(e){ return {note:e.note, oct:e.oct}; });
+   return o;
   }) };
  }catch(e){ out = null; }
  mlGrid = saveGrid; _mlGridRootPc = saveRoot; _mlGridIntvs = saveIntvs;
@@ -56150,6 +57818,12 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('m
     var f = window.phraseFold(o.note, o.oct, shift, ML_GEN_LO, ML_GEN_HI);
     o.note = f.note; o.oct = f.oct;
    }
+   // The other notes of a chord on this step go where the first one does.
+   if(o.v && c.more && c.more.length) o.more = c.more.map(function(e){
+    var q = {note:e.note, oct:e.oct};
+    if(shift){ var f2 = window.phraseFold(q.note, q.oct, shift, ML_GEN_LO, ML_GEN_HI); q.note = f2.note; q.oct = f2.oct; }
+    return q;
+   });
    g.push(o);
   }
   return { steps: mlSteps, grid: g };
@@ -56161,7 +57835,9 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('m
  apply: function(lock){
   mlSteps = lock.steps;
   mlGrid = lock.grid.map(function(c){
-   return { v:c.v, note:c.note, oct:c.oct, len:c.len, accent:!!c.accent, usr:1 };
+   var o = { v:c.v, note:c.note, oct:c.oct, len:c.len, accent:!!c.accent, usr:1 };
+   if(c.more && c.more.length) o.more = c.more.map(function(e){ return {note:e.note, oct:e.oct}; });
+   return o;
   });
   _mlGridRootPc = lock.rootPc;
   var d = document.getElementById('ml-stepsdisp'); if(d) d.textContent = mlSteps;
@@ -57382,6 +59058,18 @@ function prDraw(id){
  for(let x=0;x<steps;x++){
   const c = cfg.cell(x);
   if(!c || !c.v) continue;
+  // The other notes of a chord on this step (the melody roll), drawn like the
+  // first but without its hand-placed outline or selection ring.
+  if(typeof cfg.extras === 'function'){
+   const ex = cfg.extras(x);
+   if(ex) ex.forEach(function(em){
+    const er = cfg.hi - em;
+    if(er < 0 || er >= rows) return;
+    g.fillStyle = c.accent ? T.accent : T.note;
+    _prRound(g, x*colW+1.5, PR_RULER_H + er*PR_ROW_H + 1.5, Math.max(1, c.len||1)*colW - 3, PR_ROW_H-3, 3);
+    g.fill();
+   });
+  }
   // Ask the engine where this step will actually sound; fall back to the cell's
   // own pitch for engines that do not re-root.
   let midi = c.note + (c.oct+1)*12;
@@ -57680,16 +59368,19 @@ function prWire(id){
 // enough to put one back exactly as it was — including usr, which decides
 // whether Generate is allowed to overwrite it. Toggling twice would restore
 // the pitch but not that.
-const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide'];
+const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide','more'];
 function _prSnap(cfg, step){
  const c = cfg.cell(step); if(!c) return null;
  const o = {};
- _PR_CELL_KEYS.forEach(k=>{ o[k] = c[k]; });
+ _PR_CELL_KEYS.forEach(k=>{ o[k] = (k==='more' && c.more) ? c.more.map(e=>({note:e.note, oct:e.oct})) : c[k]; });
  return o;
 }
 function _prRestore(cfg, step, snap){
  const c = cfg.cell(step); if(!c || !snap) return;
- _PR_CELL_KEYS.forEach(k=>{ c[k] = snap[k]; });
+ _PR_CELL_KEYS.forEach(k=>{
+  if(k==='more'){ if(snap.more) c.more = snap.more.map(e=>({note:e.note, oct:e.oct})); else delete c.more; }
+  else c[k] = snap[k];
+ });
 }
 
 // ═══════════════════════════════════════
@@ -58063,6 +59754,7 @@ function _recFold(cfg, midi){
 
 // Returns true when it consumed the note, so the caller knows whether the
 // live voice should also sound it.
+var _recLast = {id:null, step:null, t:0};
 function noteInputWrite(midi, accent, vel){
  if(!_recArm) return false;
  if(_recIsDrums(_recArm)){
@@ -58071,7 +59763,18 @@ function noteInputWrite(midi, accent, vel){
  }
  const cfg = PR_ENGINES[_recArm]; if(!cfg || typeof cfg.setAt!=='function') return false;
  const running = _recPlayStep(_recArm) >= 0;
+ // A second key within 50 ms of the first is a chord: it joins the step the
+ // first one wrote, which step entry has already stepped past, so the cursor is
+ // left where it is.
+ const nowMs = performance.now();
+ if(typeof cfg.addAt === 'function' && _recLast.id === _recArm && _recLast.step != null && nowMs - _recLast.t < 50){
+  cfg.addAt(_recLast.step, _recFold(cfg, midi));
+  _recLast.t = nowMs;
+  _recRepaint(_recArm);
+  return true;
+ }
  const step = _recStepFor(_recArm);
+ _recLast = {id: _recArm, step: step, t: nowMs};
  cfg.setAt(step, _recFold(cfg, midi), accent);
  // Only step entry moves a cursor. While playing, the playhead is the cursor
  // and moving anything would fight it.
@@ -58174,6 +59877,7 @@ const REQUIRED_EXPORTS = {
  _sqEnsureGrid:'function', _sqRenderGrid:'function', _sqTracks:'function',
  _sqMachines:'function', _sqHit:'function',
  // bassline
+ _sqKitHasHits:'function', _sqKitTemplate:'function', _sqApplyKitTemplate:'function', _blHasNotes:'function', _mlHasNotes:'function',
  _blPlaying:'function', _blCaptureState:'function', _blRestoreState:'function',
  _blSetStepsRaw:'function', _blEnsureGrid:'function', _blRenderGrid:'function',
  _blGenStyle:'function', blIsFollowOn:'function', _blWalkFeel:'function',
