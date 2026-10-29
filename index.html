@@ -3406,6 +3406,24 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
  margin-left:3px; opacity:1; color:var(--accent) !important;
 }
 .ci-more:hover { text-decoration:underline; text-underline-offset:2px; }
+/* ── The rhythm roll (rhyEdit): one lane, an inspector under it ── */
+.modal-sheet.rhy-sheet { max-width:640px; }
+.rhy-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.rhy-lbl { flex:0 0 74px; font:700 .5rem 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.rhy-name, .rhy-from { flex:1 1 auto; min-width:0; min-height:40px; padding:6px 10px; border-radius:var(--r-sm);
+ background:var(--surf2); color:var(--text); border:1px solid var(--border2); font:600 15px 'Outfit',sans-serif; }
+.rhy-seg { display:flex; flex:1; gap:1px; min-width:0; flex-wrap:wrap; padding:2px; background:var(--bg); border:1px solid var(--border2); border-radius:var(--r-md); }
+.rhy-seg button { flex:1 1 auto; min-width:0; padding:9px 6px; cursor:pointer; border:none; background:none; border-radius:calc(var(--r-sm) - 1px);
+ color:var(--text); opacity:.78; font-family:'Outfit',sans-serif; font-size:.63rem; touch-action:manipulation; white-space:nowrap; }
+.rhy-seg button.on { background:var(--accent); color:#0a0a12; font-weight:700; opacity:1; }
+.rhy-roll { margin-top:10px; overflow-x:auto; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--bg); -webkit-overflow-scrolling:touch; }
+.rhy-canvas { display:block; touch-action:pan-x; }
+.rhy-hint { margin-top:6px; font-size:.5rem; color:var(--muted); min-height:1.2em; }
+.rhy-btn { flex:1 1 0; min-height:44px; padding:0 12px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf2); color:var(--text);
+ font:600 .6rem 'Outfit',sans-serif; letter-spacing:.04em; cursor:pointer; touch-action:manipulation; }
+.rhy-btn.on { border-color:var(--accent); color:var(--accent); }
+.rhy-btn.rhy-primary { background:var(--accent); border-color:var(--accent); color:#0a0a12; }
+
 .ci-extras { display:flex; flex:0 0 auto; align-items:stretch; }
 /* TYPE A CHORD. The Type row below covers the qualities the menu has names
    for; this covers the rest of harmony. It borrows .ci-seg's frame so it
@@ -7992,7 +8010,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6e</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6f</span></div>
  </div>
 </div>
 
@@ -9329,7 +9347,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6e</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6f</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10366,7 +10384,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6e';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6f';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -21305,6 +21323,7 @@ function _resyncEngines(){
  var c=getCtx(); if(!c) return;
  if(rhythmOn) rhythmNextBeat = clockAlignTo(c, rhythmStepSec||clockStepSec(), ALIGN_LEAD);
  if(arpOn) arpNextBeat = clockAlignTo(c, arpStepSec(), ALIGN_LEAD);
+ if(typeof crResync==='function') crResync();
  if(typeof window._sqPlaying==='function' && window._sqPlaying() && typeof window._sqResync==='function') window._sqResync();
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blResync==='function') window._blResync();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlResync==='function') window._mlResync();
@@ -23272,6 +23291,9 @@ function _webChordReleaseAt(t){
 // natural decay-curve release instead of stopAll()'s instant fade, and only
 // if nothing has interrupted it since (myId still matches the live one).
 function releaseSustainedChord(myId){
+ // A finger coming off the chord that started the rhythm ends it, in hold mode — before the check below, which
+ // the rhythm's own re-strikes have made fail by changing the live id.
+ try{ crOnRelease(myId); }catch(e){}
  if(myId == null || myId !== _chordLiveId) return;
  _chordLiveId = null;
  // Capture wants to know how long the chord was held — see _capOnRelease.
@@ -25391,7 +25413,7 @@ function _chordDamp(t, midis){
 // skipStop is gone in all but name: no caller ever passed true, and a chord
 // message always replaces the part's chord. The slot is kept so the seven
 // positional arguments every call site passes still line up.
-function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
+function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass,velMul){
  // How long it rings after the attack, unless held.
  const decRaw=parseFloat(document.getElementById('decay').value)||2.0;
  let dec=chordBeats>0?Math.min(decRaw,chordBeats*beatSec()):decRaw;
@@ -25412,7 +25434,8 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass){
  const msg = chordEngineEvent({root: rootM, ivs: intvs, bass: slash ? slashBass : null}, rootM, {
   part: 'chord',
   ivs: intvs,
-  vel: velScale(pressure||0),
+  // velMul: a rhythm's own accents (a drawn rhythm's plain hit is a little under an accent).
+  vel: velScale(pressure||0) * (velMul==null ? 1 : velMul),
   at: atTime==null ? null : atTime,
   dur: sustain ? null : dec
  });
@@ -28304,7 +28327,7 @@ function _transportRunning(){
  return !!(rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying()));
 }
 function _clockShouldRun(){
- return !!(rhythmOn || _arpSounding() || metronomeOn
+ return !!(rhythmOn || _arpSounding() || metronomeOn || crActive()
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
    || (typeof window._blPlaying==='function' && window._blPlaying())
    || (typeof window._mlPlaying==='function' && window._mlPlaying()));
@@ -28326,11 +28349,12 @@ function tickClock(){
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());
  var blRunning=(typeof window._blPlaying==='function'&&window._blPlaying());
  var mlRunning=(typeof window._mlPlaying==='function'&&window._mlPlaying());
- if(!rhythmOn&&!_arpSounding()&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn) return;
+ if(!rhythmOn&&!_arpSounding()&&!sqRunning&&!blRunning&&!mlRunning&&!metronomeOn&&!crActive()) return;
  // Only run Vibe rhythm when sequencer is NOT playing (one or the other)
  if(!sqRunning) scheduleRhythm();
  scheduleArp();
  scheduleMetronome();
+ scheduleChordRhythm();
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
@@ -37396,6 +37420,7 @@ function sbSyncAddHint(){
 // slot that does not simply follows the song, which is what every existing
 // chart does and keeps doing.
 function _slotComp(slot){
+ rhyEnsureSlot(slot);
  var c = slot && slot.comp;
  return (c && COMP_PATTERNS[c]) ? c : songCompStyle;
 }
@@ -37649,12 +37674,18 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
   // the song at once, which was a chord-by-chord job before (4.5.7).
   var rx=document.createElement('span'); rx.className='ci-extras';
   rx.appendChild(_ciMoreBtn('More ▾', function(){ sbCompMore(slot, repaint); }));
+  var drawB=_ciMoreBtn('Draw…', function(){ sbDrawRhythm(slot, repaint); });
+  drawB.title='Draw a rhythm for this chord on a roll: accents, ratchets, lengths';
+  rx.appendChild(drawB);
   var allB=_ciMoreBtn('All chords…', function(){ sbCompAll(repaint); });
   allB.title='Set one rhythm on every chord in the song';
   rx.appendChild(allB);
-  var _rRow=_ciSeg('Rhythm', SB_COMP_MAIN,
+  // A rhythm drawn for this chord is a tile of its own, lit, so the row says what the chord plays.
+  var rhyOpts = SB_COMP_MAIN.slice();
+  if(slot.compDef) rhyOpts.push([slot.comp, slot.compDef.name || 'Drawn']);
+  var _rRow=_ciSeg('Rhythm', rhyOpts,
    function(k){ return _slotComp(slot)===k; },
-   function(k){ slot.comp=k; repaint(); },
+   function(k){ if(!(slot.compDef && k===slot.comp)) sbSetComp(slot, k); repaint(); },
    rx);
   _rRow.querySelector('.ci-seg').classList.add('ci-grid4');
   body.appendChild(_rRow);
@@ -37734,11 +37765,24 @@ function sbCompAll(repaint){
   var b=document.createElement('button'); b.type='button'; b.className='ll-act';
   b.innerHTML='<b>'+o[1]+'</b><span>'+o[2]+'</span>';
   b.addEventListener('click', function(){
-   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; if(o[0]==null) delete x.comp; else x.comp=o[0]; }); });
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; sbSetComp(x, o[0]); }); });
    box.close();
    if(typeof repaint==='function') repaint();
    try{ renderChartSeq(); }catch(e){}
    showToast(o[1]+' on all '+n+' chord'+(n===1?'':'s'));
+  });
+  list.appendChild(b);
+ });
+ rhyBankList('chord').forEach(function(e){
+  var b=document.createElement('button'); b.type='button'; b.className='ll-act';
+  b.innerHTML='<b></b><span>Yours · '+e.data.steps+' steps</span>'; b.firstChild.textContent=e.name;
+  b.addEventListener('click', function(){
+   var d=Object.assign({}, e.data, {name:e.name});
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; sbSetComp(x, 'u', d); }); });
+   box.close();
+   if(typeof repaint==='function') repaint();
+   try{ renderChartSeq(); }catch(err){}
+   showToast(e.name+' on all '+n+' chord'+(n===1?'':'s'));
   });
   list.appendChild(b);
  });
@@ -37777,7 +37821,7 @@ function sbCompMore(slot, repaint){
   var b=document.createElement('button'); b.type='button'; b.className='ll-act';
   b.innerHTML='<b>'+label+'</b><span>'+note+'</span>';
   if((k==null?null:k)===(slot.comp||null)) b.classList.add('primary');
-  b.addEventListener('click', function(){ slot.comp=k; box.close(); repaint(); });
+  b.addEventListener('click', function(){ sbSetComp(slot, k); box.close(); repaint(); });
   list.appendChild(b);
  };
  add('charleston','Charleston','Beat 1 and the &-of-2 — the jazz comp');
@@ -37790,8 +37834,27 @@ function sbCompMore(slot, repaint){
    : 'One strike, held to the next chord');
  add(null,'Follow the song','Whatever the song comp is set to ('
    +((COMP_PATTERNS[songCompStyle]||{}).label||songCompStyle)+')');
+ // The rhythms you drew and kept, and a way to draw another.
+ rhyBankList('chord').forEach(function(e){
+  var b=document.createElement('button'); b.type='button'; b.className='ll-act';
+  b.innerHTML='<b></b><span>Yours · '+e.data.steps+' steps</span>'; b.firstChild.textContent=e.name;
+  if(slot.compDef && rhyId(slot.compDef)===rhyId(e.data)) b.classList.add('primary');
+  b.addEventListener('click', function(){ sbSetComp(slot, 'u', Object.assign({}, e.data, {name:e.name})); box.close(); repaint(); });
+  list.appendChild(b);
+ });
+ var dr=document.createElement('button'); dr.type='button'; dr.className='ll-act';
+ dr.innerHTML='<b>Draw a rhythm…</b><span>Accents, ratchets and lengths on a one-lane roll</span>';
+ dr.addEventListener('click', function(){ box.close(); sbDrawRhythm(slot, repaint); });
+ list.appendChild(dr);
  box.body.appendChild(list);
  box.addCancel('Close');
+}
+// The roll for one chord: what it plays now (a built-in's hits, or the rhythm drawn for it) is where it starts.
+function sbDrawRhythm(slot, repaint){
+ var def = slot.compDef ? rhyNorm(slot.compDef) : rhyFromBuiltin(_slotComp(slot), 16);
+ if(!slot.compDef && !rhyHasHits(def)) def = rhyBlank(16);
+ rhyEdit({title:'Rhythm for '+(slot.label||'this chord'), def:def, useLabel:'Use for this chord',
+  onUse:function(d){ sbSetComp(slot, 'u', d); repaint(); showToast((d.name||'Rhythm')+' on '+(slot.label||'this chord')); }});
 }
 
 // ── Section options ──────────────────────────────────────────────────────
@@ -41899,6 +41962,7 @@ function _songSig(){
     n:s.name, p:secPlays(s),
     sl:(s.slots||[]).map(x=>[x.rootM,x.triadQ,x.type7,x.ext,x.bassNote,
                              x.bars,x.beats,x.eighths,x.isRest?1:0,x.comp||null,x.voicing||null,
+                             x.compDef?rhyId(x.compDef):null,
                              x.ivs?x.ivs.join('.'):null])
    }))
   });
@@ -42700,6 +42764,9 @@ function _triggerChordImmediate(rootM, triadQ, type7, func, pressure, baseExt, s
  playChord(rootM, voicedIntvs, false, pressure, sustain);
  }
 
+ // The chord rhythm (the Rhythm bar on the chord pads) takes the chord from here: what it re-strikes is the chord
+ // just tapped, on the master clock.
+ try{ crOnChordTap(lastChordRoot, lastChordIntvs); }catch(e){}
  if(arpOn){
  const hasRhythm = rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying());
  if(snapMode === 'off' || !hasRhythm){
@@ -43802,10 +43869,11 @@ document.querySelectorAll('[data-compstyle]').forEach(function(b){
 // Re-strikes the currently-held chord slot without the side effects that
 // belong only to a genuine chord change (arp phase reset, logic-mode
 // highlight, bass auto-regen) — those already happened on the first attack.
-function _compRestrike(slot, atTime){
- return _withSlotVoicing(slot, function(){ return _compRestrike1(slot, atTime); });
+function _compRestrike(slot, atTime, opt){
+ return _withSlotVoicing(slot, function(){ return _compRestrike1(slot, atTime, opt); });
 }
-function _compRestrike1(slot, atTime){
+// opt: {vel, lenSec} from a drawn rhythm — how hard, and how long it is held (0 or none rings and decays).
+function _compRestrike1(slot, atTime, opt){
  if(!songLoopActive || !slot || slot.isRest) return;
  const capo = (songLoopActive && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
  const playRoot = slot.rootM + capo;
@@ -43817,16 +43885,16 @@ function _compRestrike1(slot, atTime){
  // _compRestrike is only ever scheduled for comp styles with hits (never
  // 'sustain' — see _scheduleCompHits), so a re-strike always decays
  // naturally per the Settings decay knob rather than holding flat.
+ // A drawn rhythm brings its own level for the hit and, if it is gated, how long to hold it (see rhyCompile).
+ const velMul = (opt && opt.vel!=null) ? opt.vel : null;
+ const lenSec = (opt && opt.lenSec>0) ? opt.lenSec : 0, gated = lenSec>0;
  if(wetDry < .99){
   stopAll(atTime);
-  if(playBass !== null){
-   playSlashChord(playRoot, voicedIntvs, playBass-12, 0, false, atTime);
-  } else {
-   playChord(playRoot, voicedIntvs, false, 0, false, atTime);
-  }
+  const id = playChord(playRoot, voicedIntvs, false, 0, gated, atTime, playBass !== null ? playBass-12 : undefined, velMul);
+  if(gated && id!=null) _releaseChordAt(id, atTime+lenSec);
  } else if(playBass !== null){
   // arpOn + wetDry≈1: still re-strike the sustained bass pedal note under the arp
-  try{ playSlashChord(playRoot, voicedIntvs, playBass-12, 0, true, atTime); }catch(e){}
+  try{ playChord(playRoot, voicedIntvs, false, 0, true, atTime, playBass-12, velMul); }catch(e){}
  }
 }
 
@@ -43844,7 +43912,7 @@ function _drainCompPending(){
  var h = schedHorizon();
  for(var i=0; i<_compPending.length; i++){
   var e = _compPending[i];
-  if(!e.done && e.hitT <= h){ e.done = true; try{ _compRestrike(e.slot, e.hitT); }catch(err){} }
+  if(!e.done && e.hitT <= h){ e.done = true; try{ _compRestrike(e.slot, e.hitT, e.opt); }catch(err){} }
  }
  _compPending = _compPending.filter(function(e){ return !e.done; });
 }
@@ -43866,6 +43934,27 @@ function _scheduleCompHits(slot, baseTime){
  const bpm = parseFloat(document.getElementById('bpm')?.value || 100);
  const beatSecL = 60/bpm;
  const eighthSec = beatSecL*0.5;
+ // A rhythm somebody drew has its own length (its steps) and its own level, ratchet and gate on every hit,
+ // and repeats from the start of the chord; the built-ins below are untouched.
+ if(pat.custom){
+  const stepSec = beatSecL/4;
+  const slotLen = (typeof slotTotalMs==='function') ? slotTotalMs(slot)/1000 : (slot.bars||1)*_songBarSteps()*stepSec;
+  const loop = pat.steps*stepSec;
+  const bt = (baseTime != null) ? baseTime : ctx.currentTime;
+  for(let r=0; r*loop < slotLen - 0.01; r++){
+   pat.ev.forEach(function(e){
+    if(r===0 && e.p===0) return; // the initial attack, already fired
+    const hitT = bt + r*loop + e.p*stepSec;
+    if(hitT >= bt + slotLen - 0.01) return;
+    const opt = {vel:e.v, lenSec: e.len>0 ? e.len*stepSec : 0};
+    const fireMs = Math.max(0, (hitT - SCHED_LEAD - ctx.currentTime)*1000);
+    const _ce = {slot:slot, hitT:hitT, done:false, opt:opt};
+    _compPending.push(_ce);
+    songCompTimers.push(setTimeout(function(){ if(_ce.done) return; _ce.done = true; _compRestrike(slot, hitT, opt); }, fireMs));
+   });
+  }
+  return;
+ }
  // A bar is however many steps the sequencer is running, not a hardcoded
  // eight eighths. slotTotalMs() already worked this out; using a different
  // bar length here meant that at any step count other than 16 the comp hits
@@ -43895,6 +43984,537 @@ function _scheduleCompHits(slot, baseTime){
   });
  }
 }
+
+
+// ═══════════════════════════════════════════════════════════
+// CHORD RHYTHMS — custom patterns, the bank, the roll, the live engine (4.9.9.9.9.9.6f)
+// ═══════════════════════════════════════════════════════════
+// A chord rhythm used to be a fixed list of hit positions (COMP_PATTERNS, in eighths)
+// that only a song could play. Now a rhythm is also something you draw: one lane of
+// sixteenth steps, each step a hit that can be an accent, a ratchet (2 to 4 re-strikes
+// inside the step) and gated (a length in steps; otherwise it rings and decays as a comp
+// hit always has). The built-in rhythms are kept exactly as they were; a drawn one is
+//
+//     {name, steps, cells:[{on, acc, rat, len}]}
+//
+// and is compiled into the same COMP_PATTERNS table under a name made from its content
+// ('u:' + a hash of the cells), so the song engine finds it the way it finds Strum, and
+// two chords that carry the same drawn rhythm share one entry. A chord that uses one
+// carries its definition in slot.compDef as well: a song shared as a link or a file
+// brings its rhythms with it instead of falling back to the song's comp on another phone.
+//
+// var, not let: the Live bar is built during boot and the song engine reads these from
+// thousands of lines away (CLAUDE.md, "Temporal dead zone").
+var RHY_STEP_OPTS = [8, 12, 16, 24, 32];
+var RHY_NORMAL_VEL = 0.85;     // a plain hit; an accent is 1.0, which is what every built-in hit has
+function rhyBlank(steps){
+ var c = [], n = steps || 16;
+ for(var i=0;i<n;i++) c.push({on:0, acc:0, rat:1, len:0});
+ return {name:'', steps:n, cells:c};
+}
+function rhyClone(d){ return JSON.parse(JSON.stringify(d)); }
+// A built-in rhythm drawn out: its hit positions (eighths of a bar, halves allowed) onto sixteenths.
+function rhyFromBuiltin(key, steps){
+ var def = rhyBlank(steps || 16), p = COMP_PATTERNS[key];
+ def.name = (p && p.label) || key;
+ if(p && p.custom && p.cells){ return rhyClone({name:p.label, steps:p.steps, cells:p.cells}); }
+ if(p && p.hits) p.hits.forEach(function(h){
+  var i = Math.round(h*2);
+  if(i >= 0 && i < def.steps) def.cells[i].on = 1;
+ });
+ return def;
+}
+// Normalised, so an edit that changes nothing does not make a new rhythm.
+function rhyNorm(def){
+ var steps = RHY_STEP_OPTS.indexOf(def.steps|0) >= 0 ? (def.steps|0) : 16, cells = [];
+ for(var i=0;i<steps;i++){
+  var c = (def.cells && def.cells[i]) || {};
+  var on = c.on ? 1 : 0;
+  cells.push({on:on, acc:on && c.acc ? 1 : 0, rat:on ? Math.max(1, Math.min(4, c.rat|0 || 1)) : 1, len:on ? Math.max(0, Math.min(8, c.len|0)) : 0});
+ }
+ return {name:String(def.name||'').slice(0, 28), steps:steps, cells:cells};
+}
+function rhyId(def){
+ var d = rhyNorm(def), s = d.steps + ':' + d.cells.map(function(c){
+  return c.on ? (c.acc ? 'A' : 'x') + (c.rat>1 ? c.rat : '') + (c.len ? 'l'+c.len : '') : '.';
+ }).join('');
+ var h = 2166136261;
+ for(var i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+ return 'u:' + h.toString(36);
+}
+function rhyHasHits(def){ return !!(def && def.cells && def.cells.some(function(c){ return c && c.on; })); }
+// The events of a drawn rhythm, in sixteenths: p (where, fractional for a ratchet), v (how hard), len (the gate in
+// steps, 0 for ring). A ratchet's re-strikes are short (a stutter, not a pile-up); the last of them takes the
+// cell's own length.
+function rhyCompile(def){
+ var d = rhyNorm(def), ev = [];
+ d.cells.forEach(function(c, i){
+  if(!c.on) return;
+  var base = c.acc ? 1.0 : RHY_NORMAL_VEL;
+  for(var k=0;k<c.rat;k++){
+   var last = k === c.rat-1;
+   ev.push({p: i + k/c.rat, v: k===0 ? base : base*0.82,
+            len: (c.rat>1 && !last) ? 0.8/c.rat : (c.len || 0)});
+  }
+ });
+ return {label: d.name || 'Custom', custom:true, steps:d.steps, cells:d.cells, ev:ev,
+         hits: ev.map(function(e){ return e.p/2; })};
+}
+// Make a drawn rhythm known to the song engine. Returns the name to put on a chord.
+function rhyRegister(def){
+ var id = rhyId(def);
+ var cur = COMP_PATTERNS[id];
+ var nm = String(def.name||'').slice(0, 28) || 'Custom';
+ if(!cur){ var p = rhyCompile(def); p.label = nm; COMP_PATTERNS[id] = p; }
+ else if(cur.custom && nm !== cur.label) cur.label = nm;
+ return id;
+}
+// A chord's own rhythm: its definition is made known on the way through, which is what lets a song loaded
+// from anywhere play it.
+function rhyEnsureSlot(slot){
+ var c = slot && slot.comp;
+ if(c && c.charAt(0)==='u' && c.charAt(1)===':' && slot.compDef && !COMP_PATTERNS[c]){
+  var id = rhyRegister(slot.compDef);
+  if(id !== c){ slot.comp = id; }
+ }
+}
+// Put rhythm `k` on a chord: a built-in by name, a drawn one by its definition, null to follow the song.
+function sbSetComp(slot, k, def){
+ if(k==null){ delete slot.comp; delete slot.compDef; return; }
+ if(def){ slot.comp = rhyRegister(def); slot.compDef = rhyNorm(def); }
+ else { slot.comp = k; delete slot.compDef; }
+}
+
+// ── The bank ──
+// Rhythms and patterns you keep, across the parts: 'chord' rhythms (a drawn rhythm as above) and the
+// 'drums', 'bass' and 'mel' patterns that arrive with the sequencers. One list, one key, one set of rules.
+var RHY_BANK = [];
+var RHY_BANK_KEY = 'modo-rhythm-bank';
+(function(){
+ try{
+  var a = JSON.parse(modStore.getItem(RHY_BANK_KEY) || '[]');
+  if(Array.isArray(a)) RHY_BANK = a.filter(function(e){ return e && e.id && e.kind && e.data; });
+ }catch(e){}
+})();
+function rhyBankSave(){ try{ modStore.setItem(RHY_BANK_KEY, JSON.stringify(RHY_BANK)); }catch(e){} }
+function rhyBankList(kind){ return RHY_BANK.filter(function(e){ return !kind || e.kind===kind; }); }
+function rhyBankGet(id){ for(var i=0;i<RHY_BANK.length;i++) if(RHY_BANK[i].id===id) return RHY_BANK[i]; return null; }
+function rhyBankAdd(kind, name, data){
+ var e = {id:'b'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36), kind:kind, name:String(name||'').slice(0, 28) || 'Untitled', data:data, t:Date.now()};
+ RHY_BANK.push(e); rhyBankSave();
+ return e;
+}
+function rhyBankRename(id, name){ var e = rhyBankGet(id); if(!e) return; e.name = String(name||'').slice(0, 28) || e.name; rhyBankSave(); }
+function rhyBankDelete(id){ RHY_BANK = RHY_BANK.filter(function(e){ return e.id!==id; }); rhyBankSave(); }
+window.rhyBankList = rhyBankList; window.rhyBankGet = rhyBankGet; window.rhyBankAdd = rhyBankAdd;
+
+// ── Playing a hit ──
+// One strike of a chord at an exact time, at a level, optionally gated. The song's comp and the live engine both
+// come through here. `chord` is {root, intvs (above the root; a slash bass rides as a negative interval, as in
+// lastChordIntvs), } — the same shape setArpChord keeps.
+function rhyStrike(root, intvs, atTime, vel, lenSec){
+ var uppers = intvs.filter(function(d){ return d >= 0; });
+ var lows = intvs.filter(function(d){ return d < 0; });
+ // A slash chord's bass rides in lastChordIntvs as a negative interval from the root, and root + it is already the
+ // sounding pitch (_triggerChordImmediate wrote it an octave down), so it is the floor the voicing clears as-is.
+ var bass = lows.length ? root + Math.min.apply(null, lows) : null;
+ var voiced = autoInvOn ? smartVoiceLead(root, uppers, bass) : uppers;
+ var gated = lenSec > 0;
+ var id = playChord(root, voiced, false, 0, gated, atTime, bass, vel);
+ // A gated hit is held and let go at the end of its length, on the Release knob; an ungated one rings and decays
+ // as every comp hit always has.
+ if(gated && id!=null) _releaseChordAt(id, atTime + lenSec);
+ return id;
+}
+
+// ── The live engine ──
+// A rhythm that plays the chord you tapped, on the master clock, without a song. State is one object; the
+// scheduler is a tick consumer like the arp's and the sequencers' (tickClock calls scheduleChordRhythm).
+//   on     armed: a chord tap starts the rhythm
+//   latch  true: it goes on after the finger lifts, until Stop or another chord;
+//          false: it plays while the chord is held
+//   key    which rhythm ('strum', or 'u:…' for a drawn one, with def)
+// A song always wins: while one is playing, the song's own comp sounds and this one stays quiet (its grid keeps
+// counting, so it comes back in time, and a latched rhythm is picked up again when the song stops).
+var CR = { on:false, latch:true, key:'strum', def:null, run:false, nextT:0, step:0, chord:null,
+           tapId:null, tapT:0, preview:null, previewChord:null, runBefore:false };
+var CR_KEY = 'modo-chord-rhythm';
+(function(){
+ try{
+  var o = JSON.parse(modStore.getItem(CR_KEY) || 'null');
+  if(o){
+   if(typeof o.on==='boolean') CR.on = o.on;
+   if(typeof o.latch==='boolean') CR.latch = o.latch;
+   if(typeof o.key==='string') CR.key = o.key;
+   if(o.def && o.def.cells) CR.def = rhyNorm(o.def);
+  }
+ }catch(e){}
+})();
+function crSave(){ try{ modStore.setItem(CR_KEY, JSON.stringify({on:CR.on, latch:CR.latch, key:CR.key, def:CR.def})); }catch(e){} }
+// The rhythm now selected, as events in sixteenths and a loop length. 'sustain' and 'played' have no hits, so
+// they are no rhythm: the chord is simply held.
+function crPattern(){
+ if(CR.preview) return CR.preview;
+ var key = CR.key, p = null;
+ if(key && key.charAt(0)==='u' && key.charAt(1)===':' && CR.def){ p = COMP_PATTERNS[rhyRegister(CR.def)]; }
+ else p = COMP_PATTERNS[key];
+ if(!p || !p.hits) return null;
+ if(p.custom) return {steps:p.steps, ev:p.ev};
+ var n = _songBarSteps(), ev = [];
+ p.hits.forEach(function(h){ if(h*2 < n) ev.push({p:h*2, v:1.0, len:0}); });
+ return {steps:n, ev:ev};
+}
+function crLabel(){
+ var p = null;
+ if(CR.key && CR.key.charAt(0)==='u' && CR.def) return CR.def.name || 'Custom';
+ p = COMP_PATTERNS[CR.key];
+ return p ? p.label : 'Rhythm';
+}
+function crSongOn(){ return typeof songLoopActive!=='undefined' && songLoopActive; }
+// Line the grid up: the next sixteenth the master clock has, counted in the pattern from the bar line (the drums'
+// own bar when they are running, the clock's when they are not).
+function crAlign(){
+ var ctx = getCtx(), pat = crPattern(); if(!ctx || !pat) return false;
+ var stepSec = clockStepSec();
+ var E = seqEntryTime(ctx, stepSec, pat.steps);
+ var k = Math.max(0, Math.floor((E.t - (ctx.currentTime + 0.03)) / stepSec));
+ CR.nextT = E.t - k*stepSec;
+ var n = pat.steps;
+ CR.step = (((E.step - k) % n) + n) % n;
+ return true;
+}
+function crStart(){
+ var pat = crPattern(); if(!pat || !getCtx()) return;
+ var others = isAnythingPlaying() || metronomeOn;
+ if(!crAlign()) return;
+ CR.run = true;
+ // Alone, the rhythm is what keeps the clock going; with anything else running the clock is theirs and its
+ // downbeat is not ours to move.
+ if(!others) startClock(); else if(typeof ensureClockRunning==='function') ensureClockRunning();
+}
+function crStop(){ CR.run = false; }
+function crResync(){ if(CR.run) crAlign(); }
+function crActive(){ return !!CR.run; }
+// A chord tapped by hand (_triggerChordImmediate). Sets what the rhythm plays and, when armed, starts it.
+function crOnChordTap(rootM, intvs){
+ CR.chord = {root:rootM, intvs:intvs.slice()};
+ var ctx = getCtx();
+ CR.tapT = ctx ? ctx.currentTime + FADE_OUT : 0;
+ CR.tapId = (typeof _chordLiveId!=='undefined') ? _chordLiveId : null;
+ if(!CR.on || crSongOn() || CR.preview) return;
+ if(!CR.run) crStart();
+}
+// A held chord's finger came up. In hold mode that is the end of the rhythm; latched, it goes on.
+function crOnRelease(id){
+ if(CR.on && !CR.latch && CR.run && id!=null && id === CR.tapId) crStop();
+}
+function scheduleChordRhythm(){
+ if(!CR.run) return;
+ var ctx = getCtx(), pat = crPattern();
+ if(!ctx || !pat){ CR.run = false; return; }
+ var song = crSongOn() && !CR.preview;
+ var chord = CR.preview ? (CR.previewChord || CR.chord) : CR.chord;
+ var h = schedHorizon();
+ var guard = 0;
+ while(CR.nextT < h && guard++ < 256){
+  var stepSec = clockStepSec();
+  var k = CR.step % pat.steps;
+  if(!song && chord && (CR.preview || chordsEnabled)){
+   var swing = (typeof window._sqSwingOffset==='function') ? window._sqSwingOffset(k, stepSec, (typeof window._sqSwingVal==='function') ? window._sqSwingVal() : 0) : 0;
+   for(var i=0;i<pat.ev.length;i++){
+    var e = pat.ev[i];
+    if(Math.floor(e.p + 1e-9) !== k) continue;
+    var t = CR.nextT + (e.p - k) * stepSec + swing;
+    // The tap that started or changed this chord has already sounded it, on the finger: a hit a few ms after it
+    // would be a flam on the same chord.
+    if(!CR.preview && t > CR.tapT - 0.01 && t < CR.tapT + 0.06) continue;
+    try{ rhyStrike(chord.root, chord.intvs, t, e.v, e.len > 0 ? e.len * stepSec : 0); }catch(err){}
+   }
+  }
+  CR.nextT += stepSec; CR.step++;
+ }
+ if(CR.nextT < ctx.currentTime - 1){ crAlign(); }   // the timer chain was starved long enough to lose the grid
+}
+// Where the playhead is, for the roll (a step index, or -1).
+function crPlayStep(){
+ if(!CR.run) return -1;
+ var ctx = getCtx(), pat = crPattern(); if(!ctx || !pat) return -1;
+ var stepSec = clockStepSec();
+ var ahead = Math.round((CR.nextT - ctx.currentTime) / stepSec);
+ return ((CR.step - ahead) % pat.steps + pat.steps) % pat.steps;
+}
+// Audition a drawn rhythm on the current chord, on the clock, until it is stopped. Nothing is written anywhere.
+function crPreviewStart(def){
+ var c = rhyCompile(def);
+ if(!c.ev.length) return false;
+ CR.runBefore = CR.run;
+ CR.preview = {steps:c.steps, ev:c.ev};
+ CR.previewChord = CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()};
+ var others = isAnythingPlaying() || metronomeOn;
+ if(!crAlign()){ CR.preview = null; return false; }
+ CR.run = true;
+ if(!others) startClock(); else if(typeof ensureClockRunning==='function') ensureClockRunning();
+ return true;
+}
+function crPreviewUpdate(def){
+ if(!CR.preview) return;
+ var c = rhyCompile(def);
+ var stepsChanged = c.steps !== CR.preview.steps;
+ CR.preview = {steps:c.steps, ev:c.ev};
+ if(stepsChanged) crAlign();
+}
+function crPreviewStop(){
+ if(!CR.preview) return;
+ CR.preview = null; CR.previewChord = null;
+ // What was running before the audition, if anything, goes on (on the grid again); otherwise the engine rests.
+ if(CR.runBefore && CR.on && CR.chord && crPattern()) crAlign(); else crStop();
+ CR.runBefore = false;
+}
+function crPreviewOn(){ return !!CR.preview; }
+window.crOnChordTap = crOnChordTap; window.crOnRelease = crOnRelease; window.crStop = crStop; window.crStart = crStart;
+
+// ── The roll: one lane, drawn ──
+// A single-lane piano roll for a chord rhythm. A step is a sixteenth; a hit is a bar standing on it — tall for
+// an accent, lower for a plain hit, as many slices as its ratchet, as wide as its gate. Tap an empty step to put
+// a hit there; tap a hit to select it (and edit it underneath); tap the selected hit again to take it away.
+// Audition plays what is drawn on the current chord, on the master clock, and shows the playhead.
+// opts: {title, def, useLabel, onUse(def)}
+var _rhyOpen = null;
+function rhyEdit(opts){
+ opts = opts || {};
+ var def = rhyNorm(opts.def || rhyBlank(16));
+ var sel = -1;
+ var box = _sbSheet(opts.title || 'Rhythm', 'rhy-sheet');
+ _rhyOpen = box;
+ var raf = 0;
+ box.onClose = function(){ cancelAnimationFrame(raf); crPreviewStop(); _rhyOpen = null; };
+ var body = box.body;
+ var mk = function(tag, cls, txt){ var e = document.createElement(tag); if(cls) e.className = cls; if(txt!=null) e.textContent = txt; return e; };
+
+ // Name, and the step count.
+ var top = mk('div', 'rhy-row');
+ var nameIn = mk('input', 'rhy-name'); nameIn.type = 'text'; nameIn.maxLength = 28; nameIn.placeholder = 'Name this rhythm';
+ nameIn.value = def.name; nameIn.setAttribute('aria-label', 'Rhythm name');
+ nameIn.addEventListener('input', function(){ def.name = nameIn.value; });
+ top.appendChild(nameIn);
+ body.appendChild(top);
+ var stepRow = mk('div', 'rhy-row');
+ stepRow.appendChild(mk('span', 'rhy-lbl', 'Steps'));
+ var stepSeg = mk('div', 'rhy-seg');
+ stepRow.appendChild(stepSeg);
+ body.appendChild(stepRow);
+
+ // Start from a rhythm that exists.
+ var fromRow = mk('div', 'rhy-row');
+ fromRow.appendChild(mk('span', 'rhy-lbl', 'Start from'));
+ var from = mk('select', 'rhy-from'); from.setAttribute('aria-label', 'Start from an existing rhythm');
+ var o0 = mk('option', null, 'Choose…'); o0.value = ''; from.appendChild(o0);
+ var gB = mk('optgroup'); gB.label = 'Built in';
+ Object.keys(COMP_PATTERNS).forEach(function(k){
+  var p = COMP_PATTERNS[k]; if(!p.hits || p.custom) return;
+  var o = mk('option', null, p.label); o.value = 'b:' + k; gB.appendChild(o);
+ });
+ from.appendChild(gB);
+ var mine = rhyBankList('chord');
+ if(mine.length){
+  var gM = mk('optgroup'); gM.label = 'My rhythms';
+  mine.forEach(function(e){ var o = mk('option', null, e.name); o.value = 'u:' + e.id; gM.appendChild(o); });
+  from.appendChild(gM);
+ }
+ fromRow.appendChild(from);
+ body.appendChild(fromRow);
+ from.addEventListener('change', function(){
+  var v = from.value; if(!v) return;
+  var next = null;
+  if(v.indexOf('b:') === 0) next = rhyFromBuiltin(v.slice(2), def.steps);
+  else { var e = rhyBankGet(v.slice(2)); if(e) next = rhyNorm(e.data); }
+  from.value = '';
+  if(!next) return;
+  var keepName = def.name;
+  def = rhyNorm(next); def.name = keepName || next.name || '';
+  nameIn.value = def.name; sel = -1; rebuildSteps(); syncInsp(); relayout(); pushPreview();
+ });
+
+ // The roll.
+ var wrap = mk('div', 'rhy-roll');
+ var cv = mk('canvas', 'rhy-canvas'); cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Rhythm roll: one lane of steps');
+ wrap.appendChild(cv);
+ body.appendChild(wrap);
+ var hint = mk('div', 'rhy-hint');
+ body.appendChild(hint);
+ var insp = mk('div', 'rhy-insp');
+ body.appendChild(insp);
+
+ // Audition and clear.
+ var tr = mk('div', 'rhy-row rhy-tr');
+ var aud = mk('button', 'rhy-btn', '▶ Audition'); aud.type = 'button';
+ aud.title = 'Hear it on the current chord, in time with the tempo';
+ var clr = mk('button', 'rhy-btn', 'Clear'); clr.type = 'button';
+ tr.appendChild(aud); tr.appendChild(clr);
+ body.appendChild(tr);
+
+ var foot = mk('div', 'rhy-row rhy-foot');
+ var save = mk('button', 'rhy-btn', 'Save to my rhythms'); save.type = 'button';
+ var use = mk('button', 'rhy-btn rhy-primary', opts.useLabel || 'Use'); use.type = 'button';
+ foot.appendChild(save); foot.appendChild(use);
+ body.appendChild(foot);
+ box.addCancel('Close');
+
+ function cellW(){ var avail = wrap.clientWidth || 320; return Math.max(24, Math.floor(avail / def.steps)); }
+ var RULER = 14, LANE = 64;
+ function relayout(){
+  var cw = cellW(), dpr = Math.min(2, window.devicePixelRatio || 1), W = cw * def.steps, H = RULER + LANE;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+ }
+ function css(v, fb){ var s = getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return s || fb; }
+ function draw(){
+  var g = cv.getContext('2d'), cw = cellW(), W = cw * def.steps, H = RULER + LANE;
+  var acc = css('--accent', '#f66'), txt = css('--text', '#eee'), mut = css('--muted', '#889'), bd = css('--border2', '#334'), surf = css('--surf2', '#161826');
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = surf; g.fillRect(0, RULER, W, LANE);
+  var barSteps = (typeof meterStepsPerBar === 'function') ? meterStepsPerBar() : 16;
+  g.font = '600 9px Outfit, sans-serif'; g.textBaseline = 'middle';
+  for(var i = 0; i <= def.steps; i++){
+   var x = i * cw, beat = i % 4 === 0, bar = barSteps > 0 && i % barSteps === 0;
+   g.strokeStyle = bar ? mut : (beat ? bd : bd); g.globalAlpha = bar ? .9 : (beat ? .7 : .28);
+   g.lineWidth = bar ? 1.5 : 1;
+   g.beginPath(); g.moveTo(x + .5, RULER); g.lineTo(x + .5, H); g.stroke(); g.globalAlpha = 1;
+   if(beat && i < def.steps){ g.fillStyle = mut; g.fillText(String(Math.floor(i / 4) + 1), x + 3, RULER / 2); }
+  }
+  var ph = crPlayStep();
+  def.cells.forEach(function(c, i){
+   if(!c.on) return;
+   var x = i * cw + 1.5, w = (c.len > 0 ? Math.min(c.len, def.steps - i) : 1) * cw - 3;
+   var h = c.acc ? LANE - 8 : Math.round(LANE * .6), y = RULER + LANE - h - 4;
+   g.fillStyle = acc; g.globalAlpha = c.acc ? 1 : .72;
+   if(c.rat > 1){
+    // Slices: each re-strike is its own bar.
+    var sw = (cw - 3) / c.rat;
+    for(var k = 0; k < c.rat; k++){ _rhyRound(g, x + k * sw, y, Math.max(2, sw - 1.5), h, 2); g.fill(); }
+    if(c.len > 1){ g.globalAlpha = .35; _rhyRound(g, x + cw - 3, y + h - 5, w - cw + 3, 5, 2); g.fill(); }
+   } else { _rhyRound(g, x, y, Math.max(3, w), h, 3); g.fill(); }
+   g.globalAlpha = 1;
+   if(i === sel){ g.strokeStyle = txt; g.lineWidth = 2; _rhyRound(g, x - 1, y - 1, Math.max(3, w) + 2, h + 2, 4); g.stroke(); }
+  });
+  if(ph >= 0 && CR.preview){ g.fillStyle = txt; g.globalAlpha = .85; g.fillRect(ph * cw, RULER, 2, LANE); g.globalAlpha = 1; g.fillRect(ph * cw - 2, 0, 6, 3); }
+ }
+ var moved = false, px = 0, py = 0;
+ cv.addEventListener('pointerdown', function(e){ moved = false; px = e.clientX; py = e.clientY; });
+ cv.addEventListener('pointermove', function(e){ if(Math.abs(e.clientX - px) + Math.abs(e.clientY - py) > 8) moved = true; });
+ cv.addEventListener('pointercancel', function(){ moved = true; });
+ cv.addEventListener('pointerup', function(e){
+  if(moved) return;
+  var r = cv.getBoundingClientRect(), i = Math.floor((e.clientX - r.left) / (r.width / def.steps));
+  if(i < 0 || i >= def.steps || e.clientY - r.top < RULER) return;
+  var c = def.cells[i];
+  if(!c.on){ c.on = 1; c.acc = 0; c.rat = 1; c.len = 0; sel = i; strikeOne(i); }
+  else if(sel === i){ c.on = 0; c.acc = 0; c.rat = 1; c.len = 0; sel = -1; }
+  else { sel = i; }
+  syncInsp(); draw(); pushPreview();
+ });
+ function strikeOne(i){
+  // Not while it is playing: the audition is the feedback then.
+  if(crPreviewOn()) return;
+  try{
+   var ch = CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()}, ctx = getCtx(); if(!ctx) return;
+   var c = def.cells[i];
+   rhyStrike(ch.root, ch.intvs, ctx.currentTime + 0.01, c.acc ? 1.0 : RHY_NORMAL_VEL, 0);
+  }catch(e){}
+ }
+ function pushPreview(){ if(crPreviewOn()){ if(rhyHasHits(def)) crPreviewUpdate(def); else { crPreviewStop(); syncAud(); } } }
+ function rebuildSteps(){
+  stepSeg.innerHTML = '';
+  RHY_STEP_OPTS.forEach(function(n){
+   var b = mk('button', n === def.steps ? 'on' : '', String(n)); b.type = 'button';
+   b.setAttribute('aria-pressed', n === def.steps ? 'true' : 'false');
+   b.addEventListener('click', function(){
+    if(n === def.steps) return;
+    var cells = [];
+    for(var i = 0; i < n; i++) cells.push(def.cells[i] ? def.cells[i] : {on:0, acc:0, rat:1, len:0});
+    def.steps = n; def.cells = cells; if(sel >= n) sel = -1;
+    rebuildSteps(); syncInsp(); relayout(); pushPreview();
+   });
+   stepSeg.appendChild(b);
+  });
+ }
+ function seg(label, opts2, isOn, pick){
+  var row = mk('div', 'rhy-row');
+  row.appendChild(mk('span', 'rhy-lbl', label));
+  var s = mk('div', 'rhy-seg');
+  opts2.forEach(function(o){
+   var b = mk('button', isOn(o[0]) ? 'on' : '', o[1]); b.type = 'button'; b.title = o[2] || '';
+   b.setAttribute('aria-pressed', isOn(o[0]) ? 'true' : 'false');
+   b.addEventListener('click', function(){ pick(o[0]); syncInsp(); draw(); pushPreview(); });
+   s.appendChild(b);
+  });
+  row.appendChild(s);
+  return row;
+ }
+ function syncInsp(){
+  insp.innerHTML = '';
+  if(sel < 0 || !def.cells[sel] || !def.cells[sel].on){
+   sel = -1;
+   hint.textContent = rhyHasHits(def) ? 'Tap a hit to edit it. Tap the selected hit again to take it away.' : 'Tap a step to put a hit on it.';
+   return;
+  }
+  var c = def.cells[sel];
+  hint.textContent = 'Step ' + (sel + 1) + ' selected.';
+  insp.appendChild(seg('Level', [[0, 'Plain', 'A plain hit'], [1, 'Accent', 'An accent: louder']], function(v){ return (c.acc ? 1 : 0) === v; }, function(v){ c.acc = v; }));
+  insp.appendChild(seg('Ratchet', [[1, '×1', 'One strike'], [2, '×2', 'Two inside the step'], [3, '×3', 'Three inside the step'], [4, '×4', 'Four inside the step']],
+   function(v){ return c.rat === v; }, function(v){ c.rat = v; }));
+  var room = def.steps - sel;
+  insp.appendChild(seg('Length', [[0, 'Ring', 'Rings out and decays, as a rhythm hit always has'], [1, '1', 'Held one step'], [2, '2', 'Held two steps'], [4, '4', 'Held four steps'], [8, '8', 'Held eight steps']].filter(function(o){ return o[0] <= room; }),
+   function(v){ return c.len === v; }, function(v){ c.len = v; }));
+ }
+ function syncAud(){ aud.textContent = crPreviewOn() ? '■ Stop' : '▶ Audition'; aud.classList.toggle('on', crPreviewOn()); }
+ aud.addEventListener('click', function(){
+  if(crPreviewOn()){ crPreviewStop(); syncAud(); draw(); return; }
+  if(crSongOn()){ showToast('Stop the song to audition — it is playing its own rhythm'); return; }
+  if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
+  if(!getCtx()){ showToast('Tap anywhere to start the sound first'); return; }
+  if(crPreviewStart(def)){ syncAud(); tick(); }
+ });
+ function tick(){
+  cancelAnimationFrame(raf);
+  if(!crPreviewOn()){ syncAud(); draw(); return; }
+  draw(); raf = requestAnimationFrame(tick);
+ }
+ clr.addEventListener('click', function(){
+  def.cells.forEach(function(c){ c.on = 0; c.acc = 0; c.rat = 1; c.len = 0; });
+  sel = -1; syncInsp(); draw(); pushPreview();
+ });
+ function committed(){ var d = rhyNorm(def); if(!d.name) d.name = 'Rhythm'; return d; }
+ save.addEventListener('click', function(){
+  if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
+  var d = committed();
+  // The same rhythm saved twice is one entry.
+  var id = rhyId(d), dup = rhyBankList('chord').filter(function(e){ return rhyId(e.data) === id; })[0];
+  if(dup){ showToast('Already in My rhythms as ' + dup.name); return; }
+  rhyBankAdd('chord', d.name, d);
+  showToast('Saved ' + d.name + ' to My rhythms');
+ });
+ use.addEventListener('click', function(){
+  if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
+  var d = committed();
+  box.close();
+  if(typeof opts.onUse === 'function') opts.onUse(d);
+ });
+ rebuildSteps(); syncInsp(); syncAud();
+ relayout();
+ window.addEventListener('resize', relayout);
+ var prevClose = box.onClose;
+ box.onClose = function(){ window.removeEventListener('resize', relayout); prevClose(); };
+ return box;
+}
+function _rhyRound(g, x, y, w, h, r){
+ r = Math.min(r, w / 2, h / 2);
+ g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+ g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+window.rhyEdit = rhyEdit;
 
 // A bar is however many sixteenth steps the sequencer is running — that IS the
 // time signature (16 = 4/4, 12 = 3/4, 20 = 5/4). Three call sites read a bare
@@ -45273,6 +45893,8 @@ function stopEverything(){
  // reloads the arp chord for the pad-press-during-a-song case.
  arpSounding=false;
  arpIdx=0; arpDir=1; arpGateIdx=0;
+ // The chord rhythm is a transport layer too: Stop ends it (it is armed still, and a chord tap starts it again).
+ try{ crPreviewStop(); crStop(); }catch(e){}
  clearTimeout(clockTimer);
  if(_isRecording) _stopRecording();
  Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
