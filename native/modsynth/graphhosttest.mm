@@ -140,7 +140,9 @@ int main() {
       [h beginGraph:1 program:sine(440, 0.05, 0.3, 4) timestampMs:0];
       render(h, 750, 256);                                   // 4 s: the graph part runs, the voice is long over
       CHECK([h warmUpPart:4], "a Processor is built for a part that has been running as graphs");
-      CHECK([h post:@{@"t": @"on", @"part": @4, @"note": @60, @"vel": @0.9, @"id": @1, @"atRel": @2400}], "a note 50 ms ahead is queued");
+      // Built outside CHECK: the macro splits its arguments at the dictionary literal's commas.
+      NSDictionary *note = @{@"t": @"on", @"part": @4, @"note": @60, @"vel": @0.9, @"id": @1, @"atRel": @2400};
+      CHECK([h post:note], "a note 50 ms ahead is queued");
       Run r = render(h, 100, 256);                           // 0.53 s
       CHECK(r.peak > 0.005 && r.finite, "and it sounds within half a second, not seconds late (peak %.4f)", r.peak);
     }
