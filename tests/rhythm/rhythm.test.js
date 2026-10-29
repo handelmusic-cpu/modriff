@@ -262,6 +262,23 @@ const near = (a, b, e) => Math.abs(a - b) < (e || 1e-6);
   await page.evaluate(() => [...document.querySelectorAll('.rhy-sheet button')].find(b => b.textContent === 'Use on the pads').click());
   const used = await page.evaluate(() => ({ key: CR.key, custom: /^u:/.test(CR.key) || CR.key === 'bossa', def: !!CR.def || CR.key === 'bossa' }));
   ok(used.custom, 'Use on the pads sets the rhythm', JSON.stringify(used));
+
+  // The roll opened from Song Build fires that chord, not the last one tapped.
+  const sb = await page.evaluate(async () => {
+    const o = {};
+    const slot = { rootM: 62, triadQ: 1, type7: 'min7', ext: 'triad', bars: 1, beats: 0, eighths: 0, label: 'Dm', bassNote: 57 };
+    CR.chord = { root: 60, intvs: [0, 4, 7] };
+    sbDrawRhythm(slot, () => { });
+    const sheet = document.querySelector('.rhy-sheet');
+    const cv = sheet.querySelector('canvas'); const r = cv.getBoundingClientRect(), cw = r.width / 16;
+    const x = r.left + 0.5 * cw, y = r.top + 40; cv.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true })); cv.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true }));
+    [...sheet.querySelectorAll('button')].find(b => b.textContent.indexOf('Audition') >= 0).click();
+    o.chord = CR.previewChord && { root: CR.previewChord.root, intvs: CR.previewChord.intvs.slice() };
+    document.querySelector('.rhy-sheet .ll-cancel').click();
+    o.after = !crPreviewOn();
+    return o;
+  });
+  ok(sb.chord && sb.chord.root === 62 && sb.chord.intvs[0] === 57 - 12 - 62 && sb.chord.intvs.indexOf(3) >= 0 && sb.after, 'opened from Song Build, the roll fires that chord (its notes and its slash bass), not the last one tapped', JSON.stringify(sb));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
   await browser.close(); srv.close();
   process.exit(fail ? 1 : 0);

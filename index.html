@@ -8036,7 +8036,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6i</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.6j</span></div>
  </div>
 </div>
 
@@ -9387,7 +9387,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6i</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.6j</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10432,7 +10432,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.6i';
+const MODRIFF_VERSION = '4.9.9.9.9.9.6j';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -28407,7 +28407,8 @@ function tickClock(){
  if(!sqRunning) scheduleRhythm();
  scheduleArp();
  scheduleMetronome();
- scheduleChordRhythm();
+ // Behind its own guard: it sits ahead of the sequencers in the tick, and a fault in it must not starve them.
+ try{ scheduleChordRhythm(); }catch(e){ try{ _errNote('tick', e && (e.stack||e.message||e), 'chordRhythm'); }catch(_){} }
  if(sqRunning && typeof window._sqScheduler==='function') window._sqScheduler();
  if(blRunning && typeof window._blScheduler==='function') window._blScheduler();
  if(mlRunning && typeof window._mlScheduler==='function') window._mlScheduler();
@@ -37906,7 +37907,16 @@ function sbCompMore(slot, repaint){
 function sbDrawRhythm(slot, repaint){
  var def = slot.compDef ? rhyNorm(slot.compDef) : rhyFromBuiltin(_slotComp(slot), 16);
  if(!slot.compDef && !rhyHasHits(def)) def = rhyBlank(16);
- rhyEdit({title:'Rhythm for '+(slot.label||'this chord'), def:def, useLabel:'Use for this chord',
+ // The roll fires this chord: its root, its notes, and the slash bass an octave under the root as the song plays it.
+ var chord = null;
+ try{
+  if(!slot.isRest){
+   var iv = slotIvs(slot).slice();
+   if(slot.bassNote!=null) iv.unshift(slot.bassNote - 12 - slot.rootM);
+   chord = {root:slot.rootM, intvs:iv};
+  }
+ }catch(e){ chord = null; }
+ rhyEdit({title:'Rhythm for '+(slot.label||'this chord'), def:def, chord:chord, useLabel:'Use for this chord',
   onUse:function(d){ sbSetComp(slot, 'u', d); repaint(); showToast((d.name||'Rhythm')+' on '+(slot.label||'this chord')); }});
 }
 
@@ -44249,7 +44259,7 @@ function crStart(){
 }
 function crStop(){ CR.run = false; if(typeof crSyncUI==='function') crSyncUI(); }
 function crResync(){ if(CR.run) crAlign(); }
-function crActive(){ return !!CR.run; }
+function crActive(){ return !!(CR && CR.run); }
 // A chord tapped by hand (_triggerChordImmediate). Sets what the rhythm plays and, when armed, starts it.
 function crOnChordTap(rootM, intvs){
  CR.chord = {root:rootM, intvs:intvs.slice()};
@@ -44299,12 +44309,13 @@ function crPlayStep(){
  return ((CR.step - ahead) % pat.steps + pat.steps) % pat.steps;
 }
 // Audition a drawn rhythm on the current chord, on the clock, until it is stopped. Nothing is written anywhere.
-function crPreviewStart(def){
+function crPreviewStart(def, chord){
  var c = rhyCompile(def);
  if(!c.ev.length) return false;
  CR.runBefore = CR.run;
  CR.preview = {steps:c.steps, ev:c.ev};
- CR.previewChord = CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()};
+ // The chord it is for (a chord of the song, when the roll was opened from Song Build), else the one just tapped.
+ CR.previewChord = chord || CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()};
  var others = isAnythingPlaying() || metronomeOn;
  if(!crAlign()){ CR.preview = null; return false; }
  CR.run = true;
@@ -44333,7 +44344,8 @@ window.crOnChordTap = crOnChordTap; window.crOnRelease = crOnRelease; window.crS
 // an accent, lower for a plain hit, as many slices as its ratchet, as wide as its gate. Tap an empty step to put
 // a hit there; tap a hit to select it (and edit it underneath); tap the selected hit again to take it away.
 // Audition plays what is drawn on the current chord, on the master clock, and shows the playhead.
-// opts: {title, def, useLabel, onUse(def)}
+// opts: {title, def, useLabel, onUse(def), chord:{root, intvs}} — chord is what Audition and a tap on a step play
+// (the chord being edited in Song Build); without one it is the chord last tapped.
 var _rhyOpen = null;
 function rhyEdit(opts){
  opts = opts || {};
@@ -44474,7 +44486,7 @@ function rhyEdit(opts){
   // Not while it is playing: the audition is the feedback then.
   if(crPreviewOn()) return;
   try{
-   var ch = CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()}, ctx = getCtx(); if(!ctx) return;
+   var ch = opts.chord || CR.chord || {root:lastChordRoot, intvs:lastChordIntvs.slice()}, ctx = getCtx(); if(!ctx) return;
    var c = def.cells[i];
    rhyStrike(ch.root, ch.intvs, ctx.currentTime + 0.01, c.acc ? 1.0 : RHY_NORMAL_VEL, 0);
   }catch(e){}
@@ -44530,7 +44542,7 @@ function rhyEdit(opts){
   if(crSongOn()){ showToast('Stop the song to audition — it is playing its own rhythm'); return; }
   if(!rhyHasHits(def)){ showToast('Put a hit on a step first'); return; }
   if(!getCtx()){ showToast('Tap anywhere to start the sound first'); return; }
-  if(crPreviewStart(def)){ syncAud(); tick(); }
+  if(crPreviewStart(def, opts.chord)){ syncAud(); tick(); }
  });
  function tick(){
   cancelAnimationFrame(raf);
