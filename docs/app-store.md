@@ -7,13 +7,13 @@ changes; the privacy answers in particular must match `privacy.html`.
 
 ## Before the first upload: three things in the Xcode project
 
-Found by reading `ios/`. Two are fixed in this commit, one needs Xcode.
+Found by reading `ios/`. All three are done.
 
 | | state |
 |---|---|
 | `NSMicrophoneUsageDescription` | **Added** to `Info.plist`. It was missing, and the sampler's `getUserMedia` call would have ended the app the first time it asked for the mic. |
 | `ITSAppUsesNonExemptEncryption = false` | **Added.** Answers export compliance once, so it is not asked on every build. The app has no server and no encryption of its own. |
-| Privacy manifest | `ios/App/App/PrivacyInfo.xcprivacy` is written (no tracking, no collected data, no required-reason APIs in our own code) but **not yet in the target**. In Xcode: drag it into the `App` group, tick the `App` target. Capacitor's own packages carry their own manifests. |
+| Privacy manifest | `ios/App/App/PrivacyInfo.xcprivacy` (no tracking, no collected data, no required-reason APIs in our own code) is **in the `App` target's Resources** (checked in the project file, 6p). Capacitor's own packages carry their own manifests. |
 
 Decided, and it affects the screenshots:
 
@@ -22,8 +22,8 @@ Decided, and it affects the screenshots:
   `docs/app-store/screenshots/` (see Screenshots below).
 - `MARKETING_VERSION` is `1.0` and `CURRENT_PROJECT_VERSION` is `1`. The
   Build number must go up on every upload.
-- The Info.plist `UIRequiredDeviceCapabilities` is `armv7`; App Store Connect
-  accepts that, but `arm64` is what any current iPhone is.
+- `UIRequiredDeviceCapabilities` is `arm64` (it was `armv7`, which App Store Connect
+  accepted but no current iPhone is; changed in 6p, simulator build checked).
 
 ## URLs
 
