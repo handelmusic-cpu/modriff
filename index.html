@@ -8056,7 +8056,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.8a</span></div>
  </div>
 </div>
 
@@ -9424,7 +9424,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.8</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.8a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10469,7 +10469,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.8';
+const MODRIFF_VERSION = '4.9.9.9.9.9.8a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11295,6 +11295,11 @@ function toggleSync(){ modSync.enable(!modSync.isOn()); }
 //                      on into the next) and from (the MIDI note it glides
 //                      in from, or null). The bass is monophonic: each note
 //                      cuts the last.
+//                      'bass' 'mel' 'melgen' and 'arp' notes carry tune, in
+//                      cents: Pure tuning's offset for the note under the chord
+//                      sounding (0 in Equal). An 'arp' block carries tunes, one
+//                      per note. An engine that does not know them plays
+//                      equal, which is what they were before they existed.
 //                      'arp' carries level (the pattern's dynamic shape,
 //                      a plain scale) and pan (the ping-pong) beside vel.
 //                      On 'arp' a chord is the Block pattern: its notes
@@ -25450,28 +25455,58 @@ function setMasterTune(hz){
 var TUNING_JI5 = [0, 11.73, 3.91, 15.64, -13.69, -1.96, -9.78, 1.96, 13.69, -15.64, 17.60, -11.73];
 var tuningMode = 'equal';
 try{ if(localStorage.getItem('modo-tuning')==='pure') tuningMode = 'pure'; }catch(e){}
-function setTuningMode(m){
- tuningMode = (m==='pure') ? 'pure' : 'equal';
- try{ localStorage.setItem('modo-tuning', tuningMode); }catch(e){}
+// Whether Pure is sounding: chosen AND held. A free build keeps what was saved
+// and plays equal, the way every other Pro choice is treated (the setting is
+// never written over; see "Pro content in a free build" in the architecture doc).
+function tuningOn(){
+ return tuningMode==='pure' && (typeof modAllows!=='function' || modAllows('pureTuning'));
+}
+// Paints the switch from the saved choice and from ownership. Separate from
+// setTuningMode so a refresh (the packs changing hands) can repaint without
+// being mistaken for someone choosing Pure.
+function tuningSync(){
  ['equal','pure'].forEach(function(k){
   var b=document.getElementById('tuning-'+k); if(b) b.classList.toggle('active', tuningMode===k);
  });
+ var pb=document.getElementById('tuning-pure');
+ if(pb && typeof modLockEl==='function') modLockEl(pb, typeof modAllows==='function' && !modAllows('pureTuning'), 'theory');
  if(typeof syncSSPreviews==='function') syncSSPreviews();
+}
+function setTuningMode(m){
+ if(m==='pure' && typeof modAllows==='function' && !modAllows('pureTuning')) return freeBlocked('Pure tuning','theory');
+ tuningMode = (m==='pure') ? 'pure' : 'equal';
+ try{ localStorage.setItem('modo-tuning', tuningMode); }catch(e){}
+ tuningSync();
 }
 // Cents to add to `midi` as a tone of the chord whose root is `rootM`.
 function tuningCents(midi, rootM){
- if(tuningMode!=='pure') return 0;
- return TUNING_JI5[(((midi-rootM)%12)+12)%12];
+ if(!tuningOn()) return 0;
+ return TUNING_JI5[(((Math.round(midi)-rootM)%12)+12)%12];
 }
-// Moves a built voice's nodes by that amount, on .detune: the same place the
+// The same for a note of a part that follows the chord timeline rather than
+// being handed a root (bass, melody, arp): the chord sounding at engine time
+// `t`, found the way the bass and melody generators find theirs, so they cannot
+// disagree about which chord a note is under. No chord yet, or a rest: equal.
+// Called on the app side and sent as `tune` in the note message, so an engine
+// needs no idea what a chord is.
+function tuningCentsAt(midi, t){
+ if(!tuningOn()) return 0;
+ try{
+  if(typeof window._songChordWindowFor!=='function') return 0;
+  var w = window._songChordWindowFor(t);
+  if(!w || w.rest) return 0;
+  return TUNING_JI5[(((Math.round(midi)-w.rootPc)%12)+12)%12];
+ }catch(e){ return 0; }
+}
+// Moves a built voice's nodes by `c` cents, on .detune: the same place the
 // chord glide and the pitch bend work, and the one both oscillators and sample
 // players have. It is ADDED to what .detune already holds (unison spread, the
-// pad's own 9 c), and it goes in BEFORE glideApply, which reads .detune as the
-// pitch a glide settles on: setting it afterwards would be slid away from.
+// pad's own 9 c), and it goes in BEFORE anything that reads .detune as "the
+// pitch this note settles on": glideApply, _melGlideApply and the bend's
+// _bendBase all do, and setting it afterwards would be slid or bent away.
 // A mõdSynth stand-in (_msx) has no .detune that reaches its engine, so it is
 // left alone; that voice is not tuned yet.
-function tuningApply(nodes, midi, rootM){
- var c = tuningCents(midi, rootM);
+function tuningShift(nodes, c){
  if(!c) return;
  (nodes||[]).forEach(function(nd){
   if(!nd || !nd.detune || nd._msx) return;
@@ -25479,6 +25514,7 @@ function tuningApply(nodes, midi, rootM){
   try{ nd.detune.value = nd.detune.value + c; }catch(e){}
  });
 }
+function tuningApply(nodes, midi, rootM){ tuningShift(nodes, tuningCents(midi, rootM)); }
 
 function velScale(pressure){
  const vs=parseFloat(document.getElementById('vel-sense').value)||.5;
@@ -26298,7 +26334,8 @@ function playMelNote(midi,pressure,sustain,modY){
  const msg = {v: 1, kind: 'note', part: 'mel', id: ++_melNoteSeq, note: midi,
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
-              y: modY==null ? melModY : modY};
+              y: modY==null ? melModY : modY,
+              tune: tuningCentsAt(midi, window.modEngine.now())};
  // A second key while one is down: a chord, so this stretch of playing is poly.
  // Hold is left out on purpose — a latched note is still in _melLive after the
  // finger has gone, and counting it would make every note after the first a chord.
@@ -26368,6 +26405,8 @@ function _webMelNoteOn(msg){
  chainOut.connect(fx.head);
  const _mrv=feedRev(fx.plain?chainOut:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,voice,'mel');
+ // Before the bend below reads .detune as its base, and before the glide.
+ tuningShift(oscs, msg.tune);
  if(mod){ mod.attach(oscs); mod.setY(msg.y, startT); }
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
@@ -28615,7 +28654,8 @@ function scheduleArpBlock(t,dur){
  // An external synth playing the lane with local sound off has it instead.
  if(typeof moSilences==='function' && moSilences('arp')) return;
  modSend({v: 1, kind: 'chord', part: 'arp', id: ++_arpNoteSeq, root: null,
-                        notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur});
+                        notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur,
+                        tunes: arpNotes.map(function(m){ return tuningCentsAt(m, t); })});
 }
 // The Web Audio engine's block: the chord's tones 12 ms apart, low to high
 // as given.
@@ -28643,7 +28683,8 @@ function _webArpBlock(msg){
  } else g.gain.exponentialRampToValueAtTime(0.001, strumT + dur * 0.88);
  g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
- makeVoice(ctx, midi, g, strumT, dur * 0.85 + tail, voice,'arp');
+ const _abv = makeVoice(ctx, midi, g, strumT, dur * 0.85 + tail, voice,'arp');
+ tuningShift(_abv, msg.tunes && msg.tunes[idx]);
  _regKill(g, 'arp');
  });
 }
@@ -28714,7 +28755,7 @@ function scheduleArpNote(midi,t,dur){
  // (Bounce, Cresc, Hill...), which only scales it.
  modSend({v: 1, kind: 'note', part: 'arp', id: ++_arpNoteSeq, note: midi,
                         vel: velMult*humanVel, level: bounceV*velShapeMult, pan: arpPan,
-                        at: tAdj, dur: dur});
+                        at: tAdj, dur: dur, tune: tuningCentsAt(midi, tAdj)});
  // The readout under the arp follows what sounds, so not with its fader down.
  if(!(_cmx('arp')>0)) return;
  const delay=Math.max(0,(tAdj-now)*1000);
@@ -28744,6 +28785,7 @@ function _webArpNote(msg){
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
  const _aos=makeVoice(ctx,midi,g,tAdj,tot,voice,'arp');
+ tuningShift(_aos, msg.tune);
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],tot);
  _regKill(g, 'arp');
 }
@@ -39797,7 +39839,7 @@ function syncSSPreviews(){
   set('ss-playing-preview',
       (voicing==='open' ? 'Spread' : 'Close')
       + ' · ' + (logicModeOn ? 'Logic on' : 'Logic off'));
-  set('ss-tune-preview', 'A = ' + masterTune + ' Hz' + (tuningMode === 'pure' ? ' · pure' : ''));
+  set('ss-tune-preview', 'A = ' + masterTune + ' Hz' + (tuningOn() ? ' · pure' : ''));
   var _ins = (typeof midiAccess!=='undefined' && midiAccess) ? [...midiAccess.inputs.values()].length : 0;
   set('ss-midi-preview', (_ins ? _ins+' input'+(_ins===1?'':'s') : 'No input')
       + ' · ' + (midiMode==='melody' ? 'Melody' : 'Chords'));
@@ -49109,7 +49151,7 @@ try{ moRestorePrefs(); }catch(e){}
 try{ restoreSubPrefs(); }catch(e){}
 initMidi();
 setMasterTune(440);
-setTuningMode(tuningMode);   // a saved 'pure' lights its button; the table is a var, so it is here by now
+tuningSync();   // a saved 'pure' lights its button; the table is a var, so it is here by now
 syncFixedTransport();
 updateFtRateDisp();
 // Both in-app version labels come from MODRIFF_VERSION. It is not the only
@@ -54688,11 +54730,15 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var midi = note + (oct+1)*12;
   var freq = blFreq(note, oct);
   var from = (_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq) ? _blPrevMidi : null;
+  // tune: Pure tuning's cents for this note under the chord sounding at t (0 in
+  // Equal, or with no chord to be in tune with). The engine just adds it.
   if(!_moTook) modSend({v: 1, kind: 'note', part: 'bass', id: ++_blNoteSeq, note: midi,
-                                       vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur});
+                                       vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur,
+                                       tune: tuningCentsAt(midi, t)});
   _blPrevFreq = freq; _blPrevMidi = midi;
   _blPrevSlide = slide;
 }
+window._blPlayNote = blPlayNote;     // out of the closure for tests/tuning/probe.js, which plays the app's own sender
 // The Web Audio engine's bass note.
 window._webBassNote = function(msg){ _webBassVoice(msg); };
 function _webBassVoice(msg, standIn){
@@ -54705,7 +54751,11 @@ function _webBassVoice(msg, standIn){
   var mg = blMG(); if(!mg) return;
   var t = msg.at, dur = msg.dur, vol = msg.vel, accent = msg.accent, slide = msg.slide;
   var oct = Math.floor(msg.note / 12) - 1, note = msg.note - (oct+1)*12;
-  var freq = blFreq(note, oct);
+  // Pure tuning is folded into the frequency here, so every voice below that
+  // derives from freq (the harmonics of the upright, the pluck's pitch) moves
+  // together; the sampled and shared-palette voices take it on .detune instead.
+  var tune = msg.tune || 0;
+  var freq = blFreq(note, oct) * (tune ? Math.pow(2, tune/1200) : 1);
   // Where this note glides from, if it does. The four branches below all ask
   // the same question; it is answered once, by the app.
   var slideFrom = msg.from == null ? 0 : 440 * Math.pow(2, (msg.from - 69) / 12);
@@ -54929,6 +54979,7 @@ function _webBassVoice(msg, standIn){
       // feeding the buffer into g directly.
       var sg = ctx.createGain(); sg.gain.value = _sb.gain; sg.connect(g);
       src = playSampleVoice(ctx, _sk, _bmidi, sg, t, dur);
+      if(src) tuningShift([src], tune);
     }
     if(!src){
       if(SAMPLE_STATE[_sk] !== 'ready') preloadSampleInstrument(_sk);
@@ -54955,7 +55006,10 @@ function _webBassVoice(msg, standIn){
     var _bwg = (blWave === 'modsynth' || blWave === 'sampler') ? 1 : (WAVE_GAIN[blWave] || 1);
     var _bdest = g;
     if(_bwg !== 1){ _bdest = ctx.createGain(); _bdest.gain.value = _bwg; _bdest.connect(g); }
-    if(typeof makeVoice === 'function') _blPrevVoice = makeVoice(ctx, _fbMidi, _bdest, t, dur, blWave, 'bass');
+    if(typeof makeVoice === 'function'){
+      _blPrevVoice = makeVoice(ctx, _fbMidi, _bdest, t, dur, blWave, 'bass');
+      tuningShift(_blPrevVoice, tune);
+    }
   }
 }
 
@@ -56883,12 +56937,14 @@ function mlPlayNote(t, note, oct, dur, vol, accent, glide){
   }catch(e){}
   if(_moTookMel) return;
   var _mlMsg = {v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
-                         vel: vol, accent: !!accent, at: t, dur: dur};
+                         vel: vol, accent: !!accent, at: t, dur: dur,
+                         tune: tuningCentsAt(midi, t)};
   // Portamento from the step before, in mono (see _mlScheduler); the engine slides
   // from `glideFrom` over `glideTime`, as it does for the strip's notes.
   if(glide){ _mlMsg.glideFrom = glide.from; _mlMsg.glideTime = glide.time; }
   modSend(_mlMsg);
 }
+window._mlPlayNote = mlPlayNote;     // out of the closure for tests/tuning/probe.js
 // The Web Audio engine's sequencer note. In this closure because the voice,
 // its bus and the sequencer's own voice choice live here.
 window._webMelgenNote = function(msg){
@@ -56914,6 +56970,7 @@ window._webMelgenNote = function(msg){
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
   if(typeof makeVoice === 'function'){
     var nodes = makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+    tuningShift(nodes, msg.tune);
     if(msg.glideFrom != null && msg.glideTime > 0) _melGlideApply(nodes, msg.glideFrom - midi, t, msg.glideTime);
   }
 };
@@ -63569,7 +63626,7 @@ const MODULE_COPY = {
            'Odd meters','More than 16 steps','Separate step length per generator'] },
  theory:   { name:'Theory Pack', line:'Every scale, chord type, and voicing',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
-           'Circle-of-fifths key colours','Future theory additions included'] },
+           'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp','Future theory additions included'] },
  practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
   bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',
@@ -63602,6 +63659,9 @@ const FREE_LIMITS = {
   // The start key is free (rotatable scale colours); the circle-of-fifths
   // ordering is the Theory Pack's. See khAllowsFifths.
   keyColours:   false,
+  // Pure (just) tuning of chords, bass, melody and arp. Equal is free; a saved
+  // 'pure' is kept and plays equal until the pack is held (tuningOn).
+  pureTuning:   false,
   liveLayout:   false,   // adding, swapping, moving or removing Live widgets
   arrange:      false,   // Arrange: a line per chord (the write mode, and the lines kept against chords)
   stepsUnlinked: false,  // a step length per generator instead of one for all
@@ -63628,7 +63688,7 @@ const FREE_LIMITS = {
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
   modfx:'synth', fxPatches:'synth', modsynth:'synth',
-  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory',
+  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullAudioExport:'studio', fullMidiExport:'studio', liveLayout:'studio',
   arrange:'groove', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
@@ -64634,6 +64694,7 @@ function freeApplyLimits(){
    const bw = window._blCaptureState().wave;
    if(bw && !freeAllowsVoice(bw)) window.setBlWave(FREE_VOICE_FALLBACK.bass);
   }catch(e){}
+  try{ tuningSync(); }catch(e){}   // the Pure switch locks and unlocks with the Theory Pack
   // Drum kits.
   document.querySelectorAll('#sq-machineRow .sq-mbtn').forEach(b=>{
    modLockEl(b, !freeAllowsKit((b.dataset.mach||'').trim()), 'groove');

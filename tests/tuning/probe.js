@@ -85,6 +85,45 @@ function beating(x, sr, fc) {
   return { depth: (mx - mn) / (mx + mn), rate: cross / 2 / secs, level: mean };
 }
 
+
+// Runs in the page. For each part, plays its note through the app's own sender
+// (blPlayNote, playMelNote, mlPlayNote, scheduleArpNote, scheduleArpBlock) under
+// a live chord, and returns the effective pitch in cents of every oscillator it
+// built, relative to equal temperament. The caller compares Equal against Pure
+// oscillator by oscillator, so a voice's own harmonics and spread cancel.
+async function partCents([mode, chordSym, scenarios]) {
+  setTuningMode(mode);
+  const ctx = getCtx(); await ctx.resume();
+  const E = window.modEngine, wait = ms => new Promise(r => setTimeout(r, ms));
+  if (chordSym) window._blOnLiveChord(slotFromChordSymbol(chordSym, 0, 'major')); else window._blClearChords();
+  const lastSet = new WeakMap(), oSet = AudioParam.prototype.setValueAtTime;
+  AudioParam.prototype.setValueAtTime = function (v, t) { lastSet.set(this, v); return oSet.call(this, v, t); };
+  const out = {};
+  for (const sc of scenarios) {
+    const [name, part, voice, midi] = sc;
+    if (voice) E.send({ v: 1, kind: 'param', part, name: 'voice', value: voice });
+    stopAll(); await wait(250);
+    const built = [], oc = BaseAudioContext.prototype.createOscillator;
+    BaseAudioContext.prototype.createOscillator = function () { const o = oc.apply(this, arguments); built.push(o); return o; };
+    const t = ctx.currentTime + 0.05;
+    if (part === 'bass') window._blPlayNote(t, midi % 12, Math.floor(midi / 12) - 1, 0.4, 0.8, false, false);
+    else if (part === 'mel') playMelNote(midi, 0.8, false, null);
+    else if (part === 'melgen') window._mlPlayNote(t, midi % 12, Math.floor(midi / 12) - 1, 0.4, 0.8, false, null);
+    else if (part === 'arp') scheduleArpNote(midi, t, 0.3);
+    else if (part === 'arpblock') { arpNotes = [60, 64, 67]; scheduleArpBlock(t, 0.4); }
+    await wait(250);
+    BaseAudioContext.prototype.createOscillator = oc;
+    const et = m => 440 * Math.pow(2, (m - 69) / 12);
+    out[name] = built.map(o => {
+      const f = lastSet.has(o.frequency) ? lastSet.get(o.frequency) : o.frequency.value;
+      return 1200 * Math.log2(f / et(60)) + o.detune.value;     // relative to C4; only the difference between modes is read
+    });
+    stopAll();
+  }
+  AudioParam.prototype.setValueAtTime = oSet;
+  return out;
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium',
@@ -184,7 +223,104 @@ function beating(x, sr, fc) {
   check(gl.end.length === 3 && got.every((v, i) => Math.abs(v - settle[i]) < 0.05), 'glide on: F major settles on 0 / -13.69 / +1.96', got.join(', '));
   check(gl.mid.some(v => Math.abs(v) > 50), 'glide on: it was still sliding 120 ms in (the glide did run)', gl.mid.map(v => v.toFixed(0)).join(', '));
 
-  // ── 4. The switch itself
+  // ── 3. Bass, melody, melody generator and arp follow the chord
+  // Each part's own sender, under a live C major then A minor then no chord. The
+  // expected shift is the table's value for the note's interval above the chord's
+  // root; every oscillator the note built must have moved by exactly that, and
+  // the same number of oscillators must have been built either way.
+  await page.evaluate(() => {
+    const E = window.modEngine;
+    ['mel', 'melgen', 'arp', 'bass'].forEach(p => E.send({ v: 1, kind: 'param', part: p, name: 'strum', value: false }));
+    E.send({ v: 1, kind: 'param', part: 'mel', name: 'mono', value: false });
+  });
+  const SC = [
+    // name, part, voice, midi
+    ['bass E2 sine',       'bass',   'sine',     40],
+    ['bass G2 sine',       'bass',   'sine',     43],
+    ['bass C2 sine',       'bass',   'sine',     36],
+    ['bass D2 sine',       'bass',   'sine',     38],
+    ['bass E2 upright',    'bass',   'upright',  40],
+    ['bass E2 supersaw',   'bass',   'supersaw', 40],
+    ['mel E4 sawtooth',    'mel',    'sawtooth', 64],
+    ['mel G4 sawtooth',    'mel',    'sawtooth', 67],
+    ['melgen E4 triangle', 'melgen', 'triangle', 64],
+    ['arp E4 sine',        'arp',    'sine',     64],
+    ['arp block C-E-G',    'arpblock', 'sine',   60]
+  ];
+  const diff = (a, b) => (a.length === b.length && a.length > 0) ? a.map((v, i) => +(b[i] - v).toFixed(2)) : null;
+  const allEq = (d, v) => d && d.every(x => Math.abs(x - v) < 0.05);
+  const run = (chord, mode) => page.evaluate(partCents, [mode, chord, SC]);
+  const Ce = await run('C', 'equal'), Cp = await run('C', 'pure');
+  const exp = { 'bass E2 sine': -13.69, 'bass G2 sine': 1.96, 'bass C2 sine': 0, 'bass D2 sine': 3.91, 'bass E2 upright': -13.69,
+    'bass E2 supersaw': -13.69, 'mel E4 sawtooth': -13.69, 'mel G4 sawtooth': 1.96, 'melgen E4 triangle': -13.69, 'arp E4 sine': -13.69 };
+  for (const name of Object.keys(exp)) {
+    const d = diff(Ce[name], Cp[name]);
+    check(allEq(d, exp[name]), `C major, ${name}: every oscillator moved ${exp[name]} c`, d ? d.join(', ') : 'oscillator counts differ: ' + Ce[name].length + ' / ' + Cp[name].length);
+  }
+  // The arp block is three notes at once: the set of shifts must be exactly {0, -13.69, +1.96}.
+  { const d = diff(Ce['arp block C-E-G'], Cp['arp block C-E-G']);
+    const set = d ? [...new Set(d.map(x => x.toFixed(2)))].sort().join(',') : null;
+    check(set === ['-13.69', '0.00', '1.96'].sort().join(','), 'C major, arp block C-E-G: shifts are exactly {-13.69, 0, +1.96}', set); }
+  { const bad = Object.keys(Ce).filter(k => Ce[k].some(v => !isFinite(v)));
+    check(bad.length === 0, 'no part produced a non-finite pitch', bad.join(',')); }
+  // It follows the chord: under A minor, C5 (a minor third above A) is +15.64 and E4 (a fifth) is +1.96.
+  const SC2 = SC;
+  const Ae = await run('Am', 'equal'), Ap = await run('Am', 'pure');
+  const dm = diff(Ae['mel E4 sawtooth'], Ap['mel E4 sawtooth']), db = diff(Ae['bass E2 sine'], Ap['bass E2 sine']);
+  check(allEq(dm, 1.96), 'A minor, melody E4 (a fifth over A): +1.96 c, not the C-major third', dm && dm.join(', '));
+  check(allEq(db, 1.96), 'A minor, bass E2 (a fifth over A): +1.96 c', db && db.join(', '));
+  // No chord to be in tune with: equal, not a guess.
+  const Ne = await run(null, 'equal'), Np = await run(null, 'pure');
+  const dn = ['bass E2 sine', 'mel E4 sawtooth', 'melgen E4 triangle', 'arp E4 sine'].map(k => diff(Ne[k], Np[k]));
+  check(dn.every(d => allEq(d, 0)), 'no chord window: bass, melody, generator and arp are untouched', dn.map(d => d && d.join(',')).join(' | '));
+
+  // ── 4. The Theory Pack gate
+  // Pure chosen and saved, then the pack is not held: the choice is KEPT and
+  // plays equal; tapping Pure asks for the pack and changes nothing; holding the
+  // pack again brings it back without choosing anything.
+  const gate = await page.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    setTuningMode('pure');
+    const before = tuningOn();
+    setModOwned([]);                                   // a free build
+    await wait(100);
+    const free = { on: tuningOn(), kept: tuningMode, stored: localStorage.getItem('modo-tuning'),
+      locked: document.getElementById('tuning-pure').classList.contains('tier-locked'),
+      centsChord: tuningCents(64, 60), centsAt: (window._blOnLiveChord(slotFromChordSymbol('C', 0, 'major')), tuningCentsAt(64, getCtx().currentTime + 0.1)) };
+    setTuningMode('equal');
+    const r = setTuningMode('pure');                   // a tap on the locked Pure
+    const afterTap = { mode: tuningMode, stored: localStorage.getItem('modo-tuning') };
+    setTuningMode('equal');
+    setModOwned(['theory']);                           // the pack
+    await wait(100);
+    const held = { lockedNow: document.getElementById('tuning-pure').classList.contains('tier-locked') };
+    setTuningMode('pure');
+    held.on = tuningOn(); held.cents = tuningCents(64, 60);
+    setModOwned(null);                                 // back to the web build's everything
+    await wait(100);
+    return { before, free, afterTap, held };
+  });
+  check(gate.before === true, 'with the pack held, Pure is on', String(gate.before));
+  check(gate.free.on === false && gate.free.centsChord === 0 && gate.free.centsAt === 0, 'without the pack, Pure plays equal (chord and chord-following parts)', JSON.stringify([gate.free.on, gate.free.centsChord, gate.free.centsAt]));
+  check(gate.free.kept === 'pure' && gate.free.stored === 'pure', 'without the pack, the saved choice is kept, not erased', JSON.stringify([gate.free.kept, gate.free.stored]));
+  check(gate.free.locked === true, 'without the pack, the Pure button is locked');
+  check(gate.afterTap.mode === 'equal' && gate.afterTap.stored === 'equal', 'a tap on locked Pure changes nothing', JSON.stringify(gate.afterTap));
+  check(gate.held.lockedNow === false && gate.held.on === true && Math.abs(gate.held.cents + 13.69) < 0.01, 'holding the pack unlocks it and Pure sounds again', JSON.stringify(gate.held));
+
+  // ── 5. The native graph path
+  // Voices bound for the native engine are built on the graph recorder, and the
+  // tuning rides on .detune, which the recorded program carries (graph.cpp reads
+  // it). Only the recorded side is checked here: that the shift reaches the program.
+  const rec = await page.evaluate(() => {
+    const mk = c => { const r = new GraphRec({ sampleRate: 48000 }); const g = r.createGain(); g.connect(r.destination);
+      const o = r.createOscillator(); o.type = 'sine'; o.frequency.value = 440; o.connect(g); o.start(0); o.stop(1);
+      tuningShift([o], c); return Array.from(r.program(0)); };
+    const a = mk(0), b = mk(-13.69);
+    return { plain: a.some(v => Math.abs(v + 13.69) < 1e-9), tuned: b.some(v => Math.abs(v + 13.69) < 1e-9), same: a.length === b.length };
+  });
+  check(rec.tuned && !rec.plain && rec.same, 'a voice built on the graph recorder carries the shift in its program', JSON.stringify(rec));
+
+  // ── 6. The switch itself
   await page.evaluate(() => setTuningMode('pure'));
   await page.reload(); await page.waitForTimeout(1500);
   const saved = await page.evaluate(() => ({ mode: tuningMode, lit: document.getElementById('tuning-pure').classList.contains('active'),
