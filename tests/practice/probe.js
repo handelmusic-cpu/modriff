@@ -177,6 +177,66 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const bend = await page.evaluate(() => ({ bpm: Math.round(_bpmNow()), root }));
   check(both.bpm > 200 && both.root !== 0 && bend.bpm === 200 && bend.root === 0, 'speed and key together, and both come back', JSON.stringify([both, bend]));
 
+  // ── 11. Loop bars. A four-chord Verse and a Chorus; loop chords 2 to 3 of the Verse.
+  //     Picking is done with real taps on the rendered chart.
+  const loopSetup = () => page.evaluate(() => {
+    stopEverything();
+    const slot = (rootM, label) => ({ rootM, bars: 1, beats: 0, eighths: 0, label, isRest: false, triadQ: 0, func: 'tonic', numeral: 'I' });
+    sections.length = 0;
+    sections.push({ name: 'Verse',  follow: 'next', plays: 1, slots: [slot(48, 'C'), slot(50, 'D'), slot(52, 'E'), slot(53, 'F')] });
+    sections.push({ name: 'Chorus', follow: 'next', plays: 1, slots: [slot(55, 'G')] });
+    songCurrentSection = -1; songCurrentSlot = -1;
+    _setBpm(220); pracLoopSet('off'); prac.ramp.on = false; prac.key.on = false; pracSync();
+    renderSongsPerformView();
+    window._seq = []; let last = '';
+    window._logTimer = setInterval(() => { const k = songCurrentSection + ':' + songCurrentSlot; if (k !== last) { last = k; window._seq.push(k); } }, 15);
+  });
+  await loopSetup();
+  await page.evaluate(() => { document.getElementById('prac-loop-btn').click(); });
+  const picking = await page.evaluate(() => ({ sel: pracLoop.sel, hint: document.getElementById('prac-loop-hint').textContent }));
+  check(picking.sel === 1 && /first chord/.test(picking.hint), 'Loop bars asks for the first chord', picking.hint);
+  const tile = (si, ci) => page.evaluate(([a, b]) => { document.querySelector('#songs-full-chart .songs-chord-btn[data-si="' + a + '"][data-ci="' + b + '"]').click(); return { sel: pracLoop.sel, a: pracLoop.a, b: pracLoop.b, playing: songLoopActive, lit: [...document.querySelectorAll('#songs-full-chart .prac-in')].map(e => e.dataset.si + ':' + e.dataset.ci).join() }; }, [si, ci]);
+  const t1 = await tile(0, 2);
+  check(t1.sel === 2 && !t1.playing && t1.lit === '0:2', 'the first tap marks it and does not start the song', JSON.stringify(t1));
+  const t2 = await tile(0, 1);
+  check(t2.sel === 3 && t2.a === 1 && t2.b === 2, 'the second tap closes the loop (either order): chords 2 to 3', JSON.stringify(t2));
+  check(t2.lit === '0:1,0:2', 'and both chords are outlined on the chart', t2.lit);
+  await page.evaluate(() => { toggleSongAutoAdvance(); });
+  await page.waitForTimeout(9000);
+  const seq = await page.evaluate(() => window._seq);
+  const lp = await page.evaluate(() => ({ chorus: _pracRun.chorus, status: document.getElementById('prac-status').textContent }));
+  console.log('     chords played: ' + seq.join(' '));
+  // Stopped and cued at the loop, so the song starts on chord 2 and never leaves chords 2 and 3.
+  const inLoop = seq.filter(k => k !== '-1:-1');
+  check(inLoop.length >= 8 && inLoop.every(k => k === '0:1' || k === '0:2'), 'the song plays only chords 2 and 3 of the Verse, round and round', inLoop.join(' '));
+  check(inLoop.slice(0, 6).join(' ') === '0:1 0:2 0:1 0:2 0:1 0:2', 'in order, wrapping from 3 back to 2', inLoop.slice(0, 6).join(' '));
+  check(lp.chorus >= 3 && /Loop pass/.test(lp.status), 'each pass is counted and the status says Loop pass', JSON.stringify(lp));
+
+  // Speed up counts the loop's passes.
+  await page.evaluate(() => { Object.assign(prac.ramp, { on: true, step: 5, every: 1, max: 235 }); _setBpm(220 - 20); pracSync(); });
+  const b0 = await page.evaluate(() => Math.round(_bpmNow()));
+  await page.waitForTimeout(6500);
+  const b1 = await page.evaluate(() => Math.round(_bpmNow()));
+  check(b1 > b0, 'Speed up steps on loop passes too', b0 + ' -> ' + b1);
+
+  // A tap on another chord while it loops moves the song there (and leaves the loop set).
+  await tile(1, 0);
+  await page.waitForTimeout(1200);
+  const away = await page.evaluate(() => ({ sec: songCurrentSection, sel: pracLoop.sel }));
+  check(away.sel === 3, 'a tap after the loop is set does not re-pick it', JSON.stringify(away));
+
+  // Clearing it.
+  await page.evaluate(() => { document.getElementById('prac-loop-btn').click(); });
+  const cleared = await page.evaluate(() => ({ sel: pracLoop.sel, lit: document.querySelectorAll('#songs-full-chart .prac-in').length }));
+  check(cleared.sel === 0 && cleared.lit === 0, 'tapping Loop bars again clears it', JSON.stringify(cleared));
+  await page.evaluate(() => { clearInterval(window._logTimer); });
+  await page.evaluate(() => { stopEverything(); });
+
+  // Loading another song drops the loop.
+  await page.evaluate(() => { document.getElementById('prac-loop-btn').click(); document.querySelector('#songs-full-chart .songs-chord-btn').click(); });
+  const drop = await page.evaluate(() => { loadSong({ title: 'x', root: 0, mode: 'major', sections: [{ name: 'A', plays: 1, slots: [{ rootM: 48, bars: 1, label: 'C' }] }] }, -1); return pracLoop.sel; });
+  check(drop === 0, 'loading another song clears the loop', drop);
+
   check(errs.length === 0, 'no page errors', errs.join(' | '));
   await browser.close();
   console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed');

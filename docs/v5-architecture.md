@@ -2343,6 +2343,7 @@ never opens it on its own.
 | Audio / MIDI export | first 90 s / first 4 bars | **Studio**: the whole take; stems |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
+| Practice trainer (Songs > Perform) | a visible row; a tap opens the pack sheet | **Practice**: Speed up, Next key, Loop bars (`practiceTrainer`) |
 
 Fresh-start defaults are free ones, with one change: **chords start on Piano (synth), which
 is now the Sounds Pack's**, so a free build plays the chords on Saw instead
@@ -2359,9 +2360,33 @@ the first two preset banks; free steps are one bar of any free meter, up to 16, 
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
 Triangle and the two stock basses are named by no pack, so they are free.
 
+**The practice trainer (4.9.9.9.9.9.9 to 9b).** Songs > Perform has a Practice row under
+Endings with three switches, all under the Practice Pack as one row, `practiceTrainer`:
+*Speed up* adds N BPM every M choruses up to a ceiling; *Next key* moves the whole chart up
+a semitone, fourth or fifth every M choruses through twelve keys and then stays; *Loop bars*
+repeats chords a to b of one section (pick them with two taps on the chart). A **chorus** is
+the last playable section finishing its last pass (a one-section chart, or a last section on
+infinity, counts every pass; a pass of a Loop counts as one, so the trainer works inside a
+loop). The step is taken on that bar line, before the next chorus's first chord is played.
+Tempo goes through `_setBpmGliss`, as the ritardando's does, because `onBpmInput` ends in
+`restartIfRunning` and would put the groove back on beat one. The key shift is kept as a
+signed distance from the start key (-5..+6): a slot's `rootM` is an absolute note and eleven
+plain transposes would carry the chords five octaves up. **Stop undoes the run**: the tempo
+goes back unless the player has moved it by hand since, and the chart goes back exactly (key,
+notes, names) but only into the same chart in the key the trainer left it in, so another
+song or a hand transpose is never undone. The numbers are kept in `modo-practice`; the loop
+is not (it is a place in one chart, and loading another song clears it). `tests/practice/probe.js`
+drives the real Play Song path and counts the steps, the keys, the chord sequence of a loop and
+the restore; each of its checks was shown to fail when the code it covers was broken.
+Not done: a loop across sections, a count-in before the loop, and a trainer that stops on its
+own at the end of the twelve keys.
+
+**Whole-chart transpose already existed and stays free**: `transposeSong`, the setlist bar's
+-/+ and the transport's key arrows (semitone or circle of fifths) move the chart's chords,
+names and bass. The line below used to list it as unbuilt.
+
 **Not built, so neither gated nor in the copy** (the brief's own rule is not to list them
-until they ship; each goes into its module's copy when it does): tempo ramp, section
-looping and whole-chart transpose (Practice); an alternate bass base note, a scale per
+until they ship; each goes into its module's copy when it does): an alternate bass base note, a scale per
 generator and melody density (Groove); mid-song time-signature changes (Groove); advanced
 fingerings, that is alternate positions and shapes up the neck (Theory; the Fingering panel is
 a reference with none of those, and stays free); alternate intonations (Theory); a 3-band EQ

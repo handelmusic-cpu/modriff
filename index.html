@@ -3014,6 +3014,9 @@ body.light-mode .voice-sel { background:#fff; color:#1a1e38; border-color:#c2c6d
 .prac-set input:focus { outline:none; border-color:var(--pg); }
 .prac-status { width:100%; font-size:.45rem; color:var(--pg); letter-spacing:.06em; }
 .prac-status:empty { display:none; }
+/* The chords inside the loop. An outline, because the tile's own glow and its
+   playing highlight both use box-shadow and would fight for it. */
+.songs-chord-btn.prac-in { outline:2px solid var(--pg); outline-offset:-2px; }
 /* The Endings widget on Live (4.9.9.9.9.7.9b): five buttons across the page,
    thumb-sized, under a heading that already says "Endings" — so the row's own
    label and its top rule go. Armed keeps the pulsing orange of .end-btn.armed. */
@@ -8078,7 +8081,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9b</span></div>
  </div>
 </div>
 
@@ -9446,7 +9449,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -9732,6 +9735,8 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="tb prac-btn" data-prac-by="5" onclick="pracKeyBy(5)" title="Up a fourth each time: C, F, B♭, E♭… — every key, the way jazz players practise them">Fourth</button>
    <button class="tb prac-btn" data-prac-by="7" onclick="pracKeyBy(7)" title="Up a fifth each time: C, G, D, A… — every key, and the neighbours stay close">Fifth</button>
   </div>
+  <button class="tb prac-btn" id="prac-loop-btn" data-prac="loop" aria-pressed="false" onclick="pracToggle('loop')" title="Loop bars — tap the first and last chord of the bars to repeat on the chart below; the song stays there until you turn this off">Loop bars</button>
+  <div class="prac-set" id="prac-loop-set" hidden><span id="prac-loop-hint"></span></div>
   <div class="prac-status" id="prac-status" aria-live="polite"></div>
  </div>
  </div>
@@ -10512,7 +10517,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9a';
+const MODRIFF_VERSION = '4.9.9.9.9.9.9b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39330,6 +39335,7 @@ function loadSong(song,idx){
  track('song_loaded');
  // Stop any active loop and bass (bass has a song-specific grid; user restarts from transport)
  stopSongLoop();
+ pracLoopClear();         // chords a..b of the old chart mean nothing in the new one
  if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window.blPlay==='function') window.blPlay();
  if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window.mlPlay==='function') window.mlPlay();
  if(typeof _updateSongPlayBtn==='function') _updateSongPlayBtn();
@@ -42235,6 +42241,7 @@ function renderSongsPerformView(){
  sec.slots.forEach((slot, ci) => {
  const btn = document.createElement('div');
  btn.className = 'songs-chord-btn';
+ btn.dataset.si = si; btn.dataset.ci = ci;
  btn.style.borderTop = '2px solid var(--'+(slot.func==='tonic'?'tonic':slot.func==='subdom'?'subdom':slot.func==='dom'?'dom':'modal')+')';
  // Show all alterations: extension, bass, numeral, duration, rest
  if(slot.isRest){
@@ -45945,6 +45952,9 @@ function _moveToSection(delta){
 var PRAC_LIMITS = { step:[1,20], every:[1,16], max:[40,220] };
 var prac = { ramp:{ on:false, step:4, every:2, max:140 }, key:{ on:false, every:2, by:7 } };
 // Per run: reset by startSongLoop, undone by stopSongLoop.
+// The bars to loop: chords a..b of one section. sel: 0 off, 1 waiting for the first
+// tap, 2 for the last, 3 set. Not kept across launches: it is a place in one chart.
+var pracLoop = { sel:0, si:-1, a:-1, b:-1 };
 var _pracRun = { chorus:0, startBpm:0, lastSetBpm:0, keysDone:0, keyShift:0, keyRoot:-1, secRef:null };
 (function(){
  try{
@@ -45977,6 +45987,7 @@ function pracKeyBy(n){
 }
 function pracToggle(which){
  if(!modAllows('practiceTrainer')) return freeBlocked('The practice trainer', 'practice');
+ if(which === 'loop'){ pracLoopSet(pracLoop.sel ? 'off' : 'arm'); return; }
  var t = prac[which]; if(!t) return;
  t.on = !t.on;
  pracSync();
@@ -45997,13 +46008,62 @@ function pracSync(){
   var on = +b.dataset.pracBy === prac.key.by;
   b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
  });
+ var lb = g('prac-loop-btn'), lset = g('prac-loop-set'), lh = g('prac-loop-hint');
+ if(lb){ lb.classList.toggle('on', pracLoop.sel > 0); lb.setAttribute('aria-pressed', pracLoop.sel ? 'true' : 'false'); }
+ if(lset) lset.hidden = !pracLoop.sel;
+ if(lh){
+  var nm = (sections[pracLoop.si] && sections[pracLoop.si].name) || '';
+  lh.textContent = pracLoop.sel === 1 ? 'Tap the first chord of the bars to loop, on the chart below'
+                 : pracLoop.sel === 2 ? 'Now tap the last chord (the same one again loops just that bar)'
+                 : pracLoop.sel === 3 ? 'Looping '+nm+', chord '+(pracLoop.a+1)+(pracLoop.b>pracLoop.a ? ' to '+(pracLoop.b+1) : '')+'. Each pass counts as a chorus for Speed up and Next key. Tap Loop bars to clear.'
+                 : '';
+ }
+ pracLoopPaint();
  _pracStatus();
+}
+// 'arm' starts picking the bars, 'off' clears the loop.
+function pracLoopSet(what){
+ if(what === 'arm'){ pracLoop.sel = 1; pracLoop.si = pracLoop.a = pracLoop.b = -1; }
+ else { pracLoop.sel = 0; pracLoop.si = pracLoop.a = pracLoop.b = -1; }
+ pracSync();
+}
+function pracLoopClear(){ if(pracLoop.sel) pracLoopSet('off'); }
+// A tap on a chord of the Songs chart while the loop is being picked. True when
+// the tap was the picking's and must not also jump the song there.
+function pracLoopTap(si, ci){
+ if(pracLoop.sel !== 1 && pracLoop.sel !== 2) return false;
+ if(pracLoop.sel === 2 && si === pracLoop.si){
+  var first = pracLoop.a;
+  pracLoop.a = Math.min(first, ci); pracLoop.b = Math.max(first, ci);
+  pracLoop.sel = 3;
+  pracSync();
+  // Now go there: a stopped song is cued to the first chord of the loop, a
+  // playing one jumps to it, exactly as a tap on that chord would have.
+  songChartTap(si, pracLoop.a);
+  return true;
+ }
+ // The first tap, or a tap in another section, which starts the pick again.
+ pracLoop.si = si; pracLoop.a = pracLoop.b = ci; pracLoop.sel = 2;
+ pracSync();
+ return true;
+}
+function pracLoopValid(){
+ var sec = sections[pracLoop.si];
+ return pracLoop.sel === 3 && sec && sec.slots && pracLoop.b < sec.slots.length && pracLoop.a >= 0 && pracLoop.a <= pracLoop.b;
+}
+function pracLoopPaint(){
+ var chart = document.getElementById('songs-full-chart'); if(!chart) return;
+ chart.querySelectorAll('.songs-chord-btn').forEach(function(b){
+  var inside = (pracLoop.sel === 2 || pracLoopValid()) && +b.dataset.si === pracLoop.si
+   && +b.dataset.ci >= pracLoop.a && +b.dataset.ci <= pracLoop.b;
+  b.classList.toggle('prac-in', !!inside);
+ });
 }
 function _pracStatus(){
  var el = document.getElementById('prac-status'); if(!el) return;
  var bits = [];
  if(songLoopActive){
-  bits.push('Chorus '+(_pracRun.chorus + 1));
+  bits.push((pracLoopValid() ? 'Loop pass ' : 'Chorus ')+(_pracRun.chorus + 1));
   if(prac.ramp.on) bits.push('♪='+Math.round(_bpmNow())+' (to '+prac.ramp.max+')');
   if(prac.key.on) bits.push('Key '+nn(root)+' ('+(_pracRun.keysDone + 1)+' of 12)');
  } else if(prac.ramp.on || prac.key.on){
@@ -46065,6 +46125,16 @@ function _advanceLoopSlot(atTime){
  const sec = sections[songLoopSection];
  let chorusDone = false;
  songLoopSlot++;
+ // The loop: past its last chord, back to its first, without the pass ending.
+ // Not while a Next/Prev is queued or an ending is armed: those take effect at
+ // the end of the pass, and a loop that never ends one would hold them off forever.
+ if(songLoopSection === pracLoop.si && pracLoopValid() && songLoopSlot > pracLoop.b
+    && songPendingSectionDelta === 0 && !songEnding && !_endQueued && !_endingRunning){
+  songLoopSlot = pracLoop.a;
+  _pracChorusDone();     // a pass of the loop is the chorus Speed up and Next key count
+  _playLoopSlot(atTime);
+  return;
+ }
  if(songLoopSlot >= (sec?.slots.length||0)){
  // Finished a full pass through this section's chords.
  songLoopSlot = 0;
@@ -46398,6 +46468,7 @@ function toggleSongAutoAdvance(){
 // and in a one-section song both keys land back on the same section, so both
 // played its first chord and neither appeared to navigate anywhere.
 function songChartTap(si, ci, opts){
+ if(pracLoopTap(si, ci)) return;
  // If loop was running, jump to this slot and continue looping from here
  if(songLoopActive){
  clearTimeout(songLoopTimer);
@@ -63742,7 +63813,7 @@ const STORE_ORDER  = ['sounds','sampler','synth','groove','theory','practice','s
 // 30 (tests/tier/registry.test.js checks both).
 // Rules: never list a feature that is not built yet (add it here when it
 // ships), and keep custom scales and chord layouts out until they are polished.
-// Practice Pack: the speed trainer and key stepping are listed; loop bars joins the list when it works.
+// Practice Pack: the speed trainer, key stepping and loop bars are listed.
 const MODULE_COPY = {
  sounds:   { name:'Sounds Pack', line:'Keys, pads, vibes, and vintage basses',
   bullets:['Tonewheel organ','Electric piano','Synth piano','Synth pad','Vibraphone','Vintage violin bass and 60s soul bass'] },
@@ -63757,7 +63828,7 @@ const MODULE_COPY = {
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Future theory additions included'] },
  practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
-  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys'] },
+  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',
   bullets:['Capture and export stems','Full-length audio and MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
 };
