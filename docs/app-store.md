@@ -114,7 +114,7 @@ support@modriff.com
 | Secondary category | Education (it teaches theory by playing) or Entertainment; owner's call |
 | Age rating | Answer **None / No** to every question. Result: **4+** |
 | Made for Kids | No |
-| Price | Free app, with one In-App Purchase: **mõdRïff Pro** (below). The price is set in App Store Connect, not in the code |
+| Price | Free app, with eleven In-App Purchases: seven packs and the Full Studio bundle (below). The prices are set in App Store Connect, not in the code |
 
 ## App Privacy ("nutrition label")
 
@@ -186,48 +186,91 @@ progression over a beat.
 project has `AppIcon-512@2x.png` (1024 px) in `Assets.xcassets`; confirm it is
 opaque and square before upload.
 
-## In-App Purchase: mõdRïff Pro
+## In-App Purchases: seven packs and a bundle
 
 The code is in (`ios/App/App/ModBilling/ModBilling.swift`, StoreKit 2, behind
-`window.modBilling`). It compiles for the simulator, but the purchase flow has
-**not been run**; this is what it needs from the owner's Mac and App Store
-Connect to be. The design is in section 4 of
-`v5-architecture.md`.
+`window.modBilling`; the design and the table of what each pack holds are in section 4 of
+`v5-architecture.md`). The page side is measured. **The Swift has not been compiled and the
+purchase flow has not been run**: that needs your Mac and App Store Connect.
 
-**App Store Connect** (My Apps > mõdRïff > Monetization > In-App Purchases):
+**App Store Connect** (My Apps > mõdRïff > Monetization > In-App Purchases). All eleven are
+**Non-Consumable**, with these Product IDs exactly. IDs can never be reused, even after a
+product is deleted, so check each one before creating it.
 
-- Type **Non-Consumable**, Product ID exactly `modriff_pro`, Reference name
-  "mõdRïff Pro".
-- **Family Sharing: on.** It cannot be turned off once the product is live.
-- Price: the launch price first, raised later. Nothing in the app names a price;
-  the sheet shows whatever the store returns for the user's storefront.
-- Display name and description (the sheet's bullet list is a good source), and
-  a review screenshot of the upgrade sheet (any locked control, tapped).
-- Submit the IAP with the first build; it is reviewed together with the app.
-- **Universal purchase** is automatic when iPhone, iPad and Mac are one app
-  record with one bundle id. Check the Mac build is not a separate record.
+| Product ID | Reference name | Display name (max 30) | Description (max 45) | Price |
+|---|---|---|---|---|
+| `com.handelmusic.modriff.sampler` | Sampler Engine | Sampler Engine | Sampled instruments, kits, and your samples | $5.99 |
+| `com.handelmusic.modriff.synth` | mõdSynth Engine | mõdSynth Engine | Full synth sound sets and every mõdFX effect | $4.99 |
+| `com.handelmusic.modriff.groove` | Groove Pack | Groove Pack | World grooves, kits, odd meters, aux channel | $3.99 |
+| `com.handelmusic.modriff.theory` | Theory Pack | Theory Pack | Every scale, chord type, and voicing | $3.99 |
+| `com.handelmusic.modriff.practice` | Practice Pack | Practice Pack | Batch iReal import and a practice library | $3.99 |
+| `com.handelmusic.modriff.studio` | Studio Pack | Studio Pack | Stems, full exports, unlimited saves | $4.99 |
+| `com.handelmusic.modriff.sounds` | Sounds Pack | Sounds Pack | Keys, pads, vibes, and vintage basses | $1.99 |
+| `com.handelmusic.modriff.fullstudio` | Full Studio | Full Studio | Every pack, plus everything added later | $12.99 |
+| `com.handelmusic.modriff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Unlock every pack you don’t own yet | $10.99 |
+| `com.handelmusic.modriff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Unlock every pack you don’t own yet | $6.99 |
+| `com.handelmusic.modriff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Unlock every pack you don’t own yet | $3.99 |
+
+The display names and descriptions are the page's own copy (`MODULE_COPY` in `index.html`),
+and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste from there.
+
+- **Family Sharing: on for all eleven** (it cannot be turned off once a product is live, and
+  mixing on and off is how a family ends up owning half a bundle).
+- Prices: the launch prices above, raised or lowered later. Nothing in the app names a
+  price; the sheet and the store show whatever the store returns for the user's storefront,
+  and the page compares the Complete Your Studio price with what is left to buy one at a
+  time and offers whichever is cheaper.
+- A review screenshot per product (any locked control, tapped; or Settings > About > Store).
+- Submit the IAPs with the first build; they are reviewed together with the app.
+- **Universal purchase** is automatic when iPhone, iPad and Mac are one app record with one
+  bundle id. Check the Mac build is not a separate record.
+
+**App Review notes — paste this.** Without it the three Complete Your Studio products look
+like hidden purchases:
+
+> mõdRïff is free to use and sells seven optional packs and a bundle, all one-time purchases.
+> Tapping any locked control opens a sheet that names it and shows the pack and its price;
+> Settings > About > Store lists every pack. The three "Complete Your Studio" products are
+> upgrade prices for **Full Studio** and appear only after a pack has been bought: with none
+> bought the bundle is offered as "Full Studio" ($12.99); after buying one pack it is
+> offered as "Complete Your Studio" at the one-pack upgrade price, after two at the
+> two-pack price, and after three or more at the three-pack price. To see one in the
+> sandbox: tap any locked drum kit (the free kits are the Linn and 808), buy the Groove
+> Pack, then tap any other locked control — the sheet now shows "Complete Your Studio" with
+> the line "Unlock everything for $… more." Restore Purchases is on that sheet, on the store
+> screen and in Settings > About.
 
 **Testing in Xcode, no store account needed:**
 
-1. Add `ios/App/ModRiffPro.storekit` to the project (File > Add Files; leave
-   "Add to targets" **unchecked**: it must not ship in the app).
+1. Add `ios/App/ModRiffPacks.storekit` to the project (File > Add Files; leave
+   "Add to targets" **unchecked**: it must not ship in the app). It replaces
+   `ModRiffPro.storekit`, which sold the single product that was never released.
 2. Product > Scheme > Edit Scheme > Run > Options > **StoreKit Configuration**
-   > ModRiffPro.storekit.
-3. Run on a device or simulator. In a debug build, Settings > About has a
-   **Test as Free / Pro** switch that changes the tier without buying, and
-   remembers the choice across launches. A release build has no such switch
-   (the host defines `__modDebug` only under `#if DEBUG`, and the page ignores
-   the override without it). The same switch shows on a page served from
-   localhost, and never on a deployed one. Debug > StoreKit > Manage
-   Transactions lets you refund and Ask-to-Buy a test purchase.
-4. Then the same on a **sandbox account** against the real product, once it
-   exists in App Store Connect.
+   > ModRiffPacks.storekit.
+3. Run on a device or simulator. In a debug build, Settings > About has a **Test as** row:
+   **Free**, **Everything**, and a button per pack that toggles it, with no purchase, and
+   remembers the choice across launches. A release build has no such row (the host defines
+   `__modDebug` only under `#if DEBUG`, and the page ignores the override without it). The
+   same row shows on a page served from localhost, and never on a deployed one. Debug >
+   StoreKit > Manage Transactions lets you refund and Ask-to-Buy a test purchase.
+4. Then the same on a **sandbox account** against the real products, once they exist in App
+   Store Connect.
 
-**Test matrix** (from the brief): fresh free install; buy; restore on a second
-device; buy, then airplane mode and relaunch (must still be Pro: the answer
-comes from the cache the host injects, not a network call); refund (drops to
-free on the next launch or when the update arrives); Ask to Buy (pending, then
-approved); a Pro-heavy `.modriff.json` opened on a free build.
+**Test matrix:**
+
+- Buy Full Studio fresh; every pack unlocks.
+- Buy one pack: the one-pack upgrade appears, and plain Full Studio does not.
+- Buy a second, then a third: the offered upgrade (and its price) changes each time.
+- Buy a Complete Your Studio upgrade: everything unlocks, and no offer is shown any more.
+- Delete the app and reinstall; **Restore Purchases** brings every pack back.
+- Buy, then airplane mode and relaunch: the packs stay (the answer comes from the cache the
+  host injects, not a network call).
+- Refund a pack in Debug > StoreKit > Manage Transactions: that pack locks again on the next
+  launch or when the update arrives, and the offer recalculates.
+- Ask to Buy: pending, then approved.
+- A free build opens a `.modriff.json` made with every pack: it loads, the parts the
+  install does not own play stand-ins, one banner names the packs it needs, and saving again
+  keeps the originals.
 
 ## Account steps the owner does
 
