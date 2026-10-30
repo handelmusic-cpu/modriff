@@ -41,8 +41,8 @@ async function playOnce([mode, notes, root]) {
   const proto = OscillatorNode.prototype, orig = BaseAudioContext.prototype.createOscillator;
   BaseAudioContext.prototype.createOscillator = function () { const o = orig.apply(this, arguments); built.push(o); return o; };
 
-  const sp = ctx.createScriptProcessor(4096, 2, 2); const chunks = []; let on = false;
-  sp.onaudioprocess = e => { if (on) chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0))); };
+  const sp = ctx.createScriptProcessor(4096, 2, 2); const chunks = [], stamps = []; let on = false;
+  sp.onaudioprocess = e => { if (on) { chunks.push(Float32Array.from(e.inputBuffer.getChannelData(0))); stamps.push(e.playbackTime); } };
   const z = ctx.createGain(); z.gain.value = 0;
   bus.connect(sp); sp.connect(z); z.connect(ctx.destination);
 
@@ -56,7 +56,11 @@ async function playOnce([mode, notes, root]) {
   stopAll();
   const n = chunks.reduce((s, c) => s + c.length, 0), all = new Float32Array(n);
   let k = 0; chunks.forEach(c => { all.set(c, k); k += c.length; });
-  return { osc: out, sr: ctx.sampleRate, samples: Array.from(all) };
+  // A block the page was too busy to take splices the waveform, and a splice
+  // reads as amplitude modulation. Count blocks whose start is not exactly one
+  // block after the last, so a bad capture is told apart from a bad result.
+  let gaps = 0; for (let i = 1; i < stamps.length; i++) if (Math.abs(stamps[i] - stamps[i - 1] - 4096 / ctx.sampleRate) > 0.5 / ctx.sampleRate) gaps++;
+  return { osc: out, sr: ctx.sampleRate, samples: Array.from(all), gaps };
 }
 
 // Beating at fc: demodulate to baseband, low-pass with an 80 ms Hann window, take
@@ -111,7 +115,13 @@ function beating(x, sr, fc) {
   const maj = [60, 64, 67], min = [60, 63, 67];
   const R = {};
   for (const [name, notes] of [['maj', maj], ['min', min]]) {
-    for (const mode of ['equal', 'pure']) R[name + '-' + mode] = await page.evaluate(playOnce, [mode, notes, 60]);
+    for (const mode of ['equal', 'pure']) {
+      // Re-take a capture that dropped blocks (never one that merely failed a check).
+      let r, tries = 0;
+      do { r = await page.evaluate(playOnce, [mode, notes, 60]); tries++; } while (r.gaps > 0 && tries < 10);
+      r.tries = tries; R[name + '-' + mode] = r;
+      if (tries > 1) console.log(`  (${name}-${mode}: ${tries - 1} capture(s) dropped blocks and were taken again)`);
+    }
   }
 
   // ── 1. The oscillators, counted
@@ -131,6 +141,8 @@ function beating(x, sr, fc) {
   // ── 2. The sound
   // C major: E's 4th partial against C's 5th (~1313 Hz), G's 2nd against C's 3rd (~784 Hz).
   // C minor: Eb's 5th against G's 4th (~1568 Hz is both... use C's 6th vs Eb's 5th at ~1570).
+  check(['maj-equal', 'maj-pure'].every(k => R[k].gaps === 0), 'the two captures measured have no dropped blocks',
+    ['maj-equal', 'maj-pure'].map(k => R[k].gaps).join(', '));
   const sr = R['maj-equal'].sr;
   const B = (k, fc) => beating(R[k].samples, sr, fc);
   const third = { eq: B('maj-equal', 1313.3), pu: B('maj-pure', 1308.1) };

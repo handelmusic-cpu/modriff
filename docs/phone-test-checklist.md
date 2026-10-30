@@ -12,7 +12,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
 
 1. `git pull`, then `npm run ios:device` with the phone plugged in (the update
    is one command: it builds, syncs and installs). It is a **Debug** build, which
-   is what gives you the Free/Pro switch in section 1.
+   is what gives you the Test as row in section 1.
 2. Open the app and look at Settings > About. It should say
    **v4.9.9.9.9.8.9w**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
@@ -38,7 +38,7 @@ sections 3, 4 and 5 will not mean anything.
 | 1.1 | Settings > MIDI | the pane lists MIDI inputs (or "no inputs") and does **not** say "Not supported on this device" |
 | 1.2 | Settings > General > Touch | a **Haptics: ON** button that is not greyed out |
 | 1.3 | Songs > File > Import a chord sheet | the dialog has **Files…, Photos, Camera** (three buttons, not one) |
-| 1.4 | Settings > About | a **Test as Free / Pro** row (Debug build only) |
+| 1.4 | Settings > About | a **Test as Free / Everything** row with a button per pack (Debug build only) |
 
 If 1.1 to 1.3 show the *web* versions (no Photos or Camera, "not supported" MIDI,
 no haptics button), the plugins did not register. Look in Xcode's console for
@@ -120,24 +120,30 @@ are the open questions from the notes.
 | 5.10 | Same with a **sampled** voice (flute, violin) on the melody | **known to go silent**; say whether it does, and for how long |
 | 5.11 | Come back | timing loose for a second at most |
 
-## 6. Pro and purchase (4.9.9.9.9.8.9b to 9h)
+## 6. Packs and purchase (4.9.9.9.9.9.7)
 
-StoreKit 2, written but never run. Needs the StoreKit configuration file for the
-test purchases without a store account (steps in `docs/app-store.md`, "Testing in
-Xcode"). The Test as Free / Pro switch in Settings > About works without it.
+StoreKit 2, seven packs and a bundle, written but never compiled or run. Needs the
+StoreKit configuration file for test purchases without a store account (steps in
+`docs/app-store.md`, "Testing in Xcode"). The **Test as** row in Settings > About works
+without it.
 
 | # | do | you should see |
 |---|---|---|
-| 6.1 | Switch to **Free** | locks appear: Pro voices, the Pro scales, steps over 32, extended chords |
-| 6.2 | Free: play a Piano (synth) and Upright part, a fresh start | they are the defaults and are not locked |
-| 6.3 | Free: export audio longer than 90 s | the file stops at 90 s and a message says so |
-| 6.4 | Free: open a `.modriff.json` made with Pro parts | it opens, plays, and one banner names what is missing; saving again keeps the Pro choices |
-| 6.5 | Switch to **Pro** | everything unlocks without a relaunch |
-| 6.6 | With the StoreKit file: tap the upgrade sheet, buy | Pro, no relaunch |
-| 6.7 | Buy, then airplane mode, then force-quit and reopen | still Pro |
-| 6.8 | Delete the app, reinstall, **Restore Purchases** | Pro again |
-| 6.9 | Debug > StoreKit > Manage Transactions: refund | back to free on the next launch |
-| 6.10 | Ask to Buy | pending, then approved |
+| 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Linn and 808, steps over 16, extended chords, the Aux switch |
+| 6.2 | Free: a fresh start | chords on **Saw**, drums on the Linn, bass on Upright, the Aux off, none of them locked |
+| 6.3 | Free: tap a locked drum kit | one sheet: "… is part of the Groove Pack." with **Unlock Groove Pack** at the store's price, **Full Studio** under it, Restore Purchases, All packs |
+| 6.4 | Free: export audio longer than 90 s | the file stops at 90 s and a message says so |
+| 6.5 | Free: open a `.modriff.json` made with several packs | it opens, plays stand-ins, and one banner names the packs; saving again keeps the originals |
+| 6.6 | Test as a single pack (say **Theory**) | only that pack's locks open; every other lock stays |
+| 6.7 | Test as **Everything** | everything unlocks without a relaunch |
+| 6.8 | With the StoreKit file: tap a lock, buy that pack | it unlocks, the sheet closes, no relaunch |
+| 6.9 | Then tap another lock | the offer is now **Complete Your Studio**, names what you own, and the price is the one-pack upgrade; buy a second and a third and the price changes |
+| 6.10 | Settings > About > **Store** | seven packs, each with its contents; owned ones ticked; the bundle offer on top |
+| 6.11 | Buy, then airplane mode, then force-quit and reopen | still owned |
+| 6.12 | Delete the app, reinstall, **Restore Purchases** | every pack back |
+| 6.13 | Debug > StoreKit > Manage Transactions: refund a pack | that pack locks again on the next launch, and the offer recalculates |
+| 6.14 | Ask to Buy | pending, then approved |
+| 6.15 | Free: import a four-song iReal playlist | one chart arrives and the toast says a whole playlist is part of the Practice Pack |
 
 ## 7. The older iPad (stress test, not a target)
 
@@ -162,7 +168,7 @@ not say the app has to run well there.
 | 8.1 | Settings > General > Key colours, pick **Circle of fifths** | the twelve swatches re-order; keys a fifth apart are neighbours in colour; the whole app's accent follows the key you are in |
 | 8.2 | "Red is" > A | A is red, B♭ orange, round the wheel; the page colour changes with it |
 | 8.3 | Force-quit and reopen | the choice is kept |
-| 8.4 | Settings > About > Test as **Free** | the control is dimmed, the app plays the original colours (C red); tapping it says it is Pro; back to Pro and your choice returns |
+| 8.4 | Settings > About > Test as **Free** | **Red is** still works; **Circle of fifths** is dimmed and says it is the Theory Pack's, the app plays the chromatic colours; turn Theory back on and your choice returns |
 | 8.5 | Mixer > **EQ** on the master strip | a panel with Low, Mid, Mid at, High; the button lights once anything is off flat |
 | 8.6 | Play something with bass and cymbals; drag Low up and High down | the bass swells and the top softens, smoothly, no zipper noise; **Flat** puts it back |
 | 8.7 | Master EQ with the chord part native (and again with drums/bass on web) | the EQ moves **everything**, the native chord included, and a +12 dB boost does not clip (the limiter is after it) |

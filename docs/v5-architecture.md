@@ -13,7 +13,7 @@ are cheaper to make before code than after.
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
 | 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27). The C++ engine is in the target (`-ffp-contract=off`, null test 516/516) and the chord part is heard from it: `AppDelegate` owns the audio session, which cleared the old 0.73 s stop ("The native host, and where it stops", kept for its measurements). Native steps landed: the effects rack, the part strip with pan (N1), mõdFX (N3, N4), the master bus (N2) and capture for Bounce and stems (N5); **still open** is the rest of the parts going native (the offset once reported for the native chord in a bounced file was the checker's, see N5). Every part's notes already go through `modEngine`: chords (4.9.9.6), live melody (.7), melody sequencer (.8), bass (.9), arp (4.9.9.9.1), drums and Aux (.2), legacy Rhythm and click (.3), the knobs (4.9.9.9.4–.7), the sampler (4.9.9.9.9). Patches a native engine cannot resolve by name travel as values in the same message (4.9.9.9.9.7). Haptics, MIDI, picture import and iCloud sync are written; what a Mac has not compiled is marked unbuilt where it is described |
-| 4 | In-app purchase | designed below; `window.modBilling` already has the right shape |
+| 4 | In-app purchase | **built, not run (4.9.9.9.9.9.7)**: seven modules and a bundle, eleven StoreKit products (section 4). The page side is measured; the Swift is uncompiled and the purchase flow unrun |
 | 5 | Phase 2 | key colours, master EQ and iCloud sync **built** (4.9.9.9.9.8.9o to 9q); see "After launch". Extra themes and melody density not built |
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
@@ -2037,7 +2037,7 @@ do not scale themselves, and needs a switch per part.
 - **The Debug build is not a test of the engine.** Xcode's Debug configuration compiles the C++ at
   `-O0`: 38% load, 32,116 blocks over 2 ms, worst block 162 ms; the same session optimised was 3% to
   17% and a worst of 8 ms. `ios:device` now builds Debug with `GCC_OPTIMIZATION_LEVEL=s` (Release
-  would be fast too but asks the App Store for Pro and has no Test-as-Pro switch). `MODRIFF_OPT=0`
+  would be fast too but asks the App Store for purchases and has no test switch). `MODRIFF_OPT=0`
   turns it off.
 - **Play-and-record made the audio blocks 1,100 frames (23 ms) instead of 128 (2.7 ms).** The session
   now asks for a 5 ms buffer (`setPreferredIOBufferDuration`); the phone gives 240 frames. Check the
@@ -2257,59 +2257,147 @@ The host's capture drops blocks of digital silence (`_natCapTake`): its master
 is captured on every take and was otherwise eight bytes a frame of zeros.
 Unbuilt Swift as of this entry; measured in a browser with a stand-in host only.
 
-## 4. In-app purchase: one Pro unlock
+## 4. In-app purchase: seven modules and a bundle
 
-**Decided (owner, 4.9.9.9.9.8.9):** one product, `modriff_pro`, a one-time
-non-consumable, Family Sharing on, universal across iPhone/iPad/Mac. The price
-lives in App Store Connect and is read from the store at run time, never written
-in the page. The earlier plan here, many add-on products plus a bundle, is
-dropped. No subscriptions, ads, accounts or backend.
+**Decided (owner, 4.9.9.9.9.9.7):** the one-product plan of 4.9.9.9.9.8.9 (`modriff_pro`,
+never released) is replaced by **seven non-consumable modules and a bundle**, eleven
+products in all, every one Family Sharing on and universal across iPhone/iPad/Mac. The
+prices live in App Store Connect and are read from the store at run time, never written
+in the page. No subscriptions, ads, accounts or backend.
 
-`window.modBilling` keeps the contract it always had (`isPro`, `refresh`,
-`purchase`, `restore`, `provider`) and gains `price()` for the upgrade sheet.
-The iOS provider is StoreKit 2 in Swift behind that contract, answering
-`isPro()` from a cache so a paying user is never locked out offline; a revoked
-or refunded purchase drops to free on the next refresh. App Review requires a
-visible **Restore Purchases** (guideline 3.1.1): it is on the upgrade sheet and
-in Settings. The web build keeps granting everything until the web path goes
-away, as before.
+| Product ID (`com.handelmusic.modriff.` + …) | Display name | Price | Shown to |
+|---|---|---|---|
+| `sampler` | Sampler Engine | $5.99 | everyone |
+| `synth` | mõdSynth Engine | $4.99 | everyone |
+| `groove` | Groove Pack | $3.99 | everyone |
+| `theory` | Theory Pack | $3.99 | everyone |
+| `practice` | Practice Pack | $3.99 | everyone |
+| `studio` | Studio Pack | $4.99 | everyone |
+| `sounds` | Sounds Pack | $1.99 | everyone |
+| `fullstudio` | Full Studio | $12.99 | owners of no module |
+| `fullstudio.from1` | Complete Your Studio | $10.99 | owners of exactly 1 |
+| `fullstudio.from2` | Complete Your Studio | $6.99 | owners of exactly 2 |
+| `fullstudio.from3plus` | Complete Your Studio | $3.99 | owners of 3 to 6 |
+
+Product IDs can never be reused, even after deletion, so those are the ones to create. The
+prices are the launch prices and appear only in App Store Connect and in the StoreKit test
+file (`ios/App/ModRiffPacks.storekit`); the page and the Swift read `displayPrice`.
+
+**Where it lives.** Page: one block in `index.html` ("Modules", the part between
+`<<tier-core:start>>` and `<<tier-core:end>>` has no DOM in it and is what
+`tests/tier/load.js` runs). Native: `ios/App/App/ModBilling/ModBilling.swift`. The page and
+the host speak in *product keys* (`sampler` … `sounds`, `fullstudio`, `from1`, `from2`,
+`from3plus`); the Swift is the one place a key becomes a product ID.
+
+`window.modBilling` is `owned()` (the keys bought, synchronous, from a cache the host
+injects at document start so a paying user is right on the first frame and offline),
+`products()` (`{key:{price, value}}`, the store's own strings and numbers), `refresh()`,
+`purchase(key)`, `restore()` and `provider`. Any bundle key grants every module. The Swift
+rebuilds the set from `Transaction.currentEntitlements` (verified, not revoked), listens to
+`Transaction.updates` for the life of the app (refunds, Ask to Buy, Family Sharing, another
+device), and a cached key comes down only on a signed revocation, never on "found nothing".
+Restore Purchases is on the upgrade sheet, the store screen and Settings (guideline 3.1.1).
+The web build keeps granting everything.
+
+**Everything that is a decision is made in the page**, in four tables that the rest of the
+file reads (change a table, not a surface):
+
+- `FREE_LIMITS` and `FREE_NUMBERS`: what free gets. `FEATURE_MODULE` and `NUMBER_MODULE` say
+  which module owns each row; the test fails on a row with none, which would be a lock
+  nothing could open. A feature no table names is free.
+- `SOUNDS_VOICES` and `voiceModule(w)`: the Sounds Pack's seven voices, then mõdSynth, then
+  any other recorded voice (the Sampler Engine's).
+- `MODULE_COPY` and `BUNDLE_COPY`: the buyer-facing words. Names are held to 30 characters
+  and one-line descriptions to 45, because the descriptions are what goes into App Store
+  Connect (the test checks, and checks the StoreKit file's text against them).
+- `bundleOfferFor(owned, full, products)`: which of the four bundle products to offer by how
+  many modules are owned, and `null` when there is nothing left to sell **or when what is
+  left costs less one at a time than the bundle** (so a price change in App Store Connect
+  cannot make the page recommend the dearer thing).
+
+Every gate is still `freeAllowsKit`, `freeAllowsMode`, `modAllows('stemExport')` and the
+rest, so the ~80 call sites did not change shape; each now answers for one module. Every
+`freeBlocked(what, module)` names the module that would lift it (a lint in the registry test
+fails on a call that does not). A tap on a locked control opens **one** sheet, named
+("Custom samples are part of the Sampler Engine."), with that module at the store's price,
+the bundle offer under it ("Full Studio" for a first-time buyer, "Complete Your Studio" with
+what they would get and what they already own for a returning one), Restore Purchases, and
+a way to **All packs**, which is the store screen (Settings > About > Packs > Store). The app
+never opens it on its own.
 
 ### Where the line is
 
-Everything reads `FREE_LIMITS` / `FREE_NUMBERS` through `modAllows` and the
-`freeAllows*` helpers; nothing else decides. To move the line, change the table.
-
-| | Free | Pro |
+| | Free | Module |
 |---|---|---|
-| Scales | the 7 church modes + minor pentatonic | everything else, custom scales |
-| mõdFX pad | Filter Sweep, Tape Stop, Dub Delay, Riser | the other patches, axis pickers, saving your own |
-| Audio export | first 90 s (`FREE_AUDIO_EXPORT_SECONDS`), with a message | full song |
-| MIDI export | first 4 bars (`FREE_MIDI_EXPORT_BARS`) | full song |
-| Steps | up to 32, as whole bars of the current meter | up to 64 |
-| Meters | 4/4, 3/4, 12/8 | any |
-| Saved songs | 5 setlist songs (`FREE_SAVE_SLOTS`); Setups unlimited | unlimited |
-| Drum kits | 808, 606, Linn, Jazz (the Aux layer takes these too) | all others |
-| Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, Bossa Nova, 3/4 Waltz, 12/8 Slow | the rest |
-| Bass styles | Rock, Jazz, Funk, Latin | the rest |
-| Melody styles | Pop Hook (the default), Rock, Jazz, Funk, Latin | the rest |
-| Live page | the standard layout (Chords, Melody); the Pads and mõdFX widgets are free if a layout has them | adding, swapping, moving or removing widgets |
-| Voices | every synth voice (Piano (synth), Upright, Rhodes, Organ, the waves...) | every recorded voice, Piano and Upright 1 included, and mõdSynth; locked and listed in every picker |
-| Chord extensions | triads and plain sevenths | 6/9, 11, 13, alterations |
-| Key colours | the original: C red, one colour step a semitone | choose which key is red, and a circle-of-fifths order (`KH`, `khColor`; saved as `modo-keyhue`; free ignores what is saved without erasing it) |
-| Sampler pads | the four preset banks, 9 pads each | the four user banks (your own sounds), all 16 pads |
-| Stems | none | per-part stems from Bounce |
+| Scales | major, minor, minor pentatonic, blues | **Theory**: every other mode, harmonic and melodic minor, world scales, your own |
+| Chord types, voicings | triads, plain sevenths; Close and Spread | **Theory**: 6/9, 11, 13, alterations; Drop 2, Drop 3, Soul, Neo-soul, Vary |
+| Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
+| Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
+| Sampler pads | preset banks PA Mix and PB Drums, 9 pads each | **Sampler**: PC and PD, the four user banks, all 16 pads, your own clips |
+| mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
+| Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |
+| Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, 3/4 Waltz, 12/8 Slow | **Groove**: the rest, including Bossa Nova |
+| Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest, and Arrange |
+| Meters, steps | 4/4, 3/4, 12/8; 12, 16 or 24 (one bar of 12/8) | **Groove**: any meter, up to 64, a step length per part |
+| Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
+| Audio / MIDI export | first 90 s / first 4 bars | **Studio**: the whole take; stems |
+| Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
+| iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
 
-Fresh-start defaults are all free ones: drums on the Linn, Aux on 606, chords on Piano (synth), bass on Upright (the synth one, not Upright 1).
-Every way of choosing a voice refuses a Pro one (the five setters), not just the locked buttons.
+Fresh-start defaults are free ones, with one change: **chords start on Piano (synth), which
+is now the Sounds Pack's**, so a free build plays the chords on Saw instead
+(`FREE_VOICE_FALLBACK`) and a paying one keeps the Piano. Drums on the Linn, bass on Upright
+(the synth one), Aux off for a free build.
+
+**Judgment calls the brief left open, all in the tables above and one line each to move:**
+the two free drum kits are Linn and 808 (606 and Jazz went to Groove); the free bass styles
+are Rock and Funk and the free melody styles Hook and Rock; Bossa Nova left the free grooves
+as a world groove; arp rates beyond 1/8 and 1/16 are Groove; Arrange (a line per chord) is
+Groove; the rotatable key colours stay free and only the fifths order is Theory; the chord
+vocabulary beyond the plain sevenths is Theory (it was already locked); the free sampler gets
+the first two preset banks; free steps are one bar of any free meter, up to 16, with 12/8's
+own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
+Triangle and the two stock basses are named by no pack, so they are free.
+
+**Not built, so neither gated nor in the copy** (the brief's own rule is not to list them
+until they ship; each goes into its module's copy when it does): tempo ramp, section
+looping and whole-chart transpose (Practice); an alternate bass base note, a scale per
+generator and melody density (Groove); mid-song time-signature changes (Groove); advanced
+fingerings, that is alternate positions and shapes up the neck (Theory; the Fingering panel is
+a reference with none of those, and stays free); alternate intonations (Theory); a 3-band EQ
+with a low cut, extra themes and cloud sync (Studio). The master EQ that exists has no low
+cut and stays free until the low-cut one replaces it; iCloud sync is written but not live
+(no entitlement), and goes under Studio when it ships. Custom scales and chord layouts are
+gated (they are Theory's) but stay out of the copy until they are polished.
+
+**Trademark names.** The voices were shown as Rhodes, Motown and Höfner. They are now
+Electric Piano, 60s Soul and Violin Bass everywhere they are displayed, tooltips, help and
+credits included; the ids (`rhodes`, `bass_motown`, `bass_hofner`) are unchanged because
+saved songs and setups key on them. **Still named Motown**: the Motown groove, bass style and
+melody style. Those names are keys of saved patterns; renaming them is a migration and is the
+owner's call.
 
 ### Pro content in a free build
 
-A song or setup made with Pro parts opens in a free build without losing
-anything: the free build mutes or substitutes **at play time** and never writes
-the substitution back. (The older `freeApplyLimits` rewrote the mode, voice and
-step count when the tier dropped; that destroyed the Pro choice on re-save and
-is what this replaces.) One banner names what is missing and opens the upgrade
-sheet.
+A song or setup made with parts the install does not own opens without losing
+anything: the build substitutes **at play time** and never writes the substitution back
+(`proKeepSetup` / `proKeepSong` hand the original back at the next save for every field the
+user has not touched since loading). One banner names what is missing, by pack ("a sound
+from the Sounds Pack, a scale from the Theory Pack"), and opens the store. The older
+`freeApplyLimits` rewriting the mode, voice and step count destroyed the choice on re-save
+and is what this replaces. Dropping a pack puts the stand-in in (Saw for the chords, Close
+voicing, the first free scale, the Linn, the Aux off) and buying it again does not need a
+relaunch.
+
+### Testing
+
+`node tests/tier/registry.test.js` (tables, the matrix of each module alone, the bundle offer
+at every count of owned modules and at the price edges, the copy limits, two lints) and
+`node tests/tier/probe.js` against the served page or `dist/` (what the page really does: the
+locks, the sheet, a simulated purchase with no reload, the store screen, a setup made with
+every pack opened on a free build, the iReal limits). The Swift and the real purchase flow
+are **not built or run**: `docs/app-store.md` and `docs/phone-test-checklist.md` section 6
+are the steps on a Mac.
 
 ### After launch (Phase 2)
 
@@ -2318,8 +2406,9 @@ sheet.
 ordering that reuses the same table (`khIndex`: the semitone distance from the
 red key, times 7 mod 12 for fifths). Settings > General > Key colours has the two
 modes, a "Red is" picker and a twelve-key strip drawn from the same function the
-page colour is, so it cannot disagree with it. Pro; a free build plays the
-original mapping and keeps what is saved.
+page colour is, so it cannot disagree with it. Rotating (**Red is**) is free;
+the circle-of-fifths order is the Theory Pack's, and without it the chromatic mapping plays
+and what is saved is kept.
 
 **Master EQ: built (4.9.9.9.9.8.9p).** Three bands on the whole mix: a low shelf
 at 120 Hz, a peak (Q 0.9) that moves from 200 Hz to 5 kHz, a high shelf at 8 kHz,
@@ -2328,7 +2417,8 @@ boost cannot get past the limiter, and the Master Bus switch leaves it in (the
 switch bypasses the glue, room and limiter; the EQ is the user's tone, like the
 volume). Opened from **EQ** on the master strip in the mixer. Free: the doc's
 tier table has no row for it, so it is not locked; one entry in `FREE_LIMITS`
-would. Saved as a device preference (`modo-mastereq`) and in a project file.
+would. (The packs brief lists a 3-band EQ *with a low cut* under the Studio Pack, "when
+built". This one has no low cut and stays free; the low-cut version is what moves.) Saved as a device preference (`modo-mastereq`) and in a project file.
 Native: three parameters appended to the master message (`eqLo`, `eqMid`,
 `eqMidHz`, `eqHi`), a band is not run at all while it is at 0 dB, the gains are
 smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
@@ -2440,7 +2530,7 @@ Requested by users; nothing here is started, and none of it holds up 5.0.0.
 
 ### Just intonation
 
-**Spike built (4.9.9.9.9.9.7), web chord part only.** Master Tune has a
+**Spike built (4.9.9.9.9.9.8), web chord part only.** Master Tune has a
 "Chord intervals" Equal / Pure switch (`tuningMode`, saved as `modo-tuning`).
 Pure adds a cents offset from `TUNING_JI5` (5-limit, indexed by semitones above
 the chord root) to each chord tone on `.detune`, in `_webChordOn`, *before*
@@ -2458,8 +2548,12 @@ separate `cents` on the `on` message, in `dsp.js` and C++, null-tested); the
 arp is untuned; the dominant seventh uses 9:5 rather than 7:4 (needs the
 chord's quality); the diminished fifth uses 45:32; the root is equal-tempered
 per chord, so a progression drifts a syntonic comma (21.5 c) between chords
-(the adaptive-root mode below). It is free in this build; where it sits in
-`FREE_LIMITS` is undecided.
+(the adaptive-root mode below). It is free in this build (no `FREE_LIMITS` row names it, so it is free by
+omission). The natural home is the Theory Pack, whose copy already says "future
+theory additions included": a row in `FREE_LIMITS`, its `FEATURE_MODULE` entry and
+a bullet in `MODULE_COPY.theory`, added when it is decided and built far enough
+to be listed. A free "hear the difference" button on one held chord is the
+suggested taste.
 
 The original note, from before the spike:
 
