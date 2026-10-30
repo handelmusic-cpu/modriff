@@ -2530,6 +2530,33 @@ Requested by users; nothing here is started, and none of it holds up 5.0.0.
 
 ### Just intonation
 
+**Spike built (4.9.9.9.9.9.8), web chord part only.** Master Tune has a
+"Chord intervals" Equal / Pure switch (`tuningMode`, saved as `modo-tuning`).
+Pure adds a cents offset from `TUNING_JI5` (5-limit, indexed by semitones above
+the chord root) to each chord tone on `.detune`, in `_webChordOn`, *before*
+`glideApply` so a glide settles on the tuned pitch (swapping the two calls was
+tried: the glide slides the tuning away and every voice ends at 0 c).
+`tests/tuning/probe.js` counts it: the oscillators' offsets are 0 / -13.69 /
++1.96 c for a major triad and 0 / +15.64 / +1.96 for a minor, and a sawtooth
+triad's third band beats at 10.5 Hz with depth 0.78 in Equal and 0.04 in Pure
+(21x less).
+
+**Not done, in the order they matter:** bass and melody do not follow it (they
+should read the same root from `_blChordWin`); mõdSynth and the native graph
+path are untouched (`engine.js` truncates the note to an integer, so it needs a
+separate `cents` on the `on` message, in `dsp.js` and C++, null-tested); the
+arp is untuned; the dominant seventh uses 9:5 rather than 7:4 (needs the
+chord's quality); the diminished fifth uses 45:32; the root is equal-tempered
+per chord, so a progression drifts a syntonic comma (21.5 c) between chords
+(the adaptive-root mode below). It is free in this build (no `FREE_LIMITS` row names it, so it is free by
+omission). The natural home is the Theory Pack, whose copy already says "future
+theory additions included": a row in `FREE_LIMITS`, its `FEATURE_MODULE` entry and
+a bullet in `MODULE_COPY.theory`, added when it is decided and built far enough
+to be listed. A free "hear the difference" button on one held chord is the
+suggested taste.
+
+The original note, from before the spike:
+
 Today every pitch is 12-tone equal temperament: `440·2^((n−69)/12)` is
 spelled out in more than one place in `index.html` (`blFreq`, the sampler's
 range maths near `masterTune`, the clip pitch detector), in `modsynth/dsp.js` and in its C++ port. The only

@@ -8056,7 +8056,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.7a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.8</span></div>
  </div>
 </div>
 
@@ -9040,6 +9040,16 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:4px;letter-spacing:.05em">
  432 Hz — "healing" · 440 Hz — standard · 444 Hz — bright/warm
  </div>
+ <div class="row" style="margin-top:8px">
+ <div class="sl">Chord intervals</div>
+ <div class="tg">
+ <button class="tb active" id="tuning-equal" onclick="setTuningMode('equal')">Equal</button>
+ <button class="tb" id="tuning-pure" onclick="setTuningMode('pure')">Pure</button>
+ </div>
+ </div>
+ <div style="font-size:.42rem;color:var(--muted);text-align:center;margin-top:4px;letter-spacing:.05em">
+ Pure — each chord tone tuned to its ratio against the root, so thirds and fifths stop beating
+ </div>
  </div>
  </div>
   </div>
@@ -9414,7 +9424,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.7a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10459,7 +10469,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.7a';
+const MODRIFF_VERSION = '4.9.9.9.9.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -25421,6 +25431,55 @@ function setMasterTune(hz){
  });
 }
 
+// ── Pure tuning (Equal / Pure) ──────────────────────────────────────────────
+// Equal temperament puts a major third 13.7 c above a 5:4 and a minor third
+// 15.6 c under a 6:5, so a held triad of harmonic-rich voices beats: C's 5th
+// partial and E's 4th should be the same pitch and are 10 Hz apart. Pure
+// tuning moves each chord tone to its small-whole-number ratio against the
+// chord's ROOT, which stays where equal temperament has it (what a Yamaha
+// Harmony Director does).
+//
+// One table of cents-to-add, indexed by semitones above the root, so every
+// pitch calculation that wants it reads this and nothing spells a ratio out a
+// second time. 5-limit: 1200*log2(n/d) - 100*semitones. A dominant seventh
+// would rather have 7:4 (-31.2 c) than 9:5 (+17.6 c); that needs the chord's
+// quality and is not here yet.
+//
+// A var, not a let: _webChordOn reads it from far away and this section sits
+// well below the code that first calls it (the dead-zone rule in CLAUDE.md).
+var TUNING_JI5 = [0, 11.73, 3.91, 15.64, -13.69, -1.96, -9.78, 1.96, 13.69, -15.64, 17.60, -11.73];
+var tuningMode = 'equal';
+try{ if(localStorage.getItem('modo-tuning')==='pure') tuningMode = 'pure'; }catch(e){}
+function setTuningMode(m){
+ tuningMode = (m==='pure') ? 'pure' : 'equal';
+ try{ localStorage.setItem('modo-tuning', tuningMode); }catch(e){}
+ ['equal','pure'].forEach(function(k){
+  var b=document.getElementById('tuning-'+k); if(b) b.classList.toggle('active', tuningMode===k);
+ });
+ if(typeof syncSSPreviews==='function') syncSSPreviews();
+}
+// Cents to add to `midi` as a tone of the chord whose root is `rootM`.
+function tuningCents(midi, rootM){
+ if(tuningMode!=='pure') return 0;
+ return TUNING_JI5[(((midi-rootM)%12)+12)%12];
+}
+// Moves a built voice's nodes by that amount, on .detune: the same place the
+// chord glide and the pitch bend work, and the one both oscillators and sample
+// players have. It is ADDED to what .detune already holds (unison spread, the
+// pad's own 9 c), and it goes in BEFORE glideApply, which reads .detune as the
+// pitch a glide settles on: setting it afterwards would be slid away from.
+// A mõdSynth stand-in (_msx) has no .detune that reaches its engine, so it is
+// left alone; that voice is not tuned yet.
+function tuningApply(nodes, midi, rootM){
+ var c = tuningCents(midi, rootM);
+ if(!c) return;
+ (nodes||[]).forEach(function(nd){
+  if(!nd || !nd.detune || nd._msx) return;
+  if(nd.frequency && nd.frequency.value < 20) return;   // an LFO, not a pitch
+  try{ nd.detune.value = nd.detune.value + c; }catch(e){}
+ });
+}
+
 function velScale(pressure){
  const vs=parseFloat(document.getElementById('vel-sense').value)||.5;
  if(pressure>0) return .5+(pressure*vs*.5);
@@ -25620,6 +25679,7 @@ function _webChordOn(msg){
  g.connect(fx.head);
  const _rv=feedChordRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,voice,'chord');
+ tuningApply(oscs, rootM+s, rootM);
  glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec);
@@ -39737,7 +39797,7 @@ function syncSSPreviews(){
   set('ss-playing-preview',
       (voicing==='open' ? 'Spread' : 'Close')
       + ' · ' + (logicModeOn ? 'Logic on' : 'Logic off'));
-  set('ss-tune-preview', 'A = ' + masterTune + ' Hz');
+  set('ss-tune-preview', 'A = ' + masterTune + ' Hz' + (tuningMode === 'pure' ? ' · pure' : ''));
   var _ins = (typeof midiAccess!=='undefined' && midiAccess) ? [...midiAccess.inputs.values()].length : 0;
   set('ss-midi-preview', (_ins ? _ins+' input'+(_ins===1?'':'s') : 'No input')
       + ' · ' + (midiMode==='melody' ? 'Melody' : 'Chords'));
@@ -49049,6 +49109,7 @@ try{ moRestorePrefs(); }catch(e){}
 try{ restoreSubPrefs(); }catch(e){}
 initMidi();
 setMasterTune(440);
+setTuningMode(tuningMode);   // a saved 'pure' lights its button; the table is a var, so it is here by now
 syncFixedTransport();
 updateFtRateDisp();
 // Both in-app version labels come from MODRIFF_VERSION. It is not the only
