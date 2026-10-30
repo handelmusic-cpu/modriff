@@ -156,6 +156,29 @@ Ultimate Guitar exports, as text recognition reads them — misreads like
 "Cc" for C and "BC" for B C are corrected on lines that already hold a clean
 chord.
 
+**How long a chord lasts (4.9.9.9.9.9.9f).** A sheet does not say, so every import used to give
+each chord one bar, which is wrong for a slow song (Creep's verse is four chords of two bars each,
+and came in as a 4-bar verse at double speed). The import window now has a **Chord** choice,
+kept for next time in `modo-sheetlen`: **By line** (the default, two bars to a line of words),
+or the same for every chord, half a bar to four. The total under each section shows what it adds up
+to. *By line* reads the layout: `parseChordSheet` keeps, per section, a record per chord line
+(`lines`: how many chords it holds, the line of words under it, and the column each chord starts
+at), and `_sheetLineEighths` gives the chords on a line its bars in proportion to where they sit
+over the words, each rounded to a beat (largest remainder, never under a beat), with a repeated
+line `(x3)` repeating the lengths of the one it repeats. Columns count only when the line is
+padded: chords one space apart are a list, not a position, and text pulled off a PDF's text
+layer comes out that way (both real sheets in `tests/chords/sheets` did), so those split a line
+evenly. A line of chords with no words under it is a bar a chord at least. Text recognition keeps
+the spacing (`ocrObservationsToText`), so a photographed sheet can use the positions; that has
+been checked only on written-out cases, not on a real photographed sheet. In Build, the chord
+editor's Length row has **All chords…**: half a bar to four on every chord (rests keep theirs;
+Undo on the toast). `songFromChordSheet(sheet, opts)` takes `opts.len` (0.5, 1, 2, 4 or
+`'lines'`), `opts.lineBars` and `opts.barEighths`; with no options it is exactly what it was.
+Tests: `tests/chords/length.test.js` (the split, the sum invariant over three real sheets,
+the columns, ChordPro) and `tests/import/probe.js` (the window and the Build tool, driven).
+Not done: lengths read from `|` bar lines, a time signature read off the sheet, and a timeline
+view to see and drag them.
+
 Three kinds of input, three readers:
 
 | input | example | reader |

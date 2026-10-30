@@ -26,7 +26,7 @@ module.exports = function load(sandbox){
   const src = html.slice(a, b) + g[0] + ireal +
     '\n;({parseChordSymbol, chordFromSlot, chordEngineEvent, chordNotePc, getIntvs, EXTS,' +
     ' ocrObservationsToText, slotIvs, _slotWriteNotes, _slotFromMenu, parseChordSheet, songFromChordSheet, guessChordKey, _sheetChordWords,' +
-    ' slotFromChordSymbol, _legacyFromIvs, spellChord,' +
+    ' slotFromChordSymbol, _legacyFromIvs, spellChord, slotDurFromEighths, _sheetSplit, _sheetLineEighths, _sheetChordCols,' +
     ' _irealSymbol, _irealQ, _irealPc, IREAL_Q_MAP});';
   return vm.runInNewContext(src, Object.assign({}, sandbox || {}));
 };
