@@ -2344,6 +2344,7 @@ never opens it on its own.
 | Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
 | Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
 | Sampler pads | preset banks PA Mix and PB Drums, 9 pads each | **Sampler**: PC and PD, the four user banks, all 16 pads, your own clips |
+| Slice a clip onto pads | — | **Sampler** (`smpSliceToPads`): Hits, or 4, 8, 16 equal parts, from the sampler editor of a pad |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
 | Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |
 | Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, 3/4 Waltz, 12/8 Slow | **Groove**: the rest, including Bossa Nova |
@@ -2369,6 +2370,37 @@ vocabulary beyond the plain sevenths is Theory (it was already locked); the free
 the first two preset banks; free steps are one bar of any free meter, up to 16, with 12/8's
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
 Triangle and the two stock basses are named by no pack, so they are free.
+
+**Step chance, roll velocity and the Euclidean fill (4.9.9.9.9.9.9e), free.** A step can carry
+`pr`, the percentage chance that it sounds (absent means 100, so nothing migrates), and a roll note
+can carry `vel`, its level as a percentage (the drum grid has had its own `vel` all along). The
+step inspector under the drum grid, the bass roll and the melody roll gain a **Prob** control
+(steps of ten, tap the value for every time) and the two rolls a **Vel** slider; both fields are
+stored only when they are not the default. The chance is rolled each time the step comes round,
+at the point the step is fired (`_sqFireLayer`, the bass sequencer and its walking-bass player,
+the melody sequencer), never in `sqPlayCell`, so tapping a step to audition it always sounds. A
+step that misses is a rest, and ends a bass slide. On the screen, a drum step with a chance has a
+dashed border and a roll note a dashed ring, and a quieter roll note is drawn less solid. The
+drum row menu gains **Euclid 3 / 5 / 7** (k hits as evenly as they will go over the row, step i
+is a hit when `(i*k) mod n < k`: 3 in 8 is x..x..x.) and **Rotate** either way, both undoable
+from the toast. `_PR_CELL_KEYS` and the bass phrase capture/apply carry the new fields; drum
+clipboard clones carry `pr`. `tests/steps/probe.js` counts it on the real transport (about half the
+hits of a 50 % row, half the level at velocity 50, on drums, bass and melody) and was shown to fail
+when each of the three play sites was broken in turn. Not done: probability on the arp, a
+velocity lane drawn under the roll, and Euclid on the rolls (a roll's rows are pitches, so there
+is no single row to fill).
+
+**Slicing (4.9.9.9.9.9.9d).** The sampler editor of a pad has a *Slice onto pads* row: **Hits**
+finds the hits in the clip, **4**, **8** and **16** cut equal parts, and the pieces land on that
+pad and the ones after it. Nothing is copied: every pad holds the same clip and its own start and
+end (what the handles already were), within the window between the handles. Hits are found from
+the clip's power in ~6 ms frames, in log units: a jump of more than about 3x in a few frames, the
+strongest few at least 40 ms apart, each pulled back to the first sample that is a quarter of the
+peak after it. Undo (the toast's) puts back what the pads held, a pad that held nothing included.
+Measured in `tests/slice/probe.js`: eight known hits found within 2 ms, and the 15 hits it finds
+in the app's own `samples/loops/world/drumset.mp3` all lie within 4 ms of that loop's sixteenth-note
+grid. Resample (record what the app is playing into the library) was already there. Not done:
+slicing a drum lane or a voice, a count between 17 and 32, and a slice that follows the tempo.
 
 **The practice trainer (4.9.9.9.9.9.9 to 9b).** Songs > Perform has a Practice row under
 Endings with three switches, all under the Practice Pack as one row, `practiceTrainer`:

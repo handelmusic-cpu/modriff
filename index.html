@@ -3968,6 +3968,7 @@ body.mode-basic .part-dice { display:none !important; }
             border-radius:var(--r-md); background:var(--surf2); touch-action:none; cursor:ew-resize; }
 .smp-wrow { display:flex; gap:6px; align-items:center; margin:8px 0; flex-wrap:wrap; }
 .smp-wrow .smp-trim { font-size:.46rem; color:var(--muted); letter-spacing:.06em; margin-left:auto; }
+.smp-wrow .smp-sub { font-size:.5rem; color:var(--muted); letter-spacing:.06em; }
 .smp-ctl-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
 .smp-ctl-row label { flex:0 0 52px; font-size:.5rem; color:var(--muted);
                      letter-spacing:.1em; text-transform:uppercase; }
@@ -5899,6 +5900,7 @@ body.map-on .kb-wrap:has(.map-armed) { outline:2px solid var(--accent); outline-
 .sq-step .ob { position:absolute; top:1px; left:2px; font-size:.3rem; color:rgba(255,220,80,.9); font-weight:700; pointer-events:none; line-height:1; }
 /* A step pitched off the lane shows its offset, top right, so a melodic tom
    run is readable on the grid without selecting each hit. */
+.sq-step.prob { border-style:dashed; }
 .sq-step[data-p]::after { content:attr(data-p); position:absolute; top:1px; right:2px; font-size:.3rem; font-weight:700; line-height:1; color:rgba(140,220,255,.95); pointer-events:none; }
 /* playhead */
 .sq-phbar { height:2px; position:relative; margin:1px 0; }
@@ -8087,7 +8089,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9e</span></div>
  </div>
 </div>
 
@@ -8252,6 +8254,16 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <button class="smp-b" id="smp-redo" onclick="smpRedo()" aria-label="Redo">↷</button>
     <button class="smp-b" id="smp-save" onclick="smpSaveEdits()" aria-label="Save these settings on the clip">✓ Save</button>
     <span class="smp-trim" id="smp-trim-v"></span>
+   </div>
+   <!-- Slice: the same clip on this pad and the ones after it, each opening on a
+        different part of it. Only for a pad; a drum lane or a voice has nowhere
+        to put the pieces. -->
+   <div class="smp-wrow" id="smp-slice-row" style="display:none">
+    <span class="smp-sub">✂ Slice onto pads</span>
+    <button class="smp-b" onclick="smpSliceToPads('auto')" title="Find the hits in the clip and put each on its own pad, starting here">Hits</button>
+    <button class="smp-b" onclick="smpSliceToPads(4)" title="Four equal parts, on this pad and the next three">4</button>
+    <button class="smp-b" onclick="smpSliceToPads(8)" title="Eight equal parts, on this pad and the next seven">8</button>
+    <button class="smp-b" onclick="smpSliceToPads(16)" title="Sixteen equal parts, on this pad and the next fifteen">16</button>
    </div>
    <div id="smp-ctl">
     <div class="smp-ctl-row"><label for="smp-gain">Volume</label>
@@ -9455,7 +9467,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9c</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9e</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10523,7 +10535,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9c';
+const MODRIFF_VERSION = '4.9.9.9.9.9.9e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -15644,6 +15656,105 @@ function smpAutoTrim(id){
  return {start:a/n, end:b/n};
 }
 
+// ── Slicing: one clip across the pads ────────────────────────────────────
+// A chopped loop is the same audio on a row of pads, each opening on a
+// different part of it. Nothing is copied or cut: every pad holds the same clip
+// and its own start and end, which is all the handles on the waveform ever were,
+// so a slice costs nothing and the recording is untouched. The slices are the
+// window between the handles, not the whole clip, so silence trimmed off the
+// ends stays off.
+//
+// Where the hits are: the clip's power in ~6 ms frames, in log units, and a
+// hit is where it jumps by more than a factor of about three in a few frames.
+// The strongest few that are at least 40 ms apart are kept, and each is then
+// pulled back to the first sample that is a real part of the attack (a
+// quarter of the peak that follows), because the frame only says "about here".
+function smpFindOnsets(id, a, b, max){
+ var buf=SMP_BUF[id]; if(!buf || max<1) return [];
+ var n=buf.length, sr=buf.sampleRate, c0=buf.getChannelData(0), c1=buf.numberOfChannels>1 ? buf.getChannelData(1) : null;
+ var i0=Math.floor(a*n), i1=Math.floor(b*n);
+ var hop=Math.max(32, Math.round(sr*0.003)), win=hop*2;
+ var frames=Math.floor((i1-i0-win)/hop); if(frames<8) return [];
+ var E=new Float32Array(frames), f, i, v, sum;
+ for(f=0;f<frames;f++){
+  sum=0;
+  for(i=i0+f*hop; i<i0+f*hop+win; i++){ v=c1 ? (c0[i]+c1[i])*0.5 : c0[i]; sum+=v*v; }
+  E[f]=Math.log(1e-7 + sum/win);
+ }
+ var D=new Float32Array(frames);
+ for(f=3;f<frames;f++) D[f]=Math.max(0, E[f]-E[f-3]);
+ var peaks=[];
+ for(f=3;f<frames;f++){
+  if(D[f] < 1.1) continue;
+  var top=true;
+  for(i=Math.max(3,f-4); i<=Math.min(frames-1,f+4); i++) if(D[i]>D[f] || (D[i]===D[f] && i<f)) { top=false; break; }
+  if(top && Math.exp(E[Math.min(frames-1,f+3)]) > 1e-5) peaks.push({f:f, d:D[f]});
+ }
+ peaks.sort(function(x,y){ return y.d-x.d; });
+ var gap=Math.round(sr*0.04), kept=[];
+ for(i=0;i<peaks.length && kept.length<max;i++){
+  var pos=i0+peaks[i].f*hop;
+  if(kept.every(function(k){ return Math.abs(k-pos) >= gap; })) kept.push(pos);
+ }
+ return kept.sort(function(x,y){ return x-y; }).map(function(pos){
+  var lo=Math.max(i0, pos-hop*3), hi=Math.min(i1-1, pos+Math.round(sr*0.02)), pk=0;
+  for(var j=lo;j<=hi;j++){ var w=Math.abs(c1 ? (c0[j]+c1[j])*0.5 : c0[j]); if(w>pk) pk=w; }
+  var at=lo;
+  while(at<hi && Math.abs(c1 ? (c0[at]+c1[at])*0.5 : c0[at]) < pk*0.25) at++;
+  return Math.max(i0, at-Math.round(sr*0.002))/n;
+ });
+}
+// The pieces, as {start,end} fractions of the clip, from the window [a,b].
+// 'hits' finds them; a number cuts that many equal parts. At most `room`.
+function smpSliceBounds(id, how, a, b, room){
+ var starts;
+ if(how==='auto'){
+  var buf=SMP_BUF[id], minGap=0.03/Math.max(0.05, buf.duration);
+  var hits=smpFindOnsets(id, a, b, room-1).filter(function(h){ return h-a > minGap && b-h > minGap; });
+  starts=[a].concat(hits);
+ } else {
+  var cnt=Math.max(1, Math.min(room, how|0));
+  starts=[]; for(var k=0;k<cnt;k++) starts.push(a+(b-a)*k/cnt);
+ }
+ return starts.map(function(st, k){ return {start:st, end:k+1<starts.length ? starts[k+1] : b}; });
+}
+function smpSliceToPads(how){
+ if(typeof modAllows==='function' && !modAllows('sampler')) return freeBlocked('Slicing a clip onto pads','sampler');
+ var key=_smpOpenKey, m=/^p:(P?[A-D]):(\d+)$/.exec(key||'');
+ if(!m){ showToast('Open a clip from a pad to slice it onto the pads'); return; }
+ var src=SMP_SLOTS[key];
+ if(!src || !src.id || !SMP_BUF[src.id]){ showToast('That clip is still loading'); return; }
+ var bank=PS_BANKS.indexOf(m[1]), i0=+m[2], room=PS_N-i0;
+ if(room<2 && how!==1){ showToast('This is the last pad — slice from an earlier one'); return; }
+ var cuts=smpSliceBounds(src.id, how, +src.start||0, src.end==null?1:+src.end, room);
+ if(cuts.length<2){
+  showToast(how==='auto' ? 'No separate hits found — try 4, 8 or 16' : 'Nothing to slice');
+  return;
+ }
+ // What the pads held, for Undo. A pad that held nothing goes back to nothing.
+ var was={}, keys=[];
+ cuts.forEach(function(c,k){ var kk=psKey(bank,i0+k); keys.push(kk); was[kk]=SMP_SLOTS[kk] ? JSON.parse(JSON.stringify(SMP_SLOTS[kk])) : null; });
+ smpPushHist(null);
+ var clip=smpClip(src.id), base=((clip&&clip.name)||'Sample').replace(/ · \d+$/,'');
+ var keep={}; ['gain','tune','fine','root','rootAuto','hp','hpHz'].forEach(function(f){ if(src[f]!==undefined) keep[f]=src[f]; });
+ var srcId=src.id;
+ cuts.forEach(function(c,k){
+  var kk=keys[k], s;
+  if(kk===key) s=src; else { psStop(kk); s=smpAttach(kk, srcId); Object.assign(s, keep); }
+  s.start=c.start; s.end=c.end; s.loop=false; s.loopA=null; s.loopB=null;
+  s.ps=psDefaults(); s.across=null; s.label=base+' · '+(k+1);
+  psMarkEdited(kk);
+ });
+ if(bank===PS.bank) psFitPads(i0+cuts.length);
+ psRender(); smpRenderAll();
+ var first=PS_BANKS[bank]+(i0+1), last=PS_BANKS[bank]+(i0+cuts.length);
+ showToast(cuts.length+' slices on pads '+first+'–'+last, {actionLabel:'Undo', onAction:function(){
+  keys.forEach(function(kk){ if(was[kk]) SMP_SLOTS[kk]=was[kk]; else delete SMP_SLOTS[kk]; });
+  psRender(); smpRenderAll();
+ }});
+}
+window.smpSliceToPads = smpSliceToPads;
+
 // ── Trim as a verb, not a guess ──────────────────────────────────────────
 // "Trim" used to run smpAutoTrim and write its answer over start/end, which
 // threw away whatever window had just been dragged by hand. On a clip with no
@@ -16164,6 +16275,7 @@ function smpRenderEditor(){
  w('smp-root-row', pitched);
  w('smp-ctl', !!_smpOpenKey);
  w('smp-dest', !_smpOpenKey);
+ w('smp-slice-row', !!_smpOpenKey && /^p:(?:P?[A-D]):\d+$/.test(_smpOpenKey));
  var kitBtn=document.getElementById('smp-reset-kit');
  if(kitBtn){
   var onLane = !!_smpOpenKey && _smpOpenKey.charAt(0)==='d';
@@ -52310,8 +52422,42 @@ window._sqFillRange = function(a, b){
 // Rows and columns for the grid clipboard (see GRID CLIPBOARD). A cell is
 // {v, vel, r, orn}; copies are plain clones so the clipboard never aliases a
 // live cell that a later edit would change under it.
-function sqCellClone(c){ return c ? {v:c.v|0, r:c.r||1, rs:c.rs||1, orn:c.orn||0, vel:c.vel||100, p:c.p||0} : sqMkCell(); }
+function sqCellClone(c){ var o = c ? {v:c.v|0, r:c.r||1, rs:c.rs||1, orn:c.orn||0, vel:c.vel||100, p:c.p||0} : sqMkCell(); if(c && c.pr>0 && c.pr<100) o.pr=c.pr; return o; }
 function sqAfterClip(){ sqEnsureGrid(); sqRenderGrid(); sqClearSel(); }
+// k hits spread as evenly as they will go over n steps: step i is a hit when
+// (i*k) mod n < k, which is the Euclidean rhythm (3 in 8 is x..x..x., the
+// tresillo; 5 in 8 is x.x.xx.x). Hits are fresh steps; the rest of the row is
+// emptied. Undoable from the toast, because it replaces the row.
+function sqEuclidPattern(n, k){
+  var out=[]; for(var i=0;i<n;i++) out.push(((i*k)%n) < k ? 1 : 0);
+  return out;
+}
+function sqEuclidRow(ti, k){
+  var n=sqSteps;
+  withUndo('Euclid '+k+' of '+n,
+    function(){ return JSON.parse(JSON.stringify(sqGrid[ti]||[])); },
+    function(row){ sqGrid[ti]=JSON.parse(JSON.stringify(row)); sqAfterClip(); },
+    function(){
+      if(!sqGrid[ti]) sqGrid[ti]=[];
+      var pat=sqEuclidPattern(n, Math.max(1,Math.min(n,k)));
+      for(var s=0;s<n;s++){ var c=sqMkCell(); c.v=pat[s]; sqGrid[ti][s]=c; }
+      sqAfterClip();
+    });
+}
+// The row's cells, hits and all, moved d steps round the bar.
+function sqRotateRow(ti, d){
+  var n=sqSteps;
+  withUndo('Rotated '+(d>0?'later':'earlier'),
+    function(){ return JSON.parse(JSON.stringify(sqGrid[ti]||[])); },
+    function(row){ sqGrid[ti]=JSON.parse(JSON.stringify(row)); sqAfterClip(); },
+    function(){
+      var row=sqGrid[ti]; if(!row) return;
+      var old=row.slice(0,n).map(sqCellClone);
+      for(var s=0;s<n;s++) row[(s+d+n*8)%n]=old[s];
+      sqAfterClip();
+    });
+}
+window._sqEuclidPattern = sqEuclidPattern; window._sqEuclidRow = sqEuclidRow; window._sqRotateRow = sqRotateRow;
 function sqRowMenu(ti, anchor){
   var tr=(SQM[sqMach]||{tracks:[]}).tracks[ti]; if(!tr) return;
   var label=(tr.n||tr.s)+' row';
@@ -52326,6 +52472,12 @@ function sqRowMenu(ti, anchor){
       sqAfterClip();
     },
     function(){ for(var s=0;s<sqSteps;s++){ if(sqGrid[ti]) sqGrid[ti][s]=sqMkCell(); } sqAfterClip(); })
+    .concat([3,5,7].map(function(k){
+      return {label:'Euclid '+k, title:k+' hits spread as evenly as they will go across the '+sqSteps+' steps of this row',
+              fn:function(){ sqEuclidRow(ti,k); }};
+    }))
+    .concat([{label:'Rotate →', title:'Move every hit on this row one step later, round the end', fn:function(){ sqRotateRow(ti,1); }},
+             {label:'← Rotate', title:'Move every hit on this row one step earlier, round the start', fn:function(){ sqRotateRow(ti,-1); }}])
     .concat((SQM[sqMach]||{}).shape && sqFocus===0 ? [{label:'Shape…', title:'Tune, decay, tone, drive and pan for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
 }
 // A drum drawn, for the Shape sheet: the lane's voice built into an offline
@@ -53024,7 +53176,7 @@ function _sqFireLayer(mach, grid, s, at, ch){
   }
   M.tracks.forEach(function(track,ti){
     var cell=grid[ti]&&grid[ti][s];
-    if(cell&&cell.v>0&&!_sqIsCovered(grid[ti],s))sqPlayCell(track,cell,at,sqGv(lk,ti)*(hum ? window._humanV(cell.v===2, part) : 1),sqGp(lk,ti),ch);
+    if(cell&&cell.v>0&&!_sqIsCovered(grid[ti],s)&&window._stepProb(cell))sqPlayCell(track,cell,at,sqGv(lk,ti)*(hum ? window._humanV(cell.v===2, part) : 1),sqGp(lk,ti),ch);
   });
 }
 function sqFireStep(s,t){
@@ -53690,6 +53842,7 @@ function sqMakeStepEl(cell,color,s){
   if(cell.r>1){var rd=document.createElement('div');rd.className='rd'+(cell.rs>1?' tp':'');for(var i=0;i<cell.r;i++){var dot=document.createElement('i');rd.appendChild(dot);}el.appendChild(rd);}
   if(cell.orn>0){var ob=document.createElement('div');ob.className='ob';ob.textContent=cell.orn===1?'f':'rr';el.appendChild(ob);}
   if(cell.p && cell.v>0) el.dataset.p=(cell.p>0?'+':'')+cell.p; else delete el.dataset.p;
+  el.classList.toggle('prob', cell.v>0 && cell.pr>0 && cell.pr<100);
   return el;
 }
 function sqRefreshStepEl(el,cell,color){
@@ -53703,6 +53856,7 @@ function sqRefreshStepEl(el,cell,color){
   var ob=el.querySelector('.ob');if(ob)el.removeChild(ob);
   if(cell.orn>0){var nob=document.createElement('div');nob.className='ob';nob.textContent=cell.orn===1?'f':'rr';el.appendChild(nob);}
   if(cell.p && cell.v>0) el.dataset.p=(cell.p>0?'+':'')+cell.p; else delete el.dataset.p;
+  el.classList.toggle('prob', cell.v>0 && cell.pr>0 && cell.pr<100);
 }
 
 // ─── Playing drums in ────────────────────────────────────────────────────
@@ -53933,6 +54087,23 @@ function sqSyncInsp(){
   pv.title='Tap to reset'; pv.style.cursor='pointer';
   pv.addEventListener('click',function(){ if(cell.p){ pSet(-cell.p); } });
   host.appendChild(pg);
+
+  // How often this hit sounds, from every time down to one in ten. Rolled each
+  // time the step comes round; stored only when it is not 100.
+  var cg=_prGroup('Prob');
+  var cv=document.createElement('span'); cv.className='pr-insp-val'; cv.style.cursor='pointer'; cv.title='Tap for every time';
+  var cShow=function(){ cv.textContent=(cell.pr||100)+'%'; };
+  var cBy=function(d){
+    var n=Math.max(10,Math.min(100,(cell.pr||100)+d));
+    if(n>=100) delete cell.pr; else cell.pr=n;
+    cShow(); if(el) sqRefreshStepEl(el,cell,track.c);
+  };
+  cShow();
+  cg.appendChild(_prBtn('−',null,'Plays less often',function(){ cBy(-10); }));
+  cg.appendChild(cv);
+  cg.appendChild(_prBtn('+',null,'Plays more often',function(){ cBy(10); }));
+  cv.addEventListener('click',function(){ delete cell.pr; cShow(); if(el) sqRefreshStepEl(el,cell,track.c); });
+  host.appendChild(cg);
 
   var og=_prGroup('Orn');
   [[0,'—','No ornament'],[1,'Flam','Flam'],[2,'Ruff','Ruff']].forEach(function(o){
@@ -55969,9 +56140,10 @@ window._blScheduler = function(){
           if(!lc || lc.v !== 1) continue;
           var lp = wsh ? window.phraseFold(lc.note, lc.oct, wsh, BL_LO, BL_HI)
                        : { note: lc.note, oct: lc.oct };
+          if(window._stepProb(lc))
           blPlayNote(lt + _humanT(lidx % 4 === 0, 'bass'), lp.note, lp.oct,
                      stepSec * Math.max(1, lc.len || 1) * 0.92,
-                     BL_STEP_VEL*_humanV(lc.accent,'bass'), lc.accent, lc.slide);
+                     BL_STEP_VEL*_humanV(lc.accent,'bass')*window._stepVel(lc), lc.accent, lc.slide);
         }
         _blWalkLastT = _blWalkNextT;
         _blWalkNextT += beatSec;
@@ -56078,8 +56250,11 @@ window._blScheduler = function(){
           pOct = Math.floor(abs / 12) - 1;
         }
       }
+      // A step that comes up short of its chance is a rest, and a rest ends a slide.
+      if(window._stepProb(cell))
       blPlayNote(blNextT + swOff + _humanT(blSeqStep%4===0,'bass'), pNote, pOct, dur,
-                 BL_STEP_VEL*_humanV(cell.accent,'bass'), cell.accent, cell.slide);
+                 BL_STEP_VEL*_humanV(cell.accent,'bass')*window._stepVel(cell), cell.accent, cell.slide);
+      else _blPrevSlide = false;
     } else {
       _blPrevSlide = false;
     }
@@ -57217,7 +57392,7 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('b
   for(var i=0;i<blSteps;i++){
    var c = blGrid[i] || {v:0};
    var o = { v:c.v?1:0, note:c.note||0, oct:c.oct||0, len:c.len||1,
-             accent:!!c.accent, slide:!!c.slide };
+             accent:!!c.accent, slide:!!c.slide, vel:c.vel, pr:c.pr };
    if(o.v && shift){
     var f = window.phraseFold(o.note, o.oct, shift, BL_LO, BL_HI);
     o.note = f.note; o.oct = f.oct;
@@ -57235,7 +57410,7 @@ if(typeof window.phraseRegisterPart === 'function') window.phraseRegisterPart('b
   blSteps = lock.steps;
   blGrid = lock.grid.map(function(c){
    return { v:c.v, note:c.note, oct:c.oct, len:c.len,
-            accent:!!c.accent, slide:!!c.slide, usr:1 };
+            accent:!!c.accent, slide:!!c.slide, usr:1, vel:c.vel, pr:c.pr };
   });
   // The recalled line is already at the locked chord's pitch, so that chord is
   // now the grid's own root — otherwise Follow would re-root it a second time.
@@ -57467,9 +57642,9 @@ window._mlScheduler = function(){
         return {pn: pn, po: po};
       };
       var main = mapOne(cell.note, cell.oct);
-      if(main){
+      if(main && window._stepProb(cell)){
         var tOn = mlNextT + swOff + window._humanT(mlSeqStep%4===0,'melgen');
-        var vel = mlVol * window._humanV(cell.accent,'melgen');
+        var vel = mlVol * window._humanV(cell.accent,'melgen') * window._stepVel(cell);
         // A step with more than one note is a chord (up to ML_MAX_VOICES of them):
         // every note sounds, none slides, and each is turned down by the square root
         // of how many there are so a chord is not louder than the line around it.
@@ -59689,8 +59864,17 @@ function prDraw(id){
    continue;
   }
   g.fillStyle = c.accent ? T.accent : T.note;
+  // Level is how solid the bar is, chance is a dashed ring round it.
+  g.globalAlpha = (c.vel > 0 && c.vel < 100) ? 0.4 + 0.6*c.vel/100 : 1;
   _prRound(g, x*colW+1.5, y+1.5, w, PR_ROW_H-3, 3);
   g.fill();
+  g.globalAlpha = 1;
+  if(c.pr > 0 && c.pr < 100){
+   g.save(); g.setLineDash([3,2]);
+   g.strokeStyle = T.light ? '#12203a' : '#ffffff'; g.lineWidth = 1.2;
+   _prRound(g, x*colW+1, y+1, w+1, PR_ROW_H-2, 3);
+   g.stroke(); g.restore();
+  }
   // A hand-placed note is outlined, so you can see which ones Generate will
   // leave alone.
   if(c.usr){
@@ -59882,6 +60066,37 @@ function prSyncInsp(id){
  og.appendChild(_prBtn('+', null, 'Up an octave', ()=>octBy(1)));
  host.appendChild(og);
 
+ // How hard this note is played, and how often it is played at all. Both are
+ // stored only when they are not the default, so a line that uses neither is
+ // byte-for-byte what it was.
+ const vg=_prGroup('Vel');
+ const vsl=document.createElement('input');
+ vsl.type='range'; vsl.min='1'; vsl.max='100'; vsl.className='pr-insp-vel';
+ vsl.value=String(c.vel||100); vsl.setAttribute('aria-label','Velocity');
+ const vvv=document.createElement('span'); vvv.className='pr-insp-val'; vvv.textContent=String(c.vel||100);
+ vsl.addEventListener('input', ()=>{
+  const n=parseInt(vsl.value,10);
+  if(n>=100) delete c.vel; else c.vel=n;
+  vvv.textContent=String(n); prDraw(id);
+ });
+ vg.appendChild(vsl); vg.appendChild(vvv);
+ host.appendChild(vg);
+ const pg=_prGroup('Prob');
+ const pvv=document.createElement('span'); pvv.className='pr-insp-val'; pvv.style.cursor='pointer';
+ pvv.title='Tap for every time';
+ const pShow=()=>{ pvv.textContent=(c.pr||100)+'%'; };
+ const pBy=(d)=>{
+  const n=Math.max(10, Math.min(100, (c.pr||100)+d));
+  if(n>=100) delete c.pr; else c.pr=n;
+  pShow(); prDraw(id);
+ };
+ pShow();
+ pg.appendChild(_prBtn('−', null, 'Plays less often', ()=>pBy(-10)));
+ pg.appendChild(pvv);
+ pg.appendChild(_prBtn('+', null, 'Plays more often', ()=>pBy(10)));
+ pvv.addEventListener('click', ()=>{ delete c.pr; pShow(); prDraw(id); });
+ host.appendChild(pg);
+
  host.appendChild(_prBtn('Accent', !!c.accent, 'Accent this step', ()=>{ c.accent=c.accent?0:1; redraw(); }));
  if(cfg.hasSlide){
   host.appendChild(_prBtn('Slide', !!c.slide, 'Slide into the next step', ()=>{ c.slide=!c.slide; redraw(); }));
@@ -59971,7 +60186,15 @@ function prWire(id){
 // enough to put one back exactly as it was — including usr, which decides
 // whether Generate is allowed to overwrite it. Toggling twice would restore
 // the pitch but not that.
-const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide','more'];
+const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide','more','vel','pr'];
+// A step's chance of sounding and, on the rolls, its level (4.9.9.9.9.9.9e). `pr` is
+// a percentage, 1-99; absent means 100, always, which is every cell saved before
+// this existed, so nothing migrates. The roll's `vel` is likewise a percentage and
+// absent means 100 (the drum grid has had its own `vel` since the start and its
+// default is written into the cell). The chance is rolled each time the step comes
+// round, so a half-chance hat is a different hat every bar.
+window._stepProb = function(c){ var p = c && c.pr; return !(p > 0 && p < 100) || Math.random()*100 < p; };
+window._stepVel  = function(c){ var v = c && c.vel; return (v > 0 && v < 100) ? v/100 : 1; };
 function _prSnap(cfg, step){
  const c = cfg.cell(step); if(!c) return null;
  const o = {};
@@ -64047,7 +64270,7 @@ const MODULE_COPY = {
  sounds:   { name:'Sounds Pack', line:'Keys, pads, vibes, and vintage basses',
   bullets:['Tonewheel organ','Electric piano','Synth piano','Synth pad','Vibraphone','Vintage violin bass and 60s soul bass'] },
  sampler:  { name:'Sampler Engine', line:'Sampled instruments, kits, and your samples',
-  bullets:['Sampled melodic instruments','Every sample kit','Load your own samples onto the pads'] },
+  bullets:['Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Full synth sound sets and every mõdFX effect',
   bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
  groove:   { name:'Groove Pack', line:'World grooves, kits, odd meters, aux channel',
