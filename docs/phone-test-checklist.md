@@ -169,6 +169,8 @@ not say the app has to run well there.
 | 8.2 | "Red is" > A | A is red, B♭ orange, round the wheel; the page colour changes with it |
 | 8.3 | Force-quit and reopen | the choice is kept |
 | 8.4 | Settings > About > Test as **Free** | **Red is** still works; **Circle of fifths** is dimmed and says it is the Theory Pack's, the app plays the chromatic colours; turn Theory back on and your choice returns |
+| 8.4a | Settings > Master Tune > **Chord intervals** > Pure (Theory Pack held), then play a C major chord with a pad or organ voice and the bass on Follow | the held third stops beating; it should sound steadier and "locked" against Equal. Check bass and melody on the same chord too |
+| 8.4b | Settings > About > Test as **Free**; look at Chord intervals | **Pure** is dimmed and names the Theory Pack; everything plays equal; turn Theory back on and Pure returns without choosing it again |
 | 8.5 | Mixer > **EQ** on the master strip | a panel with Low, Mid, Mid at, High; the button lights once anything is off flat |
 | 8.6 | Play something with bass and cymbals; drag Low up and High down | the bass swells and the top softens, smoothly, no zipper noise; **Flat** puts it back |
 | 8.7 | Master EQ with the chord part native (and again with drums/bass on web) | the EQ moves **everything**, the native chord included, and a +12 dB boost does not clip (the limiter is after it) |

@@ -508,6 +508,7 @@
         const g = 'flt' + n;
         const p = this.panel('Filter ' + n, 'flt', { width: 300 });
         p.appendChild(this.row(this.select(g + '.model', { wide: true })));
+        p.appendChild(this.filterDisplay(n));
         // Four then three, not three, three and a lone Spread.
         p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive', g + '.env'));
         p.appendChild(this.knobs(g + '.keytrack', g + '.vel', n === 1 ? 'flt.spread' : null));
@@ -584,6 +585,166 @@
       return cv;
     }
 
+    /** A small dark canvas in the envelope display's style, drawn by `draw`
+        whenever any of `ids` changes. The colour is the panel's accent, read
+        when drawing (a canvas that is not on the page yet has none, so it is
+        drawn once more a frame after it is). The canvas keeps its own pixel
+        size and is scaled by CSS, so a folded panel needs no measuring. */
+    plot(ids, accentVar, fallback, draw) {
+      const cv = el('canvas');
+      cv.width = 260; cv.height = 56;
+      cv.style.width = '100%'; cv.style.height = '56px';
+      cv.style.display = 'block'; cv.style.margin = '0 0 10px';
+      cv.style.background = '#05060c';
+      cv.style.border = '1px solid var(--border)';
+      cv.style.borderRadius = '4px';
+      const go = () => {
+        const c = cv.getContext('2d');
+        const col = (root.getComputedStyle(cv).getPropertyValue(accentVar) || '').trim() || fallback;
+        c.clearRect(0, 0, cv.width, cv.height);
+        draw(c, cv.width, cv.height, col);
+      };
+      go();
+      root.requestAnimationFrame(go);
+      ids.forEach(id => this.register({ id, node: cv, refresh: go }));
+      return cv;
+    }
+
+    /** Filter n's response, drawn from its settings: the model's curve at the
+        cutoff and resonance (log frequency, 20 Hz to 20 kHz; 0 dB is the line
+        across, +24 above it and -48 below). It is a picture of the settings,
+        not a measurement of the audio: the ladder and the diode are drawn from
+        their textbook transfer functions, which the saturating versions in the
+        engine follow near the cutoff and drift from at high drive. */
+    filterDisplay(n) {
+      const g = 'flt' + n;
+      const E = this.engine;
+      const LO = Math.log(20), HI = Math.log(20000), DB_TOP = 24, DB_BOT = -48;
+      // Complex arithmetic on [re, im] pairs: just enough for the formulas.
+      const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+      const div = (a, b) => { const d = b[0] * b[0] + b[1] * b[1] || 1e-30; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
+      const mag = a => Math.hypot(a[0], a[1]);
+      const resp = (model, f, fc, res) => {
+        const x = f / fc;
+        const q = 0.5 + res * res * 18;
+        const lp2 = [1 - x * x, x / q];              // 2nd-order denominator
+        switch (model) {
+          case 'bypass': return 1;
+          case 'ladder4': case 'ladder2': {
+            const pole = [1, x];
+            let gs = [1, 0];
+            const poles = model === 'ladder4' ? 4 : 2;
+            for (let i = 0; i < poles; i++) gs = div(gs, pole);
+            const k = model === 'ladder4' ? 3.95 * res : 1.9 * res;
+            const den = [1 + k * gs[0], k * gs[1]];
+            return mag(div(gs, den));
+          }
+          case 'svfLP': return mag(div([1, 0], lp2));
+          case 'svfHP': return mag(div([-x * x, 0], lp2));
+          case 'svfBP': return mag(div([0, x / q], lp2));
+          case 'svfNotch': return mag(div([1 - x * x, 0], lp2));
+          case 'svfPeak': return mag(div([1 - x * x, x / q * (1 + res * 6)], lp2));
+          case 'diode': {
+            const qd = 0.7 + res * res * 30;
+            return mag(div([1, 0], [1 - x * x, x / qd]));
+          }
+          case 'comb': {
+            const gain = 0.5 + res * 0.45, ph = 2 * Math.PI * x;
+            return Math.hypot(1 + gain * Math.cos(ph), gain * Math.sin(ph)) / (1 + gain) * 1.4;
+          }
+          case 'formant': {
+            // Three vowel peaks, spread around the cutoff.
+            let m = 0.06;
+            [[0.8, 1], [1.6, 0.7], [3.1, 0.5]].forEach(([r, a]) => {
+              const d = Math.log(x / r) / (0.28 - res * 0.15);
+              m += a * 3 * Math.exp(-d * d);
+            });
+            return m;
+          }
+          default: return 1;
+        }
+      };
+      const draw = (c, W, H, col) => {
+        const model = E.get(g + '.model'), fc = E.get(g + '.cutoff'), res = E.get(g + '.res');
+        const X = f => (Math.log(f) - LO) / (HI - LO) * W;
+        const Y = db => (DB_TOP - Math.max(DB_BOT, Math.min(DB_TOP, db))) / (DB_TOP - DB_BOT) * (H - 6) + 3;
+        c.lineWidth = 1;
+        c.strokeStyle = 'rgba(255,255,255,.07)';
+        [100, 1000, 10000].forEach(f => { c.beginPath(); c.moveTo(Math.round(X(f)) + .5, 0); c.lineTo(Math.round(X(f)) + .5, H); c.stroke(); });
+        c.strokeStyle = 'rgba(255,255,255,.16)';
+        c.beginPath(); c.moveTo(0, Math.round(Y(0)) + .5); c.lineTo(W, Math.round(Y(0)) + .5); c.stroke();
+        if (model !== 'bypass' && model !== 'comb') {
+          c.strokeStyle = col; c.globalAlpha = .35; c.setLineDash([3, 3]);
+          c.beginPath(); c.moveTo(Math.round(X(fc)) + .5, 0); c.lineTo(Math.round(X(fc)) + .5, H); c.stroke();
+          c.setLineDash([]); c.globalAlpha = 1;
+        }
+        c.beginPath();
+        for (let i = 0; i <= W; i += 2) {
+          const f = Math.exp(LO + (HI - LO) * i / W);
+          const db = 20 * Math.log10(Math.max(1e-6, resp(model, f, fc, res)));
+          i ? c.lineTo(i, Y(db)) : c.moveTo(i, Y(db));
+        }
+        c.strokeStyle = col; c.lineWidth = 1.5; c.stroke();
+        c.lineTo(W, H); c.lineTo(0, H);
+        c.globalAlpha = .14; c.fillStyle = col; c.fill(); c.globalAlpha = 1;
+      };
+      return this.plot([g + '.model', g + '.cutoff', g + '.res'], '--mu-acc3', '#4ac8ff', draw);
+    }
+
+    /** LFO n's shape: two cycles at the chosen shape, skew, smoothing, phase
+        and depth, the way the shape reads on its own. Rate and sync change how
+        fast it runs, not what it looks like, so they are not here. S&H is a
+        fixed run of steps: the real one is different every time. */
+    lfoDisplay(n) {
+      const g = 'lfo' + n;
+      const E = this.engine;
+      const STEPS = [0.62, -0.35, 0.9, -0.8, 0.15, -0.55, 0.7, -0.1];
+      const wave = (shape, p, skew) => {
+        p -= Math.floor(p);
+        switch (shape) {
+          case 'sine': return Math.sin(2 * Math.PI * p);
+          case 'tri': return p < skew ? -1 + 2 * p / skew : 1 - 2 * (p - skew) / (1 - skew);
+          case 'saw': return 1 - 2 * p;
+          case 'ramp': return 2 * p - 1;
+          case 'square': return p < skew ? 1 : -1;
+          case 'pulse': return p < Math.min(skew, 0.5) * 0.5 ? 1 : -1;
+          case 'sh': return STEPS[Math.floor(p * 8) % 8];
+          case 'smooth': {
+            const i = p * 8, a = STEPS[Math.floor(i) % 8], b = STEPS[(Math.floor(i) + 1) % 8], t = i - Math.floor(i);
+            return a + (b - a) * (1 - Math.cos(Math.PI * t)) / 2;
+          }
+          case 'exp': return 2 * Math.pow(1 - p, 3) - 1;
+          case 'trap': return Math.max(-1, Math.min(1, (p < .5 ? p : 1 - p) * 4 - 1));
+          default: return 0;
+        }
+      };
+      const draw = (c, W, H, col) => {
+        const shape = E.get(g + '.shape'), skew = E.get(g + '.pw'), depth = E.get(g + '.depth');
+        const phase = E.get(g + '.phase'), smooth = E.get(g + '.smooth');
+        const mid = H / 2, amp = (H / 2 - 5) * Math.max(0.04, depth);
+        c.strokeStyle = 'rgba(255,255,255,.16)'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(0, Math.round(mid) + .5); c.lineTo(W, Math.round(mid) + .5); c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.07)';
+        [0.5, 1].forEach(x => { c.beginPath(); c.moveTo(Math.round(W * x / 2 * 1) + .5, 0); c.lineTo(Math.round(W * x / 2) + .5, H); c.stroke(); });
+        // Smoothing as a short moving average along the plotted wave: a stand-in
+        // for the engine's one-pole, which does the same thing to the corners.
+        const taps = Math.round(smooth * 14);
+        const at = x => wave(shape, 2 * x / W + phase, skew);
+        const pts = [];
+        for (let i = 0; i <= W; i++) {
+          let v = 0, cnt = 0;
+          for (let k = -taps; k <= taps; k++) { v += at(i + k); cnt++; }
+          pts.push(mid - v / cnt * amp);
+        }
+        c.beginPath();
+        pts.forEach((y, i) => (i ? c.lineTo(i, y) : c.moveTo(i, y)));
+        c.strokeStyle = col; c.lineWidth = 1.5; c.stroke();
+        c.lineTo(W, mid); c.lineTo(0, mid);
+        c.globalAlpha = .12; c.fillStyle = col; c.fill(); c.globalAlpha = 1;
+      };
+      return this.plot([g + '.shape', g + '.pw', g + '.depth', g + '.phase', g + '.smooth'], '--mu-acc2', '#ffb347', draw);
+    }
+
     buildModPage(host) {
       const rack = el('div', 'rack');
 
@@ -594,6 +755,7 @@
         // shape and mode, then rate · division · depth.
         p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
         p.appendChild(this.row(this.select(g + '.shape'), this.select(g + '.mode')));
+        p.appendChild(this.lfoDisplay(n));
         p.appendChild(this.row(this.knob(g + '.rate'), this.select(g + '.div'), this.knob(g + '.depth')));
         p.appendChild(this.knobs(g + '.phase', g + '.pw', g + '.smooth', g + '.delay', g + '.fade'));
         rack.appendChild(p);

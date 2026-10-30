@@ -1883,6 +1883,15 @@ Two things measured on the way, so nobody rediscovers them:
   frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
   beatbox) play their real decoded samples through the buffer store: all 35
   lanes, 69 to 184 dB.
+  **Shaped, too** (4.9.9.9.9.9.7: Shape reaches every synthesised kit, and a Pan
+  joins it): `tests/graph/shape.test.js` plays the same lanes of the nine
+  synthesised kits with Decay, Sweep, Body, Tone, Drive and Pan all moved a long
+  way, built the way the app builds a shaped hit (the multipliers the voice
+  builders read, then `_sqShapeInsert`'s filter, drive and panner). **65 lanes
+  hold, 33 to 146 dB**; the two lowest are the same two the defaults already
+  name (the MOD kick and the 808 clap, both the browser's own habits). The panner
+  is the native graph's `T_PAN`, so nothing new was needed in C++: a drum's Shape
+  is a change to the JS voices and the recorded graph, not to the engine.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
 so not built). `ModEngineHost.mm` already runs a part as Processor, then rack,
@@ -2332,6 +2341,7 @@ never opens it on its own.
 | Scales | major, minor, minor pentatonic, blues | **Theory**: every other mode, harmonic and melodic minor, world scales, your own |
 | Chord types, voicings | triads, plain sevenths; Close and Spread | **Theory**: 6/9, 11, 13, alterations; Drop 2, Drop 3, Soul, Neo-soul, Vary |
 | Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
+| Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
 | Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
 | Sampler pads | preset banks PA Mix and PB Drums, 9 pads each | **Sampler**: PC and PD, the four user banks, all 16 pads, your own clips |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
@@ -2555,30 +2565,48 @@ Requested by users; nothing here is started, and none of it holds up 5.0.0.
 
 ### Just intonation
 
-**Spike built (4.9.9.9.9.9.8), web chord part only.** Master Tune has a
-"Chord intervals" Equal / Pure switch (`tuningMode`, saved as `modo-tuning`).
-Pure adds a cents offset from `TUNING_JI5` (5-limit, indexed by semitones above
-the chord root) to each chord tone on `.detune`, in `_webChordOn`, *before*
-`glideApply` so a glide settles on the tuned pitch (swapping the two calls was
-tried: the glide slides the tuning away and every voice ends at 0 c).
-`tests/tuning/probe.js` counts it: the oscillators' offsets are 0 / -13.69 /
-+1.96 c for a major triad and 0 / +15.64 / +1.96 for a minor, and a sawtooth
-triad's third band beats at 10.5 Hz with depth 0.78 in Equal and 0.04 in Pure
-(21x less).
+**Built (4.9.9.9.9.9.8, 8a): chords, bass, melody, melody generator and arp; the
+Theory Pack's.** Master Tune has a "Chord intervals" Equal / Pure switch
+(`tuningMode`, saved as `modo-tuning`). Pure adds a cents offset from
+`TUNING_JI5` (5-limit, indexed by semitones above the chord root) to each note.
 
-**Not done, in the order they matter:** bass and melody do not follow it (they
-should read the same root from `_blChordWin`); mõdSynth and the native graph
-path are untouched (`engine.js` truncates the note to an integer, so it needs a
-separate `cents` on the `on` message, in `dsp.js` and C++, null-tested); the
-arp is untuned; the dominant seventh uses 9:5 rather than 7:4 (needs the
-chord's quality); the diminished fifth uses 45:32; the root is equal-tempered
-per chord, so a progression drifts a syntonic comma (21.5 c) between chords
-(the adaptive-root mode below). It is free in this build (no `FREE_LIMITS` row names it, so it is free by
-omission). The natural home is the Theory Pack, whose copy already says "future
-theory additions included": a row in `FREE_LIMITS`, its `FEATURE_MODULE` entry and
-a bullet in `MODULE_COPY.theory`, added when it is decided and built far enough
-to be listed. A free "hear the difference" button on one held chord is the
-suggested taste.
+- *Chords* take it from the message's own root, on `.detune` in `_webChordOn`.
+- *Bass, melody, generator and arp* are not handed a root, so the app finds the
+  chord sounding at the note's time (`_songChordWindowFor`, the lookup the bass
+  and melody already follow) and puts the result in the note message as `tune`
+  (cents; an arp block carries `tunes`). `tuningCentsAt` is the one place that
+  does it. The web engine adds `tune` to the bass's frequency (so the upright's
+  harmonics move with it) or to `.detune` for every other voice. No chord
+  window, or a rest, is equal.
+- It goes in *before* anything that reads `.detune` as the pitch a note settles
+  on (`glideApply`, `_melGlideApply`, the bend's `_bendBase`); swapping the
+  order was tried and the glide slides the tuning away.
+- **Gated** by the `pureTuning` row (Theory). Without the pack the saved choice
+  is kept and plays equal (`tuningOn`), the Pure button is locked, and a tap on
+  it names the pack. Nothing is erased.
+
+`tests/tuning/probe.js` counts it. Under C major, every oscillator of a bass,
+melody-strip, generator and arp note moves by the table's amount for its
+interval over C (E -13.69, G +1.96, D +3.91); under A minor the same melody E is
++1.96 (it follows the chord); with no chord window nothing moves; a block of
+C-E-G shifts by exactly {0, -13.69, +1.96}. A sawtooth triad's third band beats
+at 10.5 Hz, depth 0.78, in Equal and 0.04 in Pure. A voice built on the graph
+recorder carries the shift in its program.
+
+**Not done, in the order they matter:**
+- *mõdSynth* is untuned (`engine.js` truncates the note to an integer; it needs a
+  separate `cents` on the `on` message, in `dsp.js` and C++, null-tested).
+- *The native engine's reading of the shift is unverified.* The shift is in the
+  recorded program and `graph.cpp` applies `detune`, but nothing has run a tuned
+  voice natively, and a native part that does not play through recorded graphs
+  ignores `tune` and plays equal.
+- The dominant seventh uses 9:5 rather than 7:4 (needs the chord's quality); the
+  diminished fifth uses 45:32.
+- The root of each chord is equal-tempered, so a progression drifts a syntonic
+  comma (21.5 c) between chords: the adaptive-root mode below.
+- A free "hear the difference" button on one held chord, as a taste for those
+  without the pack.
+- Heard on a speaker: all of the above is measured, not listened to.
 
 The original note, from before the spike:
 

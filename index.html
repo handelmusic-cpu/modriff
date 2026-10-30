@@ -1151,6 +1151,11 @@ body:not(.mode-basic) #chord-voice-panel .cv-oct-row { justify-content:center; }
 @keyframes ps-loop { 50% { box-shadow:0 0 8px color-mix(in srgb, var(--pad) 35%, transparent), inset 0 0 6px color-mix(in srgb, var(--pad) 25%, transparent); } }
 @media (prefers-reduced-motion: reduce){ .ps-pad.live[data-mode="loop"] { animation:none; } }
 .ps-pad:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.ps-wf { position:absolute; inset:3px 4px; width:calc(100% - 8px); height:calc(100% - 6px); pointer-events:none;
+ color:color-mix(in srgb, var(--pad) 75%, white); opacity:.5; overflow:hidden; }
+.ps-pad.live .ps-wf { opacity:.8; }
+.ps-pad .ps-num, .ps-pad .ps-name, .ps-pad .ps-tags { position:relative; z-index:1; }
+.ps-pad:not(.empty) .ps-name { text-shadow:0 0 5px var(--surf2), 0 0 2px var(--surf2); }
 .ps-num { font-size:.6rem; font-weight:700; color:color-mix(in srgb, var(--pad) 80%, white); }
 .ps-name { font-size:.6rem; font-weight:600; line-height:1.15; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .ps-tags { font-size:.4rem; letter-spacing:.1em; color:var(--muted); min-height:.6em; }
@@ -3877,6 +3882,7 @@ body.mode-basic .part-dice { display:none !important; }
 .sq-kit-legend i { font-style:normal; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:4px; border:1px solid var(--border2); font-size:.42rem; }
 .sq-lg-shape { border-color:#ffd54a !important; background:linear-gradient(90deg, transparent 30%, #ffd54a 30% 42%, transparent 42% 58%, #ffd54a 58% 70%, transparent 70%); }
 .sq-shape { display:flex; flex-direction:column; gap:14px; padding:6px 4px 14px; }
+.sq-shape-pv { display:block; width:100%; height:84px; border-radius:var(--r-sm); background:var(--surf); border:1px solid var(--border); }
 .sq-shape-row { display:grid; grid-template-columns:64px 1fr 74px; align-items:center; gap:10px; }
 .sq-shape-l { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
 .sq-shape-row input[type=range] { width:100%; }
@@ -8081,7 +8087,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9c</span></div>
  </div>
 </div>
 
@@ -9449,7 +9455,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10517,7 +10523,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9b';
+const MODRIFF_VERSION = '4.9.9.9.9.9.9c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11343,6 +11349,11 @@ function toggleSync(){ modSync.enable(!modSync.isOn()); }
 //                      on into the next) and from (the MIDI note it glides
 //                      in from, or null). The bass is monophonic: each note
 //                      cuts the last.
+//                      'bass' 'mel' 'melgen' and 'arp' notes carry tune, in
+//                      cents: Pure tuning's offset for the note under the chord
+//                      sounding (0 in Equal). An 'arp' block carries tunes, one
+//                      per note. An engine that does not know them plays
+//                      equal, which is what they were before they existed.
 //                      'arp' carries level (the pattern's dynamic shape,
 //                      a plain scale) and pan (the ping-pong) beside vel.
 //                      On 'arp' a chord is the Block pattern: its notes
@@ -14559,6 +14570,7 @@ var SMP_SLOTS = {};   // slot key -> {id,start,end,gain,loop,tune,fine,root}
 window._webAssets = window._webAssets || {};
 function smpBufSet(id, buf){
  SMP_BUF[id] = buf;
+ if(typeof psWaveFor==='function') try{ psWaveFor(id); }catch(e){}
  modSend({v:1, kind:'asset', part:'sampler', id:id, rate:buf.sampleRate, channels:buf.numberOfChannels, frames:buf.length, buffer:buf});
 }
 function smpBufDrop(id){
@@ -18819,7 +18831,7 @@ function psLiveApply(){
 }
 function psMakePad(i){
  var p=psEl('button','ps-pad'); p.type='button'; p.dataset.i=String(i);
- p.innerHTML='<span class="ps-num">'+(i+1)+'</span><span class="ps-name"></span><span class="ps-tags"></span>';
+ p.innerHTML='<svg class="ps-wf" viewBox="0 0 200 100" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg><span class="ps-num">'+(i+1)+'</span><span class="ps-name"></span><span class="ps-tags"></span>';
  // Down is the strike — not click, which waits for the finger to lift and is
  // a pad that plays late. Captured so a gate's release arrives here even if
  // the finger slides off.
@@ -18856,6 +18868,51 @@ function psMakePad(i){
  return p;
 }
 
+// The clip's shape on its pad, as Koala draws it: the part that plays (the trim
+// window, flipped when the pad is reversed), normalised to its own peak so a
+// quiet clip still reads, in the pad's own colour. An SVG path in a viewBox
+// rather than a canvas, because it takes the pad's --pad through currentColor
+// (theme changes included), has no size to measure on a hidden panel, and is a
+// few hundred bytes per pad. Cached on the pad by what it was drawn from, so
+// psRender — which runs on every knob and toggle — only rebuilds a path when
+// the clip, its trim, its direction or its decoded buffer has changed.
+// Nothing is drawn until the buffer has decoded (smpPeaks answers null), and
+// smpBufSet asks for the pad again when it has.
+var PS_WF_COLS = 200;
+function psPadWave(p, s, ps){
+ var path=p.querySelector('.ps-wf path'); if(!path) return;
+ var pk=(s && s.id) ? smpPeaks(s.id) : null;
+ if(!pk){ if(p._wfk){ p._wfk=''; path.setAttribute('d',''); } return; }
+ var a=Math.max(0,Math.min(1,+s.start||0)), b=Math.max(a,Math.min(1,s.end==null?1:+s.end)), rev=!!(ps&&ps.rev);
+ var k=s.id+'|'+a+'|'+b+'|'+(rev?1:0);
+ if(p._wfk===k) return; p._wfk=k;
+ var N=SMP_PEAK_N, c0=a*N, c1=Math.max(c0+1,b*N), top=[], bot=[], peak=0.0001, i, j;
+ var mn=[], mx=[];
+ for(i=0;i<PS_WF_COLS;i++){
+  var f0=Math.floor(c0+(c1-c0)*i/PS_WF_COLS), f1=Math.max(f0+1,Math.floor(c0+(c1-c0)*(i+1)/PS_WF_COLS));
+  var lo=0, hi=0;
+  for(j=f0;j<f1&&j<N;j++){ if(pk[j*2]<lo) lo=pk[j*2]; if(pk[j*2+1]>hi) hi=pk[j*2+1]; }
+  mn.push(lo); mx.push(hi);
+  if(-lo>peak) peak=-lo; if(hi>peak) peak=hi;
+ }
+ var amp=46/peak;
+ for(i=0;i<PS_WF_COLS;i++){
+  var x=rev ? PS_WF_COLS-1-i : i;
+  top[x]=(50-mx[i]*amp).toFixed(1); bot[x]=(50-mn[i]*amp).toFixed(1);
+ }
+ var d='M0 '+top[0];
+ for(i=1;i<PS_WF_COLS;i++) d+='L'+i+' '+top[i];
+ for(i=PS_WF_COLS-1;i>=0;i--) d+='L'+i+' '+(Math.abs(bot[i]-top[i])<1?(+top[i]+1).toFixed(1):bot[i]);
+ path.setAttribute('d',d+'Z'); path.setAttribute('fill','currentColor');
+}
+// A clip that has just decoded: its pads draw now rather than at the next render.
+function psWaveFor(id){
+ if(!_psBuilt) return;
+ for(var i=0;i<PS_N;i++){
+  var s=SMP_SLOTS[psCurKey(i)]; if(!s || s.id!==id) continue;
+  var p=document.querySelector('#ps-grid .ps-pad[data-i="'+i+'"]'); if(p) psPadWave(p, s, s.ps||psDefaults());
+ }
+}
 function psLit(key, on){
  var bits=key.split(':'); if(bits[0]!=='p') return;
  if(PS_BANKS.indexOf(bits[1])!==PS.bank) return;
@@ -18877,6 +18934,7 @@ function psRender(){
   p.classList.toggle('sel', i===PS.sel);
   p.classList.toggle('live', !!PS_LIVE[key]);
   p.dataset.mode = ps.mode;
+  psPadWave(p, s, ps);
   p.querySelector('.ps-name').textContent = (s && s.id && s.label) ? s.label : (clip ? clip.name : (s&&s.id ? 'loading…' : '+'));
   var tags=[];
   if(clip){
@@ -25498,28 +25556,58 @@ function setMasterTune(hz){
 var TUNING_JI5 = [0, 11.73, 3.91, 15.64, -13.69, -1.96, -9.78, 1.96, 13.69, -15.64, 17.60, -11.73];
 var tuningMode = 'equal';
 try{ if(localStorage.getItem('modo-tuning')==='pure') tuningMode = 'pure'; }catch(e){}
-function setTuningMode(m){
- tuningMode = (m==='pure') ? 'pure' : 'equal';
- try{ localStorage.setItem('modo-tuning', tuningMode); }catch(e){}
+// Whether Pure is sounding: chosen AND held. A free build keeps what was saved
+// and plays equal, the way every other Pro choice is treated (the setting is
+// never written over; see "Pro content in a free build" in the architecture doc).
+function tuningOn(){
+ return tuningMode==='pure' && (typeof modAllows!=='function' || modAllows('pureTuning'));
+}
+// Paints the switch from the saved choice and from ownership. Separate from
+// setTuningMode so a refresh (the packs changing hands) can repaint without
+// being mistaken for someone choosing Pure.
+function tuningSync(){
  ['equal','pure'].forEach(function(k){
   var b=document.getElementById('tuning-'+k); if(b) b.classList.toggle('active', tuningMode===k);
  });
+ var pb=document.getElementById('tuning-pure');
+ if(pb && typeof modLockEl==='function') modLockEl(pb, typeof modAllows==='function' && !modAllows('pureTuning'), 'theory');
  if(typeof syncSSPreviews==='function') syncSSPreviews();
+}
+function setTuningMode(m){
+ if(m==='pure' && typeof modAllows==='function' && !modAllows('pureTuning')) return freeBlocked('Pure tuning','theory');
+ tuningMode = (m==='pure') ? 'pure' : 'equal';
+ try{ localStorage.setItem('modo-tuning', tuningMode); }catch(e){}
+ tuningSync();
 }
 // Cents to add to `midi` as a tone of the chord whose root is `rootM`.
 function tuningCents(midi, rootM){
- if(tuningMode!=='pure') return 0;
- return TUNING_JI5[(((midi-rootM)%12)+12)%12];
+ if(!tuningOn()) return 0;
+ return TUNING_JI5[(((Math.round(midi)-rootM)%12)+12)%12];
 }
-// Moves a built voice's nodes by that amount, on .detune: the same place the
+// The same for a note of a part that follows the chord timeline rather than
+// being handed a root (bass, melody, arp): the chord sounding at engine time
+// `t`, found the way the bass and melody generators find theirs, so they cannot
+// disagree about which chord a note is under. No chord yet, or a rest: equal.
+// Called on the app side and sent as `tune` in the note message, so an engine
+// needs no idea what a chord is.
+function tuningCentsAt(midi, t){
+ if(!tuningOn()) return 0;
+ try{
+  if(typeof window._songChordWindowFor!=='function') return 0;
+  var w = window._songChordWindowFor(t);
+  if(!w || w.rest) return 0;
+  return TUNING_JI5[(((Math.round(midi)-w.rootPc)%12)+12)%12];
+ }catch(e){ return 0; }
+}
+// Moves a built voice's nodes by `c` cents, on .detune: the same place the
 // chord glide and the pitch bend work, and the one both oscillators and sample
 // players have. It is ADDED to what .detune already holds (unison spread, the
-// pad's own 9 c), and it goes in BEFORE glideApply, which reads .detune as the
-// pitch a glide settles on: setting it afterwards would be slid away from.
+// pad's own 9 c), and it goes in BEFORE anything that reads .detune as "the
+// pitch this note settles on": glideApply, _melGlideApply and the bend's
+// _bendBase all do, and setting it afterwards would be slid or bent away.
 // A mõdSynth stand-in (_msx) has no .detune that reaches its engine, so it is
 // left alone; that voice is not tuned yet.
-function tuningApply(nodes, midi, rootM){
- var c = tuningCents(midi, rootM);
+function tuningShift(nodes, c){
  if(!c) return;
  (nodes||[]).forEach(function(nd){
   if(!nd || !nd.detune || nd._msx) return;
@@ -25527,6 +25615,7 @@ function tuningApply(nodes, midi, rootM){
   try{ nd.detune.value = nd.detune.value + c; }catch(e){}
  });
 }
+function tuningApply(nodes, midi, rootM){ tuningShift(nodes, tuningCents(midi, rootM)); }
 
 function velScale(pressure){
  const vs=parseFloat(document.getElementById('vel-sense').value)||.5;
@@ -26346,7 +26435,8 @@ function playMelNote(midi,pressure,sustain,modY){
  const msg = {v: 1, kind: 'note', part: 'mel', id: ++_melNoteSeq, note: midi,
               vel: velScale(pressure||0), at: null,
               dur: held ? null : parseFloat(document.getElementById('mel-decay').value),
-              y: modY==null ? melModY : modY};
+              y: modY==null ? melModY : modY,
+              tune: tuningCentsAt(midi, window.modEngine.now())};
  // A second key while one is down: a chord, so this stretch of playing is poly.
  // Hold is left out on purpose — a latched note is still in _melLive after the
  // finger has gone, and counting it would make every note after the first a chord.
@@ -26416,6 +26506,8 @@ function _webMelNoteOn(msg){
  chainOut.connect(fx.head);
  const _mrv=feedRev(fx.plain?chainOut:fx.tail,revMix*.6);
  const oscs=makeVoice(ctx,midi,g,startT,_mdur,voice,'mel');
+ // Before the bend below reads .detune as its base, and before the glide.
+ tuningShift(oscs, msg.tune);
  if(mod){ mod.attach(oscs); mod.setY(msg.y, startT); }
  // A note struck while C/V is already held should start pre-bent, same as
  // hitting a key while a real synth's pitch wheel is off-centre — not ramp
@@ -28663,7 +28755,8 @@ function scheduleArpBlock(t,dur){
  // An external synth playing the lane with local sound off has it instead.
  if(typeof moSilences==='function' && moSilences('arp')) return;
  modSend({v: 1, kind: 'chord', part: 'arp', id: ++_arpNoteSeq, root: null,
-                        notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur});
+                        notes: arpNotes.slice(), bass: null, vel: 1, at: t, dur: dur,
+                        tunes: arpNotes.map(function(m){ return tuningCentsAt(m, t); })});
 }
 // The Web Audio engine's block: the chord's tones 12 ms apart, low to high
 // as given.
@@ -28691,7 +28784,8 @@ function _webArpBlock(msg){
  } else g.gain.exponentialRampToValueAtTime(0.001, strumT + dur * 0.88);
  g.connect(masterDest(ctx));
  feedRev(g, revMix * 0.4);
- makeVoice(ctx, midi, g, strumT, dur * 0.85 + tail, voice,'arp');
+ const _abv = makeVoice(ctx, midi, g, strumT, dur * 0.85 + tail, voice,'arp');
+ tuningShift(_abv, msg.tunes && msg.tunes[idx]);
  _regKill(g, 'arp');
  });
 }
@@ -28762,7 +28856,7 @@ function scheduleArpNote(midi,t,dur){
  // (Bounce, Cresc, Hill...), which only scales it.
  modSend({v: 1, kind: 'note', part: 'arp', id: ++_arpNoteSeq, note: midi,
                         vel: velMult*humanVel, level: bounceV*velShapeMult, pan: arpPan,
-                        at: tAdj, dur: dur});
+                        at: tAdj, dur: dur, tune: tuningCentsAt(midi, tAdj)});
  // The readout under the arp follows what sounds, so not with its fader down.
  if(!(_cmx('arp')>0)) return;
  const delay=Math.max(0,(tAdj-now)*1000);
@@ -28792,6 +28886,7 @@ function _webArpNote(msg){
  g.connect(fx.head);
  const _arv=feedRev(fx.plain?g:fx.tail,revMix*.5);
  const _aos=makeVoice(ctx,midi,g,tAdj,tot,voice,'arp');
+ tuningShift(_aos, msg.tune);
  reapVoice(_aos,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_arv],tot);
  _regKill(g, 'arp');
 }
@@ -39846,7 +39941,7 @@ function syncSSPreviews(){
   set('ss-playing-preview',
       (voicing==='open' ? 'Spread' : 'Close')
       + ' · ' + (logicModeOn ? 'Logic on' : 'Logic off'));
-  set('ss-tune-preview', 'A = ' + masterTune + ' Hz' + (tuningMode === 'pure' ? ' · pure' : ''));
+  set('ss-tune-preview', 'A = ' + masterTune + ' Hz' + (tuningOn() ? ' · pure' : ''));
   var _ins = (typeof midiAccess!=='undefined' && midiAccess) ? [...midiAccess.inputs.values()].length : 0;
   set('ss-midi-preview', (_ins ? _ins+' input'+(_ins===1?'':'s') : 'No input')
       + ' · ' + (midiMode==='melody' ? 'Melody' : 'Chords'));
@@ -49366,7 +49461,7 @@ try{ moRestorePrefs(); }catch(e){}
 try{ restoreSubPrefs(); }catch(e){}
 initMidi();
 setMasterTune(440);
-setTuningMode(tuningMode);   // a saved 'pure' lights its button; the table is a var, so it is here by now
+tuningSync();   // a saved 'pure' lights its button; the table is a var, so it is here by now
 syncFixedTransport();
 updateFtRateDisp();
 // Both in-app version labels come from MODRIFF_VERSION. It is not the only
@@ -50394,7 +50489,11 @@ window.sqMixGainsW = { chord:.75, mel:.75, drum:.55, bass:.7, melgen:.75, arp:.7
 'use strict';
 
 // ── helpers to access Vibe's shared audio context ──
-function sqCtx(){ return getCtx(); }   // Vibe's getCtx()
+// _sqCtxPrev is set only while the Shape sheet renders a drum offline to draw it
+// (sqShapePreview), so the voice builders — which all ask sqCtx() — build the
+// preview's graph rather than playing it.
+var _sqCtxPrev=null, _sqPreviewing=false;
+function sqCtx(){ return _sqCtxPrev || getCtx(); }   // Vibe's getCtx()
 
 // ── noise buffer (built lazily after audio unlock) ──
 var SQNBUF=null;
@@ -50568,10 +50667,15 @@ var _chokeCur = null;
 // play on for the rest of the look-ahead — the few stray notes after an
 // ending. hardKillAll() needs a GainNode, so filters at the end of a chain
 // (sqCym, sqNs2, sqHHMod) register the gain feeding them instead.
-function _sqKill(g){ try{ if(typeof _regKill==='function') _regKill(g, _sqPartCur || 'drum'); }catch(e){} }
+function _sqKill(g){ if(_sqPreviewing) return; try{ if(typeof _regKill==='function') _regKill(g, _sqPartCur || 'drum'); }catch(e){} }
 function sqNs(t,dur,freq,vol,type2,freq2,Q2){
   var c=sqCtx();if(!c||!SQMG||!SQNBUF)return;
-  dur*=_sqDecMul; vol*=_sqNsMul;
+  dur*=_sqDecMul;
+  // Body all the way to Tone makes _sqNsMul 0, and 0 || 1 below was a noise
+  // layer at FULL level — the opposite of what the slider said, and what made
+  // a noise-only lane louder at the far end. Only a shaped hit gets here with
+  // a multiplier other than 1, so an ordinary hit is built exactly as before.
+  if(_sqNsMul!==1){ vol=(vol==null?1:vol)*_sqNsMul; if(!(vol>=0.0002)) return; }
   var s=c.createBufferSource();s.buffer=SQNBUF;s.loop=true;
   var f=c.createBiquadFilter();f.type='bandpass';f.frequency.value=freq||2000;f.Q.value=1.2;
   var g=c.createGain();g.gain.setValueAtTime(vol||1,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
@@ -50582,7 +50686,9 @@ function sqNs(t,dur,freq,vol,type2,freq2,Q2){
 }
 function sqTn(t,freq,dur,vol,type,fEnd){
   var c=sqCtx();if(!c||!SQMG)return;
-  dur*=_sqDecMul; vol*=_sqTonMul;
+  dur*=_sqDecMul;
+  // As in sqNs: a tone layer at Body = Noise is 0, which `vol||1` read as 1.
+  if(_sqTonMul!==1){ vol=(vol==null?1:vol)*_sqTonMul; if(!(vol>=0.0002)) return; }
   // Sweep scales how far the pitch falls, not how fast: the drop is the same
   // ratio raised to a power, so 0 is a flat tone and 2 drops twice as far.
   if(fEnd && _sqSweepMul!==1) fEnd=Math.max(15, freq*Math.pow(fEnd/freq, _sqSweepMul));
@@ -50612,8 +50718,10 @@ function sqSemi(n){return Math.pow(2,(n||0)/12);}
 function sqModal(t, f0, modes, vol, pan){
   var c=sqCtx(); if(!c||!SQMG) return;
   var out=SQOUT();
+  vol*=_sqTonMul;
   for(var i=0;i<modes.length;i++){
-    var m=modes[i], hz=f0*m[0];
+    var m=modes[i].slice(), hz=f0*m[0];
+    m[2]*=_sqDecMul;
     if(hz>18000 || hz<20) continue;          // nothing audible, and cheaper not to build it
     var o=c.createOscillator(); o.type='sine';
     o.frequency.setValueAtTime(hz,t);
@@ -50777,18 +50885,18 @@ function sqCym(t, vol, base, dur, opts){
   // it was written and it has never once choked anything; the ping and the
   // wash stopped, because those go through sqNs, and the modal body rang on
   // underneath. An open hat lane is pointless without this.
-  if(_chokeCur) _chokeRegister(_chokeCur, body, null, t+dur);
+  if(_chokeCur) _chokeRegister(_chokeCur, body, null, t+dur*_sqDecMul);
   for(var i=0;i<partials;i++){
     var r=SQ_CYM_RATIOS[i];
     // Higher modes decay faster — the whole point. The exponent sets how
     // fast the top falls away: a ride shimmers, so it stays gentle.
-    var d=Math.max(0.06, dur*Math.pow(r, -(opts.damp==null?0.75:opts.damp)));
+    var d=Math.max(0.06, dur*_sqDecMul*Math.pow(r, -(opts.damp==null?0.75:opts.damp)));
     var o=c.createOscillator(); o.type='square'; o.frequency.value=base*r;
     var g=c.createGain();
     // Slight per-strike level scatter so repeated hits are not identical —
     // the same reason a real ride never pings twice the same way.
-    var lvl=vol*(0.55/Math.pow(r,0.55))*(0.85+Math.random()*0.3);
-    g.gain.setValueAtTime(lvl, t);
+    var lvl=vol*_sqTonMul*(0.55/Math.pow(r,0.55))*(0.85+Math.random()*0.3);
+    g.gain.setValueAtTime(Math.max(0.0002,lvl), t);
     g.gain.exponentialRampToValueAtTime(0.0001, t+d);
     o.connect(g); g.connect(body);
     o.start(t); o.stop(t+d+0.02);
@@ -50832,6 +50940,7 @@ function sqBrush(t, vol, dur, swirl){
 // 6-oscillator metallic hi-hat (classic TR-808/909 approach)
 function sqHH808(t,dur,vol,baseF){
   var c=sqCtx();if(!c||!SQMG)return;
+  dur*=_sqDecMul; vol*=_sqTonMul;
   var ratios=[1,1.342,1.618,1.875,2.0,2.247];
   var base=baseF||470;
   var mix=c.createGain();
@@ -51043,24 +51152,27 @@ function sqSmpTrack(n, s, c, name, gain, fb){
   }};
 }
 var SQM={
-  '808':{label:'TR-808',color:'#ff6b35',tracks:[
-    {n:'Kick',s:'BD',c:'#ff6b35',play:function(t,v,ac,ps){
+  '808':{label:'TR-808',color:'#ff6b35',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#ff6b35',sweep:1,play:function(t,v,ac,ps){
       var c2=sqCtx();if(!c2||!SQMG)return;var p=sqSemi(ps),vel=v*(ac?1.5:1.1);
+      // D, SW and TB are the lane's Shape (Decay, Sweep, Body); all 1 outside a shaped hit.
+      var D=_sqDecMul, SW=_sqSweepMul;
+      vel*=_sqTonMul;
       var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();
       var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=Math.tanh(x*2.5);}dw.curve=cv;
-      o.type='sine';o.frequency.setValueAtTime(160*p,t);o.frequency.exponentialRampToValueAtTime(52*p,t+.55);
-      g.gain.setValueAtTime(vel*1.4,t);g.gain.linearRampToValueAtTime(vel*1.2,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+.6);
-      o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.65);
+      o.type='sine';o.frequency.setValueAtTime(160*p,t);o.frequency.exponentialRampToValueAtTime(Math.max(16,160*p*Math.pow(52/160,SW)),t+.55*D);
+      g.gain.setValueAtTime(vel*1.4,t);g.gain.linearRampToValueAtTime(vel*1.2,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+.6*D);
+      o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.65*D);
       sqNs(t,.008,120,vel*.55);
     }},
-    {n:'Snare',s:'SD',c:'#ffaa00',play:function(t,v,ac,ps){
+    {n:'Snare',s:'SD',c:'#ffaa00',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.3:1);
       sqTn(t,230*p,.08,vel*.55,'sine');
       sqNs(t,.005,800,vel*.9);
       sqNs(t,.22,2800,vel*.85,'highpass',6000,0.7);
     }},
-    {n:'Lo Tom',s:'LT',c:'#ff8855',play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,90*p,.32,v*(ac?1.3:1),'sine',28*p);sqNs(t,.025,180,v*.35);}},
-    {n:'Hi Tom',s:'HT',c:'#ff6633',play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,190*p,.24,v*(ac?1.3:1),'sine',55*p);sqNs(t,.02,300,v*.3);}},
+    {n:'Lo Tom',s:'LT',c:'#ff8855',sweep:1,play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,90*p,.32,v*(ac?1.3:1),'sine',28*p);sqNs(t,.025,180,v*.35);}},
+    {n:'Hi Tom',s:'HT',c:'#ff6633',sweep:1,play:function(t,v,ac,ps){var p=sqSemi(ps);sqTn(t,190*p,.24,v*(ac?1.3:1),'sine',55*p);sqNs(t,.02,300,v*.3);}},
     {n:'Cl Hat',s:'CH',c:'#ffcc44',play:function(t,v,ac,ps){sqHH808(t,.048,v*(ac?1.4:1)*.92,470*sqSemi(ps));}},
     {n:'Op Hat',s:'OH',c:'#ffe066',play:function(t,v,ac,ps){sqHH808(t,.48,v*(ac?1.3:1)*.78,470*sqSemi(ps));}},
     {n:'Clap',s:'CP',c:'#ff4444',play:function(t,v,ac,ps){
@@ -51078,32 +51190,32 @@ var SQM={
     // decays in about a third of a second.
     {n:'Cowbell',s:'CB',c:'#ff9900',play:function(t,v,ac,ps){
       var c2=sqCtx();if(!c2||!SQMG)return;
-      var p=sqSemi(ps),vel=v*(ac?1.25:1);
+      var p=sqSemi(ps),vel=v*(ac?1.25:1)*_sqTonMul, D=_sqDecMul;
       var bp=c2.createBiquadFilter();bp.type='bandpass';bp.frequency.value=760*p;bp.Q.value=2.4;
       var g=c2.createGain();
       g.gain.setValueAtTime(0.0001,t);
       g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vel),t+.002);
-      g.gain.exponentialRampToValueAtTime(.0001,t+.34);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.34*D);
       var o1=c2.createOscillator();o1.type='square';o1.frequency.setValueAtTime(562*p,t);
       var o2=c2.createOscillator();o2.type='square';o2.frequency.setValueAtTime(845*p,t);
       var g2=c2.createGain();g2.gain.value=.62;
       o1.connect(bp);o2.connect(g2);g2.connect(bp);bp.connect(g);g.connect(SQOUT());
-      _sqKill(g);o1.start(t);o2.start(t);o1.stop(t+.38);o2.stop(t+.38);
-      if(_chokeCur) _chokeRegister(_chokeCur, g, o1, t+.34);
+      _sqKill(g);o1.start(t);o2.start(t);o1.stop(t+.38*D);o2.stop(t+.38*D);
+      if(_chokeCur) _chokeRegister(_chokeCur, g, o1, t+.34*D);
     }}
   ]},
-  '909':{label:'TR-909',color:'#4a9eff',tracks:[
-    {n:'Kick',s:'BD',c:'#4a9eff',play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(35*p,t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45);o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.5);sqNs(t,.018,1000,v*.3);}},
-    {n:'Snare',s:'SD',c:'#6699ff',play:function(t,v,ac,ps){sqNs(t,.09,3500,v*(ac?1.3:1));sqNs(t,.22,500,v*.38);sqTn(t,220*sqSemi(ps),.06,v*.65,'sine',.5);}},
+  '909':{label:'TR-909',color:'#4a9eff',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#4a9eff',sweep:1,play:function(t,v,ac,ps){var p=sqSemi(ps),c2=sqCtx();if(!c2||!SQMG)return;var D=_sqDecMul,SW=_sqSweepMul;v*=_sqTonMul;var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();var cv=new Float32Array(256);for(var i=0;i<256;i++){var x=i*2/256-1;cv[i]=x*11/(1+10*Math.abs(x));}dw.curve=cv;o.type='sine';o.frequency.setValueAtTime(80*p,t);o.frequency.exponentialRampToValueAtTime(Math.max(16,80*p*Math.pow(35/80,SW)),t+.08);g.gain.setValueAtTime(v*(ac?1.45:1)*1.5,t);g.gain.exponentialRampToValueAtTime(.0001,t+.45*D);o.connect(dw);dw.connect(g);g.connect(SQOUT());_sqKill(g);o.start(t);o.stop(t+.5*D);sqNs(t,.018,1000,v*.3);}},
+    {n:'Snare',s:'SD',c:'#6699ff',body:1,play:function(t,v,ac,ps){sqNs(t,.09,3500,v*(ac?1.3:1));sqNs(t,.22,500,v*.38);sqTn(t,220*sqSemi(ps),.06,v*.65,'sine',.5);}},
     {n:'Rimshot',s:'RS',c:'#88aaff',play:function(t,v,ac,ps){sqTn(t,1200*sqSemi(ps),.02,v*(ac?1.4:1),'square');sqNs(t,.03,4000,v*.5);}},
     {n:'Clap',s:'CP',c:'#44ccff',play:function(t,v,ac,ps){var vel=v*(ac?1.4:1);[0,.005,.010,.018].forEach(function(d){sqNs(t+d,.065,1600,vel*.88);});sqNs(t+.022,.2,1200,vel*.5);}},
     {n:'Cl Hat',s:'CH',c:'#aaddff',play:function(t,v,ac,ps){sqHH808(t,.032,v*(ac?1.4:1)*.88,540*sqSemi(ps));}},
     {n:'Op Hat',s:'OH',c:'#cceeff',play:function(t,v,ac,ps){sqHH808(t,.58,v*(ac?1.3:1)*.74,540*sqSemi(ps));}},
-    {n:'Hi Tom',s:'HT',c:'#5588ff',play:function(t,v,ac,ps){sqTn(t,300*sqSemi(ps),.15,v*(ac?1.3:1),'triangle',.3);sqNs(t,.05,2000,v*.3);}},
-    {n:'Lo Tom',s:'LT',c:'#3366dd',play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.3:1),'triangle',.3);sqNs(t,.06,1000,v*.3);}}
+    {n:'Hi Tom',s:'HT',c:'#5588ff',sweep:1,play:function(t,v,ac,ps){sqTn(t,300*sqSemi(ps),.15,v*(ac?1.3:1),'triangle',.3);sqNs(t,.05,2000,v*.3);}},
+    {n:'Lo Tom',s:'LT',c:'#3366dd',sweep:1,play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.3:1),'triangle',.3);sqNs(t,.06,1000,v*.3);}}
   ]},
   'MOD':{label:'mõdKit',color:'#ffd54a',shape:true,tracks:[
-    {n:'Kick',s:'BD',c:'#ffd54a',sweep:1,play:function(t,v,ac,ps){
+    {n:'Kick',s:'BD',c:'#ffd54a',sweep:1,body:1,play:function(t,v,ac,ps){
       var c2=sqCtx();if(!c2||!SQMG)return;var p=sqSemi(ps),vel=v*(ac?1.5:1.1);
       // body: sine sweep through a soft-saturating shaper for a clean, punchy thump
       var o=c2.createOscillator(),g=c2.createGain(),dw=c2.createWaveShaper();
@@ -51127,7 +51239,7 @@ var SQM={
       g2.gain.setValueAtTime(vel*.55,t+.01);g2.gain.exponentialRampToValueAtTime(.0001,t+.5*D);
       o2.connect(g2);g2.connect(SQOUT());_sqKill(g2);o2.start(t+.01);o2.stop(t+.52*D);
     }},
-    {n:'Snare',s:'SD',c:'#ffe08a',play:function(t,v,ac,ps){
+    {n:'Snare',s:'SD',c:'#ffe08a',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.35:1);
       sqTn(t,195*p,.1,vel*.5,'triangle');
       sqTn(t,225*p,.09,vel*.32,'sine');
@@ -51138,11 +51250,11 @@ var SQM={
     // One tom, two sizes. They were two unrelated voices — the low one fell
     // from 95 Hz to 30 (nearly a kick) and the high one from 195 to 58 with a
     // different overtone — so the pair never read as one kit (4.7.1).
-    {n:'Lo Tom',s:'LT',c:'#ffcf5c',sweep:1,play:function(t,v,ac,ps){sqModTom(t,v*(ac?1.35:1),sqSemi(ps),110,.42);}},
-    {n:'Hi Tom',s:'HT',c:'#ffc247',sweep:1,play:function(t,v,ac,ps){sqModTom(t,v*(ac?1.35:1),sqSemi(ps),165,.34);}},
-    {n:'Cl Hat',s:'CH',c:'#ffe9b3',play:function(t,v,ac,ps){sqHHMod(t,.05,v*(ac?1.4:1)*.9,500*sqSemi(ps));}},
-    {n:'Op Hat',s:'OH',c:'#fff3d6',play:function(t,v,ac,ps){sqHHMod(t,.52,v*(ac?1.3:1)*.76,500*sqSemi(ps));}},
-    {n:'Clap',s:'CP',c:'#ff8a5c',play:function(t,v,ac,ps){
+    {n:'Lo Tom',s:'LT',c:'#ffcf5c',sweep:1,body:1,play:function(t,v,ac,ps){sqModTom(t,v*(ac?1.35:1),sqSemi(ps),110,.42);}},
+    {n:'Hi Tom',s:'HT',c:'#ffc247',sweep:1,body:1,play:function(t,v,ac,ps){sqModTom(t,v*(ac?1.35:1),sqSemi(ps),165,.34);}},
+    {n:'Cl Hat',s:'CH',c:'#ffe9b3',body:1,play:function(t,v,ac,ps){sqHHMod(t,.05,v*(ac?1.4:1)*.9,500*sqSemi(ps));}},
+    {n:'Op Hat',s:'OH',c:'#fff3d6',body:1,play:function(t,v,ac,ps){sqHHMod(t,.52,v*(ac?1.3:1)*.76,500*sqSemi(ps));}},
+    {n:'Clap',s:'CP',c:'#ff8a5c',body:1,play:function(t,v,ac,ps){
       var vel=v*(ac?1.4:1);
       [0,.008,.016,.026].forEach(function(d,i){sqNs(t+d,.06,1500+i*80,vel*(0.9-i*0.06),'bandpass',1600,1.2);});
       sqNs(t+.03,.26,1300,vel*.5,'bandpass',1400,0.9);
@@ -51153,7 +51265,7 @@ var SQM={
     // pitches ringing out is exactly what a triangle is, and that is what it
     // sounded like (4.7.1). Now: a bright stick burst, a long sizzling wash,
     // and the metal cluster underneath at a fraction of the level.
-    {n:'Crash',s:'CY',c:'#fff6e0',play:function(t,v,ac,ps){
+    {n:'Crash',s:'CY',c:'#fff6e0',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.25:1);
       sqNs(t,.03,3200,vel*.7,'highpass',2500,0.7);          // stick
       sqNs(t,2.1,8000,vel*.75,'highpass',4800,0.5);         // wash
@@ -51161,14 +51273,14 @@ var SQM={
       sqCymMod(t,1.6,vel*.5,330*p);                          // metal
     }}
   ]},
-  '606':{label:'TR-606',color:'#aa44ff',tracks:[
-    {n:'Kick',s:'BD',c:'#aa44ff',play:function(t,v,ac,ps){sqTn(t,70*sqSemi(ps),.32,v*(ac?1.4:1)*1.2,'sine',.2);sqNs(t,.018,300,v*.4);}},
-    {n:'Snare',s:'SD',c:'#cc66ff',play:function(t,v,ac,ps){sqNs(t,.13,2500,v*(ac?1.3:1)*.8);sqTn(t,180*sqSemi(ps),.06,v*.5,'triangle');}},
+  '606':{label:'TR-606',color:'#aa44ff',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#aa44ff',sweep:1,play:function(t,v,ac,ps){sqTn(t,70*sqSemi(ps),.32,v*(ac?1.4:1)*1.2,'sine',.2);sqNs(t,.018,300,v*.4);}},
+    {n:'Snare',s:'SD',c:'#cc66ff',body:1,play:function(t,v,ac,ps){sqNs(t,.13,2500,v*(ac?1.3:1)*.8);sqTn(t,180*sqSemi(ps),.06,v*.5,'triangle');}},
     {n:'Cl Hat',s:'CH',c:'#dd88ff',play:function(t,v,ac,ps){sqNs(t,.04,10000,v*(ac?1.3:1)*.6);}},
     {n:'Op Hat',s:'OH',c:'#eeb2ff',play:function(t,v,ac,ps){sqNs(t,.36,8000,v*(ac?1.2:1)*.5);}},
-    {n:'Tom 1',s:'T1',c:'#bb55ff',play:function(t,v,ac,ps){sqTn(t,220*sqSemi(ps),.19,v*(ac?1.3:1),'sine',.35);}},
-    {n:'Tom 2',s:'T2',c:'#9933ee',play:function(t,v,ac,ps){sqTn(t,130*sqSemi(ps),.24,v*(ac?1.3:1),'sine',.35);}},
-    {n:'Cymbal',s:'CY',c:'#cc88ff',play:function(t,v,ac,ps){sqNs(t,.85,5000,v*(ac?1.2:1)*.42);sqTn(t,4000*sqSemi(ps),.65,v*.2,'square');}}
+    {n:'Tom 1',s:'T1',c:'#bb55ff',sweep:1,play:function(t,v,ac,ps){sqTn(t,220*sqSemi(ps),.19,v*(ac?1.3:1),'sine',.35);}},
+    {n:'Tom 2',s:'T2',c:'#9933ee',sweep:1,play:function(t,v,ac,ps){sqTn(t,130*sqSemi(ps),.24,v*(ac?1.3:1),'sine',.35);}},
+    {n:'Cymbal',s:'CY',c:'#cc88ff',body:1,play:function(t,v,ac,ps){sqNs(t,.85,5000,v*(ac?1.2:1)*.42);sqTn(t,4000*sqSemi(ps),.65,v*.2,'square');}}
   ]},
   // The preset box that sat on top of a home organ: tuned bridged-T circuits,
   // almost no decay on anything, and a character that comes from how DRY it
@@ -51176,12 +51288,12 @@ var SQM={
   // is exactly why it sits under a chord progression without fighting it, and
   // why it reads as a different instrument from the 606 rather than a quieter
   // one.
-  'CR78':{label:'CR-78',color:'#cfc2a0',tracks:[
-    {n:'Kick',s:'BD',c:'#cfc2a0',play:function(t,v,ac,ps){
+  'CR78':{label:'CR-78',color:'#cfc2a0',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#cfc2a0',sweep:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.35:1);
       sqTn(t,78*p,.12,vel*1.05,'sine',58*p); sqNs(t,.006,900,vel*.18);
     }},
-    {n:'Snare',s:'SD',c:'#e4d8b8',play:function(t,v,ac,ps){
+    {n:'Snare',s:'SD',c:'#e4d8b8',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.3:1);
       sqNs(t,.075,3400,vel*.62,'highpass',2200,0.7); sqTn(t,320*p,.03,vel*.26,'triangle');
     }},
@@ -51207,23 +51319,23 @@ var SQM={
     // A scrape is a row of short bursts climbing in brightness, not one noise.
     {n:'Guiro',s:'GU',c:'#a8b48c',play:function(t,v,ac,ps){
       var vel=v*(ac?1.3:1);
-      for(var i=0;i<7;i++) sqNs(t+i*.018,.02,2600+i*180,vel*.24);
+      for(var i=0;i<7;i++) sqNs(t+i*.018*_sqDecMul,.02,2600+i*180,vel*.24);
     }}
   ]},
-  'LIN':{label:'Linn',color:'#ff4488',tracks:[
-    {n:'Kick',s:'BD',c:'#ff4488',play:function(t,v,ac,ps){sqTn(t,60*sqSemi(ps),.36,v*(ac?1.4:1)*1.3,'sine',.15);sqNs(t,.04,200,v*.5);}},
-    {n:'Snare',s:'SD',c:'#ff6699',play:function(t,v,ac,ps){sqNs(t,.16,2000,v*(ac?1.3:1)*.9);sqTn(t,300*sqSemi(ps),.04,v*.8,'square');}},
+  'LIN':{label:'Linn',color:'#ff4488',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#ff4488',sweep:1,play:function(t,v,ac,ps){sqTn(t,60*sqSemi(ps),.36,v*(ac?1.4:1)*1.3,'sine',.15);sqNs(t,.04,200,v*.5);}},
+    {n:'Snare',s:'SD',c:'#ff6699',body:1,play:function(t,v,ac,ps){sqNs(t,.16,2000,v*(ac?1.3:1)*.9);sqTn(t,300*sqSemi(ps),.04,v*.8,'square');}},
     {n:'Cl Hat',s:'CH',c:'#ff88aa',play:function(t,v,ac,ps){sqNs(t,.024,12000,v*(ac?1.4:1)*.76);}},
-    {n:'Op Hat',s:'OH',c:'#ffaabb',play:function(t,v,ac,ps){sqNs(t,.46,9000,v*(ac?1.2:1)*.62);sqTn(t,8500*sqSemi(ps),.32,v*.14,'sawtooth');}},
-    {n:'Perc',s:'PC',c:'#ff3377',play:function(t,v,ac,ps){sqTn(t,600*sqSemi(ps),.06,v*(ac?1.4:1),'sine',.1);sqNs(t,.04,3000,v*.5);}},
-    {n:'Conga',s:'CG',c:'#ff5599',play:function(t,v,ac,ps){sqTn(t,400*sqSemi(ps),.13,v*(ac?1.3:1)*.8,'sine',.5);sqNs(t,.04,1500,v*.3);}}
+    {n:'Op Hat',s:'OH',c:'#ffaabb',body:1,play:function(t,v,ac,ps){sqNs(t,.46,9000,v*(ac?1.2:1)*.62);sqTn(t,8500*sqSemi(ps),.32,v*.14,'sawtooth');}},
+    {n:'Perc',s:'PC',c:'#ff3377',sweep:1,play:function(t,v,ac,ps){sqTn(t,600*sqSemi(ps),.06,v*(ac?1.4:1),'sine',.1);sqNs(t,.04,3000,v*.5);}},
+    {n:'Conga',s:'CG',c:'#ff5599',sweep:1,play:function(t,v,ac,ps){sqTn(t,400*sqSemi(ps),.13,v*(ac?1.3:1)*.8,'sine',.5);sqNs(t,.04,1500,v*.3);}}
   ]},
-  'IDM':{label:'IDM',color:'#aaff00',tracks:[
-    {n:'Kick',s:'BD',c:'#aaff00',play:function(t,v,ac,ps){sqTn(t,50*sqSemi(ps),.62,v*(ac?1.5:1)*1.5,'sine',.1);sqNs(t,.014,500,v*.7);sqTn(t,1000*sqSemi(ps),.02,v*.5,'square');}},
-    {n:'Snare',s:'SD',c:'#ccff33',play:function(t,v,ac,ps){sqNs(t,.26,1800,v*(ac?1.3:1)*.96);sqTn(t,100*sqSemi(ps),.1,v*.4,'sine');}},
-    {n:'Glitch',s:'GL',c:'#eeff55',play:function(t,v,ac,ps){for(var i=0;i<5;i++)sqNs(t+i*.008,.012,400+Math.random()*6000,v*(ac?1.3:1)*.6);}},
+  'IDM':{label:'IDM',color:'#aaff00',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#aaff00',sweep:1,play:function(t,v,ac,ps){sqTn(t,50*sqSemi(ps),.62,v*(ac?1.5:1)*1.5,'sine',.1);sqNs(t,.014,500,v*.7);sqTn(t,1000*sqSemi(ps),.02,v*.5,'square');}},
+    {n:'Snare',s:'SD',c:'#ccff33',body:1,play:function(t,v,ac,ps){sqNs(t,.26,1800,v*(ac?1.3:1)*.96);sqTn(t,100*sqSemi(ps),.1,v*.4,'sine');}},
+    {n:'Glitch',s:'GL',c:'#eeff55',play:function(t,v,ac,ps){for(var i=0;i<5;i++)sqNs(t+i*.008*_sqDecMul,.012,400+Math.random()*6000,v*(ac?1.3:1)*.6);}},
     {n:'HH',s:'HH',c:'#bbff22',play:function(t,v,ac,ps){sqNs(t,.02,14000,v*(ac?1.3:1)*.56);}},
-    {n:'Zapp',s:'ZP',c:'#99ee00',play:function(t,v,ac,ps){sqTn(t,800*sqSemi(ps),.1,v*(ac?1.4:1)*.8,'sawtooth',50*sqSemi(ps));}},
+    {n:'Zapp',s:'ZP',c:'#99ee00',sweep:1,play:function(t,v,ac,ps){sqTn(t,800*sqSemi(ps),.1,v*(ac?1.4:1)*.8,'sawtooth',50*sqSemi(ps));}},
     {n:'Metal',s:'MT',c:'#aabb00',play:function(t,v,ac,ps){sqTn(t,1500*sqSemi(ps),.05,v*(ac?1.3:1)*.9,'square');sqTn(t,2300*sqSemi(ps),.05,v*.6,'square');}}
   ]},
   // The gap in this table: every kit above is a drum machine, and the two
@@ -51239,7 +51351,7 @@ var SQM={
   // overtone a fifth above, which is what a tuned head does. The cymbals are
   // modal with the high partials decaying first, the same principle sqModal
   // exists for.
-  'ACU':{label:'Acoustic',color:'#c98a4b',tracks:[
+  'ACU':{label:'Acoustic',color:'#c98a4b',shape:true,tracks:[
     {n:'Kick',s:'BD',c:'#c98a4b',play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.3:1);
       sqTn(t,105*p,.09,vel*.85,'sine',52*p);            // the head falling
@@ -51247,7 +51359,7 @@ var SQM={
       sqNs(t,.008,2600,vel*.3,'highpass',1200,0.7);     // the beater
       sqNs(t,.05,160,vel*.22);                          // air in the shell
     }},
-    {n:'Snare',s:'SD',c:'#e0a868',play:function(t,v,ac,ps){
+    {n:'Snare',s:'SD',c:'#e0a868',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.35:1);
       sqTn(t,188*p,.085,vel*.45,'sine');                // batter head
       sqTn(t,332*p,.06,vel*.26,'sine');                 // and its overtone
@@ -51267,22 +51379,22 @@ var SQM={
       sqTn(t,252*p,.16,vel*.22,'sine',208*p);
       sqNs(t,.01,1400,vel*.16);
     }},
-    {n:'Cl Hat',s:'CH',c:'#e8c88a',play:function(t,v,ac,ps){
+    {n:'Cl Hat',s:'CH',c:'#e8c88a',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.3:1);
       sqNs(t,.035,9000,vel*.4,'highpass',7000,0.6);
       sqModal(t, 320*p, [[8.1,.1,.04],[11.3,.075,.035],[14.7,.055,.03]], vel*.4);
     }},
-    {n:'Op Hat',s:'OH',c:'#f2dcae',play:function(t,v,ac,ps){
+    {n:'Op Hat',s:'OH',c:'#f2dcae',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.2:1);
       sqNs(t,.42,8000,vel*.3,'highpass',5600,0.5);
       sqModal(t, 320*p, [[8.1,.08,.4],[11.3,.06,.33],[14.7,.045,.26],[19.2,.03,.2]], vel*.34);
     }},
-    {n:'Ride',s:'RD',c:'#cdb07a',play:function(t,v,ac,ps){
+    {n:'Ride',s:'RD',c:'#cdb07a',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.2:1);
       sqModal(t, 430*p, [[1,.1,.9,0],[2.37,.08,.7,6],[3.61,.06,.55,-5],[5.43,.045,.4,8],[7.9,.03,.3,-7]], vel*.45);
       sqNs(t,.9,5200,vel*.13,'highpass',3600,0.5);
     }},
-    {n:'Crash',s:'CY',c:'#f6ead0',play:function(t,v,ac,ps){
+    {n:'Crash',s:'CY',c:'#f6ead0',body:1,play:function(t,v,ac,ps){
       var p=sqSemi(ps),vel=v*(ac?1.2:1);
       sqNs(t,1.6,6500,vel*.28,'highpass',4200,0.5);
       sqNs(t,1.0,3200,vel*.17,'bandpass',3200,0.8);
@@ -51385,9 +51497,9 @@ var SQM={
             {partials:6, damp:1.05, hp:3400, pingF:6800, pingLvl:0.6, washLvl:0.07});
     }}
   ]},
-  'BRS':{label:'Brush',color:'#88aacc',tracks:[
-    {n:'Kick',s:'BD',c:'#88aacc',play:function(t,v,ac,ps){sqTn(t,90*sqSemi(ps),.18,v*(ac?1.3:1)*.7,'sine',55*sqSemi(ps));}},
-    {n:'Snare',s:'SD',c:'#aaccee',play:function(t,v,ac,ps){sqNs(t,.3,1800,v*(ac?1.2:1)*.45);sqTn(t,160*sqSemi(ps),.04,v*.2,'triangle');}},
+  'BRS':{label:'Brush',color:'#88aacc',shape:true,tracks:[
+    {n:'Kick',s:'BD',c:'#88aacc',sweep:1,play:function(t,v,ac,ps){sqTn(t,90*sqSemi(ps),.18,v*(ac?1.3:1)*.7,'sine',55*sqSemi(ps));}},
+    {n:'Snare',s:'SD',c:'#aaccee',body:1,play:function(t,v,ac,ps){sqNs(t,.3,1800,v*(ac?1.2:1)*.45);sqTn(t,160*sqSemi(ps),.04,v*.2,'triangle');}},
     {n:'Cl Hat',s:'CH',c:'#ccddff',play:function(t,v,ac,ps){sqNs(t,.12,5000,v*(ac?1.2:1)*.32);}},
     {n:'Op Hat',s:'OH',c:'#ddeeff',play:function(t,v,ac,ps){sqNs(t,.45,4500,v*(ac?1.1:1)*.28);}},
     // Was one flat sine plus two noise bands — no differential decay at all
@@ -51403,7 +51515,7 @@ var SQM={
       sqCym(t, v*(ac?1.2:1)*0.20, 372*sqSemi(ps), 2.6,
             {damp:0.85, hp:2800, pingF:5000, pingLvl:0.35, washF:8200, washLvl:0.13});
     }},
-    {n:'Tom',s:'TM',c:'#99bbdd',play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.2:1)*.6,'sine',60*sqSemi(ps));}}
+    {n:'Tom',s:'TM',c:'#99bbdd',sweep:1,play:function(t,v,ac,ps){sqTn(t,150*sqSemi(ps),.2,v*(ac?1.2:1)*.6,'sine',60*sqSemi(ps));}}
   ]},
   // Rock and Hip-Hop: real recordings (VCSL, CC0), processed per kit — Rock
   // tightened and EQ'd as a close-miked kit, Hip-Hop pitched down, saturated,
@@ -52214,9 +52326,67 @@ function sqRowMenu(ti, anchor){
       sqAfterClip();
     },
     function(){ for(var s=0;s<sqSteps;s++){ if(sqGrid[ti]) sqGrid[ti][s]=sqMkCell(); } sqAfterClip(); })
-    .concat((SQM[sqMach]||{}).shape && sqFocus===0 ? [{label:'Shape…', title:'Decay, tone and drive for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
+    .concat((SQM[sqMach]||{}).shape && sqFocus===0 ? [{label:'Shape…', title:'Tune, decay, tone, drive and pan for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
 }
-// One drum's Shape: three sliders, heard as you let go of each.
+// A drum drawn, for the Shape sheet: the lane's voice built into an offline
+// context with the lane's current Shape and rendered, so the picture is the
+// sound and not a sketch of the settings. It goes through the same builders and
+// the same insert as a real hit (_sqShapeInsert), with the choke groups and the
+// kill registry left out so drawing a hat never cuts the one playing. Calls
+// back with the rendered AudioBuffer, or null where there is no offline context.
+function sqShapePreview(track, sh, vol, ps, dur, cb){
+ var real=null; try{ real=getCtx(); }catch(e){}
+ if(!real || typeof OfflineAudioContext==='undefined' || !track || !track.play){ cb(null); return; }
+ var sr=44100, oc;
+ try{ oc=new OfflineAudioContext(2, Math.round(sr*dur), sr); }catch(e){ cb(null); return; }
+ try{ sqEnsureNoise(); }catch(e){}
+ var bus=oc.createGain(); bus.connect(oc.destination);
+ var keep={c:_sqCtxPrev, mg:SQMG, o:_sqOut, k:_chokeCur};
+ _sqCtxPrev=oc; SQMG=bus; _sqOut=null; _chokeCur=null; _sqPreviewing=true;
+ try{
+  if(sh){
+   _sqDecMul = Math.max(0.1, Math.min(6, sh.d==null?1:sh.d));
+   _sqSweepMul = Math.max(0, Math.min(3, sh.s==null?1:sh.s));
+   var b = Math.max(-1, Math.min(1, sh.b||0));
+   _sqTonMul = b>=0 ? 1+b*0.4 : 1+b;
+   _sqNsMul  = b<=0 ? 1-b*0.4 : 1-b;
+   _sqShapeInsert(sh);
+  }
+  track.play(0.005, Math.max(.001, vol*sqTrim(track)), false, ps||0);
+ } catch(e){}
+ _sqDecMul = 1; _sqSweepMul = 1; _sqTonMul = 1; _sqNsMul = 1;
+ _sqCtxPrev=keep.c; SQMG=keep.mg; _sqOut=keep.o; _chokeCur=keep.k; _sqPreviewing=false;
+ try{ oc.startRendering().then(cb, function(){ cb(null); }); }catch(e){ cb(null); }
+}
+// The picture: min and max per column, in the lane's colour, on an axis that
+// is as long as the drum rings at its defaults times 2.5 — so Decay visibly
+// stretches or shortens the drum against a ruler that does not move.
+function sqShapeDraw(cv, buf, secs, color){
+ var dpr=Math.min(2, window.devicePixelRatio||1), w=cv.clientWidth||300, h=cv.clientHeight||84;
+ if(cv.width!==Math.round(w*dpr) || cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+ var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+ var cs=getComputedStyle(document.documentElement), muted=(cs.getPropertyValue('--muted')||'#7a7f95').trim();
+ var mid=h/2, amp=h/2-3;
+ g.fillStyle=muted; g.globalAlpha=.35; g.fillRect(0,Math.round(mid),w,1); g.globalAlpha=1;
+ if(!buf) return;
+ var L=buf.getChannelData(0), R=buf.numberOfChannels>1 ? buf.getChannelData(1) : L;
+ var n=Math.min(L.length, Math.round(secs*buf.sampleRate)), per=n/w;
+ g.fillStyle=color||'#ffd54a';
+ for(var x=0;x<w;x++){
+  var a=Math.floor(x*per), e=Math.min(n, Math.max(a+1, Math.floor((x+1)*per))), mn=0, mx=0;
+  for(var i=a;i<e;i++){ var v=(L[i]+R[i])*0.5; if(v<mn) mn=v; if(v>mx) mx=v; }
+  // x2 so a drum at the default level fills most of the picture; clipped where
+  // it would run off it, which is also where it would run out of headroom.
+  mn=Math.max(-1,mn*2); mx=Math.min(1,mx*2);
+  g.fillRect(x, mid-mx*amp, 1, Math.max(1,(mx-mn)*amp));
+ }
+ // A tick a quarter-second, so the length means something.
+ g.fillStyle=muted; g.globalAlpha=.5;
+ for(var tk=.25; tk<secs; tk+=.25){ var px=Math.round(tk/secs*w); g.fillRect(px,h-5,1,5); }
+ g.globalAlpha=1;
+}
+// One drum's Shape: level, tune, decay, sweep, body, tone, drive and pan, each
+// heard as you let go of it.
 function sqShapeSheet(ti){
  var M=SQM[sqMach]; var tr=M && M.tracks[ti]; if(!tr) return;
  var key=sqLK(sqMach,0);
@@ -52225,26 +52395,56 @@ function sqShapeSheet(ti){
  var hear=function(){ try{ sqInitFX(); sqEnsureNoise(); var c=sqCtx(); sqHitTrack(tr, c?c.currentTime+0.02:0, sqGv(key,ti), false, sqGp(key,ti)); }catch(e){} };
  var box=_sbSheet(tr.n+' · shape');
  var rows=[
-  ['p','Pitch',-24,24,1,function(v){ return (v>0?'+':'')+v+' st'; }],
+  // Level and Pitch are the lane's own (the volume and PCH controls on the
+  // grid), shown here so every way to change the drum is in one place.
+  ['v','Level',0,1,0.01,function(v){ return Math.round(v*100)+'%'; }],
+  ['p','Tune',-24,24,1,function(v){ return (v>0?'+':'')+v+' st'; }],
   ['d','Decay',0.15,5,0.01,function(v){ return Math.round(v*100)+'%'; }],
   // Sweep is the fall in pitch, which only the kick and toms have.
   tr.sweep ? ['s','Sweep',0,3,0.01,function(v){ return v<0.01 ? 'Flat' : Math.round(v*100)+'%'; }] : null,
-  ['b','Body',-1,1,0.01,function(v){ return Math.abs(v)<0.01 ? 'Balanced' : (v<0?'Noise ':'Tone ')+Math.round(Math.abs(v)*100); }],
+  // Body trades the noise layer against the tone layer, so it only means
+  // something on a lane that has both (the snare's wires and shell, a hat's
+  // sizzle and metal). On a lane that is all one thing it is a second Level.
+  tr.body ? ['b','Body',-1,1,0.01,function(v){ return Math.abs(v)<0.01 ? 'Balanced' : (v<0?'Noise ':'Tone ')+Math.round(Math.abs(v)*100); }] : null,
   ['t','Tone',-1,1,0.01,function(v){ return Math.abs(v)<0.01 ? 'Neutral' : (v<0?'Dark ':'Bright ')+Math.round(Math.abs(v)*100); }],
-  ['x','Drive',0,1,0.01,function(v){ return v<0.01 ? 'Clean' : Math.round(v*100)+'%'; }]
+  ['x','Drive',0,1,0.01,function(v){ return v<0.01 ? 'Clean' : Math.round(v*100)+'%'; }],
+  ['n','Pan',-1,1,0.01,function(v){ return Math.abs(v)<0.01 ? 'Centre' : (v<0?'L ':'R ')+Math.round(Math.abs(v)*100); }]
  ];
  // Pitch is the lane's own (the PCH knob on the grid), shown here so every
  // way to change the drum is in one place.
- var getV=function(k){ return k==='p' ? sqGp(key,ti) : cur()[k]; };
- var setV=function(k,v){ if(k==='p') sqSp(key,ti,v); else put(k,v); };
+ var getV=function(k){ return k==='p' ? sqGp(key,ti) : k==='v' ? sqGv(key,ti) : cur()[k]; };
+ var setV=function(k,v){ if(k==='p') sqSp(key,ti,v); else if(k==='v') sqSv(key,ti,v); else put(k,v); };
  var wrap=document.createElement('div'); wrap.className='sq-shape';
+ // The drum, drawn. Redrawn a beat after the last slider movement, not on
+ // every input event: each one is an offline render.
+ var pv=document.createElement('canvas'); pv.className='sq-shape-pv'; pv.setAttribute('aria-hidden','true');
+ wrap.appendChild(pv);
+ var pvAxis=0, pvTimer=null, pvSeq=0;
+ var pvCur=function(){ var sh=_sqShapeSet(cur()); return sh; };
+ var pvDraw=function(){
+  var seq=++pvSeq;
+  sqShapePreview(tr, pvCur(), sqGv(key,ti), sqGp(key,ti), pvAxis, function(buf){ if(seq===pvSeq) sqShapeDraw(pv, buf, pvAxis, tr.c); });
+ };
+ var pvSoon=function(){ clearTimeout(pvTimer); pvTimer=setTimeout(pvDraw, 90); };
+ // The axis comes from the drum at its defaults: render it once, long, and
+ // find where it falls 50 dB under its peak.
+ sqShapePreview(tr, null, .8, 0, 3, function(buf){
+  var len=.4;
+  if(buf){
+   var x=buf.getChannelData(0), W=Math.round(buf.sampleRate*.01), nW=Math.floor(x.length/W), r=[], pk=0;
+   for(var i=0;i<nW;i++){ var e=0; for(var j=0;j<W;j++) e+=x[i*W+j]*x[i*W+j]; r.push(Math.sqrt(e/W)); if(r[i]>pk) pk=r[i]; }
+   for(var k=0;k<nW;k++) if(r[k]>pk*0.00316) len=(k+1)*.01;
+  }
+  pvAxis=Math.max(.3, Math.min(3, len*2.5));
+  pvDraw();
+ });
  var inputs={};
  rows.filter(Boolean).forEach(function(r){
   var row=document.createElement('label'); row.className='sq-shape-row';
   var lb=document.createElement('span'); lb.className='sq-shape-l'; lb.textContent=r[1];
   var rg=document.createElement('input'); rg.type='range'; rg.min=r[2]; rg.max=r[3]; rg.step=r[4]; rg.value=getV(r[0]);
   var vv=document.createElement('span'); vv.className='sq-shape-v'; vv.textContent=r[5](+rg.value);
-  rg.addEventListener('input', function(){ setV(r[0], +rg.value); vv.textContent=r[5](+rg.value); });
+  rg.addEventListener('input', function(){ setV(r[0], +rg.value); vv.textContent=r[5](+rg.value); if(pvAxis) pvSoon(); });
   rg.addEventListener('change', hear);
   row.appendChild(lb); row.appendChild(rg); row.appendChild(vv); wrap.appendChild(row);
   inputs[r[0]]={rg:rg, vv:vv, fmt:r[5]};
@@ -52252,8 +52452,8 @@ function sqShapeSheet(ti){
  var act=document.createElement('div'); act.className='sq-shape-act';
  var hb=document.createElement('button'); hb.type='button'; hb.className='ll-act'; hb.innerHTML='<b>▶ Hear it</b>'; hb.addEventListener('click', hear);
  var rb=document.createElement('button'); rb.type='button'; rb.className='ll-act'; rb.innerHTML='<b>Reset</b>';
- rb.addEventListener('click', function(){ var m=sqShapes[key]; if(m) delete m[ti]; sqSp(key,ti,0);
-  Object.keys(inputs).forEach(function(k){ var I=inputs[k], d=(k==='p'?0:SQ_SHAPE_DEF[k]); I.rg.value=d; I.vv.textContent=I.fmt(d); }); hear(); });
+ rb.addEventListener('click', function(){ var m=sqShapes[key]; if(m) delete m[ti]; sqSp(key,ti,0); sqSv(key,ti,.8);
+  Object.keys(inputs).forEach(function(k){ var I=inputs[k], d=(k==='p'?0:k==='v'?.8:SQ_SHAPE_DEF[k]); I.rg.value=d; I.vv.textContent=I.fmt(d); }); if(pvAxis) pvDraw(); hear(); });
  act.appendChild(hb); act.appendChild(rb);
  box.body.appendChild(wrap); box.body.appendChild(act);
  box.addCancel('Done');
@@ -52599,7 +52799,14 @@ var _sqDecMul = 1, _sqSweepMul = 1, _sqTonMul = 1, _sqNsMul = 1;
 // d decay ×, t tone −1…1, x drive 0…1, s sweep ×, b body −1 (all noise)…1
 // (all tone). s and b came in 4.7.1, when the first three proved too timid
 // to be worth opening.
-var SQ_SHAPE_DEF = { d:1, t:0, x:0, s:1, b:0 };
+var SQ_SHAPE_DEF = { d:1, t:0, x:0, s:1, b:0, n:0 };
+// Whether a lane's Shape differs from the defaults at all — the one test both
+// the page's copy (_sqShapeOf) and the engine's (_webShapeOf) use, so a new
+// field cannot be honoured by one and ignored by the other. n is the lane's
+// pan, −1 (left) to 1 (right), added with Shape on every kit (4.9.9.9.9.9.9).
+function _sqShapeSet(sh){
+ return (sh && ((sh.d!=null && sh.d!==1) || sh.t || sh.x || (sh.s!=null && sh.s!==1) || sh.b || sh.n)) ? sh : null;
+}
 var _sqDriveCurves = {};
 function _sqDriveCurve(x){
  var k = Math.round(x*20)/20;
@@ -52614,7 +52821,7 @@ function _sqShapeOf(track){
  var M=SQM[sqMach]; if(!M || !M.shape || !track) return null;
  var ti=M.tracks.indexOf(track); if(ti<0) return null;
  var m=sqShapes[sqLK(sqMach,0)], sh=m && m[ti];
- return (sh && ((sh.d!=null && sh.d!==1) || sh.t || sh.x || (sh.s!=null && sh.s!==1) || sh.b)) ? sh : null;
+ return _sqShapeSet(sh);
 }
 // Builds the Tone/Drive insert and points the hit at it. Returns the previous
 // output so the caller can put it back.
@@ -52637,6 +52844,13 @@ function _sqShapeInsert(sh){
   var tr=c.createGain(); tr.gain.value=1/(1+sh.x*1.6);
   head.gain.value=1+sh.x*1.5;
   tail.connect(ws); ws.connect(tr); tail=tr;
+ }
+ // Pan last, so a hard-panned drum is panned after its drive rather than
+ // saturated asymmetrically. The panner is a node the native graph already
+ // plays (the same one every part's strip uses).
+ if(sh.n){
+  var pn=c.createStereoPanner(); pn.pan.value=Math.max(-1,Math.min(1,sh.n));
+  tail.connect(pn); tail=pn;
  }
  tail.connect(dest);
  _sqOut = head;
@@ -52689,7 +52903,7 @@ function _sqTrackWhere(track){
 function _webShapeOf(kit, lane){
   var M=SQM[kit]; if(!M || !M.shape) return null;
   var all=_wp('drum.shapes'), m=all && all[sqLK(kit,0)], sh=m && m[lane];
-  return (sh && ((sh.d!=null && sh.d!==1) || sh.t || sh.x || (sh.s!=null && sh.s!==1) || sh.b)) ? sh : null;
+  return _sqShapeSet(sh);
 }
 // What the drum engine's own registrations belong to while a hit is being
 // built: the kit's channel or Aux's — see _regKill.
@@ -53279,7 +53493,7 @@ function sqRenderGrid(){
         var shb=document.createElement('button');
         shb.type='button'; shb.className='sq-shape-btn'+(_sqShapeOf(tr)?' on':'');
         shb.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2v12M8 2v12M13 2v12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="3" cy="10" r="1.9" fill="currentColor"/><circle cx="8" cy="5" r="1.9" fill="currentColor"/><circle cx="13" cy="8.5" r="1.9" fill="currentColor"/></svg>';
-        shb.title='Shape '+tr.n+' — decay, sweep, body, tone, drive';
+        shb.title='Shape '+tr.n+' — level, tune, decay, sweep, body, tone, drive, pan';
         shb.setAttribute('aria-label', shb.title);
         shb.onclick=function(ev){ ev.stopPropagation(); sqShapeSheet(ix); };
         lr.appendChild(shb);
@@ -54945,11 +55159,15 @@ function blPlayNote(t, note, oct, dur, vol, accent, slide){
   var midi = note + (oct+1)*12;
   var freq = blFreq(note, oct);
   var from = (_blPrevSlide && _blPrevFreq > 0 && _blPrevFreq !== freq) ? _blPrevMidi : null;
+  // tune: Pure tuning's cents for this note under the chord sounding at t (0 in
+  // Equal, or with no chord to be in tune with). The engine just adds it.
   if(!_moTook) modSend({v: 1, kind: 'note', part: 'bass', id: ++_blNoteSeq, note: midi,
-                                       vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur});
+                                       vel: vol, accent: !!accent, slide: !!slide, from: from, at: t, dur: dur,
+                                       tune: tuningCentsAt(midi, t)});
   _blPrevFreq = freq; _blPrevMidi = midi;
   _blPrevSlide = slide;
 }
+window._blPlayNote = blPlayNote;     // out of the closure for tests/tuning/probe.js, which plays the app's own sender
 // The Web Audio engine's bass note.
 window._webBassNote = function(msg){ _webBassVoice(msg); };
 function _webBassVoice(msg, standIn){
@@ -54962,7 +55180,11 @@ function _webBassVoice(msg, standIn){
   var mg = blMG(); if(!mg) return;
   var t = msg.at, dur = msg.dur, vol = msg.vel, accent = msg.accent, slide = msg.slide;
   var oct = Math.floor(msg.note / 12) - 1, note = msg.note - (oct+1)*12;
-  var freq = blFreq(note, oct);
+  // Pure tuning is folded into the frequency here, so every voice below that
+  // derives from freq (the harmonics of the upright, the pluck's pitch) moves
+  // together; the sampled and shared-palette voices take it on .detune instead.
+  var tune = msg.tune || 0;
+  var freq = blFreq(note, oct) * (tune ? Math.pow(2, tune/1200) : 1);
   // Where this note glides from, if it does. The four branches below all ask
   // the same question; it is answered once, by the app.
   var slideFrom = msg.from == null ? 0 : 440 * Math.pow(2, (msg.from - 69) / 12);
@@ -55186,6 +55408,7 @@ function _webBassVoice(msg, standIn){
       // feeding the buffer into g directly.
       var sg = ctx.createGain(); sg.gain.value = _sb.gain; sg.connect(g);
       src = playSampleVoice(ctx, _sk, _bmidi, sg, t, dur);
+      if(src) tuningShift([src], tune);
     }
     if(!src){
       if(SAMPLE_STATE[_sk] !== 'ready') preloadSampleInstrument(_sk);
@@ -55212,7 +55435,10 @@ function _webBassVoice(msg, standIn){
     var _bwg = (blWave === 'modsynth' || blWave === 'sampler') ? 1 : (WAVE_GAIN[blWave] || 1);
     var _bdest = g;
     if(_bwg !== 1){ _bdest = ctx.createGain(); _bdest.gain.value = _bwg; _bdest.connect(g); }
-    if(typeof makeVoice === 'function') _blPrevVoice = makeVoice(ctx, _fbMidi, _bdest, t, dur, blWave, 'bass');
+    if(typeof makeVoice === 'function'){
+      _blPrevVoice = makeVoice(ctx, _fbMidi, _bdest, t, dur, blWave, 'bass');
+      tuningShift(_blPrevVoice, tune);
+    }
   }
 }
 
@@ -57140,12 +57366,14 @@ function mlPlayNote(t, note, oct, dur, vol, accent, glide){
   }catch(e){}
   if(_moTookMel) return;
   var _mlMsg = {v: 1, kind: 'note', part: 'melgen', id: ++_mlNoteSeq, note: midi,
-                         vel: vol, accent: !!accent, at: t, dur: dur};
+                         vel: vol, accent: !!accent, at: t, dur: dur,
+                         tune: tuningCentsAt(midi, t)};
   // Portamento from the step before, in mono (see _mlScheduler); the engine slides
   // from `glideFrom` over `glideTime`, as it does for the strip's notes.
   if(glide){ _mlMsg.glideFrom = glide.from; _mlMsg.glideTime = glide.time; }
   modSend(_mlMsg);
 }
+window._mlPlayNote = mlPlayNote;     // out of the closure for tests/tuning/probe.js
 // The Web Audio engine's sequencer note. In this closure because the voice,
 // its bus and the sequencer's own voice choice live here.
 window._webMelgenNote = function(msg){
@@ -57171,6 +57399,7 @@ window._webMelgenNote = function(msg){
   reapVoice(null,[g], Math.max(0, (t + dur + 0.4) - ctx.currentTime));
   if(typeof makeVoice === 'function'){
     var nodes = makeVoice(ctx, midi, g, t, dur, mlWave, 'melgen');
+    tuningShift(nodes, msg.tune);
     if(msg.glideFrom != null && msg.glideTime > 0) _melGlideApply(nodes, msg.glideFrom - midi, t, msg.glideTime);
   }
 };
@@ -63826,7 +64055,7 @@ const MODULE_COPY = {
            'Odd meters','More than 16 steps','Separate step length per generator'] },
  theory:   { name:'Theory Pack', line:'Every scale, chord type, and voicing',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
-           'Circle-of-fifths key colours','Future theory additions included'] },
+           'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp','Future theory additions included'] },
  practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
   bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',
@@ -63859,6 +64088,9 @@ const FREE_LIMITS = {
   // The start key is free (rotatable scale colours); the circle-of-fifths
   // ordering is the Theory Pack's. See khAllowsFifths.
   keyColours:   false,
+  // Pure (just) tuning of chords, bass, melody and arp. Equal is free; a saved
+  // 'pure' is kept and plays equal until the pack is held (tuningOn).
+  pureTuning:   false,
   liveLayout:   false,   // adding, swapping, moving or removing Live widgets
   arrange:      false,   // Arrange: a line per chord (the write mode, and the lines kept against chords)
   stepsUnlinked: false,  // a step length per generator instead of one for all
@@ -63886,7 +64118,7 @@ const FREE_LIMITS = {
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
   modfx:'synth', fxPatches:'synth', modsynth:'synth',
-  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory',
+  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullAudioExport:'studio', fullMidiExport:'studio', liveLayout:'studio',
   arrange:'groove', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
@@ -64892,6 +65124,7 @@ function freeApplyLimits(){
    const bw = window._blCaptureState().wave;
    if(bw && !freeAllowsVoice(bw)) window.setBlWave(FREE_VOICE_FALLBACK.bass);
   }catch(e){}
+  try{ tuningSync(); }catch(e){}   // the Pure switch locks and unlocks with the Theory Pack
   // Drum kits.
   document.querySelectorAll('#sq-machineRow .sq-mbtn').forEach(b=>{
    modLockEl(b, !freeAllowsKit((b.dataset.mach||'').trim()), 'groove');
