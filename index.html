@@ -2403,6 +2403,12 @@ body.light-mode .pp-btn { box-shadow:0 3px 12px color-mix(in srgb, var(--pc) 26%
 .csi-text { width:100%; min-height:150px; resize:vertical; box-sizing:border-box; background:var(--surf2); color:var(--text);
   border:1px solid var(--muted); border-radius:10px; padding:10px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:16px; line-height:1.35; }
 .csi-row { display:flex; gap:8px; }
+.csi-len { flex-wrap:wrap; align-items:center; gap:5px; }
+.csi-len .csi-lbl { font-size:.5rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; min-width:44px; }
+.csi-len .tb { font-size:.55rem; padding:5px 9px; }
+.csi-len .tb.active { background:var(--pg); color:#07080f; border-color:var(--pg); }
+.csi-len-hint { font-size:.5rem; color:var(--muted); letter-spacing:.04em; }
+.csi-bars { color:var(--muted); font-size:.5rem; letter-spacing:.06em; margin-left:6px; }
 .csi-actions { justify-content:flex-end; }
 .csi-actions .tb { min-width:96px; }
 .csi-preview { display:flex; flex-direction:column; gap:4px; font-size:.52rem; }
@@ -8089,7 +8095,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9e</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9f</span></div>
  </div>
 </div>
 
@@ -9467,7 +9473,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9e</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9f</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10535,7 +10541,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9e';
+const MODRIFF_VERSION = '4.9.9.9.9.9.9f';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13348,15 +13354,44 @@ function _sheetChordWords(line){
  for(let i = 0; i < rep; i++) out = out.concat(chords);
  return out;
 }
+// Where each chord of a chord line sits in it: the column its word starts at.
+// Only when every word of the line is exactly one chord, so the columns line up
+// with the chords one for one; a line with a repeat, a split "BC" or a lenient
+// reading in it has no reliable columns and gives null.
+//
+// And only when the line is padded: chords one space apart ("G D") are a list, not a
+// position, and reading 2 as "D sits two characters in" would give G a seventh of the
+// line. Text pulled off a PDF's text layer comes out that way, spacing lost; text
+// recognition keeps the columns (ocrObservationsToText puts them back).
+function _sheetChordCols(line, chords){
+ const cols = [], lens = [], re = /\S+/g;
+ let m;
+ while((m = re.exec(line))){
+  const w = _sheetChordWords(m[0]);
+  if(w && w.length === 1){ cols.push(m.index); lens.push(m[0].length); }
+ }
+ if(cols.length !== chords.length) return null;
+ const padded = cols.some((c, i) => i + 1 < cols.length && cols[i + 1] - c > lens[i] + 1);
+ return padded ? cols : null;
+}
 function parseChordSheet(text){
  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
  const sheet = {title:'', artist:'', sections:[], unread:[]};
- let cur = null, lastChordLine = null, sawContent = false, legend = false;
- const open = name => { cur = {name: name, chords: []}; sheet.sections.push(cur); lastChordLine = null; };
- const add = chords => {
+ let cur = null, lastChordLine = null, sawContent = false, legend = false, curLine = null;
+ // A section keeps `chords` (every chord, in order, repeats written out) and
+ // `lines`: one record per chord line, in the same order, {n, cols, lyric}. n is how
+ // many of the chords it accounts for, lyric the line of words under it (null when
+ // there is none), cols where each chord sits. That is all a sheet says about how
+ // long anything lasts: a line of words is a phrase, and a chord that sits half way
+ // along it starts half way through. Nothing reads it unless asked (see
+ // songFromChordSheet's `len`), so the plain list is exactly what it was.
+ const open = name => { cur = {name: name, chords: [], lines: []}; sheet.sections.push(cur); lastChordLine = null; curLine = null; };
+ const add = (chords, extra) => {
   if(!cur) open('Intro');
   lastChordLine = chords.slice();
   cur.chords = cur.chords.concat(chords);
+  curLine = Object.assign({n: chords.length, cols: null, lyric: null}, extra || null);
+  cur.lines.push(curLine);
  };
  for(const raw of lines){
   const line = raw.replace(/\t/g, '    ');
@@ -13393,7 +13428,18 @@ function parseChordSheet(text){
   if(/\[[A-G][^\]]*\]/.test(t)){
    const inl = [];
    t.replace(/\[([^\]]+)\]/g, (_, c) => { if(parseChordSymbol(c.trim())) inl.push(c.trim()); return ''; });
-   if(inl.length){ add(inl); sawContent = true; continue; }
+   if(inl.length){
+    // The words with the brackets taken out, and where each chord fell in them.
+    let words = '', last = 0;
+    const cols = [];
+    t.replace(/\[([^\]]+)\]/g, (all, c, idx) => {
+     words += t.slice(last, idx); last = idx + all.length;
+     if(parseChordSymbol(c.trim())) cols.push(words.length); else words += all;
+    });
+    words += t.slice(last);
+    add(inl, {cols: cols.length === inl.length ? cols : null, lyric: words.replace(/\s+$/, ''), inline: true});
+    sawContent = true; continue;
+   }
   }
   // Ultimate Guitar's PDF puts the shapes the song uses under a "CHORDS" heading
   // before the song starts: "G D C" and a diagram each. It is a legend, not
@@ -13404,16 +13450,20 @@ function parseChordSheet(text){
   const chords = _sheetChordWords(t);
   if(chords && legend && !cur){ legend = false; continue; }
   legend = false;
-  if(chords){ add(chords); sawContent = true; continue; }
+  if(chords){ add(chords, {cols: _sheetChordCols(line, chords)}); sawContent = true; continue; }
   // "(x3, very short)" on its own line repeats the chord line above it.
   m = /(?:^|[\s(,])x\s*(\d+)\b|\b(\d+)\s*x(?:$|[\s),])/i.exec(t);
   if(m && t.length < 40 && lastChordLine){
    const n = +(m[1] || m[2]);
    for(let i = 1; i < n; i++) cur.chords = cur.chords.concat(lastChordLine);
+   if(n > 1) cur.lines.push({n: lastChordLine.length * (n - 1), cols: null, lyric: null, rep: true});
    lastChordLine = null;
    continue;
   }
   lastChordLine = null;
+  // The line of words straight under a chord line is that line's lyric.
+  if(sawContent && curLine && curLine.lyric === null && !curLine.inline) curLine.lyric = line.replace(/\s+$/, '');
+  curLine = null;
   // The first real line before anything else is the title: "Creep Chords
   // by Radiohead", "Creep - Radiohead", or just "Creep". A page header read
   // off a picture brings scraps of the site's logo with it ("vu", a stray
@@ -13778,21 +13828,92 @@ function slotFromChordSymbol(sym, keyRoot, keyMode, nearM){
  };
 }
 
+// A length in eighths as a slot's own bars / beats / eighths. A bar is `barE`
+// eighths (8 in 4/4, 6 in 3/4); the grid a chord is cut to is the beat, which is two.
+function slotDurFromEighths(e, barE){
+ e = Math.max(1, Math.round(e));
+ return {bars: Math.floor(e / barE), beats: Math.floor((e % barE) / 2), eighths: e % 2};
+}
+// n shares of `units` beats, in proportion to `weights`, each at least one beat,
+// handed out by largest remainder so the shares add up to exactly `units`.
+function _sheetSplit(weights, units){
+ const n = weights.length, sum = weights.reduce((a, b) => a + b, 0);
+ const w = (sum > 0 && weights.every(x => x > 0)) ? weights : weights.map(() => 1);
+ const tot = w.reduce((a, b) => a + b, 0);
+ const exact = w.map(x => units * x / tot);
+ const u = exact.map(x => Math.max(1, Math.floor(x)));
+ let used = u.reduce((a, b) => a + b, 0);
+ while(used < units){
+  let k = 0;
+  for(let i = 1; i < n; i++) if(exact[i] - u[i] > exact[k] - u[k]) k = i;
+  u[k]++; used++;
+ }
+ while(used > units){
+  let k = -1;
+  for(let i = 0; i < n; i++) if(u[i] > 1 && (k < 0 || exact[i] - u[i] < exact[k] - u[k])) k = i;
+  if(k < 0) break;
+  u[k]--; used--;
+ }
+ return u;
+}
+// How long each chord of a section lasts if every chord LINE is `lineBars` bars: the
+// chords on a line share its bars, in proportion to how far apart they sit over the
+// words (so "G      D" over a line of lyric is half and half, and a lone chord holds
+// the lot), each rounded to a beat. A line with more chords than beats grows to
+// one beat a chord, and a line of chords alone to a bar a chord. A repeated line (x3) repeats the lengths of the one it repeats.
+// Returns eighths per chord, or null when the section has no line record to go on.
+function _sheetLineEighths(sec, lineBars, barE){
+ const recs = sec.lines || [];
+ if(!recs.length || recs.reduce((a, r) => a + r.n, 0) !== sec.chords.length) return null;
+ const out = [];
+ let prev = null;
+ recs.forEach(r => {
+  if(r.rep){ for(let i = 0; i < r.n; i++) out.push(prev ? prev[i % prev.length] : barE); return; }
+  // A line of chords with no words under it (an Intro, a solo) is a bar to a chord at
+  // the least: that is how it is written, and sharing two bars between four chords
+  // would play it at double speed.
+  const units = Math.max(r.lyric == null ? Math.round(r.n * barE / 2) : r.n, Math.round(lineBars * barE / 2));
+  let w = null;
+  // The phrase starts at the start of the line of words and runs to its end, so the first chord
+  // carries any pickup before the second, and the last runs to the end of the words.
+  if(r.cols && r.lyric != null && r.n > 1){
+   const end = Math.max(r.lyric.replace(/\s+$/, '').length, r.cols[r.n - 1] + 3);
+   const b = [0].concat(r.cols.slice(1), [end]);
+   w = b.slice(1).map((x, i) => x - b[i]);
+  }
+  const share = _sheetSplit(w || r.cols && r.cols.map(() => 1) || Array(r.n).fill(1), units);
+  prev = share.map(x => x * 2);
+  prev.forEach(x => out.push(x));
+ });
+ return out;
+}
 // A parsed sheet -> a song in the setlist's own shape, ready for loadSong().
-// Every chord is one bar: a sheet does not say how long a chord lasts, and a
-// bar each is right far more often than anything else, and quick to change.
-function songFromChordSheet(sheet){
+//
+// `opts.len` is how long a chord lasts, because a sheet does not say: a number of
+// bars (0.5, 1, 2, 4; one bar is the default and is right more often than anything
+// else) for every chord alike, or 'lines' to read it off the layout (see
+// _sheetLineEighths) with `opts.lineBars` bars to a chord line. `opts.barEighths` is
+// the bar in eighths, 8 unless the meter says otherwise.
+function songFromChordSheet(sheet, opts){
+ opts = opts || {};
+ const barE = opts.barEighths > 0 ? Math.round(opts.barEighths) : 8;
+ const byLine = opts.len === 'lines';
+ const fixedE = Math.max(1, Math.round((opts.len > 0 ? opts.len : 1) * barE));
+ const lineBars = opts.lineBars > 0 ? opts.lineBars : 2;
  const all = [];
  sheet.sections.forEach(s => s.chords.forEach(c => all.push(c)));
  const key = guessChordKey(all);
  let approx = 0;
- const sections = sheet.sections.map(sec => ({
+ // The lengths are worked out on a copy, so the sheet that came in is not written to.
+ const secs = sheet.sections.map(sec => Object.assign({}, sec, {_e: byLine ? _sheetLineEighths(sec, lineBars, barE) : null}));
+ const sections = secs.map(sec => ({
   name: sec.name, plays: sec.plays || 1, follow: 'next',
-  slots: sec.chords.map(sym => {
+  slots: sec.chords.map((sym, i) => {
    const f = slotFromChordSymbol(sym, key.root, key.mode, null);
    if(f.approx) approx++;
    delete f.approx;
-   return Object.assign(f, {isRest: false, bars: 1, beats: 0, eighths: 0});
+   const e = (sec._e && sec._e[i]) || fixedE;
+   return Object.assign(f, {isRest: false}, slotDurFromEighths(e, barE));
   })
  }));
  return {song: {title: sheet.title || 'Imported song', root: key.root, mode: key.mode, sections: sections},
@@ -38055,11 +38176,18 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
   var custom=!DUR_PRESETS.some(function(p){ return _durMatchesPreset(slot,p); });
   fine.textContent = custom ? (_slotDurLabel(slot)+' \u25b8') : 'Exact \u25b8';
   fine.addEventListener('click', function(){ showDurationPicker(slot, repaint); });
+  // A song imported from a sheet has every chord the same length by guess, so the
+  // fix is one setting for all of them, not one chord at a time.
+  var lx=document.createElement('span'); lx.className='ci-extras';
+  lx.appendChild(fine);
+  var allLen=_ciMoreBtn('All chords\u2026', function(){ sbLengthAll(repaint); });
+  allLen.title='Set the length of every chord in the song at once';
+  lx.appendChild(allLen);
   body.appendChild(_ciSeg('Length', lenOpts,
    function(idx){ return _durMatchesPreset(slot, DUR_PRESETS[idx]); },
    function(idx){ var p=DUR_PRESETS[idx];
                   slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); },
-   fine));
+   lx));
 
   // RHYTHM. How this chord re-strikes while it is held.
   // More holds the rest of the patterns; All sets one rhythm on every chord in
@@ -38142,6 +38270,37 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
 // One rhythm on every chord in the song. As played gives each captured chord
 // back its own held length; a chord that was never captured has none, so it
 // holds to the next chord. Follow the song clears every chord's own choice.
+// One length on every chord of the song: half a bar to four, in the song's own meter.
+// Rests keep theirs, and Undo on the toast puts every length back.
+function sbLengthAll(repaint){
+ var box=_sbSheet('Length for every chord');
+ var list=document.createElement('div');
+ var barE=(typeof _songBarSteps==='function') ? Math.max(2, Math.round(_songBarSteps()/2)) : 8;
+ var n=0; try{ sections.forEach(function(sec){ n+=(sec.slots||[]).filter(function(x){ return !x.isRest; }).length; }); }catch(e){}
+ [[0.5,'Half a bar','Two beats in 4/4: a change on every half bar'],[1,'One bar','A chord a bar'],
+  [2,'Two bars','A slow song: a chord every two bars'],[4,'Four bars','A chord holds a whole phrase']].forEach(function(o){
+  var b=document.createElement('button'); b.type='button'; b.className='ll-act';
+  b.innerHTML='<b>'+o[1]+'</b><span>'+o[2]+'</span>';
+  b.addEventListener('click', function(){
+   var before=[];
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ before.push([x, x.bars, x.beats, x.eighths]); }); });
+   var d=slotDurFromEighths(Math.round(o[0]*barE), barE);
+   sections.forEach(function(sec){ (sec.slots||[]).forEach(function(x){ if(x.isRest) return; x.bars=d.bars; x.beats=d.beats; x.eighths=d.eighths; }); });
+   box.close();
+   if(typeof repaint==='function') repaint();
+   try{ renderChartSeq(); }catch(e){}
+   try{ renderSongsPerformView(); }catch(e){}
+   showToast(o[1]+' on all '+n+' chord'+(n===1?'':'s'), {actionLabel:'Undo', onAction:function(){
+    before.forEach(function(r){ r[0].bars=r[1]; r[0].beats=r[2]; r[0].eighths=r[3]; });
+    try{ renderChartSeq(); }catch(e){}
+    try{ renderSongsPerformView(); }catch(e){}
+    if(typeof repaint==='function') try{ repaint(); }catch(e){}
+   }});
+  });
+  list.appendChild(b);
+ });
+ box.body.appendChild(list);
+}
 function sbCompAll(repaint){
  var box=_sbSheet('Rhythm for every chord');
  var list=document.createElement('div');
@@ -39677,7 +39836,7 @@ function openChordSheetImport(){
   +'<div class="dur-picker-title" id="csi-title">Import a chord sheet</div>'
   +'<div class="dur-picker-sub">Paste a chord sheet — from Ultimate Guitar, a songbook, anywhere'
   +(modOcr.available() ? ' — or read one from a PDF or a photo' : '')+'. '
-  +'Section names in [brackets] become sections; chords are read in order; lyrics are skipped.</div>'
+  +'Section names in [brackets] become sections; chords are read in order. How long each lasts is a guess: pick below.</div>'
   +'<textarea class="csi-text" spellcheck="false" autocapitalize="off" autocomplete="off" '
   +'placeholder="[Verse]\nG        B\nWhen you were here before…\nC        Cm\n…"></textarea>'
   +'<div class="csi-row csi-sources"><button type="button" class="tb csi-file">Files…</button>'
@@ -39686,6 +39845,13 @@ function openChordSheetImport(){
   +'<input type="file" class="csi-input" accept=".txt,.text,.cho,.chopro,.crd,.pro,text/plain,.pdf,application/pdf,image/*" hidden>'
   +'<input type="file" class="csi-input-photos" accept="image/*" hidden>'
   +'<input type="file" class="csi-input-camera" accept="image/*" capture="environment" hidden></div>'
+  +'<div class="csi-row csi-len" role="group" aria-label="How long each chord lasts"><span class="csi-lbl">Chord</span>'
+  +'<button type="button" class="tb" data-csilen="lines" title="Read it off the sheet: the chords on a line of words share the line">By line</button>'
+  +'<button type="button" class="tb" data-csilen="0.5">½ bar</button><button type="button" class="tb" data-csilen="1">1 bar</button>'
+  +'<button type="button" class="tb" data-csilen="2">2 bars</button><button type="button" class="tb" data-csilen="4">4 bars</button></div>'
+  +'<div class="csi-row csi-len csi-linebars" role="group" aria-label="How long a line of words is"><span class="csi-lbl">A line is</span>'
+  +'<button type="button" class="tb" data-csilb="1">1 bar</button><button type="button" class="tb" data-csilb="2">2 bars</button>'
+  +'<button type="button" class="tb" data-csilb="4">4 bars</button><span class="csi-len-hint">chords share it, by where they sit over the words</span></div>'
   +'<div class="csi-preview" aria-live="polite"></div>'
   +'<div class="csi-row csi-actions"><button type="button" class="tb csi-cancel">Cancel</button>'
   +'<button type="button" class="tb active csi-go" disabled>Make the song</button></div>'
@@ -39694,6 +39860,23 @@ function openChordSheetImport(){
  const $=sel=>ov.querySelector(sel);
  const ta=$('.csi-text'), pv=$('.csi-preview'), go=$('.csi-go');
  let built=null, fromPicture=false;
+ // How long a chord lasts is not on the sheet, so it is a choice, kept for next time.
+ // A line of words is the best clue there is, so By line (2 bars to a line) is where it
+ // starts, and every other setting is one tap away with the total under it.
+ const lenPref = (()=>{
+  let d={len:'lines', lineBars:2};
+  try{ const o=JSON.parse(modStore.getItem('modo-sheetlen')||'null');
+   if(o){ if(o.len==='lines' || [0.5,1,2,4].indexOf(+o.len)>=0) d.len=o.len==='lines'?'lines':+o.len;
+          if([1,2,4].indexOf(+o.lineBars)>=0) d.lineBars=+o.lineBars; } }catch(e){}
+  return d;
+ })();
+ const lenOpts=()=>({len:lenPref.len, lineBars:lenPref.lineBars,
+  barEighths:(typeof _songBarSteps==='function') ? Math.max(2, Math.round(_songBarSteps()/2)) : 8});
+ const syncLen=()=>{
+  ov.querySelectorAll('[data-csilen]').forEach(b=>{ const on=String(b.dataset.csilen)===String(lenPref.len); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); });
+  ov.querySelectorAll('[data-csilb]').forEach(b=>{ const on=+b.dataset.csilb===lenPref.lineBars; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); });
+  const lb=ov.querySelector('.csi-linebars'); if(lb) lb.style.display = lenPref.len==='lines' ? '' : 'none';
+ };
  const close=()=>{ ov.remove(); document.removeEventListener('keydown', onKey, true); };
  const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
  document.addEventListener('keydown', onKey, true);
@@ -39703,7 +39886,7 @@ function openChordSheetImport(){
  const esc=s=>String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
  const preview=()=>{
   const sheet=parseChordSheet(ta.value);
-  built = sheet.sections.length ? songFromChordSheet(sheet) : null;
+  built = sheet.sections.length ? songFromChordSheet(sheet, lenOpts()) : null;
   go.disabled = !built;
   // Said under whatever the preview shows, because a picture is the one source
   // the box is not the author of: the recogniser misreads, and the box is where
@@ -39717,8 +39900,11 @@ function openChordSheetImport(){
   const keyName = nn(built.key.root)+' '+(built.key.mode==='minor'?'minor':'major');
   let h='<div class="csi-head"><b>'+esc(built.song.title)+'</b>'+(sheet.artist?' · '+esc(sheet.artist):'')
    +'<span>'+esc(keyName)+' · '+n+' chord'+(n===1?'':'s')+'</span></div>';
+  const barE=lenOpts().barEighths;
+  const barsOf=sl=>sl.reduce((a,x)=>a+(x.bars||0)*barE+(x.beats||0)*2+(x.eighths||0),0)/barE;
+  const fmtBars=n=>{ const r=Math.round(n*10)/10; return r+(r===1?' bar':' bars'); };
   built.song.sections.forEach(s=>{
-   h+='<div class="csi-sec"><span class="csi-name">'+esc(s.name)+(s.plays>1?' ×'+s.plays:'')+'</span>'
+   h+='<div class="csi-sec"><span class="csi-name">'+esc(s.name)+(s.plays>1?' ×'+s.plays:'')+'<span class="csi-bars">'+fmtBars(barsOf(s.slots))+'</span></span>'
     +'<span class="csi-chords">'+s.slots.map(sl=>esc(sl.label+(sl.bassNote!=null?'/'+nn(sl.bassNote):''))).join(' ')+'</span></div>';
   });
   if(sheet.unread.length)
@@ -39728,6 +39914,14 @@ function openChordSheetImport(){
  };
  let t=null;
  ta.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(preview, 120); });
+ const saveLen=()=>{ try{ modStore.setItem('modo-sheetlen', JSON.stringify(lenPref)); }catch(e){} };
+ ov.querySelectorAll('[data-csilen]').forEach(b=>b.addEventListener('click', ()=>{
+  lenPref.len = b.dataset.csilen==='lines' ? 'lines' : +b.dataset.csilen; saveLen(); syncLen(); preview();
+ }));
+ ov.querySelectorAll('[data-csilb]').forEach(b=>b.addEventListener('click', ()=>{
+  lenPref.lineBars = +b.dataset.csilb; saveLen(); syncLen(); preview();
+ }));
+ syncLen();
 
  // Three ways in, one reader. Files takes text, a PDF or a picture; Photos opens
  // the photo library (and, on iPhone, offers the camera too); Camera opens the
@@ -60187,7 +60381,7 @@ function prWire(id){
 // whether Generate is allowed to overwrite it. Toggling twice would restore
 // the pitch but not that.
 const _PR_CELL_KEYS = ['v','usr','note','oct','len','accent','slide','more','vel','pr'];
-// A step's chance of sounding and, on the rolls, its level (4.9.9.9.9.9.9e). `pr` is
+// A step's chance of sounding and, on the rolls, its level (4.9.9.9.9.9.9f). `pr` is
 // a percentage, 1-99; absent means 100, always, which is every cell saved before
 // this existed, so nothing migrates. The roll's `vel` is likewise a percentage and
 // absent means 100 (the drum grid has had its own `vel` since the start and its
