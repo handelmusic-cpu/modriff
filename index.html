@@ -8078,7 +8078,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9a</span></div>
  </div>
 </div>
 
@@ -9446,7 +9446,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -9723,6 +9723,14 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <span>Add</span><input id="prac-ramp-step" type="text" inputmode="numeric" aria-label="BPM added each time" onchange="pracSet('ramp','step',this.value)">
    <span>BPM every</span><input id="prac-ramp-every" type="text" inputmode="numeric" aria-label="Choruses between steps" onchange="pracSet('ramp','every',this.value)">
    <span>choruses, up to</span><input id="prac-ramp-max" type="text" inputmode="numeric" aria-label="Top tempo" onchange="pracSet('ramp','max',this.value)">
+  </div>
+  <button class="tb prac-btn" id="prac-key-btn" data-prac="key" aria-pressed="false" onclick="pracToggle('key')" title="Next key — at the end of each chorus the whole chart moves to the next key, through all twelve, and comes back when you stop">Next key</button>
+  <div class="prac-set" id="prac-key-set" hidden>
+   <span>Every</span><input id="prac-key-every" type="text" inputmode="numeric" aria-label="Choruses between key changes" onchange="pracSet('key','every',this.value)">
+   <span>choruses, up a</span>
+   <button class="tb prac-btn" data-prac-by="1" onclick="pracKeyBy(1)" title="Up a semitone each time: C, D♭, D, E♭…">Semitone</button>
+   <button class="tb prac-btn" data-prac-by="5" onclick="pracKeyBy(5)" title="Up a fourth each time: C, F, B♭, E♭… — every key, the way jazz players practise them">Fourth</button>
+   <button class="tb prac-btn" data-prac-by="7" onclick="pracKeyBy(7)" title="Up a fifth each time: C, G, D, A… — every key, and the neighbours stay close">Fifth</button>
   </div>
   <div class="prac-status" id="prac-status" aria-live="polite"></div>
  </div>
@@ -10504,7 +10512,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9';
+const MODRIFF_VERSION = '4.9.9.9.9.9.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -45935,9 +45943,9 @@ function _moveToSection(delta){
 // are put back when the loop stops, because a practice run that left the
 // setlist's song at 140 BPM in F♯ would be a trap for the next one.
 var PRAC_LIMITS = { step:[1,20], every:[1,16], max:[40,220] };
-var prac = { ramp:{ on:false, step:4, every:2, max:140 } };
+var prac = { ramp:{ on:false, step:4, every:2, max:140 }, key:{ on:false, every:2, by:7 } };
 // Per run: reset by startSongLoop, undone by stopSongLoop.
-var _pracRun = { chorus:0, startBpm:0, lastSetBpm:0 };
+var _pracRun = { chorus:0, startBpm:0, lastSetBpm:0, keysDone:0, keyShift:0, keyRoot:-1, secRef:null };
 (function(){
  try{
   var raw = modStore.getItem('modo-practice');
@@ -45946,10 +45954,15 @@ var _pracRun = { chorus:0, startBpm:0, lastSetBpm:0 };
    var v = Math.round(+d.ramp[k]), lim = PRAC_LIMITS[k];
    if(isFinite(v) && v >= lim[0] && v <= lim[1]) prac.ramp[k] = v;
   });
+  if(d && d.key){
+   var ke = Math.round(+d.key.every);
+   if(isFinite(ke) && ke >= PRAC_LIMITS.every[0] && ke <= PRAC_LIMITS.every[1]) prac.key.every = ke;
+   if(d.key.by === 1 || d.key.by === 5 || d.key.by === 7) prac.key.by = d.key.by;
+  }
  }catch(e){}
 })();
 function _pracSave(){
- try{ modStore.setItem('modo-practice', JSON.stringify({ ramp:{ step:prac.ramp.step, every:prac.ramp.every, max:prac.ramp.max } })); }catch(e){}
+ try{ modStore.setItem('modo-practice', JSON.stringify({ ramp:{ step:prac.ramp.step, every:prac.ramp.every, max:prac.ramp.max }, key:{ every:prac.key.every, by:prac.key.by } })); }catch(e){}
 }
 function pracSet(which, field, val){
  var lim = PRAC_LIMITS[field];
@@ -45957,6 +45970,10 @@ function pracSet(which, field, val){
  if(!isFinite(n)) n = prac[which][field];
  prac[which][field] = Math.max(lim[0], Math.min(lim[1], n));
  _pracSave(); pracSync();
+}
+function pracKeyBy(n){
+ if(!modAllows('practiceTrainer')) return freeBlocked('The practice trainer', 'practice');
+ prac.key.by = n; _pracSave(); pracSync();
 }
 function pracToggle(which){
  if(!modAllows('practiceTrainer')) return freeBlocked('The practice trainer', 'practice');
@@ -45972,6 +45989,14 @@ function pracSync(){
  ['step','every','max'].forEach(function(k){
   var el = g('prac-ramp-'+k); if(el && document.activeElement !== el) el.value = prac.ramp[k];
  });
+ var kb = g('prac-key-btn'), kset = g('prac-key-set'), ke = g('prac-key-every');
+ if(kb){ kb.classList.toggle('on', prac.key.on); kb.setAttribute('aria-pressed', prac.key.on ? 'true' : 'false'); }
+ if(kset) kset.hidden = !prac.key.on;
+ if(ke && document.activeElement !== ke) ke.value = prac.key.every;
+ document.querySelectorAll('[data-prac-by]').forEach(function(b){
+  var on = +b.dataset.pracBy === prac.key.by;
+  b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+ });
  _pracStatus();
 }
 function _pracStatus(){
@@ -45980,8 +46005,9 @@ function _pracStatus(){
  if(songLoopActive){
   bits.push('Chorus '+(_pracRun.chorus + 1));
   if(prac.ramp.on) bits.push('♪='+Math.round(_bpmNow())+' (to '+prac.ramp.max+')');
- } else if(prac.ramp.on){
-  bits.push('Starts at the tempo you press play at, and returns to it on stop');
+  if(prac.key.on) bits.push('Key '+nn(root)+' ('+(_pracRun.keysDone + 1)+' of 12)');
+ } else if(prac.ramp.on || prac.key.on){
+  bits.push('Starts from the tempo and key you press play at, and returns to them on stop');
  }
  el.textContent = bits.join(' · ');
 }
@@ -45989,6 +46015,7 @@ function _pracReset(){
  _pracRun.chorus = 0;
  _pracRun.startBpm = _bpmNow();
  _pracRun.lastSetBpm = 0;
+ _pracRun.keysDone = 0; _pracRun.keyShift = 0; _pracRun.keyRoot = -1; _pracRun.secRef = sections;
  _pracStatus();
 }
 // A chorus is over: step whatever is on. Called from _advanceLoopSlot, on the
@@ -46003,13 +46030,33 @@ function _pracChorusDone(){
   // uses the same call for the same reason.
   if(next > cur) _pracRun.lastSetBpm = _setBpmGliss(next);
  }
+ if(prac.key.on && n % prac.key.every === 0 && _pracRun.keysDone < 11) _pracKeyStep();
  _pracStatus();
+}
+// The chart moves to its next key. Twelve keys in all (the start key and eleven
+// steps) and then it stays put: a step of a fourth or a fifth visits every key
+// exactly once, as does a semitone, and a thirteenth would only be the first again.
+// The shift is kept as the signed distance from the start key, -5..+6, so that
+// stepping through twelve keys does not carry the chords up five octaves: a slot's
+// rootM is an absolute note, and transposeSong adds to it.
+function _pracKeyStep(){
+ _pracRun.keysDone++;
+ var k = (_pracRun.keysDone * prac.key.by) % 12;
+ if(k > 6) k -= 12;
+ var d = k - _pracRun.keyShift;
+ _pracRun.keyShift = k;
+ if(d) transposeSong(d);
+ _pracRun.keyRoot = root;
 }
 // Put back what the run changed. Only the tempo, and only if it is still what the
 // trainer set: a tempo the player has since moved by hand is theirs.
 function _pracRestore(){
  if(_pracRun.lastSetBpm && Math.round(_bpmNow()) === _pracRun.lastSetBpm && _pracRun.startBpm) _setBpm(_pracRun.startBpm);
- _pracRun.lastSetBpm = 0; _pracRun.chorus = 0;
+ // The key goes back too, but only into the same chart in the same key the
+ // trainer left it in: loading another song, or a transpose of the player's own,
+ // is not ours to undo.
+ if(_pracRun.keyShift && _pracRun.secRef === sections && root === _pracRun.keyRoot) transposeSong(-_pracRun.keyShift);
+ _pracRun.lastSetBpm = 0; _pracRun.chorus = 0; _pracRun.keysDone = 0; _pracRun.keyShift = 0; _pracRun.keyRoot = -1;
  _pracStatus();
 }
 
@@ -63695,7 +63742,7 @@ const STORE_ORDER  = ['sounds','sampler','synth','groove','theory','practice','s
 // 30 (tests/tier/registry.test.js checks both).
 // Rules: never list a feature that is not built yet (add it here when it
 // ships), and keep custom scales and chord layouts out until they are polished.
-// Practice Pack: the speed trainer is listed; key stepping and loop bars join the list when they work.
+// Practice Pack: the speed trainer and key stepping are listed; loop bars joins the list when it works.
 const MODULE_COPY = {
  sounds:   { name:'Sounds Pack', line:'Keys, pads, vibes, and vintage basses',
   bullets:['Tonewheel organ','Electric piano','Synth piano','Synth pad','Vibraphone','Vintage violin bass and 60s soul bass'] },
@@ -63710,7 +63757,7 @@ const MODULE_COPY = {
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Future theory additions included'] },
  practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
-  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus'] },
+  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',
   bullets:['Capture and export stems','Full-length audio and MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
 };

@@ -48,11 +48,15 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     sections.push({ name: 'Chorus', follow: 'next', plays: o.lastPlays === undefined ? 1 : o.lastPlays, slots: [slot(55, 'G')] });
     songCurrentSection = -1; songCurrentSlot = -1;
     _setBpm(o.bpm);
-    Object.assign(prac.ramp, o.ramp, { on: true }); pracSync();
+    prac.ramp.on = false; prac.key.on = false;
+    if (o.ramp) Object.assign(prac.ramp, o.ramp, { on: true });
+    if (o.key) Object.assign(prac.key, o.key, { on: true });
+    pracSync();
     window._log = [];
     let last = '';
     window._logTimer = setInterval(() => {
-      const row = [Math.round(performance.now()), _pracRun.chorus, Math.round(_bpmNow()), songCurrentSection, songCurrentSlot];
+      const row = [Math.round(performance.now()), _pracRun.chorus, Math.round(_bpmNow()), songCurrentSection, songCurrentSlot,
+                   ((root % 12) + 12) % 12, sections[0].slots[0].rootM, sections[0].slots[0].label];
       const key = row.slice(1).join(',');
       if (key !== last) { last = key; window._log.push(row); }
     }, 15);
@@ -129,6 +133,49 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(!ui.before.on && ui.before.hidden && ui.after.on && !ui.after.hidden && ui.after.pressed === 'true', 'the Speed up button toggles and shows its settings', JSON.stringify(ui));
   check(ui.step === 20 && ui.max === 40 && ui.every === 1, 'out-of-range numbers clamp, junk is ignored', ui.step + ' ' + ui.every + ' ' + ui.max);
   check(ui.saved.ramp.step === 20 && ui.saved.ramp.max === 40, 'and the settings are kept', JSON.stringify(ui.saved));
+
+  // ── 7. Next key by fifths: every key once, in the right order, then it stays.
+  //    A bar at 220 BPM is 1.09 s, so twelve keys are about 26 s.
+  await page.evaluate(() => { stopEverything(); });
+  await setup({ bpm: 220, key: { every: 1, by: 7 } });
+  await page.waitForTimeout(27500);
+  const log7 = await page.evaluate(() => window._log);
+  const mid7 = await page.evaluate(() => ({ root, rootM: sections[0].slots[0].rootM, second: sections[1].slots[0].rootM, label: sections[0].slots[0].label, keys: _pracRun.keysDone, status: document.getElementById('prac-status').textContent }));
+  const end7 = await stop();
+  const keys7 = []; log7.forEach(r => { if (!keys7.length || keys7[keys7.length - 1].pc !== r[5]) keys7.push({ pc: r[5], rootM: r[6], label: r[7] }); });
+  console.log('     keys: ' + keys7.map(k => k.label + '(' + k.rootM + ')').join(' '));
+  check(keys7.map(k => k.pc).join() === '0,7,2,9,4,11,6,1,8,3,10,5', 'a fifth at a time visits all twelve keys in order', keys7.map(k => k.pc).join());
+  check(keys7.every(k => k.rootM >= 43 && k.rootM <= 54), 'and the chords stay within a tritone of where they started (no climbing)', keys7.map(k => k.rootM).join());
+  check(mid7.keys === 11 && mid7.root === 5, 'then it stays in the twelfth key', JSON.stringify(mid7));
+  check(/Key F \(12 of 12\)/.test(mid7.status), 'the status line says Key F (12 of 12)', mid7.status);
+  const back7 = await page.evaluate(() => ({ root, a: sections[0].slots[0].rootM, la: sections[0].slots[0].label, b: sections[1].slots[0].rootM, lb: sections[1].slots[0].label }));
+  check(back7.root === 0 && back7.a === 48 && back7.la === 'C' && back7.b === 55 && back7.lb === 'G', 'Stop puts the chart back exactly as it was (key, notes, names)', JSON.stringify(back7));
+
+  // ── 8. By fourths, every 2 choruses.
+  await setup({ bpm: 220, key: { every: 2, by: 5 } });
+  await page.waitForTimeout(11500);
+  const log8 = await page.evaluate(() => window._log);
+  await stop();
+  const keys8 = []; log8.forEach(r => { if (!keys8.length || keys8[keys8.length - 1].pc !== r[5]) keys8.push({ pc: r[5], chorus: r[1] }); });
+  check(keys8.length >= 2 && keys8[1].pc === 5 && keys8[1].chorus === 2, 'a fourth, after the second chorus', JSON.stringify(keys8));
+
+  // ── 9. A transpose of the player's own is theirs: Stop does not undo it.
+  await setup({ bpm: 220, key: { every: 1, by: 1 } });
+  await page.waitForTimeout(3500);
+  await page.evaluate(() => { transposeSong(2); });
+  const r9 = await page.evaluate(() => root);
+  await stop();
+  const e9 = await page.evaluate(() => root);
+  check(e9 === r9, 'a key the player moved by hand is left alone on Stop', r9 + ' -> ' + e9);
+  await page.evaluate((r) => { transposeSong(-r); }, r9);
+
+  // ── 10. Both together, off together.
+  await setup({ bpm: 200, ramp: { step: 5, every: 1, max: 215 }, key: { every: 1, by: 7 } });
+  await page.waitForTimeout(7000);
+  const both = await page.evaluate(() => ({ bpm: Math.round(_bpmNow()), root }));
+  const bs = await stop();
+  const bend = await page.evaluate(() => ({ bpm: Math.round(_bpmNow()), root }));
+  check(both.bpm > 200 && both.root !== 0 && bend.bpm === 200 && bend.root === 0, 'speed and key together, and both come back', JSON.stringify([both, bend]));
 
   check(errs.length === 0, 'no page errors', errs.join(' | '));
   await browser.close();
