@@ -204,6 +204,22 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 .perf-row button.go { border-color:var(--go); color:var(--go); }
 .chartline { font:14px/1.7 ui-monospace,'SF Mono',Menlo,Consolas,monospace; color:#cfd3ef; }
 .chartline b { font-family:var(--f-label); font-weight:400; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--chords); display:block; margin-top:10px; }
+/* the transport sheet, opened by the caret */
+.caret { width:46px; height:30px; border-radius:15px; background:#f2494f; display:grid; place-items:center; margin:auto; }
+.caret svg { width:20px; height:20px; stroke:#fff; stroke-width:2.6; fill:none; }
+.shbk { position:absolute; inset:0; background:rgba(0,0,0,.55); z-index:7; }
+.sheet { position:absolute; left:0; right:0; bottom:0; max-height:78%; overflow-y:auto; background:var(--surf); border-top:1px solid var(--line); border-radius:22px 22px 0 0; padding:8px 16px 28px; z-index:8; scrollbar-width:none; }
+.sheet::-webkit-scrollbar { display:none; }
+.sheet .grab { width:46px; height:30px; border-radius:15px; background:#f2494f; display:grid; place-items:center; margin:0 auto 6px; }
+.sheet .grab svg { width:20px; height:20px; stroke:#fff; stroke-width:2.6; fill:none; }
+.sh-r { display:grid; grid-template-columns:70px minmax(0,1fr); gap:8px; align-items:start; padding:6px 0; border-top:1px solid var(--line); }
+.sh-r:first-of-type { border-top:0; }
+.sh-r > b { font-family:var(--f-label); font-weight:400; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); padding-top:15px; }
+.sh-i { display:flex; flex-wrap:wrap; gap:6px; }
+.sh-i button { min-height:44px; padding:0 12px; border-radius:12px; border:1px solid var(--line); background:var(--bg); font-size:14px; }
+.sh-i button.on { border-color:var(--drums); color:var(--drums); }
+.sh-i button.set { border-color:var(--chords); color:var(--chords); }
+.nav3 { }
 /* now-playing ribbon: words and chord of the moment, tap to open Stage */
 .rib { width:100%; min-height:48px; display:flex; align-items:center; gap:10px; padding:0 12px; border:1px solid var(--line); border-radius:13px; background:var(--surf); margin:2px 0 8px; text-align:left; }
 .rib .rs { font-family:var(--f-label); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--chords); flex:none; max-width:64px; }
@@ -274,7 +290,7 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 </style>
 
 <div class="top">
-  <h1>mõdRiff 5.0 layout mock, round 4</h1>
+  <h1>mõdRiff 5.0 layout mock, round 5</h1>
   <p class="lede">Live and Studio are now tabs, the bottom tabs are 52 pt, and the lyric screens use the vertical timeline from the handoff (each line is a card, each chord a column as wide as its beats). Nothing here is the real app; it is the proposal, drawn at Pro Max size (430 × 932 pt).</p>
 </div>
 
@@ -354,7 +370,7 @@ var SONG = [
 ];
 
 var S = {
-  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', loaded:false, libSub:'setlist', soundSub:'mixer',
+  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{}, loaded:false, libSub:'setlist', soundSub:'mixer',
   stage:false, playing:false, step:0, key:0, fs:22, cur:0, songOn:false, toast:'',
   on:{drums:true, bass:true, mel:false, arp:false, chords:true},
   vol:{drums:78, bass:70, mel:62, arp:48, chords:66},
@@ -557,23 +573,28 @@ function tilesHtml(){
   return h + '</div>';
 }
 function songScreen(){
-  var subs = [['build','Build'],['perform','Perform'],['chart','Chart'],['library','Library']];
+  var subs = [['build','Build'],['perform','Perform'],['library','Library']];
   var h = '<div class="hd"><div class="seg wide">' + subs.map(function(x){ return '<button data-a="ssub" data-v="' + x[0] + '" class="' + (S.songSub === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div></div>';
   if(S.songSub === 'library') return h + libraryScreen();
   if(S.songSub === 'perform'){
     h += '<button class="stagebtn" data-a="stage" style="margin-top:2px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Stage<span class="tag">Add-on</span></button>';
-    h += '<div class="perf-row"><button data-a="sect" data-d="-1">&lsaquo; Prev</button><button class="go" data-a="sect" data-d="1">Next &rsaquo;</button><button>Endings</button><button>Practice</button></div>';
-    return h + tilesHtml() + '<p class="hint">Perform as it is today: the tiles, Prev and Next, Endings and the practice trainer. Stage is the same page as a scrolling timeline of words.</p>';
-  }
-  if(S.songSub === 'chart'){
-    h += '<div class="chartline">';
-    SONG.forEach(function(sec){ h += '<b>' + esc(sec.name) + '</b>'; sec.rows.forEach(function(r){ h += '| ' + r.slots.map(function(x){ return esc(tchord(x.ch)); }).join(' | ') + ' |<br>'; }); });
-    return h + '</div><div class="row" style="margin-top:12px"><button class="pill" data-a="noop">Print / Save PDF</button><button class="pill" data-a="noop">Chart 8ths</button></div><p class="hint">Today’s Chart page, unchanged: the printable chord chart.</p>';
+    h += '<div class="perf-row" style="grid-template-columns:44px 1fr 44px;margin-bottom:6px"><button data-a="noop" aria-label="Previous song">&lsaquo;</button><button data-a="noop" style="font-weight:600">Harbor Light &middot; 1 of 3</button><button data-a="noop" aria-label="Next song">&rsaquo;</button></div>';
+    h += '<div class="perf-row" style="grid-template-columns:1fr 1fr 1fr;margin:0 0 6px"><button data-a="sect" data-d="-1">&lsaquo; Prev</button><button class="go" data-a="sect" data-d="1">Next &rsaquo;</button><button data-a="noop">Save</button></div>';
+    h += '<div class="perf-row" style="grid-template-columns:repeat(5,1fr);margin:0 0 6px"><button data-a="noop">Ritard</button><button data-a="noop">Tag</button><button data-a="noop">Big fin</button><button data-a="noop">Fade</button><button data-a="noop">Cold</button></div>';
+    h += '<div class="perf-row" style="grid-template-columns:repeat(3,1fr);margin:0 0 10px"><button data-a="noop">Speed up</button><button data-a="noop">Next key</button><button data-a="noop">Loop bars</button></div>';
+    h += '<div class="seg sm" style="display:flex;margin-bottom:10px"><button style="flex:1" data-a="pview" data-v="tiles" class="' + (S.pview === 'tiles' ? 'on' : '') + '">Tiles</button><button style="flex:1" data-a="pview" data-v="chart" class="' + (S.pview === 'chart' ? 'on' : '') + '">Chart</button><button style="flex:1" data-a="pview" data-v="timeline" class="' + (S.pview === 'timeline' ? 'on' : '') + '">Timeline<span class="tag" style="opacity:.9">Add-on</span></button></div>';
+    if(S.pview === 'tiles') return h + tilesHtml() + '<p class="hint">Today’s Perform page, every control kept: setlist arrows, sections, endings, the practice trainer.</p>';
+    if(S.pview === 'chart'){
+      h += '<div class="seg sm" style="display:flex;margin-bottom:8px"><button style="flex:1" class="on">Guitar</button><button style="flex:1">Ukulele</button><button style="flex:1">Piano</button></div><div class="chartline">';
+      SONG.forEach(function(sec){ h += '<b>' + esc(sec.name) + '</b>'; sec.rows.forEach(function(r){ h += '| ' + r.slots.map(function(x){ return esc(tchord(x.ch)); }).join(' | ') + ' |<br>'; }); });
+      return h + '</div><div class="row" style="margin-top:12px"><button class="pill" data-a="noop">Print / Save PDF</button></div><p class="hint">Today’s Chart page, now a view of Perform: the chart with chord diagrams for guitar, ukulele or piano, and Print.</p>';
+    }
+    return h + timelineHtml({sel:null, edit:false, now:-1}) + '<p class="hint">Read-only here. Tap a column to jump the song to it; editing is in Build.</p>';
   }
   h += '<input class="title" aria-label="Song title" value="Harbor Light" readonly>';
   h += '<div class="row" style="margin:8px 0 10px;justify-content:space-between"><div class="seg sm"><button data-a="wmode" data-v="timeline" class="' + (S.wmode === 'timeline' ? 'on' : '') + '">Timeline<span class="tag" style="opacity:.9">Add-on</span></button><button data-a="wmode" data-v="tiles" class="' + (S.wmode === 'tiles' ? 'on' : '') + '">Tiles</button></div><button class="pill">+ Section</button></div>';
   if(S.wmode === 'tiles'){
-    h += tilesHtml() + '<p class="hint">Today’s tiles: every chord the same size, however long it lasts. The small number is its beats.</p>';
+    h += tilesHtml() + '<p class="hint">Today’s Build tiles. The File menu, key, sections, chord editor, add-a-chord and the progression library stay as they are.</p>';
   } else {
     h += timelineHtml({sel:S.sel, edit:true, now:-1});
     h += '<p class="hint">Tap a column to select it. The strip under each chord shows its beats; the colour is its function.</p>';
@@ -621,8 +642,27 @@ function chromeHtml(){
     var on = (t[0] === 'live' || t[0] === 'studio') ? (S.tab === 'play' && S.view === t[0]) : S.tab === t[0];
     h += '<button class="' + (on ? 'on' : '') + '" data-a="tab" data-t="' + t[0] + '">' + t[1] + '</button>';
   });
-  h += '<button data-a="gear" aria-label="Settings, MIDI and help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg></button></div></div>';
+  h += '<button data-a="sheet" aria-label="More: capture, export, undo, settings and help" aria-expanded="' + (S.sheet ? 'true' : 'false') + '"><span class="caret"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></span></button></div></div>';
   return h;
+}
+function sheetHtml(){
+  var rows = [
+    ['Settings', [['Settings','set'],['MIDI mapping']]],
+    ['File', [['New'],['Open'],['Save']]],
+    ['Capture', [['Chords','cap'],['Melody','cap'],['Bass','cap'],['Pads','cap']]],
+    ['Sampler', [['Record'],['Resample'],['Library']]],
+    ['Export', [['Bounce'],['Stems'],['MIDI']]],
+    ['Tools', [['Undo'],['Redo'],['Metronome','tog'],['Snap','tog'],['Randomize']]],
+    ['Help', [['Find'],['Setups','set'],['Theme'],['Tutorials'],['Guide'],['Shortcuts']]]
+  ];
+  var h = '<div class="shbk" data-a="sheet"></div><div class="sheet" role="dialog" aria-label="More"><button class="grab" data-a="sheet" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>';
+  rows.forEach(function(r){
+    h += '<div class="sh-r"><b>' + r[0] + '</b><div class="sh-i">' + r[1].map(function(c){
+      var on = (c[1] === 'cap' || c[1] === 'tog') && S.chips[c[0]];
+      return '<button class="' + (on ? 'on' : '') + (c[1] === 'set' ? ' set' : '') + '" data-a="chip" data-n="' + c[0] + '" data-k="' + (c[1] || '') + '">' + c[0] + '</button>';
+    }).join('') + '</div></div>';
+  });
+  return h + '</div>';
 }
 function stageHtml(){
   var fr = flatRows(), n = fr.length, cur = fr[S.cur] || fr[0], starts = sectionFlatStarts();
@@ -637,14 +677,15 @@ function stageHtml(){
 var phone = document.getElementById('phone');
 function screenId(){
   if(S.stage) return 'stage';
+  if(S.sheet) return 'sheet';
   if(S.tab === 'play') return S.view === 'live' ? 'live' : 'studio-' + S.part;
-  if(S.tab === 'song') return S.songSub === 'build' ? 'write-' + S.wmode : S.songSub;
+  if(S.tab === 'song') return S.songSub === 'build' ? 'write-' + S.wmode : (S.songSub === 'perform' ? 'perform-' + S.pview : S.songSub);
   return 'sound';
 }
 function render(keepScroll){
   var b = phone.querySelector('.body'), top = b ? b.scrollTop : 0;
   var body = S.tab === 'play' ? (S.view === 'live' ? liveScreen() : studioScreen()) : (S.tab === 'song' ? songScreen() : soundScreen());
-  phone.innerHTML = '<div class="sb"><span>9:41</span><span>5G</span></div><div class="body" id="body">' + body + '</div>' + chromeHtml() + (S.stage ? stageHtml() : '') + (S.toast ? '<div class="toast">' + esc(S.toast) + '</div>' : '');
+  phone.innerHTML = '<div class="sb"><span>9:41</span><span>5G</span></div><div class="body" id="body">' + body + '</div>' + chromeHtml() + (S.sheet ? sheetHtml() : '') + (S.stage ? stageHtml() : '') + (S.toast ? '<div class="toast">' + esc(S.toast) + '</div>' : '');
   if(keepScroll !== false){ var nb = document.getElementById('body'); if(nb) nb.scrollTop = top; }
   paintPlayhead(); renderSide(); followStage(false);
 }
@@ -692,8 +733,10 @@ var NOTES = {
   'studio-fx': {t:'Studio, FX', l:['mõdFX keeps its X / Y pad and chains.'], x:'FX acts on every part, so it could also sit under Sound. Open question.'},
   'write-timeline': {t:'Song, Build, Timeline', l:['This is screen C from the vertical-timeline handoff. A line of words is a card; each chord is a column as wide as its beats; the strip underneath shows the beats, coloured by function.','The Intro has no words, so it uses the tall blocks from screen A. One renderer, two row kinds.','Tap a column. The panel says where the chord starts, lets you type its words, and moves the change a beat earlier or later while the two lengths still add up.','The last line of Verse 2 is the hard case: a one-beat column under a long phrase. The words are clipped to two lines here and the full text shows in the panel.'], x:'Dragging the join and Tap the changes are Steps 3 and 4 of the handoff. The mock uses beat buttons for the drag, since a 44 pt button is easier to test than a gesture.'},
   'write-tiles': {t:'Song, Build, Tiles', l:['Today’s Perform tiles: every chord the same size however long it lasts.','Kept as a switch so nothing is lost while the timeline is proven, as the handoff asks.'], x:'The handoff suggests the timeline replaces the tiles once it earns that. iReal charts and any chord-only song would use the block rows.'},
-  'perform': {t:'Song, Perform', l:['The same Perform page you have: the tiles, Prev and Next, Endings and the practice trainer. Free, as today.','Stage is a button at the top of this page, because Perform is where you are when you use it. It carries an Add-on tag here and opens the pack sheet if you do not have it.','The sub-nav is the Sound one: a single row of four, so Song keeps every page it has now and gains Library.'], x:'Four entries is the most a 430 pt row holds at this label size. Sound has three.'},
-  'chart': {t:'Song, Chart', l:['Today\u2019s Chart page, unchanged: the chart as text, to print or save as a PDF.'], x:'It could become a view inside Build later. Nothing forces that now.'},
+  'perform-tiles': {t:'Song, Perform', l:['Everything Perform has today stays: the setlist arrows, Prev and Next section, Save, the five endings, the practice trainer (Speed up, Next key, Loop bars) and the tiles.','Stage is a button at the top, with an Add-on tag. Without the pack it opens the pack sheet.','Chart is no longer a page. It is a view of Perform (Tiles | Chart | Timeline), because it is the same song seen another way.'], x:'The page is longer than the mock shows: the banner, transpose and Save Song from today\u2019s Perform sit in the first screenful too. Sub-nav is three entries, like Sound.'},
+  'perform-chart': {t:'Song, Perform, Chart', l:['Today\u2019s Chart page, as a view of Perform: the chart with chord diagrams (guitar, ukulele, piano) and Print / Save PDF.','Nothing is lost by it not being a page. It is one tap from Tiles instead of one sub-nav away.'], x:'If you would rather keep it a page, the sub-nav takes four entries (the first version of this mock did).'},
+  'perform-timeline': {t:'Song, Perform, Timeline', l:['The vertical timeline, read-only, inside Perform. An add-on, with Stage.','Tap a column to move the song there. Editing is in Build.'], x:'Stage is this view with the screen cleared.'},
+  'sheet': {t:'The transport sheet', l:['The caret is back, as the fifth slot in the tab bar: a 46 by 30 pt red pill in a 58 by 52 pt target. It opens the same sheet you have today.','It lost one row, Live / Studio, because those are tabs now. Settings joins it as the first row.','Everything else stays: File, Capture (chords, melody, bass, pads), Sampler, Export (Bounce, Stems, MIDI), Undo, Redo, Metronome, Snap, Randomize, Find, Setups, Theme, Tutorials, Guide, Shortcuts.','Chips here are 44 pt tall, as the rest of the layout.'], x:'The old handle band above the transport (about 24 pt) is gone, which is part of why the bottom stack is 148 pt and not 172. A swipe up on the transport row could open the sheet too.'},
   'library': {t:'Song, Library', l:['Setlist, Setups and Patterns in one place you load things from.','Each song has a switch: recall its sounds, or keep yours. That is what makes Setups a template instead of a second save system.','The saved-pattern banks live here too.'], x:'Loading a song that recalls sounds changes what you hear mid-set, hence a per-song switch.'},
   'stage': {t:'Stage', l:['You reach it from the Stage button at the top of Perform. It is an add-on, together with the Timeline. It is the same timeline with everything else removed: large type, the strip, a footer of five 56 pt buttons.','Press play and the playing chord lights up and a playhead sweeps the card. The view scrolls to keep the current line a third of the way down.','A− and A+ resize the words; − and + at the top transpose the sheet. Sect buttons jump a section.','This is Perform, full screen. The Prev, Next, Endings and Practice loop controls from the old Perform page belong here.'], x:'It needs a screen wake lock, which the native app can hold. Loop bars must still work on columns, as the handoff requires.'},
   'sound': {t:'Sound', l:['Mixer, Voices and mõdSynth are unchanged. Only the tab around them moved.','Sound stays at the right of Song, within reach of the thumb during a jam.'], x:'Settings, MIDI and Help move behind the gear and are no longer a tab.'}
@@ -701,7 +744,7 @@ var NOTES = {
 function renderSide(){
   var id = screenId(), n = NOTES[id] || NOTES.live;
   document.getElementById('notes').innerHTML = '<h2>' + n.t + '</h2><ul>' + n.l.map(function(x){ return '<li>' + x + '</li>'; }).join('') + '</ul><p class="trade">' + n.x + '</p>';
-  var jb = document.getElementById('jump'), items = [['live','Live'],['studio-chords','Studio: Chords'],['studio-bass','Studio: Bass'],['studio-drums','Studio: Drums'],['write-timeline','Build: Timeline'],['write-tiles','Build: Tiles'],['perform','Perform'],['chart','Chart'],['library','Library'],['stage','Stage'],['sound','Sound']];
+  var jb = document.getElementById('jump'), items = [['live','Live'],['studio-chords','Studio: Chords'],['studio-bass','Studio: Bass'],['studio-drums','Studio: Drums'],['write-timeline','Build: Timeline'],['write-tiles','Build: Tiles'],['perform','Perform'],['perform-chart','Perform: Chart'],['perform-timeline','Perform: Timeline'],['library','Library'],['sheet','Transport sheet'],['stage','Stage'],['sound','Sound']];
   jb.innerHTML = items.map(function(i){ return '<button class="' + (id === i[0] ? 'on' : '') + '" data-j="' + i[0] + '">' + i[1] + '</button>'; }).join('');
   renderRuler();
 }
@@ -717,18 +760,18 @@ function renderRuler(){
   if((live || studio) && S.loaded && !S.stage){ page += 56; what.push('song ribbon 56'); }
   var today = S.stage ? 0 : (live ? 150 : 181);
   var now = chrome + page;
-  var rows = S.stage ? [] : [['Today', today, '#6a70a6'], ['Proposed', now, '#9b6dff']];
-  var txt = S.stage ? 'Stage has no bottom stack at all: only the five-button footer.' : 'Proposed: transport 48' + (parts ? ' + parts row 48' : '') + ' + tabs 52' + (what.length ? ' + ' + what.join(', ') : '') + '. Today is the bar (115) plus the tab bar (35)' + (live ? '.' : ', plus the 31 pt sub-nav dock.');
+  var rows = (S.stage || S.sheet) ? [] : [['Today', today, '#6a70a6'], ['Proposed', now, '#9b6dff']];
+  var txt = S.stage ? 'Stage has no bottom stack at all: only the five-button footer.' : S.sheet ? 'The sheet opens over the page, so it costs no height while closed.' : 'Proposed: transport 48' + (parts ? ' + parts row 48' : '') + ' + tabs 52' + (what.length ? ' + ' + what.join(', ') : '') + '. Today is the bar (115) plus the tab bar (35)' + (live ? '.' : ', plus the 31 pt sub-nav dock.');
   document.getElementById('ruler').innerHTML = rows.map(function(r){ return '<div class="r"><span>' + r[0] + '</span><div class="bar" style="width:' + (r[1] / 220 * 100) + '%;--c1:' + r[2] + '"></div><span class="num">' + r[1] + '</span></div>'; }).join('') + '<p class="hint" style="margin:4px 0 0">' + txt + '</p>';
 }
 /* ---------- actions ---------- */
 function jumpTo(id){
-  S.stage = false; S.more = false;
+  S.stage = false; S.more = false; S.sheet = false;
   if(id === 'live'){ S.tab = 'play'; S.view = 'live'; }
   else if(id.indexOf('studio-') === 0){ S.tab = 'play'; S.view = 'studio'; S.part = id.slice(7); }
   else if(id === 'write-timeline'){ S.tab = 'song'; S.songSub = 'build'; S.wmode = 'timeline'; }
-  else if(id === 'perform'){ S.tab = 'song'; S.songSub = 'perform'; }
-  else if(id === 'chart'){ S.tab = 'song'; S.songSub = 'chart'; }
+  else if(id.indexOf('perform') === 0){ S.tab = 'song'; S.songSub = 'perform'; S.pview = id === 'perform-chart' ? 'chart' : (id === 'perform-timeline' ? 'timeline' : 'tiles'); }
+  else if(id === 'sheet'){ S.sheet = true; }
   else if(id === 'write-tiles'){ S.tab = 'song'; S.songSub = 'build'; S.wmode = 'tiles'; }
   else if(id === 'library'){ S.tab = 'song'; S.songSub = 'library'; }
   else if(id === 'stage'){ S.stage = true; }
@@ -757,11 +800,18 @@ function onPhoneClick(e){
   else if(a === 'play'){ S.playing = !S.playing; if(!S.playing){ S.step = 0; } render(); }
   else if(a === 'sect'){ toast('Previous and next section, as the transport has today: they appear once a song is loaded'); }
   else if(a === 'songsw'){ S.songOn = !S.songOn; render(); }
-  else if(a === 'gear'){ toast('Settings, MIDI, Help and Setups open as a sheet from here'); }
+  else if(a === 'sheet'){ S.sheet = !S.sheet; render(); }
+  else if(a === 'chip'){
+    if(d.k === 'cap' || d.k === 'tog') S.chips[d.n] = !S.chips[d.n];
+    else if(d.n === 'Setups'){ S.sheet = false; S.tab = 'song'; S.songSub = 'library'; S.libSub = 'setups'; }
+    else { S.chipNote = d.n; }
+    render();
+  }
   else if(a === 'ron'){ S.rhythm.on = !S.rhythm.on; render(); }
   else if(a === 'rkeep'){ S.rhythm.keep = !S.rhythm.keep; render(); }
   else if(a === 'rpick'){ toast('The rhythm list: built-ins, your own, Draw a new one'); }
   else if(a === 'goStudioChords'){ S.view = 'studio'; S.part = 'chords'; render(false); }
+  else if(a === 'pview'){ S.pview = d.v; render(); }
   else if(a === 'ssub'){ S.songSub = d.v; render(false); }
   else if(a === 'wmode'){ S.wmode = d.v; render(false); }
   else if(a === 'tsel'){ S.sel = {si:+d.si, ri:+d.ri, ci:+d.ci}; render(); }

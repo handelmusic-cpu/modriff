@@ -35,10 +35,10 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
 
 ## Decided
 
-1. **Tabs along the bottom: Live | Studio | Song | Sound | gear.** Live and
+1. **Tabs along the bottom: Live | Studio | Song | Sound | caret.** Live and
    Studio become two tabs; the switch leaves the transport bar and the page.
-   Settings, MIDI, Help and Setups open from the gear as a sheet and stop being a
-   tab. Accomp stops being a tab. Tabs are 52 pt tall.
+   Settings stops being a tab and becomes the first row of the transport sheet
+   (below). Accomp stops being a tab. Tabs are 52 pt tall.
    - `body.mode-basic` stays the plumbing. The Live tab sets it, the Studio tab
      clears it, and Song and Sound keep whichever was last (47 `advanced-only`
      lines in `index.html`, 23 of them on Play and 2 on Songs, so the coupling is
@@ -94,11 +94,39 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    sheet (`freeBlocked`, naming the pack). The Timeline (editing the words and
    lengths on the cards) is the same pack. A free player keeps Perform and Build
    as they are today, with the tiles.
-9. **Song gets the Sound-style sub-nav**, a single full-width row, and keeps every
-   page it has now: **Build | Perform | Chart | Library**. Build is today's Build
-   (with a Timeline | Tiles switch once the pack is owned), Perform is today's
-   Perform, Chart is today's printable Chart, and Library is new (setlist, Setups,
-   pattern banks). Four is the most a 430 pt row holds at that label size.
+9. **Song gets the Sound-style sub-nav**, a single full-width row of three:
+   **Build | Perform | Library**. Build is today's Build (with a Timeline | Tiles
+   switch once the pack is owned). Perform is today's Perform, and **Chart stops
+   being a page and becomes a view of Perform**, Tiles | Chart | Timeline, since it
+   is the same song seen another way (the Timeline view is the add-on). Library is
+   new (setlist, Setups, pattern banks). If a Chart page of its own is wanted, the
+   row takes four entries at this label size, which is the most it holds.
+10. **The transport sheet stays, and the caret is its handle.** The sheet
+    (`ft-more-menu`) holds File, MIDI, Capture (chords, melody, bass, pads),
+    Sampler, Export (Bounce, Stems, MIDI), Undo, Redo, Metronome, Snap,
+    Randomize, Find, Setups, Theme, Tutorials, Guide and Shortcuts, and it all
+    stays. It loses one row, Live / Studio, which are tabs now, and gains Settings
+    as its first row. The handle moves from a band above the transport (about 24 pt
+    of height, which the 148 pt bottom stack in the table below does not include)
+    into **the fifth slot of the tab bar**: a red caret pill in a 58 x 52 pt target.
+    A swipe up on the transport row could open it too.
+
+## Nothing is lost from Songs
+
+Checked against the markup of today's Songs page (`#page-songs`):
+
+| today | in 5.0 |
+|---|---|
+| Build: title, Save, the File menu (share link, chord .mid, print, import a chord sheet, export and import the setlist, +Rhythm, Chart 8ths, Clear), key row and the nine modes, sections card, chord editor, add-a-chord, progression library | Build, unchanged |
+| Build: the setlist panel at the foot | Library |
+| Perform: the song banner (title, Prev and Next section, Save Song, Save Settings, transpose), Endings (Ritard, Tag, Big fin, Fade, Cold), the practice trainer (Speed up, Next key and its interval, Loop bars), the setlist arrows, the tiles | Perform, unchanged; every control stays one tap, none hidden in a menu |
+| Perform: the setlist panel at the foot | Library |
+| Chart: the chord chart with guitar, ukulele or piano diagrams, Print / Save PDF | a view of Perform |
+| Setups (in Settings) | Library, and a Setups chip in the transport sheet |
+
+What does change: Chart is a view and not a page, and the Library gathers the
+three setlist and Setups places into one. Perform's page is long (banner, five
+control rows, then the tiles); it scrolls, as it does today.
 
 ## Which pack is open
 
