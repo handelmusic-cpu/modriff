@@ -204,6 +204,26 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 .perf-row button.go { border-color:var(--go); color:var(--go); }
 .chartline { font:14px/1.7 ui-monospace,'SF Mono',Menlo,Consolas,monospace; color:#cfd3ef; }
 .chartline b { font-family:var(--f-label); font-weight:400; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--chords); display:block; margin-top:10px; }
+/* sampler */
+.spg { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:6px 0 8px; }
+.sp { height:72px; border-radius:14px; border:1.5px solid var(--line); background:var(--surf2); padding:8px 8px; text-align:left; display:flex; flex-direction:column; justify-content:space-between; }
+.sp b { font-family:var(--f-label); font-weight:400; font-size:10px; letter-spacing:.1em; color:var(--c, var(--smp)); }
+.sp span { font-size:13px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sp.sel { border-color:var(--smp); box-shadow:0 0 0 1px var(--smp) inset; }
+.sp.loop { --c:var(--chords); }
+.sp.empty span { color:var(--dim); }
+.sbtns { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:8px; }
+.sbtns button, .srow button.chip { min-height:44px; border-radius:12px; border:1px solid var(--line); background:var(--surf); font-size:14px; padding:0 4px; }
+.sbtns button.on, .srow button.chip.on { border-color:var(--smp); color:var(--smp); }
+.srow { display:grid; grid-template-columns:62px minmax(0,1fr); gap:6px; align-items:center; margin-top:8px; }
+.srow > b { font-family:var(--f-label); font-weight:400; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+.srow .sg2 { display:flex; gap:4px; flex-wrap:wrap; }
+.srow .sg2 .seg { flex:1 1 auto; }
+.srow .seg button { min-height:44px; padding:0 10px; font-size:12px; letter-spacing:.04em; }
+.srow .seg button.on { background:var(--smp); color:#150a02; }
+.pbarx { height:6px; border-radius:3px; background:#1a1e3a; margin-top:8px; position:relative; overflow:hidden; }
+.pbarx i { position:absolute; left:0; top:0; bottom:0; width:38%; background:var(--smp); }
+:root { --smp:#ff9f5a; }
 /* the transport sheet, opened by the caret */
 .caret { width:46px; height:30px; border-radius:15px; background:#f2494f; display:grid; place-items:center; margin:auto; }
 .caret svg { width:20px; height:20px; stroke:#fff; stroke-width:2.6; fill:none; }
@@ -290,7 +310,7 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 </style>
 
 <div class="top">
-  <h1>mõdRiff 5.0 layout mock, round 5</h1>
+  <h1>mõdRiff 5.0 layout mock, round 6</h1>
   <p class="lede">Live and Studio are now tabs, the bottom tabs are 52 pt, and the lyric screens use the vertical timeline from the handoff (each line is a card, each chord a column as wide as its beats). Nothing here is the real app; it is the proposal, drawn at Pro Max size (430 × 932 pt).</p>
 </div>
 
@@ -370,7 +390,8 @@ var SONG = [
 ];
 
 var S = {
-  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{}, loaded:false, libSub:'setlist', soundSub:'mixer',
+  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{},
+  smp:{sel:1, side:'User', bank:'A', q:'1/16', trip:false, pat:'1', len:'2', mode:'Gate', rev:false, sync:true, keyf:false, warp:false, mute:'-', n:12, dly:false, rvb:true, hold:false, rec:false}, loaded:false, libSub:'setlist', soundSub:'mixer',
   stage:false, playing:false, step:0, key:0, fs:22, cur:0, songOn:false, toast:'',
   on:{drums:true, bass:true, mel:false, arp:false, chords:true},
   vol:{drums:78, bass:70, mel:62, arp:48, chords:66},
@@ -462,7 +483,10 @@ function liveScreen(){
   [['drums','Drums','Funk groove'],['bass','Bass','Funk'],['mel','Melody','Stepwise']].forEach(function(p){
     h += '<div class="sty" style="--c:' + PCOL[p[0]] + '"><div class="nm"><span>' + p[1] + '</span><span>Save</span></div><button>&lsaquo;</button><button class="big">' + p[2] + ' &#9662;</button><button>&rsaquo;</button></div>';
   });
-  h += '<div class="more"><button>Sampler pads</button><button>mõdFX pad</button></div>';
+  h += samplerLive();
+  h += '<div class="wh"><span class="t" style="color:#d65cff">m\u00f5dFX</span><span class="rule"></span><button class="pill" data-a="noop">Chains</button></div><div class="xy" style="height:170px"></div>';
+  h += '<div class="wh"><span class="t">Endings</span><span class="rule"></span></div><div class="perf-row" style="grid-template-columns:repeat(5,1fr);margin:0"><button data-a="noop">Ritard</button><button data-a="noop">Tag</button><button data-a="noop">Big fin</button><button data-a="noop">Fade</button><button data-a="noop">Cold</button></div>';
+  h += '<div class="more"><button data-a="noop">Drum grid</button><button data-a="noop">Bass grid</button><button data-a="noop">Melody grid</button></div><div class="more"><button data-a="noop">Add / reorder widgets</button></div>';
   return h;
 }
 function padsHtml(){
@@ -490,6 +514,48 @@ function studioStrip(){
   });
   return h + '</div>';
 }
+var SMP_NAMES = ['Kick','Snare','Hat','Clap','Vox hit','Bass 1','Pad swell','Loop 1','Riser','Rim','Perc','(empty)','Tom','Shaker','Fx 1','Fx 2'];
+function sgSeg(key, opts, cls){
+  return '<div class="seg sm ' + (cls || '') + '">' + opts.map(function(o){ return '<button data-a="smp" data-k="' + key + '" data-v="' + o + '" class="' + (String(S.smp[key]) === String(o) ? 'on' : '') + '">' + o + '</button>'; }).join('') + '</div>';
+}
+function sgChip(key, label){ return '<button class="chip ' + (S.smp[key] ? 'on' : '') + '" data-a="smp" data-k="' + key + '" data-t="1">' + label + '</button>'; }
+function samplerPads(){
+  var h = '<div class="spg">';
+  for(var i = 0; i < S.smp.n; i++){
+    var nm = SMP_NAMES[i], emp = nm === '(empty)';
+    h += '<button class="sp' + (S.smp.sel === i ? ' sel' : '') + (i === 7 || i === 8 ? ' loop' : '') + (emp ? ' empty' : '') + '" data-a="smp" data-k="sel" data-v="' + i + '"><b>' + String.fromCharCode(65 + Math.floor(i / 4)) + (i % 4 + 1) + '</b><span>' + nm + '</span></button>';
+  }
+  return h + '</div>';
+}
+function samplerTop(studio){
+  var h = '<div class="sbtns"><button class="' + (S.smp.hold ? 'on' : '') + '" data-a="smp" data-k="hold" data-t="1">Hold</button><button>Roll</button><button>Stop</button><button data-a="noop">Load</button>' + (studio ? '<button data-a="noop">Trim</button>' : '<button class="' + (S.smp.rev ? 'on' : '') + '" data-a="smp" data-k="rev" data-t="1">Reverse</button>') + '</div>';
+  return h;
+}
+function samplerStudio(){
+  var m = S.smp, h = '<div class="row" style="justify-content:space-between;margin:2px 0 0"><span class="pill" style="--c:var(--smp)"><small>Pads</small><button data-a="smp" data-k="n" data-d="-1" style="min-width:34px;min-height:44px;font-size:20px">&minus;</button>' + m.n + '<button data-a="smp" data-k="n" data-d="1" style="min-width:34px;min-height:44px;font-size:20px">+</button></span><button class="pill" data-a="noop">Clear</button></div>';
+  h += samplerPads() + samplerTop(true);
+  h += '<div class="srow"><b>Bank</b><div class="sg2">' + sgSeg('side', ['User','Preset']) + sgSeg('bank', ['A','B','C','D']) + '</div></div>';
+  h += '<div class="srow"><b>Qtz</b><div class="sg2">' + sgSeg('q', ['Off','1/32','1/16','1/8','1/4','Bar']) + sgChip('trip', 'T') + '</div></div>';
+  h += '<div class="srow"><b>Pattern</b><div class="sg2">' + sgSeg('pat', ['1','2','3','4','5','6','7','8']) + '</div></div>';
+  h += '<div class="srow"><b></b><div class="sg2">' + sgChip('rec', 'Rec') + '<button class="chip" data-a="noop">Cap</button><button class="chip" data-a="noop">Play</button><button class="chip" data-a="noop">Clear</button><button class="chip" data-a="noop">Undo</button></div></div>';
+  h += '<div class="srow"><b>Len</b><div class="sg2">' + sgSeg('len', ['1','2','4','8']) + '</div></div><div class="pbarx" aria-hidden="true"><i></i></div>';
+  h += '<div class="wh"><span class="t" style="color:var(--smp)">Pad ' + String.fromCharCode(65 + Math.floor(m.sel / 4)) + (m.sel % 4 + 1) + ' &middot; ' + SMP_NAMES[m.sel] + '</span><span class="rule"></span></div>';
+  h += '<div class="srow"><b>Mode</b><div class="sg2">' + sgSeg('mode', ['Gate','Loop','One-shot']) + '</div></div>';
+  h += '<div class="srow"><b></b><div class="sg2">' + sgChip('rev', 'Reverse') + sgChip('sync', 'Sync') + sgChip('keyf', 'Key') + sgChip('warp', 'Warp') + '</div></div>';
+  h += '<div class="srow"><b>Mute grp</b><div class="sg2">' + sgSeg('mute', ['-','1','2','3','4']) + '</div></div>';
+  h += '<div class="srow"><b>m\u00f5dFX</b><div class="sg2">' + sgChip('dly', 'Delay') + sgChip('rvb', 'Reverb') + '<button class="chip" data-a="noop">More &rsaquo;</button></div></div>';
+  h += '<p class="hint">Trim opens the sample editor: record, trim, tune, slice a clip onto the pads, step chance, roll velocity and the Euclidean fill. Record, Resample and Library are in the transport sheet.</p>';
+  return h;
+}
+function samplerLive(){
+  var h = '<div class="wh"><span class="t" style="color:var(--smp)">Sampler</span><span class="rule"></span><span class="pill" style="--c:var(--smp);padding:0 4px"><button data-a="smp" data-k="n" data-d="-1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="Fewer pads">&minus;</button>' + S.smp.n + '<button data-a="smp" data-k="n" data-d="1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="More pads">+</button></span></div>';
+  h += samplerPads() + samplerTop(false);
+  h += '<div class="srow"><b>Bank</b><div class="sg2">' + sgSeg('side', ['User','Preset']) + sgSeg('bank', ['A','B','C','D']) + '</div></div>';
+  h += '<div class="srow"><b>Qtz</b><div class="sg2">' + sgSeg('q', ['Off','1/32','1/16','1/8','1/4','Bar']) + sgChip('trip', 'T') + '</div></div>';
+  h += '<div class="srow"><b>Pattern</b><div class="sg2">' + sgSeg('pat', ['1','2','3','4','5','6','7','8']) + '</div></div>';
+  h += '<div class="srow"><b></b><div class="sg2">' + sgChip('rec', 'Rec') + '<button class="chip" data-a="noop">Cap</button><button class="chip" data-a="noop">Play</button><button class="chip" data-a="noop">Clear</button><button class="chip" data-a="noop">Undo</button></div></div>';
+  return h;
+}
 function studioScreen(){
   var h = ribbonHtml();
   if(S.chrome === 'B'){
@@ -501,7 +567,7 @@ function studioScreen(){
   else if(p === 'bass' || p === 'mel') h += noteStudio(p);
   else if(p === 'drums') h += drumStudio();
   else if(p === 'arp') h += arpStudio();
-  else if(p === 'smp') h += '<div class="smp" style="margin-top:8px">' + [1,2,3,4,5,6,7,8,9,10,11,12].map(function(n){ return '<button>Pad ' + n + '</button>'; }).join('') + '</div><p class="hint">Sampler keeps its pads; its trim and slice tools sit under the grid.</p>';
+  else if(p === 'smp') h += samplerStudio();
   else h += '<div class="xy" style="margin-top:8px"></div><p class="hint">mõdFX keeps its X / Y pad and chains.</p>';
   return h;
 }
@@ -723,13 +789,13 @@ function followStage(smooth){
 }
 /* ---------- side panel ---------- */
 var NOTES = {
-  'live': {t:'Live', l:['Live is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the 56 pt goes to the melody strip (the taller keys), where per-finger expression needs room. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
+  'live': {t:'Live', l:['Live is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'Live keeps its widgets: Sampler, m\u00f5dFX, Endings and the Drum, Bass and Melody grids are all still here through Add / reorder widgets (a Studio Pack feature today, unchanged). The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the 56 pt goes to the melody strip (the taller keys), where per-finger expression needs room. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
   'studio-chords': {t:'Studio, Chords', l:['Chords gets what the other parts have: a pattern editor. It is the chord rhythm roll, drawn on the page instead of in a sheet.','The pads stay at the bottom so you can play what you just drew.','What you draw is the rhythm the pads play when Rhythm is on, and the one the song plays under the chart.'], x:'Hits are one lane with three heights, as the existing single-lane roll already is.'},
   'studio-bass': {t:'Studio, Bass', l:['This page replaces the Bass sequencer on Accomp and the Bass line on the Play sub-nav.','Every part has the same order: pattern and patch, mode, the roll, then keys to play it.','With chrome B the part is picked on the bottom row, so the page opens straight on the part\u2019s own controls. Choose A or C above to see the strip instead.'], x:'Roll cells are about 23 pt wide because 16 steps share 398 pt. They are for drawing, not tapping. Landscape is the fix for long patterns.'},
   'studio-mel': {t:'Studio, Melody', l:['Same page as Bass with a different colour and patterns. One layout to learn, one place to fix.','The Melody keys on Play and the Melody grid on Accomp become one page.'], x:'Both follow the chord timeline exactly as they do now.'},
   'studio-drums': {t:'Studio, Drums', l:['Groove and kit pickers, then the step grid. Aux folds into the same grid as extra rows later.','Sync, Steps linked and Humanize leave the page. They are global, so they go behind the gear.'], x:'Six rows of 34 pt cells. This is the first page that wants a landscape layout.'},
   'studio-arp': {t:'Studio, Arp', l:['Rate and octaves at 44 pt, then which chord tone plays on each step.','The Arp was reachable only from the Accomp tab. It now sits with the parts it plays with.'], x:'The Arp switch stays in the bottom bar like the other parts.'},
-  'studio-smp': {t:'Studio, Sampler', l:['The sampler keeps its pads and its trim and slice tools.','It sits in the same strip, one tap from the other parts.'], x:'Sampler and FX have no on/off switch in the bottom bar today unless enabled, and that stays.'},
+  'studio-smp': {t:'Studio, Sampler', l:['Nothing is taken out. Every row of today\u2019s Sampler is here: the pad count, the pads with their sample names, Hold, Roll, Stop, Load and Trim, Bank (User and Preset, A to D), quantize with triplets, patterns 1 to 8 with Rec, Cap, Play, Clear and Undo, pattern length, then the selected pad\u2019s Mode, Reverse, Sync, Key, Warp, mute group and its m\u00f5dFX sends.','Trim opens the sample editor (record, trim, tune, slice onto pads, step chance, roll velocity, Euclidean fill), as it does now.','Record, Resample and Library stay in the transport sheet.'], x:'The page is long, as the real one is, and scrolls. The first mock drew twelve blank pads and nothing else, which made it look as if the sampler had been cut down.'},
   'studio-fx': {t:'Studio, FX', l:['mõdFX keeps its X / Y pad and chains.'], x:'FX acts on every part, so it could also sit under Sound. Open question.'},
   'write-timeline': {t:'Song, Build, Timeline', l:['This is screen C from the vertical-timeline handoff. A line of words is a card; each chord is a column as wide as its beats; the strip underneath shows the beats, coloured by function.','The Intro has no words, so it uses the tall blocks from screen A. One renderer, two row kinds.','Tap a column. The panel says where the chord starts, lets you type its words, and moves the change a beat earlier or later while the two lengths still add up.','The last line of Verse 2 is the hard case: a one-beat column under a long phrase. The words are clipped to two lines here and the full text shows in the panel.'], x:'Dragging the join and Tap the changes are Steps 3 and 4 of the handoff. The mock uses beat buttons for the drag, since a 44 pt button is easier to test than a gesture.'},
   'write-tiles': {t:'Song, Build, Tiles', l:['Today’s Perform tiles: every chord the same size however long it lasts.','Kept as a switch so nothing is lost while the timeline is proven, as the handoff asks.'], x:'The handoff suggests the timeline replaces the tiles once it earns that. iReal charts and any chord-only song would use the block rows.'},
@@ -811,6 +877,14 @@ function onPhoneClick(e){
   else if(a === 'rkeep'){ S.rhythm.keep = !S.rhythm.keep; render(); }
   else if(a === 'rpick'){ toast('The rhythm list: built-ins, your own, Draw a new one'); }
   else if(a === 'goStudioChords'){ S.view = 'studio'; S.part = 'chords'; render(false); }
+  else if(a === 'smp'){
+    var k = d.k;
+    if(d.d){ S.smp.n = Math.max(1, Math.min(16, S.smp.n + (+d.d))); }
+    else if(d.t){ S.smp[k] = !S.smp[k]; }
+    else if(k === 'sel'){ S.smp.sel = +d.v; }
+    else S.smp[k] = d.v;
+    render();
+  }
   else if(a === 'pview'){ S.pview = d.v; render(); }
   else if(a === 'ssub'){ S.songSub = d.v; render(false); }
   else if(a === 'wmode'){ S.wmode = d.v; render(false); }

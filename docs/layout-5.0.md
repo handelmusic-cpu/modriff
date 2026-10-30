@@ -52,6 +52,22 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    editor** like the others: the chord rhythm roll (`rhyEdit`, `crEditOpen`)
    drawn on the page instead of in a sheet. Drums, Bass, Melody, Arp, Chords,
    Sampler and mõdFX are the part pages.
+   - **A part page keeps every control its parts have today; the layout only
+     decides where they sit.** The Sampler is the one that looked cut down in the
+     first mock (twelve blank pads), so it is spelled out: the pad count, the pads
+     with their sample names, Hold, Roll, Stop, Load and Trim, Bank (User and
+     Preset, A to D), quantize with triplets, patterns 1 to 8 with Rec, Cap, Play,
+     Clear and Undo, pattern length, then the selected pad's Mode, Reverse, Sync,
+     Key, Warp, mute group and its mõdFX sends (`ps-*` in `index.html`). Trim opens
+     the sample editor (record, trim, tune, slice onto pads, step chance, roll
+     velocity, Euclidean fill). Record, Resample and Library stay in the transport
+     sheet. The same rule holds for Drums (groove and kit, layers, Aux), Bass,
+     Melody and Arp.
+   - **Live keeps its widgets** (`LV_ORDER`): Chords, Melody, Styles, Sampler,
+     mõdFX, the Drum, Aux, Bass and Melody grids and Endings, still reordered and
+     chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
+     changed here). A Studio part page is that widget's real element at full size,
+     moved and not copied, as the Live widgets are moved in from Accomp today.
 3. **Chrome "B": the bottom parts row picks the part in Studio.** In Live it is
    the five on/off switches it is today. In Studio, a tap selects that part's
    page; a tap on the part already selected switches it on or off. There is no
