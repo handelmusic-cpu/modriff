@@ -73,32 +73,49 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    `ft-sect-next`, shown once a song is loaded), and it stays as it is. It is a
    full row: in the mock it fits only because the key's mode name shortens to
    "Maj", which is what the real bar already does when it runs out of room.
-7. **The melody strip gets the height** that would have gone to the ribbon (about
-   56 pt taller keys in the mock, 148 pt against 92). It is for per-finger pitch
+7. **The melody strip is taller** (128 pt in the mock against 92), and the chord
+   pads are taller too (124 against 104, from the height the ribbon would have
+   cost). The pads are 7 across at about 54 pt wide, so more height makes them
+   narrower-looking, not wider: if "skinny" means narrow, the only wider pad is a
+   4 + 3 grid on two rows, which costs a row. The strip's room is for per-finger pitch
    and tone on the strip, MPE style, which is **not built** and was held for
    after launch (`docs/vertical-timeline.md`, "Held for after launch"); this only
    reserves the room. Two things to settle then: iPhones without 3D Touch report
    no touch force, so pressure would have to come from finger position or contact
    size, and a taller strip is still short for a vertical tone axis, so landscape
    is the real answer for it.
-8. **Stage**: the vertical timeline (a line of words is a card, a chord a column
-   as wide as its beats, a strip of beat ticks coloured by function) shown full
-   screen with no other chrome: big type, A- / A+, transpose, a section footer, a
-   playhead and the sounding chord lit, scrolling to keep the current line a
-   third of the way down. It is the old Perform page, full screen. Reached from a
-   **Stage button at the top of the Song tab**.
+8. **Stage and the Timeline are add-ons, in the same pack.** Stage is the vertical
+   timeline (a line of words is a card, a chord a column as wide as its beats, a
+   strip of beat ticks coloured by function) shown full screen with no other
+   chrome: big type, A- / A+, transpose, a section footer, a playhead and the
+   sounding chord lit, scrolling to keep the current line a third of the way down.
+   It is the old Perform page, full screen. It is reached from a **Stage button at
+   the top of Perform**, with an Add-on tag; without the pack it opens the pack
+   sheet (`freeBlocked`, naming the pack). The Timeline (editing the words and
+   lengths on the cards) is the same pack. A free player keeps Perform and Build
+   as they are today, with the tiles.
+9. **Song gets the Sound-style sub-nav**, a single full-width row, and keeps every
+   page it has now: **Build | Perform | Chart | Library**. Build is today's Build
+   (with a Timeline | Tiles switch once the pack is owned), Perform is today's
+   Perform, Chart is today's printable Chart, and Library is new (setlist, Setups,
+   pattern banks). Four is the most a 430 pt row holds at that label size.
 
-## Recommended, not yet decided by the owner
+## Which pack is open
 
-- **Stage is free; precision timing is the add-on.** Reading chords and words,
-  scrolling, transposing, following the transport and typing the words are what
-  every player expects, and the free build already imports chord sheets, which
-  would otherwise feed a screen you cannot open. What costs effort to build and
-  helps someone learn a song is exact timing: dragging the join, "Tap the
-  changes", Loop bars on columns. That fits how the tier tables already work: the
-  gate is on changing things (`freeBlocked`, "what is Pro is CHANGING the
-  layout"), not on seeing them. Which pack is open (Practice Pack is the natural
-  fit for tap and loop).
+There is no Performance pack today. The modules are Sounds, Sampler, mõdSynth,
+Groove, Theory, Practice and Studio (`MODULE_ORDER`), with eleven StoreKit
+products and bundle tiers that count how many you own. Two ways to do it:
+
+- **Put Stage and the Timeline in the Practice Pack** (rename it if "Performance"
+  is the better word). It already owns the trainer (Speed up, Next key, Loop bars)
+  that lives on the same Perform chart, so the pack becomes "everything for
+  working a song". One table row (`FEATURE_MODULE`), no new product, no new bundle
+  arithmetic.
+- **A new Performance module.** An eighth module means a new StoreKit product and
+  a change to the bundle tiers in App Store Connect, which cannot be settled from
+  here.
+
+Recommendation: the first. The owner decides.
 
 ## What it does to height, by measurement of the mock
 
@@ -136,7 +153,7 @@ landscape is the real fix for long patterns, not bigger cells.
    roll; chrome B on the parts row. MIDI mappings and saved layouts
    (`modo-live-slots`) migrate, they are not reset.
 5. **The timeline renderer, read-only, and Stage** (Step 2 of the vertical
-   timeline), the Song tab's Stage button. The tiles
+   timeline), the Stage button on Perform. The tiles
    stay behind a switch until the timeline has earned the default. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is
    unbuilt until it is confirmed.
@@ -167,7 +184,11 @@ and are the same renderer turned on its side.
 
 ## Still open
 
-- Stage and the timeline: free, or an add-on, and if an add-on which pack?
-- Where the Song and Sound sub-nav goes (dock it above the tabs, as today).
 - Whether the shared-row double duty of chrome B survives a real phone.
 - Whether mõdFX belongs under Sound as well as in the part menu.
+- Which pack (above), and its name.
+- What a free player sees of the words they imported. The words are stored either
+  way (Step 1 is data). Typing them into the chord editor's Lyric field and
+  seeing them on a tile are the choices; the Timeline and Stage are the pack.
+- The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
+  tabs would take it back.
