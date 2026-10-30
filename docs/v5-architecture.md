@@ -1883,6 +1883,15 @@ Two things measured on the way, so nobody rediscovers them:
   frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
   beatbox) play their real decoded samples through the buffer store: all 35
   lanes, 69 to 184 dB.
+  **Shaped, too** (4.9.9.9.9.9.7: Shape reaches every synthesised kit, and a Pan
+  joins it): `tests/graph/shape.test.js` plays the same lanes of the nine
+  synthesised kits with Decay, Sweep, Body, Tone, Drive and Pan all moved a long
+  way, built the way the app builds a shaped hit (the multipliers the voice
+  builders read, then `_sqShapeInsert`'s filter, drive and panner). **65 lanes
+  hold, 33 to 146 dB**; the two lowest are the same two the defaults already
+  name (the MOD kick and the 808 clap, both the browser's own habits). The panner
+  is the native graph's `T_PAN`, so nothing new was needed in C++: a drum's Shape
+  is a change to the JS voices and the recorded graph, not to the engine.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
 so not built). `ModEngineHost.mm` already runs a part as Processor, then rack,

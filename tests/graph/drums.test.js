@@ -45,11 +45,11 @@ const KITS = process.argv[2] ? process.argv[2].split(',') : (SAMPLED ? ['JAZZ', 
 // to reach three things in it: the context it builds on, where its voices send
 // their output, and the table of kits.
 function patched(html) {
-  const a = 'function sqCtx(){ return getCtx(); }';
+  const a = 'function sqCtx(){ return _sqCtxPrev || getCtx(); }';
   const b = 'function SQOUT(){ return _sqOut || SQMG; }';
   if (!html.includes(a) || !html.includes(b)) throw new Error('drum machine hooks moved; update tests/graph/drums.test.js');
   return html
-    .replace(a, `function sqCtx(){ return window.__sqCtx ? window.__sqCtx() : getCtx(); }
+    .replace(a, `function sqCtx(){ return window.__sqCtx ? window.__sqCtx() : (_sqCtxPrev || getCtx()); }
 window.__SQ = { get SQM(){ return SQM; }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise,
   loadSamples(){ preloadDrumSamples(); Object.keys(DRUM_SAMPLES_LAZY).forEach(_drumLoadOne); }, get buffers(){ return DRUM_BUFFERS; }, get lazyCount(){ return Object.keys(DRUM_SAMPLES_LAZY).length; } };`)
     .replace(b, 'function SQOUT(){ return window.__sqOut ? window.__sqOut() : (_sqOut || SQMG); }');
