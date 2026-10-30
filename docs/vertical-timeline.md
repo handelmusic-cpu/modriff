@@ -19,9 +19,11 @@ is built yet except what the "Already built" section lists.
   data, same blocks, one renderer that flips direction.
 - **It is a post-launch add-on** (an in-app purchase), not part of the first App
   Store build. Which pack it belongs to is **not decided** (see Open questions).
-- The owner is **changing the "5.0.0 is the native App Store release" rule**.
-  CLAUDE.md still says the old thing. Do not bump a major version or edit that
-  rule until the owner says what it is now: ask.
+- **Settled since:** the numbering restarts at 5.0 (CLAUDE.md, "Numbering"); the
+  old "5.0.0 is the App Store release" rule is retired. The screen layout this
+  timeline sits inside (Live and Studio as tabs, Stage, songs that carry their
+  sounds) is planned in `docs/layout-5.0.md`, which supersedes the Songs
+  sub-modes assumed below where the two differ.
 - The timeline could **replace the Perform tiles** (the owner said so). Keep the
   tiles reachable until the timeline is proven; see Step 2.
 - Why this matters, in the owner's words: it is about what is good for users, and
@@ -220,8 +222,8 @@ Verified on a phone is a different claim from verified in Chromium: say which.
 
 1. **Which pack?** The add-on is post-launch. Practice Pack (it is a practice and
    gig feature), a new "Songs" pack, or the Studio Pack? One decision, one table row.
-2. **What replaces the 5.0.0 rule?** CLAUDE.md and the versioning notes need the
-   new one before the next release label is picked.
+2. ~~What replaces the 5.0.0 rule?~~ Settled: restart at 5.0, `major.minor` plus
+   a letter. See CLAUDE.md.
 3. **Replace Perform, or sit beside it?** The owner leaned to replace. Safest path:
    ship it as a mode, make it the default once it has earned that.
 4. **iReal charts and chord-only songs** have no words: do they get the timeline

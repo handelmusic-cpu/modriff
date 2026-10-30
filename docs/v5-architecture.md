@@ -18,10 +18,13 @@ are cheaper to make before code than after.
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
-**Versioning, as decided:** 5.0.0 is the native App Store release. Until then
-every step ships as a 4.9.x increment (a further part where it helps, and a
-trailing lowercase letter for a follow-up to the release just out, per the
-numbering rule in CLAUDE.md).
+**Versioning, as decided:** the numbering restarts at 5.0 with the first build
+after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
+follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is
+the native App Store release" is retired; the App Store build carries whatever
+label is current when it goes. The next piece of work, the screen layout (tabs,
+the Live and Studio split, parts as pages, lyrics and Stage), is planned in
+`docs/layout-5.0.md`.
 
 ---
 
@@ -2721,7 +2724,7 @@ an Equal/Pure switch, to hear it before touching the native engine.
    since: the Swift audio host, haptics (4.9.9.9.9.8.9i), IAP, text recognition
    for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
-7. **Remaining parts native, then the clock** — ships as 5.0.0. Open before
+7. **Remaining parts native, then the clock** — ships under the 5.x numbering. Open before
    that: the sampled voices dropping out in the background (parked for the next
    session), and the things that need a paid developer account or a phone and
    cannot be settled from here (CloudKit, StoreKit, MIDI hardware:
