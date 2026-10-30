@@ -2371,6 +2371,25 @@ the first two preset banks; free steps are one bar of any free meter, up to 16, 
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
 Triangle and the two stock basses are named by no pack, so they are free.
 
+**Step chance, roll velocity and the Euclidean fill (4.9.9.9.9.9.9e), free.** A step can carry
+`pr`, the percentage chance that it sounds (absent means 100, so nothing migrates), and a roll note
+can carry `vel`, its level as a percentage (the drum grid has had its own `vel` all along). The
+step inspector under the drum grid, the bass roll and the melody roll gain a **Prob** control
+(steps of ten, tap the value for every time) and the two rolls a **Vel** slider; both fields are
+stored only when they are not the default. The chance is rolled each time the step comes round,
+at the point the step is fired (`_sqFireLayer`, the bass sequencer and its walking-bass player,
+the melody sequencer), never in `sqPlayCell`, so tapping a step to audition it always sounds. A
+step that misses is a rest, and ends a bass slide. On the screen, a drum step with a chance has a
+dashed border and a roll note a dashed ring, and a quieter roll note is drawn less solid. The
+drum row menu gains **Euclid 3 / 5 / 7** (k hits as evenly as they will go over the row, step i
+is a hit when `(i*k) mod n < k`: 3 in 8 is x..x..x.) and **Rotate** either way, both undoable
+from the toast. `_PR_CELL_KEYS` and the bass phrase capture/apply carry the new fields; drum
+clipboard clones carry `pr`. `tests/steps/probe.js` counts it on the real transport (about half the
+hits of a 50 % row, half the level at velocity 50, on drums, bass and melody) and was shown to fail
+when each of the three play sites was broken in turn. Not done: probability on the arp, a
+velocity lane drawn under the roll, and Euclid on the rolls (a roll's rows are pitches, so there
+is no single row to fill).
+
 **Slicing (4.9.9.9.9.9.9d).** The sampler editor of a pad has a *Slice onto pads* row: **Hits**
 finds the hits in the clip, **4**, **8** and **16** cut equal parts, and the pieces land on that
 pad and the ones after it. Nothing is copied: every pad holds the same clip and its own start and
