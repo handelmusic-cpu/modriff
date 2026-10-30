@@ -66,7 +66,22 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
 5. **The words live on the chord** (`slot.lyr`, `slot.ln`) and each chord keeps
    its length in beats, as `docs/vertical-timeline.md` Step 1 says. A `[C]word`
    chord sheet is an import path, not the stored form.
-6. **Stage**: the vertical timeline (a line of words is a card, a chord a column
+6. **No song ribbon.** A strip at the top of Live and Studio (the words and chord
+   of the moment, a tap to open Stage) was drawn and dropped: it cost 56 pt on
+   every screen. The transport already has what a player needs mid-song, the Song
+   switch with a section arrow on each side (`ft-sect-prev`, `ft-song-btn`,
+   `ft-sect-next`, shown once a song is loaded), and it stays as it is. It is a
+   full row: in the mock it fits only because the key's mode name shortens to
+   "Maj", which is what the real bar already does when it runs out of room.
+7. **The melody strip gets the height** that would have gone to the ribbon (about
+   56 pt taller keys in the mock, 148 pt against 92). It is for per-finger pitch
+   and tone on the strip, MPE style, which is **not built** and was held for
+   after launch (`docs/vertical-timeline.md`, "Held for after launch"); this only
+   reserves the room. Two things to settle then: iPhones without 3D Touch report
+   no touch force, so pressure would have to come from finger position or contact
+   size, and a taller strip is still short for a vertical tone axis, so landscape
+   is the real answer for it.
+8. **Stage**: the vertical timeline (a line of words is a card, a chord a column
    as wide as its beats, a strip of beat ticks coloured by function) shown full
    screen with no other chrome: big type, A- / A+, transpose, a section footer, a
    playhead and the sounding chord lit, scrolling to keep the current line a
@@ -84,11 +99,6 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
   gate is on changing things (`freeBlocked`, "what is Pro is CHANGING the
   layout"), not on seeing them. Which pack is open (Practice Pack is the natural
   fit for tap and loop).
-- **A song ribbon** at the top of Live and Studio while a song is loaded: the
-  section, the sounding chord, the line's words with the current chord's words
-  bright, the chord after, and a tap opens Stage. It is for the player who needs
-  the words in front of them while playing. It costs 56 pt, which cancels most of
-  what chrome B saves. **A setting, on or off by default: the owner's call.**
 
 ## What it does to height, by measurement of the mock
 
@@ -101,7 +111,6 @@ Bottom stack: transport 48, parts row 48, tabs 52.
 | Studio, part strip on the page (A) | 181 | 200 |
 | Studio, no parts row and a strip (C) | 181 | 152 |
 | Song, Sound | 181 | 198 |
-| any of the above plus the ribbon | | +56 |
 
 Honest reading: Live is flat but with 44 pt targets, chrome B wins about 33 pt in
 Studio, and Song and Sound get slightly worse because their sub-nav moves from a
@@ -127,7 +136,7 @@ landscape is the real fix for long patterns, not bigger cells.
    roll; chrome B on the parts row. MIDI mappings and saved layouts
    (`modo-live-slots`) migrate, they are not reset.
 5. **The timeline renderer, read-only, and Stage** (Step 2 of the vertical
-   timeline), the Song tab's Stage button, the ribbon if it is wanted. The tiles
+   timeline), the Song tab's Stage button. The tiles
    stay behind a switch until the timeline has earned the default. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is
    unbuilt until it is confirmed.
@@ -158,7 +167,6 @@ and are the same renderer turned on its side.
 
 ## Still open
 
-- Ribbon: on or off by default, or dropped?
 - Stage and the timeline: free, or an add-on, and if an add-on which pack?
 - Where the Song and Sound sub-nav goes (dock it above the tabs, as today).
 - Whether the shared-row double duty of chrome B survives a real phone.
