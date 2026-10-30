@@ -31,13 +31,14 @@ class ModRiffViewController: CAPBridgeViewController {
         bridge?.registerPluginType(ModCloud.self)
 
         // Two facts the page needs before its first line runs, because
-        // window.modBilling answers isPro() synchronously on every render:
-        //   __modProCached — the last entitlement StoreKit proved, so a paying
-        //     user is Pro on the first frame, offline, with no round trip.
+        // window.modBilling answers owned() synchronously on every render:
+        //   __modOwnedCached — the product keys StoreKit last proved owned
+        //     (["groove","theory"], or a Full Studio key), so a paying user has
+        //     what they bought on the first frame, offline, with no round trip.
         //   __modDebug — set in debug builds only. It is what allows the
-        //     setModTier('free'|'pro') test switch on the iOS provider; a
-        //     release build never defines it, so there is no switch to find.
-        var boot = "window.__modProCached=\(ModBilling.cachedEntitlement ? "true" : "false");"
+        //     setModOwned([...]) test switch on the iOS provider; a release
+        //     build never defines it, so there is no switch to find.
+        var boot = "window.__modOwnedCached=\(ModBilling.cachedOwnedJSON);"
         #if DEBUG
         boot += "window.__modDebug=true;"
         #endif
