@@ -1151,6 +1151,11 @@ body:not(.mode-basic) #chord-voice-panel .cv-oct-row { justify-content:center; }
 @keyframes ps-loop { 50% { box-shadow:0 0 8px color-mix(in srgb, var(--pad) 35%, transparent), inset 0 0 6px color-mix(in srgb, var(--pad) 25%, transparent); } }
 @media (prefers-reduced-motion: reduce){ .ps-pad.live[data-mode="loop"] { animation:none; } }
 .ps-pad:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.ps-wf { position:absolute; inset:3px 4px; width:calc(100% - 8px); height:calc(100% - 6px); pointer-events:none;
+ color:color-mix(in srgb, var(--pad) 75%, white); opacity:.5; overflow:hidden; }
+.ps-pad.live .ps-wf { opacity:.8; }
+.ps-pad .ps-num, .ps-pad .ps-name, .ps-pad .ps-tags { position:relative; z-index:1; }
+.ps-pad:not(.empty) .ps-name { text-shadow:0 0 5px var(--surf2), 0 0 2px var(--surf2); }
 .ps-num { font-size:.6rem; font-weight:700; color:color-mix(in srgb, var(--pad) 80%, white); }
 .ps-name { font-size:.6rem; font-weight:600; line-height:1.15; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 .ps-tags { font-size:.4rem; letter-spacing:.1em; color:var(--muted); min-height:.6em; }
@@ -8045,7 +8050,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.7a</span></div>
  </div>
 </div>
 
@@ -9396,7 +9401,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">mõdRïff Pro <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Upgrade</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.7a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10441,7 +10446,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.7';
+const MODRIFF_VERSION = '4.9.9.9.9.9.7a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -14483,6 +14488,7 @@ var SMP_SLOTS = {};   // slot key -> {id,start,end,gain,loop,tune,fine,root}
 window._webAssets = window._webAssets || {};
 function smpBufSet(id, buf){
  SMP_BUF[id] = buf;
+ if(typeof psWaveFor==='function') try{ psWaveFor(id); }catch(e){}
  modSend({v:1, kind:'asset', part:'sampler', id:id, rate:buf.sampleRate, channels:buf.numberOfChannels, frames:buf.length, buffer:buf});
 }
 function smpBufDrop(id){
@@ -18743,7 +18749,7 @@ function psLiveApply(){
 }
 function psMakePad(i){
  var p=psEl('button','ps-pad'); p.type='button'; p.dataset.i=String(i);
- p.innerHTML='<span class="ps-num">'+(i+1)+'</span><span class="ps-name"></span><span class="ps-tags"></span>';
+ p.innerHTML='<svg class="ps-wf" viewBox="0 0 200 100" preserveAspectRatio="none" aria-hidden="true"><path d=""/></svg><span class="ps-num">'+(i+1)+'</span><span class="ps-name"></span><span class="ps-tags"></span>';
  // Down is the strike — not click, which waits for the finger to lift and is
  // a pad that plays late. Captured so a gate's release arrives here even if
  // the finger slides off.
@@ -18780,6 +18786,51 @@ function psMakePad(i){
  return p;
 }
 
+// The clip's shape on its pad, as Koala draws it: the part that plays (the trim
+// window, flipped when the pad is reversed), normalised to its own peak so a
+// quiet clip still reads, in the pad's own colour. An SVG path in a viewBox
+// rather than a canvas, because it takes the pad's --pad through currentColor
+// (theme changes included), has no size to measure on a hidden panel, and is a
+// few hundred bytes per pad. Cached on the pad by what it was drawn from, so
+// psRender — which runs on every knob and toggle — only rebuilds a path when
+// the clip, its trim, its direction or its decoded buffer has changed.
+// Nothing is drawn until the buffer has decoded (smpPeaks answers null), and
+// smpBufSet asks for the pad again when it has.
+var PS_WF_COLS = 200;
+function psPadWave(p, s, ps){
+ var path=p.querySelector('.ps-wf path'); if(!path) return;
+ var pk=(s && s.id) ? smpPeaks(s.id) : null;
+ if(!pk){ if(p._wfk){ p._wfk=''; path.setAttribute('d',''); } return; }
+ var a=Math.max(0,Math.min(1,+s.start||0)), b=Math.max(a,Math.min(1,s.end==null?1:+s.end)), rev=!!(ps&&ps.rev);
+ var k=s.id+'|'+a+'|'+b+'|'+(rev?1:0);
+ if(p._wfk===k) return; p._wfk=k;
+ var N=SMP_PEAK_N, c0=a*N, c1=Math.max(c0+1,b*N), top=[], bot=[], peak=0.0001, i, j;
+ var mn=[], mx=[];
+ for(i=0;i<PS_WF_COLS;i++){
+  var f0=Math.floor(c0+(c1-c0)*i/PS_WF_COLS), f1=Math.max(f0+1,Math.floor(c0+(c1-c0)*(i+1)/PS_WF_COLS));
+  var lo=0, hi=0;
+  for(j=f0;j<f1&&j<N;j++){ if(pk[j*2]<lo) lo=pk[j*2]; if(pk[j*2+1]>hi) hi=pk[j*2+1]; }
+  mn.push(lo); mx.push(hi);
+  if(-lo>peak) peak=-lo; if(hi>peak) peak=hi;
+ }
+ var amp=46/peak;
+ for(i=0;i<PS_WF_COLS;i++){
+  var x=rev ? PS_WF_COLS-1-i : i;
+  top[x]=(50-mx[i]*amp).toFixed(1); bot[x]=(50-mn[i]*amp).toFixed(1);
+ }
+ var d='M0 '+top[0];
+ for(i=1;i<PS_WF_COLS;i++) d+='L'+i+' '+top[i];
+ for(i=PS_WF_COLS-1;i>=0;i--) d+='L'+i+' '+(Math.abs(bot[i]-top[i])<1?(+top[i]+1).toFixed(1):bot[i]);
+ path.setAttribute('d',d+'Z'); path.setAttribute('fill','currentColor');
+}
+// A clip that has just decoded: its pads draw now rather than at the next render.
+function psWaveFor(id){
+ if(!_psBuilt) return;
+ for(var i=0;i<PS_N;i++){
+  var s=SMP_SLOTS[psCurKey(i)]; if(!s || s.id!==id) continue;
+  var p=document.querySelector('#ps-grid .ps-pad[data-i="'+i+'"]'); if(p) psPadWave(p, s, s.ps||psDefaults());
+ }
+}
 function psLit(key, on){
  var bits=key.split(':'); if(bits[0]!=='p') return;
  if(PS_BANKS.indexOf(bits[1])!==PS.bank) return;
@@ -18801,6 +18852,7 @@ function psRender(){
   p.classList.toggle('sel', i===PS.sel);
   p.classList.toggle('live', !!PS_LIVE[key]);
   p.dataset.mode = ps.mode;
+  psPadWave(p, s, ps);
   p.querySelector('.ps-name').textContent = (s && s.id && s.label) ? s.label : (clip ? clip.name : (s&&s.id ? 'loading…' : '+'));
   var tags=[];
   if(clip){
