@@ -354,7 +354,16 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     - The waveform in the mock is a stand-in synthesis, not the app's own render; in
       the app it is the offline render the Shape sheet already draws.
 
-23. **Tab import joins the chord-sheet import, and reaches the Bass.** The owner
+23. **PARKED until after the release (the owner's call): tab import beyond what is
+    already in the app.** What is written below stays as the record and the starting
+    point: the built reader (builds 5.0 and 5.0a, ASCII tab to .mid or the melody
+    roll) stays as it is; the joined Import window, the Bass target, PDF tabs and a
+    Guitar Pro reader wait. The owner's view, after the real-PDF test: typed tab is
+    not how people get tabs on a phone; the realistic inputs are a Guitar Pro file
+    (an open-source reader, alphaTab, MPL-2.0, reads GP3 to 7 and MusicXML, not
+    tried here), then a PDF from the Ultimate Guitar Pro app, then a photo; and a
+    tab still fills only 4 bars at a time. Nothing in this item is scheduled.
+    **Tab import joins the chord-sheet import, and reaches the Bass.** The owner
     asked for tab input from PDFs, rolled into Songs "with the same import
     structure", driving the melody sequencer and the bass. It is **already in the app
     on `main`** (builds 5.0 and 5.0a, `openTabImport`, `parseAsciiTab`, `tabToMidi`,
@@ -548,6 +557,16 @@ landscape is the real fix for long patterns, not bigger cells.
    the Chart view of Perform shows the words under the chords (next section but
    one). Builds 5.0 and 5.0a are already taken by the tab import (decision 23), so
    this is **5.1**.
+   **Landed as 5.1.** The field is labelled Words (the chord's own syllable, with a
+   trailing space meaningful) with a New line switch beside it; both are undoable
+   and make the song unsaved. `_sheetLyrics` cuts a sheet's lines at the columns
+   the chords sat over (padded, inline `[C]word`, compact list) and returns null
+   rather than guess when the chords and the lines disagree. The Chart (screen and
+   print) shows the words in italics under each chord name. Tests:
+   `tests/chords/lyrics.test.js` and `tests/words/probe.js`. Not done in this step:
+   per-beat placement of a syllable inside a long chord (that is Step 3 of the
+   vertical timeline), and hyphen-aware cutting, so a padded sheet can split a word
+   exactly where its chord sat.
 2. **Target sizes** with no restructuring: every control 44 pt or more, the chord
    rhythm bar as one row, the beat strip folded into the Play button's ring or a
    3 pt line. Measure each (CDP, real touch).
