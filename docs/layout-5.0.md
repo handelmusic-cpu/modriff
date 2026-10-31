@@ -647,7 +647,19 @@ landscape is the real fix for long patterns, not bigger cells.
      is changed where it was user-visible and a few places remain ("Play tab"
      in older help text); `.vmt-btn` CSS is dead and can go.
    `tests/tabs/probe.js` holds all of it, with real touch.
-4. **Part pages**: Accomp's Drums, Bass, Melody and Arp pages become Studio part
+4. **Part pages**, in pieces that ship on their own.
+   **4a, landed as 5.4: the More row** (decision 11). One chip in the Chords heading,
+   `+ Modal`, steps Modal, Dominants, Mine, Off and round; it starts on Modal; the
+   choice is kept in `modo-live-more`. The row is the Studio shelf itself (the same
+   `chords-borrowed`, `chords-secdom` and `chords-user` elements and the same pad
+   builders), shown in Live as one row of 64 pt pads straight under the seven, with
+   the rhythm bar after it. Modal is eight pads, 47 pt wide at 430 and 39 pt at 360
+   (a play surface, like the keys, so it is not held to the 44 pt rule the buttons
+   are); Dominants is five, Mine is however many are pinned, up to ten. **Mine** is
+   the pinned chords on a row of their own; while it is not chosen they stay inside
+   the key's row exactly as before, so nobody who had pinned chords loses them. Not
+   done: the "+ Build" pad at the end of Mine. `tests/more/probe.js`.
+   The rest of Step 4, still to do: Accomp's Drums, Bass, Melody and Arp pages become Studio part
    pages (the real elements are moved, not copied, which is how the Live widgets
    already work, see `LV_*` in `index.html`); the Chords page with the rhythm
    roll; chrome B on the parts row. MIDI mappings and saved layouts
