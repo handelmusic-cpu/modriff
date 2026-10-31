@@ -143,7 +143,7 @@ without it.
 | 6.12 | Delete the app, reinstall, **Restore Purchases** | every pack back |
 | 6.13 | Debug > StoreKit > Manage Transactions: refund a pack | that pack locks again on the next launch, and the offer recalculates |
 | 6.14 | Ask to Buy | pending, then approved |
-| 6.15 | Free: import a four-song iReal playlist | one chart arrives and the toast says a whole playlist is part of the Practice Pack |
+| 6.15 | Free: import a four-song iReal playlist | one chart arrives and the toast says a whole playlist is part of the Practice & Perform Pack |
 
 ## 7. The older iPad (stress test, not a target)
 

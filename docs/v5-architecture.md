@@ -2329,7 +2329,7 @@ in the page. No subscriptions, ads, accounts or backend.
 | `synth` | mõdSynth Engine | $4.99 | everyone |
 | `groove` | Groove Pack | $3.99 | everyone |
 | `theory` | Theory Pack | $3.99 | everyone |
-| `practice` | Practice Pack | $3.99 | everyone |
+| `practice` | Practice & Perform Pack (was Practice Pack until 5.9a) | $3.99 | everyone |
 | `studio` | Studio Pack | $4.99 | everyone |
 | `sounds` | Sounds Pack | $1.99 | everyone |
 | `fullstudio` | Full Studio | $12.99 | owners of no module |

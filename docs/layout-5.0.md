@@ -726,8 +726,9 @@ landscape is the real fix for long patterns, not bigger cells.
    `FEATURE_MODULE` (the Practice Pack) and the Practice Pack's copy. Without the pack the
    Stage button and the Timeline switch carry an Add-on tag and a touch says so in a toast
    with a See pack button (`freeBlocked`); a stored Timeline choice is kept but not
-   honoured, so buying the pack finds it where it was left. The pack is still called the
-   Practice Pack; its rename is Step 9. Not done: the selected-line panel for words longer
+   honoured, so buying the pack finds it where it was left. The pack was still called the
+   Practice Pack here; it is the **Practice & Perform Pack** from 5.9a (the name, the one-line
+   pitch and the two messages that named it; the product id and the module key stay `practice`). Not done: the selected-line panel for words longer
    than their column, the line length buttons and everything that edits (Step 6), a Stage
    for a wide screen, and the Stage button reaching Perform from Live. `tests/stage/probe.js`. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is

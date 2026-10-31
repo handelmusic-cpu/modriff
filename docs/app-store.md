@@ -203,7 +203,7 @@ product is deleted, so check each one before creating it.
 | `com.handelmusic.modriff.synth` | mõdSynth Engine | mõdSynth Engine | Full synth sound sets and every mõdFX effect | $4.99 |
 | `com.handelmusic.modriff.groove` | Groove Pack | Groove Pack | World grooves, kits, odd meters, aux channel | $3.99 |
 | `com.handelmusic.modriff.theory` | Theory Pack | Theory Pack | Every scale, chord type, and voicing | $3.99 |
-| `com.handelmusic.modriff.practice` | Practice Pack | Practice Pack | Batch iReal import and a practice library | $3.99 |
+| `com.handelmusic.modriff.practice` | Practice & Perform Pack | Practice & Perform Pack | Practice tools, timeline, Stage, iReal batch | $3.99 |
 | `com.handelmusic.modriff.studio` | Studio Pack | Studio Pack | Stems, full exports, unlimited saves | $4.99 |
 | `com.handelmusic.modriff.sounds` | Sounds Pack | Sounds Pack | Keys, pads, vibes, and vintage basses | $1.99 |
 | `com.handelmusic.modriff.fullstudio` | Full Studio | Full Studio | Every pack, plus everything added later | $12.99 |
