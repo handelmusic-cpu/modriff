@@ -65,11 +65,33 @@ const SCAN = () => {
       if (c.content !== 'none' && c.position === 'absolute') { const w = parseFloat(c.width), h = parseFloat(c.height); if (w > ew) ew = w; if (h > eh) eh = h; }
     }
     if (eh >= 43.5 && ew >= 43.5) return;
+    const state = /^(active|on|off|open|armed|selected|playing|lit|pc|queued|bad|has|edit|disabled)$/;
+    const cls = typeof e.className === 'string' ? e.className.trim().split(/\s+/).filter(c => c && !state.test(c)) : [];
     const type = e.tagName === 'INPUT' ? (e.type === 'range' ? 'input[range]' : 'input') : '';
-    out.push({ key: type || (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).join('.') : '') || e.tagName.toLowerCase(),
+    out.push({ key: type || (e.id ? '#' + e.id : '') + (cls.length ? '.' + cls.join('.') : '') || e.tagName.toLowerCase(),
       w: Math.round(ew), h: Math.round(eh), t: (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 20) });
   });
   return out;
+};
+
+// Sub-pages: a tab is several pages, and each is a different set of controls.
+const SUBS = {
+  accomp: ['#ac-drums-btn', '#ac-bass-btn', '#ac-mel-btn', '#ac-arp-btn'],
+  mix: ['#mx-mixer-btn', '#mx-voices-btn', '#mx-synth-btn'],
+  songs: ['#songs-build-btn', '#songs-perform-btn', '#songs-chart-btn'],
+  build: ['#set-ui-btn', '#set-sounds-btn', '#set-midi-btn'],
+  perform: [null],
+};
+// Things wider than the phone that are not inside something that scrolls sideways.
+const OVERFLOW = () => {
+  const W = innerWidth, out = [];
+  document.querySelectorAll('body *').forEach(e => {
+    const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || r.right <= W + 1) return;
+    let p = e, clipped = false;
+    while (p && p !== document.body) { const c = getComputedStyle(p); if (c.display === 'none' || c.visibility === 'hidden' || /(auto|scroll|hidden|clip)/.test(c.overflowX) && p !== e) { clipped = true; break; } if (c.position === 'fixed' && p !== e) break; p = p.parentElement; }
+    if (!clipped) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : '') + ' right=' + Math.round(r.right));
+  });
+  return out.slice(0, 6);
 };
 
 (async () => {
@@ -86,8 +108,13 @@ const SCAN = () => {
     for (const mode of ['basic', 'advanced']) for (const tab of TABS) {
       await page.evaluate(([m, t]) => { setViewMode(m); switchTab(t); }, [mode, tab]);
       await page.waitForTimeout(450);
-      const small = await page.evaluate(SCAN);
-      small.forEach(s => { const k = s.key; if (!seen.has(k)) seen.set(k, { n: 0, ex: s, where: new Set() }); const v = seen.get(k); v.n++; v.where.add(tab + '/' + mode); });
+      for (const sub of (SUBS[tab] || [null])) {
+        if (sub) { await page.evaluate(sel => { const b = document.querySelector(sel); if (b) b.click(); }, sub); await page.waitForTimeout(350); }
+        const small = await page.evaluate(SCAN);
+        small.forEach(s => { const k = s.key; if (!seen.has(k)) seen.set(k, { n: 0, ex: s, where: new Set() }); const v = seen.get(k); v.n++; v.where.add(tab + (sub ? sub.replace(/^#/, ' ') : '') + '/' + mode); });
+        const wide = await page.evaluate(OVERFLOW);
+        check(wide.length === 0, 'nothing runs off the right edge: ' + tab + (sub ? ' ' + sub : '') + ' / ' + mode, wide.join('; '));
+      }
     }
     const known = new Set(KNOWN.map(k => k[0]));
     const unknown = [...seen.entries()].filter(([k]) => !known.has(k));
