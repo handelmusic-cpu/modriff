@@ -35,6 +35,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
 // [class or id the control carries, why it is not 44 yet]
 const KNOWN = [
+  ['.sq-rcell', 'the step numbers over a grid are as wide as the step under them (34 pt); they are 44 pt tall with the pad. A wider one would not line up with its column'],
   ['input[range]', 'sliders: a 14 pt thumb on a 3 pt track. A 44 pt thumb moves the dot 15 pt in from each end and the fine-control layer maps by the track, so it is its own change'],
 ];
 
@@ -52,7 +53,7 @@ async function boot(browser, W, H) {
 
 const SCAN = () => {
   const out = [];
-  const q = '.ft-rate-val,.ft-bpm-val,[role=slider],[role=switch],[role=button],[role=tab],[tabindex="0"],button,input:not([type=hidden]),select,textarea,[onclick],summary,a[href]';
+  const q = '.sq-rcell,.ft-rate-val,.ft-bpm-val,[role=slider],[role=switch],[role=button],[role=tab],[tabindex="0"],button,input:not([type=hidden]),select,textarea,[onclick],summary,a[href]';
   document.querySelectorAll(q).forEach(e => {
     let p = e, hid = false;
     while (p && p !== document.body) { const c = getComputedStyle(p); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) { hid = true; break; } p = p.parentElement; }
@@ -67,7 +68,7 @@ const SCAN = () => {
       if (c.content !== 'none' && c.position === 'absolute') { const w = parseFloat(c.width), h = parseFloat(c.height); if (w > ew) ew = w; if (h > eh) eh = h; }
     }
     if (eh >= 43.5 && ew >= 43.5) return;
-    const state = /^(active|on|off|open|armed|selected|playing|lit|pc|queued|bad|has|edit|disabled)$/;
+    const state = /^(active|on|off|open|armed|selected|playing|lit|pc|queued|bad|has|edit|disabled|b\d)$/;
     const cls = typeof e.className === 'string' ? e.className.trim().split(/\s+/).filter(c => c && !state.test(c)) : [];
     const type = e.tagName === 'INPUT' ? (e.type === 'range' ? 'input[range]' : 'input') : '';
     out.push({ key: type || (e.id ? '#' + e.id : '') + (cls.length ? '.' + cls.join('.') : '') || e.tagName.toLowerCase(),
@@ -146,6 +147,81 @@ const OVERFLOW = () => {
     check(new Set(r.crTops).size === 1 && r.crH.every(h => h >= 44), W + ' pt: chord rhythm bar is one row of 44 pt', JSON.stringify([r.crTops, r.crH]));
     check(r.crRight <= r.innerW, W + ' pt: and inside the screen', r.crRight);
     check(r.playH >= 44, W + ' pt: Play is 44 pt', r.playH);
+    await page.close();
+  }
+
+  // ── 3. Overlays: the sheet, a toast, the pickers and the editors are not on any tab.
+  {
+    const { page, errs } = await boot(browser, 430, 932);
+    await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
+    const steps = [
+      ['the transport sheet', () => { document.getElementById('ft-drawer-grip').click(); }],
+      ['a toast with Undo', () => { document.getElementById('ft-drawer-grip').click(); showToast('hello', { onAction() {}, actionLabel: 'Undo' }); }],
+      ['the rhythm picker', () => { crPickOpen(); }],
+      ['the rhythm editor', () => { crEditOpen(); }],
+      ['the voice picker', () => { document.querySelector('.snd-pick-btn').click(); }],
+      ['the chord editor', () => {
+        sections = [{ name: 'Verse', follow: 'repeat', plays: 1, slots: [] }];
+        const sl = slotFromChordSymbol('Am7', 0, 'major', 9); sl.bars = 1; sl.beats = 0; sl.eighths = 0; sections[0].slots.push(sl);
+        const ins = document.createElement('div'); ins.id = '__ins'; ins.style.cssText = 'position:fixed;inset:0;background:#000;z-index:99999;overflow:auto';
+        document.body.appendChild(ins); sbBuildChordEditor(ins, sl, 0, sections[0].slots, () => {});
+      }],
+      ['the length picker', () => { document.getElementById('__ins')?.remove(); showDurationPicker(sections[0].slots[0], () => {}); }],
+      ['the extension picker', () => { showExtPicker(sections[0].slots[0], () => {}); }],
+    ];
+    for (const [name, fn] of steps) {
+      await page.evaluate(() => { document.querySelectorAll('.modal-overlay,.csi-overlay,.modal,.overlay,#_toast').forEach(e => { if (e.id === '_toast') { e.style.opacity = '0'; } else e.remove(); }); });
+      await page.evaluate(fn); await page.waitForTimeout(450);
+      const small = (await page.evaluate(SCAN)).filter(x => !KNOWN.some(k => k[0] === x.key));
+      check(small.length === 0, name + ': every control is 44 pt', small.slice(0, 4).map(x => x.key + ' ' + x.w + 'x' + x.h).join('; '));
+    }
+    check(errs.length === 0, 'no page errors in the overlays', errs.join(' | '));
+    await page.close();
+  }
+
+  // ── 4. A finger lands on the control it is on: real touch at each small control's
+  //       centre, and at the far edge of its pad, reaches that control and not its neighbour.
+  {
+    const { page } = await boot(browser, 430, 932);
+    await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
+    await page.waitForTimeout(500);
+    const hits = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('.sq-gleft-row .smp-badge, .sq-shape-btn, .tips-btn, .panel-fold').forEach(e => {
+        const r = e.getBoundingClientRect(); if (!r.width || r.bottom < 0 || r.top > innerHeight) return;
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const t = document.elementFromPoint(cx, cy);
+        if (!(t === e || e.contains(t))) bad.push((e.className || e.tagName) + ' centre lands on ' + (t && (t.className || t.tagName)));
+      });
+      return bad;
+    });
+    check(hits.length === 0, 'a padded control is hit at its own centre, not by a neighbour', hits.slice(0, 3).join('; '));
+
+    // Real taps through CDP. Play starts, a part switch toggles, the rhythm switch toggles,
+    // the key stepper moves the key.
+    const cdp = await page.context().newCDPSession(page);
+    const tapEl = async (sel) => {
+      const b = await page.evaluate(sel => { const e = document.querySelector(sel); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(250);
+    };
+    const bass0 = await page.evaluate(() => document.getElementById('ft-bas-btn').classList.contains('off'));
+    await tapEl('#ft-bas-btn');
+    const bass1 = await page.evaluate(() => document.getElementById('ft-bas-btn').classList.contains('off'));
+    check(bass0 !== bass1, 'touch: the Bass switch toggles', bass0 + ' -> ' + bass1);
+    const root0 = await page.evaluate(() => root);
+    await tapEl('.ft-key-step[aria-label^="Key up"]');
+    const root1 = await page.evaluate(() => root);
+    check(root0 !== root1, 'touch: the key stepper moves the key', root0 + ' -> ' + root1);
+    const cr0 = await page.evaluate(() => document.getElementById('cr-on').getAttribute('aria-pressed'));
+    await tapEl('#cr-on');
+    const cr1 = await page.evaluate(() => document.getElementById('cr-on').getAttribute('aria-pressed'));
+    check(cr0 !== cr1, 'touch: the chord rhythm switch in its new row toggles', cr0 + ' -> ' + cr1);
+    await tapEl('#ft-playstop-btn');
+    const playing = await page.evaluate(() => document.getElementById('ft-playstop-btn').classList.contains('tp-stop'));
+    check(playing, 'touch: Play starts the transport');
+    await tapEl('#ft-playstop-btn');
     await page.close();
   }
 
