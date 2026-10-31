@@ -256,8 +256,8 @@ and 402, the smallest 375):
 | width | what overflows |
 |---|---|
 | 430, 440 | nothing in the bottom stack or the headings |
-| 393, 402 | the Chords heading (title, record dot, Keep, More, Voice) by 10 to 19 pt |
-| 375 | the same heading by 13 pt, and the transport row by 11 pt in Studio |
+| 393, 402 | the Chords heading: fixed (decision 20) |
+| 375 | the heading: fixed. The transport row is 11 pt too wide in Studio, still to fix |
 
 So the plan fits a Pro Max, and on a standard iPhone the Chords heading needs a
 shorter Voice and More pill (or the More switch moving into the extras), and on a
@@ -311,10 +311,18 @@ stack and below the status bar):
 
 Two consequences:
 
-1. **Closed is a short, wide phone** (454 pt of page). Two widgets fit one screen
-   with their extras off; the third scrolls. The widgets that grow to use spare
-   height (pads, keys, the mõdFX pad) have to be height-aware, and the order the
-   player chose decides which two are visible. Proposal, not built.
+1. **Closed is a short, wide phone, and the transport and parts go down the
+   right edge (decided by the owner).** At 466 x 678 pt the bottom stack left 454
+   pt of page. A 92 pt rail on the right (key, tempo, Play, rate, Song with its
+   section arrows, then the five parts, all 44 pt targets or the 40 pt part
+   buttons, 622 pt tall so it does not scroll) leaves the **tabs at the bottom**
+   (the owner likes them there) and takes the page to **557 pt tall by 372 pt wide**
+   (+103 pt of height, 94 pt less width: about a standard iPhone's width). The
+   right edge is the thumb side for most players; which side the Dynamic Island is
+   on decides the inset, so the rail is padded by the safe-area inset on that side
+   (`env(safe-area-inset-right)`). The rule is a short screen with a width of 440 to
+   800 pt (not a 375 pt phone, which would be left with 283 pt). The mock draws it
+   (pick Duo closed).
 2. **Open and across: a side rail, decided by the owner.** Height is the scarce
    thing there (445 pt of page under a 148 pt bottom stack). So on a wide screen
    (about 700 pt and up, the regular size class) the layout does what Apple's own
@@ -335,6 +343,31 @@ Sources: Apple's iPhone Duo specs pages (apple.com/uk/iphone-duo/specs and
 support.apple.com/en-gb/148588), MacRumors' iPhone Duo roundup, the developer
 write-up at blakecrosley.com/blog/iphone-duo-for-developers (the point size of the
 inner display is its own inference) and webmobilefirst.com's Duo listings.
+
+18. **The Styles widget is one slim row per part.** Today each of the three
+    (Drums, Bass, Melody) is a card with a heading, a Save pill and a row of
+    previous, picker and next, about 100 pt each. It is now one 52 pt row: the
+    part's name in its colour, previous, the picker, next, and Save as an icon
+    (a tray, with a spoken name such as "Save drum pattern"). Three rows are about
+    170 pt where the cards were about 310 pt, a saving of roughly 140 pt on Live.
+19. **Voices: an optional Live widget, not a default one.** Today Live has the voice
+    where you play: a Voice pill in the Chords and Melody headings, and the Bass,
+    Drums and Aux kit and patch pickers in those grids' extras. A single panel with
+    every part's voice (the same panel as Sound's Voices page, `voices-grid-mix`,
+    Drums included) is worth having for changing a whole sound between songs, but
+    not on the first screen: it duplicates what the headings already do, and Song
+    carrying its sounds (decision 4) removes most of the reason. So it is a new
+    widget in Add / reorder widgets, off by default, built from the real element
+    (moved, not copied), which costs nothing for anyone who does not add it. The
+    mock draws it (jump: Live with Voices). Needs `voices` added to `LV_NAME` and
+    `LV_ORDER`.
+20. **Headings stay on one line on every phone.** At 393 pt the More pill wrapped
+    onto two lines with its + above Modal. Every pill and heading is now
+    `white-space: nowrap`, and on a narrow content width (under 420 pt, which the
+    closed Duo's 372 pt page also is) the heading tightens (smaller title spacing,
+    8 pt pill padding, 40 pt record and Keep buttons). Measured at 375, 393, 402,
+    430 and 440 pt and at the closed Duo: no heading overflows and the More pill is
+    a single 44 pt line.
 
 ## Nothing is lost from Songs
 
