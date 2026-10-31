@@ -659,6 +659,19 @@ landscape is the real fix for long patterns, not bigger cells.
    the pinned chords on a row of their own; while it is not chosen they stay inside
    the key's row exactly as before, so nobody who had pinned chords loses them. Not
    done: the "+ Build" pad at the end of Mine. `tests/more/probe.js`.
+   **4b, landed as 5.5: extras on and off per widget** (decision 12). The Chords and
+   Melody title becomes a 44 pt button with a caret (`.lv-xt`, made in `lvAddExtras` from
+   the heading's own word, so the heading gains no width). Closed, Chords hides the
+   rhythm bar, the More row and its chip and keeps the seven pads; Melody hides the
+   Keys / Strip, octave, Hold, Glide and Touch Mod row and keeps the keys. They start
+   open, the choice is per widget and kept (`modo-live-xoff`), and the sheet gets two
+   eye buttons (Live only) that set every widget's extras on or off, the Sampler's and
+   mõdFX's Controls included, and close the sheet. Measured at 430 x 932: Chords, Melody
+   and mõdFX with their extras off end at 625 pt, above the 764 pt top of the bars, with
+   the pad at full size; with them on the same three end at 976 pt. The Sampler and mõdFX
+   keep their Controls button rather than a title toggle (the mõdFX heading is rebuilt
+   by `fxBuildPanel`), and the Drum, Aux, Bass and Melody-sequencer grids have no extras
+   toggle yet. `tests/extras/probe.js`.
    The rest of Step 4, still to do: Accomp's Drums, Bass, Melody and Arp pages become Studio part
    pages (the real elements are moved, not copied, which is how the Live widgets
    already work, see `LV_*` in `index.html`); the Chords page with the rhythm
