@@ -95,7 +95,10 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    full row: in the mock it fits only because the key's mode name shortens to
    "Maj", which is what the real bar already does when it runs out of room.
 7. **The melody strip is taller** (128 pt in the mock against 92), and the chord
-   pads become a grid (decision 11), which also answers "too skinny". The strip's room is for per-finger pitch
+   pads are taller too (124 against 104, from the height the ribbon would have
+   cost). The pads are 7 across at about 54 pt wide, so more height makes them
+   narrower-looking, not wider: if "skinny" means narrow, the only wider pad is a
+   4 + 3 grid on two rows, which costs a row. The strip's room is for per-finger pitch
    and tone on the strip, MPE style, which is **not built** and was held for
    after launch (`docs/vertical-timeline.md`, "Held for after launch"); this only
    reserves the room. Two things to settle then: iPhones without 3D Touch report
@@ -128,34 +131,6 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     of height, which the 148 pt bottom stack in the table below does not include)
     into **the fifth slot of the tab bar**: a red caret pill in a 58 x 52 pt target.
     A swipe up on the transport row could open it too.
-
-11. **The chord pads become a grid, and the modal chords come to Live.** Today
-    `body.mode-basic #page-perform .advanced-only { display:none !important }`
-    hides, in Live, the Borrowed & Modal row, the Secondary Dominants row and the
-    "Chords on the grid" degree picker, so Live has the seven diatonic pads and
-    whatever was pinned as My Chords from Studio. The grid puts the vocabulary
-    where it can be played. **Columns are the seven scale degrees**; lanes:
-    1. **Diatonic**, as now (`#chords-diatonic`).
-    2. **Dominants**: the secondary dominant of each degree, directly under the
-       degree it points at (V/ii under ii, V/iii under iii, V/IV, V/V, V/vi), with
-       I and vii° left empty, which is exactly the skip set `getSecDoms` already
-       uses.
-    3. **Modal**: each degree's borrowed chord from the parallel minor (i, ii°,
-       ♭III, iv, v, ♭VI, ♭VII in major), seven for seven, so a column reads as
-       "this degree, its dominant, its borrowed version".
-    4. **Colour**: ♭II (the Neapolitan, the one borrowed chord that has no degree
-       to sit under) and My Chords, then + Build.
-
-    Pads are about 54 x 64 pt (near square) in place of 54 x 104. **Lane switches**
-    (Dominants, Modal, Mine, 44 pt) turn lanes 2 to 4 on and off so Live costs one
-    row of pads until you want more, and the choice is remembered. This is the
-    major-mode mapping; the other modes' `getAllBorrowed` lists need the same
-    degree-for-degree rule worked out (or fall back to list order), which has not
-    been done. Taps, colours (tonic, subdominant, dominant, modal) and everything
-    else about a pad are the existing ones; only where the rows sit changes, so
-    `renderChords`, `cpRenderAll` and the catalogs stay the single source.
-    Height: one lane is 64 pt, four are about 280 pt, against about 124 pt for the
-    one row in the mock before.
 
 ## Nothing is lost from Songs
 
