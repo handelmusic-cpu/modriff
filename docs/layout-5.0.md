@@ -120,8 +120,10 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    switch once the pack is owned). Perform is today's Perform, and **Chart stops
    being a page and becomes a view of Perform**, Tiles | Chart | Timeline, since it
    is the same song seen another way (the Timeline view is the add-on). Library is
-   new (setlist, Setups, pattern banks). If a Chart page of its own is wanted, the
-   row takes four entries at this label size, which is the most it holds.
+   new (setlist, Setups, pattern banks). **Decided by the owner:** Chart as a view
+   of Perform is fine as long as printing stays (Print / Save PDF is in the Chart
+   view). A Chart page of its own would make the row four entries at this label
+   size, which is the most it holds.
 10. **The transport sheet stays, and the caret is its handle.** The sheet
     (`ft-more-menu`) holds File, MIDI, Capture (chords, melody, bass, pads),
     Sampler, Export (Bounce, Stems, MIDI), Undo, Redo, Metronome, Snap,
@@ -135,7 +137,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
 11. **One switch adds a row of chords in Live.** A **More** switch in the Chords
     header steps through Off, **Modal** (the borrowed chords: i, iv, ii°, v, ♭III,
     ♭VI, ♭VII, ♭II, from `getAllBorrowed`), **Dominants** (V/ii to V/vi, from
-    `getSecDoms`) and **Mine** (the pinned My Chords and + Build). It puts one row
+    `getSecDoms`) and **Mine** (the pinned My Chords and + Build). **It starts on Modal** (the owner's call). It puts one row
     of existing pads under the seven diatonic ones, 64 pt tall (the diatonic pads
     stay 124), and the choice is remembered. Today those rows are Studio only
     (`body.mode-basic #page-perform .advanced-only { display:none !important }`);
@@ -340,6 +342,8 @@ and are the same renderer turned on its side.
 
 - Whether the shared-row double duty of chrome B survives a real phone.
 - Whether mõdFX belongs under Sound as well as in the part menu.
-- Which pack (above), and its name.
+- Which pack holds Stage and the Timeline ("Which pack is open" above): the plan
+  recommends adding them to the existing Practice Pack, renamed if wanted, with no
+  new product. Waiting on the owner's yes or no.
 - The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
   tabs would take it back.
