@@ -690,7 +690,28 @@ landscape is the real fix for long patterns, not bigger cells.
    (`modo-live-slots`) migrate, they are not reset.
 5. **The timeline renderer, read-only, and Stage** (Step 2 of the vertical
    timeline), the Stage button on Perform. The tiles
-   stay behind a switch until the timeline has earned the default. Screen wake
+   stay behind a switch until the timeline has earned the default.
+   **The renderer landed as 5.7; Stage has not.** Songs › Perform has a Tiles | Timeline
+   switch (`modo-perform-view`, default Tiles). The timeline is a heading per section and
+   a card per line: a row of columns, one per chord, each as wide as the chord lasts
+   (`flex-grow` = its beats, with no padding or border on the column itself so the widths
+   are exactly proportional), the chord name and numeral over the words that fall under it
+   over a strip in the chord's function colour with a tick on every beat. Lines break where
+   `slot.ln` says; a chord-only stretch is cut every four bars; a card is the smallest of
+   1, 2, 4 or 8 bars that holds its line and a line past eight bars is cut at a chord. A
+   column too narrow for its words clamps them to two lines and an ellipsis, and the full
+   words are in the button's accessible name. Columns carry the tile's own hooks
+   (`data-si`, `data-ci`, `.active`, `.prac-in`) inside the same `.songs-section-block`, so
+   the playing highlight, the Loop picker and `songChartTap` work on both views with one
+   change each (the four selectors that said `.songs-chord-btn` now say `.songs-chord-btn,
+   .tl-col`). Measured on the three real sheets in `tests/chords/sheets` and a written one:
+   widths proportional to within 1.5 px, no card past the edge at 360, 390 or 430 pt, the
+   narrowest column 49 pt (party), 100 pt for the written sheet. Not done: the playhead
+   down the card (the sounding chord is lit, but nothing moves inside it), the
+   selected-line panel for words longer than their column, the line length buttons and
+   everything that edits (Step 6), Stage, and the gate (the view is free for now: the
+   FREE_LIMITS, FEATURE_MODULE and MODULE_COPY rows are for Step 9, "only for what
+   works"). `tests/timeline/probe.js`. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is
    unbuilt until it is confirmed.
 6. **Editing on the timeline**: the panel, the beat nudge, Even split, then drag
