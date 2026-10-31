@@ -354,6 +354,56 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     - The waveform in the mock is a stand-in synthesis, not the app's own render; in
       the app it is the offline render the Shape sheet already draws.
 
+23. **Tab import joins the chord-sheet import, and reaches the Bass.** The owner
+    asked for tab input from PDFs, rolled into Songs "with the same import
+    structure", driving the melody sequencer and the bass. It is **already in the app
+    on `main`** (builds 5.0 and 5.0a, `openTabImport`, `parseAsciiTab`, `tabToMidi`,
+    `tabToMelodyGrid`; tests in `tests/tab/tab.test.js`). What exists: **File >
+    Import a tab to .mid** takes pasted plain text or a `.txt` file (the Ultimate
+    Guitar kind): string lines to pitches (tunings from the labels or a Tuning line,
+    capo, a bass on four lines), hammer-ons, pull-offs and slides, bar lines setting
+    each bar's length (8, 16 or 32 dashes to a bar all keep time), a time signature
+    (a Time line or a choice), a count or rhythm letters over the staff, and sections
+    kept as markers. It can **download a .mid** or put one part (up to 4 bars, lifted
+    whole octaves to sit above C3, Follow off, with Undo) **into the melody roll**
+    only. What it does not do yet, and this plan adds:
+    - **Same structure as the chord-sheet import.** One **Import** window, opened
+      from Build's File menu where "Import a chord sheet" is today, with a switch at
+      the top, **Chord sheet | Tab**. Both have the same row of sources (Files,
+      Photos, Camera, Paste), then what was read, the options, a preview that names
+      each part, and the action. Today the tab window has only a text box and
+      `Files` for `.txt`; the chord-sheet window's file picker already takes text, a
+      PDF or a picture and has Photos and Camera on the phone
+      (`openChordSheetImport`, `csi-input`, the Apple text recognition behind it).
+    - **PDFs and pictures.** The tab window takes them through the same route, read
+      as text first and then through the same tab reader. **This is the weak point
+      and has not been tried:** a tab only works when its dashes and fret numbers
+      line up, and a PDF's text layer or a recognition pass often does not keep
+      that spacing (the chord-sheet notes record that both real UG sheets lost
+      their column spacing). The preview shows what was read, so it can be seen
+      before anything is used; needs real PDFs from the owner and a test beside
+      `tests/tab` and `tests/import`.
+    - **Send to Melody, Bass or .mid.** The reader already tells a bass (four lines,
+      or a bass tuning) from a guitar (`Strings: Auto | Guitar | Bass`). The new
+      choice is where a part goes: **Melody** (the melody roll, as now), **Bass** (the
+      bass grid, through the same save and restore pair the melody roll uses,
+      `_blCaptureState` and `_blRestoreState`, with the same limits and Undo), or a
+      **.mid file**. Auto sends a bass to Bass and a guitar to Melody. A tab that has
+      both parts sends each part to its own sequencer in two steps. The bass grid's
+      step limits and octave range need checking against `tabToMelodyGrid`, which
+      assumes the melody roll's (64 steps, lifted to clear C3).
+    - **Timeline.** Tab timing is in bars and ticks, the same unit the Timeline uses
+      for chord lengths, so a tab's bar lengths could later set the chart's; not
+      planned now.
+    The mock draws the window for a guitar tab, a bass tab and a chord sheet (jump:
+    Import). It is reached from the new File menu on Build (the real File menu's
+    items, with the two imports highlighted).
+24. **The tab bar's rainbow sits on the top edge of the selected tab**, 3 pt, clear of
+    its label (measured: the label starts 29 pt below it on every phone size drawn),
+    where it was under the label and clashed once each tab carried an icon above its
+    text. The real bar's rainbow marker (`tab-led`) gets the same treatment when the
+    tabs are rebuilt (step 3).
+
 ## Nothing is lost from Songs
 
 Checked against the markup of today's Songs page (`#page-songs`):
@@ -459,12 +509,14 @@ landscape is the real fix for long patterns, not bigger cells.
 
 ## The order, each step shipping on its own
 
-0. **Numbering** (this change): CLAUDE.md restarts at 5.0.
+0. **Numbering**: CLAUDE.md restarts at 5.0. Done; the first two builds under it (5.0
+   and 5.0a) are the tab import below, built by another session.
 1. **Words as data** (`docs/vertical-timeline.md` Step 1): `slot.lyr` / `slot.ln`,
    written at import, in `_songSig()`, a Lyric field in the chord editor, node
    tests, a save / load / share round trip. The one visible change is free:
    the Chart view of Perform shows the words under the chords (next section but
-   one). First build under the new numbering: 5.0.
+   one). Builds 5.0 and 5.0a are already taken by the tab import (decision 23), so
+   this is **5.1**.
 2. **Target sizes** with no restructuring: every control 44 pt or more, the chord
    rhythm bar as one row, the beat strip folded into the Play button's ring or a
    3 pt line. Measure each (CDP, real touch).
