@@ -58,7 +58,9 @@ const SCAN = () => {
     while (p && p !== document.body) { const c = getComputedStyle(p); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) { hid = true; break; } p = p.parentElement; }
     if (hid) return;
     if (getComputedStyle(e).pointerEvents === 'none') return;
-    const r = e.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return;
+    // A box a label wraps is hit by tapping the label, so the label is the target.
+    const lab = (e.type === 'checkbox' || e.type === 'radio') ? e.closest('label') : null;
+    const r = (lab || e).getBoundingClientRect(); if (r.width < 1 || r.height < 1) return;
     let ew = r.width, eh = r.height;
     for (const ps of ['::before', '::after']) {
       const c = getComputedStyle(e, ps);
