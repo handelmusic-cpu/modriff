@@ -753,7 +753,17 @@ landscape is the real fix for long patterns, not bigger cells.
    the song unsaved. Not done: Edit words on the card itself (the Words field in the strip's
    editor is the way), dragging a chord to another card, Tap the changes (step 8), and the
    horizontal layout. `tests/tledit/probe.js` (real touch).
-7. **Library and songs that carry their sounds.** The per-song switch, Setups as
+7. **Library and songs that carry their sounds.**
+   **The Library half landed as 6.0** (new work takes the next minor, which was a new major,
+   so the owner was asked first and said 6.0). Songs' sub-nav
+   is Build | Perform | Library. The Library page is the setlist (moved from under
+   Perform's chart), the Setups (moved from Settings) and a Pattern save card that opens
+   the saved chord rhythms, drum patterns, basslines and melody lines; the panels are the
+   same elements, moved by `libMount`, so every id, handler and renderer is untouched. Chart
+   stopped being a page and is the third view of Perform (Tiles | Chart | Timeline), free,
+   with its Print / Save PDF; `setSongsMode('chart')` (Find, an old link) lands there. The
+   transport sheet's Setups goes to the Library. `tests/library/probe.js`. Not in this
+   piece: songs carrying their sounds, the per-song switch, Setups as templates. The per-song switch, Setups as
    templates, the pattern banks in one place. Existing saves load as "keeps my
    sounds".
 8. **Tap the changes** (Step 4 of the vertical timeline).
