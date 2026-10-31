@@ -225,125 +225,21 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     and Sound. Only the way in changes (the ARP button of the bottom row, no
     Accomp tab). The first mock drew an invented Arp page, which was wrong.
 
-17. **Icons before words.** The owner's rule: language should be as much of a
-    non-issue as possible; text hurts and icons help. The transport sheet is the
-    first place it applies: every button is an icon with a spoken name (VoiceOver
-    reads it, and a name shows at the foot of the sheet when a button is touched).
-    Capture is four dots in the parts' own colours (chords, melody, bass, pads);
-    Undo and Redo are arrows; Export is a disc, a stack and a note; File is a page,
-    a folder and a tray; the settings and help buttons are a gear, a socket, sliders
-    for Setups, a magnifier, a moon, a cap, a book and a keyboard. The tab bar has an
-    icon above each label. The rule for new screens is to draw it or colour it
-    before writing it, and where a word cannot be avoided to use the shortest one.
-    The existing words (parts' names, Song, Live) stay; this is about not adding
-    more, and about the sheet most of all. A string to translate is a cost every
-    language pays.
-
-## The bottom of the screen, and other phones
-
-**The bottom band.** On a Pro Max the home indicator takes 34 pt under the tab bar
-(`env(safe-area-inset-bottom)`; the app already pads for it in eight places). iOS
-keeps that band for its own swipe gesture, so a button there would be hard to hit and
-the plan leaves it empty, but the tab bar's background runs under it so it does not
-read as a gap. The mock draws 18 pt there, which is why it looks emptier than it
-will be on a phone. The real spare height is elsewhere: with extras off the three
-Live widgets finish about 18 pt short of the page, and without the fill, about 96 pt.
-
-**Other phone widths** (measured on the mock, which is drawn at 430 pt wide and
-resized to each width; the iPhone Pro Max is 430 or 440, the standard iPhones 393
-and 402, the smallest 375):
-
-| width | what overflows |
-|---|---|
-| 430, 440 | nothing in the bottom stack or the headings |
-| 393, 402 | the Chords heading: fixed (decision 20) |
-| 375 | the heading: fixed. The transport row is 11 pt too wide in Studio, still to fix |
-
-So the plan fits a Pro Max, and on a standard iPhone the Chords heading needs a
-shorter Voice and More pill (or the More switch moving into the extras), and on a
-375 the transport row needs the same trick the real bar already uses (the key's mode
-name shortens). To be built with container widths and checked at all five widths.
-The iPhone Duo is covered in the next section.
-
-## The iPhone Duo
-
-The owner named it as the newest iPhone (a foldable, iOS 27.1). What the sources
-agree on (Apple's spec pages and MacRumors; the points come from third parties, so
-check them on a device or the Simulator):
-
-| | closed (outer) | open (inner) |
-|---|---|---|
-| panel | 5.4 inch, 1398 x 2034 px, 460 ppi | 7.6 inch, 1878 x 2670 px, 430 ppi |
-| points at 3x | **466 x 678** (two sources agree) | **951 x 669 across, or 669 x 951 upright**; one developer infers 669 x 951 from the App Store screenshot size (2007 x 2853 px), a simulator vendor lists 626 x 890 |
-| shape | taller than wide, ratio about 1.45 | about 1.42, like a horizontal iPad mini |
-
-Facts that matter for this app, from the same sources:
-
-- **Size classes.** Closed: compact horizontal and regular vertical in portrait,
-  compact in both in landscape. Open: regular in both, so it behaves like an iPad.
-  The inner display does not honour an app's supported orientations; the app is
-  expected to follow size classes.
-- **Insets.** The Dynamic Island sits vertically at the side of both displays, so
-  left and right insets are not equal and not zero. **This app has no left or right
-  safe-area handling anywhere** (`safe-area-inset-left` and `-right` are not used,
-  and the page is `viewport-fit=cover`), which is already a bug in landscape on any
-  notched iPhone and becomes a real one on the Duo. It is a prerequisite for any
-  landscape or wide layout, and it is small.
-- **Building for it.** Built with the Xcode 27.1 SDK an app uses the whole display;
-  built with an older Xcode it does not extend under the status bar and the camera.
-  Apple's SDK for the Duo shipped as Xcode 27.1 (27A9275). From April 2027 an App
-  Store submission needs iPhone Duo screenshots. Nothing found says how a
-  Capacitor or WKWebView app is resized or letterboxed, so that is a test on a real
-  device or the Simulator, not an assumption.
-- **Posture.** It can also be half folded; the folding region splits the inner
-  display into usable regions (an arrangement API). Not planned for.
-
-What the mock shows at these sizes (page area is the height left above the bottom
-stack and below the status bar):
-
-| screen | page area | what it means |
-|---|---|---|
-| Pro Max, 430 x 932 | 708 pt | the layout as drawn |
-| Standard, 393 x 852 | 628 pt | the Chords heading is 19 pt too wide (above) |
-| **Duo closed, 466 x 678** | **454 pt** | wider than a Pro Max so nothing overflows, but 254 pt shorter: Chords and Melody fit one screen with extras off (they end at 424 of 454), mõdFX scrolls |
-| **Duo open, across, 951 x 669** | **445 pt** | two panes of about 475 pt each, nothing overflows |
-| Duo open, upright, 669 x 951 | 727 pt | one wide column, nothing overflows |
-
-Two consequences:
-
-1. **Closed is a short, wide phone, and the transport and parts go down the
-   right edge (decided by the owner).** At 466 x 678 pt the bottom stack left 454
-   pt of page. A 92 pt rail on the right (key, tempo, Play, rate, Song with its
-   section arrows, then the five parts, all 44 pt targets or the 40 pt part
-   buttons, 622 pt tall so it does not scroll) leaves the **tabs at the bottom**
-   (the owner likes them there) and takes the page to **557 pt tall by 372 pt wide**
-   (+103 pt of height, 94 pt less width: about a standard iPhone's width). The
-   right edge is the thumb side for most players; which side the Dynamic Island is
-   on decides the inset, so the rail is padded by the safe-area inset on that side
-   (`env(safe-area-inset-right)`). The rule is a short screen with a width of 440 to
-   800 pt (not a 375 pt phone, which would be left with 283 pt). The mock draws it
-   (pick Duo closed).
-2. **Open and across: a side rail, decided by the owner.** Height is the scarce
-   thing there (445 pt of page under a 148 pt bottom stack). So on a wide screen
-   (about 700 pt and up, the regular size class) the layout does what Apple's own
-   apps do on an iPad or the inner display: the **tabs and the parts run down a side
-   rail** on the leading edge, the **transport runs across the top** (52 pt), and
-   the content gets **two panes** (Live beside a Studio part page; Perform beside
-   the Timeline; Sound beside Mixer). The page area goes from 445 pt to **584 pt**
-   in the mock (+139 pt). It follows Apple's guidance for this device: adapt to
-   the size class and not to the device name, do not rely on orientation (the inner
-   display ignores an app's supported orientations), and keep controls out of the
-   side where the Dynamic Island sits, so the rail and the top bar are padded by
-   `env(safe-area-inset-left)` and `-right`. Because this is a web page in a
-   Capacitor shell it cannot read size classes; it switches on width, and the same
-   test also covers an iPad. The mock draws it (pick Duo open). The same renderer
-   serves the horizontal timeline (`docs/vertical-timeline.md`, Step 5).
-
-Sources: Apple's iPhone Duo specs pages (apple.com/uk/iphone-duo/specs and
-support.apple.com/en-gb/148588), MacRumors' iPhone Duo roundup, the developer
-write-up at blakecrosley.com/blog/iphone-duo-for-developers (the point size of the
-inner display is its own inference) and webmobilefirst.com's Duo listings.
-
+17. **Icons first, with a word where an icon alone would be a guess.** The owner's
+    rule is that language should be as much of a non-issue as possible, and the
+    first, icon-only version of the transport sheet went too far: the four
+    coloured rings (Capture), the disc, the stack and several others could not be
+    told apart without help, and the owner said so ("walk it back 10 or 15%").
+    The sheet is now: an icon on every button, a one-word label under it
+    (Undo, Redo and Find, which are universal, have none), a heading over each group,
+    and a sentence under the Capture heading saying what it does. Capture is the
+    four rings in the parts' own colours with the part named under each, a filled
+    ring meaning on. Touching any button also puts a full sentence at the foot of
+    the sheet ("Capture melody: the notes you play are written into the melody
+    roll"), and VoiceOver reads the same sentence. The tab bar keeps an icon over
+    its label. The rule for new screens: draw it or colour it, and put the
+    shortest word beside it if there is any doubt; a long explanation belongs in
+    the sentence that appears on touch, not on the button.
 18. **The Styles widget is one slim row per part.** Today each of the three
     (Drums, Bass, Melody) is a card with a heading, a Save pill and a row of
     previous, picker and next, about 100 pt each. It is now one 52 pt row: the
@@ -368,6 +264,95 @@ inner display is its own inference) and webmobilefirst.com's Duo listings.
     8 pt pill padding, 40 pt record and Keep buttons). Measured at 375, 393, 402,
     430 and 440 pt and at the closed Duo: no heading overflows and the More pill is
     a single 44 pt line.
+
+21. **The chord rhythm can have any grid and run up to 64 steps.** Today the
+    roll is 16 sixteenths. The Chords page's roll (decision 2) now has two controls
+    above it: **Bars** (1, 2 or 4) and **Grid** (1/8, 1/16, 1/32, or with **Triplet
+    feel** on, 1/8T and 1/16T), and the roll scrolls sideways with bar numbers and a
+    mark on every beat. The product of the two is at most 64 steps, so a combination
+    that would go over is dimmed: 1/32 allows 1 or 2 bars; 1/16 allows 4; triplets are
+    12 or 24 steps a bar, so 1/8T for 4 bars is 48 steps and 1/16T for 2 bars is 48.
+    Changing the grid moves each hit to the nearest step of the new grid, so a
+    pattern drawn straight can be felt as triplets without redrawing it. The Rhythm
+    pick and Draw / Presets / Save stay as they are. What the code has today
+    (`rhyBlank(steps)` already carries a step count and `scheduleChordRhythm` wraps
+    on `pat.steps`) is the length half: 32 or 64 steps at sixteenths is mostly the
+    editor. The grid half is new engine work: a step is a sixteenth on the clock
+    today, so 1/8, 1/32 and the triplet grids need the rhythm to carry its steps
+    per bar and the scheduler to advance at that rate. A ratchet (`rat`) can
+    already fake a triplet inside one step; this makes it a grid. The mock draws
+    the roll, the controls and the dimming, and moves the playhead at the grid's
+    rate.
+22. **The mõdKit Kit page and the small editor** (the design brief, a private
+    Docs page, "mõdKit drum editor: Kit page, Shape sheet and Aux"). Built on
+    v4.9.9.9.9.9.9g, where the Aux layer's Shape sheet and the reduced sheet for
+    recorded drums already work. Where the design and the brief differ, the design
+    wins, as the brief says.
+    - **Where the Kit page lives.** A view on the Drums part page in Studio:
+      **Drums | Aux** (the layer) and **Grid | Kit** (the view) sit side by side in one
+      row. It is not a tab, and Live does not get a Kit widget at first (Live keeps
+      its Drum and Aux grids). A coloured bar under the switches says **KIT** in red
+      or **AUX** in orange with the kit's name, the kind (synthesised, recorded, or
+      recorded and synthesised) and **Reset kit** (with Undo in its toast), so which
+      layer is being tuned is stated in words and colour, not only by a tab.
+    - **The card.** Two across, 122 pt tall, so a kit of eight (808, 909, mõdKit,
+      CR-78, Acoustic) fits without scrolling on a Pro Max and the 606 and the short
+      kits fit easily; Jazz's eleven scroll. Each card: the drum's name in its lane
+      colour (all Aux cards use Aux's own colour), its waveform drawn by the same
+      code as the editor, a thin pan marker, and three dials. Dials are 42 pt with
+      the value inside and a label under: **Level, Tune, Decay**. A drag up or down
+      turns a dial and keeps working until the finger lifts; a readout floats above
+      it while it moves; the drum auditions on release; the waveform and the lit
+      state update in place. A lit card (a drum shaped away from its defaults) has a
+      coloured border and a dot. Tapping the waveform plays the drum, tapping the
+      name opens the editor. Cards flash as the pattern plays; with reduced motion
+      the lit state is steady and nothing fades.
+    - **Three states on the card.** *Recorded* drums keep the same card and the same
+      place for every part: a small **Recorded** tag, and **Tone** where Decay would
+      be. Nothing is disabled or greyed. *Locked* kits (the Groove Pack's) show the
+      cards, the waveforms and the values with the dials dimmed, and a bar says the
+      kit is in the pack, so you can look and listen and not tune. *Loading* shows a
+      quiet striped placeholder where a waveform will be.
+    - **The small editor.** It stays a sheet that stops above the transport so the
+      pattern keeps playing. Head: previous and next drum, the drum's name in its
+      lane colour, a chip that says **KIT** or **AUX** in the layer colour, the kit's
+      name and, for a recording, the word recorded. Then the waveform, larger, with
+      a time axis in quarter seconds and a faint trace of the drum as it came, so
+      you can see how far you have moved it. Then the controls **in four rows by what
+      they do**: Place (Level, Pan), Pitch (Tune, Sweep), Length (Decay, Body),
+      Colour (Tone, Drive), as 54 pt dials with the full value written under each
+      (80%, +3 st, Neutral, Clean, Centre). **A control that does nothing on a drum
+      leaves its slot empty and the others stay where they are**, so walking from a
+      kick to a hat moves nothing: the sheet is the same height for every drum in
+      every kit (578 pt in the mock, 573 for a recorded kit). A recorded drum has
+      the same sheet: the Length row becomes one calm note (a recording has a fixed
+      length and make-up, so Decay and Body are not offered) in the slot where those
+      two dials would be. Hear it, Reset (this drum only) and Done at the foot. The
+      Aux layer is the same sheet with an orange AUX chip and orange dials, and its
+      settings are stored apart from the kit's (confirmed in the mock: tuning the
+      kick's Tune leaves Aux's kick at 0).
+    - **On a wide screen the editor docks** beside the Kit page in the second pane
+      instead of covering it (the open Duo, an iPad).
+    - **The brief's open questions, answered.** Kit page: a view on the Drums page,
+      not a tab and not a Live widget yet. Three dials per card, and a name opens the
+      full sheet (a card does not expand in place). Whole-kit Kit Tune, Kit Decay and
+      an accent amount: **left out** for now; they would crowd the card grid and
+      the brief says they are not built. Per-drum mute and solo, and copy-from-drum:
+      **a reserved place, not drawn**: the editor head has room for one more 44 pt
+      button, which opens a short menu when they are built; drawing disabled
+      controls would break the calm. Recorded drums: a card in the same shape with
+      Tone in place of Decay, and a sheet with the Length note. The editor keeps its
+      sheet form, and docks on a wide screen.
+    - **The look.** Dials, the waveform panel and the sheet use the same family as
+      mõdSynth's panels (round dials with an arc, a dark panel behind the trace), not
+      browser sliders; all colours come from the layer's and the lane's own colours
+      so a theme change recolours them.
+    - **Measured in the mock.** Eight cards fit a Pro Max's 708 pt of page without
+      scrolling; a drag of 40 pt turns Tune 13 semitones (48 across 150 pt) and the
+      bubble reads "+13 st"; the sheet's height does not change across drums or
+      kits.
+    - The waveform in the mock is a stand-in synthesis, not the app's own render; in
+      the app it is the offline render the Shape sheet already draws.
 
 ## Nothing is lost from Songs
 
