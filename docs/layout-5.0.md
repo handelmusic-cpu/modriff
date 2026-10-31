@@ -166,7 +166,13 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     **Live** row: **All extras on**, **All extras off** and **Three at once**,
     which puts Chords, Melody and mõdFX first with their extras off.
 
-    In the mock (708 pt of page on a 932 pt phone), Chords, Melody and mõdFX end at
+    **Three at once** also hands the spare height to the things you play: the chord
+    pads, the melody keys and the mõdFX pad grow to fill the screen, so there is no
+    gap left under the third widget (the mock ends at 690 of 708 pt). Turning any
+    widget's extras back on, or choosing All extras on or off, returns them to their
+    normal size.
+
+    In the mock (708 pt of page on a 932 pt phone), before that fill, Chords, Melody and mõdFX end at
     612 pt with their extras off, which leaves about 96 pt, and at 718 pt with all
     extras on, about 10 pt too tall, and more once a More row is open. Which
     controls count as extras for each widget is the thing to review: Hold, Glide and
@@ -203,6 +209,57 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     Vary. The first mock left it out; the rule in decision 2 covers it. The Melody,
     Bass and Arp voice panels still have to be checked the same way.
 
+15. **The record dot and Keep stay in the widget headings.** Today the headings of
+    Chords, Melody and the Sampler carry a record dot (the sheet's own Capture
+    button: what you play is written into a new Song section, the melody roll or a
+    pad pattern) with a **Keep** button beside it (`ft-cap-back`, `ft-melcap-back`,
+    `ft-pscap-back`: keep what you *just* played, with no recording armed beforehand),
+    and mõdFX's heading carries the motion recorder's dot, with Clear and Loop
+    beside it for the recorded move (`lvAddRecDot`, `lvRecPaintFx`). The first
+    mocks left all of that out. The mock now draws a dot and a Keep in Chords,
+    Melody, Sampler, mõdFX and, new, the Bass grid heading, and in the Studio
+    header of those same parts. Bass has Capture in the sheet today (`blCaptureToggle`)
+    but no Keep button; adding one is a suggestion, not a plan. Both buttons are
+    44 pt targets, and the heading now has to fit them: see "Device widths".
+16. **The Arp page does not change.** Arp is the owner's favourite page, and the
+    rule from decision 2 applies to it hardest. The page is today's Arp panel moved
+    as it is (`#bm-arp-panel`): the ARP switch and status line, the Settings fold,
+    the voice, the preview strip, Pattern (Up, Down, Up/Down, Random, Weighted,
+    Pedal, Walk, Block), Range, Dynamics (Flat, Cresc, Decresc, Hill, Valley), Feel
+    (Even, Swing, Skip, Accent), the Timing dial with Sync and Free, Rate motion
+    and Sound. Only the way in changes (the ARP button of the bottom row, no
+    Accomp tab). The first mock drew an invented Arp page, which was wrong.
+
+## The bottom of the screen, and other phones
+
+**The bottom band.** On a Pro Max the home indicator takes 34 pt under the tab bar
+(`env(safe-area-inset-bottom)`; the app already pads for it in eight places). iOS
+keeps that band for its own swipe gesture, so a button there would be hard to hit and
+the plan leaves it empty, but the tab bar's background runs under it so it does not
+read as a gap. The mock draws 18 pt there, which is why it looks emptier than it
+will be on a phone. The real spare height is elsewhere: with extras off the three
+Live widgets finish about 18 pt short of the page, and without the fill, about 96 pt.
+
+**Other phone widths** (measured on the mock, which is drawn at 430 pt wide and
+resized to each width; the iPhone Pro Max is 430 or 440, the standard iPhones 393
+and 402, the smallest 375):
+
+| width | what overflows |
+|---|---|
+| 430, 440 | nothing in the bottom stack or the headings |
+| 393, 402 | the Chords heading (title, record dot, Keep, More, Voice) by 10 to 19 pt |
+| 375 | the same heading by 13 pt, and the transport row by 11 pt in Studio |
+
+So the plan fits a Pro Max, and on a standard iPhone the Chords heading needs a
+shorter Voice and More pill (or the More switch moving into the extras), and on a
+375 the transport row needs the same trick the real bar already uses (the key's mode
+name shortens). To be built with container widths and checked at all five widths.
+Foldables and dual-screen devices were not measured: **there is no device called
+iPhone Duo that this plan knows about**, so its size is not assumed. The layout
+is one column that scales to the width it is given, and a second pane for a wide
+screen (Live beside Studio, or the Timeline beside Perform) is a later layout, the
+same one that the horizontal timeline is.
+
 ## Nothing is lost from Songs
 
 Checked against the markup of today's Songs page (`#page-songs`):
@@ -222,20 +279,19 @@ control rows, then the tiles); it scrolls, as it does today.
 
 ## Which pack is open
 
-There is no Performance pack today. The modules are Sounds, Sampler, mõdSynth,
-Groove, Theory, Practice and Studio (`MODULE_ORDER`), with eleven StoreKit
-products and bundle tiers that count how many you own. Two ways to do it:
-
-- **Put Stage and the Timeline in the Practice Pack** (rename it if "Performance"
-  is the better word). It already owns the trainer (Speed up, Next key, Loop bars)
-  that lives on the same Perform chart, so the pack becomes "everything for
-  working a song". One table row (`FEATURE_MODULE`), no new product, no new bundle
-  arithmetic.
-- **A new Performance module.** An eighth module means a new StoreKit product and
-  a change to the bundle tiers in App Store Connect, which cannot be settled from
-  here.
-
-Recommendation: the first. The owner decides.
+**Decided by the owner: Stage and the Timeline go in the existing Practice Pack,
+renamed Practice & Perform Pack.** The module key stays `practice` (nothing about
+the product, the purchase or anyone's saved state changes); only the name the
+player reads changes (`MODULE_COPY.practice.name`, which has to stay within 30
+characters; "Practice & Perform Pack" is 23), and the line under it should be
+reworded to say what it now opens. It already owns the trainer (Speed up, Next key,
+Loop bars) that lives on the same Perform chart, so the pack becomes "everything
+for working a song and playing it on stage". `FEATURE_MODULE` gets the new rows
+(`stage`, `timeline`, naming `practice`) when the features work, not before
+(`docs/layout-5.0.md` step 9; `tests/tier/registry.test.js` fails a row with no
+module and a copy over the limit). Anyone who already owns the Practice Pack gets
+them with it. The App Store listing text in `docs/app-store.md` needs the new name
+when this ships.
 
 ## Free players and the words (recommended)
 
@@ -342,8 +398,5 @@ and are the same renderer turned on its side.
 
 - Whether the shared-row double duty of chrome B survives a real phone.
 - Whether mõdFX belongs under Sound as well as in the part menu.
-- Which pack holds Stage and the Timeline ("Which pack is open" above): the plan
-  recommends adding them to the existing Practice Pack, renamed if wanted, with no
-  new product. Waiting on the owner's yes or no.
 - The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
   tabs would take it back.
