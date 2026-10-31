@@ -2423,6 +2423,7 @@ body.light-mode .pp-btn { box-shadow:0 3px 12px color-mix(in srgb, var(--pc) 26%
 .tbi-actions { flex-wrap:wrap; }
 .tbi-actions .tb { min-width:0; padding-left:14px; padding-right:14px; }
 .tbi-bpm { width:4.2em; box-sizing:border-box; background:var(--surf2); color:var(--text); border:1px solid var(--muted); border-radius:8px; padding:4px 6px; font-size:16px; }
+.tbi-sig { background:var(--surf2); color:var(--text); border:1px solid var(--muted); border-radius:8px; padding:4px 6px; font-size:16px; }
 .tbi-block { flex:1; min-width:0; background:var(--surf2); color:var(--text); border:1px solid var(--muted); border-radius:8px; padding:5px 6px; font-size:16px; }
 .dur-preset-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .dur-preset-chip {
@@ -8100,7 +8101,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.0</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.0a</span></div>
  </div>
 </div>
 
@@ -9478,7 +9479,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.0</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.0a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10548,7 +10549,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '5.0';
+const MODRIFF_VERSION = '5.0a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39832,10 +39833,14 @@ function importSetlist(e){
 //   G|---0-------0-------0---|
 //   D|-2-------2-------2-----|
 //
-// A line is a string, a column is a moment, the number is the fret. What it does
-// NOT say is how long anything lasts — so the file's time is a choice (what one
-// dash is worth, below), and a note lasts until the same string is struck again
-// or the bar ends, which is how a guitar rings.
+// A line is a string, a column is a moment, the number is the fret. What plain
+// tab says about *when* is thin, and varies: dashes spaced evenly, bar lines, now
+// and then a time signature, a count ("1 e & a") or rhythm letters ("q e e h")
+// over the staff. The bars are the best of it — a bar line to a bar line is one
+// bar, however many dashes the writer used, so 8-, 16- and 32-dash bars all come
+// out the right length (the old fixed "a dash is a 16th" played an 8-dash tab at
+// twice the speed). A note lasts until the same string is struck again or the bar
+// ends, which is how a guitar rings.
 //
 // Pure functions, no DOM: parseAsciiTab reads text into notes, tabToMidi writes
 // notes into a .mid, and openTabImport is the window onto both.
@@ -39862,7 +39867,7 @@ function _tabLine(raw){
   var body = m[2].split(/\s/)[0];                     // "x2" and the like after the staff
   if(!/^[-0-9|:*=hpbrsxXtTvV\/\\~^()<>.]+$/.test(body)) return null;
   if((body.match(/-/g) || []).length < 3) return null;
-  return {label:m[1] || null, body:body};
+  return {label:m[1] || null, body:body, off:s.length - m[2].length};
 }
 // The numbers on a staff line, and when each lands. A bend's number ("7b9") is where
 // the string is pushed to, not another note; "5h7", "5p3", "5/7" put a second note on
@@ -39918,10 +39923,61 @@ function _tabTuning(labels, std, hdr){
   return out;
 }
 var _TAB_NAMES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+// Time is in MIDI ticks, 480 to the quarter note. Everything a tab says about when —
+// its bar lines, a time signature, a count ("1 e & a") or rhythm letters ("q e e h")
+// — is folded into where each note starts; what is left is the spacing of the dashes.
+var _TAB_DUR = {w:1920, h:960, q:480, e:240, s:120, t:60};
+function _tabParseSig(s){
+  if(Array.isArray(s)) return s;
+  var m = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*$/.exec(String(s || ''));
+  if(!m) return null;
+  var n = +m[1], d = +m[2];
+  return (n >= 1 && n <= 16 && [2, 4, 8, 16].indexOf(d) >= 0) ? [n, d] : null;
+}
+// "Time: 6/8", "(3/4)" or just "4/4", alone on a line.
+function _tabSigLine(line){
+  var m = /^(?:time(?:\s*sig(?:nature)?)?\s*[:\-]?\s*)?\(?\s*(\d{1,2}\s*\/\s*\d{1,2})\s*\)?(?:\s*time)?$/i.exec(String(line).trim());
+  return m ? _tabParseSig(m[1]) : null;
+}
+// A line above or below a staff that says when: a count ("1 e & a 2 e & a", "1 + 2 +")
+// or rhythm letters (w h q e s t, a dot after one for a dotted note, a 3 for a triplet).
+// Every word on it has to be one of those, which is what keeps a line of lyrics ("the
+// set") or a chord line ("Am G") from being read as one. Each word's column is where
+// it sits in the text, so it can be lined up with the staff under it.
+function _tabRhythmLine(raw){
+  var s = String(raw).replace(/\t/g, ' '), re = /\S+/g, m, toks = [];
+  while((m = re.exec(s))) toks.push({w:m[0].toLowerCase(), col:m.index});
+  if(toks.length < 2) return null;
+  var isCount = toks.every(function(t){ return /^(\d{1,2}|e|&|\+|a|and|trip|let|la|li)$/.test(t.w); });
+  if(isCount && toks.some(function(t){ return /^\d/.test(t.w); })){
+    var hasE = toks.some(function(t){ return t.w === 'e'; });
+    var hasA = toks.some(function(t){ return t.w === 'a'; });
+    var trip = hasA && !hasE;     // "1 & a 2 & a" is counted in threes
+    return {kind:'count', toks:toks.map(function(t){
+      var w = t.w, f = 0;
+      if(/^\d/.test(w)) return {col:t.col, n:+w, frac:0};
+      if(w === 'e') f = 0.25;
+      else if(w === '&' || w === '+' || w === 'and') f = trip ? 1 / 3 : 0.5;
+      else if(w === 'a') f = trip ? 2 / 3 : 0.75;
+      else if(w === 'trip' || w === 'la') f = 1 / 3;
+      else f = 2 / 3;
+      return {col:t.col, n:0, frac:f};
+    })};
+  }
+  if(toks.every(function(t){ return /^[whqest]\.{0,2}3?$/.test(t.w); })){
+    return {kind:'rhythm', toks:toks.map(function(t){
+      var d = _TAB_DUR[t.w[0]], dots = (t.w.match(/\./g) || []).length;
+      d = d * (dots === 2 ? 1.75 : dots === 1 ? 1.5 : 1);
+      if(/3$/.test(t.w)) d = d * 2 / 3;
+      return {col:t.col, dur:Math.round(d)};
+    })};
+  }
+  return null;
+}
 function parseAsciiTab(text, o){
   o = o || {};
   var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  var res = {blocks:[], notes:[], total:0, capo:0, tuning:'', warnings:[]};
+  var res = {blocks:[], notes:[], total:0, capo:0, tuning:'', sig:null, warnings:[]};
   // "Capo: 2nd fret" and "Tuning: Eb Ab Db Gb Bb Eb" are said once, up top, and
   // apply to everything under them.
   var hdr = {pcs:null, shift:0, drop:null}, m;
@@ -39939,16 +39995,18 @@ function parseAsciiTab(text, o){
       }
     }
   }
-  var pending = null, cursor = 0, i = 0;
+  var forced = _tabParseSig(o.sig), sigNow = forced || [4, 4];
+  var pending = null, i = 0, raws = [];
   var sectionRe = /^\s*\[([^\]]{1,40})\]\s*$|^\s*((?:intro|verse|pre-?chorus|chorus|bridge|solo|outro|interlude|riff|lead|rhythm|break|refrain|hook|fill|ending)\b[^\n]{0,30}?)\s*:?\s*$/i;
   while(i < lines.length){
     var tl = _tabLine(lines[i]);
     if(!tl){
-      var sm = sectionRe.exec(lines[i]);
-      if(sm) pending = (sm[1] || sm[2]).trim();
+      var sm = sectionRe.exec(lines[i]), sg = !forced && _tabSigLine(lines[i]);
+      if(sg) sigNow = sg;
+      else if(sm) pending = (sm[1] || sm[2]).trim();
       i++; continue;
     }
-    var grp = [];
+    var i0 = i, grp = [];
     while(i < lines.length && (tl = _tabLine(lines[i]))){ grp.push(tl); i++; }
     // Staves run together with no blank line between: cut them into equal strings.
     var size = grp.length;
@@ -39957,11 +40015,21 @@ function parseAsciiTab(text, o){
       if(!size){ res.warnings.push('A block of ' + grp.length + ' tab lines did not split into staves.'); continue; }
     }
     for(var g0 = 0; g0 < grp.length; g0 += size){
-      var blk = _tabBlock(grp.slice(g0, g0 + size), o, hdr, res.capo, cursor, pending, res);
-      if(blk){ res.blocks.push(blk.info); res.notes = res.notes.concat(blk.notes); cursor += blk.info.len; }
+      // The line straight above the first staff, or straight under the last, may be a
+      // count or rhythm line for it.
+      var rl = null;
+      if(g0 === 0 && i0 > 0) rl = _tabRhythmLine(lines[i0 - 1]);
+      if(!rl && g0 + size >= grp.length && i < lines.length) rl = _tabRhythmLine(lines[i]);
+      var rb = _tabBlock(grp.slice(g0, g0 + size), o, hdr, res.capo, pending, sigNow, rl, res);
+      if(rb) raws.push(rb);
       pending = null;
     }
   }
+  var cursor = 0;
+  raws.forEach(function(rb){
+    var lay = _tabLayout(rb, o, cursor);
+    res.blocks.push(lay.info); res.notes = res.notes.concat(lay.notes); cursor += lay.info.len;
+  });
   res.total = cursor;
   // Two strings can sound one pitch (a fretted note and an open string), and one
   // note-off would then end both. The earlier one stops where the later starts.
@@ -39970,15 +40038,18 @@ function parseAsciiTab(text, o){
   res.notes = res.notes.filter(function(n){
     var p = last[n.midi];
     if(p && p.t + p.len > n.t){
-      if(n.t === p.t) { p.len = Math.max(p.len, n.len); return false; }
+      if(n.t === p.t){ p.len = Math.max(p.len, n.len); return false; }
       p.len = n.t - p.t;
     }
     last[n.midi] = n; return true;
   });
   res.tuning = res.blocks.length ? res.blocks[0].tuning : '';
+  res.sig = res.blocks.length ? res.blocks[0].sig : null;
   return res;
 }
-function _tabBlock(grp, o, hdr, capo, start, name, res){
+// One staff, read but not yet timed: which frets are struck in which columns, where the
+// bars are, and any count or rhythm line that goes with it.
+function _tabBlock(grp, o, hdr, capo, name, sig, rl, res){
   var n = grp.length, inst = o.inst || 'auto';
   if(inst === 'auto') inst = n <= 5 ? 'bass' : 'guitar';
   var std = (_TAB_STD[inst] && _TAB_STD[inst][n]) || (inst === 'guitar' && n >= 4 && n < 6 ? _TAB_STD.guitar[6].slice(6 - n) : null);
@@ -39986,20 +40057,18 @@ function _tabBlock(grp, o, hdr, capo, start, name, res){
   var labels = grp.map(function(l){ return l.label ? _tabPc(l.label) : null; }).reverse();
   var tuning = _tabTuning(labels, std, hdr);
   var width = Math.max.apply(null, grp.map(function(l){ return l.body.length; }));
-  var bodies = grp.map(function(l){ while(l.body.length < width) l.body += '-'; return l.body; });
+  var bodies = grp.map(function(l){ var b = l.body; while(b.length < width) b += '-'; return b; });
   // Bar lines run straight down the staff. They are not time, so they come out
   // of the columns, and what is left between them is a bar.
-  var need = Math.max(1, Math.ceil(n / 2)), isBar = [];
+  var need = Math.max(1, Math.ceil(n / 2)), isBar = [], nBar = 0, before = [];
   for(var c = 0; c < width; c++){
     var cnt = 0; for(var li = 0; li < n; li++) if(bodies[li][c] === '|') cnt++;
-    isBar.push(cnt >= need);
+    isBar.push(cnt >= need); before.push(nBar); if(cnt >= need) nBar++;
   }
   var comp = bodies.map(function(b){ var s = ''; for(var c2 = 0; c2 < width; c2++) if(!isBar[c2]) s += b[c2]; return s; });
-  // Segments in compact coordinates: split wherever a bar column was removed.
-  var segs = [];
-  var cc = 0, segStart = 0;
+  var segs = [], cc = 0, segStart = 0;
   for(var c4 = 0; c4 < width; c4++){
-    if(isBar[c4]){ if(cc > segStart){ segs.push({s:segStart, e:cc}); } segStart = cc; }
+    if(isBar[c4]){ if(cc > segStart) segs.push({s:segStart, e:cc}); segStart = cc; }
     else cc++;
   }
   if(cc > segStart) segs.push({s:segStart, e:cc});
@@ -40008,36 +40077,114 @@ function _tabBlock(grp, o, hdr, capo, start, name, res){
   segs = segs.filter(function(sg){
     return sg.e - sg.s > 2 || evs.some(function(list){ return list.some(function(e){ return e.col >= sg.s && e.col < sg.e; }); });
   });
-  if(!segs.length) return null;
-  var off = 0;
-  segs.forEach(function(sg){ sg.w = Math.max(4, Math.round((sg.e - sg.s) / 4) * 4); sg.base = off; off += sg.w; });
-  var segOf = function(col){ for(var q = 0; q < segs.length; q++) if(col >= segs[q].s && col < segs[q].e) return segs[q]; return null; };
-  var notes = [];
-  evs.forEach(function(list, li2){
-    var open = tuning[n - 1 - li2] + capo;
-    var timed = [];
+  if(!segs.length || !evs.some(function(l){ return l.length; })) return null;
+  // The count / rhythm line's words, lined up with the staff's columns: the text column
+  // less where the staff starts, less the bar lines before it.
+  var anchors = [];
+  if(rl){
+    var off = grp[0].off;
+    rl.toks.forEach(function(t){
+      var bc = t.col - off; if(bc < 0 || bc >= width) return;
+      var a = {col:bc - before[bc]}; if(t.dur) a.dur = t.dur; else { a.n = t.n; a.frac = t.frac; }
+      anchors.push(a);
+    });
+  }
+  return {name:name || '', n:n, inst:inst, tuning:tuning, capo:capo, evs:evs, segs:segs, nBar:nBar, sig:sig,
+    rkind:anchors.length ? rl.kind : null, anchors:anchors};
+}
+// Rough tick -> clean tick: a column does not fall on a note value unless the bar's
+// dashes happen to, so starts snap to 20 ticks, which every 16th, 32nd and triplet
+// does fall on.
+function _tabSnap(t){ return Math.round(t / 20) * 20; }
+// A staff, timed. Three ways of knowing when a column is, the most specific winning:
+//   1. rhythm letters: each letter's duration, one after the other from the bar's start
+//      (when they add up to the bar; if not, where they sit);
+//   2. a count: "1" is the beat, "&" half way to the next, and so on;
+//   3. the bar itself: a bar line to a bar line is one bar of the time signature, and
+//      the dashes in it are spread evenly across the beats. A bar of 8 dashes, 16 or
+//      32 comes out the same length, which is the whole point of reading the bars.
+// With `dash` set (8th/16th/32nd) the bars are not trusted and every column is worth
+// that much, as is also true of a staff with no bar lines to fit.
+function _tabLayout(rb, o, start){
+  var sig = rb.sig, barT = Math.round(sig[0] * 1920 / sig[1]);
+  var compound = sig[1] === 8 && sig[0] > 3 && sig[0] % 3 === 0;
+  var beat = compound ? 720 : Math.round(1920 / sig[1]);
+  var fixed = typeof o.dash === 'number' ? o.dash : 0;
+  var fit = !fixed && rb.nBar >= 2, u = fixed || 120;
+  var timing = fit ? 'bars' : 'dashes', used = {};
+  var off = 0, notes = [], evCols = {};
+  rb.evs.forEach(function(list){ list.forEach(function(e){ evCols[e.col] = true; }); });
+  rb.segs.forEach(function(sg){
+    var w = sg.e - sg.s;
+    sg.len = fit ? barT : Math.max(beat, Math.round(w * u / beat) * beat);
+    sg.base = off; off += sg.len;
+    var span = fit ? sg.len : w * u;                    // ticks the bar's own columns cover
+    var anc = [{col:sg.s, t:0}, {col:sg.e, t:span}];
+    var mine = rb.anchors.filter(function(a){ return a.col >= sg.s && a.col < sg.e; }).map(function(a){ return Object.assign({}, a); });
+    // A word typed one character off its note belongs to that note — but only when the
+    // note is the one beside it. In a dense tab, where a note sits on either side of the
+    // word, it stays where it is.
+    mine.forEach(function(a){
+      if(evCols[a.col]) return;
+      var l = evCols[a.col - 1], r = evCols[a.col + 1];
+      if(l && !r) a.col--; else if(r && !l) a.col++;
+    });
+    mine.sort(function(a, b){ return a.col - b.col; });
+    var extra = [], durAt = [];
+    if(mine.length && rb.rkind === 'count'){
+      var mx = Math.max.apply(null, mine.map(function(a){ return a.n; }));
+      var unit = compound ? (mx > sig[0] / 3 ? 240 : 720) : sig[1] === 8 ? 240 : Math.round(1920 / sig[1]);
+      mine.forEach(function(a){ if(a.n) a.base = (a.n - 1) * unit; });
+      var cur = 0;
+      mine.forEach(function(a){ if(a.n) cur = a.base; extra.push({col:a.col, t:Math.round(cur + a.frac * unit)}); });
+    } else if(mine.length && rb.rkind === 'rhythm'){
+      var total = 0;
+      mine.forEach(function(a){ a.t = total; total += a.dur; durAt.push({col:a.col, dur:a.dur}); });
+      if(Math.abs(total - sg.len) <= 0.06 * sg.len && mine[0].col <= sg.s + 1) mine.forEach(function(a){ extra.push({col:a.col, t:a.t}); });
+    }
+    if(extra.length) used[rb.rkind] = true;
+    extra.forEach(function(a){ if(a.col > sg.s && a.col < sg.e && a.t > 0 && a.t < span) anc.push(a); });
+    anc.sort(function(a, b){ return a.col - b.col || a.t - b.t; });
+    anc = anc.filter(function(a, ix){ return ix === 0 || (a.col > anc[ix - 1].col && a.t >= anc[ix - 1].t); });
+    sg.anc = anc; sg.durAt = durAt;
+  });
+  var timeAt = function(sg, col){
+    var a = sg.anc;
+    for(var k = 0; k + 1 < a.length; k++) if(col >= a[k].col && col < a[k + 1].col){
+      if(col === a[k].col) return a[k].t;
+      return _tabSnap(a[k].t + (col - a[k].col) / (a[k + 1].col - a[k].col) * (a[k + 1].t - a[k].t));
+    }
+    return a[a.length - 1].t;
+  };
+  var segOf = function(col){ for(var q = 0; q < rb.segs.length; q++) if(col >= rb.segs[q].s && col < rb.segs[q].e) return rb.segs[q]; return null; };
+  rb.evs.forEach(function(list, li){
+    var open = rb.tuning[rb.n - 1 - li] + rb.capo, timed = [];
     list.forEach(function(e){
       var sg = segOf(e.col); if(!sg) return;
-      timed.push({t:start + sg.base + Math.min(e.col - sg.s, sg.w - 1), end:start + sg.base + sg.w, fret:e.fret, legato:e.legato});
+      var t = sg.base + Math.min(timeAt(sg, e.col), sg.len - 20), dur = 0;
+      var dn = null;   // the letter on this column, or failing that on the next one over
+      sg.durAt.forEach(function(d){ var gap = Math.abs(d.col - e.col); if(gap <= 1 && (!dn || gap < dn.gap)) dn = {gap:gap, dur:d.dur}; });
+      if(dn) dur = dn.dur;
+      timed.push({t:start + t, end:start + sg.base + sg.len, fret:e.fret, legato:e.legato, dur:dur});
     });
     timed.forEach(function(e, idx){
       var nxt = idx + 1 < timed.length ? timed[idx + 1].t : Infinity;
       var midi = open + e.fret;
       if(midi < 0 || midi > 127) return;
-      notes.push({t:e.t, len:Math.max(1, Math.min(e.end, nxt, e.t + 32) - e.t), midi:midi, vel:e.legato ? 72 : 92});
+      var stop = Math.min(e.end, nxt, e.dur ? e.t + e.dur : Infinity, e.t + 3840);
+      notes.push({t:e.t, len:Math.max(20, stop - e.t), midi:midi, vel:e.legato ? 72 : 92});
     });
   });
-  if(!notes.length) return null;
-  var names = tuning.map(function(m2){ return _TAB_NAMES[((m2 % 12) + 12) % 12]; });
-  return {notes:notes, info:{name:name || '', start:start, len:off, bars:segs.length, strings:n, inst:inst,
-    notes:notes.length, tuning:names.join(' ')}};
+  var names = rb.tuning.map(function(m2){ return _TAB_NAMES[((m2 % 12) + 12) % 12]; });
+  return {notes:notes, info:{name:rb.name, start:start, len:off, bars:rb.segs.length, strings:rb.n, inst:rb.inst,
+    notes:notes.length, tuning:names.join(' '), sig:rb.sig, timing:timing, from:Object.keys(used)[0] || null}};
 }
-// Notes → a Standard MIDI File (type 0, one track). `colTicks` is what one column is
-// worth in ticks of 480 to the quarter: 120 for a 16th. A section name becomes a
-// marker, so a DAW shows where the verse starts.
+// Notes → a Standard MIDI File (type 0, one track). A section name becomes a marker, so
+// a DAW shows where the verse starts, and a change of time signature is written where
+// it happens.
 function tabToMidi(parsed, o){
   o = o || {};
-  var tpq = 480, ct = o.colTicks || 120, bpm = Math.max(20, Math.min(400, o.bpm || 120));
+  var tpq = 480, bpm = Math.max(20, Math.min(400, o.bpm || 120));
   var tempo = Math.round(60000000 / bpm), ev = [];
   var varLen = function(n){ var b = [n & 0x7f]; while((n >>= 7) > 0) b.unshift((n & 0x7f) | 0x80); return b; };
   var u32 = function(n){ return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; };
@@ -40046,42 +40193,43 @@ function tabToMidi(parsed, o){
   var txt = function(s){ return str(_riffAscii(String(s)).slice(0, 200)); };
   meta(0, 0x03, txt(o.title || 'Tab'));
   meta(0, 0x51, [(tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]);
-  meta(0, 0x58, [4, 2, 24, 8]);
-  var first = parsed.blocks[0];
+  var first = parsed.blocks[0], prev = null;
+  parsed.blocks.forEach(function(b){
+    var sg = b.sig || [4, 4];
+    if(!prev || prev[0] !== sg[0] || prev[1] !== sg[1]){ meta(b.start, 0x58, [sg[0], Math.round(Math.log(sg[1]) / Math.LN2), 24, 8]); prev = sg; }
+    if(b.name) meta(b.start, 0x06, txt(b.name));
+  });
   ev.push({tick:0, ord:0, b:[0xc0, (first && first.inst === 'bass') ? 33 : 25]});
-  parsed.blocks.forEach(function(b){ if(b.name) meta((b.start - (o.from || 0)) * ct, 0x06, txt(b.name)); });
   var end = 0;
   parsed.notes.forEach(function(nt){
-    var on = (nt.t - (o.from || 0)) * ct, off = on + nt.len * ct;
-    if(on < 0) return;
-    ev.push({tick:on, ord:2, b:[0x90, nt.midi, nt.vel || 90]});
-    ev.push({tick:off, ord:1, b:[0x80, nt.midi, 0]});
-    if(off > end) end = off;
+    ev.push({tick:nt.t, ord:2, b:[0x90, nt.midi, nt.vel || 90]});
+    ev.push({tick:nt.t + nt.len, ord:1, b:[0x80, nt.midi, 0]});
+    if(nt.t + nt.len > end) end = nt.t + nt.len;
   });
   ev.sort(function(a, b){ return a.tick - b.tick || a.ord - b.ord; });
-  var trk = [], prev = 0;
-  ev.forEach(function(e){ trk = trk.concat(varLen(e.tick - prev), e.b); prev = e.tick; });
-  trk = trk.concat(varLen(Math.max(0, (o.total ? o.total * ct : end) - prev)), [0xff, 0x2f, 0]);
+  var trk = [], last = 0;
+  ev.forEach(function(e){ trk = trk.concat(varLen(e.tick - last), e.b); last = e.tick; });
+  trk = trk.concat(varLen(Math.max(0, Math.max(parsed.total, end) - last)), [0xff, 0x2f, 0]);
   return new Uint8Array(str('MThd').concat(u32(6), [0, 0, 0, 1, tpq >> 8, tpq & 255], str('MTrk'), u32(trk.length), trk));
 }
 // The melody roll is sixteenth-note steps, up to 64 of them. One block of the tab
-// goes in; its notes land on the step their column falls on, several on one step
-// becoming a chord. The roll runs C3-C7 and a guitar's low strings sit under it, so
-// the line is lifted whole octaves until it clears — the shape is the same, the
-// register is the roll's. Returns {steps, grid, lifted, cut} for _mlRestoreState.
-function tabToMelodyGrid(parsed, blockIdx, colTicks){
+// goes in; its notes land on the step they fall on (a triplet rounds to the nearest
+// step), several on one step becoming a chord. The roll runs C3-C7 and a guitar's low
+// strings sit under it, so the line is lifted whole octaves until it clears — the shape
+// is the same, the register is the roll's. Returns {steps, grid, lifted, cut} for
+// _mlRestoreState.
+function tabToMelodyGrid(parsed, blockIdx){
   var b = parsed.blocks[blockIdx]; if(!b) return null;
-  var per = (colTicks || 120) / 120;
   var inB = parsed.notes.filter(function(nt){ return nt.t >= b.start && nt.t < b.start + b.len; });
-  var steps = Math.max(4, Math.min(64, Math.ceil(b.len * per / 4) * 4));
+  var steps = Math.max(4, Math.min(64, Math.ceil(b.len / 120 / 4) * 4));
   var lo = Math.min.apply(null, inB.map(function(nt){ return nt.midi; }));
   var lift = 0; while(lo + lift < 48) lift += 12;
   var cells = [], cut = 0;
   for(var s = 0; s < steps; s++) cells.push({note:0, oct:5, len:1, accent:false, v:0, usr:0});
   inB.forEach(function(nt){
-    var st = Math.round((nt.t - b.start) * per);
+    var st = Math.round((nt.t - b.start) / 120);
     if(st >= steps){ cut++; return; }
-    var m = Math.min(96, nt.midi + lift), len = Math.max(1, Math.round(nt.len * per)), c = cells[st];
+    var m = Math.min(96, nt.midi + lift), len = Math.max(1, Math.round(nt.len / 120)), c = cells[st];
     var one = {note:m % 12, oct:Math.floor(m / 12) - 1};
     if(!c.v){ c.v = 1; c.usr = 1; c.note = one.note; c.oct = one.oct; c.len = len; }
     else {
@@ -40102,14 +40250,22 @@ function openTabImport(){
   ov.innerHTML = '<div class="dur-picker-box csi-box" role="dialog" aria-modal="true" aria-labelledby="tbi-title">'
    + '<div class="dur-picker-title" id="tbi-title">Import a tab</div>'
    + '<div class="dur-picker-sub">Paste a guitar or bass tab — the plain-text kind from Ultimate Guitar. '
-   + 'The tab does not say how long anything lasts, so pick what one dash is worth; a note rings until its string is struck again or the bar ends.</div>'
+   + 'Bar lines set the length of each bar, so tabs written with 8, 16 or 32 dashes to a bar all keep time; a count (1 e & a) or rhythm letters (q e e h) over the staff are used when there are any. A note rings until its string is struck again or the bar ends.</div>'
    + '<textarea class="csi-text tbi-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" '
    + 'placeholder="e|-------0-------0---|\nB|-----1---1---1-----|\nG|---0-------0-------|\nD|-2-------2---------|\nA|-------------------|\nE|-------------------|"></textarea>'
    + '<div class="csi-row csi-sources"><button type="button" class="tb tbi-file">Files…</button>'
    + '<input type="file" class="tbi-input" accept=".txt,.text,text/plain" hidden></div>'
-   + '<div class="csi-row csi-len" role="group" aria-label="What one dash is worth"><span class="csi-lbl">A dash is</span>'
-   + '<button type="button" class="tb" data-tbicol="240">8th</button><button type="button" class="tb" data-tbicol="120">16th</button>'
-   + '<span class="csi-len-hint">tab that spaces notes two dashes apart is usually 16ths</span></div>'
+   + '<div class="csi-row csi-len" role="group" aria-label="What one dash is worth"><span class="csi-lbl">Timing</span>'
+   + '<button type="button" class="tb" data-tbicol="auto" title="Fit the dashes to each bar of the time signature">By bars</button>'
+   + '<button type="button" class="tb" data-tbicol="240" title="Every dash is an eighth note, whatever the bar lines say">8th</button>'
+   + '<button type="button" class="tb" data-tbicol="120" title="Every dash is a sixteenth note">16th</button>'
+   + '<button type="button" class="tb" data-tbicol="60" title="Every dash is a thirty-second note">32nd</button>'
+   + '</div>'
+   + '<div class="csi-row csi-len" role="group" aria-label="Time signature"><span class="csi-lbl">Time</span>'
+   + '<select class="tbi-sig" aria-label="Time signature">'
+   + '<option value="auto">Auto</option><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option>'
+   + '<option>12/8</option><option>9/8</option><option>5/4</option><option>7/8</option></select>'
+   + '<span class="csi-len-hint">Auto reads it from the tab (Time: 6/8), else 4/4</span></div>'
    + '<div class="csi-row csi-len" role="group" aria-label="Strings"><span class="csi-lbl">Strings</span>'
    + '<button type="button" class="tb" data-tbiinst="auto">Auto</button><button type="button" class="tb" data-tbiinst="guitar">Guitar</button>'
    + '<button type="button" class="tb" data-tbiinst="bass">Bass</button>'
@@ -40124,7 +40280,7 @@ function openTabImport(){
   document.body.appendChild(ov);
   const $ = sel => ov.querySelector(sel);
   const ta = $('.tbi-text'), pv = $('.csi-preview'), go = $('.tbi-go'), roll = $('.tbi-roll');
-  const pref = {col:120, inst:'auto'};
+  const pref = {col:'auto', inst:'auto'};
   let parsed = null;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const close = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
@@ -40133,12 +40289,12 @@ function openTabImport(){
   ov.addEventListener('click', e => { if(e.target === ov) close(); });
   $('.tbi-cancel').addEventListener('click', close);
   const sync = () => {
-    ov.querySelectorAll('[data-tbicol]').forEach(b => { const on = +b.dataset.tbicol === pref.col; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    ov.querySelectorAll('[data-tbicol]').forEach(b => { const on = b.dataset.tbicol === String(pref.col); b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     ov.querySelectorAll('[data-tbiinst]').forEach(b => { const on = b.dataset.tbiinst === pref.inst; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   };
   const barsOf = b => b.bars + (b.bars === 1 ? ' bar' : ' bars');
   const preview = () => {
-    parsed = parseAsciiTab(ta.value, {inst:pref.inst});
+    parsed = parseAsciiTab(ta.value, {inst:pref.inst, dash:pref.col === 'auto' ? 'auto' : +pref.col, sig:$('.tbi-sig').value});
     const ok = parsed.notes.length > 0;
     go.disabled = !ok; roll.disabled = !ok;
     $('.tbi-rollrow').style.display = ok ? '' : 'none';
@@ -40147,25 +40303,27 @@ function openTabImport(){
        + parsed.warnings.map(w => '<div class="csi-note">' + esc(w) + '</div>').join('');
       return;
     }
-    const secs = Math.round(parsed.total * pref.col / 480 * 60 / (+$('.tbi-bpm').value || 120) * 10) / 10;
+    const secs = Math.round(parsed.total / 480 * 60 / (+$('.tbi-bpm').value || 120) * 10) / 10;
     let h = '<div class="csi-head"><b>' + parsed.notes.length + ' notes</b><span>' + esc(parsed.tuning)
      + (parsed.capo ? ' · capo ' + parsed.capo : '') + ' · ' + secs + ' s</span></div>';
     parsed.blocks.forEach((b, i) => {
       h += '<div class="csi-sec"><span class="csi-name">' + esc(b.name || ('Part ' + (i + 1))) + '<span class="csi-bars">' + barsOf(b) + '</span></span>'
-       + '<span class="csi-chords">' + b.notes + ' notes · ' + b.strings + ' strings</span></div>';
+       + '<span class="csi-chords">' + b.notes + ' notes · ' + b.sig[0] + '/' + b.sig[1] + ' · '
+       + (b.from ? 'from its ' + b.from + ' line' : b.timing === 'bars' ? 'fitted to the bars' : 'by the dashes') + '</span></div>';
     });
     h += parsed.warnings.map(w => '<div class="csi-note">' + esc(w) + '</div>').join('');
     pv.innerHTML = h;
     const sel = $('.tbi-block'), keep = sel.value;
     sel.innerHTML = parsed.blocks.map((b, i) => '<option value="' + i + '">' + (i + 1) + '. ' + esc(b.name || 'Part') + ' — ' + barsOf(b)
-      + (b.len * pref.col / 120 > 64 ? ' (first 4 bars)' : '') + '</option>').join('');
+      + (b.len / 120 > 64 ? ' (first 64 steps)' : '') + '</option>').join('');
     if(keep && sel.querySelector('option[value="' + keep + '"]')) sel.value = keep;
   };
   let t = null;
   const later = () => { clearTimeout(t); t = setTimeout(preview, 120); };
   ta.addEventListener('input', later);
   $('.tbi-bpm').addEventListener('input', later);
-  ov.querySelectorAll('[data-tbicol]').forEach(b => b.addEventListener('click', () => { pref.col = +b.dataset.tbicol; sync(); preview(); }));
+  ov.querySelectorAll('[data-tbicol]').forEach(b => b.addEventListener('click', () => { pref.col = b.dataset.tbicol === 'auto' ? 'auto' : +b.dataset.tbicol; sync(); preview(); }));
+  $('.tbi-sig').addEventListener('change', preview);
   ov.querySelectorAll('[data-tbiinst]').forEach(b => b.addEventListener('click', () => { pref.inst = b.dataset.tbiinst; sync(); preview(); }));
   sync();
   const fileBtn = $('.tbi-file'), inp = $('.tbi-input');
@@ -40179,7 +40337,7 @@ function openTabImport(){
   const title = () => ((document.getElementById('chart-title') || {}).value || '').trim() || 'Tab';
   go.addEventListener('click', () => {
     if(!parsed || !parsed.notes.length) return;
-    const bytes = tabToMidi(parsed, {colTicks:pref.col, bpm:+$('.tbi-bpm').value || bpm0, title:title(), total:parsed.total});
+    const bytes = tabToMidi(parsed, {bpm:+$('.tbi-bpm').value || bpm0, title:title()});
     modPlatform.saveFile(_dlName(title() + ' tab.mid'), new Blob([bytes], {type:'audio/midi'}));
     showToast('Tab written to .mid — ' + parsed.notes.length + ' notes');
     close();
@@ -40187,7 +40345,7 @@ function openTabImport(){
   roll.addEventListener('click', () => {
     if(!parsed || !parsed.notes.length) return;
     if(typeof window._mlRestoreState !== 'function' || typeof window._mlCaptureState !== 'function'){ showToast('The melody roll is not ready yet'); return; }
-    const idx = +$('.tbi-block').value || 0, g = tabToMelodyGrid(parsed, idx, pref.col);
+    const idx = +$('.tbi-block').value || 0, g = tabToMelodyGrid(parsed, idx);
     if(!g) return;
     const before = JSON.parse(JSON.stringify(window._mlCaptureState()));
     // Follow would move the line onto each chord as the chart plays; a tab is meant to be
@@ -40195,7 +40353,7 @@ function openTabImport(){
     window._mlRestoreState({steps:g.steps, grid:g.grid, follow:false});
     const b = parsed.blocks[idx];
     const note = (g.lifted ? ' (up ' + g.lifted + (g.lifted === 1 ? ' octave' : ' octaves') + ' to fit the roll)' : '')
-      + (g.cut ? ' — ' + g.cut + ' notes past 4 bars left out' : '');
+      + (g.cut ? ' — ' + g.cut + ' notes past 64 steps left out' : '');
     close();
     showToast('“' + (b.name || 'Part ' + (idx + 1)) + '” is in the melody roll' + note + '. Follow is off, so it plays as written.',
       {actionLabel:'Undo', onAction(){ window._mlRestoreState(before); }});

@@ -30,7 +30,7 @@ function serve() {
 }
 // A second, independent SMF reader.
 function readSmf(bytes) {
-  const b = Buffer.from(bytes); let p = 0; const out = { notes: [], markers: [], tempo: null, name: null, program: null, end: 0 };
+  const b = Buffer.from(bytes); let p = 0; const out = { notes: [], markers: [], sigs: [], tempo: null, name: null, program: null, end: 0 };
   const str = n => { const s = b.toString('latin1', p, p + n); p += n; return s; };
   if (str(4) !== 'MThd') return null; p += 4; out.format = b.readUInt16BE(p); out.ntrk = b.readUInt16BE(p + 2); out.tpq = b.readUInt16BE(p + 4); p += 6;
   if (str(4) !== 'MTrk') return null; const len = b.readUInt32BE(p); p += 4; const stop = p + len;
@@ -42,6 +42,7 @@ function readSmf(bytes) {
       if (t === 0x51) out.tempo = (d[0] << 16) | (d[1] << 8) | d[2];
       if (t === 0x06) out.markers.push([tick, d.toString('latin1')]);
       if (t === 0x03) out.name = d.toString('latin1');
+      if (t === 0x58) out.sigs.push([tick, d[0], 1 << d[1]]);
       if (t === 0x2f) out.end = tick; continue; }
     if (s & 0x80) { run = s; p++; } else s = run;
     const hi = s & 0xf0;
@@ -68,16 +69,16 @@ const T_BASIC = [
   // ── parseAsciiTab ──
   const P = (t, o) => page.evaluate(([t, o]) => { const r = parseAsciiTab(t, o); return r; }, [t, o]);
   let r = await P(T_BASIC);
-  ok(r.notes.length === 4 && r.blocks.length === 1 && r.total === 16, 'a six-string bar: four notes, one block, 16 columns', J({ n: r.notes.length, t: r.total }));
-  ok(J(r.notes.map(n => [n.t, n.midi, n.len])) === J([[0, 64, 16], [4, 60, 12], [8, 55, 8], [12, 52, 4]]),
+  ok(r.notes.length === 4 && r.blocks.length === 1 && r.total === 1920, 'a six-string bar: four notes, one block, one 4/4 bar (1920 ticks)', J({ n: r.notes.length, t: r.total }));
+  ok(J(r.notes.map(n => [n.t, n.midi, n.len])) === J([[0, 64, 1920], [480, 60, 1440], [960, 55, 960], [1440, 52, 480]]),
     'open e = E4, B fret 1 = C4, G open, D fret 2; each rings to the bar end', J(r.notes.map(n => [n.t, n.midi, n.len])));
   ok(r.tuning === 'E A D G B E' && r.blocks[0].inst === 'guitar', 'standard tuning read', r.tuning);
 
   r = await P('Capo: 2nd fret\n' + T_BASIC);
   ok(r.capo === 2 && r.notes[0].midi === 66, 'a capo lifts every note', J([r.capo, r.notes[0].midi]));
 
-  r = await P(['e|-12-10-----|', 'B|-----------|', 'G|-----------|', 'D|-----------|', 'A|-----------|', 'E|-----------|'].join('\n'));
-  ok(J(r.notes.map(n => [n.t, n.midi])) === J([[1, 76], [4, 74]]), 'two-digit frets read as one fret each (12 -> E5, 10 -> D5)', J(r.notes.map(n => [n.t, n.midi])));
+  r = await P(['e|-12-10-----|', 'B|-----------|', 'G|-----------|', 'D|-----------|', 'A|-----------|', 'E|-----------|'].join('\n'), { dash: 120 });
+  ok(J(r.notes.map(n => [n.t, n.midi])) === J([[120, 76], [480, 74]]), 'two-digit frets read as one fret each (12 -> E5, 10 -> D5)', J(r.notes.map(n => [n.t, n.midi])));
 
   // Drop D by its labels; Eb by a Tuning: line.
   const drop = ['e|-0--------|', 'B|----------|', 'G|----------|', 'D|----------|', 'A|----------|', 'D|-0--------|'].join('\n');
@@ -106,26 +107,74 @@ const T_BASIC = [
   // Bar lines cost no time; two bars of 16.
   const two = ['e|0---------------|--------------0-|', 'B|----------------|----------------|', 'G|----------------|----------------|', 'D|----------------|----------------|', 'A|----------------|----------------|', 'E|----------------|----------------|'].join('\n');
   r = await P(two);
-  ok(r.total === 32 && J(r.notes.map(n => n.t)) === J([0, 30]), 'two bars: 32 columns, the bar line is not one of them', J({ t: r.total, n: r.notes.map(n => n.t) }));
+  ok(r.total === 3840 && J(r.notes.map(n => n.t)) === J([0, 3600]), 'two bars: 3840 ticks, the bar line is not a column', J({ t: r.total, n: r.notes.map(n => n.t) }));
 
   // Sections, two blocks, lyrics and chords ignored.
   const song = '[Intro]\n' + T_BASIC + '\n\nAm       G\nSome words in the way\n\nChorus:\n' + T_BASIC;
   r = await P(song);
-  ok(r.blocks.length === 2 && r.blocks[0].name === 'Intro' && r.blocks[1].name === 'Chorus' && r.blocks[1].start === 16 && r.total === 32,
+  ok(r.blocks.length === 2 && r.blocks[0].name === 'Intro' && r.blocks[1].name === 'Chorus' && r.blocks[1].start === 1920 && r.total === 3840,
     'sections named, blocks end to end, lyrics and chord lines ignored', J(r.blocks.map(b => [b.name, b.start])));
   r = await P('Just some lyrics a-ha, b-b-baby\nAm G C\n');
   ok(r.notes.length === 0, 'lyrics are not tab', String(r.notes.length));
 
   // ── tabToMidi ──
-  const bytes = await page.evaluate(([t, o]) => Array.from(tabToMidi(parseAsciiTab(t), o)), [song, { colTicks: 120, bpm: 90, title: 'Riff' }]);
+  const bytes = await page.evaluate(([t, o]) => Array.from(tabToMidi(parseAsciiTab(t), o)), [song, { bpm: 90, title: 'Riff' }]);
   const m = readSmf(bytes);
   ok(m && m.format === 0 && m.tpq === 480 && m.tempo === Math.round(60000000 / 90), 'SMF type 0, 480 tpq, tempo 90', J(m && [m.format, m.tpq, m.tempo]));
   ok(m.notes.length === 8 && m.stuck === 0, 'eight notes, every one switched off', J([m.notes.length, m.stuck]));
   ok(J(m.notes.slice(0, 4).map(n => [n.on, n.off, n.n])) === J([[0, 1920, 64], [480, 1920, 60], [960, 1920, 55], [1440, 1920, 52]]), 'ticks are column * 120', J(m.notes.slice(0, 4).map(n => [n.on, n.off, n.n])));
   ok(J(m.markers) === J([[0, 'Intro'], [1920, 'Chorus']]) && m.name === 'Riff' && m.program === 25, 'section markers, name, guitar program', J([m.markers, m.name, m.program]));
   ok(m.end === 3840, 'the file runs to the end of the last bar', String(m.end));
-  const m8 = readSmf(await page.evaluate(t => Array.from(tabToMidi(parseAsciiTab(t), { colTicks: 240, bpm: 120 })), T_BASIC));
-  ok(m8.notes[1].on === 960, 'an 8th per dash doubles every time', String(m8.notes[1].on));
+  const m8 = readSmf(await page.evaluate(t => Array.from(tabToMidi(parseAsciiTab(t, { dash: 240 }), { bpm: 120 })), T_BASIC));
+  ok(m8.notes[1].on === 960, 'a fixed 8th per dash puts the second note at 960', String(m8.notes[1].on));
+
+
+  // ── timing: the bars, the signature, a count, rhythm letters ──
+  const bar = (top, w) => ['e|' + top + '|', 'B|' + '-'.repeat(w) + '|', 'G|' + '-'.repeat(w) + '|', 'D|' + '-'.repeat(w) + '|', 'A|' + '-'.repeat(w) + '|', 'E|' + '-'.repeat(w) + '|'];
+  const mk = (...tops) => { const w = tops[0].length; return bar(tops[0], w).join('\n'); };
+  const at = r => r.notes.map(n => n.t);
+  // The same four-beat riff written with 8, 16 and 32 dashes keeps the same time.
+  const riff8 = mk('0---3---');                       // 8 dashes: 8ths
+  const riff16 = mk('0-------3-------');
+  const riff32 = mk('0---------------3---------------');
+  r = await P(riff8); ok(J(at(r)) === J([0, 960]) && r.total === 1920, '8 dashes to a 4/4 bar: the second note is on beat 3', J(at(r)));
+  r = await P(riff16); ok(J(at(r)) === J([0, 960]) && r.total === 1920, '16 dashes: the same', J(at(r)));
+  r = await P(riff32); ok(J(at(r)) === J([0, 960]) && r.total === 1920, '32 dashes: the same', J(at(r)));
+  ok(r.blocks[0].timing === 'bars', 'and it says it fitted the bars', r.blocks[0].timing);
+  // Bars of different widths in one staff are still one bar each.
+  const uneven = ['e|0---3---|0-------3-------|', 'B|--------|----------------|', 'G|--------|----------------|', 'D|--------|----------------|', 'A|--------|----------------|', 'E|--------|----------------|'].join('\n');
+  r = await P(uneven); ok(J(at(r)) === J([0, 960, 1920, 2880]) && r.total === 3840, 'an 8-dash bar then a 16-dash bar: two bars of 4/4', J(at(r)));
+  // Fixed dash overrides the bars.
+  r = await P(riff8, { dash: 120 }); ok(r.notes[1].t === 480 && r.blocks[0].timing === 'dashes', 'By the dash: 16ths whatever the bar says', J(at(r)));
+  // No bar lines: nothing to fit, so the dash is a 16th.
+  r = await P(riff16.replace(/\|/g, '-'));
+  ok(r.blocks[0].timing === 'dashes' && J(at(r)) === J([120, 1080]), 'no bar lines: read by the dash (16ths)', J([r.blocks[0].timing, at(r)]));
+  // Time signatures.
+  r = await P('Time: 3/4\n' + mk('0-----------'));
+  ok(r.total === 1440 && J(r.blocks[0].sig) === '[3,4]', '3/4 is a bar of 1440 ticks', J([r.total, r.blocks[0].sig]));
+  r = await P('6/8\n' + mk('0-----3-----'));
+  ok(r.total === 1440 && J(at(r)) === J([0, 720]) && J(r.blocks[0].sig) === '[6,8]', '6/8: a bar of 1440, the second note on the second dotted quarter', J([r.total, at(r)]));
+  r = await P(mk('0-----------'), { sig: '3/4' });
+  ok(r.total === 1440, 'the Time choice overrides', String(r.total));
+  r = await P('Time: 3/4\n' + mk('0-----------') + '\n\n4/4\n' + mk('0---3---'));
+  ok(J(r.blocks.map(b => b.sig)) === '[[3,4],[4,4]]' && r.blocks[1].start === 1440, 'a change of signature applies from there', J(r.blocks.map(b => [b.sig, b.start])));
+  const m34 = readSmf(await page.evaluate(t => Array.from(tabToMidi(parseAsciiTab(t), {})), 'Time: 3/4\n' + mk('0-----------') + '\n\n4/4\n' + mk('0---3---')));
+  ok(J(m34.sigs) === J([[0, 3, 4], [1440, 4, 4]]), 'the .mid carries the signatures where they change', J(m34.sigs));
+  // A count line pulls a note to where it is counted, whatever the dashes say.
+  const counted = ['  1  &    2  &', 'e|0--0----0--0---|', 'B|----------------|', 'G|----------------|', 'D|----------------|', 'A|----------------|', 'E|----------------|'].join('\n');
+  r = await P(counted); ok(J(at(r)) === J([0, 240, 480, 720]) && r.blocks[0].from === 'count', 'a count (1 & 2 &) places the notes on the count', J([at(r), r.blocks[0].from]));
+  r = await P(counted.split('\n').slice(1).join('\n')); ok(J(at(r)) === J([0, 360, 960, 1320]), 'without it they sit where the dashes put them', J(at(r)));
+  const sixteens = ['  1 e & a 2 e & a', 'e|0-0-0-0-0-0-0-0-|', 'B|-----------------|', 'G|-----------------|', 'D|-----------------|', 'A|-----------------|', 'E|-----------------|'].join('\n');
+  r = await P(sixteens); ok(r.blocks[0].from === 'count' && r.notes[1].t === 120 && r.notes[4].t === 480, '1 e & a: sixteenths', J(at(r).slice(0, 6)));
+  const countBelow = ['e|0--0----0--0---|', 'B|----------------|', 'G|----------------|', 'D|----------------|', 'A|----------------|', 'E|----------------|', '  1  &    2  &'].join('\n');
+  r = await P(countBelow); ok(J(at(r)) === J([0, 240, 480, 720]), 'a count under the staff works too', J(at(r)));
+  // Rhythm letters: durations, one after the other.
+  const letters = ['  q    e   e  h', 'e|0----0---0--0--|', 'B|----------------|', 'G|----------------|', 'D|----------------|', 'A|----------------|', 'E|----------------|'].join('\n');
+  r = await P(letters);
+  ok(J(r.notes.map(n => [n.t, n.len])) === J([[0, 480], [480, 240], [720, 240], [960, 960]]) && r.blocks[0].from === 'rhythm', 'rhythm letters: q e e h are 480, 240, 240, 960', J(r.notes.map(n => [n.t, n.len])));
+  const dotted = ['  q.   e   h', 'e|0-----0---0---|', 'B|---------------|', 'G|---------------|', 'D|---------------|', 'A|---------------|', 'E|---------------|'].join('\n');
+  r = await P(dotted); ok(J(at(r)) === J([0, 720, 960]), 'a dotted quarter is 720', J(at(r)));
+  r = await P('Verse 1 of the set\n' + T_BASIC); ok(r.blocks[0].from === null, 'a line of words above the staff is not read as rhythm', String(r.blocks[0].from));
 
   // ── the dialog ──
   const dlg = await page.evaluate(() => {
@@ -139,7 +188,7 @@ const T_BASIC = [
   const pv = await page.evaluate(() => ({ head: document.querySelector('.csi-head').textContent, rows: document.querySelectorAll('.csi-sec').length,
     go: document.querySelector('.tbi-go').disabled, roll: document.querySelector('.tbi-roll').disabled, opts: document.querySelectorAll('.tbi-block option').length,
     active: [...document.querySelectorAll('[data-tbicol].active')].map(b => b.dataset.tbicol) }));
-  ok(/8 notes/.test(pv.head) && pv.rows === 2 && !pv.go && !pv.roll && pv.opts === 2 && pv.active[0] === '120', 'preview: 8 notes, two parts, buttons live, 16th picked', J(pv));
+  ok(/8 notes/.test(pv.head) && pv.rows === 2 && !pv.go && !pv.roll && pv.opts === 2 && pv.active[0] === 'auto', 'preview: 8 notes, two parts, buttons live, By bars picked', J(pv));
   await page.evaluate(() => document.querySelector('[data-tbicol="240"]').click());
   const dl = page.waitForEvent('download', { timeout: 4000 }).catch(() => null);
   await page.evaluate(() => document.querySelector('.tbi-go').click());
