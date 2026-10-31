@@ -47,24 +47,29 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
      `_findGo({tab:'accomp'...})` all name the old tabs and have to move with them.
 2. **Every part is one page** with the same order: pattern and patch pickers,
    mode (Generate / Arrange / Play in), the roll or grid, then the keys or pads to
-   play it. Studio shows the whole page; Live shows the play surface and a
-   pattern picker (the Styles row that Live already has). **Chords gets a pattern
-   editor** like the others: the chord rhythm roll (`rhyEdit`, `crEditOpen`)
-   drawn on the page instead of in a sheet. Drums, Bass, Melody, Arp, Chords,
-   Sampler and mõdFX are the part pages.
+   play it. **Studio** shows one part at a time, the whole page. **Live is the
+   whole stack, exactly the widgets it has today** (see below), not a cut-down
+   version of Studio. **Chords gets a pattern editor** like the others: the chord
+   rhythm roll (`rhyEdit`, `crEditOpen`) drawn on the page instead of in a sheet.
+   Drums (with its Aux layer), Bass, Melody, Arp, Chords, Sampler and mõdFX are the
+   part pages.
    - **A part page keeps every control its parts have today; the layout only
      decides where they sit.** The Sampler is the one that looked cut down in the
      first mock (twelve blank pads), so it is spelled out: the pad count, the pads
      with their sample names, Hold, Roll, Stop, Load and Trim, Bank (User and
      Preset, A to D), quantize with triplets, patterns 1 to 8 with Rec, Cap, Play,
      Clear and Undo, pattern length, then the selected pad's Mode, Reverse, Sync,
-     Key, Warp, mute group and its mõdFX sends (`ps-*` in `index.html`). Trim opens
+     Key, Warp, mute group and its mõdFX sends (`ps-*` in `index.html`). The pad
+     count keeps working as written (`psSetLiveN`, 1 to 16, laid out by `PS_ROWS`:
+     one pad is one big pad, twelve is four rows of three); the one change is that
+     pad height grows as the count falls, where Live fixes it at 72 pt today. Trim opens
      the sample editor (record, trim, tune, slice onto pads, step chance, roll
      velocity, Euclidean fill). Record, Resample and Library stay in the transport
      sheet. The same rule holds for Drums (groove and kit, layers, Aux), Bass,
      Melody and Arp.
-   - **Live keeps its widgets** (`LV_ORDER`): Chords, Melody, Styles, Sampler,
-     mõdFX, the Drum, Aux, Bass and Melody grids and Endings, still reordered and
+   - **Live keeps all of its widgets** (`LV_STD`): Chords, Melody, Styles, Sampler,
+     mõdFX, the Drum, Aux, Bass and Melody grids (the last two with their Generate,
+     Arrange and Play in controls) and Endings, in that order, still reordered and
      chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
      changed here). A Studio part page is that widget's real element at full size,
      moved and not copied, as the Live widgets are moved in from Accomp today.
@@ -167,7 +172,7 @@ Bottom stack: transport 48, parts row 48, tabs 52.
 
 | screen | today | proposed |
 |---|---|---|
-| Live | 150 | 148 |
+| Live | 150 | 148 (the page is longer: about 3,700 pt for the full stack at 44 pt targets, against about 3,170 today) |
 | Studio, chrome B | 181 | 148 |
 | Studio, part strip on the page (A) | 181 | 200 |
 | Studio, no parts row and a strip (C) | 181 | 152 |
