@@ -672,6 +672,17 @@ landscape is the real fix for long patterns, not bigger cells.
    keep their Controls button rather than a title toggle (the mõdFX heading is rebuilt
    by `fxBuildPanel`), and the Drum, Aux, Bass and Melody-sequencer grids have no extras
    toggle yet. `tests/extras/probe.js`.
+   **4c, landed as 5.6: the Styles widget as slim rows, and Live headings that fit**
+   (decisions 18 and 20). Drums, Bass and Melody are one row each, about 54 pt: the
+   part's name in its colour, previous, the picker, next, and Save as a tray icon (its
+   words are the accessible name). The same elements and handlers; `.st-head` dissolves
+   so its children join the row. The widget went from 410 pt to 224 pt on a 430 pt phone,
+   so about 186 pt back on Live. The Chords heading had grown (title caret, record dot,
+   Sub, the More chip, the sound picker, the slot menu) and left the picker 58 pt wide at
+   430 and 22 pt at 360, so under 460 pt the word "Voice" goes, the chips and the dot
+   give back padding, and under 420 the chip drops its "+": the picker is 90 pt at 440, 94
+   at 402 and 52 at 360, and no heading wraps or runs off the edge from 360 to 440.
+   Not done: the Keep button's 40 pt narrow form. `tests/styles/probe.js`.
    The rest of Step 4, still to do: Accomp's Drums, Bass, Melody and Arp pages become Studio part
    pages (the real elements are moved, not copied, which is how the Live widgets
    already work, see `LV_*` in `index.html`); the Chords page with the rhythm
