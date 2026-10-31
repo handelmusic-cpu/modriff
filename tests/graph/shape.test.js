@@ -8,8 +8,13 @@
    panner in front of the bus), once into a browser OfflineAudioContext and once
    into the recorder, and the interpreter's render compared with the browser's.
 
+   A recorded lane (track.rec) is held with only what it is offered: tone, drive
+   and pan (Decay, Sweep and Body are not, and _webDrumHit ignores them there).
+   SAMPLED=1 loads the recorded drum samples first and runs the kits that play
+   them, so those lanes play their real decoded takes rather than the stand-ins.
+
    Run: make -C native/modsynth graphrender && node tests/graph/shape.test.js [kit,kit]
-   Env: CHROMIUM, PLAYWRIGHT. */
+   Env: CHROMIUM, PLAYWRIGHT, SAMPLED=1. */
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { execFileSync } = require('child_process');
@@ -27,11 +32,22 @@ const SR = 48000, DUR = 2.0;
 // burst that lands exactly on a frame. The clap's is lower shaped than at its
 // defaults (44.5 dB against 51) because Decay moves where its bursts land.
 const KNOWN = { 'MOD/0': [30, 'sub tone starts mid-ramp: browser evaluates its first quantum from the ramp start'],
-                '808/6': [40, 'a burst start that lands exactly on a frame'] };
-const SAMPLED = false;
-const KITS = process.argv[2] ? process.argv[2].split(',') : ['808', '909', 'MOD', '606', 'CR78', 'LIN', 'IDM', 'ACU', 'BRS'];
-const SHAPE = { d: 1.8, s: 0.5, b: 0.4, t: 0.5, x: 0.4, n: -0.7 };
+                '808/6': [40, 'a burst start that lands exactly on a frame'],
+                // The Perc triangle is undamped modal tones ringing 2.6 s, and Decay
+                // stretches it: the same small phase difference per sample, summed
+                // over a longer tail. 56 dB where the default length is above 60.
+                'PERC/6': [50, 'a long undamped ring: phase difference accumulates over the tail'] };
+const SAMPLED = !!process.env.SAMPLED;
+const REC_KITS = ['ROCK', 'STUDIO', 'R808', 'HIPHOP', 'BEATBOX', 'LATIN', 'HAND', 'MIDEAST', 'AFRICA', 'SAMBA', 'BELLSFX', 'TABLA', 'DJEMBE', 'BATA', 'MARACATU', 'SALSA', 'MEDIEVAL', 'CLAY', 'ORCH', 'JAZZ'];
+const KITS = process.argv[2] ? process.argv[2].split(',') : (SAMPLED ? REC_KITS : ['808', '909', 'MOD', '606', 'CR78', 'LIN', 'IDM', 'ACU', 'BRS', 'PERC', 'JAZZ']);
+// SHAPE='{"t":0.5}' holds one control at a time, which is how a failing node is found.
+const SHAPE = Object.assign({ d: 1, s: 1, b: 0, t: 0, x: 0, n: 0 }, process.env.SHAPE ? JSON.parse(process.env.SHAPE) : { d: 1.8, s: 0.5, b: 0.4, t: 0.5, x: 0.4, n: -0.7 });
 
+// _sqOut comes first, unlike drums.test.js: a shaped hit's Tone, Drive and Pan are an
+// insert (_sqShapeInsert points _sqOut at its head), and a SQOUT that always
+// answered the test's bus would leave those nodes built and never in the signal
+// path, so the test would hold Decay, Sweep and Body and say nothing about the
+// filter, the waveshaper and the panner.
 // The drum machine lives in its own closure, so the page is patched in memory
 // to reach three things in it: the context it builds on, where its voices send
 // their output, and the table of kits.
@@ -39,11 +55,21 @@ function patched(html) {
   const a = 'function sqCtx(){ return _sqCtxPrev || getCtx(); }';
   const b = 'function SQOUT(){ return _sqOut || SQMG; }';
   if (!html.includes(a) || !html.includes(b)) throw new Error('drum machine hooks moved; update tests/graph/drums.test.js');
+  // Drive's waveshaper asks for 2x oversampling, and the interpreter does not apply
+  // it yet (graph.cpp: "oversample: not applied yet"), so on the phone Drive is the
+  // same curve without the oversampler's anti-aliasing. Compared with it left on,
+  // every drive lane disagrees by -5 to +3 dB; with it off they hold at 91 to 124 dB,
+  // so the oversampler is the whole difference. Taken out here so the rest of the
+  // chain (gain staging, curve, level trim) is held; the gap is the interpreter's
+  // to close, and when it does this replace goes.
+  const ov = "ws.oversample='2x';";
+  if (!html.includes(ov)) throw new Error('Shape insert moved; update tests/graph/shape.test.js');
+  html = html.replace(ov, "ws.oversample='none';");
   return html
     .replace(a, `function sqCtx(){ return window.__sqCtx ? window.__sqCtx() : (_sqCtxPrev || getCtx()); }
-window.__SQ = { get SQM(){ return SQM; }, playShaped(track, sh){ _sqDecMul = sh.d; _sqSweepMul = sh.s; _sqTonMul = sh.b>=0 ? 1+sh.b*0.4 : 1+sh.b; _sqNsMul = sh.b<=0 ? 1-sh.b*0.4 : 1-sh.b; _sqShapeInsert(sh); try{ track.play(512/48000, 0.8, false, 0); } finally { _sqDecMul = 1; _sqSweepMul = 1; _sqTonMul = 1; _sqNsMul = 1; } }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise,
+window.__SQ = { get SQM(){ return SQM; }, playShaped(track, sh){ var rec = !!track.rec, b = rec ? 0 : sh.b; _sqDecMul = rec ? 1 : sh.d; _sqSweepMul = rec ? 1 : sh.s; _sqTonMul = b>=0 ? 1+b*0.4 : 1+b; _sqNsMul = b<=0 ? 1-b*0.4 : 1-b; _sqShapeInsert(sh); try{ track.play(512/48000, 0.8, false, 0); } finally { _sqDecMul = 1; _sqSweepMul = 1; _sqTonMul = 1; _sqNsMul = 1; _sqOut = null; } }, setMG(g){ SQMG = g; }, resetNoise(){ SQNBUF = null; }, ensureNoise: sqEnsureNoise,
   loadSamples(){ preloadDrumSamples(); Object.keys(DRUM_SAMPLES_LAZY).forEach(_drumLoadOne); }, get buffers(){ return DRUM_BUFFERS; }, get lazyCount(){ return Object.keys(DRUM_SAMPLES_LAZY).length; } };`)
-    .replace(b, 'function SQOUT(){ return window.__sqOut ? window.__sqOut() : (_sqOut || SQMG); }');
+    .replace(b, `function SQOUT(){ return _sqOut || (window.__sqOut ? window.__sqOut() : SQMG); }`);
 }
 function serve() {
   return new Promise(res => {
