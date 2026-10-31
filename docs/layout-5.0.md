@@ -570,6 +570,47 @@ landscape is the real fix for long patterns, not bigger cells.
 2. **Target sizes** with no restructuring: every control 44 pt or more, the chord
    rhythm bar as one row, the beat strip folded into the Play button's ring or a
    3 pt line. Measure each (CDP, real touch).
+   **Landed as 5.2 to 5.2d.** One block at the end of the stylesheet, under
+   `@media (pointer:coarse)`, so a mouse on the web build keeps the compact look.
+   `tests/targets/probe.js` scans every tab and sub-page in Live and Studio, the
+   transport sheet, a toast, the pickers and the chord editor, and fails on any
+   control under 44 pt that is not in its short `KNOWN` list; it also fails if
+   anything runs off the right edge, if the key, tempo, Play and arp rate overlap
+   (360 to 440 pt), or if a real touch does not reach what it should.
+   What it found and what was done, measured on 430 x 932:
+
+   | | before | after |
+   |---|---|---|
+   | chord rhythm bar | 86 pt, two rows | 44 pt, one row |
+   | Drums / Bass / Mel / Arp / Chords switches | 28 | 44 |
+   | tab bar | 33 | 44 |
+   | Play | 36 | 44 |
+   | transport | 113 | 155 |
+   | tabs + transport, Live | 147 | 200 |
+   | tabs + sub-nav + transport, Studio | 177 | 245 |
+
+   That is the cost, and it is bigger than the plan's table assumed because the
+   transport also holds the Live / Studio switch, which has to be a 44 pt target
+   until Step 3 takes it out (the band that carries it is 44 pt instead of 26, which
+   is 20 of the 42 pt). Steps 3 and 4 are what win it back.
+   Decisions made on the way:
+   - **Play is no longer in the middle of the bar.** The key block is two 44 pt
+     steppers around the key and a 44 pt mode button, 164 pt, and it cannot give way
+     to the tempo the way a 32 pt stepper did (the mode shrank to a sliver of "M").
+     The grid is `auto auto 1fr`, and the arp rate steps beside Play by Play's
+     measured edge (`--ft-rate-left`, set in `ftRateClamp`).
+   - **Step grids**: rows are 44 pt, cells are 34 wide and 44 tall (a 44 pt wide cell
+     shows six steps of a bar where eight fit; a cell is drawn across, not tapped).
+   - **Invisible pads, not growth**, for the `?` marker, the fold caret and the ◈
+     badge, as `.tips-btn` had already done: they sit in rows that would break.
+   - **The melody row wraps** (Glide drops to its own line) on phones under about
+     400 pt rather than running off the edge.
+   - **The beat strip needed nothing**: it was already a 4 pt line on its own row.
+   Not done, on purpose, and on the probe's `KNOWN` list: **sliders** (a 14 pt thumb
+   on a 3 pt track). A 44 pt thumb moves the dot 15 pt in from each end of the
+   track, and the fine-control layer maps by the track, so it needs its own change
+   with a look at every slider. The step numbers over a grid (the column menu) are 44
+   pt tall with a pad but stay 34 wide, the width of the column under them.
 3. **Live and Studio as tabs**, the gear sheet, Accomp's sub-nav gone but its
    page still reachable. Retarget the shortcut, tutorials, tour and Find.
 4. **Part pages**: Accomp's Drums, Bass, Melody and Arp pages become Studio part
