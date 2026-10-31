@@ -206,6 +206,10 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 .perf-row button.go { border-color:var(--go); color:var(--go); }
 .chartline { font:14px/1.7 ui-monospace,'SF Mono',Menlo,Consolas,monospace; color:#cfd3ef; }
 .chartline b { font-family:var(--f-label); font-weight:400; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--chords); display:block; margin-top:10px; }
+/* widget titles are disclosure buttons: tap to hide or show a widget's extras */
+.wt { min-height:44px; display:inline-flex; align-items:center; gap:6px; font-family:var(--f-label); font-size:11px; letter-spacing:.16em; text-transform:uppercase; padding:0 4px 0 0; }
+.wt svg { width:14px; height:14px; stroke:currentColor; stroke-width:2.4; fill:none; transition:transform .15s; }
+.wt[aria-expanded="false"] svg { transform:rotate(-90deg); }
 /* the extra chord row: one switch, one more row of pads */
 .mrow { display:flex; gap:5px; margin-top:5px; }
 .mp { --fn:#3f78d1; flex:1 1 0; min-width:0; height:64px; border-radius:11px; border:1.5px solid var(--fn); background:color-mix(in srgb, var(--fn) 16%, var(--surf2)); display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; padding:0; }
@@ -410,6 +414,8 @@ var SONG = [
 
 var S = {
   tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{}, layer:'drums', more:0,
+  order:['chords','melody','styles','pads','fx','drums','aux','bass','melseq','endings'],
+  ext:{chords:true, melody:true, pads:true, fx:true, drums:true, aux:true, bass:true, melseq:true},
   smp:{sel:1, side:'User', bank:'A', q:'1/16', trip:false, pat:'1', len:'2', mode:'Gate', rev:false, sync:true, keyf:false, warp:false, mute:'-', n:12, dly:false, rvb:true, hold:false, rec:false}, loaded:false, libSub:'setlist', soundSub:'mixer',
   stage:false, playing:false, step:0, key:0, fs:22, cur:0, songOn:false, toast:'',
   on:{drums:true, bass:true, mel:false, arp:false, chords:true},
@@ -491,27 +497,45 @@ function ribbonHtml(){
 function iconPlay(){ return S.playing ? '<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>'; }
 
 /* ---------- screens ---------- */
+function wtitle(id, label, color){
+  var open = S.ext[id] !== false;
+  return '<button class="wt" style="color:' + color + '" data-a="ext" data-k="' + id + '" aria-expanded="' + open + '" aria-label="' + label + ': extras ' + (open ? 'shown' : 'hidden') + '">' + label + '<svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>';
+}
+function wplain(label, color){ return '<div class="wh"><span class="t"' + (color ? ' style="color:' + color + '"' : '') + '>' + label + '</span><span class="rule"></span></div>'; }
+var LIVE_W = {
+  chords: function(){
+    var x = S.ext.chords, h = '<div class="wh" style="margin-top:4px">' + wtitle('chords', 'Chords', 'var(--chords)') + '<span class="rule"></span>' + (x ? morePill() : '') + '<button class="pill" style="--c:var(--chords)"><small>Voice</small>Piano</button></div>';
+    h += padsHtml();
+    if(x) h += '<div class="crb"><button data-a="rpick"><small>Rhythm</small>Strum</button><button class="c ' + (S.rhythm.on ? 'on' : '') + '" data-a="ron">' + (S.rhythm.on ? 'On' : 'Off') + '</button><button class="c ' + (S.rhythm.keep ? 'on' : '') + '" data-a="rkeep">Keep going</button><button class="c" data-a="goStudioChords">Edit</button></div>';
+    return h;
+  },
+  melody: function(){
+    var x = S.ext.melody, h = '<div class="wh">' + wtitle('melody', 'Melody', 'var(--mel)') + '<span class="rule"></span><button class="pill" style="--c:var(--mel)"><small>Voice</small>Sine</button></div>';
+    if(x) h += '<div class="row" style="margin-bottom:8px"><div class="seg sm"><button class="on">Keys</button><button>Strip</button></div><span class="pill" style="--c:var(--mel)">C5</span><button class="pill">Hold</button><button class="pill on" style="--c:#f6e43a">Glide</button></div>';
+    return h + keysHtml(128);
+  },
+  styles: function(){
+    var h = wplain('Styles');
+    [['drums','Drums','Funk groove'],['bass','Bass','Funk'],['mel','Melody','Stepwise']].forEach(function(p){
+      h += '<div class="sty" style="--c:' + PCOL[p[0]] + '"><div class="nm"><span>' + p[1] + '</span><span>Save</span></div><button>&lsaquo;</button><button class="big">' + p[2] + ' &#9662;</button><button>&rsaquo;</button></div>';
+    });
+    return h;
+  },
+  pads: function(){ return samplerLive(!S.ext.pads); },
+  fx: function(){
+    var x = S.ext.fx;
+    return '<div class="wh">' + wtitle('fx', 'mõdFX', '#d65cff') + '<span class="rule"></span>' + (x ? '<button class="pill" data-a="noop">Chains</button>' : '') + '</div><div class="xy" style="height:170px"></div>';
+  },
+  drums: function(){ return '<div class="wh">' + wtitle('drums', 'Drum grid', 'var(--drums)') + '<span class="rule"></span></div>' + drumStudio(true, 'drums', !S.ext.drums); },
+  aux: function(){ return '<div class="wh">' + wtitle('aux', 'Aux grid', '#ff9f5a') + '<span class="rule"></span></div>' + drumStudio(true, 'aux', !S.ext.aux); },
+  bass: function(){ return '<div class="wh">' + wtitle('bass', 'Bass grid', 'var(--bass)') + '<span class="rule"></span></div>' + noteStudio('bass', true, !S.ext.bass); },
+  melseq: function(){ return '<div class="wh">' + wtitle('melseq', 'Melody grid', 'var(--mel)') + '<span class="rule"></span></div>' + noteStudio('mel', true, !S.ext.melseq); },
+  endings: function(){ return wplain('Endings') + '<div class="perf-row" style="grid-template-columns:repeat(5,1fr);margin:0"><button data-a="noop">Ritard</button><button data-a="noop">Tag</button><button data-a="noop">Big fin</button><button data-a="noop">Fade</button><button data-a="noop">Cold</button></div>'; }
+};
 function liveScreen(){
-  var h = ribbonHtml() + '<div class="wh" style="margin-top:4px"><span class="t" style="color:var(--chords)">Chords</span><span class="rule"></span>' + morePill() + '<button class="pill" style="--c:var(--chords)"><small>Voice</small>Piano</button></div>';
-  h += padsHtml();
-  h += '<div class="crb"><button data-a="rpick"><small>Rhythm</small>Strum</button><button class="c ' + (S.rhythm.on ? 'on' : '') + '" data-a="ron">' + (S.rhythm.on ? 'On' : 'Off') + '</button><button class="c ' + (S.rhythm.keep ? 'on' : '') + '" data-a="rkeep">Keep going</button><button class="c" data-a="goStudioChords">Edit</button></div>';
-  h += '<div class="wh"><span class="t" style="color:var(--mel)">Melody</span><span class="rule"></span><button class="pill" style="--c:var(--mel)"><small>Voice</small>Sine</button></div>';
-  h += '<div class="row" style="margin-bottom:8px"><div class="seg sm"><button class="on">Keys</button><button>Strip</button></div><span class="pill" style="--c:var(--mel)">C5</span><button class="pill">Hold</button><button class="pill on" style="--c:#f6e43a">Glide</button></div>';
-  h += keysHtml(128);
-  h += '<p class="hint">The melody strip is 36 pt taller than today\u2019s keys, kept for per-finger pitch and tone (MPE style) later.</p>';
-  h += '<div class="wh"><span class="t">Styles</span><span class="rule"></span></div>';
-  [['drums','Drums','Funk groove'],['bass','Bass','Funk'],['mel','Melody','Stepwise']].forEach(function(p){
-    h += '<div class="sty" style="--c:' + PCOL[p[0]] + '"><div class="nm"><span>' + p[1] + '</span><span>Save</span></div><button>&lsaquo;</button><button class="big">' + p[2] + ' &#9662;</button><button>&rsaquo;</button></div>';
-  });
-  h += samplerLive();
-  h += '<div class="wh"><span class="t" style="color:#d65cff">mõdFX</span><span class="rule"></span><button class="pill" data-a="noop">Chains</button></div><div class="xy" style="height:170px"></div>';
-  h += '<div class="wh"><span class="t" style="color:var(--drums)">Drum grid</span><span class="rule"></span></div>' + drumStudio(true, 'drums');
-  h += '<div class="wh"><span class="t" style="color:#ff9f5a">Aux grid</span><span class="rule"></span></div>' + drumStudio(true, 'aux');
-  h += '<div class="wh"><span class="t" style="color:var(--bass)">Bass grid</span><span class="rule"></span></div>' + noteStudio('bass', true);
-  h += '<div class="wh"><span class="t" style="color:var(--mel)">Melody grid</span><span class="rule"></span></div>' + noteStudio('mel', true);
-  h += '<div class="wh"><span class="t">Endings</span><span class="rule"></span></div><div class="perf-row" style="grid-template-columns:repeat(5,1fr);margin:0"><button data-a="noop">Ritard</button><button data-a="noop">Tag</button><button data-a="noop">Big fin</button><button data-a="noop">Fade</button><button data-a="noop">Cold</button></div>';
-  h += '<div class="more"><button data-a="noop">Add / reorder widgets</button></div>';
-  return h;
+  var h = ribbonHtml();
+  S.order.forEach(function(id){ h += '<div class="lw" data-w="' + id + '">' + LIVE_W[id]() + '</div>'; });
+  return h + '<div class="more"><button data-a="noop">Add / reorder widgets</button></div>';
 }
 var MORE_NAMES = ['Off','Modal','Dominants','Mine'];
 function mpad(semi, suf, sub, fn){ var root = KEYS[(semi + 120 + S.key) % 12]; return '<button class="mp ' + fn + '" aria-label="' + root + suf + ', ' + sub + '"><b>' + root + '<small>' + suf + '</small></b><i>' + sub + '</i></button>'; }
@@ -531,7 +555,7 @@ function padsHtml(){
     var triad = p[3] === 'MIN' ? 'm' : (p[3] === 'DIM' ? '°' : '');
     h += '<div class="pad' + (i === 0 ? ' cur' : (i === 3 || i === 4 || i === 1 || i === 5 ? ' rel' : '')) + '"><span class="a">' + esc(nm) + '</span><span class="n">' + p[2] + '</span><span class="r">' + esc(root + triad) + '</span><span class="q">' + p[3] + '</span></div>';
   });
-  return h + '</div>' + moreRowHtml();
+  return h + '</div>' + (S.ext.chords ? moreRowHtml() : '');
 }
 function keysHtml(tall){
   var n = ['C5','D5','E5','F5','G5','A5','B5','C6','D6'], h = '<div class="keys"' + (tall ? ' style="--kh:' + tall + 'px"' : '') + '>';
@@ -589,9 +613,10 @@ function samplerStudio(){
   h += '<p class="hint">Trim opens the sample editor: record, trim, tune, slice a clip onto the pads, step chance, roll velocity and the Euclidean fill. Record, Resample and Library are in the transport sheet.</p>';
   return h;
 }
-function samplerLive(){
-  var h = '<div class="wh"><span class="t" style="color:var(--smp)">Sampler</span><span class="rule"></span><span class="pill" style="--c:var(--smp);padding:0 4px"><button data-a="smp" data-k="n" data-d="-1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="Fewer pads">&minus;</button>' + S.smp.n + '<button data-a="smp" data-k="n" data-d="1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="More pads">+</button></span></div>';
+function samplerLive(compact){
+  var h = '<div class="wh">' + wtitle('pads', 'Sampler', 'var(--smp)') + '<span class="rule"></span><span class="pill" style="--c:var(--smp);padding:0 4px"><button data-a="smp" data-k="n" data-d="-1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="Fewer pads">&minus;</button>' + S.smp.n + '<button data-a="smp" data-k="n" data-d="1" style="min-width:36px;min-height:44px;font-size:20px" aria-label="More pads">+</button></span></div>';
   h += samplerPads() + samplerTop(false);
+  if(compact) return h;
   h += '<div class="srow"><b>Bank</b><div class="sg2">' + sgSeg('side', ['User','Preset']) + sgSeg('bank', ['A','B','C','D']) + '</div></div>';
   h += '<div class="srow"><b>Qtz</b><div class="sg2">' + sgSeg('q', ['Off','1/32','1/16','1/8','1/4','Bar']) + sgChip('trip', 'T') + '</div></div>';
   h += '<div class="srow"><b>Pattern</b><div class="sg2">' + sgSeg('pat', ['1','2','3','4','5','6','7','8']) + '</div></div>';
@@ -624,26 +649,26 @@ function cellRoll(rows, labels, c, key, h){
   }
   return out + '</div>';
 }
-function noteStudio(p, live){
+function noteStudio(p, live, compact){
   var c = PCOL[p], pat = p === 'bass' ? 'Funk' : 'Stepwise', voice = p === 'bass' ? 'Upright' : 'Sine';
-  var h = '<div class="pick2" style="--c:' + c + ';margin-top:2px"><button class="pick" style="--c:' + c + '"><span><small>' + (p === 'bass' ? 'Bass line' : 'Melody line') + '</small><b>' + pat + '</b></span>&#9662;</button><button class="pick" style="--c:' + c + '"><span><small>Patch</small><b>' + voice + '</b></span>&#9662;</button></div>';
-  h += '<div class="modes" style="--c:' + c + '"><button class="on">Generate</button><button>Arrange</button><button>Play in</button></div>';
-  h += '<div class="tools" style="--c:' + c + '"><button class="go">Generate</button><button>Clear</button><button>Follow: on</button></div>';
+  var h = compact ? '' : '<div class="pick2" style="--c:' + c + ';margin-top:2px"><button class="pick" style="--c:' + c + '"><span><small>' + (p === 'bass' ? 'Bass line' : 'Melody line') + '</small><b>' + pat + '</b></span>&#9662;</button><button class="pick" style="--c:' + c + '"><span><small>Patch</small><b>' + voice + '</b></span>&#9662;</button></div>';
+  if(!compact) h += '<div class="modes" style="--c:' + c + '"><button class="on">Generate</button><button>Arrange</button><button>Play in</button></div>';
+  if(!compact) h += '<div class="tools" style="--c:' + c + '"><button class="go">Generate</button><button>Clear</button><button>Follow: on</button></div>';
   var labels = ['E','D','C','B','A','G','F','E'];
-  h += cellRoll(8, labels, c, p, 24);
-  h += '<p class="hint">One bar, re-voiced onto each chord of the song. Tap a step to place or clear a note.</p>';
-  h += '<div class="sw2"><div class="stepper"><button data-a="noop">&minus;</button><span>16</span><button data-a="noop">+</button></div><div class="seg sm"><button>&frac12;x</button><button class="on">1x</button><button>2x</button></div></div>';
+  h += '<div style="height:' + (compact ? 6 : 0) + 'px"></div>' + cellRoll(8, labels, c, p, 24);
+  if(!compact) h += '<p class="hint">One bar, re-voiced onto each chord of the song. Tap a step to place or clear a note.</p>';
+  if(!compact) h += '<div class="sw2"><div class="stepper"><button data-a="noop">&minus;</button><span>16</span><button data-a="noop">+</button></div><div class="seg sm"><button>&frac12;x</button><button class="on">1x</button><button>2x</button></div></div>';
   if(!live) h += '<div class="wh"><span class="t" style="color:' + c + '">Play it</span><span class="rule"></span></div>' + keysHtml();
   return h;
 }
-function drumStudio(live, layer){
+function drumStudio(live, layer, compact){
   layer = layer || S.layer;
   var aux = layer === 'aux', c = aux ? '#ff9f5a' : PCOL.drums;
   var labels = aux ? ['Shaker','Tamb','Conga','Clave','Cowbell','Cabasa'] : ['Kick','Snare','Hat','Open','Clap','Perc'];
   var names = aux ? ['shaker','tamb','conga','clave','cowbell','cabasa'] : ['kick','snare','hat','open','clap','perc'];
   var h = '';
   if(!live) h += '<div class="seg" style="display:flex;margin:2px 0 8px"><button style="flex:1" data-a="layer" data-v="drums" class="' + (aux ? '' : 'on') + '">Drums</button><button style="flex:1;' + (aux ? 'background:#ff9f5a;color:#150a02' : '') + '" data-a="layer" data-v="aux" class="' + (aux ? 'on' : '') + '">Aux</button></div>';
-  h += '<div class="pick2" style="margin-top:2px"><button class="pick" style="--c:' + c + '"><span><small>' + (aux ? 'Aux kit' : 'Groove') + '</small><b>' + (aux ? 'Latin perc' : 'Funk') + '</b></span>&#9662;</button><button class="pick" style="--c:' + c + '"><span><small>Kit</small><b>' + (aux ? 'Hand percussion' : 'Studio') + '</b></span>&#9662;</button></div>';
+  if(!compact) h += '<div class="pick2" style="margin-top:2px"><button class="pick" style="--c:' + c + '"><span><small>' + (aux ? 'Aux kit' : 'Groove') + '</small><b>' + (aux ? 'Latin perc' : 'Funk') + '</b></span>&#9662;</button><button class="pick" style="--c:' + c + '"><span><small>Kit</small><b>' + (aux ? 'Hand percussion' : 'Studio') + '</b></span>&#9662;</button></div>';
   var g = S.grids[aux ? 'aux' : 'drums'], out = '<div class="roll" style="--c:' + c + ';--h:34px;margin-top:10px">';
   names.forEach(function(n, r){
     out += '<div class="rw"><span class="nm">' + labels[r] + '</span>';
@@ -767,6 +792,7 @@ function chromeHtml(){
 }
 function sheetHtml(){
   var rows = [
+    ['Live', [['All extras on','x1'],['All extras off','x0'],['Three at once','x3']]],
     ['Settings', [['Settings','set'],['MIDI mapping']]],
     ['File', [['New'],['Open'],['Save']]],
     ['Capture', [['Chords','cap'],['Melody','cap'],['Bass','cap'],['Pads','cap']]],
@@ -843,7 +869,7 @@ function followStage(smooth){
 }
 /* ---------- side panel ---------- */
 var NOTES = {
-  'live': {t:'Live', l:['Live is the whole stack, as it is today, and it is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','The More switch in the Chords header adds one row of pads under the diatonic ones. Each tap steps Off, Modal (the borrowed chords: i, iv, ii\u00b0, v, \u266dIII, \u266dVI, \u266dVII, \u266dII), Dominants (V/ii to V/vi), Mine. Today those rows are Studio only; here they are one tap in Live. The extra row is 64 pt tall, the diatonic pads stay 124.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'Live has every widget it has today, in the same order (Chords, Melody, Styles, Sampler, m\u00f5dFX, Drum grid, Aux grid, Bass grid, Melody grid, Endings), including the Generate / Arrange / Play in controls on the Bass and Melody grids. Add / reorder widgets stays as it is. The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the room goes to taller chord pads and a taller melody strip (room for per-finger expression later). Live is longer than today because every target is 44 pt: about 3,700 pt against 3,170. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
+  'live': {t:'Live', l:['Live is the whole stack, as it is today, and it is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','Every widget title is a button with a caret. Tap it to hide or show that widget\u2019s extras: for Chords the rhythm bar and the More row, for Melody the Keys / Strip, octave, Hold and Glide row, for the Sampler the bank, quantize and pattern rows, for the grids the pickers, modes and tools. Compact leaves the thing you play. The choice is kept per widget, and Add / reorder widgets still orders them. The transport sheet has All extras on, All extras off and Three at once, which puts Chords, Melody and m\u00f5dFX first with their extras off.','The More switch in the Chords header adds one row of pads under the diatonic ones. Each tap steps Off, Modal (the borrowed chords: i, iv, ii\u00b0, v, \u266dIII, \u266dVI, \u266dVII, \u266dII), Dominants (V/ii to V/vi), Mine. Today those rows are Studio only; here they are one tap in Live. The extra row is 64 pt tall, the diatonic pads stay 124.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'Live has every widget it has today, in the same order (Chords, Melody, Styles, Sampler, m\u00f5dFX, Drum grid, Aux grid, Bass grid, Melody grid, Endings), including the Generate / Arrange / Play in controls on the Bass and Melody grids. Add / reorder widgets stays as it is. The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the room goes to taller chord pads and a taller melody strip (room for per-finger expression later). Live is longer than today because every target is 44 pt: about 3,700 pt against 3,170. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
   'studio-chords': {t:'Studio, Chords', l:['Chords gets what the other parts have: a pattern editor. It is the chord rhythm roll, drawn on the page instead of in a sheet.','The pads stay at the bottom so you can play what you just drew.','What you draw is the rhythm the pads play when Rhythm is on, and the one the song plays under the chart.'], x:'Hits are one lane with three heights, as the existing single-lane roll already is.'},
   'studio-bass': {t:'Studio, Bass', l:['This page replaces the Bass sequencer on Accomp and the Bass line on the Play sub-nav.','Every part has the same order: pattern and patch, mode, the roll, then keys to play it.','With chrome B the part is picked on the bottom row, so the page opens straight on the part\u2019s own controls. Choose A or C above to see the strip instead.'], x:'Roll cells are about 23 pt wide because 16 steps share 398 pt. They are for drawing, not tapping. Landscape is the fix for long patterns.'},
   'studio-mel': {t:'Studio, Melody', l:['Same page as Bass with a different colour and patterns. One layout to learn, one place to fix.','The Melody keys on Play and the Melody grid on Accomp become one page.'], x:'Both follow the chord timeline exactly as they do now.'},
@@ -864,7 +890,7 @@ var NOTES = {
 function renderSide(){
   var id = screenId(), n = NOTES[id] || NOTES.live;
   document.getElementById('notes').innerHTML = '<h2>' + n.t + '</h2><ul>' + n.l.map(function(x){ return '<li>' + x + '</li>'; }).join('') + '</ul><p class="trade">' + n.x + '</p>';
-  var jb = document.getElementById('jump'), items = [['live','Live'],['studio-chords','Studio: Chords'],['studio-bass','Studio: Bass'],['studio-drums','Studio: Drums'],['write-timeline','Build: Timeline'],['write-tiles','Build: Tiles'],['perform','Perform'],['perform-chart','Perform: Chart'],['perform-timeline','Perform: Timeline'],['library','Library'],['sheet','Transport sheet'],['stage','Stage'],['sound','Sound']];
+  var jb = document.getElementById('jump'), items = [['live','Live'],['live3','Live: 3 at once'],['studio-chords','Studio: Chords'],['studio-bass','Studio: Bass'],['studio-drums','Studio: Drums'],['write-timeline','Build: Timeline'],['write-tiles','Build: Tiles'],['perform','Perform'],['perform-chart','Perform: Chart'],['perform-timeline','Perform: Timeline'],['library','Library'],['sheet','Transport sheet'],['stage','Stage'],['sound','Sound']];
   jb.innerHTML = items.map(function(i){ return '<button class="' + (id === i[0] ? 'on' : '') + '" data-j="' + i[0] + '">' + i[1] + '</button>'; }).join('');
   renderRuler();
 }
@@ -885,6 +911,12 @@ function renderRuler(){
   document.getElementById('ruler').innerHTML = rows.map(function(r){ return '<div class="r"><span>' + r[0] + '</span><div class="bar" style="width:' + (r[1] / 220 * 100) + '%;--c1:' + r[2] + '"></div><span class="num">' + r[1] + '</span></div>'; }).join('') + '<p class="hint" style="margin:4px 0 0">' + txt + '</p>';
 }
 /* ---------- actions ---------- */
+function applyThree(){
+  S.order = ['chords','melody','fx','styles','pads','drums','aux','bass','melseq','endings'];
+  S.ext.chords = false; S.ext.melody = false; S.ext.fx = false;
+  S.tab = 'play'; S.view = 'live'; S.stage = false; S.sheet = false; S.more = 0;
+  render(false); var b = document.getElementById('body'); if(b) b.scrollTop = 0;
+}
 function jumpTo(id){
   S.stage = false; S.more = false; S.sheet = false;
   if(id === 'live'){ S.tab = 'play'; S.view = 'live'; }
@@ -892,6 +924,7 @@ function jumpTo(id){
   else if(id === 'write-timeline'){ S.tab = 'song'; S.songSub = 'build'; S.wmode = 'timeline'; }
   else if(id.indexOf('perform') === 0){ S.tab = 'song'; S.songSub = 'perform'; S.pview = id === 'perform-chart' ? 'chart' : (id === 'perform-timeline' ? 'timeline' : 'tiles'); }
   else if(id === 'sheet'){ S.sheet = true; }
+  else if(id === 'live3'){ applyThree(); return; }
   else if(id === 'write-tiles'){ S.tab = 'song'; S.songSub = 'build'; S.wmode = 'tiles'; }
   else if(id === 'library'){ S.tab = 'song'; S.songSub = 'library'; }
   else if(id === 'stage'){ S.stage = true; }
@@ -923,7 +956,9 @@ function onPhoneClick(e){
   else if(a === 'songsw'){ S.songOn = !S.songOn; render(); }
   else if(a === 'sheet'){ S.sheet = !S.sheet; render(); }
   else if(a === 'chip'){
-    if(d.k === 'cap' || d.k === 'tog') S.chips[d.n] = !S.chips[d.n];
+    if(d.k === 'x1' || d.k === 'x0'){ Object.keys(S.ext).forEach(function(k){ S.ext[k] = d.k === 'x1'; }); S.sheet = false; S.tab = 'play'; S.view = 'live'; }
+    else if(d.k === 'x3'){ applyThree(); S.sheet = false; }
+    else if(d.k === 'cap' || d.k === 'tog') S.chips[d.n] = !S.chips[d.n];
     else if(d.n === 'Setups'){ S.sheet = false; S.tab = 'song'; S.songSub = 'library'; S.libSub = 'setups'; }
     else { S.chipNote = d.n; }
     render();
@@ -940,6 +975,7 @@ function onPhoneClick(e){
     else S.smp[k] = d.v;
     render();
   }
+  else if(a === 'ext'){ S.ext[d.k] = !S.ext[d.k]; render(); }
   else if(a === 'more2'){ S.more = (S.more + 1) % 4; render(); }
   else if(a === 'pview'){ S.pview = d.v; render(); }
   else if(a === 'ssub'){ S.songSub = d.v; render(false); }
