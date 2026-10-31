@@ -154,7 +154,10 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
       widget.
     - Drum, Aux, Bass and Melody grids: the pickers, modes, Generate row, steps and
       rate (the grid stays).
-    - mõdFX: Chains. Styles and Endings have no extras.
+    - mõdFX: the preset, the parts it aims at, the X and Y parameters, the pad
+      filter (Clean, Moog, MS-20) and Sample, Release, the motion recorder and the
+      mix per part (`fx-presets`, `fx-targets`, `fx-axes`, `fx-motion`,
+      `fx-mixes`). The pad, Hold and Clear stay. Styles and Endings have no extras.
 
     The choice is kept per widget and goes with the layout; Add / reorder widgets
     is unchanged, so the order is still the player's. The transport sheet gets a
@@ -167,6 +170,36 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     controls count as extras for each widget is the thing to review: Hold, Glide and
     the octave buttons are in Melody's extras in the mock and a player may want them
     kept.
+
+13. **Settings becomes a short list that opens pages.** It stops being a tab and
+    the three panes (General, Sounds, MIDI, about 95 buttons with every section
+    open) and opens from the first row of the transport sheet as a full screen
+    with Done. Ten rows in three groups, each with a one-line summary of its
+    current values, and a search field that finds one setting by name:
+    - **Playing:** Sound & response (Master tune, Chord intervals, Humanize and its
+      four sliders and parts, Velocity sense, Drive, Restart sound, Reset tone),
+      Chords & timing (voicing, Vary, VoiceLead, chord length, Logic Mode, Chord
+      Variants, Numbers, latency, Click, Auto-start, Bass + Melody sync), Starter
+      patterns, Scales & chords (the saved layouts).
+    - **Gear:** MIDI & keyboard (devices, input mode, Mapping Mode, numpad and Caps
+      Lock), Samples.
+    - **App:** Look & feel (theme, key colours, start in key, touch feedback,
+      fingerings), iCloud & backup, Packs & purchases (Store, Restore Purchases),
+      Help & about (Tutorials, Guide, shortcuts, credits, support, version),
+      Advanced (diagnostics, native sound testing, the debug Test as switch).
+
+    Rows are at least 44 pt: switches on the right, a choice as a row of options,
+    a slider as a full-width track with its value. Setups moves to Library; part
+    voices stay on their parts. The mock shows the root, Sound & response and
+    Chords & timing in full; the other pages are listed by their real rows and
+    shortened, and the MIDI pane (long today) only by its top-level items. The group
+    names are new; the rows are the app's own.
+14. **Part pages keep their voice controls too.** The Chords page in Studio carries
+    today's Chord Voice panel: octave, Attack, Release, Reverb and size, the voice
+    tone set (Tone, Reso, Sweep, Width, Drift), Sub with its wave and level,
+    Strum and its length, Chord under arp, Glide and its time, and the voicing with
+    Vary. The first mock left it out; the rule in decision 2 covers it. The Melody,
+    Bass and Arp voice panels still have to be checked the same way.
 
 ## Nothing is lost from Songs
 
