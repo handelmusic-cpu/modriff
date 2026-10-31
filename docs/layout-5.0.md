@@ -691,7 +691,7 @@ landscape is the real fix for long patterns, not bigger cells.
 5. **The timeline renderer, read-only, and Stage** (Step 2 of the vertical
    timeline), the Stage button on Perform. The tiles
    stay behind a switch until the timeline has earned the default.
-   **The renderer landed as 5.7; Stage has not.** Songs › Perform has a Tiles | Timeline
+   **The renderer landed as 5.7, Stage and the gate as 5.8.** Songs › Perform has a Tiles | Timeline
    switch (`modo-perform-view`, default Tiles). The timeline is a heading per section and
    a card per line: a row of columns, one per chord, each as wide as the chord lasts
    (`flex-grow` = its beats, with no padding or border on the column itself so the widths
@@ -706,12 +706,30 @@ landscape is the real fix for long patterns, not bigger cells.
    change each (the four selectors that said `.songs-chord-btn` now say `.songs-chord-btn,
    .tl-col`). Measured on the three real sheets in `tests/chords/sheets` and a written one:
    widths proportional to within 1.5 px, no card past the edge at 360, 390 or 430 pt, the
-   narrowest column 49 pt (party), 100 pt for the written sheet. Not done: the playhead
-   down the card (the sounding chord is lit, but nothing moves inside it), the
-   selected-line panel for words longer than their column, the line length buttons and
-   everything that edits (Step 6), Stage, and the gate (the view is free for now: the
-   FREE_LIMITS, FEATURE_MODULE and MODULE_COPY rows are for Step 9, "only for what
-   works"). `tests/timeline/probe.js`. Screen wake
+   narrowest column 49 pt (party), 100 pt for the written sheet. `tests/timeline/probe.js`.
+   **5.8 adds Stage, the playhead and the gate.** *Stage* is a Stage button beside the
+   switch at the top of Perform; it opens a full-screen overlay over everything, bars
+   included, with a header (close, the song's title and "section, line n of N", the key
+   with a step either side that transposes the song), a progress line, the timeline at a
+   larger size, and a footer of five 56 pt buttons (A-, A+, Play, previous and next
+   section). It is the same renderer drawn into a second host (`#stage-chart`) with
+   `--sfs` scaling the type (12 to 40 px, kept in `modo-stage-fs`), so the playing chord,
+   the Loop picker and a tap are the same code as on the page: the painters
+   (`applySongPlayingHighlights`, `pracLoopPaint`, the clear in `songChartTap`) now know
+   two hosts. The playing line is scrolled to a third of the way down; the screen is kept
+   awake with `navigator.wakeLock` where the engine has one, and **a native plugin for it
+   is not built** (a Capacitor plugin and Swift a Mac has not compiled, so this does
+   nothing in a WebView without the API). *The playhead* is a 2 pt line that crosses the
+   sounding chord's column in the chord's length: one CSS transition started when the
+   chord starts, none between chords, no animation loop; it runs on the Perform timeline
+   and on Stage. *The gate*: `timeline` and `stage` are rows in `FREE_LIMITS` (false),
+   `FEATURE_MODULE` (the Practice Pack) and the Practice Pack's copy. Without the pack the
+   Stage button and the Timeline switch carry an Add-on tag and a touch says so in a toast
+   with a See pack button (`freeBlocked`); a stored Timeline choice is kept but not
+   honoured, so buying the pack finds it where it was left. The pack is still called the
+   Practice Pack; its rename is Step 9. Not done: the selected-line panel for words longer
+   than their column, the line length buttons and everything that edits (Step 6), a Stage
+   for a wide screen, and the Stage button reaching Perform from Live. `tests/stage/probe.js`. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is
    unbuilt until it is confirmed.
 6. **Editing on the timeline**: the panel, the beat nudge, Even split, then drag

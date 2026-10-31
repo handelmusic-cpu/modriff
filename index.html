@@ -7855,6 +7855,46 @@ body.mode-basic .ft-extras-row { display:flex; }
 }
 .pf-surface-lbl { flex-wrap:nowrap; }
 
+/* ── Stage, and the playhead (5.8) ── */
+.pv-row { display:flex; gap:8px; align-items:stretch; margin:8px 0 10px; }
+.pv-row .pv-switch { flex:1 1 auto; margin:0; }
+.pv-stage { flex:0 0 auto; min-width:92px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border-color:var(--pg); color:var(--pg); }
+.pv-locked::after { content:'Add-on'; font-size:.34rem; letter-spacing:.08em; text-transform:uppercase; padding:2px 5px; border-radius:6px; border:1px solid currentColor; opacity:.8; margin-left:6px; }
+.tl-row { position:relative; }
+.tl-ph { position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--pg); box-shadow:0 0 8px var(--pg); pointer-events:none; z-index:2; will-change:transform; }
+.stage { --sfs:20px; display:none; position:fixed; inset:0; z-index:9300; background:#000; color:var(--text); flex-direction:column;
+ padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-inset-right, 0px); }
+.stage.open { display:flex; }
+body.stage-open { overflow:hidden; }
+.stage-bar { flex:none; display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:8px; align-items:center; padding:calc(env(safe-area-inset-top, 0px) + 6px) 12px 6px; }
+.stage-x { width:44px; height:44px; border-radius:12px; border:1px solid #333; background:none; display:grid; place-items:center; cursor:pointer; touch-action:manipulation; }
+.stage-x svg { width:18px; height:18px; stroke:#fff; stroke-width:2; fill:none; stroke-linecap:round; }
+.stage-tt { min-width:0; }
+.stage-tt b { display:block; font-size:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.stage-tt span { display:block; font-size:12px; color:#9aa0c8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.stage-tr { display:flex; align-items:center; border:1px solid #333; border-radius:12px; }
+.stage-tr button { width:40px; min-height:44px; border:0; background:none; color:#fff; font-size:20px; cursor:pointer; touch-action:manipulation; }
+.stage-tr span { min-width:30px; text-align:center; font-weight:700; color:var(--pg); }
+.stage-prog { flex:none; height:3px; background:#222; }
+.stage-prog i { display:block; height:100%; width:0; background:var(--pg); transition:width .3s; }
+.stage-scroll { flex:1; min-height:0; overflow-y:auto; padding:10px 14px 160px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.stage-scroll::-webkit-scrollbar { display:none; }
+.stage-foot { flex:none; display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; padding:8px 12px calc(env(safe-area-inset-bottom, 0px) + 10px); background:#000; border-top:1px solid #222; }
+.stage-foot button { min-height:56px; border-radius:14px; border:1px solid #333; background:none; color:#fff; font:600 15px 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.stage-foot .go { background:var(--pg); border-color:var(--pg); color:#06110a; display:grid; place-items:center; }
+.stage-foot .go::after { content:''; width:0; height:0; border-style:solid; border-width:9px 0 9px 15px; border-color:transparent transparent transparent #06110a; margin-left:4px; }
+.stage-foot .go.stop::after { width:16px; height:16px; border:0; background:#06110a; border-radius:2px; margin-left:0; }
+.stage .tl-block { margin-bottom:calc(var(--sfs) * .8); }
+.stage .songs-section-name { font-size:calc(var(--sfs) * .6); }
+.stage .tl-card { margin-bottom:calc(var(--sfs) * .7); }
+.stage .tl-col { min-height:calc(var(--sfs) * 4.4); background:#0a0b14; }
+.stage .tl-in { padding:calc(var(--sfs) * .35) calc(var(--sfs) * .22) 2px; gap:calc(var(--sfs) * .1); }
+.stage .tl-num { font-size:calc(var(--sfs) * .55); min-height:calc(var(--sfs) * .6); }
+.stage .tl-name { font-size:calc(var(--sfs) * 1.35); color:var(--pg); }
+.stage .tl-words { font-size:var(--sfs); line-height:1.2; -webkit-line-clamp:3; line-clamp:3; font-style:normal; }
+.stage .tl-strip { height:calc(var(--sfs) * .4); }
+.stage .tl-meta { display:none; }
+
 /* ── Perform › Timeline ── */
 .pv-switch { margin:8px 0 10px; }
 .pv-switch .tb { flex:1; }
@@ -8364,7 +8404,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.8</span></div>
  </div>
 </div>
 
@@ -8374,6 +8414,24 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  <div class="modal-title">Voice Type — Suggested Keys</div>
  <div class="voice-grid" id="voice-grid"></div>
  <button class="modal-close" onclick="closeVoiceModal()">Close</button>
+ </div>
+</div>
+
+<!-- Stage (openStage): the song's timeline, full screen, with nothing else on it. -->
+<div class="stage" id="stage" role="dialog" aria-modal="true" aria-label="Stage">
+ <div class="stage-bar">
+  <button type="button" class="stage-x" onclick="closeStage()" aria-label="Close Stage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+  <div class="stage-tt"><b id="stage-title"></b><span id="stage-sub"></span></div>
+  <div class="stage-tr"><button type="button" onclick="transposeSong(-1)" aria-label="Key down a semitone">&lsaquo;</button><span id="stage-key"></span><button type="button" onclick="transposeSong(+1)" aria-label="Key up a semitone">&rsaquo;</button></div>
+ </div>
+ <div class="stage-prog"><i id="stage-prog-i"></i></div>
+ <div class="stage-scroll" id="stage-scroll"><div id="stage-chart"></div></div>
+ <div class="stage-foot">
+  <button type="button" onclick="stageFont(-2)" aria-label="Smaller text">A&minus;</button>
+  <button type="button" onclick="stageFont(2)" aria-label="Larger text">A+</button>
+  <button type="button" class="go" id="stage-play" onclick="toggleSongAutoAdvance()" aria-label="Play the song"></button>
+  <button type="button" onclick="songPrevSection()" aria-label="Previous section">&lsaquo; Sect</button>
+  <button type="button" onclick="songNextSection()" aria-label="Next section">Sect &rsaquo;</button>
  </div>
 </div>
 
@@ -9748,7 +9806,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10053,9 +10111,14 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  <!-- Tiles | Timeline. The tiles are the chart as it has always been; the timeline draws the
       same song as lines of words with the chords over the beats they last for
       (renderSongTimeline). A view of the same song, so it is a switch and not a page. -->
- <div class="tg pv-switch" id="pv-switch" role="group" aria-label="Chart view">
-  <button type="button" class="tb active" id="pv-tiles" onclick="songsPerformViewSet('tiles')" aria-pressed="true">Tiles</button>
-  <button type="button" class="tb" id="pv-timeline" onclick="songsPerformViewSet('timeline')" aria-pressed="false" title="The song as lines of words, with each chord as wide as it lasts">Timeline</button>
+ <div class="pv-row">
+  <div class="tg pv-switch" id="pv-switch" role="group" aria-label="Chart view">
+   <button type="button" class="tb active" id="pv-tiles" onclick="songsPerformViewSet('tiles')" aria-pressed="true">Tiles</button>
+   <button type="button" class="tb" id="pv-timeline" onclick="songsPerformViewSet('timeline')" aria-pressed="false" title="The song as lines of words, with each chord as wide as it lasts">Timeline</button>
+  </div>
+  <!-- Stage: the timeline on its own, full screen, big. At the top of Perform, where the
+       tiles it replaces used to start. -->
+  <button type="button" class="tb pv-stage" id="pv-stage" onclick="openStage()" title="The song full screen, big enough to read from a stand">Stage</button>
  </div>
  <div id="songs-full-chart" style="width:100%;max-width:700px"></div>
 
@@ -10825,7 +10888,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '5.7';
+const MODRIFF_VERSION = '5.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -42154,7 +42217,7 @@ function kbDrumHit(ti, accent){
  return true;
 }
 function _kbAnyModalOpen(){
- return !!document.querySelector('.modal-overlay.visible, .ps-load.visible, .chordpick-pop.open');
+ return !!document.querySelector('.modal-overlay.visible, .ps-load.visible, .chordpick-pop.open, .stage.open');
 }
 // In the order of the tab bar: Live, Studio, Song, Sound, then Settings (the sheet's first row).
 var KB_TABS = ['live','studio','songs','mix','build'];
@@ -43657,12 +43720,16 @@ function songDisplayTitle(){
 // (songChartTap) need to know nothing about which view is up.
 var _songsPerformView = null;
 function songsPerformViewGet(){
- if(_songsPerformView) return _songsPerformView;
- var v=null; try{ v=modStore.getItem('modo-perform-view'); }catch(e){}
- _songsPerformView = (v==='timeline') ? 'timeline' : 'tiles';
- return _songsPerformView;
+ if(!_songsPerformView){
+  var v=null; try{ v=modStore.getItem('modo-perform-view'); }catch(e){}
+  _songsPerformView = (v==='timeline') ? 'timeline' : 'tiles';
+ }
+ // A choice made while the pack was held is kept but not honoured without it, so buying
+ // the pack back finds the timeline where it was left.
+ return (_songsPerformView==='timeline' && !modAllows('timeline')) ? 'tiles' : _songsPerformView;
 }
 function songsPerformViewSet(v){
+ if(v==='timeline' && !modAllows('timeline')){ freeBlocked('The timeline', 'practice'); return; }
  _songsPerformView = (v==='timeline') ? 'timeline' : 'tiles';
  try{ modStore.setItem('modo-perform-view', _songsPerformView); }catch(e){}
  renderSongsPerformView();
@@ -43673,6 +43740,9 @@ function _songsPerformViewSync(){
   var b=document.getElementById(a[0]); if(!b) return;
   b.classList.toggle('active', v===a[1]); b.setAttribute('aria-pressed', v===a[1]?'true':'false');
  });
+ // The way in to a thing you do not have says so on the button.
+ var tb=document.getElementById('pv-timeline'); if(tb) tb.classList.toggle('pv-locked', !modAllows('timeline'));
+ var sb=document.getElementById('pv-stage'); if(sb) sb.classList.toggle('pv-locked', !modAllows('stage'));
 }
 function _slotBeats(slot){
  var steps=_songBarSteps();
@@ -43791,6 +43861,7 @@ function renderSongsPerformView(){
   if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
   if(typeof pracLoopPaint==='function') pracLoopPaint();
   renderSetlistPerform();
+  if(stageIsOpen()) stageRender();
   return;
  }
  sections.forEach((sec, si) => {
@@ -43840,8 +43911,121 @@ function renderSongsPerformView(){
 
  // Also render perform setlist
  renderSetlistPerform();
+ if(stageIsOpen()) stageRender();
 }
 
+// ── The playhead ──
+// A thin line that crosses the sounding chord's column in the time the chord lasts. One
+// CSS transition per chord, started when the chord starts (_highlightLoopSlot), so it costs
+// nothing between chords and the compositor moves it; there is no animation loop. It starts
+// from the chord's own left edge each time, so a tempo change or a skipped beat corrects at
+// the next chord and cannot drift. Drawn on the Perform timeline and on Stage alike.
+function songPlayheadClear(){ document.querySelectorAll('.tl-ph').forEach(function(e){ e.remove(); }); }
+function songPlayheadStart(si, ci){
+ songPlayheadClear();
+ var slot = sections[si] && sections[si].slots && sections[si].slots[ci]; if(!slot) return;
+ var ms = slotTotalMs(slot);
+ ['songs-full-chart', 'stage-chart'].forEach(function(id){
+  var host = document.getElementById(id); if(!host || !host.childElementCount) return;
+  var col = host.querySelector('.tl-col[data-si="'+si+'"][data-ci="'+ci+'"]'); if(!col || !col.parentNode) return;
+  var ph = document.createElement('i'); ph.className = 'tl-ph';
+  var x0 = col.offsetLeft, w = col.offsetWidth;
+  ph.style.transform = 'translateX('+x0+'px)';
+  col.parentNode.appendChild(ph);
+  void ph.offsetWidth;                                   // commit the start before the move
+  ph.style.transition = 'transform '+Math.round(ms)+'ms linear';
+  ph.style.transform = 'translateX('+Math.max(x0, x0 + w - 2)+'px)';
+ });
+}
+// ── Stage ──
+// The song's timeline on its own, full screen: big type, the key, a progress line, and a
+// footer of thumb-sized buttons (smaller and larger text, Play, the previous and next
+// section). It is the Perform timeline drawn into a second host (#stage-chart) with a larger
+// type size, so the playing chord, the Loop picker and a tap on a chord are the same code
+// as on the page; what Stage adds is the scrolling (the playing line is kept a third of the
+// way down, so what is coming is on screen) and the screen staying awake. It is the
+// Practice Pack's, with the timeline (stage, timeline in FREE_LIMITS).
+var _stageFs = 0, _stageLock = null;
+function stageIsOpen(){ var st = document.getElementById('stage'); return !!(st && st.classList.contains('open')); }
+function stageFsGet(){
+ if(!_stageFs){ var v = 0; try{ v = +modStore.getItem('modo-stage-fs') || 0; }catch(e){} _stageFs = (v>=12 && v<=40) ? v : 20; }
+ return _stageFs;
+}
+function stageApplyFs(){ var st = document.getElementById('stage'); if(st) st.style.setProperty('--sfs', stageFsGet()+'px'); }
+function stageFont(d){
+ _stageFs = Math.max(12, Math.min(40, stageFsGet() + d));
+ try{ modStore.setItem('modo-stage-fs', String(_stageFs)); }catch(e){}
+ stageApplyFs();
+ stageScrollToCurrent(false);
+}
+function openStage(){
+ if(!modAllows('stage')){ freeBlocked('Stage', 'practice'); return; }
+ if(!songHasChords()){ showToast('Nothing to show yet. Build a song, or import a chart, first.'); return; }
+ var st = document.getElementById('stage'); if(!st) return;
+ if(typeof closeFtMore==='function') closeFtMore();
+ st.classList.add('open'); document.body.classList.add('stage-open');
+ stageApplyFs(); stageRender(); stageWake(true);
+}
+function closeStage(){
+ var st = document.getElementById('stage'); if(!st) return;
+ st.classList.remove('open'); document.body.classList.remove('stage-open');
+ var c = document.getElementById('stage-chart'); if(c) c.innerHTML = '';
+ stageWake(false);
+ if(typeof songsPerformViewGet==='function') renderSongsPerformView();
+}
+function stageRender(){
+ var host = document.getElementById('stage-chart'); if(!host) return;
+ host.innerHTML = '';
+ renderSongTimeline(host);
+ if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
+ if(typeof pracLoopPaint==='function') pracLoopPaint();
+ stageSync();
+ stageScrollToCurrent(false);
+}
+function stageSync(){
+ var st = document.getElementById('stage'); if(!st || !st.classList.contains('open')) return;
+ var host = document.getElementById('stage-chart');
+ var t = document.getElementById('stage-title'), sub = document.getElementById('stage-sub'), k = document.getElementById('stage-key');
+ var cards = host ? [].slice.call(host.querySelectorAll('.tl-card')) : [];
+ var act = host && host.querySelector('.tl-col.active');
+ var at = act ? cards.indexOf(act.closest('.tl-card')) : -1;
+ var si = act ? +act.dataset.si : (songCurrentSection>=0 ? songCurrentSection : 0);
+ if(t) t.textContent = songDisplayTitle();
+ if(sub) sub.textContent = ((sections[si] && sections[si].name) || '') + (at>=0 ? ' · line '+(at+1)+' of '+cards.length : ' · '+cards.length+' lines');
+ if(k) k.textContent = nn(root);
+ var pi = document.getElementById('stage-prog-i'); if(pi) pi.style.width = (cards.length && at>=0 ? Math.round((at+1)/cards.length*100) : 0)+'%';
+ var pl = document.getElementById('stage-play');
+ if(pl){
+  var live = (typeof songLoopActive!=='undefined') && songLoopActive;
+  pl.classList.toggle('stop', !!live);
+  pl.setAttribute('aria-label', live ? 'Stop the song' : 'Play the song');
+ }
+}
+// Scroll so the card holding `col` sits a third of the way down the scroller.
+function stageScrollTo(col, smooth){
+ var sc = document.getElementById('stage-scroll'); if(!sc || !col) return;
+ var card = col.closest('.tl-card') || col;
+ var top = sc.scrollTop + (card.getBoundingClientRect().top - sc.getBoundingClientRect().top) - sc.clientHeight/3;
+ try{ sc.scrollTo({top: Math.max(0, top), behavior: smooth===false ? 'auto' : 'smooth'}); }catch(e){ sc.scrollTop = Math.max(0, top); }
+}
+function stageScrollToCurrent(smooth){
+ var host = document.getElementById('stage-chart'); var a = host && host.querySelector('.tl-col.active');
+ if(a) stageScrollTo(a, smooth);
+}
+// Keep the screen on while Stage is up, where the engine has a way to ask (a screen wake
+// lock). Not every WebView has one; where it has none this does nothing, and a native
+// plugin for it is a separate, unbuilt piece (docs/layout-5.0.md, Step 5).
+function stageWake(on){
+ try{
+  if(on){
+   if(navigator.wakeLock && !_stageLock){
+    navigator.wakeLock.request('screen').then(function(l){ _stageLock = l; l.addEventListener('release', function(){ _stageLock = null; }); }).catch(function(){});
+   }
+  } else if(_stageLock){ _stageLock.release().catch(function(){}); _stageLock = null; }
+ }catch(e){}
+}
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible' && stageIsOpen()) stageWake(true); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape' && stageIsOpen()){ e.preventDefault(); closeStage(); } });
 function renderSetlistPerform(){
  const el = document.getElementById('setlist-items-perform'); if(!el) return;
  if(!setlistData.length){ el.innerHTML='<div class="sl-empty">No songs saved yet.<br><span style="opacity:.75">Add chords in Build, name it, then tap Save.</span></div>'; return; }
@@ -45669,6 +45853,7 @@ function stopSongLoop(){
  // only thing that must see the run's state before it is cleared.
  if(typeof _pracRestore==='function') _pracRestore();
  songLoopActive = false;
+ try{ songPlayheadClear(); }catch(e){}
  _songRunSounded = false;
  _songBaseRoot = -1; // clear capo
  // Chord windows are audio-time stamped, so any left over from a previous run
@@ -47728,11 +47913,13 @@ function pracLoopValid(){
  return pracLoop.sel === 3 && sec && sec.slots && pracLoop.b < sec.slots.length && pracLoop.a >= 0 && pracLoop.a <= pracLoop.b;
 }
 function pracLoopPaint(){
- var chart = document.getElementById('songs-full-chart'); if(!chart) return;
- chart.querySelectorAll('.songs-chord-btn, .tl-col').forEach(function(b){
-  var inside = (pracLoop.sel === 2 || pracLoopValid()) && +b.dataset.si === pracLoop.si
-   && +b.dataset.ci >= pracLoop.a && +b.dataset.ci <= pracLoop.b;
-  b.classList.toggle('prac-in', !!inside);
+ ['songs-full-chart', 'stage-chart'].forEach(function(id){
+  var chart = document.getElementById(id); if(!chart) return;
+  chart.querySelectorAll('.songs-chord-btn, .tl-col').forEach(function(b){
+   var inside = (pracLoop.sel === 2 || pracLoopValid()) && +b.dataset.si === pracLoop.si
+    && +b.dataset.ci >= pracLoop.a && +b.dataset.ci <= pracLoop.b;
+   b.classList.toggle('prac-in', !!inside);
+  });
  });
 }
 function _pracStatus(){
@@ -47889,6 +48076,19 @@ function applySongPlayingHighlights(scrollIntoView){
   }
  }
 
+ // Stage: the same timeline in its own host, scrolled so the playing line is a third of the
+ // way down.
+ const stg = document.getElementById('stage-chart');
+ if(stg && stg.childElementCount){
+  stg.querySelectorAll('.tl-col.active').forEach(b=>b.classList.remove('active'));
+  if(live){
+   const sb = stg.querySelectorAll('.songs-section-block');
+   const sbtns = sb[si] ? sb[si].querySelectorAll('.tl-col') : null;
+   if(sbtns && sbtns[ci]){ sbtns[ci].classList.add('active'); if(scrollIntoView) stageScrollTo(sbtns[ci]); }
+  }
+  if(typeof stageSync==='function') stageSync();
+ }
+
  // Songs tab → Build sub-mode: the progression strip. It only shows one
  // section at a time, so highlight only when the playing section is the
  // one being edited.
@@ -47914,6 +48114,7 @@ function _highlightLoopSlot(si, ci){
  songCurrentSection = si;
  songCurrentSlot = ci;
  applySongPlayingHighlights(true);
+ try{ songPlayheadStart(si, ci); }catch(e){}
  if(typeof updateChartPlaying==='function') updateChartPlaying();
  // The looping-song banner this used to write into was removed from the Play
  // page; the transport's Song button carries the chord now. A slot starting is
@@ -48156,6 +48357,7 @@ function songChartTap(si, ci, opts){
  // Highlight
  const chart=document.getElementById('songs-full-chart');
  if(chart){ chart.querySelectorAll('.songs-chord-btn, .tl-col').forEach(b=>b.classList.remove('active')); }
+ document.querySelectorAll('#stage-chart .tl-col.active').forEach(b=>b.classList.remove('active'));
  // Tapped while stopped: this is where you want ▶ to start.
  _songCueAt(si, ci);
  }
@@ -48606,6 +48808,7 @@ function toggleGlobalSongMode(){
 // button's label by hand and had already drifted apart — the markup said
 // "Auto: OFF" and the code said "Auto ▶ OFF" — so it says it in one place now.
 function _updateSongPlayBtn(){
+ try{ stageSync(); }catch(e){}
  const b = document.getElementById('slb-auto-btn'); if(!b) return;
  // Keyed on whether the song is actually running, not on whether it is armed.
  // stopEverything() deliberately leaves globalSongMode set so the transport's
@@ -65775,7 +65978,8 @@ const MODULE_COPY = {
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp','Future theory additions included'] },
  practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
-  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right'] },
+  bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right',
+           'Timeline: chords and words on the beats','Stage: the song full screen, big enough to read from a stand'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',
   bullets:['Capture and export stems','Full-length audio and MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
 };
@@ -65815,6 +66019,8 @@ const FREE_LIMITS = {
   auxLayer:     false,   // the Aux drum channel (the kit on it is a kit like any other)
   iRealBatch:   false,   // a playlist at once; free takes one chart per import
   practiceTrainer: false, // speed up, next key and loop bars on the Songs > Perform chart
+  timeline:     false,   // the Songs > Perform timeline view (the tiles stay free)
+  stage:        false,   // Stage, the timeline full screen
   // Two kits: the Linn is what a fresh start plays, and the 808 is its partner.
   drumKits:     ['808','LIN'],
   drumGrooves:  ['4/4 Basic','Shuffle','Half-Time Rock','4/4 Funk','House','3/4 Waltz','12/8 Slow'],
@@ -65841,7 +66047,7 @@ const FEATURE_MODULE = {
   stemExport:'studio', fullAudioExport:'studio', fullMidiExport:'studio', liveLayout:'studio',
   arrange:'groove', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
   bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove',
-  iRealBatch:'practice', practiceTrainer:'practice'
+  iRealBatch:'practice', practiceTrainer:'practice', timeline:'practice', stage:'practice'
 };
 // The voices the Sounds Pack holds: the synth piano, electric piano, organ and
 // pad, the vibraphone (recorded, but sold here and not as a sampled
