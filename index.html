@@ -2419,6 +2419,11 @@ body.light-mode .pp-btn { box-shadow:0 3px 12px color-mix(in srgb, var(--pc) 26%
 .csi-name { flex:none; width:7.5em; color:var(--accent); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .csi-chords { color:var(--text); word-spacing:.35em; }
 .csi-note { color:var(--muted); font-size:.48rem; }
+.tbi-text { white-space:pre; overflow-x:auto; }
+.tbi-actions { flex-wrap:wrap; }
+.tbi-actions .tb { min-width:0; padding-left:14px; padding-right:14px; }
+.tbi-bpm { width:4.2em; box-sizing:border-box; background:var(--surf2); color:var(--text); border:1px solid var(--muted); border-radius:8px; padding:4px 6px; font-size:16px; }
+.tbi-block { flex:1; min-width:0; background:var(--surf2); color:var(--text); border:1px solid var(--muted); border-radius:8px; padding:5px 6px; font-size:16px; }
 .dur-preset-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .dur-preset-chip {
  padding:12px 4px; border-radius:10px; border:1px solid var(--border2); background:var(--bg);
@@ -8095,7 +8100,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v4.9.9.9.9.9.9g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.0</span></div>
  </div>
 </div>
 
@@ -9473,7 +9478,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v4.9.9.9.9.9.9g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.0</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -9532,6 +9537,8 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     <button type="button" onclick="sbDo(printChart)">Print / Save PDF</button>
     <button type="button" onclick="sbDo(openChordSheetImport)"
       title="Paste a chord sheet and the chart is built from it — sections, chords and repeats, in order">Import a chord sheet…</button>
+    <button type="button" onclick="sbDo(openTabImport)"
+      title="Paste a guitar or bass tab — the plain-text kind from Ultimate Guitar — and get a .mid file, or put it in the melody roll">Import a tab → .mid…</button>
     <div class="sb-menu-sep"></div>
     <button type="button" onclick="sbDo(exportSetlist)">Export setlist JSON</button>
     <button type="button" onclick="sbDo(function(){document.getElementById('sl-import').click();})">Import setlist JSON</button>
@@ -10541,7 +10548,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '4.9.9.9.9.9.9g';
+const MODRIFF_VERSION = '5.0';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39814,6 +39821,386 @@ function importSetlist(e){
    +(left?'. Free holds '+FREE_NUMBERS.saveSlots+'; '+left+' more are in the file for the Studio Pack.':''));
  };
  reader.readAsText(file);
+}
+
+// ── Tab in, notes out ────────────────────────────────────────────────────
+// ASCII tab is the plain-text kind Ultimate Guitar and every songbook site
+// serves:
+//
+//   e|-------0-------0-------|
+//   B|-----1---1---1---1-----|
+//   G|---0-------0-------0---|
+//   D|-2-------2-------2-----|
+//
+// A line is a string, a column is a moment, the number is the fret. What it does
+// NOT say is how long anything lasts — so the file's time is a choice (what one
+// dash is worth, below), and a note lasts until the same string is struck again
+// or the bar ends, which is how a guitar rings.
+//
+// Pure functions, no DOM: parseAsciiTab reads text into notes, tabToMidi writes
+// notes into a .mid, and openTabImport is the window onto both.
+var _TAB_STD = {
+  guitar:{6:[40,45,50,55,59,64], 7:[35,40,45,50,55,59,64], 8:[30,35,40,45,50,55,59,64]},
+  bass:{4:[28,33,38,43], 5:[23,28,33,38,43], 6:[23,28,33,38,43,48]}
+};
+var _TAB_PCS = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+function _tabPc(s){
+  var m = /^([A-Ga-g])([#b♯♭]?)$/.exec(String(s || ''));
+  if(!m) return null;
+  var pc = _TAB_PCS[m[1].toUpperCase()];
+  if(m[2] === '#' || m[2] === '♯') pc++;
+  else if(m[2] === 'b' || m[2] === '♭') pc--;
+  return (pc + 12) % 12;
+}
+// One line of a staff, or null when the line is not one. A label ("e", "Eb", "D"),
+// then bars, dashes, fret numbers and technique letters, with no spaces in it —
+// which is what keeps a line of lyrics ("a-ha, b-b-baby") from being read as tab.
+function _tabLine(raw){
+  var s = String(raw).replace(/\t/g, ' ').replace(/\s+$/, '');
+  var m = /^\s*(?:([A-Ga-g][#b♯♭]?)(?=\s*[|:\-]))?\s*([|:\-0-9].*)$/.exec(s);
+  if(!m) return null;
+  var body = m[2].split(/\s/)[0];                     // "x2" and the like after the staff
+  if(!/^[-0-9|:*=hpbrsxXtTvV\/\\~^()<>.]+$/.test(body)) return null;
+  if((body.match(/-/g) || []).length < 3) return null;
+  return {label:m[1] || null, body:body};
+}
+// The numbers on a staff line, and when each lands. A bend's number ("7b9") is where
+// the string is pushed to, not another note; "5h7", "5p3", "5/7" put a second note on
+// the string that is struck softer; "x" (a muted string) and "(5)" (a tie) make none.
+function _tabEvents(s){
+  var ev = [], i = 0, prev = '', digit = function(ch){ return ch >= '0' && ch <= '9'; };
+  while(i < s.length){
+    var c = s[i];
+    if(digit(c)){
+      var j = i + 1;
+      if(j < s.length && digit(s[j]) && +(c + s[j]) <= 30) j++;
+      ev.push({col:i, fret:+s.slice(i, j), legato:/[hpstHPST\/\\]/.test(prev)});
+      i = j; prev = ''; continue;
+    }
+    if(c === 'b' || c === 'B' || c === '^'){
+      i++;
+      while(i < s.length && digit(s[i])) i++;
+      if(s[i] === 'r' || s[i] === 'R'){ i++; while(i < s.length && digit(s[i])) i++; }
+      var k = s[i] === '(' ? s.indexOf(')', i) : -1;
+      if(k > 0 && /^\(\d+\)$/.test(s.slice(i, k + 1))) i = k + 1;
+      prev = ''; continue;
+    }
+    if(c === 'r' || c === 'R'){ i++; while(i < s.length && digit(s[i])) i++; prev = ''; continue; }
+    if(c === '('){
+      var k2 = s.indexOf(')', i);
+      if(k2 > 0 && /^\(\d+\)$/.test(s.slice(i, k2 + 1))){ i = k2 + 1; prev = ''; continue; }
+    }
+    prev = c; i++;
+  }
+  return ev;
+}
+// The pitch of each open string, lowest first. The labels give pitch classes and the
+// standard tuning gives the octaves: the lowest string is the label's note nearest
+// the standard one, and each string above it the next such note up. A tab whose
+// labels are nonsense (more than a fourth from standard on any string) is read as
+// standard rather than believed.
+function _tabTuning(labels, std, hdr){
+  var pcs = (hdr && hdr.pcs && hdr.pcs.length === std.length) ? hdr.pcs : labels;
+  var out = std.slice();
+  if(pcs && pcs.length === std.length && pcs.every(function(p){ return p != null; })){
+    var d = ((pcs[0] - std[0]) % 12 + 12) % 12; if(d > 6) d -= 12;
+    var t = [std[0] + d];
+    for(var i = 1; i < pcs.length; i++) t.push(t[i - 1] + (((pcs[i] - t[i - 1]) % 12 + 12) % 12 || 12));
+    if(t.every(function(m, i){ return Math.abs(m - std[i]) <= 5; })) out = t;
+  }
+  if(hdr){
+    if(hdr.shift) out = out.map(function(m){ return m + hdr.shift; });
+    if(hdr.drop != null){
+      var dd = ((hdr.drop - out[0]) % 12 + 12) % 12; if(dd > 6) dd -= 12;
+      out[0] += dd;
+    }
+  }
+  return out;
+}
+var _TAB_NAMES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+function parseAsciiTab(text, o){
+  o = o || {};
+  var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  var res = {blocks:[], notes:[], total:0, capo:0, tuning:'', warnings:[]};
+  // "Capo: 2nd fret" and "Tuning: Eb Ab Db Gb Bb Eb" are said once, up top, and
+  // apply to everything under them.
+  var hdr = {pcs:null, shift:0, drop:null}, m;
+  for(var h = 0; h < lines.length; h++){
+    var t0 = lines[h].trim();
+    if(!res.capo && (m = /^capo\b\W*(?:on\W+)?(?:the\W+)?(\d{1,2})/i.exec(t0))) res.capo = +m[1];
+    else if(!hdr.pcs && !hdr.shift && hdr.drop == null && (m = /^tun(?:ing|ed)\b\s*(?:\([^)]*\))?\s*[:\-]?\s*(.+)$/i.exec(t0))){
+      var rest = m[1], dm;
+      if(/half\s*step\s*down|\be[b♭]\s*standard|\bstandard\s*e[b♭]|d#\s*standard/i.test(rest)) hdr.shift = -1;
+      else if(/full\s*step\s*down|whole\s*step\s*down|\bd\s*standard|\bstandard\s*d\b/i.test(rest)) hdr.shift = -2;
+      else if((dm = /drop\s*([a-g][#b♯♭]?)\b/i.exec(rest))) hdr.drop = _tabPc(dm[1]);
+      else {
+        var toks = rest.split(/[\s,\-\/]+/).filter(Boolean), pcs = toks.map(_tabPc);
+        if(pcs.length >= 4 && pcs.length <= 8 && pcs.every(function(p){ return p != null; })) hdr.pcs = pcs;
+      }
+    }
+  }
+  var pending = null, cursor = 0, i = 0;
+  var sectionRe = /^\s*\[([^\]]{1,40})\]\s*$|^\s*((?:intro|verse|pre-?chorus|chorus|bridge|solo|outro|interlude|riff|lead|rhythm|break|refrain|hook|fill|ending)\b[^\n]{0,30}?)\s*:?\s*$/i;
+  while(i < lines.length){
+    var tl = _tabLine(lines[i]);
+    if(!tl){
+      var sm = sectionRe.exec(lines[i]);
+      if(sm) pending = (sm[1] || sm[2]).trim();
+      i++; continue;
+    }
+    var grp = [];
+    while(i < lines.length && (tl = _tabLine(lines[i]))){ grp.push(tl); i++; }
+    // Staves run together with no blank line between: cut them into equal strings.
+    var size = grp.length;
+    if(size > 8){
+      size = [6, 4, 5, 7, 8].filter(function(k){ return grp.length % k === 0; })[0] || 0;
+      if(!size){ res.warnings.push('A block of ' + grp.length + ' tab lines did not split into staves.'); continue; }
+    }
+    for(var g0 = 0; g0 < grp.length; g0 += size){
+      var blk = _tabBlock(grp.slice(g0, g0 + size), o, hdr, res.capo, cursor, pending, res);
+      if(blk){ res.blocks.push(blk.info); res.notes = res.notes.concat(blk.notes); cursor += blk.info.len; }
+      pending = null;
+    }
+  }
+  res.total = cursor;
+  // Two strings can sound one pitch (a fretted note and an open string), and one
+  // note-off would then end both. The earlier one stops where the later starts.
+  res.notes.sort(function(a, b){ return a.t - b.t || a.midi - b.midi; });
+  var last = {};
+  res.notes = res.notes.filter(function(n){
+    var p = last[n.midi];
+    if(p && p.t + p.len > n.t){
+      if(n.t === p.t) { p.len = Math.max(p.len, n.len); return false; }
+      p.len = n.t - p.t;
+    }
+    last[n.midi] = n; return true;
+  });
+  res.tuning = res.blocks.length ? res.blocks[0].tuning : '';
+  return res;
+}
+function _tabBlock(grp, o, hdr, capo, start, name, res){
+  var n = grp.length, inst = o.inst || 'auto';
+  if(inst === 'auto') inst = n <= 5 ? 'bass' : 'guitar';
+  var std = (_TAB_STD[inst] && _TAB_STD[inst][n]) || (inst === 'guitar' && n >= 4 && n < 6 ? _TAB_STD.guitar[6].slice(6 - n) : null);
+  if(!std){ res.warnings.push('A ' + n + '-line staff was skipped (' + inst + ' tab has ' + (inst === 'bass' ? '4 to 6' : '6 to 8') + ' strings).'); return null; }
+  var labels = grp.map(function(l){ return l.label ? _tabPc(l.label) : null; }).reverse();
+  var tuning = _tabTuning(labels, std, hdr);
+  var width = Math.max.apply(null, grp.map(function(l){ return l.body.length; }));
+  var bodies = grp.map(function(l){ while(l.body.length < width) l.body += '-'; return l.body; });
+  // Bar lines run straight down the staff. They are not time, so they come out
+  // of the columns, and what is left between them is a bar.
+  var need = Math.max(1, Math.ceil(n / 2)), isBar = [];
+  for(var c = 0; c < width; c++){
+    var cnt = 0; for(var li = 0; li < n; li++) if(bodies[li][c] === '|') cnt++;
+    isBar.push(cnt >= need);
+  }
+  var comp = bodies.map(function(b){ var s = ''; for(var c2 = 0; c2 < width; c2++) if(!isBar[c2]) s += b[c2]; return s; });
+  // Segments in compact coordinates: split wherever a bar column was removed.
+  var segs = [];
+  var cc = 0, segStart = 0;
+  for(var c4 = 0; c4 < width; c4++){
+    if(isBar[c4]){ if(cc > segStart){ segs.push({s:segStart, e:cc}); } segStart = cc; }
+    else cc++;
+  }
+  if(cc > segStart) segs.push({s:segStart, e:cc});
+  var evs = comp.map(_tabEvents);
+  // A bar with nothing in it and next to no width is a repeat sign or a stray mark.
+  segs = segs.filter(function(sg){
+    return sg.e - sg.s > 2 || evs.some(function(list){ return list.some(function(e){ return e.col >= sg.s && e.col < sg.e; }); });
+  });
+  if(!segs.length) return null;
+  var off = 0;
+  segs.forEach(function(sg){ sg.w = Math.max(4, Math.round((sg.e - sg.s) / 4) * 4); sg.base = off; off += sg.w; });
+  var segOf = function(col){ for(var q = 0; q < segs.length; q++) if(col >= segs[q].s && col < segs[q].e) return segs[q]; return null; };
+  var notes = [];
+  evs.forEach(function(list, li2){
+    var open = tuning[n - 1 - li2] + capo;
+    var timed = [];
+    list.forEach(function(e){
+      var sg = segOf(e.col); if(!sg) return;
+      timed.push({t:start + sg.base + Math.min(e.col - sg.s, sg.w - 1), end:start + sg.base + sg.w, fret:e.fret, legato:e.legato});
+    });
+    timed.forEach(function(e, idx){
+      var nxt = idx + 1 < timed.length ? timed[idx + 1].t : Infinity;
+      var midi = open + e.fret;
+      if(midi < 0 || midi > 127) return;
+      notes.push({t:e.t, len:Math.max(1, Math.min(e.end, nxt, e.t + 32) - e.t), midi:midi, vel:e.legato ? 72 : 92});
+    });
+  });
+  if(!notes.length) return null;
+  var names = tuning.map(function(m2){ return _TAB_NAMES[((m2 % 12) + 12) % 12]; });
+  return {notes:notes, info:{name:name || '', start:start, len:off, bars:segs.length, strings:n, inst:inst,
+    notes:notes.length, tuning:names.join(' ')}};
+}
+// Notes → a Standard MIDI File (type 0, one track). `colTicks` is what one column is
+// worth in ticks of 480 to the quarter: 120 for a 16th. A section name becomes a
+// marker, so a DAW shows where the verse starts.
+function tabToMidi(parsed, o){
+  o = o || {};
+  var tpq = 480, ct = o.colTicks || 120, bpm = Math.max(20, Math.min(400, o.bpm || 120));
+  var tempo = Math.round(60000000 / bpm), ev = [];
+  var varLen = function(n){ var b = [n & 0x7f]; while((n >>= 7) > 0) b.unshift((n & 0x7f) | 0x80); return b; };
+  var u32 = function(n){ return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]; };
+  var str = function(s){ return s.split('').map(function(ch){ return ch.charCodeAt(0) & 127; }); };
+  var meta = function(tick, type, bytes){ ev.push({tick:tick, ord:0, b:[0xff, type].concat(varLen(bytes.length), bytes)}); };
+  var txt = function(s){ return str(_riffAscii(String(s)).slice(0, 200)); };
+  meta(0, 0x03, txt(o.title || 'Tab'));
+  meta(0, 0x51, [(tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]);
+  meta(0, 0x58, [4, 2, 24, 8]);
+  var first = parsed.blocks[0];
+  ev.push({tick:0, ord:0, b:[0xc0, (first && first.inst === 'bass') ? 33 : 25]});
+  parsed.blocks.forEach(function(b){ if(b.name) meta((b.start - (o.from || 0)) * ct, 0x06, txt(b.name)); });
+  var end = 0;
+  parsed.notes.forEach(function(nt){
+    var on = (nt.t - (o.from || 0)) * ct, off = on + nt.len * ct;
+    if(on < 0) return;
+    ev.push({tick:on, ord:2, b:[0x90, nt.midi, nt.vel || 90]});
+    ev.push({tick:off, ord:1, b:[0x80, nt.midi, 0]});
+    if(off > end) end = off;
+  });
+  ev.sort(function(a, b){ return a.tick - b.tick || a.ord - b.ord; });
+  var trk = [], prev = 0;
+  ev.forEach(function(e){ trk = trk.concat(varLen(e.tick - prev), e.b); prev = e.tick; });
+  trk = trk.concat(varLen(Math.max(0, (o.total ? o.total * ct : end) - prev)), [0xff, 0x2f, 0]);
+  return new Uint8Array(str('MThd').concat(u32(6), [0, 0, 0, 1, tpq >> 8, tpq & 255], str('MTrk'), u32(trk.length), trk));
+}
+// The melody roll is sixteenth-note steps, up to 64 of them. One block of the tab
+// goes in; its notes land on the step their column falls on, several on one step
+// becoming a chord. The roll runs C3-C7 and a guitar's low strings sit under it, so
+// the line is lifted whole octaves until it clears — the shape is the same, the
+// register is the roll's. Returns {steps, grid, lifted, cut} for _mlRestoreState.
+function tabToMelodyGrid(parsed, blockIdx, colTicks){
+  var b = parsed.blocks[blockIdx]; if(!b) return null;
+  var per = (colTicks || 120) / 120;
+  var inB = parsed.notes.filter(function(nt){ return nt.t >= b.start && nt.t < b.start + b.len; });
+  var steps = Math.max(4, Math.min(64, Math.ceil(b.len * per / 4) * 4));
+  var lo = Math.min.apply(null, inB.map(function(nt){ return nt.midi; }));
+  var lift = 0; while(lo + lift < 48) lift += 12;
+  var cells = [], cut = 0;
+  for(var s = 0; s < steps; s++) cells.push({note:0, oct:5, len:1, accent:false, v:0, usr:0});
+  inB.forEach(function(nt){
+    var st = Math.round((nt.t - b.start) * per);
+    if(st >= steps){ cut++; return; }
+    var m = Math.min(96, nt.midi + lift), len = Math.max(1, Math.round(nt.len * per)), c = cells[st];
+    var one = {note:m % 12, oct:Math.floor(m / 12) - 1};
+    if(!c.v){ c.v = 1; c.usr = 1; c.note = one.note; c.oct = one.oct; c.len = len; }
+    else {
+      c.len = Math.max(c.len, len);
+      var all = [{note:c.note, oct:c.oct}].concat(c.more || []).concat([one]);
+      all.sort(function(x, y){ return (x.oct * 12 + x.note) - (y.oct * 12 + y.note); });
+      all = all.filter(function(x, ix){ return ix === 0 || x.oct !== all[ix - 1].oct || x.note !== all[ix - 1].note; }).slice(0, 8);
+      c.note = all[0].note; c.oct = all[0].oct;
+      if(all.length > 1) c.more = all.slice(1); else delete c.more;
+    }
+  });
+  return {steps:steps, grid:cells, lifted:lift / 12, cut:cut};
+}
+function openTabImport(){
+  const ov = document.createElement('div');
+  ov.className = 'csi-overlay';
+  const bpm0 = Math.round(parseFloat((document.getElementById('bpm') || {}).value) || 120);
+  ov.innerHTML = '<div class="dur-picker-box csi-box" role="dialog" aria-modal="true" aria-labelledby="tbi-title">'
+   + '<div class="dur-picker-title" id="tbi-title">Import a tab</div>'
+   + '<div class="dur-picker-sub">Paste a guitar or bass tab — the plain-text kind from Ultimate Guitar. '
+   + 'The tab does not say how long anything lasts, so pick what one dash is worth; a note rings until its string is struck again or the bar ends.</div>'
+   + '<textarea class="csi-text tbi-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" '
+   + 'placeholder="e|-------0-------0---|\nB|-----1---1---1-----|\nG|---0-------0-------|\nD|-2-------2---------|\nA|-------------------|\nE|-------------------|"></textarea>'
+   + '<div class="csi-row csi-sources"><button type="button" class="tb tbi-file">Files…</button>'
+   + '<input type="file" class="tbi-input" accept=".txt,.text,text/plain" hidden></div>'
+   + '<div class="csi-row csi-len" role="group" aria-label="What one dash is worth"><span class="csi-lbl">A dash is</span>'
+   + '<button type="button" class="tb" data-tbicol="240">8th</button><button type="button" class="tb" data-tbicol="120">16th</button>'
+   + '<span class="csi-len-hint">tab that spaces notes two dashes apart is usually 16ths</span></div>'
+   + '<div class="csi-row csi-len" role="group" aria-label="Strings"><span class="csi-lbl">Strings</span>'
+   + '<button type="button" class="tb" data-tbiinst="auto">Auto</button><button type="button" class="tb" data-tbiinst="guitar">Guitar</button>'
+   + '<button type="button" class="tb" data-tbiinst="bass">Bass</button>'
+   + '<span class="csi-lbl tbi-bpmlbl" style="margin-left:auto">Tempo</span><input type="number" class="tbi-bpm" min="30" max="300" value="' + bpm0 + '" inputmode="numeric" aria-label="Tempo"></div>'
+   + '<div class="csi-preview" aria-live="polite"></div>'
+   + '<div class="csi-row csi-len tbi-rollrow" style="display:none"><span class="csi-lbl">Roll</span>'
+   + '<select class="tbi-block" aria-label="Which part of the tab goes in the roll"></select></div>'
+   + '<div class="csi-row csi-actions tbi-actions"><button type="button" class="tb tbi-cancel">Cancel</button>'
+   + '<button type="button" class="tb tbi-roll" disabled title="Put the chosen part of the tab in the melody roll, as steps you can edit">Into the roll</button>'
+   + '<button type="button" class="tb active tbi-go" disabled>Download .mid</button></div>'
+   + '</div>';
+  document.body.appendChild(ov);
+  const $ = sel => ov.querySelector(sel);
+  const ta = $('.tbi-text'), pv = $('.csi-preview'), go = $('.tbi-go'), roll = $('.tbi-roll');
+  const pref = {col:120, inst:'auto'};
+  let parsed = null;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => { if(e.key === 'Escape'){ e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', onKey, true);
+  ov.addEventListener('click', e => { if(e.target === ov) close(); });
+  $('.tbi-cancel').addEventListener('click', close);
+  const sync = () => {
+    ov.querySelectorAll('[data-tbicol]').forEach(b => { const on = +b.dataset.tbicol === pref.col; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    ov.querySelectorAll('[data-tbiinst]').forEach(b => { const on = b.dataset.tbiinst === pref.inst; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  };
+  const barsOf = b => b.bars + (b.bars === 1 ? ' bar' : ' bars');
+  const preview = () => {
+    parsed = parseAsciiTab(ta.value, {inst:pref.inst});
+    const ok = parsed.notes.length > 0;
+    go.disabled = !ok; roll.disabled = !ok;
+    $('.tbi-rollrow').style.display = ok ? '' : 'none';
+    if(!ok){
+      pv.innerHTML = (ta.value.trim() ? '<div class="csi-note">No tab found yet — a tab line is a string name, then bars, dashes and fret numbers, like e|---0---3---|.</div>' : '')
+       + parsed.warnings.map(w => '<div class="csi-note">' + esc(w) + '</div>').join('');
+      return;
+    }
+    const secs = Math.round(parsed.total * pref.col / 480 * 60 / (+$('.tbi-bpm').value || 120) * 10) / 10;
+    let h = '<div class="csi-head"><b>' + parsed.notes.length + ' notes</b><span>' + esc(parsed.tuning)
+     + (parsed.capo ? ' · capo ' + parsed.capo : '') + ' · ' + secs + ' s</span></div>';
+    parsed.blocks.forEach((b, i) => {
+      h += '<div class="csi-sec"><span class="csi-name">' + esc(b.name || ('Part ' + (i + 1))) + '<span class="csi-bars">' + barsOf(b) + '</span></span>'
+       + '<span class="csi-chords">' + b.notes + ' notes · ' + b.strings + ' strings</span></div>';
+    });
+    h += parsed.warnings.map(w => '<div class="csi-note">' + esc(w) + '</div>').join('');
+    pv.innerHTML = h;
+    const sel = $('.tbi-block'), keep = sel.value;
+    sel.innerHTML = parsed.blocks.map((b, i) => '<option value="' + i + '">' + (i + 1) + '. ' + esc(b.name || 'Part') + ' — ' + barsOf(b)
+      + (b.len * pref.col / 120 > 64 ? ' (first 4 bars)' : '') + '</option>').join('');
+    if(keep && sel.querySelector('option[value="' + keep + '"]')) sel.value = keep;
+  };
+  let t = null;
+  const later = () => { clearTimeout(t); t = setTimeout(preview, 120); };
+  ta.addEventListener('input', later);
+  $('.tbi-bpm').addEventListener('input', later);
+  ov.querySelectorAll('[data-tbicol]').forEach(b => b.addEventListener('click', () => { pref.col = +b.dataset.tbicol; sync(); preview(); }));
+  ov.querySelectorAll('[data-tbiinst]').forEach(b => b.addEventListener('click', () => { pref.inst = b.dataset.tbiinst; sync(); preview(); }));
+  sync();
+  const fileBtn = $('.tbi-file'), inp = $('.tbi-input');
+  fileBtn.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => {
+    const f = inp.files && inp.files[0]; inp.value = ''; if(!f) return;
+    const r = new FileReader();
+    r.onload = () => { ta.value = String(r.result || ''); preview(); };
+    r.readAsText(f);
+  });
+  const title = () => ((document.getElementById('chart-title') || {}).value || '').trim() || 'Tab';
+  go.addEventListener('click', () => {
+    if(!parsed || !parsed.notes.length) return;
+    const bytes = tabToMidi(parsed, {colTicks:pref.col, bpm:+$('.tbi-bpm').value || bpm0, title:title(), total:parsed.total});
+    modPlatform.saveFile(_dlName(title() + ' tab.mid'), new Blob([bytes], {type:'audio/midi'}));
+    showToast('Tab written to .mid — ' + parsed.notes.length + ' notes');
+    close();
+  });
+  roll.addEventListener('click', () => {
+    if(!parsed || !parsed.notes.length) return;
+    if(typeof window._mlRestoreState !== 'function' || typeof window._mlCaptureState !== 'function'){ showToast('The melody roll is not ready yet'); return; }
+    const idx = +$('.tbi-block').value || 0, g = tabToMelodyGrid(parsed, idx, pref.col);
+    if(!g) return;
+    const before = JSON.parse(JSON.stringify(window._mlCaptureState()));
+    // Follow would move the line onto each chord as the chart plays; a tab is meant to be
+    // played as written, so it goes in with Follow off.
+    window._mlRestoreState({steps:g.steps, grid:g.grid, follow:false});
+    const b = parsed.blocks[idx];
+    const note = (g.lifted ? ' (up ' + g.lifted + (g.lifted === 1 ? ' octave' : ' octaves') + ' to fit the roll)' : '')
+      + (g.cut ? ' — ' + g.cut + ' notes past 4 bars left out' : '');
+    close();
+    showToast('“' + (b.name || 'Part ' + (idx + 1)) + '” is in the melody roll' + note + '. Follow is off, so it plays as written.',
+      {actionLabel:'Undo', onAction(){ window._mlRestoreState(before); }});
+  });
+  setTimeout(() => ta.focus(), 30);
 }
 
 // ── Import a chord sheet ─────────────────────────────────────────────────
