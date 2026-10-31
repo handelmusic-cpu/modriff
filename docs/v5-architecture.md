@@ -1909,15 +1909,38 @@ Two things measured on the way, so nobody rediscovers them:
   frame, 51 dB). With `SAMPLED=1` the recorded kits (jazz, rock, hip-hop,
   beatbox) play their real decoded samples through the buffer store: all 35
   lanes, 69 to 184 dB.
-  **Shaped, too** (4.9.9.9.9.9.7: Shape reaches every synthesised kit, and a Pan
-  joins it): `tests/graph/shape.test.js` plays the same lanes of the nine
-  synthesised kits with Decay, Sweep, Body, Tone, Drive and Pan all moved a long
-  way, built the way the app builds a shaped hit (the multipliers the voice
-  builders read, then `_sqShapeInsert`'s filter, drive and panner). **65 lanes
-  hold, 33 to 146 dB**; the two lowest are the same two the defaults already
-  name (the MOD kick and the 808 clap, both the browser's own habits). The panner
-  is the native graph's `T_PAN`, so nothing new was needed in C++: a drum's Shape
-  is a change to the JS voices and the recorded graph, not to the engine.
+  **Shaped, too** (4.9.9.9.9.9.7 to 9g: Shape on every kit, on Aux, with a Pan):
+  `tests/graph/shape.test.js` plays lanes with Decay, Sweep, Body, Tone, Drive and
+  Pan all moved a long way, built the way the app builds a shaped hit (the
+  multipliers the voice builders read, then `_sqShapeInsert`'s filter, drive and
+  panner), once into a browser `OfflineAudioContext` and once through the
+  recorder and interpreter. **84 synthesised lanes of 11 kits hold, 40 to 110
+  dB**; with `SAMPLED=1`, **61 recorded lanes (Studio, Real 808, Latin, Salsa,
+  Jazz) hold, 73 to 114 dB**, a recorded lane being held with only what it is
+  offered (tone, drive, pan). The lanes held lower are named in the test: the MOD
+  kick and the 808 clap (the browser's own habits, as in the defaults) and the Perc
+  triangle (a 2.6 s undamped ring that Decay stretches).
+  **A correction.** The first version of this test (4.9.9.9.9.9.7) replaced
+  `SQOUT()` with a fixed bus, as `drums.test.js` does, which bypasses `_sqOut`: a
+  shaped hit's Tone, Drive and Pan are an insert that `_sqOut` points at, so the
+  insert was built and never in the signal path, and "65 lanes hold" held Decay,
+  Sweep and Body only. The test now puts `_sqOut` first. With the insert in the
+  path, **Tone and Pan agree with the interpreter (85 to 137 dB). Drive does
+  not:** the interpreter does not apply a waveshaper's `oversample` (`graph.cpp`:
+  "not applied yet") and Drive asks for 2x, so on the phone Drive is the same
+  curve without its anti-aliasing. That is the whole difference: with the
+  browser's oversampling off, every Drive lane holds at 91 to 124 dB. The test
+  takes the oversampler out of the comparison, so the rest of Drive's chain
+  (gain, curve, level trim) is held. **Applying oversample in the interpreter is
+  open**, and when it lands the replace in `patched()` goes. `Os2` in `dspkit.h`
+  is the effects rack's oversampler and the obvious candidate, but the interpreter
+  runs every graph part, so it needs the voice and part tests re-run, not just
+  this one.
+  `tests/drums/shape-aux.test.js` covers the Aux layer in the real page: Aux's
+  Shapes under `aux:<kit>`, apart from the kit's; a shaped Aux hit and a shaped
+  kit hit build different panners, feeding different nodes, each with its own
+  layer's pan; Reset on one layer leaves the other alone; a recorded drum's sheet
+  has no Decay, Sweep or Body.
 
 **Host integration: what the Mac session does** (Objective-C++, not edited here,
 so not built). `ModEngineHost.mm` already runs a part as Processor, then rack,
