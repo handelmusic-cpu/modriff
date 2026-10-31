@@ -204,6 +204,21 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 .perf-row button.go { border-color:var(--go); color:var(--go); }
 .chartline { font:14px/1.7 ui-monospace,'SF Mono',Menlo,Consolas,monospace; color:#cfd3ef; }
 .chartline b { font-family:var(--f-label); font-weight:400; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--chords); display:block; margin-top:10px; }
+/* chord grid: columns are scale degrees, lanes are diatonic / dominant of it / its borrowed version / colour */
+.cg { display:grid; gap:5px; }
+.cgl { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+.cp { --fn:#3f78d1; height:64px; border-radius:11px; border:1.5px solid var(--fn); background:color-mix(in srgb, var(--fn) 16%, var(--surf2)); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:0; line-height:1.1; }
+.cp b { font-size:18px; font-weight:700; }
+.cp b small { font-size:10.5px; font-weight:500; color:var(--dim); margin-left:1px; }
+.cp i { font-style:normal; font-size:10px; color:var(--dim); margin-top:3px; }
+.cp.t { --fn:#2f9d57; } .cp.s { --fn:#3f78d1; } .cp.d { --fn:#d1583f; } .cp.m { --fn:#a855f7; } .cp.u { --fn:#8b91ba; }
+.cp.cur { border-color:var(--go); box-shadow:0 0 14px rgba(61,220,106,.45); }
+.cp.empty { border:1px dashed #1f2342; background:transparent; }
+.cp.build { --fn:#3a3f68; border-style:dashed; background:transparent; color:var(--dim); }
+.lanes { display:grid; grid-template-columns:1.1fr 1.3fr 1fr 1fr; gap:5px; margin-bottom:6px; }
+.lanes button { min-height:44px; border-radius:12px; border:1px solid var(--line); background:var(--surf); font-size:13px; color:var(--dim); padding:0 4px; }
+.lanes button.on { color:var(--fg); border-color:var(--chords); background:rgba(155,109,255,.14); }
+.lanes button.fixed { color:var(--fg); }
 /* sampler */
 .spg { display:grid; gap:8px; margin:6px 0 8px; }
 .spr { display:grid; gap:8px; }
@@ -311,7 +326,7 @@ textarea.src { width:100%; min-height:210px; border-radius:12px; border:1px soli
 </style>
 
 <div class="top">
-  <h1>mõdRiff 5.0 layout mock, round 7</h1>
+  <h1>mõdRiff 5.0 layout mock, round 8</h1>
   <p class="lede">Live and Studio are now tabs, the bottom tabs are 52 pt, and the lyric screens use the vertical timeline from the handoff (each line is a card, each chord a column as wide as its beats). Nothing here is the real app; it is the proposal, drawn at Pro Max size (430 × 932 pt).</p>
 </div>
 
@@ -391,7 +406,7 @@ var SONG = [
 ];
 
 var S = {
-  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{}, layer:'drums',
+  tab:'play', view:'live', part:'bass', songSub:'build', wmode:'timeline', sel:null, lstep:0, chrome:'B', sheet:false, pview:'tiles', chips:{}, layer:'drums', lanes:{dom:true, modal:true, mine:true},
   smp:{sel:1, side:'User', bank:'A', q:'1/16', trip:false, pat:'1', len:'2', mode:'Gate', rev:false, sync:true, keyf:false, warp:false, mute:'-', n:12, dly:false, rvb:true, hold:false, rec:false}, loaded:false, libSub:'setlist', soundSub:'mixer',
   stage:false, playing:false, step:0, key:0, fs:22, cur:0, songOn:false, toast:'',
   on:{drums:true, bass:true, mel:false, arp:false, chords:true},
@@ -495,13 +510,25 @@ function liveScreen(){
   h += '<div class="more"><button data-a="noop">Add / reorder widgets</button></div>';
   return h;
 }
+var MAJ = [0,2,4,5,7,9,11], MIN = [0,2,3,5,7,8,10];
+var D7 = [['maj7','I','t'],['m7','ii','s'],['m7','iii','t'],['maj7','IV','s'],['7','V','d'],['m7','vi','t'],['ø7','vii°','d']];
+var BOR = [['m7','i','t'],['ø7','ii°','s'],['maj7','♭III','m'],['m7','iv','s'],['m7','v','d'],['maj7','♭VI','m'],['7','♭VII','m']];
+var DNUM = ['I','ii','iii','IV','V','vi','vii'];
+function pcName(semi){ return KEYS[(semi + 120 + S.key) % 12]; }
+function cpad(root, suf, sub, fn, cur){
+  return '<button class="cp ' + fn + (cur ? ' cur' : '') + '" aria-label="' + esc(root + suf) + ', ' + esc(sub) + '"><b>' + esc(root) + '<small>' + esc(suf) + '</small></b><i>' + esc(sub) + '</i></button>';
+}
+function lane(cells){ var n = cells.length; while(n++ < 7) cells.push('<div class="cp empty" aria-hidden="true"></div>'); return '<div class="cgl">' + cells.join('') + '</div>'; }
+function lanesHtml(){
+  var L = S.lanes;
+  return '<div class="lanes" role="group" aria-label="Chord lanes"><button class="fixed" disabled>Diatonic</button><button class="' + (L.dom ? 'on' : '') + '" data-a="lane" data-k="dom">Dominants</button><button class="' + (L.modal ? 'on' : '') + '" data-a="lane" data-k="modal">Modal</button><button class="' + (L.mine ? 'on' : '') + '" data-a="lane" data-k="mine">Mine</button></div>';
+}
 function padsHtml(){
-  var h = '<div class="pads">';
-  PADS.forEach(function(p, i){
-    var root = KEYS[(p[1] + S.key) % 12], nm = KEYS[(p[1] + S.key) % 12] + p[0];
-    var triad = p[3] === 'MIN' ? 'm' : (p[3] === 'DIM' ? '°' : '');
-    h += '<div class="pad' + (i === 0 ? ' cur' : (i === 3 || i === 4 || i === 1 || i === 5 ? ' rel' : '')) + '"><span class="a">' + esc(nm) + '</span><span class="n">' + p[2] + '</span><span class="r">' + esc(root + triad) + '</span><span class="q">' + p[3] + '</span></div>';
-  });
+  var h = lanesHtml() + '<div class="cg">';
+  h += lane(MAJ.map(function(st, i){ return cpad(pcName(st), D7[i][0], D7[i][1], D7[i][2], i === 0); }));
+  if(S.lanes.dom) h += lane(MAJ.map(function(st, i){ return (i === 0 || i === 6) ? '<div class="cp empty" aria-hidden="true"></div>' : cpad(pcName(st + 7), '7', 'V/' + DNUM[i], 'd'); }));
+  if(S.lanes.modal) h += lane(MIN.map(function(st, i){ return cpad(pcName(st), BOR[i][0], BOR[i][1], BOR[i][2]); }));
+  if(S.lanes.mine) h += lane([cpad(pcName(1), 'maj7', '♭II', 'm'), cpad(pcName(7), 'sus4', 'Mine', 'u'), cpad(pcName(5), 'm6', 'Mine', 'u'), '<button class="cp build" data-a="noop" aria-label="Build a chord"><b>+</b><i>Build</i></button>']);
   return h + '</div>';
 }
 function keysHtml(tall){
@@ -807,7 +834,7 @@ function followStage(smooth){
 }
 /* ---------- side panel ---------- */
 var NOTES = {
-  'live': {t:'Live', l:['Live is the whole stack, as it is today, and it is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'Live has every widget it has today, in the same order (Chords, Melody, Styles, Sampler, m\u00f5dFX, Drum grid, Aux grid, Bass grid, Melody grid, Endings), including the Generate / Arrange / Play in controls on the Bass and Melody grids. Add / reorder widgets stays as it is. The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the room goes to taller chord pads and a taller melody strip (room for per-finger expression later). Live is longer than today because every target is 44 pt: about 3,700 pt against 3,170. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
+  'live': {t:'Live', l:['Live is the whole stack, as it is today, and it is a tab now. The Live / Studio switch left the bar, and the page title row went with it: that is 44 pt of page back.','The bottom tabs are 52 pt tall with a label at 11 pt. They are 35 pt today.','The chord pads are a grid, not one row. Columns are the seven degrees; the lanes under the diatonic row are the dominant of each degree (V/ii under ii, and so on, with I and vii\u00b0 left empty) and each degree\u2019s borrowed chord (i, ii\u00b0, \u266dIII, iv, v, \u266dVI, \u266dVII). The last lane is \u266dII and My Chords. Pads are about 54 by 64 pt, near square instead of skinny.','The Dominants, Modal and Mine buttons switch lanes on and off, so Live costs one row of pads until you want more. Today these chords are hidden in Live.','The chord rhythm is one row of four 44 pt targets. It was three stacked buttons and a label, 86 pt tall.','Hold, Glide, Keys and Strip are 44 pt. They are 28 pt today.'], x:'Live has every widget it has today, in the same order (Chords, Melody, Styles, Sampler, m\u00f5dFX, Drum grid, Aux grid, Bass grid, Melody grid, Endings), including the Generate / Arrange / Play in controls on the Bass and Melody grids. Add / reorder widgets stays as it is. The song ribbon is dropped. The transport keeps its Song switch with the section arrows on either side, as it has today, and the room goes to taller chord pads and a taller melody strip (room for per-finger expression later). Live is longer than today because every target is 44 pt: about 3,700 pt against 3,170. Live keeps its parts row because muting drums from anywhere in a 3,000 pt scroll is the point of it.'},
   'studio-chords': {t:'Studio, Chords', l:['Chords gets what the other parts have: a pattern editor. It is the chord rhythm roll, drawn on the page instead of in a sheet.','The pads stay at the bottom so you can play what you just drew.','What you draw is the rhythm the pads play when Rhythm is on, and the one the song plays under the chart.'], x:'Hits are one lane with three heights, as the existing single-lane roll already is.'},
   'studio-bass': {t:'Studio, Bass', l:['This page replaces the Bass sequencer on Accomp and the Bass line on the Play sub-nav.','Every part has the same order: pattern and patch, mode, the roll, then keys to play it.','With chrome B the part is picked on the bottom row, so the page opens straight on the part\u2019s own controls. Choose A or C above to see the strip instead.'], x:'Roll cells are about 23 pt wide because 16 steps share 398 pt. They are for drawing, not tapping. Landscape is the fix for long patterns.'},
   'studio-mel': {t:'Studio, Melody', l:['Same page as Bass with a different colour and patterns. One layout to learn, one place to fix.','The Melody keys on Play and the Melody grid on Accomp become one page.'], x:'Both follow the chord timeline exactly as they do now.'},
@@ -904,6 +931,7 @@ function onPhoneClick(e){
     else S.smp[k] = d.v;
     render();
   }
+  else if(a === 'lane'){ S.lanes[d.k] = !S.lanes[d.k]; render(); }
   else if(a === 'pview'){ S.pview = d.v; render(); }
   else if(a === 'ssub'){ S.songSub = d.v; render(false); }
   else if(a === 'wmode'){ S.wmode = d.v; render(false); }
