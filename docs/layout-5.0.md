@@ -162,17 +162,13 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
       `fx-mixes`). The pad, Hold and Clear stay. Styles and Endings have no extras.
 
     The choice is kept per widget and goes with the layout; Add / reorder widgets
-    is unchanged, so the order is still the player's. The transport sheet gets a
-    **Live** row: **All extras on**, **All extras off** and **Three at once**,
-    which puts Chords, Melody and mõdFX first with their extras off.
+    is unchanged, so the order is still the player's. The transport sheet has two
+    eye buttons, one to show every widget's extras and one to hide them all.
+    **Three widgets on one screen needs nothing more**: hide their extras and put
+    them first. (An earlier version had a "Three at once" button that did both and
+    stretched the pads to fill the screen; the owner did not want a button for it.)
 
-    **Three at once** also hands the spare height to the things you play: the chord
-    pads, the melody keys and the mõdFX pad grow to fill the screen, so there is no
-    gap left under the third widget (the mock ends at 690 of 708 pt). Turning any
-    widget's extras back on, or choosing All extras on or off, returns them to their
-    normal size.
-
-    In the mock (708 pt of page on a 932 pt phone), before that fill, Chords, Melody and mõdFX end at
+    In the mock (708 pt of page on a 932 pt phone), Chords, Melody and mõdFX end at
     612 pt with their extras off, which leaves about 96 pt, and at 718 pt with all
     extras on, about 10 pt too tall, and more once a More row is open. Which
     controls count as extras for each widget is the thing to review: Hold, Glide and
@@ -229,6 +225,20 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     and Sound. Only the way in changes (the ARP button of the bottom row, no
     Accomp tab). The first mock drew an invented Arp page, which was wrong.
 
+17. **Icons before words.** The owner's rule: language should be as much of a
+    non-issue as possible; text hurts and icons help. The transport sheet is the
+    first place it applies: every button is an icon with a spoken name (VoiceOver
+    reads it, and a name shows at the foot of the sheet when a button is touched).
+    Capture is four dots in the parts' own colours (chords, melody, bass, pads);
+    Undo and Redo are arrows; Export is a disc, a stack and a note; File is a page,
+    a folder and a tray; the settings and help buttons are a gear, a socket, sliders
+    for Setups, a magnifier, a moon, a cap, a book and a keyboard. The tab bar has an
+    icon above each label. The rule for new screens is to draw it or colour it
+    before writing it, and where a word cannot be avoided to use the shortest one.
+    The existing words (parts' names, Song, Live) stay; this is about not adding
+    more, and about the sheet most of all. A string to translate is a cost every
+    language pays.
+
 ## The bottom of the screen, and other phones
 
 **The bottom band.** On a Pro Max the home indicator takes 34 pt under the tab bar
@@ -246,8 +256,8 @@ and 402, the smallest 375):
 | width | what overflows |
 |---|---|
 | 430, 440 | nothing in the bottom stack or the headings |
-| 393, 402 | the Chords heading (title, record dot, Keep, More, Voice) by 10 to 19 pt |
-| 375 | the same heading by 13 pt, and the transport row by 11 pt in Studio |
+| 393, 402 | the Chords heading: fixed (decision 20) |
+| 375 | the heading: fixed. The transport row is 11 pt too wide in Studio, still to fix |
 
 So the plan fits a Pro Max, and on a standard iPhone the Chords heading needs a
 shorter Voice and More pill (or the More switch moving into the extras), and on a
@@ -299,25 +309,65 @@ stack and below the status bar):
 | **Duo open, across, 951 x 669** | **445 pt** | two panes of about 475 pt each, nothing overflows |
 | Duo open, upright, 669 x 951 | 727 pt | one wide column, nothing overflows |
 
-Two consequences, both proposals, neither built:
+Two consequences:
 
-1. **Closed is a short, wide phone.** "Three at once" cannot always fit three
-   widgets: the fill has to be height-aware (grow when there is room, shrink the
-   pads, keys and mõdFX pad toward their minimum when there is not), and the widget
-   order the player chose decides which two are visible.
-2. **Open and across, height is the scarce thing.** The 148 pt bottom stack is a
-   third of the 445 pt page area. On a wide screen (regular size class, as on an
-   iPad) the plan is **two panes** (Live beside a Studio part page; Perform beside
-   the Timeline; Sound beside Mixer) and the transport, parts row and tabs move into
-   a **side rail** like the Dock, which iOS also turns vertical on the inner display.
-   The mock draws the two panes and keeps the bottom stack, so it shows the cost and
-   not the answer. The same renderer serves the horizontal timeline
-   (`docs/vertical-timeline.md`, Step 5).
+1. **Closed is a short, wide phone, and the transport and parts go down the
+   right edge (decided by the owner).** At 466 x 678 pt the bottom stack left 454
+   pt of page. A 92 pt rail on the right (key, tempo, Play, rate, Song with its
+   section arrows, then the five parts, all 44 pt targets or the 40 pt part
+   buttons, 622 pt tall so it does not scroll) leaves the **tabs at the bottom**
+   (the owner likes them there) and takes the page to **557 pt tall by 372 pt wide**
+   (+103 pt of height, 94 pt less width: about a standard iPhone's width). The
+   right edge is the thumb side for most players; which side the Dynamic Island is
+   on decides the inset, so the rail is padded by the safe-area inset on that side
+   (`env(safe-area-inset-right)`). The rule is a short screen with a width of 440 to
+   800 pt (not a 375 pt phone, which would be left with 283 pt). The mock draws it
+   (pick Duo closed).
+2. **Open and across: a side rail, decided by the owner.** Height is the scarce
+   thing there (445 pt of page under a 148 pt bottom stack). So on a wide screen
+   (about 700 pt and up, the regular size class) the layout does what Apple's own
+   apps do on an iPad or the inner display: the **tabs and the parts run down a side
+   rail** on the leading edge, the **transport runs across the top** (52 pt), and
+   the content gets **two panes** (Live beside a Studio part page; Perform beside
+   the Timeline; Sound beside Mixer). The page area goes from 445 pt to **584 pt**
+   in the mock (+139 pt). It follows Apple's guidance for this device: adapt to
+   the size class and not to the device name, do not rely on orientation (the inner
+   display ignores an app's supported orientations), and keep controls out of the
+   side where the Dynamic Island sits, so the rail and the top bar are padded by
+   `env(safe-area-inset-left)` and `-right`. Because this is a web page in a
+   Capacitor shell it cannot read size classes; it switches on width, and the same
+   test also covers an iPad. The mock draws it (pick Duo open). The same renderer
+   serves the horizontal timeline (`docs/vertical-timeline.md`, Step 5).
 
 Sources: Apple's iPhone Duo specs pages (apple.com/uk/iphone-duo/specs and
 support.apple.com/en-gb/148588), MacRumors' iPhone Duo roundup, the developer
 write-up at blakecrosley.com/blog/iphone-duo-for-developers (the point size of the
 inner display is its own inference) and webmobilefirst.com's Duo listings.
+
+18. **The Styles widget is one slim row per part.** Today each of the three
+    (Drums, Bass, Melody) is a card with a heading, a Save pill and a row of
+    previous, picker and next, about 100 pt each. It is now one 52 pt row: the
+    part's name in its colour, previous, the picker, next, and Save as an icon
+    (a tray, with a spoken name such as "Save drum pattern"). Three rows are about
+    170 pt where the cards were about 310 pt, a saving of roughly 140 pt on Live.
+19. **Voices: an optional Live widget, not a default one.** Today Live has the voice
+    where you play: a Voice pill in the Chords and Melody headings, and the Bass,
+    Drums and Aux kit and patch pickers in those grids' extras. A single panel with
+    every part's voice (the same panel as Sound's Voices page, `voices-grid-mix`,
+    Drums included) is worth having for changing a whole sound between songs, but
+    not on the first screen: it duplicates what the headings already do, and Song
+    carrying its sounds (decision 4) removes most of the reason. So it is a new
+    widget in Add / reorder widgets, off by default, built from the real element
+    (moved, not copied), which costs nothing for anyone who does not add it. The
+    mock draws it (jump: Live with Voices). Needs `voices` added to `LV_NAME` and
+    `LV_ORDER`.
+20. **Headings stay on one line on every phone.** At 393 pt the More pill wrapped
+    onto two lines with its + above Modal. Every pill and heading is now
+    `white-space: nowrap`, and on a narrow content width (under 420 pt, which the
+    closed Duo's 372 pt page also is) the heading tightens (smaller title spacing,
+    8 pt pill padding, 40 pt record and Keep buttons). Measured at 375, 393, 402,
+    430 and 440 pt and at the closed Duo: no heading overflows and the More pill is
+    a single 44 pt line.
 
 ## Nothing is lost from Songs
 
@@ -339,18 +389,35 @@ control rows, then the tiles); it scrolls, as it does today.
 ## Which pack is open
 
 **Decided by the owner: Stage and the Timeline go in the existing Practice Pack,
-renamed Practice & Perform Pack.** The module key stays `practice` (nothing about
-the product, the purchase or anyone's saved state changes); only the name the
-player reads changes (`MODULE_COPY.practice.name`, which has to stay within 30
-characters; "Practice & Perform Pack" is 23), and the line under it should be
-reworded to say what it now opens. It already owns the trainer (Speed up, Next key,
-Loop bars) that lives on the same Perform chart, so the pack becomes "everything
-for working a song and playing it on stage". `FEATURE_MODULE` gets the new rows
-(`stage`, `timeline`, naming `practice`) when the features work, not before
-(`docs/layout-5.0.md` step 9; `tests/tier/registry.test.js` fails a row with no
-module and a copy over the limit). Anyone who already owns the Practice Pack gets
-them with it. The App Store listing text in `docs/app-store.md` needs the new name
-when this ships.
+and the owner asked for a name chosen on best practice. The plan calls it the
+Perform Pack.** The module key stays `practice` (nothing about the product, the
+purchase or anyone's saved state changes); only the name the player reads changes
+(`MODULE_COPY.practice.name`), and the one line under it is reworded to say what it
+opens.
+
+Why that name, by the rules a store name should follow:
+
+- **Same pattern as its siblings.** Sounds Pack, Groove Pack, Theory Pack, Studio
+  Pack: one noun and Pack. "Perform Pack" is that; "Practice & Perform Pack" is a
+  sentence.
+- **One word, no symbol.** An ampersand or a slash reads badly in a list, in a
+  screen reader and in translation; one common word translates and sorts well.
+- **Names the thing the player does, not the feature list.** It holds Stage, the
+  Timeline and the trainer, and all three are for working a song up and playing it
+  out. Practice is how you get to performing, so the one word covers both.
+- **Distinct from its neighbours.** "Stage Pack" would sit next to "Studio Pack"
+  one letter apart; "Perform" does not.
+- **Within the limit.** The copy rules allow 30 characters; it is 12.
+- It is a display string. If it tests badly it is changed in one place, with no
+  migration.
+
+`MODULE_COPY.practice.line` today says "Batch iReal import and a practice library";
+it needs to say what it now opens too (one line, at most 45 characters).
+`FEATURE_MODULE` gets the new rows (`stage`, `timeline`, naming `practice`) when
+the features work, not before (step 9; `tests/tier/registry.test.js` fails a row
+with no module and copy over the limit). Anyone who already owns the Practice Pack
+gets them with it. The App Store listing text in `docs/app-store.md` needs the new
+name when this ships.
 
 ## Free players and the words (recommended)
 
@@ -366,7 +433,7 @@ do with their words, not whether they can see them.
 | read them | **Perform, Chart view**: chords over the words they fall on, line by line, transpose, Print / Save PDF, chord diagrams one tap away | the same, plus below |
 | chord lengths | as imported ("By line"), and Build's All chords... | drawn to scale on the cards; drag, nudge, Even split, Tap the changes |
 | follow the song, scroll by itself, big type on stage, screen kept awake | no | **Stage** |
-| Loop bars on a line | the trainer as today (Practice Pack) | on the cards |
+| Loop bars on a line | the trainer as today (Perform Pack) | on the cards |
 
 Why this and not the alternatives:
 
