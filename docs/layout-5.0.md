@@ -218,8 +218,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     beside it for the recorded move (`lvAddRecDot`, `lvRecPaintFx`). The first
     mocks left all of that out. The mock now draws a dot and a Keep in Chords,
     Melody, Sampler, mõdFX and, new, the Bass grid heading, and in the Studio
-    header of those same parts. Bass has Capture in the sheet today (`blCaptureToggle`)
-    but no Keep button; adding one is a suggestion, not a plan. Both buttons are
+    header of those same parts. **Bass:** the Capture is in the sheet today (`blCaptureToggle`) with no Keep. Decided by the owner: the Bass grid in Live gets a Keep **only after something has been played in from Studio** (the Play in mode on the Bass page); until then its heading has no Keep and no record dot. Both buttons are
     44 pt targets, and the heading now has to fit them: see "Device widths".
 16. **The Arp page does not change.** Arp is the owner's favourite page, and the
     rule from decision 2 applies to it hardest. The page is today's Arp panel moved
@@ -254,11 +253,71 @@ So the plan fits a Pro Max, and on a standard iPhone the Chords heading needs a
 shorter Voice and More pill (or the More switch moving into the extras), and on a
 375 the transport row needs the same trick the real bar already uses (the key's mode
 name shortens). To be built with container widths and checked at all five widths.
-Foldables and dual-screen devices were not measured: **there is no device called
-iPhone Duo that this plan knows about**, so its size is not assumed. The layout
-is one column that scales to the width it is given, and a second pane for a wide
-screen (Live beside Studio, or the Timeline beside Perform) is a later layout, the
-same one that the horizontal timeline is.
+The iPhone Duo is covered in the next section.
+
+## The iPhone Duo
+
+The owner named it as the newest iPhone (a foldable, iOS 27.1). What the sources
+agree on (Apple's spec pages and MacRumors; the points come from third parties, so
+check them on a device or the Simulator):
+
+| | closed (outer) | open (inner) |
+|---|---|---|
+| panel | 5.4 inch, 1398 x 2034 px, 460 ppi | 7.6 inch, 1878 x 2670 px, 430 ppi |
+| points at 3x | **466 x 678** (two sources agree) | **951 x 669 across, or 669 x 951 upright**; one developer infers 669 x 951 from the App Store screenshot size (2007 x 2853 px), a simulator vendor lists 626 x 890 |
+| shape | taller than wide, ratio about 1.45 | about 1.42, like a horizontal iPad mini |
+
+Facts that matter for this app, from the same sources:
+
+- **Size classes.** Closed: compact horizontal and regular vertical in portrait,
+  compact in both in landscape. Open: regular in both, so it behaves like an iPad.
+  The inner display does not honour an app's supported orientations; the app is
+  expected to follow size classes.
+- **Insets.** The Dynamic Island sits vertically at the side of both displays, so
+  left and right insets are not equal and not zero. **This app has no left or right
+  safe-area handling anywhere** (`safe-area-inset-left` and `-right` are not used,
+  and the page is `viewport-fit=cover`), which is already a bug in landscape on any
+  notched iPhone and becomes a real one on the Duo. It is a prerequisite for any
+  landscape or wide layout, and it is small.
+- **Building for it.** Built with the Xcode 27.1 SDK an app uses the whole display;
+  built with an older Xcode it does not extend under the status bar and the camera.
+  Apple's SDK for the Duo shipped as Xcode 27.1 (27A9275). From April 2027 an App
+  Store submission needs iPhone Duo screenshots. Nothing found says how a
+  Capacitor or WKWebView app is resized or letterboxed, so that is a test on a real
+  device or the Simulator, not an assumption.
+- **Posture.** It can also be half folded; the folding region splits the inner
+  display into usable regions (an arrangement API). Not planned for.
+
+What the mock shows at these sizes (page area is the height left above the bottom
+stack and below the status bar):
+
+| screen | page area | what it means |
+|---|---|---|
+| Pro Max, 430 x 932 | 708 pt | the layout as drawn |
+| Standard, 393 x 852 | 628 pt | the Chords heading is 19 pt too wide (above) |
+| **Duo closed, 466 x 678** | **454 pt** | wider than a Pro Max so nothing overflows, but 254 pt shorter: Chords and Melody fit one screen with extras off (they end at 424 of 454), mõdFX scrolls |
+| **Duo open, across, 951 x 669** | **445 pt** | two panes of about 475 pt each, nothing overflows |
+| Duo open, upright, 669 x 951 | 727 pt | one wide column, nothing overflows |
+
+Two consequences, both proposals, neither built:
+
+1. **Closed is a short, wide phone.** "Three at once" cannot always fit three
+   widgets: the fill has to be height-aware (grow when there is room, shrink the
+   pads, keys and mõdFX pad toward their minimum when there is not), and the widget
+   order the player chose decides which two are visible.
+2. **Open and across, height is the scarce thing.** The 148 pt bottom stack is a
+   third of the 445 pt page area. On a wide screen (regular size class, as on an
+   iPad) the plan is **two panes** (Live beside a Studio part page; Perform beside
+   the Timeline; Sound beside Mixer) and the transport, parts row and tabs move into
+   a **side rail** like the Dock, which iOS also turns vertical on the inner display.
+   The mock draws the two panes and keeps the bottom stack, so it shows the cost and
+   not the answer. The same renderer serves the horizontal timeline
+   (`docs/vertical-timeline.md`, Step 5).
+
+Sources: Apple's iPhone Duo specs pages (apple.com/uk/iphone-duo/specs and
+support.apple.com/en-gb/148588), MacRumors' iPhone Duo roundup, the developer
+write-up at blakecrosley.com/blog/iphone-duo-for-developers (the point size of the
+inner display is its own inference) and webmobilefirst.com's Duo listings.
 
 ## Nothing is lost from Songs
 
