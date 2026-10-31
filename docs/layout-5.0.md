@@ -375,21 +375,52 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
       `Files` for `.txt`; the chord-sheet window's file picker already takes text, a
       PDF or a picture and has Photos and Camera on the phone
       (`openChordSheetImport`, `csi-input`, the Apple text recognition behind it).
-    - **PDFs and pictures.** The tab window takes them through the same route, read
-      as text first and then through the same tab reader. **This is the weak point
-      and has not been tried:** a tab only works when its dashes and fret numbers
-      line up, and a PDF's text layer or a recognition pass often does not keep
-      that spacing (the chord-sheet notes record that both real UG sheets lost
-      their column spacing). The preview shows what was read, so it can be seen
-      before anything is used; needs real PDFs from the owner and a test beside
-      `tests/tab` and `tests/import`.
+    - **PDFs and pictures: tried on a real one.** The owner's PDF was Glen Campbell,
+      "Wichita Lineman", a Pro tab for bass (E A D G) with 49 bars on 8 lines. **The
+      built reader finds no notes in it** (0 from the text as the PDF gives it, with
+      or without layout), because this is not an ASCII tab at all. It is a drawn
+      sheet: the string lines and bar lines are vector graphics, and the text layer
+      holds only the fret numbers (236 of them), the bar numbers (49), the tempo,
+      the section names and a few music symbols. The file's fonts, Leland and Edwin,
+      are MuseScore 4's; Ultimate Guitar owns MuseScore, so its "Pro" tabs are
+      probably all this kind. That makes this the main PDF case, not an exception.
+      **What can be read, measured on this file:**
+      - *The strings:* each system's fret numbers fall on four rows, one per string
+        (G D A E from the top), so pitch is the tuning plus the fret.
+      - *The bars:* the bar numbers sit a steady 24 to 57 units left of each bar line
+        and every system ends at the same right margin, so the bars come from the
+        text alone. Checked against the drawn bar lines: all 236 notes land in the
+        same bar, and the count of bars is 49, matching the bar numbers.
+      - *Order and rough place:* the x position of each number within its bar.
+        Rebuilding an ASCII tab from those positions (32 columns a bar) and handing
+        it to the existing reader gives **236 notes in 49 bars in E A D G**, with
+        the pitches right (a 3 on the G string is MIDI 46). So the existing reader
+        can be reused behind a new front end that turns a PDF's numbers into ASCII.
+      **What cannot be read from position alone:** the rhythm. A drawn sheet spaces
+      notes by engraving rules, not by length, so the first onsets come out at odd
+      eighths and thirty-seconds (bar 1's notes at 0.46, 0.55, 0.66, 0.83, 0.91 of
+      the bar). The notation is in the same text layer as symbols: eighth-note flags
+      (46 on this page), augmentation dots (34), eighth and half rests (16) and no
+      sixteenth flags, so this tune is quarters, eighths and dotted values, which a
+      bar-sum solve (each bar has to add up to the time signature) could place on an
+      eighth grid. **That is a design, not something built or tried**; until then a
+      PDF's rhythm is "by position" and the window says so and offers Hear it.
+      **What the app has to add.** The PDF route today (`ModOcr.swift`, PDFKit's
+      `selectionsByLine`) returns one box per text line, which is right for chord
+      sheets and wrong here, where a line is a scatter of numbers. A tab needs a box
+      per number (PDFKit can give a box per character), and a pass that groups
+      numbers into rows, systems and bars. A photographed or scanned PDF has no text
+      layer at all, so it would need recognition and is a harder case, not tried. The
+      PDF itself is the owner's, a copyrighted tab, so it is kept as a private test
+      file and not committed.
     - **Send to Melody, Bass or .mid.** The reader already tells a bass (four lines,
       or a bass tuning) from a guitar (`Strings: Auto | Guitar | Bass`). The new
       choice is where a part goes: **Melody** (the melody roll, as now), **Bass** (the
       bass grid, through the same save and restore pair the melody roll uses,
       `_blCaptureState` and `_blRestoreState`, with the same limits and Undo), or a
       **.mid file**. Auto sends a bass to Bass and a guitar to Melody. A tab that has
-      both parts sends each part to its own sequencer in two steps. The bass grid's
+      both parts is sent **one part at a time** (the owner's call): pick a part, send
+      it, then pick the other. The bass grid's
       step limits and octave range need checking against `tabToMelodyGrid`, which
       assumes the melody roll's (64 steps, lifted to clear C3).
     - **Timeline.** Tab timing is in bars and ticks, the same unit the Timeline uses
