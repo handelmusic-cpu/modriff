@@ -132,6 +132,17 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     into **the fifth slot of the tab bar**: a red caret pill in a 58 x 52 pt target.
     A swipe up on the transport row could open it too.
 
+11. **One switch adds a row of chords in Live.** A **More** switch in the Chords
+    header steps through Off, **Modal** (the borrowed chords: i, iv, ii°, v, ♭III,
+    ♭VI, ♭VII, ♭II, from `getAllBorrowed`), **Dominants** (V/ii to V/vi, from
+    `getSecDoms`) and **Mine** (the pinned My Chords and + Build). It puts one row
+    of existing pads under the seven diatonic ones, 64 pt tall (the diatonic pads
+    stay 124), and the choice is remembered. Today those rows are Studio only
+    (`body.mode-basic #page-perform .advanced-only { display:none !important }`);
+    this makes them one tap in Live. The pads, colours and taps are the existing
+    ones (`makeOutBtn`, `cpRenderAll`), so nothing is a second copy. A chord grid
+    (columns as degrees, all lanes at once) was drawn and rejected.
+
 ## Nothing is lost from Songs
 
 Checked against the markup of today's Songs page (`#page-songs`):
@@ -166,6 +177,41 @@ products and bundle tiers that count how many you own. Two ways to do it:
 
 Recommendation: the first. The owner decides.
 
+## Free players and the words (recommended)
+
+The owner asked for the best idea. **Words are free to keep, read, type, print and
+transpose; the pack is what follows the band.** The line to hold is that nothing a
+player imported or typed is ever hidden or locked; upgrading changes what they can
+do with their words, not whether they can see them.
+
+| | free | pack (Stage and Timeline) |
+|---|---|---|
+| import a chord sheet with words (paste, file, photo) | yes, words kept on the chords | same |
+| type or fix words (the chord editor's Lyric field) | yes | yes, also on the cards |
+| read them | **Perform, Chart view**: chords over the words they fall on, line by line, transpose, Print / Save PDF, chord diagrams one tap away | the same, plus below |
+| chord lengths | as imported ("By line"), and Build's All chords... | drawn to scale on the cards; drag, nudge, Even split, Tap the changes |
+| follow the song, scroll by itself, big type on stage, screen kept awake | no | **Stage** |
+| Loop bars on a line | the trainer as today (Practice Pack) | on the cards |
+
+Why this and not the alternatives:
+
+- **Hiding words from free players** (store them, show them only in the pack)
+  would make the free import look broken: someone imports a lyric sheet and sees
+  nothing of the lyrics. Free import is the front door, so it has to deliver.
+- **Stage free, editing paid** was the first recommendation; the owner chose Stage
+  and the Timeline as the add-on, and the version above keeps that while still
+  giving a free player a real lyric sheet.
+- What costs the band's clock (following the transport, the playhead, auto-scroll)
+  and exact timing are the things worth paying for, and they match how the tier
+  tables already gate (`freeBlocked`): the paid part is *changing and performing*,
+  not *seeing*.
+- It costs almost nothing extra to build: the Chart view reads `slot.lyr` from
+  Step 1, and Stage and the Timeline are the renderer that has to be built anyway.
+- **The Stage button stays visible to free players** with its Add-on tag and, when
+  tapped, a sheet that names the pack and shows their own first lines on it, so the
+  preview is their song and not a stock picture. The existing song save limit
+  (`FREE_NUMBERS.saveSlots`) is unchanged; words add no new limit.
+
 ## What it does to height, by measurement of the mock
 
 Bottom stack: transport 48, parts row 48, tabs 52.
@@ -189,8 +235,9 @@ landscape is the real fix for long patterns, not bigger cells.
 0. **Numbering** (this change): CLAUDE.md restarts at 5.0.
 1. **Words as data** (`docs/vertical-timeline.md` Step 1): `slot.lyr` / `slot.ln`,
    written at import, in `_songSig()`, a Lyric field in the chord editor, node
-   tests, a save / load / share round trip. No new screen. First build under the
-   new numbering: 5.0.
+   tests, a save / load / share round trip. The one visible change is free:
+   the Chart view of Perform shows the words under the chords (next section but
+   one). First build under the new numbering: 5.0.
 2. **Target sizes** with no restructuring: every control 44 pt or more, the chord
    rhythm bar as one row, the beat strip folded into the Play button's ring or a
    3 pt line. Measure each (CDP, real touch).
@@ -236,8 +283,5 @@ and are the same renderer turned on its side.
 - Whether the shared-row double duty of chrome B survives a real phone.
 - Whether mõdFX belongs under Sound as well as in the part menu.
 - Which pack (above), and its name.
-- What a free player sees of the words they imported. The words are stored either
-  way (Step 1 is data). Typing them into the chord editor's Lyric field and
-  seeing them on a tile are the choices; the Timeline and Stage are the pack.
 - The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
   tabs would take it back.
