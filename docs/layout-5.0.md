@@ -613,6 +613,40 @@ landscape is the real fix for long patterns, not bigger cells.
    pt tall with a pad but stay 34 wide, the width of the column under them.
 3. **Live and Studio as tabs**, the gear sheet, Accomp's sub-nav gone but its
    page still reachable. Retarget the shortcut, tutorials, tour and Find.
+   **Landed as 5.3.** Tab bar: **Live | Studio | Song | Sound | caret**, 52 pt, an icon
+   over a word, one 3 pt mark on the tab you are on (the rainbow strip on every tab and
+   the glowing line under the active one, which ran through the label, are gone). The
+   caret is a 58 x 52 red pill in the fifth slot and is the sheet's handle; the 24 pt
+   band that carried the old handle and the Live / Studio switch is gone from the
+   transport, and so is the Live / Studio row from the sheet. Settings is the sheet's
+   first row and opens as a full screen with a Done that returns to where it was opened
+   from (no tab is lit for it). Measured at 430 x 932, tabs + transport went from 200 pt
+   (5.2) to 168 pt in Live and from 245 to 168 in Studio on a part page (the sub-nav
+   under Accomp is gone), 213 on Play's Studio page, which keeps its Chords | Melody |
+   Sampler | FX row until Step 4.
+   Decisions made on the way:
+   - **Live and Studio are one page in two views** (`body.mode-basic` is still the
+     plumbing, `setViewMode` still the one function); the lit tab is a function of the
+     page and the view (`_tabFor`, `_tabSync`), so a tab, the Option+L key, Find
+     reaching for Accomp and a tutorial all end up in the same state. Asking for the
+     Accomp page from Live puts the app in Studio; going to Live from it lands on Play.
+   - **Studio's part switches pick a page; a second tap toggles** (chrome B, built early
+     because Accomp lost its tab and needed a way in). `ftPartTap`: Drums, Bass, Mel and
+     Arp open the Accomp page at that part, Chords and Smp open Play's Chords and Pads,
+     and the part you are on wears a ring. On Song, Sound and in Live they are plain
+     switches. The cost is two taps to bring a part in from elsewhere in Studio; the
+     plan said to try this on a phone.
+   - **Option+1 to 5** are Live, Studio, Song, Sound, Settings.
+   - **Side insets**: the page, the tab bar, the transport, the sheet and the Settings
+     header keep clear of `env(safe-area-inset-left/right)`. Measured in landscape at 852 x
+     393 with a 59 pt inset each side (CDP safe-area override). Two landscape bugs the
+     check found are fixed with it: an empty sub-tab dock took half the tab bar's width,
+     and Arp was as wide as the bar.
+   - Not done: the Settings list of ten rows (decision 13) is still today's three
+     panes under a Done bar; the Studio / Accomp wording in tips and the Guide
+     is changed where it was user-visible and a few places remain ("Play tab"
+     in older help text); `.vmt-btn` CSS is dead and can go.
+   `tests/tabs/probe.js` holds all of it, with real touch.
 4. **Part pages**: Accomp's Drums, Bass, Melody and Arp pages become Studio part
    pages (the real elements are moved, not copied, which is how the Live widgets
    already work, see `LV_*` in `index.html`); the Chords page with the rhythm
