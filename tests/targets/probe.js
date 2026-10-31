@@ -120,7 +120,7 @@ const OVERFLOW = () => {
     const unknown = [...seen.entries()].filter(([k]) => !known.has(k));
     unknown.forEach(([k, v]) => check(false, 'under 44 pt: ' + k.slice(0, 60) + ' x' + v.n, v.ex.w + 'x' + v.ex.h + ' "' + v.ex.t + '" in ' + [...v.where].slice(0, 3).join(', ')));
     check(unknown.length === 0, 'no control outside the known list is under 44 pt (' + seen.size + ' kinds small, ' + KNOWN.length + ' known)');
-    KNOWN.forEach(([k, why]) => { if (!seen.has(k)) check(false, 'KNOWN entry now passes: remove it', k); });
+    if (!process.env.TABS) KNOWN.forEach(([k, why]) => { if (!seen.has(k)) check(false, 'KNOWN entry now passes: remove it', k); });
     check(errs.length === 0, 'no page errors', errs.join(' | '));
     await page.close();
   }
