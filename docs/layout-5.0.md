@@ -557,6 +557,16 @@ landscape is the real fix for long patterns, not bigger cells.
    the Chart view of Perform shows the words under the chords (next section but
    one). Builds 5.0 and 5.0a are already taken by the tab import (decision 23), so
    this is **5.1**.
+   **Landed as 5.1.** The field is labelled Words (the chord's own syllable, with a
+   trailing space meaningful) with a New line switch beside it; both are undoable
+   and make the song unsaved. `_sheetLyrics` cuts a sheet's lines at the columns
+   the chords sat over (padded, inline `[C]word`, compact list) and returns null
+   rather than guess when the chords and the lines disagree. The Chart (screen and
+   print) shows the words in italics under each chord name. Tests:
+   `tests/chords/lyrics.test.js` and `tests/words/probe.js`. Not done in this step:
+   per-beat placement of a syllable inside a long chord (that is Step 3 of the
+   vertical timeline), and hyphen-aware cutting, so a padded sheet can split a word
+   exactly where its chord sat.
 2. **Target sizes** with no restructuring: every control 44 pt or more, the chord
    rhythm bar as one row, the beat strip folded into the Play button's ring or a
    3 pt line. Measure each (CDP, real touch).
