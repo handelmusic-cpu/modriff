@@ -7855,6 +7855,21 @@ body.mode-basic .ft-extras-row { display:flex; }
 }
 .pf-surface-lbl { flex-wrap:nowrap; }
 
+/* ── Editing on the timeline (5.9) ── */
+.bt-switch { margin:6px 0 8px; }
+.bt-switch .tb { flex:1; }
+body.bt-timeline #chart-sequence { display:none; }
+.chart-timeline { margin:4px 0 6px; }
+.tl-edit .tl-card { margin-bottom:8px; }
+.tl-col.tl-sel { outline:2px solid var(--accent); outline-offset:-2px; background:color-mix(in srgb, var(--accent) 14%, var(--surf)); }
+.tl-join { position:absolute; top:0; bottom:0; width:28px; margin-left:-14px; z-index:3; cursor:ew-resize; touch-action:none; -webkit-tap-highlight-color:transparent; }
+.tl-join::before { content:''; position:absolute; left:50%; top:18%; bottom:18%; width:4px; margin-left:-2px; border-radius:2px; background:color-mix(in srgb, var(--text) 38%, transparent); }
+.tl-join.drag::before, .tl-join:active::before { background:var(--accent); }
+.tl-panel { margin:0 0 8px; }
+.tl-where { font-size:.62rem; font-weight:600; color:var(--accent); min-height:1.2em; margin:2px 0 6px; }
+.tl-tools { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.tl-tl { font-size:.45rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-right:2px; }
+.tl-tools .tb { flex:1 1 0; min-width:0; padding-left:6px; padding-right:6px; }
 /* ── Stage, and the playhead (5.8) ── */
 .pv-row { display:flex; gap:8px; align-items:stretch; margin:8px 0 10px; }
 .pv-row .pv-switch { flex:1 1 auto; margin:0; }
@@ -8404,7 +8419,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v5.9a</span></div>
  </div>
 </div>
 
@@ -9806,7 +9821,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.8</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v5.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -9965,6 +9980,15 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
   </div>
   <div class="sec-plays-hint" id="sec-plays-hint"></div>
 
+  <!-- Strip | Timeline, for those who have the timeline (renderBuildTimeline). The strip is
+       always built (it carries the selection and the controls under it); the timeline is
+       the same section drawn as lines of words, and while it is up the strip is hidden. -->
+  <div class="tg bt-switch" id="bt-switch" role="group" aria-label="Chord view" style="display:none">
+   <button type="button" class="tb active" id="bt-strip" onclick="buildViewSet('strip')" aria-pressed="true">Strip</button>
+   <button type="button" class="tb" id="bt-timeline" onclick="buildViewSet('timeline')" aria-pressed="false" title="This section as lines of words, with each chord as wide as it lasts. Drag the join between two chords to move it.">Timeline</button>
+  </div>
+  <div class="chart-timeline" id="chart-timeline"></div>
+  <div class="tl-panel" id="tl-panel" style="display:none"></div>
   <div class="chart-seq empty" id="chart-sequence"></div>
   <!-- One set of controls, for whichever chord is selected. -->
   <div class="chart-inspector" id="chart-inspector" aria-live="polite"></div>
@@ -10888,7 +10912,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '5.8';
+const MODRIFF_VERSION = '5.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -38352,6 +38376,7 @@ function renderChartSeq(){
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  // Rebuilding the strip drops the playing highlight — repaint it from state.
  if(typeof applySongPlayingHighlights==='function') applySongPlayingHighlights(false);
+ try{ renderBuildTimeline(); }catch(e){ console.warn('timeline', e); }
 }
 
 // ═══════════════════════════════════════
@@ -43766,6 +43791,157 @@ function _timelineBars(beats, per){
  for(var i=0;i<4;i++){ var n=[1,2,4,8][i]; if(need<=n+1e-6) return n; }
  return 8;
 }
+// ── Editing on the timeline (Songs › Build) ──
+// The same cards, in Build, for the section being edited. Tap a column to select the chord
+// (the controls under the progression are the strip's own, so words, length, rhythm and
+// the rest are all there); drag the JOIN between two chords to move where the second one
+// starts: it snaps to a beat, the two chords keep their sum, and the panel says where it
+// landed. A line's chords can be shared out evenly, a line can be made 1, 2 or 4 bars, and
+// a chord can be split in two. Every edit is one Undo.
+var _tlDragEndedAt = 0;
+function _slotE(slot){ return Math.round(_slotBeats(slot) * 2); }            // eighths
+function _setSlotE(slot, e){ var d = slotDurFromEighths(e, _songBarSteps()/2); slot.bars = d.bars; slot.beats = d.beats; slot.eighths = d.eighths; }
+function _tlLineAt(si, ci){
+ var ls = _timelineLines(sections[si]);
+ for(var i=0; i<ls.length; i++) if(ci>=ls[i].from && ci<ls[i].to) return ls[i];
+ return null;
+}
+// "bar 2, beat 3" for a position in beats from the start of the section.
+function _tlWhere(beatsFromStart){
+ var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, n = Math.floor(beatsFromStart % per) + 1;
+ return 'bar '+b+', beat '+n;
+}
+function _tlSecBefore(si, ci){ var t=0; for(var i=0; i<ci; i++) t+=_slotBeats(sections[si].slots[i]); return t; }
+function tlRefresh(){
+ renderChartSeq(); buildSectionTabs(); renderPerfChartRow();
+ var pp = document.getElementById('songs-perform-panel');
+ if(pp && pp.style.display!=='none') renderSongsPerformView();
+}
+// A snapshot of one section's slots, whole, so an edit that adds a chord and one that only
+// changes lengths are undone the same way.
+function tlUndoable(msg, si, act){
+ withUndo(msg,
+  function(){ return sections[si].slots.map(function(x){ return Object.assign({}, x); }); },
+  function(before){ sections[si].slots = before; if(chartSeqIdx >= before.length) chartSeqIdx = before.length-1; tlRefresh(); },
+  function(){ act(); tlRefresh(); });
+}
+function tlJoinDown(ev, si, ci, row){
+ if(ev.pointerType==='mouse' && ev.button!==0) return;
+ ev.preventDefault(); ev.stopPropagation();
+ var sec = sections[si], A = sec.slots[ci], B = sec.slots[ci+1], line = _tlLineAt(si, ci);
+ if(!A || !B || !line) return;
+ var a0 = _slotBeats(A), b0 = _slotBeats(B), sum = a0 + b0;
+ var before = _tlSecBefore(si, ci);                         // beats from the section's start to A
+ var px = row.getBoundingClientRect().width / line.beats;   // pixels a beat on this card
+ var unit = sum >= 2 ? 1 : 0.5;                              // a beat, or a half where there is no more room
+ var colA = row.querySelector('.tl-col[data-ci="'+ci+'"]'), colB = row.querySelector('.tl-col[data-ci="'+(ci+1)+'"]');
+ var jn = ev.currentTarget, x0 = ev.clientX, a1 = a0, moved = false;
+ try{ jn.setPointerCapture(ev.pointerId); }catch(e){}
+ jn.classList.add('drag');
+ var info = document.getElementById('tl-where');
+ var move = function(e){
+  var dx = e.clientX - x0; if(Math.abs(dx) > 3) moved = true;
+  // Where the join would be, in beats after the start of A, snapped to a beat and kept
+  // clear of both ends so neither chord goes to nothing.
+  a1 = Math.max(unit, Math.min(sum - unit, Math.round((a0 + dx/px) / unit) * unit));
+  if(colA) colA.style.flexGrow = a1;
+  if(colB) colB.style.flexGrow = sum - a1;
+  if(info) info.textContent = (B.label || 'The next chord')+' starts on '+_tlWhere(before + a1);
+ };
+ var up = function(){
+  jn.removeEventListener('pointermove', move); jn.removeEventListener('pointerup', up); jn.removeEventListener('pointercancel', up);
+  jn.classList.remove('drag');
+  _tlDragEndedAt = performance.now();
+  if(!moved || Math.abs(a1 - a0) < 1e-6){ tlRefresh(); return; }
+  var ea = Math.round(a1 * 2), eb = Math.round((sum - a1) * 2);
+  tlUndoable((B.label || 'Chord')+' now starts on '+_tlWhere(before + a1), si, function(){ _setSlotE(A, ea); _setSlotE(B, eb); });
+ };
+ jn.addEventListener('pointermove', move); jn.addEventListener('pointerup', up); jn.addEventListener('pointercancel', up);
+}
+// The line holding the selected chord, shared out evenly: the same total, every chord the
+// same length (to the beat where it can be, to the half beat where it cannot).
+function tlEvenSplit(){
+ var si = curSection, ci = chartSeqIdx, line = (ci>=0) ? _tlLineAt(si, ci) : null;
+ if(!line){ showToast('Select a chord on the line first'); return; }
+ var slots = sections[si].slots.slice(line.from, line.to), total = slots.reduce(function(a, x){ return a + _slotE(x); }, 0), n = slots.length;
+ if(n < 2){ showToast('One chord on this line already has all of it'); return; }
+ var beatsOK = (total % 2 === 0) && (total/2 >= n);
+ var u = _sheetSplit(slots.map(function(){ return 1; }), beatsOK ? total/2 : total);
+ tlUndoable('Line shared out evenly', si, function(){ slots.forEach(function(x, i){ _setSlotE(x, beatsOK ? u[i]*2 : u[i]); }); });
+}
+// The line's chords keep their proportions and the line becomes `bars` bars long.
+function tlLineBars(bars){
+ var si = curSection, ci = chartSeqIdx, line = (ci>=0) ? _tlLineAt(si, ci) : null;
+ if(!line){ showToast('Select a chord on the line first'); return; }
+ var barE = _songBarSteps()/2, slots = sections[si].slots.slice(line.from, line.to), n = slots.length, E = bars * barE;
+ if(E < n){ showToast('That line has more chords than beats in '+bars+(bars===1?' bar':' bars')); return; }
+ var beatsOK = (E % 2 === 0) && (E/2 >= n);
+ var u = _sheetSplit(slots.map(_slotE), beatsOK ? E/2 : E);
+ tlUndoable('Line is now '+bars+(bars===1?' bar':' bars'), si, function(){ slots.forEach(function(x, i){ _setSlotE(x, beatsOK ? u[i]*2 : u[i]); }); });
+}
+// The selected chord in two halves; the words stay on the first and a line start stays
+// where it was. The second half is the same chord.
+function tlSplitChord(){
+ var si = curSection, ci = chartSeqIdx, slot = sections[si] && sections[si].slots[ci];
+ if(!slot){ showToast('Select a chord first'); return; }
+ var e = _slotE(slot);
+ if(e < 2){ showToast('That chord is already as short as it goes'); return; }
+ var first = Math.ceil(e/2), second = e - first;
+ tlUndoable('Chord split in two', si, function(){
+  var twin = Object.assign({}, slot); delete twin.lyr; delete twin.ln;
+  _setSlotE(slot, first); _setSlotE(twin, second);
+  sections[si].slots.splice(ci+1, 0, twin);
+ });
+}
+function tlPanelSync(){
+ var el = document.getElementById('tl-panel'); if(!el) return;
+ var si = curSection, ci = chartSeqIdx, sec = sections[si], slot = sec && sec.slots[ci];
+ if(!slot){ el.innerHTML = '<div class="ci-rest">Tap a chord to work on its line. Drag the join between two chords to move where the second one starts.</div>'; return; }
+ var line = _tlLineAt(si, ci), per = _songBarSteps()/4, bars = line ? Math.round(line.beats/per*4)/4 : 0;
+ el.innerHTML = '<div class="tl-where" id="tl-where" aria-live="polite">'+_chartEsc((slot.label||'Chord')+' starts on '+_tlWhere(_tlSecBefore(si, ci)))+'</div>'+
+  '<div class="tl-tools">'+
+   '<span class="tl-tl">Line</span>'+
+   [1,2,4].map(function(b){ return '<button type="button" class="tb'+(bars===b?' active':'')+'" onclick="tlLineBars('+b+')" title="Make this line '+b+(b===1?' bar':' bars')+' long, keeping its chords in proportion">'+b+(b===1?' bar':' bars')+'</button>'; }).join('')+
+   '<button type="button" class="tb" onclick="tlEvenSplit()" title="Give every chord on this line the same length">Even</button>'+
+   '<button type="button" class="tb" onclick="tlSplitChord()" title="Cut the selected chord in two">Split</button>'+
+  '</div>';
+}
+// Strip | Timeline in Build, for those who have the timeline.
+var _buildView = null;
+function buildViewGet(){
+ if(!_buildView){ var v=null; try{ v=modStore.getItem('modo-build-view'); }catch(e){} _buildView = (v==='timeline') ? 'timeline' : 'strip'; }
+ return (_buildView==='timeline' && modAllows('timeline')) ? 'timeline' : 'strip';
+}
+function buildViewSet(v){
+ if(v==='timeline' && !modAllows('timeline')){ freeBlocked('The timeline', 'practice'); return; }
+ _buildView = (v==='timeline') ? 'timeline' : 'strip';
+ try{ modStore.setItem('modo-build-view', _buildView); }catch(e){}
+ renderChartSeq();
+}
+function renderBuildTimeline(){
+ var host = document.getElementById('chart-timeline'), panel = document.getElementById('tl-panel'), sw = document.getElementById('bt-switch');
+ if(!host) return;
+ var on = buildViewGet()==='timeline', own = modAllows('timeline');
+ if(sw){
+  sw.style.display = own ? '' : 'none';
+  [['bt-strip','strip'],['bt-timeline','timeline']].forEach(function(a){ var b=document.getElementById(a[0]); if(b){ b.classList.toggle('active', buildViewGet()===a[1]); b.setAttribute('aria-pressed', buildViewGet()===a[1]?'true':'false'); } });
+ }
+ document.body.classList.toggle('bt-timeline', on);
+ host.innerHTML = '';
+ if(panel) panel.style.display = on ? '' : 'none';
+ if(!on) return;
+ var sec = sections[curSection];
+ if(sec && sec.slots.length) renderSongTimeline(host, {only:curSection, edit:true});
+ tlPanelSync();
+ // Handles sit on the boundaries as they actually fall once laid out.
+ requestAnimationFrame(function(){
+  host.querySelectorAll('.tl-row').forEach(function(row){
+   row.querySelectorAll('.tl-join').forEach(function(j){
+    var c = row.querySelector('.tl-col[data-ci="'+j.dataset.ci+'"]'); if(c) j.style.left = (c.offsetLeft + c.offsetWidth + 1) + 'px';
+   });
+  });
+ });
+}
 function _songSecLabel(si, sec){
  var lbl=document.createElement('div');
  lbl.className='songs-section-name';
@@ -43777,14 +43953,15 @@ function _songSecLabel(si, sec){
    (goesNext ? '×'+plays+' → then '+((nxt&&nxt.name)||'next') : '∞ repeats')+'</span>';
  return lbl;
 }
-function renderSongTimeline(chart){
- var per=_songBarSteps()/4;
+function renderSongTimeline(chart, opts){
+ var per=_songBarSteps()/4, edit=!!(opts && opts.edit);
  var FUNC={tonic:'tonic', subdom:'subdom', dom:'dom'};
  sections.forEach(function(sec, si){
   if(!sec.slots.length) return;
+  if(opts && opts.only!=null && si!==opts.only) return;
   var block=document.createElement('div');
-  block.className='songs-section-block tl-block';
-  block.appendChild(_songSecLabel(si, sec));
+  block.className='songs-section-block tl-block'+(edit?' tl-edit':'');
+  if(!edit) block.appendChild(_songSecLabel(si, sec));
   _timelineLines(sec).forEach(function(ln){
    var bars=_timelineBars(ln.beats, per), cap=bars*per;
    var card=document.createElement('div'); card.className='tl-card';
@@ -43794,7 +43971,7 @@ function renderSongTimeline(chart){
     (function(ci){
      var slot=sec.slots[ci], beats=_slotBeats(slot);
      var col=document.createElement('button'); col.type='button';
-     col.className='tl-col'+(slot.isRest?' tl-rest':'')+(slot.ln && ci>ln.from ? ' tl-ln' : '');
+     col.className='tl-col'+(slot.isRest?' tl-rest':'')+(slot.ln && ci>ln.from ? ' tl-ln' : '')+(edit && ci===chartSeqIdx && si===curSection ? ' tl-sel' : '');
      col.dataset.si=si; col.dataset.ci=ci;
      col.style.flex=beats+' 1 0'; col.style.minWidth='0';
      col.style.setProperty('--fc','var(--'+(FUNC[slot.func]||'modal')+')');
@@ -43810,8 +43987,27 @@ function renderSongTimeline(chart){
        '<span class="tl-words">'+_chartEsc(words)+'</span></span>'+
        '<span class="tl-strip" style="--n:'+beats+'"></span>';
      col.setAttribute('aria-label', nameTxt+', '+(Math.round(beats*4)/4)+' beat'+(beats===1?'':'s')+(words?', words: '+words:''));
-     col.addEventListener('click', function(){ songChartTap(si, ci); });
+     col.addEventListener('click', function(){
+      if(edit){
+       // A drag of a join ends in a click on whatever is under the finger; it must not select.
+       if(performance.now() - _tlDragEndedAt < 350) return;
+       // Selecting is what the strip's tap does: it picks the chord, sounds it, and opens the
+       // one set of controls under the progression.
+       chartSeqIdx = ci; if(!slot.isRest) playChartSlot(ci); renderChartSeq();
+       return;
+      }
+      songChartTap(si, ci);
+     });
      row.appendChild(col);
+     // The join to the next chord on this card: a handle to drag (tlJoinDown).
+     if(edit && ci+1<ln.to){
+      var jn=document.createElement('span'); jn.className='tl-join'; jn.dataset.ci=ci;
+      jn.setAttribute('role','separator'); jn.setAttribute('aria-label','Where '+(sec.slots[ci+1].label||'the next chord')+' starts. Drag to move it.');
+      jn.addEventListener('pointerdown', function(ev){ tlJoinDown(ev, si, ci, row); });
+      col._join=jn; row.appendChild(jn);
+      var cum=0; for(var q=ln.from; q<=ci; q++) cum+=_slotBeats(sec.slots[q]);
+      jn.style.left=(100*cum/ln.beats).toFixed(3)+'%';
+     }
     })(ci);
    }
    card.appendChild(row);
@@ -47444,8 +47640,8 @@ function irealImportText(text){
  });
  list.sort((a,b)=>a.title.localeCompare(b.title));
  if(added) _irealSave();
- const why = held ? 'A whole playlist at once is part of the Practice Pack'
-   : full ? 'Your song slots are full. The Practice Pack keeps charts in a library of their own' : '';
+ const why = held ? 'A whole playlist at once is part of the Practice & Perform Pack'
+   : full ? 'Your song slots are full. The Practice & Perform Pack keeps charts in a library of their own' : '';
  showToast((added
   ? 'Imported '+added+' song'+(added===1?'':'s')+(failed?' ('+failed+' could not be read)':'')
   : (held||full) ? 'Nothing imported' : 'Could not read that iReal Pro link')+(why ? '. '+why : ''),
@@ -65977,7 +66173,7 @@ const MODULE_COPY = {
  theory:   { name:'Theory Pack', line:'Every scale, chord type, and voicing',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp','Future theory additions included'] },
- practice: { name:'Practice Pack', line:'Batch iReal import and a practice library',
+ practice: { name:'Practice & Perform Pack', line:'Practice tools, timeline, Stage, iReal batch',
   bullets:['Import whole iReal playlists at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right',
            'Timeline: chords and words on the beats','Stage: the song full screen, big enough to read from a stand'] },
  studio:   { name:'Studio Pack', line:'Stems, full exports, unlimited saves',

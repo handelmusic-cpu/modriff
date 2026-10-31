@@ -726,14 +726,33 @@ landscape is the real fix for long patterns, not bigger cells.
    `FEATURE_MODULE` (the Practice Pack) and the Practice Pack's copy. Without the pack the
    Stage button and the Timeline switch carry an Add-on tag and a touch says so in a toast
    with a See pack button (`freeBlocked`); a stored Timeline choice is kept but not
-   honoured, so buying the pack finds it where it was left. The pack is still called the
-   Practice Pack; its rename is Step 9. Not done: the selected-line panel for words longer
+   honoured, so buying the pack finds it where it was left. The pack was still called the
+   Practice Pack here; it is the **Practice & Perform Pack** from 5.9a (the name, the one-line
+   pitch and the two messages that named it; the product id and the module key stay `practice`). Not done: the selected-line panel for words longer
    than their column, the line length buttons and everything that edits (Step 6), a Stage
    for a wide screen, and the Stage button reaching Perform from Live. `tests/stage/probe.js`. Screen wake
    lock needs a Capacitor plugin and Swift that a Mac has not compiled: say it is
    unbuilt until it is confirmed.
 6. **Editing on the timeline**: the panel, the beat nudge, Even split, then drag
    (Step 3 of the vertical timeline).
+   **Landed as 5.9, in Songs › Build** (decision 9: Build gets a Strip | Timeline switch once
+   the pack is owned; free players do not see it). The switch (`modo-build-view`) swaps the
+   chord strip for the section being edited drawn as the Perform timeline (`renderSongTimeline`
+   with `{only, edit}`); the strip is still built, because it holds the selection and the
+   controls under it, and is only hidden. *Select*: a touch on a column is the strip's tap,
+   so the strip's own editor (chord, Words, type, length, rhythm) opens under the
+   timeline for it. *Drag the join*: a 28 pt handle sits on the boundary between two chords
+   on a card; dragging it moves where the second chord starts, snapped to a beat (a half
+   beat where the two chords together are under two beats), the two keep their sum, neither
+   can go below a beat, the panel says "G starts on bar 1, beat 4" as it moves, and
+   releasing writes both lengths through `slotDurFromEighths` as one Undo; a drag that does
+   not reach the next beat changes nothing and makes no toast. *The panel* has Line 1 bar,
+   2 bars, 4 bars (the line's chords keep their proportions and the line becomes that long,
+   by `_sheetSplit`, to the beat where it can), Even (the line shared out equally) and Split
+   (the selected chord in two, the words on the first half). Each is one Undo and each makes
+   the song unsaved. Not done: Edit words on the card itself (the Words field in the strip's
+   editor is the way), dragging a chord to another card, Tap the changes (step 8), and the
+   horizontal layout. `tests/tledit/probe.js` (real touch).
 7. **Library and songs that carry their sounds.** The per-song switch, Setups as
    templates, the pattern banks in one place. Existing saves load as "keeps my
    sounds".
