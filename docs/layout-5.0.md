@@ -830,3 +830,11 @@ and are the same renderer turned on its side.
   rows take their place by `order`. `setSettingsPane(name)` still works (Find, the tutorials) and opens the row.
 - Not as the mock's ten rows: Samples, iCloud & backup, Packs & purchases and Help & about are still inside the rows above
   (Sound & response, Look & feel, About) rather than rows of their own.
+
+### Landed as 6.0i (the transport fits)
+
+- With two or more sections the section arrows and Song ran off the right edge at 375, 390 and 430 pt, and Song was
+  squeezed to 12 pt. On phone widths the Song group now takes a row of its own under the transport (three 44 pt targets),
+  so the row above is what it is with no song. `tests/transport/probe.js` fails on the old code and passes.
+- Song, when off, is a quiet outline (it was red). The sheet takes nearly the whole screen so Tools and Help are in sight.
+- Still different from the mock: it draws ‹ Song › in the one row at 430 with 26 pt arrows; ours are 44 pt, hence the row.
