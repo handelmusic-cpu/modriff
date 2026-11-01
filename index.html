@@ -2742,6 +2742,14 @@ body.light-mode .sq-step.sel { box-shadow:0 0 0 2px #12203a, 0 0 10px rgba(20,30
 .sl-name { font-family:'Orbitron',sans-serif; font-size:.62rem; font-weight:700; color:var(--text); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .sl-meta { font-size:.5rem; color:var(--muted); letter-spacing:.05em; white-space:nowrap;
            flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+/* The per-song sounds switch (6.0r): a row under the name, 44 pt, a knob that sits right when it recalls. */
+.sl-snd { order:8; flex:1 0 100%; display:flex; align-items:center; gap:10px; min-height:44px; padding:0 2px; background:none; border:0; color:var(--muted);
+          font:inherit; font-size:.56rem; letter-spacing:.04em; text-align:left; cursor:pointer; touch-action:manipulation; }
+.sl-snd-knob { position:relative; flex:0 0 36px; height:20px; border-radius:10px; background:var(--surf2); border:1px solid var(--border2); transition:background .12s; }
+.sl-snd-knob::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--muted); transition:transform .12s, background .12s; }
+.sl-snd.on { color:var(--text); }
+.sl-snd.on .sl-snd-knob { background:color-mix(in srgb, var(--pg) 30%, var(--surf2)); border-color:var(--pg); }
+.sl-snd.on .sl-snd-knob::after { transform:translateX(16px); background:var(--pg); }
 .sl-del { font-size:.7rem; line-height:1; color:var(--muted); cursor:pointer;
           padding:5px 9px; border-radius:4px; transition:all .1s;
           touch-action:manipulation; flex:0 0 auto; }
@@ -8654,7 +8662,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0q</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0r</span></div>
  </div>
 </div>
 
@@ -10069,7 +10077,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0q</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0r</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11242,7 +11250,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0q';
+const MODRIFF_VERSION = '6.0r';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -35102,7 +35110,8 @@ function _applySettings(s){
  if(typeof s.arpGatePat==='number') setArpGatePat(s.arpGatePat);
  // Rate motion is its own setting: a save from before it has none, and restoring
  // that means the motion is off, not whatever it was last set to.
- arpMotion = (typeof s.arpMotion==='string' && ['off','up','down','swell'].indexOf(s.arpMotion)>=0) ? s.arpMotion : 'off';
+ // A partial snapshot (a song's sounds, 6.0r) says nothing about how the arp moves, and must not turn it off.
+ if(!s.partial) arpMotion = (typeof s.arpMotion==='string' && ['off','up','down','swell'].indexOf(s.arpMotion)>=0) ? s.arpMotion : 'off';
  if(typeof s.arpMotionN==='number') arpMotionN = Math.max(2, Math.min(4, s.arpMotionN|0));
  if(typeof s.arpMotionHold==='number') arpMotionHold = [1,2,4].indexOf(s.arpMotionHold)>=0 ? s.arpMotionHold : 2;
  _arpMotionSync();
@@ -35218,6 +35227,46 @@ function _applySettings(s){
  if(rootChanged){ root=s.root; if(typeof _prevVoices!=='undefined') _prevVoices=[]; }
  if(s.mode && s.mode!==mode) setMode(s.mode);
  else if(rootChanged) renderChords();
+}
+
+// ── A song's sounds (6.0r) ───────────────────────────────────────────────
+// What a song may bring with it: how things SOUND, not how they play and not what the song IS.
+// The song's own content (chart, key, tempo, meter, step counts, which parts are armed) is never
+// in here, or loading a song would overwrite the song. How it plays (arp pattern and motion,
+// voicing, glide, Touch Mod, mute and solo) stays out too: those are the player's.
+// A partial snapshot carries `partial:true`, which is how _applySettings knows an absent key is
+// "no opinion" and not "back to the default" (arpMotion was the one that reset).
+var SONG_SOUND_KEYS = [
+ 'wave','arpWave','melWave','blWave','melgenWave',
+ 'atk','dec','rev','strum','mAtk','mDec','mRev',
+ 'fxCutoff','fxReso','fxEnv','fxDrive','fxWidth','fxDrift','fxTrim',
+ 'msx','modSynthPatchesAll','modSynthPresetOfAll',
+ 'mixGains','mixPan','mixEq',
+ 'drumKit','sqMach','fxState','smpSlots'
+];
+function captureSounds(){
+ const s=_capSettings(), o={partial:true};
+ SONG_SOUND_KEYS.forEach(function(k){ if(s[k]!==undefined && s[k]!==null) o[k]=JSON.parse(JSON.stringify(s[k])); });
+ return o;
+}
+// The sounds a song holds, if it is set to bring them. Old songs have neither field: they keep yours.
+function songRecalls(song){ return !!(song && song.soundsMode==='recall' && song.sounds && typeof song.sounds==='object'); }
+// The part patterns a song saved with +Rhythm carry their voices inside them (the kit and its lane
+// levels, the bass and melody wave, the bass filter). A song that keeps your sounds restores the
+// patterns and leaves those fields behind.
+function songPatternsFor(song, recall){
+ const out={};
+ if(song.savedRhythm){
+  const r=JSON.parse(JSON.stringify(song.savedRhythm));
+  if(!recall){
+   ['mach','vols','pitches','shapes','machGrids'].forEach(function(k){ delete r[k]; });
+   if(r.aux){ ['mach','vols','pitches'].forEach(function(k){ delete r.aux[k]; }); }
+  }
+  out.rhythm=r;
+ }
+ if(song.savedBass){ const b=JSON.parse(JSON.stringify(song.savedBass)); if(!recall){ ['wave','cutoff','resonance'].forEach(function(k){ delete b[k]; }); } out.bass=b; }
+ if(song.savedMelody){ const m=JSON.parse(JSON.stringify(song.savedMelody)); if(!recall){ delete m.wave; } out.melody=m; }
+ return out;
 }
 
 // The waves the opening roll is allowed to use. Measured, not chosen by ear:
@@ -40220,6 +40269,15 @@ function saveToSetlist(){
    if(typeof window._mlCaptureState==='function') song.savedMelody=JSON.parse(JSON.stringify(window._mlCaptureState()));
   }catch(e){}
  }
+ // Its sounds (6.0r). A new song recalls them; a song already in the list keeps the switch it has
+ // (a song from before the switch keeps your sounds). Saving a recalling song refreshes what it
+ // brings; saving one that keeps yours leaves what it already held, so flipping back loses nothing.
+ {
+  const _old = (curSetlistIdx>=0 && setlistData[curSetlistIdx]) ? setlistData[curSetlistIdx] : null;
+  song.soundsMode = _old ? (_old.soundsMode==='recall' ? 'recall' : 'keep') : 'recall';
+  if(song.soundsMode==='recall') song.sounds = captureSounds();
+  else if(_old && _old.sounds) song.sounds = _old.sounds;
+ }
  if(curSetlistIdx>=0 && setlistData[curSetlistIdx]){
   // Currently-loaded song — update it in place instead of adding a duplicate entry
   song.id=setlistData[curSetlistIdx].id;
@@ -40658,8 +40716,16 @@ function loadSong(song,idx){
  // minor — a song in any other mode lit neither, or left the previous song's
  // mode lit. renderChords() paints every mode button now.
 
- // Auto-apply saved performance settings
- if(song.perfSettings) applySongPerformSettings(song.perfSettings);
+ // Auto-apply saved performance settings. A song that keeps your sounds still sets the tempo and
+ // how the arp plays; the voices (wave, arp wave, wet/dry) are the sounds, and follow the switch.
+ const _recalls = songRecalls(song);
+ const _soundsBefore = _recalls ? captureSounds() : null;
+ if(song.perfSettings) applySongPerformSettings(song.perfSettings, !_recalls);
+ // The sounds it was written with, over whatever is there now. Applied as a partial snapshot, so
+ // nothing it does not name is touched (see SONG_SOUND_KEYS), then the patterns, with their own
+ // voices left out unless the song recalls them.
+ if(_recalls){ try{ _applySettings(song.sounds); }catch(e){ console.warn('song sounds failed', e); } }
+ const _pat = songPatternsFor(song, _recalls);
 
  // Restore saved rhythm pattern if present.
  //
@@ -40673,9 +40739,9 @@ function loadSong(song,idx){
  // has never actually come back on load. window._sqRestoreState() (added
  // alongside the existing window._sqCaptureState()) is the real, exported
  // way in.
- if(song.savedRhythm){
+ if(_pat.rhythm){
   try{
-   if(typeof window._sqRestoreState==='function') window._sqRestoreState(song.savedRhythm);
+   if(typeof window._sqRestoreState==='function') window._sqRestoreState(_pat.rhythm);
    // Reset step counter so new song's groove starts from bar 1
    if(typeof window._sqResetStep==='function') window._sqResetStep();
    // Always sync bass step count to sequencer (bar length must match)
@@ -40688,18 +40754,18 @@ function loadSong(song,idx){
  // Restore saved bassline if present — same fix, same reason: blWave/blSteps/
  // blCutoff/blResonance/blGrid are the bass IIFE's own locals, not visible
  // here. window._blRestoreState() is the exported way in.
- if(song.savedBass){
+ if(_pat.bass){
   try{
    // override: bass bar length always equals sequencer bar length
    var _bassState = (typeof window._sqSteps==='function')
-    ? Object.assign({},song.savedBass,{steps:window._sqSteps()})
-    : song.savedBass;
+    ? Object.assign({},_pat.bass,{steps:window._sqSteps()})
+    : _pat.bass;
    if(typeof window._blRestoreState==='function') window._blRestoreState(_bassState);
   }catch(e){}
  }
  // Restore saved melody sequence if present
- if(song.savedMelody && typeof window._mlRestoreState==='function'){
-  try{ window._mlRestoreState(song.savedMelody); }catch(e){}
+ if(_pat.melody && typeof window._mlRestoreState==='function'){
+  try{ window._mlRestoreState(_pat.melody); }catch(e){}
  }
 
  // Demo song: prime bass to play too, so a first-time Play press is a full arrangement
@@ -40710,10 +40776,42 @@ function loadSong(song,idx){
  // inherits the first one's fingerprint and reads as unsaved immediately.
  if(typeof markSongSaved==='function') markSongSaved();
  renderChords(); buildSectionTabs(); renderChartSeq(); renderSetlist(); renderSetlistNav();
+ // Said once, and only when something actually changed; Undo puts the old sounds back. A free-build
+ // banner (below) takes the toast over, which is the more important of the two.
+ if(_recalls){
+  try{
+   if(JSON.stringify(captureSounds())!==JSON.stringify(_soundsBefore)){
+    showToast('Sounds changed to match this song', {actionLabel:'Undo', ms:6000, onAction:function(){
+     try{ _applySettings(_soundsBefore); if(typeof renderChords==='function') renderChords(); }catch(e){}
+    }});
+   }
+  }catch(e){}
+ }
  if(typeof proSongLoaded==='function') proSongLoaded(song);
  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
  if(typeof syncSongKeyBadge==='function') syncSongKeyBadge();
  if(typeof syncFixedTransport==='function') syncFixedTransport();
+}
+
+// The per-song switch in the Library (6.0r). On: loading the song puts its sounds back. Off: loading
+// leaves yours alone. Turning it on for a song that holds no sounds yet saves the current ones with it
+// (and says so), since a song that recalls nothing would be a switch with no effect; turning it off
+// keeps what it holds, so turning it on again is not a loss.
+function setSongSoundsMode(idx, recall){
+ setlistData=loadSLData();
+ const song=setlistData[idx]; if(!song) return;
+ if(recall){
+  const fresh = !song.sounds;
+  if(fresh) song.sounds = captureSounds();
+  song.soundsMode='recall';
+  showToast(fresh ? 'This song will recall the sounds you have now' : 'This song recalls its sounds');
+ } else {
+  song.soundsMode='keep';
+  showToast('This song keeps your sounds');
+ }
+ saveSLData(setlistData);
+ if(typeof renderSetlistPerform==='function') renderSetlistPerform();
+ if(typeof renderSetlist==='function') renderSetlist();
 }
 
 // Setlist nav in Perform
@@ -44665,7 +44763,10 @@ function renderSetlistPerform(){
  el.innerHTML='';
  setlistData.forEach((song,i)=>{
  const item=document.createElement('div'); item.className='sl-item'+(i===curSetlistIdx?' active':'');
- item.innerHTML='<div class="sl-name">'+song.title+'</div><div class="sl-meta">'+nn(song.root)+' '+(MODES[song.mode]||MODES.major).label+'</div>';
+ item.innerHTML='<div class="sl-name">'+song.title+'</div><div class="sl-meta">'+nn(song.root)+' '+(MODES[song.mode]||MODES.major).label+'</div>'
+  +'<button type="button" class="sl-snd'+(songRecalls(song)?' on':'')+'" role="switch" aria-checked="'+(songRecalls(song)?'true':'false')+'" title="Whether loading this song changes what you hear: the voices, patches, effects, kit and mixer it was saved with">'
+  +'<span class="sl-snd-knob" aria-hidden="true"></span><span>'+(songRecalls(song)?'Recalls sounds':'Keeps my sounds')+'</span></button>';
+ item.querySelector('.sl-snd').addEventListener('click',e=>{ e.stopPropagation(); setSongSoundsMode(i, !songRecalls(song)); });
  item.addEventListener('click',()=>{ loadSong(song,i); renderSongsPerformView(); });
  el.appendChild(item);
  });
@@ -49528,11 +49629,11 @@ function getSongPerformSettings() {
  };
 }
 
-function applySongPerformSettings(s) {
+function applySongPerformSettings(s, keepSounds) {
  if(!s) return;
  if(s.bpm) onBpmInput(s.bpm);
- if(s.wave) setWave(s.wave);
- if(s.arpWave) setArpWave(s.arpWave);
+ if(s.wave && !keepSounds) setWave(s.wave);
+ if(s.arpWave && !keepSounds) setArpWave(s.arpWave);
  if(s.arpPat) setArpPat(s.arpPat);
  if(s.arpOcts) setArpOcts(s.arpOcts);
  if(typeof s.arpGatePat==='number') setArpGatePat(s.arpGatePat);
@@ -49541,7 +49642,7 @@ function applySongPerformSettings(s) {
  if(typeof s.arpRateIdx==='number') onArpRateSlider(arpRateFromSaved(s));
  if(typeof arpKnobPaint==='function') arpKnobPaint();
  if(typeof s.rhythmSel==='number'){ rhythmSel=s.rhythmSel; buildRhythmGrid(); buildBeatDots(); rhythmStepSec=rhythmStepDuration(RHYTHMS[rhythmSel]); }
- if(typeof s.wetDry==='number') updateWetDry(s.wetDry);
+ if(typeof s.wetDry==='number' && !keepSounds) updateWetDry(s.wetDry);
 }
 
 
@@ -67635,11 +67736,13 @@ function proSongLoaded(song){
  _proKeepSong = null;
  if(modHasAll() || !song) return;
  try{
+  // Only what the song actually applied: a song that keeps your sounds brings no voices or kit.
+  const recalls=songRecalls(song);
   const probe={ mode:song.mode,
-   sqMach: song.savedRhythm && song.savedRhythm.mach,
-   blWave: song.savedBass && song.savedBass.wave,
-   melgenWave: song.savedMelody && song.savedMelody.wave };
-  const labels=proScan(probe);
+   sqMach: recalls && song.savedRhythm && song.savedRhythm.mach,
+   blWave: recalls && song.savedBass && song.savedBass.wave,
+   melgenWave: recalls && song.savedMelody && song.savedMelody.wave };
+  const labels=proScan(recalls ? Object.assign({}, song.sounds, Object.fromEntries(Object.entries(probe).filter(function(e){ return e[1]; }))) : probe);
   if(!labels.length) return;
   freeApplyLimits();                     // the stand-ins go in
   _proKeepSong={ id:song.id,
@@ -67648,6 +67751,14 @@ function proSongLoaded(song){
         kit:(typeof window._sqDrumKit==='function'?window._sqDrumKit():null),
         blWave:(window._blCaptureState?window._blCaptureState().wave:null),
         mlWave:(window._mlCaptureState?window._mlCaptureState().wave:null) } };
+  // The sounds the song brings: what the free build changed, so a re-save can put the originals back.
+  if(recalls){
+   const now=captureSounds(), orig={}, co={};
+   Object.keys(song.sounds).forEach(function(key){
+    if(key!=='partial' && key in now && JSON.stringify(now[key])!==JSON.stringify(song.sounds[key])){ orig[key]=song.sounds[key]; co[key]=now[key]; }
+   });
+   if(Object.keys(orig).length) _proKeepSong.sounds={orig:orig, co:co};
+  }
   proBanner('song', labels);
  }catch(e){}
 }
@@ -67658,6 +67769,11 @@ function proKeepSongApply(song, existingId){
  if(song.savedRhythm && song.savedRhythm.mach===k.co.kit && k.orig.kit) song.savedRhythm.mach=k.orig.kit;
  if(song.savedBass && song.savedBass.wave===k.co.blWave && k.orig.blWave) song.savedBass.wave=k.orig.blWave;
  if(song.savedMelody && song.savedMelody.wave===k.co.mlWave && k.orig.mlWave) song.savedMelody.wave=k.orig.mlWave;
+ if(k.sounds && song.sounds){
+  Object.keys(k.sounds.orig).forEach(function(key){
+   if(JSON.stringify(song.sounds[key])===JSON.stringify(k.sounds.co[key])) song.sounds[key]=k.sounds.orig[key];
+  });
+ }
 }
 
 // Settings > About > Credits. One table, drawn on demand; no network and no
