@@ -872,3 +872,15 @@ and are the same renderer turned on its side.
 - Still open: the Bass and Melody rolls in portrait (they show "Rotate to landscape" where the mock draws a small roll);
   the Sub chip and slot menu in Live's Chords heading (kept: they do things); per-song "recalls sounds" in Library;
   Samples / iCloud / Packs as Settings rows of their own; Stage's native wake lock (Swift, unbuilt).
+
+### Landed as 6.0n – 6.0o
+
+- **6.0n** Find's result labels, the tutorials, the keyboard legend and the tip text name the tabs and the Settings rows as they are
+  (Live / Studio / Song / Sound; Settings › Sound & response, Chords & timing, Look & feel, MIDI & keyboard, Sync & humanize). Setups
+  and the Chart are named where they live now (Song › Library, Song › Perform). A control only Studio shows is found as Studio, not
+  "Live · Advanced". The gate and upgrade copy was checked against `MODULE_COPY`: `tests/tier/registry.test.js`, 600 checks, passes.
+- **6.0o** Settings has the mock's four missing rows: Samples (Gear), iCloud & backup, Packs & purchases and Help & about (App; the row
+  keeps the id `ss-about`). Moved, not copied: same ids and handlers, one of each. Packs & purchases hides itself when it has nothing
+  to show (the web build with everything unlocked). Find names the row, not a pane. `tests/settings/probe.js` checks the four rows.
+- Not done: the mock's Advanced (diagnostics, Native sound, Test as) is still partly in Look & feel; Guide and Shortcuts are on the
+  transport sheet only; the Humanize amount is in Sound & response while Sync & humanize carries the locks.

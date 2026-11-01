@@ -52,9 +52,24 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     subnav: getComputedStyle(document.getElementById('set-subnav')).display }));
   check(st.active === 'page-build', 'the sheet\'s Settings tile opens Settings', st.active);
   check(st.groups === 'Playing,Gear,App' && st.subnav === 'none', 'one list under Playing / Gear / App, no panes', st.groups + ' ' + st.subnav);
-  check(st.rows.length >= 7 && st.rows.every(r => !r.open), 'every row is closed', JSON.stringify(st.rows.map(r => r.id + ':' + r.open)));
+  check(st.rows.length >= 11 && st.rows.every(r => !r.open), 'every row is closed', JSON.stringify(st.rows.map(r => r.id + ':' + r.open)));
   check(st.rows.every(r => r.h >= 44), 'every row is at least 44 pt high', st.rows.map(r => r.h).join());
   check(st.rows.every(r => r.sum), 'every row says what it is set to', st.rows.map(r => r.id + '=' + r.sum).join(' | '));
+
+  // ── 1b. Samples, iCloud & backup, Packs & purchases and Help & about are rows of their own (6.0o),
+  //        with the controls moved into them, not copied (one of each).
+  const own = await page.evaluate(() => {
+    const row = sel => { const e = document.querySelector(sel), s = e && e.closest('.settings-section'); return s ? s.id : null; };
+    const names = {}; document.querySelectorAll('#page-build .settings-section').forEach(e => { names[e.id] = e.querySelector('.ss-hdr span').textContent.trim(); });
+    const grp = id => { const e = document.getElementById(id), o = +getComputedStyle(e).order; const g = [...document.querySelectorAll('#page-build .sgrp-t')].map(h => ({ g: h.textContent.trim(), o: +getComputedStyle(h).order })).filter(h => h.o < o).pop(); return g && g.g; };
+    return { names, grp: { samples: grp('ss-samples'), cloud: grp('ss-cloud'), packs: grp('ss-packs'), about: grp('ss-about') },
+      where: { sampler: row('[onclick="smpOpenLibrary()"]'), sync: row('[data-sync]'), pro: row('#pro-row'), restore: row('[onclick="proRestore()"]'), tut: row('.tut-entry'), ver: row('#ft-ver'), credits: row('#credits-btn') },
+      copies: { sampler: document.querySelectorAll('[onclick="smpOpenLibrary()"]').length, sync: document.querySelectorAll('[data-sync]').length, tut: document.querySelectorAll('#page-build .tut-entry').length } };
+  });
+  check(own.names['ss-samples'] === 'Samples' && own.names['ss-cloud'] === 'iCloud & backup' && own.names['ss-packs'] === 'Packs & purchases' && own.names['ss-about'] === 'Help & about', 'the four rows have the mock\'s names', JSON.stringify(own.names));
+  check(own.grp.samples === 'Gear' && own.grp.cloud === 'App' && own.grp.packs === 'App' && own.grp.about === 'App', 'Samples is under Gear; iCloud, Packs and Help under App', JSON.stringify(own.grp));
+  check(own.where.sampler === 'ss-samples' && own.where.sync === 'ss-cloud' && own.where.pro === 'ss-packs' && own.where.restore === 'ss-packs' && own.where.tut === 'ss-about' && own.where.ver === 'ss-about' && own.where.credits === 'ss-about', 'each control is in its row', JSON.stringify(own.where));
+  check(own.copies.sampler === 1 && own.copies.sync === 1 && own.copies.tut === 1, 'moved, not copied', JSON.stringify(own.copies));
 
   // ── 2. Open and close a row by touch.
   check(!(await vis('#hz-amt')), 'a control inside a closed row is not on screen');
@@ -76,6 +91,13 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.evaluate(() => { setSettingsPane('midi'); });
   await page.waitForTimeout(300);
   check(await page.evaluate(() => document.querySelector('#ss-midi .ss-body').classList.contains('open')) && await vis('#midi-rescan'), 'asking for the MIDI pane opens its row and shows its controls');
+
+  // The packs row has its own way in by a search for a word that is only on it, and Find reaches the moved controls.
+  await page.evaluate(() => { const i = document.getElementById('set-find'); i.value = 'restore purchases'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  check(await page.evaluate(() => { const e = document.getElementById('ss-packs'); return getComputedStyle(e).display !== 'none' && e.querySelector('.ss-body').classList.contains('open'); }), 'searching "restore purchases" opens Packs & purchases');
+  await page.evaluate(() => { const i = document.getElementById('set-find'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  const fnd = await page.evaluate(() => { window._findHarvestCache = null; return _findHarvestAll().filter(e => e.tab === 'build' && /Restore Purchases|◈ Sampler|iCloud sync/.test(e.name)).map(e => e.where); });
+  check(fnd.length === 3 && fnd.every(w => /^Settings › (Packs & purchases|Samples|iCloud & backup)/.test(w)), 'Find names the new rows, not a pane', fnd.join(' | '));
 
   // ── 5. Done.
   await tap('.set-done');
