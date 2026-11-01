@@ -155,8 +155,8 @@ const OVERFLOW = () => {
     const { page, errs } = await boot(browser, 430, 932);
     await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
     const steps = [
-      ['the transport sheet', () => { document.getElementById('ft-drawer-grip').click(); }],
-      ['a toast with Undo', () => { document.getElementById('ft-drawer-grip').click(); showToast('hello', { onAction() {}, actionLabel: 'Undo' }); }],
+      ['the transport sheet', () => { document.getElementById('tab-more').click(); }],
+      ['a toast with Undo', () => { document.getElementById('tab-more').click(); showToast('hello', { onAction() {}, actionLabel: 'Undo' }); }],
       ['the rhythm picker', () => { crPickOpen(); }],
       ['the rhythm editor', () => { crEditOpen(); }],
       ['the voice picker', () => { document.querySelector('.snd-pick-btn').click(); }],
