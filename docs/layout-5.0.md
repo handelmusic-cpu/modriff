@@ -863,3 +863,12 @@ and are the same renderer turned on its side.
 - Live's melody controls flow as two lines (the control rows are `display:contents`). Still not as the mock: the Sub chip
   and the slot's more button in the Chords heading; Studio's Bass / Melody / Drums pages have no part title row and still
   carry the Sync / Humanize strip; Perform's chord tiles.
+
+### Landed as 6.0m
+
+- Studio part pages open with the part's name in its colour (`accPartTitle`). Sync (the two locks) and Humanize are a Settings
+  row, "Sync & humanize" under Playing; `syncRowMount` moves the strip, ids and handlers unchanged.
+- Perform's chord tiles are the mock's: bold name, length beside it, four to a row, no function-coloured edge.
+- Still open: the Bass and Melody rolls in portrait (they show "Rotate to landscape" where the mock draws a small roll);
+  the Sub chip and slot menu in Live's Chords heading (kept: they do things); per-song "recalls sounds" in Library;
+  Samples / iCloud / Packs as Settings rows of their own; Stage's native wake lock (Swift, unbuilt).
