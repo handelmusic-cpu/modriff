@@ -65,7 +65,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap('#pv-stage');
   check(!(await open()), 'free: Stage does not open');
   const toastTxt = await page.evaluate(() => { const t = document.getElementById('_toast'); return t ? t.textContent : ''; });
-  check(/Stage/.test(toastTxt) && /Practice Pack/.test(toastTxt) && /See pack/.test(toastTxt), 'free: it says Stage is the Practice Pack\'s and offers the pack', JSON.stringify(toastTxt));
+  check(/Stage/.test(toastTxt) && /Practice & Perform Pack/.test(toastTxt) && /See pack/.test(toastTxt), 'free: it says Stage is the Practice & Perform Pack\'s and offers the pack', JSON.stringify(toastTxt));
   await tap('#pv-timeline');
   const v1 = await page.evaluate(() => ({ view: songsPerformViewGet(), cols: document.querySelectorAll('#songs-full-chart .tl-col').length, sheet: !!document.querySelector('.modal-overlay.visible') }));
   check(v1.view === 'tiles' && v1.cols === 0, 'free: Timeline does not switch', JSON.stringify(v1));
