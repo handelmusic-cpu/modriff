@@ -808,3 +808,16 @@ and are the same renderer turned on its side.
 - Whether mõdFX belongs under Sound as well as in the part menu.
 - The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
   tabs would take it back.
+
+### Landed as 6.0e – 6.0g (matching the mock)
+
+- **6.0e** The transport sheet is the mock's: red grab pill, groups under small-caps titles (Extras, the
+  Settings / MIDI map / Setups / Find / Theme row, Project, Capture, Sampler, Export, Tools, Help), every
+  control a tile (icon over a word; a ring in the part's colour for Capture). Labels that the app rewrites
+  at run time go through `_ftTile` / `_ftDot`. The Song tab icon's note heads no longer clip.
+- **6.0f** Phone text a size up (root 22 px on a coarse pointer up to 700 px wide).
+- **6.0g** Song pages: Build | Perform | Library and Mixer | Voices | mõdSynth are a wide switch at the top of
+  the page. Build opens on the timeline (every section on the page, a tap on a heading selects it),
+  Save moved into File. Perform follows the mock's order; Library shows Setlist | Setups | Patterns one at a time.
+- Still not as the mock: Settings as a list of rows (decision 13); per-song "recalls sounds" switch;
+  on a 390 pt phone the transport's right edge (the Song switch with a song loaded) is clipped.

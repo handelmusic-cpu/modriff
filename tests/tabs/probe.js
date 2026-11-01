@@ -123,8 +123,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   // ── 6. The caret, Settings and Done.
   await tap('#tab-more'); s = await st();
   const sheet = await page.evaluate(() => ({ exp: document.getElementById('tab-more').getAttribute('aria-expanded'),
-    first: (document.querySelector('#ft-more-menu .ft-sheet-row:not(:empty) .ft-btn') || {}).id }));
-  check(s.sheet && sheet.exp === 'true' && sheet.first === 'ft-settings-btn', 'the caret opens the sheet and Settings is its first row', JSON.stringify(sheet));
+    first: (function(){ var b = document.getElementById('ft-settings-btn'); return b && b.offsetParent ? b.id : ''; })() }));
+  check(s.sheet && sheet.exp === 'true' && sheet.first === 'ft-settings-btn', 'the caret opens the sheet and Settings is a tile in it', JSON.stringify(sheet));
   await tap('#ft-settings-btn'); s = await st();
   check(s.page === 'page-build' && s.lit === '' && !s.sheet, 'Settings opens full screen with no tab lit and the sheet closed', JSON.stringify(s));
   const done = await page.evaluate(() => { const d = document.querySelector('.set-done'); const r = d.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.top)]; });

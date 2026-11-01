@@ -72,10 +72,12 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.evaluate(() => { sections = [{ name: 'X', follow: 'repeat', plays: 1, slots: [] }]; curSetlistIdx = -1; });
   await tap('#setlist-items-perform .sl-item');
   check(await page.evaluate(() => sections.length === 2 && document.getElementById('chart-title').value === 'Grace'), 'a touch on it loads the song');
+  await tap('#lib-sw-setups');
   await page.evaluate(() => { document.getElementById('setup-name').value = 'Gig rig'; });
   await tap('#setups-panel .sc-btn.primary');
   const su = await page.evaluate(() => [...document.querySelectorAll('#setups-items .sl-item, #setups-items .sl-name')].map(e => e.textContent).join('|'));
   check(/Gig rig/.test(su), 'a Setup saved by name is listed', su.slice(0, 60));
+  await tap('#lib-sw-patterns');
   check(await vis('#lib-banks button'), 'the pattern save has its button');
 
   // ── 2. Chart is a view of Perform.

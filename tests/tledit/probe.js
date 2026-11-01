@@ -75,8 +75,9 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.evaluate(() => { setModTier('pro'); renderChartSeq(); }); await page.waitForTimeout(250);
   check(await page.evaluate(() => getComputedStyle(document.getElementById('bt-switch')).display !== 'none'), 'pro: the switch is there');
   await tap('#bt-timeline');
-  const v = await page.evaluate(() => ({ cols: document.querySelectorAll('#chart-timeline .tl-col').length, want: sections[0].slots.length, strip: getComputedStyle(document.getElementById('chart-sequence')).display, sel: [...document.querySelectorAll('#chart-timeline .tl-col.tl-sel')].map(c => c.dataset.ci).join(), joins: document.querySelectorAll('#chart-timeline .tl-join').length, stored: localStorage.getItem('modo-build-view'), panel: getComputedStyle(document.getElementById('tl-panel')).display }));
-  check(v.cols === v.want && v.strip === 'none' && v.stored === 'timeline' && v.panel !== 'none', 'Timeline: one column per chord of THIS section, the strip hidden, the panel up', JSON.stringify(v));
+  const sections_n = await page.evaluate(() => sections.filter(x => x.slots.length).length);
+  const v = await page.evaluate(() => ({ cols: document.querySelectorAll('#chart-timeline .tl-col').length, want: sections.reduce((a, x) => a + x.slots.length, 0), heads: document.querySelectorAll('#chart-timeline .tl-secl').length, strip: getComputedStyle(document.getElementById('chart-sequence')).display, sel: [...document.querySelectorAll('#chart-timeline .tl-col.tl-sel')].map(c => c.dataset.ci).join(), joins: document.querySelectorAll('#chart-timeline .tl-block:first-of-type .tl-join').length, stored: localStorage.getItem('modo-build-view'), panel: getComputedStyle(document.getElementById('tl-panel')).display }));
+  check(v.cols === v.want && v.heads === sections_n && v.strip === 'none' && v.stored === 'timeline' && v.panel !== 'none', 'Timeline: every section on the page (a heading and a column per chord), the strip hidden, the panel up', JSON.stringify(v));
   check(v.sel === '1', 'the selected chord (the second) is marked', v.sel);
   check(v.joins === 4, 'a join between each pair of chords on a card (3 on the first line, 1 on the second)', v.joins);
 
