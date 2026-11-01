@@ -929,3 +929,12 @@ and are the same renderer turned on its side.
   originals back on a re-save.
 - Not done: Setups are unchanged (starting templates); the Build page's own setlist list has no switch (the Library does); share links
   carry the sounds like the rest of the song, so a long setlist grows by about 3 KB a song against `SETUP_URL_MAX`.
+
+### Landed as 6.0s (export names)
+
+- A bounce and a chords `.mid` took their file name from the song's title, and from `modo-session` / `modo-chords` (after what the app was
+  called once) when it had none, without asking. `_exportName(fallback, what)` now asks when there is no title, with `modriff-session` /
+  `modriff-chords` ready; Enter, Skip, Escape or a tap outside take that name, so a finished take is never held up. The live-recording `.mid`
+  default is `modriff-performance`. A song with a title is not asked.
+- The `-capture-report.txt` beside a bounce is a developer's page (clock offsets, drain phase). It is written in Debug builds and with
+  Native sound on, and not in a release build.

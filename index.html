@@ -8662,7 +8662,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0r</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0s</span></div>
  </div>
 </div>
 
@@ -10077,7 +10077,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0r</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0s</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11250,7 +11250,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0r';
+const MODRIFF_VERSION = '6.0s';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -37683,9 +37683,11 @@ function exportMidi(){
     var trk=str('MTrk').concat(u32(track.length),track);
     var bytes=new Uint8Array(hdr.concat(trk));
     var blob=new Blob([bytes],{type:'audio/midi'});
-    modPlatform.saveFile(_dlName((document.getElementById('chart-title')?.value||'modo-chords')+'.mid'), blob);
-    showToast(cut ? 'Free .mid exports are '+FREE_NUMBERS.midiExportBars+' bars. The Studio Pack exports the whole song.'
-                  : 'Chart chords written to .mid');
+    _exportName('modriff-chords','MIDI file').then(function(nm){
+      modPlatform.saveFile(_dlName(nm+'.mid'), blob);
+      showToast(cut ? 'Free .mid exports are '+FREE_NUMBERS.midiExportBars+' bars. The Studio Pack exports the whole song.'
+                    : 'Chart chords written to .mid');
+    });
   }catch(e){console.error('MIDI export error',e);showToast('Export failed');}
 }
 // A song link carries the chart and the musical context, nothing else. It used
@@ -50315,6 +50317,32 @@ function _safeName(n){
 // dropped: õ becomes o, ï becomes i), the typographic punctuation is folded to
 // the ASCII it stands in for, and anything still outside ASCII becomes a dash.
 // A file called "modRiff - take 1.zip" is what you want on a disk anyway.
+// Naming an export (6.0s). The song's title when it has one. Without one the file was called
+// 'modo-session' or 'modo-chords', after what the app was once called, and nothing asked. Now it asks,
+// with 'modriff-<what>' ready to accept; Enter, Skip, Escape or a tap outside all take that name, so a
+// finished take is never held up or lost by a dialog.
+function _exportName(fallback, what){
+ var t = (document.getElementById('chart-title') ? document.getElementById('chart-title').value : '').trim();
+ if(t) return Promise.resolve(t);
+ return new Promise(function(resolve){
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--surf);border:2px solid var(--pg);border-radius:16px;padding:22px 24px;max-width:320px;width:100%;text-align:center;';
+  box.innerHTML='<div style="font-size:.72rem;font-weight:700;color:var(--pg);margin-bottom:10px">Name this '+what+'</div>'
+   +'<input type="text" id="exn-input" aria-label="File name" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:16px;margin-bottom:14px">'
+   +'<div style="display:flex;gap:8px"><button type="button" id="exn-skip" style="flex:1;min-height:44px;border:1px solid var(--border2);border-radius:8px;background:none;color:var(--text);cursor:pointer;font-size:.6rem">Use \u201c'+fallback+'\u201d</button>'
+   +'<button type="button" id="exn-ok" style="flex:1;min-height:44px;border:none;border-radius:8px;background:var(--pg);color:#07080f;cursor:pointer;font-size:.6rem;font-weight:700">Save</button></div>';
+  overlay.appendChild(box); document.body.appendChild(overlay);
+  var input=box.querySelector('#exn-input'); input.value=fallback; input.focus(); input.select();
+  var done=function(v){ overlay.remove(); document.removeEventListener('keydown',onKey); resolve((v||'').trim() || fallback); };
+  function onKey(e){ if(e.key==='Escape') done(''); if(e.key==='Enter') done(input.value); }
+  document.addEventListener('keydown',onKey);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) done(''); });
+  box.querySelector('#exn-skip').addEventListener('click',function(){ done(''); });
+  box.querySelector('#exn-ok').addEventListener('click',function(){ done(input.value); });
+ });
+}
 function _dlName(n){
  const raw = String(n||'file');
  // Keep the extension out of the folding — it is already ASCII, and splitting
@@ -50998,7 +51026,7 @@ function _stopRecording(){
       _abandonStemTaps();
       showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;
     }
-    var base0=(document.getElementById('chart-title')?.value||'modo-session');
+    var base0=await _exportName('modriff-session','bounce');
     var totalLen, span=null, fullL=null, fullR=null;
     var folder = sink ? _recFolderFor(base0) : '';
     if(sink){
@@ -51124,9 +51152,10 @@ function _stopRecording(){
       catch(e){ try{ console.warn('[rec] finishing the stems failed', e); }catch(_){} }
     }
     files=files.concat(stems);
-    if(nat && !nat.failed && nat.lat) files.push({ name:base+'-capture-report.txt', blob:new Blob([_natCapReport(nat,_sr)],{type:'text/plain'}) });
+    // The capture report is a developer's page (clock offsets, drain phase), not part of a take: it is written in Debug builds and with Native sound on.
+    if(nat && !nat.failed && nat.lat && (window.__modDebug || _graphPathWanted())) files.push({ name:base+'-capture-report.txt', blob:new Blob([_natCapReport(nat,_sr)],{type:'text/plain'}) });
     // One take, one name. The recorder defaulted to 'modo-performance' and the
-    // mix to 'modo-session', so an untitled bounce landed as a pair of files
+    // mix to 'modo-session' (now asked for, 'modriff-session' by default), so an untitled bounce landed as a pair of files
     // that did not look related — 'modo-session 2.wav' beside
     // 'modo-performance-live.mid'. The mix's base wins; the .mid keeps only
     // its -live suffix, which is what distinguishes it.
@@ -51432,7 +51461,7 @@ function _buildMidiRecording(){
     var hdr=str('MThd').concat(u32(6),u16(1),u16(numTracks),u16(tpq));
     var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
-    return { name:(document.getElementById('chart-title')?.value||'modo-performance')+'-live.mid',
+    return { name:(document.getElementById('chart-title')?.value||'modriff-performance')+'-live.mid',
              blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut };
   }catch(e){ console.error('MIDI recording export error',e); return null; }
 }
