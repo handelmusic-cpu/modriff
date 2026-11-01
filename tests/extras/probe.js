@@ -94,10 +94,11 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     window.scrollTo(0, 0);
     const slots = [...document.querySelectorAll('#lv-slots .lv-slot')].map(s => s.dataset.mod);
     const last = document.querySelector('#lv-slots .lv-slot[data-mod="fx"]'); const r = last.getBoundingClientRect();
-    const bar = document.getElementById('top-stack').getBoundingClientRect();
-    return { slots: slots.join(), bottom: Math.round(r.bottom + scrollY), barTop: Math.round(bar.top), win: innerHeight };
+    // The top of the bottom stack: the page ends where the highest fixed bar begins.
+    const stack = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--botstack')) || 0;
+    return { slots: slots.join(), bottom: Math.round(r.bottom + scrollY), barTop: Math.round(innerHeight - stack), win: innerHeight };
   });
-  await tap('#ft-drawer-grip');
+  await tap('#tab-more');
   await tap('.ft-extras-btn:nth-of-type(2)');          // hide all
   const sheetShut = await page.evaluate(() => !document.getElementById('ft-more-menu').classList.contains('open'));
   s = await state();
@@ -107,7 +108,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(!fxOpen, 'and mõdFX folded to its pad');
   let h = await heights();
   check(h.slots === 'chords,melody,fx' && h.bottom <= h.barTop, 'three widgets, extras off: the whole stack ends above the bars', JSON.stringify(h));
-  await tap('#ft-drawer-grip');
+  await tap('#tab-more');
   await tap('.ft-extras-btn:nth-of-type(1)');          // show all
   s = await state();
   const fxOpen2 = await page.evaluate(() => !document.querySelector('.lv-slot[data-mod="fx"]').classList.contains('lv-folded'));
