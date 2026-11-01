@@ -682,6 +682,8 @@ landscape is the real fix for long patterns, not bigger cells.
    430 and 22 pt at 360, so under 460 pt the word "Voice" goes, the chips and the dot
    give back padding, and under 420 the chip drops its "+": the picker is 90 pt at 440, 94
    at 402 and 52 at 360, and no heading wraps or runs off the edge from 360 to 440.
+   **6.0a tightened it on the owner's word ("too much empty space"): the rows are 48 pt and
+   the widget 200 pt, the gaps and the part's name column smaller; the buttons stay 44 pt.**
    Not done: the Keep button's 40 pt narrow form. `tests/styles/probe.js`.
    The rest of Step 4, still to do: Accomp's Drums, Bass, Melody and Arp pages become Studio part
    pages (the real elements are moved, not copied, which is how the Live widgets
