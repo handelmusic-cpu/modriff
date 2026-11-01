@@ -59,7 +59,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     melT: await page.evaluate(() => { const b = document.querySelector('.lv-xt[data-mod="melody"]'); return b && { exp: b.getAttribute('aria-expanded'), h: Math.round(b.getBoundingClientRect().height), t: b.textContent.trim() }; }),
     cr: await shown('#cr-bar'), more: await shown('#chords-borrowed'), chip: await shown('#pf-more-chip'),
     diatonic: await page.evaluate(() => [...document.getElementById('chords-diatonic').children].filter(c => c.getBoundingClientRect().height > 0).length),
-    melRow: await shown('.mel-ctl-row'), melRow2: await shown('.mel-row2'), keys: await shown('#mel-keys-wrap, .mel-keys, #melody-strip, .mel-btn'),
+    melRow: await shown('.mel-ctl-row #hold-btn'), melRow2: await shown('.mel-row2 #touchmod-bar, .mel-row2 > *'), keys: await shown('#mel-keys-wrap, .mel-keys, #melody-strip, .mel-btn'),
     stored: await page.evaluate(() => localStorage.getItem('modo-live-xoff')),
   });
 
