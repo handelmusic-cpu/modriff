@@ -2323,7 +2323,7 @@ products in all, every one Family Sharing on and universal across iPhone/iPad/Ma
 prices live in App Store Connect and are read from the store at run time, never written
 in the page. No subscriptions, ads, accounts or backend.
 
-| Product ID (`com.handelmusic.modriff.` + …) | Display name | Price | Shown to |
+| Product ID (`Handel.modRiff.` + …) | Display name | Price | Shown to |
 |---|---|---|---|
 | `sampler` | Sampler Engine | $5.99 | everyone |
 | `synth` | mõdSynth Engine | $4.99 | everyone |
@@ -2612,7 +2612,7 @@ available to a free (Personal Team) account. So no build has it until you do thi
 once, with a paid Developer Program membership:
 
 1. Xcode > the App target > Signing & Capabilities > + Capability > iCloud > tick
-   **CloudKit** and add the container `iCloud.com.handelmusic.modriff`.
+   **CloudKit** and add the container `iCloud.Handel.modRiff`.
 2. Build Settings > Swift Compiler - Custom Flags > Active Compilation Conditions:
    add `MODRIFF_CLOUDKIT` (Debug and Release).
 3. Run on two devices signed in to the same Apple ID, turn on Settings > General >

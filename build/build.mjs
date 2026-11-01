@@ -32,7 +32,9 @@ const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'bui
   // The C++ engine is compiled into the native app, not served to the web one.
   'native']);
 
-fs.rmSync(OUT, { recursive: true, force: true });
+// macOS drops a .DS_Store into dist/ while it is being emptied, and rm then fails
+// with ENOTEMPTY about one run in four. Retrying lets it finish.
+fs.rmSync(OUT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 fs.mkdirSync(OUT);
 for (const name of fs.readdirSync(ROOT)) {
   if (SKIP.has(name) || name === 'index.html') continue;
