@@ -613,6 +613,13 @@ landscape is the real fix for long patterns, not bigger cells.
    pt tall with a pad but stay 34 wide, the width of the column under them.
 3. **Live and Studio as tabs**, the gear sheet, Accomp's sub-nav gone but its
    page still reachable. Retarget the shortcut, tutorials, tour and Find.
+   **6.0d: the chrome is drawn as the mock draws it**: one continuous dark block, the beat strip a
+   3 pt line along its top edge (no row of its own), plain 50 pt tabs (no fill, no rules, a smaller
+   caret pill), and the Live page's suggested-chord halos and Sub / More chips quieter. Still unlike
+   the mock, on purpose or not done: the heading keeps Sub and the slot's ⋯ (the mock draws neither,
+   and both are real controls), the melody row keeps its octave − / + and Touch Mod, the Keep icon
+   beside the record dot is not drawn, and the Song group in the transport shows only once a song is
+   loaded.
    **6.0c: the stack is in the mock's order.** 5.3 kept the old order (tabs above the transport) and
    the owner, holding the phone beside the mock, said the locations differed: the mock has the
    tabs on the floor, the parts row and the transport above them, the sub-tabs above that. The

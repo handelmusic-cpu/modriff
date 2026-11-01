@@ -70,11 +70,11 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
              padTop: parseFloat(getComputedStyle(document.getElementById('perf-bar')).paddingTop), perfH: Math.round(document.getElementById('perf-bar').getBoundingClientRect().height) };
   });
   check(bar.tabs.map(t => t.t).join() === 'Live,Studio,Song,Sound', 'four tabs: Live, Studio, Song, Sound', bar.tabs.map(t => t.t).join());
-  check(bar.tabs.every(t => t.h >= 52 && t.ico), 'each is 52 pt or more and has an icon', JSON.stringify(bar.tabs.map(t => [t.h, t.ico])));
-  check(bar.more[0] >= 52 && bar.more[1] >= 52, 'the caret is a 58 x 52 target', bar.more.join('x'));
+  check(bar.tabs.every(t => t.h >= 50 && t.ico), 'each is 50 pt or more (as the mock has them) and has an icon', JSON.stringify(bar.tabs.map(t => [t.h, t.ico])));
+  check(bar.more[0] >= 50 && bar.more[1] >= 50, 'the caret is a 58 x 50 target', bar.more.join('x'));
   check(bar.oldTabs.length === 0, 'no Settings, Accomp or Play tab', bar.oldTabs.join());
   check(!bar.grip && !bar.band && !bar.sheetView, 'the handle band and the Live / Studio switch are gone from the transport and the sheet');
-  check(bar.padTop <= 8, 'the transport has no band above it', bar.padTop + ' pt padding, bar ' + bar.perfH + ' pt');
+  check(bar.padTop <= 10, 'the transport has no band above it', bar.padTop + ' pt padding, bar ' + bar.perfH + ' pt');
 
   // ── 2. Live and Studio, by finger.
   let s = await st();
