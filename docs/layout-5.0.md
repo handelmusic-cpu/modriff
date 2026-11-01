@@ -896,3 +896,17 @@ and are the same renderer turned on its side.
 - Registered in `ModRiffViewController` and the Xcode project. `xcodebuild -scheme App -sdk iphonesimulator` builds. Checked in the
   page against a stand-in plugin: Stage's request survives a poll tick, calls happen only on change. Not yet seen on a phone:
   `docs/phone-test-checklist.md` 10.11 to 10.14.
+
+### Landed as 6.0q (the Bass and Melody rolls by touch in portrait)
+
+- The note on 6.0m said the rolls showed "Rotate to landscape". They do not: the roll was drawn in portrait, but its cells were 18 x 22 pt
+  (16 steps share 299 pt), too small to hit. The mock says the same of its own roll ("for drawing, not tapping").
+- A **Fit / Large** switch under each roll (`prSetZoom`, saved as `modo-roll-zoom`). Fit is what it was. Large is 44 x 44 pt cells with
+  a 30 pt ruler (the column handle) and the roll scrolls sideways; the box grows from 40 vh to 54 vh. With no saved choice a touch
+  screen narrower than 600 pt (a phone held upright) opens on Large, anything wider on Fit, and turning the phone re-lays the rolls out.
+  The size is the person's choice and not the input device's, as the comment above `PR_ROW_H` insists.
+- `PR_ROW_H` and `PR_RULER_H` are `var` now, set by `prLayout`; canvas resolution is capped at 12 M pixels (four octaves of 44 pt rows at
+  64 steps is more than iOS will allocate).
+- Not 44 pt: the ruler (30 pt). A pinned 44 pt strip would cover the top row of the roll for good. `tests/roll/probe.js` holds the rest.
+  Checked by hand in the browser pane (pointer events, no CDP touch: this Mac has no working Playwright browser): cell edges at 21 and 23 pt,
+  a note placed on both rolls at the right step and pitch, Fit and Large, ruler and key menus, rotation. The probe has not been run.
