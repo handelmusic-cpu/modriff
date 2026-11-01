@@ -613,6 +613,13 @@ landscape is the real fix for long patterns, not bigger cells.
    pt tall with a pad but stay 34 wide, the width of the column under them.
 3. **Live and Studio as tabs**, the gear sheet, Accomp's sub-nav gone but its
    page still reachable. Retarget the shortcut, tutorials, tour and Find.
+   **5.3 was taken back in 6.0b, on the owner's word that the tabs, the Live / Studio switch,
+   the instrument rows and the sheet handle were not where they had been.** The tab bar is
+   Settings | Songs | Sound | Accomp | Play again, the Live / Studio pill is back in the
+   transport band, the handle is the red pill above the transport, and the Accomp page has
+   its sub-nav back. Kept from 5.3: the side safe-area insets. Everything after it (More row,
+   extras, slim Styles, timeline, Stage, Library) stays. What follows is what 5.3 did, for the
+   record; it is not in the app.
    **Landed as 5.3.** Tab bar: **Live | Studio | Song | Sound | caret**, 52 pt, an icon
    over a word, one 3 pt mark on the tab you are on (the rainbow strip on every tab and
    the glowing line under the active one, which ran through the label, are gone). The
