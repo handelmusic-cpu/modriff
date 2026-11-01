@@ -36,6 +36,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 // [class or id the control carries, why it is not 44 yet]
 const KNOWN = [
   ['.sq-rcell', 'the step numbers over a grid are as wide as the step under them (34 pt); they are 44 pt tall with the pad. A wider one would not line up with its column'],
+  ['.crh-cell', 'the steps of the chord rhythm roll: 22 pt wide so that 16 and 24 steps are a scroll, not a page; 108 pt tall. Narrower is how a grid of 24 fits a phone; a 44 pt column would be 32 steps across 1400 pt'],
   ['input[range]', 'sliders: a 14 pt thumb on a 3 pt track. A 44 pt thumb moves the dot 15 pt in from each end and the fine-control layer maps by the track, so it is its own change'],
 ];
 
