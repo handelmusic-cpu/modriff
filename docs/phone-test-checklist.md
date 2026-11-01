@@ -14,7 +14,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
    is one command: it builds, syncs and installs). It is a **Debug** build, which
    is what gives you the Test as row in section 1.
 2. Open the app and look at Settings > Help & about. It should say
-   **v6.0r**. If it says anything older, the build did not install.
+   **v6.0s**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
    or Bluetooth), a real Ultimate Guitar PDF of a song you know, a songbook or
    lead sheet to photograph, and a second Apple device if you want to test
@@ -188,7 +188,7 @@ not say the app has to run well there.
 ## 9. The rhythm and live-page batch (4.9.9.9.9.9.6 to 6m)
 
 None of this touches the native engine; it is touch, layout and the clock, which a
-desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the footer now says 6.0r.
+desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the footer now says 6.0s.
 
 | # | do | you should see |
 |---|---|---|
