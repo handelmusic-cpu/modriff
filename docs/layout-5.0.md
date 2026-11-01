@@ -821,3 +821,12 @@ and are the same renderer turned on its side.
   Save moved into File. Perform follows the mock's order; Library shows Setlist | Setups | Patterns one at a time.
 - Still not as the mock: Settings as a list of rows (decision 13); per-song "recalls sounds" switch;
   on a 390 pt phone the transport's right edge (the Song switch with a song loaded) is clipped.
+
+### Landed as 6.0h (Settings as rows)
+
+- Decision 13, built on the existing sections: one list under Playing / Gear / App instead of three panes. Every row
+  is closed, 60 pt high, names what it is set to (the `syncSSPreviews` summaries) and opens in place; a Find field
+  narrows the list and opens what matches. Nothing was moved: the panes are flattened with `display:contents` and the
+  rows take their place by `order`. `setSettingsPane(name)` still works (Find, the tutorials) and opens the row.
+- Not as the mock's ten rows: Samples, iCloud & backup, Packs & purchases and Help & about are still inside the rows above
+  (Sound & response, Look & feel, About) rather than rows of their own.
