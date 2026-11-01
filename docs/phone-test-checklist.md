@@ -14,7 +14,7 @@ that the numbers the app records are sane. How a part sounds is your ear.
    is one command: it builds, syncs and installs). It is a **Debug** build, which
    is what gives you the Test as row in section 1.
 2. Open the app and look at Settings > Help & about. It should say
-   **v6.0o**. If it says anything older, the build did not install.
+   **v6.0p**. If it says anything older, the build did not install.
 3. Have these ready: a MIDI keyboard or pad controller (USB through the adapter,
    or Bluetooth), a real Ultimate Guitar PDF of a song you know, a songbook or
    lead sheet to photograph, and a second Apple device if you want to test
@@ -188,7 +188,7 @@ not say the app has to run well there.
 ## 9. The rhythm and live-page batch (4.9.9.9.9.9.6 to 6m)
 
 None of this touches the native engine; it is touch, layout and the clock, which a
-desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the footer now says 6.0o.
+desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the footer now says 6.0p.
 
 | # | do | you should see |
 |---|---|---|
@@ -228,6 +228,10 @@ Debug run is 10 times slower and tells you nothing).
 | 10.8 | Bounce with Stems on, then `bounce-check.py --by-time` as in 5.6 | every part has a stem; offsets within a few ms of the `.mid` |
 | 10.9 | Play, press Home, come back | as 5.9 to 5.11, but with every part native: say which parts go quiet and for how long |
 | 10.10 | Settings > Look & feel > **Copy diagnostics** after 10.2 | send it whatever the status line says |
+| 10.11 | **Screen stays on (6.0p, needs the new ModWake plugin, so a fresh `npm run ios:device`).** Xcode's console on launch | `[ModWake] plugin registered`, and `ModWake` in the list `[ModRiff] capacitorDidLoad` prints |
+| 10.12 | Start a loop and leave the phone untouched past its auto-lock time (30 s or 1 min) | the screen does not dim or lock while it plays; stop it and the phone locks on its usual timer |
+| 10.13 | Open **Stage** (Song > Perform > Stage) with nothing playing, leave it past the auto-lock time | the screen stays on; leave Stage and it locks again on its usual timer |
+| 10.14 | Start a loop, press Home, wait a minute, come back | the phone locked as normal while the app was away; back in the app 10.12 holds again |
 
 **The decision this gives:** if 10.2, 10.7 and 10.9 are clean, the flip can ship as
 "Native sound on by default, the switch kept for a release". If a part falls back or

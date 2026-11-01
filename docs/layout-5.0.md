@@ -884,3 +884,15 @@ and are the same renderer turned on its side.
   to show (the web build with everything unlocked). Find names the row, not a pane. `tests/settings/probe.js` checks the four rows.
 - Not done: the mock's Advanced (diagnostics, Native sound, Test as) is still partly in Look & feel; Guide and Shortcuts are on the
   transport sheet only; the Humanize amount is in Sound & response while Sync & humanize carries the locks.
+
+### Landed as 6.0p (Stage keeps the screen on; Swift built for the simulator, not run on a phone)
+
+- `ios/App/App/ModWake/ModWake.swift` is a Capacitor plugin with one method, `set({on})`, that sets
+  `UIApplication.isIdleTimerDisabled`. A WKWebView has no Screen Wake Lock API (`navigator.wakeLock` is absent in the app), so
+  until now neither Stage nor the "keep awake while playing" poll kept an iPhone from locking; the web path only ever worked in a browser.
+- `modPlatform.keepAwake(on, reason)` holds the reasons ('play' from the poll, 'stage' from Stage); the screen stays on while any
+  holds, and the native plugin is asked only when that answer changes. One flag could not hold both: the poll runs every 1.5 s and
+  would have released Stage's request whenever nothing was playing. With no plugin (a browser, an old binary) it is the web lock, as before.
+- Registered in `ModRiffViewController` and the Xcode project. `xcodebuild -scheme App -sdk iphonesimulator` builds. Checked in the
+  page against a stand-in plugin: Stage's request survives a poll tick, calls happen only on change. Not yet seen on a phone:
+  `docs/phone-test-checklist.md` 10.11 to 10.14.

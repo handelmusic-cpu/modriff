@@ -8651,7 +8651,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0o</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0p</span></div>
  </div>
 </div>
 
@@ -10066,7 +10066,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0o</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0p</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11237,7 +11237,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0o';
+const MODRIFF_VERSION = '6.0p';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11529,8 +11529,21 @@ window._genQueuePaint = function(part, frac, landed){
   setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
  };
  if(!P.keepAwake){
-  var lock = null, busy = false, want = false;
+  // Who wants the screen on: 'play' (anything is playing, _wakeSync) and 'stage' (the Stage view is up).
+  // The screen stays on while any of them does. One flag could not hold both: _wakeSync runs every
+  // second and a half and would have switched Stage's request off whenever nothing was playing.
+  var lock = null, busy = false, want = false, why = {};
+  // In the app the idle timer is the lock (ModWake). WKWebView has no Screen Wake Lock API to ask
+  // for, so on the phone navigator.wakeLock is absent and neither playing nor Stage kept the screen
+  // on; the web path below is for a browser and for a build without the plugin.
+  var nat = function(){ var w = modCapPlugin('ModWake', ['set']); return w && typeof w.set === 'function' ? w : null; };
+  var natOn = null;
   var sync = function(){
+   var w = nat();
+   if(w){
+    if(natOn !== want){ natOn = want; w.set({ on: want }).catch(function(){ natOn = null; }); }
+    return;
+   }
    if(!('wakeLock' in navigator) || busy) return;
    var need = want && document.visibilityState === 'visible';
    if(need && !lock){
@@ -11545,10 +11558,15 @@ window._genQueuePaint = function(part, frac, landed){
    }
   };
   // The system drops the lock whenever the page is hidden; take it again on
-  // the way back if music is still wanted.
-  document.addEventListener('visibilitychange', sync);
-  P.keepAwake = function(on){ want = !!on; sync(); };
-  P._wakeHeld = function(){ return !!lock && !lock.released; };
+  // the way back if music is still wanted. A native timer is asked again too: cheap, and iOS may
+  // have put it back while the app was away.
+  document.addEventListener('visibilitychange', function(){ natOn = null; sync(); });
+  P.keepAwake = function(on, reason){
+   why[reason || 'play'] = !!on;
+   want = Object.keys(why).some(function(k){ return why[k]; });
+   sync();
+  };
+  P._wakeHeld = function(){ return nat() ? !!natOn : (!!lock && !lock.released); };
  }
 })(window.modPlatform);
 //
@@ -44563,7 +44581,7 @@ function songPlayheadStart(si, ci){
 // as on the page; what Stage adds is the scrolling (the playing line is kept a third of the
 // way down, so what is coming is on screen) and the screen staying awake. It is the
 // Practice Pack's, with the timeline (stage, timeline in FREE_LIMITS).
-var _stageFs = 0, _stageLock = null;
+var _stageFs = 0;
 function stageIsOpen(){ var st = document.getElementById('stage'); return !!(st && st.classList.contains('open')); }
 function stageFsGet(){
  if(!_stageFs){ var v = 0; try{ v = +modStore.getItem('modo-stage-fs') || 0; }catch(e){} _stageFs = (v>=12 && v<=40) ? v : 20; }
@@ -44630,18 +44648,10 @@ function stageScrollToCurrent(smooth){
  var host = document.getElementById('stage-chart'); var a = host && host.querySelector('.tl-col.active');
  if(a) stageScrollTo(a, smooth);
 }
-// Keep the screen on while Stage is up, where the engine has a way to ask (a screen wake
-// lock). Not every WebView has one; where it has none this does nothing, and a native
-// plugin for it is a separate, unbuilt piece (docs/layout-5.0.md, Step 5).
-function stageWake(on){
- try{
-  if(on){
-   if(navigator.wakeLock && !_stageLock){
-    navigator.wakeLock.request('screen').then(function(l){ _stageLock = l; l.addEventListener('release', function(){ _stageLock = null; }); }).catch(function(){});
-   }
-  } else if(_stageLock){ _stageLock.release().catch(function(){}); _stageLock = null; }
- }catch(e){}
-}
+// Keep the screen on while Stage is up. modPlatform.keepAwake holds it under its own reason, so
+// the playing-state poll cannot release it, and in the app it is the idle timer (ModWake), which a
+// WebView with no Screen Wake Lock needs.
+function stageWake(on){ try{ modPlatform.keepAwake(!!on, 'stage'); }catch(e){} }
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible' && stageIsOpen()) stageWake(true); });
 document.addEventListener('keydown', function(e){ if(e.key==='Escape' && stageIsOpen()){ e.preventDefault(); closeStage(); } });
 function renderSetlistPerform(){
