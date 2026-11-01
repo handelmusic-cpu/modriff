@@ -856,3 +856,10 @@ and are the same renderer turned on its side.
   `n` equal steps, 1 to 64 (6, 9, 12, 15, 18, 24 are chips; - and + for any other), over `len` sixteenths, 1 to 64 like the drum
   grid, or over the drum pattern's length when `follow`. A step is `len / n` sixteenths. Triplets are 12 over 16. The 6.0j
   form (`pb`, `bars`) is read as the same thing.
+
+### Landed as 6.0l
+
+- Studio's Chords page runs in the mock's order: Rhythm bar, the builder, "Play it", the pads (Live keeps pads first).
+- Live's melody controls flow as two lines (the control rows are `display:contents`). Still not as the mock: the Sub chip
+  and the slot's more button in the Chords heading; Studio's Bass / Melody / Drums pages have no part title row and still
+  carry the Sync / Humanize strip; Perform's chord tiles.
