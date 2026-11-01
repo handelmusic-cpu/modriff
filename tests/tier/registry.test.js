@@ -235,7 +235,7 @@ eq(T.modPartOf('That', null), 'That is part of a paid pack', 'no module named: g
 {
   const sk = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '../../ios/App/ModRiffPacks.storekit'), 'utf8'));
   const byId = {}; sk.products.forEach(p => { byId[p.productID] = p; });
-  const idOf = k => 'com.handelmusic.modriff.' + (k === 'from1' || k === 'from2' || k === 'from3plus' ? 'fullstudio.' + k : k);
+  const idOf = k => 'Handel.modRiff.' + (k === 'from1' || k === 'from2' || k === 'from3plus' ? 'fullstudio.' + k : k);
   eq(sk.products.length, 11, 'the StoreKit file has eleven products');
   ok(sk.products.every(p => p.type === 'NonConsumable' && p.familyShareable === true), 'all non-consumable, all Family Sharing on');
   T.MODULE_ORDER.forEach(m => {
@@ -252,7 +252,7 @@ eq(T.modPartOf('That', null), 'That is part of a paid pack', 'no module named: g
   eq(T.MODULE_ORDER.map(m => byId[idOf(m)].displayPrice), ['5.99','4.99','3.99','3.99','3.99','4.99','1.99'], 'the module prices');
   // ModBilling.swift builds the same product IDs
   const swift = require('fs').readFileSync(require('path').join(__dirname, '../../ios/App/App/ModBilling/ModBilling.swift'), 'utf8');
-  ok(swift.indexOf('"com.handelmusic.modriff"') >= 0 && /fullstudio\.from1/.test(swift) && /fullstudio\.from2/.test(swift) && /fullstudio\.from3plus/.test(swift), 'ModBilling.swift builds the same product IDs');
+  ok(swift.indexOf('"Handel.modRiff"') >= 0 && /fullstudio\.from1/.test(swift) && /fullstudio\.from2/.test(swift) && /fullstudio\.from3plus/.test(swift), 'ModBilling.swift builds the same product IDs');
 }
 
 // ── 13. lints on the page itself

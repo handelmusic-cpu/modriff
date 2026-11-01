@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 
 const PROJECT = 'ios/App/App.xcodeproj';
 const SCHEME = 'App';
-const BUNDLE = 'com.handelmusic.modriff';
+const BUNDLE = 'Handel.modRiff';
 // Kept out of the repo's build directory so a stray clean cannot take the
 // whole DerivedData tree with it, and so two configurations share one cache.
 const DD = process.env.MODRIFF_DD || '/tmp/modriff-dd';

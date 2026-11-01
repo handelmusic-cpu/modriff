@@ -18,7 +18,7 @@ import CloudKit
 /// developer account has the capability, answers `status` with "not enabled" and
 /// the page leaves the switch off. To turn it on: see docs/v5-architecture.md,
 /// "iCloud sync" (add the iCloud capability with CloudKit and the container
-/// `iCloud.com.handelmusic.modriff`, then add `MODRIFF_CLOUDKIT` to Active
+/// `iCloud.Handel.modRiff`, then add `MODRIFF_CLOUDKIT` to Active
 /// Compilation Conditions for the App target).
 ///
 /// **The shape on the server.** One private-database zone, `modriff`, and one
@@ -53,7 +53,7 @@ public class ModCloud: CAPPlugin, CAPBridgedPlugin {
 
     #if MODRIFF_CLOUDKIT
 
-    private static let containerID = "iCloud.com.handelmusic.modriff"
+    private static let containerID = "iCloud.Handel.modRiff"
     private static let zoneName = "modriff"
     private static let tokenKey = "modriff.cloud.changeToken"
 

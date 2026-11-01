@@ -199,17 +199,17 @@ product is deleted, so check each one before creating it.
 
 | Product ID | Reference name | Display name (max 30) | Description (max 45) | Price |
 |---|---|---|---|---|
-| `com.handelmusic.modriff.sampler` | Sampler Engine | Sampler Engine | Sampled instruments, kits, and your samples | $5.99 |
-| `com.handelmusic.modriff.synth` | mõdSynth Engine | mõdSynth Engine | Full synth sound sets and every mõdFX effect | $4.99 |
-| `com.handelmusic.modriff.groove` | Groove Pack | Groove Pack | World grooves, kits, odd meters, aux channel | $3.99 |
-| `com.handelmusic.modriff.theory` | Theory Pack | Theory Pack | Every scale, chord type, and voicing | $3.99 |
-| `com.handelmusic.modriff.practice` | Practice & Perform Pack | Practice & Perform Pack | Practice tools, timeline, Stage, iReal batch | $3.99 |
-| `com.handelmusic.modriff.studio` | Studio Pack | Studio Pack | Stems, full exports, unlimited saves | $4.99 |
-| `com.handelmusic.modriff.sounds` | Sounds Pack | Sounds Pack | Keys, pads, vibes, and vintage basses | $1.99 |
-| `com.handelmusic.modriff.fullstudio` | Full Studio | Full Studio | Every pack, plus everything added later | $12.99 |
-| `com.handelmusic.modriff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Unlock every pack you don’t own yet | $10.99 |
-| `com.handelmusic.modriff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Unlock every pack you don’t own yet | $6.99 |
-| `com.handelmusic.modriff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Unlock every pack you don’t own yet | $3.99 |
+| `Handel.modRiff.sampler` | Sampler Engine | Sampler Engine | Sampled instruments, kits, and your samples | $5.99 |
+| `Handel.modRiff.synth` | mõdSynth Engine | mõdSynth Engine | Full synth sound sets and every mõdFX effect | $4.99 |
+| `Handel.modRiff.groove` | Groove Pack | Groove Pack | World grooves, kits, odd meters, aux channel | $3.99 |
+| `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every scale, chord type, and voicing | $3.99 |
+| `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Practice tools, timeline, Stage, iReal batch | $3.99 |
+| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Stems, full exports, unlimited saves | $4.99 |
+| `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Keys, pads, vibes, and vintage basses | $1.99 |
+| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, plus everything added later | $12.99 |
+| `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Unlock every pack you don’t own yet | $10.99 |
+| `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Unlock every pack you don’t own yet | $6.99 |
+| `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Unlock every pack you don’t own yet | $3.99 |
 
 The display names and descriptions are the page's own copy (`MODULE_COPY` in `index.html`),
 and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste from there.
@@ -275,7 +275,9 @@ like hidden purchases:
 ## Account steps the owner does
 
 1. Apple Developer Program membership (annual fee), then App Store Connect.
-2. Register the bundle ID `com.handelmusic.modriff`.
+2. Register the bundle ID `Handel.modRiff`. (Done, and it is permanent: an App Store Connect
+   record's bundle ID cannot be changed. The code once said `com.handelmusic.modriff`; it was
+   renamed to match what was registered. Product IDs and the CloudKit container follow it.)
 3. New App: name, language English (U.S.), bundle ID, SKU (any unique string,
    for example `modriff-ios-1`).
 4. Paste the text above, upload screenshots, set price and availability.

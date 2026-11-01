@@ -85,7 +85,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var slowCount: Int64 = 0
     private var missedCount: Int64 = 0          // blocks that took longer than the audio they made (an underrun, if the buffer behind was empty)
 
-    private static let signpostLog = OSLog(subsystem: "com.handelmusic.modriff",
+    private static let signpostLog = OSLog(subsystem: "Handel.modRiff",
                                            category: "modengine")
 
     // MARK: - Lifecycle

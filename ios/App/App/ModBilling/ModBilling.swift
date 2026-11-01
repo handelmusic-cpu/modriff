@@ -49,7 +49,7 @@ public class ModBilling: CAPPlugin, CAPBridgedPlugin {
     /// Product IDs can never be reused, even after deletion, so these are the
     /// ones written in docs/app-store.md and nowhere else. Prices are read from
     /// the store, never written here.
-    private static let idPrefix = "com.handelmusic.modriff"
+    private static let idPrefix = "Handel.modRiff"
     static let moduleKeys = ["sampler", "synth", "groove", "theory", "practice", "studio", "sounds"]
     static let bundleKeys = ["fullstudio", "from1", "from2", "from3plus"]
     static let allKeys = moduleKeys + bundleKeys
