@@ -910,3 +910,22 @@ and are the same renderer turned on its side.
 - Not 44 pt: the ruler (30 pt). A pinned 44 pt strip would cover the top row of the roll for good. `tests/roll/probe.js` holds the rest.
   Checked by hand in the browser pane (pointer events, no CDP touch: this Mac has no working Playwright browser): cell edges at 21 and 23 pt,
   a note placed on both rolls at the right step and pitch, Fit and Large, ruler and key menus, rotation. The probe has not been run.
+
+### Landed as 6.0r (a song recalls its sounds, or keeps yours)
+
+- Decision 4, built. A song has `soundsMode` (`'recall'` or `'keep'`) and `sounds`, a partial snapshot (`captureSounds()`: the keys in
+  `SONG_SOUND_KEYS` — the five voices, the envelopes, the character macros, every part's mõdSynth patch, the mixer's levels, pan and
+  EQ, the kit, the drum effects and the sampler slots, about 2.7 KB). Never in it: the chart, key, tempo, meter, step counts, which parts
+  are armed, mute and solo, and how things play (arp pattern and motion, voicing, glide, Touch Mod).
+- `_applySettings` takes the partial snapshot (`partial: true`). It had one unconditional reset, `arpMotion` back to `'off'`, now skipped
+  for a partial; `tests/songsounds/probe.js` diffs the whole snapshot before and after to prove nothing outside the sound keys moves.
+- A new song saves as `recall`. A song from before the switch has neither field and **keeps your sounds**: nothing you have changes what
+  you hear until you flip it. `perfSettings` still sets the tempo and how the arp plays on load; its wave, arp wave and wet/dry now follow the
+  switch. The voices inside a +Rhythm song's patterns (kit, lane levels, bass and melody wave, bass filter) are applied only when it recalls.
+- Loading a song that recalls shows "Sounds changed to match this song" with Undo, only if something changed. The Library row has
+  the switch ("Recalls sounds" / "Keeps my sounds", 44 pt). Turning it on for a song with no sounds saves the current ones with it and
+  says so; turning it off keeps what the song holds. Saving a recalling song refreshes its sounds; saving one that keeps yours leaves them.
+- Free build: the sounds go through the setters, so a Pro voice plays as a stand-in, and `proSongLoaded` / `proKeepSongApply` put the
+  originals back on a re-save.
+- Not done: Setups are unchanged (starting templates); the Build page's own setlist list has no switch (the Library does); share links
+  carry the sounds like the rest of the song, so a long setlist grows by about 3 KB a song against `SETUP_URL_MAX`.
