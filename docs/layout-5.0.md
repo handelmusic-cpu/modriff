@@ -849,3 +849,10 @@ and are the same renderer turned on its side.
 - Not yet: Presets / Save modes on the roll (the Rhythm picker and the sheet's Pattern save still do that), and a grid rhythm
   attached to a song chord (`slot.compDef`) is untested with more than one bar.
 - The Song tab icon is two beamed eighth notes; tab labels are 14 px.
+
+### 6.0k: the rhythm grid is a free step count
+
+- The chord rhythm roll on Studio is not tied to duple and triple. `def.grid = {n, len, follow}`: the loop is cut into
+  `n` equal steps, 1 to 64 (6, 9, 12, 15, 18, 24 are chips; - and + for any other), over `len` sixteenths, 1 to 64 like the drum
+  grid, or over the drum pattern's length when `follow`. A step is `len / n` sixteenths. Triplets are 12 over 16. The 6.0j
+  form (`pb`, `bars`) is read as the same thing.
