@@ -97,7 +97,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     const bar = document.getElementById('top-stack').getBoundingClientRect();
     return { slots: slots.join(), bottom: Math.round(r.bottom + scrollY), barTop: Math.round(bar.top), win: innerHeight };
   });
-  await tap('#tab-more');
+  await tap('#ft-drawer-grip');
   await tap('.ft-extras-btn:nth-of-type(2)');          // hide all
   const sheetShut = await page.evaluate(() => !document.getElementById('ft-more-menu').classList.contains('open'));
   s = await state();
@@ -107,7 +107,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(!fxOpen, 'and mõdFX folded to its pad');
   let h = await heights();
   check(h.slots === 'chords,melody,fx' && h.bottom <= h.barTop, 'three widgets, extras off: the whole stack ends above the bars', JSON.stringify(h));
-  await tap('#tab-more');
+  await tap('#ft-drawer-grip');
   await tap('.ft-extras-btn:nth-of-type(1)');          // show all
   s = await state();
   const fxOpen2 = await page.evaluate(() => !document.querySelector('.lv-slot[data-mod="fx"]').classList.contains('lv-folded'));

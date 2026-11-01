@@ -94,7 +94,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 3. The sheet's Setups.
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
-  await tap('#tab-more'); await tap('#ft-setups-btn');
+  await tap('#ft-drawer-grip'); await tap('#ft-setups-btn');
   const sheet = await page.evaluate(() => ({ page: (document.querySelector('.tab-page.active') || {}).id, lib: document.getElementById('songs-library-panel').style.display !== 'none', focus: document.activeElement && document.activeElement.id }));
   check(sheet.page === 'page-songs' && sheet.lib, 'the sheet’s Setups goes to the Library', JSON.stringify(sheet));
 

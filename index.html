@@ -4212,7 +4212,7 @@ body.rate-by-play .ft-pcol { position:static; }
 body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate,
 body.rate-by-play .ft-pcol .ft-rate {
  left:calc(50% + 26px); transform:none; bottom:auto;
- top:calc(6px + (var(--ft-r1,40px) - 27px) / 2);
+ top:calc(26px + (var(--ft-r1,40px) - 27px) / 2);
 }
 .ft-top-r:has(#ft-sect-prev:not([style*="none"])) { padding-left:48px; }
 /* The same step-aside when no song is loaded but the chip would land on Play.
@@ -4342,12 +4342,96 @@ body.light-mode .perf-bar #ft-playstop-btn.tp-stop {
 #ft-beat-dots { display:none; }
 .perf-bar #ft-beat-dots { display:flex; }
 
-/* The sheet's handle used to be a 24 pt band across the top of this bar, with a pill, a
-   chevron and (from 4.9.9.9.9.7.8c) the Live / Studio switch beside it: 26 pt of
-   padding above the transport and, from 5.2, 46. It is the caret in the tab bar now
-   (.tab-more, below), and Live / Studio are tabs, so the transport is only what you
-   steer with: the key, Play, the tempo and the parts. */
+/* "Oh I see it's almost like the drawer, slides up from the transport. Clever
+   and perfect" — and then the bar shipped with no sign that it does. */
+/* No position here: .perf-bar is position:fixed, which is already a
+   containing block for the handle below. Setting relative took the bar off
+   the bottom of the screen and dropped it into the page flow. */
+/* The handle sits on the bar's top edge, and the mõdFX patch button is the
+   last thing on the page above it — a few pixels apart, so reaching for one
+   caught the other. The bar gives the handle its own band, and the page keeps
+   clear of it. */
+.perf-bar { padding-top:26px; }
 #page-perform { margin-bottom:14px; }
+/* A real element, not ::before. A pseudo-element cannot take a gesture, and
+   this one has to: drawing a grab handle and then not letting anyone pull it
+   is worse than drawing nothing. Its hit area is the full width of the bar's
+   top edge, so the drag does not require finding a 34px target. */
+#ft-drawer-grip {
+ position:absolute; top:0; left:0; right:0; height:24px;
+ z-index:2; cursor:pointer; touch-action:none;
+ display:flex; align-items:center; justify-content:center;
+ /* It is a <button>, so without this it takes the UA's chrome — which drew a
+    full-width white slab across the top of the transport, over the parts row. */
+ -webkit-appearance:none; appearance:none;
+ background:none; border:none; padding:0; margin:0; box-shadow:none;
+ color:inherit; font:inherit;
+}
+/* A wide, flat triangle rather than a grey bar: a bar says "grab here" only to
+   someone who already knows the convention, and at --border2 it was barely
+   there at all. The triangle points at what it does — up to pull the sheet
+   open, down (same place) to put it away — and is drawn at 70% of the text
+   colour so it reads on both themes. :has() follows the sheet's own .open,
+   which half a dozen places in the app set and clear. */
+/* Louder in 4.9.9.9.9.7, because "I didn't know there was a sheet" kept
+   coming back: the triangle is bigger, it is the accent colour rather than a
+   dimmed text grey, and the band it sits in carries a faint wash of the same
+   colour so there is visibly a strip to pull rather than a mark floating on
+   the bar. The band is also the swipe target (see wireFtSheetSwipe), which is
+   why it is 24px rather than 18. */
+/* 4.9.9.9.9.7.5: a tab with a word on it. "I didn't know there was a sheet"
+   survived a bigger triangle, an accent colour and a wash across the band,
+   because a triangle says "something is here" and not what: nobody guesses that
+   Capture, Export, Setups, Undo, Live/Studio and Help are behind a 12px
+   arrowhead. A labelled pill says "More" and has a chevron that points at where
+   it goes. The pill is ::before and the chevron ::after, so the band's wash
+   moved onto the button itself; the label flips to "Close" while it is open,
+   which is also the only place the sheet says how to put it away. The whole
+   24px band is still the target, and still the swipe zone (wireFtSheetSwipe). */
+#ft-drawer-grip {
+ background:linear-gradient(to bottom, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+ border-top:1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+ border-radius:14px 14px 0 0;
+}
+/* 4.9.9.9.9.7.8: the word is gone. The pill and its chevron are enough, and
+   "More" read as a label for a button that is already obvious; the chevron now
+   sits in the middle of the pill, over Play. */
+#ft-drawer-grip::before {
+ content:''; position:relative; z-index:1;
+ display:flex; align-items:center; justify-content:flex-start; box-sizing:border-box;
+ min-width:64px; height:20px; padding:0; margin-top:-1px;
+ border-radius:11px; background:var(--accent); color:#07080f;
+ font:800 10px/1 'Outfit',sans-serif; letter-spacing:.16em; text-transform:uppercase;
+ box-shadow:0 2px 0 color-mix(in srgb, var(--accent) 50%, #000), 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+ transition:transform .18s ease, filter .12s;
+}
+/* The chevron: two borders of a rotated square, so it is drawn and not typed. */
+#ft-drawer-grip::after {
+ content:''; position:absolute; z-index:2; left:calc(50% - 3px); top:8px; width:6px; height:6px;
+ border-top:2px solid #07080f; border-left:2px solid #07080f; border-radius:1px;
+ transform:rotate(45deg); transition:transform .18s ease, top .18s ease; pointer-events:none;
+}
+#ft-drawer-grip:hover::before, #ft-drawer-grip:active::before { filter:brightness(1.12); }
+/* The bar's own Live / Studio switch: small, in the handle's band, right of the
+   pill. It is a sibling of the handle (not inside it) so a tap on it is not a
+   tap on the handle, and it sits above the handle's z-index. */
+.perf-bar .ft-vmt-band { position:absolute; top:3px; right:10px; z-index:3; border-radius:9px;
+ background:color-mix(in srgb, var(--surf2) 88%, transparent);
+ border-color:color-mix(in srgb, var(--pv) 45%, var(--surf2)); }
+.perf-bar .ft-vmt-band .vmt-btn { min-height:17px; height:17px; padding:0 8px; font:700 9px/17px 'Outfit',sans-serif;
+ letter-spacing:.08em; text-transform:uppercase; }
+.perf-bar .ft-vmt-band .vmt-btn.active { background:var(--pv); color:#0b0c16; }
+body:has(#ft-more-menu.open) #ft-drawer-grip::after { transform:rotate(225deg); top:6px; }
+/* Until the sheet has been opened once, the tab breathes. It stops for good on
+   the first open (modo-sheet-seen), so it is a one-time hint and not a thing
+   blinking at the bottom of the screen forever. */
+body.sheet-unseen #ft-drawer-grip::before { animation:ftGripHint 2.4s ease-in-out 3; }
+@keyframes ftGripHint {
+ 0%, 100% { transform:translateY(0) scale(1); }
+ 12% { transform:translateY(-3px) scale(1.08); }
+ 24% { transform:translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce){ body.sheet-unseen #ft-drawer-grip::before { animation:none; } }
 /* Two rows at 390px: transport + the five layer switches on the first, tempo
    and arp rate on the second. It had drifted to three — the top-row cluster
    moved down here (see .top-stack) without anything moving out to make room,
@@ -7354,11 +7438,16 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   .subnav-dock .subnav-btn { padding-top:3px; padding-bottom:3px; font-size:.5rem; }
   .tab-btn { padding:8px 2px 7px; font-size:.5rem; }
 
-  .perf-bar { padding-top:9px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
+  .perf-bar { padding-top:17px; padding-bottom:calc(4px + env(safe-area-inset-bottom,0px)); gap:4px 5px; flex-wrap:nowrap; }
   /* Sideways the bar is fighting for every pixel, so the handle keeps the
      smaller triangle it has always had here — the accent colour and the glow
      carry the "pull me" on their own, and the beat strip is drawn across this
      same band (see #ft-beat-dots below). */
+  #ft-drawer-grip { height:15px; }
+  .perf-bar .ft-vmt-band { top:1px; }
+  .perf-bar .ft-vmt-band .vmt-btn { min-height:13px; height:13px; font-size:8px; line-height:13px; padding:0 6px; }
+  #ft-drawer-grip::before { height:13px; min-width:48px; padding:0; font-size:8px; margin-top:0; }
+  #ft-drawer-grip::after { left:calc(50% - 2px); top:4px; width:4px; height:4px; }
   /* Sideways the bar is one long row again: the zones dissolve (display:contents
      keeps their children as the bar's own flex items), so the order is simply
      key, Play, tempo, song switch, then the parts with the rate beside Arp.
@@ -7375,16 +7464,16 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
   #ft-key-mode-short { display:none; }
   .ft-key-step { width:32px; }
   .ft-key-name { min-width:32px; font-size:18px; }
-  body .perf-bar .ft-parts > .ft-btn.arp, body .perf-bar .ft-pcol > .ft-btn.arp { flex:1 1 0; width:auto; }
+  body .perf-bar .ft-parts > .ft-btn.arp { flex:1 1 0; width:auto; }
   /* width:auto, not the base rule's 100%: with both left/right insets and a
      width set, the right inset is ignored, so the strip ran 14px past the
      right edge of every landscape phone. */
   /* Just under the handle's triangle, not through it: the triangle grew in
      4.9.9.9.9.7 and at top:10px the dots ran across its middle. */
-  .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; width:auto; top:3px; order:0; height:3px; gap:3px; pointer-events:none; }
+  .perf-bar #ft-beat-dots { position:absolute; left:14px; right:14px; width:auto; top:13px; order:0; height:3px; gap:3px; pointer-events:none; }
   .perf-bar #ft-beat-dots .beat-dot { height:3px; }
   .perf-bar #ft-playstop-btn { width:32px; height:32px; }
-  body .perf-bar .ft-parts > .ft-btn.arp, body .perf-bar .ft-pcol > .ft-btn.arp { max-width:110px; min-width:0; }
+  body .perf-bar .ft-parts > .ft-btn.arp { max-width:110px; min-width:0; }
   .perf-bar .ft-btn.arp { padding:5px 7px; font-size:.6rem; }
   .perf-bar .ft-vmt .vmt-btn { min-height:26px; }
   .perf-bar .ft-bounce, .perf-bar .ft-stems { padding:5px 8px; font-size:.5rem; }
@@ -7628,9 +7717,17 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     aside follows Play's actual edge: ftRateClamp publishes it as --ft-rate-left. */
  .ft-pcol .ft-rate { bottom:calc(100% + (var(--ft-r1,46px) - 44px) / 2 + 12px); }
  body:has(#ft-sect-prev:not([style*="none"])) .ft-pcol .ft-rate,
- body.rate-by-play .ft-pcol .ft-rate { left:var(--ft-rate-left, calc(50% + 26px)); bottom:auto; top:calc(6px + (var(--ft-r1,46px) - 44px) / 2); }
+ body.rate-by-play .ft-pcol .ft-rate { left:var(--ft-rate-left, calc(50% + 26px)); bottom:auto; top:calc(46px + (var(--ft-r1,46px) - 44px) / 2); }
  .ft-top-r:has(#ft-sect-prev:not([style*="none"])) { padding-left:52px; }
  body.rate-by-play .ft-top-r { padding-left:52px; }
+ /* The handle's band is the swipe zone for the sheet and now also the home of the
+    Live / Studio switch, so it grows to the floor with the switch in it. Step 3 of
+    the plan takes that switch out of here; until then it has to be hittable. */
+ .perf-bar { padding-top:46px; }
+ #ft-drawer-grip { height:44px; }
+ .perf-bar .ft-vmt-band { top:0; right:10px; border-radius:12px; }
+ .perf-bar .ft-vmt-band .vmt-btn { min-height:44px; height:44px; line-height:44px; padding:0 12px; }
+ .vmt-btn { min-height:44px; }
 
  /* ── Controls that sit in the Live widgets ── */
  .lv-cb { min-width:44px; min-height:44px; }
@@ -7721,7 +7818,7 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  label:has(> input[type=checkbox]), label:has(> input[type=radio]), .midi-map-pick { min-height:44px; display:inline-flex; align-items:center; gap:6px; }
  /* The ◈ is a hint on a row, not a button the row is about: it keeps its drawn size
     and takes the pad everywhere it appears, as it already did beside a drum lane. */
- ._toast-btn { min-height:44px; }
+ #ft-more-menu .ft-vmt .vmt-btn, ._toast-btn { min-height:44px; }
  .cp-item, .cp-sect { min-height:44px; }
  /* The chord editor (Songs, and the sheet under the Play pads) */
  .ci-seg button, .ci-type, .ci-type input, .ci-type button, .ci-more, .ci-headbtns button, .ci-fine, .dur-picker-done { min-height:44px; }
@@ -7732,41 +7829,6 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  .smp-badge { position:relative; }
  .smp-badge::after { content:''; position:absolute; left:50%; top:50%; width:44px; height:44px; transform:translate(-50%,-50%); }
 }
-/* ═══════════════════════════════════════
- TABS: Live | Studio | Song | Sound | caret (5.3)
- Fifty-two points, an icon over a word, and one mark for the tab you are on: a
- 3 pt bar along its top edge. What this replaces had a stripe of a rainbow along the
- top of every tab AND a glowing line under the active one that ran through its label
- on a short tab, which the owner reported as the colour getting in the way of the
- text on every phone. The fifth slot is the sheet's handle (it was a band across the
- transport): a red pill with a caret, 58 pt wide, which turns over while the sheet is
- open.
-═══════════════════════════════════════ */
-.tab-bar { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)) 58px; align-items:stretch; }
-.tab-btn { min-height:52px; padding:7px 2px 6px; gap:3px; font-size:.5rem; letter-spacing:.12em; justify-content:center;
- background-image:none; border-top:0; color:color-mix(in srgb, var(--text) 72%, transparent); }
-.tab-btn .ico { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-.tab-btn > span { line-height:1; }
-.tab-btn.active { color:var(--text); background-image:none; background-color:color-mix(in srgb, var(--tab-c) 14%, var(--surf2)); }
-.tab-btn.active::before { top:0; left:16%; right:16%; height:3px; border-radius:0 0 3px 3px; filter:none; opacity:1;
- background:linear-gradient(90deg, #ff7a45, #ffd23f, #2ad4c8, #9a6bff); }
-.tab-led { display:none; }
-#tab-live, #tab-studio, #tab-songs, #tab-mix { --tab-c:#b07bff; }
-.tab-more { display:flex; align-items:center; justify-content:center; min-height:52px; padding:0; border:0; background:none;
- box-shadow:inset 1px 0 0 var(--border2); cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
-.tab-more .caret { display:grid; place-items:center; width:44px; height:32px; border-radius:16px; background:var(--accent); color:#07080f;
- box-shadow:0 2px 0 color-mix(in srgb, var(--accent) 50%, #000), 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
- transition:transform .18s ease, filter .12s; }
-.tab-more .caret svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; transition:transform .18s ease; }
-.tab-more:active .caret { filter:brightness(1.12); }
-body:has(#ft-more-menu.open) .tab-more .caret svg { transform:rotate(180deg); }
-/* Until the sheet has been opened once, the pill breathes (it stops for good on the
-   first open: modo-sheet-seen). It is the only hint that there is a sheet. */
-body.sheet-unseen .tab-more .caret { animation:ftGripHint 2.4s ease-in-out 3; }
-@keyframes ftGripHint { 0%, 100% { transform:translateY(0) scale(1); } 12% { transform:translateY(-3px) scale(1.08); } 24% { transform:translateY(0) scale(1); } }
-@media (prefers-reduced-motion: reduce){ body.sheet-unseen .tab-more .caret { animation:none; } }
-body.light-mode .tab-more { box-shadow:inset 1px 0 0 #c2c6de; }
-
 /* ── Live: the More row ──
    One of the three shelves Studio shows under the chord grid, as a single row of 64 pt
    pads (the diatonic ones stay 124). The wrappers carry .advanced-only, which Live hides;
@@ -7945,13 +8007,6 @@ body.stage-open { overflow:hidden; }
 body.light-mode .tl-col { background:#12152a; outline-color:#252c48; color:#eef0ff; }
 body.light-mode .tl-col.active { background:var(--pg); color:#fff; }
 
-/* A dock with nothing in it takes no room. */
-.subnav-dock.is-empty { display:none !important; }
-
-/* The part switch you are on, in Studio (chrome B). A ring in the part's own colour so
-   it says which page is showing without a second row of tabs. */
-.perf-bar .ft-btn.arp.sel { box-shadow:inset 0 0 0 2px currentColor, 0 0 10px color-mix(in srgb, currentColor 35%, transparent); }
-
 /* ── The sides of the screen ──
    A phone on its side puts the Dynamic Island (or the notch) at one edge, and the
    rounded corners at both. The app handled the top and the bottom and never the left
@@ -7962,20 +8017,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
 .top-stack { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-inset-right, 0px); box-sizing:border-box; }
 .perf-bar { padding-left:calc(6px + env(safe-area-inset-left, 0px)); padding-right:calc(6px + env(safe-area-inset-right, 0px)); }
 .ft-more-menu { padding-left:calc(12px + env(safe-area-inset-left, 0px)); padding-right:calc(12px + env(safe-area-inset-right, 0px)); }
-.set-bar { padding-left:calc(12px + env(safe-area-inset-left, 0px)); padding-right:calc(4px + env(safe-area-inset-right, 0px)); }
 
-/* Settings, first row of the sheet. */
-.ft-settings-row .ft-sheet-items { flex:1 1 auto; }
-.ft-sheet-items > .ft-settings-btn { flex:1 1 100%; min-height:48px; justify-content:flex-start !important; gap:10px; padding:0 14px; font-size:.7rem; letter-spacing:.06em; color:var(--text) !important; }
-.ft-settings-btn .ico { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-.ft-settings-btn .ft-settings-go { margin-left:auto; font-size:1.2rem; color:var(--muted); }
-
-/* The Settings screen's own header: a title and Done, kept in view. */
-.set-bar { position:sticky; top:env(safe-area-inset-top, 0px); z-index:6; display:flex; align-items:center; justify-content:space-between;
- gap:10px; padding:6px 4px 6px 12px; margin:0 0 6px; background:var(--bg); border-bottom:1px solid var(--border2); }
-.set-bar-title { font-family:'Orbitron',sans-serif; font-size:.78rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--text); }
-.set-done { min-height:44px; min-width:76px; padding:0 18px; border-radius:var(--r-md); border:1px solid var(--accent); background:var(--accent); color:#07080f;
- font:700 .68rem 'Outfit',sans-serif; letter-spacing:.06em; cursor:pointer; touch-action:manipulation; }
 </style>
 </head>
 <body>
@@ -7997,32 +8039,25 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
      once a session — and during a jam Mix is where you go constantly and
      Songs is not. -->
 <nav class="tab-bar" id="tab-bar" role="tablist" aria-label="Sections">
-<!-- Live and Studio are tabs now, not a switch inside the transport. They are two
-     views of the same Play page (body.mode-basic is still the plumbing, and
-     setViewMode still the one function that changes it); a tab is just the place a
-     thumb already is. Studio also holds the Accomp page, reached by the part
-     switches (ftPartTap), so there is no Accomp tab. Settings is no tab either: it is
-     the first row of the sheet the caret opens. The order is the plan's:
-     Live | Studio | Song | Sound | caret (docs/layout-5.0.md, decisions 1 and 10). -->
- <button class="tab-btn active" id="tab-live" onclick="liveTab()"
-   role="tab" aria-selected="true" aria-controls="page-perform">
- <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4z M8 7v6 M12 7v6 M16 7v6"/></svg><span>Live</span>
- </button>
- <button class="tab-btn" id="tab-studio" onclick="studioTab()"
-   role="tab" aria-selected="false" aria-controls="page-perform" tabindex="-1">
- <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16 M12 4v16 M19 4v16 M3 9h4 M10 15h4 M17 8h4"/></svg><span>Studio</span>
+ <button class="tab-btn" id="tab-build" onclick="switchTab('build')"
+   role="tab" aria-selected="false" aria-controls="page-build" tabindex="-1">
+ Settings
  </button>
  <button class="tab-btn" id="tab-songs" onclick="switchTab('songs')"
    role="tab" aria-selected="false" aria-controls="page-songs" tabindex="-1">
- <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12 M9 18a3 3 0 1 1-.01 0 M19 16a3 3 0 1 1-.01 0"/></svg><span>Song</span>
+ Songs
  </button>
  <button class="tab-btn" id="tab-mix" onclick="switchTab('mix')"
    role="tab" aria-selected="false" aria-controls="page-mix" tabindex="-1">
- <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z M16 9a4 4 0 0 1 0 6 M18.5 6.5a8 8 0 0 1 0 11"/></svg><span>Sound</span>
+ Sound
  </button>
- <button type="button" class="tab-more" id="tab-more" aria-haspopup="true" aria-expanded="false"
-   aria-label="More: capture, export, undo, settings and help" onclick="toggleFtMore(event)">
- <span class="caret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l7-7 7 7"/></svg></span>
+ <button class="tab-btn" id="tab-accomp" onclick="switchTab('accomp')"
+   role="tab" aria-selected="false" aria-controls="page-accomp" tabindex="-1">
+ Accomp
+ </button>
+ <button class="tab-btn active" id="tab-perform" onclick="switchTab('perform')"
+   role="tab" aria-selected="true" aria-controls="page-perform">
+ Play
  </button>
  <div class="tab-led" id="tab-led" aria-hidden="true"></div>
 </nav>
@@ -8035,8 +8070,20 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
      with everything else you touch during a performance. -->
 <input type="file" id="project-file" accept=".json,application/json" style="display:none" onchange="projectOpenFile(this)">
 <div class="perf-bar" id="perf-bar">
- <!-- The handle that used to sit here (a 24 pt band with a pill and, beside it, the
-      Live / Studio switch) is the fifth slot of the tab bar now: #tab-more. -->
+ <button type="button" id="ft-drawer-grip" aria-label="More controls"
+   aria-haspopup="true" onclick="toggleFtMore(event)"></button>
+ <!-- Live / Studio, on the bar itself (4.9.9.9.9.7.8c). It was only in the sheet,
+      which is fine for a thing set once a session and wrong for the one switch
+      that changes what the whole screen is. It sits in the handle's band, to
+      the right of the pill, where there was nothing, so the bar did not get
+      taller. data-vmt, not ids: setViewMode keeps every copy in step, and the
+      sheet's own pair is the other copy. -->
+ <div class="vmt-pill ft-vmt-band" role="group" aria-label="View">
+  <button type="button" class="vmt-btn active" data-vmt="basic" onclick="setViewMode('basic')"
+    title="Live — every playing surface on one screen">Live</button>
+  <button type="button" class="vmt-btn" data-vmt="advanced" onclick="setViewMode('advanced')"
+    title="Studio — the whole rig: extra modes and scales, mõdSynth, the variants row">Studio</button>
+ </div>
  <!-- Three zones, top to bottom (4.9.9.9.9.7.4). The first row is what you
       steer with — key and scale on the left, Play dead centre, tempo and the
       song switch on the right — then the beat strip, then the parts row. The
@@ -8163,14 +8210,14 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
       used to run Drums·Arp·Bass·Mel while the Bass tab's own sub-tabs ran
       Bass·Melody·Arp, so the same three parts appeared in two different
       orders; each switch's colour now comes from PARTS (ftTintSwitches). -->
- <button class="ft-btn arp" id="ft-drum-btn" onclick="ftPartTap('drums')" title="Drums on/off">Drums</button>
+ <button class="ft-btn arp" id="ft-drum-btn" onclick="ftDrumClick()" title="Drums on/off">Drums</button>
  <!-- Aux Perc only appears when the loaded groove actually wrote one. A switch
       for a layer with nothing on it is a dead control that has to be explained;
       this way its presence IS the explanation. -->
- <button class="ft-btn arp off" id="ft-aux-btn" onclick="ftPartTap('aux')" style="display:none"
+ <button class="ft-btn arp off" id="ft-aux-btn" onclick="ftAuxClick()" style="display:none"
    title="Aux on/off — the second drum layer">Aux</button>
- <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftPartTap('bass')" title="Bass sequencer on/off">Bass</button>
- <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftPartTap('mel')" title="Melody sequencer on/off">Mel</button>
+ <button class="ft-btn arp off" id="ft-bas-btn" onclick="ftBassClick()" title="Bass sequencer on/off">Bass</button>
+ <button class="ft-btn arp off" id="ft-mel-btn" onclick="ftMelClick()" title="Melody sequencer on/off">Mel</button>
   <!-- The arp rate sits over the Arp toggle (4.9.9.9.9.7.6g), in the top row, in
        line with the key and Play. It lives INSIDE the Arp column and is lifted
        up into the top row with position:absolute, so it is over the toggle
@@ -8197,13 +8244,13 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
       role="slider" tabindex="0" aria-label="Arp rate — tap to cycle, drag to adjust"
       title="Arp rate — tap to cycle, drag to adjust">♪³</div>
    </div>
-  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftPartTap('arp')" title="Arpeggiator on/off. In Studio, tap Arp to open its page; tap it again to switch it on or off">Arp</button>
+  <button class="ft-btn arp off" id="ft-arp-btn" onclick="ftArpClick()" title="Arpeggiator on/off — its controls are on the Accomp tab, under Arp">Arp</button>
   </div>
  <!-- The sampler's pattern, as a part. Like Perc it appears only once there is
       one to switch: a pattern recorded on the pads. -->
- <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftPartTap('smp')" style="display:none"
+ <button class="ft-btn arp off" id="ft-smp-btn" onclick="ftSmpClick()" style="display:none"
    title="Sampler on/off — the pattern you record on the pads plays with the band">Smp</button>
- <button class="ft-btn arp" id="ft-chd-btn" onclick="ftPartTap('chords')" title="Chords on/off">Chords</button>
+ <button class="ft-btn arp" id="ft-chd-btn" onclick="ftChordClick()" title="Chords on/off">Chords</button>
  </div>
  <!-- Capture is in the sheet, with the rest of what you reach for between
       takes rather than during one — see the Song row there. Bounce stays on
@@ -8223,18 +8270,27 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
   <!-- The ⋯ is gone. Two buttons a thumb apart that open the same sheet is one
        too many, and the handle is the one that says what it does. -->
   <div class="ft-more-menu" id="ft-more-menu">
-   <!-- Settings, first. It was a tab; it is a place you go a few times a session, so it
-        is one row at the top of the sheet and opens as a full screen with Done
-        (openSettings / settingsDone). Live and Studio, which headed the sheet, are the
-        tabs now. -->
-   <div class="ft-sheet-row ft-settings-row">
+   <div class="ft-sheet-row ft-view-row">
     <div class="ft-sheet-items">
-     <button type="button" class="ft-btn ft-plain ft-settings-btn" id="ft-settings-btn" onclick="openSettings()"
-       title="Settings: the key, the tempo defaults, sounds, MIDI, themes, help">
-      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 .01 0z M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M18.4 5.6l-2.1 2.1 M7.7 16.3l-2.1 2.1"/></svg>
-      <span>Settings</span><span class="ft-settings-go" aria-hidden="true">&rsaquo;</span>
-     </button>
+   <!-- Live / Studio. It lived on the Play tab's key strip, so it could only be
+        reached from Play — while what it changes (the extra modes, mõdSynth, the
+        deck under the pads, every .advanced-only control) is on every tab. On
+        the transport it is on every tab too. Now it heads the transport sheet:
+        the bar's room went to the key and mode, which change mid-song, and this
+        is set once a session — one swipe up is a fair price for it.
+        Live and Studio, not Basic and Advanced. "Basic" undersold the view it
+        names — it is the one that puts every playing surface on one screen and
+        gets the furniture out of the way, which is the better instrument, not
+        the lesser one. The stored value stays 'basic' and the body class stays
+        .mode-basic: hundreds of rules key off that name, and renaming a CSS
+        class is not what was wrong with the words on the button. -->
+   <div class="vmt-pill ft-vmt" id="ft-vmt" role="group" aria-label="View">
+    <button class="vmt-btn active" id="vmt-basic" data-vmt="basic" onclick="setViewMode('basic')"
+      title="Live — every playing surface on one screen, nothing between you and it">Live</button>
+    <button class="vmt-btn" id="vmt-adv" data-vmt="advanced" onclick="setViewMode('advanced')"
+      title="Studio — the whole rig: the extra modes and scales, borrowed chords, mõdSynth, the variants row and the fingering charts">Studio</button>
     </div>
+   </div>
    </div>
 
    <!-- Live widgets: every widget's extras on, or off (decision 12). Only on Live, where
@@ -8422,7 +8478,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0b</span></div>
  </div>
 </div>
 
@@ -8502,7 +8558,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  <div class="kb-sc-group">
   <div class="kb-sc-hdr">Melody Typing — follows your current key/mode</div>
   <div class="kb-sc-live" id="kb-sc-live-keys">A=Do S=Re D=Mi F=Fa G=Sol H=La J=Ti</div>
-  <div class="kb-sc-row"><span class="kb-key">⌨ Keys ON/OFF</span><span class="kb-desc">Toggle melody typing on Live and Studio (the button above the melody strip).</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌨ Keys ON/OFF</span><span class="kb-desc">Toggle melody typing on the Play tab (the button above the melody strip).</span></div>
   <div class="kb-sc-row"><span class="kb-key">Z / X</span><span class="kb-desc">Shift melody typing octave down / up.</span></div>
  </div>
 
@@ -8531,7 +8587,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
   <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">With the tab bar focused: move between Settings, Songs, Mix, Accomp and Play. Home / End jump to the first or last.</span></div>
   <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + K</span><span class="kb-desc">Find any control by name and jump straight to it. Bare <b>/</b> does the same when you are not typing.</span></div>
   <div class="kb-sc-row"><span class="kb-key">Ctrl/⌘ + Z</span><span class="kb-desc">Undo — notes, patterns, the chart, the mix and every sound setting. Add Shift to redo.</span></div>
-  <div class="kb-sc-row"><span class="kb-key">⌥ 1 – 5</span><span class="kb-desc">Live · Studio · Song · Sound · Settings. (Option on a Mac, Alt elsewhere — ⌘ + number belongs to the browser's own tabs.)</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌥ 1 – 5</span><span class="kb-desc">Settings · Songs · Mix · Accomp · Play. (Option on a Mac, Alt elsewhere — ⌘ + number belongs to the browser's own tabs.)</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ ← / →</span><span class="kb-desc">Previous / next sub-tab — Drums, Bass, Melody, Arp and the rest. Tab does the same while nothing on the page has focus.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ ↑ / ↓</span><span class="kb-desc">Tempo up / down 1 BPM; with Shift, 5.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ L</span><span class="kb-desc">Switch Live ⇄ Studio.</span></div>
@@ -8546,7 +8602,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  </div>
 
  <div class="kb-sc-group">
-  <div class="kb-sc-hdr">Key &amp; Mode — Live and Studio only</div>
+  <div class="kb-sc-hdr">Key &amp; Mode — Play tab only</div>
   <div class="kb-sc-row"><span class="kb-key">↑ / ↓</span><span class="kb-desc">Transpose the key up / down a semitone.</span></div>
   <div class="kb-sc-row"><span class="kb-key">← / →</span><span class="kb-desc">Step along the mode row as it is drawn: Major, Minor, the two pentatonics, then the current scale's family.</span></div>
   <div class="kb-sc-row"><span class="kb-key">Shift + ← / →</span><span class="kb-desc">Step through every scale in the app, family by family, in the order the Mode menu lists them.</span></div>
@@ -9315,12 +9371,6 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  SETTINGS TAB
 ══════════════════════════════════════ -->
 <div class="tab-page" id="page-build">
- <!-- Settings is a full screen you open from the sheet, not a tab: Done goes back to
-      where you came from (settingsDone). -->
- <div class="set-bar">
-  <span class="set-bar-title">Settings</span>
-  <button type="button" class="set-done" onclick="settingsDone()">Done</button>
- </div>
 
  <!-- Four panes rather than one long scroll. Settings is not somewhere you
       browse; it is somewhere you go to change one known thing, and a named
@@ -9824,7 +9874,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10892,7 +10942,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
  <div class="panel-title"> mõdRïff — Quick Reference<span class="pk pk-ref">Reference</span></div>
  <p style="font-size:.52rem;color:var(--muted);line-height:1.8;margin-bottom:10px">
  mõdRïff is a harmonic performance &amp; composition tool. Tap chords to play,
- build songs in Song, mix and shape your sound in Sound, and find Settings behind the arrow on the tab bar.
+ build songs in the Songs tab, shape your sound in Settings.
  </p>
  <div id="help-sections"></div>
  </div>
@@ -10931,7 +10981,7 @@ body { padding-left:env(safe-area-inset-left, 0px); padding-right:env(safe-area-
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0a';
+const MODRIFF_VERSION = '6.0b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -30782,6 +30832,12 @@ function ftTintSwitches(){
   const s=document.querySelector('#sq-layerRow [data-sqseg="'+i+'"]'), part=PARTS.find(p=>p.id===id);
   if(s && part) s.style.setProperty('--pc', part.color);
  });
+ const acc=document.getElementById('tab-accomp');
+ if(acc){
+  const band=['drum','bass','melgen','arp'].map(id=>(PARTS.find(p=>p.id===id)||{}).color).filter(Boolean);
+  const stops=band.map((c,i)=>c+' '+(i*100/band.length)+'% '+((i+1)*100/band.length)+'%').join(', ');
+  acc.style.setProperty('--tab-strip','linear-gradient(90deg, '+stops+')');
+ }
 }
 ftTintSwitches();
 const PART_ORDER = PARTS.map(p=>p.id);
@@ -34185,7 +34241,7 @@ function syncFixedTransport(){
   psb.classList.add('lit');
  }
  if(typeof _syncLockScreen==='function') _syncLockScreen();
- ['tab-live','tab-studio'].forEach(function(id){ document.getElementById(id)?.classList.toggle('nav-playing', isAnythingPlaying()); });
+ document.getElementById('tab-perform')?.classList.toggle('nav-playing', isAnythingPlaying());
  // Both song controls repaint from state here, alongside the layer switches,
  // rather than only inside the toggle that changes it — anything that moves
  // song mode by another route (loading a song, an ending, a restored setup)
@@ -36857,14 +36913,14 @@ function _tutTab(t){ _tutSheet(false); if(typeof switchTab==='function') switchT
 function _tutView(v){ var b=document.body.classList.contains('mode-basic'); if((v==='basic')!==b && typeof setViewMode==='function') setViewMode(v==='basic'?'basic':'advanced'); }
 var TUT_LIST = [
  {id:'nav', name:'Getting around', steps:[
-  {t:'Tabs', x:'Live is the stage, Studio is the whole rig, Song is your charts and sections, Sound is the mixer and the voices.', el:'.tab-bar', go:function(){ _tutTab('perform'); }},
+  {t:'Tabs', x:'Play, Accomp, Mix, Songs, Settings. Play is where you perform.', el:'.tab-bar', go:function(){ _tutTab('perform'); }},
   {t:'Play / Stop', x:'Starts and stops everything. Space bar too.', el:'#ft-playstop-btn'},
   {t:'Part switches', x:'Bring each part in or out — while it plays.', el:'#ft-chd-btn'},
-  {t:'The sheet', x:'Tap the arrow at the right of the tabs for settings, capture, export, setups, undo and help.', el:'#tab-more'},
+  {t:'The sheet', x:'Tap the bright arrow above Play for capture, export, setups, undo and help.', el:'#ft-drawer-grip'},
   {t:'Find', x:'Jumps to any control by name.', el:'#ft-find-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'views', name:'Live & Studio', steps:[
-  {t:'Two views', x:'Live: a stage with big targets. Studio: every control. They are the first two tabs.', el:'#tab-live', go:function(){ _tutTab('perform'); }},
+  {t:'Two views', x:'Live: a stage with big targets. Studio: every control. In the sheet.', el:'#ft-vmt', go:function(){ _tutTab('perform'); _tutSheet(true); }},
   {t:'Settings, folded away', x:'Each instrument shows only what you play. ⋯ on its heading moves or swaps it; Add / reorder widgets at the foot (Studio Pack) brings in the sampler, mõdFX, drums and endings.', el:'.lv-slot .lv-ctl', go:function(){ _tutView('basic'); _tutTab('perform'); }},
   {t:'Studio pages', x:'Sub-tabs switch instruments.', el:'#pf-subnav', go:function(){ _tutView('advanced'); _tutTab('perform'); }}
  ]},
@@ -37100,11 +37156,11 @@ function _mutAddsElement(rs){
  return false;
 }
 var CTRL_TIPS = [
- ['#tab-live','Live — every playing surface on one screen'],
- ['#tab-studio','Studio — the whole rig: parts, pages, every control'],
- ['#tab-songs','Song — build, perform and print charts'],
+ ['#tab-build','Settings — sounds, timing, setups, MIDI'],
+ ['#tab-songs','Songs — build, perform and print charts'],
  ['#tab-mix','Sound — the mixer, every part\u2019s voice and mõdSynth'],
- ['#tab-more','More — settings, capture, export, undo and help'],
+ ['#tab-accomp','Accomp — the band: drums, bass, melody, arp'],
+ ['#tab-perform','Play — chords, melody, sampler and mõdFX'],
  ['#pf-chords-btn','The chord grid'], ['#pf-melody-btn','The melody strip'],
  ['#pf-pads-btn','The sampler pads ◈'], ['#pf-fx-btn','The mõdFX pad'],
  ['#ac-drums-btn','Drum grid — two layers, Kit and Aux'], ['#ac-bass-btn','Bass line and Generate'],
@@ -42190,7 +42246,7 @@ document.addEventListener('keyup', e => {
 //    the app's own commands live on ⌥, which every Mac keyboard has and no
 //    browser uses for anything here. Read by e.code, because ⌥ turns e.key
 //    into ¡ ™ £ on a Mac.
-//        ⌥1–5     Live · Studio · Song · Sound · Settings
+//        ⌥1–5     Settings · Songs · Mix · Accomp · Play
 //        ⌥← / ⌥→  the sub-tabs of this tab (Drums Bass Melody Arp, …)
 //        ⌥↑ / ⌥↓  tempo ±1 (⇧ for ±5)
 //        ⌥L       Live ⇄ Studio
@@ -42263,8 +42319,7 @@ function kbDrumHit(ti, accent){
 function _kbAnyModalOpen(){
  return !!document.querySelector('.modal-overlay.visible, .ps-load.visible, .chordpick-pop.open, .stage.open');
 }
-// In the order of the tab bar: Live, Studio, Song, Sound, then Settings (the sheet's first row).
-var KB_TABS = ['live','studio','songs','mix','build'];
+var KB_TABS = ['build','songs','mix','accomp','perform'];
 function _kbSubtabs(){
  // The sub-tab row that is showing: the docked one, or the active tab's own.
  var rows = Array.prototype.slice.call(document.querySelectorAll('.subnav'));
@@ -42286,7 +42341,7 @@ document.addEventListener('keydown', function(e){
  // ── Option layer ──
  if(e.altKey && !e.metaKey && !e.ctrlKey){
   var dm = code.match(/^Digit([1-5])$/);
-  if(dm){ claim(); var kt=KB_TABS[+dm[1]-1]; if(kt==='build') openSettings(); else _tabGo(kt); return; }
+  if(dm){ claim(); switchTab(KB_TABS[+dm[1]-1]); return; }
   if(code==='ArrowLeft' || code==='ArrowRight'){ claim(); kbSubtabStep(code==='ArrowRight'?1:-1); return; }
   if(code==='ArrowUp' || code==='ArrowDown'){ claim(); nudgeBpm((code==='ArrowUp'?1:-1)*(e.shiftKey?5:1)); return; }
   if(code==='KeyL'){ claim(); setViewMode(document.body.classList.contains('mode-basic') ? 'advanced' : 'basic'); return; }
@@ -43641,7 +43696,6 @@ function setPerformMode(m){
  // than on an empty panel.
  if(m==='fx' && !_fxAllowed()) m='chords';
  performMode = m;
- try{ partSelSync(); }catch(e){}
  // Basic puts every playing surface on one screen. The sub-tabs put three
  // taps between three things you use together — chords under a hand, melody
  // under the other, mõdFX under a thumb — on the one tab whose whole job is
@@ -43695,7 +43749,6 @@ function setPerformMode(m){
 function setBassMelMode(m){ return setAccompMode(m); }
 function setAccompMode(m){
  bassMelMode = m; accompMode = m;
- try{ partSelSync(); }catch(e){}
  document.getElementById('ac-drums-btn')?.classList.toggle('active', m==='drums');
  document.getElementById('ac-bass-btn')?.classList.toggle('active', m==='bass');
  document.getElementById('ac-mel-btn')?.classList.toggle('active', m==='melody');
@@ -44483,113 +44536,16 @@ function subnavDockMount(){
 }
 // Which one belongs to the tab now open. A tab with no row shows none, and the
 // dock collapses to nothing rather than leaving a bar of empty chrome.
-// accomp has no row: its four parts are picked by the part switches on the bar
-// (ftPartTap), which is the row the plan means by "the bottom parts row picks the part
-// in Studio". bm-subnav is still mounted (setAccompMode keeps its LED honest) but
-// never shown.
-var SUBNAV_FOR={perform:'pf-subnav', songs:'songs-subnav', accomp:null, build:'set-subnav', mix:'mix-subnav'};
+var SUBNAV_FOR={perform:'pf-subnav', songs:'songs-subnav', accomp:'bm-subnav', build:'set-subnav', mix:'mix-subnav'};
 function subnavDockSync(t){
  var dock=document.getElementById('subnav-dock'); if(!dock) return;
  var want=SUBNAV_FOR[t]||null;
  Array.prototype.forEach.call(dock.children, function(el){ el.hidden = (el.id!==want); });
- // A dock with nothing showing must not take a share of the bottom stack: in landscape
- // the tabs and the sub-tabs sit side by side and an empty dock was half the width.
- // Live hides the Play page's own row (every surface is on the one screen), so there
- // it counts as nothing too.
- var none = !want || (want==='pf-subnav' && document.body.classList.contains('mode-basic'));
- dock.classList.toggle('is-empty', none);
  // The LED under the active sub-tab is positioned from a measurement, so it
  // has to be told once the row it sits in is actually on screen.
  if(want && typeof positionSubnavLed==='function'){
   requestAnimationFrame(function(){ try{ positionSubnavLed(want); }catch(e){} });
  }
-}
-// ── Live | Studio | Song | Sound ──
-// Live and Studio are two views of the Play page and Studio is also the home of the
-// Accomp page, so which tab is lit is a question about the page AND the view, not
-// about the page alone. One function answers it, and every way of changing either
-// (a tab, the L key, Find, a tutorial, the part switches) ends in _tabSync.
-// var, not let: switchTab runs from boot, long before a let down here would exist.
-var _settingsFrom = 'perform', _studioLast = 'perform';
-function _activePageId(){
- var a=document.querySelector('.tab-page.active');
- return a ? a.id.replace(/^page-/,'') : 'perform';
-}
-function _tabFor(page){
- if(page==='perform') return document.body.classList.contains('mode-basic') ? 'live' : 'studio';
- if(page==='accomp') return 'studio';
- if(page==='songs' || page==='mix') return page;
- return null;                                     // Settings, the Guide: no tab is theirs
-}
-function _tabSync(){
- var want=_tabFor(_activePageId());
- document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('active', b.id==='tab-'+want); });
- if(typeof syncTabRoving==='function') syncTabRoving();
- if(typeof partSelSync==='function') partSelSync();
- if(typeof positionTabLed==='function') positionTabLed();
-}
-function liveTab(){
- if(!document.body.classList.contains('mode-basic') && typeof setViewMode==='function') setViewMode('basic');
- switchTab('perform');
-}
-function studioTab(){
- if(document.body.classList.contains('mode-basic') && typeof setViewMode==='function') setViewMode('advanced');
- switchTab(_studioLast==='accomp' ? 'accomp' : 'perform');
-}
-// ── The part switches, in Studio ──
-// In Live they are five on/off switches, as they always were. In Studio the same row
-// picks the part's page (chrome B in the plan): a tap on a part that is not the page
-// you are on goes there, and a tap on the part you are already on switches it on or
-// off. That is the double duty the plan flags as the thing to try on a phone; what it
-// costs is that bringing a part in from Studio is two taps when you are elsewhere.
-// Only on the Studio pages (Play and Accomp): from Song or Sound the row stays what
-// it was, five switches, because nothing there is a part's page to go to.
-var PART_PAGE = {
- drums:{tab:'accomp', acc:'drums'}, aux:{tab:'accomp', acc:'drums'}, bass:{tab:'accomp', acc:'bass'},
- mel:{tab:'accomp', acc:'melody'}, arp:{tab:'accomp', acc:'arp'},
- chords:{tab:'perform', pf:'chords'}, smp:{tab:'perform', pf:'pads'}
-};
-var PART_BTN = {drums:'ft-drum-btn', aux:'ft-aux-btn', bass:'ft-bas-btn', mel:'ft-mel-btn', arp:'ft-arp-btn', chords:'ft-chd-btn', smp:'ft-smp-btn'};
-function _onStudioPart(){
- if(document.body.classList.contains('mode-basic')) return false;
- var pg=_activePageId(); return pg==='perform' || pg==='accomp';
-}
-// Which part's page is showing, or null (the melody keys and mõdFX are surfaces, not a
-// part's page, so no switch is lit for them).
-function studioPartSel(){
- if(!_onStudioPart()) return null;
- try{
-  var pg=_activePageId();
-  if(pg==='accomp') return {drums:'drums', bass:'bass', melody:'mel', arp:'arp'}[accompMode] || null;
-  return {chords:'chords', pads:'smp'}[performMode] || null;
- }catch(e){ return null; }
-}
-function partSelSync(){
- var sel=_onStudioPart() ? studioPartSel() : null;
- for(var k in PART_BTN){ var b=document.getElementById(PART_BTN[k]); if(b) b.classList.toggle('sel', k===sel); }
-}
-function ftPartTap(part){
- var toggle={drums:ftDrumClick, aux:ftAuxClick, bass:ftBassClick, mel:ftMelClick, arp:ftArpClick, chords:ftChordClick, smp:ftSmpClick}[part];
- var d=PART_PAGE[part];
- if(d && _onStudioPart() && studioPartSel()!==part){
-  if(d.tab==='accomp'){ switchTab('accomp'); setAccompMode(d.acc); }
-  else { switchTab('perform'); setPerformMode(d.pf); }
-  partSelSync();
-  return;
- }
- if(toggle) toggle();
-}
-function _tabGo(id){ if(id==='live') liveTab(); else if(id==='studio') studioTab(); else switchTab(id); }
-// Settings: first row of the sheet, a full screen, Done goes back.
-function openSettings(){
- if(typeof closeFtMore==='function') closeFtMore();
- var from=_activePageId(); if(from!=='build') _settingsFrom=from;
- switchTab('build');
- window.scrollTo(0,0);
-}
-function settingsDone(){
- var to=_settingsFrom && _settingsFrom!=='build' ? _settingsFrom : 'perform';
- switchTab(to);
 }
 function switchTab(t){
  // A falsy target (e.g. the onboarding tour's intro step, which wants to
@@ -44601,17 +44557,10 @@ function switchTab(t){
  // deep link) used to strip .active from every button and match no page,
  // leaving the app blank with no way back. Ignore it instead.
  if(!document.getElementById('page-'+t)) return;
- // Accomp is a Studio page now (there is no Accomp tab): asking for it from Live
- // puts the app in Studio first, so the page, the tab that is lit and the part
- // switch that is selected all say the same thing. Find, the tutorials and the
- // part switches all arrive here with 'accomp'.
- if(t==='accomp' && document.body.classList.contains('mode-basic') && typeof setViewMode==='function') setViewMode('advanced');
+ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
+ const tb = document.getElementById('tab-'+t); if(tb) tb.classList.add('active');
  const pg = document.getElementById('page-'+t); if(pg) pg.classList.add('active');
- // Settings opens from the sheet and goes back to where it was opened from.
- if(t!=='build') _settingsFrom = t;
- if(t==='perform' || t==='accomp'){ if(!document.body.classList.contains('mode-basic')) _studioLast = t; }
- _tabSync();
  if(typeof syncTabRoving==='function') syncTabRoving();
  subnavDockSync(t);
  // Live's slots borrow the Accomp grids; leaving Play gives them back.
@@ -44695,7 +44644,7 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
 The key's <strong>‹ ›</strong> step a <strong>semitone</strong> at a time, or round the <strong>circle of fifths</strong> — › goes up a fifth (C to G), ‹ down a fifth (C to F), so each step is one chord-change away. Pick which under <strong>Key arrows</strong> at the top of the mode list.<br><br>
 <strong>Key colours</strong> (Settings › General) choose which key is red. <span class="tip-pro">Theory Pack</span> adds going round the wheel by fifth instead of by semitone, so neighbours in the circle of fifths are neighbours in colour.<br><br>
 <strong>Numbers</strong> (Settings › Chords &amp; timing) switches chord names to Nashville / Roman numerals (I, ii, iii, IV, V, vi, vii°) so the relationships stay readable in any key. Reference pitch is standard A=440 unless you change it under <strong>Settings › Master tune</strong> (432 / 442 / 444 / 528, or anything from 415–466 Hz).<br><br>
-<strong>Arrow keys</strong> on Live and Studio: ↑ / ↓ transpose, ← / → step through every mode and scale in the row above, in the order they are drawn.`
+<strong>Arrow keys</strong> on the Play tab: ↑ / ↓ transpose, ← / → step through every mode and scale in the row above, in the order they are drawn.`
  },
  'chords': {
  title: 'Chord Grid',
@@ -44767,7 +44716,7 @@ Each chord carries its own <strong>length</strong>, from a fraction of a bar up 
 Tap a chord already in the chart and its editor opens under the progression: <strong>Type</strong> (triad, 7, 9, sus…), <strong>Length</strong>, <strong>Rhythm</strong> — how that chord re-strikes while it is held — and a row for a slash bass or a rest. The type you pick also becomes the default for the next chord you add.<br><br>
 <strong>Sections</strong> (Intro, Verse, Chorus…) are separate lists of chords. Each one has a <strong>Loop</strong> count: how many passes it takes before the song moves on, or <strong>∞</strong> to stay there until you tap Next. Rename, reorder and delete are behind the <strong>⋯</strong> on the section card. During playback the Songs page shows which pass each section is on, so the arrangement is visible while it runs.<br><br>
 <strong>Open library</strong> is the fastest way to start: common progressions already in your key, charts imported from iReal Pro (share a song or playlist as a link in iReal Pro and paste it in, or open an exported playlist file), and your own saved songs — each with a preview, and each offering to replace the song or arrive as a new section.<br><br>
-<strong>Transpose</strong> rewrites the stored chart into a new key, unlike the ‹ / › by the key on the transport, which is a live capo. <strong>Save</strong> keeps it in the setlist; <strong>File</strong> holds Share, MIDI, PDF and the setlist's JSON.`
+<strong>Transpose</strong> rewrites the stored chart into a new key, unlike the − / + on the Play tab which is a live capo. <strong>Save</strong> keeps it in the setlist; <strong>File</strong> holds Share, MIDI, PDF and the setlist's JSON.`
  },
  'bassgen': {
   title: 'Bassline generator & Follow',
@@ -48703,7 +48652,7 @@ function stopEverything(){
 //
 // Tab now does what Tab does. The bar is first in the DOM, so it is still the
 // first thing a keyboard user lands on, and the arrows do what the hijack did.
-const TAB_ORDER=['live','studio','songs','mix'];
+const TAB_ORDER=['build','mix','songs','accomp','perform'];
 // Which Accomp sub-tab is showing. Drums leads, per PARTS order.
 var accompMode='drums';
 function _tabBtns(){ return TAB_ORDER.map(t=>document.getElementById('tab-'+t)).filter(Boolean); }
@@ -48733,7 +48682,7 @@ document.getElementById('tab-bar')?.addEventListener('keydown', e => {
  // Without this, an arrow press on the tab bar would switch section AND
  // transpose the key on the way past.
  e.stopPropagation();
- _tabGo(TAB_ORDER[j]);
+ switchTab(TAB_ORDER[j]);
  btns[j].focus();
 });
 
@@ -62739,14 +62688,6 @@ function setViewMode(mode){
   if(typeof mdPickInit==='function'){ mdPickInit(); mdPickSyncLabel(); }
   // My Chords sit in the key's row in Live and on their own row in Studio.
   try{ if(typeof cpRenderUserRow==='function') cpRenderUserRow(); }catch(e){}
-  // Accomp belongs to Studio, so going to Live from it lands on Play; and the lit
-  // tab and the selected part switch follow the view whichever way it was changed
-  // (a tab, the L key, a tutorial, a loaded layout).
-  try{
-    if(isBasic && typeof _activePageId==='function' && _activePageId()==='accomp') switchTab('perform');
-    else if(typeof _tabSync==='function') _tabSync();
-    if(typeof subnavDockSync==='function' && typeof _activePageId==='function') subnavDockSync(_activePageId());
-  }catch(e){}
 }
 
 // msApplyBasicGate used to live here (4.9.9.9.9.7.1). Live (Basic) hid
@@ -62921,7 +62862,7 @@ function pfMountVoicePickers(){
 // which is exactly how it was described. The opener has to count as inside.
 function _ftMoreIsOpener(t){
  if(!t) return false;
- const g=document.getElementById('tab-more');
+ const g=document.getElementById('ft-drawer-grip');
  const m=document.getElementById('ft-more-menu');
  return !!((g && (t===g || g.contains(t))) || (m && (t===m || m.contains(t))));
 }
@@ -62930,7 +62871,6 @@ function toggleFtMore(e){
   if(e) e.stopPropagation();
   var m = document.getElementById('ft-more-menu'); if(!m) return;
   var open = !m.classList.contains('open');
-  var _tm=document.getElementById('tab-more'); if(_tm) _tm.setAttribute('aria-expanded', open?'true':'false');
   if(!open){ _ftSheetShut(m); }
   else { m.classList.remove('closing'); m.classList.add('open'); }
   // However it was opened — tap or swipe — the handle stops hinting.
@@ -62952,7 +62892,6 @@ function toggleFtMore(e){
 // navigates away from the transport calls this, so the menu can't be left
 // hanging open over the tab it just sent you to.
 function closeFtMore(){
-  var _tm=document.getElementById('tab-more'); if(_tm) _tm.setAttribute('aria-expanded','false');
   var m = document.getElementById('ft-more-menu');
   if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
@@ -62985,7 +62924,7 @@ function ftGo(fn){ closeFtMore(); try{ fn(); }catch(e){ console.warn(e); } }
 // button's own onclick (bubble phase), so the press always lands first.
 // Stems stays open on purpose — it is a switch you set and then press Bounce.
 // Undo, Redo, Click and Snap stay open too: they are pressed in runs.
-var FT_SHEET_CLOSERS = '.ft-cap, .ft-cap-back, #ft-bounce-btn, .ft-extras-btn';
+var FT_SHEET_CLOSERS = '#vmt-basic, #vmt-adv, .ft-cap, .ft-cap-back, #ft-bounce-btn, .ft-extras-btn';
 (function(){
  var m = document.getElementById('ft-more-menu'); if(!m) return;
  m.addEventListener('click', function(e){
@@ -63047,7 +62986,7 @@ function ftSheetOpen(){
 function ftSheetClose(){ if(_ftSheetIsOpen()) closeFtMore(); }
 (function wireFtSheetSwipe(){
  var SWIPE=30;            // px of vertical travel before it counts as one
- var grip=document.getElementById('tab-more');
+ var grip=document.getElementById('ft-drawer-grip');
  var sheet=document.getElementById('ft-more-menu');
  if(grip){
   // The tap path keeps its own onclick; this only ever fires for a drag, and
@@ -67531,7 +67470,7 @@ const A11Y_SLIDER = {
 // Buttons identified by id.
 const A11Y_BTN = {
  'ft-ms-led'   : 'Something is muted or soloed — clear it',
- 'tab-more' : 'More: capture, export, undo, settings and help',
+ 'ft-drawer-grip' : 'More controls',
  'sq-stepsDn'  : 'One fewer step',
  'sq-stepsUp'  : 'One more step',
  'slb-key-dn'  : 'Transpose song down a semitone',
