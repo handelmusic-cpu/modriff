@@ -8276,6 +8276,10 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
 .crh-cell > i { display:block; width:100%; border-radius:6px; background:#9b6dff; }
 .crh-cell[data-now] { outline:2px solid #fff; outline-offset:-2px; }
 .crh-hint { margin:8px 2px 0; font-size:.55rem; line-height:1.5; color:var(--muted); }
+
+.crh .crh-chips { margin:0 0 8px; overflow-x:auto; }
+.crh .tg .tb.crh-st { min-width:48px; font-size:.9rem; }
+.crh .tg .tb.crh-val { min-width:52px; }
 </style>
 </head>
 <body>
@@ -8608,7 +8612,7 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0j</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0k</span></div>
  </div>
 </div>
 
@@ -9012,13 +9016,14 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
    title="Keep going: the rhythm carries on after you lift your finger, until Stop or another chord. Off: it plays only while you hold the chord">Keep going</button>
   <button type="button" class="cr-sw cr-draw" id="cr-draw" onclick="crEditOpen()" title="Edit this rhythm on a roll: add, remove and shape the hits, swing, and save it">Edit rhythm</button>
  </div>
- <!-- The chord rhythm builder, on the Studio page (6.0j): the roll drawn in place, with how long it is, how finely it
-      is cut, and whether it feels in twos or in threes. Length is the drum pattern's (Drums) or its own (1, 2, 4
-      bars); Feel is Duple (eighths, sixteenths, thirty-seconds) or Triple (eighth and sixteenth triplets). Tap a
-      step to cycle it: off, soft, normal, accent. What is drawn is the rhythm the pads play (CR), at once. -->
+ <!-- The chord rhythm builder, on the Studio page (6.0j): the roll drawn in place, with how long the loop is and
+      how many steps it is cut into. Length is the drum pattern's (Drums) or its own, 1 to 64 sixteenths as the
+      drum grid's is; Steps is any count from 1 to 64 (6, 9, 12, 15, 18, 24 for a triplet or a nine). Tap a step
+      to cycle it: off, soft, normal, accent. What is drawn is the rhythm the pads play (CR), at once. -->
  <div class="crh advanced-only" id="crh" role="group" aria-label="Chord rhythm builder">
-  <div class="crh-row"><b>Length</b><div class="tg" id="crh-len"></div></div>
-  <div class="crh-row"><b>Grid</b><div class="tg" id="crh-grid"></div><div class="tg" id="crh-feel"></div></div>
+  <div class="crh-row"><b>Length</b><div class="tg" id="crh-len"><button type="button" class="tb" id="crh-follow" aria-label="Follow the drum pattern's length">Drums</button><button type="button" class="tb crh-st" id="crh-lminus" aria-label="One sixteenth shorter">&minus;</button><button type="button" class="tb crh-val" id="crh-lval" aria-label="Its own length, in sixteenths">16</button><button type="button" class="tb crh-st" id="crh-lplus" aria-label="One sixteenth longer">+</button></div></div>
+  <div class="crh-row"><b>Steps</b><div class="tg" id="crh-n"><button type="button" class="tb crh-st" id="crh-nminus" aria-label="One step fewer">&minus;</button><button type="button" class="tb crh-val active" id="crh-nval" aria-label="Steps">16</button><button type="button" class="tb crh-st" id="crh-nplus" aria-label="One step more">+</button></div></div>
+  <div class="crh-chips tg" id="crh-chips" role="group" aria-label="Common step counts"></div>
   <div class="crh-roll" id="crh-roll" role="group" aria-label="Chord rhythm steps"></div>
   <div class="crh-hint" id="crh-hint"></div>
  </div>
@@ -10038,7 +10043,7 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0j</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0k</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11153,7 +11158,7 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0j';
+const MODRIFF_VERSION = '6.0k';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -46631,22 +46636,22 @@ function rhyNorm(def){
  return {name:String(def.name||'').slice(0, 28), steps:steps, cells:cells, swing:sw};
 }
 // ── Grid rhythms (the Studio roll) ──
-// {name, grid:{pb, bars, follow}, cells:[{on, acc, soft, rat, len}], swing}. pb is cells per beat: 2 eighths, 4
-// sixteenths, 8 thirty-seconds (a duple feel) or 3 eighth triplets, 6 sixteenth triplets (a triple feel). bars is
-// 1, 2 or 4, or follow is true and the length is the drum pattern's, in bars. At most 64 cells. The loop is
-// bars of the meter's bar, so a rhythm that follows the drums goes round with them and one that does not
-// goes round at its own length. A cell is a fraction of a sixteenth (rhyCompile), which is how a triplet
-// sits in the same engine as everything else.
-var RHY_PB = [2, 3, 4, 6, 8];
+// {name, grid:{n, len, follow}, cells:[{on, acc, soft, rat, len}], swing}. n is how many equal steps the loop is cut
+// into, any number from 1 to 64 (6, 9, 12, 15, 18, 24 are a triplet, a nine, a swing of twelves: whatever fits);
+// len is the loop's own length in sixteenths, 1 to 64 as the drums' is; follow says the loop is the drum pattern's
+// length instead. A step is L / n of a sixteenth (rhyCompile), so a triplet, a nine and a thirty-second all go through
+// the same engine as the plain sixteenths. The first form of this (6.0j) said pb cells a beat over bars bars: it is
+// read as the same thing here.
 function rhyGridDims(g){
- var bs = _songBarSteps(), beats = Math.max(1, Math.round(bs / 4));
- var pb = RHY_PB.indexOf(g && g.pb|0) >= 0 ? (g.pb|0) : 4;
+ var bs = _songBarSteps(), cl = function(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); };
+ g = g || {};
  var drum = (typeof window._sqSteps==='function') ? (window._sqSteps() || bs) : bs;
- var bars = (g && g.follow) ? Math.max(1, Math.min(4, Math.round(drum / bs))) : ([1,2,4].indexOf(g && g.bars|0) >= 0 ? (g.bars|0) : 1);
- if(bars === 3) bars = 2;
- while(pb * beats * bars > 64 && bars > 1) bars = bars >> 1;
- while(pb * beats * bars > 64 && pb > 2) pb = (pb === 3 ? 2 : pb === 6 ? 3 : pb === 8 ? 4 : 2);
- return {pb:pb, bars:bars, n:pb * beats * bars, L:bs * bars, follow:!!(g && g.follow), trip:(pb === 3 || pb === 6)};
+ var len = g.len|0, n = g.n|0;
+ if(!len && g.bars) len = bs * (g.bars|0);
+ if(!n && g.pb) n = (g.pb|0) * Math.max(1, Math.round(bs / 4)) * ((g.bars|0) || 1);
+ len = cl(len || bs, 1, 64); n = cl(n || 16, 1, 64);
+ var follow = !!g.follow;
+ return {n:n, len:len, follow:follow, L: follow ? cl(drum, 1, 64) : len};
 }
 function rhyNormGrid(def){
  var D = rhyGridDims(def.grid), src = def.cells || [], m = src.length || D.n, cells = [], i;
@@ -46659,10 +46664,10 @@ function rhyNormGrid(def){
    t.rat = Math.max(1, Math.min(4, c.rat|0 || 1)); t.len = Math.max(0, Math.min(8, c.len|0)); }
  });
  var sw = (def.swing==null || isNaN(+def.swing)) ? null : Math.max(0, Math.min(70, Math.round(+def.swing)));
- return {name:String(def.name||'').slice(0, 28), steps:D.L, grid:{pb:D.pb, bars:D.bars, follow:D.follow}, cells:cells, swing:sw};
+ return {name:String(def.name||'').slice(0, 28), steps:D.L, grid:{n:D.n, len:D.len, follow:D.follow}, cells:cells, swing:sw};
 }
 function rhyId(def){
- var d = rhyNorm(def), s = (d.grid ? 'g' + d.grid.pb + 'x' + d.grid.bars + ':' : '') + d.steps + ':' + d.cells.map(function(c){
+ var d = rhyNorm(def), s = (d.grid ? 'g' + d.grid.n + 'x' + d.steps + ':' : '') + d.steps + ':' + d.cells.map(function(c){
   return c.on ? (c.acc ? 'A' : c.soft ? 's' : 'x') + (c.rat>1 ? c.rat : '') + (c.len ? 'l'+c.len : '') : '.';
  }).join('') + (d.swing!=null ? '|s'+d.swing : '');
  var h = 2166136261;
@@ -47386,17 +47391,18 @@ function crEditOpen(fresh){
 }
 
 // ── The chord rhythm builder on the Studio page ──
-// The roll, Length, Grid and Feel read and write CR.def, so there is one rhythm: the one the pads play. A rhythm
-// that did not come from here (a built-in or one drawn on the sheet) is first laid onto a 16-step grid, one cell
-// to the sixteenth and as many bars as it spans, so editing it does not change how it sounds until you change it.
+// The roll, Length and Steps read and write CR.def, so there is one rhythm: the one the pads play. Steps is how many
+// equal steps the loop is cut into, any number from 1 to 64 (6, 9, 12, 15, 18, 24 are a click away); Length is the
+// loop's own length in sixteenths, 1 to 64 as the drum grid's is, or the drum pattern's (Drums). A rhythm that did
+// not come from here (a built-in or one drawn on the sheet) is first laid on a grid of its own size, a step to the
+// sixteenth, so editing it does not change how it sounds until you change it.
 // var, not let: crSyncUI calls crhRender during boot, thousands of lines before this one runs.
 var _crhShown = '';
+var CRH_NS = [6, 8, 9, 12, 15, 16, 18, 24, 32];
 function crhDef(){
  if(CR.def && CR.def.grid) return rhyNorm(CR.def);
- var bs = _songBarSteps(), base = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, bs);
- var span = base.steps, bars = span <= bs ? 1 : (span <= 2*bs ? 2 : 4), n = bs * bars, cells = [], i;
- for(i = 0; i < n; i++) cells.push(JSON.parse(JSON.stringify(base.cells[i % base.steps] || {on:0})));
- return {name:base.name || crLabel(), grid:{pb:4, bars:bars, follow:false}, cells:cells, swing:base.swing};
+ var base = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, _songBarSteps());
+ return {name:base.name || crLabel(), grid:{n:base.steps, len:base.steps, follow:false}, cells:JSON.parse(JSON.stringify(base.cells)), swing:base.swing};
 }
 function crhCommit(d){
  if(!d.name) d.name = 'Custom';
@@ -47405,10 +47411,10 @@ function crhCommit(d){
  crSave(); crSyncUI();
 }
 function crhSet(kind, v){
- var d = crhDef();
- if(kind === 'len'){ if(v === 'drums') d.grid.follow = true; else { d.grid.follow = false; d.grid.bars = v; } }
- else if(kind === 'pb') d.grid.pb = v;
- else if(kind === 'feel'){ var t = (v === 'triple'), pb = d.grid.pb; d.grid.pb = t ? ({2:3, 4:6, 8:6})[pb] || 3 : ({3:2, 6:4})[pb] || pb; }
+ var d = crhDef(), cl = function(x){ return Math.max(1, Math.min(64, x|0)); };
+ if(kind === 'follow') d.grid.follow = !!v;
+ else if(kind === 'len'){ d.grid.follow = false; d.grid.len = cl(v); }
+ else if(kind === 'n') d.grid.n = cl(v);
  crhCommit(d);
 }
 function crhCell(i){
@@ -47423,35 +47429,47 @@ function crhCell(i){
 function crhRender(){
  var host = document.getElementById('crh-roll'); if(!host) return;
  var d = crhDef(), D = rhyGridDims(d.grid);
- var sig = JSON.stringify([D.pb, D.bars, D.follow, D.n, d.cells.map(function(c){ return c.on ? (c.acc ? 3 : c.soft ? 1 : 2) : 0; })]);
+ var sig = JSON.stringify([D.n, D.len, D.follow, D.L, d.cells.map(function(c){ return c.on ? (c.acc ? 3 : c.soft ? 1 : 2) : 0; })]);
  if(sig === _crhShown) return;
  _crhShown = sig;
- var tg = function(id, items, on, fn){
-  var e = document.getElementById(id); if(!e) return; e.innerHTML = '';
-  items.forEach(function(it){ var b = document.createElement('button'); b.type = 'button'; b.className = 'tb' + (it[0] === on ? ' active' : ''); b.textContent = it[1];
-   b.setAttribute('aria-pressed', it[0] === on ? 'true' : 'false'); b.addEventListener('click', function(){ fn(it[0]); }); e.appendChild(b); });
- };
- var drumBars = Math.max(1, Math.min(4, Math.round(((typeof window._sqSteps==='function') ? (window._sqSteps() || _songBarSteps()) : _songBarSteps()) / _songBarSteps())));
- tg('crh-len', [['drums', 'Drums' + (D.follow ? ' · ' + D.bars + (D.bars === 1 ? ' bar' : ' bars') : '')], [1, '1'], [2, '2'], [4, '4']], D.follow ? 'drums' : D.bars, function(v){ crhSet('len', v); });
- var grids = D.trip ? [[3, '1/8'], [6, '1/16']] : [[2, '1/8'], [4, '1/16'], [8, '1/32']];
- tg('crh-grid', grids, D.pb, function(v){ crhSet('pb', v); });
- tg('crh-feel', [['duple', 'Duple'], ['triple', 'Triple']], D.trip ? 'triple' : 'duple', function(v){ crhSet('feel', v); });
+ var bs = _songBarSteps();
+ // The buttons are in the markup and wired once: rebuilding one under a finger that is holding it down would
+ // lose its pointerup and leave the repeat running.
+ if(!crhRender._wired){
+  crhRender._wired = true;
+  var fol = document.getElementById('crh-follow'); if(fol) fol.addEventListener('click', function(){ crhSet('follow', !rhyGridDims(crhDef().grid).follow); });
+  [['crh-lminus', 'len', -1], ['crh-lplus', 'len', 1], ['crh-nminus', 'n', -1], ['crh-nplus', 'n', 1]].forEach(function(a){
+   var b = document.getElementById(a[0]); if(!b) return;
+   _attachRepeatPress(b, function(){ var cur = rhyGridDims(crhDef().grid); crhSet(a[1], cur[a[1]] + a[2]); });
+  });
+  var lv = document.getElementById('crh-lval'); if(lv) lv.addEventListener('click', function(){ var cur = rhyGridDims(crhDef().grid); if(cur.follow) crhSet('len', cur.len); });
+ }
+ var q = function(id){ return document.getElementById(id); };
+ if(q('crh-follow')){ q('crh-follow').textContent = 'Drums' + (D.follow ? ' \u00b7 ' + D.L : ''); q('crh-follow').classList.toggle('active', D.follow); q('crh-follow').setAttribute('aria-pressed', D.follow ? 'true' : 'false'); }
+ if(q('crh-lval')){ q('crh-lval').textContent = D.len; q('crh-lval').classList.toggle('active', !D.follow); }
+ if(q('crh-nval')) q('crh-nval').textContent = D.n;
+ var chips = document.getElementById('crh-chips');
+ if(chips){
+  chips.innerHTML = '';
+  CRH_NS.forEach(function(n){ var b = document.createElement('button'); b.type = 'button'; b.className = 'tb' + (n === D.n ? ' active' : ''); b.textContent = n; b.setAttribute('aria-pressed', n === D.n ? 'true' : 'false');
+   b.setAttribute('aria-label', n + ' steps'); b.addEventListener('click', function(){ crhSet('n', n); }); chips.appendChild(b); });
+ }
  host.innerHTML = '';
- host.style.setProperty('--n', D.n);
  d.cells.forEach(function(c, i){
   var b = document.createElement('button'); b.type = 'button';
   var lvl = c.on ? (c.acc ? 3 : (c.soft ? 1 : 2)) : 0;
-  // One class, with the beat and bar marks as data: the targets probe names a control by its classes.
-  b.className = 'crh-cell'; b.dataset.b = (i % (D.n / D.bars) === 0) ? '2' : (i % D.pb === 0 ? '1' : '0');
-  b.dataset.i = i;
-  b.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + ['off', 'soft', 'normal', 'accent'][lvl === 0 ? 0 : lvl]);
+  // One class, with the beat and bar marks as data: the targets probe names a control by its classes. A step is
+  // marked where it begins on a beat (4 sixteenths) or a bar, which on a 9 or a 15 is only some of them.
+  var pos = i * D.L / D.n, onB = Math.abs(pos / 4 - Math.round(pos / 4)) < 1e-6, onBar = Math.abs(pos / bs - Math.round(pos / bs)) < 1e-6;
+  b.className = 'crh-cell'; b.dataset.b = onBar ? '2' : (onB ? '1' : '0');
+  b.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + ['off', 'soft', 'normal', 'accent'][lvl]);
   if(lvl) b.innerHTML = '<i style="height:' + [0, 34, 66, 100][lvl] + '%"></i>';
   b.addEventListener('click', function(){ crhCell(i); });
   host.appendChild(b);
  });
  var h = document.getElementById('crh-hint');
- if(h) h.textContent = (D.n / D.bars) + ' steps a bar, ' + D.bars + (D.bars === 1 ? ' bar' : ' bars') + ' (' + D.n + ' in all): ' + (D.follow ? 'the length of the drum pattern' : 'its own length') + '. '
-  + (D.trip ? 'Triple feel: three steps to a beat.' : 'Duple feel: two, four or eight steps to a beat.') + ' Tap a step to cycle it: off, soft, normal, accent.';
+ if(h) h.textContent = D.n + ' steps over ' + D.L + ' sixteenths' + (D.L % bs === 0 ? ' (' + (D.L / bs) + (D.L === bs ? ' bar' : ' bars') + ')' : '') + (D.follow ? ', the length of the drum pattern' : ', its own length')
+  + '. A step is ' + (Math.round(D.L / D.n * 100) / 100) + ' of a sixteenth: 12 over 16 is triplets, 6 and 9 and 15 are the same idea. Tap a step to cycle it: off, soft, normal, accent.';
 }
 // The playhead, and a redraw when the drums' length changes under a rhythm that follows them.
 setInterval(function(){
