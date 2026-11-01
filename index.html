@@ -1765,17 +1765,16 @@ body:not(.mode-basic) .mel-row2 > #touchmod-bar { flex:1 1 100%; }
    stays put. It adds no clipping that overflow-x was not already doing. */
 @property --mel-fade-l { syntax:'<length>'; inherits:false; initial-value:0px; }
 @property --mel-fade-r { syntax:'<length>'; inherits:false; initial-value:0px; }
-.mel-keys-wrap {
- --mel-fade-l:0px; --mel-fade-r:0px;
- transition:--mel-fade-l .18s ease, --mel-fade-r .18s ease;
- -webkit-mask-image:linear-gradient(to right, transparent 0,
-   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
- mask-image:linear-gradient(to right, transparent 0,
-   #000 var(--mel-fade-l), #000 calc(100% - var(--mel-fade-r)), transparent 100%);
-}
-.mel-keys-wrap.scroll-l { --mel-fade-l:30px; }
-.mel-keys-wrap.scroll-r { --mel-fade-r:30px; }
-@media (prefers-reduced-motion: reduce) { .mel-keys-wrap { transition:none; } }
+.mel-keys-host { position:relative; width:100%; min-width:0; max-width:100%; flex:0 0 auto; }
+/* 6.0t: the fade at the strip's edge read as a rendering fault, not as "there is more". It is a pair of faint
+   arrows now, shown only on the side that has more keys, and a tap on one moves the strip. The scroller keeps
+   its scroll-l / scroll-r classes (syncMelScrollCue), which switch them on. */
+.mel-edge { position:absolute; top:0; bottom:6px; width:34px; display:none; align-items:center; border:0; background:none; padding:0;
+ color:var(--text); font-size:30px; line-height:1; opacity:.42; z-index:3; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+.mel-edge-l { left:0; justify-content:flex-start; padding-left:4px; }
+.mel-edge-r { right:0; justify-content:flex-end; padding-right:4px; }
+.mel-keys-host.scroll-l .mel-edge-l, .mel-keys-host.scroll-r .mel-edge-r { display:flex; }
+.mel-edge:active { opacity:.8; }
 .mel-keys { display:flex; gap:4px; flex:0 0 auto; padding:3px 3px 6px; flex-wrap:nowrap;
             margin-inline:auto; }
 .mel-key { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; -webkit-user-select:none; }
@@ -6353,6 +6352,8 @@ body.mode-basic .lv-slot.lv-folded[data-mod="pads"] #ps-patbar { display:none !i
    button is the full width and 30px tall — the drawn triangle is only the
    sign of a much bigger target. */
 .lv-ctlbtn { display:none; }
+/* hidden, not removed: the heading's caret presses it (lvTitleCaret) */
+body.mode-basic .lv-ctlbtn.lv-ctl-hidden { display:none !important; }
 body.mode-basic .lv-ctlbtn {
  display:inline-flex; flex:none; order:3; align-items:center; min-height:30px; padding:4px 11px;
  border:1px solid var(--border2); border-radius:var(--r-sm); background:none; color:var(--muted);
@@ -7763,14 +7764,17 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
  background:linear-gradient(90deg, #ff7a45, #ffd23f, #2ad4c8, #9a6bff); }
 .tab-led { display:none; }
 #tab-live, #tab-studio, #tab-songs, #tab-mix { --tab-c:#b07bff; }
-.tab-more { display:flex; align-items:center; justify-content:center; min-height:52px; padding:0; border:0; background:none;
+.tab-more { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:52px; padding:0; border:0; background:none;
+ color:color-mix(in srgb, var(--text) 72%, transparent);
  box-shadow:inset 1px 0 0 var(--border2); cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
-.tab-more .caret { display:grid; place-items:center; width:44px; height:32px; border-radius:16px; background:var(--accent); color:#07080f;
- box-shadow:0 2px 0 color-mix(in srgb, var(--accent) 50%, #000), 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
- transition:transform .18s ease, filter .12s; }
-.tab-more .caret svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; transition:transform .18s ease; }
-.tab-more:active .caret { filter:brightness(1.12); }
-body:has(#ft-more-menu.open) .tab-more .caret svg { transform:rotate(180deg); }
+/* 6.0t: a gear and the word, in the tabs' own colour. It was a red pill with an up caret, and while a pattern played it sat beside
+   the stop button looking like a second one; nothing on this bar is red but Play and Stop. */
+.tab-more .caret { display:grid; place-items:center; width:26px; height:24px; color:inherit; transition:transform .18s ease; }
+.tab-more .caret svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; transition:transform .25s ease; }
+.tab-more .tm-lbl { font-family:inherit; font-size:9px; letter-spacing:.06em; text-transform:uppercase; line-height:1; }
+.tab-more:active .caret { transform:scale(.92); }
+body:has(#ft-more-menu.open) .tab-more { color:var(--text); background-color:color-mix(in srgb, var(--tab-c, #b07bff) 14%, var(--surf2)); }
+body:has(#ft-more-menu.open) .tab-more .caret svg { transform:rotate(45deg); }
 /* Until the sheet has been opened once, the pill breathes (it stops for good on the
    first open: modo-sheet-seen). It is the only hint that there is a sheet. */
 body.sheet-unseen .tab-more .caret { animation:ftGripHint 2.4s ease-in-out 3; }
@@ -7812,7 +7816,7 @@ body.mode-basic :is(#chords-borrowed, #chords-secdom, #chords-user) .cqual { fon
 body.mode-basic .lv-xt { display:inline-flex; align-items:center; gap:5px; min-height:44px; padding:0 8px 0 0; margin:0; border:0; background:none;
  color:inherit; font:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
 .lv-xt .lv-xc { width:14px; height:14px; flex:none; fill:none; stroke:currentColor; stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; opacity:.75; transition:transform .15s; }
-.lv-slot.lv-xoff .lv-xt .lv-xc { transform:rotate(-90deg); }
+.lv-slot.lv-xoff .lv-xt .lv-xc, .lv-slot.lv-folded .lv-xt .lv-xc { transform:rotate(-90deg); }
 /* The More row's own rules name ids to override .advanced-only, so closing the widget has
    to outrank those, not just the class. */
 body.mode-basic #page-perform .lv-slot.lv-xoff[data-mod="chords"] :is(.cr-bar, #chords-modal-wrap, #chords-dom-wrap, #chords-user-wrap, .pf-more-chip),
@@ -8001,8 +8005,8 @@ body.light-mode .tl-col.active { background:var(--pg); color:#fff; }
  .tab-btn { min-height:50px; box-shadow:none !important; }
  .tab-btn.active { background-color:transparent; }
  .tab-more { min-height:50px; box-shadow:none; }
- .tab-more .caret { width:40px; height:28px; border-radius:14px; }
- .tab-more .caret svg { width:18px; height:18px; }
+ .tab-more .caret { width:24px; height:22px; }
+ .tab-more .caret svg { width:20px; height:20px; }
 }
 
 /* The arp rate hangs over the Arp switch; its offsets were worked out with a beat row between
@@ -8215,7 +8219,9 @@ body[data-lib="patterns"] #lib-slot-setlist, body[data-lib="patterns"] #lib-slot
 #page-build .set-bar .set-done { grid-column:3; justify-self:end; }
 #page-build .set-pane { display:contents; }
 #page-build .set-pane > * { order:40; }
-#page-build .set-find { order:1; width:100%; min-height:48px; padding:0 16px; border-radius:14px; border:1px solid var(--border2); background:var(--surf2); color:var(--text);
+/* 6.0t: the search stays under the Done bar while the list scrolls; it was the first thing to go and Find is the quickest way to a row. */
+#page-build .set-find { position:sticky; top:calc(env(safe-area-inset-top, 0px) + var(--setbar-h, 63px)); z-index:5; box-shadow:0 8px 8px -6px var(--bg);
+ order:1; width:100%; min-height:48px; padding:0 16px; border-radius:14px; border:1px solid var(--border2); background:var(--surf2); color:var(--text);
  font:inherit; font-size:.7rem; }
 #page-build .sgrp-t { margin:14px 2px 0; font-family:'Orbitron',sans-serif; font-weight:400; font-size:.46rem; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
 #page-build .set-none { order:2; color:var(--muted); font-size:.62rem; padding:10px 2px; }
@@ -8282,6 +8288,8 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
 .crh-roll { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(22px, 1fr); gap:2px; overflow-x:auto; padding:6px; border:1px solid var(--border2); border-radius:12px; background:var(--bg); }
 .crh-cell { position:relative; min-width:22px; height:108px; padding:0; border:0; border-radius:6px; background:color-mix(in srgb, var(--surf2) 80%, #000); display:flex; align-items:flex-end; touch-action:manipulation; }
 .crh-cell::after { content:''; position:absolute; left:0; right:0; top:0; bottom:0; }
+.crh-cell > .crh-sl { display:flex; gap:2px; width:100%; align-items:stretch; }
+.crh-cell > .crh-sl > i { flex:1 1 0; min-width:0; border-radius:3px; background:#9b6dff; }
 .crh-cell[data-b="1"] { margin-left:4px; }
 .crh-cell[data-b="2"] { margin-left:8px; box-shadow:-5px 0 0 -3px var(--muted); }
 .crh-cell:first-child { margin-left:0; }
@@ -8376,7 +8384,8 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
  </button>
  <button type="button" class="tab-more" id="tab-more" aria-haspopup="true" aria-expanded="false"
    aria-label="More: capture, export, undo, settings and help" onclick="toggleFtMore(event)">
- <span class="caret"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15l7-7 7 7"/></svg></span>
+ <span class="caret"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+ <span class="tm-lbl">Settings</span>
  </button>
  <div class="tab-led" id="tab-led" aria-hidden="true"></div>
 </nav>
@@ -8662,7 +8671,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0t</span></div>
  </div>
 </div>
 
@@ -9074,6 +9083,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
   <div class="crh-row"><b>Length</b><div class="tg" id="crh-len"><button type="button" class="tb" id="crh-follow" aria-label="Follow the drum pattern's length">Drums</button><button type="button" class="tb crh-st" id="crh-lminus" aria-label="One sixteenth shorter">&minus;</button><button type="button" class="tb crh-val" id="crh-lval" aria-label="Its own length, in sixteenths">16</button><button type="button" class="tb crh-st" id="crh-lplus" aria-label="One sixteenth longer">+</button></div></div>
   <div class="crh-row"><b>Steps</b><div class="tg" id="crh-n"><button type="button" class="tb crh-st" id="crh-nminus" aria-label="One step fewer">&minus;</button><button type="button" class="tb crh-val active" id="crh-nval" aria-label="Steps">16</button><button type="button" class="tb crh-st" id="crh-nplus" aria-label="One step more">+</button></div></div>
   <div class="crh-chips tg" id="crh-chips" role="group" aria-label="Common step counts"></div>
+  <div class="crh-row"><b>Tap</b><div class="tg" id="crh-tap" role="group" aria-label="What a tap on a step does"><button type="button" class="tb active" data-crhtap="level" aria-pressed="true" onclick="crhSetTap('level')" title="Tap a step to cycle it: off, soft, normal, accent">Level</button><button type="button" class="tb" data-crhtap="rat" aria-pressed="false" onclick="crhSetTap('rat')" title="Tap a step to ratchet it: one, two, three or four strikes inside the step">Ratchet</button></div></div>
   <div class="crh-roll" id="crh-roll" role="group" aria-label="Chord rhythm steps"></div>
   <div class="crh-hint" id="crh-hint"></div>
  </div>
@@ -9379,8 +9389,12 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
          title="Tap to stop recording">
    <span class="rec-here-dot"></span><span id="rec-here-txt">Recording</span><span class="rec-here-x">Stop</span>
  </button>
+ <div class="mel-keys-host">
  <div class="mel-keys-wrap">
  <div class="mel-keys" id="melody-keys"></div>
+ </div>
+ <button type="button" class="mel-edge mel-edge-l" aria-label="Scroll the keys down" onclick="melEdgeScroll(-1)"><span aria-hidden="true">‹</span></button>
+ <button type="button" class="mel-edge mel-edge-r" aria-label="Scroll the keys up" onclick="melEdgeScroll(1)"><span aria-hidden="true">›</span></button>
  </div>
  <div class="bend-strip-wrap" id="bend-strip-wrap">
  <div class="bend-strip" id="bend-strip">
@@ -10077,7 +10091,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0s</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0t</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11250,7 +11264,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0s';
+const MODRIFF_VERSION = '6.0t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20928,6 +20942,8 @@ function lvAddTri(slot, m){
  var name = LV_NAME[m];
  var sync = function(){
   var o = !slot.classList.contains('lv-folded');
+  var xt = b.parentNode && b.parentNode.querySelector('.lv-xt[data-mod="'+m+'"]');
+  if(xt) xt.setAttribute('aria-expanded', o ? 'true' : 'false');
   b.classList.toggle('active', o);
   b.setAttribute('aria-expanded', o ? 'true' : 'false');
   b.setAttribute('aria-pressed', o ? 'true' : 'false');
@@ -20948,7 +20964,31 @@ function lvAddTri(slot, m){
   // Before the slot's ⋯ when there is one, so the ⋯ stays last.
   var dots = hd.querySelector('.lv-ctl');
   if(dots) hd.insertBefore(b, dots); else hd.appendChild(b);
+  lvTitleCaret(hd, m, b);
  }
+}
+// 6.0t: the heading's own word is the fold switch, with a caret, on mõdFX and the Sampler too: Chords and Melody
+// already worked that way and a button named Controls on the other two was a second idiom for one idea. The button
+// stays in the heading, hidden, as the one place the fold's logic lives; the caret presses it.
+function lvTitleCaret(hd, m, ctl){
+ var xt = hd.querySelector('.lv-xt[data-mod="'+m+'"]');
+ if(!xt){
+  var tn = null;
+  for(var i=0; i<hd.childNodes.length; i++){ var n = hd.childNodes[i]; if(n.nodeType===3 && n.textContent.trim()){ tn = n; break; } }
+  if(!tn) return;
+  xt = document.createElement('button'); xt.type = 'button'; xt.className = 'lv-xt'; xt.dataset.mod = m;
+  xt.innerHTML = '<span class="lv-xl"></span><svg class="lv-xc" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  xt.firstChild.textContent = tn.textContent.trim();
+  hd.replaceChild(xt, tn);
+  xt.addEventListener('click', function(e){
+   e.stopPropagation();
+   var c = hd.querySelector('.lv-ctlbtn'); if(c) c.click();
+  });
+ }
+ ctl.classList.add('lv-ctl-hidden');
+ var o = !ctl.closest('.lv-slot') || !ctl.closest('.lv-slot').classList.contains('lv-folded');
+ xt.setAttribute('aria-expanded', o ? 'true' : 'false');
+ xt.title = ctl.title;
 }
 // ── Extras, on and off, per widget ──
 // Every Live widget is the thing you play and, around it, the controls that set it up.
@@ -36424,8 +36464,16 @@ function syncMelScrollCue(){
  const max=_melScrollMax;
  // A sub-pixel remainder is not a hidden note; it is a rounded layout.
  const slack=2;
- wrap.classList.toggle('scroll-l', wrap.scrollLeft>slack);
- wrap.classList.toggle('scroll-r', wrap.scrollLeft<max-slack);
+ const host=wrap.parentNode;
+ if(host && host.classList){
+  host.classList.toggle('scroll-l', wrap.scrollLeft>slack);
+  host.classList.toggle('scroll-r', wrap.scrollLeft<max-slack);
+ }
+}
+// A tap on an edge arrow: most of a screenful of keys, in that direction.
+function melEdgeScroll(dir){
+ const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
+ wrap.scrollBy({left:dir*Math.round(wrap.clientWidth*0.6), behavior:'smooth'});
 }
 (function(){
  // Bound once to the scroller, which outlives every rebuild of the keys
@@ -47257,13 +47305,15 @@ function rhyEdit(opts){
   g.clearRect(0, 0, W, H);
   g.fillStyle = surf; g.fillRect(0, RULER, W, LANE);
   var barSteps = (typeof meterStepsPerBar === 'function') ? meterStepsPerBar() : 16;
+  // A count that divides by three (6, 9, 12, 24) is a compound beat: the dotted quarter, three steps to the beat.
+  var grp = def.steps % 3 === 0 ? 3 : 4;
   g.font = '600 9px Outfit, sans-serif'; g.textBaseline = 'middle';
   for(var i = 0; i <= def.steps; i++){
-   var x = i * cw, beat = i % 4 === 0, bar = barSteps > 0 && i % barSteps === 0;
+   var x = i * cw, beat = i % grp === 0, bar = barSteps > 0 && i % barSteps === 0;
    g.strokeStyle = bar ? mut : (beat ? bd : bd); g.globalAlpha = bar ? .9 : (beat ? .7 : .28);
    g.lineWidth = bar ? 1.5 : 1;
    g.beginPath(); g.moveTo(x + .5, RULER); g.lineTo(x + .5, H); g.stroke(); g.globalAlpha = 1;
-   if(beat && i < def.steps){ g.fillStyle = mut; g.fillText(String(Math.floor(i / 4) + 1), x + 3, RULER / 2); }
+   if(beat && i < def.steps){ g.fillStyle = mut; g.fillText(String(Math.floor(i / grp) + 1), x + 3, RULER / 2); }
   }
   var ph = crPlayStep();
   def.cells.forEach(function(c, i){
@@ -47338,7 +47388,7 @@ function rhyEdit(opts){
   insp.innerHTML = '';
   if(sel < 0 || !def.cells[sel] || !def.cells[sel].on){
    sel = -1;
-   hint.textContent = rhyHasHits(def) ? 'Tap a hit to edit it. Tap the selected hit again to take it away.' : 'Tap a step to put a hit on it.';
+   hint.textContent = rhyHasHits(def) ? 'Tap a hit to edit it: accent, ratchet and length. Tap the selected hit again to take it away.' : 'Tap a step to put a hit on it.';
    return;
   }
   var c = def.cells[sel];
@@ -47592,15 +47642,27 @@ function crPickOpen(){
  box.body.appendChild(list);
  box.addCancel('Close');
 }
+// Take the person to the Studio Chords page and the builder's roll, flashing it so it is clear where they landed.
+function crGoBuilder(){
+ try{
+  var r0 = document.getElementById('crh-roll');
+  if(!(r0 && r0.offsetParent)){ studioTab(); if(typeof setPerformMode==='function') setPerformMode('chords'); if(typeof partSelSync==='function') partSelSync(); }
+ }catch(e){}
+ setTimeout(function(){
+  var r = document.getElementById('crh-roll'); if(!r) return;
+  r.scrollIntoView({behavior:'smooth', block:'center'});
+  r.animate([{boxShadow:'0 0 0 3px #9b6dff'},{boxShadow:'0 0 0 0 transparent'}], {duration:900});
+ }, 200);
+}
 // The roll on the rhythm the pads are using (or a blank one).
 function crEditOpen(fresh){
  var def = null;
  if(!fresh){
   // A rhythm drawn on Studio's roll has its own grid (triplets, thirty-seconds, up to four bars) that the
   // sheet's one-lane roll does not draw; it is edited where it was made.
-  if(CR.def && CR.def.grid){ showToast('This rhythm has its own grid: edit it on the Studio Chords page'); return; }
-  def = CR.def ? rhyNorm(CR.def) : rhyFromBuiltin(CR.key, 16);
-  if(!rhyHasHits(def)) def = null;
+  // Edit rhythm is the Studio roll now (6.0t): it was a toast saying to go there, shown on that very page.
+  // A built-in or older rhythm is laid on the roll's grid at the first touch (crhDef), without changing how it sounds.
+  crGoBuilder(); return;
  }
  rhyEdit({title:'Chord rhythm', def:def || rhyBlank(16), saveHint:'Save this rhythm and play the chords with it',
   onUse:function(d){ crSetRhythm(rhyRegister(d), d); showToast('Saved '+(d.name||'rhythm')+' as the chord rhythm'); }});
@@ -47633,8 +47695,26 @@ function crhSet(kind, v){
  else if(kind === 'n') d.grid.n = cl(v);
  crhCommit(d);
 }
+// What a tap on a step does (6.0t): cycle its level, or its ratchet. The ratchet was always in the rhythm (rhyCompile re-strikes a
+// cell `rat` times); only the sheet's roll let you set it, and the Studio roll, which replaced that sheet, had no way to.
+var _crhTap = 'level';
+function crhSetTap(m){
+ _crhTap = m === 'rat' ? 'rat' : 'level';
+ document.querySelectorAll('[data-crhtap]').forEach(function(b){ var on = b.getAttribute('data-crhtap') === _crhTap; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+ _crhShown = null; crhRender();
+}
+window.crhSetTap = crhSetTap;
 function crhCell(i){
  var d = crhDef(), c = d.cells[i]; if(!c) return;
+ if(_crhTap === 'rat'){
+  // An off step comes on at normal level first; a lit one steps through one, two, three, four strikes.
+  if(!c.on){ c.on = 1; c.soft = 0; c.acc = 0; c.rat = 1; }
+  else c.rat = ((c.rat || 1) % 4) + 1;
+  c.len = c.rat > 1 ? 0 : c.len;
+  crhCommit(d);
+  if(!CR.run && CR.chord && typeof rhyStrike==='function'){ try{ var ctx0 = getCtx(); rhyStrike(CR.chord.root, CR.chord.intvs, ctx0.currentTime + 0.02, c.acc ? 1.0 : RHY_NORMAL_VEL, 0); }catch(e){} }
+  return;
+ }
  var lvl = c.on ? (c.acc ? 3 : (c.soft ? 1 : 2)) : 0; lvl = (lvl + 1) % 4;
  c.on = lvl ? 1 : 0; c.soft = lvl === 1 ? 1 : 0; c.acc = lvl === 3 ? 1 : 0;
  if(!c.on){ c.rat = 1; c.len = 0; }
@@ -47645,7 +47725,7 @@ function crhCell(i){
 function crhRender(){
  var host = document.getElementById('crh-roll'); if(!host) return;
  var d = crhDef(), D = rhyGridDims(d.grid);
- var sig = JSON.stringify([D.n, D.len, D.follow, D.L, d.cells.map(function(c){ return c.on ? (c.acc ? 3 : c.soft ? 1 : 2) : 0; })]);
+ var sig = JSON.stringify([D.n, D.len, D.follow, D.L, d.cells.map(function(c){ return c.on ? (c.acc ? 3 : c.soft ? 1 : 2) + '' + (c.rat > 1 ? c.rat : '') : 0; }), _crhTap]);
  if(sig === _crhShown) return;
  _crhShown = sig;
  var bs = _songBarSteps();
@@ -47678,14 +47758,16 @@ function crhRender(){
   // marked where it begins on a beat (4 sixteenths) or a bar, which on a 9 or a 15 is only some of them.
   var pos = i * D.L / D.n, onB = Math.abs(pos / 4 - Math.round(pos / 4)) < 1e-6, onBar = Math.abs(pos / bs - Math.round(pos / bs)) < 1e-6;
   b.className = 'crh-cell'; b.dataset.b = onBar ? '2' : (onB ? '1' : '0');
-  b.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + ['off', 'soft', 'normal', 'accent'][lvl]);
-  if(lvl) b.innerHTML = '<i style="height:' + [0, 34, 66, 100][lvl] + '%"></i>';
+  var rat = lvl && c.rat > 1 ? c.rat : 1;
+  b.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + ['off', 'soft', 'normal', 'accent'][lvl] + (rat > 1 ? ', ratchet \u00d7' + rat : ''));
+  if(lvl && rat > 1){ var sl = '<span class="crh-sl" style="height:' + [0, 34, 66, 100][lvl] + '%">'; for(var k = 0; k < rat; k++) sl += '<i></i>'; b.innerHTML = sl + '</span>'; }
+  else if(lvl) b.innerHTML = '<i style="height:' + [0, 34, 66, 100][lvl] + '%"></i>';
   b.addEventListener('click', function(){ crhCell(i); });
   host.appendChild(b);
  });
  var h = document.getElementById('crh-hint');
  if(h) h.textContent = D.n + ' steps over ' + D.L + ' sixteenths' + (D.L % bs === 0 ? ' (' + (D.L / bs) + (D.L === bs ? ' bar' : ' bars') + ')' : '') + (D.follow ? ', the length of the drum pattern' : ', its own length')
-  + '. A step is ' + (Math.round(D.L / D.n * 100) / 100) + ' of a sixteenth: 12 over 16 is triplets, 6 and 9 and 15 are the same idea. Tap a step to cycle it: off, soft, normal, accent.';
+  + '. A step is ' + (Math.round(D.L / D.n * 100) / 100) + ' of a sixteenth: 12 over 16 is triplets, 6 and 9 and 15 are the same idea. Tap a step to cycle it: off, soft, normal, accent. Under Tap, Ratchet gives a step two, three or four strikes.';
 }
 // The playhead, and a redraw when the drums' length changes under a rhythm that follows them.
 setInterval(function(){

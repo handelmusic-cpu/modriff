@@ -938,3 +938,20 @@ and are the same renderer turned on its side.
   default is `modriff-performance`. A song with a title is not asked.
 - The `-capture-report.txt` beside a bounce is a developer's page (clock offsets, drain phase). It is written in Debug builds and with
   Native sound on, and not in a release build.
+
+### Landed as 6.0t (the first round of notes from the phone)
+
+- **Chord rhythm:** the Studio roll has a **Tap: Level | Ratchet** switch. Ratchet cycles a step through one, two, three and four strikes
+  (the rhythm compiler already re-struck a cell `rat` times; only the sheet's roll could set it) and draws the step as that many slices.
+  **Edit rhythm** takes you to that roll, flashing it, instead of opening the sheet roll or a toast telling you to go there from the page
+  you were on. The sheet roll (still used by Draw a new rhythm and a chord's own rhythm) groups a count that divides by three (6, 9, 12,
+  24) three steps to the beat, as a dotted quarter, and its hint names ratchet. Not done: a step's length in the Studio roll, swing and
+  Start from there.
+- **The sheet button** is a gear and the word Settings in the tabs' own colour; it was a red pill with an up caret, which beside the stop
+  button read as a second stop. Its highlight when the sheet is open is the tabs'.
+- **Settings:** the search stays under the Done bar while the list scrolls.
+- **Melody keys:** a faint arrow at the edge that has more keys, tappable (it moves the strip most of a screenful), instead of a fade.
+- **mõdFX and Sampler** fold with the heading's caret, as Chords and Melody do; the Controls button is still there, hidden, as the one place
+  the logic lives.
+- Open, asked about and not built: the Styles widget and Pattern save, the per-lane Shape button on the drum grid, what Studio's part
+  switches are called, and why the four sequencers look different from one another.
