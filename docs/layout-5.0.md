@@ -838,3 +838,14 @@ and are the same renderer turned on its side.
   so the row above is what it is with no song. `tests/transport/probe.js` fails on the old code and passes.
 - Song, when off, is a quiet outline (it was red). The sheet takes nearly the whole screen so Tools and Help are in sight.
 - Still different from the mock: it draws ‹ Song › in the one row at 430 with 26 pt arrows; ours are 44 pt, hence the row.
+
+### Landed as 6.0j (chord rhythm builder in Studio)
+
+- Studio's Chords page has the mock's inline rhythm roll with Length (Drums = the drum pattern's length, or 1 / 2 / 4
+  bars), Grid (1/8, 1/16, 1/32; triplet 1/8 and 1/16) and Feel (Duple / Triple); a step cycles off / soft / normal / accent.
+  `def.grid = {pb, bars, follow}` is the model: cells over a loop in sixteenths, a cell being a fraction of one, so
+  triplets run through the same `crPattern` / `scheduleChordRhythm`. Older one-cell-per-sixteenth rhythms are unchanged
+  and are laid on a 16-step grid the first time one is edited here. The sheet roll (`rhyEdit`) does not draw grid rhythms.
+- Not yet: Presets / Save modes on the roll (the Rhythm picker and the sheet's Pattern save still do that), and a grid rhythm
+  attached to a song chord (`slot.compDef`) is untested with more than one bar.
+- The Song tab icon is two beamed eighth notes; tab labels are 14 px.
