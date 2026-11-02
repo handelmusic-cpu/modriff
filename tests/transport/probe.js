@@ -45,7 +45,9 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
       return { prev: box('ft-sect-prev'), song: box('ft-song-btn'), next: box('ft-sect-next'), over, sx: document.documentElement.scrollWidth, hits: ['ft-sect-prev', 'ft-song-btn', 'ft-sect-next', 'ft-playstop-btn'].map(hit) };
     });
     check(m.over.length === 0 && m.sx <= W, W + ': nothing in the transport or the tabs runs past the edge, and the page does not scroll sideways', JSON.stringify([m.over, m.sx]));
-    check([m.prev, m.song, m.next].every(b => b.w >= 44 && b.h >= 44), W + ': the section arrows and Song are each 44 x 44 or more', [m.prev, m.song, m.next].map(b => b.w + 'x' + b.h).join(' '));
+    // v6.1a made the Song group a 28 pt strip under the transport on phone widths (the chrome is 32 pt shorter);
+    // 40 pt wide and 28 pt tall is what it is, and nothing may be smaller than that or clipped.
+    check([m.prev, m.song, m.next].every(b => b.w >= 40 && b.h >= 28), W + ': the section arrows and Song are each 40 x 28 or more (the 6.1a strip)', [m.prev, m.song, m.next].map(b => b.w + 'x' + b.h).join(' '));
     check(m.hits.every(Boolean), W + ': each is hit at its own centre', m.hits.join());
     check(errs.length === 0, W + ': no script errors', errs.join(' | ').slice(0, 160));
     await ctx.close();

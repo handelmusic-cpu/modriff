@@ -110,6 +110,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 6. Studio is as it was.
   await page.evaluate(() => { setViewMode('advanced'); switchTab('perform'); setPerformMode('chords'); }); await page.waitForTimeout(400);
+  // The shelves sit under caret rows on Studio's Chords page since 6.2b (closed until opened); open them.
+  await page.evaluate(() => document.querySelectorAll('.st-fold-h[aria-expanded="false"]').forEach(h => h.click())); await page.waitForTimeout(200);
   r = await rows();
   check(!r.chipVisible, 'Studio has no chip');
   check(r.modal && r.dom && r.modal.n === 8 && r.dom.n === 5, 'and shows both shelves, as it always did', JSON.stringify([r.modal && r.modal.n, r.dom && r.dom.n]));
