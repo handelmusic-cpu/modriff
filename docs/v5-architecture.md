@@ -2755,7 +2755,7 @@ an Equal/Pure switch, to hear it before touching the native engine.
    for picture imports (4.9.9.9.9.8.9m). Every build needs a Mac with Xcode: `npm install`, then
    `npm run ios` (builds `dist/`, syncs it into the project, opens Xcode).
 7. **Remaining parts native, then the clock** — the graph path plays every part behind Settings > Look & feel > Native sound,
-   off by default. The flip (on by default, Web Audio path deleted) waits on `docs/phone-test-checklist.md` section 10: a clean
+   on by default in the app since 6.1d (a stored off is kept; the web build has no engine). The last part of the flip, deleting the Web Audio path, waits on `docs/phone-test-checklist.md` section 10: a clean
    status line with all eight parts at once, a recorded voice on the melody, and a stem bounce. The screen wake lock for Stage and
    playback is `ModWake` (6.0p, built for the simulator, not yet run on a phone). Earlier notes on this step: — ships under the 5.x numbering. Open before
    that: the sampled voices dropping out in the background (parked for the next

@@ -8757,7 +8757,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.1c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.1d</span></div>
  </div>
 </div>
 
@@ -10016,7 +10016,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
     <div class="row">
      <button class="tb tb-solo" onclick="copyDiagnostics()">Copy diagnostics</button>
     </div>
-    <div class="ss-scope">Native sound <b>play every part from the app's own engine (testing)</b></div>
+    <div class="ss-scope">Native sound <b>play every part from the app's own engine. Off goes back to Web Audio, after a restart</b></div>
     <div class="row">
      <button class="tb tb-solo" data-graphpath onclick="toggleGraphPath()" aria-pressed="false">Native sound: OFF</button>
     </div>
@@ -10187,7 +10187,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.1c</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.1d</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11374,7 +11374,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.1c';
+const MODRIFF_VERSION = '6.1d';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13305,12 +13305,25 @@ window.gcheck = function(parts, secs){
 // ── Native sound: the app switches the graph path on itself ──────────────
 // A saved preference (modo-graph-path), read at launch: when it is on, every part is
 // played as recorded graphs by the native engine (modGraphStart), the click included.
-// It is off by default and the app only; a build whose binary has no graph methods
+// It is on by default in the app (6.1d) and the app only; a build whose binary has no graph methods
 // leaves it off and says so. Turning it off takes effect when the app restarts (the
 // parts' strips are the host's by then). The status line under the switch is what
 // gcheck prints, kept up to date, so nothing needs the console.
 var _GRAPH_ALL = ['chord','mel','melgen','bass','arp','drum','auxperc','sampler'];
-function _graphPathWanted(){ try{ return localStorage.getItem('modo-graph-path') === '1'; }catch(e){ return false; } }
+// On unless the player has turned it off (6.1d). It was off until asked for, while the engine was being proved; the
+// phone had the choice and nobody else had a reason to make it. Now the iPhone app starts on its own engine and the
+// switch is how you go back, which a stored '0' remembers and a stored '1' from before this release still means.
+// The web build has no engine, so it never reads as on there. A binary without the graph methods leaves the path
+// off and the status line says so (modGraphStartAll sets `failed`), and a voice the engine cannot carry still plays
+// on Web Audio for that note (`fell back`), so a gap is a sound that stays where it was, not one that goes missing.
+function _graphPathWanted(){
+ try{
+  var v = localStorage.getItem('modo-graph-path');
+  if(v === '1') return true;
+  if(v === '0') return false;
+  return modNativeAvailable();
+ }catch(e){ return false; }
+}
 function modGraphStartAll(){
  return modGraphStart(_GRAPH_ALL).then(function(ok){
   // The click is a message of its own part, with no host slot of its own (it sits on the

@@ -1081,3 +1081,13 @@ and are the same renderer turned on its side.
 - Measured: each of the nine applies, reads back as the current style, and has the note count its pattern says; Frame Drum 6/8 moves the grid to 12
   steps and the next 4/4 style moves it back to 16. These parts are written by ear to the idiom (a flamenco cajón, the Arabic four, a campfire clap) and
   want a listen on a phone.
+
+### Landed as 6.1d (Native sound on by default)
+
+- `_graphPathWanted()` is on in the iPhone app unless the player has turned it off (a stored `modo-graph-path` of `0`; a stored `1` still means on). The
+  web build never reads as on. A binary without the graph methods leaves it off and the status line says so; a note the engine cannot carry still falls back
+  to Web Audio for that note. This is the first half of the flip in `docs/v5-architecture.md`; the second half, deleting the Web Audio path, is not done:
+  checklist 10.2 (all eight parts clean), 10.7 (a recorded voice on the melody) and 10.9 (background) have not come back clean, the last diagnostics had 6
+  missed blocks in five minutes at the 5 ms buffer, and the web build and the per-note fallback both still need that path.
+- The app, including the Audio buffer method (`ModEngine.setBuffer`), compiles for the simulator with Xcode 27.2 (`xcodebuild -scheme App -sdk iphonesimulator`).
+  It has not run on a phone.
