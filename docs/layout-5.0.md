@@ -955,3 +955,19 @@ and are the same renderer turned on its side.
   the logic lives.
 - Open, asked about and not built: the Styles widget and Pattern save, the per-lane Shape button on the drum grid, what Studio's part
   switches are called, and why the four sequencers look different from one another.
+
+### Landed as 6.0u (transport collisions, pad clearing)
+
+- **Transport.** The arp-rate chip is positioned by `ftRateClamp` from where Play is, and that was only re-measured when the bar or the
+  Arp switch resized. A long mode name (Gong (Chinese Major)) or the mute/solo pill widens the key cluster, moves Play right and leaves
+  the chip on the tempo and the pill, with the song name pushed off the edge. Now the key, tempo, pill and Play are observed, the chip steps
+  beside Play when it would land on the left cluster as well as on Play, and the left cell may shrink (`minmax(0,auto)`) so the mode label
+  ellipsizes instead of taking the room the right cell needs. Measured at 375 and 440 wide with the long name, the pill and a song loaded:
+  no overlap, no horizontal overflow.
+- **Pad clearing.** A preset pad cannot be emptied, so "Clear" on one put the preset sound back and said so, which read as a Clear that
+  did nothing. The Studio button now says Reset on a preset bank (greyed until the pad has been changed) and Clear on a user bank (greyed
+  on an empty pad); the toasts say reset, and an untouched preset pad says Load puts another on it. Still open: erase mode takes a pad's
+  hits on the first tap and the sample on the second.
+- Decided with the owner, not yet built: tapping a drum lane's name opens one sheet with sample import, the mõdKit controls and copy/paste,
+  replacing the slider icon; Studio's part row gets an "open" state and an arrow on the selected part; the four sequencers get one common
+  layout (pattern, mode, roll, tools), moved one part at a time.
