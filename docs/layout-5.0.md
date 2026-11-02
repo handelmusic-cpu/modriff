@@ -1024,3 +1024,12 @@ and are the same renderer turned on its side.
   through `noteInputWrite` like the home row and MIDI; a tap arms the part first. Before, Play in said "play the keys" and the keys were
   on Studio › Melody. Drums have their own play-in on their page and are unchanged.
 
+### Landed as 6.0z (a dropout log in Copy diagnostics)
+
+- Copy diagnostics now carries `dropouts`: how many times the page's own 100 ms timer came back more than 50 ms late (the main thread was
+  busy), how many times the audio clock advanced 60 ms or more less than the wall clock over a tick (the audio thread did not run: an
+  underrun), long tasks where the webview reports them, each with how long ago and whether anything was playing, plus the context's state,
+  rate and latencies, which parts were on, the tempo and the page. Ticks right after returning from the background are ignored. It
+  is the web path's counterpart to the native engine's own stats, which say nothing when Native sound is off. Only what the page can see:
+  it cannot tell a slow device from a busy page by itself, but the two lists together say which of the two it was.
+
