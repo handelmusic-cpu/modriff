@@ -7624,9 +7624,16 @@ body.light-mode .subnav-btn.pc.active { background:color-mix(in srgb, var(--pc) 
     it cannot give way to the tempo and Play the way it did at 32 pt steppers (the
     mode shrank to a sliver of "M"). It takes what it needs and the rest of the row
     is the tempo, Play and the empty space over the arp rate. */
- .ft-top-l > .ft-key { flex:0 0 auto; min-width:0; }
+ .ft-top-l > .ft-key { flex:0 1 auto; min-width:0; }
  .ft-key-mode { min-width:44px; }
- .ft-top { grid-template-columns:auto auto minmax(0,1fr); }
+ /* The left cell may give: with a long mode name (Gong (Chinese Major)) the
+    key took what it asked for, Play went out to 354pt and the right cell was
+    left with 30pt, so the chip, the section arrows and the song name ran off
+    the edge. minmax(0,auto) lets the mode label ellipsize instead, and the
+    right cell keeps room for what it holds: the chip's 52pt, plus Song and its
+    arrows while a song is loaded. */
+ .ft-top { grid-template-columns:minmax(0,auto) auto minmax(52px,1fr); }
+ .ft-top:has(#ft-sect-prev:not([style*="none"])) { grid-template-columns:minmax(0,auto) auto minmax(144px,1fr); }
  .ft-key-name { min-width:28px; }
  /* Tempo and the arp rate are drag controls, which is why they were small readouts:
     a drag does not need a big target. A tap does (it opens the tempo pad, and
@@ -8671,7 +8678,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0u</span></div>
  </div>
 </div>
 
@@ -10091,7 +10098,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0u</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11264,7 +11271,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0t';
+const MODRIFF_VERSION = '6.0u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18312,9 +18319,9 @@ function psClearPad(i){
  psStop(key);
  // A preset pad is never left empty: clearing it puts the original back.
  if(psIsPresetKey(key)){
-  if(!before.edited){ showToast('Pad '+psPadName(i)+' is the preset already'); return; }
+  if(!before.edited){ showToast('Pad '+psPadName(i)+' is a preset sound — Load puts another on it'); return; }
   delete SMP_SLOTS[key]; psPresetInstall(); psRender();
-  showToast('Pad '+psPadName(i)+' back to the preset', {actionLabel:'Undo', onAction:function(){ SMP_SLOTS[key] = before; psRender(); }});
+  showToast('Pad '+psPadName(i)+' reset to its preset sound', {actionLabel:'Undo', onAction:function(){ SMP_SLOTS[key] = before; psRender(); }});
   return;
  }
  delete SMP_SLOTS[key];
@@ -20019,7 +20026,18 @@ function psRenderDeck(keepKnobs){
  document.querySelectorAll('#ps-panel [data-psmode]').forEach(function(b){ b.classList.toggle('active', b.dataset.psmode===ps.mode); b.disabled=fixed; });
  document.querySelectorAll('#ps-panel [data-pstog]').forEach(function(b){ var on=!!ps[b.dataset.pstog]; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on?'true':'false'); b.disabled=fixed; });
  document.querySelectorAll('#ps-panel [data-pschoke]').forEach(function(b){ b.classList.toggle('active', +b.dataset.pschoke===(ps.choke|0)); b.disabled=fixed; });
- ['ps-trim','ps-clear'].forEach(function(id){ var b=document.getElementById(id); if(b) b.disabled=false; });
+ var trimB=document.getElementById('ps-trim'); if(trimB) trimB.disabled=false;
+ // A preset pad is never left empty, so "Clear" on one was a button that put a
+ // sound back — the pad still had a sound after it, and the toast said so.
+ // Say what it does: Reset on a preset bank, greyed until the pad has been
+ // changed; Clear on a user bank, greyed on an empty pad.
+ var clrB=document.getElementById('ps-clear');
+ if(clrB){
+  var isPre = psIsPresetKey(key);
+  clrB.textContent = isPre ? 'Reset' : 'Clear';
+  clrB.title = isPre ? 'Put the preset sound back on the selected pad' : 'Empty the selected pad';
+  clrB.disabled = isPre ? !(s && s.edited) : !(s && s.id);
+ }
  var L=psSends() || {};
  document.querySelectorAll('#ps-panel [data-psfx]').forEach(function(b){
   var k=b.dataset.psfx, on = k==='filter' ? (L.lmode>0) : (L[k]>0.001);
@@ -20437,6 +20455,9 @@ function psErasePad(i){
  }
  var slot = SMP_SLOTS[key];
  if(!slot || !slot.id){ showToast('Pad '+psPadName(i)+' is already empty'); return; }
+ // The first tap took the hits and left the sample, so "clear" appeared to do
+ // half of it. This is the tap that takes the sample: say so, and on a preset
+ // pad say it can only go back to its preset, since it cannot be emptied.
  psClearPad(i);
 }
 
@@ -63966,7 +63987,13 @@ function _ftMoreOutsideClick(e){
     b.classList.remove('rate-by-play');
     var r = rate.getBoundingClientRect(), p = play.getBoundingClientRect();
     if(!r.width || !p.width) return;
-    if(r.bottom > p.top && r.top < p.bottom && r.left < p.right + 6 && r.right > p.left) b.classList.add('rate-by-play');
+    // Overlapping Play is not the only way to land on something: a long mode
+    // name pushes Play right and leaves the chip (still centred over Arp) on
+    // the tempo and the mute/solo pill, which sit between the key and Play.
+    // The left cluster ends where Play begins, so its right edge is the test.
+    var tl = document.querySelector('.ft-top-l'), tr = tl ? tl.getBoundingClientRect() : null;
+    var onLeft = tr && tr.width && r.bottom > tr.top && r.top < tr.bottom && r.left < tr.right + 2 && r.right > tr.left;
+    if(onLeft || (r.bottom > p.top && r.top < p.bottom && r.left < p.right + 6 && r.right > p.left)) b.classList.add('rate-by-play');
     // Where "beside Play" is, for a bar whose Play is not in the middle (the key
     // block's 44 pt targets push it right). The chip is positioned against the bar.
     var bar = document.getElementById('perf-bar');
@@ -63990,6 +64017,17 @@ function _ftMoreOutsideClick(e){
     // without necessarily resizing the bar; watch the buttons themselves.
     var arp = document.getElementById('ft-arp-btn');
     if(arp) ro.observe(arp);
+    // Play is not in a fixed place: it sits after the key, the tempo and the
+    // mute/solo pill, all of which change width (Gong (Chinese Major) is three
+    // times as long as Major; the pill comes and goes). The bar itself does not
+    // resize when they do, so nothing re-measured and the chip kept the
+    // --ft-rate-left of the old Play: drawn on top of the tempo and the pill,
+    // with Play pushed out from under it. Watch what Play is positioned by.
+    var rc = new ResizeObserver(ftRateClamp);
+    ['ft-key','ft-bpm-wrap','ft-ms-led','ft-playstop-btn'].forEach(function(id){
+      var el = document.getElementById(id); if(el) rc.observe(el);
+    });
+    var tl = document.querySelector('.ft-top-l'); if(tl) rc.observe(tl);
   }
   if(typeof MutationObserver !== 'undefined'){
     var mo = new MutationObserver(ftRateClamp);
