@@ -1071,3 +1071,13 @@ and are the same renderer turned on its side.
   of a roll now (36 scales for an owner).
 - **The scale name is folded on every phone** (three letters of the first word, with … when the name has more: Maj, Maj…, Har…), and the whole name
   heads the list the button opens, with its description. It was whole on 426 to 460 pt screens.
+
+### Landed as 6.1c (Aux styles for Hand Drums and Bells & FX)
+
+- Nine more Aux styles, in `AUX_CUSTOM` (keyed by kit and style, written against the kit's own rows; not in `AUX_PARTS`, because those kits reuse voice
+  names such as BD, SD, LT and TB that the drum machines share). Hand Drums: Cajón & Palmas, Doum & Tek, Clap & Shaker, Frame Drum 6/8. Bells & FX:
+  Sleigh Ride, Ballad Shimmer, Zills & Bell, Brake & Anvil, Ocean & Nepal Bell. A style whose bar is not the grid's length loads its `groove` with it and is
+  written over what that groove put on the Aux layer (`_auxPendStyle`, applied in the groove import, so a groove that waits for the bar line works too).
+- Measured: each of the nine applies, reads back as the current style, and has the note count its pattern says; Frame Drum 6/8 moves the grid to 12
+  steps and the next 4/4 style moves it back to 16. These parts are written by ear to the idiom (a flamenco cajón, the Arabic four, a campfire clap) and
+  want a listen on a phone.
