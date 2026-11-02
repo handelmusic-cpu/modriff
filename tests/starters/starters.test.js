@@ -46,9 +46,9 @@ function serve() {
     o.bassKept = JSON.stringify([0, 1, 2, 3, 4, 5, 6, 7].map(i => PR_ENGINES.bl.cell(i))) === hand;
     click('ft-bas-btn'); click('ft-mel-btn');   // both off for the rest
 
-    // Drums: muted and on again with an empty kit writes the groove; with a kit in it, nothing.
+    // Drums start off, like Bass and Mel (6.0x): switched on over an empty kit writes the groove; muted and on again with a kit in it, nothing.
     o.drumsBoot = { enabled: drumsEnabled, has: _sqKitHasHits() };
-    click('ft-drum-btn'); click('ft-drum-btn');
+    click('ft-drum-btn');
     o.drums = { has: _sqKitHasHits(), groove: starterCurrent('drums') };
     const kit = JSON.stringify(window._sqCaptureState());
     click('ft-drum-btn'); click('ft-drum-btn');
@@ -98,8 +98,8 @@ function serve() {
   ok(r.bassOn.enabled && r.bassOn.has && r.bassOn.style === 'funk', 'Bass switched on over nothing: a funk line is written', JSON.stringify(r.bassOn));
   ok(r.melOn.enabled && r.melOn.has && r.melOn.style === 'hook', 'Mel switched on over nothing: a pop hook is written', JSON.stringify(r.melOn));
   ok(r.bassKept, 'Bass off and on again does not rewrite what is there (a hand-placed note survives)', '');
-  ok(r.drumsBoot.enabled && !r.drumsBoot.has, 'Drums start on and empty', JSON.stringify(r.drumsBoot));
-  ok(r.drums.has && r.drums.groove === '4/4 Basic', 'Drums off and on over an empty kit: 4/4 Basic is loaded', JSON.stringify(r.drums));
+  ok(!r.drumsBoot.enabled && !r.drumsBoot.has, 'Drums start off and empty', JSON.stringify(r.drumsBoot));
+  ok(r.drums.has && r.drums.groove === '4/4 Basic', 'Drums switched on over an empty kit: 4/4 Basic is loaded', JSON.stringify(r.drums));
   ok(r.drumsKept, 'and with a kit in it, nothing is loaded', '');
   ok(r.toasts.some(t => /Bass: Funk/.test(t)) && r.toasts.some(t => /Melody: Pop Hook/.test(t)) && r.toasts.some(t => /Drums: 4\/4 Basic/.test(t)), 'each load says what it loaded', JSON.stringify(r.toasts));
   ok(r.saved && r.saved.bass === 'jazz' && r.saved.mel === 'riff' && r.saved.drums === 'Bossa Nova' && r.selects.bass >= 10 && r.selects.mel >= 10 && r.selects.drums >= 30, 'the starters are chosen in Settings and saved', JSON.stringify([r.saved, r.selects]));

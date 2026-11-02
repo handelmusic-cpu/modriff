@@ -8687,7 +8687,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0w</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0x</span></div>
  </div>
 </div>
 
@@ -10107,7 +10107,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0w</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0x</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11280,7 +11280,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0w';
+const MODRIFF_VERSION = '6.0x';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -22037,7 +22037,11 @@ let rhythmOn=false, rhythmIdx=0, rhythmSel=0;
 // drumsEnabled — scheduleDrum's own voices, the snapshot's `armed` block —
 // keeps reading a plain boolean; everything that WRITES it goes through
 // setDrumsEnabled, which is the same call the dot makes.
-let drumsEnabled = true;
+// Off until it is touched, as Bass and Melody are (6.0x). It was on from the first launch with nothing on the
+// kit, so the Drums switch lit up over silence; switching it on is what loads the starter beat (ftDrumClick ->
+// starterOnEnable). A saved setup or song still brings its own state back (kitOn), and an old one that has none
+// keeps the kit on, as it always was.
+let drumsEnabled = false;
 // Called by the sequencer whenever a layer's on/off moves, from either switch
 // or from a restore.
 window._syncLayerTransport = function(){
@@ -52791,6 +52795,9 @@ function sqLoadGroove(idx, opts){
     if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove','groove');
     return;
   }
+  // Picking a groove to hear it (autostart: the groove list, the dice) is asking for the drums; with the kit off
+  // by default it would otherwise start a beat nobody can hear.
+  if(opts && opts.autostart && typeof window._sqLayerOn==='function' && !window._sqLayerOn(0) && typeof window._sqSetLayerOn==='function') window._sqSetLayerOn(0, true);
   var playing = (typeof window._sqPlaying==='function') && window._sqPlaying();
   if(playing){
     sqPendGroove = idx;
@@ -54766,7 +54773,7 @@ var sqSwing=0, sqMach='LIN', sqSteps=16;
 // turning Aux off silenced the KIT and left the aux playing alone.
 // sqMach/sqGrid stay a view onto the focused layer so every editing path is
 // untouched; identity and the on/off flags live here.
-var sqLayers = [ {mach:'LIN', grid:{}, on:true}, {mach:'606', grid:{}, on:true} ];
+var sqLayers = [ {mach:'LIN', grid:{}, on:false}, {mach:'606', grid:{}, on:true} ];
 var sqFocus = 0;
 const SQ_LAYER_CH = ['drum','auxperc'];
 // 'Aux', not 'Aux Perc' (4.2.1): the layer takes any kit, and the old name
@@ -55477,6 +55484,9 @@ function sqSetFocus(f){
 function sqToggleLayer(i){
   i = i ? 1 : 0;
   sqSetLayerOn(i, !sqLayers[i].on);
+  // The Kit dot on the Drums page is the same switch as the transport's, and the transport's loads the starter
+  // beat when it goes on over an empty kit (ftDrumClick); the dot did not, so it lit the kit over silence.
+  if(i===0 && sqLayers[0].on && typeof starterOnEnable==='function') starterOnEnable('drums');
 }
 function sqSetLayerOn(i, on){
   i = i ? 1 : 0;
@@ -57309,7 +57319,7 @@ function sqWire(){
 // _sqRestoreState reads, so putting it back goes through the same path as a
 // setup, a song or undo.
 window._sqFactory = JSON.parse(JSON.stringify({ steps: sqSteps, swing: sqSwing, swing8: sqSwing8, mach: sqMach,
-  grid: sqGrid, vols: sqVols[sqMach] || {}, pitches: sqPitches[sqMach] || {}, shapes: {}, machGrids: sqMachGrids, kitOn: true }));
+  grid: sqGrid, vols: sqVols[sqMach] || {}, pitches: sqPitches[sqMach] || {}, shapes: {}, machGrids: sqMachGrids, kitOn: false }));
 // ── restore autosaved rhythm state, if any (see _seqAutosaveData near top of script) ──
 if(_seqAutosaveData && _seqAutosaveData.rhythm){
  (function(){

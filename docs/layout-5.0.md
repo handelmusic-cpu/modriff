@@ -992,3 +992,13 @@ and are the same renderer turned on its side.
   is greyed and says so) and then for a name; Open is the bank sheet as before, with its four tabs. A saved pattern is still in its part's
   style list under Saved by you, so loading one is the same two taps it was. The widget is 204 pt at 440 wide.
 - `tests/styles/probe.js` is updated for the new row; it has not been run (no Playwright on this Mac).
+
+### Landed as 6.0x (drums start off)
+
+- **Drums start off, like Bass and Melody.** The switch was on from the first launch with nothing on the kit, lit over silence. The kit
+  layer, `drumsEnabled` and Start's blank-session kit (`_sqFactory.kitOn`) default to off; switching drums on over an empty kit loads the
+  starter beat (4/4 Basic, the Settings choice) as it always did from the transport. The Kit dot on the Drums page did not, and now does
+  (`sqToggleLayer`). Picking a groove to hear it (`autostart`: the groove list, the dice) switches the kit on, since it would otherwise start
+  a beat nobody can hear. A saved setup or song still brings its own state back; an old one with no `kitOn` keeps the kit on.
+- `tests/starters/starters.test.js` expects the new start ("Drums start off and empty"); not run here.
+
