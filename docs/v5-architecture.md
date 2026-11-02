@@ -1891,11 +1891,31 @@ Two things measured on the way, so nobody rediscovers them:
   the control thread, `render` from the render thread, a slot state machine so
   the render thread never allocates, locks or frees. A voice starts at an engine
   frame, applies queued edits at a block start, sums into its part's bus by ext
-  code, and retires when its sources have stopped and the tail has gone quiet.
-  `graphpooltest`: 24 checks (exact sums with starts between blocks, edits
-  before and after start, retirement, a full pool, slot reuse over 600 notes, a
-  control thread racing the render thread, recorded audio and a half-rate clip),
-  clean under ThreadSanitizer.
+  code, and retires when its sources have stopped and the tail has gone quiet
+  (6.2e: "quiet" is also an output that has stopped moving, not only one under 1e-6).
+  `graphpooltest`: 43 checks (exact sums with starts between blocks, edits
+  before and after start, retirement, slot reuse over 600 notes, a control
+  thread racing the render thread, recorded audio and a half-rate clip, and the
+  steal below), clean under ThreadSanitizer.
+- **A full pool takes a voice (6.2e).** The first listening report with the
+  counters (9.5 minutes, 4660 notes) showed 482 dropped, all "no free voice",
+  64 voices at once. Two causes. (1) Voices that never end: the 909 kick's click
+  layer goes through a waveshaper whose curve is not zero at zero, and after the
+  sources stop a gain at its floor holds that at a constant 3e-6, over the 1e-6
+  silence floor `Graph::finished()` used, so the voice was "still ringing" for
+  ever (measured: 60 s cap reached; every other voice type the page records
+  ends within 0.4 to 3.5 s). Output that has stopped moving now counts as
+  silent. (2) Nothing gave way: `begin()` refused the note when 64 slots were
+  busy. `kMaxVoices` is now 96 *sounding*; the pool has `kSpare` (16) more slots
+  so a note always has somewhere to load, and when a voice is due to start with
+  96 already sounding, the render thread picks one (already released first, then
+  the quietest, then the oldest; none younger than 50 ms unless nothing else is
+  left) and ramps it to nothing over 480 frames (10 ms) while the new one starts.
+  Only the render thread touches a playing slot, so the steal is its decision, not
+  a request the control thread makes; the control side only ever parks the new note
+  in a spare slot. `stolen()` counts them (`graphStats.stolen`); `droppedBusy` now
+  means more than 16 notes arrived between two blocks. Not yet shown on the
+  page's status line.
 - **Drums.** `tests/graph/drums.test.js` plays every lane of every kit in `SQM`
   into a browser `OfflineAudioContext` and through the recorder and interpreter
   (two hooks patched into the served page in memory; `index.html` is untouched).
