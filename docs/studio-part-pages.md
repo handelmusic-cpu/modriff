@@ -31,7 +31,9 @@ Before 6.0y the same controls came out at eleven font sizes (11 to 15 px) and ei
 - **Bass** — conforms: pick, write, surface, timing, sound (its filter is now the shared block, Cutoff and Resonance with readouts; it has
   no ladder to choose), mõdFX. It is the reference.
 - **Melody** — the same page as Bass, with Mode and Glide beside Follow and a ladder choice in Filter. Conforms.
-- **Drums** — sizes conform. Structure does not yet: Steps and Rate are above the grid instead of under it, there is no write mode
-  (Play in sits in a row of tools), and the eight pattern slots sit under the grid. Next.
-- **Arp** — sizes conform. It has no surface (it is generated from the chords, so there is no roll), and its options are a stack of
-  labelled rows inside one card instead of the pick / write / timing blocks. Next after Drums.
+- **Drums** (6.2) — conforms. Pick (Groove, Kit), the Kit | Aux switch, then **Write**: Draw | Play in, with Draw's tools (Fill, Duplicate ×2,
+  Tuplets, Audition) or Play in's one action (Start recording) under it and CLR in both; the grid; Steps, Rate and Swing under it; the eight
+  pattern slots and the song chain; mõdFX. Drums has two write modes, not three: the groove list is its generator.
+- **Arp** (6.2) — conforms as far as it can. Pick (Arp pattern, Patch) with the eight pattern buttons kept hidden as the owners of the handlers, the
+  switch and status, the preview strip as its surface (it is generated from the chords, so there is no roll to draw on), then Range, Timing and Rate
+  motion directly under it, then Dynamics and Feel, then Sound and mõdFX.

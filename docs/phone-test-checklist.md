@@ -253,3 +253,12 @@ One message is enough: the item numbers that are **wrong** or **skipped**, the
 diagnostics from any that misbehaved, the `bounce-check.py` output and capture
 report for 5.6, and screenshots for 3.1 to 3.3. "All ok except 3.3 and 5.10" is
 a complete answer.
+
+## 12. 6.2: the Studio pages
+
+| # | do | you should see |
+|---|---|---|
+| 12.1 | Studio › Drums | Pick, Kit / Aux, a Draw | Play in switch, then the grid with Steps, Rate and Swing under it; Play in shows one Start recording button |
+| 12.2 | Studio › Arp | Arp pattern and Patch boxes at the top (each opens a list and changes the real control), the preview, then Range, Timing, Rate motion |
+| 12.3 | Studio › Chords › the rhythm roll: Tap › Length, then tap a lit step | the step holds through the next 2, 3, 4… steps; Swing › Own with the slider; Start from › a built-in rhythm; Clear |
+| 12.4 | Sampler: hold ✕ Clear with a pattern that has hits on one pad | that pad is red, pads with only a sample are amber, empty pads dim |
