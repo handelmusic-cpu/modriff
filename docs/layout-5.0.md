@@ -1039,3 +1039,14 @@ and are the same renderer turned on its side.
   half (`setBuffer` on `ModEngine`) parses but has not been built; the page half answers nothing from a binary without it and the choice then
   applies from the next start.
 
+
+### Landed as 6.1a (the transport's Song group, back to the mock)
+
+- 6.0i/6.0y gave the Song group a row of its own on every phone: three 44 pt buttons across the full width, 48 pt more bar, and it read as one
+  huge button. The mock draws one row (key, tempo, Play, rate, then `‹ Song ›` with 26 pt arrows), so:
+  - **431 to 460 pt (the Pro Max class): one row, as the mock.** Key steppers 36 pt, tempo 38, arrows 26, the Song pill capped at 58 pt
+    (the section name ellipsizes), the right column floored at 166 pt so a long mode name gives way instead. Measured at 440 with
+    "Gong (Chinese Major)" and a section name: bar 110 pt (no song: 110), nothing overlapping, right edge at 434 of 440.
+  - **430 pt and narrower: a 28 pt strip** under the transport, arrows and name together and centred (was 44 pt across the width), with the
+    touch targets reaching 3 pt past it. One row does not fit there: the key block, tempo, Play and rate are 337 pt of 381 at 393, and
+    `‹ Song ›` is 108. Bar is 142 pt at 393 and 375 (was 158). To get it to none, the key steppers would have to go under 44 pt on those phones.
