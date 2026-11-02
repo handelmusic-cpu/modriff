@@ -8732,7 +8732,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0y</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0z</span></div>
  </div>
 </div>
 
@@ -9987,7 +9987,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
      <select id="def-key-root" class="def-key-sel" onchange="setDefaultKey()" aria-label="Default key"></select>
      <select id="def-key-mode" class="def-key-sel" onchange="setDefaultKey()" aria-label="Default mode or scale"></select>
     </div>
-    <div class="ss-scope">Diagnostics <b>copy what the engine measured, to paste to the developer</b></div>
+    <div class="ss-scope">Diagnostics <b>copy what the engine measured, to paste to the developer. Includes a log of stalls and dropouts since the app opened</b></div>
     <div class="row">
      <button class="tb tb-solo" onclick="copyDiagnostics()">Copy diagnostics</button>
     </div>
@@ -10152,7 +10152,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0y</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0z</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11339,7 +11339,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0y';
+const MODRIFF_VERSION = '6.0z';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -22932,8 +22932,60 @@ function _bgKeepPlaying(){
 // long, and how long ago), how late chord and arp messages were handed over,
 // and when the long look-ahead switched on and off. Copied to the clipboard so
 // it can be pasted straight into a message.
+// ── The dropout log (6.0z) ──
+// Copy diagnostics had the native engine's timing and the lateness of messages handed to it, which says nothing
+// about a dropout on the Web Audio path (the default), and a dropout on a plain oscillator is not a sample that
+// failed to arrive: it is the page not getting to run, or the audio thread not getting to render. These are the two
+// things that can be watched from the page, kept for the last few minutes and copied with the rest:
+//   stalls  the page's own timer (100 ms) came back more than 50 ms late: the main thread was busy
+//   clock   the audio clock advanced 60 ms or more less than the wall clock over a tick: the audio thread did
+//           not run, which is an underrun by another name
+// A tick right after the page comes back from the background is thrown away, since that gap is the pause.
+// var, and read only when asked: this runs at load, long before anything can look at it.
+var _dropLog = { t0: Date.now(), ticks: 0, stalls: [], clock: [], longtask: [], nStall: 0, nClock: 0, nLong: 0, visAt: Date.now() };
+(function(){
+ var last = performance.now(), lastCt = null;
+ var keep = function(a, rec){ a.push(rec); if(a.length > 40) a.shift(); };
+ document.addEventListener('visibilitychange', function(){ _dropLog.visAt = Date.now(); lastCt = null; });
+ setInterval(function(){
+  var now = performance.now(), dt = now - last; last = now;
+  if(document.hidden || Date.now() - _dropLog.visAt < 1500){ lastCt = null; return; }
+  _dropLog.ticks++;
+  var playing = false; try{ playing = !!isAnythingPlaying(); }catch(e){}
+  if(dt > 150){ _dropLog.nStall++; keep(_dropLog.stalls, {at:Date.now(), ms:Math.round(dt - 100), playing:playing}); }
+  var c = audioCtx;
+  if(c && c.state === 'running'){
+   var ct = c.currentTime;
+   if(lastCt != null && dt < 400){
+    var lag = dt - (ct - lastCt) * 1000;
+    if(lag >= 60){ _dropLog.nClock++; keep(_dropLog.clock, {at:Date.now(), lagMs:Math.round(lag), playing:playing}); }
+   }
+   lastCt = ct;
+  } else lastCt = null;
+ }, 100);
+ try{
+  new PerformanceObserver(function(list){
+   list.getEntries().forEach(function(e){ _dropLog.nLong++; keep(_dropLog.longtask, {at:Date.now(), ms:Math.round(e.duration)}); });
+  }).observe({entryTypes:['longtask']});
+ }catch(e){}
+})();
+function dropoutReport(){
+ var now = Date.now(), ago = function(r){ var o = Object.assign({}, r); o.secAgo = Math.round((now - r.at) / 100) / 10; delete o.at; return o; };
+ var c = audioCtx, o = { upSec:Math.round((now - _dropLog.t0) / 1000), ticks:_dropLog.ticks,
+  stalls:_dropLog.nStall, clockLags:_dropLog.nClock, longTasks:_dropLog.nLong,
+  lastStalls:_dropLog.stalls.map(ago), lastClockLags:_dropLog.clock.map(ago), lastLongTasks:_dropLog.longtask.map(ago) };
+ try{ o.ctx = c ? { state:c.state, rate:c.sampleRate, baseMs:Math.round((c.baseLatency||0) * 1000), outMs:Math.round((c.outputLatency||0) * 1000) } : null; }catch(e){}
+ try{
+  o.on = { drums:!!drumsEnabled, bass:!!blEnabled, mel:!!mlEnabled, arp:!!arpOn, chords:!!chordsEnabled, native:!!(typeof _graphPathWanted==='function' && _graphPathWanted()) };
+  o.bpm = parseFloat((document.getElementById('bpm') || {}).value) || null;
+  o.page = _activePageId();
+ }catch(e){}
+ return o;
+}
+window.dropoutReport = dropoutReport;
 function copyDiagnostics(){
  var out = { version: MODRIFF_VERSION, at: new Date().toISOString(), bgKeep: _bgKeepPlaying(), lead: null, native: null };
+ try{ out.dropouts = dropoutReport(); }catch(e){ out.dropouts = String(e); }
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
  try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
