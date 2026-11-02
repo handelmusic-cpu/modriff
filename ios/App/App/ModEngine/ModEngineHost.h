@@ -55,6 +55,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// never allocates", not a claim that it cannot.
 - (BOOL)warmUpPart:(int)part;
 
+/// Runs a throwaway rack, strip, mõdFX and master bus over a few blocks of tone,
+/// on the caller's thread, so the code and memory the first real block would
+/// otherwise fault in are already warm. Touches nothing the render thread owns
+/// and is never heard. Once per process; later calls return at once. Call it
+/// before the audio engine starts.
+- (void)warmMixPath;
+
 // ── The graph path ──────────────────────────────────────────────────────
 // The page records a note's Web Audio graph and sends it as numbers; the host
 // plays it with the C++ interpreter (graphpool.h), into the part's own bus, so

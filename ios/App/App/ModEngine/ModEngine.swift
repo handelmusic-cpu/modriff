@@ -110,6 +110,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             // sizes its scratch buffers to it once.
             let maxFrames = 4096
             let host = ModEngineHost(sampleRate: sampleRate, maxFrames: Int32(maxFrames))
+            // Before the engine starts, so the first real block is not the first
+            // time the mix path has run (a 37 ms block on device).
+            host.warmMixPath()
 
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
                                              channels: 2) else {

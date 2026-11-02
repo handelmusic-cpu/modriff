@@ -316,6 +316,42 @@ double num(id value, double fallback = 0) {
   return YES;
 }
 
+// The first real block runs every stage after the voices for the first time:
+// rack, strip, mõdFX, bus room, master. Measured on a device, that block took
+// 37 ms against a 5 ms budget, which is the code and the objects' memory being
+// faulted in from cold, and it is the one `missed` block a fresh launch always
+// shows. warmUpPart and warmGraphPool already warm the voices; this warms what
+// they feed. Throwaway objects, like warmGraphPool, so nothing here is shared
+// with the render thread and nothing is heard. Stages that start bypassed stay
+// cold until used; this covers the path, not every effect.
+- (void)warmMixPath {
+  static std::atomic<bool> done{false};
+  if (done.exchange(true)) return;
+  const int n = _maxFrames < 512 ? _maxFrames : 512;
+  modsynth::FxRack rack(_sampleRate), room(_sampleRate);
+  room.setSendReverb(1.8, 2.5);
+  modsynth::Strip strip(_sampleRate);
+  modsynth::MixFx mixfx(_sampleRate);
+  modsynth::MasterBus master(_sampleRate);
+  std::vector<float> l((size_t)n), r((size_t)n), rl((size_t)n), rr((size_t)n), ml((size_t)n), mr((size_t)n);
+  double ph = 0;
+  const double inc = 2.0 * M_PI * 220.0 / _sampleRate;
+  for (int k = 0; k < 16; k++) {
+    for (int i = 0; i < n; i++, ph += inc) {
+      l[i] = r[i] = (float)(0.3 * std::sin(ph));
+      rl[i] = rr[i] = l[i];
+      ml[i] = mr[i] = 0.0f;
+    }
+    rack.process(l.data(), r.data(), n);
+    strip.gain(l.data(), r.data(), n);
+    mixfx.process(l.data(), r.data(), n);
+    strip.measure(l.data(), r.data(), n);
+    strip.applyPan(l.data(), r.data(), n);
+    room.processSend(rl.data(), rr.data(), n);
+    master.process(l.data(), r.data(), ml.data(), mr.data(), n);
+  }
+}
+
 // ── The graph path, control side ─────────────────────────────────────────
 
 // A part that has no Processor: its strip and mõdFX (what a Processor part gets
