@@ -8732,7 +8732,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.0z</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.1</span></div>
  </div>
 </div>
 
@@ -9996,6 +9996,14 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
      <button class="tb tb-solo" data-graphpath onclick="toggleGraphPath()" aria-pressed="false">Native sound: OFF</button>
     </div>
     <div class="ss-note" data-graphpath-status style="font-size:.46rem;color:var(--muted);line-height:1.6;margin:2px 0 6px"></div>
+    <div class="ss-scope">Audio buffer <b>bigger is steadier, smaller answers faster. Try 10 if Native sound drops out</b></div>
+    <div class="row">
+     <div class="tg" role="group" aria-label="Native sound buffer">
+      <button type="button" class="tb" data-natbuf="5" aria-pressed="false" onclick="setNativeBuffer(5)">5 ms</button>
+      <button type="button" class="tb" data-natbuf="10" aria-pressed="false" onclick="setNativeBuffer(10)">10 ms</button>
+      <button type="button" class="tb" data-natbuf="20" aria-pressed="false" onclick="setNativeBuffer(20)">20 ms</button>
+     </div>
+    </div>
     <div class="ss-scope">Touch <b>a tap under your finger on pads, with the sound</b></div>
     <div class="row">
      <button class="tb tb-solo" data-haptics onclick="toggleHaptics()" aria-pressed="true">Haptics: ON</button>
@@ -10152,7 +10160,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.0z</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11339,7 +11347,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.0z';
+const MODRIFF_VERSION = '6.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12326,7 +12334,7 @@ function modNativePlugin(){
     try{ MODNAT.plugin.fileDelete({names:[]}).then(function(){ MODNAT.stream=true; }, function(){ MODNAT.stream=false; }); }catch(e){ MODNAT.stream=false; }
    }, 0);
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
-                     ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'),
+                     ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'), setBuffer:call('setBuffer'),
                      meters:call('meters'), shareFile:call('shareFile'),
                      fileAppend:call('fileAppend'), shareFiles:call('shareFiles'),
                      fileDelete:call('fileDelete'), wavFinish:call('wavFinish'), pcmAdd:call('pcmAdd'),
@@ -12356,6 +12364,36 @@ function modNativeAvailable(){
 // bounce starts; asking once at load means the stream probe has answered by then.
 window.addEventListener('load', function(){ setTimeout(function(){ try{ modNativeAvailable(); }catch(e){} }, 1500); });
 
+// The hardware buffer the native engine renders into, in ms (6.0za). The app asks iOS for 5 at launch, which is
+// 240 frames and a 5 ms deadline: a diagnostics paste with 6 missed blocks in 5 minutes, one of 68 ms, on six
+// voices, was the audio thread being held up, not the engine being slow, and a 5 ms block cannot absorb a
+// hold-up that a 10 ms one can. A choice in Settings, kept here; 5 is what it has always been. var: read by the
+// engine's start, which can run before this line in file order.
+var NATBUF = 5;
+try{ var _nb = parseInt(modStore.getItem('modo-native-buf'), 10); if(_nb === 5 || _nb === 10 || _nb === 20) NATBUF = _nb; }catch(e){}
+function nativeBufferApply(){
+ var p = modNativePlugin();
+ if(!p || !p.setBuffer) return Promise.resolve(null);
+ return p.setBuffer({ms:NATBUF}).catch(function(){ return null; });   // a binary from before the method answers nothing
+}
+function setNativeBuffer(ms){
+ ms = (ms === 10 || ms === 20) ? ms : 5;
+ NATBUF = ms;
+ try{ modStore.setItem('modo-native-buf', String(ms)); }catch(e){}
+ nativeBufferSync();
+ if(MODNAT.started) nativeBufferApply().then(function(r){
+  try{ showToast(r ? ('Audio buffer '+ms+' ms'+(r.actualMs && Math.abs(r.actualMs-ms) > 1.5 ? ' (iOS gave '+Math.round(r.actualMs)+')' : '')) : 'Audio buffer '+ms+' ms, from the next start'); }catch(e){}
+  _graphPathSync();
+ });
+ else try{ showToast('Audio buffer '+ms+' ms, when Native sound starts'); }catch(e){}
+}
+function nativeBufferSync(){
+ document.querySelectorAll('[data-natbuf]').forEach(function(b){
+  var on = +b.dataset.natbuf === NATBUF; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+ });
+}
+window.setNativeBuffer = setNativeBuffer;
+window.addEventListener('load', function(){ nativeBufferSync(); });
 function modNativeStart(){
  if(MODNAT.started) return Promise.resolve(true);
  if(MODNAT.starting) return MODNAT.starting;
@@ -12363,6 +12401,7 @@ function modNativeStart(){
  if(!p) return Promise.resolve(false);
  MODNAT.starting = p.start().then(function(r){
   MODNAT.sr=(r&&r.sampleRate)||0; MODNAT.started=true;
+  if(NATBUF !== 5) nativeBufferApply();
   // Builds the processor and grows the containers that would otherwise
   // allocate inside the render callback.
   return p.ensurePart({part:MODNAT.PART.chord, warm:true});
