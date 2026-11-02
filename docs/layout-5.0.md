@@ -968,6 +968,17 @@ and are the same renderer turned on its side.
   did nothing. The Studio button now says Reset on a preset bank (greyed until the pad has been changed) and Clear on a user bank (greyed
   on an empty pad); the toasts say reset, and an untouched preset pad says Load puts another on it. Still open: erase mode takes a pad's
   hits on the first tap and the sample on the second.
-- Decided with the owner, not yet built: tapping a drum lane's name opens one sheet with sample import, the mõdKit controls and copy/paste,
-  replacing the slider icon; Studio's part row gets an "open" state and an arrow on the selected part; the four sequencers get one common
-  layout (pattern, mode, roll, tools), moved one part at a time.
+
+### Landed as 6.0v (the drum lane sheet, Studio's open state)
+
+- **Drum lane sheet.** The lane had a volume dial, the name, a ◈ for a sample, a slider icon for the shape and the pitch dial. The two
+  icons are gone. Tapping the name opens one sheet: Sample (opens the lane's sampler as before), Shape (the existing shape sheet, kits that
+  have it), and the row tools as buttons (Copy, Cut, Paste, Clear, Euclid 3/5/7, Rotate each way). `sqRowItems` is the one list; the old
+  menu is still `sqRowMenu` for anything that wants it. What the icons used to show is two dots on the name: your own sample on the lane,
+  and a drum shaped away from its kit; `smpSyncBadges` lights the first as it did the ◈. The name has a dotted underline now, since it is
+  the button. Volume and pitch stay on the lane.
+- **Studio's part row.** In Studio the same five switches are a way in, and the only sign was a ring. The page you are on now also has a
+  chevron at the foot of its switch, `aria-current="page"`, and every other switch's tooltip says "Open X — tap it again to switch it
+  on or off". `body.parts-open` is set on the Studio pages. Live is unchanged. Naming: Live and Studio stay.
+- Still open: Styles / Pattern save as one "Saved patterns" row; the four sequencers' common layout (bass first); the Studio chord roll's
+  step length, swing and Start from; erase mode's hits-then-sample order.
