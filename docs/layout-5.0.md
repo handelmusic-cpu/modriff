@@ -1116,3 +1116,13 @@ and are the same renderer turned on its side.
   the top (28 pt cells, 13 pt row, clipped by the scroller): bottom-aligned, row 15 pt.
 - Fold carets on Studio's Chords page: Rhythm builder (open), Borrowed & modal, Secondary dominants and Chord voice (closed),
   remembered per device as `modo-fold-<key>`; the pads stay above the builder. `.mel-edge` is 44 pt wide.
+
+### 6.2c: finding Ratchet and Tuplet
+
+- Tuplets and Ratchet live in the step inspector, which only opened on a double-tap that nothing on the page mentioned.
+  **Tap a step to: Place | Edit** is on Drums, Bass and Melody (one setting, `modo-tap-edit`): in Edit a single tap selects
+  the step (an empty one is placed first, the selected one clears) and scrolls its inspector into view.
+- Drums: the grid comes first; Steps, Rate, Swing, Audition, Play in, Duplicate, Fill, Tuplets: Cover and Clear are one
+  "Pattern tools" caret under it, closed to begin with (in Play in the record button stays up). Bass and Melody have no carets.
+- The "Rotate to landscape" ghost over the drum grid is hidden. The roll side of Edit (Bass, Melody) is covered by the
+  shared handler but not yet by a probe that touches a canvas cell.

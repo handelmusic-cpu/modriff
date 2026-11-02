@@ -8477,6 +8477,25 @@ body:not(.mode-basic) #chords-col > .st-fold-h[data-k="crh"] { order:-1; }
 /* Settings is a tab in its own right now: wide enough for its word at the size of the others. */
 .tab-bar { grid-template-columns:repeat(4, minmax(0,1fr)) 84px; }
 .tab-more .tm-lbl { font-size:11px; letter-spacing:.04em; }
+
+/* ── Drums: Pattern tools under the grid in one fold, and Tap: Place | Edit (6.2c) ──
+   The tools row moves below the grid (in Play in the record button is in it, so there it stays above) and
+   the Steps / Rate / Swing row joins it under one caret, closed to begin with: the grid is what the page is for. */
+.tap-mode { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; margin:6px 0 4px; }
+.tap-mode-l { font-family:'Orbitron',sans-serif; font-size:.46rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+.tap-mode .tg { display:flex; border:1px solid var(--border2); border-radius:12px; overflow:hidden; background:var(--bg); }
+.tap-mode .tg button { min-height:44px; min-width:72px; padding:0 14px; border:0; background:none; color:var(--text); font:600 .64rem 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.tap-mode .tg button.active { background:#9b6dff; color:#fff; }
+.tap-mode-h { flex:1 1 100%; font-size:.55rem; line-height:1.4; color:var(--muted); }
+.sq-wrap[data-wmode="rec"] .tap-mode, .bl-page-wrap[data-wmode="rec"] .tap-mode { display:none; }
+#ac-drums-panel > .sq-wrap > [data-acrow="tapmode"] { order:1; }
+#ac-drums-panel > .sq-wrap[data-wmode="draw"] > [data-acrow="gen"] { order:3; }
+#ac-drums-panel > .sq-wrap > .st-fold-g { order:3; }
+#ac-drums-panel > .sq-wrap[data-wmode="rec"] > .st-fold-g { display:none; }
+.sq-wrap[data-wmode="draw"] .st-fold-body.st-folded { display:none !important; }
+/* The "rotate to landscape" ghost sat over the grid's first rows and ruler. The grid scrolls and has 44 pt cells in portrait now. */
+.sq-landscape-hint { display:none !important; }
+.sq-wrap[data-wmode="rec"] .st-fold-body.st-folded { display:flex !important; }
 </style>
 </head>
 <body>
@@ -8810,7 +8829,7 @@ body:not(.mode-basic) #chords-col > .st-fold-h[data-k="crh"] { order:-1; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.2b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.2c</span></div>
  </div>
 </div>
 
@@ -10242,7 +10261,7 @@ body:not(.mode-basic) #chords-col > .st-fold-h[data-k="crh"] { order:-1; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.2b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.2c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11442,7 +11461,7 @@ body:not(.mode-basic) #chords-col > .st-fold-h[data-k="crh"] { order:-1; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.2b';
+const MODRIFF_VERSION = '6.2c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -44616,6 +44635,25 @@ function stFoldInit(){
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', stFoldInit); else stFoldInit();
 window.stFoldInit = stFoldInit;
 
+
+// A fold over several blocks (Drums' "Pattern tools": the Steps, Rate and Swing row and the row of Fill, Duplicate,
+// Tuplets, Audition and Clear). One caret; the blocks are not moved. Only in Draw: in Play in the record button is
+// in that row, so the row stays up (CSS, .sq-wrap[data-wmode]).
+function stFoldGroup(key, title, sels, defOpen, headBefore){
+ var els = sels.map(function(q){ return document.querySelector(q); }).filter(Boolean); if(!els.length || els[0]._stFold) return;
+ var saved = null; try{ saved = modStore.getItem('modo-fold-' + key); }catch(e){}
+ var open = saved === null ? defOpen : saved === '1';
+ var h = document.createElement('button'); h.type = 'button'; h.className = 'st-fold-h st-fold-g'; h.dataset.k = key;
+ h.innerHTML = '<span class="st-fold-c" aria-hidden="true">\u203A</span><span class="st-fold-t"></span>'; h.querySelector('.st-fold-t').textContent = title;
+ var apply = function(o){ els.forEach(function(e){ e.classList.add('st-fold-body'); e.classList.toggle('st-folded', !o); }); h.setAttribute('aria-expanded', o ? 'true' : 'false'); h.classList.toggle('open', o); };
+ h.addEventListener('click', function(){ open = !open; apply(open); try{ modStore.setItem('modo-fold-' + key, open ? '1' : '0'); }catch(e){} if(typeof window._sqInvalidatePlayhead==='function') window._sqInvalidatePlayhead(); });
+ els[0]._stFold = h;
+ var anchor = headBefore ? (document.querySelector(headBefore) || els[0]) : els[0];
+ anchor.parentNode.insertBefore(h, anchor);
+ apply(open);
+}
+function stFoldDrums(){ stFoldGroup('drumtools', 'Pattern tools', ['#ac-drums-panel > .sq-wrap > [data-acrow="gen"]', '#ac-drums-panel > .sq-wrap > [data-acrow="timing"]'], false); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', stFoldDrums); else stFoldDrums();
 function syncRowMount(){
  var row = document.getElementById('ac-shared-locks'), body = document.getElementById('ss-sync-body');
  if(row && body && row.parentNode !== body){ row.removeAttribute('style'); body.appendChild(row); }
@@ -57508,6 +57546,16 @@ function sqAttachStep(el,ti,s,track){
       return;
     }
     var now=Date.now(), cell=sqGrid[ti][s];
+    // Tap: Edit. A tap selects (an empty step is placed first; the selected one clears), so its inspector is a touch away.
+    if(_tapEdit){
+      if(cell.v===0){ cell.v=1; sqSelTi=ti; sqSelS=s; }
+      else if(sqSelTi===ti && sqSelS===s){ cell.v=0; sqSelTi=-1; sqSelS=-1; }
+      else { sqSelTi=ti; sqSelS=s; }
+      lastTap=0;
+      sqRefreshStepEl(el,cell,track.c); sqMarkSel(); sqSyncInsp(); sqAuxSwitchSync();
+      if(sqSelTi>=0) tapModeReveal('sq-insp');
+      return;
+    }
     // One tap toggles, which is what a kit is for: laying a beat down and
     // taking bits of it out again. Making that cost two taps, the way the
     // rolls do, taxes the commonest thing you do here to pay for the rarest.
@@ -63536,6 +63584,13 @@ function prWire(id){
    return;
   }
   const now = Date.now();
+  // Tap: Edit. A filled step that is not selected is selected, not changed; anything else goes the usual way.
+  if(_tapEdit){
+    const c0 = cfg.cell(h.step);
+    if(c0 && c0.v && PR_SEL[id] !== h.step){
+      PR_SEL[id] = h.step; lastTap = 0; prSyncInsp(id); prDraw(id); tapModeReveal(id + '-pr-insp'); return;
+    }
+  }
   if(now - lastTap < 300 && lastStep === h.step && lastMidi === h.midi){
     // The second tap of a pair means "let me edit this one", not "do that
     // again". Put back whatever the first tap took away and select the step.
@@ -63559,6 +63614,7 @@ function prWire(id){
   }
   prSyncInsp(id);
   prDraw(id);
+  if(_tapEdit && PR_SEL[id] != null) tapModeReveal(id + '-pr-insp');
  });
  cv.addEventListener('pointercancel', function(){ moved = true; });
  // The keyboard down the side is the row handle. It did nothing on a tap
@@ -63871,6 +63927,39 @@ var AC_WMODE_HINT = {
       arr:'A different phrase for every chord in your progression. Tap ↺ on a chord to open its phrase in the roll.',
       rec:'Play the keys below, a MIDI keyboard or the home row. Stopped, each note takes the next step; playing, it lands under the playhead.' }
 };
+// ── Tap: Place | Edit, on the drum grid and both rolls ──
+// Ratchet, Tuplet and Velocity are in the step inspector under the grid, and the only way to open it was to double-tap
+// a step: nothing on the page said so. Edit makes a single tap select a step (an empty one is placed first, a filled
+// one is selected without being cleared, a tap on the selected one clears it) so the inspector is one touch away,
+// and the switch is on the page. Place is the old behaviour. One setting for the three, kept on the device.
+// var, not let: the step handlers read it from far away.
+var _tapEdit = false;
+try{ _tapEdit = modStore.getItem('modo-tap-edit') === '1'; }catch(e){}
+function tapModeSync(){
+ document.querySelectorAll('.tap-mode button').forEach(function(b){
+  var on = (b.dataset.tm === 'edit') === !!_tapEdit; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+ });
+ document.querySelectorAll('.tap-mode-h').forEach(function(h){ h.hidden = !_tapEdit; });
+}
+function tapModeSet(v){ _tapEdit = !!v; try{ modStore.setItem('modo-tap-edit', _tapEdit ? '1' : '0'); }catch(e){} tapModeSync(); }
+function tapModeMount(){
+ ['sq', 'bl', 'ml'].forEach(function(id){
+  var hint = document.getElementById(id + '-mode-hint'); if(!hint || hint._tm) return; hint._tm = 1;
+  var d = document.createElement('div'); d.className = 'tap-mode'; d.setAttribute('role', 'group'); d.setAttribute('aria-label', 'What a tap on a step does');
+  d.innerHTML = '<span class="tap-mode-l">Tap a step to</span><div class="tg"><button type="button" data-tm="place">Place</button><button type="button" data-tm="edit">Edit</button></div>'
+   + '<span class="tap-mode-h" hidden>It is selected: its Ratchet, Tuplet and Velocity are under the grid.</span>';
+  d.querySelectorAll('button').forEach(function(b){ b.addEventListener('click', function(){ tapModeSet(b.dataset.tm === 'edit'); }); });
+  hint.parentNode.insertBefore(d, hint.nextSibling);
+ });
+ tapModeSync();
+}
+// Bring the inspector into view after a tap in Edit mode, if the step's tools would be off the screen.
+function tapModeReveal(hostId){
+ var e = document.getElementById(hostId); if(!e) return;
+ var r = e.getBoundingClientRect();
+ if(r.bottom > window.innerHeight - 210 || r.top < 0) try{ e.scrollIntoView({block:'center', behavior:'smooth'}); }catch(err){}
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', tapModeMount); else tapModeMount();
 function _acWrap(id){
  if(id==='sq') return document.querySelector('#ac-drums-panel > .sq-wrap');
  const panel = document.getElementById(id==='bl' ? 'bm-bass-panel' : 'bm-melody-panel');
