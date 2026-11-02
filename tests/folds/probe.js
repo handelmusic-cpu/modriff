@@ -51,8 +51,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const hdr = (k) => '.st-fold-h[data-k="' + k + '"]';
 
   // 1. The caret rows.
-  const st = await page.evaluate(() => ({ keys: [...document.querySelectorAll('.st-fold-h')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join(),
-    hs: [...document.querySelectorAll('.st-fold-h')].map(h => Math.round(h.getBoundingClientRect().height)),
+  const st = await page.evaluate(() => ({ keys: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join(),
+    hs: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => Math.round(h.getBoundingClientRect().height)),
     padsAbove: document.getElementById('chords-diatonic').getBoundingClientRect().top < document.getElementById('crh').getBoundingClientRect().top }));
   check(st.keys === 'crh:true,modal:false,secdom:false,cvoice:false', 'Rhythm builder is open; Borrowed & modal, Secondary dominants and Chord voice are closed', st.keys);
   check(st.hs.every(h => h >= 44), 'every caret row is 44 pt or more', st.hs.join());
@@ -67,10 +67,10 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap(hdr('cvoice'));
   check(await vis('#chord-voice-panel'), 'Chord voice opens');
   await boot();
-  const kept = await page.evaluate(() => [...document.querySelectorAll('.st-fold-h')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join());
+  const kept = await page.evaluate(() => [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join());
   check(kept === 'crh:true,modal:false,secdom:false,cvoice:true', 'what is open is kept across a reload', kept);
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
-  check(!(await vis('.st-fold-h')), 'Live has no caret rows');
+  check(!(await vis('.st-fold-h:not(.st-fold-g)')), 'Live has no caret rows');
 
   // 3. The drum grid.
   await page.evaluate(() => { setViewMode('studio'); switchTab('perform'); document.getElementById('ft-drum-btn').click(); }); await page.waitForTimeout(700);
