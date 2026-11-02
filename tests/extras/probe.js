@@ -119,6 +119,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   // ── 6. Studio is untouched.
   await page.evaluate(() => { lvSet(LV_STD); setViewMode('advanced'); switchTab('perform'); setPerformMode('chords'); }); await page.waitForTimeout(400);
   check(!(await shown('.lv-xt')), 'Studio shows no title button');
+  // The shelves sit under caret rows on Studio's Chords page since 6.2b (closed until opened); open them.
+  await page.evaluate(() => document.querySelectorAll('.st-fold-h[aria-expanded="false"]').forEach(h => h.click())); await page.waitForTimeout(200);
   check(await shown('#cr-bar') && await shown('#chords-borrowed'), 'and the rhythm bar and the shelves are where they were');
 
   check(errs.length === 0, 'no page errors', errs.join(' | '));
