@@ -1091,3 +1091,18 @@ and are the same renderer turned on its side.
   missed blocks in five minutes at the 5 ms buffer, and the web build and the per-note fallback both still need that path.
 - The app, including the Audio buffer method (`ModEngine.setBuffer`), compiles for the simulator with Xcode 27.2 (`xcodebuild -scheme App -sdk iphonesimulator`).
   It has not run on a phone.
+
+### Landed as 6.2 (the Studio pages, finished)
+
+- **Drums and Arp on the common layout**, as in `docs/studio-part-pages.md` (which is current). Drums: Write is Draw | Play in with the pattern tools in
+  it, Steps / Rate / Swing under the grid, patterns after them. Arp: pick boxes for the pattern and patch, the preview as the surface, timing under it.
+  `acSetWriteMode('sq', …)` is the Drums mode; `.sq-wrap[data-wmode]` hides the other mode's controls as `.bl-page-wrap` does for Bass and Melody.
+- **The Studio chord roll has what the sheet's roll had.** Tap › **Length** holds a lit step through the 2, 3, 4, 6 or 8 steps after it (the held steps
+  are tinted, the count is on the step), **Swing** is Feel (the tempo bar's) or the rhythm's own amount, and **Start from** lays a built-in or saved
+  rhythm on the roll; Clear switches every step off. All of it was already stored (`len`, `swing` in `rhyNormGrid`); only the controls were missing.
+  The sheet (Live's "Draw a new rhythm…", and `Draw…` on a chord) is unchanged and was not routed to the roll: a blank rhythm committed straight to the
+  roll would silence the pads with no undo.
+- **Erase mode says what a tap will take.** With ✕ Clear held or latched, pads with hits in the pattern are ringed red (the tap takes the hits), pads
+  with none but a sample are amber (it takes, or on a preset pad resets, the sample), empty pads are dimmed.
+- Measured in the browser pane at 393: the Drums and Arp page order, the Draw / Play in switch, the Arp pick lists driving the real controls,
+  and every new roll control. None of it has been on a phone.
