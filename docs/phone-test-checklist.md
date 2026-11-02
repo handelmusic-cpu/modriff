@@ -202,8 +202,10 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last;  |
 | 9.9 | Styles widget: tap a style's name for the list, or the arrows to step; Saved patterns › Save… asks which part (a part with nothing on it is greyed), then a name | the style changes and the part switches on; the saved pattern appears in that part's list under Saved by you, and in Open |
 | 9.10 | Aux grid: tap cells (off, on, accent), pick A2 and change it, pick A1; start the beat and pick A2 | each pattern comes back as it was; a pick while playing waits for the loop; the kit is untouched |
-| 9.11 | Chords: Rhythm bar, switch it on (it says Tap a chord), tap a chord | the chord plays as the rhythm, on the tempo, and keeps going with **Keep going**; with that off it stops when you lift; **Stop** ends it; a playing song silences it |
-| 9.12 | **Edit rhythm**: tap steps, tap a hit to select it, Accent, Ratchet, Length, Swing, **Audition** | the roll shows what you drew, the playhead runs in time, **Save** saves it and plays the chords with it |
+| 9.11 | Chords: Rhythm bar, switch it on (it says Tap a chord), tap a chord | the chord plays as the rhythm, on the tempo, and keeps going with **Keep playing**; with that off (**Stop on lift**) it stops when you lift; **Stop** ends it; a playing song silences the pads, but its own chords play this rhythm (see 9.13) |
+| 9.12 | **Edit rhythm**: tap steps, tap a hit to select it, Accent, Ratchet, Hold, Swing, **Audition** | the roll shows what you drew, the playhead runs in time, **Save** saves it and plays the chords with it |
+| 9.13 | Studio, Chords: pick **Every beat**, then play a song with a long chord and a quick change | the long chord is struck on every beat for its whole length, the quick one is cut where the next chord starts; with the rhythm **Rhythm off**, each chord is struck once a bar as before |
+| 9.14 | Studio, Chords: **More chords** in the Play it line | the Borrowed & Modal and Secondary Dominants rows are shown; one touch hides both, another shows them; the choice is there after a restart; Live is unchanged |
 | 9.13 | Song > Build, a chord > Rhythm > **Draw…**, **Save**, play the song | that chord plays your rhythm; the others carry on as they were |
 | 9.14 | Saved patterns (Open): save a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
 

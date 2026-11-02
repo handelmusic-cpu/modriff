@@ -1,10 +1,13 @@
 /* Studio comfort (6.2a - 6.2c): fold carets, the drum grid's scrolling and ruler, and the type floor.
 
    Driven on the real window with real touch (CDP):
-     - Studio's Chords page has caret rows for Rhythm builder (open), Borrowed & modal, Secondary dominants
-       and Chord voice (closed); each row is 44 pt or more; the pads stay above the builder;
+     - Studio's Chords page has caret rows for Rhythm builder (open) and Chord voice (closed); each row is 44 pt
+       or more; the pads stay above the builder;
+     - the Borrowed & modal and Secondary dominants chords are all shown (6.3), under their own headings, and one
+       small "More chords" caret in the "Play it" line hides both at once and shows them again; the row it replaced
+       is gone, the caret is in a line that is already there (it adds no height), and the choice is kept;
      - a touch opens a closed block in place and a second touch closes it; the choice is kept across a reload;
-     - Live has no caret rows;
+     - Live has no caret rows and no More chords caret, and keeps its own shelves;
      - the drum grid scrolls on both axes (touch-action pan-x pan-y) and its step numbers are inside the
        scroller, not cut off above it;
      - no text on Studio's Chords page or the drum page is under 10 px; the Settings tab's word is not
@@ -50,27 +53,46 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const vis = (sel) => page.evaluate(sel => { const e = document.querySelector(sel); return !!e && e.getBoundingClientRect().width > 0 && getComputedStyle(e).display !== 'none'; }, sel);
   const hdr = (k) => '.st-fold-h[data-k="' + k + '"]';
 
-  // 1. The caret rows.
-  const st = await page.evaluate(() => ({ keys: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join(),
-    hs: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => Math.round(h.getBoundingClientRect().height)),
+  // 1. The caret rows, and the chords that are not behind one.
+  const keys = () => page.evaluate(() => [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join());
+  const st = await page.evaluate(() => ({ hs: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => Math.round(h.getBoundingClientRect().height)),
     padsAbove: document.getElementById('chords-diatonic').getBoundingClientRect().top < document.getElementById('crh').getBoundingClientRect().top }));
-  check(st.keys === 'crh:true,modal:false,secdom:false,cvoice:false', 'Rhythm builder is open; Borrowed & modal, Secondary dominants and Chord voice are closed', st.keys);
+  const k0 = await keys();
+  check(k0 === 'crh:true,cvoice:false', 'Rhythm builder is open and Chord voice closed; no caret rows for the chords', k0);
   check(st.hs.every(h => h >= 44), 'every caret row is 44 pt or more', st.hs.join());
   check(st.padsAbove, 'the chords stay above the rhythm builder');
-  check(!(await vis('#chords-borrowed')) && !(await vis('#chord-voice-panel')), 'closed blocks are out of the way');
+  check(!(await vis('#chord-voice-panel')), 'a closed block is out of the way');
+  const sh = await page.evaluate(() => { const q = id => document.getElementById(id), r = e => e.getBoundingClientRect(), b = q('ch-xt');
+    const lbl = document.querySelector('#chords-col > .chord-section-lbl'), lh = r(lbl).height;
+    return { n: [q('chords-borrowed').children.length, q('chords-secdom').children.length], vis: [r(q('chords-borrowed')).height > 0, r(q('chords-secdom')).height > 0],
+     heads: [...document.querySelectorAll('#chords-modal-wrap .chord-section-lbl, #chords-dom-wrap .chord-section-lbl')].map(e => r(e).height > 0 && getComputedStyle(e).display !== 'none').join(),
+     bh: Math.round(r(b).height), lineH: Math.round(lh), exp: b.getAttribute('aria-expanded'), inLine: lbl.contains(b), below: r(q('chords-modal-wrap')).top >= r(q('chords-diatonic')).bottom - 1 }; });
+  check(sh.n[0] > 0 && sh.n[1] > 0 && sh.vis[0] && sh.vis[1], 'Borrowed & modal and Secondary dominants are shown with nothing opened', JSON.stringify(sh.n));
+  check(sh.heads === 'true,true', 'each keeps its own heading, so the rows say what they are');
+  check(sh.inLine && sh.bh >= 44 && sh.lineH < 36 && sh.exp === 'true', 'one caret in the Play it line, 44 pt to touch, and the line does not grow for it', JSON.stringify([sh.bh, sh.lineH, sh.exp]));
 
-  // 2. Open, close, kept.
-  await tap(hdr('modal'));
-  check(await vis('#chords-borrowed'), 'a touch on Borrowed & modal opens it in place');
-  await tap(hdr('modal'));
-  check(!(await vis('#chords-borrowed')), 'a second touch closes it');
+  // 2. Hide all, show all, kept; and the blocks that do fold.
+  await tap('#ch-xt');
+  check(!(await vis('#chords-borrowed')) && !(await vis('#chords-secdom')) && (await page.evaluate(() => document.getElementById('ch-xt').getAttribute('aria-expanded'))) === 'false', 'a touch on the caret hides both rows of chords');
+  await boot();
+  check(!(await vis('#chords-borrowed')) && !(await vis('#chords-secdom')), 'hidden stays hidden across a reload');
+  await tap('#ch-xt');
+  check((await vis('#chords-borrowed')) && (await vis('#chords-secdom')), 'a second touch shows both again');
+  await tap(hdr('crh'));
+  check(!(await vis('#crh-roll')), 'the Rhythm builder still folds');
+  await tap(hdr('crh'));
   await tap(hdr('cvoice'));
   check(await vis('#chord-voice-panel'), 'Chord voice opens');
   await boot();
-  const kept = await page.evaluate(() => [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => h.dataset.k + ':' + h.getAttribute('aria-expanded')).join());
-  check(kept === 'crh:true,modal:false,secdom:false,cvoice:true', 'what is open is kept across a reload', kept);
+  const kept = await keys();
+  check(kept === 'crh:true,cvoice:true', 'what is open is kept across a reload', kept);
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
-  check(!(await vis('.st-fold-h:not(.st-fold-g)')), 'Live has no caret rows');
+  check(!(await vis('.st-fold-h:not(.st-fold-g)')) && !(await vis('#ch-xt')), 'Live has no caret rows and no More chords caret');
+  // Studio's hidden state must not leak into Live: hide the chords here, then open Live's own shelf.
+  await page.evaluate(() => { document.getElementById('ch-xt').click(); });
+  await page.evaluate(() => { chordMoreSet('modal'); }); await page.waitForTimeout(200);
+  check(await vis('#chords-borrowed'), 'what Studio hides does not hide the shelf Live opens with its own More row');
+  await page.evaluate(() => { chordMoreSet('off'); document.getElementById('ch-xt').click(); });
 
   // 3. The drum grid.
   await page.evaluate(() => { setViewMode('studio'); switchTab('perform'); document.getElementById('ft-drum-btn').click(); }); await page.waitForTimeout(700);

@@ -1114,8 +1114,8 @@ and are the same renderer turned on its side.
 - Drum and Aux grid: `touch-action: pan-x pan-y` (it was `pan-x`: a finger on the grid could not scroll the page, which is
   the "left and right and up and down" feeling) and proximity snapping instead of mandatory. The step numbers were cut off at
   the top (28 pt cells, 13 pt row, clipped by the scroller): bottom-aligned, row 15 pt.
-- Fold carets on Studio's Chords page: Rhythm builder (open), Borrowed & modal, Secondary dominants and Chord voice (closed),
-  remembered per device as `modo-fold-<key>`; the pads stay above the builder. `.mel-edge` is 44 pt wide.
+- Fold carets on Studio's Chords page: Rhythm builder (open) and Chord voice (closed), remembered per device as
+  `modo-fold-<key>`; the pads stay above the builder. (Borrowed & modal and Secondary dominants were two more rows here until 6.3.) `.mel-edge` is 44 pt wide.
 
 ### 6.2c: finding Ratchet and Tuplet
 
@@ -1126,3 +1126,20 @@ and are the same renderer turned on its side.
   "Pattern tools" caret under it, closed to begin with (in Play in the record button stays up). Bass and Melody have no carets.
 - The "Rotate to landscape" ghost over the drum grid is hidden. The roll side of Edit (Bass, Melody) is covered by the
   shared handler but not yet by a probe that touches a canvas cell.
+
+### 6.3: all the chords shown, and the chord rhythm is the song's default
+
+- Studio's Chords page: the Borrowed & Modal and Secondary Dominants chords are shown, under their own headings, and one
+  small **More chords** caret in the "Play it" line hides both (`modo-fold-xchords`, open when nothing is saved). It sits
+  in a line that was already there, so it costs no height. The two 48 pt rows it replaced are gone. Studio only; Live keeps
+  its More row. Rhythm builder and Chord voice keep their rows.
+- A chord of a song with no rhythm of its own plays the chord rhythm that is switched on in Studio (`_songDefaultComp`, read by
+  `_slotComp`), over its whole length and cut where the next chord begins. Before, the song never looked at it and played one
+  hit a bar, so a long chord sounded struck once however busy the rhythm was. Switched off, the song's comp is used as before.
+  A chord with its own rhythm keeps it. `tests/songrhythm/probe.js` counts the attacks per chord for a slow and a fast song.
+- Labels. One name for each built-in, in the chord editor's Rhythm row, the "All chords" list and Studio's picker (the editor
+  said Pulse, Stabs, Strum; the picker Bar Hits, Backbeat, Strum; Backbeat was beats 1 and 3, which is not the backbeat):
+  Sustain/Hold = **Hold**, Pulse/Bar Hits = **Once a bar**, Stabs/Backbeat = **Beats 1 & 3**, Strum = **Every beat**;
+  "Follow the song" = **Default rhythm**. On the Rhythm bar: **Off** = **Rhythm off**, **Keep going** = **Keep playing**
+  (and **Stop on lift** when it is off). In the builder: **Drums** = **Match drums**, and the third Tap choice **Length**
+  (which was also the name of the row above it) = **Hold**.
