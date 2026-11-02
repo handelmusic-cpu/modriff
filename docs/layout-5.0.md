@@ -1050,3 +1050,24 @@ and are the same renderer turned on its side.
   - **430 pt and narrower: a 28 pt strip** under the transport, arrows and name together and centred (was 44 pt across the width), with the
     touch targets reaching 3 pt past it. One row does not fit there: the key block, tempo, Play and rate are 337 pt of 381 at 393, and
     `‹ Song ›` is 108. Bar is 142 pt at 393 and 375 (was 158). To get it to none, the key steppers would have to go under 44 pt on those phones.
+
+### Landed as 6.1b (Aux, the dice, the folded scale name)
+
+- **Aux switch in Studio.** On a Studio page the part switches open their page unless it is already the one showing, and the Drums page only ever
+  reported `drums`, so Aux could never count as the page you were on: two taps on it only reopened Drums. Aux is now a second selection on
+  that page (the Aux layer in focus): tap it from elsewhere to open it, again to switch the layer on or off; Drums does the same for the Kit.
+- **Aux starts on percussion, off.** The Aux layer was the TR-606 and on; no part written for Aux (AUX_PARTS) names a 606 voice, so a groove wrote
+  nothing there and the Aux switch never appeared. It is Perc and off, like Drums, Bass and Melody. The kit list opens on Percussion & world
+  when the Aux layer is the one being edited.
+- **Styles selector has an Aux row** (Drums, Aux, Bass, Mel), and Settings › Starter patterns an Aux line. A style is a percussion kit and the
+  groove whose part is written for it (`AUX_STYLES`): Perc (Bossa, Funk, Rock, Motown, Disco, House, Hip Hop, Shuffle, 12/8 Blues), Latin Perc
+  (Son Clave, Cumbia, Samba, Bossa), Salsa, Samba, Maracatu (Samba), West Africa (Afrobeat, Afro 6/8, 6/8, 12/8), Djembe (Kuku), Batá (Afro 6/8),
+  Middle East and Clay Drums (Maqsum, Afrobeat), Tabla (Teental, Keherwa), Medieval and Orchestral (3/4, 6/8, 12/8). Hand Drums and Bells & FX
+  only get a generic shaker or tambourine, so they are not listed. A part is laid over the beat when the grid is a whole number of its bars;
+  otherwise (a 6/8 part on a 16-step grid) its groove is loaded with it and a toast says so. Switching Aux on over an empty layer loads the
+  starter (`PERC|Bossa Nova`), as the other three do.
+- **The dice roll draws from every scale you have.** `_rndModePool` returned only major and minor in Live or with the "− Modes" row folded away.
+  Both are what the screen shows, not what the player owns; ownership is `freeAllowsMode` (the Theory pack). Major and minor are about a fifth
+  of a roll now (36 scales for an owner).
+- **The scale name is folded on every phone** (three letters of the first word, with … when the name has more: Maj, Maj…, Har…), and the whole name
+  heads the list the button opens, with its description. It was whole on 426 to 460 pt screens.

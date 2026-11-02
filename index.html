@@ -1469,6 +1469,9 @@ body.light-mode .chordpick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18);
 .cp-item:hover { background:rgba(255,255,255,.05); }
 /* The mode menu carries modes AND layouts now, so it needs to say which is
    which. A label, not a button: nothing here is tappable. */
+.cp-now { padding:8px 10px 9px; margin-bottom:2px; border-bottom:1px solid var(--border2); white-space:normal; }
+.cp-now b { display:block; font-size:.86rem; line-height:1.25; color:var(--pg); }
+.cp-now span { display:block; margin-top:2px; font-size:.62rem; line-height:1.35; color:var(--muted); }
 .cp-sect { padding:7px 8px 3px; font-size:.44rem; letter-spacing:.1em;
  text-transform:uppercase; color:var(--muted); font-weight:600;
  border-top:1px solid var(--border); margin-top:4px; }
@@ -4236,9 +4239,13 @@ body.rate-by-play .ft-top-r { padding-left:48px; }
 .perf-bar .ft-song-grp #ft-song-btn.songlbl { box-sizing:border-box; flex:0 1 auto; min-width:0; max-width:66px; padding-left:5px; padding-right:5px; overflow:hidden; text-overflow:ellipsis; }
 /* On the biggest phones (426px and up: the 428 and 430 classes) the key has the
    room to show "Major", not "Maj", beside slimmer arrows. */
-@media (min-width:426px){
+/* The scale name stays folded on every phone (6.1b); only a screen past a phone's width has the room to say it whole. The
+   whole name is one touch away: it heads the list the button opens. */
+@media (min-width:461px){
  .ft-top #ft-key-mode-lbl { display:inline; }
  .ft-top #ft-key-mode-short { display:none; }
+}
+@media (min-width:426px){
  .ft-top .ft-key-step { width:24px; }
  .ft-top .ft-key-name { min-width:24px; }
  .ft-top .ft-key-mode { padding:0 4px; gap:3px; font-size:13px; }
@@ -8750,7 +8757,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.1a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.1b</span></div>
  </div>
 </div>
 
@@ -10127,6 +10134,8 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
     </div>
     <div class="ss-scope">Drums <b>the groove</b></div>
     <div class="row"><select id="starter-drums" class="def-key-sel" onchange="starterSetStyle('drums',this.value)" aria-label="Starter drum groove"></select></div>
+    <div class="ss-scope">Aux <b>the percussion</b></div>
+    <div class="row"><select id="starter-aux" class="def-key-sel" onchange="starterSetStyle('aux',this.value)" aria-label="Starter aux percussion"></select></div>
     <div class="ss-scope">Bass <b>the style</b></div>
     <div class="row"><select id="starter-bass" class="def-key-sel" onchange="starterSetStyle('bass',this.value)" aria-label="Starter bass style"></select></div>
     <div class="ss-scope">Melody <b>the pattern</b></div>
@@ -10178,7 +10187,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.1a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.1b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11365,7 +11374,7 @@ body.mode-basic #lv-slots #melody-panel > .mel-ctl-row, body.mode-basic #lv-slot
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.1a';
+const MODRIFF_VERSION = '6.1b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -34028,6 +34037,13 @@ function mdPickSyncLabel(){
  const lay = (typeof layoutActiveName==='function') ? layoutActiveName() : null;
  cur.textContent = (md ? md.label : 'Mode') + (lay ? ' \u00b7 ' + lay : '');
  const pop = document.getElementById('mode-pick-pop');
+ const now = document.getElementById('mode-pick-now');
+ if(now){
+  now.textContent = '';
+  const nm = document.createElement('b'); nm.textContent = nn(root) + ' ' + (md ? md.label : 'Mode') + (lay ? ' \u00b7 ' + lay : '');
+  now.appendChild(nm);
+  if(md && SCALE_TIPS[mode]){ const tp = document.createElement('span'); tp.textContent = SCALE_TIPS[mode]; now.appendChild(tp); }
+ }
  // Only the mode entries follow `mode`; the layout entries below them are
  // marked active by mdPickLayouts against what is actually on the grid.
  if(pop) pop.querySelectorAll('[data-mode]').forEach(function(b){
@@ -34110,7 +34126,12 @@ function ftKeySync(){
   const md=(typeof MODES!=='undefined' && MODES[mode]) || null;
   ml.textContent=md ? md.label : 'Mode';
   const sh=document.getElementById('ft-key-mode-short');
-  if(sh){ const w=ml.textContent.split(/[\s(·]/)[0]; sh.textContent = w.length<=3 ? w : w.slice(0,3); }
+  // The folded name is three letters of the first word, and a mark when there is more to the name than that:
+  // "Maj" is Major, "Maj…" is Major Pentatonic. The whole name is one touch away, at the head of the list the
+  // button opens (mode-pick-now), and in the button's tooltip and its accessible name.
+  if(sh){ const w=ml.textContent.split(/[\s(·]/)[0]; sh.textContent = (w.length<=3 ? w : w.slice(0,3)) + (/\s/.test(ml.textContent.trim()) ? '\u2026' : ''); }
+  const mb=document.getElementById('ft-key-mode');
+  if(mb) mb.title = ml.textContent + (md && SCALE_TIPS[mode] ? ' \u2014 ' + SCALE_TIPS[mode] : '') + ' (tap for the list of scales)';
   document.getElementById('ft-key')?.setAttribute('aria-label','Key '+kn.textContent+', '+ml.textContent);
  }catch(e){}
  try{ ftKeyStepSync(); }catch(e){}
@@ -34153,6 +34174,11 @@ function mdPickInit(){
  const pop = document.createElement('div');
  pop.className = 'chordpick-pop'; pop.id = 'mode-pick-pop';
  // What the key's ‹ › do (ftKeyArrow): a semitone, or round the circle of fifths.
+ // The name of the scale in full, first in the list: the button on the transport shows it folded (Maj, Dor, Gon…),
+ // and this is the touch that unfolds it.
+ const nowHead = document.createElement('div');
+ nowHead.className = 'cp-now'; nowHead.id = 'mode-pick-now'; nowHead.setAttribute('aria-live','polite');
+ pop.appendChild(nowHead);
  const ksHead = document.createElement('div');
  ksHead.className = 'cp-sect'; ksHead.textContent = 'Key arrows ‹ ›';
  pop.appendChild(ksHead);
@@ -35096,13 +35122,13 @@ function _rndIsFullRoll(){ return typeof isAnythingPlaying!=='function' || !isAn
 // track roughly how much repertoire actually lives in each mode; Locrian is
 // still reachable, at about 1 roll in 50 instead of 1 in 8.
 const RND_MODE_WEIGHTS = {
- major:26, minor:26, dorian:14, mixolydian:14, lydian:8,
+ major:16, minor:16, dorian:14, mixolydian:14, lydian:8,
  harmonic_minor:6, phrygian:4, locrian:2
 };
 function _rndModePool(){
- const b=document.body;
- const churchHidden = b.classList.contains('hide-church-modes') || b.classList.contains('mode-basic');
- if(churchHidden) return ['major','minor'];
+ // Every scale the player has (6.1b). This used to return only major and minor whenever the app was in Live or the
+ // "- Modes" row was folded away, so a roll could never leave major and minor for anyone who had bought the rest:
+ // both of those are about what the screen shows, not about what the player owns. What they own is freeAllowsMode.
  // Expanded into a weighted bag so _rndPick stays a plain uniform draw.
  const bag=[];
  Object.keys(MODES).forEach(function(m){
@@ -35942,7 +35968,12 @@ function _ppDefine(){
              active: b.classList.contains('active'), queued: b.classList.contains('queued'),
              locked: b.classList.contains('tier-locked'), pick: function(){ b.click(); } };
    });
-   return _ppSections(PP_KIT_FAMS.map(function(f){ return f[0]; }), list);
+   // On the Aux layer the list opens on Percussion & world: Aux is the percussion layer, and the drum kits it used to
+   // lead with are the Kit's.
+   var order = PP_KIT_FAMS.map(function(f){ return f[0]; });
+   var onAux = typeof window._sqFocusNow==='function' && window._sqFocusNow()===1;
+   if(onAux) order = ['Percussion & world'].concat(order.filter(function(n){ return n!=='Percussion & world'; }));
+   return _ppSections(order, list);
   },
   current:function(){
    var a = document.querySelector('#sq-machineRow .sq-mbtn.active');
@@ -45329,6 +45360,10 @@ function studioPartSel(){
  if(!_onStudioPart()) return null;
  try{
   var pg=_activePageId();
+  // The Aux switch opens the Drums page with the Aux layer in focus (6.1b). Before that the page could only
+  // ever report 'drums', so Aux never counted as the part you were on: a tap on it in Studio opened the Drums
+  // page again, every time, and could never switch the layer on or off.
+  if(pg==='accomp' && accompMode==='drums' && typeof window._sqFocusNow==='function' && window._sqFocusNow()===1) return 'aux';
   if(pg==='accomp') return {drums:'drums', bass:'bass', melody:'mel', arp:'arp'}[accompMode] || null;
   return {chords:'chords', pads:'smp'}[performMode] || null;
  }catch(e){ return null; }
@@ -45350,15 +45385,18 @@ function partSelSync(){
   b.title = (inStudio && k!==sel && PART_PAGE[k]) ? 'Open '+nm+' — tap it again to switch it on or off' : b.dataset.t0;
  }
 }
+function focusDrumLayer(f){ if(typeof window._sqSetFocus==='function') window._sqSetFocus(f); }
 function ftPartTap(part){
  var toggle={drums:ftDrumClick, aux:ftAuxClick, bass:ftBassClick, mel:ftMelClick, arp:ftArpClick, chords:ftChordClick, smp:ftSmpClick}[part];
  var d=PART_PAGE[part];
  if(d && _onStudioPart() && studioPartSel()!==part){
   if(d.tab==='accomp'){ switchTab('accomp'); setAccompMode(d.acc); }
   else { switchTab('perform'); setPerformMode(d.pf); }
+  if(part==='aux' || part==='drums') focusDrumLayer(part==='aux' ? 1 : 0);
   partSelSync();
   return;
  }
+
  if(toggle) toggle();
 }
 function _tabGo(id){ if(id==='live') liveTab(); else if(id==='studio') studioTab(); else switchTab(id); }
@@ -52586,24 +52624,24 @@ function ftMelClick(){
 // the first press can only come after load, but the Live widget is mounted during
 // boot — before this line runs in file order — and reads these (CLAUDE.md,
 // "Temporal dead zone").
-var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook' };
+var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook', aux:'PERC|Bossa Nova' };
 (function(){
  try{
   var o = JSON.parse(modStore.getItem('modo-starters')||'null');
   if(o){
    if(typeof o.on==='boolean') STARTERS.on = o.on;
-   ['drums','bass','mel'].forEach(function(k){ if(typeof o[k]==='string') STARTERS[k] = o[k]; });
+   ['drums','bass','mel','aux'].forEach(function(k){ if(typeof o[k]==='string') STARTERS[k] = o[k]; });
   }
  }catch(e){}
 })();
 function starterSave(){ try{ modStore.setItem('modo-starters', JSON.stringify(STARTERS)); }catch(e){} }
-var STARTER_PART = { drums:'Drums', bass:'Bass', mel:'Melody' };
+var STARTER_PART = { drums:'Drums', aux:'Aux', bass:'Bass', mel:'Melody' };
 // The colour each part wears everywhere else in the app (PARTS). The colours are
 // read when the widget is built, with the same values as a fallback: PARTS is a const further down and the Live page
 // is mounted during boot.
-var STARTER_COLOR_FALLBACK = { drums:'#ff5a5f', bass:'#ffd23f', mel:'#5fdc6a' };
+var STARTER_COLOR_FALLBACK = { drums:'#ff5a5f', aux:'#ff9a3c', bass:'#ffd23f', mel:'#5fdc6a' };
 function starterColor(part){
- var id = part==='drums' ? 'drum' : part==='bass' ? 'bass' : 'melgen';
+ var id = part==='drums' ? 'drum' : part==='aux' ? 'auxperc' : part==='bass' ? 'bass' : 'melgen';
  try{ var p = PARTS.find(function(q){ return q.id===id; }); if(p && p.color) return p.color; }catch(e){}
  return STARTER_COLOR_FALLBACK[part];
 }
@@ -52658,8 +52696,28 @@ function starterPickOpen(part){
 // [{id, label}] for a part, in the order its own page lists them. A free-tier
 // player is offered only what the free tier allows, so rotating never lands on a
 // style that would answer with a "Pro" toast.
+// Aux styles (6.1b): a percussion kit and the groove whose Aux part is written for it, so each is the line that kit is
+// for. Kits that only ever get a generic shaker or tambourine (Hand Drums, Bells & FX) are not listed: there is no
+// idiom to offer. The part itself is AUX_PARTS[groove], read by the kit's own voice names, so adding a part there and a
+// line here is all a new style takes.
+var AUX_STYLES = [
+ ['PERC','Bossa Nova'],['PERC','4/4 Funk'],['PERC','4/4 Rock'],['PERC','Motown'],['PERC','Disco'],['PERC','House'],['PERC','Hip Hop'],['PERC','Shuffle'],['PERC','12/8 Blues'],
+ ['LATIN','Son Clave'],['LATIN','Cumbia'],['LATIN','Samba'],['LATIN','Bossa Nova'],
+ ['SALSA','Son Clave'],['SAMBA','Samba'],['MARACATU','Samba'],
+ ['AFRICA','Afrobeat'],['AFRICA','Afro 6/8'],['AFRICA','6/8 Feel'],['AFRICA','12/8 Slow'],['AFRICA','12/8 Blues'],
+ ['DJEMBE','Kuku'],['BATA','Afro 6/8'],['MIDEAST','Maqsum'],['CLAY','Maqsum'],['CLAY','Afrobeat'],
+ ['TABLA','Teental'],['TABLA','Keherwa'],['MEDIEVAL','3/4 Ballad'],['MEDIEVAL','6/8 Feel'],['ORCH','3/4 Ballad'],['ORCH','12/8 Slow']
+];
 function starterList(part){
  var out = [];
+ if(part==='aux'){
+  AUX_STYLES.forEach(function(x){
+   var kl = typeof window._sqKitLabel==='function' ? window._sqKitLabel(x[0]) : null; if(!kl) return;
+   if(typeof freeAllowsKit==='function' && !freeAllowsKit(x[0])) return;
+   out.push({id:x[0]+'|'+x[1], label:kl+' · '+x[1]});
+  });
+  return out;
+ }
  if(part==='drums'){
   if(typeof RHYTHMS==='undefined') return out;
   RHYTHMS.forEach(function(r){
@@ -52690,6 +52748,11 @@ function starterCurrent(part){
   var L = BANK_LOADED[part];
   if(L && L.sig && rhyBankGet(L.id) && L.sig===bankSig(part)) return 'bank:'+L.id;
  }catch(e){}
+ if(part==='aux'){
+  var al = starterList('aux');
+  for(var ai=0;ai<al.length;ai++){ var ap = al[ai].id.split('|'); if(window._sqAuxStyleIs && window._sqAuxStyleIs(ap[0], ap[1])) return al[ai].id; }
+  return null;
+ }
  if(part==='drums'){
   var r = (typeof RHYTHMS!=='undefined' && typeof sqCurGroove==='number') ? RHYTHMS[sqCurGroove] : null;
   return r ? r.name : null;
@@ -52699,6 +52762,7 @@ function starterCurrent(part){
 }
 function starterHasPattern(part){
  if(part==='drums') return typeof window._sqKitHasHits==='function' && window._sqKitHasHits();
+ if(part==='aux') return typeof window._sqAuxHasPart==='function' && window._sqAuxHasPart();
  if(part==='bass') return typeof window._blHasNotes==='function' && window._blHasNotes();
  return typeof window._mlHasNotes==='function' && window._mlHasNotes();
 }
@@ -52707,6 +52771,20 @@ function starterHasPattern(part){
 // generate over the last chord, which a running part takes at its next loop.
 function starterLoad(part, id){
  if(String(id).indexOf('bank:')===0){ var be = rhyBankGet(String(id).slice(5)); return !!(be && bankLoad(be)); }
+ if(part==='aux'){
+  var kp = String(id).split('|'), kit = kp[0], gname = kp[1];
+  if(typeof window._sqAuxStyle!=='function') return false;
+  var done = window._sqAuxStyle(kit, gname);
+  if(done==='groove'){
+   // The part is a different length from the beat that is loaded, so the beat it was written for comes with it.
+   var gi = -1; if(typeof RHYTHMS!=='undefined') for(var q=0;q<RHYTHMS.length;q++) if(RHYTHMS[q].name===gname){ gi = q; break; }
+   if(gi<0 || typeof sqLoadGroove!=='function') return false;
+   window._sqSetAuxKit(kit); sqLoadGroove(gi);
+   try{ showToast('Aux: '+gname+' is a '+RHYTHMS[gi].sig+' part, so its groove loaded too'); }catch(e){}
+   return true;
+  }
+  return !!done;
+ }
  if(part==='drums'){
   if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return false;
   var idx = -1;
@@ -52745,6 +52823,7 @@ function starterRotate(part, dir){
 function starterApply(part, next){
  if(!starterLoad(part, next.id)) return;
  if(part==='drums' && typeof drumsEnabled!=='undefined' && !drumsEnabled) ftDrumClick();
+ else if(part==='aux'){ if(typeof window._sqLayerOn==='function' && !window._sqLayerOn(1)) window._sqSetLayerOn(1, true); }
  else if(part==='bass' && !blEnabled) ftBassClick();
  else if(part==='mel' && !mlEnabled) ftMelClick();
  try{ showToast(STARTER_PART[part]+': '+next.label); }catch(e){}
@@ -52757,7 +52836,7 @@ function starterWidgetNode(){
  if(_starterNode) return _starterNode;
  var box = document.createElement('div');
  box.className = 'st-widget lv-made'; box.id = 'st-widget';
- ['drums','bass','mel'].forEach(function(part){
+ ['drums','aux','bass','mel'].forEach(function(part){
   var row = document.createElement('div'); row.className = 'st-row'; row.dataset.part = part;
   row.style.setProperty('--pc', starterColor(part));
   var head = document.createElement('div'); head.className = 'st-head';
@@ -52804,7 +52883,7 @@ function starterWidgetSync(){
    var part = row.dataset.part, cur = starterCurrent(part);
    var nm = row.querySelector('.st-name');
    nm.textContent = cur ? starterLabel(part, cur) : 'Custom';
-   var on = part==='drums' ? !!drumsEnabled : part==='bass' ? !!blEnabled : !!mlEnabled;
+   var on = part==='drums' ? !!drumsEnabled : part==='aux' ? (typeof window._sqLayerOn==='function' && window._sqLayerOn(1) && starterHasPattern('aux')) : part==='bass' ? !!blEnabled : !!mlEnabled;
    row.classList.toggle('off', !on);
   });
  }catch(e){}
@@ -52813,7 +52892,7 @@ function starterWidgetSync(){
 function starterSettingsBuild(){
  var host = document.getElementById('ss-starters-body'); if(!host || host._built) return;
  host._built = true;
- ['drums','bass','mel'].forEach(function(part){
+ ['drums','aux','bass','mel'].forEach(function(part){
   var sel = document.getElementById('starter-'+part); if(!sel) return;
   sel.innerHTML = '';
   var list = starterList(part);
@@ -52834,7 +52913,7 @@ function toggleStarters(){ STARTERS.on = !STARTERS.on; starterSave(); starterSet
 function starterSettingsSync(){
  var b = document.getElementById('starter-on-btn');
  if(b){ b.textContent = 'Load a pattern when a part is switched on: '+(STARTERS.on?'ON':'OFF'); b.classList.toggle('active', STARTERS.on); b.setAttribute('aria-pressed', STARTERS.on?'true':'false'); }
- ['drums','bass','mel'].forEach(function(part){
+ ['drums','aux','bass','mel'].forEach(function(part){
   var sel = document.getElementById('starter-'+part); if(sel){ sel.disabled = !STARTERS.on; }
  });
 }
@@ -54959,7 +55038,11 @@ var sqSwing=0, sqMach='LIN', sqSteps=16;
 // turning Aux off silenced the KIT and left the aux playing alone.
 // sqMach/sqGrid stay a view onto the focused layer so every editing path is
 // untouched; identity and the on/off flags live here.
-var sqLayers = [ {mach:'LIN', grid:{}, on:false}, {mach:'606', grid:{}, on:true} ];
+// The Aux layer starts on Perc, off (6.1b). It was the TR-606 and on: a drum machine on a layer meant for percussion,
+// and none of the parts written for Aux (AUX_PARTS) name a voice a 606 has, so a groove wrote nothing there and the
+// Aux switch never appeared. Like Drums, Bass and Melody it is off until it is touched, and the Styles selector's
+// Aux row loads a part when it is.
+var sqLayers = [ {mach:'LIN', grid:{}, on:false}, {mach:'PERC', grid:{}, on:false} ];
 var sqFocus = 0;
 const SQ_LAYER_CH = ['drum','auxperc'];
 // 'Aux', not 'Aux Perc' (4.2.1): the layer takes any kit, and the old name
@@ -55077,6 +55160,55 @@ function sqAuxPick(idx){
     sqRenderPSlots();
   }
 }
+// An Aux style is a kit and the part a groove names for it (AUX_PARTS), which is how every idiomatic Aux line in the app
+// is already written. Picking one puts the kit on the Aux layer and writes the part, tiled to the grid when the grid is
+// a whole number of the groove's bars. When it is not (a 12-step part on a 16-step grid) the part cannot be laid over
+// the beat that is there, so this answers 'groove' and the caller loads the groove, which writes both layers.
+function sqAuxStyleGrid(kit, name){
+  if(!SQM[kit] || typeof AUX_PARTS==='undefined' || !AUX_PARTS[name] || typeof RHYTHMS==='undefined') return null;
+  var r = null; for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===name){ r = RHYTHMS[i]; break; }
+  if(!r || !r.pat || !(sqSteps>0) || sqSteps % r.pat.length !== 0 || typeof window._sqGrooveGrid!=='function') return null;
+  var len = r.pat.length, base = window._sqGrooveGrid(kit, r, len, true), g = {};
+  Object.keys(base).forEach(function(k){
+    var row = []; for(var st=0;st<sqSteps;st++){ var c = sqMkCell(), b = base[k][st % len]; if(b && b.v>0) c.v = b.v; row.push(c); }
+    g[k] = row;
+  });
+  return g;
+}
+window._sqAuxStyle = function(kit, name){
+  if(!SQM[kit] || typeof AUX_PARTS==='undefined' || !AUX_PARTS[name]) return false;
+  sqStashFocused();
+  var g = sqAuxStyleGrid(kit, name); if(!g) return 'groove';
+  if(window._sqAuxHasPart()) sqAuxSavePat(sqAuxCur);
+  sqLayers[1].mach = kit; sqLayers[1].grid = g; sqPreloadKit(kit);
+  if(sqFocus===1){ sqMach = kit; sqGrid = g; sqEnsureGrid(); }
+  sqRender(); sqSyncLayerUI();
+  if(typeof window._syncAuxTransport==='function') window._syncAuxTransport();
+  return true;
+};
+// Whether the Aux layer is, note for note, the part this style would write on this kit.
+window._sqAuxStyleIs = function(kit, name){
+  sqStashFocused();
+  if(sqLayers[1].mach !== kit) return false;
+  var g = sqAuxStyleGrid(kit, name); if(!g) return false;
+  var a = sqLayers[1].grid || {};
+  for(var k in g){
+    for(var st=0;st<sqSteps;st++){
+      var x = a[k] && a[k][st] && a[k][st].v>0, y = g[k][st].v>0;
+      if(!!x !== !!y) return false;
+    }
+  }
+  for(var k2 in a){ if(!g[k2]){ for(var s2=0;s2<(a[k2]||[]).length;s2++) if(a[k2][s2] && a[k2][s2].v>0) return false; } }
+  return true;
+};
+window._sqSetAuxKit = function(nk){
+  if(!SQM[nk]) return false;
+  sqStashFocused();
+  sqLayers[1].mach = nk; sqPreloadKit(nk);
+  if(sqFocus===1){ sqMach = nk; sqEnsureGrid(); }
+  sqRender(); return true;
+};
+window._sqKitLabel = function(k){ return SQM[k] ? String(SQM[k].label).replace(/\s*\u25C6\s*$/,'') : null; };
 function sqAuxNextKit(dir){
   var keys=Object.keys(SQM).filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); });
   if(!keys.length) return;
@@ -55673,6 +55805,7 @@ function sqToggleLayer(i){
   // The Kit dot on the Drums page is the same switch as the transport's, and the transport's loads the starter
   // beat when it goes on over an empty kit (ftDrumClick); the dot did not, so it lit the kit over silence.
   if(i===0 && sqLayers[0].on && typeof starterOnEnable==='function') starterOnEnable('drums');
+  if(i===1 && sqLayers[1].on && typeof starterOnEnable==='function') starterOnEnable('aux');
 }
 function sqSetLayerOn(i, on){
   i = i ? 1 : 0;
@@ -55703,8 +55836,11 @@ function sqSyncLayerUI(){
   });
   // The Kit picker's caption names the layer being edited.
   if(typeof window.partPickSync==='function') window.partPickSync();
+  // Which of Drums and Aux is lit follows the focused layer.
+  if(typeof partSelSync==='function') partSelSync();
 }
 window._sqSetFocus = sqSetFocus;
+window._sqFocusNow = function(){ return sqFocus; };
 window._sqToggleLayer = sqToggleLayer;
 window._sqSetLayerOn = sqSetLayerOn;
 window._sqSyncLayerUI = sqSyncLayerUI;
@@ -57361,6 +57497,8 @@ function sqWire(){
   });
 
   // One layer's worth of a groove, built against the machine that layer holds.
+  // Hoisted within this scope; reached from the Aux style code above through the window.
+  window._sqGrooveGrid = sqGrooveGrid;
   function sqGrooveGrid(machKey, r, steps, isAux){
     var M = SQM[machKey], tracks = (M && M.tracks) ? M.tracks : [];
     var grid = {};
@@ -57655,7 +57793,7 @@ window._sqRestoreState = function(st){
    ? { mach: st.aux.mach,
        grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
        on: st.aux.on !== false }
-   : { mach:'606', grid:{}, on:true };
+   : { mach:'PERC', grid:{}, on:false };
  sqPreloadKit(sqLayers[0].mach); sqPreloadKit(sqLayers[1].mach);
  if(st.aux && SQM[st.aux.mach]){
   if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
