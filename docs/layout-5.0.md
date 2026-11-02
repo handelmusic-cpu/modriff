@@ -1106,3 +1106,13 @@ and are the same renderer turned on its side.
   with none but a sample are amber (it takes, or on a preset pad resets, the sample), empty pads are dimmed.
 - Measured in the browser pane at 393: the Drums and Arp page order, the Draw / Play in switch, the Arp pick lists driving the real controls,
   and every new roll control. None of it has been on a phone.
+
+### 6.2a / 6.2b: Studio comfort (from the phone screenshots)
+
+- Type floor: every font-size under 10.5 px (185 rem values, 6 px values) is `max(<size>rem, 10.5px)`; nothing in the app is
+  under 10 px. The Settings tab is a column of its own (84 pt) so its word is whole and 11 px.
+- Drum and Aux grid: `touch-action: pan-x pan-y` (it was `pan-x`: a finger on the grid could not scroll the page, which is
+  the "left and right and up and down" feeling) and proximity snapping instead of mandatory. The step numbers were cut off at
+  the top (28 pt cells, 13 pt row, clipped by the scroller): bottom-aligned, row 15 pt.
+- Fold carets on Studio's Chords page: Rhythm builder (open), Borrowed & modal, Secondary dominants and Chord voice (closed),
+  remembered per device as `modo-fold-<key>`; the pads stay above the builder. `.mel-edge` is 44 pt wide.
