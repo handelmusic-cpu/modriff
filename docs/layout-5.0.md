@@ -980,5 +980,15 @@ and are the same renderer turned on its side.
 - **Studio's part row.** In Studio the same five switches are a way in, and the only sign was a ring. The page you are on now also has a
   chevron at the foot of its switch, `aria-current="page"`, and every other switch's tooltip says "Open X — tap it again to switch it
   on or off". `body.parts-open` is set on the Studio pages. Live is unchanged. Naming: Live and Studio stay.
-- Still open: Styles / Pattern save as one "Saved patterns" row; the four sequencers' common layout (bass first); the Studio chord roll's
-  step length, swing and Start from; erase mode's hits-then-sample order.
+- Still open: the four sequencers' common layout (bass first); the Studio chord roll's step length, swing and Start from; erase mode's
+  hits-then-sample order.
+
+### Landed as 6.0w (Saved patterns)
+
+- **One name.** Pattern save is **Saved patterns** everywhere it was named: the sheet, the Song › Patterns panel, the chord-rhythm picker's
+  last row. It holds chord rhythms, drum patterns, basslines and melody lines, so "Pattern save" described only the act.
+- **The Styles widget** keeps its three rows (‹ style ›). Each row's tray icon (it read as a download) and the orphan pill under them are
+  replaced by one row: **Saved patterns — Save… Open**. Save… asks which part (Drums, Bass, Melody, Chord rhythm; one with nothing on it
+  is greyed and says so) and then for a name; Open is the bank sheet as before, with its four tabs. A saved pattern is still in its part's
+  style list under Saved by you, so loading one is the same two taps it was. The widget is 204 pt at 440 wide.
+- `tests/styles/probe.js` is updated for the new row; it has not been run (no Playwright on this Mac).
