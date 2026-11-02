@@ -75,8 +75,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var renderNanosMax: Int64 = 0
     private var renderBlocks: Int64 = 0
     private var renderFrames: Int64 = 0
-    // The last few blocks that took over 2 ms (a block is ~2.7 ms of audio, so
-    // this is most of the budget): the frame count when each started, and how
+    // The last few blocks that took over 2 ms (a block is 5 ms of audio at the
+    // default buffer, so this is under half the budget): the frame count when each started, and how
     // long it took. maxRenderUs says a stall happened; this says when, so it can
     // be lined up with what was being done. Preallocated; the render thread only
     // stores into it.
@@ -85,6 +85,16 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private let slowUs = UnsafeMutablePointer<Double>.allocate(capacity: ModEngine.slowSlots)
     private var slowCount: Int64 = 0
     private var missedCount: Int64 = 0          // blocks that took longer than the audio they made (an underrun, if the buffer behind was empty)
+    // When the first few missed blocks happened, in seconds of audio since the
+    // engine started, and how long each took, plus when the latest one did. The
+    // slow list above fills with routine 2 ms blocks (the average block is
+    // 1.7 ms of a 5 ms budget) and loses the stalls; this one holds only real
+    // overruns, so a dump says whether they are all in the first seconds after
+    // launch or keep coming.
+    private static let missSlots = 8
+    private let missAt = UnsafeMutablePointer<Int64>.allocate(capacity: ModEngine.missSlots)
+    private let missUs = UnsafeMutablePointer<Double>.allocate(capacity: ModEngine.missSlots)
+    private var missLastAt: Int64 = 0
 
     private static let signpostLog = OSLog(subsystem: "Handel.modRiff",
                                            category: "modengine")
@@ -135,7 +145,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 os_signpost(.end, log: ModEngine.signpostLog, name: "render")
                 let dt = Int64(DispatchTime.now().uptimeNanoseconds &- t0)
 
-                if Double(dt) > Double(frameCount) / host.sampleRate * 1e9 { self.missedCount &+= 1 }
+                if Double(dt) > Double(frameCount) / host.sampleRate * 1e9 {
+                    if self.missedCount < Int64(ModEngine.missSlots) {
+                        let k = Int(self.missedCount)
+                        self.missAt[k] = self.renderFrames
+                        self.missUs[k] = Double(dt) / 1000.0
+                    }
+                    self.missLastAt = self.renderFrames
+                    self.missedCount &+= 1
+                }
                 if dt > 2_000_000 {
                     let k = Int(self.slowCount % Int64(ModEngine.slowSlots))
                     self.slowAt[k] = self.renderFrames
@@ -682,6 +700,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "graph": host.graphStats(),
             "slowCount": Int(slowCount),
             "missed": Int(missedCount),
+            "missedLog": (0..<min(Int(missedCount), ModEngine.missSlots)).map { i in
+                ["atSec": sr > 0 ? Double(missAt[i]) / sr : 0, "us": missUs[i]]
+            },
+            "missedLastAtSec": sr > 0 ? Double(missLastAt) / sr : 0,
             "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
                 ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]
             }
