@@ -992,3 +992,35 @@ and are the same renderer turned on its side.
   is greyed and says so) and then for a name; Open is the bank sheet as before, with its four tabs. A saved pattern is still in its part's
   style list under Saved by you, so loading one is the same two taps it was. The widget is 204 pt at 440 wide.
 - `tests/styles/probe.js` is updated for the new row; it has not been run (no Playwright on this Mac).
+
+### Landed as 6.0x (drums start off)
+
+- **Drums start off, like Bass and Melody.** The switch was on from the first launch with nothing on the kit, lit over silence. The kit
+  layer, `drumsEnabled` and Start's blank-session kit (`_sqFactory.kitOn`) default to off; switching drums on over an empty kit loads the
+  starter beat (4/4 Basic, the Settings choice) as it always did from the transport. The Kit dot on the Drums page did not, and now does
+  (`sqToggleLayer`). Picking a groove to hear it (`autostart`: the groove list, the dice) switches the kit on, since it would otherwise start
+  a beat nobody can hear. A saved setup or song still brings its own state back; an old one with no `kitOn` keeps the kit on.
+- `tests/starters/starters.test.js` expects the new start ("Drums start off and empty"); not run here.
+
+### Landed as 6.0y (Studio part pages, Chords order)
+
+- **One set of control sizes on the four part pages** (`docs/studio-part-pages.md`): 13 px / 10 px corners for controls, segments in a 10 px
+  frame, 16 px steppers, the primary Generate keeps 15 px. Measured before: eleven font sizes and eight radii across the four pages.
+- **Bass's filter** is the shared filter block (label, then Cutoff and Resonance with Hz and % readouts), like Melody's and the Arp's.
+  `blFilterReadout` paints the readouts when the page is shown and on input; the ids and handlers are the ones the row had.
+- **Studio Chords: the chords come first.** 6.0l had put the rhythm bar and the builder above "Play it". Now: the seven, the rhythm bar
+  straight under them, the Borrowed and Secondary rows, then the builder (Edit rhythm scrolls to it). Live is unchanged.
+- Not done: Drums and Arp structure (see the spec doc).
+- **Transport (again).** A song of one section has only the Song button, which stayed in the top row and ran 40 pt off the screen at 393
+  beside a long mode name; the Song group is now a row of its own whenever a song is loaded on a phone (it was only with two or more
+  sections). The 144 pt reserve I had added for the right cell is gone on phones for the same reason, so the key is not squeezed for
+  nothing. The rate chip also steps off the song row (`ftRateClamp` checks it). Measured at 393 with a long mode name, the Fx pill and a
+  song: no overlap, no horizontal overflow.
+- **Play and Stop** carry the same thin white ring (an inset shadow, so neither changes size); Stop was a dark disc one shade off the bar.
+- **Song › Library has a Songs tab** (Common progressions, iReal Pro charts, My songs), each opening the Library sheet on its tab. They were
+  never removed: 5.10 gave the page the name Library for the setlist, setups and saved patterns, while the sheet of that name sits behind
+  Song › Build › Open library, so a tab called Library had none of them.
+- **Play in has keys on the Bass and Melody pages**: a strip of the key's notes (eight, octave − / +) under Start recording, written
+  through `noteInputWrite` like the home row and MIDI; a tap arms the part first. Before, Play in said "play the keys" and the keys were
+  on Studio › Melody. Drums have their own play-in on their page and are unchanged.
+
