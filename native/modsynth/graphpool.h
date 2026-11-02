@@ -12,6 +12,14 @@
 // render thread owns it) and back to FREE when it has finished. Only the
 // thread that owns a state may touch the slot.
 //
+// A full pool does not refuse a note. kMaxVoices is how many voices may be
+// *sounding*; the pool has kSpare more slots than that so a new note always has
+// somewhere to load. When a voice is due to start and kMaxVoices are already
+// playing, the render thread picks one -- a voice already in its release first,
+// then the quietest, then the oldest -- and fades it out over kFadeFrames while
+// the new one starts. The control thread never touches a voice that is playing;
+// the render thread chooses and acts, so nothing here locks or allocates.
+//
 // What this does not do: the clock. A voice starts at an engine frame the
 // caller computed (the host already converts the page's timestamp to engine
 // frames for every other message); one that is late starts at once.
@@ -27,7 +35,10 @@ namespace modsynth {
 
 class GraphPool {
  public:
-  static constexpr int kMaxVoices = 64;
+  static constexpr int kMaxVoices = 96;     // voices sounding at once; past this the quietest is faded out
+  static constexpr int kSpare = 16;         // extra slots: notes loading or waiting, and voices fading out
+  static constexpr int kSlots = kMaxVoices + kSpare;
+  static constexpr int kFadeFrames = 480;   // a stolen voice is ramped to nothing over 10 ms (48 kHz)
   static constexpr int kMaxParts = 8;       // codes 0..7 are part buses
   static constexpr int kMasterBus = 8;      // code 8: straight into the master (the click)
   static constexpr int kChordRoom = 9;      // code 9: what the chord voices send to the chord's own reverb
@@ -43,7 +54,9 @@ class GraphPool {
 
   // Control thread. Parses `prog` into a free slot and schedules it to start at
   // engine frame `startFrame`. Returns a handle; -1 if the program is refused
-  // or every slot is busy (the note is dropped, and counted); -2 if it names a
+  // or all kSlots are in use (the note is dropped, and counted -- with voices
+  // stolen at kMaxVoices this means a burst of more than kSpare notes between
+  // two blocks, not a full pool); -2 if it names a
   // buffer id the store does not have (unknownBuffer() says which, so the page
   // can send that clip again and retry).
   int begin(const double *prog, size_t len, double timeBase, uint64_t startFrame);
@@ -72,13 +85,16 @@ class GraphPool {
   uint64_t droppedBusy() const { return droppedBusy_.load(std::memory_order_relaxed); }
   uint64_t droppedRefused() const { return droppedRefused_.load(std::memory_order_relaxed); }
   int peakActive() const { return peak_.load(std::memory_order_relaxed); }
+  // Voices faded out to make room for a note that was due while kMaxVoices were
+  // already sounding. Zero is a pool that was never full.
+  uint64_t stolen() const { return stolen_.load(std::memory_order_relaxed); }
 
  private:
   struct Slot;
   std::unique_ptr<Slot[]> slots_;
   BufferStore store_;
   std::atomic<int> unknownBuf_{-1};
-  std::atomic<uint64_t> dropped_{0}, lateEdits_{0}, droppedBusy_{0}, droppedRefused_{0};
+  std::atomic<uint64_t> dropped_{0}, lateEdits_{0}, droppedBusy_{0}, droppedRefused_{0}, stolen_{0};
   std::atomic<int> peak_{0};
 };
 
