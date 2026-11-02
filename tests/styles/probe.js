@@ -50,17 +50,18 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     const w = document.getElementById('st-widget');
     const rows = [...w.querySelectorAll('.st-row')].map(r => {
       const q = s => { const e = r.querySelector(s); const b = e.getBoundingClientRect(); return { t: Math.round(b.top), w: Math.round(b.width), h: Math.round(b.height) }; };
-      const part = q('.st-part'), step = [...r.querySelectorAll('.st-step')].map(e => { const b = e.getBoundingClientRect(); return { t: Math.round(b.top), h: Math.round(b.height), w: Math.round(b.width) }; }), name = q('.st-name'), save = q('.st-save');
-      return { h: Math.round(r.getBoundingClientRect().height), tops: [...new Set([part.t, name.t, save.t, ...step.map(s => s.t)])].length, minH: Math.min(name.h, save.h, ...step.map(s => s.h)), minW: Math.min(name.w, save.w, ...step.map(s => s.w)),
-               lbl: r.querySelector('.st-save').getAttribute('aria-label'), part: r.querySelector('.st-part').textContent };
+      const part = q('.st-part'), step = [...r.querySelectorAll('.st-step')].map(e => { const b = e.getBoundingClientRect(); return { t: Math.round(b.top), h: Math.round(b.height), w: Math.round(b.width) }; }), name = q('.st-name');
+      return { h: Math.round(r.getBoundingClientRect().height), tops: [...new Set([part.t, name.t, ...step.map(s => s.t)])].length, minH: Math.min(name.h, ...step.map(s => s.h)), minW: Math.min(name.w, ...step.map(s => s.w)),
+               part: r.querySelector('.st-part').textContent };
     });
-    return { rows, widget: Math.round(w.getBoundingClientRect().height) };
+    const sv = [...w.querySelectorAll('.st-saved .st-sv')].map(e => ({ t: e.textContent, h: Math.round(e.getBoundingClientRect().height), w: Math.round(e.getBoundingClientRect().width) }));
+    return { rows, sv, widget: Math.round(w.getBoundingClientRect().height) };
   });
   check(g.rows.length === 3 && g.rows.every(r => r.h >= 48 && r.h <= 58), 'three rows, each about 52 pt', JSON.stringify(g.rows.map(r => r.h)));
-  check(g.rows.every(r => r.tops <= 2), 'name, previous, picker, next and Save are on one line', JSON.stringify(g.rows.map(r => r.tops)));
+  check(g.rows.every(r => r.tops <= 2), 'name, previous, picker and next are on one line', JSON.stringify(g.rows.map(r => r.tops)));
   check(g.rows.every(r => r.minH >= 44 && r.minW >= 44), 'every button is 44 pt', JSON.stringify(g.rows.map(r => [r.minH, r.minW])));
   check(g.widget < 240, 'the widget is under 240 pt (it was 410)', g.widget);
-  check(g.rows.every(r => r.lbl && /save/i.test(r.lbl)), 'Save has a spoken name', JSON.stringify(g.rows.map(r => r.lbl)));
+  check(g.sv.length === 2 && g.sv.every(b => b.h >= 44 && b.w >= 44), 'one Saved patterns row: Save… and Open, 44 pt each', JSON.stringify(g.sv));
 
   // ── 2. They still work.
   const cur0 = await page.evaluate(() => starterCurrent('drums'));
