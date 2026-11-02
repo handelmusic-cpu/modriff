@@ -1033,3 +1033,9 @@ and are the same renderer turned on its side.
   is the web path's counterpart to the native engine's own stats, which say nothing when Native sound is off. Only what the page can see:
   it cannot tell a slow device from a busy page by itself, but the two lists together say which of the two it was.
 
+### Landed as 6.1 (an audio buffer choice)
+
+- Settings › Interface › **Audio buffer**: 5, 10 or 20 ms, beside Native sound. See docs/v5-architecture.md ("Dropouts at a 5 ms buffer"). The Swift
+  half (`setBuffer` on `ModEngine`) parses but has not been built; the page half answers nothing from a binary without it and the choice then
+  applies from the next start.
+

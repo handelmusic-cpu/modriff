@@ -20,6 +20,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "ensurePart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBuffer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureRead", returnType: CAPPluginReturnPromise),
@@ -642,6 +643,22 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         micEngine = nil
+    }
+
+    /// Asks iOS for a different hardware buffer, in milliseconds. AppDelegate asks for 5 ms at launch,
+    /// which leaves a 240-frame block no slack: one stall of 5 ms is a dropout. A bigger buffer is
+    /// steadier and later. This only changes that one preference of the session AppDelegate owns (no
+    /// category, no setActive: see start()); the render callback already takes whatever block size
+    /// it is handed, up to maxFrames. iOS rounds the request, so the answer says what it gave.
+    @objc func setBuffer(_ call: CAPPluginCall) {
+        let ms = min(40.0, max(2.0, call.getDouble("ms") ?? 5.0))
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setPreferredIOBufferDuration(ms / 1000.0)
+            call.resolve(["requestedMs": ms, "actualMs": session.ioBufferDuration * 1000.0])
+        } catch {
+            call.reject("could not set the buffer: \(error.localizedDescription)")
+        }
     }
 
     @objc func stats(_ call: CAPPluginCall) {

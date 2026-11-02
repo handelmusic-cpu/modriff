@@ -232,6 +232,7 @@ Debug run is 10 times slower and tells you nothing).
 | 10.12 | Start a loop and leave the phone untouched past its auto-lock time (30 s or 1 min) | the screen does not dim or lock while it plays; stop it and the phone locks on its usual timer |
 | 10.13 | Open **Stage** (Song > Perform > Stage) with nothing playing, leave it past the auto-lock time | the screen stays on; leave Stage and it locks again on its usual timer |
 | 10.14 | Start a loop, press Home, wait a minute, come back | the phone locked as normal while the app was away; back in the app 10.12 holds again |
+| 10.15 | Settings › Interface › Audio buffer: pick 10 ms, play a busy loop for five minutes with Native sound on, then read the status line under Native sound | the line ends `blocks of 480 frames` (or close: iOS rounds the request) and `blocks missed their deadline` is 0, or far fewer than at 5 ms. Needs the build rebuilt on the Mac: the buffer is set by a new `setBuffer` method on the plugin, unbuilt until then. |
 
 **The decision this gives:** if 10.2, 10.7 and 10.9 are clean, the flip can ship as
 "Native sound on by default, the switch kept for a release". If a part falls back or

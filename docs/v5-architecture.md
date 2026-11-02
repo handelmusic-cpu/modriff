@@ -2100,6 +2100,13 @@ do not scale themselves, and needs a switch per part.
 - **Play-and-record made the audio blocks 1,100 frames (23 ms) instead of 128 (2.7 ms).** The session
   now asks for a 5 ms buffer (`setPreferredIOBufferDuration`); the phone gives 240 frames. Check the
   block size on the status line after any change to the session.
+- **Dropouts at a 5 ms buffer (6.1).** A diagnostics paste from a Native sound session (6.0y, 48 kHz, 240-frame blocks, five minutes): average block
+  0.78 ms (load 16%), six blocks past their 5 ms deadline, worst 68.6 ms, 1,941 of 64,719 over 2 ms, at most six voices, and nothing dropped,
+  refused or late on the message side (chord lead never under 150 ms, drum 365 ms). With six voices a block costs well under a millisecond; 11 to 68 ms
+  is the render thread being held up (the web view and the main thread, the clock stepping down at 16% load, a page fault), not the engine being slow,
+  and a 5 ms block has no room to absorb it. Settings › Interface › Audio buffer (5, 10, 20 ms; 5 is the old behaviour) asks iOS for a bigger one
+  through a new `setBuffer` plugin method, applied after the engine starts and on change. Unbuilt Swift until the Mac builds it; the render callback
+  already takes any block up to `maxFrames`. What it gives is on the status line (`blocks of N frames`). 6.0z added a page-side dropout log to Copy diagnostics.
 - The mixer's master meter adds the host's master RMS (slot 8 of `meters`) to the web master's, and a
   part played as graphs that is on a mõdSynth patch keeps its web meter (its worklet is the web's).
 - One dense session dropped 184 of 884 notes (and one block took 17.5 ms against a 5 ms budget); a
