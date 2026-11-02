@@ -210,9 +210,11 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 ## 10. Native sound: the dress rehearsal for the flip
 
 The flip makes the C++ engine play every part and deletes the Web Audio path. It is
-one commit and cannot be undone part by part, so it waits for this section. Nothing
-here changes what is on by default: **Settings > Look & feel > Native sound** is off
-until you turn it on, and it takes effect at once; turning it off needs a restart.
+one commit and cannot be undone part by part, so it waits for this section. Since 6.1d
+**Settings > Look & feel > Native sound** is on by default in the iPhone app (a stored
+choice, either way, is kept): this section is the check that it deserves to stay on, and the
+Web Audio path stays until it passes. Turning it on takes effect at once; turning it off
+needs a restart.
 Use a Debug build from `npm run ios:device` (it is built optimised; a plain Xcode
 Debug run is 10 times slower and tells you nothing).
 
