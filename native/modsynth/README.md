@@ -90,7 +90,7 @@ interpreter", has the reasoning and the numbers.
 
 ```sh
 make -C native/modsynth graphrender graphpooltest
-native/modsynth/graphpooltest                 # the pool: 24 checks
+native/modsynth/graphpooltest                 # the pool: 43 checks
 node tests/graph/voices.test.js               # real makeVoice, 9 voices, against Chromium
 node tests/graph/edits.test.js                # releases, chokes, ramps, filters, delay
 node tests/graph/drums.test.js [kit,kit]      # every lane of every kit (about 25 minutes)

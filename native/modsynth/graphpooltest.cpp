@@ -53,6 +53,38 @@ static V bufprog(int id, double start, int code) {
   return p;
 }
 
+// ext(code) <- delay(maxDelay 1 s, `delay` s) <- osc.  The oscillator stops at `stop`, but
+// the delay line is still playing it back until stop + delay: a voice in its release.
+static V ringing(double hz, double start, double stop, double delay, int code) {
+  V p = {0x6d6f6467, SR, 3, 0};
+  p.push_back(8); p.push_back(code);                                      // 0: ext
+  p.push_back(2); p.push_back(0); p.push_back(start); p.push_back(stop);  // 1: osc
+  param(p, hz); param(p, 0);
+  p.push_back(7); p.push_back(1.0); param(p, delay);                      // 2: delay
+  p.push_back(2);
+  p.push_back(1); p.push_back(2); p.push_back(-1);
+  p.push_back(2); p.push_back(0); p.push_back(-1);
+  return p;
+}
+
+// ext(code) <- gain(amp) <- waveshaper(curve = 0.5 everywhere) <- osc.  The shaper turns the
+// oscillator, and then silence, into a constant 0.5; the gain scales it to a DC level that
+// never goes away: the 909 kick's click layer left 3e-6 of it behind.
+static V dcResidue(double stop, double amp, int code) {
+  V p = {0x6d6f6467, SR, 4, 0};
+  p.push_back(8); p.push_back(code);                                      // 0: ext
+  p.push_back(2); p.push_back(0); p.push_back(0.0); p.push_back(stop);    // 1: osc
+  param(p, 440); param(p, 0);
+  p.push_back(5); p.push_back(0); p.push_back(3);                         // 2: shaper, no oversampling, 3 points
+  p.push_back(0.5); p.push_back(0.5); p.push_back(0.5);
+  p.push_back(1); param(p, amp);                                          // 3: gain
+  p.push_back(3);
+  p.push_back(1); p.push_back(2); p.push_back(-1);
+  p.push_back(2); p.push_back(3); p.push_back(-1);
+  p.push_back(3); p.push_back(0); p.push_back(-1);
+  return p;
+}
+
 struct Bus {
   std::vector<float> l[GraphPool::kBuses], r[GraphPool::kBuses];
   float *pl[GraphPool::kBuses], *pr[GraphPool::kBuses];
@@ -169,13 +201,13 @@ int main() {
     CHECK(bad == 0, "edit before start matches edit-then-play: %d differ", bad);
   }
 
-  // 5. a full pool drops, and counts it.
+  // 5. a pool with no slot left at all (never rendered, so nothing could make way) drops, and counts it.
   {
     GraphPool pool;
     V p = sine(200, 0.0, -1e9, 0.1, 0);
     int ok = 0;
-    for (int i = 0; i < GraphPool::kMaxVoices + 5; i++) if (pool.begin(p.data(), p.size(), 0.0, 0) >= 0) ok++;
-    CHECK(ok == GraphPool::kMaxVoices, "%d voices fit", ok);
+    for (int i = 0; i < GraphPool::kSlots + 5; i++) if (pool.begin(p.data(), p.size(), 0.0, 0) >= 0) ok++;
+    CHECK(ok == GraphPool::kSlots, "%d voices fit", ok);
     CHECK(pool.dropped() == 5, "dropped %llu", (unsigned long long)pool.dropped());
   }
 
@@ -191,7 +223,7 @@ int main() {
         pool.render(f, 128, bl, br); f += 128;
       }
     }
-    CHECK(refused == 0, "600 short notes through %d slots: %d refused", GraphPool::kMaxVoices, refused);
+    CHECK(refused == 0, "600 short notes through %d slots: %d refused", GraphPool::kSlots, refused);
   }
 
   // 7. the control thread begins and edits while the render thread runs.
@@ -269,6 +301,124 @@ int main() {
     int bad = 0;
     for (int i = 5000; i < N; i++) { const float want = ref[i - 1000]; if (std::fabs(b.l[6][i] - want) > 1e-6f) bad++; }
     CHECK(bad == 0, "a late voice is caught up to where it should be: %d samples differ", bad);
+  }
+
+
+  // 10. A full pool takes a voice instead of refusing the note. kMaxVoices-1 voices that
+  // never end (held, quiet) plus one more of a different part; at block 37 (frame 4736) a
+  // new note is due. The render thread fades out the quietest, the new note sounds from its
+  // first sample, and every other voice is bit-identical to a run where nothing was stolen.
+  {
+    const int HOLD = GraphPool::kMaxVoices - 1, T = 94 * 128, T0 = 37 * 128;
+    V held = sine(300, 0.0, -1e9, 0.01, 0);
+    V quiet = sine(440, 0.0, -1e9, 0.002, 1);     // the quietest voice (held are 0.01): this one makes way
+    V fresh = sine(880, 0.0, 0.5, 0.3, 2);
+    auto play = [&](bool withNew, Bus &b, GraphPool &pool) {
+      for (int i = 0; i < HOLD; i++) pool.begin(held.data(), held.size(), 0.0, 0);
+      pool.begin(quiet.data(), quiet.size(), 0.0, 0);
+      uint64_t f = 0; bool sent = false;
+      while ((int)f < T) {
+        if (withNew && !sent && f == (uint64_t)T0) { sent = pool.begin(fresh.data(), fresh.size(), 0.0, (uint64_t)T0) >= 0; CHECK(sent, "the new note was taken, not refused"); }
+        float *bl[GraphPool::kBuses], *br[GraphPool::kBuses];
+        for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
+        pool.render(f, 128, bl, br); f += 128;
+      }
+    };
+    GraphPool ctl, pool; Bus bc(T), b(T);
+    play(false, bc, ctl); play(true, b, pool);
+    CHECK(ctl.stolen() == 0 && pool.stolen() == 1, "one steal (%llu), none in the control run (%llu)", (unsigned long long)pool.stolen(), (unsigned long long)ctl.stolen());
+    CHECK(pool.dropped() == 0, "nothing dropped (%llu)", (unsigned long long)pool.dropped());
+    CHECK(pool.active() == GraphPool::kMaxVoices, "%d sounding after the steal (cap %d)", pool.active(), GraphPool::kMaxVoices);
+    int diff0 = 0; for (int i = 0; i < T; i++) if (b.l[0][i] != bc.l[0][i]) diff0++;
+    CHECK(diff0 == 0, "the %d held voices are untouched by the steal: %d samples differ", HOLD, diff0);
+    auto refN = alone(fresh, {}, T), refQ = alone(quiet, {}, T);
+    int badN = 0; for (int i = 0; i < T; i++) { const float want = i >= T0 ? refN[i - T0] : 0.f; if (b.l[2][i] != want) badN++; }
+    CHECK(badN == 0, "the new note sounds from its first sample, exactly: %d differ", badN);
+    int badQ = 0; double stepFade = 0, stepOwn = 0, endLvl = 0, cut = std::fabs(refQ[T0]);
+    for (int i = 0; i < T; i++) {
+      const int k = i - T0;
+      const float g = k < 0 ? 1.f : k < GraphPool::kFadeFrames ? (float)(GraphPool::kFadeFrames - k) / (float)GraphPool::kFadeFrames : 0.f;
+      if (b.l[1][i] != refQ[i] * g) badQ++;
+      if (k >= 0 && k <= GraphPool::kFadeFrames + 1 && i > 0) { stepFade = std::max(stepFade, (double)std::fabs(b.l[1][i] - b.l[1][i - 1])); stepOwn = std::max(stepOwn, (double)std::fabs(refQ[i] - refQ[i - 1])); }
+      if (k > GraphPool::kFadeFrames) endLvl = std::max(endLvl, (double)std::fabs(b.l[1][i]));
+    }
+    CHECK(badQ == 0, "the stolen voice is its own sound times a linear ramp: %d differ", badQ);
+    CHECK(stepFade <= stepOwn + 1e-9, "no click: largest step in the fade %.5f, the voice's own %.5f", stepFade, stepOwn);
+    CHECK(endLvl == 0, "silent once the fade is over (%g)", endLvl);
+    printf("  steal: fade %d frames (%.1f ms); step in fade %.5f vs own %.5f; a hard cut at that point would step %.5f (%.1fx)\n",
+           GraphPool::kFadeFrames, 1000.0 * GraphPool::kFadeFrames / SR, stepFade, stepOwn, cut, cut / std::max(stepOwn, 1e-12));
+  }
+
+  // 10b. Who makes way: a voice already in its release goes before a quieter one that is still
+  // held. The ringing voice (louder than anything held) has had its oscillator stopped; its
+  // delay line is still playing it back at the moment the new note arrives.
+  {
+    const int HOLD = GraphPool::kMaxVoices - 1, T = 71 * 128, T0 = 37 * 128;
+    V held = sine(300, 0.0, -1e9, 0.01, 0);
+    V ring = ringing(500, 0.0, 0.09, 0.05, 1);    // oscillator off at 0.09 s (frame 4320), heard until 0.14 s (6720)
+    V fresh = sine(880, 0.0, 0.5, 0.3, 2);
+    GraphPool pool; Bus b(T);
+    for (int i = 0; i < HOLD; i++) pool.begin(held.data(), held.size(), 0.0, 0);
+    pool.begin(ring.data(), ring.size(), 0.0, 0);
+    uint64_t f = 0;
+    while ((int)f < T) {
+      if (f == (uint64_t)T0) pool.begin(fresh.data(), fresh.size(), 0.0, (uint64_t)T0);
+      float *bl[GraphPool::kBuses], *br[GraphPool::kBuses];
+      for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i] + f; br[i] = b.pr[i] + f; }
+      pool.render(f, 128, bl, br); f += 128;
+    }
+    auto refR = alone(ring, {}, T);
+    double before = 0, after = 0, endHeld = 0;
+    for (int i = T0 - 128; i < T0; i++) before = std::max(before, (double)std::fabs(refR[i]));
+    for (int i = T0 + GraphPool::kFadeFrames + 1; i < T; i++) { after = std::max(after, (double)std::fabs(b.l[1][i])); }
+    for (int i = T - 128; i < T; i++) endHeld = std::max(endHeld, (double)std::fabs(b.l[0][i]));
+    CHECK(pool.stolen() == 1, "one steal (%llu)", (unsigned long long)pool.stolen());
+    CHECK(before > 0.1 && after == 0, "the releasing voice (still at %.3f) was the one taken, silent after its fade (%g)", before, after);
+    CHECK(endHeld > 0.5, "the held voices are all still sounding (%.3f)", endHeld);
+  }
+
+  // 10c. The case that filled the owner's pool: notes that never end. 600 unstopped notes, one
+  // every 4 blocks. Before: 64 fit and 536 were refused. Now: none is refused, the cap holds.
+  {
+    GraphPool pool; Bus b(1 << 14);
+    V p = sine(200, 0.0, -1e9, 0.01, 0);
+    int refused = 0; uint64_t f = 0;
+    for (int note = 0; note < 600; note++) {
+      if (pool.begin(p.data(), p.size(), 0.0, f) < 0) refused++;
+      for (int blk = 0; blk < 4; blk++) {
+        float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+        pool.render(f, 128, bl, br); f += 128;
+      }
+    }
+    CHECK(refused == 0 && pool.dropped() == 0, "600 never-ending notes: %d refused, %llu dropped", refused, (unsigned long long)pool.dropped());
+    CHECK(pool.stolen() == 600 - GraphPool::kMaxVoices, "%llu stolen (expect %d)", (unsigned long long)pool.stolen(), 600 - GraphPool::kMaxVoices);
+    CHECK(pool.active() == GraphPool::kMaxVoices, "%d sounding (cap %d)", pool.active(), GraphPool::kMaxVoices);
+    CHECK(pool.peakActive() <= GraphPool::kMaxVoices + 1, "peak %d", pool.peakActive());
+    printf("  never-ending notes: 600 begun, %llu stolen, %llu dropped, peak %d, %d sounding\n", (unsigned long long)pool.stolen(), (unsigned long long)pool.dropped(), pool.peakActive(), pool.active());
+  }
+
+  // 11. A voice whose sources have stopped but whose output sits at a constant a few millionths
+  // off zero (a waveshaper whose curve does not pass through 0, then a gain at its floor) is
+  // finished, not "still ringing" for ever. 300 of them, one per 4 blocks, never fill the pool.
+  {
+    GraphPool pool; Bus b(1 << 14);
+    V p = dcResidue(0.05, 6e-6, 3);               // 0.5 * 6e-6 = 3e-6 of DC, above the old 1e-6 floor
+    uint64_t f = 0; int refused = 0, peakDuring = 0;
+    for (int note = 0; note < 300; note++) {
+      if (pool.begin(p.data(), p.size(), 0.0, f) < 0) refused++;
+      for (int blk = 0; blk < 4; blk++) {
+        float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+        pool.render(f, 128, bl, br); f += 128;
+      }
+      peakDuring = std::max(peakDuring, pool.active());
+    }
+    for (int blk = 0; blk < 200; blk++) {
+      float *bl[GraphPool::kBuses], *br[GraphPool::kBuses]; for (int i = 0; i < GraphPool::kBuses; i++) { bl[i] = b.pl[i]; br[i] = b.pr[i]; }
+      pool.render(f, 128, bl, br); f += 128;
+    }
+    CHECK(refused == 0 && pool.stolen() == 0, "300 DC-residue notes: %d refused, %llu stolen", refused, (unsigned long long)pool.stolen());
+    CHECK(pool.active() == 0, "all retired (%d left)", pool.active());
+    printf("  DC residue: 300 notes, most at once %d, %d left after 0.5 s\n", peakDuring, pool.active());
   }
 
   printf("%d checks, %d failed\n", checks, fails);

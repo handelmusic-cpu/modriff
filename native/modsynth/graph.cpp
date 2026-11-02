@@ -274,6 +274,9 @@ struct Graph::Impl {
   std::vector<Node> nodes;
   std::vector<int> order;
   std::vector<int> ext;  // node indices
+  // The last sample each host endpoint produced (two channels per endpoint), so
+  // "is the output still moving" can be read across block boundaries.
+  std::vector<float> prev;
 };
 
 void BufferStore::put(int id, double sr, int nch, int len, const float *ch0, const float *ch1) {
@@ -434,6 +437,7 @@ bool Graph::load(const double *p, size_t len, double timeBase, const BufferStore
   }
   if ((int)d.order.size() != nNodes) { err_ = "cycle in graph"; return false; }
   quiet_ = 0;
+  d.prev.assign(d.ext.size() * 2, 0.f);
   tail_ = 4 * Q;
   for (const Node &n : d.nodes)
     if (n.type == T_DEL) tail_ = std::max<uint64_t>(tail_, (uint64_t)std::ceil(n.maxDelay * sr_) + 4 * Q);
@@ -769,17 +773,33 @@ void Graph::render(int frames) {
       }
     }
   }
-  double pk = 0;
-  for (int e : d.ext) {
-    const Node &n = d.nodes[e];
-    for (int c = 0; c < 2; c++)
-      for (int s2 = 0; s2 < frames; s2++) pk = std::max(pk, (double)std::fabs(n.out[c][s2]));
+  // "Silent" is two things. Below 1e-6 is the obvious one. The other is an output
+  // that has stopped moving: a waveshaper whose curve does not pass through zero
+  // turns a dead input into a constant, and a gain that has ramped to its
+  // floor scales it to a few millionths and holds it there. That sits above any
+  // fixed floor, was never going to go away, and the 909 kick's click layer left
+  // 3e-6 of it behind on every hit -- so every one of those voices was "still
+  // sounding" for ever and a few minutes of a song filled the pool. A constant
+  // is not a sound; nothing can change it once the sources have stopped.
+  double pk = 0, mv = 0;
+  for (size_t k = 0; k < d.ext.size(); k++) {
+    const Node &n = d.nodes[d.ext[k]];
+    for (int c = 0; c < 2; c++) {
+      float last = d.prev[k * 2 + c];
+      for (int s2 = 0; s2 < frames; s2++) {
+        const float x = n.out[c][s2];
+        pk = std::max(pk, (double)std::fabs(x));
+        mv = std::max(mv, (double)std::fabs(x - last));
+        last = x;
+      }
+      d.prev[k * 2 + c] = last;
+    }
   }
-  if (pk < 1e-6) quiet_ += frames; else quiet_ = 0;
+  if (pk < 1e-6 || mv < 1e-7) quiet_ += frames; else quiet_ = 0;
   frame_ += frames;
 }
 
-bool Graph::finished() const {
+bool Graph::released() const {
   const Impl &d = *d_;
   for (const Node &n : d.nodes) {
     if (n.type != T_OSC && n.type != T_BUF) continue;
@@ -788,7 +808,11 @@ bool Graph::finished() const {
     const bool ranOut = n.type == T_BUF && !n.loop && n.started && (!n.buf || n.pos >= n.buf->len);
     if (!stopped && !ranOut) return false;
   }
-  return quiet_ >= tail_;
+  return true;
+}
+
+bool Graph::finished() const {
+  return released() && quiet_ >= tail_;
 }
 
 }  // namespace modsynth

@@ -81,6 +81,11 @@ class Graph {
   // time is never finished: it is waiting for the edit that stops it.
   bool finished() const;
 
+  // True once every source has stopped or run out, whatever is still ringing in
+  // the filters and delays: the voice is in its release. The pool steals from
+  // these first when it is full.
+  bool released() const;
+
   double sampleRate() const { return sr_; }
   uint64_t frame() const { return frame_; }
 
