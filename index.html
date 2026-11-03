@@ -8836,7 +8836,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.3a</span></div>
  </div>
 </div>
 
@@ -10268,7 +10268,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.3a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10980,7 +10980,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
           seven quick buttons above (piano, vibes, modsynth, ...), so the
           current bass sound is never unclear. -->
      <span class="bl-wave-current" id="bl-wave-current"></span>
-     <button class="bl-mopt smp-edit-btn" data-smppart="bass" style="display:none" onclick="smpOpenVoice('bass')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
+     <button class="bl-mopt smp-edit-btn" data-smppart="bass" onclick="smpEditPart('bass')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
    </div>
   </div>
   <!-- Filter, built the way melody's and the arp's are (a .sf-block: label, then Cutoff and Resonance
@@ -11131,7 +11131,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <div class="voices-grid voices-one ac-voice-host" id="voices-one-melgen"></div>
    <span class="ac-rowlbl">Voice:</span>
    <div class="tg" id="mlvoice-settings" style="flex-wrap:wrap"></div>
-   <button class="bl-mopt smp-edit-btn" data-smppart="melgen" style="display:none" onclick="smpOpenVoice('melgen')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
+   <button class="bl-mopt smp-edit-btn" data-smppart="melgen" onclick="smpEditPart('melgen')" title="Open this part's sample in the sampler — pick, record or trim it">◈ Edit sample</button>
   </div>
   <!-- The synth voices' filter, in the same slot as the bass's Filter row. -->
   <div class="ac-inline-row" data-acrow="tone" id="sf-host-melgen"></div>
@@ -11468,7 +11468,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.3';
+const MODRIFF_VERSION = '6.3a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -31693,13 +31693,38 @@ function syncVoicesPanel(){
  if(typeof smpEditSync==='function') smpEditSync();
  if(typeof window.partPickSync==='function') window.partPickSync();
 }
-// Every "Edit sample" way in, shown only while its part plays the Sampler.
+// Every "Edit sample" way in, shown for every part. They were shown only while
+// the part was already on Sampler, which made the editor reachable only by
+// first getting a sampler sound playing and then finding the button that
+// appeared: nothing on a part that played anything else said the sampler could
+// be used there at all. Not on Sampler, the button says so in its tooltip, and
+// tapping it puts the part on Sampler first (see smpEditPart).
 function smpEditSync(){
  document.querySelectorAll('[data-smppart]').forEach(function(b){
   var on=false; try{ on = _partVoice(b.dataset.smppart)==='sampler'; }catch(e){}
-  b.style.display = on ? '' : 'none';
+  b.style.display = '';
+  b.classList.toggle('smp-off', !on);
+  if(b.classList.contains('smp-edit-btn')){
+   b.title = on ? "Open this part's sample in the sampler — pick, record or trim it"
+               : "Put this part on the Sampler and open its sample — pick, record or trim it";
+  }
  });
 }
+// The way in for a part that is not on Sampler yet: a clip loaded into a voice
+// nobody is playing is a dead end, so this does what choosing Sampler from the
+// Voices dock does, sets the voice and then opens the editor. The dock's own ◈
+// badge keeps opening the editor without touching the voice.
+function smpEditPart(part){
+ var cur=null; try{ cur=_partVoice(part); }catch(e){}
+ if(cur!=='sampler'){
+  try{
+   for(var i=0;i<VOICE_PARTS.length;i++) if(VOICE_PARTS[i].k===part){ VOICE_PARTS[i].set('sampler'); break; }
+   if(typeof syncVoicesPanel==='function') syncVoicesPanel();
+  }catch(e){}
+ }
+ if(typeof window.smpOpenVoice==='function') window.smpOpenVoice(part);
+}
+window.smpEditPart=smpEditPart;
 // Picking Sampler from any sound menu opens that part's sample in the editor,
 // after the menu's own handler has set the voice and closed.
 document.addEventListener('click', function(e){
@@ -34510,8 +34535,7 @@ function sndPickInit(){
     const ed=document.createElement('button');
     ed.type='button'; ed.className='snd-smp-edit'; ed.dataset.smppart=spec.part;
     ed.textContent='◈ Edit sample — pick, record or trim';
-    ed.style.display='none';
-    ed.addEventListener('click', e=>{ e.stopPropagation(); sndPickClose(); if(window.smpOpenVoice) window.smpOpenVoice(spec.part); });
+    ed.addEventListener('click', e=>{ e.stopPropagation(); sndPickClose(); smpEditPart(spec.part); });
     pop.appendChild(ed);
    }
    const tone = spec.tone && document.getElementById(spec.tone);
