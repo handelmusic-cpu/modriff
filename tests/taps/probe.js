@@ -56,9 +56,9 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(shown.every(Boolean), 'open: Steps, Swing, Fill, Duplicate, Tuplets: Cover, Audition and Clear are all there', shown.join());
   await tap('.st-fold-g[data-k="drumtools"]');
   check(!(await vis('#sq-clearBtn')), 'a second touch closes it');
+  // 6.4: the drums have no Play in; a saved or asked-for 'rec' comes back as Draw and there is no record button.
   await page.evaluate(() => acSetWriteMode('sq', 'rec')); await page.waitForTimeout(300);
-  check(await vis('#ac-drums-panel [data-recarm="sq"]'), 'in Play in the record button is still up');
-  await page.evaluate(() => acSetWriteMode('sq', 'draw')); await page.waitForTimeout(300);
+  check(!(await vis('#ac-drums-panel [data-recarm="sq"]')) && (await page.evaluate(() => _acWMode.sq)) === 'draw', 'Drums has no Play in: asking for it leaves Draw and no record button');
 
   // 2. The switch.
   check((await page.evaluate(() => document.querySelectorAll('.tap-mode').length)) === 3, 'Tap a step to Place | Edit is on Drums, Bass and Melody');
