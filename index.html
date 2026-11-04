@@ -8880,7 +8880,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7</span></div>
  </div>
 </div>
 
@@ -10312,7 +10312,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11507,7 +11507,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.6';
+const MODRIFF_VERSION = '6.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20667,7 +20667,7 @@ function psRecStop(){
  var p = PS_PATS[PS.pat];
  if(p) p.ev.forEach(function(e){ delete e.skip; });
  if(p && !p.ev.length && _psUndoTake && !_psUndoTake.ev.length){ PS_PATS[PS.pat] = null; PS.patOn = false; }
- if(r) showToast(r.n ? 'Recorded '+r.n+' hit'+(r.n===1?'':'s')+' into P'+(PS.pat+1) : 'Nothing recorded',
+ if(r) majorToast(r.n ? 'Recorded '+r.n+' hit'+(r.n===1?'':'s')+' into P'+(PS.pat+1) : 'Nothing recorded',
    r.n ? {actionLabel:'Undo', onAction:psUndoTake} : null);
  psPatRender();
 }
@@ -20883,7 +20883,7 @@ function psCapWrite(evs, endT, verb){
  if(!PS.patOn){ PS.patOn = true; _psPat.nextT = 0; }
  psEnsureTransport();
  psPatRender();
- showToast(verb+' '+fit.hits+' hit'+(fit.hits===1?'':'s')+' → P'+(pi+1)+', '+fit.bars+' bar'+(fit.bars===1?'':'s')
+ majorToast(verb+' '+fit.hits+' hit'+(fit.hits===1?'':'s')+' → P'+(pi+1)+', '+fit.bars+' bar'+(fit.bars===1?'':'s')
    + (fit.dropped ? ' · '+fit.dropped+' past 8 bars dropped' : ''),
   {actionLabel:'Undo', onAction:function(){
    PS_PATS[pi] = before;
@@ -20899,7 +20899,7 @@ function psCaptureToggle(){
   if(PS.rec){ showToast('Stop ● Rec first'); return; }
   PS.cap = {ev:[]};
   psCapUI();
-  showToast('Capturing pads — play, then tap ◉ again to keep it as a pattern');
+  majorToast('Capturing pads — play, then tap ◉ again to keep it as a pattern');
   return;
  }
  var evs = PS.cap.ev; PS.cap = null;
@@ -37280,8 +37280,34 @@ function setBuildExt(e){
 // setup — these were a single tap with no confirmation and, for most of them,
 // no way back at all. A confirm() on each would tax the ninety-nine times you
 // meant it to protect the once you didn't; an Undo you can ignore does not.
+// ── Which toasts the Live page gets (6.7) ──
+// A toast was the app's confirmation channel for 300 call sites, so every tap on Live (a style stepped, an ending
+// armed, an undo, a touch mod switched, a pad's sample loaded) put a banner over the screen being played. On Live
+// a toast is for a major action only: a recording or capture starting or finishing (majorToast), something refused
+// because of a purchase (freeBlocked, majorToast), a failure, a refusal that says what to do first, and anything
+// that carries an action the player may want (Undo, Resume, See pack). Everything else is not drawn there; it is
+// still read out to a screen reader (#_toast-sr), because a confirmation that was only ever visual would have
+// gone silent for them. Every other page is unchanged. var, not function: it is read from boot.
+var TOAST_FAILURE = /could not|couldn.t|failed|storage full|not enough room|came back silent|did not go through|nothing was saved|\bfirst\.?$/i;
+function majorToast(msg, opts){ opts = opts || {}; opts.major = true; return showToast(msg, opts); }
+function _toastQuiet(msg, opts){
+ if(opts.major || opts.onAction) return false;
+ try{ if(typeof lvActive!=='function' || !lvActive()) return false; }catch(e){ return false; }
+ return !TOAST_FAILURE.test(String(msg));
+}
+function _toastSay(msg){
+ let r=document.getElementById('_toast-sr');
+ if(!r){
+  r=document.createElement('div'); r.id='_toast-sr';
+  r.setAttribute('role','status'); r.setAttribute('aria-live','polite'); r.setAttribute('aria-atomic','true');
+  r.style.cssText='position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
+  document.body.appendChild(r);
+ }
+ r.textContent=''; setTimeout(function(){ r.textContent=String(msg); }, 30);
+}
 function showToast(msg, opts){
  opts = opts || {};
+ if(_toastQuiet(msg, opts)){ try{ _toastSay(msg); }catch(e){} return; }
  let t=document.getElementById('_toast');
  if(!t){
   t=document.createElement('div'); t.id='_toast';
@@ -46523,7 +46549,7 @@ function startSongRecord(){
  songRecEvents = [];
  buildSectionTabs(); renderChartSeq();
  _updateSongRecUI();
- showToast('Recording to "'+base+' '+n+'" — play some chords');
+ majorToast('Recording to "'+base+' '+n+'" — play some chords');
 }
 
 // ─── Fitting a take to the bar ────────────────────────────────────────────
@@ -46719,7 +46745,7 @@ function stopSongRecord(){
  // you want, hit it again and it's already looping what you just played.
  if(fit){
   _capLaunch(recordedIdx, fit);
-  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' · '+_capSummary(fit)
+  majorToast('Recorded '+count+' chord'+(count===1?'':'s')+' · '+_capSummary(fit)
    + ' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
@@ -46833,7 +46859,7 @@ function captureBack(){
  _capLaunch(idx, fit);
 
  const kept=cyc.evs.length;
- showToast('Kept '+kept+' chord'+(kept>1?'s':'')+' · '+_capSummary(fit)
+ majorToast('Kept '+kept+' chord'+(kept>1?'s':'')+' · '+_capSummary(fit)
   + (cyc.passes>1 ? ' (one of '+cyc.passes+' passes)' : '')+' as "'+sec.name+'"', {
   actionLabel:'Undo', ms:7000,
   onAction:function(){
@@ -47150,7 +47176,7 @@ function startMelCapture(){
  melCapEvents = [];
  melCapFirstChord = null;
  _updateMelCapUI();
- showToast('Capturing melody — play the strip, tap again to keep it');
+ majorToast('Capturing melody — play the strip, tap again to keep it');
 }
 function stopMelCapture(){
  if(!melCapActive) return;
@@ -47189,7 +47215,7 @@ function blCaptureToggle(){
  if(!blCapActive){
   blCapActive = true; blCapEvents = [];
   _updateBlCapUI();
-  showToast('Capturing bass — play the melody strip (or a controller), then tap ◉ Bass (⌥B) to keep it');
+  majorToast('Capturing bass — play the melody strip (or a controller), then tap ◉ Bass (⌥B) to keep it');
   return;
  }
  const ctx=getCtx();
@@ -51075,13 +51101,13 @@ function toggleStemExport(){
   // _recTap, not _isRecording: the latter stays true for the 150ms after Stop
   // while the last block flushes, and a tap made then would never be read.
   if(_isRecording && _recTap){ _stemsMidTake(); return; }
-  showToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
+  majorToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
                         : 'Bounce writes the master mix only');
 }
 function _stemsMidTake(){
   if(!exportStems){
     _abandonStemTaps();
-    showToast('Stems off — this take is the mix only');
+    majorToast('Stems off — this take is the mix only');
     return;
   }
   try{
@@ -51089,13 +51115,13 @@ function _stemsMidTake(){
   }catch(e){
     _abandonStemTaps();
     exportStems=false; _updateStemBtn();
-    showToast('Stems could not start — this take is the mix only');
+    majorToast('Stems could not start — this take is the mix only');
     try{ console.warn('[rec] stem taps failed mid-take', e); }catch(_){}
     return;
   }
   // A late stem is written onto the mix's timeline (_finishStemTaps places each
   // block by its frame), so it is silent up to here rather than shifted early.
-  showToast('Stems on from here — each stem starts now, the mix has the whole take'
+  majorToast('Stems on from here — each stem starts now, the mix has the whole take'
             + (_stemSkipped.length ? '. ' + _stemSkipNote(_stemSkipped) : ''), {ms:4500});
 }
 // Stop the taps and forget what they heard — used when stems are switched off
@@ -51509,7 +51535,7 @@ function _startRecording(){
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
   if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
-  showToast(msg, nat.length ? {ms:5000} : undefined);
+  majorToast(msg, nat.length ? {ms:5000} : undefined);
 }
 // ── Native capture (v5 step N5) ─────────────────────────────────────────────
 // The recorder taps Web Audio nodes. A part the native engine plays leaves
@@ -52145,8 +52171,8 @@ function _stopRecording(){
     var _toastOpts=(sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined;
     // With a folder the toast waits for the blob files to be written too and is
     // said just before the sheet takes the screen.
-    if(!folder) showToast(done, _toastOpts);
-    _deliverFiles(files, { zipName:base, title:base, folder:folder, onSaved:function(){ showToast(done, _toastOpts); } });
+    if(!folder) majorToast(done, _toastOpts);
+    _deliverFiles(files, { zipName:base, title:base, folder:folder, onSaved:function(){ majorToast(done, _toastOpts); } });
   }); },150);
 }
 function _updateRecBtn(){
@@ -67408,7 +67434,7 @@ function fxMotionRecord(){
  fxMotionStopPlaying();
  fxMotion.armed=true;
  fxSyncUI();
- showToast('Armed — touch the pad to start recording');
+ majorToast('Armed — touch the pad to start recording');
 }
 function fxMotionBegin(){
  if(!fxMotion.armed) return;
@@ -67448,7 +67474,7 @@ function fxMotionStopRecording(andLoop){
  const bar=(60/(parseFloat(document.getElementById('bpm')?.value)||100))*4;
  const bars=Math.round(fxMotion.loopSec/bar);
  fxSyncUI();
- if(andLoop){ fxMotionPlay(); showToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — looping'); }
+ if(andLoop){ fxMotionPlay(); majorToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — looping'); }
  else showToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — tap Loop to play it');
 }
 function fxMotionPlay(){
@@ -69006,7 +69032,7 @@ function freeBlocked(what, module){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  showToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
+  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
  }
  return false;
 }
@@ -69166,7 +69192,7 @@ function proScan(s){
 function _proJoin(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
 function proBanner(kind, labels){
  if(!labels.length) return;
- showToast('This '+kind+' uses '+_proJoin(labels)+'. Stand-ins play, and your file keeps the originals.',
+ majorToast('This '+kind+' uses '+_proJoin(labels)+'. Stand-ins play, and your file keeps the originals.',
            {actionLabel:'See packs', ms:9000, onAction:function(){ proSheet(''); }});
 }
 // A loaded setup: remember what the free build changed, so a re-save can put

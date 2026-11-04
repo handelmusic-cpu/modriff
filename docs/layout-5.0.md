@@ -1171,3 +1171,14 @@ and are the same renderer turned on its side.
   start lead (the button already flips to Stop at once) and the Live page's own widgets, which may want the same helper.
 - `tests/partrow/probe.js` drives it with real touch: tap, hold, slide, a tap right after each, Live, and the wait (class, dashed,
   drawn as off, the engine's duration, landing, switch-off, Stop, the 0.3 s floor).
+
+### 6.7: Live shows toasts for major actions only
+
+- On the Live page a toast is drawn only for a **recording or capture** (`majorToast`), a **purchase gate** (`freeBlocked`), a
+  **failure** or a **refusal that says what to do first** (`TOAST_FAILURE`: "could not", "failed", "... first"), and anything
+  that **carries an action** (Undo, Resume, See pack). A style stepped, an ending armed, an undo, a touch mod switched or a pad
+  loaded no longer covers the screen being played. Suppressed toasts are still spoken through a visually hidden live region
+  (`#_toast-sr`), so VoiceOver keeps its confirmations. Studio, Song, Sound and Settings are unchanged. The filter is in
+  `showToast` itself (`_toastQuiet`), so a new call site is quiet on Live by default; a new recording-style toast says
+  `majorToast`. `tests/toasts/probe.js`.
+
