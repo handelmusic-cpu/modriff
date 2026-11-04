@@ -672,6 +672,9 @@ body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); 
    as the bare row used to be. */
 .vp-grp { display:flex; flex-wrap:wrap; gap:3px; width:100%; }
 .vp-head[aria-expanded="false"] + .vp-grp { display:none; }
+/* 6.7b: the patch list under mõdSynth in a popover picker: a full-width row, a finger tall, in the picker's own look. */
+.vp-patches { flex:1 0 100%; padding:4px 0 2px; }
+.vp-patch-sel { width:100%; flex:none; min-height:40px; font-size:.62rem; padding:6px 8px; }
 .snd-pick-menu .vp-head { padding-top:6px; }
 .snd-pick-menu .tb { padding:5px 9px; font-size:.58rem; }
 
@@ -8880,7 +8883,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7b</span></div>
  </div>
 </div>
 
@@ -10312,7 +10315,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11507,7 +11510,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.6';
+const MODRIFF_VERSION = '6.7b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -20667,7 +20670,7 @@ function psRecStop(){
  var p = PS_PATS[PS.pat];
  if(p) p.ev.forEach(function(e){ delete e.skip; });
  if(p && !p.ev.length && _psUndoTake && !_psUndoTake.ev.length){ PS_PATS[PS.pat] = null; PS.patOn = false; }
- if(r) showToast(r.n ? 'Recorded '+r.n+' hit'+(r.n===1?'':'s')+' into P'+(PS.pat+1) : 'Nothing recorded',
+ if(r) majorToast(r.n ? 'Recorded '+r.n+' hit'+(r.n===1?'':'s')+' into P'+(PS.pat+1) : 'Nothing recorded',
    r.n ? {actionLabel:'Undo', onAction:psUndoTake} : null);
  psPatRender();
 }
@@ -20883,7 +20886,7 @@ function psCapWrite(evs, endT, verb){
  if(!PS.patOn){ PS.patOn = true; _psPat.nextT = 0; }
  psEnsureTransport();
  psPatRender();
- showToast(verb+' '+fit.hits+' hit'+(fit.hits===1?'':'s')+' → P'+(pi+1)+', '+fit.bars+' bar'+(fit.bars===1?'':'s')
+ majorToast(verb+' '+fit.hits+' hit'+(fit.hits===1?'':'s')+' → P'+(pi+1)+', '+fit.bars+' bar'+(fit.bars===1?'':'s')
    + (fit.dropped ? ' · '+fit.dropped+' past 8 bars dropped' : ''),
   {actionLabel:'Undo', onAction:function(){
    PS_PATS[pi] = before;
@@ -20899,7 +20902,7 @@ function psCaptureToggle(){
   if(PS.rec){ showToast('Stop ● Rec first'); return; }
   PS.cap = {ev:[]};
   psCapUI();
-  showToast('Capturing pads — play, then tap ◉ again to keep it as a pattern');
+  majorToast('Capturing pads — play, then tap ◉ again to keep it as a pattern');
   return;
  }
  var evs = PS.cap.ev; PS.cap = null;
@@ -25505,7 +25508,7 @@ var MSX_USER_KEY='modo-msx-user';
 var MSX_USER=[];
 try{ var _msxU=JSON.parse(modStore.getItem(MSX_USER_KEY)||'[]'); if(Array.isArray(_msxU)) MSX_USER=_msxU; }catch(e){ MSX_USER=[]; }
 function msxUserSave(){
- try{ modStore.setItem(MSX_USER_KEY, JSON.stringify(MSX_USER)); return true; }
+ try{ modStore.setItem(MSX_USER_KEY, JSON.stringify(MSX_USER)); try{ if(window.vpPatchesChanged) window.vpPatchesChanged(); }catch(e2){} return true; }
  catch(e){ showToast('Could not save the patch — this device\u2019s storage is full'); return false; }
 }
 // Stored sparse against the schema defaults, so a saved patch is a few
@@ -29866,8 +29869,61 @@ function _findScoreToks(w, syns, toks){
  return best;
 }
 function _findPrep(e){
- if(!e._tk) e._tk={ n:_findTok(e.name), w:_findTok(e.where), r:_findTok(e.keys+' '+(e.note||'')) };
+ if(!e._tk) e._tk={ n:_findTok(e.name), w:e.noWhere ? [] : _findTok(e.where), r:_findTok(e.keys+' '+(e.voice ? '' : (e.note||''))) };
  return e._tk;
+}
+// ── Every voice, as a result (6.7) ──
+// Find only knew the voices that happened to be a button on a page, and the pickers' lists live in popovers outside
+// the pages it reads, so "sax" or "organ" found nothing and "piano" found the synth Piano and the picker's own
+// current-voice label. The voices are now their own results, one per voice per part, and choosing one puts that voice
+// on that part. Recorded instruments first, then mõdSynth, then the synthesised voices, plain sine / saw / square /
+// triangle last: the list was showing the worst sounds first (boost, below). `where` is shown but not searched
+// (noWhere), so a generic "voice" or "sound" does not bring up a hundred of them.
+var FIND_VOICE_WORDS = {
+ pianoreal2:'piano acoustic grand real recorded', piano:'piano keys synth', rhodes:'rhodes electric piano keys ep', organ:'organ keys drawbar',
+ pad:'pad synth ambient warm', sine:'sine plain wave', sawtooth:'saw sawtooth plain wave', square:'square plain wave pulse', triangle:'triangle tri plain wave',
+ supersaw:'supersaw saw trance lead', modsynth:'modsynth synth engine patch design', vibes:'vibraphone vibes mallet', marimba:'marimba mallet wood',
+ xylo:'xylophone mallet', kalimba:'kalimba thumb piano mbira', jazzgtr:'guitar jazz electric', nylongtr:'guitar nylon classical acoustic',
+ tenorsax:'saxophone sax tenor horn brass reed', mutetpt:'trumpet muted horn brass', violin:'violin strings bowed', clarinet:'clarinet woodwind reed', flute:'flute woodwind',
+ sampler:'sampler your own recording clip', electric:'electric', upright:'upright acoustic double', upright_real:'upright acoustic double real recorded',
+ upright2:'upright acoustic double real recorded', bass_picked:'picked electric real recorded', bass_motown:'motown soul bass', bass_hofner:'hofner violin bass beatles', acid303:'acid 303 tb bass'
+};
+function _findVoiceBoost(val){
+ // Sized against the name-versus-keywords gap in _findMatches (a name match scores 3.9, a keyword match 3.0): a
+ // recorded instrument that is only a keyword match ("piano" finds the Kalimba) still ranks below a synth voice
+ // whose NAME is the word, but wins every tie between like matches.
+ if(val==='sampler') return 0.3;
+ if(voiceGroupOf(val)===2) return 0.9;                          // recorded instruments
+ if(val==='modsynth') return 0.5;
+ if(val==='sine' || val==='sawtooth' || val==='square' || val==='triangle') return -0.6;   // the plain waves
+ return 0.2;                                                    // piano, e.piano, organ, pad, supersaw...
+}
+// The parts a voice is for, in the order a player reaches for them (VOICE_PARTS is in the mixer's order, which puts Bass first).
+var FIND_VOICE_PART_ORDER = {chord:0, mel:1, bass:2, arp:3, melgen:4};
+var _findVoiceCache=null;
+function _findVoiceEntries(){
+ if(_findVoiceCache) return _findVoiceCache;
+ const out=[];
+ try{
+  VOICE_PARTS.forEach((p,pi)=>{
+   p.opts.forEach(o=>{
+    const val=o[0], label=o[1];
+    out.push({ name:label, where:'Voices › '+p.label, noWhere:true, voice:true,
+     keys:FIND_VOICE_WORDS[val]||'', note:'Puts '+label.replace(/ ?[◆◈]/g,'')+' on '+p.label+' — '+p.hint+'.',
+     boost:_findVoiceBoost(val)-(FIND_VOICE_PART_ORDER[p.k]!=null ? FIND_VOICE_PART_ORDER[p.k] : pi)*0.01,
+     go:()=>{
+      closeFind();
+      try{ p.set(val); }catch(e){}
+      try{ if(typeof syncVoicesPanel==='function') syncVoicesPanel(); }catch(e){}
+      // A visible picker for that part answers "did it work".
+      const spec=SND_PICK_HOSTS.find(h=>h.part===p.k), w=spec && document.getElementById('sndpick-'+spec.host), b=w && w.querySelector('.snd-pick-btn');
+      if(b && b.getClientRects().length){ b.classList.add('panel-flash','find-hit'); setTimeout(()=>b.classList.remove('panel-flash','find-hit'),1800); }
+      try{ showToast(label.replace(/ ?[◆◈]/g,'')+' on '+p.label); }catch(e){}
+     }});
+   });
+  });
+ }catch(e){ return []; }      // before the voice tables exist: try again next search
+ return (_findVoiceCache=out);
 }
 function _findMatches(){
  const q=(document.getElementById('find-input')?.value||'').trim();
@@ -29879,20 +29935,27 @@ function _findMatches(){
  if(!words.length) words=_findTok(q);
  if(!words.length) return FIND_INDEX;
  const exp=words.map(_findExpand);
- const pool=FIND_INDEX.concat(_findHarvestAll());
+ const pool=FIND_INDEX.concat(_findHarvestAll(), _findVoiceEntries());
  const scored=[];
  pool.forEach(e=>{
   const tk=_findPrep(e);
-  let matched=0, total=0;
+  let matched=0, total=0; const hit=[];
   words.forEach((w,i)=>{
    const s=Math.max(_findScoreToks(w,exp[i],tk.n)*1.3, _findScoreToks(w,exp[i],tk.w)*0.8, _findScoreToks(w,exp[i],tk.r));
-   if(s>0){ matched++; total+=s; }
+   if(s>0){ matched++; total+=s; hit[i]=1; }
   });
   if(!matched) return;
+  // A voice's part is searchable only alongside its name ("piano chords"): on its own, "bass" or "chords" would
+  // bring up every voice that can be put there above the controls those words are really after.
+  if(e.voice && matched<words.length){
+   const wt=_findTok(e.where);
+   words.forEach((w,i)=>{ if(hit[i]) return; const s=_findScoreToks(w,exp[i],wt)*0.8; if(s>0){ matched++; total+=s; } });
+  }
   // A hand-written entry is one somebody decided people look for; on a tie
   // it goes first — unless all it has is a typo-distance match, which is how
   // "reverb" put Undo ("revert") above the reverb sends.
   if(!e.harvested && total>=1.5*matched) total+=0.6;
+  if(e.boost) total+=e.boost;
   scored.push({e, matched, total});
  });
  scored.sort((a,b)=> b.matched-a.matched || b.total-a.total);
@@ -29966,6 +30029,8 @@ function _findHarvestAll(){
  document.querySelectorAll('#perf-bar, .tab-page').forEach(root=>{
   root.querySelectorAll(sel).forEach(el=>{
    if(el.closest('#find-modal') || el.classList.contains('tips-btn')) return;
+   // The voice buttons inside the pickers are every voice's own result now (_findVoiceEntries).
+   if(el.closest('.vp-grp')) return;
    const row=_findRowLabel(el);
    const name=_findElName(el,row); if(!name) return;
    const page=el.closest('.tab-page');
@@ -29984,7 +30049,8 @@ function _findHarvestAll(){
    const key=where+'|'+name.toLowerCase();
    if(seen.has(key)) return; seen.add(key);
    const title=_findClean(el.getAttribute('title'));
-   out.push({ name, where, harvested:true, el, tab, sub, inSheet, adv,
+   // A picker's trigger is named after whatever the part plays now ("Piano (synth)"), which is not what anyone is looking for.
+   out.push({ name, where, harvested:true, el, tab, sub, inSheet, adv, boost:el.classList.contains('snd-pick-btn') ? -1 : 0,
      keys:[el.getAttribute('aria-label')||'', title, row, sect, el.id.replace(/[-_]/g,' ')].join(' '),
      note: title && title.toLowerCase()!==name.toLowerCase() ? (title.length>120?title.slice(0,118)+'…':title) : '',
      go:null });
@@ -31522,7 +31588,7 @@ function _vpSyncHeads(){
 // Fills a picker row with its voices, one folding section per group. mk builds
 // one button; the row's other code only ever looks for the buttons by their
 // data attribute, which the sections do not change.
-function vpFill(host, entries, mk){
+function vpFill(host, entries, mk, part){
  host.innerHTML='';
  const groups=[[],[],[]];
  entries.forEach(function(e){ groups[voiceGroupOf(e[0])].push(e); });
@@ -31542,6 +31608,8 @@ function vpFill(host, entries, mk){
   });
   const grp=document.createElement('div'); grp.className='vp-grp';
   g.forEach(function(e){ grp.appendChild(mk(e[0], e[1])); });
+  // The mõdSynth group carries its patches (vpPatchBlock): picking one is picking the voice AND the sound.
+  if(i===1 && part) grp.appendChild(vpPatchBlock(part));
   host.appendChild(head); host.appendChild(grp);
  });
 }
@@ -31742,7 +31810,14 @@ function buildVoicesPanel(){
    const sel=document.createElement('select');
    sel.className='voice-sel'; sel.id='vsel-'+p.k+suffix; sel.title=p.label+' — '+p.hint;
    vpOptGroups(sel, p.opts);
+   // mõdSynth parts get the synth's patches in the same dropdown (vpSelPatches), built when the library is there.
+   if(p.opts.some(o=>o[0]==='modsynth')){
+    sel._msxPart=p.k;
+    ['pointerdown','focus'].forEach(ev=>sel.addEventListener(ev, ()=>{ if(!sel._msxDone) vpPatchesEnsure(); }));
+    if(window.MS && MS.FACTORY_PATCHES) vpSelPatches(sel);
+   }
    sel.addEventListener('change',()=>{
+    if(/^msx:/.test(sel.value)){ const v=sel.value.slice(4); vpPatchPick(p.k, v.charAt(0)==='U', v.slice(2)); syncVoicesPanel(); return; }
     try{ p.set(sel.value); }catch(e){} syncVoicesPanel();
     if(sel.value==='sampler' && typeof window.smpOpenVoice==='function') window.smpOpenVoice(p.k);
    });
@@ -31822,6 +31897,7 @@ function syncVoicesPanel(){
   Object.values(VOICE_HOSTS).forEach(sfx=>{
    const sel=document.getElementById('vsel-'+p.k+sfx); if(!sel) return;
    if(v!=null && sel.value!==v && [...sel.options].some(o=>o.value===v)) sel.value=v;
+   if(sel._msxPart) vpSelSync(sel);
   });
  });
  if(typeof window.smpSyncBadges==='function') window.smpSyncBadges();
@@ -34107,7 +34183,7 @@ function toggleNash(){
 // sampled instruments had been added in none of them.
 function buildVoicePickers(){
  if(typeof MS_SHARED_VOICES==='undefined') return;
- const mk=(hostId, attr, cur, fn)=>{
+ const mk=(hostId, attr, cur, fn, part)=>{
   const host=document.getElementById(hostId); if(!host) return;
   vpFill(host, MS_SHARED_VOICES, (val,label)=>{
    const b=document.createElement('button');
@@ -34117,18 +34193,18 @@ function buildVoicePickers(){
    if(val==='modsynth') b.title='mõdSynth — multi-stage unison mega synth';
    b.addEventListener('click',()=>fn(val));
    return b;
-  });
+  }, part);
  };
- mk('sb-voices','wave', wave, setWave);
- mk('bw-voices','wave', wave, setWave);
- mk('aw-voices','arpwave', arpWave, setArpWave);
+ mk('sb-voices','wave', wave, setWave, 'chord');
+ mk('bw-voices','wave', wave, setWave, 'chord');
+ mk('aw-voices','arpwave', arpWave, setArpWave, 'arp');
  // The melody sequencer. Its wave lives inside the melody engine's IIFE, so
  // it is read through the exposed snapshot and written through window — and
  // the setter is looked up at click time, because this builder can run before
  // that IIFE has assigned it.
  let _mlCur='piano';
  try{ _mlCur = window._mlCaptureState().wave || 'piano'; }catch(e){}
- mk('mlvoice-settings','mlwave', _mlCur, v=>{ if(window.setMlWave) window.setMlWave(v); });
+ mk('mlvoice-settings','mlwave', _mlCur, v=>{ if(window.setMlWave) window.setMlWave(v); }, 'melgen');
  if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
  if(typeof sndPickInit==='function') sndPickInit();
 }
@@ -34582,6 +34658,7 @@ function sndPickSyncLabel(wrap){
  } else {
   cur.textContent = on ? on.textContent : '—';
  }
+ try{ vpPatchSyncAll(); }catch(e){}
 }
 // The buttons carry their voice under one of three data attributes, depending
 // on which row built them (wave / arpwave / mlwave).
@@ -34598,6 +34675,130 @@ function _msxPatchLabel(part){
   return (r.patch && r.patch.name) || '';
  }catch(e){ return ''; }
 }
+
+// ── mõdSynth patches in every voice selector (6.7b) ──
+// A part's mõdSynth patch could be chosen in one place, Sound › mõdSynth, two tabs from the picker that said
+// "mõdSynth" and nothing else. Now the patches are in the selectors themselves: a Patches list under mõdSynth in
+// each popover picker (Chords, Melody, Arp, Melody Seq), and the same patches as groups in the Voices panel's
+// dropdowns (Settings, Sound, and the Bass, Melody Seq and Arp pages). Picking one puts the part on mõdSynth and
+// loads the patch in one go.
+// The library is 330 KB of script that only the synth needs, so it is fetched when something here asks for it
+// (a picker opening, a dropdown touched) or, for owners of the synth, once the page has been idle for a few seconds.
+// A free install never fetches it: its list is the existing locked mõdSynth entry.
+// Groups: your Saved patches, the Modern bank by category, then the Classic library by category (the Sound tab's order).
+function vpPatchGroups(){
+ if(!(window.MS && MS.FACTORY_PATCHES && MS.MODERN_PATCHES)) return null;
+ const out=[], add=(label, names, saved)=>{ if(names.length) out.push({label, names, saved:!!saved}); };
+ try{ add('Saved', MSX_USER.map(u=>u.name), true); }catch(e){}
+ const bank=(list, prefix)=>{ const by={}, order=[]; list.forEach(x=>{ if(!by[x.category]){ by[x.category]=[]; order.push(x.category); } by[x.category].push(x.name); }); order.forEach(c=>add(prefix+c, by[c])); };
+ bank(msxModern(), 'Modern · ');
+ bank(msxClassic(), 'Classic · ');
+ return out;
+}
+function vpPatchAllowed(){ try{ return typeof freeAllowsVoice!=='function' || freeAllowsVoice('modsynth'); }catch(e){ return false; } }
+function vpPatchPick(part, saved, name){
+ const d=_msxDef(part); if(!d || !name) return;
+ const go=()=>{ if(saved) msxUserLoad(part, name); else msxPickPatch(part, name); };
+ if(_msxOnIt(part)){ go(); return; }
+ try{ d.set('modsynth'); }catch(e){}
+ if(!_msxOnIt(part)) return;                     // refused: the synth is a pack (freeBlocked has said so)
+ // The same order as the Sound tab's own "Play on mõdSynth": the engine is prepared, then the patch lands on it.
+ Promise.resolve(modSend({v:1, kind:'prepare', part:part, voice:'modsynth'})).then(go, go);
+}
+// The select's value for what the part plays now: 'L|name', 'U|name', or '' when the part is not on mõdSynth.
+function vpPatchCurrent(part){
+ if(!_msxOnIt(part)) return '';
+ const st=(typeof MSX!=='undefined' && MSX.state[part]) || {};
+ try{
+  if(st.name && msxUserByName(st.name)) return 'U|'+st.name;
+ }catch(e){}
+ const r=(window.MS && MS.PARAM) ? msxValuesFor(part) : null;
+ return r && r.patch ? 'L|'+r.patch.name : '';
+}
+// Fills a patch <select> with optgroups; idempotent, so it can be run again when the Saved bank changes.
+function vpPatchFill(sel, part){
+ const groups=vpPatchGroups(); if(!groups) return false;
+ const ph=sel.querySelector('option[value=""]');
+ sel.innerHTML=''; if(ph) sel.appendChild(ph);
+ else { const o=document.createElement('option'); o.value=''; o.textContent='mõdSynth patches…'; sel.appendChild(o); }
+ groups.forEach(g=>{
+  const og=document.createElement('optgroup'); og.label=g.label;
+  g.names.forEach(n=>{ const o=document.createElement('option'); o.value=(g.saved?'U|':'L|')+n; o.textContent=n; og.appendChild(o); });
+  sel.appendChild(og);
+ });
+ sel.value=vpPatchCurrent(part); if(sel.value!==vpPatchCurrent(part)) sel.value='';
+ sel._filled=true;
+ return true;
+}
+// The Patches row under mõdSynth in a popover picker.
+function vpPatchBlock(part){
+ const box=document.createElement('div'); box.className='vp-patches'; box.dataset.part=part;
+ const sel=document.createElement('select'); sel.className='voice-sel vp-patch-sel'; sel.dataset.part=part;
+ sel.setAttribute('aria-label','mõdSynth patch for '+((_msxDef(part)||{}).label||part));
+ const o=document.createElement('option'); o.value=''; o.textContent='mõdSynth patches…'; sel.appendChild(o);
+ sel.addEventListener('change', ()=>{
+  const v=sel.value; if(!v) return;
+  vpPatchPick(part, v.charAt(0)==='U', v.slice(2));
+  if(typeof sndPickClose==='function') sndPickClose();
+ });
+ box.appendChild(sel);
+ return box;
+}
+// Opening a picker (or an idle moment) brings the library in and fills every patch list that is waiting.
+function vpPatchesEnsure(){
+ if(!vpPatchAllowed()) return Promise.resolve();
+ const fill=()=>{
+  document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ if(!sel._filled || sel._stale) { vpPatchFill(sel, sel.dataset.part); sel._stale=false; } });
+  document.querySelectorAll('.voice-sel').forEach(sel=>{ if(sel._msxPart) vpSelPatches(sel); });
+ };
+ if(window.MS && MS.FACTORY_PATCHES && MS.MODERN_PATCHES){ fill(); return Promise.resolve(); }
+ return msxLoadLib().then(fill, ()=>{});
+}
+// The Voices panel's dropdowns: the same patches as optgroups after the mõdSynth group, built the first time the
+// library is there. Values are 'msx:L|name' / 'msx:U|name', so a change handler can tell them from a voice.
+function vpSelPatches(sel){
+ if(sel._msxDone) return;
+ const part=sel._msxPart; if(!part || !vpPatchAllowed()) return;
+ const groups=vpPatchGroups(); if(!groups) return;
+ const frag=document.createDocumentFragment();
+ groups.forEach(g=>{
+  const og=document.createElement('optgroup'); og.label='mõdSynth · '+g.label.replace(/^Modern · /,'').replace(/^Classic · /,'Classic ');
+  g.names.forEach(n=>{ const o=document.createElement('option'); o.value='msx:'+(g.saved?'U|':'L|')+n; o.textContent=n; og.appendChild(o); });
+  frag.appendChild(og);
+ });
+ // After the mõdSynth voice group, before the recorded instruments (VOICE_GROUP_LABELS order).
+ const after=[...sel.querySelectorAll('optgroup')].find(og=>og.label===VOICE_GROUP_LABELS[1]);
+ if(after && after.nextSibling) sel.insertBefore(frag, after.nextSibling); else sel.appendChild(frag);
+ sel._msxDone=true;
+ vpSelSync(sel);
+}
+// What the dropdown shows for a part on mõdSynth: its patch, when the dropdown has it.
+function vpSelSync(sel){
+ const part=sel._msxPart; if(!part) return;
+ let v=null; try{ v=_msxDef(part).get(); }catch(e){}
+ if(v!=='modsynth') return;
+ const cur=vpPatchCurrent(part);
+ const want=cur && sel._msxDone ? 'msx:'+cur : 'modsynth';
+ if([...sel.options].some(o=>o.value===want)) sel.value=want;
+}
+// A patch changed on a part: every list that names it follows.
+function vpPatchSyncAll(){
+ document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ if(sel._filled){ sel.value=vpPatchCurrent(sel.dataset.part); if(sel.value!==vpPatchCurrent(sel.dataset.part)) sel.value=''; } });
+ document.querySelectorAll('.voice-sel').forEach(sel=>{ if(sel._msxPart) vpSelSync(sel); });
+}
+// Saved patches changed (saved, deleted): the lists rebuild.
+window.vpPatchesChanged=function(){
+ document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ sel._stale=true; });
+ document.querySelectorAll('.voice-sel').forEach(sel=>{
+  if(!sel._msxDone) return;
+  sel.querySelectorAll('optgroup').forEach(og=>{ if(/^mõdSynth · /.test(og.label)) og.remove(); });
+  sel._msxDone=false;
+ });
+ vpPatchesEnsure();
+};
+window.vpPatchSyncAll=vpPatchSyncAll;
+// Owners of the synth get the library once the page has been quiet, so the first dropdown they touch already has its patches.
+setTimeout(function(){ try{ if(vpPatchAllowed() && typeof modHas==='function' && modHas('synth')) vpPatchesEnsure(); }catch(e){} }, 5000);
 
 // Every trigger at once. The MutationObserver below only hears the buttons'
 // own class changes, and a part's mõdSynth PATCH changes none of them — so
@@ -34638,6 +34839,7 @@ function sndPickInit(){
     pop.classList.add('open');
     btn.setAttribute('aria-expanded','true');
     vpOpenActive(pop);
+    vpPatchesEnsure();
     _sndPickOpen = wrap;
     sndPickPlace(wrap);
     setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
@@ -37280,8 +37482,34 @@ function setBuildExt(e){
 // setup — these were a single tap with no confirmation and, for most of them,
 // no way back at all. A confirm() on each would tax the ninety-nine times you
 // meant it to protect the once you didn't; an Undo you can ignore does not.
+// ── Which toasts the Live page gets (6.7) ──
+// A toast was the app's confirmation channel for 300 call sites, so every tap on Live (a style stepped, an ending
+// armed, an undo, a touch mod switched, a pad's sample loaded) put a banner over the screen being played. On Live
+// a toast is for a major action only: a recording or capture starting or finishing (majorToast), something refused
+// because of a purchase (freeBlocked, majorToast), a failure, a refusal that says what to do first, and anything
+// that carries an action the player may want (Undo, Resume, See pack). Everything else is not drawn there; it is
+// still read out to a screen reader (#_toast-sr), because a confirmation that was only ever visual would have
+// gone silent for them. Every other page is unchanged. var, not function: it is read from boot.
+var TOAST_FAILURE = /could not|couldn.t|failed|storage full|not enough room|came back silent|did not go through|nothing was saved|\bfirst\.?$/i;
+function majorToast(msg, opts){ opts = opts || {}; opts.major = true; return showToast(msg, opts); }
+function _toastQuiet(msg, opts){
+ if(opts.major || opts.onAction) return false;
+ try{ if(typeof lvActive!=='function' || !lvActive()) return false; }catch(e){ return false; }
+ return !TOAST_FAILURE.test(String(msg));
+}
+function _toastSay(msg){
+ let r=document.getElementById('_toast-sr');
+ if(!r){
+  r=document.createElement('div'); r.id='_toast-sr';
+  r.setAttribute('role','status'); r.setAttribute('aria-live','polite'); r.setAttribute('aria-atomic','true');
+  r.style.cssText='position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0';
+  document.body.appendChild(r);
+ }
+ r.textContent=''; setTimeout(function(){ r.textContent=String(msg); }, 30);
+}
 function showToast(msg, opts){
  opts = opts || {};
+ if(_toastQuiet(msg, opts)){ try{ _toastSay(msg); }catch(e){} return; }
  let t=document.getElementById('_toast');
  if(!t){
   t=document.createElement('div'); t.id='_toast';
@@ -46523,7 +46751,7 @@ function startSongRecord(){
  songRecEvents = [];
  buildSectionTabs(); renderChartSeq();
  _updateSongRecUI();
- showToast('Recording to "'+base+' '+n+'" — play some chords');
+ majorToast('Recording to "'+base+' '+n+'" — play some chords');
 }
 
 // ─── Fitting a take to the bar ────────────────────────────────────────────
@@ -46719,7 +46947,7 @@ function stopSongRecord(){
  // you want, hit it again and it's already looping what you just played.
  if(fit){
   _capLaunch(recordedIdx, fit);
-  showToast('Recorded '+count+' chord'+(count===1?'':'s')+' · '+_capSummary(fit)
+  majorToast('Recorded '+count+' chord'+(count===1?'':'s')+' · '+_capSummary(fit)
    + ' — looping "'+(sec?sec.name:'')+'"');
  } else {
   showToast('Recorded 0 chords into "'+(sec?sec.name:'')+'"');
@@ -46833,7 +47061,7 @@ function captureBack(){
  _capLaunch(idx, fit);
 
  const kept=cyc.evs.length;
- showToast('Kept '+kept+' chord'+(kept>1?'s':'')+' · '+_capSummary(fit)
+ majorToast('Kept '+kept+' chord'+(kept>1?'s':'')+' · '+_capSummary(fit)
   + (cyc.passes>1 ? ' (one of '+cyc.passes+' passes)' : '')+' as "'+sec.name+'"', {
   actionLabel:'Undo', ms:7000,
   onAction:function(){
@@ -47150,7 +47378,7 @@ function startMelCapture(){
  melCapEvents = [];
  melCapFirstChord = null;
  _updateMelCapUI();
- showToast('Capturing melody — play the strip, tap again to keep it');
+ majorToast('Capturing melody — play the strip, tap again to keep it');
 }
 function stopMelCapture(){
  if(!melCapActive) return;
@@ -47189,7 +47417,7 @@ function blCaptureToggle(){
  if(!blCapActive){
   blCapActive = true; blCapEvents = [];
   _updateBlCapUI();
-  showToast('Capturing bass — play the melody strip (or a controller), then tap ◉ Bass (⌥B) to keep it');
+  majorToast('Capturing bass — play the melody strip (or a controller), then tap ◉ Bass (⌥B) to keep it');
   return;
  }
  const ctx=getCtx();
@@ -50826,7 +51054,7 @@ function buildMelVoicePickers(){
    b.textContent=label;
    b.addEventListener('click',()=>setMelWave(val));
    return b;
-  });
+  }, 'mel');
  });
 }
 
@@ -51075,13 +51303,13 @@ function toggleStemExport(){
   // _recTap, not _isRecording: the latter stays true for the 150ms after Stop
   // while the last block flushes, and a tap made then would never be read.
   if(_isRecording && _recTap){ _stemsMidTake(); return; }
-  showToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
+  majorToast(exportStems ? 'Bounce will write one .wav per part, plus the mix'
                         : 'Bounce writes the master mix only');
 }
 function _stemsMidTake(){
   if(!exportStems){
     _abandonStemTaps();
-    showToast('Stems off — this take is the mix only');
+    majorToast('Stems off — this take is the mix only');
     return;
   }
   try{
@@ -51089,13 +51317,13 @@ function _stemsMidTake(){
   }catch(e){
     _abandonStemTaps();
     exportStems=false; _updateStemBtn();
-    showToast('Stems could not start — this take is the mix only');
+    majorToast('Stems could not start — this take is the mix only');
     try{ console.warn('[rec] stem taps failed mid-take', e); }catch(_){}
     return;
   }
   // A late stem is written onto the mix's timeline (_finishStemTaps places each
   // block by its frame), so it is silent up to here rather than shifted early.
-  showToast('Stems on from here — each stem starts now, the mix has the whole take'
+  majorToast('Stems on from here — each stem starts now, the mix has the whole take'
             + (_stemSkipped.length ? '. ' + _stemSkipNote(_stemSkipped) : ''), {ms:4500});
 }
 // Stop the taps and forget what they heard — used when stems are switched off
@@ -51509,7 +51737,7 @@ function _startRecording(){
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
   if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
-  showToast(msg, nat.length ? {ms:5000} : undefined);
+  majorToast(msg, nat.length ? {ms:5000} : undefined);
 }
 // ── Native capture (v5 step N5) ─────────────────────────────────────────────
 // The recorder taps Web Audio nodes. A part the native engine plays leaves
@@ -52145,8 +52373,8 @@ function _stopRecording(){
     var _toastOpts=(sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined;
     // With a folder the toast waits for the blob files to be written too and is
     // said just before the sheet takes the screen.
-    if(!folder) showToast(done, _toastOpts);
-    _deliverFiles(files, { zipName:base, title:base, folder:folder, onSaved:function(){ showToast(done, _toastOpts); } });
+    if(!folder) majorToast(done, _toastOpts);
+    _deliverFiles(files, { zipName:base, title:base, folder:folder, onSaved:function(){ majorToast(done, _toastOpts); } });
   }); },150);
 }
 function _updateRecBtn(){
@@ -67408,7 +67636,7 @@ function fxMotionRecord(){
  fxMotionStopPlaying();
  fxMotion.armed=true;
  fxSyncUI();
- showToast('Armed — touch the pad to start recording');
+ majorToast('Armed — touch the pad to start recording');
 }
 function fxMotionBegin(){
  if(!fxMotion.armed) return;
@@ -67448,7 +67676,7 @@ function fxMotionStopRecording(andLoop){
  const bar=(60/(parseFloat(document.getElementById('bpm')?.value)||100))*4;
  const bars=Math.round(fxMotion.loopSec/bar);
  fxSyncUI();
- if(andLoop){ fxMotionPlay(); showToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — looping'); }
+ if(andLoop){ fxMotionPlay(); majorToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — looping'); }
  else showToast('Recorded '+bars+' bar'+(bars>1?'s':'')+' — tap Loop to play it');
 }
 function fxMotionPlay(){
@@ -69006,7 +69234,7 @@ function freeBlocked(what, module){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  showToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
+  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
  }
  return false;
 }
@@ -69166,7 +69394,7 @@ function proScan(s){
 function _proJoin(a){ return a.length<2 ? a.join('') : a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
 function proBanner(kind, labels){
  if(!labels.length) return;
- showToast('This '+kind+' uses '+_proJoin(labels)+'. Stand-ins play, and your file keeps the originals.',
+ majorToast('This '+kind+' uses '+_proJoin(labels)+'. Stand-ins play, and your file keeps the originals.',
            {actionLabel:'See packs', ms:9000, onAction:function(){ proSheet(''); }});
 }
 // A loaded setup: remember what the free build changed, so a re-save can put

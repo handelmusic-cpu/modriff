@@ -1171,3 +1171,39 @@ and are the same renderer turned on its side.
   start lead (the button already flips to Stop at once) and the Live page's own widgets, which may want the same helper.
 - `tests/partrow/probe.js` drives it with real touch: tap, hold, slide, a tap right after each, Live, and the wait (class, dashed,
   drawn as off, the engine's duration, landing, switch-off, Stop, the 0.3 s floor).
+
+### 6.7: Live shows toasts for major actions only
+
+- On the Live page a toast is drawn only for a **recording or capture** (`majorToast`), a **purchase gate** (`freeBlocked`), a
+  **failure** or a **refusal that says what to do first** (`TOAST_FAILURE`: "could not", "failed", "... first"), and anything
+  that **carries an action** (Undo, Resume, See pack). A style stepped, an ending armed, an undo, a touch mod switched or a pad
+  loaded no longer covers the screen being played. Suppressed toasts are still spoken through a visually hidden live region
+  (`#_toast-sr`), so VoiceOver keeps its confirmations. Studio, Song, Sound and Settings are unchanged. The filter is in
+  `showToast` itself (`_toastQuiet`), so a new call site is quiet on Live by default; a new recording-style toast says
+  `majorToast`. `tests/toasts/probe.js`.
+
+### 6.7a: every voice is a Find result, recorded instruments first
+
+- Find read only the buttons on the pages, and the pickers' lists live in popovers outside them, so "sax" or "organ" found
+  nothing and "piano" found the synth Piano and the picker's current-voice label. `_findVoiceEntries` makes each voice a result
+  per part it can go on (`VOICE_PARTS`), and choosing one puts that voice on that part. Ranking (`_findVoiceBoost`): recorded
+  instruments, then mõdSynth, then piano / e.piano / organ / pad / supersaw, plain sine / saw / square / tri last. The boost is
+  sized against the name (3.9) versus keyword (3.0) gap, so a recorded voice that only matches by keyword ("piano" finds the
+  Kalimba) still ranks under a synth voice whose NAME is the word. The part is searchable only beside the voice's name ("piano
+  chords", "sax melody"), so "bass" or "chords" alone are not taken over by voices. The picker triggers, named after the current
+  voice, are demoted; the voice buttons inside the lists are not harvested twice. `tests/findvoices/probe.js`.
+
+### 6.7b: mõdSynth patches in every voice selector
+
+- A part's mõdSynth patch could be chosen in one place, Sound › mõdSynth, two tabs from a picker that said "mõdSynth" and nothing
+  else. The patches are now in the selectors: a **Patches** list under mõdSynth in each popover picker (Chords, Melody, Arp, Melody
+  Seq: `vpPatchBlock`, passed to `vpFill` as its `part`), and the same patches as groups in the Voices panel's dropdowns
+  (`vpSelPatches`: Settings, Sound, and the Bass, Melody Seq and Arp pages; values `msx:L|name` / `msx:U|name`). Groups: Saved, Modern
+  by category, Classic by category (the Sound tab's order). Choosing one puts the part on mõdSynth and loads the patch in one go
+  (`vpPatchPick`, the same prepare-then-load order as the Sound tab's "Play on mõdSynth"); every list follows the part
+  (`vpPatchSyncAll`, from `sndPickSyncLabel` and `syncVoicesPanel`), and a patch saved or deleted rebuilds them (`vpPatchesChanged`,
+  from `msxUserSave`).
+- **Loading.** The synth library is 330 KB that only the synth uses. It is fetched when a picker opens or a dropdown is touched
+  (`vpPatchesEnsure`) or, for owners, five seconds after boot. A free install never fetches it: its selectors keep the locked mõdSynth
+  entry and show no patches. `tests/voicepatches/probe.js`.
+
