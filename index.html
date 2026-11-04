@@ -672,6 +672,9 @@ body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); 
    as the bare row used to be. */
 .vp-grp { display:flex; flex-wrap:wrap; gap:3px; width:100%; }
 .vp-head[aria-expanded="false"] + .vp-grp { display:none; }
+/* 6.7b: the patch list under mõdSynth in a popover picker: a full-width row, a finger tall, in the picker's own look. */
+.vp-patches { flex:1 0 100%; padding:4px 0 2px; }
+.vp-patch-sel { width:100%; flex:none; min-height:40px; font-size:.62rem; padding:6px 8px; }
 .snd-pick-menu .vp-head { padding-top:6px; }
 .snd-pick-menu .tb { padding:5px 9px; font-size:.58rem; }
 
@@ -8880,7 +8883,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7b</span></div>
  </div>
 </div>
 
@@ -10312,7 +10315,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11507,7 +11510,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.7a';
+const MODRIFF_VERSION = '6.7b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -25505,7 +25508,7 @@ var MSX_USER_KEY='modo-msx-user';
 var MSX_USER=[];
 try{ var _msxU=JSON.parse(modStore.getItem(MSX_USER_KEY)||'[]'); if(Array.isArray(_msxU)) MSX_USER=_msxU; }catch(e){ MSX_USER=[]; }
 function msxUserSave(){
- try{ modStore.setItem(MSX_USER_KEY, JSON.stringify(MSX_USER)); return true; }
+ try{ modStore.setItem(MSX_USER_KEY, JSON.stringify(MSX_USER)); try{ if(window.vpPatchesChanged) window.vpPatchesChanged(); }catch(e2){} return true; }
  catch(e){ showToast('Could not save the patch — this device\u2019s storage is full'); return false; }
 }
 // Stored sparse against the schema defaults, so a saved patch is a few
@@ -31585,7 +31588,7 @@ function _vpSyncHeads(){
 // Fills a picker row with its voices, one folding section per group. mk builds
 // one button; the row's other code only ever looks for the buttons by their
 // data attribute, which the sections do not change.
-function vpFill(host, entries, mk){
+function vpFill(host, entries, mk, part){
  host.innerHTML='';
  const groups=[[],[],[]];
  entries.forEach(function(e){ groups[voiceGroupOf(e[0])].push(e); });
@@ -31605,6 +31608,8 @@ function vpFill(host, entries, mk){
   });
   const grp=document.createElement('div'); grp.className='vp-grp';
   g.forEach(function(e){ grp.appendChild(mk(e[0], e[1])); });
+  // The mõdSynth group carries its patches (vpPatchBlock): picking one is picking the voice AND the sound.
+  if(i===1 && part) grp.appendChild(vpPatchBlock(part));
   host.appendChild(head); host.appendChild(grp);
  });
 }
@@ -31805,7 +31810,14 @@ function buildVoicesPanel(){
    const sel=document.createElement('select');
    sel.className='voice-sel'; sel.id='vsel-'+p.k+suffix; sel.title=p.label+' — '+p.hint;
    vpOptGroups(sel, p.opts);
+   // mõdSynth parts get the synth's patches in the same dropdown (vpSelPatches), built when the library is there.
+   if(p.opts.some(o=>o[0]==='modsynth')){
+    sel._msxPart=p.k;
+    ['pointerdown','focus'].forEach(ev=>sel.addEventListener(ev, ()=>{ if(!sel._msxDone) vpPatchesEnsure(); }));
+    if(window.MS && MS.FACTORY_PATCHES) vpSelPatches(sel);
+   }
    sel.addEventListener('change',()=>{
+    if(/^msx:/.test(sel.value)){ const v=sel.value.slice(4); vpPatchPick(p.k, v.charAt(0)==='U', v.slice(2)); syncVoicesPanel(); return; }
     try{ p.set(sel.value); }catch(e){} syncVoicesPanel();
     if(sel.value==='sampler' && typeof window.smpOpenVoice==='function') window.smpOpenVoice(p.k);
    });
@@ -31885,6 +31897,7 @@ function syncVoicesPanel(){
   Object.values(VOICE_HOSTS).forEach(sfx=>{
    const sel=document.getElementById('vsel-'+p.k+sfx); if(!sel) return;
    if(v!=null && sel.value!==v && [...sel.options].some(o=>o.value===v)) sel.value=v;
+   if(sel._msxPart) vpSelSync(sel);
   });
  });
  if(typeof window.smpSyncBadges==='function') window.smpSyncBadges();
@@ -34170,7 +34183,7 @@ function toggleNash(){
 // sampled instruments had been added in none of them.
 function buildVoicePickers(){
  if(typeof MS_SHARED_VOICES==='undefined') return;
- const mk=(hostId, attr, cur, fn)=>{
+ const mk=(hostId, attr, cur, fn, part)=>{
   const host=document.getElementById(hostId); if(!host) return;
   vpFill(host, MS_SHARED_VOICES, (val,label)=>{
    const b=document.createElement('button');
@@ -34180,18 +34193,18 @@ function buildVoicePickers(){
    if(val==='modsynth') b.title='mõdSynth — multi-stage unison mega synth';
    b.addEventListener('click',()=>fn(val));
    return b;
-  });
+  }, part);
  };
- mk('sb-voices','wave', wave, setWave);
- mk('bw-voices','wave', wave, setWave);
- mk('aw-voices','arpwave', arpWave, setArpWave);
+ mk('sb-voices','wave', wave, setWave, 'chord');
+ mk('bw-voices','wave', wave, setWave, 'chord');
+ mk('aw-voices','arpwave', arpWave, setArpWave, 'arp');
  // The melody sequencer. Its wave lives inside the melody engine's IIFE, so
  // it is read through the exposed snapshot and written through window — and
  // the setter is looked up at click time, because this builder can run before
  // that IIFE has assigned it.
  let _mlCur='piano';
  try{ _mlCur = window._mlCaptureState().wave || 'piano'; }catch(e){}
- mk('mlvoice-settings','mlwave', _mlCur, v=>{ if(window.setMlWave) window.setMlWave(v); });
+ mk('mlvoice-settings','mlwave', _mlCur, v=>{ if(window.setMlWave) window.setMlWave(v); }, 'melgen');
  if(typeof buildMelVoicePickers==='function') buildMelVoicePickers();
  if(typeof sndPickInit==='function') sndPickInit();
 }
@@ -34645,6 +34658,7 @@ function sndPickSyncLabel(wrap){
  } else {
   cur.textContent = on ? on.textContent : '—';
  }
+ try{ vpPatchSyncAll(); }catch(e){}
 }
 // The buttons carry their voice under one of three data attributes, depending
 // on which row built them (wave / arpwave / mlwave).
@@ -34661,6 +34675,130 @@ function _msxPatchLabel(part){
   return (r.patch && r.patch.name) || '';
  }catch(e){ return ''; }
 }
+
+// ── mõdSynth patches in every voice selector (6.7b) ──
+// A part's mõdSynth patch could be chosen in one place, Sound › mõdSynth, two tabs from the picker that said
+// "mõdSynth" and nothing else. Now the patches are in the selectors themselves: a Patches list under mõdSynth in
+// each popover picker (Chords, Melody, Arp, Melody Seq), and the same patches as groups in the Voices panel's
+// dropdowns (Settings, Sound, and the Bass, Melody Seq and Arp pages). Picking one puts the part on mõdSynth and
+// loads the patch in one go.
+// The library is 330 KB of script that only the synth needs, so it is fetched when something here asks for it
+// (a picker opening, a dropdown touched) or, for owners of the synth, once the page has been idle for a few seconds.
+// A free install never fetches it: its list is the existing locked mõdSynth entry.
+// Groups: your Saved patches, the Modern bank by category, then the Classic library by category (the Sound tab's order).
+function vpPatchGroups(){
+ if(!(window.MS && MS.FACTORY_PATCHES && MS.MODERN_PATCHES)) return null;
+ const out=[], add=(label, names, saved)=>{ if(names.length) out.push({label, names, saved:!!saved}); };
+ try{ add('Saved', MSX_USER.map(u=>u.name), true); }catch(e){}
+ const bank=(list, prefix)=>{ const by={}, order=[]; list.forEach(x=>{ if(!by[x.category]){ by[x.category]=[]; order.push(x.category); } by[x.category].push(x.name); }); order.forEach(c=>add(prefix+c, by[c])); };
+ bank(msxModern(), 'Modern · ');
+ bank(msxClassic(), 'Classic · ');
+ return out;
+}
+function vpPatchAllowed(){ try{ return typeof freeAllowsVoice!=='function' || freeAllowsVoice('modsynth'); }catch(e){ return false; } }
+function vpPatchPick(part, saved, name){
+ const d=_msxDef(part); if(!d || !name) return;
+ const go=()=>{ if(saved) msxUserLoad(part, name); else msxPickPatch(part, name); };
+ if(_msxOnIt(part)){ go(); return; }
+ try{ d.set('modsynth'); }catch(e){}
+ if(!_msxOnIt(part)) return;                     // refused: the synth is a pack (freeBlocked has said so)
+ // The same order as the Sound tab's own "Play on mõdSynth": the engine is prepared, then the patch lands on it.
+ Promise.resolve(modSend({v:1, kind:'prepare', part:part, voice:'modsynth'})).then(go, go);
+}
+// The select's value for what the part plays now: 'L|name', 'U|name', or '' when the part is not on mõdSynth.
+function vpPatchCurrent(part){
+ if(!_msxOnIt(part)) return '';
+ const st=(typeof MSX!=='undefined' && MSX.state[part]) || {};
+ try{
+  if(st.name && msxUserByName(st.name)) return 'U|'+st.name;
+ }catch(e){}
+ const r=(window.MS && MS.PARAM) ? msxValuesFor(part) : null;
+ return r && r.patch ? 'L|'+r.patch.name : '';
+}
+// Fills a patch <select> with optgroups; idempotent, so it can be run again when the Saved bank changes.
+function vpPatchFill(sel, part){
+ const groups=vpPatchGroups(); if(!groups) return false;
+ const ph=sel.querySelector('option[value=""]');
+ sel.innerHTML=''; if(ph) sel.appendChild(ph);
+ else { const o=document.createElement('option'); o.value=''; o.textContent='mõdSynth patches…'; sel.appendChild(o); }
+ groups.forEach(g=>{
+  const og=document.createElement('optgroup'); og.label=g.label;
+  g.names.forEach(n=>{ const o=document.createElement('option'); o.value=(g.saved?'U|':'L|')+n; o.textContent=n; og.appendChild(o); });
+  sel.appendChild(og);
+ });
+ sel.value=vpPatchCurrent(part); if(sel.value!==vpPatchCurrent(part)) sel.value='';
+ sel._filled=true;
+ return true;
+}
+// The Patches row under mõdSynth in a popover picker.
+function vpPatchBlock(part){
+ const box=document.createElement('div'); box.className='vp-patches'; box.dataset.part=part;
+ const sel=document.createElement('select'); sel.className='voice-sel vp-patch-sel'; sel.dataset.part=part;
+ sel.setAttribute('aria-label','mõdSynth patch for '+((_msxDef(part)||{}).label||part));
+ const o=document.createElement('option'); o.value=''; o.textContent='mõdSynth patches…'; sel.appendChild(o);
+ sel.addEventListener('change', ()=>{
+  const v=sel.value; if(!v) return;
+  vpPatchPick(part, v.charAt(0)==='U', v.slice(2));
+  if(typeof sndPickClose==='function') sndPickClose();
+ });
+ box.appendChild(sel);
+ return box;
+}
+// Opening a picker (or an idle moment) brings the library in and fills every patch list that is waiting.
+function vpPatchesEnsure(){
+ if(!vpPatchAllowed()) return Promise.resolve();
+ const fill=()=>{
+  document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ if(!sel._filled || sel._stale) { vpPatchFill(sel, sel.dataset.part); sel._stale=false; } });
+  document.querySelectorAll('.voice-sel').forEach(sel=>{ if(sel._msxPart) vpSelPatches(sel); });
+ };
+ if(window.MS && MS.FACTORY_PATCHES && MS.MODERN_PATCHES){ fill(); return Promise.resolve(); }
+ return msxLoadLib().then(fill, ()=>{});
+}
+// The Voices panel's dropdowns: the same patches as optgroups after the mõdSynth group, built the first time the
+// library is there. Values are 'msx:L|name' / 'msx:U|name', so a change handler can tell them from a voice.
+function vpSelPatches(sel){
+ if(sel._msxDone) return;
+ const part=sel._msxPart; if(!part || !vpPatchAllowed()) return;
+ const groups=vpPatchGroups(); if(!groups) return;
+ const frag=document.createDocumentFragment();
+ groups.forEach(g=>{
+  const og=document.createElement('optgroup'); og.label='mõdSynth · '+g.label.replace(/^Modern · /,'').replace(/^Classic · /,'Classic ');
+  g.names.forEach(n=>{ const o=document.createElement('option'); o.value='msx:'+(g.saved?'U|':'L|')+n; o.textContent=n; og.appendChild(o); });
+  frag.appendChild(og);
+ });
+ // After the mõdSynth voice group, before the recorded instruments (VOICE_GROUP_LABELS order).
+ const after=[...sel.querySelectorAll('optgroup')].find(og=>og.label===VOICE_GROUP_LABELS[1]);
+ if(after && after.nextSibling) sel.insertBefore(frag, after.nextSibling); else sel.appendChild(frag);
+ sel._msxDone=true;
+ vpSelSync(sel);
+}
+// What the dropdown shows for a part on mõdSynth: its patch, when the dropdown has it.
+function vpSelSync(sel){
+ const part=sel._msxPart; if(!part) return;
+ let v=null; try{ v=_msxDef(part).get(); }catch(e){}
+ if(v!=='modsynth') return;
+ const cur=vpPatchCurrent(part);
+ const want=cur && sel._msxDone ? 'msx:'+cur : 'modsynth';
+ if([...sel.options].some(o=>o.value===want)) sel.value=want;
+}
+// A patch changed on a part: every list that names it follows.
+function vpPatchSyncAll(){
+ document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ if(sel._filled){ sel.value=vpPatchCurrent(sel.dataset.part); if(sel.value!==vpPatchCurrent(sel.dataset.part)) sel.value=''; } });
+ document.querySelectorAll('.voice-sel').forEach(sel=>{ if(sel._msxPart) vpSelSync(sel); });
+}
+// Saved patches changed (saved, deleted): the lists rebuild.
+window.vpPatchesChanged=function(){
+ document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ sel._stale=true; });
+ document.querySelectorAll('.voice-sel').forEach(sel=>{
+  if(!sel._msxDone) return;
+  sel.querySelectorAll('optgroup').forEach(og=>{ if(/^mõdSynth · /.test(og.label)) og.remove(); });
+  sel._msxDone=false;
+ });
+ vpPatchesEnsure();
+};
+window.vpPatchSyncAll=vpPatchSyncAll;
+// Owners of the synth get the library once the page has been quiet, so the first dropdown they touch already has its patches.
+setTimeout(function(){ try{ if(vpPatchAllowed() && typeof modHas==='function' && modHas('synth')) vpPatchesEnsure(); }catch(e){} }, 5000);
 
 // Every trigger at once. The MutationObserver below only hears the buttons'
 // own class changes, and a part's mõdSynth PATCH changes none of them — so
@@ -34701,6 +34839,7 @@ function sndPickInit(){
     pop.classList.add('open');
     btn.setAttribute('aria-expanded','true');
     vpOpenActive(pop);
+    vpPatchesEnsure();
     _sndPickOpen = wrap;
     sndPickPlace(wrap);
     setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
@@ -50915,7 +51054,7 @@ function buildMelVoicePickers(){
    b.textContent=label;
    b.addEventListener('click',()=>setMelWave(val));
    return b;
-  });
+  }, 'mel');
  });
 }
 

@@ -1193,3 +1193,17 @@ and are the same renderer turned on its side.
   chords", "sax melody"), so "bass" or "chords" alone are not taken over by voices. The picker triggers, named after the current
   voice, are demoted; the voice buttons inside the lists are not harvested twice. `tests/findvoices/probe.js`.
 
+### 6.7b: mõdSynth patches in every voice selector
+
+- A part's mõdSynth patch could be chosen in one place, Sound › mõdSynth, two tabs from a picker that said "mõdSynth" and nothing
+  else. The patches are now in the selectors: a **Patches** list under mõdSynth in each popover picker (Chords, Melody, Arp, Melody
+  Seq: `vpPatchBlock`, passed to `vpFill` as its `part`), and the same patches as groups in the Voices panel's dropdowns
+  (`vpSelPatches`: Settings, Sound, and the Bass, Melody Seq and Arp pages; values `msx:L|name` / `msx:U|name`). Groups: Saved, Modern
+  by category, Classic by category (the Sound tab's order). Choosing one puts the part on mõdSynth and loads the patch in one go
+  (`vpPatchPick`, the same prepare-then-load order as the Sound tab's "Play on mõdSynth"); every list follows the part
+  (`vpPatchSyncAll`, from `sndPickSyncLabel` and `syncVoicesPanel`), and a patch saved or deleted rebuilds them (`vpPatchesChanged`,
+  from `msxUserSave`).
+- **Loading.** The synth library is 330 KB that only the synth uses. It is fetched when a picker opens or a dropdown is touched
+  (`vpPatchesEnsure`) or, for owners, five seconds after boot. A free install never fetches it: its selectors keep the locked mõdSynth
+  entry and show no patches. `tests/voicepatches/probe.js`.
+
