@@ -8883,7 +8883,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.8</span></div>
  </div>
 </div>
 
@@ -10315,7 +10315,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11510,7 +11510,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.7b';
+const MODRIFF_VERSION = '6.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -11841,6 +11841,24 @@ window._genQueuePaint = function(part, frac, landed){
   };
   P._wakeHeld = function(){ return nat() ? !!natOn : (!!lock && !lock.released); };
  }
+})(window.modPlatform);
+// modPlatform.bounceLight(on) — the red light in the Dynamic Island while a bounce is recorded (v6.8).
+// The island can only be drawn by a Live Activity, which is native: in the app this is ModActivity (a plugin that
+// starts and ends it) and the widget extension that draws it (docs/dynamic-island.md). A browser, an iPhone without
+// an island, a build without the plugin or the extension: nothing is drawn and nothing is said, because a missing
+// light must never get in the way of a bounce. The page holds the one fact and sends it only when it changes
+// (_updateRecBtn), so a repaint of the bounce button cannot restart the activity.
+(function(P){
+ if(!P || P.bounceLight) return;
+ var last = null;
+ P.bounceLight = function(on){
+  on = !!on;
+  if(last === on) return;
+  var w = modCapPlugin('ModActivity', ['set']);
+  if(!w || typeof w.set !== 'function') return;
+  last = on;
+  try{ Promise.resolve(w.set({ on: on })).catch(function(){ last = null; }); }catch(e){ last = null; }
+ };
 })(window.modPlatform);
 //
 // modPlatform.haptic(kind) — a tap under the finger, alongside the sound.
@@ -52398,6 +52416,8 @@ function _updateRecBtn(){
   }
   var led=document.getElementById('exp-led');
   if(led) led.classList.toggle('lit',_isRecording);
+  // And the Dynamic Island, where there is one (modPlatform.bounceLight): a red light while the bounce runs.
+  try{ if(window.modPlatform && typeof modPlatform.bounceLight==='function') modPlatform.bounceLight(!!_isRecording); }catch(e){}
 }
 
 // ── Live MIDI recording — runs alongside audio REC so a single button

@@ -264,3 +264,8 @@ a complete answer.
 | 12.2 | Studio › Arp | Arp pattern and Patch boxes at the top (each opens a list and changes the real control), the preview, then Range, Timing, Rate motion |
 | 12.3 | Studio › Chords › the rhythm roll: Tap › Length, then tap a lit step | the step holds through the next 2, 3, 4… steps; Swing › Own with the slider; Start from › a built-in rhythm; Clear |
 | 12.4 | Sampler: hold ✕ Clear with a pattern that has hits on one pad | that pad is red, pads with only a sample are amber, empty pads dim |
+
+## 13. The Dynamic Island light while bouncing (6.8, unbuilt)
+
+Needs the widget extension added once in Xcode: `docs/dynamic-island.md` has the steps and the nine checks.
+
