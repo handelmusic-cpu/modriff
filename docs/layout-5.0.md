@@ -644,7 +644,7 @@ landscape is the real fix for long patterns, not bigger cells.
      page and the view (`_tabFor`, `_tabSync`), so a tab, the Option+L key, Find
      reaching for Accomp and a tutorial all end up in the same state. Asking for the
      Accomp page from Live puts the app in Studio; going to Live from it lands on Play.
-   - **Studio's part switches pick a page; a second tap toggles** (chrome B, built early
+   - **Studio's part switches pick a page; a second tap toggles** (chrome B, changed in 6.6: a tap toggles, a hold or slide opens; built early
      because Accomp lost its tab and needed a way in). `ftPartTap`: Drums, Bass, Mel and
      Arp open the Accomp page at that part, Chords and Smp open Play's Chords and Pads,
      and the part you are on wears a ring. On Song, Sound and in Live they are plain
@@ -804,7 +804,7 @@ and are the same renderer turned on its side.
 
 ## Still open
 
-- Whether the shared-row double duty of chrome B survives a real phone.
+- ~~Whether the shared-row double duty of chrome B survives a real phone.~~ It did not; see 6.6 below.
 - Whether mõdFX belongs under Sound as well as in the part menu.
 - The Song sub-nav costs 50 pt in the page, as Sound's does; docking it above the
   tabs would take it back.
@@ -1143,3 +1143,31 @@ and are the same renderer turned on its side.
   "Follow the song" = **Default rhythm**. On the Rhythm bar: **Off** = **Rhythm off**, **Keep going** = **Keep playing**
   (and **Stop on lift** when it is off). In the builder: **Drums** = **Match drums**, and the third Tap choice **Length**
   (which was also the name of the row above it) = **Hold**.
+
+### 6.6: a tap switches a part; its page is a hold or a slide. Taps that will not sound yet say they were heard
+
+- **Studio's part switches (chrome B), changed.** 6.0 – 6.5: a tap on a part you were not on opened its page and only a
+  second tap switched it. That made the control hit most mid-performance do one of two things depending on the page, and
+  bringing a part in from elsewhere cost two taps. Now **a tap switches the part, in Studio as in Live** (`ftPartTap` is
+  only the toggle). The page is a second gesture on the same button (`wirePartRow`, `partOpen`):
+  - **hold** 350 ms opens it (a bar grows along the switch's foot while the finger is down; only on a switch whose page is
+    not open - on the page you are on a hold is a slow tap);
+  - **slide** sideways along the row opens the page of whichever switch is under the finger, one tick per switch passed;
+  - neither ever switches a part, and the one click that follows a hold or slide is eaten (capture phase, one click, not a
+    time window - a deliberate tap right after a slide still switches);
+  - a long-press menu on desktop (`contextmenu`) is the same as a hold; the tooltip says so; the first switch tapped in
+    Studio shows a one-time toast (`modo-partrow-hint`).
+  Not done on purpose: double-tap to navigate (its first tap has already switched the part, so a double-tap would flip the
+  sound twice) and a split button (the row is seven switches in 390 pt; a second hit area per switch costs width the row does
+  not have, and a hold or slide costs none).
+- **`tapWait(el, sec)`: a tap that was heard and will not sound yet.** Bass and Melody join on the drums' next bar line
+  (`seqEntryTime`, up to a bar), the Arp on its next step, the Sampler pattern on the next bar, a quantized pad on the grid:
+  the control looked as if nothing had happened and the next tap switched it back off. While it waits the control is drawn
+  **dashed and off with a fill growing across it for exactly the time left**, and it lights with a flash when the sound lands
+  (`.tap-wait`, the same language as `.gen-queued`). The duration comes from the engine, not a re-derivation. Under 0.3 s
+  nothing is drawn (the sound is the answer); switching off while it waits, or Stop, ends it (`tapWaitSync`). Hooked to Bass,
+  Mel, Arp, Smp and the Sampler pads (not the pattern's own hits, nor a loop re-struck on a new tempo: `psStart`'s `notATap`).
+  Where a wait already had its own mark (sections, grooves, endings, pad patterns, Generate) it is untouched. Not yet: Play's
+  start lead (the button already flips to Stop at once) and the Live page's own widgets, which may want the same helper.
+- `tests/partrow/probe.js` drives it with real touch: tap, hold, slide, a tap right after each, Live, and the wait (class, dashed,
+  drawn as off, the engine's duration, landing, switch-off, Stop, the 0.3 s floor).
