@@ -8880,7 +8880,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7a</span></div>
  </div>
 </div>
 
@@ -10312,7 +10312,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11507,7 +11507,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.7';
+const MODRIFF_VERSION = '6.7a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -29866,8 +29866,61 @@ function _findScoreToks(w, syns, toks){
  return best;
 }
 function _findPrep(e){
- if(!e._tk) e._tk={ n:_findTok(e.name), w:_findTok(e.where), r:_findTok(e.keys+' '+(e.note||'')) };
+ if(!e._tk) e._tk={ n:_findTok(e.name), w:e.noWhere ? [] : _findTok(e.where), r:_findTok(e.keys+' '+(e.voice ? '' : (e.note||''))) };
  return e._tk;
+}
+// ── Every voice, as a result (6.7) ──
+// Find only knew the voices that happened to be a button on a page, and the pickers' lists live in popovers outside
+// the pages it reads, so "sax" or "organ" found nothing and "piano" found the synth Piano and the picker's own
+// current-voice label. The voices are now their own results, one per voice per part, and choosing one puts that voice
+// on that part. Recorded instruments first, then mõdSynth, then the synthesised voices, plain sine / saw / square /
+// triangle last: the list was showing the worst sounds first (boost, below). `where` is shown but not searched
+// (noWhere), so a generic "voice" or "sound" does not bring up a hundred of them.
+var FIND_VOICE_WORDS = {
+ pianoreal2:'piano acoustic grand real recorded', piano:'piano keys synth', rhodes:'rhodes electric piano keys ep', organ:'organ keys drawbar',
+ pad:'pad synth ambient warm', sine:'sine plain wave', sawtooth:'saw sawtooth plain wave', square:'square plain wave pulse', triangle:'triangle tri plain wave',
+ supersaw:'supersaw saw trance lead', modsynth:'modsynth synth engine patch design', vibes:'vibraphone vibes mallet', marimba:'marimba mallet wood',
+ xylo:'xylophone mallet', kalimba:'kalimba thumb piano mbira', jazzgtr:'guitar jazz electric', nylongtr:'guitar nylon classical acoustic',
+ tenorsax:'saxophone sax tenor horn brass reed', mutetpt:'trumpet muted horn brass', violin:'violin strings bowed', clarinet:'clarinet woodwind reed', flute:'flute woodwind',
+ sampler:'sampler your own recording clip', electric:'electric', upright:'upright acoustic double', upright_real:'upright acoustic double real recorded',
+ upright2:'upright acoustic double real recorded', bass_picked:'picked electric real recorded', bass_motown:'motown soul bass', bass_hofner:'hofner violin bass beatles', acid303:'acid 303 tb bass'
+};
+function _findVoiceBoost(val){
+ // Sized against the name-versus-keywords gap in _findMatches (a name match scores 3.9, a keyword match 3.0): a
+ // recorded instrument that is only a keyword match ("piano" finds the Kalimba) still ranks below a synth voice
+ // whose NAME is the word, but wins every tie between like matches.
+ if(val==='sampler') return 0.3;
+ if(voiceGroupOf(val)===2) return 0.9;                          // recorded instruments
+ if(val==='modsynth') return 0.5;
+ if(val==='sine' || val==='sawtooth' || val==='square' || val==='triangle') return -0.6;   // the plain waves
+ return 0.2;                                                    // piano, e.piano, organ, pad, supersaw...
+}
+// The parts a voice is for, in the order a player reaches for them (VOICE_PARTS is in the mixer's order, which puts Bass first).
+var FIND_VOICE_PART_ORDER = {chord:0, mel:1, bass:2, arp:3, melgen:4};
+var _findVoiceCache=null;
+function _findVoiceEntries(){
+ if(_findVoiceCache) return _findVoiceCache;
+ const out=[];
+ try{
+  VOICE_PARTS.forEach((p,pi)=>{
+   p.opts.forEach(o=>{
+    const val=o[0], label=o[1];
+    out.push({ name:label, where:'Voices › '+p.label, noWhere:true, voice:true,
+     keys:FIND_VOICE_WORDS[val]||'', note:'Puts '+label.replace(/ ?[◆◈]/g,'')+' on '+p.label+' — '+p.hint+'.',
+     boost:_findVoiceBoost(val)-(FIND_VOICE_PART_ORDER[p.k]!=null ? FIND_VOICE_PART_ORDER[p.k] : pi)*0.01,
+     go:()=>{
+      closeFind();
+      try{ p.set(val); }catch(e){}
+      try{ if(typeof syncVoicesPanel==='function') syncVoicesPanel(); }catch(e){}
+      // A visible picker for that part answers "did it work".
+      const spec=SND_PICK_HOSTS.find(h=>h.part===p.k), w=spec && document.getElementById('sndpick-'+spec.host), b=w && w.querySelector('.snd-pick-btn');
+      if(b && b.getClientRects().length){ b.classList.add('panel-flash','find-hit'); setTimeout(()=>b.classList.remove('panel-flash','find-hit'),1800); }
+      try{ showToast(label.replace(/ ?[◆◈]/g,'')+' on '+p.label); }catch(e){}
+     }});
+   });
+  });
+ }catch(e){ return []; }      // before the voice tables exist: try again next search
+ return (_findVoiceCache=out);
 }
 function _findMatches(){
  const q=(document.getElementById('find-input')?.value||'').trim();
@@ -29879,20 +29932,27 @@ function _findMatches(){
  if(!words.length) words=_findTok(q);
  if(!words.length) return FIND_INDEX;
  const exp=words.map(_findExpand);
- const pool=FIND_INDEX.concat(_findHarvestAll());
+ const pool=FIND_INDEX.concat(_findHarvestAll(), _findVoiceEntries());
  const scored=[];
  pool.forEach(e=>{
   const tk=_findPrep(e);
-  let matched=0, total=0;
+  let matched=0, total=0; const hit=[];
   words.forEach((w,i)=>{
    const s=Math.max(_findScoreToks(w,exp[i],tk.n)*1.3, _findScoreToks(w,exp[i],tk.w)*0.8, _findScoreToks(w,exp[i],tk.r));
-   if(s>0){ matched++; total+=s; }
+   if(s>0){ matched++; total+=s; hit[i]=1; }
   });
   if(!matched) return;
+  // A voice's part is searchable only alongside its name ("piano chords"): on its own, "bass" or "chords" would
+  // bring up every voice that can be put there above the controls those words are really after.
+  if(e.voice && matched<words.length){
+   const wt=_findTok(e.where);
+   words.forEach((w,i)=>{ if(hit[i]) return; const s=_findScoreToks(w,exp[i],wt)*0.8; if(s>0){ matched++; total+=s; } });
+  }
   // A hand-written entry is one somebody decided people look for; on a tie
   // it goes first — unless all it has is a typo-distance match, which is how
   // "reverb" put Undo ("revert") above the reverb sends.
   if(!e.harvested && total>=1.5*matched) total+=0.6;
+  if(e.boost) total+=e.boost;
   scored.push({e, matched, total});
  });
  scored.sort((a,b)=> b.matched-a.matched || b.total-a.total);
@@ -29966,6 +30026,8 @@ function _findHarvestAll(){
  document.querySelectorAll('#perf-bar, .tab-page').forEach(root=>{
   root.querySelectorAll(sel).forEach(el=>{
    if(el.closest('#find-modal') || el.classList.contains('tips-btn')) return;
+   // The voice buttons inside the pickers are every voice's own result now (_findVoiceEntries).
+   if(el.closest('.vp-grp')) return;
    const row=_findRowLabel(el);
    const name=_findElName(el,row); if(!name) return;
    const page=el.closest('.tab-page');
@@ -29984,7 +30046,8 @@ function _findHarvestAll(){
    const key=where+'|'+name.toLowerCase();
    if(seen.has(key)) return; seen.add(key);
    const title=_findClean(el.getAttribute('title'));
-   out.push({ name, where, harvested:true, el, tab, sub, inSheet, adv,
+   // A picker's trigger is named after whatever the part plays now ("Piano (synth)"), which is not what anyone is looking for.
+   out.push({ name, where, harvested:true, el, tab, sub, inSheet, adv, boost:el.classList.contains('snd-pick-btn') ? -1 : 0,
      keys:[el.getAttribute('aria-label')||'', title, row, sect, el.id.replace(/[-_]/g,' ')].join(' '),
      note: title && title.toLowerCase()!==name.toLowerCase() ? (title.length>120?title.slice(0,118)+'…':title) : '',
      go:null });

@@ -1182,3 +1182,14 @@ and are the same renderer turned on its side.
   `showToast` itself (`_toastQuiet`), so a new call site is quiet on Live by default; a new recording-style toast says
   `majorToast`. `tests/toasts/probe.js`.
 
+### 6.7a: every voice is a Find result, recorded instruments first
+
+- Find read only the buttons on the pages, and the pickers' lists live in popovers outside them, so "sax" or "organ" found
+  nothing and "piano" found the synth Piano and the picker's current-voice label. `_findVoiceEntries` makes each voice a result
+  per part it can go on (`VOICE_PARTS`), and choosing one puts that voice on that part. Ranking (`_findVoiceBoost`): recorded
+  instruments, then mõdSynth, then piano / e.piano / organ / pad / supersaw, plain sine / saw / square / tri last. The boost is
+  sized against the name (3.9) versus keyword (3.0) gap, so a recorded voice that only matches by keyword ("piano" finds the
+  Kalimba) still ranks under a synth voice whose NAME is the word. The part is searchable only beside the voice's name ("piano
+  chords", "sax melody"), so "bass" or "chords" alone are not taken over by voices. The picker triggers, named after the current
+  voice, are demoted; the voice buttons inside the lists are not harvested twice. `tests/findvoices/probe.js`.
+
