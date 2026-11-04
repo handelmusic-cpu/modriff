@@ -3,7 +3,7 @@ import UIKit
 import WebKit
 
 /// The bridge view controller, subclassed for one reason: to register the
-/// app-target plugins — ModEngine, with ModMidi, ModBilling, ModHaptics, ModOcr, ModCloud and ModWake
+/// app-target plugins — ModEngine, with ModMidi, ModBilling, ModHaptics, ModOcr, ModCloud, ModWake and ModActivity
 /// beside it.
 ///
 /// Capacitor finds the plugins that live in Swift packages — the ones the CLI
@@ -30,6 +30,7 @@ class ModRiffViewController: CAPBridgeViewController {
         bridge?.registerPluginType(ModOcr.self)
         bridge?.registerPluginType(ModCloud.self)
         bridge?.registerPluginType(ModWake.self)
+        bridge?.registerPluginType(ModActivity.self)
 
         // Two facts the page needs before its first line runs, because
         // window.modBilling answers owned() synchronously on every render:
@@ -47,6 +48,6 @@ class ModRiffViewController: CAPBridgeViewController {
             WKUserScript(source: boot, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         NSLog("[ModRiff] capacitorDidLoad, bridge=%@, plugins=%@",
-              ok ? "yes" : "nil", ok ? "ModEngine ModMidi ModBilling ModHaptics ModOcr ModCloud ModWake" : "none")
+              ok ? "yes" : "nil", ok ? "ModEngine ModMidi ModBilling ModHaptics ModOcr ModCloud ModWake ModActivity" : "none")
     }
 }

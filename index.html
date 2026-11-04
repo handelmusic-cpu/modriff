@@ -11889,6 +11889,24 @@ window._genQueuePaint = function(part, frac, landed){
   P._wakeHeld = function(){ return nat() ? !!natOn : (!!lock && !lock.released); };
  }
 })(window.modPlatform);
+// modPlatform.bounceLight(on) — the red light in the Dynamic Island while a bounce is recorded (v6.8).
+// The island can only be drawn by a Live Activity, which is native: in the app this is ModActivity (a plugin that
+// starts and ends it) and the widget extension that draws it (docs/dynamic-island.md). A browser, an iPhone without
+// an island, a build without the plugin or the extension: nothing is drawn and nothing is said, because a missing
+// light must never get in the way of a bounce. The page holds the one fact and sends it only when it changes
+// (_updateRecBtn), so a repaint of the bounce button cannot restart the activity.
+(function(P){
+ if(!P || P.bounceLight) return;
+ var last = null;
+ P.bounceLight = function(on){
+  on = !!on;
+  if(last === on) return;
+  var w = modCapPlugin('ModActivity', ['set']);
+  if(!w || typeof w.set !== 'function') return;
+  last = on;
+  try{ Promise.resolve(w.set({ on: on })).catch(function(){ last = null; }); }catch(e){ last = null; }
+ };
+})(window.modPlatform);
 //
 // modPlatform.haptic(kind) — a tap under the finger, alongside the sound.
 //   'pad'     a chord or sample pad going down                (heavy)
@@ -52625,6 +52643,8 @@ function _updateRecBtn(){
   }
   var led=document.getElementById('exp-led');
   if(led) led.classList.toggle('lit',_isRecording);
+  // And the Dynamic Island, where there is one (modPlatform.bounceLight): a red light while the bounce runs.
+  try{ if(window.modPlatform && typeof modPlatform.bounceLight==='function') modPlatform.bounceLight(!!_isRecording); }catch(e){}
 }
 
 // ── Live MIDI recording — runs alongside audio REC so a single button
