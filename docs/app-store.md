@@ -221,6 +221,17 @@ and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste fro
   and the page compares the Complete Your Studio price with what is left to buy one at a
   time and offers whichever is cheaper.
 - A review screenshot per product (any locked control, tapped; or Settings > About > Store).
+  They are made: `docs/app-store/screenshots/iap/<product id>.png`, 1320 x 2868, one per
+  product, each the pack sheet over a rolled song with the store's launch prices filled
+  in. Upload each under that product's Review Information. They were taken from the web
+  build at 6.4 in a phone-sized browser, not on a device, and the sheet's text has not
+  changed since (`MODULE_COPY`, `BUNDLE_COPY`, `proSheet` and `bundleOfferFor` were
+  compared on 6.9a). The three Complete Your Studio shots come from owning one, two and
+  three packs (Groove; Groove and Sounds; Groove, Sounds and Studio). `Full Studio` and
+  `Theory Pack` are the same image, byte for byte: the first-time sheet over a locked Theory
+  feature offers both, so one picture shows both purchases (Full Studio's is the "Full
+  Studio — $12.99" button under the pack). Retake them on a device once a purchase runs,
+  and again if a pack's copy or price changes.
 - Submit the IAPs with the first build; they are reviewed together with the app.
 - **Universal purchase** is automatic when iPhone, iPad and Mac are one app record with one
   bundle id. Check the Mac build is not a separate record.
