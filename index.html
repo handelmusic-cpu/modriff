@@ -8883,7 +8883,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.7b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.8</span></div>
  </div>
 </div>
 
@@ -10315,7 +10315,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.7b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11510,7 +11510,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.7b';
+const MODRIFF_VERSION = '6.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -24949,6 +24949,7 @@ function _webKillPart(part, atTime){
 // through modEngine; _webChordStop is the Web Audio engine's half.
 function stopAll(atTime){
  _chordLiveId = null;
+ chordUnlatch(false);
  modSend({v: 1, kind: 'stop', part: 'chord', at: atTime == null ? null : atTime});
 }
 function _webChordStop(atTime){
@@ -27250,6 +27251,12 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass,vel
  window._lastVoiced = {rel:relIntvs, midi:(msg.bass!=null ? [msg.bass] : []).concat(msg.notes)};
  // Live before the send: the message chokes the old chord first, and a
  // release already in flight for that one must not land on this one.
+ // A chord taken by hand (a pad, a typed key, MIDI) is the end of a pad's latch: its
+ // light goes out with the chord it was holding, which the engine is about to choke.
+ // Scheduled chords (a chord rhythm's re-strikes, the song's) leave it alone: the
+ // rhythm a latch is keeping going re-strikes under it, and the latch is what Hold
+ // turning off, or Panic, ends it by.
+ if(atTime==null) chordUnlatch(false);
  _chordLiveId = msg.id;
  modSend(msg);
  return msg.id;
@@ -28211,7 +28218,7 @@ function panicNotes(){
  // 22 ms fade, and it clears _chordLiveId, so a finger that comes up later finds
  // nothing to release and does nothing.
  if(_chordLiveId != null) n++;
- stopAll();
+ stopAll();       // clears a pad latched by Hold too (chordUnlatch)
  // An external instrument holding a note is the stuck sound the user cannot get
  // out of by closing the page, so it gets a note-off with the rest.
  try{ if(typeof moAllOff==='function') moAllOff(); }catch(e){}
@@ -33246,18 +33253,56 @@ function getIntvs(triadQ,type7,ext){
 // Press-and-hold chord playback: pointerdown starts a sustained voice,
 // release (pointerup/cancel/leave) triggers its natural decay — mirrors the
 // melody strip's press/release so holding a chord sustains it until you let go.
+//
+// Hold (the melody strip's button) latches a chord pad too: with it on, the finger
+// coming up leaves the chord sounding until the next chord, Hold being turned off,
+// or Panic. It is the Theory Pack's (chordHold); without it the pad is as it
+// always was and the first attempt says why, once.
+//
+// `var`s, not `let`s: stopAll and panicNotes read these from far away and sit
+// well above the section that declares holdMode (the dead-zone rule in CLAUDE.md).
+var _chordLatch = null;      // {id, el}: the pad whose chord is being held for it
+function chordHoldOn(){ return !!holdMode && (typeof modAllows!=='function' || modAllows('chordHold')); }
+// Lets go of a latched pad's light, and, when asked, of its chord with it. The
+// lit pad is cleared by stopAll as well, so a chord that something else has
+// replaced (a song, a typed chord, the next pad) does not leave a pad lit over
+// silence.
+function chordUnlatch(release){
+ const L=_chordLatch; if(!L) return;
+ _chordLatch=null;
+ try{ L.el.classList.remove('flash'); }catch(e){}
+ if(release) releaseSustainedChord(L.id);
+}
 function _wireChordHold(el, trigger){
  let token=null;
  el.addEventListener('pointerdown', e=>{
  e.preventDefault(); e.stopPropagation();
+ // A new press ends the one being held, the way a finger-up and a finger-down
+ // would: releasing first lets Capture close the old chord's length and a chord
+ // rhythm that the latch was keeping going end with it.
+ chordUnlatch(true);
  el.classList.add('flash');
  el.dataset.hapOwn='1';
  _hap('pad','chords');
  token = trigger();
  });
  const release=()=>{
+ if(token===null){
+  // pointerup, pointercancel and pointerleave all land here, one after another:
+  // after the first has latched this pad, the rest must not put its light out.
+  if(!(_chordLatch && _chordLatch.el===el)) el.classList.remove('flash');
+  return;
+ }
+ // Latched only while it is still THE chord: after Panic, or another chord taking
+ // over under a held finger, `token` is stale and a latch on it would be a pad
+ // lit forever over nothing.
+ if(token===_chordLiveId && chordHoldOn()){
+  _chordLatch={id:token, el:el}; token=null;
+  return;
+ }
+ if(holdMode && token===_chordLiveId && typeof freeBlocked==='function') freeBlocked('Chord Hold','theory');
  el.classList.remove('flash');
- if(token!==null){ releaseSustainedChord(token); token=null; }
+ releaseSustainedChord(token); token=null;
  };
  el.addEventListener('pointerup', release);
  el.addEventListener('pointercancel', release);
@@ -35264,7 +35309,7 @@ function updateMelOctDisp(){
 function toggleHold(){
  holdMode=!holdMode;
  const b=document.getElementById('hold-btn'); if(b){ b.textContent=holdMode?'Hold ON':'Hold'; b.classList.toggle('active',holdMode); }
- if(!holdMode) Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
+ if(!holdMode){ Object.keys(_melLive).forEach(m=>releaseMelNote(+m)); chordUnlatch(true); }
 }
 
 
@@ -68646,6 +68691,10 @@ const FREE_LIMITS = {
   // Pure (just) tuning of chords, bass, melody and arp. Equal is free; a saved
   // 'pure' is kept and plays equal until the pack is held (tuningOn).
   pureTuning:   false,
+  // Hold on the chord pads: a tapped pad keeps sounding after the finger comes up
+  // (chordHoldOn). Hold itself, on the melody strip and on typed and MIDI chords,
+  // is free; it is the pads' latch that is the Theory Pack's.
+  chordHold:    false,
   liveLayout:   false,   // adding, swapping, moving or removing Live widgets
   arrange:      false,   // Arrange: a line per chord (the write mode, and the lines kept against chords)
   stepsUnlinked: false,  // a step length per generator instead of one for all
@@ -68675,7 +68724,7 @@ const FREE_LIMITS = {
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
   modfx:'synth', fxPatches:'synth', modsynth:'synth',
-  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory',
+  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullAudioExport:'studio', fullMidiExport:'studio', liveLayout:'studio',
   arrange:'groove', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
