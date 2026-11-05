@@ -5240,6 +5240,23 @@ body.tour-open .tab-page { padding-bottom: 42vh; }
 }
 #_toast ._toast-btn:active { background:rgba(255,255,255,.4); }
 body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-inset-top,0px)); z-index:9200 !important; }
+/* The red light while a bounce records, drawn by the page beside the Dynamic Island (modPlatform.bounceLight).
+   A Live Activity never shows in the island while its own app is in front, so the app draws its own: the page
+   already runs under the status bar (viewport-fit=cover, contentInset never), and the gap between the clock and
+   the island is free. Only shown on an island phone in portrait (JS adds .on); pointer-events:none so it can never
+   eat a touch. The island is 126pt wide and its middle sits at about 0.47 of the top inset; both are tunable here. */
+#bounce-dot {
+ position:fixed; z-index:9300; pointer-events:none; display:none;
+ /* The Capture LED's shape (.mb-led.lit): a solid disc and a tight glow, steady. The first cuts were a flat #ff3b30
+    and then a wide soft glow that pulsed; on the OLED's black both read as a dim smudge. The colour is the app's own
+    record red, #e5384f (the Bounce button's, .ft-bounce), NOT var(--pg): that token follows the key colour, and the
+    dot came up blue in a blue key. A light that means "recording" is red in every key. */
+ width:12px; height:12px; border-radius:50%;
+ background:#e5384f; box-shadow:0 0 8px #e5384f;
+ left:calc(50% - 63px - 22px);
+ top:calc(env(safe-area-inset-top,0px) * 0.47 - 6px);
+}
+#bounce-dot.on { display:block; }
 .variant-ext-row.visible { display:flex; }
 .varm-btn {
  padding:7px 14px; background:var(--surf2); border:1px solid var(--border2);
@@ -11895,11 +11912,36 @@ window._genQueuePaint = function(part, frac, landed){
 // an island, a build without the plugin or the extension: nothing is drawn and nothing is said, because a missing
 // light must never get in the way of a bounce. The page holds the one fact and sends it only when it changes
 // (_updateRecBtn), so a repaint of the bounce button cannot restart the activity.
+// While the app is in front the island shows nothing of ours (ActivityKit draws an app's own activity only when it is
+// not the app on screen), so the page draws the same red light itself, beside the island: #bounce-dot. It is for an
+// island phone held upright; an iPhone without one has a notch and a safe-area top under ~51pt, and in landscape the
+// island moves to the side, so there it stays hidden and the bounce button's own red blink is the mark.
 (function(P){
  if(!P || P.bounceLight) return;
- var last = null;
+ var last = null, dot = null, want = false;
+ function hasIsland(){
+  var p = document.createElement('div');
+  p.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+  document.body.appendChild(p);
+  var top = p.offsetHeight; p.remove();
+  return top >= 51 && window.innerHeight > window.innerWidth;
+ }
+ function showDot(on){
+  try{
+   if(!dot){
+    if(!on) return;
+    dot = document.createElement('div'); dot.id = 'bounce-dot'; dot.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(dot);
+    // Turning the phone mid-bounce moves the island; re-decide rather than leave the dot on the wrong edge.
+    window.addEventListener('resize', function(){ dot.classList.toggle('on', want && hasIsland()); });
+   }
+   want = !!on;
+   dot.classList.toggle('on', want && hasIsland());
+  }catch(e){}
+ }
  P.bounceLight = function(on){
   on = !!on;
+  showDot(on);
   if(last === on) return;
   var w = modCapPlugin('ModActivity', ['set']);
   if(!w || typeof w.set !== 'function') return;

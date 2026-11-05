@@ -7,6 +7,11 @@ In the simulator the app launches and logs `ModActivity` in the `capacitorDidLoa
 been *shown* in the island yet: the simulator's page stayed blank in the one attempt and a bounce was never started, so
 checks 2 to 9 are still open. Keep it unmerged until they are done on a phone.
 
+**Update, on the owner's iPhone 17 Pro Max:** the app with the extension builds, signs and runs there. While the app is
+in front the island shows nothing of ours (ActivityKit's rule), so the page draws its own light: `#bounce-dot`, a solid
+12pt disc in the record red `#e5384f` just left of the island, shown only on an island phone held upright. The owner
+confirmed it looks right. The Home-screen and lock-screen Live Activity (checks 3, 5 to 9) is not yet confirmed.
+
 ## What it is
 
 A bounce records for as long as you play, often with the app in the background or the phone locked. While one runs, a
