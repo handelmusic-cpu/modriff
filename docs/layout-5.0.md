@@ -1207,3 +1207,23 @@ and are the same renderer turned on its side.
   (`vpPatchesEnsure`) or, for owners, five seconds after boot. A free install never fetches it: its selectors keep the locked mõdSynth
   entry and show no patches. `tests/voicepatches/probe.js`.
 
+### 6.9: the Live page's pack widgets (Voices, Mixer, mõdSynth) and the Bass / Melody roll widgets gated on Live
+
+- **Gated on Live only.** Three features, each a pack: `liveRolls` (Groove) for the Bass and Melody roll widgets, `liveMixer` (Studio)
+  for the Mixer widget, `liveSynth` (mõdSynth Engine) for the mõdSynth widget. `LV_GATE` maps widget to feature; a free install
+  sees a **lock tile** where a gated widget sits in its layout (`lvLockTile`: the widget's name and its pack, a tap opens the pack
+  sheet) and cannot add one (`lvPick`). The same instruments on their Studio and Sound pages are untouched (`tests/livewidgets`).
+  The Drum and Aux grids, Chords, Melody, Styles, Sampler, mõdFX and Endings stay free on Live. The standard layout is unchanged:
+  the three new widgets are in `LV_ORDER` but not in `LV_STD`, so they arrive by Add / reorder widgets (a Studio Pack action).
+- **Voices.** The Voices panel's own rows, as one more host (`voices-grid-live` in `VOICE_HOSTS`, suffix `-live`), so every dropdown
+  has the mõdSynth patches from 6.7b and every other host follows it. Its home is the hidden `#lv-home`, which holds the made
+  widgets' hosts while they are off the page.
+- **Mixer.** `buildMixChannelsInto` into the page, with pan, sends, EQ and the master hidden by CSS: a level, mute and solo for each
+  part. Rebuilt on each mount so its faders read the levels as they are; its meters run only while it is on Live (`_lvMixerOn`,
+  and `switchTab` no longer stops them there).
+- **mõdSynth.** The rack cannot move (one instance, rebuilt whole by the Sound tab), so this is its own small view: part chips, the
+  patch list the pickers use, and a slider for each macro the patch routes, written through `MsxBind` like the rack's. A part not on
+  mõdSynth offers "Play ... on mõdSynth". Redrawn only when the parts' patches change (`lvSynthSig`).
+- **Styles marker.** A Bass or Melody style stepped while the band plays lands at the top of the loop; `_genQueuePaint` now also fills
+  the Styles row's name.
+
