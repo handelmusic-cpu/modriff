@@ -2716,6 +2716,25 @@ recorder carries the shift in its program.
   without the pack.
 - Heard on a speaker: all of the above is measured, not listened to.
 
+**Held notes (6.5, 6.5a).** Listening to an interval needs it to last, and a held
+note used to be cut at 10 s (the melody strip) and 30 s (chords), as a guard on a
+missed release. Both are `SUSTAIN_DUR`, an hour, now, free to everyone: the voices'
+own shaping saturates well below it, so only how long a note can be held changes.
+A held voice is reaped when its oscillators end (`reapVoice`'s `held` flag), not on
+a predicted time, so a release, a choke and Panic need not know about the queue.
+The guard is **Panic** (`panicNotes`, the transport sheet's Held notes group, and
+Find): it releases every melody voice, the live chord, the bend glide, and sends an
+external synth its note-off, with short fades; clock, drums, bass, arp and song
+carry on. **Chord Hold** is the theory pack's (`chordHold`, Theory): with Hold on a
+tapped chord pad latches (`_chordLatch`, `chordHoldOn`) until the next chord taken
+by hand, Hold off, or Panic; a scheduled chord (a rhythm's re-strikes, the song's)
+does not end the latch. Hold itself, on the melody strip and on typed and MIDI
+chords, stays free; without the pack a pad does not latch and names the pack once.
+`tests/hold/chord-hold.cjs` drives it. Not done: a Safari/iPhone check (a held voice
+relies on a second `stop()` overriding the first, which the release paths already
+did), looping the recorded voices so they hold past their sample, and the bass
+strip's held notes.
+
 The original note, from before the spike:
 
 Today every pitch is 12-tone equal temperament: `440·2^((n−69)/12)` is
