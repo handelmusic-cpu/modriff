@@ -86,33 +86,41 @@ immutable assets, **not** a release number — leave it alone.
 
 ### Numbering
 
-A build number is `major.minor` with an optional lowercase letter: `5.0`,
-`5.0a`, `5.1`. No part goes past 9; after `5.9` comes `6.0`.
+A build number is dotted numbers with an optional lowercase letter on the end:
+`6.9`, `6.9a`, `6.9.1`, `6.9.1a`, `6.9.1.2`. It starts as `major.minor`, and
+any part goes only as high as 9.
 
-- **A batch of new work is the next minor** (`5.0` → `5.1`).
+- **A batch of new work is the next step at the depth you are on.** From `6.4`
+  that is `6.5`. From `6.9` it is `6.9.1`, then `6.9.2`: when a part would pass
+  9, add a decimal part rather than carrying into the part before it. From
+  `6.9.9` it is `6.9.9.1`.
 - **A follow-up to the release just out** (a fix to what it shipped, a tweak to
-  the same feature) takes a letter: `5.0` → `5.0a` → `5.0b`. One letter, `a`
-  to `z`, lowercase, on the last part only; a build that needs more than
+  the same feature) takes a letter: `6.9.1` → `6.9.1a` → `6.9.1b`. One letter,
+  `a` to `z`, lowercase, on the last part only. A build that needs more than
   twenty-six follow-ups was a new release and takes the next number.
-- **No third dotted part.** The old scheme added one per follow-up and ended at
-  `4.9.9.9.9.9.9f`, which nobody could read. At the owner's word the numbering
-  **starts over at 5.0** with the first build after `4.9.9.9.9.9.9f`. The old
-  history keeps its old labels; do not renumber it.
-- The letter goes in all three places the version lives (below), and in the
-  commit subject (`v5.0a: …`). The PR title names the range (`v5.0 – 5.0c: …`).
+- **Decimals exist so that nothing forces a new major.** The old scheme added a
+  part for every follow-up and ended at `4.9.9.9.9.9.9f`, which nobody could
+  read; that is why a letter, not a part, is the follow-up, and a part is for a
+  new batch only. Four parts is a lot; if you are about to write a fifth, the
+  next number is probably the owner's to move on (below). The old history keeps
+  its old labels; do not renumber it.
+- The label goes in all three places the version lives (below), and in the
+  commit subject (`v6.9.1a: …`). The PR title names the range
+  (`v6.9.1 – 6.9.1c: …`).
 
 Nothing orders versions: the service worker and the "update is ready" toast
-compare them for equality only, so a letter costs nothing there.
+compare them for equality only, so a letter or a part costs nothing there.
 `build/build.mjs` enforces the shape (dotted numbers plus an optional lowercase
-letter, which `5.0` satisfies) and that `#ft-ver`, `#unlock-ver` and
+letter, which every label above satisfies) and that `#ft-ver`, `#unlock-ver` and
 `MODRIFF_VERSION` agree, and fails the build otherwise.
 
-**Never move to a new major version (`5.x` → `6.0`) without asking the user
-first**, even when the numbering rule says it is next. That is theirs to call;
-stop and ask before the bump, not after.
+**Never move to a new major version (`6.x` → `7.0`) without asking the user
+first.** That is theirs to call; stop and ask before the bump, not after. With
+decimals, the numbering rule never makes it next by itself: `6.9` goes to
+`6.9.1`, not `7.0`.
 
 The old rule that "5.0.0 is the native App Store release" is retired. 5.0 is
-only where the numbering restarts. What ships to the App Store carries whatever
+only where the numbering restarted. What ships to the App Store carries whatever
 label is current when it goes.
 
 ## After every edit
