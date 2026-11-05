@@ -83,8 +83,8 @@ eq(['piano','rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(T.fr
    [false,false,false,false,false,false,false], "the Sounds Pack's voices are locked");
 eq(['pianoreal2','upright_real','upright2','bass_picked','marimba','xylo','kalimba','jazzgtr','nylongtr','tenorsax','mutetpt','violin','clarinet','flute','modsynth'].map(T.freeAllowsVoice),
    Array(15).fill(false), "the recorded voices and mõdSynth are locked");
-eq(['stemExport','fullAudioExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','arrange','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
-   Array(13).fill(false), 'module-only features are off with nothing owned');
+eq(['stemExport','fullAudioExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','liveRolls','liveMixer','liveSynth','arrange','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
+   Array(16).fill(false), 'module-only features are off with nothing owned');
 ok(T.modAllows('modfx') === true, 'the mõdFX pad itself is free (three patches of it)');
 ok(T.modAllows('somethingNoTableNames') === true, 'a feature no table names is free');
 
@@ -93,15 +93,15 @@ const songs50 = songs(50);
 const probes = {
   groove: [() => T.freeAllowsKit('909'), () => T.freeAllowsKit('606'), () => T.freeAllowsGroove('Trap'), () => T.freeAllowsMeter(7, 8),
            () => T.freeAllowsSteps(48), () => T.freeAllowsStyle('motown'), () => T.freeAllowsStyle('hook', 'ml') && T.freeAllowsStyle('arpeggio', 'ml'),
-           () => T.freeAllowsArpRate('1/32'), () => T.modAllows('arrange'), () => T.modAllows('auxLayer'), () => T.modAllows('stepsUnlinked')],
+           () => T.freeAllowsArpRate('1/32'), () => T.modAllows('arrange'), () => T.modAllows('auxLayer'), () => T.modAllows('stepsUnlinked'), () => T.modAllows('liveRolls')],
   theory: [() => T.freeAllowsMode('hijaz'), () => T.freeAllowsMode('dorian'), () => T.freeAllowsVoicing('drop2'),
            () => T.modAllows('chordExtensions'), () => T.modAllows('keyColours')],
   sampler: [() => T.freeAllowsVoice('pianoreal2'), () => T.freeAllowsVoice('upright_real'), () => T.freeAllowsPad('PC', 0),
             () => T.freeAllowsPad('A', 0), () => T.freeAllowsPad('PA', 12), () => T.modAllows('sampler'), () => T.modAllows('samples')],
-  synth: [() => T.freeAllowsVoice('modsynth'), () => T.freeAllowsFxPatch('Lo-Fi'), () => T.freeAllowsFxPatch('Riser'), () => T.modAllows('modsynth')],
+  synth: [() => T.freeAllowsVoice('modsynth'), () => T.freeAllowsFxPatch('Lo-Fi'), () => T.freeAllowsFxPatch('Riser'), () => T.modAllows('modsynth'), () => T.modAllows('liveSynth')],
   sounds: ['piano','rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(v => () => T.freeAllowsVoice(v)),
   studio: [() => T.modAllows('stemExport'), () => T.modAllows('fullAudioExport'), () => T.modAllows('fullMidiExport'),
-           () => T.modAllows('liveLayout'), () => T.slCanAdd(songs50)],
+           () => T.modAllows('liveLayout'), () => T.modAllows('liveMixer'), () => T.slCanAdd(songs50)],
   practice: [() => T.modAllows('iRealBatch')]
 };
 MODS.forEach(owner => {

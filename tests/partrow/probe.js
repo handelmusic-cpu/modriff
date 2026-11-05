@@ -114,6 +114,9 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.evaluate(() => { document.getElementById('bpm').value = 60; });   // a bar is four seconds: room to look
   await page.evaluate(() => { if (!drumsEnabled) ftDrumClick(); });
   await page.evaluate(() => startEverything()); await page.waitForTimeout(1800);
+  // The flash lasts half a second and a screenshot in the middle of this can eat it, so it is recorded, not sampled.
+  await page.evaluate(() => { window.__flash = false; const b = document.getElementById('ft-bas-btn');
+    new MutationObserver(() => { if (b.classList.contains('gen-landed')) window.__flash = true; }).observe(b, { attributes: true, attributeFilter: ['class'] }); });
   await tap('ft-bas-btn');
   await page.waitForTimeout(150);
   const w = await page.evaluate(() => {
@@ -129,7 +132,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/wait.png' : '/tmp/partrow-wait.png', clip: { x: 0, y: 620, width: 390, height: 224 } });
   const waitSec = parseFloat(w.dur);
   await page.waitForTimeout(Math.max(0, waitSec * 1000 - 150 + 250));
-  const landed = await page.evaluate(() => { const b = document.getElementById('ft-bas-btn'); return { waiting: b.classList.contains('tap-wait'), flash: b.classList.contains('gen-landed'), playing: _blPlaying && window._blPlaying && window._blPlaying() }; });
+  const landed = await page.evaluate(() => { const b = document.getElementById('ft-bas-btn'); return { waiting: b.classList.contains('tap-wait'), flash: window.__flash, playing: _blPlaying && window._blPlaying && window._blPlaying() }; });
   check(!landed.waiting && landed.flash, 'when it lands the wait is gone and the switch flashes', JSON.stringify(landed));
 
   // Switched off while waiting.
