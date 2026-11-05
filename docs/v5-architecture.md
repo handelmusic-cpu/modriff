@@ -230,6 +230,23 @@ it is where the bracket repair came from. **Not known:** how well the accurate
 recogniser reads a real photo or the Ultimate Guitar export. That is the first
 thing to try on the phone, with the Photos, Camera and Files routes in turn.
 
+### Where songs, setups and patterns live (6.9b)
+
+6.0 put the setlist, the Setups and the saved patterns in Song › Library behind a four-way switch; the songs
+you saved were two taps down and the other three were not about where a song comes from. 6.9b sorts them by
+what they are:
+
+- **Song › Library** is one page: common progressions, saved songs, then Import (iReal Pro, and PDF / photo /
+  chord sheet, which is `openChordSheetImport` and its ModOcr route). Same rows and load dialog as the sheet.
+- **Song › Build** has Common progressions and Saved songs as two buttons above Sections, each opening the
+  sheet on its list. They show in the timeline view too (the old "Open library" lived on a header that view hides).
+- **The setlist** is under Perform's chart again; **Setups** (the whole rig: save, share link, export) are in
+  Settings again, and the transport sheet's Setups goes there.
+- **A song always saves its patterns** (drums, bass, melody) with its sounds switch from 6.0r. The `+Rhythm`
+  switch is gone; old songs without patterns still load and leave yours alone.
+- **Saved patterns** (the bank) also have a Save / Open row on the Drums, Bass and Melody pages, opening the
+  bank on that part's tab. The Live Styles row and the chord rhythm picker still reach it.
+
 ### Importing from iReal Pro, and dropping the bundled standards (4.9.9.9.9.4)
 
 **The Standards tab is gone.** The library's middle tab was 28 jazz standards'

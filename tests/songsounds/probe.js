@@ -104,7 +104,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 5. +Rhythm: the kit comes back only when the song recalls.
   const kit = await ev(async () => {
-    songSaveRhythm = true; window._sqSetMach('909');
+    window._sqSetMach('909');
     document.getElementById('chart-title').value = 'Test B'; curSetlistIdx = -1; saveToSetlist();
     const bi = loadSLData().length - 1;
     window._sqSetMach('808'); loadSong(loadSLData()[bi], bi); await new Promise(r => setTimeout(r, 300));
@@ -115,13 +115,13 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(kit.recalled === '909', 'a song that recalls brings its kit', kit.recalled);
   check(kit.kept === '808', 'a song that keeps your sounds leaves the kit', kit.kept);
 
-  // ── 6. The Library switch.
-  await ev(() => { switchTab('songs'); setSongsMode('library'); renderSetlistPerform(); });
+  // ── 6. The sounds switch on each setlist row (under Perform).
+  await ev(() => { switchTab('songs'); setSongsMode('perform'); renderSetlistPerform(); });
   await wait(500);
-  const sw = await ev(() => [...document.querySelectorAll('#lib-slot-setlist .sl-item .sl-snd')].map(b => { const r = b.getBoundingClientRect(); return { h: Math.round(r.height), text: b.textContent, on: b.getAttribute('aria-checked') }; }));
+  const sw = await ev(() => [...document.querySelectorAll('#setlist-items-perform .sl-item .sl-snd')].map(b => { const r = b.getBoundingClientRect(); return { h: Math.round(r.height), text: b.textContent, on: b.getAttribute('aria-checked') }; }));
   check(sw.length >= 3 && sw.every(b => b.h >= 44), 'every song row has a switch, 44 pt high', JSON.stringify(sw.map(b => b.h)));
   check(sw[1].text === 'Keeps my sounds' && sw[1].on === 'false', 'a song from before the switch says it keeps your sounds', sw[1].text);
-  const pt = await ev(() => { const b = document.querySelectorAll('#lib-slot-setlist .sl-item .sl-snd')[1]; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2, idx: curSetlistIdx }; });
+  const pt = await ev(() => { const b = document.querySelectorAll('#setlist-items-perform .sl-item .sl-snd')[1]; b.scrollIntoView({ block: 'center' }); const r = b.getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2, idx: curSetlistIdx }; });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: pt.x, y: pt.y }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await wait(400);
   const flip = await ev(() => { const L = loadSLData()[1]; return { mode: L.soundsMode, has: !!L.sounds, idx: curSetlistIdx, toast: document.getElementById('_toast').textContent }; });

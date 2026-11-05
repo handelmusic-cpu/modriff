@@ -54,7 +54,6 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     sections.length = 0;
     sections.push({ name: 'Verse', follow: 'repeat', plays: 1, slots: [{ rootM: 48, bars: 1, beats: 0, eighths: 0, label: 'C' }] });
     document.getElementById('chart-title').value = 'Round trip';
-    if (!songSaveRhythm) toggleSaveRhythm();
     curSetlistIdx = -1; localStorage.setItem('prism-sl', '[]'); setlistData = [];
     saveToSetlist();
     const sqNow = window._sqCaptureState(), blNow = window._blCaptureState();
@@ -97,16 +96,16 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(back.blWave === 'saw', 'loading puts the bass voice back', back.blWave);
   check(back.b2 === 7 && back.b8 === 11, 'loading puts the bass line back', back.b2 + ',' + back.b8);
 
-  // ── 4. A song saved WITHOUT the rhythm switch carries none (the switch still means something).
+  // ── 4. There is no +Rhythm switch any more: every song saves its patterns (6.9b).
   const plain = await page.evaluate(() => {
-    if (songSaveRhythm) toggleSaveRhythm();
-    document.getElementById('chart-title').value = 'Chords only';
+    document.getElementById('chart-title').value = 'Always patterns';
     curSetlistIdx = -1; localStorage.setItem('prism-sl', '[]'); setlistData = [];
     saveToSetlist();
     const s = JSON.parse(localStorage.getItem('prism-sl'))[0];
-    return { r: !!s.savedRhythm, b: !!s.savedBass };
+    return { r: !!s.savedRhythm, b: !!s.savedBass, m: !!s.savedMelody, btn: !!document.getElementById('save-rhythm-btn'), fn: typeof toggleSaveRhythm };
   });
-  check(plain.r === false && plain.b === false, 'with +Rhythm off the song stores chords only', JSON.stringify(plain));
+  check(plain.r && plain.b && plain.m, 'a song saved with no switch touched still stores its drums, bass and melody', JSON.stringify(plain));
+  check(!plain.btn && plain.fn === 'undefined', 'and the +Rhythm switch is gone from the File menu');
 
   // ── 5. A song made with a Pro kit and a Pro bass opens in a free build with
   //      stand-ins, and saving it there keeps the originals. (This is what the
@@ -119,7 +118,6 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     sections.length = 0;
     sections.push({ name: 'Verse', follow: 'repeat', plays: 1, slots: [{ rootM: 48, bars: 1, beats: 0, eighths: 0, label: 'C' }] });
     document.getElementById('chart-title').value = 'Pro kit';
-    if (!songSaveRhythm) toggleSaveRhythm();
     curSetlistIdx = -1; localStorage.setItem('prism-sl', '[]'); setlistData = [];
     saveToSetlist();
     const made = JSON.parse(localStorage.getItem('prism-sl'))[0];
