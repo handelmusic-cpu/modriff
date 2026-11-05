@@ -1,7 +1,11 @@
 # The red light in the Dynamic Island while bouncing (6.8)
 
-**Status: written on Linux, not built, not run.** The page side is tested (`tests/bounceactivity/probe.js`); the Swift and
-the widget extension have never been compiled. Per CLAUDE.md, keep this unbuilt until it has been on a phone.
+**Status: compiles on the Mac, not yet seen on a screen.** The page side is tested (`tests/bounceactivity/probe.js`). The
+app and the `ModBounceActivity` widget extension both build for the iOS 27.2 simulator (Xcode 27.2) and the `.appex` is
+embedded in `App.app/PlugIns`; the extension target is in `project.pbxproj` (added with the `xcodeproj` gem, not by hand).
+In the simulator the app launches and logs `ModActivity` in the `capacitorDidLoad` plugin list (check 1 below). Nothing has
+been *shown* in the island yet: the simulator's page stayed blank in the one attempt and a bounce was never started, so
+checks 2 to 9 are still open. Keep it unmerged until they are done on a phone.
 
 ## What it is
 
@@ -16,7 +20,7 @@ neither can a Capacitor plugin on its own, so there are three pieces:
 |---|---|---|
 | the page asks | `modPlatform.bounceLight(on)`, called from `_updateRecBtn` (only when the state changes) | done, tested |
 | the app starts and ends the activity | `ios/App/App/ModActivity/ModActivity.swift` (plugin `ModActivity`, method `set({on})`), registered in `ModRiffViewController`; `NSSupportsLiveActivities` in `Info.plist`; both `.swift` files are in the app target in `project.pbxproj` | written, unbuilt |
-| the extension draws it | `ios/App/ModBounceActivity/` (`ModBounceActivityBundle.swift`, `ModBounceLiveActivity.swift`, `Info.plist`) | **written, not in the project yet: it needs the target below** |
+| the extension draws it | `ios/App/ModBounceActivity/` (`ModBounceActivityBundle.swift`, `ModBounceLiveActivity.swift`, `Info.plist`) | in the project as target `ModBounceActivity`, builds and embeds |
 
 `ModBounceAttributes.swift` (in `ios/App/App/ModActivity/`) is the type both sides share, so it belongs to **both** targets.
 
