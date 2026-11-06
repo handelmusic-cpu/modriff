@@ -269,3 +269,15 @@ a complete answer.
 
 Needs the widget extension added once in Xcode: `docs/dynamic-island.md` has the steps and the nine checks.
 
+## 14. Leaving the app goes quiet (6.9.3, not heard on device)
+
+The native engine now fades out and pauses itself the moment the app goes to the background, without waiting for the page (which iOS throttles at that moment). Coming back restarts it. On the Mac simulator the logs showed the fade and pause on leaving and the restart on return; what the speaker did is only for a phone.
+
+| # | do | you should see |
+|---|---|---|
+| 14.1 | Play a loop with chords, drums and bass, press Home | it goes quiet at once: no sputter, no spit, no half the band left playing |
+| 14.2 | Stay away 10 seconds, then come back | it resumes (chords, drums, bass all together, on the beat), with no burst of stale notes on the way in |
+| 14.3 | Repeat 14.1 and 14.2 with a sampled voice (flute or violin) on a part | same as above |
+| 14.4 | Play, then open the app switcher and come back without leaving | nothing changes (the app is only inactive) |
+| 14.5 | If anything is off, Settings > Copy diagnostics and look for `ModEngine` lines | send it with the item number |
+
