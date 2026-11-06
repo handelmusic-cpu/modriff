@@ -2781,6 +2781,14 @@ Not built: extra themes and melody density controls from the brief.
 
 Requested by users; nothing here is started, and none of it holds up 5.0.0.
 
+### A free version on the website (modriff.com, parked)
+
+Wanted "eventually": a free version of mõdRïff on modriff.com, alongside the App Store
+app. Nothing is designed or built for it yet. The Vercel build keeps deploying as it does
+now; it is not the product. Open questions for when this is picked up: which parts of the
+free tier from section 4 carry over (the web build has no StoreKit, so the pack model would
+need its own answer), and whether it is a trial of the app or a separate free build.
+
 ### Just intonation
 
 **Built (4.9.9.9.9.9.8, 8a): chords, bass, melody, melody generator and arp; the
