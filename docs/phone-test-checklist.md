@@ -269,9 +269,9 @@ a complete answer.
 
 Needs the widget extension added once in Xcode: `docs/dynamic-island.md` has the steps and the nine checks.
 
-## 14. Leaving the app goes quiet (6.9.3, not heard on device)
+## 14. Leaving the app goes quiet (6.9.3, heard on device: all pass)
 
-The native engine now fades out and pauses itself the moment the app goes to the background, without waiting for the page (which iOS throttles at that moment). Coming back restarts it. On the Mac simulator the logs showed the fade and pause on leaving and the restart on return; what the speaker did is only for a phone.
+The native engine now fades out and pauses itself the moment the app goes to the background, without waiting for the page (which iOS throttles at that moment). Coming back restarts it. On the Mac simulator the logs showed the fade and pause on leaving and the restart on return; what the speaker did was checked on an iPhone 17 Pro Max: 14.1 to 14.4 all passed.
 
 | # | do | you should see |
 |---|---|---|
