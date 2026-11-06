@@ -126,6 +126,11 @@ Tracking: **No.**
 If any of that changes, for example an analytics SDK or a sign-in, this answer,
 `PrivacyInfo.xcprivacy` and `privacy.html` all change together.
 
+`privacy.html` was brought up to date on 2026-11-06 (site PR 3): it now names the camera (chord-sheet photo, read on the
+device), the optional iCloud sync, the app's folder in Files, the one-time packs, and iPad; and says the only network use is
+Apple's (App Store, and iCloud when on). The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`. Still
+open: the site says "for iPhone, iPad and Mac" and has a Mac tab, but there is no Mac build (see Screenshots above).
+
 ## App Review notes
 
 > mõdRïff needs no account or sign-in and has no server. Everything runs on the
