@@ -2272,6 +2272,85 @@ app: engine running=yes`): the fade finished about 150-215 ms after leaving, not
 asked for, since iOS coalesces timers in the background. Heard on an iPhone 17 Pro Max: quiet at once on
 leaving, resumes together on return, same with a sampled voice.
 
+**Where background play stands (6.9.4).** The sounds are not what stands in the way any more; the
+clock is. Audited from the code, not measured on a phone:
+
+- *Playing.* All eight parts and the click are on the native engine by default in the app (the graph
+  path, 6.1d), recorded voices (piano, violin, flute, upright bass, the jazz kit) and the sampler's
+  clips included: the page sends each clip once (`graphBuf`) and the engine plays it. The
+  "sampled voices drop out in the background" finding above was made on the Web Audio path of 7.7j and
+  has not been repeated with Native sound on, so it is not known to still exist. A voice the graph
+  cannot name still falls back to Web Audio for that note (`fell back` on the status line), and that
+  note is the page's.
+- *Scheduling.* All of it is the page's. `tickClock` is a `setTimeout` chain that reads time from
+  `getCtx().currentTime` and commits every step a `LOOK_AHEAD` in front of it: `_sqScheduler` (the drum
+  sequencer, which is also the bar clock the song, the chord changes and the arp restarts hang off),
+  `_blScheduler` (bass), `_mlScheduler` (melody), `scheduleArp`, `scheduleChordRhythm`, `scheduleRhythm`,
+  `scheduleMetronome`, the pads' sequencer. Each step is built in the page as a recorded Web Audio graph
+  (`makeVoice` and its siblings) and sent with a timestamp. The engine plays what it was given and nothing
+  after it. So the music lasts as long as the look-ahead (3 s with the 7.7 patch, entered when the app is
+  left) and as long as the web view runs at all, and the web view running with nothing audible on its own
+  context is the part nobody has seen on a phone: three unknowns (is the web process kept alive, is the main
+  queue serviced, does the web context keep running, which is the scheduler's time base).
+- *The engine's own life* had no handling at all: nothing restarted it after a call, Siri, an alarm,
+  another app taking the audio, headphones in or out, or a Bluetooth speaker joining. In the foreground
+  that was silence until a relaunch; in the background there is no page to notice. **Done in 6.9.4**
+  (below).
+- Not started, and not the page's to decide: a Now Playing entry and remote commands for the lock screen,
+  what Stop and Play mean when the app is away, and any user-facing control (the old Settings switch was
+  removed in 9y). Those are the owner's.
+
+**6.9.4: the engine looks after itself, and a measurement for the rest.** `ModEngine` now watches the audio
+session: an interruption ends, the engine's configuration changes (route or rate), the media services
+reset, and it starts itself again (up to six tries, 0.25 s doubling to 2 s, on the fade queue, not the main
+one), except while the app is left on purpose (`appReturned` starts it). Each event is in
+`native.life` in Copy diagnostics, with `restarts` and `interruptions`. Verified in the simulator with
+`MODRIFF_RECOVERY_TEST=1` (Debug builds), which stops the engine as iOS does for a route change and posts
+the notification, then the same for an interruption, then a configuration change while the app is "left":
+the engine was running again 0.3 s after the route change and 0.02 s after the interruption ended, rendered
+frames kept climbing, and it stayed stopped while the app was left and came back when it returned. A real
+call, Bluetooth pairing and headphones are "not heard on device" (checklist 15.1 to 15.3). The media-services
+reset is a restart attempt, not a rebuild (the session category is AppDelegate's and is not re-applied), and
+cannot be provoked from here.
+
+The measurement: `modo-bgtest` = `'1'` in the page's `localStorage` (Safari console on the paired phone, or
+`MODRIFF_BGTEST=1` in a Debug scheme) lets the app keep playing when it is left, **only inside the app with
+Native sound on**, and only as a test; it is a new key because a stale `modo-bgplay` from the 7.7 builds must
+not start playing in the background on its own phone. Off, everything is as in 6.9.3. On, the page tells the
+engine ahead of time (`setBackgroundPlay`; `SceneDelegate` silences the engine before the page hears of
+anything), `_bgKeepPlaying()` is true, the page's own pause is skipped and the 3 s look-ahead starts on the
+app's signal. While away the engine counts, on its own queue, what the page does: calls into it per second
+(`native.bg[].calls`, `ticksWithCalls`, `longestQuietTicks`, `firstCallAfterSec`), whether the main queue is
+served (`mainPings`, `mainAnswered`, `mainLatMaxMs`), frames rendered against time (`audioSecs`, `secs`),
+`missed` and `slow` blocks, and whether it was still running; the page logs its own ticks, their gaps and
+its Web Audio context's state (`bgPage`: `ticks`, `maxGapMs`, `ctx`, `ticksCtxNotRunning`,
+`ticksCtxStuck`). Read together they say which of the three unknowns is the answer. Verified in the
+simulator only as bookkeeping (`MODRIFF_BG_SELFTEST=1`: 7.0 s away, 7.0 s of audio, 31 calls counted, the
+engine running throughout, the default path still fading, pausing and restarting) and, for the page half, in
+the browser (`tests/bgplay/`, 12 checks). The simulator cannot show the real thing: it does not suspend or
+freeze processes the way iOS does, and under this Mac's load (average over 300 while it was run) the page
+took minutes to start, so the page never got to play there. That is what the phone pass is for
+(`docs/phone-test-checklist.md`, section 15).
+
+**What the owner decided (6.9.4): scheduling goes native.** The audio is native; the sequencers have to be
+too, or the music ends with the look-ahead whatever the measurement says. That is the "then the clock" of
+step 7 below, and it is bigger than a clock: the page builds every voice as a recorded graph at the moment a
+step fires, so an engine that fires steps on its own needs the voices to exist without the page. Facts for
+whoever starts it:
+
+- The engine already holds future voices (`graphBegin` with a timestamp; the pool is 64 voices, the message
+  queue 1,024) and the mõdSynth Processor parts already take `on`/`off` with a time. Neither is a sequencer.
+- `_sqScheduler` is the bar clock: the song loop (`tickSongLoop`), the chord changes, arp restarts and pattern
+  changes all hang off it. A native clock has to own bar boundaries and hand them back to the page (for the
+  display) rather than the other way round.
+- Pushing more look-ahead is not a way out: a dense bar is tens of graph voices, so a 64-voice pool and a
+  1,024-message queue cap it at a few seconds.
+- A sensible first slice: a native transport clock (tempo, meter, swing, bar and step counters, the page
+  seeing it as a read-only mirror) plus **one** sequencer that plays without the page, the drum grid, from
+  voices recorded once per lane and velocity and replayed by the engine. Then bass, chords, melody, arp, and the
+  song's section changes last. This is a design decision before code: which parts first, how a voice program
+  is parameterised by pitch and velocity, and where the pattern data lives.
+
 ### Haptics
 
 **4.9.9.9.9.9.2: System is everything that is not an instrument.** Steppers moved
@@ -2828,7 +2907,6 @@ an Equal/Pure switch, to hear it before touching the native engine.
    on by default in the app since 6.1d (a stored off is kept; the web build has no engine). The last part of the flip, deleting the Web Audio path, waits on `docs/phone-test-checklist.md` section 10: a clean
    status line with all eight parts at once, a recorded voice on the melody, and a stem bounce. The screen wake lock for Stage and
    playback is `ModWake` (6.0p, built for the simulator, not yet run on a phone). Earlier notes on this step: — ships under the 5.x numbering. Open before
-   that: the sampled voices dropping out in the background (parked for the next
-   session), and the things that need a paid developer account or a phone and
+   that: background play (6.9.4 above: the sequencers have to move to the engine; the sampled voices dropping out was seen on the web path only), and the things that need a paid developer account or a phone and
    cannot be settled from here (CloudKit, StoreKit, MIDI hardware:
    `docs/phone-test-checklist.md` lists what to check on the device).
