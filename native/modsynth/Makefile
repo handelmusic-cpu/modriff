@@ -53,7 +53,7 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 clean:
-	rm -f graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
@@ -69,3 +69,7 @@ graphmix: graphmix.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 # The native-scheduling spike (docs/native-scheduling.md): replayed voice programs against fresh ones.
 replaytest: replaytest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ replaytest.cpp graphpool.cpp graph.cpp
+
+# The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
+seqtool: seqtool.cpp seqcore.cpp seqcore.h
+	$(CXX) $(CXXFLAGS) -o $@ seqtool.cpp seqcore.cpp
