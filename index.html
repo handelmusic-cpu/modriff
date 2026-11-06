@@ -8957,7 +8957,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.4</span></div>
  </div>
 </div>
 
@@ -10389,7 +10389,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11580,7 +11580,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.3';
+const MODRIFF_VERSION = '6.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12613,6 +12613,7 @@ function modNativePlugin(){
    }, 0);
    MODNAT.plugin = { start:call('start'), stop:call('stop'),
                      ensurePart:call('ensurePart'), post:call('post'), stats:call('stats'), setBuffer:call('setBuffer'),
+                     setBackgroundPlay:call('setBackgroundPlay'),
                      meters:call('meters'), shareFile:call('shareFile'),
                      fileAppend:call('fileAppend'), shareFiles:call('shareFiles'),
                      fileDelete:call('fileDelete'), wavFinish:call('wavFinish'), pcmAdd:call('pcmAdd'),
@@ -13482,6 +13483,10 @@ function modGraphEnable(plugin, parts){
  MODGRAPH.parts = {};
  (parts || []).forEach(function(p){ MODGRAPH.parts[p] = true; });
  MODGRAPH.sent = MODGRAPH.fellBack = MODGRAPH.edits = MODGRAPH.empty = 0; MODGRAPH.why = {};
+ // The engine has to know before the app is left whether the page means to play on
+ // (SceneDelegate silences it first, without asking the page); _bgSyncNative is declared
+ // far below, which is fine here because this only runs once everything has loaded.
+ try{ _bgSyncNative(); }catch(e){}
 }
 
 // Whether a part is being played as recorded graphs right now: the path is on
@@ -23422,8 +23427,58 @@ function _duckAudio(down){
 // window.Capacitor is not guaranteed to exist yet when this script runs, and a
 // value fixed too early is how the pause kept happening in the app.
 function _inNativeApp(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } }
+// 6.9.4: a test switch, not a setting. `modo-bgtest` = '1' (set from Safari's
+// console on a paired phone, or MODRIFF_BGTEST=1 in a debug scheme) lets the app keep
+// playing when it is left, but only when the parts are on the native engine: that is
+// the one path the audio thread carries by itself. It is a new key on purpose: a
+// `modo-bgplay` saved by the 7.7 builds is still ignored, so an old test phone does
+// not start playing in the background on its own. MODGRAPH is a var, so reading it
+// from an event cannot hit a dead zone.
 function _bgKeepPlaying(){
- return false;
+ try{
+  if(localStorage.getItem('modo-bgtest') !== '1') return false;
+  return _inNativeApp() && !!MODGRAPH.on;
+ }catch(e){ return false; }
+}
+// SceneDelegate asks the engine to go quiet the instant the app is left, before the page
+// hears of it, so the engine is told ahead of time whether this is a test.
+var _bgNativeSent = null;
+function _bgSyncNative(){
+ var on = _bgKeepPlaying();
+ if(on === _bgNativeSent) return;
+ var P = modNativePlugin();
+ if(!P || !P.setBackgroundPlay) return;
+ _bgNativeSent = on;
+ P.setBackgroundPlay({on:on}).catch(function(){ _bgNativeSent = null; });   // a binary from before the method rejects it
+}
+// What the page itself did while the app was away, kept to compare with the engine's own
+// count of the page's calls (native.bg in Copy diagnostics): the page's ticks and their
+// gaps, and what its Web Audio context was doing, since the scheduler reads its clock from
+// that context and a suspended one would stop it adding notes while its timers still run.
+var _bgPage = null;
+function _bgPageNote(){
+ var p = _bgPage; if(!p || !p.away) return;
+ var now = Date.now(), c = audioCtx;
+ p.ticks++;
+ var gap = now - p.last; p.last = now;
+ if(gap > p.maxGapMs) p.maxGapMs = gap;
+ if(gap > 1500) p.gapsOver1500++;
+ if(c){
+  p.ctx = c.state;
+  if(c.state !== 'running') p.ticksCtxNotRunning++;
+  else if(p.lastCt != null && c.currentTime === p.lastCt) p.ticksCtxStuck++;
+  p.lastCt = c.currentTime;
+ }
+}
+function _bgPageStart(){
+ _bgPage = { away:true, at:Date.now(), last:Date.now(), ticks:0, maxGapMs:0, gapsOver1500:0, ctx:null, lastCt:null,
+             ticksCtxNotRunning:0, ticksCtxStuck:0, hidden:document.hidden, look:LOOK_AHEAD };
+}
+function _bgPageEnd(){
+ var p = _bgPage; if(!p || !p.away) return;
+ p.away = false; p.secs = Math.round((Date.now() - p.at) / 100) / 10; p.ctxOnReturn = audioCtx ? audioCtx.state : null;
+ p.playingOnReturn = (typeof isAnythingPlaying === 'function') ? !!isAnythingPlaying() : null;
+ delete p.lastCt;
 }
 // Everything needed to read a background-audio test without a cable and a
 // console: the build, the native engine's render timing (and which blocks ran
@@ -23486,6 +23541,7 @@ function copyDiagnostics(){
  try{ out.dropouts = dropoutReport(); }catch(e){ out.dropouts = String(e); }
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
+ try{ out.bgPage = _bgPage; out.bgTest = { switch: localStorage.getItem('modo-bgtest') === '1', on:_bgKeepPlaying() }; }catch(e){}
  try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
  var done = function(){
   var txt = JSON.stringify(out);
@@ -23681,6 +23737,16 @@ document.addEventListener('visibilitychange', function(){
 });
 window.addEventListener('modriff-background', _bgAway);
 window.addEventListener('modriff-foreground', function(){ _resumeAudioIfNeeded(); _bgBack(); });
+// With the background test on, the app's own signals (the page's visibilitychange is not
+// reliable here, see above) start the long look-ahead and the page's log of itself.
+window.addEventListener('modriff-background', function(){
+ if(!_bgKeepPlaying()) return;
+ _bgEnterFast('app left'); _bgPageStart();
+});
+window.addEventListener('modriff-foreground', function(){
+ if(!_bgPage || !_bgPage.away) return;
+ _bgPageEnd(); _bgLeaveFast('app back');
+});
 
 // Playing on while the app is in the background has one catch: iOS slows the
 // page's timers to about one tick a second, and every note here is scheduled by
@@ -30536,6 +30602,7 @@ function tickClock(){
  _clockByTimer = false; _clockArmedAt = 0;
  _clockLastTick = Date.now();
  _clockStopRequested=false;
+ if(_bgPage && _bgPage.away) _bgPageNote();
  var _c0=getCtx();
  _schedHorizon = _c0 ? _c0.currentTime+LOOK_AHEAD : null;
  var sqRunning=(typeof window._sqPlaying==='function'&&window._sqPlaying());

@@ -43,6 +43,11 @@ class ModRiffViewController: CAPBridgeViewController {
         var boot = "window.__modOwnedCached=\(ModBilling.cachedOwnedJSON);"
         #if DEBUG
         boot += "window.__modDebug=true;"
+        // MODRIFF_BGTEST=1 in the scheme's environment turns the background-play test on
+        // without a Safari console: it is the page's own `modo-bgtest` switch.
+        if ProcessInfo.processInfo.environment["MODRIFF_BGTEST"] != nil {
+            boot += "try{localStorage.setItem('modo-bgtest','1')}catch(e){};"
+        }
         #endif
         webView?.configuration.userContentController.addUserScript(
             WKUserScript(source: boot, injectionTime: .atDocumentStart, forMainFrameOnly: true))
