@@ -1,6 +1,6 @@
 # Native scheduling: the sequencers move to the engine
 
-Design, written at 6.9.4, with the slice-0 spike's results (section 5). The engine-side scheduler itself is not built. It is the "then the clock" of step 7 in
+Design, written at 6.9.4, with the slice-0 spike's results (section 5). Slice 1 is half built (6.9.7: the clock and the drum-grid expander, in C++, held to the page; section "Slice 1, first half" at the end). The engine does not schedule anything yet. It is the "then the clock" of step 7 in
 `docs/v5-architecture.md`, and the reason is background play: every part already *plays* on the
 native engine, but *when* a note plays is still decided by page JavaScript on a `setTimeout` chain, so
 the music lasts only as long as the web view runs and the look-ahead reaches. Read the section
@@ -125,7 +125,7 @@ v1; say so, don't half-do them.
 
 0. **Spike: is replay exact? Done (6.9.4), see "What the spike found" below.** `tests/graph/replay.inpage.js`
    (in the page) and `native/modsynth/replaytest.cpp` (the pool), driven by `tests/graph/replay.test.js`.
-1. **Clock + drum grid, behind a developer switch.** Native clock; score store and expander for the drum
+1. **Clock + drum grid, behind a developer switch.** *First half done (6.9.7): the clock and the expander, verified against the page. Second half (voice bank, host thread, mirror) next, see the end of this file.* Native clock; score store and expander for the drum
    grid (both layers, swing, humanize, probability, ratchets and flams, chokes); voice bank for drum lanes
    (replay as the spike found it: begun on the 128-frame grid, a lead before the onset, velocity, accent and
    pitch slots patched, the time slots moved); mirror of bar and step for the display. Verified by running the same drum score in the page (offline) and in the
@@ -291,3 +291,84 @@ chord voice.
 
 **Next step: slice 1 (the native clock and the drum grid), and the chord proof in parallel.** Neither blocks the
 other: the drum grid needs only what is proven, and the chord proof is a Mac-only test like the spike.
+
+## Slice 1, first half (6.9.7): the clock and the drum-grid expander
+
+**What was chosen, and why.** Slice 1 is a clock, an expander, a voice bank, chokes and a mirror. The first four
+of those only mean anything if the expander makes the *right events*, and everything after it (the bank, the host
+thread, the pool) can be tested against a known-good event list instead of against ears. So the first piece is the
+part a Mac can fully prove: a pure C++ sequencer core with no iOS and no audio in it, and the test that holds it
+to the page. The voice bank and the host come second, on top of something already measured.
+
+**Built.**
+- `native/modsynth/seqcore.h` + `seqcore.cpp`: `DrumSequencer`, a frame-counted clock (tempo, rate multiplier, swing
+  by `_sqSwingOffset`'s formula, step and bar counters, bar lines) and the drum-grid expander: both layers, per-lane
+  fader and tune, velocity 0/1/2 and the cell's velocity percent, the step's own pitch, accent, probability, the
+  tuplet cover (`_sqIsCovered`), flams and drags, ratchets and tuplets (`r` hits over `rs` steps), humanize
+  (timing, drift, velocity, per-part off), the Drums switch (it silences the Kit layer, not the Aux layer), and the
+  choke group of each lane carried on the event. It turns a `DrumScore` into `DrumEvent`s: (frame, part, kit, lane,
+  velocity, accent, pitch, dyn, choke group, step, bar), and passes bar lines to the caller. Nothing allocates once a
+  score is set, and `run()` takes its sink as a template argument so the host can write into its own ring. The
+  randomness is a native generator (xoshiro256**), not the page's `Math.random`.
+- `DrumScore::fromDoubles`: the flat array of doubles the score travels as (the same shape as the voice programs the
+  page already sends), and in `index.html` the page's half, `window._sqNativeScore()` (plus `window._humanState()`):
+  the grids, faders, tunes, kit table, humanize settings and meter, read from the same variables `_sqScheduler`
+  reads. Nothing calls it but the test. Version 6.9.7 is for these two small functions; nothing else in the app moved.
+- `native/modsynth/seqtool` (`make -C native/modsynth seqtool`): runs the core on scores from a file and prints the events.
+- `tests/seq/drumgrid.test.js`: the proof (below). `make -C native/modsynth seqtool && node tests/seq/drumgrid.test.js`
+  (Playwright and Chromium or Chrome; `CHROMIUM` and `PLAYWRIGHT` as the other tests).
+
+**Measured (6.9.7).** The real page runs `window._sqScheduler` on a fake clock advanced by hand, `modEngine` stubbed
+to record the `{kind:'hit'}` messages it sends (so what is compared is what the page asks the engine for, before
+the voice). The page's own export of the score goes to the C++ core. Then:
+- *Event lists, exactly.* 19 deterministic scores, 16,595 events in all, each compared in order. Part, kit, lane,
+  velocity, accent, pitch and `dyn` are identical doubles; the time is within 3.5e-9 of a frame (the page counts
+  seconds, the core frames, and they agree to the last bit that matters); the whole frame the host would start the
+  voice on is the same for every event. The scores cover: 120 and odd tempos (93, 61 BPM: step lengths that are not
+  whole frames), swing on eighths and sixteenths, the rate multiplier at 2 and 0.5, 12, 14, 16, 32 and 64 steps, 4/4,
+  7/8 and compound 6/8, tuplet cover on and off, a dense score of ratchets, tuplets, flams, drags, step pitches and
+  cell velocities, the Drums switch off (Aux still plays), either layer off, and tempo changes mid-play (one and two,
+  landing between steps as the page's do). Bar lines (the page's `_barAnnouncedT`) match the same way, including the
+  64-step pattern that announces every 16 steps.
+- *Randomised features, statistically*, 2,400 steps each. Probability 30 and 75: the native hit rates are within 4
+  sigma of the expected count (page 701 and 1815, native 740 and 1813 of 720 and 1800 expected). Humanize at 1.0 and 0.4:
+  the timing spread (sd 343 vs the page's 354 frames at 1.0; 138 vs 142 at 0.4), the bounds (+/-14 ms scaled), the
+  velocity mean, spread and floor, and accents being humanized less, all match the page's. Drift alone: stays inside
+  +/-18 ms and centred; it differs from the page's by at most 1.8 ms, because the page reads its clock when it
+  schedules and the core reads the step's own time (a look-ahead later, on a sine with a 9.7 s period). Humanize
+  switched off for the Aux part: its hits stay exactly on the grid on both.
+- *The test bites.* Swing written with the wrong factor turned 5 of the event-list cases red; with the tuplet-cover
+  chain check removed and `dyn` fixed at 1 on top (tried stacked, by hand) 19 failed.
+
+**Found on the way (matters for the second half).**
+- **The expander cannot run in the render callback.** `GraphPool::begin()` parses the program into a slot's
+  `Graph` (`Graph::load` resizes vectors: it allocates), and its comment says control thread. So the sequencer
+  runs on a native thread of its own, not in `renderInto`: it wakes every few milliseconds, reads the host's frame
+  counter, runs the core up to a horizon a little past the replay lead (about 100 ms: the 48 ms lead plus a cushion),
+  and calls `begin` with future frames. That thread is the engine's, so it keeps running when iOS stops the web view.
+  The clock stays "frames of the render counter": the thread only decides how far ahead to expand.
+- The page's `#bpm` field rounds what it is given to whole BPM (a fractional value written to it reads back as an
+  integer). The tempo the page schedules with is that field's value, so the native tempo is whole BPM too (the test reads it back).
+- Not in the core yet, deliberately: the pattern queue and the kit/groove swap at the wrap (`sqFlushPending`), the
+  chain of patterns, song-driven changes. They are slice 4's; the core already announces the wrap and the bar line.
+
+**Not done in this half, and the plan for the second half.** Each is a piece with its own test; none is switched on.
+1. *Host thread.* `ModEngineHost`: a `DrumSequencer` and a `DrumScore` behind a lock, a native thread (or a
+   `DispatchSource` timer on a high-priority queue) that runs the core to `frames + horizon` and hands events to the
+   bank. Plugin calls to set the score (a base64 array of doubles, like `graphBegin`), start with a first frame, stop,
+   tempo and rate. A mirror (bar, step, running, late-step count) in atomics that the page polls for its display.
+   Verified on the Mac with a host test that runs with no page: the step counter advances, and keeps advancing while
+   nothing calls the host (the simulator then shows the same with the web view throttled).
+2. *Voice bank for the drum lanes.* The page records each lane's voice once at a reference (kit, lane, `dyn` choice,
+   plus what is baked into it: fader, Shape, mõdFX) and probes it as the spike did, sending the program and its
+   parameter map (velocity, accent and pitch slots, time slots) with a generation. The thread looks an event up by
+   (part, kit, lane, dyn), patches the slots (velocity/accent/pitch, onset by moving the time slots 1:1), starts the
+   program on the 128-frame grid with the 2304-frame lead, and counts a hit or a miss. A miss (no program yet) is a
+   counted silence, not a crash.
+3. *Chokes.* A hit with `chokes` set sends the group's still-sounding voices an `edit` (the closed hat to the open hat),
+   which the pool already understands; the thread keeps the group's handles.
+4. *Verification of the sound.* The same score through the page offline and through bank + pool in a host test, and the
+   rendered buses nulled (the way `tests/graph` does for voices). Phone: the checklist section 18.
+
+The developer switch (a Settings entry like Native sound, off by default) lands with the host thread, because until
+there is something to switch there is nothing to put behind it.
