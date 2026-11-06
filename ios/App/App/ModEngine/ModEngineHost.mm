@@ -17,6 +17,9 @@
 #include "master.h"
 #include "capture.h"
 #include "graphpool.h"
+#include "seqcore.h"
+#include <thread>
+#include <unistd.h>
 
 namespace {
 
@@ -126,6 +129,68 @@ double num(id value, double fallback = 0) {
   return [value isKindOfClass:[NSNumber class]] ? [(NSNumber *)value doubleValue] : fallback;
 }
 
+
+// ── The native sequencer (seqcore.h, docs/native-scheduling.md slice 1) ──────
+// A thread of its own, not the render callback: the voices it will start are begun with GraphPool::begin,
+// which parses a program into a Graph and allocates, so it must run on a control-side thread. It reads the
+// render thread's frame counter, expands the score up to a horizon a little ahead of it, and so keeps stepping
+// whatever the web view is doing (the page's timers are what iOS throttles). Nothing here makes a sound yet:
+// the events are counted, and optionally kept for a test, until the voice bank is wired to them.
+struct HostSeq {
+  static constexpr int kEventDoubles = 13;      // frameExact frame part kit lane vel accent pitch dyn chokeGroup chokes step bar
+  static constexpr int kRing = 256;
+  struct Fired { double frame; int step, bar; };
+  os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
+  modsynth::DrumSequencer seq;
+  const std::atomic<uint64_t> *frames;
+  double sr;
+  double lookahead;                              // frames the thread expands ahead of the render counter
+  std::thread th;
+  std::atomic<bool> quit{false}, threadOn{false};
+  bool hasScore = false;
+  // counters and the playhead ring: under `lock`
+  uint64_t steps = 0, events = 0, late = 0, firstFrame = 0, recDropped = 0;
+  Fired ring[kRing];
+  uint32_t ringN = 0;
+  bool record = false;
+  std::vector<double> rec;
+  size_t recCap = 0;
+
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), sr(rate), lookahead(0.1 * rate) {}
+  ~HostSeq() { quit.store(true); if (th.joinable()) th.join(); }
+
+  void tick() {
+    os_unfair_lock_lock(&lock);
+    if (seq.running() && hasScore) {
+      const double now = (double)frames->load(std::memory_order_relaxed);
+      seq.run(now + lookahead,
+        [&](const modsynth::DrumEvent &e) {
+          events++;
+          if (!record) return;
+          if (rec.size() + kEventDoubles > recCap) { recDropped++; return; }
+          const double d[kEventDoubles] = {e.frameExact, (double)e.frame, (double)e.part, (double)e.kit, (double)e.lane, e.vel,
+                                           e.accent ? 1.0 : 0.0, e.pitch, e.dyn, (double)e.chokeGroup, e.chokes ? 1.0 : 0.0, (double)e.step, (double)e.bar};
+          rec.insert(rec.end(), d, d + kEventDoubles);
+        },
+        [&](const modsynth::BarMark &) {},
+        [&](int step, int bar, double frame) {
+          steps++;
+          if (frame < now) late++;               // its moment had passed before the thread got to it
+          ring[ringN % kRing] = {frame, step, bar}; ringN++;
+        });
+    }
+    os_unfair_lock_unlock(&lock);
+  }
+  void startThread() {
+    if (threadOn.exchange(true)) return;
+    th = std::thread([this] {
+      pthread_setname_np("modriff.sequencer");
+      // The same class of thread the audio work asks for: it has a deadline of a few milliseconds a tick.
+      pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+      while (!quit.load(std::memory_order_relaxed)) { tick(); usleep(4000); }
+    });
+  }
+};
 }  // namespace
 
 @implementation ModEngineHost {
@@ -214,6 +279,8 @@ double num(id value, double fallback = 0) {
   // applyMessage does for a note. NaN until a block has run.
   std::atomic<double> _curOffPub;
   std::vector<float> _gbus;               // kBuses pairs of scratch buffers, _maxFrames each
+  // Last, so it is destroyed first: its thread reads _frames and must be joined before that goes.
+  std::unique_ptr<HostSeq> _hostSeq;
 }
 
 - (instancetype)initWithSampleRate:(double)sampleRate maxFrames:(int)maxFrames {
@@ -244,6 +311,7 @@ double num(id value, double fallback = 0) {
     // buildReverb impulse, noise falling as (1-t)^2.5 over chord.reverbSize (1.8 s).
     for (int k = 0; k < 2; k++) { _roomRack[k] = std::make_unique<modsynth::FxRack>(sampleRate); _roomRack[k]->setSendReverb(1.8, 2.5); _roomTail[k] = 0; }
     _gbus.assign((size_t)modsynth::GraphPool::kBuses * 2 * (size_t)_maxFrames, 0.0f);
+    _hostSeq = std::make_unique<HostSeq>(&_frames, sampleRate);
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
     _curOff = 0; _drainSum = 0; _drainN = 0; _drainMean.store(0);
@@ -428,6 +496,91 @@ double num(id value, double fallback = 0) {
   }
   os_unfair_lock_unlock(&_graphLock);
   return ok;
+}
+
+// ── The native sequencer (see HostSeq above) ─────────────────────────────
+
+// The drum score as the page exports it (float64s, seqcore.cpp has the layout). Any thread; it takes effect at the
+// next step, as an edit to the page's grid does.
+- (BOOL)seqSetDrumScore:(NSData *)score {
+  const size_t n = score.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), score.bytes, n * sizeof(double));
+  modsynth::DrumScore s;
+  if (!s.fromDoubles(d.data(), n)) return NO;
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->seq.setScore(s);
+  _hostSeq->hasScore = true;
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return YES;
+}
+
+// Begins at step 0 with its downbeat `leadMs` from now on the engine's own clock. NO without a score.
+- (BOOL)seqStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs seed:(double)seed {
+  HostSeq &q = *_hostSeq;
+  os_unfair_lock_lock(&q.lock);
+  if (!q.hasScore) { os_unfair_lock_unlock(&q.lock); return NO; }
+  q.seq.setTempo(bpm > 0 ? bpm : 120);
+  q.seq.setRate(rate > 0 ? rate : 1);
+  if (seed != 0) q.seq.seed((uint64_t)seed);
+  const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
+  q.steps = q.events = q.late = q.recDropped = 0; q.ringN = 0; q.firstFrame = (uint64_t)first;
+  q.rec.clear();
+  q.seq.start(first);
+  os_unfair_lock_unlock(&q.lock);
+  q.startThread();
+  return YES;
+}
+
+- (void)seqStop {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->seq.stop();
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+- (void)seqSetTempo:(double)bpm rate:(double)rate {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  if (bpm > 0) _hostSeq->seq.setTempo(bpm);
+  if (rate > 0) _hostSeq->seq.setRate(rate);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// Keep (up to `capacity` events) what the sequencer expands, for a test to read with seqTakeEvents.
+- (void)seqRecord:(BOOL)on capacity:(int)capacity {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->record = on;
+  _hostSeq->recCap = on ? (size_t)(capacity > 0 ? capacity : 0) * HostSeq::kEventDoubles : 0;
+  _hostSeq->rec.clear();
+  if (on) _hostSeq->rec.reserve(_hostSeq->recCap);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+- (NSData *)seqTakeEvents {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  NSData *d = [NSData dataWithBytes:_hostSeq->rec.data() length:_hostSeq->rec.size() * sizeof(double)];
+  _hostSeq->rec.clear();
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return d;
+}
+
+// What the page draws from. step and bar are the last step whose moment has come on the render clock (what is being
+// heard, give or take the output latency), not the one the thread has expanded to.
+- (NSDictionary *)seqMirror {
+  HostSeq &q = *_hostSeq;
+  os_unfair_lock_lock(&q.lock);
+  const double now = (double)_frames.load(std::memory_order_relaxed);
+  int step = -1, bar = 0;
+  const uint32_t have = q.ringN < (uint32_t)HostSeq::kRing ? q.ringN : (uint32_t)HostSeq::kRing;
+  for (uint32_t k = 0; k < have; k++) {
+    const HostSeq::Fired &f = q.ring[(q.ringN - 1 - k) % HostSeq::kRing];
+    if (f.frame <= now) { step = f.step; bar = f.bar; break; }
+  }
+  NSDictionary *r = @{@"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now),
+                      @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
+                      @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),
+                      @"recDropped": @((double)q.recDropped)};
+  os_unfair_lock_unlock(&q.lock);
+  return r;
 }
 
 - (NSDictionary *)graphStats {

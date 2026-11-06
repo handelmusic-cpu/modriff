@@ -36,6 +36,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
@@ -649,6 +654,45 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         }
         noteFeed()
         call.resolve(["ok": host.editGraph(Int32(gid), increments: inc)])
+    }
+
+    // ── The native sequencer (docs/native-scheduling.md, slice 1) ────────────
+    // The page hands over the drum score and says start; the engine's own thread does the stepping from there,
+    // counted in the render clock, so it goes on when the web view's timers are throttled. Nothing sounds from it yet.
+
+    /// The drum score, `score` base64 float64 (window._sqNativeScore().score). Resolves `ok`.
+    @objc func seqScore(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqScore needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetDrumScore(data)])
+    }
+
+    /// Starts at step 0. `leadMs` is how far ahead the downbeat is. Resolves `ok` (false without a score).
+    @objc func seqStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqStart(withBpm: call.getDouble("bpm") ?? 120, rate: call.getDouble("rate") ?? 1,
+                               leadMs: call.getDouble("leadMs") ?? 120, seed: call.getDouble("seed") ?? 0)
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqStop(_ call: CAPPluginCall) {
+        host?.seqStop()
+        call.resolve()
+    }
+
+    @objc func seqTempo(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
+        call.resolve()
+    }
+
+    /// {running, step, bar, frame, steps, events, late, ...}: where the engine's own sequencer is.
+    @objc func seqMirror(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        call.resolve(host.seqMirror() as? [String: Any] ?? [:])
     }
 
     /// One worklet-shaped message. Parsed into a POD and queued here, on

@@ -387,3 +387,33 @@ the voice). The page's own export of the score goes to the C++ core. Then:
 
 The developer switch (a Settings entry like Native sound, off by default) lands with the host thread, because until
 there is something to switch there is nothing to put behind it.
+
+## Slice 1, second half, part one (6.9.8): the host thread and the step mirror
+
+**Built.** `ModEngineHost` owns a `HostSeq`: a `DrumSequencer`, its score and counters behind a lock, and a thread of its
+own (`modriff.sequencer`, user-interactive QoS) that every 4 ms reads the render thread's frame counter, expands the
+score up to 100 ms ahead of it (`run(frames + 4800)`), and records each fired step in a ring. It is not the render
+callback and not the page: it does not allocate in the way `GraphPool::begin` will need, and it does not stop when iOS
+throttles the web view. It stands still when the render clock does (a stopped or suspended engine fires nothing) and is
+joined when the host goes away. Methods on the host and the plugin: `seqScore` (the flat score, base64 float64s),
+`seqStart` (bpm, rate, lead in ms, seed: the downbeat lands `lead` after the call on the engine's own clock), `seqStop`,
+`seqTempo`, `seqMirror`. `seqMirror` answers `{running, step, bar, frame, steps, events, late, firstFrame, nextFrame}`;
+`step` and `bar` are the last step whose moment the render clock has reached (the playhead, within the output latency),
+not the one the thread has expanded to. `late` counts steps the thread reached after their moment. Nothing sounds: the
+events are counted, and a test can keep them (`seqRecord`, `seqTakeEvents`). The page's entry is `window._nsDrum`
+(`start`, `stop`, `sync`, `tempo`, `mirror`), a developer function with no button, which is this slice's "developer
+switch": nothing calls it, so nothing changes for anyone. `seqcore.cpp` is in the Xcode project (it was not before).
+
+**Measured.** `make -C native/modsynth seqhosttest && native/modsynth/seqhosttest`: the real `ModEngineHost.mm` with a
+render loop paced like the callback (240 frames every 5 ms) and no page anywhere. 3 s of render clock at 120 BPM: 24
+steps fired (24 expected from the clock), none late; the playhead step equals the one the render clock says; 30
+events recorded are identical (frame, lane, velocity, accent, bar) to the core run alone from the same first frame;
+after `seqTempo(60)` steps are 12,000 frames apart; with the render clock stopped for 550 ms no step fires; after
+`seqStop` none; the host and its thread go away cleanly. The page half is checked with a stub plugin (the score reaches
+the plugin byte for byte, `start` carries `#bpm` and the rate, an app without the methods answers "no engine").
+`xcodebuild` (iphonesimulator, generic) builds. The other host tests (`hosttest`, `graphhosttest`, `warmtest`) pass;
+their Makefile recipes now include `seqcore.cpp`, and `hosttest` and `warmtest` the graph files they had been missing.
+
+**Not measured.** The simulator with the web view throttled and the phone: the thread is plain native code and the
+Mac test shows it needs nothing from the page, but iOS suspending the web view is only seen on a device (checklist 18.2).
+Still to build: the voice bank that makes the events sound (next), then chokes, then the null test.
