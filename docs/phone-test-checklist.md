@@ -336,17 +336,18 @@ Only the open iPhone Duo held wide (951 x 669 pt). The closed Duo (section 16), 
 | 17.9 | Turn the Duo upright, then wide again | upright is the old bottom stack; wide comes back with the rail and both panes, the right page drawn properly (not blank, not squashed) |
 
 
-## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9; the developer entry can make sound)
+## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9.2; the developer entry can make sound)
 
 The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgrid.test.js`), and from 6.9.8 the host steps it on its own thread (`native/modsynth/seqhosttest`). Nothing in the app calls it except a developer function, and no audio path exists yet, so 18.1 is the regression check and 18.2 is for the inspector.
 
 | # | do | you should see |
 |---|---|---|
-| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
+| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.2**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
 | 18.2 | Connect the phone to Safari's web inspector (or use the simulator), play nothing, and in the console run `_nsDrum.start()` then `_nsDrum.mirror()` a few times a second apart | `steps` and `events` climb, `step` cycles 0 to 15, `late` stays 0; nothing is heard. Then freeze the page: `var t=Date.now(); while(Date.now()-t<3000){}`, and `_nsDrum.mirror()` straight after: `steps` rose by about 12 (4 a second at 120 BPM) while the page was frozen, `late` still 0. `_nsDrum.stop()` ends it. (Leaving the app is not part of this: the engine is silenced on leaving, section 14, until the cutover turns background play on.) |
 | 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (808 or 909), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
 | 18.4 | While it plays: change a cell on the grid, then run `_nsDrum.sync()`; move the Drums fader, then run `_nsDrum.prepare()` | the change is heard at the next step; after the fader move the level is the new one (the lanes are recorded again) |
 | 18.5 | Freeze the page for 3 s as in 18.2 while it plays | the beat does not stutter or stop; it was the engine playing |
-| 18.6 | Compare against the page's own drums: stop `_nsDrum`, start the page's Play with the same pattern | same sounds, same levels and accents, same pitch of tuned lanes; **the closed hat does not yet cut the open hat in the engine's version** (chokes are next), so an open-hat pattern rings on |
+| 18.6 | Compare against the page's own drums: stop `_nsDrum`, start the page's Play with the same pattern | same sounds, same levels and accents, same pitch of tuned lanes |
+| 18.7 | A pattern with an open hat followed a few steps later by a closed (or pedal) hat, `_nsDrum.start()` as in 18.3 | the closed hat shuts the open one, as it does on the page's own transport (the open hat ends at the closed hat's step instead of ringing through it); `_nsDrum.mirror()` shows `cuts` climbing by one for each open hat that was shut. An open hat with nothing after it rings its full length |
 
 Still to come (chokes, then the cutover): leave the app mid-beat and the drums continue on the beat, no burst or gap; Copy diagnostics shows a `native.sched` block with steps fired and bank hits/misses.

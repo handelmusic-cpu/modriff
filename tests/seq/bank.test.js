@@ -91,6 +91,24 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
         fresh.push({ part: h.part, kit: h.kit, lane: h.lane, vel: c.vel, accent: c.accent, pitch: c.pitch, onset: c.onset, prog: r ? Array.from(r.prog) : null });
       }
     }
+    // The chokes: for each lane that registers in the choke group, an open voice and a closing hit at several distances. The
+    // page's own _chokeGroup is run on the fresh voice (its edit records are what the page would send), and the engine's cut
+    // must do the same to the bank's patched voice.
+    const chokeCases = [];
+    const dts = [{ vel: 0.9, accent: false, pitch: 0, dt: 1500 }, { vel: 0.6, accent: true, pitch: 0, dt: 6000 }, { vel: 0.9, accent: false, pitch: 3, dt: 12000 }, { vel: 0.8, accent: false, pitch: 0, dt: 60000 }];
+    for (const h of held) {
+      const part = h.part ? 'auxperc' : 'drum';
+      window._chokeReset();
+      const probe = await window._nsBank.record({ kind: 'hit', part, id: 1, kit: h.kit, lane: h.lane, vel: 0.9, accent: false, pitch: 0, dyn: null, at: 60000 / sr }, 60000 / sr, false);
+      if (!probe || !probe.inc || !probe.inc.length) continue;     // not a hat
+      for (const c of dts) {
+        const onset = 2304 + 128 * 300 + 37, chokeAt = onset + c.dt;
+        window._chokeReset();
+        const r = await window._nsBank.record({ kind: 'hit', part, id: 1, kit: h.kit, lane: h.lane, vel: c.vel, accent: c.accent, pitch: c.pitch, dyn: null, at: (onset - 1e-6) / sr }, (chokeAt - 1e-6) / sr, false);   // a millionth of a frame early, as the onset is
+
+        chokeCases.push({ part: h.part, kit: h.kit, lane: h.lane, vel: c.vel, accent: c.accent, pitch: c.pitch, onset, chokeAt, prog: Array.from(r.prog), inc: r.inc });
+      }
+    }
     // Signature: the Drums fader is baked into a recording.
     setScore('808', false);
     const sigBefore = window._nsBank.signature('drum', '808', 0);
@@ -110,7 +128,7 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
     MODGRAPH.on = false;
     const refusedOff = await window._nsDrum.start();
     MODGRAPH.on = true;
-    return { started: { ok: started.ok, built: started.bank && started.bank.built, failed: started.bank && started.bank.failed.length, scores: posted.length, entries: sentEntries }, refusedOff: refusedOff.why, report, held, fresh, bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: sigBefore !== sigAfter, rebuilt: rep2.built, kept: rep2.kept, grew };
+    return { started: { ok: started.ok, built: started.bank && started.bank.built, failed: started.bank && started.bank.failed.length, scores: posted.length, entries: sentEntries }, refusedOff: refusedOff.why, report, held, fresh, chokeCases, bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: sigBefore !== sigAfter, rebuilt: rep2.built, kept: rep2.kept, grew };
   }, { rndCases: [
     // controls first: each parameter alone, so a failure names its cause
     { vel: 0.9, accent: false, pitch: 0, onset: 2304 + 128 * 400 },        // the reference itself, on the grid
@@ -126,6 +144,11 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
     { vel: 0.65, accent: true, pitch: 0, onset: 72735 },
     { vel: 0.65, accent: false, pitch: 0, onset: 72735 },
     { vel: 0.9, accent: false, pitch: 0, onset: 72735 },
+    // soft hits: a pattern's lane volume times its step's strength reaches well under the 0.45 the fit used (the Aux Perc cowbell at 0.288 was not exact)
+    { vel: 0.288, accent: false, pitch: -2, onset: 99200 },
+    { vel: 0.288, accent: false, pitch: 0, onset: 99200 },
+    { vel: 0.15, accent: false, pitch: 0, onset: 99200 },
+    { vel: 0.05, accent: false, pitch: 0, onset: 99200 },
     ].concat(Array.from({ length: 6 }, () => ({ vel: +(0.3 + rnd() * 0.7).toFixed(3), accent: rnd() < 0.3, pitch: [0, -3, 2, 5, -7, 1.5][Math.floor(rnd() * 6)], onset: 20000 + Math.floor(rnd() * 100000) }))) });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
@@ -154,13 +177,17 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
   const kitCode = {}; out.held.forEach(h => { kitCode[h.kit] = h.d[2]; });
   buf.push(list.length);
   list.forEach(c => { buf.push(c.part, kitCode[c.kit], c.lane, c.vel, c.accent ? 1 : 0, c.pitch, c.onset, c.prog.length); c.prog.forEach(x => buf.push(x)); });
+  buf.push(out.chokeCases.length);
+  out.chokeCases.forEach(c => { buf.push(c.part, kitCode[c.kit], c.lane, c.vel, c.accent ? 1 : 0, c.pitch, c.onset, c.chokeAt, c.prog.length); c.prog.forEach(x => buf.push(x)); buf.push(c.inc.length); c.inc.forEach(x => buf.push(x)); });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bank-'));
   fs.writeFileSync(path.join(tmp, 'cases.f64'), Buffer.from(Float64Array.from(buf).buffer));
   const bin = path.join(root, 'native', 'modsynth', 'banktest');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth banktest'); process.exit(2); }
   const run = spawnSync(bin, [path.join(tmp, 'cases.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
   if (run.status !== 0) { console.error(run.stderr); process.exit(2); }
-  const rows = run.stdout.trim().split('\n').map(l => l.split(' '));
+  const lines = run.stdout.trim().split('\n');
+  const rows = lines.filter(l => !/^choke /.test(l)).map(l => l.split(' '));
+  const crow = lines.filter(l => /^choke /.test(l)).map(l => l.split(' ').slice(1));
   ok(rows.length === list.length, 'banktest answered every case', rows.length + ' of ' + list.length);
   const by = {}; let nOk = 0, nExact = 0, worst = 1e9, miss = 0;
   rows.forEach((r, i) => {
@@ -175,6 +202,25 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
   for (const [k, b] of Object.entries(by)) console.log('  ' + (b.ok === b.n ? 'ok   ' : 'FAIL ') + k.padEnd(22) + b.ok + ' of ' + b.n + ', worst ' + (b.worst < 1e8 ? b.worst.toFixed(1) : 'n/a') + ' dB' + (b.bad.length ? '\n         ' + b.bad.join('\n         ') : ''));
   ok(miss === 0, 'no hit missed the bank', miss);
   ok(nOk === list.length, nOk + ' of ' + list.length + ' hits are exact (' + nExact + ' bit-identical, worst ' + worst.toFixed(1) + ' dB)', (list.length - nOk) + ' below ' + PASS_DB + ' dB');
+
+  // ── chokes: the closing hat shutting the open one ─────────────────────────────────────────────
+  const chLanes = [...new Set(out.chokeCases.map(c => c.kit + ' lane ' + c.lane + (c.part ? ' (aux)' : '')))];
+  console.log('\nchokes, the engine\'s cut against the page\'s own (' + chLanes.length + ' hat lanes: ' + chLanes.join(', ') + '):');
+  ok(chLanes.length >= 2 && out.chokeCases.length === chLanes.length * 4, 'the hat lanes register in the choke group', chLanes.length + ' lanes, ' + out.chokeCases.length + ' cases');
+  ok(crow.length === out.chokeCases.length, 'banktest answered every choke case', crow.length + ' of ' + out.chokeCases.length);
+  let cOk = 0, cCut = 0, cWorst = 1e9, cutN = 0, cutDeep = 0;
+  crow.forEach((r, i) => {
+    const c = out.chokeCases[i], depth = parseFloat(r[1]), pk = parseFloat(r[2]), tail = parseFloat(r[3]), sent = parseInt(r[4]), uncut = parseFloat(r[5]);
+    const good = depth >= PASS_DB && pk > 0;
+    if (good) cOk++; else console.log('  FAIL ' + c.kit + ' lane ' + c.lane + ` dt ${c.chokeAt - c.onset}: ${r[1]} dB, ${sent} voices cut`);
+    cWorst = Math.min(cWorst, depth);
+    if (c.inc.length) cCut++;
+    if (process.env.SHOW_OK) console.log('   ' + c.kit + ' lane ' + c.lane + ` dt ${c.chokeAt - c.onset}: ${r[1]} dB, peak ${pk.toFixed(4)}, tail after 200 ms ${tail.toFixed(5)}, page edits ${c.inc.length / 6}, engine cut ${sent}, same tail uncut ${uncut.toFixed(5)}`);
+    if (c.inc.length && uncut > 1e-4) { cutN++; if (tail < uncut && (c.chokeAt - c.onset > 2000 || tail < uncut * 0.2)) cutDeep++; }
+  });
+  ok(cOk === out.chokeCases.length, cOk + ' of ' + out.chokeCases.length + ' chokes are exact (worst ' + cWorst.toFixed(1) + ' dB)', (out.chokeCases.length - cOk) + ' below ' + PASS_DB + ' dB');
+  ok(cutN > 0 && cutDeep === cutN, 'where a choke found a voice, 200 ms later the tail is lower than the uncut voice\'s (a fifth of it for the early chokes; what is left is the page\'s own, a layer of the open hat that is not in the group) (' + cutDeep + ' of ' + cutN + ')', cutDeep + ' of ' + cutN);
+  ok(cCut > 0 && cCut < out.chokeCases.length, cCut + ' of ' + out.chokeCases.length + ' chokes found a voice to cut, the rest came after the voice had ended on its own', cCut);
 
   ok(out.started.ok === true && out.started.built === 15 && out.started.failed === 1 && out.started.entries === 15 && out.started.scores >= 1, '_nsDrum.start(): empties the bank, records and sends the 15 lanes the score can play (8 kit, 7 of 8 aux; the Triangle is refused), sends the score, starts', JSON.stringify(out.started));
   ok(/Native sound is off/.test(out.refusedOff || ''), '_nsDrum.start() with Native sound off says so and does nothing', out.refusedOff);

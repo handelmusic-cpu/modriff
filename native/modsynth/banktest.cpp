@@ -5,6 +5,10 @@
 //   banktest <cases.f64>
 // cases.f64: [nBuffers, per buffer: id, sampleRate, nch, len, ch0..., ch1... ; nEntries, per entry: len, entry doubles (voicebank.h) ; nCases, per case: part, kit, lane, vel, accent,
 //   pitch, onsetFrame, len, the page's fresh program (times absolute, onset at onsetFrame / 48000 s)]
+// After the cases, the choke cases (the closing hat shutting an open one): [nChoke, per case: part, kit, lane, vel, accent, pitch,
+//   onsetFrame, chokeFrame, len, the page's fresh program, nInc, the page's own edit records for the choke it ran at chokeFrame
+//   on that voice (six doubles each, times absolute)]. The engine side is the bank's patch plus ChokeGroup::cut; the reference
+//   is the fresh program with the page's edits. Printed as "choke <index> <depth> <peak> <tail peak after 200 ms> <voices cut> <the same tail with no cut>".
 // Prints per case: index, null depth in dB (999 = bit-identical), the loudest sample of the fresh render, the best depth
 // within 2 frames of alignment and the offset that gave it, and "miss" for a hit the bank has no voice for.
 #include <algorithm>
@@ -97,6 +101,49 @@ int main(int argc, char **argv) {
     double best = depth; long bestOff = 0;
     for (long o = -2; o <= 2; o++) { if (!o) continue; const double dd = depthAt(o, pa2); if (dd > best) { best = dd; bestOff = o; } }
     printf("%d %.2f %.6f %.2f %ld\n", c, depth, pa, best, bestOff);
+  }
+  if (k >= d.size()) return 0;
+  const int ncc = (int)d[k++];
+  for (int c = 0; c < ncc; c++) {
+    const int part = (int)d[k++], kit = (int)d[k++], lane = (int)d[k++];
+    const double vel = d[k++]; const bool acc = d[k++] != 0; const double pitch = d[k++];
+    const long onset = (long)d[k++], chokeAt = (long)d[k++];
+    const size_t len = (size_t)d[k++];
+    std::vector<double> fresh(d.begin() + k, d.begin() + k + len); k += len;
+    const size_t ninc = (size_t)d[k++];
+    std::vector<double> inc(d.begin() + k, d.begin() + k + ninc); k += ninc;
+    const modsynth::BankEntry *e = bank.find(part, kit, lane);
+    if (!e) { printf("choke %d miss 0 0 0\n", c); continue; }
+    modsynth::PatchedVoice pv;
+    bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv);
+    const long total = chokeAt + (long)(1.0 * SR);
+    modsynth::GraphPool a, b;
+    for (auto &bf : bufs) for (auto *p : {&a, &b}) p->buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
+    const int ha = a.begin(fresh.data(), fresh.size(), 0.0, 0);
+    const int hb = b.begin(pv.prog.data(), pv.prog.size(), pv.timeBase, pv.startFrame);
+    if (ha < 0 || hb < 0) { printf("choke %d refused 0 0 0\n", c); continue; }
+    if (ninc && !a.edit(ha, inc.data(), ninc)) { printf("choke %d refused-edit 0 0 0\n", c); continue; }
+    modsynth::ChokeGroup grp;
+    grp.add(hb, pv.startFrame, onset, *e, SR);
+    int sent = 0;
+    // the closing hat's own onset is the choke: its voice is not in the group yet, as in the host
+    sent = grp.cut(chokeAt, SR, [&](int h, const double *o, size_t n) { return b.edit(h, o, n); });
+    // The same voice left alone, to say how much the cut took away.
+    modsynth::GraphPool u;
+    for (auto &bf : bufs) u.buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
+    u.begin(pv.prog.data(), pv.prog.size(), pv.timeBase, pv.startFrame);
+    std::vector<float> ra, rb, ru;
+    render(a, total, ra); render(b, total, rb); render(u, total, ru);
+    double uncut = 0;
+    for (long i = (chokeAt + (long)(0.2 * SR)) * 2; i < (long)ru.size(); i++) uncut = std::max(uncut, (double)std::fabs(ru[i]));
+    double se = 0, sa = 0, pk = 0, tailPeak = 0;
+    for (long i = onset * 2; i < (long)ra.size() && i < (long)rb.size(); i++) {
+      const double df = (double)ra[i] - (double)rb[i];
+      se += df * df; sa += (double)ra[i] * ra[i]; pk = std::max(pk, (double)std::fabs(ra[i]));
+      if (i >= (chokeAt + (long)(0.2 * SR)) * 2) tailPeak = std::max(tailPeak, (double)std::fabs(ra[i]));
+    }
+    const double depth = se == 0 ? 999.0 : (sa == 0 ? -999.0 : -20.0 * std::log10(std::sqrt(se / sa)));
+    printf("choke %d %.2f %.6f %.6f %d %.6f\n", c, depth, pk, tailPeak, sent, uncut);
   }
   return 0;
 }
