@@ -106,9 +106,10 @@ int main() {
     {
       ModEngineHost *g = fresh();
       [g ensureGraphPart:5];
-      auto entry = [&](int lane, double hz) {
+      double stopAt = 0;
+      auto entry = [&](int lane, double hz, double dur = 0.06) {
         std::vector<double> p = {0x6d6f6467, SR, 3, 0};
-        const double stop = 0.048 + 0.06, amp = 0.5;
+        const double stop = 0.048 + dur, amp = 0.5;
         p.push_back(8); p.push_back(5);
         p.push_back(2); p.push_back(0); p.push_back(0); p.push_back(stop);
         p.push_back(hz); p.push_back(0); p.push_back(0); p.push_back(0);
@@ -123,13 +124,14 @@ int main() {
         e.push_back(1); e.push_back((double)amp_i); e.push_back(amp / 0.9); e.push_back(0);   // vel
         e.push_back(0); e.push_back(0);                                                          // accent, pitch
         e.push_back(1); e.push_back(3.0 + 0);                                                    // time: the osc stop (index 7 is stop; use the real one below)
+        stopAt = stop;
         return e;
       };
       auto e0 = entry(0, 330), e1 = entry(1, 660);
       // time slots: the stop time of the osc is at index 4+4+... find it: the first occurrence of 0.108.
       for (auto *e : {&e0, &e1}) {
         size_t n = (size_t)(*e)[8], at = 9; size_t stopi = 0;
-        for (size_t i = 0; i < n; i++) if (std::fabs((*e)[at + i] - 0.108) < 1e-12) stopi = i;
+        for (size_t i = 0; i < n; i++) if (std::fabs((*e)[at + i] - 0.108) < 1e-12) stopi = i;   // (the short voices; stopAt is for entry())
         e->back() = (double)stopi;
         e->push_back(0);                                                                         // mul list
       }
@@ -150,6 +152,74 @@ int main() {
       CHECK(maxVoices > 0 && peak > 0.05f, "and they sound: up to %d voices, peak %.3f, with no page", maxVoices, peak);
       CHECK([m[@"lateStarts"] intValue] == 0 && [m[@"late"] intValue] == 0, "none began later than its lead allowed (late starts %d, late steps %d)", [m[@"lateStarts"] intValue], [m[@"late"] intValue]);
       [g seqStop];
+    }
+
+    // Chokes through the host: lane 0 an open voice that rings for two seconds (step 0), lane 1 a closing hit (step 4, half a
+    // second later), both in choke group 1. With lane 1 choking, the open voice is cut by an edit the sequencer thread sends
+    // when it begins the closing voice, so what is left a few hundred milliseconds on is the next bar's open voice and
+    // nothing of this one; with lane 1 only ringing, the same score keeps the open voice sounding. Three hosts: choking, not choking, and one with the closing hit alone (what the chain leaves of it).
+    {
+      auto hatScore = [&](bool closes) {
+        std::vector<double> d = {1, 16, 0, 1, 4, 16, 1, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
+        auto cell = [&](double v) { d.insert(d.end(), {v, 0, 0, 1, 1, 0, 0}); };
+        d.insert(d.end(), {1, 0, 0, 2});
+        d.insert(d.end(), {0.8, 0, 1, 1, 0, 16});            // lane 0: group 1, does not choke
+        for (int s = 0; s < 16; s++) cell(s == 0 ? 1 : 0);
+        d.insert(d.end(), {0.6, 0, 1, 1, closes ? 1.0 : 0.0, 16});   // lane 1: group 1, chokes when `closes`
+        for (int s = 0; s < 16; s++) cell(s == 4 ? 1 : 0);
+        d.insert(d.end(), {0, 1, 1, 0});
+        return d;
+      };
+      // A voice (the short-sine program of the block above) 2 s long, with its choke: hold the gain, fall to nothing over
+      // 4 ms (time constant), stop the oscillator 72 ms on; node 1 is the oscillator, node 2 the gain.
+      auto voice = [&](int lane, double hz, double dur, bool choke) {
+        std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+        const double stop = 0.048 + dur, amp = 0.5;
+        p.insert(p.end(), {8, 5, 2, 0, 0, stop, hz, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+        size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+        std::vector<double> e = {1, 0, 0, (double)lane, 1, 0.048, 0.048, 0.9, (double)p.size()};
+        e.insert(e.end(), p.begin(), p.end());
+        e.insert(e.end(), {1, (double)amp_i, amp / 0.9, 0, 0, 0, 1, (double)stop_i, 0});
+        if (choke) {
+          e.insert(e.end(), {1, dur, 3});
+          e.insert(e.end(), {2, 0, 5, 0, 0, 0});            // gain: cancelAndHold at the choke
+          e.insert(e.end(), {2, 0, 3, 0.0001, 0, 0.004});   // gain: setTarget 0.0001, tc 4 ms
+          e.insert(e.end(), {1, -1, 6, 0, 0.072, 0});       // oscillator: stop 72 ms after
+        }
+        return e;
+      };
+      ModEngineHost *A = fresh(), *B = fresh(), *C = fresh();
+      NSArray<ModEngineHost *> *hs = @[A, B, C];
+      for (int i = 0; i < 3; i++) {
+        ModEngineHost *g = hs[i];
+        [g ensureGraphPart:5];
+        if (i < 2) [g seqPutBankEntry:bytes(voice(0, 330, 2.0, true))];
+        [g seqPutBankEntry:bytes(voice(1, 990, 0.04, false))];
+        [g seqSetDrumScore:bytes(hatScore(i != 1))];
+        [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      }
+      std::vector<float> l(240), r(240);
+      std::vector<float> pk[3];
+      for (int t = 0; t < 2100; t += 5) {
+        for (int i = 0; i < 3; i++) {
+          [hs[i] renderInto:l.data() right:r.data() frames:240];
+          float m = 0; for (int k = 0; k < 240; k++) m = std::max(m, std::max(std::fabs(l[k]), std::fabs(r[k])));
+          pk[i].push_back(m);
+        }
+        usleep(5000);
+      }
+      const double first = [[A seqMirror][@"firstFrame"] doubleValue];
+      // From 150 ms after the closing hit (step 4 = first + 24000 frames) to just before the next bar's open voice begins.
+      const size_t b0 = (size_t)((first + 24000 + 7200) / 240), b1 = (size_t)((first + 96000 - 2304 - 480) / 240);   // (a voice sounds from its begin, 2304 frames before its onset)
+      float wa = 0, wb = 0, wc = 0; for (size_t k = b0; k < b1 && k < pk[0].size(); k++) { wa = std::max(wa, pk[0][k]); wb = std::max(wb, pk[1][k]); wc = std::max(wc, pk[2][k]); }
+      NSDictionary *ma = [A seqMirror], *mb = [B seqMirror];
+      CHECK(wb > 0.05f, "without the choke the open voice is still sounding after the closing hit (peak %.4f)", wb);
+      // What is left is the chain's own tail after the closing hit's voice (the strip and the bus), which a third host with only
+      // the closing hit shows: about as much as the cut leaves.
+      CHECK(wa < wb * 0.1f && wa < wc * 4, "with the closing hit choking, the host cut it: peak %.4f against %.4f (%.0f dB down; the closing hit alone leaves %.4f)", wa, wb, 20 * std::log10((wa + 1e-9) / wb), wc);
+      CHECK([ma[@"cuts"] intValue] >= 1 && [ma[@"cutEdits"] intValue] >= 1 && [mb[@"cuts"] intValue] == 0, "the cut is counted: %d cuts, %d edits (and %d without the choke)", [ma[@"cuts"] intValue], [ma[@"cutEdits"] intValue], [mb[@"cuts"] intValue]);
+      CHECK([ma[@"refused"] intValue] == 0 && [ma[@"late"] intValue] == 0 && [[A graphStats][@"lateEdits"] intValue] == 0, "nothing refused, no late step, no late edit");
+      [A seqStop]; [B seqStop];
     }
 
     // Stop: nothing more even when the clock runs.

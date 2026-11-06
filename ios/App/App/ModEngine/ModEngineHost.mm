@@ -154,6 +154,13 @@ struct HostSeq {
   // the host's graph lock). An event with a voice in the bank is begun; one without is a counted miss, not a crash.
   modsynth::DrumBank bank;
   std::function<int(const double *, size_t, double, uint64_t)> begin;
+  // And how to change one already begun (GraphPool::edit under the same lock): a closed hat's choke on the open hat.
+  std::function<bool(int, const double *, size_t)> edit;
+  // The hat group, and every other group by its number: voices still sounding that a choking hit can shut (voicebank.h).
+  // The score names a group by a number; the page has only the one ('hat'), but the engine does not assume it.
+  static constexpr int kGroups = 4;
+  modsynth::ChokeGroup groups[kGroups];
+  uint64_t cuts = 0, cutEdits = 0;
   // counters and the playhead ring: under `lock`
   uint64_t steps = 0, events = 0, late = 0, firstFrame = 0, recDropped = 0;
   uint64_t hits = 0, misses = 0, silent = 0, refused = 0, lateStarts = 0;
@@ -171,12 +178,22 @@ struct HostSeq {
   void play(const modsynth::DrumEvent &e, double now) {
     if (!begin) return;
     if (!(e.vel > 0)) { silent++; return; }        // the page plays nothing at a velocity of nothing either
+    // A closed or pedal hat shuts what the group is still sounding, and does it first: this hit's own voice must not
+    // be in the group yet, or it would choke its own tail (the page cuts before it registers, too). It cuts even when
+    // the bank has no voice for it, as the page's choke does not depend on how the hat itself sounds.
+    const int g = e.chokeGroup > 0 && e.chokeGroup <= kGroups ? e.chokeGroup - 1 : -1;
+    if (g >= 0 && e.chokes && edit) {
+      const int sent = groups[g].cut(e.frame, sr, edit);
+      if (sent) { cuts++; cutEdits += (uint64_t)sent; }
+    }
     const modsynth::BankEntry *en = bank.find(e.part, e.kit, e.lane);
     if (!en) { misses++; lastMissPart = e.part; lastMissKit = e.kit; lastMissLane = e.lane; return; }
     modsynth::PatchedVoice v;
     bank.patch(*en, e.vel, e.accent, e.pitch, e.frame, sr, (uint64_t)now, v);
-    if (begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame) < 0) { refused++; return; }
+    const int h = begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame);
+    if (h < 0) { refused++; return; }
     hits++;
+    if (g >= 0 && !en->chokes.empty()) groups[g].add(h, v.startFrame, e.frame, *en, sr);
     if ((double)v.startFrame + modsynth::DrumBank::kLeadFrames > (double)e.frame + 128) lateStarts++;   // began later than its lead allowed
   }
 
@@ -343,6 +360,12 @@ struct HostSeq {
         const int h = pool->begin(prog, n, base, start);
         os_unfair_lock_unlock(lk);
         return h;
+      };
+      _hostSeq->edit = [pool, lk](int handle, const double *inc, size_t n) {
+        os_unfair_lock_lock(lk);
+        const bool ok = pool->edit(handle, inc, n);
+        os_unfair_lock_unlock(lk);
+        return ok;
       };
     }
     _capLock = OS_UNFAIR_LOCK_INIT;
@@ -557,7 +580,8 @@ struct HostSeq {
   q.seq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.seq.seed((uint64_t)seed);
   const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
-  q.steps = q.events = q.late = q.recDropped = q.hits = q.misses = q.silent = q.refused = q.lateStarts = 0; q.ringN = 0; q.firstFrame = (uint64_t)first;
+  q.steps = q.events = q.late = q.recDropped = q.hits = q.misses = q.silent = q.refused = q.lateStarts = q.cuts = q.cutEdits = 0;
+  for (auto &gr : q.groups) gr.clear(); q.ringN = 0; q.firstFrame = (uint64_t)first;
   q.rec.clear();
   q.seq.start(first);
   os_unfair_lock_unlock(&q.lock);
@@ -631,6 +655,7 @@ struct HostSeq {
                       @"recDropped": @((double)q.recDropped),
                       @"hits": @((double)q.hits), @"misses": @((double)q.misses), @"silent": @((double)q.silent), @"refused": @((double)q.refused),
                       @"lateStarts": @((double)q.lateStarts), @"bank": @((double)q.bank.size()),
+                      @"cuts": @((double)q.cuts), @"cutEdits": @((double)q.cutEdits),
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
   os_unfair_lock_unlock(&q.lock);
   return r;

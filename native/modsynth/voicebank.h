@@ -25,7 +25,16 @@
 
 namespace modsynth {
 
-struct BankSlot { int i; double b; int basis; };   // basis 0: linear in the quantity, 1: linear in the semitones (pitch only)
+struct BankSlot { int i; double b; int basis; };
+
+// What a choke does to one of a lane's voices (the page's _chokeRegister: a gain, its source, and the moment the voice
+// would have finished anyway). `ops` are the page recorder's own edit records, six doubles each [node, param, op, v, t, tc],
+// recorded once for a choke at the voice's onset: their times are seconds after the choke, and are put back onto the
+// moment a hit chokes by ChokeGroup::cut.
+struct BankChoke {
+  double until = 0;          // seconds after the onset the voice ends by itself; a choke after that finds nothing to cut
+  std::vector<double> ops;
+};   // basis 0: linear in the quantity, 1: linear in the semitones (pitch only)
 
 struct BankEntry {
   int part = 0, kit = 0, lane = 0;
@@ -37,11 +46,13 @@ struct BankEntry {
   std::vector<BankSlot> vel, accent, pitch;
   std::vector<int> time;     // the slots that are times (they move 1:1 with the onset)
   std::vector<char> mul;     // per program slot: 1 where several parameters multiply
+  std::vector<BankChoke> chokes;   // empty for a lane that is in no choke group (everything but the hats)
 
   // The flat layout (all doubles), written by the page (window._nsBank):
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
   //   [9 .. 9+n) the program, then three lists (vel, accent, pitch) each `count, (index, b, basis) x count`,
-  //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply.
+  //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply,
+  //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`.
   bool fromDoubles(const double *d, size_t n);
 };
 
@@ -49,6 +60,52 @@ struct PatchedVoice {
   std::vector<double> prog;
   double timeBase = 0;       // for GraphPool::begin: program times are re-based by this
   uint64_t startFrame = 0;   // where to begin it (on the 128-frame grid)
+};
+
+// The voices in a choke group that are still sounding, so a closed or pedal hat can shut the open hat (the page's
+// _chokeReg / _chokeGroup, index.html). A choking hit calls cut() BEFORE it adds its own voice, or it would choke its own
+// tail. The cut is an edit to the pool's voice: hold the gain where the envelope has got to, fall to nothing over a
+// few milliseconds, stop the source a little after, exactly the three calls the page makes on its own nodes.
+//
+// Control-side (the sequencer thread): the edits are copied and queued, never applied here.
+class ChokeGroup {
+ public:
+  // `handle` the pool's, `startFrame` where the voice was begun (its clock zero), `onsetFrame` the note's frame.
+  void add(int handle, uint64_t startFrame, int64_t onsetFrame, const BankEntry &e, double sampleRate) {
+    // Voices that ended long ago cannot be choked by anything still to come (hits arrive in order, give or take a
+    // few milliseconds of humanize), so they only take room.
+    const double stale = (double)onsetFrame - 0.25 * sampleRate;
+    for (size_t i = 0; i < v_.size();) { if (v_[i].untilFrame < stale) v_.erase(v_.begin() + (long)i); else i++; }
+    for (const BankChoke &c : e.chokes) {
+      if (v_.size() >= kMaxVoices) v_.erase(v_.begin());
+      v_.push_back({handle, (double)startFrame, (double)onsetFrame + c.until * sampleRate, c.ops});
+    }
+  }
+  // Cuts every voice that would still be sounding at `frame`. edit(handle, ops, nDoubles) -> bool queues them.
+  // The group is empty afterwards, as the page's is.
+  template <class Edit>
+  int cut(int64_t frame, double sampleRate, Edit &&edit) {
+    int sent = 0;
+    std::vector<double> ops;
+    for (const Voice &v : v_) {
+      if (v.untilFrame <= (double)frame) continue;          // done by then
+      // A millionth of a frame early, as the voices are (DrumBank::patch): the interpreter applies an event at the first whole
+      // frame at or after its time, with no allowance for rounding, so a time meant for a whole frame must not come out above it.
+      const double t = ((double)frame - v.startFrame - 1e-6) / sampleRate;
+      ops = v.ops;
+      for (size_t k = 4; k < ops.size(); k += 6) ops[k] += t;
+      if (edit(v.handle, ops.data(), ops.size())) sent++;
+    }
+    v_.clear();
+    return sent;
+  }
+  void clear() { v_.clear(); }
+  size_t size() const { return v_.size(); }
+
+ private:
+  static constexpr size_t kMaxVoices = 64;
+  struct Voice { int handle; double startFrame, untilFrame; std::vector<double> ops; };
+  std::vector<Voice> v_;
 };
 
 class DrumBank {
