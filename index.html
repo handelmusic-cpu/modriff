@@ -9059,7 +9059,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.7</span></div>
  </div>
 </div>
 
@@ -10491,7 +10491,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11682,7 +11682,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.6';
+const MODRIFF_VERSION = '6.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -59242,6 +59242,36 @@ sqRenderMixer();
 // Expose step reset so loadSong can restart the groove from bar 1
 window._sqResetStep = function(){ sqSeqStep = 0; };
 
+// The drum score as the native sequencer reads it (native/modsynth/seqcore.h, docs/native-scheduling.md
+// slice 1): the same grid, lane faders, tunes, humanize settings and meter this file's own _sqScheduler
+// reads, as the flat array DrumScore::fromDoubles takes, plus the kit table the kit indexes point into.
+// Nothing calls it yet but the test that holds the native clock to _sqScheduler on the same score
+// (tests/seq/drumgrid.test.js); it is the page's half of "the page hands over state, the engine decides when".
+window._sqNativeScore = function(){
+ sqStashFocused();
+ var hs = window._humanState(), kits = [], d = [1, sqSteps, sqSwing, sqSwing8 ? 1 : 0,
+  (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4,
+  (typeof meterStepsPerBar==='function') ? meterStepsPerBar() : sqSteps,
+  drumsEnabled ? 1 : 0, sqTupCover ? 1 : 0,
+  hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs,
+  hs.off.indexOf('drum') >= 0 ? 1 : 0, hs.off.indexOf('auxperc') >= 0 ? 1 : 0];
+ for(var i = 0; i < 2; i++){
+  var L = sqLayers[i], M = SQM[L.mach], on = !!(L.on && L.grid && M);
+  var ki = kits.indexOf(L.mach); if(ki < 0){ ki = kits.length; kits.push(L.mach); }
+  var lk = sqLK(L.mach, i), tracks = M ? M.tracks : [];
+  d.push(on ? 1 : 0, i, ki, tracks.length);
+  for(var ti = 0; ti < tracks.length; ti++){
+   var ck = _trackChoke(tracks[ti]), row = (L.grid && L.grid[ti]) || [];
+   d.push(sqGv(lk, ti), sqGp(lk, ti), tracks[ti].play ? 1 : 0, ck ? 1 : 0, ck && ck.chokes ? 1 : 0, row.length);
+   for(var s = 0; s < row.length; s++){
+    var c = row[s] || {};
+    d.push(c.v || 0, c.vel || 0, c.p || 0, c.r || 1, c.rs || 1, c.orn || 0, c.pr || 0);
+   }
+  }
+ }
+ return {score: d, kits: kits};
+};
+
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
 // to this IIFE, not global, so the save/restore code outside it can't touch
 // them directly)
@@ -60311,6 +60341,11 @@ window.addEventListener('load', function(){ humanSync(); setTimeout(humanSync, 4
 // Exported so the melody IIFE and the drum engine share one definition of feel with the bass.
 window._humanT = function(d, part){ return _humanT(d, part); };
 window._humanV = function(a, part){ return _humanV(a, part); };
+// The feel settings _humanT / _humanV read, for the native sequencer's copy of the score (_sqNativeScore).
+window._humanState = function(){
+  return { amt: humanizeAmt, time: humanTimeMul, vel: humanVelMul, drift: humanDriftMul,
+           maxMs: HUMAN_MAX_MS, maxVel: HUMAN_MAX_VEL, maxDriftMs: HUMAN_MAX_DRIFT_MS, off: humanOff.slice() };
+};
 // The shared slow push and pull: two sines of unrelated length (about 10 s and
 // 23 s) read off the audio clock, so every part that asks at the same moment gets
 // the same answer and the band moves together. Seconds, zero when off.
