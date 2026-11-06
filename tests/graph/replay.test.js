@@ -21,7 +21,7 @@ const CLOSE_DB = parseFloat(process.env.CLOSE_DB || '50');        // close: an e
 // Voices the spike found cannot be patched this way (see docs/native-scheduling.md); the test expects them to stay that way.
 // 808 lane 6 and 909 lane 3 are noise voices whose own recordings differ with the absolute start time (the control
 // row shows the same gap with no replay involved), so a replay cannot match a recording made at another time.
-const KNOWN_DIFFERENT = ['drum 808 lane 6', 'drum 909 lane 3', 'chord (major triad, transposed)'];
+const KNOWN_DIFFERENT = ['drum 808 lane 6', 'drum 909 lane 3'];
 
 function judge(dir) {
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'cases.json'), 'utf8')); console.log('buffers handed over: ' + meta.buffers + (meta.bufferConflicts && meta.bufferConflicts.length ? ', CONFLICTING IDS ' + meta.bufferConflicts.join() : ''));
@@ -58,7 +58,7 @@ function judge(dir) {
   console.log('\nslots found by differencing (per class: voices, program sizes, then per parameter slots fitted / slots that did not obey / edits seen):');
   for (const [c, f] of Object.entries(meta.fits)) {
     if (f.skipped) { console.log('  ' + c + ': ' + f.skipped); continue; }
-    console.log('  ' + c + ': ' + f.voices + ' voice(s), sizes ' + f.len.join('/') + '; ' + Object.entries(f.params).map(([p, v]) => p + ' ' + v.slots + '/' + v.bad + (v.shape ? '' : ' SHAPE') + (v.lenBad ? ' LEN' : '') + (v.edits.some(e => e) ? ' edits' + JSON.stringify(v.edits) : '')).join(', ') + (f.time ? '; time slots ' + f.time.slots.join('/') + (f.time.bad ? ' (' + f.time.bad + ' did not obey)' : '') + (f.time.slopeOne ? ', each moves 1:1 with the start' : ', NOT all 1:1') : '') + (f.compose ? '; two-parameter slots: ' + f.compose.add + ' add, ' + f.compose.mul + ' multiply, ' + f.compose.bad + ' neither' : ''));
+    console.log('  ' + c + ': ' + f.voices + ' voice(s), sizes ' + f.len.join('/') + '; ' + Object.entries(f.params).map(([p, v]) => p + ' ' + v.slots + '/' + v.bad + (v.shape ? '' : ' SHAPE') + (v.lenBad ? ' LEN' : '') + (v.edits.some(e => e) ? ' edits' + JSON.stringify(v.edits) : '') + (v.clamped !== undefined ? ' (' + v.clamped + ' clamped)' : '')).join(', ') + (f.time ? '; time slots ' + f.time.slots.join('/') + (f.time.bad ? ' (' + f.time.bad + ' did not obey)' : '') + (f.time.slopeOne ? ', each moves 1:1 with the start' : ', NOT all 1:1') : '') + (f.compose ? '; two-parameter slots: ' + f.compose.add + ' add, ' + f.compose.mul + ' multiply, ' + f.compose.bad + ' neither' : ''));
   }
   const unexpected = Object.entries(byClass).filter(([c, v]) => v.far && !KNOWN_DIFFERENT.includes(c)).map(([c]) => c);
   const fixed = KNOWN_DIFFERENT.filter(c => byClass[c] && !byClass[c].far);
