@@ -68,7 +68,10 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
       seqScore: () => Promise.resolve({ ok: true }),
       seqBank: o => { if (o.clear) entries.length = 0; if (o.entry) entries.push(dec(o.entry)); return Promise.resolve({ ok: true }); },
       seqStart: () => Promise.resolve({ ok: true }), seqStop: () => Promise.resolve(), seqTempo: () => Promise.resolve(), seqMirror: () => Promise.resolve({}),
+      seqBassScore: o => { calls.score = (calls.score || 0) + 1; return Promise.resolve({ ok: true }); }, seqBassChords: o => { calls.chords = (calls.chords || 0) + 1; return Promise.resolve({ ok: true }); },
+      seqBassStart: o => { calls.start = o; return Promise.resolve({ ok: true }); }, seqBassStop: () => Promise.resolve(), seqBassTempo: () => Promise.resolve(),
     };
+    const calls = {};
     window.modNativePlugin = () => stub;
     modGraphEnable(stub, ['drum', 'auxperc', 'bass', 'chord', 'mel', 'melgen', 'arp']);
     _ensureAllPartBuses(offline);
@@ -96,8 +99,19 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
     window._nsBank.have = {}; window._nsBank.bad = {};
     const b1 = entries.length; await window._nsBank.ensureBass(); const b2 = entries.length; await window._nsBank.ensureBass();
     const kept = entries.length === b2;
+    // The developer entry end to end against the stand-in: _nsBass.start() records the voice (4 entries), sends the line and the chart,
+    // and starts the line with the bank's code for the voice; with Native sound off it says so; a walking line is refused.
+    window.setBlWave('triangle'); window._nsBank.have = {}; window._nsBank.bad = {};
+    window._blRestoreState({ steps: 16, follow: true, genStyle: 'funk', gridRootPc: 0, gridIntvs: [0, 4, 7], grid: Array.from({ length: 16 }, (_, i) => ({ note: i % 12, oct: 2, len: 1, slide: false, accent: false, v: 1, usr: 0 })) });
+    window._blClearChords(); window._blOnChord({ rootM: 0, ivs: [0, 4, 7], bassNote: null, isRest: false }, 1, 2, null, 0);
+    const e0 = entries.length; Object.keys(calls).forEach(k => delete calls[k]);
+    const started = await window._nsBass.start(250);
+    const entry = { ok: started.ok, sent: entries.length - e0, score: calls.score, chords: calls.chords, kit: calls.start && calls.start.kit, want: window._nsKitCode('bass:triangle'), align: calls.start && calls.start.align };
+    MODGRAPH.on = false; const off = await window._nsBass.start(); MODGRAPH.on = true;
+    window._blRestoreState({ genStyle: 'jazz', follow: true });
+    const walk = await window._nsBass.sync(); window._blRestoreState({ genStyle: 'funk', follow: true });
     const rb = await window._nsBank.buildBass('upright_real');
-    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, sentOnce: b2 - b1, kept, sampled: rb.ok ? 'ok' : rb.why };
+    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.why, sentOnce: b2 - b1, kept, sampled: rb.ok ? 'ok' : rb.why };
   }, { voices: VOICES, plain: [...ctl, ...rndCases], glide: slideCases });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
@@ -139,6 +153,8 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
   for (const [k, b] of Object.entries(by)) console.log('  ' + (b.ok === b.n ? 'ok   ' : 'FAIL ') + k.padEnd(18) + b.ok + ' of ' + b.n + ', worst ' + (b.worst < 1e8 ? b.worst.toFixed(1) : 'n/a') + ' dB' + (b.bad.length ? '\n         ' + b.bad.slice(0, 6).join('\n         ') : ''));
   ok(miss === 0, 'no note missed the bank', miss);
   ok(nOk === list.length, nOk + ' of ' + list.length + ' notes are exact (' + nExact + ' bit-identical, worst ' + worst.toFixed(1) + ' dB)', (list.length - nOk) + ' below ' + PASS_DB + ' dB');
+  ok(out.entry.ok === true && out.entry.sent === 4 && out.entry.score === 1 && out.entry.chords === 1 && out.entry.kit === out.entry.want && out.entry.align === true, '_nsBass.start(): records the voice (4 entries), sends the line and the chart, starts it on the drums\' downbeat with the voice\'s code', JSON.stringify(out.entry));
+  ok(/Native sound is off/.test(out.off || '') && /walking/.test(out.walk || ''), '_nsBass says so with Native sound off (' + out.off + ') and refuses a walking line (' + out.walk + ')', JSON.stringify([out.off, out.walk]));
   ok(out.sigChanged, 'the bass fader is part of the voice\'s signature');
   ok(out.sentOnce === 4 && out.kept, 'the voice is recorded and sent once (4 entries) and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');

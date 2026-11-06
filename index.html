@@ -9080,7 +9080,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.8</span></div>
  </div>
 </div>
 
@@ -10512,7 +10512,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11703,7 +11703,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.7';
+const MODRIFF_VERSION = '6.9.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12748,6 +12748,8 @@ function modNativePlugin(){
                      // The engine's own sequencer (window._nsDrum, a developer entry); an older binary has none of these.
                      seqScore:call('seqScore'), seqBank:call('seqBank'), seqStart:call('seqStart'), seqStop:call('seqStop'),
                      seqTempo:call('seqTempo'), seqMirror:call('seqMirror'),
+                     seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassStart:call('seqBassStart'),
+                     seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
@@ -59731,6 +59733,46 @@ window._nsDrum = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
 };
 
+// The developer entry to the engine's own bass line (docs/native-scheduling.md slice 2), beside window._nsDrum: records the bass voice
+// into the engine's bank, hands over the bass line and the chart as it stands, and starts it on the host's thread, with the drums'
+// downbeat when they are running (start _nsDrum first). Nothing in the app calls it. Needs Native sound on. The chart is the
+// chord windows the song has committed to the clock now, counted from the first of them; it does not follow a song as it plays on.
+window._nsBass = {
+ plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqBassScore ? P : null; },
+ // Records the voice if the host does not hold it under the current signature, and re-sends the line and the chart.
+ prepare: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(!MODGRAPH.on || !MODGRAPH.parts.bass) return Promise.resolve({ok: false, why: 'Native sound is off'});
+  var me = this;
+  return window._nsBank.ensureBass().then(function(rep){
+   if(rep.failed.length) return {ok: false, why: rep.failed[0].why, bank: rep};
+   return me.sync().then(function(r){ r.bank = rep; return r; });
+  });
+ },
+ sync: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var sc = window._blNativeScore();
+  if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
+  var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0];
+  return P.seqBassScore({score: _mgB64(Float64Array.from(sc.score))}).then(function(){
+   return P.seqBassChords({chords: _mgB64(Float64Array.from(wins))});
+  });
+ },
+ start: function(leadMs){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var me = this;
+  return me.prepare().then(function(rep){
+   if(rep.ok === false) return rep;
+   var bpm = parseFloat(document.getElementById('bpm').value) || 120;
+   return P.seqBassStart({bpm: bpm, rate: (typeof blRateMul !== 'undefined' ? blRateMul : 1), leadMs: leadMs || 250, align: true,
+                          kit: window._nsKitCode('bass:' + _wp('bass.voice'))}).then(function(r){ r.bank = rep.bank; return r; });
+  });
+ },
+ stop: function(){ var P = this.plugin(); return P ? P.seqBassStop() : Promise.resolve(); },
+ tempo: function(){ var P = this.plugin(); return P ? P.seqBassTempo({bpm: parseFloat(document.getElementById('bpm').value) || 120, rate: (typeof blRateMul !== 'undefined' ? blRateMul : 1)}) : Promise.resolve(); },
+ mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.bass; }) : Promise.resolve(null); }
+};
+
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
 // to this IIFE, not global, so the save/restore code outside it can't touch
 // them directly)
@@ -62387,15 +62429,18 @@ window._blNativeScore = function(){
   }
   return {ok: !why.length, why: why, score: d};
 };
-// The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`.
-window._blNativeChords = function(sr){
-  var d = [_blChordWin.length];
+// The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`, counted
+// from `origin` (seconds; the line's start -- the engine puts that where its own clock has the start).
+window._blNativeChords = function(sr, origin){
+  var d = [_blChordWin.length], o = origin || 0;
   _blChordWin.forEach(function(w){
-    d.push(w.t * sr, w.end * sr, w.rest ? 1 : 0, w.rootPc, w.bassPc == null ? -1 : w.bassPc, w.nextPc == null ? -1 : w.nextPc, w.pcs.length);
+    d.push((w.t - o) * sr, (w.end - o) * sr, w.rest ? 1 : 0, w.rootPc, w.bassPc == null ? -1 : w.bassPc, w.nextPc == null ? -1 : w.nextPc, w.pcs.length);
     w.pcs.forEach(function(x){ d.push(x); });
   });
   return d;
 };
+// The chart counted from its first window, which is where the engine starts the line (window._nsBass).
+window._blNativeChordsFromFirst = function(sr){ return window._blNativeChords(sr, _blChordWin.length ? _blChordWin[0].t : 0); };
 // Where the step clock is, and a way to put it somewhere: for the tests that run this scheduler on a clock of their own.
 window._blClock = function(){ return {t: blNextT, step: blSeqStep, playing: blPlaying}; };
 window._blSetClock = function(t, step, playing){ blNextT = t; blSeqStep = step || 0; blPlaying = !!playing; _blPrevSlide = false; _blPrevFreq = 0; };
