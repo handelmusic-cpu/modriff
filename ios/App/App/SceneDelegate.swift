@@ -45,6 +45,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tellPage("modriff-foreground")
     }
 
+    #if targetEnvironment(macCatalyst)
+    // Switching to another Mac app and back leaves the web view without keyboard
+    // focus (document.hasFocus() stays false), so musical typing is dead on every
+    // screen until a click, and the page's own recovery never runs: it waits for
+    // a window `focus` event that only comes once the web view has focus again.
+    // Giving it back here makes WebKit fire that event itself. The engine check
+    // covers a stop the scene callbacks never reported (Catalyst does not send a
+    // background/foreground pair for every app switch).
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        ModEngine.shared?.appBecameActive()
+        let vc = window?.rootViewController as? ModRiffViewController
+        vc?.takeKeyboard()
+        // Once more shortly after: the window can still be becoming key on the
+        // first call, and a first responder asked for too early is refused.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { vc?.takeKeyboard() }
+    }
+    #endif
+
     private func tellPage(_ name: String) {
         let vc = window?.rootViewController as? ModRiffViewController
         vc?.webView?.evaluateJavaScript("window.dispatchEvent(new Event('\(name)'))", completionHandler: nil)
