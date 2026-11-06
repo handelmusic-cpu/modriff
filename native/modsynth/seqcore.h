@@ -117,6 +117,32 @@ class Rng {
   uint64_t s_[4];
 };
 
+
+// The page's feel, as free functions of a generator, so the drum grid and the bass line draw them one way:
+//   stepProb    _stepProb: a probability strictly between 0 and 100 is a coin; anything else always plays.
+//   humanT/V    _humanT / _humanV. The drift is the page's two slow sines, read at the step's own time (the page reads
+//               its audio clock when it schedules, a look-ahead earlier: the periods are 9.7 s and 23.1 s).
+struct Feel {
+  static bool stepProb(Rng &rng, double p) { return !(p > 0 && p < 100) || rng.next() * 100 < p; }
+  static double drift(const Humanize &h, double sr, double atFrame) {
+    const double t = atFrame / sr;
+    const double w = std::sin(t * 2 * M_PI / 9.7 + 1.3) * 0.6 + std::sin(t * 2 * M_PI / 23.1 + 4.1) * 0.4;
+    return w * (h.maxDriftMs / 1000.0) * h.amt * h.driftMul;
+  }
+  // Seconds; `on` is whether this part is humanized at all (Settings > Humanize can switch a part out).
+  static double humanT(Rng &rng, const Humanize &h, double sr, bool on, bool downbeat, double atFrame) {
+    if (h.amt <= 0 || !on) return 0;
+    const double span = (h.maxMs / 1000.0) * h.amt * h.timeMul * (downbeat ? 0.5 : 1);
+    return (rng.next() * 2 - 1) * span + drift(h, sr, atFrame);
+  }
+  static double humanV(Rng &rng, const Humanize &h, bool on, bool accent) {
+    if (h.amt <= 0 || !on) return 1.0;
+    const double span = h.maxVel * h.amt * h.velMul * (accent ? 0.6 : 1);
+    const double v = 1.0 - rng.next() * span;
+    return v > 0.35 ? v : 0.35;
+  }
+};
+
 // The frame-counted clock and the drum grid on it.
 class DrumSequencer {
  public:
@@ -201,28 +227,10 @@ class DrumSequencer {
     return false;
   }
 
-  // _stepProb: a probability strictly between 0 and 100 is a coin; anything else always plays.
-  bool stepProb(const DrumCell &c) { const double p = c.pr; return !(p > 0 && p < 100) || rng_.next() * 100 < p; }
-
-  // _humanT / _humanV. The drift is the page's two slow sines, read at the step's own time (the page reads its
-  // audio clock when it schedules, a look-ahead earlier: the periods are 9.7 s and 23.1 s).
-  double humanDrift(double atFrame) const {
-    const double t = atFrame / sr_;
-    const double w = std::sin(t * 2 * M_PI / 9.7 + 1.3) * 0.6 + std::sin(t * 2 * M_PI / 23.1 + 4.1) * 0.4;
-    return w * (score_.hum.maxDriftMs / 1000.0) * score_.hum.amt * score_.hum.driftMul;
-  }
+  bool stepProb(const DrumCell &c) { return Feel::stepProb(rng_, c.pr); }
   bool humanOn(int layer) const { return !score_.hum.partOff[layer]; }
-  double humanT(bool downbeat, int layer, double atFrame) {
-    if (score_.hum.amt <= 0 || !humanOn(layer)) return 0;
-    const double span = (score_.hum.maxMs / 1000.0) * score_.hum.amt * score_.hum.timeMul * (downbeat ? 0.5 : 1);
-    return (rng_.next() * 2 - 1) * span + humanDrift(atFrame);
-  }
-  double humanV(bool accent, int layer) {
-    if (score_.hum.amt <= 0 || !humanOn(layer)) return 1.0;
-    const double span = score_.hum.maxVel * score_.hum.amt * score_.hum.velMul * (accent ? 0.6 : 1);
-    const double v = 1.0 - rng_.next() * span;
-    return v > 0.35 ? v : 0.35;
-  }
+  double humanT(bool downbeat, int layer, double atFrame) { return Feel::humanT(rng_, score_.hum, sr_, humanOn(layer), downbeat, atFrame); }
+  double humanV(bool accent, int layer) { return Feel::humanV(rng_, score_.hum, humanOn(layer), accent); }
 
   template <class Emit>
   void fireStep(int s, double t, double sd, Emit &emit) {

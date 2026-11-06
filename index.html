@@ -62129,6 +62129,39 @@ window.setBlGenStyle = function(st){
 };
 window._blGenStyle = function(){ return blGenStyle; };
 
+// The engine's copy of the bass line (docs/native-scheduling.md, slice 2; native/modsynth/basscore.h reads this layout).
+// {ok, why[], score[]}: `ok` is false, and `why` names what, when the engine cannot yet play this line as the page would --
+// the walking line, a locked phrase on a chord that is coming, a line written ahead for the next chord -- so a caller
+// never starts the engine on a line it would get wrong.
+window._blNativeScore = function(){
+  var why = [], hs = window._humanState();
+  if(blFollow && blGenStyle === 'jazz') why.push('the walking line (Jazz style with Follow on)');
+  if(blFollow) for(var i = 0; i < _blChordWin.length; i++) if(!_blChordWin[i].rest && _blLockFor(_blChordWin[i])){ why.push('a locked phrase'); break; }
+  if(_blPendingAt != null) why.push('a line written ahead for the next chord');
+  var scale = _blScalePcs();
+  var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
+  _blGridIntvs.forEach(function(x){ d.push(x); });
+  d.push(scale.length); scale.forEach(function(x){ d.push(x); });
+  d.push(BL_STEP_VEL, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('bass') >= 0 ? 1 : 0, blSteps);
+  for(var s = 0; s < blSteps; s++){
+    var c = blGrid[s] || {};
+    d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
+  }
+  return {ok: !why.length, why: why, score: d};
+};
+// The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`.
+window._blNativeChords = function(sr){
+  var d = [_blChordWin.length];
+  _blChordWin.forEach(function(w){
+    d.push(w.t * sr, w.end * sr, w.rest ? 1 : 0, w.rootPc, w.bassPc == null ? -1 : w.bassPc, w.nextPc == null ? -1 : w.nextPc, w.pcs.length);
+    w.pcs.forEach(function(x){ d.push(x); });
+  });
+  return d;
+};
+// Where the step clock is, and a way to put it somewhere: for the tests that run this scheduler on a clock of their own.
+window._blClock = function(){ return {t: blNextT, step: blSeqStep, playing: blPlaying}; };
+window._blSetClock = function(t, step, playing){ blNextT = t; blSeqStep = step || 0; blPlaying = !!playing; _blPrevSlide = false; _blPrevFreq = 0; };
+
 window.blToggleFollow = function(){
   blFollow = !blFollow;
   _blWalkPrev = 0;
