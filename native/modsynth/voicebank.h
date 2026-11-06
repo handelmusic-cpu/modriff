@@ -16,6 +16,7 @@
 // Control-side code: patching allocates (it makes a new program), so it runs on the sequencer thread, never in the
 // render callback.
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +27,10 @@
 namespace modsynth {
 
 struct BankSlot { int i; double b; int basis; };
+
+// A slot that follows the note's length: value = a + b * dur, held at `cap` from above (mode 1, min) or from below (mode 2, max),
+// or not held at all (mode 0). The bass voice's envelope times are these (the page's `Math.min(0.09, dur * 0.35)` is mode 1).
+struct DurSlot { int i; double a, b; int mode; double cap; double at(double d) const { const double v = a + b * d; return mode == 1 ? (v < cap ? v : cap) : mode == 2 ? (v > cap ? v : cap) : v; } };
 
 // What a choke does to one of a lane's voices (the page's _chokeRegister: a gain, its source, and the moment the voice
 // would have finished anyway). `ops` are the page recorder's own edit records, six doubles each [node, param, op, v, t, tc],
@@ -50,13 +55,22 @@ struct BankEntry {
   // Slots the voice never lets fall below a constant (a gain or ramp target is max(0.0002, ...)): the page found them from
   // soft hits, where the linear fit goes under the floor. The patched value is held at it.
   std::vector<std::pair<int, double>> floors;
+  // The bass voice (part 2) is a lane of its own kind: a pitch that is the note (refPitch, MIDI), a length (the slots above,
+  // `dur`), and a variant that glides from the previous note (its own entry, lane 1, with `from` slots). Zero for the drums.
+  double refPitch = 0, refDur = -1, refFrom = 0;
+  std::vector<DurSlot> dur;
+  std::vector<BankSlot> from;      // linear in 2^(from/12) (basis 0) or in the note number (basis 1)
+  struct Held { int i; double lo, hi; };
+  std::vector<double> cutOps;      // what a note that starts inside this one's tail does to it: six doubles an edit, times seconds after that note's start
+  std::vector<Held> held;          // pitch slots held to [lo, hi] (a playback rate that follows the note inside the roll, not past its ends)
 
   // The flat layout (all doubles), written by the page (window._nsBank):
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
   //   [9 .. 9+n) the program, then three lists (vel, accent, pitch) each `count, (index, b, basis) x count`,
   //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply,
   //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`,
-  //   then (optional, only after the chokes) `count, (index, floor) x count`.
+  //   then (optional, only after the chokes) `count, (index, floor) x count`,
+  //   then (optional, the bass: only after the floors) `refPitch, refDur, refFrom, count, (index, a, b, mode, cap) x count, count, (index, b, basis) x count, count, (index, lo, hi) x count, nDoubles, cutOps`.
   bool fromDoubles(const double *d, size_t n);
 };
 
@@ -135,12 +149,13 @@ class DrumBank {
   // The voice for a hit: its program patched for this velocity, accent and pitch, and where and when to begin it.
   // `onsetFrame` is the frame the note should sound on; `notBefore` the earliest frame a voice can still be begun at
   // (a hit that is already late starts there).
+  // `durSec` and `fromMidi` are the bass's length and the note it glides from; the drums leave them out.
   bool patch(const BankEntry &e, double vel, bool accent, double pitchSemis, int64_t onsetFrame, double sampleRate,
-             uint64_t notBefore, PatchedVoice &out) const {
+             uint64_t notBefore, PatchedVoice &out, double durSec = -1, double fromMidi = -1) const {
     const size_t n = e.prog.size();
     out.prog = e.prog;
     std::vector<unsigned char> cnt(n, 0);
-    for (const auto *l : {&e.vel, &e.accent, &e.pitch}) for (const BankSlot &s : *l) if (s.i >= 0 && (size_t)s.i < n) cnt[(size_t)s.i]++;
+    for (const auto *l : {&e.vel, &e.accent, &e.pitch, &e.from}) for (const BankSlot &s : *l) if (s.i >= 0 && (size_t)s.i < n) cnt[(size_t)s.i]++;
     // Each parameter has one or two bases (a slot is linear in either): the value now and the reference's, per basis.
     auto apply = [&](const std::vector<BankSlot> &l, double xA, double x0A, double xB, double x0B) {
       for (const BankSlot &s : l) {
@@ -156,7 +171,11 @@ class DrumBank {
     };
     apply(e.vel, vel, e.refVel, vel, e.refVel);
     apply(e.accent, accent ? 1.0 : 0.0, 0.0, accent ? 1.0 : 0.0, 0.0);
+    pitchSemis -= e.refPitch;
     apply(e.pitch, std::pow(2.0, pitchSemis / 12.0), 1.0, pitchSemis, 0.0);
+    if (!e.from.empty() && fromMidi >= 0) apply(e.from, std::pow(2.0, fromMidi / 12.0), std::pow(2.0, e.refFrom / 12.0), fromMidi, e.refFrom);
+    for (const auto &h : e.held) out.prog[(size_t)h.i] = std::min(std::max(out.prog[(size_t)h.i], h.lo), h.hi);
+    if (!e.dur.empty() && durSec >= 0) for (const DurSlot &d : e.dur) if (d.i >= 0 && (size_t)d.i < n) out.prog[(size_t)d.i] = d.at(durSec);
     // Begin on the grid, a lead before the onset; the few frames the grid cannot reach go into the time slots.
     int64_t start = onsetFrame - kLeadFrames;
     start -= ((start % kQuantum) + kQuantum) % kQuantum;
