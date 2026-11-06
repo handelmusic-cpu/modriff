@@ -17,6 +17,7 @@ verification, App Store Connect, screenshots. New features wait unless asked.
 | what to check on a phone | `docs/phone-test-checklist.md` |
 | Dynamic Island light | `docs/dynamic-island.md` |
 | plan, native steps, open problems | `docs/v5-architecture.md` (keep current when a step lands or a decision changes) |
+| background audio: moving the sequencers to the engine | `docs/native-scheduling.md` |
 
 ## Shipping
 
