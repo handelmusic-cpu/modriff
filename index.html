@@ -9080,7 +9080,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.7</span></div>
  </div>
 </div>
 
@@ -10512,7 +10512,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11703,7 +11703,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.6';
+const MODRIFF_VERSION = '6.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13849,7 +13849,12 @@ function _mgFlush(){
  var list = MODGRAPH.pending; MODGRAPH.pending = [];
  list.forEach(function(rec){
   var inc = rec.takeIncrements();
-  if(rec.capturing){ rec.capturedEdits = inc.length; return; }
+  if(rec.capturing){
+   // Kept, not dropped: the bank reads what a LATER voice does to this one (the bass cuts the note before it, _nsBank.buildBass).
+   rec.capturedEdits = (rec.capturedEdits || 0) + inc.length;
+   if(inc.length){ var was = rec.capturedInc || []; rec.capturedInc = was.concat(Array.from(inc)); }
+   return;
+  }
   if(!inc.length || !MODGRAPH.plugin) return;
   try{ MODGRAPH.plugin.graphEdit({ gid:rec.gid, increments:_mgB64(inc) }); MODGRAPH.edits++; }catch(e){}
  });
@@ -59457,6 +59462,216 @@ window._nsBank = {
   var fl = Object.keys(floors);
   d.push(fl.length); fl.forEach(function(i){ d.push(+i, floors[i]); });
   return {ok: true, entry: Float64Array.from(d), slots: {vel: fv.slots.length, accent: fa.length, pitch: fpl.length, time: ft.slots.length, mul: mul.length, chokes: chk.length, floors: fl.length}};
+ },
+ // The bass voice's entries (the engine's bass, docs/native-scheduling.md slice 2): the voice recorded once and probed the way a drum
+ // lane is -- velocity, accent, pitch (the note), the start time, the soft-hit floors -- and also the LENGTH, whose slots clamp
+ // (a plucked envelope's `min(0.09, dur * 0.35)`), and the glide: a note that slides from the previous one has its own program (the
+ // frequency ramp), so it is a second entry with the note it glides from as one more quantity. Returns {ok, entries:[Float64Array]}
+ // (plain, then glide) or {ok:false, why}. Voices that are samples are refused: their program names a recording per note.
+ buildBass: async function(voice){
+  if(!MODGRAPH.on || !MODGRAPH.parts.bass) return {ok: false, why: 'the bass part is not on the graph path (Native sound)'};
+  var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD;
+  var REFN = 41, REFD = 0.25, REFV = 0.7, REFFROM = 36;
+  if(typeof BASS_SAMPLED !== 'undefined' && BASS_SAMPLED[voice]) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  // Four programs: the note's own `slide` (it runs into the next one: a longer tail) and `from` (it starts gliding from the last) are
+  // independent, and each changes the voice. Lane = slide * 2 + glide.
+  var entries = [];
+  for(var variant = 0; variant < 4; variant++){
+   var glides = (variant & 1) === 1;
+   var base = {kind: 'note', part: 'bass', id: 1, note: REFN, vel: REFV, accent: false, slide: (variant & 2) === 2, from: glides ? REFFROM : null, at: AT0, dur: REFD, tune: 0};
+   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o)); };
+   var tag = ['', ' (gliding)', ' (sliding)', ' (sliding and gliding)'][variant];
+   await R({});
+   var ref = await R({});
+   if(!ref) return {ok: false, why: 'makes no voice'};
+   if(ref.edits) return {ok: false, why: 'edits itself after it starts'};
+   var P0 = ref.prog, n = P0.length;
+   var rec = async function(o){ var r = await R(o); return r && r.prog.length === n && !r.edits ? r.prog : null; };
+   var must = async function(o, what){ var p = await rec(o); if(!p) throw new Error('the program changes size with ' + what + tag); return p; };
+   try {
+    var v1 = await must({vel: 0.35}, 'velocity 0.35'), v2 = await must({vel: 0.5}, 'velocity 0.5'), ac = await must({accent: true}, 'accent');
+    // The note: sizes across the roll's whole range first (the Triangle drum lane taught that a program can change size at a pitch).
+    var mp = {};
+    for(var mi = 0, ms = [28, 33, 47, 59, 64, 70, 76]; mi < ms.length; mi++) mp[ms[mi]] = await must({note: ms[mi]}, 'note ' + ms[mi]);
+    var p1 = await must({note: 30}, 'note 30'), p2 = await must({note: 52}, 'note 52');
+    var t1 = await must({at: AT0 + 0.02}, 'start time +20 ms'), t2 = await must({at: AT0 + 0.05}, 'start time +50 ms');
+    var durs = [0.05, 0.1, 0.18, 0.4, 0.8, 1.6, 3.2], dp = [];
+    for(var di = 0; di < durs.length; di++) dp.push(await must({dur: durs[di]}, 'length ' + durs[di]));
+    var f1, f2;
+    if(glides){ f1 = await must({from: 30}, 'glide from 30'); f2 = await must({from: 50}, 'glide from 50'); }
+   } catch(e){ return {ok: false, why: String(e.message || e)}; }
+   var fv = this._fit(P0, REFV, v1, 0.35, v2, 0.5);
+   if(fv.bad.length) return {ok: false, why: fv.bad.length + ' velocity slots are not linear' + tag};
+   var fa = []; for(var i = 0; i < n; i++) if(ac[i] !== P0[i]) fa.push([i, ac[i] - P0[i]]);
+   var x2 = function(p){ return Math.pow(2, p / 12); };
+   var fp = this._fit(P0, 1, p1, x2(30 - REFN), p2, x2(52 - REFN)), fpl = fp.slots.map(function(q){ return [q[0], q[1], 0]; });
+   if(fp.bad.length){
+    var fq = this._fit(P0, 0, p1, 30 - REFN, p2, 52 - REFN), okq = {}; fq.slots.forEach(function(q){ okq[q[0]] = q[1]; });
+    var rest = fp.bad.filter(function(i){ return okq[i] === undefined; });
+    if(rest.length) return {ok: false, why: rest.length + ' pitch slots follow neither frequency nor note number' + tag};
+    fp.bad.forEach(function(i){ fpl.push([i, okq[i], 1]); });
+   }
+   // The register: a slot can follow the note in the middle of the roll and be held at both ends of it (the plucked voice's
+   // noise burst plays at freq/70 held to 0.6..2.4). The notes beyond the two the line was fitted on say where it is held.
+   var pclamp = {}, inPitch = {};
+   fpl.forEach(function(q){ inPitch[q[0]] = q; });
+   for(var mk in mp){
+    var mnote = +mk, mP = mp[mk];
+    for(var i = 0; i < n; i++){
+     var q = inPitch[i], pred = P0[i];
+     if(q) pred = P0[i] + q[1] * ((q[2] ? mnote - REFN : x2(mnote - REFN)) - (q[2] ? 0 : 1));
+     if(Math.abs(pred - mP[i]) <= 1e-9 * Math.max(1, Math.abs(mP[i]))) continue;
+     if(!q) return {ok: false, why: 'slot ' + i + ' changes only at the extremes of the roll (note ' + mnote + ')' + tag};
+     var c = pclamp[i] = pclamp[i] || {lo: -1e300, hi: 1e300};
+     if(mP[i] > pred){ if(c.lo !== -1e300 && c.lo !== mP[i]) return {ok: false, why: 'slot ' + i + ' is held at two different lower bounds' + tag}; c.lo = mP[i]; }
+     else { if(c.hi !== 1e300 && c.hi !== mP[i]) return {ok: false, why: 'slot ' + i + ' is held at two different upper bounds' + tag}; c.hi = mP[i]; }
+    }
+   }
+   for(var mk2 in mp){
+    var mn2 = +mk2;
+    for(var si in pclamp){
+     var q2 = inPitch[si], pr2 = P0[si] + q2[1] * ((q2[2] ? mn2 - REFN : x2(mn2 - REFN)) - (q2[2] ? 0 : 1));
+     pr2 = Math.min(Math.max(pr2, pclamp[si].lo), pclamp[si].hi);
+     if(Math.abs(pr2 - mp[mk2][si]) > 1e-9 * Math.max(1, Math.abs(mp[mk2][si]))) return {ok: false, why: 'slot ' + si + ' is not a line held at its ends (note ' + mn2 + ')' + tag};
+    }
+   }
+   var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
+   if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time' + tag};
+   if(ft.slots.some(function(q){ return Math.abs(q[1] - 1) > 1e-9; })) return {ok: false, why: 'a time slot that does not move 1:1' + tag};
+   // The length. Eight points (the reference's too); each slot is a line held from above or below, or a line.
+   var dx = [REFD].concat(durs), dy = [P0].concat(dp);
+   var order = dx.map(function(_, i){ return i; }).sort(function(a, b){ return dx[a] - dx[b]; });
+   var dslots = [], dbad = [];
+   var close = function(a, b){ return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)); };
+   for(var i = 0; i < n; i++){
+    var ys = order.map(function(k){ return dy[k][i]; }), xs = order.map(function(k){ return dx[k]; });
+    if(ys.every(function(y){ return y === ys[0]; })) continue;
+    var found = null;
+    for(var k = 0; k + 1 < xs.length && !found; k++){
+     if(ys[k] === ys[k + 1]) continue;
+     var b = (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k]), a = ys[k] - b * xs[k];
+     var models = [[0, 0], [1, ys[ys.length - 1]], [2, ys[ys.length - 1]], [1, ys[0]], [2, ys[0]]];
+     for(var m = 0; m < models.length && !found; m++){
+      var okm = true;
+      for(var q = 0; q < xs.length && okm; q++){
+       var lv = a + b * xs[q], mv = models[m][0] === 1 ? Math.min(lv, models[m][1]) : models[m][0] === 2 ? Math.max(lv, models[m][1]) : lv;
+       if(!close(mv, ys[q])) okm = false;
+      }
+      if(okm) found = [i, a, b, models[m][0], models[m][1]];
+     }
+    }
+    if(found) dslots.push(found); else dbad.push(i);
+   }
+   if(dbad.length) return {ok: false, why: dbad.length + ' length slots are neither a line nor a line held at one end' + tag};
+   // A slot that moves with the length must move with nothing else (the joint check below cannot compose a clamp with a product).
+   var movers = {}; [fv.slots, fa, fpl].forEach(function(l){ l.forEach(function(q){ movers[q[0]] = 1; }); });
+   var shared = dslots.filter(function(q){ return movers[q[0]]; });
+   if(shared.length) return {ok: false, why: shared.length + ' slots follow the length and another quantity' + tag};
+   // The soft hits: which slots clamp at a low velocity (the drums' floors).
+   var velSlot = {}; fv.slots.forEach(function(q){ velSlot[q[0]] = q[1]; });
+   var floors = {};
+   for(var li = 0, lows = [0.15, 0.05]; li < lows.length; li++){
+    var pl = await rec({vel: lows[li]});
+    if(!pl) return {ok: false, why: 'the program changes size at velocity ' + lows[li] + tag};
+    for(var i = 0; i < n; i++){
+     var pred = P0[i] + (velSlot[i] || 0) * (lows[li] - REFV);
+     if(Math.abs(pred - pl[i]) <= 1e-9 * Math.max(1, Math.abs(pl[i]))) continue;
+     if(velSlot[i] !== undefined && pl[i] > pred && (floors[i] === undefined || floors[i] === pl[i])) floors[i] = pl[i];
+     else return {ok: false, why: 'slot ' + i + ' leaves the velocity line at ' + lows[li] + ' other than by a floor' + tag};
+    }
+   }
+   // The glide: the note it comes from.
+   var ffit = [];
+   if(glides){
+    var gf = this._fit(P0, x2(REFFROM), f1, x2(30), f2, x2(50)), gl = gf.slots.map(function(q){ return [q[0], q[1], 0]; });
+    if(gf.bad.length){
+     var gq = this._fit(P0, REFFROM, f1, 30, f2, 50), okg = {}; gq.slots.forEach(function(q){ okg[q[0]] = q[1]; });
+     var rg = gf.bad.filter(function(i){ return okg[i] === undefined; });
+     if(rg.length) return {ok: false, why: rg.length + ' glide slots follow neither frequency nor note number'};
+     gf.bad.forEach(function(i){ gl.push([i, okg[i], 1]); });
+    }
+    ffit = gl;
+   }
+   // Slots two quantities move: add or multiply, from one joint recording.
+   var jn = await rec({vel: 0.35, accent: true, note: 30, from: glides ? 50 : null});
+   if(!jn) return {ok: false, why: 'the joint recording changes size' + tag};
+   var touch = {};
+   var tally = function(list, x0, x){ list.forEach(function(q){ (touch[q[0]] = touch[q[0]] || []).push([q[1], x0, x]); }); };
+   tally(fv.slots, REFV, 0.35); tally(fa, 0, 1);
+   tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(30 - REFN)); tally(fpl.filter(function(q){ return q[2]; }), 0, 30 - REFN);
+   if(glides){ tally(ffit.filter(function(q){ return !q[2]; }), x2(REFFROM), x2(50)); tally(ffit.filter(function(q){ return q[2]; }), REFFROM, 50); }
+   var mul = [];
+   for(var ck in pclamp) if((touch[ck] || []).length > 1) return {ok: false, why: 'slot ' + ck + ' is held at the ends of the roll and also follows another quantity' + tag};
+   for(var key in touch){
+    var L = touch[key]; if(L.length < 2) continue;
+    var add = P0[key], mu = P0[key];
+    L.forEach(function(c){ add += c[0] * (c[2] - c[1]); mu *= P0[key] !== 0 ? ((P0[key] - c[0] * c[1]) + c[0] * c[2]) / P0[key] : 1; });
+    var near = function(v){ return Math.abs(v - jn[key]) <= 1e-9 * Math.max(1, Math.abs(jn[key])); };
+    if(near(add)) continue;
+    if(near(mu)) mul.push(+key); else return {ok: false, why: 'slot ' + key + ' follows several quantities in a way that is neither a sum nor a product' + tag};
+   }
+   var d = [1, 2, window._nsKitCode('bass:' + voice), variant, ++this.gen, AT0, LEAD, REFV, n];
+   for(var j = 0; j < n; j++) d.push(P0[j]);
+   var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
+   put(fv.slots.map(function(q){ return [q[0], q[1], 0]; })); put(fa.map(function(q){ return [q[0], q[1], 0]; })); put(fpl);
+   d.push(ft.slots.length); ft.slots.forEach(function(q){ d.push(q[0]); });
+   d.push(mul.length); mul.forEach(function(q){ d.push(q); });
+   d.push(0);                                                    // no chokes
+   var fl = Object.keys(floors); d.push(fl.length); fl.forEach(function(i){ d.push(+i, floors[i]); });
+   d.push(REFN, REFD, glides ? REFFROM : 0, dslots.length); dslots.forEach(function(q){ d.push(q[0], q[1], q[2], q[3], q[4]); });
+   put(ffit);
+   var pk = Object.keys(pclamp); d.push(pk.length); pk.forEach(function(i){ d.push(+i, pclamp[i].lo, pclamp[i].hi); });
+   // What the NEXT note does to this one: a bass is monophonic, so a note that starts inside the tail of the one before cuts it (the
+   // voice code fades the previous gain over 15 ms). Recorded the way the page does it: this voice, then another that starts
+   // inside its tail, and the edits the second made on the first are the template, their times kept as seconds after the second's
+   // start. They do not depend on the level (checked at two), and they are the same edits whatever the second note is.
+   var cutOf = async function(velA){
+    self.keepRecs = true; self.recs = [];
+    try {
+     window._chokeReset();
+     await self.record(Object.assign({}, base, {vel: velA}));
+     await self.record(Object.assign({}, base, {at: AT0 + 0.05, note: REFN + 2}));
+     await Promise.resolve(); await Promise.resolve();
+     return (self.recs[0].capturedInc || []).slice();
+    } finally { self.keepRecs = false; self.recs = []; }
+   };
+   var ca = await cutOf(REFV), cb = await cutOf(0.35);
+   if(ca.length !== cb.length || ca.some(function(x, i){ return x !== cb[i]; })) return {ok: false, why: 'the cut of the previous note depends on its level' + tag};
+   if(ca.length % 6) return {ok: false, why: 'the cut of the previous note is not whole edit records' + tag};
+   // The page cuts with cancelScheduledValues(t), setValueAtTime(gain.value, t), a 15 ms ramp to nothing. That is not replayable as it
+   // is: cancelScheduledValues removes the ramps ahead of t, so the note holds flat from wherever the page's pending edit found it
+   // (before the note had begun, the whole way), and the engine learns of the next note later than the page schedules it. Worse, a
+   // note that has not begun when the page calls reads a gain of 1 (the node's default), so the fade starts from 1, louder than the
+   // note. What the code says it means ("cut whatever is still sounding right at the new note's onset") is hold the gain where it
+   // is at t and fade from there: cancelAndHold, which the recorder and the interpreter agree on and which a late edit cannot
+   // change the past of. The edits that go to the engine are those, on the node the page's cut was aimed at.
+   var cutOps = [];
+   for(var ci = 0; ci < ca.length; ci += 6){
+    var op = ca[ci + 2];
+    if(op === 0) continue;                                       // the set to the node's current value
+    cutOps.push(ca[ci], ca[ci + 1], op === 4 ? 5 : op, ca[ci + 3], ca[ci + 4] - (AT0 + 0.05), ca[ci + 5]);
+   }
+   if(!cutOps.length) return {ok: false, why: 'the voice records no cut of the note before it' + tag};
+   d.push(cutOps.length); cutOps.forEach(function(x){ d.push(x); });
+   entries.push(Float64Array.from(d));
+  }
+  return {ok: true, entries: entries};
+ },
+ // The bass voice's signature: what a recording of it bakes in -- the voice, the part's level, the filter, the mixer fader.
+ signatureBass: function(){
+  return JSON.stringify([_wp('bass.voice'), _wp('bass.level'), _wp('bass.cutoff'), _wp('bass.resonance'), _wp('mix.bass')]);
+ },
+ // The bass voice, recorded and sent if the host does not hold it under the current signature. Resolves {built, kept, failed}.
+ ensureBass: async function(){
+  var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
+  if(!P) return rep;
+  if(typeof modParamsSync==='function') modParamsSync();
+  var voice = _wp('bass.voice'), sig = this.signatureBass(), key = 'bass:' + voice;
+  if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; return rep; }
+  var r = await this.buildBass(voice);
+  if(r.ok){ for(var i = 0; i < r.entries.length; i++) await P.seqBank({entry: _mgB64(r.entries[i])}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+  else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, why: r.why}); }
+  return rep;
  },
  // What a recording of this lane has baked in: the Drums (or Aux) fader, and the lane's Shape. The same lane recorded under
  // another signature is another voice.

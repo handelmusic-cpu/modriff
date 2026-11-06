@@ -606,3 +606,59 @@ root, so a slash chord was never asked. The mutation check (above) is what found
   (a voice per note, `from` for the glide, the monophonic cut of the previous note) is the next piece.
 - *The chord comp* and its choke of the previous chord; the *melody* uses the same timeline (slice 3).
 - *The host*: nothing runs this on the host thread yet. Not heard on device: nothing is audible; the only app change is exports no one calls.
+
+## Slice 2, part two (6.9.9.7): the bass voice bank, the cut of the note before, and a whole line against the page
+
+**What was chosen, and why.** The bass line's events (part one) needed voices. The spike had found the bass replays exactly with pitch and
+duration as slots, so the engine's bass is a bank like the drums': the page records each voice once (`window._nsBank.buildBass`), maps
+which numbers in the program follow the quantities a note has, and the engine patches a program for any note (`BankEntry::patch`, the
+same code as the drums, with two more quantities). The bass is part 2 of the same bank; a voice is four entries, because the note's own
+`slide` (it runs into the next: a longer tail) and `from` (it starts gliding from the last note: a frequency ramp) are independent and
+each changes the program. `BassPlayer` (`bassplay.h`, the host thread's code once the host runs it) picks the entry, patches it, begins
+it in the pool, and cuts the note before it.
+
+**What the probe finds, beyond the drums' (velocity, accent, pitch, start time, soft-hit floors).**
+- *The length.* Every envelope time is `a + b * dur` held at one end (a plucked voice's `min(0.09, dur * 0.35)`), fitted from eight
+  lengths (30 ms to 3.2 s) as a line, a line held from above or a line held from below; a slot that is none of these refuses the voice.
+- *The glide:* the note it comes from, linear in frequency or in the note number, as pitch is.
+- *The ends of the roll.* The plucked (Electric) voice's noise burst plays at `freq / 70` held to 0.6 to 2.4, so its rate follows the
+  note in the middle of the roll and is flat at both ends. The first version banked it from the notes 30 and 52 and was 38 to 60 dB off
+  at 28, 55, 64, 67, 72 and 76. The probe now checks the notes beyond the two it fitted on, finds the bounds, and the entry carries them.
+- *The cut.* A bass is monophonic: a note that starts inside the tail of the one before fades it over 15 ms. The page does that with
+  `cancelScheduledValues`, a `setValueAtTime` of the gain's current value and a ramp, and the probe reads exactly those edits from the
+  recorder (the second note's voice code writes them onto the first note's recorder; `_mgFlush` now keeps them in a captured recording
+  instead of dropping them). They are **not** replayed as they are, for two reasons in the page's code. `cancelScheduledValues` removes
+  the ramps ahead of the cut, so what a note does before the cut depends on whether the edit arrives before the note begins (the
+  page schedules ahead, so it usually does) or after (the engine learns of the next note up to a lookahead before it sounds, so a long
+  note is already playing): the same edit gives two notes. And a note that has not begun when the page calls reads a gain of 1, the
+  node's default, so the page's fade starts from 1, not from the note's level. The engine's cut is what the code's comment says it
+  means, "cut whatever is still sounding right at the new note's onset": hold the gain at the onset (`cancelAndHold`, which the
+  interpreter and the recorder agree on and a late edit cannot change the past of) and fade it over the same 15 ms. The template the
+  page records is converted to that, per voice, record for record.
+
+**Measured.**
+- `make -C native/modsynth banktest && node tests/seq/bassbank.test.js`: the seven synthesized voices (Sub, Tri, Sqr, Acid, Acid 303,
+  Electric, Upright) in their four variants, **504 of 504 notes bit-identical** to the page's fresh voice: notes 28 to 76, levels 0.04 to
+  0.7, accents, lengths 30 ms to 6 s, glides from other notes, onsets at every phase of the grid. A sampled voice is refused with its
+  reason; the voice's signature (the voice, its level, the filter, the fader) changes when one of them does.
+- `make -C native/modsynth bassscoretest basstool && node tests/seq/bassline.test.js`: five lines (Electric over I-vi-IV-V with swing 25;
+  Acid over slash chords and a rest with slides; Sub in 12 steps with swung sixteenths; Upright with Follow off and long notes; Triangle at
+  rate 2) run through the engine's own sequencer and player a block at a time, against the same notes recorded fresh by the page in order
+  with its own cuts, each note begun where the engine begins its own: **all five exact** (three bit-identical, two at 164 and 174 dB; 12 to
+  25 notes cut short in each line, the engine cutting the same ones). With the engine's cut removed they fail (11 cases), with the slide
+  variant ignored (6), with the tails swapped (4). The page-side reference for the cut is the page's own edits with exactly the change
+  above; the unchanged ones, with the same engine, are 13 to 39 dB off in the three lines that have long notes (and exact in the other two).
+- The other tests (`bank`, `score`, `drumgrid`, `bassgrid`, `seqhosttest`), `check.sh`, `npm run build` and `xcodebuild` pass.
+
+**A finding in the page, not fixed here.** With the page's cut as it is, a line's peak is 0.40; with the hold-and-fade, 0.18, in the same
+line. The page's fade starts from a gain of 1 when the previous note's gain has not begun at the time of the call, which is the common case
+for a staccato line (a note at one step has a tail of 0.92 steps and 60 ms, so most notes are cut by the next). That is a possible level bump
+of up to 12 dB for 15 ms at the onset of most bass notes, under the new note's attack. This is read from the recorder (whose `.value` is the
+gain at the capture clock) and the code, not heard: in the browser `.value` is the value at the time of the call, and which it is depends
+on when the page schedules relative to the previous note. Worth listening for on the phone with a staccato line (checklist 19.1).
+
+**Not done, said plainly.**
+- The host does not run the bass yet: `BassPlayer` is run by the test, not by the host thread, and the page has no developer entry for it.
+- The sampled voices (they name a recording per note), the walking line, locks, Pure tuning's cents (`tune`).
+- A voice that sits on a mõdSynth patch (`_blStopMsx`).
+- The chord comp, and its choke of the previous chord.
