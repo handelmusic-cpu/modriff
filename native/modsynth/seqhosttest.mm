@@ -222,6 +222,59 @@ int main() {
       [A seqStop]; [B seqStop];
     }
 
+    // The bass line through the host: the same thread and bank, no page. A synthetic bass voice (one entry per variant: part 2) whose
+    // cut of the note before is the hold and a 15 ms fade; a line of a note every step, two steps long, so every note starts inside
+    // the tail of the one before and cuts it. Started with the drums running, it shares their downbeat.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      CHECK(![g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:7 seed:1], "no bass score, no bass start");
+      CHECK(![g seqSetBassScore:[NSData dataWithBytes:"junk" length:8]], "a bass score that does not parse is refused");
+      CHECK(![g seqSetBassChords:[NSData dataWithBytes:"junk" length:8]], "chord windows that do not parse are refused");
+      // One note long, sounding for 0.3 s from a lead of 0.048; a level slot; the cut is a hold on the gain (node 2) and a ramp to nothing.
+      auto bassVoice = [&](int lane) {
+        std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+        const double stop = 0.048 + 0.3, amp = 0.5;
+        p.insert(p.end(), {8, 5, 2, 0, 0, stop, 110, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+        size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+        std::vector<double> e = {1, 2, 7, (double)lane, 1, 0.048, 0.048, 0.9, (double)p.size()};
+        e.insert(e.end(), p.begin(), p.end());
+        e.insert(e.end(), {1, (double)amp_i, amp / 0.9, 0, 0, 0, 1, (double)stop_i, 0});   // velocity, accent, pitch; time; mul
+        e.insert(e.end(), {0, 0});                                                         // no chokes, no floors
+        e.insert(e.end(), {0, -1, 0, 0, 0, 0});                                            // refPitch, refDur, refFrom, no length, glide or held slots
+        e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 2, 0.0001, 0.015, 0});             // the cut: hold at the new note, fade over 15 ms
+        return e;
+      };
+      for (int lane = 0; lane < 4; lane++) [g seqPutBankEntry:bytes(bassVoice(lane))];
+      std::vector<double> bs = {1, 16, 0, 1, 0, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 16};
+      for (int s2 = 0; s2 < 16; s2++) bs.insert(bs.end(), {1, 0, 2, 2, 0, 0, 0, 0, 0});
+      CHECK([g seqSetBassScore:bytes(bs)], "the bass line is taken");
+      // Two chart windows (frames from the line's start): C for two bars, then F; the timeline holds them.
+      std::vector<double> ch = {2, 0, 192000, 0, 0, -1, 5, 3, 0, 4, 7, 192000, 384000, 0, 5, -1, 0, 3, 5, 9, 0};
+      CHECK([g seqSetBassChords:bytes(ch)], "the chord windows are taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:7 seed:3], "the bass starts");
+      std::vector<float> l(240), r(240); float peak = 0;
+      for (int t = 0; t < 1500; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        usleep(5000);
+      }
+      NSDictionary *m = [g seqMirror], *b = m[@"bass"];
+      CHECK([b[@"running"] boolValue] && [b[@"steps"] intValue] > 8, "the bass line steps with no page: %d steps", [b[@"steps"] intValue]);
+      CHECK([b[@"firstFrame"] doubleValue] == [m[@"firstFrame"] doubleValue], "and it shares the drums' downbeat (frame %.0f)", [b[@"firstFrame"] doubleValue]);
+      CHECK([b[@"hits"] intValue] > 8 && [b[@"misses"] intValue] == 0 && [b[@"refused"] intValue] == 0, "its notes are begun from the bank: %d hits, %d misses, %d refused", [b[@"hits"] intValue], [b[@"misses"] intValue], [b[@"refused"] intValue]);
+      CHECK([b[@"cuts"] intValue] >= [b[@"hits"] intValue] - 2, "each note after the first cuts the one before: %d cuts for %d notes", [b[@"cuts"] intValue], [b[@"hits"] intValue]);
+      CHECK([b[@"lateStarts"] intValue] == 0 && [[g graphStats][@"lateEdits"] intValue] == 0, "none began late, no late edit");
+      CHECK([b[@"windows"] intValue] == 2 && peak > 0.02f, "the chart is held (%d windows) and the line sounds: peak %.3f", [b[@"windows"] intValue], peak);
+      [g seqBassStop];
+      const int notes = [[g seqMirror][@"bass"][@"notes"] intValue];
+      run(g, 300);
+      CHECK([[g seqMirror][@"bass"][@"notes"] intValue] == notes && ![[g seqMirror][@"bass"][@"running"] boolValue], "stopped: still %d notes", notes);
+      [g seqStop];
+    }
+
     // Stop: nothing more even when the clock runs.
     [h seqStop];
     const int s0 = [[h seqMirror][@"steps"] intValue];

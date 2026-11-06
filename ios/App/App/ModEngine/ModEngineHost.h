@@ -102,6 +102,20 @@ NS_ASSUME_NONNULL_BEGIN
 /// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
 - (NSDictionary *)seqMirror;
 
+// ── The bass line (native/modsynth/basscore.h, bassplay.h; slice 2) ──
+// On the same thread and with the same bank as the drums. The mirror's `bass` has running, nextStep, steps, notes, hits, misses
+// (no voice in the bank: lastMissLane), refused, cuts (a note cut short by the next), lateStarts, windows.
+
+/// The bass score, float64s as `window._blNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetBassScore:(NSData *)score;
+/// The chord windows, float64s as `window._blNativeChords(sr)` makes them: frames from the line's start. Empty clears them.
+- (BOOL)seqSetBassChords:(NSData *)chords;
+/// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's
+/// code for the bass voice. NO without a score.
+- (BOOL)seqBassStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
+- (void)seqBassStop;
+- (void)seqBassSetTempo:(double)bpm rate:(double)rate;
+
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is
 /// what a message's `at` is measured against.

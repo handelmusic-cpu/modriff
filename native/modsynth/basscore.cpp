@@ -2,7 +2,7 @@
 
 namespace modsynth {
 
-bool ChordTimeline::fromDoubles(const double *d, size_t n, size_t *used) {
+bool ChordTimeline::fromDoubles(const double *d, size_t n, size_t *used, double offset) {
   size_t k = 0;
   if (n < 1) return false;
   const double nw = d[k++];
@@ -11,7 +11,7 @@ bool ChordTimeline::fromDoubles(const double *d, size_t n, size_t *used) {
   for (size_t i = 0; i < (size_t)nw; i++) {
     if (k + 7 > n) return false;
     ChordWindow w;
-    w.t = d[k]; w.end = d[k + 1]; w.rest = d[k + 2] != 0; w.rootPc = (int)d[k + 3]; w.bassPc = (int)d[k + 4]; w.nextPc = (int)d[k + 5];
+    w.t = d[k] + offset; w.end = d[k + 1] + offset; w.rest = d[k + 2] != 0; w.rootPc = (int)d[k + 3]; w.bassPc = (int)d[k + 4]; w.nextPc = (int)d[k + 5];
     const double np = d[k + 6]; k += 7;
     if (!(np >= 0 && np <= 16) || k + (size_t)np > n) return false;
     for (size_t j = 0; j < (size_t)np; j++) w.pcs.push_back((int)d[k++]);
