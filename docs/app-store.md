@@ -48,28 +48,29 @@ name as taken, `mõdRïff: Chord Groovebox` (23) is the fallback.
 
 **Promotional text** (170, editable any time without a new build):
 
-> Chords, drums, bass, melody and a synth, every part always in key. Pick a key and a mode and play: nothing you touch can sound wrong.
+> Pick a key and play: chords, drums, bass, melody and synth always agree, so nothing you touch sounds wrong. Free to start. No account, no ads, no subscription.
 
-(133)
+(159)
 
 **Keywords** (100, comma-separated, no spaces after commas):
 
 ```
-groovebox,chords,drum machine,synth,sequencer,music theory,midi,sampler,beat maker,songwriting,jam
+groovebox,chord,drum machine,synth,sequencer,music theory,midi,sampler,beat maker,songwriting,jam
 ```
 
-(99.) Do not repeat words already in the name or subtitle ("key", "every"), and
-do not use the category name.
+(97.) Do not repeat words already in the name or subtitle ("key", "every"), do not use the category
+name, and do not use another product's name: an `iReal` keyword would be a trademark rejection.
 
-**Description** (4000):
+**Description** (2030 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
+break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
+(no iReal, 808 or Linn: those are trademarks) and no price (prices are per storefront). It does not promise
+playback with the screen locked: background scheduling is still being moved to the engine
+(`docs/native-scheduling.md`), so say it only once it is heard on a device.
 
 ```
 mõdRïff is a groovebox where every part is always in key.
 
-Pick a key and a mode, and the chords, the bass, the melody, the arpeggios and the
-drums all agree with each other. You can't play a wrong note, only a surprising one.
-The hard parts of music theory are made simple to play, so you can make music first
-and learn why it works later.
+Pick a key and a mode, and the chords, the bass, the melody, the arpeggios and the drums all agree with each other. You can't play a wrong note, only a surprising one. The hard parts of music theory become easy to play, so you can make music first and learn why it works later.
 
 PLAY
 - Chord pads for the whole key, with Roman numerals and Nashville numbers
@@ -78,33 +79,44 @@ PLAY
 - Any chord you can write: 13b9 and 7#9b13 sound exactly as spelled
 
 BUILD A BAND
-- A drum sequencer with its own kit, swing and per-drum shaping
+- A drum sequencer with its own kits, swing and per-drum shaping
 - A bass line and an arpeggiator that follow your chords
 - mõdSynth, a synth built for the app, with its engine in native code
-- A sampler: record from the microphone, or resample the app itself
+- A sampler: record from the microphone, load your own samples, or resample the app itself
 - mõdFX, an effects chain for every part
-- Load your own sample for any drum
 
 MAKE A SONG
 - Chain sections into a song and keep it in your setlist
-- Paste a chord sheet from the web and mõdRïff builds the chart for you
-- Export audio, MIDI or stems to take it into your own studio
+- Paste a chord sheet from the web, or photograph one, and mõdRïff builds the chart for you
+- Practice tools: speed trainer, next key and loop bars, with Stage mode to read from a stand
+- Export audio, MIDI or stems to take into your own studio
 
 PLAYS WELL WITH OTHERS
-- Connect a Bluetooth MIDI keyboard or controller
-- Map its knobs to anything on the screen
+- Connect a Bluetooth or USB MIDI keyboard or controller
+- Map its knobs and pads to anything on the screen
+
+FREE TO START, PACKS WHEN YOU WANT MORE
+mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits and five saved songs are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
 
 PRIVATE BY DESIGN
-No account. No ads. No analytics. No tracking. Works offline. Your songs, patterns
-and recordings stay on your phone.
+No account. No ads. No analytics. No tracking. Works offline. Your songs, patterns and recordings stay on your device.
 
-mõdRïff is made by one person, Ben Handel of Dutdut Records. Questions or ideas:
-support@modriff.com
+mõdRïff is made by one person, Ben Handel of Dutdut Records. Questions or ideas: support@modriff.com
 ```
 
-**What's New** (first release): `The first release of mõdRïff.`
+**What's New** (first release): `The first release of mõdRïff. Pick a key and play.`
 
 **Copyright**: `2026 Ben Handel`
+
+The year the rights were obtained, then the person or company that owns them: no (c) symbol (the store
+draws it) and no URL. It should be the legal name on the Apple Developer account, which is what the store
+shows as the seller; on an individual account that is `Ben Handel`. Use `Dutdut Records` only if that is a
+registered entity that owns the app and is the account holder. Nothing else is asked for on the page.
+
+Third-party material is not credited on the page. The licences that require credit (CC BY 3.0, and the
+CC BY-SA 3.0 share-alike files) are met in the app, in Settings > About > Credits (`CREDITS_TABLE`, kept in step
+with `samples/SOURCES.csv` by `check.sh`: author, licence link and what was changed). Credit anything new
+there before it ships; the store listing needs no change.
 
 ## Categories and rating
 
@@ -137,8 +149,8 @@ open: the site says "for iPhone, iPad and Mac" and has a Mac tab, but there is n
 > device and works offline.
 >
 > To see it work: open the app, tap Start, then press the green play button in
-> the bottom bar. Tap the chord pads on the Play tab, or the drum steps on the
-> Accomp tab.
+> the bottom bar. Tap the chord pads on the Live tab, or press Drums and tap
+> steps in the grid.
 >
 > Microphone: requested only if you open the Sampler and choose to record.
 > Bluetooth: requested only if you press the Bluetooth button in
