@@ -365,3 +365,16 @@ page's own bass, because the measurement points at it:
 | 19.3 | While they play: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | neither the beat nor the bass stutters or stops |
 | 19.4 | Compare against the page's own bass: `_nsBass.stop()`, play the page's Bass with the same line | the same notes at the same moments, the same levels, accents and slides (the glide into the next note), the same length. Differences you may hear: no bump at the start of notes (19.1) and no randomness in the voice's detune. A sampled voice (Upright 1/2, Picked, Motown, Höfner...) says it cannot be played: `_nsBass.start()` resolves `{ok:false, why}` |
 | 19.5 | Bass style **Jazz** with Follow on and a chord chart (the song page, a few chords of a standard) on the clock, drums on; `_nsDrum.start()` then `_nsBass.start()` as in 19.2 | a walking line: a quarter note on every beat (half notes on 1 and 3 in the two-feel), beat 1 of each chord on the chord's root (the slash note over a slash chord), the beat before a change leading into the next root, landing on the drums' beat. Not the same notes as the page's walk (it picks at random), but the same kind of line. `_nsBass.mirror()`: `hits` climbing, `misses` 0 |
+
+## 20. Voice | Pattern as one widget, and the tiered sound browser (6.9.9.9.1 and 6.9.9.9.2; looked at in a browser at phone width, not tried with a thumb on a device)
+
+| # | do | you should see |
+|---|---|---|
+| 20.1 | Studio, Drums, then Bass, Melody Seq and Arp in turn | at the head of each page **one** framed box in the part's colour, split down the middle: **Kit / Voice on the left, the pattern (Groove, Bass line, Melody line, Arp pattern) on the right**. The same side on all four pages. Both halves are at least 44 pt tall and a thumb reaches either |
+| 20.2 | Tap the left half on Bass | a list of three tiers, in this order: **Samples**, **mõdSynth**, **Free voices**, each with a count; the one you are playing is lit and its name is at the top |
+| 20.3 | As an owner: mõdSynth, then Bass | sound types (Bass first on Bass, Lead first on Melody Seq, Pluck first on Arp), each with a count; inside a type, **Modern** and **Classic** patches under their own headings. Tap one: the list shuts and the left half names the patch, with "mõdSynth · Bass" under it |
+| 20.4 | Samples | the recorded instruments by family (Keys, Mallets, Guitars, Winds & strings, Basses, Your own). Tap Vibes or Upright 1: it is the part's voice at once |
+| 20.5 | Test as **Free** | Samples is still the first tier, with its locked rows marked; mõdSynth shows a lock and "mõdSynth Engine", and a tap on it opens the Pro sheet |
+| 20.6 | The Play (Live) page: the Chords voice button, and the Melody one | the same browser; Keys first for Chords, Lead first for Melody. A pick shuts it and the button names the voice |
+| 20.7 | Settings > Sound > Voices, and any dropdown that lists voices | Samples is the first group, then mõdSynth, then Free voices |
+| 20.8 | Open the list, tap into a type, then tap outside it and scroll the page | it closes on the outside tap, and a long type (Vintage, Modern) scrolls inside the list without moving the page behind |
