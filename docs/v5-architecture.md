@@ -2258,6 +2258,19 @@ on the native engine, where the audio thread does not care what the page is
 doing. Until then background audio is best-effort: mõdSynth parts hold, sampled
 voices do not.
 
+**Leaving the app (6.9.3).** Background play is still off: leaving pauses. What changed is
+who silences the engine. The pause used to be the page's alone (`_bgAway` →
+`stopEverything`), run by a web view WebKit throttles the moment the app is left, while the
+native engine kept playing whatever was already queued and iOS cut the web context off
+mid-render: sputter, parts missing, loose timing. `SceneDelegate` now calls
+`ModEngine.appLeft()` first, which queues a `panic` for the mõdSynth parts, fades the mixer
+to zero and pauses the engine; `appReturned()` restarts it and fades up. The fade runs on
+its own queue, because the main queue stalled in the simulator once the app was left (the
+first version used it and never paused the engine). Measured in the simulator (log
+lines `[ModEngine] leaving the app`, `left the app: ... paused (running=no)`, `back in the
+app: engine running=yes`): the fade finished about 150-215 ms after leaving, not the 36 ms
+asked for, since iOS coalesces timers in the background. Not heard on a phone yet.
+
 ### Haptics
 
 **4.9.9.9.9.9.2: System is everything that is not an instrument.** Steppers moved

@@ -61,6 +61,72 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// answers.
     override public func load() {
         NSLog("[ModEngine] plugin registered")
+        ModEngine.shared = self
+    }
+
+    // MARK: - Leaving and returning to the app
+
+    /// SceneDelegate reaches the plugin through this; it is the only caller of
+    /// `appLeft` / `appReturned`. Set in load(), weak because Capacitor owns it.
+    static weak var shared: ModEngine?
+
+    private var leftApp = false
+    private var fadeToken = 0
+    // Not the main queue: that is the page's and the app's, and it is the first
+    // thing iOS stops running once the app is left, which would leave a fade
+    // half done with the engine still sounding.
+    private let fadeQueue = DispatchQueue(label: "modriff.engine.fade", qos: .userInteractive)
+
+    /// The app went to the background: silence the engine from here, not from
+    /// the page. The page pauses itself on the same signal, but that runs in
+    /// the web view, which WebKit throttles the moment the app is left, so the
+    /// page's stop arrives late or in pieces. Meanwhile the engine kept playing
+    /// what the page had already queued and iOS cut the web context off
+    /// mid-render, which is the sputter, the half-silent parts and the loose
+    /// timing heard on leaving. A short fade first, because a hard stop of a
+    /// sounding tone is itself a click.
+    func appLeft() {
+        guard started, !leftApp, let engine = engine else { return }
+        leftApp = true
+        NSLog("[ModEngine] leaving the app: fading out")
+        for part in 0..<5 { _ = host?.post(["t": "panic", "part": part]) }   // the mõdSynth parts' voices; queued, applied at resume
+        fade(engine, to: 0, steps: 6, interval: 0.006) { [weak self] in
+            guard let self = self, self.leftApp else { return }
+            engine.pause()
+            NSLog("[ModEngine] left the app: faded out, engine paused (running=%@)", engine.isRunning ? "yes" : "no")
+        }
+    }
+
+    /// Back in the app: restart the engine and bring the level up, rather than
+    /// snapping, since the page is restarting the transport at the same moment.
+    func appReturned() {
+        guard leftApp else { return }
+        leftApp = false
+        guard let engine = engine else { return }
+        if !engine.isRunning {
+            do { try engine.start() } catch {
+                NSLog("[ModEngine] restart after background failed: %@", error.localizedDescription)
+                return
+            }
+        }
+        NSLog("[ModEngine] back in the app: engine running=%@", engine.isRunning ? "yes" : "no")
+        fade(engine, to: 1, steps: 10, interval: 0.012, then: nil)
+    }
+
+    /// A stepped ramp of the mixer's output volume. A newer fade (or a stop)
+    /// cancels an older one through `fadeToken`, so a quick leave-and-return
+    /// never ends on the wrong level.
+    private func fade(_ engine: AVAudioEngine, to target: Float, steps: Int, interval: Double, then: (() -> Void)?) {
+        fadeToken += 1
+        let token = fadeToken
+        let from = engine.mainMixerNode.outputVolume
+        func step(_ k: Int) {
+            guard token == self.fadeToken else { return }
+            engine.mainMixerNode.outputVolume = from + (target - from) * Float(k) / Float(steps)
+            if k >= steps { then?(); return }
+            self.fadeQueue.asyncAfter(deadline: .now() + interval) { step(k + 1) }
+        }
+        step(1)
     }
 
     private var engine: AVAudioEngine?
@@ -188,6 +254,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
+        leftApp = false
+        fadeToken += 1          // a fade in flight must not touch the next engine's volume
         engine?.stop()
         if let source = source { engine?.detach(source) }
         source = nil
