@@ -66,3 +66,6 @@ graphpooltest: graphpooltest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 # Plays what the page sent, through the pool, for tests/graph/page.test.js.
 graphmix: graphmix.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ graphmix.cpp graphpool.cpp graph.cpp
+# The native-scheduling spike (docs/native-scheduling.md): replayed voice programs against fresh ones.
+replaytest: replaytest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -pthread -o $@ replaytest.cpp graphpool.cpp graph.cpp
