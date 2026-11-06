@@ -658,7 +658,36 @@ gain at the capture clock) and the code, not heard: in the browser `.value` is t
 on when the page schedules relative to the previous note. Worth listening for on the phone with a staccato line (checklist 19.1).
 
 **Not done, said plainly.**
-- The host does not run the bass yet: `BassPlayer` is run by the test, not by the host thread, and the page has no developer entry for it.
+- (The host did not run the bass at 6.9.9.7; it does from 6.9.9.8, next section.)
 - The sampled voices (they name a recording per note), the walking line, locks, Pure tuning's cents (`tune`).
 - A voice that sits on a mõdSynth patch (`_blStopMsx`).
 - The chord comp, and its choke of the previous chord.
+
+## Slice 2, part three (6.9.9.8): the bass on the host thread, and a developer entry
+
+**What was chosen, and why.** The bass is another sequencer on the thread the drums already use (`modriff.sequencer`), sharing the bank (it is
+part 2 of it), the pool and the begin/edit paths, so there is one place that holds a voice's handle and one lock. `HostSeq` holds a
+`BassSequencer` and a `BassPlayer` beside the drum `DrumSequencer` and `DrumPlayer`; each tick expands both a lookahead ahead of the render
+clock. The bass has its own clock (it starts at its own step 0, as the page's bass starts at its own bar line), but `alignToDrums` starts it
+on the drums' next downbeat when they run, which is how the two share a bar line from a single "go". The chord timeline reaches the host as
+frames from the line's start; the host puts the start where its clock has it (`ChordTimeline::fromDoubles` takes an offset), so the page
+need not know the engine's frame count.
+
+**What is there.** `seqSetBassScore`, `seqSetBassChords`, `seqBassStart` (tempo, rate, lead, align, the voice's bank code), `seqBassStop`,
+`seqBassSetTempo`, the Swift plugin methods, and `bass` in `seqMirror` (running, nextStep, steps, notes, hits, misses, refused, cuts,
+lateStarts, windows). The page: `window._nsBass` (`prepare`, `sync`, `start`, `stop`, `tempo`, `mirror`), beside `_nsDrum`; `start` records
+the voice into the bank (`ensureBass`), refuses a line the engine cannot play yet and says why, sends the line and the chart as it stands,
+and starts. Nothing in the app calls it.
+
+**Measured.** `native/modsynth/seqhosttest` (the host with its thread, no page): with a synthetic bass voice in the bank (the four variants)
+and a line of a note every step two steps long, the bass steps on its own (13 steps), shares the drums' downbeat (same first frame), begins
+13 notes from the bank (0 missed, 0 refused, none late, no late edit), each note after the first cuts the one before (12 cuts), holds the
+two-window chart and sounds (peak 0.6); `seqBassStop` stops it; a bass score or chart that does not parse is refused and no score is no
+start. `bassbank.test.js` now also runs `_nsBass.start()` against a stand-in plugin: 4 entries sent, line and chart sent once, started on
+the drums' downbeat with the voice's bank code; with Native sound off it says so; a walking line is refused with the reason. `hosttest`,
+`graphhosttest`, `warmtest`, the drum/bass tests, `check.sh`, `npm run build` and `xcodebuild` pass. What is *not* measured here is the
+bass through the host's strips and master (the null is at the pool, bassline.test.js).
+
+**Not done.** The chart is the windows the song has committed when `start` is called, from the first one; it does not follow a song as it
+plays on (that is slice 4, the song loop). Tempo changes need `_nsBass.tempo()`. The drums' and the bass's clocks are two clocks that start
+together, not one. Sampled bass voices, the walking line, locks, `tune`. The chord comp. Not heard on device: checklist 19.2 to 19.4.

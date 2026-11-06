@@ -336,13 +336,13 @@ Only the open iPhone Duo held wide (951 x 669 pt). The closed Duo (section 16), 
 | 17.9 | Turn the Duo upright, then wide again | upright is the old bottom stack; wide comes back with the rail and both panes, the right page drawn properly (not blank, not squashed) |
 
 
-## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9.7; the developer entry can make sound)
+## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9.8; the developer entry can make sound)
 
 The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgrid.test.js`), and from 6.9.8 the host steps it on its own thread (`native/modsynth/seqhosttest`). Nothing in the app calls it except a developer function, and no audio path exists yet, so 18.1 is the regression check and 18.2 is for the inspector.
 
 | # | do | you should see |
 |---|---|---|
-| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.7**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
+| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.8**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
 | 18.2 | Connect the phone to Safari's web inspector (or use the simulator), play nothing, and in the console run `_nsDrum.start()` then `_nsDrum.mirror()` a few times a second apart | `steps` and `events` climb, `step` cycles 0 to 15, `late` stays 0; nothing is heard. Then freeze the page: `var t=Date.now(); while(Date.now()-t<3000){}`, and `_nsDrum.mirror()` straight after: `steps` rose by about 12 (4 a second at 120 BPM) while the page was frozen, `late` still 0. `_nsDrum.stop()` ends it. (Leaving the app is not part of this: the engine is silenced on leaving, section 14, until the cutover turns background play on.) |
 | 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (808 or 909), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
 | 18.4 | While it plays: change a cell on the grid, then run `_nsDrum.sync()`; move the Drums fader, then run `_nsDrum.prepare()` | the change is heard at the next step; after the fader move the level is the new one (the lanes are recorded again) |
@@ -352,11 +352,15 @@ The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgr
 
 Still to come (chokes, then the cutover): leave the app mid-beat and the drums continue on the beat, no burst or gap; Copy diagnostics shows a `native.sched` block with steps fired and bank hits/misses.
 
-## 19. The bass line (6.9.9.7; nothing audible changes yet)
+## 19. The bass line (6.9.9.7 and 6.9.9.8; the engine's bass is audible through a developer entry only)
 
-The engine's bass voice bank and the cut of the note before are tested on a Mac against the page; the host does not run them yet, so there is
-nothing to hear from the engine. One thing worth a listen on the page's own bass, because the measurement points at it:
+The engine's bass voice bank and the cut of the note before are tested on a Mac against the page. From 6.9.8 the host runs the bass on its own
+thread; the page has no button for it, only `_nsBass` in the web inspector (like `_nsDrum`, section 18). First, one thing worth a listen on the
+page's own bass, because the measurement points at it:
 
 | # | do | you should see |
 |---|---|---|
 | 19.1 | Bass on, a staccato line (every step a note, a short length), Follow on, headphones | at the start of each note, no short louder bump under the attack. If there is one, it is the page's cut of the previous note (`_webBassVoice`: `cancelScheduledValues`, then a fade from the gain's current value, which is 1 when the note has not begun) and it is old; the engine's version does not have it |
+| 19.2 | Native sound **ON**, a bass line on the Bass page (any synthesized voice: Sub, Tri, Sqr, Acid, 303, Electric, Upright), drums on the Drums page, Follow on over a chart if you like. In the inspector console: `_nsDrum.start()` then `_nsBass.start()` (the page's own transport stays stopped) | both answer `{ok:true}`; **the drums and the bass play from the engine alone**, on the same beat and bar line, at the tempo field; the bass follows the chart you had on the clock; `_nsBass.mirror()` shows `hits` climbing, `misses` 0, `refused` 0, `lateStarts` 0, `cuts` climbing on notes that run into the next |
+| 19.3 | While they play: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | neither the beat nor the bass stutters or stops |
+| 19.4 | Compare against the page's own bass: `_nsBass.stop()`, play the page's Bass with the same line | the same notes at the same moments, the same levels, accents and slides (the glide into the next note), the same length. Differences you may hear: no bump at the start of notes (19.1) and no randomness in the voice's detune. A sampled voice (Upright 1/2, Picked, Motown, Höfner...) says it cannot be played: `_nsBass.start()` resolves `{ok:false, why}` |

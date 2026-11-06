@@ -44,6 +44,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassChords", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
@@ -709,6 +714,48 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqTempo(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         host.seqSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
+        call.resolve()
+    }
+
+    // The bass line, on the same thread and bank (slice 2).
+
+    /// The bass score, `score` base64 float64 (window._blNativeScore().score). Resolves `ok`.
+    @objc func seqBassScore(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqBassScore needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetBassScore(data)])
+    }
+
+    /// The chord windows, `chords` base64 float64 (window._blNativeChords(sr)): frames from the line's start. Resolves `ok`.
+    @objc func seqBassChords(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("chords"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqBassChords needs chords")
+            return
+        }
+        call.resolve(["ok": host.seqSetBassChords(data)])
+    }
+
+    /// Starts the bass line. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the voice.
+    @objc func seqBassStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqBassStart(withBpm: call.getDouble("bpm") ?? 120, rate: call.getDouble("rate") ?? 1,
+                                   leadMs: call.getDouble("leadMs") ?? 120, alignToDrums: call.getBool("align") ?? true,
+                                   kit: Int32(call.getInt("kit") ?? 0), seed: call.getDouble("seed") ?? 0)
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqBassStop(_ call: CAPPluginCall) {
+        host?.seqBassStop()
+        call.resolve()
+    }
+
+    @objc func seqBassTempo(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqBassSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
         call.resolve()
     }
 

@@ -69,7 +69,9 @@ class ChordTimeline {
 
   // The windows as the page sends them, in doubles: [n, per window: t, end, rest, rootPc, bassPc, nextPc, nPcs, pcs...].
   // Replaces the timeline.
-  bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
+  // `offset` is added to every window's start and end: the page sends them as frames from the line's start, and the engine puts the
+  // start where its clock has it.
+  bool fromDoubles(const double *d, size_t n, size_t *used = nullptr, double offset = 0);
 
  private:
   double sr_;
