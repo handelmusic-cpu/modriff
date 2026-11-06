@@ -9059,7 +9059,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.8</span></div>
  </div>
 </div>
 
@@ -10491,7 +10491,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11682,7 +11682,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.7';
+const MODRIFF_VERSION = '6.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12724,6 +12724,9 @@ function modNativePlugin(){
                      // The graph path (modGraphStart); an older binary has none of these.
                      graphProbe:call('graphProbe'), graphBuf:call('graphBuf'),
                      graphBegin:call('graphBegin'), graphEdit:call('graphEdit'),
+                     // The engine's own sequencer (window._nsDrum, a developer entry); an older binary has none of these.
+                     seqScore:call('seqScore'), seqStart:call('seqStart'), seqStop:call('seqStop'),
+                     seqTempo:call('seqTempo'), seqMirror:call('seqMirror'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
@@ -59270,6 +59273,26 @@ window._sqNativeScore = function(){
   }
  }
  return {score: d, kits: kits};
+};
+
+// The developer entry to the engine's own drum sequencer (docs/native-scheduling.md slice 1): hand it the score and
+// start it, and the host's thread steps the grid on the render clock whatever this page's timers are doing. There is
+// no button and nothing in the app calls it; it is for a person with the web inspector open on a device or the
+// simulator, and nothing sounds from it yet (the engine counts the events it would play). _nsDrum.start() then
+// _nsDrum.mirror() a few times, with the page throttled, shows it stepping.
+window._nsDrum = {
+ plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqScore ? P : null; },
+ sync: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok:false, why:'no engine'});
+  return P.seqScore({score: _mgB64(Float64Array.from(window._sqNativeScore().score))});
+ },
+ start: function(leadMs){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok:false, why:'no engine'});
+  return this.sync().then(function(){ return P.seqStart({bpm: sqBpm(), rate: sqRateMul, leadMs: leadMs || 150}); });
+ },
+ stop: function(){ var P = this.plugin(); return P ? P.seqStop() : Promise.resolve(); },
+ tempo: function(){ var P = this.plugin(); return P ? P.seqTempo({bpm: sqBpm(), rate: sqRateMul}) : Promise.resolve(); },
+ mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
 };
 
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
