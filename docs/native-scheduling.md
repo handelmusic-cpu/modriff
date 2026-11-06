@@ -132,7 +132,7 @@ v1; say so, don't half-do them.
    host test and comparing the **event list** exactly (frame, lane, velocity) and the audio by null test;
    on the Mac simulator the clock and expander keep running with the page throttled; on the phone, the
    checklist below.
-2. **Bass and chords following the song.** The chord timeline in the engine (the thing `_blChordWin` is
+2. **Bass and chords following the song.** *Part one done (6.9.9.3): the chord timeline and the bass line's event list, see the end of this file.* The chord timeline in the engine (the thing `_blChordWin` is
    today), bass pattern and chord-comp rhythm on it, pitch and duration slots.
 3. **Arp and melody sequencer / melgen.** Randomness here (melgen, arp random modes) is native-RNG;
    not bit-identical to the page by design (owner to accept).
@@ -558,3 +558,51 @@ the engine's choke edits removed the same bars null at 53 and 57 dB and the test
 **Not covered.** The host's strips and master in the null. Probability and humanize (the engine draws its own; statistics in
 `drumgrid.test.js`). A pattern of more than about 90 hits in the bar (the page side keeps them all in one pool). The Triangle and the
 other kits and user samples, as before. Not heard on device: 18.3 to 18.7 as before.
+
+## Slice 2, part one (6.9.9.3): the chord timeline and the bass line's events
+
+**What was chosen, and why.** Slice 2 is the bass, the chord comp and the chord timeline both follow. It is too big for one step, so it
+goes the way slice 1 did: the part that decides *when and what* first, held to the page by event lists; the voices after. This step is
+the bass line's sequencer and the chord timeline it reads (`native/modsynth/basscore.h`), in C++ with no iOS and no audio, held to
+the page's real `window._blScheduler`. The bass comes before the chords because its decisions (re-rooting a written line onto the chord
+sounding, the slide memory, swing and the length cap) are all in the scheduler, whereas the chord comp's hard part is the voice
+(composing a chord from per-note voices, see "The chord investigation") and belongs with the voice work. The chord timeline is built
+first because it is what the bass, the melody and the chord comp all hang on (`_blChordWin`); the engine has the same two lookups
+(`windowAt`, `windowFor`) and, when the song loop moves in (slice 4), the song will write it directly. Until then the page sends the
+windows it commits (`window._blNativeChords`).
+
+**What is in it.** `ChordTimeline` (the page's `_blChordWin`, with `_blWindowAt`'s "the chord that started last" and 2 ms of slack, and
+`_blWindowFor`'s "carry the last chord forward, but not a rest"); `BassSequencer`, the grid branch of `_blScheduler` on a frame clock:
+swing (the drums' own, 8ths or 16ths), Follow with `_followRemapPc` (a note's role in the chord it was written over becomes the same
+role in the chord sounding, the root onto a slash bass, passing notes pulled into the key), `_followRange` and `_followNearIn` (the
+register it stays in), a pinned step (`fix`), a rest in the chart (nothing sounds and a slide survives it), the step's length and the
+cap that keeps a pushed step off the next downbeat, probability, humanize, and the slide memory `blPlayNote` keeps (`from`, ended by
+a gap, a missed probability and the wrap). The feel formulas (`_stepProb`, `_humanT`, `_humanV` and the drift) moved out of the drum
+sequencer into `Feel` in `seqcore.h`, so the two draw them one way; `drumgrid.test.js` still passes.
+The page exports the line (`window._blNativeScore`, `_blNativeChords`; `_blClock` and `_blSetClock` for tests).
+
+**Measured.** `make -C native/modsynth basstool && node tests/seq/bassgrid.test.js`: the page's scheduler runs in the real page on a
+clock of its own, with the chord windows a song would have committed, and every note it sends is kept; `basstool` runs the same score
+and windows; the two lists are the same on every one of eight cases, in every field (when to 1e-5 of a frame, which note, how long, how
+loud, accent, slide, the note it glides from): follow over I-vi-IV-V; swing 40 on the eighths in a minor key; swing 60 on the sixteenths
+at rate 2; slash chords and a rest; a 12-step line over chords that change every beat; a dense 32-step line; Follow off; and a line of
+slides across a rest. The lines are half chord tones, so the role mapping and the slash bass are exercised, not only the passing-note
+fallback. Probability (30 and 75), humanize (timing inside 14 ms, spread and level against the page) and "the bass left tight" are held
+on statistics. Five hand-made breakages of the C++ (the slash bass, the length cap, the role index, the pinned step, the slide across
+a rest) each fail the test. `xcodebuild` builds.
+
+**Found on the way.** The test's own mistakes, three of them, each of which made it pass without testing: the swing was set on a
+variable that is not the page's (swing 0 on every case); the chord windows were built on the previous case's clock and the page
+dropped the early ones (`_blOnChord` drops windows behind the clock); and a random grid has almost no notes that are the line's own
+root, so a slash chord was never asked. The mutation check (above) is what found them.
+
+**Not done, said plainly** (the score refuses the first three, and `_blNativeScore` says which):
+- *The walking line* (Jazz style with Follow on): a different scheduler with its own randomness (`_blWalkNote`), snapped to the drums'
+  bar line. Next in this slice.
+- *Locked phrases* (a line frozen per chord, indexed from the chord's downbeat) and *a line written ahead for the next chord*
+  (`_blPregen`, swapped in at the wrap): the engine takes a new score when it arrives, so a swap lands at the next step, not the wrap.
+- *Pure tuning's cents* (`tune`) and *`_midiRecLogBass`* (recording the bass to MIDI).
+- *The bass voice*: nothing in the bank yet. The spike found the bass replays exactly, with pitch and duration as slots; the bank for it
+  (a voice per note, `from` for the glide, the monophonic cut of the previous note) is the next piece.
+- *The chord comp* and its choke of the previous chord; the *melody* uses the same timeline (slice 3).
+- *The host*: nothing runs this on the host thread yet. Not heard on device: nothing is audible; the only app change is exports no one calls.
