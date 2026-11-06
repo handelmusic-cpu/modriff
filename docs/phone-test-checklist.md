@@ -319,3 +319,19 @@ Only the closed iPhone Duo (466 x 678 pt). Other phones, a phone on its side and
 | 16.4 | Go to Studio | the part tabs (Chords, Melody, Sampler, FX) sit above the bottom tabs and stop at the rail |
 | 16.5 | Open the Duo fully (upright) | the old bottom stack, as before |
 
+## 17. The open Duo, wide: rail, top transport, Live beside a part (6.9.6, not heard on device)
+
+Only the open iPhone Duo held wide (951 x 669 pt). The closed Duo (section 16), the open Duo held upright, other phones, a phone on its side and an iPad are unchanged.
+
+| # | do | you should see |
+|---|---|---|
+| 17.1 | Open the Duo, hold it wide, tap Start | a rail down the left edge: Live, Studio, Song, Sound, Settings at the top and Drums, Bass, Mel, Arp, Chords at the foot; the transport across the top (key, tempo, Play, rate, Song) clear of the clock and Wi-Fi pill |
+| 17.2 | Look at Live | Live on the left, and on the right a part's page (Drums to begin with) under a row Drums / Bass / Melody / Arp |
+| 17.3 | Tap Bass in the row, then Melody, then Arp | the right page changes each time; Live does not move; the part switch in the rail for the open page is ringed |
+| 17.4 | Hold Bass in the rail (about a third of a second) | the right page becomes Bass; you stay in Live |
+| 17.5 | Tap Bass (a short tap) | the bass switches on or off and nothing else changes; a one-time hint says tap switches, hold opens |
+| 17.6 | Scroll Live, then scroll the right page | each scrolls on its own |
+| 17.7 | Play, and keep the band running while you change the right page | the beat does not stutter; the beat strip under the transport keeps moving |
+| 17.8 | Studio, Song, Sound, Settings in turn | one page the width of the screen each, under the transport; Studio's Chords / Melody / Sampler / FX row sits under the transport |
+| 17.9 | Turn the Duo upright, then wide again | upright is the old bottom stack; wide comes back with the rail and both panes, the right page drawn properly (not blank, not squashed) |
+

@@ -1245,7 +1245,27 @@ stack on all three, so the closed Duo spent 162 pt of 678 on chrome and the page
   a viewport under 420 / 460 pt now also apply to this 374 pt page (the same `@media` lists carry the rail's query).
 - **Already the same as the mock: the open, upright Duo (669 x 951).** It is an ordinary phone-shaped screen; it keeps the
   bottom stack, as the mock draws it.
-- **Not built: the open, wide Duo (951 x 669), and an iPad.** The mock draws a side rail (Live / Studio / Song / Sound and the
+- **Not built in 6.9.5, built in 6.9.6 (below): the open, wide Duo (951 x 669); and not built: an iPad.** The mock draws a side rail (Live / Studio / Song / Sound and the
   parts) with the transport across the top and two panes (Live beside Studio, Perform beside the Timeline, the Kit editor docked).
   It needs Live and a Studio part page on screen at once, which are two views of one page today (`setViewMode`), so it is a
   structural change and not a stylesheet. The open Duo gets the bottom stack until it is built.
+
+### 6.9.6: the open Duo, wide (951 x 669): a side rail, the transport across the top, Live beside a part's page
+
+The mock's `isWide()` layout, for the open Duo only: `@media (orientation:landscape) and (min-width:800px) and
+(max-width:1100px) and (min-height:560px) and (max-height:759px)` (so a phone on its side, which is under 560 pt tall, and an iPad,
+which is wider or taller, keep what they had). It publishes `--wide`, which the bottom-clearance script reads.
+
+- **The rail** (96 pt, down the left edge): the five tabs at the top, the five parts at the foot, on one dark ground. The
+  transport (key, tempo, Play, the rate chip, Song and its arrows) is a 56 pt row across the top, clear of the Duo's status pill
+  by the right inset, with the beat strip as a 3 pt line under it.
+- **Live is two panes.** Live on the left, and on the right the Studio page of a part (Drums, Bass, Melody or Arp), under a
+  Part row (the `bm-subnav` that was always mounted and never shown). This works because Live and the Accomp page are separate
+  pages in the DOM: the second is just not hidden, and nothing is copied. A tap on a part switch still switches the part; a hold
+  now opens its page in the right pane **without leaving Live** (`partOpen` in `_wideLive()`), and the switch whose page is open
+  is ringed as it is in Studio. Chords is the left pane, so a hold on it does nothing.
+- **Studio, Song, Sound and Settings are one page** the width of the screen, with Studio's Chords / Melody / Sampler / FX row as
+  its header under the transport.
+- **Known limit.** Live's optional Bass and Melody roll widgets borrow the Accomp grids while they are on (`lvMount`), and a grid
+  cannot be in two places: with one of those widgets on, that part's page in the right pane is the part without its grid.
+  Sampler and FX pages are Play pages, not Accomp pages, so they are in Studio only, not beside Live.
