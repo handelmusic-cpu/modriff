@@ -336,13 +336,13 @@ Only the open iPhone Duo held wide (951 x 669 pt). The closed Duo (section 16), 
 | 17.9 | Turn the Duo upright, then wide again | upright is the old bottom stack; wide comes back with the rail and both panes, the right page drawn properly (not blank, not squashed) |
 
 
-## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9.1; the developer entry can make sound)
+## 18. Native scheduling, slice 1 (6.9.7 to 6.9.9.2; the developer entry can make sound)
 
 The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgrid.test.js`), and from 6.9.8 the host steps it on its own thread (`native/modsynth/seqhosttest`). Nothing in the app calls it except a developer function, and no audio path exists yet, so 18.1 is the regression check and 18.2 is for the inspector.
 
 | # | do | you should see |
 |---|---|---|
-| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.1**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
+| 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.2**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
 | 18.2 | Connect the phone to Safari's web inspector (or use the simulator), play nothing, and in the console run `_nsDrum.start()` then `_nsDrum.mirror()` a few times a second apart | `steps` and `events` climb, `step` cycles 0 to 15, `late` stays 0; nothing is heard. Then freeze the page: `var t=Date.now(); while(Date.now()-t<3000){}`, and `_nsDrum.mirror()` straight after: `steps` rose by about 12 (4 a second at 120 BPM) while the page was frozen, `late` still 0. `_nsDrum.stop()` ends it. (Leaving the app is not part of this: the engine is silenced on leaving, section 14, until the cutover turns background play on.) |
 | 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (808 or 909), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
 | 18.4 | While it plays: change a cell on the grid, then run `_nsDrum.sync()`; move the Drums fader, then run `_nsDrum.prepare()` | the change is heard at the next step; after the fader move the level is the new one (the lanes are recorded again) |
