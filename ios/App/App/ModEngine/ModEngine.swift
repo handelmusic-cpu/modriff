@@ -1,4 +1,6 @@
 import AVFoundation
+import AudioToolbox // UnsafeMutableAudioBufferListPointer: AVFoundation re-exports it on iOS but not on Mac Catalyst
+import CoreAudio
 import Capacitor
 import Foundation
 import os.signpost
