@@ -34,12 +34,13 @@ bool BassScore::fromDoubles(const double *d, size_t n, size_t *used) {
   if (!(c >= 0 && c <= 12) || !need((size_t)c + 1)) return false;
   for (size_t i = 0; i < (size_t)c; i++) s.gridIntvs.push_back((int)d[k++]);
   c = d[k++];
-  if (!(c >= 0 && c <= 12) || !need((size_t)c + 9)) return false;
+  if (!(c >= 0 && c <= 12) || !need((size_t)c + 11)) return false;
   for (size_t i = 0; i < (size_t)c; i++) s.scalePcs.push_back((int)d[k++]);
   s.stepVel = d[k++];
   s.hum.amt = d[k++]; s.hum.timeMul = d[k++]; s.hum.velMul = d[k++]; s.hum.driftMul = d[k++];
   s.hum.maxMs = d[k++]; s.hum.maxVel = d[k++]; s.hum.maxDriftMs = d[k++];
   s.hum.partOff[0] = d[k++] != 0;
+  s.jazz = d[k++] != 0; s.twoFeel = d[k++] != 0;
   const double nc = d[k++];
   if (!(nc >= 0 && nc <= 256) || !need((size_t)nc * 9)) return false;
   for (size_t i = 0; i < (size_t)nc; i++) {
