@@ -235,8 +235,9 @@ opaque and square before upload.
 
 The code is in (`ios/App/App/ModBilling/ModBilling.swift`, StoreKit 2, behind
 `window.modBilling`; the design and the table of what each pack holds are in section 4 of
-`v5-architecture.md`). The page side is measured. **The Swift has not been compiled and the
-purchase flow has not been run**: that needs your Mac and App Store Connect.
+`v5-architecture.md`). The page side is measured. The Swift **builds** (iOS Simulator, 6.9.9.3:
+`BUILD SUCCEEDED`, no errors, no warnings in `ModBilling.swift`); **the purchase flow has not
+been run**, which needs StoreKit testing in Xcode or a sandbox account (see "Testing" below).
 
 **App Store Connect** (My Apps > mõdRïff > Monetization > In-App Purchases). All eleven are
 **Non-Consumable**, with these Product IDs exactly. IDs can never be reused, even after a
@@ -244,20 +245,28 @@ product is deleted, so check each one before creating it.
 
 | Product ID | Reference name | Display name (max 30) | Description (max 45) | Price |
 |---|---|---|---|---|
-| `Handel.modRiff.sampler` | Sampler Engine | Sampler Engine | Sampled instruments, kits, and your samples | $5.99 |
-| `Handel.modRiff.synth` | mõdSynth Engine | mõdSynth Engine | Full synth sound sets and every mõdFX effect | $4.99 |
-| `Handel.modRiff.groove` | Groove Pack | Groove Pack | World grooves, kits, odd meters, aux channel | $3.99 |
-| `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every scale, chord type, and voicing | $3.99 |
-| `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Practice tools, timeline, Stage, iReal batch | $3.99 |
-| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Stems, full exports, unlimited saves | $4.99 |
-| `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Keys, pads, vibes, and vintage basses | $1.99 |
-| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, plus everything added later | $12.99 |
-| `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Unlock every pack you don’t own yet | $10.99 |
-| `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Unlock every pack you don’t own yet | $6.99 |
-| `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Unlock every pack you don’t own yet | $3.99 |
+| `Handel.modRiff.sampler` | Sampler Engine | Sampler Engine | Real instruments, 16 pads, your own samples | $5.99 |
+| `Handel.modRiff.synth` | mõdSynth Engine | mõdSynth Engine | The full mõdSynth sound library and all mõdFX | $4.99 |
+| `Handel.modRiff.groove` | Groove Pack | Groove Pack | Every drum kit, world groove and odd meter | $3.99 |
+| `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every scale, chord and voicing. Play anything | $3.99 |
+| `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Speed trainer, timeline, Stage, chart import | $3.99 |
+| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Export full songs and stems. Unlimited saves | $4.99 |
+| `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Organ, electric piano, pads, vibes and bass | $1.99 |
+| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack now, plus every one we add later | $12.99 |
+| `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Finish your set: every pack you don’t own yet | $10.99 |
+| `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Finish your set: every pack you don’t own yet | $6.99 |
+| `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Finish your set: every pack you don’t own yet | $3.99 |
 
 The display names and descriptions are the page's own copy (`MODULE_COPY` in `index.html`),
 and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste from there.
+
+The descriptions are written to sell, within 45 characters, and each says what the pack does,
+not what it is called. Two words are kept out of every field the store shows, because they are
+other companies' trademarks: **iReal** (the Practice & Perform line used to end "iReal batch",
+now "chart import") and **Rhodes** (the Sounds line says "electric piano", as the pack's own list
+does). The pack's list inside the app still says "Import whole iReal playlists at once": that is
+the sheet, shown to the person who owns the playlists, and only App Review sees it in a screenshot.
+If that bullet should go too, it is one line in `MODULE_COPY.practice`.
 
 - **Family Sharing: on for all eleven** (it cannot be turned off once a product is live, and
   mixing on and off is how a family ends up owning half a bundle).
@@ -266,17 +275,24 @@ and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste fro
   and the page compares the Complete Your Studio price with what is left to buy one at a
   time and offers whichever is cheaper.
 - A review screenshot per product (any locked control, tapped; or Settings > About > Store).
-  They are made: `docs/app-store/screenshots/iap/<product id>.png`, 1320 x 2868, one per
-  product, each the pack sheet over a rolled song with the store's launch prices filled
-  in. Upload each under that product's Review Information. They were taken from the web
-  build at 6.4 in a phone-sized browser, not on a device, and the sheet's text has not
-  changed since (`MODULE_COPY`, `BUNDLE_COPY`, `proSheet` and `bundleOfferFor` were
-  compared on 6.9a). The three Complete Your Studio shots come from owning one, two and
-  three packs (Groove; Groove and Sounds; Groove, Sounds and Studio). `Full Studio` and
-  `Theory Pack` are the same image, byte for byte: the first-time sheet over a locked Theory
-  feature offers both, so one picture shows both purchases (Full Studio's is the "Full
-  Studio — $12.99" button under the pack). Retake them on a device once a purchase runs,
-  and again if a pack's copy or price changes.
+  They are made: `docs/app-store/screenshots/iap/<product id>.png`, 1320 x 2868, opaque, all
+  eleven different. Upload each under that product's Review Information. Each is the pack's
+  sheet over a rolled song, with the store's launch prices filled in; the three Complete Your
+  Studio shots come from owning one, two and three packs (Groove; Groove and Sounds; Groove,
+  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 6.9.9.3a
+  from the web build in a phone-sized browser (not a device) once the descriptions changed, so
+  they show the current look and wording. Retake them on a device once a purchase runs, and
+  again if a pack's copy, price or the sheet changes.
+- A **promotional image** per product, which is optional and is what the store shows if it
+  features the item: `docs/app-store/promo/<product id>.png`, 1024 x 1024, opaque, no rounded
+  corners, one for each of the eleven. Upload under Promotional Image (App Store Connect
+  accepts it once the product has its name, description and price). Each is one picture: the
+  pack's name, its description, three things it does, and a bar of seven segments with this
+  pack lit (all seven for Full Studio; for the upgrades, the packs already owned dimmed and the
+  rest lit). No price (it differs per storefront), no other company's name, not the app icon.
+  Made by `docs/app-store/promo/promo.html` and `render.mjs`: the template holds the copy, so
+  change a pack's name, line or list in `MODULE_COPY` and in `promo.html`, then
+  `node docs/app-store/promo/render.mjs` with the repo served on 8777 and Chrome open on 9222.
 - Submit the IAPs with the first build; they are reviewed together with the app.
 - **Universal purchase** is automatic when iPhone, iPad and Mac are one app record with one
   bundle id. Check the Mac build is not a separate record.
