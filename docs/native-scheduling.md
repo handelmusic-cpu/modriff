@@ -277,20 +277,35 @@ started early so the weight lands on the beat), plus glide (off by default) and 
   engine or the page. Cost: it is not proven yet (see the gate), and the engine needs the three formulas above.
 - **C. Change how the page builds the chord.** Not needed: B composes from what the page already records.
 
-**Recommendation: B, gated on a proof, with A as the fallback.** The proof is one task at the start of the chord
-work: compose a triad from three one-note programs by patching and null it against the page's own three-note
-chord (pass: 90 dB or better, the bar used for every other voice). If it holds, B. If it does not, A, whose
-pieces are already proven, and the cost is that the page must pre-record every voicing a song can produce before
-the engine takes over. This is an engineering choice, not the owner's; it only needs the owner if A is the
-outcome, because then a chord the page could not predict is a gap in background play.
+**Recommendation: B, gated on a proof, with A as the fallback.** The proof is below; it passed.
 
-Not done in the investigation, said plainly: the composition proof itself (an attempt to align the blocks of a
-three-note program against one-note programs by hand failed because the program's header is not a fixed prefix
-and needs the real parser), a chord at other qualities and a slash bass, strum off, glide on, and a sampled
-chord voice.
+**The composition proof (6.9.4, passed).** `tests/graph/chordcompose.inpage.js`, run through `tests/graph/replay.test.js`
+as the spike was. For six chords (three triads at different pitches and registers, two four-note chords, one five-note
+chord, so both level factors and the `sqrt(4/n)` scaling) it records the page's own chord and each note alone as a
+one-note chord, parses both into nodes, and patches each one-note program into its place: its note's level slots times the
+chord's level factor, its note's time slots moved by the strum offset less the strum lead, its panner set, and the sub
+silenced on every note but the lowest. Played together through the engine's pool against the page's chord: **6 of 6
+exact, worst 140.6 dB**, and slot by slot every composed note and sub equals the page's own numbers (no slot differs).
+What it took to get there, because the first two attempts did not:
+- The patched pan is `panPos * the mõdFX Width setting` (`voiceFx`), 0.4 here, not ±1; the slot comparison named it in
+  one run (the only slot that differed was the pan, -0.4 against -1).
+- Random draws must match. The first attempt nulled at 8 dB because a note recorded alone draws a different detune and
+  phase from the stream than the same note inside the chord. With the draw fixed the programs are identical. The engine
+  redraws those slots itself, which the owner accepted.
 
-**Next step: slice 1 (the native clock and the drum grid), and the chord proof in parallel.** Neither blocks the
-other: the drum grid needs only what is proven, and the chord proof is a Mac-only test like the spike.
+So option B is chosen: the engine's chord is a bank of one-note programs (one per pitch, at most 88) plus a recipe of
+four formulas of the note count (level `1.0` / `0.78` / `0.62` for the top note, times `sqrt(4/n)` above four; pan
+`(i/(n-1)*2-1)` times Width; strum offset `i*spread/(n-1)` with the roll started `0.4*spread` early when the chord is
+on the grid; the sub under the lowest note only), and the existing velocity, duration and start-time patches. The whole
+chord part of "all parts in the background" is therefore met on paper; what is not yet built is the engine side of it.
+
+Not covered, said plainly: a slash bass (the sub goes under the bass note), strum off, glide on, Pure tuning, mõdFX
+filters on (the Width panner is covered, the filter chain is not), the other chord voices (the sampled ones), and the
+chord's choke of the previous chord (an engine scheduler job).
+
+**Next step: slice 1 (the native clock and the drum grid) is half built (6.9.7, the section below); the chord work follows it
+(slice 2) and now has its design settled.**
+
 
 ## Slice 1, first half (6.9.7): the clock and the drum-grid expander
 
