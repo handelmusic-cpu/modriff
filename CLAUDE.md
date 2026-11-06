@@ -83,6 +83,9 @@ ActivityKit is compiled out on Catalyst and the Dynamic Island extension is iOS-
 builds it signed and opens it from `~/Applications/modRiff-dev.app`; it **must** be built
 optimised (the script does it): the C++ engine at `-O0` misses its audio deadline and sounds
 distorted. Takes are saved to `~/Downloads/mõdRïff/Bounces` on the Mac, not the container.
+`ios/mac-catalyst/archive-mac-store.sh` makes the Mac App Store `.pkg` (Release archive, exported
+with Xcode's cloud-managed Distribution certificate); the page switches on `html.mac-app` for
+Mac-only CSS (sheets are centred dialogs there).
 
 ## Verify by measuring, not by reading
 
