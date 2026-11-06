@@ -167,7 +167,7 @@ song, a drum pattern and a chord row in it, and `xcrun simctl io <udid> screensh
 | set | device | size | files |
 |---|---|---|---|
 | iPhone 6.9" | iPhone Air | 1260 x 2736 (an accepted 6.9" size) | `iphone-6.9in-01-splash` to `05-sound` |
-| iPhone Duo | iPhone Duo | 1398 x 2034 | `iphone-duo-01-splash` only |
+| iPhone Duo | iPhone Duo | 1398 x 2034 | `iphone-duo-01-splash` to `05-sound` |
 | iPad 13" | iPad Pro 13-inch (M5) | 2064 x 2752 | `ipad-13in-01-splash` to `05-sound` |
 | Mac | Chrome, 1440 x 900 at 2x | 2880 x 1800 (16:10) | `mac-16x10-01-splash` to `05-sound` |
 
@@ -181,12 +181,14 @@ width the Studio screen has a floating panel that was not designed for it.
 An **app preview video** (15 to 30 s) is optional; screen-record playing a progression over a beat.
 Consider short captions on a coloured background, which is what most music apps do.
 
-The Duo set is the splash only. That simulator's touch input kept timing out, so the other four screens were not shot, and
-1398 x 2034 is not one of the sizes App Store Connect lists, so treat it as a reference, not an upload. The Duo draws its
-clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator: top 0, right 84,
-bottom 34, left 0). The splash ignored it and the wordmark ran under the pill; fixed in 6.9.2a, and the file is the fixed
-splash. The Live, Studio, Song and Sound pages pad the body by the side insets already, but nothing past the splash was
-looked at on the Duo, and the other fixed layers (toasts, sheets, the tour card) were not audited.
+The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
+top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
+reference for checking the layout, not an upload. The splash ignored the inset and the wordmark ran under the pill; fixed
+in 6.9.2a, and `iphone-duo-01-splash` is the fixed splash. The other four are taken at 6.9.2a: Live, Studio, Song and Sound
+all keep clear of the pill, because the page pads the body by the side insets. What they do show, left alone for now:
+the column is only about 380pt wide, so the Live Chords voice picker is squeezed to a "V" and the Song title is cut off,
+and the Sound mixer strips wrap (Mute, Solo and EQ stack; the knobs scatter). Toasts, sheets and the tour card were not
+looked at on this device.
 
 ## Icon
 
