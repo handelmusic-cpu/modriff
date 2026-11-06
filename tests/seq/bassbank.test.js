@@ -111,7 +111,7 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
     window._blRestoreState({ genStyle: 'jazz', follow: true });
     const walk = await window._nsBass.sync(); window._blRestoreState({ genStyle: 'funk', follow: true });
     const rb = await window._nsBank.buildBass('upright_real');
-    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.why, sentOnce: b2 - b1, kept, sampled: rb.ok ? 'ok' : rb.why };
+    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.ok, sentOnce: b2 - b1, kept, sampled: rb.ok ? 'ok' : rb.why };
   }, { voices: VOICES, plain: [...ctl, ...rndCases], glide: slideCases });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
@@ -154,7 +154,7 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
   ok(miss === 0, 'no note missed the bank', miss);
   ok(nOk === list.length, nOk + ' of ' + list.length + ' notes are exact (' + nExact + ' bit-identical, worst ' + worst.toFixed(1) + ' dB)', (list.length - nOk) + ' below ' + PASS_DB + ' dB');
   ok(out.entry.ok === true && out.entry.sent === 4 && out.entry.score === 1 && out.entry.chords === 1 && out.entry.kit === out.entry.want && out.entry.align === true, '_nsBass.start(): records the voice (4 entries), sends the line and the chart, starts it on the drums\' downbeat with the voice\'s code', JSON.stringify(out.entry));
-  ok(/Native sound is off/.test(out.off || '') && /walking/.test(out.walk || ''), '_nsBass says so with Native sound off (' + out.off + ') and refuses a walking line (' + out.walk + ')', JSON.stringify([out.off, out.walk]));
+  ok(/Native sound is off/.test(out.off || '') && out.walk === true, '_nsBass says so with Native sound off (' + out.off + ') and takes a walking line now (' + out.walk + ')', JSON.stringify([out.off, out.walk]));
   ok(out.sigChanged, 'the bass fader is part of the voice\'s signature');
   ok(out.sentOnce === 4 && out.kept, 'the voice is recorded and sent once (4 entries) and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');
