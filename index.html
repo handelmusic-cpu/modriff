@@ -9080,7 +9080,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9a</span></div>
  </div>
 </div>
 
@@ -10512,7 +10512,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11703,7 +11703,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9';
+const MODRIFF_VERSION = '6.9.9.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16013,6 +16013,80 @@ function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
  return src;
 }
 
+// Where a one-shot DRUM hit really begins. _sampleOnset above does this for
+// pitched notes at play time; drum buffers were started at sample 0, so any
+// silence ahead of the transient came out as a hit that landed late:
+//   - the Rock and Hip-Hop files carry a 5.0 ms pad from the chain that built
+//     them (measured on all 16: the kick's first audible sample is at 5.0 ms),
+//   - a handful of others open 6-9 ms late (Beatbox kick 3 and tom 4, Studio
+//     snare 0b, Rock 2 snares 0b/1b), and
+//   - an mp3 opens with the encoder's 1105 samples (25 ms) wherever the
+//     decoder does not remove them (see _psLoopTrim) — the same kick then
+//     lands 30 ms late, which is the groove sitting audibly behind the hats.
+// Trimming the buffer once, as it is decoded, fixes all three whatever the
+// decoder did, and every consumer (the step sequencer, the Sampler's factory
+// pads, the beats rendered from these one-shots) gets it without being told.
+//
+// Where the hit starts is found two ways, because the files come two ways:
+//   - an EDGE: the first sample past 7.5% of the peak (-22 dB), if within 1 ms
+//     the signal reaches 15% (-16 dB) and is twice the loudest of the floor
+//     before it. A ghost note or a swell does not reach that, and falls through.
+//     The Hip-Hop hat, rim, shaker and tamb and the Rock ride sit on a -33 to
+//     -40 dB noise floor for their 5 ms pad and then jump 25 dB; a plain
+//     threshold reads that floor as the sound, leaves them 5 ms late, and
+//     with the kick and snare cut would put the kick 4 ms AHEAD of the hats.
+//   - otherwise (a swell, a shaker rising from nothing) the first sample over
+//     -40 dB of the peak, well under what a mix can show and above the mp3's
+//     own noise (-50 dB on the Hip-Hop kick). This is also the limit: the edge
+//     may move the cut at most 6 ms past it.
+// 1 ms of lead is kept so a soft attack is not clipped. Not applied to loops,
+// where silence ahead of the first hit is the groove, nor to pitched notes
+// (that is _sampleOnset's job), nor to a recording of the user's.
+function _hitLeadSamples(buf){
+ const sr=buf.sampleRate, n=buf.length, nc=buf.numberOfChannels;
+ let pk=0, c, d, i, a;
+ for(c=0;c<nc;c++){ d=buf.getChannelData(c); for(i=0;i<n;i++){ a=d[i]<0?-d[i]:d[i]; if(a>pk) pk=a; } }
+ if(!(pk>0)) return 0;
+ // Only the first 60 ms are searched. Further in than that is not a pad or a
+ // codec delay but something the sample's maker meant; leave it alone.
+ const cap=Math.min(n, Math.round(sr*0.06));
+ let first=cap, m, e, f;
+ for(c=0;c<nc;c++){
+  d=buf.getChannelData(c);
+  e=-1; m=0;
+  for(i=0;i<cap;i++){
+   a=d[i]<0?-d[i]:d[i];
+   if(a>pk*0.075){
+    // Out of a quiet floor? Then does it reach -16 dB within 1 ms (an edge),
+    // or creep up (a swell, which the -40 dB rule below handles)?
+    if(m<pk*0.08){
+     let hi=a; for(let j=i+1;j<cap && j<i+Math.round(sr*0.001);j++){ const b=d[j]<0?-d[j]:d[j]; if(b>hi) hi=b; }
+     if(hi>pk*0.15 && hi>2*m) e=i;
+    }
+    break;
+   }
+   if(a>m) m=a;
+  }
+  // f: the first sample over -40 dB. The edge may overrule it by a pad's worth
+  // (6 ms) and no more: a zill, a pedal chick or a rattle has a real quiet
+  // ring-in before its loud part, and cutting 20-35 ms of that changes the
+  // instrument rather than fixing its timing.
+  f=-1; for(i=0;i<cap;i++){ a=d[i]<0?-d[i]:d[i]; if(a>pk*0.01){ f=i; break; } }
+  if(f<0) continue;
+  if(!(e>=0 && e-f<=Math.round(sr*0.006))) e=f;
+  if(e<first) first=e;
+ }
+ if(first>=cap) return 0;
+ return Math.max(0, first-Math.round(sr*0.001));
+}
+function _hitTrimmed(ctx, buf){
+ const lead=_hitLeadSamples(buf);
+ if(lead<16) return buf;   // under 0.4 ms: already on the beat, keep the file's own samples
+ const out=ctx.createBuffer(buf.numberOfChannels, buf.length-lead, buf.sampleRate);
+ for(let c=0;c<buf.numberOfChannels;c++) out.copyToChannel(buf.getChannelData(c).subarray(lead), c);
+ return out;
+}
+
 // ═══════════════════════════════════════
 // SAMPLER — your own sounds, in any part of the app
 // ═══════════════════════════════════════
@@ -20051,8 +20125,12 @@ function _psFactoryBuild(list){
   });
  });
  var bufs = {};
+ // Only the drum one-shots lose their lead-in (see _hitLeadSamples): a loop's
+ // opening rest is the groove, and a phrase's notes are placed by _psRenderPhrase.
+ var isDrum = {};
+ Object.keys(PS_DRUM).forEach(function(k){ isDrum[PS_DRUM[k]] = 1; });
  return Promise.all(Object.keys(files).map(function(u){
-  return _psFetch(ctx, u).then(function(b){ bufs[u]=b; }).catch(function(){});
+  return _psFetch(ctx, u).then(function(b){ bufs[u] = isDrum[u] ? _hitTrimmed(ctx, b) : b; }).catch(function(){});
  })).then(function(){
   return Promise.all(list.map(function(k){
    var job = k.drum ? Promise.resolve(bufs[PS_DRUM[k.drum]] || null)
@@ -55430,7 +55508,7 @@ function _drumLoadOne(name){
  fetch(DRUM_SAMPLES_LAZY[name])
   .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+name); return r.arrayBuffer(); })
   .then(a=>ctx.decodeAudioData(a))
-  .then(buf=>{ DRUM_BUFFERS[name]=buf; })
+  .then(buf=>{ DRUM_BUFFERS[name]=_hitTrimmed(ctx, buf); })
   .catch(()=>{ delete _drumLazyPending[name]; });
 }
 function sqPreloadKit(mach){
@@ -55448,7 +55526,7 @@ function preloadDrumSamples(){
   fetch(DRUM_SAMPLES[k])
    .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
    .then(a=>ctx.decodeAudioData(a))
-   .then(buf=>{ DRUM_BUFFERS[k]=buf; })
+   .then(buf=>{ DRUM_BUFFERS[k]=_hitTrimmed(ctx, buf); })
    .catch(()=>{}));   // one missing cymbal must not sink the kit
  Promise.all(jobs).then(()=>{
   _drumLoadState = Object.keys(DRUM_BUFFERS).length ? 'ready' : 'error';
