@@ -112,7 +112,9 @@ are the open questions from the notes.
 | 5.7 | Listen to the bounced mix | the chord is as loud as it was live, and not clipped |
 | 5.8 | A loud passage: all parts on, Space and Drive up | no crackle or dropout. If there is, copy diagnostics straight away |
 
-### Leaving the app (parked, still worth one check)
+### Leaving the app (superseded by sections 14 and 15)
+
+The Settings switch named in 5.9 is gone and leaving now pauses; 5.9 to 5.11 are kept for the record. Section 15 is the background test.
 
 | # | do | you should see |
 |---|---|---|
@@ -280,4 +282,28 @@ The native engine now fades out and pauses itself the moment the app goes to the
 | 14.3 | Repeat 14.1 and 14.2 with a sampled voice (flute or violin) on a part | same as above |
 | 14.4 | Play, then open the app switcher and come back without leaving | nothing changes (the app is only inactive) |
 | 14.5 | If anything is off, Settings > Copy diagnostics and look for `ModEngine` lines | send it with the item number |
+
+## 15. The engine looks after itself, and the background test (6.9.4, not heard on device)
+
+Two things, both Swift. The first is for everyone; the second is a test that is **off** unless you turn it on, so leaving the app pauses as in 6.9.3 until you do.
+
+**Part A: the engine restarts itself.** Until 6.9.4 nothing restarted the native engine after iOS stopped it (a call, Siri, an alarm, another app taking the audio, headphones in or out, a Bluetooth speaker joining). The page restarts its own Web Audio context, which is not the engine.
+
+| # | do | you should see |
+|---|---|---|
+| 15.1 | Play chords, drums and bass. Plug in wired headphones (or the Lightning/USB-C adapter), or connect and disconnect a Bluetooth speaker | a gap of a second at most, then it carries on on the new output, with no restart of the app |
+| 15.2 | Play, then ring the phone from another phone (decline or let it go to voicemail), or ask Siri something and let it finish | after the call or Siri it carries on within about two seconds, or at worst you press Play once; it must not stay silent until you relaunch |
+| 15.3 | Settings > Copy diagnostics after 15.1 or 15.2, look at `native.life` | lines such as `engine configuration changed`, `audio interrupted`, `interruption ended`, `engine restarted after ... (attempt 1)`; `native.restarts` is at least 1 |
+
+**Part B: does the page keep feeding the engine while the app is away?** This is the question the architecture doc could not answer: with every part on the native engine, does the web view still run once iOS has throttled it? The test turns background play on for one run and measures.
+
+Turn it on (Debug build, phone plugged in, Safari > Develop > the phone > mõdRïff): in the console `localStorage.setItem('modo-bgtest','1')`, then relaunch the app. Settings > Native sound must be ON (the test does nothing without it). To turn it off again: `localStorage.removeItem('modo-bgtest')` and relaunch.
+
+| # | do | you should see |
+|---|---|---|
+| 15.4 | With the test on, play chords + drums + bass, press Home, wait 30 seconds | music **either** carries on **or** stops after a few seconds. Write down which, and roughly after how long |
+| 15.5 | Same, but with a sampled voice (flute or violin) on the melody | does it carry on with the rest? (This is the old 7.7j dropout; with Native sound on the voice is played by the engine) |
+| 15.6 | Come back, then Settings > Copy diagnostics | send it. The three blocks to look at: `native.bg` (what the engine saw: `calls` = how often the page spoke to it while away, `ticksWithCalls` of `ticks` = how many seconds had a call, `longestQuietTicks`, `mainAnswered` of `mainPings`, `audioSecs` against `secs`), `bgPage` (what the page saw: `ticks`, `maxGapMs`, `ctx` = what the web audio context was, `ticksCtxNotRunning`), and `lead` |
+| 15.7 | Come back and keep playing | timing loose for a second at most, nothing doubled |
+| 15.8 | With the test **off** again, press Home while playing | quiet at once, as in 14.1 (nothing changed for everyone else) |
 

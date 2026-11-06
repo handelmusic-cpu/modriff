@@ -21,6 +21,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBuffer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackgroundPlay", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "captureRead", returnType: CAPPluginReturnPromise),
@@ -87,6 +88,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// sounding tone is itself a click.
     func appLeft() {
         guard started, !leftApp, let engine = engine else { return }
+        // The background-play test (6.9.4): the page said, before leaving, that it
+        // means to keep playing. Nothing is silenced; the engine is watched instead.
+        if keepPlaying { beginBackgroundWatch(); return }
         leftApp = true
         NSLog("[ModEngine] leaving the app: fading out")
         for part in 0..<5 { _ = host?.post(["t": "panic", "part": part]) }   // the mõdSynth parts' voices; queued, applied at resume
@@ -100,6 +104,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// Back in the app: restart the engine and bring the level up, rather than
     /// snapping, since the page is restarting the transport at the same moment.
     func appReturned() {
+        if bgActive { endBackgroundWatch(); return }
         guard leftApp else { return }
         leftApp = false
         guard let engine = engine else { return }
@@ -128,6 +133,298 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         }
         step(1)
     }
+
+    // MARK: - Staying alive (6.9.4)
+
+    // Nothing here watched the audio session until now. A phone call, Siri, an alarm,
+    // another app taking the speaker, headphones pulled out or a Bluetooth speaker
+    // joining all stop an AVAudioEngine, and it stays stopped until something starts it
+    // again: the page restarts its own Web Audio context when it comes back, which is
+    // no use to an engine the page does not own. In the foreground that was silence
+    // until the app was relaunched; in the background there is no page to notice
+    // at all (it is throttled, or frozen), so the engine has to look after itself
+    // before background play can mean anything.
+
+    private let lifeLock = NSLock()
+    private var lifeLog: [(at: Date, what: String)] = []
+    private var lifeObservers: [NSObjectProtocol] = []
+    private var interrupted = false
+    private var restarts = 0
+    private var interruptions = 0
+
+    private func lifeNote(_ what: String) {
+        NSLog("[ModEngine] %@", what)
+        lifeLock.lock()
+        lifeLog.append((Date(), what))
+        if lifeLog.count > 16 { lifeLog.removeFirst() }
+        lifeLock.unlock()
+    }
+
+    private func watchLife(_ engine: AVAudioEngine) {
+        unwatchLife()
+        let nc = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        lifeObservers = [
+            nc.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: nil) { [weak self] n in
+                self?.sessionInterrupted(n)
+            },
+            // iOS stops the engine when the output route or its sample rate changes and
+            // says so here; the nodes stay connected, so starting it again is enough
+            // (the mixer converts to whatever rate the new route runs at).
+            nc.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+                self?.lifeNote("engine configuration changed (route or sample rate)")
+                self?.restartEngine("configuration change")
+            },
+            nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: nil) { [weak self] n in
+                let why = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
+                self?.lifeNote("audio route changed (reason \(why))")
+            },
+            // Everything audio is invalid after this, the engine included. Starting it again
+            // is a try, not a rebuild: if it fails the status line says so, and the app has
+            // to be relaunched. Not reproducible on a Mac or a phone short of killing mediaserverd.
+            nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: session, queue: nil) { [weak self] _ in
+                self?.lifeNote("media services were reset")
+                self?.restartEngine("media services reset")
+            }
+        ]
+    }
+
+    private func unwatchLife() {
+        for o in lifeObservers { NotificationCenter.default.removeObserver(o) }
+        lifeObservers = []
+    }
+
+    private func sessionInterrupted(_ n: Notification) {
+        guard let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        switch type {
+        case .began:
+            interrupted = true
+            interruptions += 1
+            lifeNote("audio interrupted")
+        case .ended:
+            interrupted = false
+            let o = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
+            lifeNote("interruption ended (shouldResume=\(AVAudioSession.InterruptionOptions(rawValue: o).contains(.shouldResume) ? "yes" : "no"))")
+            // Whether iOS asks for a resume or not: the engine is only the instrument. Nothing
+            // sounds until the page plays something, and an engine left stopped would swallow
+            // whatever it plays next.
+            restartEngine("interruption")
+        @unknown default:
+            break
+        }
+    }
+
+    /// Starts the engine again if it is stopped, a few times with a growing wait: right
+    /// after an interruption or a route change iOS can still refuse the session. On the
+    /// fade queue, not the main one, which is what stalls first once the app is left.
+    private func restartEngine(_ why: String) {
+        fadeQueue.async { [weak self] in self?.tryRestart(why, attempt: 0) }
+    }
+
+    private func tryRestart(_ why: String, attempt: Int) {
+        guard started, let engine = engine, !engine.isRunning else { return }
+        // The app was left and the engine paused on purpose: appReturned starts it.
+        if leftApp { lifeNote("\(why): the app is left, engine stays paused"); return }
+        // Still interrupted: the ended notification restarts it.
+        if interrupted { return }
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            try engine.start()
+            restarts += 1
+            lifeNote("engine restarted after \(why) (attempt \(attempt + 1))")
+        } catch {
+            lifeNote("restart after \(why) failed (attempt \(attempt + 1)): \(error.localizedDescription)")
+            if attempt < 6 {
+                let wait = min(2.0, 0.25 * pow(2.0, Double(attempt)))
+                fadeQueue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.tryRestart(why, attempt: attempt + 1) }
+            }
+        }
+    }
+
+    // MARK: - Background play, as a measurement (6.9.4)
+
+    // Leaving the app still silences the engine (appLeft). The one exception is a test:
+    // the page, started with `modo-bgtest` set and the native sound on, tells the engine
+    // before it is left that it means to keep playing (`setBackgroundPlay`). Then nothing is
+    // silenced and the engine is watched for as long as the app is away: the page's calls
+    // into it counted per second, the main queue pinged, the blocks it rendered. That is the
+    // question the architecture doc could not answer from the Mac, whether the page keeps
+    // feeding the engine at all once iOS throttles it, answered by the one thing that
+    // keeps running whatever the page does.
+    private var keepPlaying = false
+    private var bgActive = false
+    private let bgLock = NSLock()
+    private var bgStart = Date()
+    private var bgFeeds = 0, bgLastCount = 0
+    private var bgFirstFeed: Double?
+    private var bgTicks = 0, bgTicksFed = 0, bgQuietRun = 0, bgQuietMax = 0
+    private var bgPings = 0, bgPongs = 0
+    private var bgLatMaxMs = 0.0
+    private var bgFrames0: Int64 = 0, bgMissed0: Int64 = 0, bgSlow0: Int64 = 0
+    private var bgTimer: DispatchSourceTimer?
+    private var bgReports: [[String: Any]] = []
+
+    @objc func setBackgroundPlay(_ call: CAPPluginCall) {
+        keepPlaying = call.getBool("on") ?? false
+        call.resolve(["on": keepPlaying])
+    }
+
+    /// A call from the page into the engine (notes, voices, edits). Counted only while the
+    /// app is away; `bgActive` is read without the lock on purpose, a stale false costs one count.
+    private func noteFeed() {
+        guard bgActive else { return }
+        bgLock.lock()
+        bgFeeds += 1
+        if bgFirstFeed == nil { bgFirstFeed = Date().timeIntervalSince(bgStart) }
+        bgLock.unlock()
+    }
+
+    private func beginBackgroundWatch() {
+        bgLock.lock()
+        bgActive = true
+        bgStart = Date()
+        bgFeeds = 0; bgLastCount = 0; bgFirstFeed = nil
+        bgTicks = 0; bgTicksFed = 0; bgQuietRun = 0; bgQuietMax = 0
+        bgPings = 0; bgPongs = 0; bgLatMaxMs = 0
+        bgFrames0 = renderFrames; bgMissed0 = missedCount; bgSlow0 = slowCount
+        bgLock.unlock()
+        NSLog("[ModEngine] leaving the app: background play is on, the engine keeps running")
+        let t = DispatchSource.makeTimerSource(queue: fadeQueue)
+        t.schedule(deadline: .now() + 1, repeating: 1)
+        t.setEventHandler { [weak self] in self?.bgTick() }
+        bgTimer = t
+        t.resume()
+    }
+
+    private func bgTick() {
+        bgLock.lock()
+        bgTicks += 1
+        let fed = bgFeeds - bgLastCount
+        bgLastCount = bgFeeds
+        if fed > 0 { bgTicksFed += 1; bgQuietRun = 0 } else { bgQuietRun += 1; bgQuietMax = max(bgQuietMax, bgQuietRun) }
+        bgPings += 1
+        let line = bgTicks % 5 == 0
+        let (n, feeds, pongs, pings) = (bgTicks, bgFeeds, bgPongs, bgPings)
+        bgLock.unlock()
+        if line {
+            NSLog("[ModEngine] away %ds: page calls %d, main queue answered %d of %d, engine running=%@",
+                  n, feeds, pongs, pings, (engine?.isRunning ?? false) ? "yes" : "no")
+        }
+        // Is the main queue (where the web view's messages arrive) served while away?
+        let sent = DispatchTime.now().uptimeNanoseconds
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let ms = Double(DispatchTime.now().uptimeNanoseconds &- sent) / 1e6
+            self.bgLock.lock()
+            self.bgPongs += 1
+            if ms > self.bgLatMaxMs { self.bgLatMaxMs = ms }
+            self.bgLock.unlock()
+        }
+    }
+
+    private func endBackgroundWatch() {
+        bgTimer?.cancel()
+        bgTimer = nil
+        bgLock.lock()
+        bgActive = false
+        let sr = host?.sampleRate ?? 48_000
+        let secs = Date().timeIntervalSince(bgStart)
+        let report: [String: Any] = [
+            "secs": (secs * 10).rounded() / 10,
+            "ticks": bgTicks,
+            "calls": bgFeeds,
+            "ticksWithCalls": bgTicksFed,
+            "longestQuietTicks": bgQuietMax,
+            "firstCallAfterSec": bgFirstFeed.map { ($0 * 10).rounded() / 10 } ?? -1,
+            "mainPings": bgPings,
+            "mainAnswered": bgPongs,
+            "mainLatMaxMs": (bgLatMaxMs * 10).rounded() / 10,
+            "audioSecs": ((Double(renderFrames - bgFrames0) / sr) * 10).rounded() / 10,
+            "missed": Int(missedCount - bgMissed0),
+            "slow": Int(slowCount - bgSlow0),
+            "engineRunning": engine?.isRunning ?? false
+        ]
+        bgReports.append(report)
+        if bgReports.count > 5 { bgReports.removeFirst() }
+        bgLock.unlock()
+        NSLog("[ModEngine] back in the app after %.1fs: %@", secs, "\(report)")
+        // iOS can stop the engine while the app is away (an interruption that never ended).
+        if let e = engine, !e.isRunning { restartEngine("return from the background") }
+    }
+
+#if DEBUG
+    /// MODRIFF_RECOVERY_TEST=1 in the environment (simulator or Xcode scheme): a few
+    /// seconds after the engine starts, stop it the way iOS does for a route change,
+    /// post the notification iOS would, and log whether it came back; then the same for an
+    /// interruption. The numbers are in the device log as `[RecoveryTest]`.
+    private func runRecoveryTest() {
+        guard ProcessInfo.processInfo.environment["MODRIFF_RECOVERY_TEST"] != nil, let engine = engine else { return }
+        let nc = NotificationCenter.default
+        func report(_ tag: String) {
+            NSLog("[RecoveryTest] %@: running=%@ frames=%lld restarts=%d", tag, engine.isRunning ? "yes" : "no", self.renderFrames, self.restarts)
+        }
+        let q = fadeQueue
+        q.asyncAfter(deadline: .now() + 4) {
+            report("before")
+            engine.stop()
+            report("stopped, as for a route change")
+            nc.post(name: .AVAudioEngineConfigurationChange, object: engine)
+        }
+        q.asyncAfter(deadline: .now() + 6) { report("after the configuration change") }
+        q.asyncAfter(deadline: .now() + 7) {
+            engine.pause()
+            nc.post(name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(),
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        }
+        q.asyncAfter(deadline: .now() + 8) { report("while interrupted (should be stopped)") }
+        q.asyncAfter(deadline: .now() + 9) {
+            nc.post(name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(),
+                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                               AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue])
+        }
+        q.asyncAfter(deadline: .now() + 11) { report("after the interruption ended") }
+        // The app left while stopped: it must stay paused, and come back.
+        q.asyncAfter(deadline: .now() + 12) {
+            engine.stop()
+            self.leftApp = true
+            nc.post(name: .AVAudioEngineConfigurationChange, object: engine)
+        }
+        q.asyncAfter(deadline: .now() + 13) {
+            report("left the app, engine stopped (should stay stopped)")
+            self.leftApp = false
+            self.restartEngine("test: back")
+        }
+        q.asyncAfter(deadline: .now() + 15) { report("back") }
+    }
+
+    /// MODRIFF_BG_SELFTEST=1: the background watch without a page. Leaves the app with
+    /// background play on, makes calls for 3 of 7 seconds, comes back, and the report
+    /// in the log should say 7 s, calls > 0, ticksWithCalls 3, longestQuietTicks 4, the
+    /// engine running and about 7 s of audio rendered.
+    private func runBackgroundSelfTest() {
+        guard ProcessInfo.processInfo.environment["MODRIFF_BG_SELFTEST"] != nil else { return }
+        let q = fadeQueue
+        q.asyncAfter(deadline: .now() + 4) {
+            self.keepPlaying = true
+            self.appLeft()
+            for k in 0..<30 { q.asyncAfter(deadline: .now() + 0.1 * Double(k) + 0.2) { self.noteFeed() } }
+        }
+        q.asyncAfter(deadline: .now() + 11) {
+            self.appReturned()
+            self.keepPlaying = false
+        }
+        // The default path after it: leaving still fades and pauses.
+        q.asyncAfter(deadline: .now() + 13) { self.appLeft() }
+        q.asyncAfter(deadline: .now() + 15) {
+            NSLog("[BgSelfTest] default leave: running=%@", (self.engine?.isRunning ?? false) ? "yes (WRONG)" : "no (paused)")
+            self.appReturned()
+        }
+        q.asyncAfter(deadline: .now() + 17) {
+            NSLog("[BgSelfTest] back: running=%@", (self.engine?.isRunning ?? false) ? "yes" : "no (WRONG)")
+        }
+    }
+#endif
 
     private var engine: AVAudioEngine?
     private var source: AVAudioSourceNode?
@@ -242,6 +539,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.source = source
             self.host = host
             self.started = true
+            watchLife(engine)
+            #if DEBUG
+            runRecoveryTest()
+            runBackgroundSelfTest()
+            #endif
 
             call.resolve([
                 "started": true,
@@ -254,6 +556,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
+        unwatchLife()
+        bgTimer?.cancel(); bgTimer = nil; bgActive = false
         leftApp = false
         fadeToken += 1          // a fade in flight must not touch the next engine's volume
         engine?.stop()
@@ -329,6 +633,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("graphBegin needs gid and program")
             return
         }
+        noteFeed()
         let r = host.beginGraph(Int32(gid), program: program, timestampMs: call.getDouble("ts") ?? 0)
         call.resolve(["handle": r["handle"] ?? -1, "unknownBuffer": r["unknownBuffer"] ?? -1])
     }
@@ -342,6 +647,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("graphEdit needs gid and increments")
             return
         }
+        noteFeed()
         call.resolve(["ok": host.editGraph(Int32(gid), increments: inc)])
     }
 
@@ -349,6 +655,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// Capacitor's thread — never on the render thread.
     @objc func post(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
+        noteFeed()
         // Either one message, or a batch under `msgs` so a chord and its
         // matrix cross the bridge in one call rather than six.
         if let batch = call.getArray("msgs") as? [[String: Any]] {
@@ -756,7 +1063,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         // keep up, which is what a dropout sounds like.
         let seconds = sr > 0 ? Double(renderFrames) / sr : 0
         let load = seconds > 0 ? Double(renderNanosTotal) / 1e9 / seconds : 0
-        call.resolve([
+        var out: [String: Any] = [
             "sampleRate": sr,
             "framesRendered": Int(host.framesRendered),
             "dropped": Int(host.dropped),
@@ -775,6 +1082,19 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             "slow": (0..<min(Int(slowCount), ModEngine.slowSlots)).map { i in
                 ["secondsAgo": sr > 0 ? Double(renderFrames - slowAt[i]) / sr : 0, "us": slowUs[i]]
             }
-        ])
+        ]
+        // Staying alive (6.9.4): what happened to the session, and what the last
+        // times the app was left (with background play on, as a test) looked like.
+        lifeLock.lock()
+        out["life"] = lifeLog.map { ["secondsAgo": (Date().timeIntervalSince($0.at) * 10).rounded() / 10, "what": $0.what] }
+        lifeLock.unlock()
+        out["restarts"] = restarts
+        out["interruptions"] = interruptions
+        out["engineRunning"] = engine?.isRunning ?? false
+        out["keepPlaying"] = keepPlaying
+        bgLock.lock()
+        out["bg"] = bgReports
+        bgLock.unlock()
+        call.resolve(out)
     }
 }
