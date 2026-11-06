@@ -9080,7 +9080,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9a</span></div>
  </div>
 </div>
 
@@ -10512,7 +10512,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11703,7 +11703,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9';
+const MODRIFF_VERSION = '6.9.9.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -59326,13 +59326,13 @@ window._nsKitCode = function(name){
 // patched wrongly. What is baked into a recording (the Drums fader, the lane's Shape) is its signature: change one and
 // the lane is recorded again.
 window._nsBank = {
- LEADF: 2304, have: {}, bad: {}, gen: 0, keepRecs: false, recs: [],
+ LEADF: 2304, have: {}, bad: {}, gen: 0, keepRecs: false, recs: [], constRandom: false,
  _rng: function(){ var q = 13579 >>> 0; return function(){ q = (q + 0x6D2B79F5) >>> 0; var t = q; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; },
  // One recording of one hit: the program the page would send for it, and whether the voice edits itself later. The same
  // random stream every time, or the random detunes and phases would read as slots that move.
  record: async function(msg, chokeAt, perVoice){
   if(typeof modParamsSync==='function') modParamsSync();
-  var keep = Math.random; Math.random = this._rng();
+  var keep = Math.random; Math.random = this.constRandom ? function(){ return 0.5; } : this._rng();
   // The recorder's clock reads zero for the length of a recording, whatever the context's is: a voice is recorded the way
   // the spike did it (a note at 0.048 s on a clock at 0), so its program is small numbers with the onset a lead in, and a
   // replay moves it by a few frames rather than subtracting a long running clock (whose rounding moved onsets a frame).
@@ -59540,31 +59540,9 @@ window._nsBank = {
    var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
    if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time' + tag};
    if(ft.slots.some(function(q){ return Math.abs(q[1] - 1) > 1e-9; })) return {ok: false, why: 'a time slot that does not move 1:1' + tag};
-   // The length. Eight points (the reference's too); each slot is a line held from above or below, or a line.
-   var dx = [REFD].concat(durs), dy = [P0].concat(dp);
-   var order = dx.map(function(_, i){ return i; }).sort(function(a, b){ return dx[a] - dx[b]; });
-   var dslots = [], dbad = [];
-   var close = function(a, b){ return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)); };
-   for(var i = 0; i < n; i++){
-    var ys = order.map(function(k){ return dy[k][i]; }), xs = order.map(function(k){ return dx[k]; });
-    if(ys.every(function(y){ return y === ys[0]; })) continue;
-    var found = null;
-    for(var k = 0; k + 1 < xs.length && !found; k++){
-     if(ys[k] === ys[k + 1]) continue;
-     var b = (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k]), a = ys[k] - b * xs[k];
-     var models = [[0, 0], [1, ys[ys.length - 1]], [2, ys[ys.length - 1]], [1, ys[0]], [2, ys[0]]];
-     for(var m = 0; m < models.length && !found; m++){
-      var okm = true;
-      for(var q = 0; q < xs.length && okm; q++){
-       var lv = a + b * xs[q], mv = models[m][0] === 1 ? Math.min(lv, models[m][1]) : models[m][0] === 2 ? Math.max(lv, models[m][1]) : lv;
-       if(!close(mv, ys[q])) okm = false;
-      }
-      if(okm) found = [i, a, b, models[m][0], models[m][1]];
-     }
-    }
-    if(found) dslots.push(found); else dbad.push(i);
-   }
-   if(dbad.length) return {ok: false, why: dbad.length + ' length slots are neither a line nor a line held at one end' + tag};
+   // The length. Eight points (the reference's too); each slot is a line, held to a floor, a cap or both.
+   var fd = this._fitLen([REFD].concat(durs), [P0].concat(dp), n), dslots = fd.slots, dbad = fd.bad ? [fd.bad] : [];
+   if(dbad.length) return {ok: false, why: fd.bad + ' length slots are neither a line nor a line held at its ends' + tag};
    // A slot that moves with the length must move with nothing else (the joint check below cannot compose a clamp with a product).
    var movers = {}; [fv.slots, fa, fpl].forEach(function(l){ l.forEach(function(q){ movers[q[0]] = 1; }); });
    var shared = dslots.filter(function(q){ return movers[q[0]]; });
@@ -59620,7 +59598,7 @@ window._nsBank = {
    d.push(mul.length); mul.forEach(function(q){ d.push(q); });
    d.push(0);                                                    // no chokes
    var fl = Object.keys(floors); d.push(fl.length); fl.forEach(function(i){ d.push(+i, floors[i]); });
-   d.push(REFN, REFD, glides ? REFFROM : 0, dslots.length); dslots.forEach(function(q){ d.push(q[0], q[1], q[2], q[3], q[4]); });
+   d.push(REFN, REFD, glides ? REFFROM : 0, dslots.length); dslots.forEach(function(q){ d.push(q[0], q[1], q[2], q[3].length); q[3].forEach(function(h){ d.push(h[0], h[1]); }); });
    put(ffit);
    var pk = Object.keys(pclamp); d.push(pk.length); pk.forEach(function(i){ d.push(+i, pclamp[i].lo, pclamp[i].hi); });
    // What the NEXT note does to this one: a bass is monophonic, so a note that starts inside the tail of the one before cuts it (the
@@ -59658,6 +59636,211 @@ window._nsBank = {
    entries.push(Float64Array.from(d));
   }
   return {ok: true, entries: entries};
+ },
+ // The chord voice for ONE note (the engine's chord comp, docs/native-scheduling.md slice 2): a chord is a sub oscillator under the root
+ // and one independent block per note, and the notes share only formulas of the note count (a level factor, a pan, a strum offset). So the
+ // engine plays any chord from a bank of one-note chords, one per pitch, patched into its place: the page records the pitch alone as a
+ // one-note chord (a sub and that note's block), parses the program into its two halves, and says which numbers are the tone's level (the
+ // ones exactly proportional to the velocity), which are its times, where its panner is and which sources are which. The engine multiplies
+ // the level by the note's factor, moves the times by the strum offset, sets the pan, and silences the half it does not want: the sub on
+ // every note but one, the tone on the note that only carries the sub (the chord's root, which need not be one of its notes).
+ // Every random draw is 0.5 while it records (a note recorded alone would otherwise draw other detunes and phases than the same note in a
+ // chord, which the proof of this found; the engine plays the same ones every time). Returns {ok, entry} or {ok:false, why}.
+ // Every number in a program that follows one quantity (the note's LENGTH, a chord's velocity), from recordings at several values (dx, with the
+ // program for each in dy): each is a line, a line held to a floor, a cap or both (a plucked envelope's `min(0.09, dur * 0.35)`), or a
+ // continuous piecewise line with up to a few kinks (a piano's tail that grows faster for the first tenth of a second). Returns
+ // {slots: [[index, a, b, [[k, c]...]]], bad: n}: the value is a + b * x + the sum of c * max(0, x - k), so a plain line has no kinks.
+ _fitLen: function(dx, dy, n){
+  var order = dx.map(function(_, k){ return k; }).sort(function(a, b){ return dx[a] - dx[b]; });
+  var slots = [], bad = 0, BIG = 1e300, close = function(a, b){ return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(b)); };
+  // lines [(a, b)...] with the x where each hands over to the next -> the hinge form
+  var hinge = function(lines, knots){ var h = []; for(var j = 0; j < knots.length; j++) h.push([knots[j], lines[j + 1][1] - lines[j][1]]); return [lines[0][0], lines[0][1], h]; };
+  var evalLines = function(lines, knots, x){ var j = 0; while(j < knots.length && x > knots[j]) j++; return lines[j][0] + lines[j][1] * x; };
+  for(var i = 0; i < n; i++){
+   var ys = order.map(function(k){ return dy[k][i]; }), xs = order.map(function(k){ return dx[k]; });
+   if(ys.every(function(y){ return y === ys[0]; })) continue;
+   var first = ys[0], last = ys[ys.length - 1], found = null;
+   // 1. a line held to a floor, a cap or both, found from two neighbouring points
+   var bounds = [[-BIG, BIG], [-BIG, last], [last, BIG], [-BIG, first], [first, BIG], [first, last], [last, first]];
+   for(var k = 0; k + 1 < xs.length && !found; k++){
+    if(ys[k] === ys[k + 1]) continue;
+    var b = (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k]), a0 = ys[k] - b * xs[k];
+    for(var m = 0; m < bounds.length && !found; m++){
+     var lo = bounds[m][0] === -BIG ? -BIG : Math.min(bounds[m][0], bounds[m][1] === BIG ? bounds[m][0] : bounds[m][1]), hi = bounds[m][1] === BIG ? BIG : Math.max(bounds[m][1], bounds[m][0] === -BIG ? bounds[m][1] : bounds[m][0]);
+     if(bounds[m][0] !== -BIG && bounds[m][1] !== BIG){ lo = Math.min(bounds[m][0], bounds[m][1]); hi = Math.max(bounds[m][0], bounds[m][1]); }
+     var okm = true;
+     for(var q = 0; q < xs.length && okm; q++){ var mv = Math.min(Math.max(a0 + b * xs[q], lo), hi); if(!close(mv, ys[q])) okm = false; }
+     if(!okm) continue;
+     // the same function as lines and kinks
+     var lines, knots;
+     var kLo = b !== 0 ? (lo - a0) / b : 0, kHi = b !== 0 ? (hi - a0) / b : 0;
+     if(lo === -BIG && hi === BIG){ lines = [[a0, b]]; knots = []; }
+     else if(b > 0){
+      if(hi === BIG){ lines = [[lo, 0], [a0, b]]; knots = [kLo]; }
+      else if(lo === -BIG){ lines = [[a0, b], [hi, 0]]; knots = [kHi]; }
+      else { lines = [[lo, 0], [a0, b], [hi, 0]]; knots = [kLo, kHi]; }
+     } else {
+      if(lo === -BIG){ lines = [[hi, 0], [a0, b]]; knots = [kHi]; }
+      else if(hi === BIG){ lines = [[a0, b], [lo, 0]]; knots = [kLo]; }
+      else { lines = [[hi, 0], [a0, b], [lo, 0]]; knots = [kHi, kLo]; }
+     }
+     found = hinge(lines, knots);
+    }
+   }
+   // 2. a continuous piecewise line: runs of neighbouring points on one line, the kinks where neighbouring runs' lines meet
+   if(!found){
+    var runs = [], r0 = 0;
+    while(r0 < xs.length - 1){
+     var sl = (ys[r0 + 1] - ys[r0]) / (xs[r0 + 1] - xs[r0]), r1 = r0 + 1;
+     while(r1 + 1 < xs.length && close(ys[r0] + sl * (xs[r1 + 1] - xs[r0]), ys[r1 + 1])) r1++;
+     runs.push({a: ys[r0] - sl * xs[r0], b: sl, from: r0, to: r1});
+     r0 = r1 + 1;                               // a kink sits between a run's last point and the next run's first (or on the shared one)
+    }
+    // Every point must be on a run (a lone point left over, or a run of one, has no line), and neighbours must meet between their points.
+    var good = runs.length >= 1 && runs.length <= 5 && runs[runs.length - 1].to === xs.length - 1, kn = [];
+    for(var rj = 0; good && rj + 1 < runs.length; rj++){
+     var A = runs[rj], B = runs[rj + 1];
+     if(close(A.b, B.b)){ good = false; break; }
+     var kx = (B.a - A.a) / (A.b - B.b);
+     if(!(kx >= xs[A.to] - 1e-12 && kx <= xs[B.from] + 1e-12)) good = false;
+     kn.push(kx);
+    }
+    if(good){
+     var ln = runs.map(function(r){ return [r.a, r.b]; }), okp = true;
+     for(var q2 = 0; q2 < xs.length && okp; q2++) if(!close(evalLines(ln, kn, xs[q2]), ys[q2])) okp = false;
+     if(okp) found = hinge(ln, kn);
+    }
+   }
+   if(found) slots.push([i, found[0], found[1], found[2]]); else bad++;
+  }
+  return {slots: slots, bad: bad};
+ },
+ parseProgram: function(P){
+  var T = {gain: 1, osc: 2, biq: 3, buf: 4, shp: 5, pan: 6, del: 7, ext: 8}, i = 4, nodes = [], nN = P[2];
+  var param = function(){ var st = i; i += 2 + 4 * P[i + 1]; return [st, i]; };
+  for(var k = 0; k < nN; k++){
+   var n = {type: P[i], start: i, params: []}; i++;
+   if(n.type === T.ext){ n.code = P[i++]; }
+   else if(n.type === T.osc){ var w = P[i++]; if(w === 4){ var c = P[i++]; i += 2 * c; } n.timeAt = i; i += 2; n.params.push(param(), param()); }
+   else if(n.type === T.biq){ i++; for(var q = 0; q < 4; q++) n.params.push(param()); }
+   else if(n.type === T.buf){ n.timeAt = i + 4; i += 7; n.params.push(param(), param()); }
+   else if(n.type === T.shp){ i++; var c2 = P[i++]; i += c2; }
+   else if(n.type === T.del){ i++; n.params.push(param()); }
+   else n.params.push(param());
+   n.end = i; nodes.push(n);
+  }
+  var nE = P[i++], edges = [];
+  for(var e = 0; e < nE; e++){ edges.push([P[i], P[i + 1], P[i + 2]]); i += 3; }
+  return {nodes: nodes, edges: edges, end: i, T: T};
+ },
+ buildChordNote: async function(voice, pitch){
+  if(!MODGRAPH.on || !MODGRAPH.parts.chord) return {ok: false, why: 'the chord part is not on the graph path (Native sound)'};
+  var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD, REFV = 0.8, REFD = 1.0;
+  if(typeof SAMPLED_WAVES !== 'undefined' && (voice === 'sampler' || SAMPLED_WAVES[voice])) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  var base = {kind: 'chord', part: 'chord', id: 1, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: REFD, at: AT0};
+  var keep = this.constRandom; this.constRandom = true;
+  try {
+   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o)); };
+   await R({});
+   var ref = await R({});
+   if(!ref) return {ok: false, why: 'makes no voice'};
+   if(ref.edits) return {ok: false, why: 'edits itself after it starts'};
+   var P0 = ref.prog, n = P0.length;
+   var must = async function(o, what){ var r = await R(o); if(!r || r.prog.length !== n || r.edits) throw new Error('the program changes size with ' + what); return r.prog; };
+   var G = this.parseProgram(P0), T = G.T;
+   // The two halves: the connected components of the nodes that are not endpoints. The sub is the first made, the tone the second.
+   var par = G.nodes.map(function(_, k){ return k; }), find = function(a){ return par[a] === a ? a : (par[a] = find(par[a])); };
+   G.edges.forEach(function(e){ if(G.nodes[e[0]].type !== T.ext && G.nodes[e[1]].type !== T.ext) par[find(e[0])] = find(e[1]); });
+   var comp = {}; G.nodes.forEach(function(nd, k){ if(nd.type === T.ext) return; var r = find(k); (comp[r] = comp[r] || []).push(k); });
+   var comps = Object.keys(comp).map(function(r){ return comp[r]; }).sort(function(a, b){ return Math.min.apply(null, a) - Math.min.apply(null, b); });
+   if(comps.length > 2) return {ok: false, why: 'the one-note chord has ' + comps.length + ' separate parts (a sub and a tone are expected)'};
+   var subNodes = comps.length === 2 ? comps[0] : [], toneNodes = comps[comps.length - 1];
+   var ownerOf = new Array(P0.length).fill(0);   // 1 sub, 2 tone
+   var mark = function(list, who){ list.forEach(function(k){ for(var q = G.nodes[k].start; q < G.nodes[k].end; q++) ownerOf[q] = who; }); };
+   mark(subNodes, 1); mark(toneNodes, 2);
+   // The velocity: nine points. A slot is a line, or a line held to a floor or a cap (the voice's filter opens with the velocity up to a
+   // ceiling: it is ON the ceiling at the reference level, which a fit at three levels would call constant).
+   var vx = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.6, 1.0], vy = [];
+   for(var vi = 0; vi < vx.length; vi++) vy.push(await must({vel: vx[vi]}, 'velocity ' + vx[vi]));
+   var fvl = this._fitLen([REFV].concat(vx), [P0].concat(vy), n);
+   if(fvl.bad) return {ok: false, why: fvl.bad + ' velocity slots are neither a line nor a line held at its ends'};
+   var fv = {slots: fvl.slots.filter(function(q){ return !q[3].length; }).map(function(q){ return [q[0], q[2]]; })}, velCurve = fvl.slots.filter(function(q){ return q[3].length; });
+   var t1 = await must({at: AT0 + 0.02}, 'start time +20 ms'), t2 = await must({at: AT0 + 0.05}, 'start time +50 ms');
+   var durs = [0.05, 0.08, 0.12, 0.2, 0.35, 0.5, 0.75, 1.5, 2, 2.5, 3, 4, 6, 12], dp = [];
+   for(var di = 0; di < durs.length; di++) dp.push(await must({dur: durs[di]}, 'length ' + durs[di]));
+   var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
+   if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time'};
+   if(ft.slots.some(function(q){ return Math.abs(q[1] - 1) > 1e-9; })) return {ok: false, why: 'a time slot that does not move 1:1'};
+   // the length (as the bass voice): a line, held to a floor, a cap or both
+   var fd = this._fitLen([REFD].concat(durs), [P0].concat(dp), n), dslots = fd.slots;
+   if(fd.bad) return {ok: false, why: fd.bad + ' length slots are neither a line nor a line held at its ends'};
+   var movers = {}; fv.slots.forEach(function(q){ movers[q[0]] = 1; });
+   if(dslots.some(function(q){ return movers[q[0]]; })) return {ok: false, why: 'slots follow both the length and the velocity'};
+   var floors = {};
+   // which of them is the tone's LEVEL (exactly proportional to the velocity), its times, its panner, and the sources of each half
+   var toneLevel = [], toneTime = [], panSlot = -1, subStops = [], toneStops = [];
+   fv.slots.forEach(function(q){ if(ownerOf[q[0]] === 2 && Math.abs(P0[q[0]] - q[1] * REFV) <= 1e-9 * Math.max(1e-12, Math.abs(P0[q[0]]))) toneLevel.push(q[0]); });
+   ft.slots.forEach(function(q){ if(ownerOf[q[0]] === 2) toneTime.push(q[0]); });
+   toneNodes.forEach(function(k){ if(G.nodes[k].type === T.pan) panSlot = G.nodes[k].params[0][0]; });
+   subNodes.forEach(function(k){ var nd = G.nodes[k]; if(nd.timeAt != null) subStops.push([nd.timeAt + 1, nd.timeAt, k]); });
+   toneNodes.forEach(function(k){ var nd = G.nodes[k]; if(nd.timeAt != null) toneStops.push([nd.timeAt + 1, nd.timeAt, k]); });
+   var d = [1, 3, window._nsKitCode('chord:' + voice), pitch, ++this.gen, AT0, LEAD, REFV, n];
+   for(var j = 0; j < n; j++) d.push(P0[j]);
+   var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
+   put(fv.slots.map(function(q){ return [q[0], q[1], 0]; })); put([]); put([]);
+   d.push(ft.slots.length); ft.slots.forEach(function(q){ d.push(q[0]); });
+   d.push(0);                                                      // mul
+   d.push(0);                                                      // chokes
+   var fl = Object.keys(floors); d.push(fl.length); fl.forEach(function(k){ d.push(+k, floors[k]); });
+   d.push(pitch, REFD, 0, dslots.length); dslots.forEach(function(q){ d.push(q[0], q[1], q[2], q[3].length); q[3].forEach(function(h){ d.push(h[0], h[1]); }); });
+   // What the NEXT chord does to this one (the page's _webChordStop: hold every gain, fade it in 22 ms, stop the sources): the edits a second
+   // chord's voice code writes on this one's recorder, their times seconds after the second chord's start. The same for every chord, and
+   // the same whatever the level or length (checked at two); they are holds and ramps, so a late edit cannot change what already sounded.
+   var cutOf = async function(velA, durA){
+    self.keepRecs = true; self.recs = [];
+    try {
+     window._chokeReset();
+     await self.record(Object.assign({}, base, {vel: velA, dur: durA}));
+     await self.record(Object.assign({}, base, {at: AT0 + 0.05, root: pitch + 2, notes: [pitch + 2]}));
+     await Promise.resolve(); await Promise.resolve();
+     return (self.recs[0].capturedInc || []).slice();
+    } finally { self.keepRecs = false; self.recs = []; }
+   };
+   var ca = await cutOf(REFV, REFD), cb = await cutOf(0.4, 2.5);
+   if(ca.length !== cb.length || ca.some(function(x, i){ return x !== cb[i]; })) return {ok: false, why: 'the stop of the chord before depends on its level or length'};
+   if(!ca.length || ca.length % 6) return {ok: false, why: 'the stop of the chord before is not whole edit records'};
+   d.push(0, 0, ca.length);
+   for(var ci = 0; ci < ca.length; ci += 6) d.push(ca[ci], ca[ci + 1], ca[ci + 2], ca[ci + 3], ca[ci + 4] - (AT0 + 0.05), ca[ci + 5]);
+   d.push(toneLevel.length); toneLevel.forEach(function(k){ d.push(k); });
+   d.push(toneTime.length); toneTime.forEach(function(k){ d.push(k); });
+   d.push(panSlot);
+   d.push(subStops.length); subStops.forEach(function(q){ d.push(q[0], q[1], q[2]); });
+   d.push(toneStops.length); toneStops.forEach(function(q){ d.push(q[0], q[1], q[2]); });
+   d.push(velCurve.length); velCurve.forEach(function(q){ d.push(q[0], q[1], q[2], q[3].length); q[3].forEach(function(h){ d.push(h[0], h[1]); }); });
+   return {ok: true, entry: Float64Array.from(d), info: {size: n, sub: subNodes.length > 0, toneLevel: toneLevel.length, toneTime: toneTime.length, pan: panSlot >= 0, dur: dslots.length}};
+  } catch(e){ return {ok: false, why: String(e.message || e)}; }
+  finally { this.constRandom = keep; }
+ },
+ // The chord voice's signature: what a one-note chord bakes in -- the voice, the attack and release, the reverb send, the Sub and its level and
+ // wave, the part's fader and trim, the Width panner, and the tuning.
+ signatureChord: function(){
+  return JSON.stringify([_wp('chord.voice'), _wp('chord.attack'), _wp('chord.release'), _wp('chord.reverb'), _wp('chord.sub'), _wp('chord.subLevel'),
+                         _wp('chord.subWave'), _wp('mix.chord'), _wp('fx.trim'), _wp('fx.width'), _wp('master.tune')]);
+ },
+ // The pitches a set of chords needs, recorded and sent if the host does not hold them under the current signature. Resolves {built, kept, failed}.
+ ensureChord: async function(pitches){
+  var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
+  if(!P) return rep;
+  if(typeof modParamsSync==='function') modParamsSync();
+  var voice = _wp('chord.voice'), sig = this.signatureChord();
+  for(var i = 0; i < pitches.length; i++){
+   var key = 'chord:' + voice + ':' + pitches[i];
+   if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+   var r = await this.buildChordNote(voice, pitches[i]);
+   if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
+  }
+  return rep;
  },
  // The bass voice's signature: what a recording of it bakes in -- the voice, the part's level, the filter, the mixer fader.
  signatureBass: function(){
