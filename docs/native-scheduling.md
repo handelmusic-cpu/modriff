@@ -482,11 +482,9 @@ event-list test (`tests/seq/drumgrid.test.js`) still passes with the new kit cod
 - *Chokes:* built in 6.9.9.1, next section.
 - *Random slots.* Replay freezes each voice's random detunes and phases (the recording is seeded): every strike of a lane is the
   same as the reference. The owner accepted that randomness may differ; a few cents and a phase on a handful of voices.
-- *A full-score null through the host.* The pieces are each held (events to the page, patched voices to the page's, events to voices in
-  the host) but a bar of the page's drums against the host's sequencer-driven render, nulled, is not built: the host's master chain
-  and strips sit between the pool and the output, and the page's offline render would need the same chain.
+- *A full-score null.* Built at 6.9.9.2 (part four below), up to the pool: the host's strips and master are not in it.
 
-**Next:** chokes (done below), then that full-score check (or accept the pieces), then slice 2 (bass and chords on the chord timeline).
+**Next:** chokes (below), the full-score check (below), then slice 2 (bass and chords on the chord timeline).
 
 ### Slice 1, second half, part three (6.9.9.1): chokes
 
@@ -527,3 +525,36 @@ step, no late edit. `hosttest`, `graphhosttest`, `warmtest`, `tests/seq/drumgrid
 through the prober (the Linn, Acoustic, IDM and so on: they may register nodes the 808 and 909 do not; the prober would still
 record whatever the page registers, and refuse a group other than `hat`). Not heard on device: the cut itself on a phone (18.6).
 
+### Slice 1, second half, part four (6.9.9.2): the whole score, and soft hits
+
+**What was chosen, and why.** The pieces were each held (events to the page, a patched voice to the page's, a cut to the page's),
+but nothing played a whole bar. The check that closes slice 1 does, and does it with the host's own code: `HostSeq::play` moved into
+`seqplay.h` as `DrumPlayer` (bank lookup, the hat group's cut, patch, `GraphPool::begin`), which the host thread and the new
+`native/modsynth/scoretest.cpp` both run. `scoretest` is the host thread's loop without the host: a `DrumSequencer` expanding a
+lookahead ahead of a render clock that advances a block (128 frames) at a time, a `DrumPlayer` beginning voices in a pool, the pool
+rendering. The other side is the page: `tests/seq/score.test.js` sets up a pattern in the real page, lets the production prober
+record its lanes, asks `seqtool` for the engine's events, and records each of those hits fresh at the engine's own frame, in order,
+with the page's choke registry live, so the page's own closing hats shut its own open hats. Both go through a pool each and are nulled.
+Stopped short of the host's strips and master chain, which sit downstream of the pool and are the same code for both sides.
+
+**Measured.** `make -C native/modsynth scoretest seqtool && node tests/seq/score.test.js`: three bars (swing 25 at 120 BPM, no swing at
+100, swing 50 at 140; 35, 38 and 44 hits: velocity, accent, tuned cells, a ratchet, an ornament, an open hat shut by a closed one three
+times, the Aux Perc layer) null at **147.7, 147.4 and 145.7 dB**, no hit missed the bank, none was refused or began late, 3 cuts each.
+(Not bit-identical because the two pools add their voices in a different order; the worst 100 ms window is 143 dB or deeper.) With
+the engine's choke edits removed the same bars null at 53 and 57 dB and the test fails, so it can tell.
+
+**Found on the way, fixed.**
+1. *A page voice has output before its onset.* The first version began the page's voices at frame 0 and the bars nulled at 15 dB: the
+   808 kick has a waveshaper, and a waveshaper turns silence into a small constant, so a voice sounds that constant from the moment
+   it is begun, not from its onset. In the engine that is the 48 ms lead; begun at frame 0 it was the whole bar. The page side is
+   now begun where the engine begins its own voice. (The per-hit test never saw it: it compares from the onset.)
+2. *Soft hits are not on the velocity line.* The whole-bar test, at a hit of velocity 0.288 on the Aux Perc cowbell, was 37 dB, and
+   the per-hit test, which had not gone below 0.3, was then taught to: the voice clamps its levels (`max(0.0002, ...)`), so below
+   about 0.4 the line the fit found from 0.45, 0.7 and 0.9 goes under the floor and the voice does not. The prober now records two
+   soft velocities (0.15 and 0.05), finds the slots that clamp and what to (they all clamp to the same constants), refuses a slot
+   that leaves the line any other way, and the entry carries the floors; `patch()` holds the value at them. 808 lane 7 had the same
+   at 0.05. Per-hit test: **529 of 529 exact** (359 bit-identical), up from 437 with the soft hits added.
+
+**Not covered.** The host's strips and master in the null. Probability and humanize (the engine draws its own; statistics in
+`drumgrid.test.js`). A pattern of more than about 90 hits in the bar (the page side keeps them all in one pool). The Triangle and the
+other kits and user samples, as before. Not heard on device: 18.3 to 18.7 as before.

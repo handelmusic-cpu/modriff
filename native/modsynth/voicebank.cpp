@@ -43,6 +43,12 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
     ch.ops.assign(d + k, d + k + (size_t)no * 6); k += (size_t)no * 6;
     chokes.push_back(std::move(ch));
   }
+  floors.clear();
+  if (k >= total) return true;
+  if (!need(1)) return false;
+  c = d[k++];
+  if (!(c >= 0 && c <= (double)n) || !need((size_t)c * 2)) return false;
+  for (size_t j = 0; j < (size_t)c; j++) { const int i = (int)d[k++]; if (i < 0 || (size_t)i >= n) return false; floors.push_back({i, d[k++]}); }
   return true;
 }
 

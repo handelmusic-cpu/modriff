@@ -18,6 +18,7 @@
 #include "capture.h"
 #include "graphpool.h"
 #include "seqcore.h"
+#include "seqplay.h"
 #include "voicebank.h"
 #include <functional>
 #include <thread>
@@ -136,66 +137,29 @@ double num(id value, double fallback = 0) {
 // A thread of its own, not the render callback: the voices it will start are begun with GraphPool::begin,
 // which parses a program into a Graph and allocates, so it must run on a control-side thread. It reads the
 // render thread's frame counter, expands the score up to a horizon a little ahead of it, and so keeps stepping
-// whatever the web view is doing (the page's timers are what iOS throttles). Nothing here makes a sound yet:
-// the events are counted, and optionally kept for a test, until the voice bank is wired to them.
-struct HostSeq {
+// whatever the web view is doing (the page's timers are what iOS throttles). Each event is handed to the DrumPlayer
+// (seqplay.h), which begins the bank's voice for it in the pool; the events are also optionally kept, for a test.
+struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and the hit counters live in seqplay.h
   static constexpr int kEventDoubles = 13;      // frameExact frame part kit lane vel accent pitch dyn chokeGroup chokes step bar
   static constexpr int kRing = 256;
   struct Fired { double frame; int step, bar; };
   os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
   modsynth::DrumSequencer seq;
   const std::atomic<uint64_t> *frames;
-  double sr;
   double lookahead;                              // frames the thread expands ahead of the render counter
   std::thread th;
   std::atomic<bool> quit{false}, threadOn{false};
   bool hasScore = false;
-  // The voices the page recorded (voicebank.h) and how to start one in the pool (set by the host: GraphPool::begin under
-  // the host's graph lock). An event with a voice in the bank is begun; one without is a counted miss, not a crash.
-  modsynth::DrumBank bank;
-  std::function<int(const double *, size_t, double, uint64_t)> begin;
-  // And how to change one already begun (GraphPool::edit under the same lock): a closed hat's choke on the open hat.
-  std::function<bool(int, const double *, size_t)> edit;
-  // The hat group, and every other group by its number: voices still sounding that a choking hit can shut (voicebank.h).
-  // The score names a group by a number; the page has only the one ('hat'), but the engine does not assume it.
-  static constexpr int kGroups = 4;
-  modsynth::ChokeGroup groups[kGroups];
-  uint64_t cuts = 0, cutEdits = 0;
   // counters and the playhead ring: under `lock`
   uint64_t steps = 0, events = 0, late = 0, firstFrame = 0, recDropped = 0;
-  uint64_t hits = 0, misses = 0, silent = 0, refused = 0, lateStarts = 0;
-  int lastMissPart = -1, lastMissKit = -1, lastMissLane = -1;
   Fired ring[kRing];
   uint32_t ringN = 0;
   bool record = false;
   std::vector<double> rec;
   size_t recCap = 0;
 
-  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), sr(rate), lookahead(0.15 * rate) {}
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate) { sr = rate; }
   ~HostSeq() { quit.store(true); if (th.joinable()) th.join(); }
-
-  // Starts the voice for one event: the bank's program patched for this hit, begun on the grid ahead of its onset.
-  void play(const modsynth::DrumEvent &e, double now) {
-    if (!begin) return;
-    if (!(e.vel > 0)) { silent++; return; }        // the page plays nothing at a velocity of nothing either
-    // A closed or pedal hat shuts what the group is still sounding, and does it first: this hit's own voice must not
-    // be in the group yet, or it would choke its own tail (the page cuts before it registers, too). It cuts even when
-    // the bank has no voice for it, as the page's choke does not depend on how the hat itself sounds.
-    const int g = e.chokeGroup > 0 && e.chokeGroup <= kGroups ? e.chokeGroup - 1 : -1;
-    if (g >= 0 && e.chokes && edit) {
-      const int sent = groups[g].cut(e.frame, sr, edit);
-      if (sent) { cuts++; cutEdits += (uint64_t)sent; }
-    }
-    const modsynth::BankEntry *en = bank.find(e.part, e.kit, e.lane);
-    if (!en) { misses++; lastMissPart = e.part; lastMissKit = e.kit; lastMissLane = e.lane; return; }
-    modsynth::PatchedVoice v;
-    bank.patch(*en, e.vel, e.accent, e.pitch, e.frame, sr, (uint64_t)now, v);
-    const int h = begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame);
-    if (h < 0) { refused++; return; }
-    hits++;
-    if (g >= 0 && !en->chokes.empty()) groups[g].add(h, v.startFrame, e.frame, *en, sr);
-    if ((double)v.startFrame + modsynth::DrumBank::kLeadFrames > (double)e.frame + 128) lateStarts++;   // began later than its lead allowed
-  }
 
   void tick() {
     os_unfair_lock_lock(&lock);
@@ -580,8 +544,7 @@ struct HostSeq {
   q.seq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.seq.seed((uint64_t)seed);
   const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
-  q.steps = q.events = q.late = q.recDropped = q.hits = q.misses = q.silent = q.refused = q.lateStarts = q.cuts = q.cutEdits = 0;
-  for (auto &gr : q.groups) gr.clear(); q.ringN = 0; q.firstFrame = (uint64_t)first;
+  q.steps = q.events = q.late = q.recDropped = 0; q.resetCounters(); q.ringN = 0; q.firstFrame = (uint64_t)first;
   q.rec.clear();
   q.seq.start(first);
   os_unfair_lock_unlock(&q.lock);
