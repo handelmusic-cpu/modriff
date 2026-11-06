@@ -1227,3 +1227,25 @@ and are the same renderer turned on its side.
 - **Styles marker.** A Bass or Melody style stepped while the band plays lands at the top of the loop; `_genQueuePaint` now also fills
   the Styles row's name.
 
+
+### 6.9.5: the closed Duo's right rail (decision 17 and the mock's "Duo closed")
+
+The mock draws the iPhone Duo three ways (`docs/layout-5.0-mock.html`, the device buttons): **closed** (466 x 678 pt) with the
+transport and the five parts as a 92 pt column down the right edge and the tabs along the floor; **open, upright** (669 x 951)
+with the ordinary bottom stack; **open, wide** (951 x 669) with a side rail and two panes. Until 6.9.5 the app drew the bottom
+stack on all three, so the closed Duo spent 162 pt of 678 on chrome and the page had about 516 pt.
+
+- **Built (6.9.5): the closed Duo.** `@media (orientation:portrait) and (min-width:440px) and (max-width:799px) and
+  (max-height:759px)` is the mock's `isRight()` (portrait added, so a phone on its side keeps the arrangement it has). It
+  publishes `--rail-w` (92 pt, or the right inset if that is larger) and `--rail-top`; the bottom-clearance script reads
+  `--rail-w` to know the transport is not on the floor. Key (name over mode, steps under), tempo, Play, the rate chip, then the
+  parts, one 44 pt row each, in a column; the tabs and the sub-tab dock stop at the rail. The page is 374 x 626 pt. The rail also
+  clears the Duo's status pill: the Duo draws its clock and Wi-Fi down the right edge (inset 84 pt, about 155 pt tall), so
+  `--rail-top` is the inset times 1.9 and is 0 anywhere there is no inset. The heading and melody tightenings that were keyed to
+  a viewport under 420 / 460 pt now also apply to this 374 pt page (the same `@media` lists carry the rail's query).
+- **Already the same as the mock: the open, upright Duo (669 x 951).** It is an ordinary phone-shaped screen; it keeps the
+  bottom stack, as the mock draws it.
+- **Not built: the open, wide Duo (951 x 669), and an iPad.** The mock draws a side rail (Live / Studio / Song / Sound and the
+  parts) with the transport across the top and two panes (Live beside Studio, Perform beside the Timeline, the Kit editor docked).
+  It needs Live and a Studio part page on screen at once, which are two views of one page today (`setViewMode`), so it is a
+  structural change and not a stylesheet. The open Duo gets the bottom stack until it is built.

@@ -307,3 +307,15 @@ Turn it on (Debug build, phone plugged in, Safari > Develop > the phone > m√µdR√
 | 15.7 | Come back and keep playing | timing loose for a second at most, nothing doubled |
 | 15.8 | With the test **off** again, press Home while playing | quiet at once, as in 14.1 (nothing changed for everyone else) |
 
+## 16. The closed Duo's right rail (6.9.5, not heard on device; looked at in the simulator and measured in a browser)
+
+Only the closed iPhone Duo (466 x 678 pt). Other phones, a phone on its side and the open Duo are unchanged.
+
+| # | do | you should see |
+|---|---|---|
+| 16.1 | Open the app on the closed Duo, tap Start | the transport is a column down the right edge, under the clock and Wi-Fi pill: key (C over Major, two steps), tempo, a big Play, the rate chip, then Drums, Bass, Mel, Arp, Chords; the four tabs and Settings run along the bottom on the left |
+| 16.2 | Look at the Live page | it is narrower (374 pt) and taller; the Chords and Melody headings are each on one line; "Keep playing" fits its button |
+| 16.3 | Tap Play, then each part | same as before the change: they sound and light the same; nothing sits under the pill |
+| 16.4 | Go to Studio | the part tabs (Chords, Melody, Sampler, FX) sit above the bottom tabs and stop at the rail |
+| 16.5 | Open the Duo fully (upright) | the old bottom stack, as before |
+
