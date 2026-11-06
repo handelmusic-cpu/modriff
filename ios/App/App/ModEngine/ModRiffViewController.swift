@@ -21,6 +21,19 @@ import WebKit
 ///
 /// Main.storyboard points at this class instead of CAPBridgeViewController.
 class ModRiffViewController: CAPBridgeViewController {
+    #if targetEnvironment(macCatalyst)
+    /// Hands hardware-keyboard focus to the web view (see SceneDelegate.sceneDidBecomeActive).
+    func takeKeyboard() {
+        guard let web = webView, web.window?.isKeyWindow ?? true else { return }
+        _ = web.becomeFirstResponder()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        takeKeyboard()
+    }
+    #endif
+
     override func capacitorDidLoad() {
         let ok = bridge != nil
         bridge?.registerPluginType(ModEngine.self)

@@ -126,6 +126,17 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         fade(engine, to: 1, steps: 10, interval: 0.012, then: nil)
     }
 
+    /// The app became the active one. Normally appReturned has already run; this is for
+    /// the Mac, where switching apps does not always send a background/foreground pair
+    /// but can still stop the engine (or leave it paused and faded out from a leave that
+    /// was never matched by a return). Idempotent, and a no-op on a running engine.
+    func appBecameActive() {
+        if leftApp { appReturned(); return }
+        guard started, !bgActive, let engine = engine else { return }
+        if !engine.isRunning { restartEngine("app became active") }
+        if engine.mainMixerNode.outputVolume < 1 { fade(engine, to: 1, steps: 10, interval: 0.012, then: nil) }
+    }
+
     /// A stepped ramp of the mixer's output volume. A newer fade (or a stop)
     /// cancels an older one through `fadeToken`, so a quick leave-and-return
     /// never ends on the wrong level.
