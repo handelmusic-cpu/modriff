@@ -47,12 +47,16 @@ struct BankEntry {
   std::vector<int> time;     // the slots that are times (they move 1:1 with the onset)
   std::vector<char> mul;     // per program slot: 1 where several parameters multiply
   std::vector<BankChoke> chokes;   // empty for a lane that is in no choke group (everything but the hats)
+  // Slots the voice never lets fall below a constant (a gain or ramp target is max(0.0002, ...)): the page found them from
+  // soft hits, where the linear fit goes under the floor. The patched value is held at it.
+  std::vector<std::pair<int, double>> floors;
 
   // The flat layout (all doubles), written by the page (window._nsBank):
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
   //   [9 .. 9+n) the program, then three lists (vel, accent, pitch) each `count, (index, b, basis) x count`,
   //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply,
-  //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`.
+  //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`,
+  //   then (optional, only after the chokes) `count, (index, floor) x count`.
   bool fromDoubles(const double *d, size_t n);
 };
 
@@ -175,6 +179,7 @@ class DrumBank {
     // time in a voice is exact to, a whole-frame time is never rounded up.
     const double shift = off - (e.refAt - e.lead) - kTimeBiasFrames / sampleRate;
     for (int i : e.time) if (i >= 0 && (size_t)i < n) out.prog[(size_t)i] += shift;
+    for (const auto &f : e.floors) if (out.prog[(size_t)f.first] < f.second) out.prog[(size_t)f.first] = f.second;
     out.timeBase = 0;
     out.startFrame = (uint64_t)start;
     return true;
