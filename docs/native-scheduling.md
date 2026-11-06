@@ -8,9 +8,13 @@ the music lasts only as long as the web view runs and the look-ahead reaches. Re
 
 **Decided by the owner (6.9.4)**
 - Scheduling goes native: the sequencers have to run in the engine.
-- Now Playing (lock screen, Control Center) has **a pause button only**. No skip, no seek. Recorded
-  here so the slice that adds Now Playing does not add more. (Open detail: with pause only, resuming is
-  done in the app; if that feels wrong on the lock screen it is the owner's call to add Play.)
+- Now Playing (lock screen, Control Center) has **Pause and Play, and nothing else**: no skip, no seek.
+  (Said first as "pause only", then clarified as "pause and play".) Recorded here so the slice that adds
+  Now Playing does not add more.
+- **All parts play in the background at release, if possible.** So background play is not switched on
+  after slice 1 (drums); it is switched on when slices 1 to 4 are done. "If possible" is the spike's
+  job: a voice that cannot be replayed exactly stays on the page path and cannot play in the
+  background, and the spike's report names each one so the owner decides what to do about it.
 
 ## 1. The idea in one paragraph
 
@@ -170,6 +174,9 @@ v1; say so, don't half-do them.
 - **Background MIDI** (out, external clock, record) is out of scope for v1.
 - **Battery**: the engine runs the whole time; a native clock at 5 ms blocks costs what it costs today
   (load 3 to 17%). A larger buffer in the background is an option (`setBuffer`).
-- **Decisions needed:** (1) way A first, B later: yes? (2) randomness: accept native RNG? (3) which parts
-  must play in the background for the first release (suggest drums, bass, chords)? (4) Now Playing is pause
-  only: pause alone, no Play on the lock screen?
+- **Decisions still open, in plain words.** (1) Build the engine to take over only when the app is
+  left, and make it the only scheduler later (recommended), or go straight to engine-only? The first is
+  smaller and cannot break playing in front. (2) Probability steps, humanize and the random arp and melody
+  modes roll dice every time a step plays, today in the page and tomorrow in the engine. They already
+  differ on every play-through, so nothing audible changes; the only thing lost is replaying the exact
+  same dice (a "seed"), which the app has never offered. Assumed fine unless the owner says otherwise.
