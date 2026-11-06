@@ -379,3 +379,16 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 | 20.2 | The same on the **Rock** kit (kick, snare, hat) | kick and snare tight with the hat, nothing clipped at the front of the snare or the tom |
 | 20.3 | Sampler > Drums > **Hip-Hop Kick**, tap a pad over a metronome click or the drums on the same grid | the pad hit is on the click, not after it |
 | 20.4 | A shaker or a soft hat, any recorded kit, at a low velocity | the hit still has its soft front; nothing sounds cut off or clicks at the start |
+
+## 21. Voice | Pattern as one widget, and the tiered sound browser (6.9.9.9.1 and 6.9.9.9.2; looked at in a browser at phone width, not tried with a thumb on a device)
+
+| # | do | you should see |
+|---|---|---|
+| 21.1 | Studio, Drums, then Bass, Melody Seq and Arp in turn | at the head of each page **one** framed box in the part's colour, split down the middle: **Kit / Voice on the left, the pattern (Groove, Bass line, Melody line, Arp pattern) on the right**. The same side on all four pages. Both halves are at least 44 pt tall and a thumb reaches either |
+| 21.2 | Tap the left half on Bass | a list of three tiers, in this order: **Samples**, **mõdSynth**, **Free voices**, each with a count; the one you are playing is lit and its name is at the top |
+| 21.3 | As an owner: mõdSynth, then Bass | sound types (Bass first on Bass, Lead first on Melody Seq, Pluck first on Arp), each with a count; inside a type, **Modern** and **Classic** patches under their own headings. Tap one: the list shuts and the left half names the patch, with "mõdSynth · Bass" under it |
+| 21.4 | Samples | the recorded instruments by family (Keys, Mallets, Guitars, Winds & strings, Basses, Your own). Tap Vibes or Upright 1: it is the part's voice at once |
+| 21.5 | Test as **Free** | Samples is still the first tier, with its locked rows marked; mõdSynth shows a lock and "mõdSynth Engine", and a tap on it opens the Pro sheet |
+| 21.6 | The Play (Live) page: the Chords voice button, and the Melody one | the same browser; Keys first for Chords, Lead first for Melody. A pick shuts it and the button names the voice |
+| 21.7 | Settings > Sound > Voices, and any dropdown that lists voices | Samples is the first group, then mõdSynth, then Free voices |
+| 21.8 | Open the list, tap into a type, then tap outside it and scroll the page | it closes on the outside tap, and a long type (Vintage, Modern) scrolls inside the list without moving the page behind |
