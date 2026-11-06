@@ -30,6 +30,19 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
   c = d[k++];
   if (!(c >= 0 && c <= (double)n) || !need((size_t)c)) return false;
   for (size_t j = 0; j < (size_t)c; j++) { const int i = (int)d[k++]; if (i < 0 || (size_t)i >= n) return false; mul[(size_t)i] = 1; }
+  // The chokes are optional: an entry written before them, or for a lane in no group, ends here.
+  chokes.clear();
+  if (k >= total) return true;
+  c = d[k++];
+  if (!(c >= 0 && c <= 64)) return false;
+  for (size_t j = 0; j < (size_t)c; j++) {
+    if (!need(2)) return false;
+    BankChoke ch; ch.until = d[k++];
+    const double no = d[k++];
+    if (!(no >= 0 && no <= 64) || !need((size_t)no * 6)) return false;
+    ch.ops.assign(d + k, d + k + (size_t)no * 6); k += (size_t)no * 6;
+    chokes.push_back(std::move(ch));
+  }
   return true;
 }
 
