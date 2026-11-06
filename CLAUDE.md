@@ -79,7 +79,10 @@ that takes over that name; its xcframeworks are generated, not committed, by
 `npm run ios:frameworks` (`ios/mac-catalyst/`, run by `npm run ios` and `ios:device`). **On a
 fresh clone or after a Capacitor upgrade run it first, or no build (iPhone too) resolves.**
 ActivityKit is compiled out on Catalyst and the Dynamic Island extension is iOS-only
-(`platformFilter = ios`). Mac-only sandbox entitlements: `ios/App/App/AppMac.entitlements`.
+(`platformFilter = ios`). Mac-only sandbox entitlements: `ios/App/App/AppMac.entitlements`. `ios/mac-catalyst/run-mac.sh`
+builds it signed and opens it from `~/Applications/modRiff-dev.app`; it **must** be built
+optimised (the script does it): the C++ engine at `-O0` misses its audio deadline and sounds
+distorted. Takes are saved to `~/Downloads/mõdRïff/Bounces` on the Mac, not the container.
 
 ## Verify by measuring, not by reading
 

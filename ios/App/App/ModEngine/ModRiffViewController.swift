@@ -41,6 +41,10 @@ class ModRiffViewController: CAPBridgeViewController {
         //     setModOwned([...]) test switch on the iOS provider; a release
         //     build never defines it, so there is no switch to find.
         var boot = "window.__modOwnedCached=\(ModBilling.cachedOwnedJSON);"
+        #if targetEnvironment(macCatalyst)
+        // Where takes are kept differs on a Mac (Downloads, not the Files app), so the page says so.
+        boot += "window.__modMacApp=true;"
+        #endif
         #if DEBUG
         boot += "window.__modDebug=true;"
         // MODRIFF_BGTEST=1 in the scheme's environment turns the background-play test on

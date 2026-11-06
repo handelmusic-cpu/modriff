@@ -882,6 +882,21 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
               let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         else { return FileManager.default.temporaryDirectory }
         var url = docs
+        #if targetEnvironment(macCatalyst)
+        // On a Mac the sandbox's Documents is ~/Library/Containers/Handel.modRiff/Data/Documents,
+        // which nobody finds. Takes go to the real ~/Downloads/mõdRïff (the Downloads
+        // entitlement in AppMac.entitlements), and fall back to the container only if
+        // that folder cannot be made, so a bounce is never lost to a path.
+        // .downloadsDirectory would return the container's copy, hence the passwd entry.
+        if let pw = getpwuid(getuid()), let home = pw.pointee.pw_dir {
+            let real = URL(fileURLWithPath: String(cString: home), isDirectory: true)
+                .appendingPathComponent("Downloads", isDirectory: true)
+                .appendingPathComponent("mõdRïff", isDirectory: true)
+            if (try? FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)) != nil {
+                url = real
+            }
+        }
+        #endif
         for part in folder.split(separator: "/") {
             let c = (String(part) as NSString).lastPathComponent
             if c.isEmpty || c == ".." || c == "." { continue }
