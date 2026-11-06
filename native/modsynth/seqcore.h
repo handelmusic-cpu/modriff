@@ -149,11 +149,14 @@ class DrumSequencer {
   // window._sqScheduler's loop: fire every step due before `horizon` (a frame), in order, and for each
   // one hand every event to emit(const DrumEvent&), then bar lines to bar(const BarMark&) as they pass.
   // Returns the number of steps fired.
-  template <class Emit, class Bar>
-  int run(double horizon, Emit &&emit, Bar &&bar) {
+  // `stepped(step, bar, frameExact)`, if given, hears of every step as it is fired, whether or not anything
+  // sounds in it (the host's playhead mirror and its late-step count hang on it).
+  template <class Emit, class Bar, class Stepped>
+  int run(double horizon, Emit &&emit, Bar &&bar, Stepped &&stepped) {
     int fired = 0;
     while (running_ && next_ < horizon) {
       const double sd = stepFrames();
+      stepped(step_, bar_, next_);
       fireStep(step_, next_, sd, emit);
       fired++;
       next_ += sd;
@@ -170,6 +173,11 @@ class DrumSequencer {
       }
     }
     return fired;
+  }
+
+  template <class Emit, class Bar>
+  int run(double horizon, Emit &&emit, Bar &&bar) {
+    return run(horizon, emit, bar, [](int, int, double) {});
   }
 
  private:

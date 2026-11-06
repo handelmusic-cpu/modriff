@@ -78,6 +78,24 @@ NS_ASSUME_NONNULL_BEGIN
 /// {voices, dropped, lateEdits}: what the pool is playing and what it refused.
 - (NSDictionary *)graphStats;
 
+// ── The native sequencer (native/modsynth/seqcore.h; docs/native-scheduling.md slice 1) ──
+// The clock and the drum grid, on a thread of the host's own, counted in the render thread's frames. So far it
+// expands the score and counts what it would play; the voice bank that makes the sound is not wired to it. Any thread.
+
+/// The drum score, float64s as `window._sqNativeScore()` makes them. NO if it does not parse.
+- (BOOL)seqSetDrumScore:(NSData *)score;
+/// Starts at step 0, the downbeat `leadMs` from now. NO if there is no score yet.
+- (BOOL)seqStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs seed:(double)seed;
+- (void)seqStop;
+/// Takes effect from the next step. A value of 0 or less leaves that one alone.
+- (void)seqSetTempo:(double)bpm rate:(double)rate;
+/// For tests: keep what is expanded (13 float64s an event, see HostSeq), up to `capacity` events.
+- (void)seqRecord:(BOOL)on capacity:(int)capacity;
+- (NSData *)seqTakeEvents;
+/// {running, step, bar, frame, steps, events, late, firstFrame, nextFrame, recDropped}: step and bar are the last
+/// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
+- (NSDictionary *)seqMirror;
+
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is
 /// what a message's `at` is measured against.
