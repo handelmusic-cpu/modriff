@@ -52,9 +52,9 @@ function judge(dir) {
   console.log('\nper voice class (cases passed / cases, worst null in dB):');
   for (const [c, v] of Object.entries(byClass)) console.log('  ' + (v.far ? 'FAR  ' : v.close ? 'CLOSE' : 'EXACT') + ' ' + c.padEnd(34) + v.exact + ' exact (>= ' + PASS_DB + ' dB), ' + v.close + ' close (>= ' + CLOSE_DB + '), ' + v.far + ' far;  worst ' + v.worst.toFixed(1) + (v.near ? '   (' + v.near + ' exact only to within a frame of onset)' : ''));
   const pv = Object.values(phase).filter(x => isFinite(x));
-  console.log('\nquantum phase (the same program begun 64 frames off the 128-frame grid, null depth in dB; the interpreter, not the replay): worst ' + Math.min(...pv).toFixed(1) + ', median ' + pv.sort((a, b) => a - b)[pv.length >> 1].toFixed(1) + ' over ' + pv.length + ' voices');
+  if (pv.length) console.log('\nquantum phase (the same program begun 64 frames off the 128-frame grid, null depth in dB; the interpreter, not the replay): worst ' + Math.min(...pv).toFixed(1) + ', median ' + pv.sort((a, b) => a - b)[pv.length >> 1].toFixed(1) + ' over ' + pv.length + ' voices');
   const cv = Object.values(ctl);
-  console.log('control (the page\'s own voice recorded at 1.304 s against recorded early, worst offset, dB; no replay involved): worst ' + Math.min(...cv).toFixed(1) + ', median ' + cv.sort((a, b) => a - b)[cv.length >> 1].toFixed(1) + ' over ' + cv.length + ' voices');
+  if (cv.length) console.log('control (the page\'s own voice recorded at 1.304 s against recorded early, worst offset, dB; no replay involved): worst ' + Math.min(...cv).toFixed(1) + ', median ' + cv.sort((a, b) => a - b)[cv.length >> 1].toFixed(1) + ' over ' + cv.length + ' voices');
   console.log('\nslots found by differencing (per class: voices, program sizes, then per parameter slots fitted / slots that did not obey / edits seen):');
   for (const [c, f] of Object.entries(meta.fits)) {
     if (f.skipped) { console.log('  ' + c + ': ' + f.skipped); continue; }
@@ -62,6 +62,7 @@ function judge(dir) {
   }
   const unexpected = Object.entries(byClass).filter(([c, v]) => v.far && !KNOWN_DIFFERENT.includes(c)).map(([c]) => c);
   const fixed = KNOWN_DIFFERENT.filter(c => byClass[c] && !byClass[c].far);
+  if (meta.report) console.log('\nreport: ' + JSON.stringify(meta.report));
   console.log('\n' + rows.length + ' cases. ' + (unexpected.length ? 'FAR from the fresh voice and not expected to be: ' + unexpected.join(', ') : 'Every voice not on the known-different list is within ' + CLOSE_DB + ' dB or better.') + (fixed.length ? ' Known-different voices that no longer are (update KNOWN_DIFFERENT): ' + fixed.join(', ') : ''));
   process.exit(unexpected.length || fixed.length ? 1 : 0);
 }
@@ -69,7 +70,7 @@ function judge(dir) {
 function save(r, dir) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'cases.f64'), Buffer.from(r.b64, 'base64'));
-  fs.writeFileSync(path.join(dir, 'cases.json'), JSON.stringify({ names: r.names, fits: r.fits, seconds: r.seconds, buffers: r.buffers, bufferConflicts: r.bufferConflicts }));
+  fs.writeFileSync(path.join(dir, 'cases.json'), JSON.stringify({ names: r.names, fits: r.fits, seconds: r.seconds, buffers: r.buffers, bufferConflicts: r.bufferConflicts, report: r.report }));
 }
 
 const OUT = process.env.OUT || fs.mkdtempSync(path.join(os.tmpdir(), 'modriff-replay-'));
