@@ -144,6 +144,11 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
     { vel: 0.65, accent: true, pitch: 0, onset: 72735 },
     { vel: 0.65, accent: false, pitch: 0, onset: 72735 },
     { vel: 0.9, accent: false, pitch: 0, onset: 72735 },
+    // soft hits: a pattern's lane volume times its step's strength reaches well under the 0.45 the fit used (the Aux Perc cowbell at 0.288 was not exact)
+    { vel: 0.288, accent: false, pitch: -2, onset: 99200 },
+    { vel: 0.288, accent: false, pitch: 0, onset: 99200 },
+    { vel: 0.15, accent: false, pitch: 0, onset: 99200 },
+    { vel: 0.05, accent: false, pitch: 0, onset: 99200 },
     ].concat(Array.from({ length: 6 }, () => ({ vel: +(0.3 + rnd() * 0.7).toFixed(3), accent: rnd() < 0.3, pitch: [0, -3, 2, 5, -7, 1.5][Math.floor(rnd() * 6)], onset: 20000 + Math.floor(rnd() * 100000) }))) });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
