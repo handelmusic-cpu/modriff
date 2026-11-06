@@ -86,13 +86,19 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)seqSetDrumScore:(NSData *)score;
 /// Starts at step 0, the downbeat `leadMs` from now. NO if there is no score yet.
 - (BOOL)seqStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs seed:(double)seed;
+/// A voice the page recorded for a drum lane, with the map of what in it follows velocity, accent, pitch and time
+/// (native/modsynth/voicebank.h). NO if it does not parse.
+- (BOOL)seqPutBankEntry:(NSData *)entry;
+- (void)seqClearBank;
 - (void)seqStop;
 /// Takes effect from the next step. A value of 0 or less leaves that one alone.
 - (void)seqSetTempo:(double)bpm rate:(double)rate;
 /// For tests: keep what is expanded (13 float64s an event, see HostSeq), up to `capacity` events.
 - (void)seqRecord:(BOOL)on capacity:(int)capacity;
 - (NSData *)seqTakeEvents;
-/// {running, step, bar, frame, steps, events, late, firstFrame, nextFrame, recDropped}: step and bar are the last
+/// {running, step, bar, frame, steps, events, late, firstFrame, nextFrame, recDropped, hits, misses, silent, refused,
+/// lateStarts, bank, lastMiss}: hits are events begun as voices, misses ones with no voice in the bank (lastMiss says
+/// which), silent ones at a velocity of nothing, refused ones the pool would not take. step and bar are the last
 /// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
 - (NSDictionary *)seqMirror;
 

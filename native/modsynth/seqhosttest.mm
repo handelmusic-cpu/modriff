@@ -46,14 +46,14 @@ int main() {
     [h seqRecord:YES capacity:20000];
     CHECK([h seqStartWithBpm:120 rate:1 leadMs:100 seed:7], "start");
 
-    // Three seconds. At 120 BPM a step is 6000 frames; the first is 4800 frames out and the thread works 4800 ahead.
+    // Three seconds. At 120 BPM a step is 6000 frames; the first is 4800 frames out and the thread works 7200 ahead.
     run(h, 1500);
     NSDictionary *m1 = [h seqMirror];
     run(h, 1500);
     NSDictionary *m2 = [h seqMirror];
     const double first = [m2[@"firstFrame"] doubleValue], frame = [m2[@"frame"] doubleValue];
     const int steps = [m2[@"steps"] intValue];
-    const int expect = (int)std::ceil((frame + 4800 - first) / 6000.0);
+    const int expect = (int)std::ceil((frame + 7200 - first) / 6000.0);
     CHECK(steps >= expect - 1 && steps <= expect + 1, "steps fired %d, expected about %d for %.0f frames of render clock", steps, expect, frame);
     CHECK([m2[@"late"] intValue] == 0, "no step was expanded after its moment (late %d)", [m2[@"late"] intValue]);
     CHECK([m1[@"steps"] intValue] > 0 && [m2[@"steps"] intValue] > [m1[@"steps"] intValue], "steps advance between two looks (%d then %d)", [m1[@"steps"] intValue], [m2[@"steps"] intValue]);
@@ -77,6 +77,14 @@ int main() {
     }
     CHECK(same, "%zu events, identical to the core run alone from the same first frame", n);
 
+    // The bank: with no voice recorded every event is a miss, counted and not a crash.
+    {
+      NSDictionary *m = [h seqMirror];
+      CHECK([m[@"misses"] intValue] == [m[@"events"] intValue] && [m[@"hits"] intValue] == 0, "no voice in the bank: all %d events are misses, none begun", [m[@"events"] intValue]);
+      NSArray *lm = m[@"lastMiss"];
+      CHECK([lm[0] intValue] == 0 && [lm[1] intValue] == 0, "and the last miss names the voice (part %d kit %d lane %d)", [lm[0] intValue], [lm[1] intValue], [lm[2] intValue]);
+    }
+
     // Tempo: from the next step on, steps are 12000 frames apart.
     [h seqTakeEvents];
     [h seqSetTempo:60 rate:0];
@@ -92,6 +100,57 @@ int main() {
     usleep(400000);
     const int after = [[h seqMirror][@"steps"] intValue];
     CHECK(after == before, "with the render clock stopped the sequencer stands still (%d, %d)", before, after);
+
+    // A bank with voices in it: lanes 0 and 1 of kit 0 get a short sine each, on the drum bus (code 5), so the sequencer's
+    // events become voices in the pool and are heard. The program's amplitude slot follows velocity (b = 1 on a unit gain).
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      auto entry = [&](int lane, double hz) {
+        std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+        const double stop = 0.048 + 0.06, amp = 0.5;
+        p.push_back(8); p.push_back(5);
+        p.push_back(2); p.push_back(0); p.push_back(0); p.push_back(stop);
+        p.push_back(hz); p.push_back(0); p.push_back(0); p.push_back(0);
+        p.push_back(1); p.push_back(amp); p.push_back(0);
+        p.push_back(2);
+        p.push_back(1); p.push_back(2); p.push_back(-1);
+        p.push_back(2); p.push_back(0); p.push_back(-1);
+        // the amplitude is the slot after "1, " in the gain node: find it by value (0.5 at 0.9 reference velocity -> b = 0.5/0.9)
+        size_t amp_i = 0; for (size_t i = 0; i < p.size(); i++) if (p[i] == amp) amp_i = i;
+        std::vector<double> e = {1, 0, 0, (double)lane, 1, 0.048, 0.048, 0.9, (double)p.size()};
+        e.insert(e.end(), p.begin(), p.end());
+        e.push_back(1); e.push_back((double)amp_i); e.push_back(amp / 0.9); e.push_back(0);   // vel
+        e.push_back(0); e.push_back(0);                                                          // accent, pitch
+        e.push_back(1); e.push_back(3.0 + 0);                                                    // time: the osc stop (index 7 is stop; use the real one below)
+        return e;
+      };
+      auto e0 = entry(0, 330), e1 = entry(1, 660);
+      // time slots: the stop time of the osc is at index 4+4+... find it: the first occurrence of 0.108.
+      for (auto *e : {&e0, &e1}) {
+        size_t n = (size_t)(*e)[8], at = 9; size_t stopi = 0;
+        for (size_t i = 0; i < n; i++) if (std::fabs((*e)[at + i] - 0.108) < 1e-12) stopi = i;
+        e->back() = (double)stopi;
+        e->push_back(0);                                                                         // mul list
+      }
+      CHECK([g seqPutBankEntry:bytes(e0)] && [g seqPutBankEntry:bytes(e1)], "two bank entries are taken");
+      CHECK(![g seqPutBankEntry:[NSData dataWithBytes:"junk" length:8]], "a bank entry that does not parse is refused");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      std::vector<float> l(240), r(240); float peak = 0; int maxVoices = 0;
+      for (int t = 0; t < 1500; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        maxVoices = std::max(maxVoices, [g graphStats][@"voices"] ? [[g graphStats][@"voices"] intValue] : 0);
+        usleep(5000);
+      }
+      NSDictionary *m = [g seqMirror];
+      CHECK([m[@"hits"] intValue] > 0 && [m[@"refused"] intValue] == 0, "events with a voice in the bank are begun: %d hits, %d refused", [m[@"hits"] intValue], [m[@"refused"] intValue]);
+      CHECK([m[@"hits"] intValue] + [m[@"misses"] intValue] + [m[@"silent"] intValue] == [m[@"events"] intValue], "every event is a hit, a miss or silent (%d + %d + %d = %d)", [m[@"hits"] intValue], [m[@"misses"] intValue], [m[@"silent"] intValue], [m[@"events"] intValue]);
+      CHECK(maxVoices > 0 && peak > 0.05f, "and they sound: up to %d voices, peak %.3f, with no page", maxVoices, peak);
+      CHECK([m[@"lateStarts"] intValue] == 0 && [m[@"late"] intValue] == 0, "none began later than its lead allowed (late starts %d, late steps %d)", [m[@"lateStarts"] intValue], [m[@"late"] intValue]);
+      [g seqStop];
+    }
 
     // Stop: nothing more even when the clock runs.
     [h seqStop];
