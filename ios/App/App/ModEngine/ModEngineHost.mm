@@ -18,6 +18,8 @@
 #include "capture.h"
 #include "graphpool.h"
 #include "seqcore.h"
+#include "voicebank.h"
+#include <functional>
 #include <thread>
 #include <unistd.h>
 
@@ -148,16 +150,35 @@ struct HostSeq {
   std::thread th;
   std::atomic<bool> quit{false}, threadOn{false};
   bool hasScore = false;
+  // The voices the page recorded (voicebank.h) and how to start one in the pool (set by the host: GraphPool::begin under
+  // the host's graph lock). An event with a voice in the bank is begun; one without is a counted miss, not a crash.
+  modsynth::DrumBank bank;
+  std::function<int(const double *, size_t, double, uint64_t)> begin;
   // counters and the playhead ring: under `lock`
   uint64_t steps = 0, events = 0, late = 0, firstFrame = 0, recDropped = 0;
+  uint64_t hits = 0, misses = 0, silent = 0, refused = 0, lateStarts = 0;
+  int lastMissPart = -1, lastMissKit = -1, lastMissLane = -1;
   Fired ring[kRing];
   uint32_t ringN = 0;
   bool record = false;
   std::vector<double> rec;
   size_t recCap = 0;
 
-  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), sr(rate), lookahead(0.1 * rate) {}
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), sr(rate), lookahead(0.15 * rate) {}
   ~HostSeq() { quit.store(true); if (th.joinable()) th.join(); }
+
+  // Starts the voice for one event: the bank's program patched for this hit, begun on the grid ahead of its onset.
+  void play(const modsynth::DrumEvent &e, double now) {
+    if (!begin) return;
+    if (!(e.vel > 0)) { silent++; return; }        // the page plays nothing at a velocity of nothing either
+    const modsynth::BankEntry *en = bank.find(e.part, e.kit, e.lane);
+    if (!en) { misses++; lastMissPart = e.part; lastMissKit = e.kit; lastMissLane = e.lane; return; }
+    modsynth::PatchedVoice v;
+    bank.patch(*en, e.vel, e.accent, e.pitch, e.frame, sr, (uint64_t)now, v);
+    if (begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame) < 0) { refused++; return; }
+    hits++;
+    if ((double)v.startFrame + modsynth::DrumBank::kLeadFrames > (double)e.frame + 128) lateStarts++;   // began later than its lead allowed
+  }
 
   void tick() {
     os_unfair_lock_lock(&lock);
@@ -166,6 +187,7 @@ struct HostSeq {
       seq.run(now + lookahead,
         [&](const modsynth::DrumEvent &e) {
           events++;
+          play(e, now);
           if (!record) return;
           if (rec.size() + kEventDoubles > recCap) { recDropped++; return; }
           const double d[kEventDoubles] = {e.frameExact, (double)e.frame, (double)e.part, (double)e.kit, (double)e.lane, e.vel,
@@ -312,6 +334,17 @@ struct HostSeq {
     for (int k = 0; k < 2; k++) { _roomRack[k] = std::make_unique<modsynth::FxRack>(sampleRate); _roomRack[k]->setSendReverb(1.8, 2.5); _roomTail[k] = 0; }
     _gbus.assign((size_t)modsynth::GraphPool::kBuses * 2 * (size_t)_maxFrames, 0.0f);
     _hostSeq = std::make_unique<HostSeq>(&_frames, sampleRate);
+    {
+      // The sequencer thread begins voices the way the page's graphBegin does, under the same lock. Raw pointers: the
+      // members outlive the thread (it is joined first, see _hostSeq).
+      modsynth::GraphPool *pool = &_graphs; os_unfair_lock *lk = &_graphLock;
+      _hostSeq->begin = [pool, lk](const double *prog, size_t n, double base, uint64_t start) {
+        os_unfair_lock_lock(lk);
+        const int h = pool->begin(prog, n, base, start);
+        os_unfair_lock_unlock(lk);
+        return h;
+      };
+    }
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
     _curOff = 0; _drainSum = 0; _drainN = 0; _drainMean.store(0);
@@ -524,12 +557,29 @@ struct HostSeq {
   q.seq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.seq.seed((uint64_t)seed);
   const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
-  q.steps = q.events = q.late = q.recDropped = 0; q.ringN = 0; q.firstFrame = (uint64_t)first;
+  q.steps = q.events = q.late = q.recDropped = q.hits = q.misses = q.silent = q.refused = q.lateStarts = 0; q.ringN = 0; q.firstFrame = (uint64_t)first;
   q.rec.clear();
   q.seq.start(first);
   os_unfair_lock_unlock(&q.lock);
   q.startThread();
   return YES;
+}
+
+// A voice the page recorded (voicebank.h's layout, float64s). NO if it does not parse. Replaces the same part, kit and lane.
+- (BOOL)seqPutBankEntry:(NSData *)entry {
+  const size_t n = entry.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), entry.bytes, n * sizeof(double));
+  os_unfair_lock_lock(&_hostSeq->lock);
+  const bool ok = _hostSeq->bank.put(d.data(), n);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return ok;
+}
+
+- (void)seqClearBank {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->bank.clear();
+  os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
 - (void)seqStop {
@@ -578,7 +628,10 @@ struct HostSeq {
   NSDictionary *r = @{@"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now),
                       @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
                       @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),
-                      @"recDropped": @((double)q.recDropped)};
+                      @"recDropped": @((double)q.recDropped),
+                      @"hits": @((double)q.hits), @"misses": @((double)q.misses), @"silent": @((double)q.silent), @"refused": @((double)q.refused),
+                      @"lateStarts": @((double)q.lateStarts), @"bank": @((double)q.bank.size()),
+                      @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
   os_unfair_lock_unlock(&q.lock);
   return r;
 }

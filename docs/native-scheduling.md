@@ -417,3 +417,75 @@ their Makefile recipes now include `seqcore.cpp`, and `hosttest` and `warmtest` 
 **Not measured.** The simulator with the web view throttled and the phone: the thread is plain native code and the
 Mac test shows it needs nothing from the page, but iOS suspending the web view is only seen on a device (checklist 18.2).
 Still to build: the voice bank that makes the events sound (next), then chokes, then the null test.
+
+## Slice 1, second half, part two (6.9.9): the drum voice bank
+
+**Built.**
+- `native/modsynth/voicebank.h` + `.cpp`: `DrumBank`, entries keyed by (part, kit, lane). An entry is the reference program the
+  page recorded, plus the map of which numbers follow velocity, accent and pitch (value = reference + b * (x - x0), where x is
+  the velocity, 0 or 1, and 2^(semitones/12) or the semitones for the few slots that follow the note number), which follow the
+  start time (slope 1), and which slots two parameters multiply. `patch()` makes the voice for one hit: the program patched,
+  begun on the engine's 128-frame grid a lead (2304 frames) before the onset, the few frames the grid cannot reach (0 to 127)
+  added to the time slots. A hit that is already late is begun at the next grid line with the onset moved inside the program.
+- `ModEngineHost`: the sequencer thread now plays what it expands. Each event is looked up in the bank, patched and begun in
+  the pool (`GraphPool::begin` under the host's graph lock) 150 ms before it is due (the look-ahead went from 100 to 150 ms:
+  a drag sounds 60 ms before its step and a humanized hit 14 ms, and the 48 ms lead must still fit before the onset). An
+  event with no voice in the bank is a counted miss (`seqMirror` names the last one), a velocity of nothing is silent as on
+  the page, a begin the pool refuses is counted. `seqBank` on the plugin takes an entry, or empties the bank.
+- The page's half, `window._nsBank` in `index.html`: records each lane the score plays with the page's own recorder
+  (`MODGRAPH.capture`: the voice is recorded and handed back, nothing reaches the host, not even the edits it makes later),
+  probes it as the spike did, and builds the entry. It refuses, with the reason, a lane whose program changes size with a
+  parameter, which edits itself after it starts, which picks its recording by `dyn` (a layered kit), whose slots fit nothing
+  or whose time slots do not move one for one with the start time. `signature()` is what a recording has baked in (the Drums
+  or Aux fader and the lane's Shape); `ensure()` records again and re-sends any lane whose signature changed. Kit numbers in the
+  score and the bank are one session-stable table (`_nsKitCodes`). `window._nsDrum.start()` now empties the host's bank, records
+  and sends the lanes, sends the score and starts; it needs Native sound on.
+
+**Found on the way (and fixed).**
+1. *Pitch is nothing special.* Every slot pitch moves in the kicks and hats is exactly linear in 2^(semitones/12) across -12 to +12
+   (measured on four lanes). The spike's pitch validation tested the point it had fitted from, so it could not have shown otherwise.
+2. *A reference recorded at a large time does not replay.* The first version recorded the reference at the context's time
+   (about 1 s) and re-based it by subtracting that time in the pool: 12 of 276 hits were within 90 dB, the rest 12 to 60 dB. The
+   programs were numerically the same; the cause was the interpreter's start rule. It starts a source at the first whole frame at
+   or after its start time with no allowance (matching the browser), so a time that is meant to be a whole frame and comes out a
+   hair above one (1.1 s is 52800.00000000001 frames) starts a frame late, and a kick's frequency sweep, which does not get the
+   sub-frame start, then differs by a frame of its sweep (about 40 dB). Which way it falls depends on the digits of the sum,
+   so the page's own voice at some onsets and not others has it too.
+3. *The fix is two things.* (a) The recorder's clock reads zero during a bank recording and the note is recorded at 0.048 s, as the
+   spike did: the program holds small numbers, the onset a lead in, and a replay shifts only a few frames (no long running
+   clock to subtract). (b) `patch()` moves every time a millionth of a frame early, so a time meant to be a whole frame is never
+   rounded up; the test records the page's fresh voice at the same nominal frame (a millionth early) so both mean "the voice
+   at frame F". With those, every case is exact (below).
+4. *The two "noise" drum voices were the recording clock.* 808 lane 6 and 909 lane 3 differed run to run in the spike's control,
+   which blamed a time-derived noise offset without proof; recorded on the zero clock they replay exactly like the others, so
+   the page's "not time-invariant" recordings were the large absolute time, not the voice.
+
+**Measured.** `make -C native/modsynth banktest && node tests/seq/bank.test.js`: the real page records the 15 lanes of the
+808 kit, the 909 kit and the Aux Perc kit with the production prober; for 19 hits per lane (each parameter alone, the onset
+at every kind of phase of the grid, 6 random combinations of velocity, accent, pitch -7 to 5 incl. fractional, and onset) the
+page records the voice fresh, `banktest` patches the bank's entry with the engine's C++ and begins it as the host does, and the
+two are played through a GraphPool each and nulled: **437 of 437 hits exact** (256 bit-identical, the rest 170 dB or deeper). The
+fader is part of the signature: moving the Drums fader makes the 8 kit lanes record again. `_nsDrum.start()` is exercised
+end to end against a stand-in plugin (15 lanes sent, the score sent, the sequencer started; with Native sound off it says so).
+`native/modsynth/seqhosttest` (the host with its thread, no page): with a bank of two synthetic voices on the drum bus, the
+events become pool voices (17 hits, 0 refused, none late), sound (peak 0.62), and with no bank every event is a counted miss. The
+event-list test (`tests/seq/drumgrid.test.js`) still passes with the new kit codes. `xcodebuild` builds.
+
+**Not done / not covered, said plainly.**
+- *One lane is refused:* Aux Perc lane 6, the Triangle, whose program changes size above some pitch (it was refused on `pitch 3`),
+  so no single reference covers it. It is named in the test. Options for the owner/engineer: a second reference at a higher pitch band
+  (the bank is keyed per lane and could be keyed per pitch band), or leave the Triangle off until the cutover.
+- *The other kits.* The prober ran on the 808, the 909 and Aux Perc. The Linn, Acoustic, IDM, Jazz (layered, picks its recording by
+  `dyn`, and uses recorded cymbals), mõdKit and the rest are not run through it; the prober decides per lane and names what it
+  refuses, but nobody has looked at what it says for those. A lane with a user sample dropped on it is not detected (the sample
+  voice is not in the signature).
+- *Chokes.* Not yet: the closed hat does not cut the open hat. The core already carries the choke group on every event; the thread
+  needs to keep the group's voice handles and send the pool `edit`s the page's `_chokeGroup` sends today (the increments of a
+  gain ramp to zero at the choke time), recorded once like a voice.
+- *Random slots.* Replay freezes each voice's random detunes and phases (the recording is seeded): every strike of a lane is the
+  same as the reference. The owner accepted that randomness may differ; a few cents and a phase on a handful of voices.
+- *A full-score null through the host.* The pieces are each held (events to the page, patched voices to the page's, events to voices in
+  the host) but a bar of the page's drums against the host's sequencer-driven render, nulled, is not built: the host's master chain
+  and strips sit between the pool and the output, and the page's offline render would need the same chain.
+
+**Next:** chokes, then that full-score check (or accept the pieces), then slice 2 (bass and chords on the chord timeline).

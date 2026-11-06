@@ -36,14 +36,14 @@ capturetest: capturetest.cpp capture.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ capturetest.cpp
 # The capture path through the real ModEngineHost.mm (macOS only).
 HOSTDIR = ../../ios/App/App/ModEngine
-graphhosttest: graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h seqcore.cpp seqcore.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm graphpool.cpp graph.cpp seqcore.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+graphhosttest: graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm graphpool.cpp graph.cpp seqcore.cpp voicebank.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
-hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h seqcore.cpp seqcore.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+hosttest: hosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 # The speaker hears nothing while a part is warmed up (macOS only).
-warmtest: warmtest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h seqcore.cpp seqcore.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+warmtest: warmtest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 # The master EQ against the browser's BiquadFilterNode responses.
 eqtest: eqtest.cpp master.cpp master.h dspkit.h mixfx.cpp mixfx.h modfxproc.cpp modfxproc.h fdlibm.cc
 	$(CXX) $(CXXFLAGS) -o $@ eqtest.cpp master.cpp mixfx.cpp modfxproc.cpp fdlibm.cc
@@ -53,11 +53,11 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 # The sequencer's thread in the real host: steps on the render clock with no page, mirror, tempo, stop (macOS only).
-seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h seqcore.cpp seqcore.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
 clean:
-	rm -f seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f banktest seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
@@ -73,6 +73,10 @@ graphmix: graphmix.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 # The native-scheduling spike (docs/native-scheduling.md): replayed voice programs against fresh ones.
 replaytest: replaytest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ replaytest.cpp graphpool.cpp graph.cpp
+
+# The voice bank's patching against voices the page records fresh: tests/seq/bank.test.js.
+banktest: banktest.cpp voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -o $@ banktest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
 # The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
 seqtool: seqtool.cpp seqcore.cpp seqcore.h

@@ -9059,7 +9059,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9</span></div>
  </div>
 </div>
 
@@ -10491,7 +10491,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.8</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11682,7 +11682,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.8';
+const MODRIFF_VERSION = '6.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12725,7 +12725,7 @@ function modNativePlugin(){
                      graphProbe:call('graphProbe'), graphBuf:call('graphBuf'),
                      graphBegin:call('graphBegin'), graphEdit:call('graphEdit'),
                      // The engine's own sequencer (window._nsDrum, a developer entry); an older binary has none of these.
-                     seqScore:call('seqScore'), seqStart:call('seqStart'), seqStop:call('seqStop'),
+                     seqScore:call('seqScore'), seqBank:call('seqBank'), seqStart:call('seqStart'), seqStop:call('seqStop'),
                      seqTempo:call('seqTempo'), seqMirror:call('seqMirror'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
@@ -13574,7 +13574,7 @@ if(typeof module !== 'undefined') module.exports = Rec;
 // var, not let: getCtx() reads _mgScope from far away (see CLAUDE.md).
 var _mgScope = null;
 var _mgRpwOwner = {};
-var MODGRAPH = { on:false, plugin:null, parts:{}, gid:0, flushing:false, pending:[], bypass:false,
+var MODGRAPH = { on:false, plugin:null, parts:{}, capture:null, captureClock:null, gid:0, flushing:false, pending:[], bypass:false,
                  sent:0, fellBack:0, edits:0, empty:0, why:{},
                  // The host's part slots: a graph names a bus by one of these.
                  CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10} };
@@ -13779,7 +13779,7 @@ function _mgRun(msg, play){
  // recorded first does not make its bus out of the recorder.
  try{ _ensureAllPartBuses(real); }catch(e){}
  var rec = new GraphRec({ debug:MODGRAPH.debug, sampleRate:real.sampleRate, realCtx:real, destCode:255, resolve:_mgResolve, onEdit:_mgDirty,
-                          timeSource:function(){ return real.currentTime; } });
+                          timeSource:function(){ return (MODGRAPH.capture && MODGRAPH.captureClock != null) ? MODGRAPH.captureClock : real.currentTime; } });
  var prev = _mgScope, ok = true;
  _mgScope = rec;
  try{ play(); }catch(e){ ok = false; try{ console.warn('[modGraph] voice failed while recording', e); }catch(_){} }
@@ -13789,6 +13789,9 @@ function _mgRun(msg, play){
  if(ok && !bad.length){
   // A hit that built nothing (muted, or no sample yet) is not a voice.
   if(rec.nodes.length <= 1){ MODGRAPH.empty++; return; }
+  // The native sequencer's voice bank records a voice to keep it, not to play it (window._nsBank): the program is
+  // handed to whoever asked and nothing reaches the host, not even the edits the voice makes later (_mgFlush).
+  if(MODGRAPH.capture){ rec.capturing = true; MODGRAPH.capture.push(rec); return; }
   try{ _mgSend(rec); return; }catch(e){ try{ console.warn('[modGraph] send failed', e); }catch(_){} }
  }
  MODGRAPH.fellBack++;
@@ -13825,6 +13828,7 @@ function _mgFlush(){
  var list = MODGRAPH.pending; MODGRAPH.pending = [];
  list.forEach(function(rec){
   var inc = rec.takeIncrements();
+  if(rec.capturing){ rec.capturedEdits = inc.length; return; }
   if(!inc.length || !MODGRAPH.plugin) return;
   try{ MODGRAPH.plugin.graphEdit({ gid:rec.gid, increments:_mgB64(inc) }); MODGRAPH.edits++; }catch(e){}
  });
@@ -59252,7 +59256,7 @@ window._sqResetStep = function(){ sqSeqStep = 0; };
 // (tests/seq/drumgrid.test.js); it is the page's half of "the page hands over state, the engine decides when".
 window._sqNativeScore = function(){
  sqStashFocused();
- var hs = window._humanState(), kits = [], d = [1, sqSteps, sqSwing, sqSwing8 ? 1 : 0,
+ var hs = window._humanState(), d = [1, sqSteps, sqSwing, sqSwing8 ? 1 : 0,
   (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4,
   (typeof meterStepsPerBar==='function') ? meterStepsPerBar() : sqSteps,
   drumsEnabled ? 1 : 0, sqTupCover ? 1 : 0,
@@ -59260,7 +59264,7 @@ window._sqNativeScore = function(){
   hs.off.indexOf('drum') >= 0 ? 1 : 0, hs.off.indexOf('auxperc') >= 0 ? 1 : 0];
  for(var i = 0; i < 2; i++){
   var L = sqLayers[i], M = SQM[L.mach], on = !!(L.on && L.grid && M);
-  var ki = kits.indexOf(L.mach); if(ki < 0){ ki = kits.length; kits.push(L.mach); }
+  var ki = window._nsKitCode(L.mach);
   var lk = sqLK(L.mach, i), tracks = M ? M.tracks : [];
   d.push(on ? 1 : 0, i, ki, tracks.length);
   for(var ti = 0; ti < tracks.length; ti++){
@@ -59272,23 +59276,164 @@ window._sqNativeScore = function(){
    }
   }
  }
- return {score: d, kits: kits};
+ return {score: d, kits: window._nsKitCodes.slice()};
+};
+// A kit's number in the native sequencer's score and bank: the order the kits were first named in this session, so
+// a bank entry and a score made at different moments mean the same kit by the same number.
+window._nsKitCodes = [];
+window._nsKitCode = function(name){
+ var i = window._nsKitCodes.indexOf(name); if(i < 0){ i = window._nsKitCodes.length; window._nsKitCodes.push(name); } return i;
 };
 
-// The developer entry to the engine's own drum sequencer (docs/native-scheduling.md slice 1): hand it the score and
-// start it, and the host's thread steps the grid on the render clock whatever this page's timers are doing. There is
-// no button and nothing in the app calls it; it is for a person with the web inspector open on a device or the
-// simulator, and nothing sounds from it yet (the engine counts the events it would play). _nsDrum.start() then
-// _nsDrum.mirror() a few times, with the page throttled, shows it stepping.
+// The voice bank for the engine's drum sequencer (native/modsynth/voicebank.h, docs/native-scheduling.md): each drum
+// lane's voice recorded once by the page's own recorder, with the map of which numbers in the recorded program follow
+// velocity, accent, pitch and the start time. The probing is the spike's (tests/graph/replay.inpage.js), kept: the voice
+// is recorded again with one parameter changed at two more values, every slot of the program is fitted value = a + b*x on
+// two and checked on the third, and a lane whose voice does not obey (a slot that fits nothing, a program whose size
+// changes, a voice that edits itself later, a layered kit that picks a recording by `dyn`) is refused and named, not
+// patched wrongly. What is baked into a recording (the Drums fader, the lane's Shape) is its signature: change one and
+// the lane is recorded again.
+window._nsBank = {
+ LEADF: 2304, have: {}, bad: {}, gen: 0,
+ _rng: function(){ var q = 13579 >>> 0; return function(){ q = (q + 0x6D2B79F5) >>> 0; var t = q; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; },
+ // One recording of one hit: the program the page would send for it, and whether the voice edits itself later. The same
+ // random stream every time, or the random detunes and phases would read as slots that move.
+ record: async function(msg){
+  if(typeof modParamsSync==='function') modParamsSync();
+  var keep = Math.random; Math.random = this._rng();
+  // The recorder's clock reads zero for the length of a recording, whatever the context's is: a voice is recorded the way
+  // the spike did it (a note at 0.048 s on a clock at 0), so its program is small numbers with the onset a lead in, and a
+  // replay moves it by a few frames rather than subtracting a long running clock (whose rounding moved onsets a frame).
+  var cap = MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
+  try{ window.modEngine.send(Object.assign({v: 1}, msg)); }
+  finally{ MODGRAPH.capture = null; MODGRAPH.captureClock = null; Math.random = keep; }
+  await Promise.resolve(); await Promise.resolve();
+  if(cap.length !== 1) return null;
+  var rec = cap[0], bufs = rec.takeNewBuffers();
+  if(bufs.length && MODGRAPH.plugin && MODGRAPH.plugin.graphBuf) bufs.forEach(function(b){ MODGRAPH.plugin.graphBuf({id: b.id, sampleRate: b.sampleRate, channels: b.channels.map(_mgB64)}); });
+  return {prog: rec.program(), edits: rec.capturedEdits || 0};
+ },
+ // value = a + b*x per slot from two recordings, checked on a third.
+ _fit: function(P0, x0, P1, x1, P2, x2){
+  var out = {slots: [], bad: []};
+  for(var i = 0; i < P0.length; i++){
+   if(P0[i] === P1[i] && P0[i] === P2[i]) continue;
+   var b = (P1[i] - P0[i]) / (x1 - x0), a = P0[i] - b * x0;
+   if(Math.abs(a + b * x2 - P2[i]) <= 1e-9 * Math.max(1, Math.abs(P2[i]))) out.slots.push([i, b]); else out.bad.push(i);
+  }
+  return out;
+ },
+ // The entry for one lane (voicebank.h's layout), or {ok:false, why}.
+ build: async function(part, kit, lane){
+  if(!MODGRAPH.on || !MODGRAPH.parts[part]) return {ok: false, why: 'the ' + part + ' part is not on the graph path (Native sound)'};
+  var self = this, ctx = audioCtx, sr = ctx.sampleRate;
+  var LEAD = this.LEADF / sr, AT0 = LEAD;
+  var R = async function(o){
+   if(typeof window._chokeReset==='function') window._chokeReset();
+   return self.record(Object.assign({kind: 'hit', part: part, id: 1, kit: kit, lane: lane, vel: 0.9, accent: false, pitch: 0, dyn: null, at: AT0}, o));
+  };
+  await R({});                                   // the first recording of a voice builds caches that draw random numbers: thrown away
+  var ref = await R({});
+  if(!ref) return {ok: false, why: 'makes no voice (or more than one)'};
+  if(ref.edits) return {ok: false, why: 'edits itself after it starts'};
+  var P0 = ref.prog, n = P0.length;
+  var rec = async function(o){ var r = await R(o); return r && r.prog.length === n && !r.edits ? r.prog : null; };
+  var dy = await rec({dyn: 0.5});
+  if(!dy || dy.some(function(x, i){ return x !== P0[i]; })) return {ok: false, why: 'layered: picks its recording by stroke strength'};
+  var v1 = await rec({vel: 0.45}), v2 = await rec({vel: 0.7}), ac = await rec({accent: true}), p1 = await rec({pitch: -2}), p2 = await rec({pitch: 3});
+  var t1 = await rec({at: AT0 + 0.02}), t2 = await rec({at: AT0 + 0.05});
+  var sized = {'velocity 0.45': v1, 'velocity 0.7': v2, 'accent': ac, 'pitch -2': p1, 'pitch 3': p2, 'start time +20 ms': t1, 'start time +50 ms': t2};
+  var moved = Object.keys(sized).filter(function(k){ return !sized[k]; });
+  if(moved.length) return {ok: false, why: 'the program changes size with ' + moved.join(', ')};
+  var fv = this._fit(P0, 0.9, v1, 0.45, v2, 0.7);
+  if(fv.bad.length) return {ok: false, why: fv.bad.length + ' velocity slots are not linear'};
+  var fa = []; for(var i = 0; i < n; i++) if(ac[i] !== P0[i]) fa.push([i, ac[i] - P0[i]]);
+  var x2 = function(p){ return Math.pow(2, p / 12); };
+  var fp = this._fit(P0, 1, p1, x2(-2), p2, x2(3)), fpl = fp.slots.map(function(q){ return [q[0], q[1], 0]; });
+  if(fp.bad.length){
+   var f2 = this._fit(P0, 0, p1, -2, p2, 3), ok2 = {}; f2.slots.forEach(function(q){ ok2[q[0]] = q[1]; });
+   var rest = fp.bad.filter(function(i){ return ok2[i] === undefined; });
+   if(rest.length) return {ok: false, why: rest.length + ' pitch slots follow neither frequency nor note number'};
+   fp.bad.forEach(function(i){ fpl.push([i, ok2[i], 1]); });
+  }
+  var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
+  if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time (a voice that draws noise from the clock)'};
+  if(ft.slots.some(function(q){ return Math.abs(q[1] - 1) > 1e-9; })) return {ok: false, why: 'a time slot that does not move 1:1'};
+  // Slots two parameters move: add or multiply, found from one joint recording (velocity, accent and pitch together).
+  var jn = await rec({vel: 0.45, accent: true, pitch: -2});
+  if(!jn) return {ok: false, why: 'the joint recording changes size'};
+  var touch = {};
+  var tally = function(list, x0, x, basis){ list.forEach(function(q){ (touch[q[0]] = touch[q[0]] || []).push([q[1], x0, x]); }); };
+  tally(fv.slots, 0.9, 0.45); tally(fa, 0, 1); tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(-2)); tally(fpl.filter(function(q){ return q[2]; }), 0, -2);
+  var mul = [];
+  for(var k in touch){
+   var L = touch[k]; if(L.length < 2) continue;
+   var add = P0[k], mu = P0[k];
+   L.forEach(function(c){ add += c[0] * (c[2] - c[1]); mu *= P0[k] !== 0 ? ((P0[k] - c[0] * c[1]) + c[0] * c[2]) / P0[k] : 1; });
+   var near = function(v){ return Math.abs(v - jn[k]) <= 1e-9 * Math.max(1, Math.abs(jn[k])); };
+   if(near(add)) continue;
+   if(near(mu)) mul.push(+k); else return {ok: false, why: 'slot ' + k + ' follows several parameters in a way that is neither a sum nor a product'};
+  }
+  var d = [1, part === 'auxperc' ? 1 : 0, window._nsKitCode(kit), lane, ++this.gen, AT0, LEAD, 0.9, n];
+  for(var j = 0; j < n; j++) d.push(P0[j]);
+  var put = function(list, withBasis){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], withBasis ? (q[2] || 0) : 0); }); };
+  put(fv.slots.map(function(q){ return [q[0], q[1], 0]; }), true); put(fa.map(function(q){ return [q[0], q[1], 0]; }), true); put(fpl, true);
+  d.push(ft.slots.length); ft.slots.forEach(function(q){ d.push(q[0]); });
+  d.push(mul.length); mul.forEach(function(q){ d.push(q); });
+  return {ok: true, entry: Float64Array.from(d), slots: {vel: fv.slots.length, accent: fa.length, pitch: fpl.length, time: ft.slots.length, mul: mul.length}};
+ },
+ // What a recording of this lane has baked in: the Drums (or Aux) fader, and the lane's Shape. The same lane recorded under
+ // another signature is another voice.
+ signature: function(part, kit, lane){
+  return JSON.stringify([_wp('mix.' + part), _webShapeOf(kit, lane, part)]);
+ },
+ // Every lane the score plays, recorded and sent if the host does not hold it under the current signature.
+ ensure: async function(){
+  var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
+  if(!P) return rep;
+  sqStashFocused();
+  for(var i = 0; i < 2; i++){
+   var L = sqLayers[i], M = SQM[L.mach]; if(!L.on || !L.grid || !M) continue;
+   var part = SQ_LAYER_CH[i];
+   for(var ti = 0; ti < M.tracks.length; ti++){
+    var row = L.grid[ti]; if(!M.tracks[ti].play || !row || !row.some(function(c){ return c && c.v > 0; })) continue;
+    var key = i + ':' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
+    if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+    var r = await this.build(part, L.mach, ti);
+    if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+   }
+  }
+  return rep;
+ }
+};
+
+// The developer entry to the engine's own drum sequencer (docs/native-scheduling.md slice 1): record the lanes the score
+// plays into the engine's bank, hand it the score and start it, and the host's thread steps the grid on the render clock
+// and starts the voices whatever this page's timers are doing. There is no button and nothing in the app calls it; it is
+// for a person with the web inspector open on a device or the simulator, and it needs Native sound on (the lanes are
+// recorded through the graph path). _nsDrum.start() then _nsDrum.mirror() a few times, with the page throttled, shows it
+// stepping and sounding.
 window._nsDrum = {
  plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqScore ? P : null; },
  sync: function(){
-  var P = this.plugin(); if(!P) return Promise.resolve({ok:false, why:'no engine'});
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
   return P.seqScore({score: _mgB64(Float64Array.from(window._sqNativeScore().score))});
  },
+ // Records what the score plays that the host does not hold yet, and re-sends the score. Resolves the bank report.
+ prepare: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(!MODGRAPH.on || !MODGRAPH.parts.drum) return Promise.resolve({ok: false, why: 'Native sound is off'});
+  var me = this;
+  return window._nsBank.ensure().then(function(rep){ return me.sync().then(function(){ return rep; }); });
+ },
  start: function(leadMs){
-  var P = this.plugin(); if(!P) return Promise.resolve({ok:false, why:'no engine'});
-  return this.sync().then(function(){ return P.seqStart({bpm: sqBpm(), rate: sqRateMul, leadMs: leadMs || 150}); });
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var me = this; window._nsBank.have = {}; window._nsBank.bad = {};
+  return P.seqBank({clear: true}).then(function(){ return me.prepare(); }).then(function(rep){
+   if(rep.ok === false) return rep;
+   return P.seqStart({bpm: sqBpm(), rate: sqRateMul, leadMs: leadMs || 250}).then(function(r){ r.bank = rep; return r; });
+  });
  },
  stop: function(){ var P = this.plugin(); return P ? P.seqStop() : Promise.resolve(); },
  tempo: function(){ var P = this.plugin(); return P ? P.seqTempo({bpm: sqBpm(), rate: sqRateMul}) : Promise.resolve(); },

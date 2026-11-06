@@ -39,6 +39,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBank", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
@@ -670,6 +671,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetDrumScore(data)])
+    }
+
+    /// A drum voice the page recorded (voicebank.h), `entry` base64 float64; `clear` first empties the bank. Resolves `ok`.
+    @objc func seqBank(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        if call.getBool("clear") ?? false { host.seqClearBank() }
+        guard let b64 = call.getString("entry") else { call.resolve(["ok": true]); return }
+        guard let data = Data(base64Encoded: b64) else { call.reject("seqBank needs entry"); return }
+        call.resolve(["ok": host.seqPutBankEntry(data)])
     }
 
     /// Starts at step 0. `leadMs` is how far ahead the downbeat is. Resolves `ok` (false without a score).
