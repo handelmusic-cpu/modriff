@@ -2269,7 +2269,8 @@ its own queue, because the main queue stalled in the simulator once the app was 
 first version used it and never paused the engine). Measured in the simulator (log
 lines `[ModEngine] leaving the app`, `left the app: ... paused (running=no)`, `back in the
 app: engine running=yes`): the fade finished about 150-215 ms after leaving, not the 36 ms
-asked for, since iOS coalesces timers in the background. Not heard on a phone yet.
+asked for, since iOS coalesces timers in the background. Heard on an iPhone 17 Pro Max: quiet at once on
+leaving, resumes together on return, same with a sampled voice.
 
 ### Haptics
 
