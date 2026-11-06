@@ -30,7 +30,13 @@ Never wait for a person to say "merge", and never wait for a bigger batch.
 - Merge commit, not squash: per-change commits and their labels are the record.
 - Unverified work stays out of the batch (own branch, say so). Broken production
   is not a batch: fix, verify, ship alone.
-- Swift can't be compiled except on the owner's Mac; say "unbuilt" until confirmed.
+- Swift and the C++ engine compile on this Mac: run
+  `xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build`
+  (DerivedData in the scratchpad) before a native change counts as done. Never call
+  it "unbuilt". What only a phone shows (crackle, timing, behaviour on leaving the
+  app) is "not heard on device": say so in the PR body with a short checklist
+  (`docs/phone-test-checklist.md`), one line per change, so the owner checks the
+  whole batch in one pass. `npm run ios:device` installs on the paired iPhone.
 
 ### Version numbers
 
