@@ -101,30 +101,50 @@ window.__replaySpike = async function () {
   classes.push(note('mel', 72, 74, 79, { y: 0.2 }, [0.6, 1.2, 0.9]));
   classes.push(note('melgen', 64, 67, 71, { accent: false }, [0.3, 0.6, 0.45]));
   classes.push(note('arp', 60, 64, 67, { level: 1, pan: 0 }, [0.2, 0.4, 0.3]));
-  // A chord is moved by transposing every note (one shape per program; a different shape is another entry).
+  // A chord is one voice made of a sub oscillator and one block per note, and a block's size depends on its pitch
+  // (fewer partials higher up), so it is not transposed here: velocity and duration only.
   classes.push({
-    name: 'chord (major triad, transposed)',
-    msg: o => { const t = o.tr || 0; const m = Object.assign({ kind: 'chord', part: 'chord', id: 1, root: 60 + t, notes: [60 + t, 64 + t, 67 + t], bass: null, vel: 0.8, dur: 1.0, at: AT0 }, o); delete m.tr; return m; },
+    name: 'chord (major triad, fixed pitch)',
+    msg: o => Object.assign({ kind: 'chord', part: 'chord', id: 1, root: 60, notes: [60, 64, 67], bass: null, vel: 0.8, dur: 1.0, at: AT0 }, o),
     params: {
       vel: { vals: [0.8, 0.4, 0.6], set: v => ({ vel: v }), x: v => v },
-      pitch: { vals: [0, 2, 5], set: v => ({ tr: v }), x: v => Math.pow(2, v / 12), x2: v => v },
-      dur: { vals: [1.0, 2.0, 1.5], set: v => ({ dur: v }), x: v => v },
+      // Every slot that moves with duration is min(a + b*dur, cap) or max(...): found from a small pair and one long
+      // probe, then right to 1e-9 at five unseen durations (285 slot values) in the investigation.
+      dur: { vals: [0.3, 0.4, 2.4], test: 0.9, clamp: true, set: v => ({ dur: v }), x: v => v },
     },
-    combo: { vel: 0.5, pitch: 5, dur: 1.5 },
+    combo: { vel: 0.5, dur: 1.5 },
   });
 
-  // The interpreter renders in 128-frame quanta counted from the voice's own start, as the browser counts them
-  // from the context's. A voice begun mid-quantum therefore sounds slightly different from the same voice begun on
-  // one (see the phase cases), so the shifted start is a whole number of quanta: the replay is judged on what it
-  // changes, not on that.
   const ATS = 62592 / sr;   // 1.304 s: a whole number of quanta (489 x 128), and a time that times the rate gives back that frame exactly
   for (const C of classes) {
+    // The first recording of a kind of voice builds caches that draw from the random stream, so its random detunes
+    // and phases differ from every later recording's: record once and throw it away.
+    await rec(C.msg({}));
     const ref = await rec(C.msg({}));
     if (!ref.voices.length) { fits[C.name] = { skipped: 'no voice' }; continue; }
     const f = { voices: ref.voices.length, len: ref.voices.map(v => v.length), params: {}, foreignEdits: ref.foreignEdits };
     const maps = {};
     const xb = (p, basis) => (basis ? p.x2 : p.x);
-    const pnames = Object.keys(C.params);
+    const pnames = Object.keys(C.params).filter(pn => !C.params[pn].clamp);
+    const clampModel = {};
+    for (const pn of Object.keys(C.params)) {
+      const p = C.params[pn]; if (!p.clamp) continue;
+      const q = [await rec(C.msg(p.set(p.vals[0]))), await rec(C.msg(p.set(p.vals[1]))), await rec(C.msg(p.set(p.vals[2])))];
+      const [x0, x1, x2] = p.vals; let n = 0, capped = 0;
+      clampModel[pn] = ref.voices.map((P, k) => {
+        const m = new Map();
+        if (q.some(r => r.voices.length !== ref.voices.length || r.voices[k].length !== P.length)) return null;
+        for (let i = 0; i < P.length; i++) {
+          const y0 = q[0].voices[k][i], y1 = q[1].voices[k][i], y2 = q[2].voices[k][i];
+          if (y0 === y1 && y0 === y2) continue;
+          const b = (y1 - y0) / (x1 - x0), a = y0 - b * x0, lin = a + b * x2;
+          const cap = Math.abs(y2 - lin) > 1e-9 * Math.max(1, Math.abs(lin)) ? y2 : null;
+          m.set(i, { a, b, cap }); n++; if (cap !== null) capped++;
+        }
+        return m;
+      });
+      f.params[pn] = { shape: true, slots: n, bad: 0, lenBad: false, edits: [0, 0, 0], clamped: capped };
+    }
     for (const pn of pnames) {
       const p = C.params[pn];
       const r1 = await rec(C.msg(p.set(p.vals[1]))), r2 = await rec(C.msg(p.set(p.vals[2])));
@@ -183,13 +203,17 @@ window.__replaySpike = async function () {
           if (list.length === 1 || mode[k].get(i) !== 'mul') { for (const [, b, x0, x] of list) q[i] += b * (x - x0); }
           else { let v = P[i]; for (const [a, b, , x] of list) v *= (a + b * x) / P[i]; q[i] = v; }
         }
+        for (const pn of Object.keys(clampModel)) {
+          if (vals[pn] === undefined || !clampModel[pn][k]) continue;
+          for (const [i, { a, b, cap }] of clampModel[pn][k]) { const v = a + b * vals[pn]; q[i] = cap === null ? v : (b >= 0 ? Math.min(v, cap) : Math.max(v, cap)); }
+        }
         return q;
       });
     };
     const list = [];
     const add = (label, vals, shiftAt) => list.push({ label: C.name + ': ' + label, vals, at: shiftAt == null ? AT0 : shiftAt });
     // single parameters at their validation value, time shift alone, and a combination, with and without a shift
-    for (const [pn, p] of Object.entries(C.params)) add(pn + ' = ' + p.vals[2], { [pn]: p.vals[2] }, null);
+    for (const [pn, p] of Object.entries(C.params)) { const tv = p.test !== undefined ? p.test : p.vals[2]; add(pn + ' = ' + tv, { [pn]: tv }, null); }
     add('start time ' + ATS, {}, ATS);
     add('all parameters together', C.combo, null);
     add('all together and start time ' + ATS, C.combo, ATS);
