@@ -1812,8 +1812,8 @@ double log1p(double x) {
 
   static const double zero = 0.0;
 
-  double hfsq, f, c, s, z, R, u;
-  int32_t k, hx, hu, ax;
+  double hfsq, f = 0.0, c = 0.0, s, z, R, u;
+  int32_t k, hx, hu = 0, ax;
 
   GET_HIGH_WORD(hx, x);
   ax = hx & 0x7FFFFFFF;
@@ -2245,7 +2245,7 @@ double expm1(double x) {
 
   static volatile double huge = 1.0e+300;
 
-  double y, hi, lo, c, t, e, hxs, hfx, r1, twopk;
+  double y, hi, lo, c = 0.0, t, e, hxs, hfx, r1, twopk;
   int32_t k, xsb;
   uint32_t hx;
 
