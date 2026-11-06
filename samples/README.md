@@ -58,3 +58,12 @@ A gap is `UNKNOWN`; it is never filled from memory.
 5. Run `./check.sh`.
 
 If you cannot fill in a source and a licence, the file does not ship.
+
+## Silence at the front of a one-shot
+
+A drum or percussion hit does not need its lead-in cut by hand. The app cuts every one-shot drum buffer at
+its first audible sample as it is decoded (the hit's sharp edge out of a noise floor, else anything over -40 dB of its
+own peak; 1 ms of lead kept, at most 6 ms beyond the -40 dB point; `_hitTrimmed` in `index.html`), so a pad in the file, or the encoder delay of an mp3
+on a decoder that does not remove it, never puts the groove behind the beat. It does **not** touch loops (an
+opening rest is the groove), pitched notes (`_sampleOnset` does that at play time) or a user's own recordings.
+`node tests/drums/lead.test.js` loads every drum file the way the app does and fails if one opens late.

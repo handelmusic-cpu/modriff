@@ -365,3 +365,17 @@ page's own bass, because the measurement points at it:
 | 19.3 | While they play: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | neither the beat nor the bass stutters or stops |
 | 19.4 | Compare against the page's own bass: `_nsBass.stop()`, play the page's Bass with the same line | the same notes at the same moments, the same levels, accents and slides (the glide into the next note), the same length. Differences you may hear: no bump at the start of notes (19.1) and no randomness in the voice's detune. A sampled voice (Upright 1/2, Picked, Motown, Höfner...) says it cannot be played: `_nsBass.start()` resolves `{ok:false, why}` |
 | 19.5 | Bass style **Jazz** with Follow on and a chord chart (the song page, a few chords of a standard) on the clock, drums on; `_nsDrum.start()` then `_nsBass.start()` as in 19.2 | a walking line: a quarter note on every beat (half notes on 1 and 3 in the two-feel), beat 1 of each chord on the chord's root (the slash note over a slash chord), the beat before a change leading into the next root, landing on the drums' beat. Not the same notes as the page's walk (it picks at random), but the same kind of line. `_nsBass.mirror()`: `hits` climbing, `misses` 0 |
+
+## 20. Drum hits start on the beat (6.9.9.9a, not heard on device)
+
+Every one-shot drum is cut at its first audible sample as it is loaded (`_hitTrimmed`), so the Hip-Hop and Rock kits' 5 ms pad, the odd file
+that opens 6-9 ms late, and an mp3 encoder delay the device's decoder may not remove (30 ms on the Hip-Hop kick if it does not) no longer
+put the groove behind the beat. Measured in a browser on all 567 drum files (`node tests/drums/lead.test.js`); what only the phone tells us is
+whether Safari's decoder was adding the 25 ms, which is the part this checklist is for.
+
+| # | do | you should see |
+|---|---|---|
+| 20.1 | Drums on, kit **Hip-Hop**, the **Boom Bap** groove at about 90 BPM, a hat on every step, headphones | the kick lands with the hat at the top of each bar; it no longer sits behind it. If you could hear the kick trailing before, say so: that was the device keeping the encoder delay |
+| 20.2 | The same on the **Rock** kit (kick, snare, hat) | kick and snare tight with the hat, nothing clipped at the front of the snare or the tom |
+| 20.3 | Sampler > Drums > **Hip-Hop Kick**, tap a pad over a metronome click or the drums on the same grid | the pad hit is on the click, not after it |
+| 20.4 | A shaker or a soft hat, any recorded kit, at a low velocity | the hit still has its soft front; nothing sounds cut off or clicks at the start |
