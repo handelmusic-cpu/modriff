@@ -190,6 +190,22 @@ the column is only about 380pt wide, so the Live Chords voice picker is squeezed
 and the Sound mixer strips wrap (Mute, Solo and EQ stack; the knobs scatter). Toasts, sheets and the tour card were not
 looked at on this device.
 
+Those five are the closed Duo **before** 6.9.5 (bottom stack, no right rail). The Duo has three states and the layout
+differs in each, so `docs/app-store/screenshots/v6.9.6/` holds one Live shot per state, saved by the owner from the Duo
+in Xcode (not shot with `simctl`: it cannot capture the open Duo's 2007 x 2853 screen, and the Duo's fold is a control in
+Xcode that `simctl` does not have). They were taken on main at 6.9.6 (the version is not in the pictures) with the real
+clock, 7:43, not the pinned 9:41, so they are for checking the layout, not for upload:
+
+| state | size | file | what it shows |
+|---|---|---|---|
+| closed | 1398 x 2034 | `iphone-duo-closed-live` | the right rail (6.9.5): key, tempo, play, 1/16 and the part buttons down the right edge under the clock and pill; the Live column beside it; tab bar along the bottom. The Chords voice picker still shows "S…" |
+| open, upright | 2007 x 2853 | `iphone-duo-open-upright-live` | the old bottom stack on a wider screen: transport and part buttons above the tab bar, every picker spelled out (VOICE Saw, VOICE Sine), the keyboard runs C4 to A5 |
+| open, wide | 2853 x 2007 | `iphone-duo-open-wide-live-drums` | the 6.9.6 layout: tab rail down the left, part buttons at its foot, the transport across the top, Live beside the Drums page; the clock and pill sit right of the part tabs and cover nothing |
+
+Looked at, not measured, and only the Live tab: Studio, Song and Sound were not re-shot at 6.9.5 or 6.9.6, so the
+cramped Song title and Sound mixer notes above may or may not still hold on the closed Duo. The recording that came with
+the shots (7 s, a fold from closed to open) is not kept in the repo; its closed frame matches the closed shot.
+
 ## Icon
 
 1024 x 1024, no transparency, no rounded corners (Apple rounds it). The
