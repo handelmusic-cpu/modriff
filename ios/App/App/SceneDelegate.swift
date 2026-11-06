@@ -8,6 +8,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
+        #if targetEnvironment(macCatalyst)
+        // A Mac window can be dragged to any size, and the page is laid out
+        // for a tablet at its narrowest: below this the strips and the pad grid
+        // overlap. 768 x 600 is the iPad portrait width and a guess at the
+        // height; tune it on a real Mac window, not here. Unbuilt on Mac until
+        // Xcode says otherwise.
+        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 768, height: 600)
+        #endif
         // ModRiffViewController, not CAPBridgeViewController: it is the same
         // thing plus the capacitorDidLoad that registers ModEngine. This line
         // is what decides the root controller — the storyboard's class is set

@@ -70,6 +70,17 @@ with nothing in the console.
 `tests/modsynth/null.test.js` says whether they still agree (its README has the
 three bit-identity rules).
 
+## Mac app (Mac Catalyst)
+
+One app record, one bundle id: the iPhone target also builds for Mac Catalyst
+(`-destination 'generic/platform=macOS,variant=Mac Catalyst'`, same scheme). Capacitor's
+prebuilt binaries have no Catalyst slice, so `ios/App/capacitor-swift-pm/` is a local package
+that takes over that name; its xcframeworks are generated, not committed, by
+`npm run ios:frameworks` (`ios/mac-catalyst/`, run by `npm run ios` and `ios:device`). **On a
+fresh clone or after a Capacitor upgrade run it first, or no build (iPhone too) resolves.**
+ActivityKit is compiled out on Catalyst and the Dynamic Island extension is iOS-only
+(`platformFilter = ios`). Mac-only sandbox entitlements: `ios/App/App/AppMac.entitlements`.
+
 ## Verify by measuring, not by reading
 
 Audio and touch lie when you only read the diff. Drive the real app, instrument

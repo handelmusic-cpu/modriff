@@ -179,9 +179,11 @@ song, a drum pattern and a chord row in it, and `xcrun simctl io <udid> screensh
 Order in every set: splash, Live, Studio, Song, Sound. Random gave the iPad a song on the Song tab but not the iPhone, so the
 iPhone Song shot has I-V-vi-IV loaded from Common progressions (Replace song).
 
-The Mac set is the web build in a browser window, not a Mac app: there is no Mac build yet (Mac Catalyst does not link,
-branch `claude/mac-catalyst`). Upload it only if the Mac App Store listing ships with the page layout as it is; at that
-width the Studio screen has a floating panel that was not designed for it.
+The Mac set above is still the web build in a browser window. There is now a Mac app (Mac Catalyst, same bundle id, so
+universal purchase): it builds, signs ad hoc and launches on this Mac with all eight plugins registered and a 922 x 692
+window. Retake the Mac set from that window before uploading, and check the Studio panel at the 768 x 600 minimum.
+Not done: signed Mac App Store build (needs a Mac App Store provisioning profile, `3rd Party Mac Developer` certificates
+and the app record's macOS platform in App Store Connect), audio, MIDI and the purchase flow on the Mac.
 
 An **app preview video** (15 to 30 s) is optional; screen-record playing a progression over a beat.
 Consider short captions on a coloured background, which is what most music apps do.

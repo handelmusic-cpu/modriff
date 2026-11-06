@@ -1,6 +1,6 @@
 import Capacitor
 import Foundation
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 
@@ -41,7 +41,7 @@ public class ModActivity: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["started": false, "reason": "needs iOS 16.2"])
             return
         }
-        #if canImport(ActivityKit)
+        #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
         if !on {
             endAll()
             call.resolve(["started": false])
@@ -71,7 +71,7 @@ public class ModActivity: CAPPlugin, CAPBridgedPlugin {
 
     private func endAll() {
         guard #available(iOS 16.2, *) else { return }
-        #if canImport(ActivityKit)
+        #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
         for activity in Activity<ModBounceAttributes>.activities {
             Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
