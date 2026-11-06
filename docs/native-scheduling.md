@@ -1,13 +1,15 @@
 # Native scheduling: the sequencers move to the engine
 
-Design, written at 6.9.4. Nothing here is built. It is the "then the clock" of step 7 in
+Design, written at 6.9.4, with the slice-0 spike's results (section 5). The engine-side scheduler itself is not built. It is the "then the clock" of step 7 in
 `docs/v5-architecture.md`, and the reason is background play: every part already *plays* on the
 native engine, but *when* a note plays is still decided by page JavaScript on a `setTimeout` chain, so
 the music lasts only as long as the web view runs and the look-ahead reaches. Read the section
 "Where background play stands (6.9.4)" there first.
 
 **Decided by the owner (6.9.4)**
-- Scheduling goes native: the sequencers have to run in the engine.
+- Scheduling goes native: the sequencers have to run in the engine, and **the engine is the only scheduler
+  (way B)**: no handover, no page schedulers once it is done.
+- Randomness (probability steps, humanize, the random arp and melody modes) may differ from the page's.
 - Now Playing (lock screen, Control Center) has **Pause and Play, and nothing else**: no skip, no seek.
   (Said first as "pause only", then clarified as "pause and play".) Recorded here so the slice that adds
   Now Playing does not add more.
@@ -102,19 +104,17 @@ program, not a scaled one, so it is part of the key).
    clock but keeps being the display. The one thing that flows the other way is a *change*: edits,
    pattern or section queues, tempo, which the page forwards as it does today.
 
-### 4.2 Two ways to roll it out
+### 4.2 Roll-out: the engine is the only scheduler (owner's decision)
 
-- **A. Background continuation (recommended first).** The foreground path is untouched: the page still
-  schedules while it is in front. On leaving, the page hands over its state (scores, bank, tempo, the
-  *next uncommitted step* and its frame) and the engine carries on from exactly there; on returning the
-  page takes the clock back at a bar line. Smallest change to what is shipping, nothing to regress in the
-  foreground, and it answers the user-visible question (does it keep playing?). Cost: two schedulers that
-  must agree, so the handover needs a test that proves they do.
-- **B. Native always.** The engine is the only scheduler; the page schedulers are deleted. The better end
-  state (no page jitter, no look-ahead, no handover) and the way it should end. Not first: it moves every
-  part at once and the page's schedulers carry years of behaviour (song endings, snap modes, arp restarts).
+The owner chose way B: the engine becomes the only scheduler and the page schedulers are deleted. The
+alternative that was considered, the engine continuing only while the app is away with a handover at each
+end, is not built: it would mean two schedulers that must agree and a handover protocol that is thrown away.
 
-Recommendation: A as slices 1 to 4, then B as slice 5 once each slice has run clean on a phone.
+What that changes in practice: a half-native state cannot ship, because the drum grid is the bar clock the
+song, chord changes and arp hang off. So slices 1 to 4 are built and verified without being switched on (behind
+a developer switch like Native sound, compared against the page's own scheduler on the same score), and the
+cutover (slice 5) switches every part at once and deletes the page schedulers. Background play turns on
+with the cutover; before it, nothing changes for anyone.
 
 ### 4.3 What stays on the page whatever happens
 Voice building, editing UIs, the song editor, MIDI in/record, MIDI out and external MIDI clock, anything
@@ -123,18 +123,12 @@ v1; say so, don't half-do them.
 
 ## 5. Slices
 
-0. **Spike (Mac-only, measurable). Is replay exact?** In `native/modsynth` (graphmix and the graph
-   tests already compare page-recorded programs against the pool): take a page-recorded drum, bass, melody
-   and chord program; replay it at a new time and with patched velocity and pitch slots; null it against a
-   program recorded fresh at those parameters. Pass: time shift bit-identical; patched velocity and pitch
-   at or above the dB the graph tests already hold those voices to (64 to 156 dB depending on the voice).
-   Also count: distinct programs a typical 16-step, 4-bar pattern needs and the bank's size in KB. If a
-   voice fails, it stays on the page path and the report says which. This decides whether the design
-   stands, so it goes before any Swift.
-1. **Clock + drum grid, background continuation.** Native clock; score store and expander for the drum
+0. **Spike: is replay exact? Done (6.9.4), see "What the spike found" below.** `tests/graph/replay.inpage.js`
+   (in the page) and `native/modsynth/replaytest.cpp` (the pool), driven by `tests/graph/replay.test.js`.
+1. **Clock + drum grid, behind a developer switch.** Native clock; score store and expander for the drum
    grid (both layers, swing, humanize, probability, ratchets and flams, chokes); voice bank for drum lanes
-   (the simplest voices: no pitch tracking, one program per lane and `dyn`); handover on leave, take-back on
-   return; mirror of bar and step. Verified by running the same drum score in the page (offline) and in the
+   (replay as the spike found it: begun on the 128-frame grid, a lead before the onset, velocity, accent and
+   pitch slots patched, the time slots moved); mirror of bar and step for the display. Verified by running the same drum score in the page (offline) and in the
    host test and comparing the **event list** exactly (frame, lane, velocity) and the audio by null test;
    on the Mac simulator the clock and expander keep running with the page throttled; on the phone, the
    checklist below.
@@ -144,15 +138,14 @@ v1; say so, don't half-do them.
    not bit-identical to the page by design (owner to accept).
 4. **Song loop in the engine.** Sections, repeats, endings, pattern queues at the wrap, tempo changes.
    The bar clock the page's song logic hangs off becomes the engine's.
-5. **Cutover (way B).** Delete the page schedulers once 1 to 4 have run clean; the page is UI and editor.
+5. **Cutover.** Every part to the engine at once, background play on, the page schedulers deleted; the page is
+   UI and editor. Needs 1 to 4 clean on a phone first.
 
 ## 6. How each slice is verified (CLAUDE.md: measure, don't read)
 - **Event lists, not ears:** a score run through the page's scheduler on an offline context and through the
   native expander must produce the same list of (frame, part, voice key, velocity, pitch, duration). Randomised
   features compare statistics, not lists.
 - **Audio:** null test of the rendered buses, as `tests/graph` does for voices.
-- **Handover:** play, hand over at a random step, compare the next four bars against uninterrupted
-  page-only playback. Timing error in frames, not "sounds ok".
 - **Simulator:** engine keeps stepping with the page throttled (logs the step counter); it cannot show
   iOS suspending the web view.
 - **Phone, not heard on device until the owner has:** leave the app mid-song and listen; the music must
@@ -161,10 +154,9 @@ v1; say so, don't half-do them.
 
 ## 7. Risks and open questions for the owner
 - **Randomness.** Probability steps, humanize, melgen and arp random modes: native RNG gives a different
-  but equally valid sequence. Fine for background; is it fine forever (it matters if "same seed, same
-  song" is ever a promise)?
-- **Voices that will not parameterise** (a filter that tracks pitch, a layered kit): kept on the page
-  path, so they cannot play in the background. The spike says how many.
+  but equally valid sequence. The owner accepted this (6.9.4).
+- **Voices that will not parameterise.** The spike named them (chord, two noise drums); "all parts in the
+  background" is not met until the chord is solved, see below.
 - **Everything baked into a program** (fader, Shapes, effects): the bank must be invalidated on change.
   Missing an invalidation plays a stale voice. The generation counter and a test per setting are the
   mitigation; it is the main correctness risk of the whole design.
@@ -174,9 +166,76 @@ v1; say so, don't half-do them.
 - **Background MIDI** (out, external clock, record) is out of scope for v1.
 - **Battery**: the engine runs the whole time; a native clock at 5 ms blocks costs what it costs today
   (load 3 to 17%). A larger buffer in the background is an option (`setBuffer`).
-- **Decisions still open, in plain words.** (1) Build the engine to take over only when the app is
-  left, and make it the only scheduler later (recommended), or go straight to engine-only? The first is
-  smaller and cannot break playing in front. (2) Probability steps, humanize and the random arp and melody
-  modes roll dice every time a step plays, today in the page and tomorrow in the engine. They already
-  differ on every play-through, so nothing audible changes; the only thing lost is replaying the exact
-  same dice (a "seed"), which the app has never offered. Assumed fine unless the owner says otherwise.
+- **Still open for the owner:** which part goes first after the drum grid is the engineer's call; what the
+  chord needs (below) may be the owner's, because it could change how the chord is built.
+
+## What the spike found (6.9.4)
+
+Method. For each voice the page's own recorder makes the program for a note (the graph path, an offline
+context, seeded random). The spike records it again with one parameter changed at two more values, fits
+`value = a + b*x` for every slot of the program on two of them and checks the third. It builds the program
+for a different note by patching the reference with the fits, then plays the patched program and a freshly
+recorded one through the engine's own voice pool and reports the null depth (dB; 999 = identical). 313
+cases over every 808 and 909 lane, bass, the live melody, melgen, arp and a transposed chord. Re-run:
+`make -C native/modsynth replaytest`, serve the repo, `node tests/graph/replay.test.js --serve`, and paste the
+one-liner from its header into the served page (or run it with Playwright where that is installed).
+
+Results (exact = bit-identical or 90 dB or deeper; close = 50 to 90 dB, an error under 0.3% of the signal,
+a threshold chosen by the engineer and not a measure of hearing):
+
+| voice | cases | exact | close | far |
+|---|---|---|---|---|
+| drums, 14 of 16 lanes | 140 | 133 | 7 | 0 |
+| drums, 808 lane 6 and 909 lane 3 (noise voices) | 20 | 12 | 0 | 8, see below |
+| bass | 10 | 10 | 0 | 0 |
+| live melody | 8 | 8 | 0 | 0 |
+| melgen | 10 | 8 | 2 | 0 |
+| arp | 10 | 10 | 0 | 0 |
+| chord (3 notes, one voice) | 10 | 0 | 0 | 10 |
+
+What it means, in order of importance:
+
+1. **Replay works for every single-note voice and every drum lane.** Velocity, accent and pitch are
+   patched slots; a start time is a set of slots that each move 1:1 with it (9 to 22 per voice);
+   duration is affine in the envelope slots. When two parameters move the same slot (vel and accent) it is
+   multiplicative, found from one joint recording. Pitch needs two bases per voice: most slots are linear
+   in frequency (2^(n/12)), a few (the live melody's pan) in the note number. A slot that fits neither is
+   reported, and none did except in the chord.
+2. **The interpreter depends on where the voice starts on the engine's 128-frame block grid.** The same
+   program begun 64 frames off the grid is not a shifted copy of itself for 13 of 21 voices: nulls from
+   -6 to 43 dB, the first few milliseconds of the attack differ. (The arp, melgen, live melody and four
+   drum lanes are unaffected.) This is the interpreter evaluating automation per quantum, as Chrome does
+   from its own grid; it already affects every voice the app plays today, since a voice begins wherever the
+   wall clock puts it (and the host's blocks are 240 frames, not 128). The replay design therefore **begins
+   every voice on the 128-frame grid and moves the note's onset inside the program** by patching the time
+   slots, which is exact (above). That is also what Chrome does for a note at any time.
+3. **A replayed voice is begun a lead before its onset.** A voice's output can start before its onset (a
+   waveshaper's bias is a constant from the moment the voice begins, and filters settle on it). Recorded
+   with 48 ms of lead (18 quanta) and replayed that lead before the onset frame, it matches the page's voice
+   in every case above. Re-based by `timeBase` with no lead, the start-up step of that bias showed as 40 to 80 dB
+   nulls on noise voices. The lead holds a pool slot for 48 ms, nothing more.
+4. **The page's own recordings are not time-invariant.** The control rows record the same note at 1.304 s
+   and at 0.048 s with no replay involved: 36 of 84 pairs differ by less than 50 dB. Two drum lanes (808
+   lane 6, 909 lane 3, the noise ones) differ by 27 to 60 dB from run to run, which no replay can reproduce.
+   Replay is as good as the thing it replays; whether those two voices need a fix in the page (a time-derived
+   noise offset is the suspect, not proven) is for the next slice.
+5. **The chord does not patch.** Program size changes with transposition (1,057 numbers at 0 and 1 semitones
+   up, 1,032 at 3 and 5, 1,007 at 7, 957 at 12: partials above the Nyquist are dropped), so every transposition
+   (or bucket of them) is its own program; velocity moved 11 slots affinely when probed over 0.2 to 1.0 in
+   isolation but 40 more in the spike's run, which is not explained (state left by earlier recordings in the same
+   page is the suspect, not proven); duration moved 74 slots that do not fit. The
+   chord is one voice per chord today. **"All parts in the background" is not met until this is solved**,
+   by recording per chord shape and transposition (a bigger bank), by building the chord in the engine from
+   single-note voices that do patch, or by changing how the page builds it. That is a design choice to make
+   before slice 2.
+6. **Edits.** A closed hat sends an edit to the open hat's voice, which is not in its own recording: the
+   engine has to do chokes itself (it knows which voice is which), as a scheduler feature. Edits that belong
+   to a voice's own recording (a held chord's release) were not replayed; duration is covered by the slots.
+
+Not covered, said plainly: sampled and recorded voices (piano, violin, flute, kit samples), the other drum
+kits, different chord shapes, a layered kit's `dyn`, parameters that change while a voice plays (glides,
+mõdFX), and any hearing test. The numbers are measured; "close" is a judgment.
+
+**Next step: slice 1, and the chord question.** The first is the native clock and the drum grid. The second
+needs a decision before slice 2 and can be investigated in parallel: which of the three chord options, and
+why the chord's velocity fit differs between the spike and an isolated probe.
