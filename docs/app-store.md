@@ -194,8 +194,13 @@ iPhone Song shot has I-V-vi-IV loaded from Common progressions (Replace song).
 The Mac set above is still the web build in a browser window. There is now a Mac app (Mac Catalyst, same bundle id, so
 universal purchase): it builds, signs ad hoc and launches on this Mac with all eight plugins registered and a 922 x 692
 window. Retake the Mac set from that window before uploading, and check the Studio panel at the 768 x 600 minimum.
-Not done: signed Mac App Store build (needs a Mac App Store provisioning profile, `3rd Party Mac Developer` certificates
-and the app record's macOS platform in App Store Connect), audio, MIDI and the purchase flow on the Mac.
+Mac App Store build: `ios/mac-catalyst/archive-mac-store.sh` archives the Release Mac Catalyst build and exports a signed
+`App.pkg` to `~/Desktop/modRiff-mac-store/export` (`... upload` sends it to App Store Connect from Xcode's signed-in
+account). Checked 2026-11-06: the app is signed by Apple Distribution (cloud managed, made by Xcode on first export, none
+needed in the keychain), the package by `3rd Party Mac Developer Installer`, with the `Mac Catalyst Team Store Provisioning
+Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done: the app record's macOS platform in App
+Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
+StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
 An **app preview video** (15 to 30 s) is optional; screen-record playing a progression over a beat.
 Consider short captions on a coloured background, which is what most music apps do.
