@@ -1,7 +1,7 @@
 /* A stand-in AudioContext that writes down the graph it is given instead of
    playing it, so the native engine can play the same graph.
 
-   Why this exists (docs/v5-architecture.md, "The graph interpreter"): the page
+   Why this exists (docs/architecture-plan.md, "The graph interpreter"): the page
    builds every note as a small Web Audio graph — makeVoice alone is 900 lines
    of oscillators, gains and filters — and rewriting each voice in C++ by hand
    is a rewrite of the instrument. This records what the voice *builds* and

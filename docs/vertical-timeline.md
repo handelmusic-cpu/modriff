@@ -191,7 +191,7 @@ on their side, bar = 150 px, the words laid under the beats they are sung on.
 
 **Step 6: the gate, the copy, the docs.** Name the feature in `FREE_LIMITS`,
 `FEATURE_MODULE` and `MODULE_COPY` only when it works (the copy rule: never list
-a feature that is not built). Update `docs/v5-architecture.md`.
+a feature that is not built). Update `docs/architecture-plan.md`.
 
 ## Measure, do not read
 

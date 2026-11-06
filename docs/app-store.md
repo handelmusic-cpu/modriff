@@ -158,7 +158,7 @@ open: the site says "for iPhone, iPad and Mac" and has a Mac tab, but there is n
 > iCloud sync is optional and off by default. When it is on, songs, setups and
 > saved patches are kept in the person's own private iCloud (CloudKit) database;
 > the developer has no access to it. (Not in a build until the iCloud capability
-> is added; see docs/v5-architecture.md, "iCloud sync".)
+> is added; see docs/architecture-plan.md, "iCloud sync".)
 > Camera: requested only if you choose Camera when importing a chord sheet from
 > a photo (Songs > File > Import a chord sheet). The picture is read on the
 > device and is not stored or sent anywhere.
@@ -240,7 +240,7 @@ opaque and square before upload.
 
 The code is in (`ios/App/App/ModBilling/ModBilling.swift`, StoreKit 2, behind
 `window.modBilling`; the design and the table of what each pack holds are in section 4 of
-`v5-architecture.md`). The page side is measured. The Swift **builds** (iOS Simulator, 6.9.9.3:
+`architecture-plan.md`). The page side is measured. The Swift **builds** (iOS Simulator, 6.9.9.3:
 `BUILD SUCCEEDED`, no errors, no warnings in `ModBilling.swift`); **the purchase flow has not
 been run**, which needs StoreKit testing in Xcode or a sandbox account (see "Testing" below).
 

@@ -2,7 +2,7 @@
 
 Written after a design session with the owner. Nothing here is built. It sits
 beside `docs/vertical-timeline.md` (the lyrics and chord-length timeline, which
-this plan puts inside a larger layout) and `docs/v5-architecture.md` (the native
+this plan puts inside a larger layout) and `docs/architecture-plan.md` (the native
 work). Numbering restarts at 5.0 (CLAUDE.md, "Numbering").
 
 A clickable mock of every screen below is `docs/layout-5.0-mock.html` (one file,
@@ -784,7 +784,7 @@ landscape is the real fix for long patterns, not bigger cells.
    sounds".
 8. **Tap the changes** (Step 4 of the vertical timeline).
 9. Gates and copy (`FREE_LIMITS`, `FEATURE_MODULE`, `MODULE_COPY`) only for what
-   works, then this file and `docs/v5-architecture.md` brought up to date.
+   works, then this file and `docs/architecture-plan.md` brought up to date.
 
 Landscape layouts for the long rolls and for the timeline on an iPad are later
 and are the same renderer turned on its side.
@@ -1035,7 +1035,7 @@ and are the same renderer turned on its side.
 
 ### Landed as 6.1 (an audio buffer choice)
 
-- Settings › Interface › **Audio buffer**: 5, 10 or 20 ms, beside Native sound. See docs/v5-architecture.md ("Dropouts at a 5 ms buffer"). The Swift
+- Settings › Interface › **Audio buffer**: 5, 10 or 20 ms, beside Native sound. See docs/architecture-plan.md ("Dropouts at a 5 ms buffer"). The Swift
   half (`setBuffer` on `ModEngine`) parses but has not been built; the page half answers nothing from a binary without it and the choice then
   applies from the next start.
 
@@ -1086,7 +1086,7 @@ and are the same renderer turned on its side.
 
 - `_graphPathWanted()` is on in the iPhone app unless the player has turned it off (a stored `modo-graph-path` of `0`; a stored `1` still means on). The
   web build never reads as on. A binary without the graph methods leaves it off and the status line says so; a note the engine cannot carry still falls back
-  to Web Audio for that note. This is the first half of the flip in `docs/v5-architecture.md`; the second half, deleting the Web Audio path, is not done:
+  to Web Audio for that note. This is the first half of the flip in `docs/architecture-plan.md`; the second half, deleting the Web Audio path, is not done:
   checklist 10.2 (all eight parts clean), 10.7 (a recorded voice on the melody) and 10.9 (background) have not come back clean, the last diagnostics had 6
   missed blocks in five minutes at the 5 ms buffer, and the web build and the per-note fallback both still need that path.
 - The app, including the Audio buffer method (`ModEngine.setBuffer`), compiles for the simulator with Xcode 27.2 (`xcodebuild -scheme App -sdk iphonesimulator`).

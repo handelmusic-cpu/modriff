@@ -11,7 +11,7 @@ import UIKit
 /// meant to arrive with the sound — so the generators here are kept, prepared
 /// when a finger lands on a grid, and prepared again straight after each tap.
 ///
-/// The five kinds are the table in docs/v5-architecture.md ("Haptics"):
+/// The five kinds are the table in docs/architecture-plan.md ("Haptics"):
 ///   pad     heavy impact       chord and sample pads, on pointerdown
 ///   medium  medium impact      melody keys and the strip's notes: one step under a pad
 ///   kaoss   light impact       the mõdFX pad

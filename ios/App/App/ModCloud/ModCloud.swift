@@ -16,7 +16,7 @@ import CloudKit
 /// raises an exception and the app is gone: it is not something to find out at
 /// run time. So a build without the flag, which is every build until the
 /// developer account has the capability, answers `status` with "not enabled" and
-/// the page leaves the switch off. To turn it on: see docs/v5-architecture.md,
+/// the page leaves the switch off. To turn it on: see docs/architecture-plan.md,
 /// "iCloud sync" (add the iCloud capability with CloudKit and the container
 /// `iCloud.Handel.modRiff`, then add `MODRIFF_CLOUDKIT` to Active
 /// Compilation Conditions for the App target).

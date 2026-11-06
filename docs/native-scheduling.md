@@ -1,7 +1,7 @@
 # Native scheduling: the sequencers move to the engine
 
 Design, written at 6.9.4, with the slice-0 spike's results (section 5). Slice 1 is half built (6.9.7: the clock and the drum-grid expander, in C++, held to the page; section "Slice 1, first half" at the end). The engine does not schedule anything yet. It is the "then the clock" of step 7 in
-`docs/v5-architecture.md`, and the reason is background play: every part already *plays* on the
+`docs/architecture-plan.md`, and the reason is background play: every part already *plays* on the
 native engine, but *when* a note plays is still decided by page JavaScript on a `setTimeout` chain, so
 the music lasts only as long as the web view runs and the look-ahead reaches. Read the section
 "Where background play stands (6.9.4)" there first.

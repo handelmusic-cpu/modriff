@@ -8,7 +8,7 @@ verification, App Store Connect, screenshots. New features wait unless asked.
 ## Reading the docs (they are big — search, don't read whole)
 
 `grep -n` for the topic, then read that range. Never open these end to end:
-`docs/v5-architecture.md` (2.8k lines), `docs/layout-5.0.md` (1.2k),
+`docs/architecture-plan.md` (2.8k lines), `docs/layout-5.0.md` (1.2k),
 `index.html` (~70k lines).
 
 | for | read |
@@ -16,7 +16,7 @@ verification, App Store Connect, screenshots. New features wait unless asked.
 | launch: listing text, IAP table, review notes, screenshots, account steps | `docs/app-store.md` |
 | what to check on a phone | `docs/phone-test-checklist.md` |
 | Dynamic Island light | `docs/dynamic-island.md` |
-| plan, native steps, open problems | `docs/v5-architecture.md` (keep current when a step lands or a decision changes) |
+| plan, native steps, open problems | `docs/architecture-plan.md` (keep current when a step lands or a decision changes) |
 | background audio: moving the sequencers to the engine | `docs/native-scheduling.md` |
 
 ## Shipping

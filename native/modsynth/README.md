@@ -1,7 +1,7 @@
 # mõdSynth in C++
 
 The mõdSynth DSP core ported from `modsynth/dsp.js` (the AudioWorklet) to
-plain C++17, for the native iOS engine (`docs/v5-architecture.md`, "Audio:
+plain C++17, for the native iOS engine (`docs/architecture-plan.md`, "Audio:
 native, decided", step 2). It has no platform dependency. The Swift host will
 feed it the same messages the worklet's port receives and call `process()`
 from its render callback.
@@ -85,7 +85,7 @@ building the wavetables (13 ms) and parsing the script:
 Everything that is not mõdSynth is, on the web, a Web Audio graph built per note
 (the synth voices, every drum, the bass, the samples). Rather than rewriting each
 in C++, the page records the graph a voice builds (`tests/graph/graphrec.js`, a
-stand-in `AudioContext`) and this plays it. `docs/v5-architecture.md`, "The graph
+stand-in `AudioContext`) and this plays it. `docs/architecture-plan.md`, "The graph
 interpreter", has the reasoning and the numbers.
 
 ```sh

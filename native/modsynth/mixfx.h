@@ -17,7 +17,7 @@
 // the page's worklet source. The strip's EQ (last four parameters) is after the whole
 // chain and the Mix, and runs whether or not the chain is in. The rhythmic gate's eight patterns are in the gate
 // stage (GATE_PATTERNS, held to index.html's by tests/modsynth/gatepat.test.js).
-// Not here yet: the sample-source axes. See docs/v5-architecture.md, step N4.
+// Not here yet: the sample-source axes. See docs/architecture-plan.md, step N4.
 //
 // The sound is not bit-identical to Web Audio's: the reverb is a feedback
 // delay network where the browser convolves a noise tail, and the oversampler
