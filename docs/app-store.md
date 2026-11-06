@@ -245,17 +245,17 @@ product is deleted, so check each one before creating it.
 
 | Product ID | Reference name | Display name (max 30) | Description (max 45) | Price |
 |---|---|---|---|---|
-| `Handel.modRiff.sampler` | Sampler Engine | Sampler Engine | Real instruments, 16 pads, your own samples | $5.99 |
-| `Handel.modRiff.synth` | mõdSynth Engine | mõdSynth Engine | The full mõdSynth sound library and all mõdFX | $4.99 |
-| `Handel.modRiff.groove` | Groove Pack | Groove Pack | Every drum kit, world groove and odd meter | $3.99 |
-| `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every scale, chord and voicing. Play anything | $3.99 |
-| `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Speed trainer, timeline, Stage, chart import | $3.99 |
-| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Export full songs and stems. Unlimited saves | $4.99 |
-| `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Organ, electric piano, pads, vibes and bass | $1.99 |
-| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack now, plus every one we add later | $12.99 |
-| `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Finish your set: every pack you don’t own yet | $10.99 |
-| `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Finish your set: every pack you don’t own yet | $6.99 |
-| `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Finish your set: every pack you don’t own yet | $3.99 |
+| `Handel.modRiff.sampler` | Sampler Engine | Sampler Engine | Pro sampler: your samples, kits, loop slicing | $5.99 |
+| `Handel.modRiff.synth` | mõdSynth Engine | mõdSynth Engine | Wavetable power synth + the full mõdFX rack | $4.99 |
+| `Handel.modRiff.groove` | Groove Pack | Groove Pack | World grooves, odd meters, extra kits, aux | $3.99 |
+| `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every mode, chord and voicing, neo-soul ready | $3.99 |
+| `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Speed trainer, loop bars, Stage, timeline | $3.99 |
+| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Stems, full audio and MIDI export, no limits | $4.99 |
+| `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Tonewheel organ, e-piano, pads, vibes, bass | $1.99 |
+| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, plus every future pack, free | $12.99 |
+| `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Finish the set: every pack you don’t own yet | $10.99 |
+| `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Finish the set: every pack you don’t own yet | $6.99 |
+| `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Finish the set: every pack you don’t own yet | $3.99 |
 
 The display names and descriptions are the page's own copy (`MODULE_COPY` in `index.html`),
 and a test holds `ios/App/ModRiffPacks.storekit` to the same words, so paste from there.
