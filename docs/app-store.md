@@ -182,11 +182,11 @@ An **app preview video** (15 to 30 s) is optional; screen-record playing a progr
 Consider short captions on a coloured background, which is what most music apps do.
 
 The Duo set is the splash only. That simulator's touch input kept timing out, so the other four screens were not shot, and
-1398 x 2034 is not one of the sizes App Store Connect lists, so treat it as a reference, not an upload. It does show a real
-problem: the Duo draws its clock and status pill down the top-right edge, and the splash wordmark runs underneath it. The
-page does not appear to keep clear of that edge (not investigated: whether its safe-area insets cover it is unchecked), so
-look at the layout on that device before it is a supported size.
-
+1398 x 2034 is not one of the sizes App Store Connect lists, so treat it as a reference, not an upload. The Duo draws its
+clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator: top 0, right 84,
+bottom 34, left 0). The splash ignored it and the wordmark ran under the pill; fixed in 6.9.2a, and the file is the fixed
+splash. The Live, Studio, Song and Sound pages pad the body by the side insets already, but nothing past the splash was
+looked at on the Duo, and the other fixed layers (toasts, sheets, the tour card) were not audited.
 
 ## Icon
 
