@@ -1,9 +1,12 @@
 // Runs the native bass line on scores and chord windows a test hands it and prints the notes, one per line, for
 // tests/seq/bassgrid.test.js to hold against the page's own scheduler.
 //   basstool <cases.f64>
-// cases.f64: [nCases, per case: sampleRate, bpm, rate, firstFrame, seed, nSteps, then the score (basscore.cpp), then the chord
-//   windows (ChordTimeline::fromDoubles)]. The windows are all present from the start (the page's song commits them ahead of
-//   the bass); `nSteps` steps are fired.
+// cases.f64: [nCases, per case: sampleRate, bpm, rate, firstFrame, seed, nSteps, nTicks, nTape, then nTicks x (now, horizon, drumBar, windows),
+//   then nTape random draws, then the score (basscore.cpp), then the chord windows (ChordTimeline::fromDoubles)]. Without ticks the
+//   windows are all present from the start (the page's song commits them ahead of the bass) and `nSteps` steps are fired one after the
+//   other (the grid). With ticks, the scheduler is called once per tick as the page's clock calls it (the walking line depends on
+//   when: it skips a beat whose moment has passed), each tick is (now, horizon, drumBar, the windows the song had committed at that
+//   moment in ChordTimeline::fromDoubles form), and the tape is the walking line's random draws (the page's own, in order).
 // Output per case: "CASE i", "N frameExact frame midi durFrames vel accent slide from step" for each note, "END i steps".
 #include <cstdio>
 #include <vector>
@@ -21,19 +24,38 @@ int main(int argc, char **argv) {
   for (int c = 0; c < nc; c++) {
     const double sr = d[k++], bpm = d[k++], rate = d[k++], first = d[k++], seed = d[k++];
     const int nsteps = (int)d[k++];
+    const int nTicks = (int)d[k++], nTape = (int)d[k++];
+    // Ticks are variable length (the windows come with them): keep where each starts.
+    std::vector<size_t> tickAt;
+    for (int i = 0; i < nTicks; i++) {
+      tickAt.push_back(k); k += 3;
+      modsynth::ChordTimeline probe; size_t u = 0;
+      if (!probe.fromDoubles(d.data() + k, d.size() - k, &u)) { fprintf(stderr, "case %d: bad windows in tick %d\n", c, i); return 2; }
+      k += u;
+    }
+    std::vector<double> tape(d.begin() + (long)k, d.begin() + (long)k + nTape); k += (size_t)nTape;
     modsynth::BassScore sc; size_t used = 0;
     if (!sc.fromDoubles(d.data() + k, d.size() - k, &used)) { fprintf(stderr, "case %d: bad score\n", c); return 2; }
     k += used;
     modsynth::BassSequencer q(sr);
     if (!q.timeline().fromDoubles(d.data() + k, d.size() - k, &used)) { fprintf(stderr, "case %d: bad windows\n", c); return 2; }
     k += used;
+    (void)0;
     q.setScore(sc); q.setTempo(bpm); q.setRate(rate); q.seed((uint64_t)seed); q.start(first);
+    if (nTape) q.setRandomTape(tape);
     printf("CASE %d\n", c);
+    auto out = [](const modsynth::BassEvent &e) {
+      printf("N %.17g %lld %d %.17g %.17g %d %d %d %d\n", e.frameExact, (long long)e.frame, e.midi, e.durFrames, e.vel, e.accent ? 1 : 0, e.slide ? 1 : 0, e.from, e.step);
+    };
     int fired = 0;
-    while (fired < nsteps) {
-      fired += q.run(q.nextFrame() + 1, [](const modsynth::BassEvent &e) {
-        printf("N %.17g %lld %d %.17g %.17g %d %d %d %d\n", e.frameExact, (long long)e.frame, e.midi, e.durFrames, e.vel, e.accent ? 1 : 0, e.slide ? 1 : 0, e.from, e.step);
-      });
+    if (nTicks) {
+      for (int i = 0; i < nTicks; i++) {
+        const size_t at = tickAt[(size_t)i];
+        q.timeline().fromDoubles(d.data() + at + 3, d.size() - at - 3);
+        fired += q.run(d[at], d[at + 1], d[at + 2], out);
+      }
+    } else {
+      while (fired < nsteps) fired += q.run(q.nextFrame() + 1, out);
     }
     printf("END %d %d\n", c, fired);
   }

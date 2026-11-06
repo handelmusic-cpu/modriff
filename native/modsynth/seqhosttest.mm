@@ -246,7 +246,7 @@ int main() {
         return e;
       };
       for (int lane = 0; lane < 4; lane++) [g seqPutBankEntry:bytes(bassVoice(lane))];
-      std::vector<double> bs = {1, 16, 0, 1, 0, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 16};
+      std::vector<double> bs = {1, 16, 0, 1, 0, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0, 0, 16};
       for (int s2 = 0; s2 < 16; s2++) bs.insert(bs.end(), {1, 0, 2, 2, 0, 0, 0, 0, 0});
       CHECK([g seqSetBassScore:bytes(bs)], "the bass line is taken");
       // Two chart windows (frames from the line's start): C for two bars, then F; the timeline holds them.
@@ -272,6 +272,17 @@ int main() {
       const int notes = [[g seqMirror][@"bass"][@"notes"] intValue];
       run(g, 300);
       CHECK([[g seqMirror][@"bass"][@"notes"] intValue] == notes && ![[g seqMirror][@"bass"][@"running"] boolValue], "stopped: still %d notes", notes);
+
+      // The walking line (Jazz style with Follow on, over the chart): a quarter note a beat on the chart's own clock, snapped onto the
+      // drums' bar line while they run. At 120 BPM a beat is 24000 frames; in 1.5 s of render that is a note a beat from the first one, and
+      // the first note lands on the drums' bar line (here their first downbeat), not at the line's own start.
+      std::vector<double> js = {1, 16, 0, 1, 1, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 1, 0, 0};   // follow on, jazz on, four-feel, no cells
+      CHECK([g seqSetBassScore:bytes(js)], "a walking score is taken");
+      CHECK([g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:7 seed:5], "the walking line starts");
+      for (int t = 0; t < 1500; t += 5) { [g renderInto:l.data() right:r.data() frames:240]; usleep(5000); }
+      NSDictionary *wb = [g seqMirror][@"bass"];
+      CHECK([wb[@"notes"] intValue] >= 3 && [wb[@"notes"] intValue] <= 5 && [wb[@"hits"] intValue] == [wb[@"notes"] intValue] && [wb[@"refused"] intValue] == 0, "the walking line plays a note a beat (3 to 5 in 1.5 s at 120 BPM, not the grid's 12) from the bank: %d notes, %d refused", [wb[@"notes"] intValue], [wb[@"refused"] intValue]);
+      [g seqBassStop];
       [g seqStop];
     }
 

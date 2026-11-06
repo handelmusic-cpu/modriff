@@ -659,7 +659,7 @@ on when the page schedules relative to the previous note. Worth listening for on
 
 **Not done, said plainly.**
 - (The host did not run the bass at 6.9.9.7; it does from 6.9.9.8, next section.)
-- The sampled voices (they name a recording per note), the walking line, locks, Pure tuning's cents (`tune`).
+- The sampled voices (they name a recording per note), locks, Pure tuning's cents (`tune`). (The walking line: 6.9.9.9, below.)
 - A voice that sits on a mõdSynth patch (`_blStopMsx`).
 - The chord comp, and its choke of the previous chord.
 
@@ -691,3 +691,42 @@ bass through the host's strips and master (the null is at the pool, bassline.tes
 **Not done.** The chart is the windows the song has committed when `start` is called, from the first one; it does not follow a song as it
 plays on (that is slice 4, the song loop). Tempo changes need `_nsBass.tempo()`. The drums' and the bass's clocks are two clocks that start
 together, not one. Sampled bass voices, the walking line, locks, `tune`. The chord comp. Not heard on device: checklist 19.2 to 19.4.
+
+## Slice 2, part four (6.9.9.9): the walking line
+
+**What was chosen, and why.** Jazz style with Follow on makes the page's bass scheduler a different scheduler: quarter notes on the chart's own
+clock, one note a beat, whatever the grid says. It is in the engine as the second branch of `BassSequencer::run`, taken when there is a chart
+to follow and the style is Jazz, as the page takes it. Same decisions as the page's, in frames: the walk's clock re-anchors to each new chord's
+downbeat and is snapped UP onto the drums' bar line while they run (never back: a rewind would re-fire notes already committed); a beat whose
+moment passed while it waited for its chord is skipped, never played late; the two-feel plays half notes on beats 1 and 3; each note is
+`_blWalkNote`'s: beat 1 the chord's root (the slash bass if there is one, in the octave nearest the last note), the beat before a change a
+half step or a fifth from the next root, the beats between a step through chord and scale tones weighted towards the target. The walk runs
+on `now` (the render clock) as well as the horizon, which is why `run` takes both, and the drums' next bar line
+(`DrumSequencer::nextBarFrame`, the port of `window._sqNextBar`), which the host reads right after the drums have run each tick.
+
+**The random picks.** The last-beat approach and the middle beats pick with `Math.random` in the page; the engine uses its own generator,
+which the owner accepted. To still hold the walk *note for note*, the test gives the engine a random tape: the draws the page made inside its
+scheduler, in order, are the engine's draws (`BassSequencer::setRandomTape`). Same decisions, same draws, same notes. In production the tape is
+empty.
+
+**Measured.** `make -C native/modsynth basstool && node tests/seq/basswalk.test.js`: the page's real scheduler runs on a clock of its own,
+called once per tick as its clock calls it (the walk depends on *when*), with the chord windows the song had committed at each tick and the
+drums' bar line as the page reads it; the engine runs the same ticks. **Eight cases identical note for note** (when to 1e-5 of a frame, which
+note, how long, how loud, accent): four to the bar over I-vi-IV-V with no drums; the same with a drum grid three steps off the chart; two-feel
+over ii-V-I with slash chords and a rest; chords changing every beat or two with drums; odd chord lengths at rate 2; a song that commits each
+chord just before it starts (so the walk waits for it and skips the beats that pass); chords that start a little after a beat, with drums,
+committed late; joining a song part-way through a chord in the two-feel with drums on. Without the tape (the engine's own draws), the same
+cases keep their timing, length, level and accent exactly, their downbeats are the same pitch class, and every note is inside the walk's
+33..52. A walking line through the voice: Electric over slash chords and a rest, the engine's sequencer and player against the page's voices
+(`bassline.test.js`), bit-identical. `seqhosttest`: the host walks (3 notes in 1.5 s at 120 BPM where the grid plays 12). Breaking the skip of
+a passed beat, the length of the two-feel's note, the step limit of the approach and the weights of the middle beats each fail the test.
+`xcodebuild` builds.
+
+**What the test does not reach, said plainly.** Four guards in the walk's re-anchoring are ported and not exercised by any case (changing
+them does not change a list): the pause of half a beat after a note before a chord tapped just after it can re-anchor (`_blWalkLastT`), the
+0.02 beat of slack in the snap, the reset of a walk left behind by more than a beat, and the rule that a new window only pulls the walk back by
+less than half a beat. They matter for a hand-played chord and a song that stops and starts, which is the song loop (slice 4).
+
+**Not done.** Locked phrases (a line frozen per chord; the page's walk plays the lock's four sixteenths in the beat), which the score
+still refuses; `tune`; the chord comp; the song loop. The walk's state is not reset when the chart is replaced while it plays (the page
+resets it on a hand-played chord). Not heard on device: checklist 19.5.

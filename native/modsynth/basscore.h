@@ -3,11 +3,11 @@
 //
 // What it is a port of (index.html): window._blOnChord (a chord window), _blWindowAt / _blWindowFor (which chord covers a
 // moment), window._followRemapPc / _followRange / _followNearIn (re-rooting a written line onto the chord that is sounding),
-// _blScalePcs' result (sent, not recomputed), and the grid branch of window._blScheduler: swing, Follow, a pinned step, the
-// step's length and its cap, probability, humanize, and the slide memory blPlayNote keeps (`from`).
+// _blScalePcs' result (sent, not recomputed), and both branches of window._blScheduler: the grid (swing, Follow, a pinned step, the
+// step's length and its cap, probability, humanize, and the slide memory blPlayNote keeps, `from`) and the walking line (Jazz style with
+// Follow on: a quarter note a beat on the chart's own clock, snapped to the drums' bar line, whose notes are _blWalkNote's picks).
 //
 // What it is not, said plainly (the score refuses what it cannot yet do, and names it):
-//  - the walking line (Jazz style with Follow on), which is a different scheduler with its own randomness;
 //  - phrase locks (a line frozen per chord), and a line written ahead for the next chord (_blPregen / _blApplyPending), which
 //    the page swaps in at the wrap: here a new score replaces the old one when it arrives;
 //  - Pure tuning's cents (`tune`);
@@ -89,6 +89,8 @@ struct BassScore {
   double swing = 0;            // the drums' swing, percent: the bass rides it
   bool swing8 = true;
   bool follow = true;          // blFollow
+  bool jazz = false;           // blGenStyle === 'jazz': with Follow on and a chart, the walking line replaces the grid
+  bool twoFeel = false;        // blWalkFeel === 'two': half notes on beats 1 and 3
   int gridRootPc = 0;          // the chord the line was written over
   std::vector<int> gridIntvs;  // ...and its tones as intervals from that root
   std::vector<int> scalePcs;   // _blScalePcs(): the key
@@ -97,7 +99,7 @@ struct BassScore {
   std::vector<BassCell> cells; // the grid, `steps` of them
 
   // [1, steps, swing, swing8, follow, gridRootPc, nIntvs, intvs..., nScale, scale..., stepVel,
-  //  hum.amt, timeMul, velMul, driftMul, maxMs, maxVel, maxDriftMs, bassOff, nCells, per cell: v, note, oct, len, slide, accent, fix, vel, pr]
+  //  hum.amt, timeMul, velMul, driftMul, maxMs, maxVel, maxDriftMs, bassOff, jazz, twoFeel, nCells, per cell: v, note, oct, len, slide, accent, fix, vel, pr]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 };
 
@@ -130,19 +132,34 @@ class BassSequencer {
   double stepFrames() const { return (60.0 / bpm_ / 4.0 * rate_) * sr_; }
 
   // Begin with `step` landing on `firstFrame` (the page joins a running band at its bar line: seqEntryTime).
-  void start(double firstFrame, int step = 0) { next_ = firstFrame; step_ = step; running_ = true; prevSlide_ = false; prevMidi_ = -1; }
+  void start(double firstFrame, int step = 0) { next_ = firstFrame; step_ = step; running_ = true; prevSlide_ = false; prevMidi_ = -1; walkPrev_ = 0; walkNextT_ = 0; walkLastT_ = 0; walkHave_ = false; }
   void stop() { running_ = false; }
   bool running() const { return running_; }
   int step() const { return step_; }
   double nextFrame() const { return next_; }
 
-  // window._blScheduler's grid branch: fire every step due before `horizon`, in order. `following` is read once per call,
-  // as the page reads it (a timeline that is empty when the pass begins is not followed for the whole pass).
+  // The walking line's random picks (_blWalkNote's Math.random) come from this tape when one is set, in order, instead of the
+  // generator: for a test that wants the page's own draws, so the lists can be compared note for note.
+  void setRandomTape(std::vector<double> t) { tape_ = std::move(t); tapePos_ = 0; }
+
+  // window._blScheduler: fire everything due before `horizon`, in order. `now` is the render clock (the walking line skips a beat whose
+  // moment has passed while it waited for its chord) and `drumBar` the drums' next bar line, or a negative number when they are not
+  // playing (window._sqNextBar). `following` is read once per call, as the page reads it (a timeline that is empty when the pass begins
+  // is not followed for the whole pass).
   template <class Emit>
-  int run(double horizon, Emit &&emit) {
+  int run(double now, double horizon, double drumBar, Emit &&emit) {
+    const bool following = score_.follow && !timeline_.empty();
+    if (following && score_.jazz) return runWalk(now, horizon, drumBar, emit);
+    return runGrid(horizon, following, emit);
+  }
+  template <class Emit>
+  int run(double horizon, Emit &&emit) { return run(-1e18, horizon, -1.0, emit); }
+
+ private:
+  template <class Emit>
+  int runGrid(double horizon, bool following, Emit &emit) {
     int fired = 0;
     const double sd = stepFrames();
-    const bool following = score_.follow && !timeline_.empty();
     while (running_ && next_ < horizon) {
       fireStep(step_, next_, sd, following, emit);
       fired++;
@@ -153,7 +170,126 @@ class BassSequencer {
     return fired;
   }
 
- private:
+  // ── the walking line ─────────────────────────────────────────────────────────────────────────────────────────────
+  // _blNear: the octave of a pitch class nearest a reference note, inside the walk's range.
+  static int nearM(int pc, int ref) {
+    pc = mod12(pc);
+    int best = -1, bd = 1 << 30;
+    for (int m = kLo - (kLo % 12) - 12; m <= kHi + 12; m++) {
+      if (m < kLo || m > kHi) continue;
+      if (mod12(m) != pc) continue;
+      const int d = std::abs(m - ref);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best < 0 ? kLo + pc : best;
+  }
+  double draw() { if (tapePos_ < tape_.size()) return tape_[tapePos_++]; return rng_.next(); }
+  bool inScale(int pc) const { for (int s : score_.scalePcs) if (s == pc) return true; return false; }
+  static bool inPcs(const ChordWindow &w, int pc) { for (int p : w.pcs) if (p == pc) return true; return false; }
+
+  // _blWalkNote: one quarter note of the line. Beat 1 is the chord's own root; the beat before a change approaches the next root from a
+  // half step or a fifth; the beats between move by step through chord and scale tones, aimed at what comes next.
+  int walkNote(const ChordWindow &w, int beatIdx, int beatsLeft) {
+    const int prev = walkPrev_ ? walkPrev_ : nearM(w.rootPc, 40);
+    if (beatIdx == 0) {
+      const int basePc = w.bassPc >= 0 ? w.bassPc : w.rootPc;
+      const int m = nearM(basePc, prev);
+      walkPrev_ = m;
+      return m;
+    }
+    const int target = w.nextPc >= 0 ? w.nextPc : w.rootPc;
+    if (beatsLeft <= 1) {
+      const int tgtM = nearM(target, prev);
+      const int opts[4] = {tgtM - 1, tgtM + 1, tgtM - 7, tgtM + 5};
+      std::vector<int> cands;
+      for (int m : opts) if (m >= kLo && m <= kHi && std::abs(m - prev) <= 7) cands.push_back(m);
+      if (cands.empty()) for (int m : opts) if (m >= kLo && m <= kHi) cands.push_back(m);
+      const int pickA = !cands.empty() ? cands[(size_t)(int)(draw() * (double)cands.size())] : nearM((target + 11) % 12, prev);
+      walkPrev_ = pickA;
+      return pickA;
+    }
+    const int dir = nearM(target, prev) >= prev ? 1 : -1;
+    std::vector<int> pool;
+    for (int d = 1; d <= 4; d++) {
+      const int up = prev + d * dir;
+      if (up < kLo || up > kHi) continue;
+      const int pc = mod12(up);
+      int weight = inPcs(w, pc) ? 4 : (inScale(pc) ? 2 : 0);
+      if (d > 2) weight = std::max(0, weight - 1);
+      for (int k = 0; k < weight; k++) pool.push_back(up);
+    }
+    if (pool.empty()) {
+      for (int pc : w.pcs) { const int mm = nearM(pc, prev); if (mm != prev) pool.push_back(mm); }
+    }
+    const int out = !pool.empty() ? pool[(size_t)(int)(draw() * (double)pool.size())] : prev;
+    walkPrev_ = out;
+    return out;
+  }
+
+  // The walking branch of window._blScheduler. A walking line is quarter notes by definition, so the grid's rhythm does not apply; it
+  // runs on the chord windows' own clock and re-anchors to each new chord's downbeat, snapped UP onto the drums' bar line while they
+  // run (never back: a rewind would re-fire committed notes).
+  template <class Emit>
+  int runWalk(double now, double horizon, double drumBar, Emit &emit) {
+    const double sd = stepFrames();
+    const double beat = sd * 4;
+    auto snap = [&](double t, double anchor, bool haveAnchor) {
+      const bool useBar = drumBar >= 0;
+      if (!useBar && !haveAnchor) return t;
+      const double a = useBar ? drumBar : anchor;
+      double out = a + std::ceil((t - a) / beat - 0.02) * beat;
+      // A chord tapped just after a beat pulls the walk back to the tap, and the snap would land it on that same beat again.
+      while (walkLastT_ != 0 && out < walkLastT_ + beat * 0.5) out += beat;
+      return out;
+    };
+    const std::vector<ChordWindow> &ws = timeline_.windows();
+    if (walkNextT_ != 0 && walkNextT_ < now - beat) walkNextT_ = 0;
+    if (walkNextT_ == 0) {
+      const ChordWindow *w0 = ws.empty() ? nullptr : &ws[0];
+      walkNextT_ = (w0 && w0->t > now) ? w0->t : now;
+      const ChordWindow *wNow = timeline_.windowAt(walkNextT_);
+      const bool have = wNow || w0;
+      walkNextT_ = snap(walkNextT_, wNow ? wNow->t : (w0 ? w0->t : 0), have);
+    }
+    int guard = 0;
+    while (walkNextT_ < horizon && guard++ < 256) {
+      const ChordWindow *wq = timeline_.windowAt(walkNextT_);
+      if (!wq) break;                               // past the last chord the song has committed: pick it up on a later pass
+      if (!(walkHave_ && walkWin_.t == wq->t && walkWin_.end == wq->end && walkWin_.rootPc == wq->rootPc && walkWin_.bassPc == wq->bassPc)) {
+        walkWin_ = *wq; walkHave_ = true;
+        if (wq->t >= walkNextT_ - beat * 0.5) walkNextT_ = wq->t;
+        const double snapped = snap(walkNextT_, wq->t, true);
+        if (std::fabs(snapped - walkNextT_) > 0.001 * sr_) { walkNextT_ = snapped; continue; }
+      }
+      if (walkNextT_ >= horizon) break;
+      if (walkNextT_ < now) { walkNextT_ += beat; continue; }       // a beat that passed while it waited for its chord is skipped, never played late
+      const double into0 = std::max(0.0, walkNextT_ - wq->t);
+      const int beat0 = (int)std::llround(into0 / beat);
+      if (score_.twoFeel && (beat0 % 2) != 0) { walkNextT_ += beat; continue; }
+      if (!wq->rest) {
+        const double into = std::max(0.0, walkNextT_ - wq->t);
+        const int beatIdx = (int)std::llround(into / beat);
+        const int beatsLeft = std::max(1, (int)std::llround((wq->end - walkNextT_) / beat));
+        const int midi = walkNote(*wq, beatIdx, beatsLeft);
+        const bool downbeat = beatIdx == 0;
+        BassEvent e;
+        const double at = walkNextT_ + Feel::humanT(rng_, score_.hum, sr_, !score_.hum.partOff[0], downbeat, walkNextT_) * sr_;
+        e.midi = midi; e.frameExact = at; e.frame = (int64_t)std::llround(at);
+        e.durFrames = score_.twoFeel ? beat * 1.88 : beat * 0.92;
+        e.vel = score_.stepVel * Feel::humanV(rng_, score_.hum, !score_.hum.partOff[0], downbeat);
+        e.accent = downbeat; e.slide = false; e.from = -1; e.step = step_;
+        walkLastT_ = walkNextT_;
+        emit(e);
+        prevMidi_ = midi; prevSlide_ = false;
+      }
+      walkNextT_ += beat;
+    }
+    // Keep the step clock running so the playhead still sweeps the grid.
+    int fired = 0;
+    while (running_ && next_ < horizon) { next_ += sd; step_++; fired++; if (step_ >= score_.steps) wrap(); }
+    return fired;
+  }
+
   void wrap() { step_ = 0; prevSlide_ = false; prevMidi_ = -1; }
 
   // _sqSwingOffset, in frames.
@@ -244,6 +380,13 @@ class BassSequencer {
   bool running_ = false;
   bool prevSlide_ = false;
   int prevMidi_ = -1;
+  // the walking line's state: _blWalkPrev, _blWalkNextT, _blWalkWin, _blWalkLastT
+  int walkPrev_ = 0;
+  double walkNextT_ = 0, walkLastT_ = 0;
+  ChordWindow walkWin_;
+  bool walkHave_ = false;
+  std::vector<double> tape_;
+  size_t tapePos_ = 0;
 };
 
 }  // namespace modsynth

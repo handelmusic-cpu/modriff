@@ -155,13 +155,14 @@ const SONGS = {
       const sc = window._blNativeScore();
       out.stat.push({ name: c.name, kind: c.kind, notes: r, tEnd, score: sc.score, chords: window._blNativeChords(sr), human: base.human });
     }
-    // What the engine's score refuses, and says why.
+    // The score carries the style and the feel, so the engine walks when the page would (tests/seq/basswalk.test.js holds that).
     {
       const c = Object.assign({}, det[0], grids[det[0].name]); setup(c); chords(c, 20);
-      window._blRestoreState({ genStyle: 'jazz', follow: true });
-      out.refused.push(window._blNativeScore().why.join(','));
-      window._blRestoreState({ genStyle: 'funk', follow: true });
-      out.refused.push(String(window._blNativeScore().ok));
+      window._blRestoreState({ genStyle: 'jazz', follow: true, walkFeel: 'two' });
+      const a = window._blNativeScore();
+      window._blRestoreState({ genStyle: 'funk', follow: true, walkFeel: 'four' });
+      const b = window._blNativeScore();
+      out.refused.push(String(a.ok), a.score[a.score.length - 3 - 16 * 9] + ',' + a.score[a.score.length - 2 - 16 * 9], b.score[b.score.length - 3 - 16 * 9] + ',' + b.score[b.score.length - 2 - 16 * 9]);
     }
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready;
     return out;
@@ -186,7 +187,7 @@ const SONGS = {
   all.forEach((c, i) => {
     const stepFrames = (60 / (c.bpm || 120) / 4 * (c.rate || 1)) * SR;
     const nSteps = Math.ceil((c.tEnd * SR - 1 * SR) / stepFrames - 1e-9);
-    cases.push(SR, c.bpm || 120, c.rate || 1, 1.0 * SR, 11 + i, nSteps);
+    cases.push(SR, c.bpm || 120, c.rate || 1, 1.0 * SR, 11 + i, nSteps, 0, 0);
     c.score.forEach(x => cases.push(x)); c.chords.forEach(x => cases.push(x));
   });
   fs.writeFileSync(path.join(tmp, 'bass.f64'), Buffer.from(Float64Array.from(cases).buffer));
@@ -218,7 +219,7 @@ const SONGS = {
     }
     ok(same && pg.length > 10 && c.ok, c.name + ': ' + pg.length + ' notes identical (worst timing ' + worstT.toExponential(1) + ' frames)', why);
   });
-  ok(/walking/.test(result.refused[0]) && result.refused[1] === 'true', 'the score refuses a walking line and says so (' + result.refused[0] + ') and accepts the same line in another style', result.refused.join(' | '));
+  ok(result.refused[0] === 'true' && result.refused[1] === '1,1' && result.refused[2] === '0,0', 'the score carries the walking style and the two-feel (1,1 for Jazz with the two-feel, 0,0 for Funk and four)', result.refused.join(' | '));
 
   // Statistics.
   console.log('\nwhat the page draws from Math.random, on statistics:');

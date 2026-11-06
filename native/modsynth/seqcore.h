@@ -167,6 +167,16 @@ class DrumSequencer {
   void stop() { running_ = false; }
   bool running() const { return running_; }
 
+  // window._sqNextBar: the next bar line the drums will play, read off the step counter (step_ is the step at next_, the next one to be
+  // committed), or -1 when they are not playing. A bar is the meter's when the pattern is a whole number of them.
+  double nextBarFrame() const {
+    if (!running_ || !(next_ > 0) || !(score_.steps > 0)) return -1;
+    int bar = score_.barSteps;
+    if (!(bar > 0) || score_.steps % bar != 0) bar = score_.steps;
+    const int toBar = ((bar - step_ % bar) % bar + bar) % bar;
+    return next_ + toBar * stepFrames();
+  }
+
   // Where the clock is: the step the next call to run will fire, when it is due, and the bar it is in.
   int step() const { return step_; }
   int bar() const { return bar_; }

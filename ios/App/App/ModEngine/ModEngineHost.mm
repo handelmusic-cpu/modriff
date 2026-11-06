@@ -200,7 +200,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     }
     if (bseq.running() && hasBass) {
       const double now = (double)frames->load(std::memory_order_relaxed);
-      bassSteps += (uint64_t)bseq.run(now + lookahead, [&](const modsynth::BassEvent &e) { bassNotes++; bplay.play(e, now); });
+      // The drums' next bar line (the walking line snaps its beats onto it), read after the drums have run this tick: -1 when they are not.
+      bassSteps += (uint64_t)bseq.run(now, now + lookahead, seq.nextBarFrame(), [&](const modsynth::BassEvent &e) { bassNotes++; bplay.play(e, now); });
     }
     os_unfair_lock_unlock(&lock);
   }

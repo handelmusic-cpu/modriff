@@ -9,7 +9,8 @@
    the page's own voices and the page's own edits, and nulls the sum of the pool's buses.
 
    Not in it: the host's strips and master chain (downstream of the pool, the same for both), the randomness of probability and humanize
-   (the engine draws its own; held on statistics in bassgrid.test.js), the walking line, locked phrases, the sampled voices.
+   (the engine draws its own; held on statistics in bassgrid.test.js), locked phrases, the sampled voices. The walking line is one of the lines;
+   its notes come from the engine's own generator (seed 7, on both sides here), not the page's draws, which basswalk.test.js holds.
 
    Run: make -C native/modsynth bassscoretest basstool && node tests/seq/bassline.test.js      Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90) */
 'use strict';
@@ -57,6 +58,7 @@ const CONFIGS = [
   { name: 'Acid, slash chords and a rest, slides', voice: 'sawtooth', seed: 12, song: 'slash and a short rest', bpm: 100, swing: 0, swing8: true, steps: 16, bars: 4, density: 0.55, gridRoot: 0, gridIntvs: [0, 4, 7], mode: 'major', root: 0 },
   { name: 'Sub, 12 steps, swing on the sixteenths', voice: 'sine', seed: 13, song: 'I-vi-IV-V', bpm: 130, swing: 50, swing8: false, steps: 12, bars: 5, density: 0.5, gridRoot: 9, gridIntvs: [0, 3, 7], mode: 'minor', root: 9 },
   { name: 'Upright, Follow off, long notes', voice: 'upright', seed: 14, song: 'I-vi-IV-V', bpm: 90, swing: 0, swing8: true, steps: 16, bars: 4, density: 0.5, gridRoot: 0, gridIntvs: [0, 4, 7], mode: 'major', root: 0, follow: false },
+  { name: 'Electric walking over slash chords and a rest (Jazz, Follow on)', voice: 'electric', seed: 16, song: 'slash and a short rest', bpm: 120, swing: 0, swing8: true, steps: 16, bars: 6, density: 0.5, gridRoot: 0, gridIntvs: [0, 4, 7], mode: 'major', root: 0, walk: true },
   { name: 'Triangle at rate 2', voice: 'triangle', seed: 15, song: 'slash and a short rest', bpm: 110, rate: 2, swing: 30, swing8: true, steps: 16, bars: 5, density: 0.45, gridRoot: 7, gridIntvs: [0, 4, 7, 10], mode: 'mixolydian', root: 7 },
 ];
 
@@ -102,7 +104,7 @@ const CONFIGS = [
       document.getElementById('bpm').value = cfg.bpm; blRateMul = cfg.rate || 1;
       window._sqSetSwing(cfg.swing); window._sqSetSwing8(cfg.swing8);
       root = cfg.root; mode = cfg.mode;
-      window._blRestoreState({ steps: cfg.steps, grid, follow: cfg.follow !== false, genStyle: 'funk', gridRootPc: cfg.gridRoot, gridIntvs: cfg.gridIntvs });
+      window._blRestoreState({ steps: cfg.steps, grid, follow: cfg.follow !== false, genStyle: cfg.walk ? 'jazz' : 'funk', gridRootPc: cfg.gridRoot, gridIntvs: cfg.gridIntvs });
       // The chart: windows as the song commits them, from FIRST on, enough to cover the line.
       const bpm = parseFloat(document.getElementById('bpm').value), beat = 60 / bpm, song = SONGS[cfg.song];
       const tEnd = 1 + cfg.bars * cfg.steps * (60 / bpm / 4 * (cfg.rate || 1));
@@ -121,7 +123,7 @@ const CONFIGS = [
 
     // The engine's notes for it.
     const stepFrames = 60 / setup.bpm / 4 * setup.rate * SR, nSteps = cfg.bars * cfg.steps;
-    fs.writeFileSync(path.join(tmp, 'bass.f64'), Buffer.from(Float64Array.from([1, SR, setup.bpm, setup.rate, FIRST * SR, 7, nSteps].concat(setup.score, setup.chords)).buffer));
+    fs.writeFileSync(path.join(tmp, 'bass.f64'), Buffer.from(Float64Array.from([1, SR, setup.bpm, setup.rate, FIRST * SR, 7, nSteps, 0, 0].concat(setup.score, setup.chords)).buffer));
     const bt = spawnSync(bin('basstool'), [path.join(tmp, 'bass.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
     if (bt.status !== 0) { console.error(bt.stderr); process.exit(2); }
     const notes = bt.stdout.split('\n').filter(l => l.startsWith('N ')).map(l => { const f = l.split(' '); return { frame: +f[2], midi: +f[3], dur: +f[4], vel: +f[5], accent: +f[6] === 1, slide: +f[7] === 1, from: +f[8], step: +f[9] }; });
@@ -155,7 +157,7 @@ const CONFIGS = [
     ok(fresh.miss === 0, 'the page made a voice for every note', fresh.miss + ' made none');
     const cut = fresh.voices.filter(v => v.edits && v.edits.length);
     console.log('the page cut ' + cut.length + ' of its ' + fresh.voices.length + ' notes short, the next having started inside their tails');
-    ok(cut.length >= 1 || cfg.follow === false, 'notes overlap: the monophonic cut is exercised', cut.length);
+    ok(cut.length >= 1 || cfg.follow === false || cfg.walk, 'notes overlap: the monophonic cut is exercised', cut.length);
 
     // Both through the pool, nulled.
     const buf = [];
