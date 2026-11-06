@@ -34,14 +34,18 @@ Never wait for a person to say "merge", and never wait for a bigger batch.
 
 ### Version numbers
 
-`major.minor` + optional lowercase letter: `5.0`, `5.0a`. No part passes 9
-(`5.9` → `6.0`). New batch = next minor; follow-up to the release just out =
-letter (`a`–`z`). No third dotted part. Old history keeps its old labels.
-**Never move to a new major without asking first.**
+Dotted numbers + an optional lowercase letter: `6.9`, `6.9a`, `6.9.1`, `6.9.1a`. It
+starts as `major.minor`; no part passes 9. A new batch is the next step at the depth
+you are on: `6.4` → `6.5`, `6.9` → `6.9.1` → `6.9.2`, `6.9.9` → `6.9.9.1` (when a
+part would pass 9, add a decimal part, never carry into the part before). A
+follow-up to the release just out is a letter (`a`–`z`, last part only; more than
+26 means it was a new release). A fifth part is probably the owner's call. Old
+history keeps its old labels. **Never move to a new major (`6.x` → `7.0`) without
+asking first**; the rule never makes it next by itself.
 
 The version lives in `#ft-ver`, `#unlock-ver` and `MODRIFF_VERSION`
 (single-quoted; `sw.js` reads it with a single-quote pattern). All three agree,
-and the commit subject is `v5.0a: …`. `build/build.mjs` fails otherwise. `VERSION`
+and the commit subject is `v6.9.1a: …` (PR title: the range, `v6.9.1 – 6.9.1c: …`). `build/build.mjs` fails otherwise. `VERSION`
 in `sw.js` is an asset cache key, not a release number — leave it.
 
 ## Build and checks
