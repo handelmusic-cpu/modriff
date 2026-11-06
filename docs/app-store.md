@@ -154,31 +154,39 @@ the app genuinely plays music in the background, which the note above says.
 
 ## Screenshots
 
-`docs/app-store/screenshots/` holds five at **1320 x 2868**, the 6.9" iPhone
-size, which is the one App Store Connect requires (smaller iPhone sizes are
-scaled from it). They are captures of the build at 4.9.9.9.9.7.7j, taken in a phone-sized browser rather than on a device, after pressing Random on the splash screen so every screen has a song, a drum pattern and a chord row in it rather than an empty state.
+The current set is `docs/app-store/screenshots/v6.9.2/` (build 6.9.2: the tabs are Live, Studio, Song, Sound). The
+older `6.9in-` and `13in-` files in the folder above it show the retired Play / Accomp tabs and are kept only as history;
+do not upload them.
 
-| file | shows |
-|---|---|
-| `6.9in-01-splash.png` | the splash screen |
-| `6.9in-02-play.png` | Play: coloured chord pads, melody keys, sampler |
-| `6.9in-03-accomp.png` | Accomp: a drum pattern on the step sequencer |
-| `6.9in-04-songs.png` | Songs: a song with a chord progression |
-| `6.9in-05-sound.png` | Sound: the mixer |
+How they were shot, so they can be redone: the app built for the iOS Simulator (`xcodebuild -sdk iphonesimulator`), the
+status bar pinned with `xcrun simctl status_bar <udid> override --time 9:41 --batteryState charged --batteryLevel 100`,
+every pack unlocked by seeding `modo-dev-tier` = `pro` (and `modo-tour-ch1` = `1`, so the tour stays closed) into the
+app's WebKit `localstorage.sqlite3` while the app is not running, then Random on the splash screen so each screen has a
+song, a drum pattern and a chord row in it, and `xcrun simctl io <udid> screenshot`.
 
-The same five for iPad are in the same folder as `13in-01-splash.png` to
-`13in-05-sound.png`, at **2064 x 2752**, the 13" iPad size App Store Connect
-requires because the app ships for iPad (`TARGETED_DEVICE_FAMILY = "1,2"`;
-smaller iPad sizes are scaled from it). Upload the `6.9in-` set under iPhone 6.9"
-and the `13in-` set under iPad 13".
+| set | device | size | files |
+|---|---|---|---|
+| iPhone 6.9" | iPhone Air | 1260 x 2736 (an accepted 6.9" size) | `iphone-6.9in-01-splash` to `05-sound` |
+| iPhone Duo | iPhone Duo | 1398 x 2034 | `iphone-duo-01-splash` only |
+| iPad 13" | iPad Pro 13-inch (M5) | 2064 x 2752 | `ipad-13in-01-splash` to `05-sound` |
+| Mac | Chrome, 1440 x 900 at 2x | 2880 x 1800 (16:10) | `mac-16x10-01-splash` to `05-sound` |
 
-Two things worth doing before upload, neither of which blocks it: shoot them
-on a real device or simulator so the status bar and safe areas are real, and
-consider short captions on a coloured background, which is what most music
-apps do.
+Order in every set: splash, Live, Studio, Song, Sound. Random gave the iPad a song on the Song tab but not the iPhone, so the
+iPhone Song shot has I-V-vi-IV loaded from Common progressions (Replace song).
 
-An **app preview video** (15 to 30 s) is optional; screen-record playing a
-progression over a beat.
+The Mac set is the web build in a browser window, not a Mac app: there is no Mac build yet (Mac Catalyst does not link,
+branch `claude/mac-catalyst`). Upload it only if the Mac App Store listing ships with the page layout as it is; at that
+width the Studio screen has a floating panel that was not designed for it.
+
+An **app preview video** (15 to 30 s) is optional; screen-record playing a progression over a beat.
+Consider short captions on a coloured background, which is what most music apps do.
+
+The Duo set is the splash only. That simulator's touch input kept timing out, so the other four screens were not shot, and
+1398 x 2034 is not one of the sizes App Store Connect lists, so treat it as a reference, not an upload. It does show a real
+problem: the Duo draws its clock and status pill down the top-right edge, and the splash wordmark runs underneath it. The
+page does not appear to keep clear of that edge (not investigated: whether its safe-area insets cover it is unchecked), so
+look at the layout on that device before it is a supported size.
+
 
 ## Icon
 
