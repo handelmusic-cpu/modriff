@@ -21,7 +21,8 @@ import * as esbuild from 'esbuild';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 // `--web` builds the free page for modriff.com/play instead of the app bundle:
 //   dist-web/play/   the app, free tier only, no recorded samples
-//   dist-web/        a redirect to /play/, for the bare deployment URL
+// It is copied into the modriff-site repo (GitHub Pages) as play/ by
+// build/publish-web.mjs. No host-specific files: the site is plain static pages.
 // Everything else about the build is the same, so the two cannot drift. The
 // default build (dist/) is still what Capacitor packages and is untouched.
 const WEB  = process.argv.includes('--web');
@@ -64,6 +65,13 @@ if (WEB) {
   const og = src.split('content="/og-card-3.png"').length - 1;
   if (og !== 2) throw new Error(`expected 2 root-relative og-card-3.png tags, found ${og}`);
   src = src.split('content="/og-card-3.png"').join('content="/play/og-card-3.png"');
+  // Vercel's analytics (two stubs and two scripts at /_vercel/...). modriff.com is GitHub Pages, where
+  // they 404, and the site's privacy page promises no third-party code and no analytics.
+  const va = /<script>\s*window\.(?:va|si) = [^<]*<\/script>\s*<script defer src="\/_vercel\/[a-z-]+\/script\.js"><\/script>\s*/g;
+  const nva = (src.match(va) || []).length;
+  if (nva !== 2) throw new Error(`expected 2 Vercel analytics blocks, found ${nva}`);
+  src = src.replace(va, '');
+  if (/_vercel/.test(src)) throw new Error('a _vercel reference is left in the web build');
 }
 // One left-to-right pass, so a "<script>" written inside an HTML comment, or
 // "<!--" written inside a script's string, is never mistaken for the other.
@@ -97,10 +105,6 @@ if (WEB) {
   const man = JSON.parse(fs.readFileSync(mf, 'utf8'));
   man.id = '/play/';
   fs.writeFileSync(mf, JSON.stringify(man, null, 2) + '\n');
-  fs.writeFileSync(path.join(ROOT_OUT, 'index.html'),
-    '<!doctype html><meta charset="utf-8"><title>mõdRïff</title>' +
-    '<meta http-equiv="refresh" content="0;url=/play/"><link rel="canonical" href="/play/">' +
-    '<a href="/play/">Open mõdRïff</a>\n');
 }
 
 // Same guarantee check.sh gives the source: every script still parses. A

@@ -2,7 +2,7 @@
 
    What it proves, on the real built page rather than on the source:
      - the build leaves out samples/ entirely, puts the app under /play/, gives the
-       manifest an id of its own, and the bare root redirects to /play/;
+       manifest an id of its own, and carries nothing from Vercel (the site is GitHub Pages);
      - the page holds NO pack, and nothing a visitor can do (a console call, a
        leftover modo-dev-tier key) changes that;
      - across Start, Random, every tab and four seconds of playback, not one request
@@ -11,7 +11,8 @@
      - a locked thing opens the sheet that points at the app, with no price and no
        way to buy, and the Sampler is a lock tile, not pads that play nothing.
 
-   Run:
+   Run (the page is served from dist-web/, or from the root of a modriff-site checkout that
+   has play/ in it, so URL = http://127.0.0.1:8778/play/ either way):
      npm run build:web
      (cd dist-web && python3 -m http.server 8778 --bind 127.0.0.1 &)
      node tests/webplay/probe.js
@@ -34,11 +35,11 @@ check(!fs.existsSync(path.join(DIST, 'play/samples')), 'no samples/ folder in th
 check(fs.existsSync(path.join(DIST, 'play/index.html')) && fs.existsSync(path.join(DIST, 'play/sw.js')), 'the app and its service worker are under /play/');
 const man = JSON.parse(fs.readFileSync(path.join(DIST, 'play/manifest.webmanifest'), 'utf8'));
 check(man.id === '/play/' && man.start_url === './' && man.scope === './', 'the manifest has its own id and stays relative', JSON.stringify([man.id, man.start_url, man.scope]));
-const root = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
-check(/url=\/play\//.test(root), 'the bare root redirects to /play/');
 const html = fs.readFileSync(path.join(DIST, 'play/index.html'), 'utf8');
 check(html.indexOf('window.__modFreeWeb=true') > 0 && html.indexOf('window.__modFreeWeb=true') < html.indexOf('MODRIFF_VERSION'), 'the free flag is set before the app script');
 check((html.match(/content="\/play\/og-card-3\.png"/g) || []).length === 2 && !/content="\/og-card-3\.png"/.test(html), 'the share card points at /play/');
+check(!fs.existsSync(path.join(DIST, 'index.html')), 'nothing at dist-web/ but play/ (the site owns the root)');
+check(!/_vercel|window\.va\b|window\.si\b/.test(html), 'no Vercel analytics or reference in the web page');
 const appBuild = fs.existsSync(path.join(__dirname, '../../dist/index.html')) ? fs.readFileSync(path.join(__dirname, '../../dist/index.html'), 'utf8') : null;
 if (appBuild) check(appBuild.indexOf('window.__modFreeWeb=true') < 0, 'the app build (dist/) is not flagged');
 
