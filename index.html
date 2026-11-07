@@ -9134,7 +9134,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.6</span></div>
  </div>
 </div>
 
@@ -10566,7 +10566,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.5</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.6</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11757,7 +11757,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.5';
+const MODRIFF_VERSION = '6.9.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -52845,6 +52845,8 @@ function toggleRecording(){
   else _startRecording();
 }
 function _startRecording(){
+  // The pack sheet's demo plays through the drum engine the take listens to.
+  try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
   _withAudio(ctx);
   buildReverb();
@@ -55157,7 +55159,7 @@ window._sqClearPendGroove = function(){
 function sqLoadGroove(idx, opts){
   // A saved setup, a shared link and the dice reach this without a button.
   if(typeof freeAllowsGroove==='function' && RHYTHMS[idx] && !freeAllowsGroove(RHYTHMS[idx].name)){
-    if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove','groove');
+    if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove','groove',{groove:RHYTHMS[idx].name});
     return;
   }
   // Picking a groove to hear it (autostart: the groove list, the dice) is asking for the drums; with the kit off
@@ -57883,7 +57885,7 @@ function sqSwitchMach(key){
 window._sqDrumKit = function(){ return sqFocus===0 ? sqMach : (sqLayers[0] && sqLayers[0].mach); };
 window._sqPickDrumKit = function(k){
   if(!SQM[k]) return;
-  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove'); return; }
+  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
   if(sqFocus!==0) sqSetFocus(0);
   sqSwitchMach(k);
 };
@@ -57893,7 +57895,7 @@ window._sqPickDrumKit = function(k){
 window._sqAuxKit = function(){ return sqFocus===1 ? sqMach : (sqLayers[1] && sqLayers[1].mach); };
 window._sqPickAuxKit = function(k){
   if(!SQM[k]) return;
-  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove'); return; }
+  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
   if(sqFocus!==1) sqSetFocus(1);
   sqSwitchMach(k);
 };
@@ -58738,7 +58740,7 @@ function sqRenderMachines(){
       b.style.color=m.color;
     }
     b.addEventListener('click',function(){
-      if(typeof freeAllowsKit==='function' && !freeAllowsKit(key)) return freeBlocked('This drum kit','groove');
+      if(typeof freeAllowsKit==='function' && !freeAllowsKit(key)) return freeBlocked('This drum kit','groove',{kit:key});
       sqSwitchMach(key);
     });
     row.appendChild(b);
@@ -70511,6 +70513,28 @@ const FREE_NUMBERS = {
 };
 const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', audioExportFadeSeconds:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
 
+// The "Hear it" demo in a pack's sheet (6.9.9.9.6), as data so it can be changed
+// here and nowhere else. A locked kit or groove never plays under the user's own
+// song; this plays instead, from the sheet, on its own tempo, and puts the song
+// back after. Every kit is an SQM key and every groove a RHYTHMS name, and none
+// is free (tests/tier/registry.test.js says so): it is the pack's own content.
+// A part is `bars` bars of `groove` on `kit` at `bpm` (a quarter note); `meter`
+// cuts the groove to another bar (7/8 is fourteen sixteenths), which is how an odd
+// meter is heard without a groove written for it. If the sheet was opened from a
+// locked kit or groove, the part with it plays first (or one is made for it).
+// Only `groove` is filled in; PACK_DEMO_PLAY below is where another pack's goes.
+const PACK_DEMO = {
+  groove: {
+    bpm: 110,       // for a part made up for a tapped groove that is not in the list
+    parts: [
+      { kit:'909',    groove:'Techno',     bars:2, bpm:128 },
+      { kit:'AFRICA', groove:'Afro 6/8',   bars:2, bpm:96  },
+      { kit:'JAZZ',   groove:'Jazz Waltz', bars:2, bpm:150 },
+      { kit:'ROCK',   groove:'Punk Skank', bars:2, bpm:150, meter:'7/8' }
+    ]
+  }
+};
+
 // Ownership. `_modOwned` is {module:true|false}, built by _applyTier from what
 // the provider says is bought; `_modFull` is any of the four Full Studio
 // products. var, read from far away, and undefined until the first _applyTier:
@@ -71058,11 +71082,11 @@ function freePreview(kind, id, what, module, play){
  freeBlocked(what, module);
  return played;
 }
-function freeBlocked(what, module){
+function freeBlocked(what, module, hint){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
+  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module, hint); }});
  }
  return false;
 }
@@ -71081,10 +71105,91 @@ function freeBlocked(what, module){
 // Prices are the store's strings, never ours: modProducts() is whatever App
 // Store Connect has in this storefront, in the user's currency. Until it
 // arrives the button just says Unlock.
+// ── "Hear it" (6.9.9.9.6) ─────────────────────────────────────────
+// A pack whose content cannot be tried under the user's own song (a locked kit
+// or groove would have to be loaded to be heard, which a free install may not do)
+// plays a fixed demo from its sheet instead. What it does to the song: pauses the
+// transport if it was running and starts it again after, and nothing else. The
+// demo is not played through the sequencer, so no grid, tempo, kit, groove, undo
+// step, saved setup or recording sees it: its hits go to the drum engine as they
+// are, from here. Not while a take is running (and a take that starts stops it),
+// so it cannot be in a file. No count limit: nothing it plays can be kept.
+// Its own hit ids, far above the sequencer's counter (inside its closure) so they cannot meet.
+var _packDemo = null, _packDemoLog = [], _packDemoSeq = 1e9;
+function packDemoBlocked(){
+ return !!((typeof _isRecording!=='undefined' && _isRecording) || (typeof _midiRecOn!=='undefined' && _midiRecOn));
+}
+// The groove pack's plan: the table's parts (the tapped one first), each built
+// into the hits of its bars. t is seconds from the start.
+function _demoGroovePlan(hint){
+ const d=PACK_DEMO.groove;
+ // The kits live inside the sequencer's closure; this is its way out.
+ const SQM=(typeof window._sqMachines==='function') ? window._sqMachines() : null; if(!SQM) return null;
+ const findR=function(n){ for(let i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===n) return RHYTHMS[i]; return null; };
+ let parts=d.parts.filter(function(p){ return SQM[p.kit] && findR(p.groove); });
+ if(!parts.length || typeof window._sqGrooveGrid!=='function') return null;
+ const hk=hint && hint.kit && SQM[hint.kit] ? hint.kit : null, hg=hint && hint.groove && findR(hint.groove) ? hint.groove : null;
+ if(hk || hg){
+  const i=parts.findIndex(function(p){ return (hk && p.kit===hk) || (!hk && hg && p.groove===hg); });
+  if(i>0) parts.unshift(parts.splice(i,1)[0]);
+  else if(i<0){ const b=parts[0]; parts.unshift({ kit:hk||b.kit, groove:hg||b.groove, bars:b.bars, bpm:hg && !hk ? d.bpm : b.bpm }); parts.pop(); }
+ }
+ const events=[], marks=[]; let at=0;
+ parts.forEach(function(p,pi){
+  const r=findR(p.groove), sg=/^(\d+)\/(\d+)$/.exec(p.meter||r.sig||'4/4')||['','4','4'], beats=+sg[1], unit=+sg[2];
+  const steps=p.meter ? beats*Math.round(16/unit) : r.pat.length;
+  const stepSec=beats*4/unit*60/p.bpm/steps, grid=window._sqGrooveGrid(p.kit, r, steps, false), tracks=SQM[p.kit].tracks;
+  marks.push({ i:events.length, kit:p.kit, groove:p.groove, bpm:p.bpm, bars:p.bars });
+  for(let b=0;b<p.bars;b++) for(let s=0;s<steps;s++){
+   const t=at+(b*steps+s)*stepSec;
+   for(let ti=0;ti<tracks.length;ti++){
+    const c=grid[ti] && grid[ti][s]; if(!c || !(c.v>0)) continue;
+    events.push({ t:t, kit:p.kit, lane:ti, vel:0.85*(c.vel||100)/100, accent:c.v===2 });
+   }
+  }
+  at+=p.bars*steps*stepSec;
+ });
+ return events.length ? { events:events, marks:marks, total:at+0.8 } : null;
+}
+const PACK_DEMO_PLAY = { groove: _demoGroovePlan };
+function packDemoStart(module, hint){
+ if(_packDemo) packDemoStop();
+ if(!PACK_DEMO[module] || !PACK_DEMO_PLAY[module] || packDemoBlocked()) return false;
+ const ctx=getCtx(); if(!ctx || !window.modEngine.ready('drum')){ showToast('Start audio first'); return false; }
+ const plan=PACK_DEMO_PLAY[module](hint); if(!plan) return false;
+ const st={ module:module, plan:plan, i:0, m:0, cur:null, t0:ctx.currentTime+0.15, timer:null,
+            wasPlaying:isAnythingPlaying() };
+ // The song's engines would play under it; stopped, and started again below.
+ if(st.wasPlaying){ try{ stopEverything(); syncFixedTransport(); }catch(e){} }
+ _packDemo=st; _packDemoLog=[];
+ const ev=plan.events;
+ st.timer=setInterval(function(){
+  const c=getCtx(); if(!c){ packDemoStop(); return; }
+  const horizon=c.currentTime+0.15;
+  while(st.i<ev.length && st.t0+ev[st.i].t<horizon){
+   const e=ev[st.i];
+   while(st.m<plan.marks.length && plan.marks[st.m].i<=st.i){
+    st.cur=plan.marks[st.m]; _packDemoLog.push({ kit:st.cur.kit, groove:st.cur.groove, bpm:st.cur.bpm }); st.m++; proSheetRefresh();
+   }
+   modSend({ v:1, kind:'hit', part:'drum', id:++_packDemoSeq, kit:e.kit, lane:e.lane, vel:e.vel, accent:e.accent, pitch:0, dyn:null, at:st.t0+e.t });
+   st.i++;
+  }
+  if(c.currentTime>st.t0+plan.total) packDemoStop();
+ }, 25);
+ return true;
+}
+function packDemoStop(){
+ const st=_packDemo; if(!st) return;
+ _packDemo=null; clearInterval(st.timer);
+ // Back as it was: running if it was running (from the top, as undo and a loaded
+ // setup do), stopped if it was stopped. Nothing else was touched.
+ if(st.wasPlaying){ try{ startEverything(); syncFixedTransport(); }catch(e){} }
+ proSheetRefresh();
+}
 function proSheetRefresh(){ const o=document.getElementById('_pro-sheet'); if(o && o._render) o._render(); }
-function proSheet(what, module){
+function proSheet(what, module, hint){
  if(module && !MODULE_COPY[module]) module=null;
- const next = { what:what||'', module:module||null };
+ const next = { what:what||'', module:module||null, hint:hint||null };
  next.view = (next.what || next.module) ? 'feature' : 'store';
  const old=document.getElementById('_pro-sheet');
  if(old){ old._set(next); return; }
@@ -71095,7 +71200,7 @@ function proSheet(what, module){
  let cur=next, busy=false;
  const mk=function(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!==undefined) e.textContent=text; return e; };
  const price=function(key){ const p=modProducts()[key]; return (p && p.price) ? String(p.price) : null; };
- const close=function(){ ov.remove(); document.removeEventListener('keydown', onKey, true); };
+ const close=function(){ packDemoStop(); ov.remove(); document.removeEventListener('keydown', onKey, true); };
  const onKey=function(e){ if(e.key==='Escape'){ e.preventDefault(); close(); } };
  const lock=function(on){ box.querySelectorAll('button').forEach(function(b){ b.disabled=on; }); };
  function btn(label, cls, fn){ const b=mk('button', cls, label); b.type='button'; b.onclick=fn; return b; }
@@ -71133,6 +71238,17 @@ function proSheet(what, module){
   box.appendChild(mk('div','pro-what', cur.what ? modPartOf(cur.what, cur.module)+'.' : (m ? m.line : 'Packs for mõdRïff')));
   if(m){
    box.appendChild(bullets(m.bullets));
+   if(PACK_DEMO[cur.module] && !modHas(cur.module)){
+    const busy=packDemoBlocked();
+    const hb=btn(_packDemo ? 'Stop' : 'Hear it', 'pro-sec', function(){
+     if(_packDemo) packDemoStop(); else { packDemoStart(cur.module, cur.hint); render(); }
+    });
+    if(busy && !_packDemo){ hb.disabled=true; }
+    box.appendChild(hb);
+    box.appendChild(mk('div','pro-sub', busy && !_packDemo ? 'Not while recording.'
+      : _packDemo && _packDemo.cur ? 'Playing '+(window._sqKitLabel ? (window._sqKitLabel(_packDemo.cur.kit)||_packDemo.cur.kit) : _packDemo.cur.kit)+' · '+_packDemo.cur.groove+'. Your song is paused.'
+      : 'A short demo of what is in it. Your song is paused while it plays.'));
+   }
    if(modHas(cur.module)) box.appendChild(mk('div','pro-price','✔ Owned'));
    else { const p=price(cur.module); box.appendChild(btn('Unlock '+m.name+(p ? ' — '+p : ''), 'pro-buy', function(){ buy(cur.module); })); }
   }
@@ -71504,7 +71620,7 @@ function proSyncRow(){
  document.addEventListener('click', function(e){
   const el=locked(e); if(!el) return;
   e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  proSheet(nameOf(el), el.getAttribute('data-mod')||'');
+  proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
 

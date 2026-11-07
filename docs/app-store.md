@@ -321,6 +321,10 @@ like hidden purchases:
 > install its pads are drawn locked (dimmed, with a padlock). Tapping one plays that pad's
 > sample once, quietly, up to twice per pad; after that, a tap opens the sheet. The preview is
 > never part of a song or a recording.
+>
+> Locked drum kits and grooves are tried in the pack sheet: tap one, then **Hear it** plays a short
+> fixed demo of the Groove Pack (the song is paused and comes back as it was). **Stop** or closing the
+> sheet ends it.
 
 **Testing in Xcode, no store account needed:**
 

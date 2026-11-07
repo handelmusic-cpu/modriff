@@ -189,6 +189,20 @@ T.FREE_LIMITS.fxPatches.forEach(p => has(new RegExp("\\{name:'" + p + "',"), 'mÃ
 T.FREE_LIMITS.freeModes.forEach(m => has(new RegExp("\\n ?" + m + ": \\{|\\n ?'?" + m + "'?:\\s*\\{|id:'" + m + "'"), 'scale ' + m + ' exists'));
 T.FREE_LIMITS.padBanks.forEach(b => has(new RegExp("PS_BANKS = \\[[^\\]]*'" + b + "'"), 'pad bank ' + b + ' is in PS_BANKS'));
 T.FREE_LIMITS.voicings.forEach(v => has(new RegExp('data-voicing="' + v + '"'), 'voicing ' + v + ' has a button'));
+// the "Hear it" demo (PACK_DEMO) is the pack's own content: real kits and grooves, none of them free
+Object.keys(T.PACK_DEMO).forEach(m => ok(m in T.MODULE_COPY, 'PACK_DEMO.' + m + ' names a module'));
+T.PACK_DEMO.groove.parts.forEach(p => {
+  has(new RegExp("\\n  '" + p.kit + "':\\{label:"), 'demo kit ' + p.kit + ' is defined in SQM');
+  has(new RegExp("name:'" + p.groove.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + "'"), 'demo groove "' + p.groove + '" is in RHYTHMS');
+  T.setOwned([]);
+  ok(!T.freeAllowsKit(p.kit), 'demo kit ' + p.kit + ' is not free');
+  ok(!T.freeAllowsGroove(p.groove), 'demo groove "' + p.groove + '" is not free');
+  ok(p.bars > 0 && p.bpm > 0, 'demo part ' + p.kit + ' has bars and a tempo');
+});
+ok(T.PACK_DEMO.groove.parts.reduce((a, p) => a + p.bars, 0) >= 6 && T.PACK_DEMO.groove.parts.reduce((a, p) => a + p.bars, 0) <= 10, 'the groove demo is about 8 bars');
+ok(T.PACK_DEMO.groove.parts.filter(p => p.kit !== '').length >= 3, 'the groove demo uses about three kits');
+ok(T.PACK_DEMO.groove.parts.some(p => /^(7\/8|5\/4|7\/4|5\/8|9\/8)$/.test(p.meter || '')), 'the groove demo has an odd meter');
+ok(T.PACK_DEMO.groove.parts.some(p => /Afro|Samba|Teental|Keherwa|Kuku|Maqsum|Cumbia|Reggae|Son Clave/.test(p.groove)), 'the groove demo has a world groove');
 // fresh-start defaults: the bass and drum defaults are free ones; the chord voice is not (see FREE_VOICE_FALLBACK)
 has(/var blWave = 'upright';/, 'the default bass voice is Upright (the synth one)');
 has(/var sqSwing=0, sqMach='LIN'/, 'the default drum kit is the Linn');
