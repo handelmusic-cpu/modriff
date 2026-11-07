@@ -325,6 +325,10 @@ like hidden purchases:
 > Locked drum kits and grooves are tried in the pack sheet: tap one, then **Hear it** plays a short
 > fixed demo of the Groove Pack (the song is paused and comes back as it was). **Stop** or closing the
 > sheet ends it.
+>
+> Locked Sounds Pack voices (organ, electric piano, pad, piano, vibes, the two vintage basses) are tried
+> from the voice list: a tap plays the current chord once, quietly, up to twice per voice; after that, a
+> tap opens the sheet. The voice a part is on never changes.
 
 **Testing in Xcode, no store account needed:**
 

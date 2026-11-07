@@ -137,6 +137,7 @@ without it.
 | 6.4 | Free: export a 40 s song as audio | the file is 30 s, the last 2 s fade out with no click, and a message says so; a song under 30 s is unchanged, with no fade |
 | 6.4a | Free: tap a sampler pad three times | the pad is dimmed with a padlock; it plays its sample softly the first two times (each with the "Sampler" toast), the third only opens the sheet; with a Bounce running, a pad plays nothing and opens the sheet, and the take has no pad in it |
 | 6.4b | Free: tap a locked drum kit, then **Hear it** | the song pauses and an 8-bar demo plays (the tapped kit first, then a world groove and a 7/8 bar); **Stop**, or closing the sheet, ends it and the song is as it was (running again if it was running); no crackle on stop; the button is off while a Bounce runs |
+| 6.4c | Free: open a chord Voice list and tap a locked voice (Organ, Electric Piano, Pad, Piano (synth); Vibes and the two vintage basses under Samples) three times | the chord (the root, for a bass) sounds softly the first two times, each with the pack toast, and the list stays open; the third opens the sheet; the part's voice never changes; with a Bounce running it only opens the sheet |
 | 6.5 | Free: open a `.modriff.json` made with several packs | it opens, plays stand-ins, and one banner names the packs; saving again keeps the originals |
 | 6.6 | Test as a single pack (say **Theory**) | only that pack's locks open; every other lock stays |
 | 6.7 | Test as **Everything** | everything unlocks without a relaunch |

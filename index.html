@@ -9134,7 +9134,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.7</span></div>
  </div>
 </div>
 
@@ -10566,7 +10566,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11757,7 +11757,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.6';
+const MODRIFF_VERSION = '6.9.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18902,6 +18902,7 @@ function psPreviewPlay(key){
  var lvl = 0.5 * Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id));
  if(!(lvl > 0)) return false;
  psPreviewStop();
+ try{ voicePreviewStop(); }catch(e){}
  var t = ctx.currentTime, FD = Math.min(0.004, dur/4);
  var src = ctx.createBufferSource(); src.buffer = buf;
  var g = ctx.createGain();
@@ -37199,8 +37200,14 @@ function pbWhere(part){
  return m.cur.tier.label + (m.cur.tier.id === 'synth' && m.cur.cat.label ? ' · ' + m.cur.cat.label : '');
 }
 function _pbEl(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
-function pbPick(it){
+function pbPick(it, hooks){
  if(it.locked){
+  if(typeof voiceHearable==='function' && voiceHearable(it.value)){
+   voiceHearTap(it.value, it.label.replace(/\s*[◆◈]$/, ''));
+   // The list stays open for the next voice, until the sheet takes the screen.
+   if(hooks && document.getElementById('_pro-sheet')) hooks.picked();
+   return;
+  }
   if(typeof proSheet === 'function'){ var m = null; try{ m = voiceModule(it.value); }catch(e){} proSheet(it.label.replace(/\s*[◆◈]$/, ''), m); }
   return;
  }
@@ -37232,7 +37239,7 @@ function pbRender(root, part, st, hooks){
    s.items.forEach(function(it){
     var b = _pbEl('button', 'cp-item' + (it.active ? ' active' : '') + (it.locked ? ' locked' : ''), it.label + (it.locked ? ' 🔒' : ''));
     b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', it.active ? 'true' : 'false');
-    b.addEventListener('click', function(e){ e.stopPropagation(); hooks.picked(); pbPick(it); });
+    b.addEventListener('click', function(e){ e.stopPropagation(); if(it.locked && voiceHearable(it.value)){ pbPick(it, hooks); return; } hooks.picked(); pbPick(it); });
     g.appendChild(b);
    });
    root.appendChild(g);
@@ -71073,14 +71080,99 @@ function freePreview(kind, id, what, module, play){
  if(typeof _isRecording!=='undefined' && _isRecording){ proSheet(what, module); return false; }
  var seen = _prevLoad(), k = kind+':'+id;
  if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem){ proSheet(what, module); return false; }
- var played = false;
- try{ played = !!play(); }catch(e){ played = false; }
- if(played){
-  seen[k] = (seen[k]||0)+1;
-  try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){}
+ const save=function(){ try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){} };
+ let r=null;
+ try{ r = play(); }catch(e){ r = false; }
+ if(r && typeof r.then==='function'){
+  // A preview that has to be rendered first (a voice): counted now, so a quick
+  // second tap cannot slip a third sound in, and given back if it never sounds.
+  seen[k] = (seen[k]||0)+1; save();
+  r.then(function(ok){ if(!ok){ seen[k]=Math.max(0,(seen[k]||1)-1); save(); } }, function(){ seen[k]=Math.max(0,(seen[k]||1)-1); save(); });
+  freeBlocked(what, module);
+  return true;
  }
+ if(r){ seen[k] = (seen[k]||0)+1; save(); }
  freeBlocked(what, module);
- return played;
+ return !!r;
+}
+// A Sounds Pack voice, heard before it is bought (6.9.9.9.7): the CURRENT chord
+// (a vintage bass, its root: a chord on a bass is mud) in that voice, once,
+// through the same gate as a pad (freePreview, two per voice). The chord is
+// rendered offline from the voice's own builder (makeVoice, or the recorded bass's
+// sample player), scaled to one fixed level (-6 dB, as a pad) and played from its
+// own source straight to the destination: no part bus, so not the meter, mõdFX, a
+// bounce or a stem; and nothing is selected, so the voice the part is on does not
+// change and nothing is saved. A recorded voice that is not loaded yet is fetched
+// first (preloadSampleInstrument); the tap that asked still sounds when it is in.
+var _vpCache = {}, _vpNow = null;
+function voiceHearable(w){ return SOUNDS_VOICES.indexOf(w)>=0 && !modHas('sounds'); }
+function _vpWhenReady(key, ms){
+ return new Promise(function(res){
+  if(!key || SAMPLE_STATE[key]==='ready'){ res(true); return; }
+  if(SAMPLE_STATE[key]==='error'){ res(false); return; }
+  preloadSampleInstrument(key);
+  let n=0; const iv=setInterval(function(){
+   if(SAMPLE_STATE[key]==='ready'){ clearInterval(iv); res(true); }
+   else if(SAMPLE_STATE[key]==='error' || ++n>ms/100){ clearInterval(iv); res(false); }
+  }, 100);
+ });
+}
+function _vpNotes(w){
+ let rootM=60, rel=[0,4,7];
+ try{ rootM=lastChordRoot; rel=lastChordIntvs; }catch(e){}
+ if(BASS_SAMPLED[w]) return [36+(((rootM%12)+12)%12)];
+ let iv=rel; try{ iv=chordVoicing(rootM, rel); }catch(e){}
+ return iv.map(function(x){ return rootM+x; }).slice(0,6);
+}
+function _vpRender(w, notes){
+ const ck=w+'|'+notes.join(',');
+ if(_vpCache[ck]) return Promise.resolve(_vpCache[ck]);
+ const ctx=getCtx(), OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+ if(!ctx || !OAC) return Promise.resolve(null);
+ const sr=ctx.sampleRate, atk=0.03, dec=1.5, len=Math.ceil((0.02+atk+dec+0.3)*sr);
+ const oc=new OAC(2, len, sr), bass=BASS_SAMPLED[w], key=bass ? bass.lib : SAMPLED_WAVES[w];
+ const g=oc.createGain(); g.connect(oc.destination);
+ g.gain.setValueAtTime(0,0.01); g.gain.linearRampToValueAtTime(1/Math.max(1,notes.length),0.01+atk); g.gain.exponentialRampToValueAtTime(0.0001,0.01+atk+dec);
+ notes.forEach(function(m){
+  try{
+   if(bass){ const sv=playSampleVoice(oc, key, m, g, 0.01, atk+dec); if(!sv) throw 0; }
+   else makeVoice(oc, m, g, 0.01, atk+dec, w, 'chord');
+  }catch(e){}
+ });
+ return oc.startRendering().then(function(buf){
+  let pk=0; const ch=[buf.getChannelData(0), buf.numberOfChannels>1 ? buf.getChannelData(1) : null];
+  ch.forEach(function(d){ if(d) for(let i=0;i<d.length;i++){ const a=d[i]<0?-d[i]:d[i]; if(a>pk) pk=a; } });
+  if(!(pk>0.0005)) return null;
+  const k=0.45/pk, fade=Math.floor(0.03*sr);
+  ch.forEach(function(d){ if(d){ for(let i=0;i<d.length;i++) d[i]*=k; for(let i=0;i<fade;i++) d[d.length-1-i]*=i/fade; } });
+  return (_vpCache[ck]=buf);
+ }, function(){ return null; });
+}
+function voicePreviewStop(){
+ const v=_vpNow; _vpNow=null; if(!v) return;
+ try{ v.g.gain.cancelScheduledValues(0); v.g.gain.value=0; v.src.stop(); }catch(e){}
+}
+function voicePreviewPlay(w){
+ if(!getCtx()) return Promise.resolve(false);
+ const bass=BASS_SAMPLED[w], key=bass ? bass.lib : SAMPLED_WAVES[w];
+ return _vpWhenReady(key, 3000).then(function(ok){
+  if(!ok) return null;
+  return _vpRender(w, _vpNotes(w));
+ }).then(function(buf){
+  // A take may have started while it rendered or loaded.
+  if(!buf || (typeof _isRecording!=='undefined' && _isRecording)) return false;
+  const ctx=getCtx(); if(!ctx) return false;
+  voicePreviewStop(); psPreviewStop();
+  const src=ctx.createBufferSource(), g=ctx.createGain(), v={src:src, g:g};
+  src.buffer=buf; src.connect(g); g.connect(ctx.destination);
+  src.onended=function(){ try{ g.disconnect(); }catch(e){} if(_vpNow===v) _vpNow=null; };
+  _vpNow=v; src.start();
+  return true;
+ }).catch(function(){ return false; });
+}
+// The tap on a locked Sounds Pack voice (the sound list, the voice buttons).
+function voiceHearTap(w, label){
+ return freePreview('voice', w, label, 'sounds', function(){ return voicePreviewPlay(w); });
 }
 function freeBlocked(what, module, hint){
  const now=Date.now();
@@ -71620,6 +71712,9 @@ function proSyncRow(){
  document.addEventListener('click', function(e){
   const el=locked(e); if(!el) return;
   e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  // A Sounds Pack voice button plays the chord instead (two per voice).
+  const vw=el.dataset.wave||el.dataset.arpwave||el.dataset.melwave||el.dataset.mlwave||((/setBlWave\('([^']+)'\)/.exec(el.getAttribute('onclick')||''))||[])[1];
+  if(vw && voiceHearable(vw)){ voiceHearTap(vw, nameOf(el)); return; }
   proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
