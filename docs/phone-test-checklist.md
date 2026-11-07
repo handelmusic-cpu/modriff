@@ -198,7 +198,7 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.2 | Play, two fingers on two chord pads or two melody keys at once | a chord, not a page zoom; pinching bare text or the page background still zooms |
 | 9.3 | Studio > Drums, load a six-sound kit onto the pads, then switch the sampler to a preset bank | six pads for the kit, twelve for the bank; each pad keeps its own sound and number |
 | 9.4 | Live > Melody (mode on the Voice sheet says **Auto**): play single notes one after another, then two keys at once, then up to eight | single notes slide into each other (a bigger leap slides longer); two or more keys play together without a slide; a ninth key lets the oldest go |
-| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody |
+| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody. With Mode on **Poly**, tap Glide: it lights **and the Mode goes back to Auto** (it used to change a hidden setting and show nothing) |
 | 9.6 | Studio > Melody, tap a second row on a lit step of the roll | the step becomes a chord; tap a chord note to take it away; Play: the chord sounds together |
 | 9.7 | Switch **Bass**, **Mel** and **Drums** (off then on) on the transport over empty parts | a funk bass line, a pop hook, a 4/4 beat. Settings > Starter patterns changes which |
 | 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last;  |
