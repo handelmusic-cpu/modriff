@@ -33,7 +33,7 @@ function stubScript(withGraph) {
   return `
     window.__calls = [];
     const rec = (name) => (o) => { window.__calls.push([name, JSON.parse(JSON.stringify(o || {}))]); return Promise.resolve({ sampleRate: 48000 }); };
-    const methods = ['start','stop','ensurePart','post','stats','meters','shareFile','fileAppend','shareFiles','fileDelete','wavFinish','pcmAdd','captureStart','captureRead','captureStop'];
+    const methods = ['start','stop','ensurePart','post','stats','meters','shareFile','fileAppend','shareFiles','fileDelete','wavFinish','pcmAdd','pcmFade','captureStart','captureRead','captureStop'];
     ${withGraph ? "methods.push('graphProbe','graphBuf','graphBegin','graphEdit');" : ''}
     const P = {}; methods.forEach(m => P[m] = rec(m));
     window.Capacitor = { isNativePlatform: () => true, Plugins: { ModEngine: P } };

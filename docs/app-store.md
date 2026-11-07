@@ -61,7 +61,7 @@ groovebox,chord,drum machine,synth,sequencer,music theory,midi,sampler,beat make
 (97.) Do not repeat words already in the name or subtitle ("key", "every"), do not use the category
 name, and do not use another product's name: an `iReal` keyword would be a trademark rejection.
 
-**Description** (2030 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
+**Description** (2055 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
 break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
 (no iReal, 808 or Linn: those are trademarks) and no price (prices are per storefront). It does not promise
 playback with the screen locked: background scheduling is still being moved to the engine
@@ -96,7 +96,7 @@ PLAYS WELL WITH OTHERS
 - Map its knobs and pads to anything on the screen
 
 FREE TO START, PACKS WHEN YOU WANT MORE
-mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits and five saved songs are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
+mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs and 30-second audio exports are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
 
 PRIVATE BY DESIGN
 No account. No ads. No analytics. No tracking. Works offline. Your songs, patterns and recordings stay on your device.

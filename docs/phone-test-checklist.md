@@ -134,7 +134,7 @@ without it.
 | 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Linn and 808, steps over 16, extended chords, the Aux switch |
 | 6.2 | Free: a fresh start | chords on **Saw**, drums on the Linn, bass on Upright, the Aux off, none of them locked |
 | 6.3 | Free: tap a locked drum kit | one sheet: "… is part of the Groove Pack." with **Unlock Groove Pack** at the store's price, **Full Studio** under it, Restore Purchases, All packs |
-| 6.4 | Free: export audio longer than 90 s | the file stops at 90 s and a message says so |
+| 6.4 | Free: export a 40 s song as audio | the file is 30 s, the last 2 s fade out with no click, and a message says so; a song under 30 s is unchanged, with no fade |
 | 6.5 | Free: open a `.modriff.json` made with several packs | it opens, plays stand-ins, and one banner names the packs; saving again keeps the originals |
 | 6.6 | Test as a single pack (say **Theory**) | only that pack's locks open; every other lock stays |
 | 6.7 | Test as **Everything** | everything unlocks without a relaunch |

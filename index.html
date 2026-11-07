@@ -9134,7 +9134,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -10566,7 +10566,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11757,7 +11757,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.3';
+const MODRIFF_VERSION = '6.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39103,7 +39103,7 @@ var TUT_LIST = [
   {t:'Autosave', x:'Your session keeps itself. The splash picks up where you left off.', el:'#ft-setups-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'export', name:'Export & stems', steps:[
-  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free keeps the first 90 seconds; the Studio Pack the whole take.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
+  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free keeps the first 30 seconds, fading out; the Studio Pack the whole take.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
   {t:'Stems', x:'Adds one .wav per part.', el:'#ft-stems-btn', pro:'studio'},
   {t:'Project files', x:'File: New, Open and Save a whole project as one file — chart, parts, patches and mixer.', el:'#ft-sheet-file', go:function(){ _tutSheet(true); }},
   {t:'Capture', x:'Turns what you just played into chart, melody or pattern.', el:'#ft-rec-btn'}
@@ -47532,7 +47532,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  'export': {
   title: 'Export — audio, MIDI & stems',
   body: `<strong>Bounce</strong> — on the transport, and on this panel — captures a <strong>.wav</strong> of everything you hear — post master bus, including Master Vol — plus a <strong>.mid</strong> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.<br><br>
-<span class="tip-pro">Studio Pack</span> Free keeps the first 90 seconds of the audio and the first four bars of the .mid, and says so when it stops; the Studio Pack keeps the whole take.<br><br>
+<span class="tip-pro">Studio Pack</span> Free keeps the first 30 seconds of the audio, fading out over the last two, and the first four bars of the .mid, and says so when it stops; the Studio Pack keeps the whole take.<br><br>
 In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>as it records</em>, so a long take cannot run the app out of memory, and it is kept in ${window.__modMacApp?'<strong>Downloads › mõdRïff › Bounces</strong> — in the Finder —':'<strong>Documents › Bounces</strong> — in the Files app —'} as well as offered to the share sheet, so a cancelled share loses nothing.<br><br>
 <span class="tip-pro">Studio Pack</span> <strong>Stems</strong> adds one <strong>.wav</strong> per part next to the mix: Chords, Melody, Drums, Aux Perc, Bass, Melody Seq and Arp. They are <strong>dry</strong> — tapped at each part's own bus, before the reverb send and the master limiter — so you can put your own space on them in a DAW. A part that never sounded is skipped rather than written as silence.<br><br>
 <strong class="rnd-keep">Not the same as ◉ Capture in the transport</strong>, which writes what you play into something editable that stays inside the app — chords into a Song section, and the melody, the bass and the sampler pads into their own grids. Use that one to build a chart; use this one to get files out.<br><br>
@@ -53140,6 +53140,18 @@ function _riffInfoChunk(tags){
   });
   return new Uint8Array(buf);
 }
+// The fade at the end of a free export: a raised cosine over the last
+// `FREE_NUMBERS.audioExportFadeSeconds`, exactly 0 on the final sample. The native
+// host's pcmFade (ModEngine.swift) is the same curve; change both together.
+function _exportFadeFrames(nOut, sr){
+  return Math.min(nOut, Math.round(FREE_NUMBERS.audioExportFadeSeconds*sr));
+}
+function _exportFadeGain(i, n){ return 0.5*(1+Math.cos(Math.PI*(i+1)/n)); }
+function _fadeOutTail(L, R, n){
+  if(!(n>0)) return;
+  var from=L.length-n;
+  for(var i=0;i<n;i++){ var g=_exportFadeGain(i,n); L[from+i]*=g; R[from+i]*=g; }
+}
 function _floatsToWavBlob(left,right,sampleRate,tags){
   var numFrames=left.length,numChannels=2,bytesPerSample=2;
   var blockAlign=numChannels*bytesPerSample,dataSize=numFrames*blockAlign;
@@ -53251,7 +53263,7 @@ function _wavHeaderBytes(numFrames, sampleRate, tags){
 }
 // The mix: the streamed web taps, with the host's own capture (when it had
 // anything to say) added on at its place in the timeline.
-async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
+async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder, fadeN){
   var pl=modNativePlugin(), hdr=_wavHeaderBytes(nOut, sr, tags), name=_dlName(base+'.wav');
   await sink.drain();
   await pl.wavFinish({ pcm:sink.name, name:name, header:modPlatform.b64Of(hdr), folder:folder,
@@ -53269,6 +53281,12 @@ async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
       }
       await pl.pcmAdd({ name:name, folder:folder, offset:hdr.length+at*4, data:modPlatform.b64Of(new Uint8Array(pcm.buffer)) });
     }
+  }
+  // After the host's capture is laid on, or its tail would come back at full level.
+  // An older host without pcmFade writes the file with the hard cut it always had.
+  if(fadeN>0 && pl.pcmFade){
+    try{ await pl.pcmFade({ name:name, folder:folder, offset:hdr.length+(nOut-fadeN)*4, frames:fadeN }); }
+    catch(e){ try{ console.warn('[rec] fading the end failed', e); }catch(_){} }
   }
   return { name:base+'.wav', native:true };
 }
@@ -53413,15 +53431,17 @@ function _stopRecording(){
     var _sr=getCtx().sampleRate;
     var base=base0;
     var tags=_bounceInfoTags();
-    // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so; the
-    // take itself is whole in memory, only the file is shorter.
+    // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so, fading
+    // the last FREE_NUMBERS.audioExportFadeSeconds out (a hard cut was a click
+    // and a song that ends mid-note); the take itself is whole in memory, only
+    // the file is shorter. A take under the cap is left alone, with no fade.
     var _audioCut=false, _capN=Infinity, files;
     if(typeof modAllows==='function' && !modAllows('fullAudioExport')){
       _capN=Math.round(FREE_NUMBERS.audioExportSeconds*_sr);
     }
     if(sink){
       var _nOut=Math.min(span.n,_capN); _audioCut=span.n>_capN;
-      try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder) ]; }
+      try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder, _audioCut ? _exportFadeFrames(_nOut,_sr) : 0) ]; }
       catch(e){
         sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
         showToast('Could not write the bounce to disk — nothing was saved');
@@ -53430,7 +53450,12 @@ function _stopRecording(){
       }
     } else {
       var _wavL=fullL, _wavR=fullR;
-      if(fullL.length>_capN){ _wavL=fullL.subarray(0,_capN); _wavR=fullR.subarray(0,_capN); _audioCut=true; }
+      if(fullL.length>_capN){
+        // Copies, not subarrays: the fade must not write into the take, which
+        // the stems below are still read against.
+        _wavL=fullL.slice(0,_capN); _wavR=fullR.slice(0,_capN); _audioCut=true;
+        _fadeOutTail(_wavL,_wavR,_exportFadeFrames(_capN,_sr));
+      }
       files=[{ name:base+'.wav', blob:_floatsToWavBlob(_wavL,_wavR,_sr,tags) }];
     }
     // Native parts' stems, from the host's capture, written with the web ones.
@@ -53465,7 +53490,7 @@ function _stopRecording(){
     if(folder) done = 'Saved to '+(window.__modMacApp?'Downloads > mõdRïff > Bounces':'Files > mõdRïff > Bounces')+': mix' + (parts.length ? ' + '+parts.join(' + ') : '');
     _hap('bounce','system');
     // What Pro would have given, said once, with what was kept: the first
-    // minute and a half, not a refusal.
+    // half minute, not a refusal.
     var _cutWhat=[];
     if(_audioCut) _cutWhat.push('the first '+FREE_NUMBERS.audioExportSeconds+' seconds of audio');
     if(midiFile && midiFile.cut) _cutWhat.push('the first '+FREE_NUMBERS.midiExportBars+' bars of MIDI');
@@ -70418,11 +70443,12 @@ const EMBED_LIMITS = {
 const FREE_NUMBERS = {
   stepMax:            16,   // the app's own maximum is 64
   saveSlots:          5,    // setlist songs, and iReal charts without the Practice Pack; Setups are not counted
-  audioExportSeconds: 90,
+  audioExportSeconds: 30,
+  audioExportFadeSeconds: 2, // the last of those 30 s fades to silence, so the cut is not a click
   midiExportBars:     4,
   padCount:           9
 };
-const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', midiExportBars:'studio', padCount:'sampler' };
+const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', audioExportFadeSeconds:'studio', midiExportBars:'studio', padCount:'sampler' };
 
 // Ownership. `_modOwned` is {module:true|false}, built by _applyTier from what
 // the provider says is bought; `_modFull` is any of the four Full Studio
