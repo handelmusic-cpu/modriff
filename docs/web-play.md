@@ -4,14 +4,25 @@ The same `index.html` as the app, built for the browser with **no packs and no
 recordings**. Its job is a try-it page: anyone can open it, school tablets and
 Chromebooks included, and every locked thing points at the App Store.
 
+It is **not** deployed from this repo and has nothing to do with Vercel. modriff.com
+is the `modriff-site` repo (plain static pages on GitHub Pages); the built page lives
+there as `play/` and is published by committing it.
+
+## Publish
+
+One-time on the Mac: install Node, clone `modriff` and `modriff-site` side by side,
+`npm ci` inside `modriff`. Then, from a Terminal inside the `modriff` folder:
+
+```
+npm run publish:web -- ../modriff-site
+cd ../modriff-site && git status    # review, then commit and push to main
+```
+
+`publish:web` runs `npm run build:web` (writes `dist-web/play/`) and replaces
+`modriff-site/play/` with it. Republish whenever the app's `index.html` changes in a
+way the web page should have.
+
 ## What it is
-
-`npm run build:web` (`node build/build.mjs --web`) writes `dist-web/`:
-
-| path | what |
-|---|---|
-| `dist-web/play/` | the app. Relative paths throughout, so it works under any prefix. |
-| `dist-web/index.html` | a redirect to `/play/`, for the bare deployment URL |
 
 Differences from the app build (`npm run build` -> `dist/`, which Capacitor still
 packages and which is untouched):
@@ -19,11 +30,13 @@ packages and which is untouched):
 - `window.__modFreeWeb = true` is the first script in `<head>` (plus `html.web-free`).
   The web billing provider then holds nothing and ignores the dev override, so no
   stored `modo-dev-tier` key, console call or purchase call unlocks anything.
-- `samples/` is not shipped (3 MB site instead of 19). The free tier already plays
+- `samples/` is not shipped (3 MB instead of 19). The free tier already plays
   synthesized voices and the Linn/808 kits are synthesized. The one free thing that
   was recorded was the Sampler's pad banks, so on the web the Sampler widget is a
   lock tile (`lvAllowed`), its sub-nav button is hidden, and `_psFactoryBuild` /
   `_psFetch` never run.
+- The Vercel analytics tags are removed: the site's privacy page promises no
+  analytics and no third-party code.
 - The manifest `id` is `/play/` (the landing page owns `/`); the share-card tags
   point at `/play/og-card-3.png`.
 - A locked thing opens the same sheet, but `webView()` replaces the buy buttons:
@@ -31,27 +44,8 @@ packages and which is untouched):
   Restore.
 
 A local checkout served as-is (the tests, `python3 -m http.server`) is not flagged
-and still holds everything.
-
-## Wiring it into modriff.com
-
-The landing page is its own repo. This repo's Vercel project now builds
-`dist-web`; the landing project proxies `/play` to it. In the landing repo's
-`vercel.json`:
-
-```json
-{
-  "redirects": [{ "source": "/play", "destination": "/play/" }],
-  "rewrites": [{ "source": "/play/:path*", "destination": "https://<this-project>.vercel.app/play/:path*" }]
-}
-```
-
-- The redirect matters: without the trailing slash the relative asset paths
-  resolve against `/` and the page loads blank.
-- The Vercel project here must have **Deployment Protection off for Production**
-  (it was password protected), or the rewrite returns Vercel's login page.
-- Do not put the free page on `play.modriff.com`: school filters are likelier to
-  block an unknown subdomain than a path on a domain they already allow.
+and still holds everything. Keep `play/` on `/play/` of the site: school filters are
+likelier to block an unknown subdomain than a path on a domain they already allow.
 
 ## Open items
 
