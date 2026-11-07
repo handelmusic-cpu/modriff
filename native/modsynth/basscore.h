@@ -7,8 +7,10 @@
 // step's length and its cap, probability, humanize, and the slide memory blPlayNote keeps, `from`) and the walking line (Jazz style with
 // Follow on: a quarter note a beat on the chart's own clock, snapped to the drums' bar line, whose notes are _blWalkNote's picks).
 //
+// A phrase lock (a line the player froze for one chord: window._blLockFor) replaces the bar for that chord's windows, in both branches.
+//
 // What it is not, said plainly (the score refuses what it cannot yet do, and names it):
-//  - phrase locks (a line frozen per chord), and a line written ahead for the next chord (_blPregen / _blApplyPending), which
+//  - a line written ahead for the next chord (_blPregen / _blApplyPending), which
 //    the page swaps in at the wrap: here a new score replaces the old one when it arrives;
 //  - Pure tuning's cents (`tune`);
 //  - the voice: who plays each BassEvent is the host's voice bank (not built yet).
@@ -26,6 +28,19 @@
 
 namespace modsynth {
 
+// A bass grid cell: the page's {v, note, oct, len, slide, accent, fix, vel, pr}. v is 0 or 1.
+struct BassCell {
+  double v = 0, note = 0, oct = 3, len = 1, vel = 0, pr = 0;
+  bool slide = false, accent = false, fix = false;
+};
+
+// A line the player froze for one chord (the page's PHRASE_LOCKS.bass[key]): `steps` cells, written over the chord whose root is rootPc.
+struct PhraseLock {
+  int steps = 16;
+  int rootPc = 0;
+  std::vector<BassCell> cells;
+};
+
 // A chord the song has committed to the clock (_blOnChord): when it starts and ends, and what it is.
 struct ChordWindow {
   double t = 0, end = 0;      // engine frames
@@ -34,6 +49,7 @@ struct ChordWindow {
   int bassPc = -1;            // the slash bass, or -1
   int nextPc = -1;            // the next chord's bass or root, or -1
   std::vector<int> pcs;       // the chord's tones, root first
+  int lock = -1;              // the index of its phrase lock in the timeline's table, or -1 (the page's _blLockFor, decided when it sent the chart)
 };
 
 // The page's _blChordWin: time-ordered windows, and the two lookups the bass and the melody share.
@@ -45,6 +61,7 @@ class ChordTimeline {
   bool empty() const { return w_.empty(); }
   size_t size() const { return w_.size(); }
   const std::vector<ChordWindow> &windows() const { return w_; }
+  const PhraseLock *lockFor(const ChordWindow &w) const { return (w.lock >= 0 && (size_t)w.lock < locks_.size()) ? &locks_[(size_t)w.lock] : nullptr; }
 
   void push(const ChordWindow &w) { w_.push_back(w); if (w_.size() > 64) w_.erase(w_.begin(), w_.begin() + (long)(w_.size() - 64)); }
   // _blOnChord drops windows already behind the clock, but keeps one so a step scheduled a hair before the next chord still
@@ -67,8 +84,8 @@ class ChordTimeline {
     return (last && !last->rest) ? last : nullptr;
   }
 
-  // The windows as the page sends them, in doubles: [n, per window: t, end, rest, rootPc, bassPc, nextPc, nPcs, pcs...].
-  // Replaces the timeline.
+  // The windows as the page sends them, in doubles: [n, per window: t, end, rest, rootPc, bassPc, nextPc, nPcs, pcs..., lock,
+  //  nLocks, per lock: steps, rootPc, per cell: v, note, oct, len, slide, accent, fix, vel, pr]. Replaces the timeline.
   // `offset` is added to every window's start and end: the page sends them as frames from the line's start, and the engine puts the
   // start where its clock has it.
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr, double offset = 0);
@@ -76,12 +93,7 @@ class ChordTimeline {
  private:
   double sr_;
   std::vector<ChordWindow> w_;
-};
-
-// A bass grid cell: the page's {v, note, oct, len, slide, accent, fix, vel, pr}. v is 0 or 1.
-struct BassCell {
-  double v = 0, note = 0, oct = 3, len = 1, vel = 0, pr = 0;
-  bool slide = false, accent = false, fix = false;
+  std::vector<PhraseLock> locks_;
 };
 
 struct BassScore {
@@ -265,6 +277,37 @@ class BassSequencer {
       if (walkNextT_ < now) { walkNextT_ += beat; continue; }       // a beat that passed while it waited for its chord is skipped, never played late
       const double into0 = std::max(0.0, walkNextT_ - wq->t);
       const int beat0 = (int)std::llround(into0 / beat);
+      // A chord with a locked phrase gets that phrase even under a walk: the beat is filled with the four sixteenths of the locked bar that
+      // fall inside it, the walk's own note is not played, and the two-feel skip does not apply (the phrase carries its own rhythm).
+      if (const PhraseLock *wl = wq->rest ? nullptr : timeline_.lockFor(*wq)) {
+        const int wsh = mod12(wq->rootPc - wl->rootPc);
+        for (int k4 = 0; k4 < 4; k4++) {
+          const double lt = walkNextT_ + k4 * sd;
+          if (lt < now || lt >= wq->end - 0.002 * sr_) continue;
+          const long lidx = (long)std::floor((lt - wq->t) / sd + 0.5);
+          if (lidx < 0 || wl->steps <= 0) continue;
+          const size_t ci = (size_t)(lidx % wl->steps);
+          if (ci >= wl->cells.size()) continue;
+          const BassCell &lc = wl->cells[ci];
+          if (lc.v != 1) continue;
+          int note = (int)lc.note, oct = (int)lc.oct;
+          if (wsh) foldNote(note, oct, wsh);
+          if (!Feel::stepProb(rng_, lc.pr)) continue;       // a step short of its chance is a rest; the page leaves the slide memory alone here
+          const double at = lt + Feel::humanT(rng_, score_.hum, sr_, !score_.hum.partOff[0], lidx % 4 == 0, lt) * sr_;
+          const double vol = score_.stepVel * Feel::humanV(rng_, score_.hum, !score_.hum.partOff[0], lc.accent) * (lc.vel > 0 && lc.vel < 100 ? lc.vel / 100.0 : 1.0);
+          BassEvent e;
+          e.midi = note + (oct + 1) * 12;
+          e.frameExact = at; e.frame = (int64_t)std::llround(at);
+          e.durFrames = sd * std::max(1.0, lc.len != 0 ? lc.len : 1.0) * 0.92; e.vel = vol; e.accent = lc.accent; e.slide = lc.slide;
+          e.from = (prevSlide_ && prevMidi_ >= 0 && prevMidi_ != e.midi) ? prevMidi_ : -1;
+          e.step = step_;
+          emit(e);
+          prevMidi_ = e.midi; prevSlide_ = lc.slide;
+        }
+        walkLastT_ = walkNextT_;
+        walkNextT_ += beat;
+        continue;
+      }
       if (score_.twoFeel && (beat0 % 2) != 0) { walkNextT_ += beat; continue; }
       if (!wq->rest) {
         const double into = std::max(0.0, walkNextT_ - wq->t);
@@ -300,6 +343,13 @@ class BassSequencer {
   }
 
   static int mod12(int x) { return ((x % 12) + 12) % 12; }
+  // window.phraseFold(note, oct, shift, BL_LO, BL_HI): move by `shift` semitones and back into the bass's register by one octave at most.
+  static void foldNote(int &note, int &oct, int shift) {
+    int abs = note + (oct + 1) * 12 + shift;
+    if (abs > kHi) abs -= 12;
+    if (abs < kLo) abs += 12;
+    note = mod12(abs); oct = (int)std::floor(abs / 12.0) - 1;
+  }
 
   // window._followRemapPc.
   int remapPc(int pc, const ChordWindow &w) const {
@@ -337,13 +387,27 @@ class BassSequencer {
   void fireStep(int s, double t, double sd, bool following, Emit &emit) {
     const double sw = swingOffset(s, sd);
     const ChordWindow *wf = following ? timeline_.windowFor(t + sw) : nullptr;
-    const BassCell *cell = (size_t)(s % score_.steps) < score_.cells.size() ? &score_.cells[(size_t)(s % score_.steps)] : nullptr;
+    // A locked phrase replaces the bar for this chord only, indexed from the chord's own downbeat (not the bar's): the figure starts where
+    // the chord does however the clocks line up, and a chord longer than the phrase repeats it.
+    const PhraseLock *lock = (wf && !wf->rest) ? timeline_.lockFor(*wf) : nullptr;
+    const BassCell *cell = nullptr;
+    int lockShift = 0;
+    if (lock) {
+      const long li = (long)std::floor((t - wf->t) / sd + 0.5);       // Math.round
+      if (li >= 0 && lock->steps > 0 && (size_t)(li % lock->steps) < lock->cells.size()) cell = &lock->cells[(size_t)(li % lock->steps)];
+      lockShift = mod12(wf->rootPc - lock->rootPc);
+    } else {
+      cell = (size_t)(s % score_.steps) < score_.cells.size() ? &score_.cells[(size_t)(s % score_.steps)] : nullptr;
+    }
     if (cell && cell->v == 1) {
       const double len = std::max(1.0, cell->len != 0 ? cell->len : 1.0);
       const double maxDur = sw > 0 ? (sd - sw) * 0.95 : sd * len * 0.92;
       const double dur = std::min(sd * len * 0.92, maxDur);
       int note = (int)cell->note, oct = (int)cell->oct;
-      if (following && wf) {
+      if (lock) {
+        // Stored at the chord's authored pitch, so the only move left is the capo.
+        if (lockShift) foldNote(note, oct, lockShift);
+      } else if (following && wf) {
         if (wf->rest) return;                     // a rest in the chart: nothing sounds, and a slide is not ended by it
         if (!cell->fix) {
           const int basePc = wf->bassPc >= 0 ? wf->bassPc : wf->rootPc;

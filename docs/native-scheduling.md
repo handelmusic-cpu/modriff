@@ -789,3 +789,31 @@ tests are unchanged; `xcodebuild` builds.
 
 **Not done.** The song's comping and the tap (slice 4); the page's re-voicing per hit (Vary); sampled chord voices; glide; Pure tuning. A hit whose gate
 runs into the next hit is cut by it, as on the page (the stop of the chord before). Not heard on device: checklist 22.4.
+
+## Slice 2, part eight (6.9.9.9.7): locked phrases in the bass line
+
+**What a lock is.** The player can freeze the bass line they hear over one chord (`PHRASE_LOCKS.bass[phraseKey(slot)]`: its cells, its steps and the
+root it was written over). While that chord sounds (Follow on, not a rest) the lock replaces the bar: the grid scheduler indexes it from the chord's own
+downbeat, `round((t - window.t) / step) mod steps`, so a chord longer than the phrase repeats it; it is moved by the capo (`phraseFold` by the
+difference of the chord's root and the lock's, one octave at most, into the register 33 to 52) and is not re-rooted like the bar is. The walking line
+asks the lock a beat at a time instead: the four sixteenths of the locked bar that fall inside the beat, none of them past the end of the chord, the
+walk's own note and the two-feel skip both skipped (the phrase carries its own rhythm), and the walk's state (its previous note, its beat counter)
+left alone.
+
+**How the engine has it.** The lock rides with the chart: `ChordTimeline::fromDoubles` now reads, after the windows, `nLocks` and per lock its steps,
+its root and its cells (nine doubles each, the grid's), and each window carries the index of its lock (`-1` for none). The page decides which window
+has one with its own `_blLockFor`, so none with Follow off and none on a rest, and the engine only has to look the index up. `basscore.h` does the rest
+in `fireStep` and `runWalk`. The chord-window format changed (the lock index and the table are not optional), so `_nsBass.sync` sends `[0, 0]` for no
+chart and the host test's raw windows carry both. `_blNativeScore` no longer refuses a locked phrase.
+
+**Measured.** `tests/seq/basslock.test.js`: the page's scheduler, with locks stored against some of a song's chords, runs on a clock of its own, and
+`basstool` runs the same score and windows: 11 cases (grid and walking line; locks written at the sounding pitch and 2 to 10 semitones off; 4, 5, 6, 8,
+12, 16, 24 and 32 steps; swing on the eighths and sixteenths; rate 2; slash chords, a rest, chords that start off the beat and are committed late;
+Follow off) give 765 notes identical to the page's in time (to 1e-5 of a frame), pitch, length, level, accent, slide and the note slid from; each case
+is also run without its locks to show they change the line (and Follow off does not). It fails without the capo shift (9 of the 11 cases), with the
+lock indexed from the bar and not the chord (2), and without the walk's end-of-chord check (2). The host test takes a window with a lock and refuses one
+that names a lock the table does not have, and a table cut short.
+
+**Not done.** A line written ahead for the next chord (`_blPregen`, still refused with its reason); Pure tuning's cents; a lock edited while it plays
+(the chart is sent when `start` is called); the page's melody locks (not in the engine at all). Not heard on device: checklist 19.6.
+

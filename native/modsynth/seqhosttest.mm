@@ -250,7 +250,15 @@ int main() {
       for (int s2 = 0; s2 < 16; s2++) bs.insert(bs.end(), {1, 0, 2, 2, 0, 0, 0, 0, 0});
       CHECK([g seqSetBassScore:bytes(bs)], "the bass line is taken");
       // Two chart windows (frames from the line's start): C for two bars, then F; the timeline holds them.
-      std::vector<double> ch = {2, 0, 192000, 0, 0, -1, 5, 3, 0, 4, 7, 192000, 384000, 0, 5, -1, 0, 3, 5, 9, 0};
+      std::vector<double> ch = {2, 0, 192000, 0, 0, -1, 5, 3, 0, 4, 7, -1, 192000, 384000, 0, 5, -1, 0, 3, 5, 9, 0, -1, 0};   // two windows, no lock; no lock table
+      // A window can name a phrase lock (the page's frozen line for that chord): a table of one 2-step lock after the windows. One that names a
+      // lock the table does not have is refused, and so is a table cut short.
+      std::vector<double> chl = {1,  0, 192000, 0, 0, -1, -1, 3, 0, 4, 7, 0,   1,  2, 0,  1, 5, 3, 1, 0, 1, 0, 0, 0,  1, 7, 3, 1, 0, 0, 0, 0, 0};   // 1 window (lock 0); 1 lock: 2 steps, 2 cells
+      CHECK([g seqSetBassChords:bytes(chl)], "chord windows with a phrase lock are taken");
+      std::vector<double> chBad = chl; chBad[11] = 3;
+      CHECK(![g seqSetBassChords:bytes(chBad)], "a window that names a lock the table does not have is refused");
+      std::vector<double> chCut(chl.begin(), chl.end() - 4);
+      CHECK(![g seqSetBassChords:bytes(chCut)], "a lock table cut short is refused");
       CHECK([g seqSetBassChords:bytes(ch)], "the chord windows are taken");
       [g seqSetDrumScore:bytes(score())];
       [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
