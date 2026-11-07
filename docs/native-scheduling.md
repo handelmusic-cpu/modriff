@@ -764,3 +764,28 @@ eight-run tests of part five and everything else still pass; `xcodebuild` builds
 a release edit), refused with its reason; the song's own comping through chord windows and the tap that starts a rhythm (the page skips a re-strike within
 60 ms of the finger); the page's per-hit re-voicing (Vary); sampled chord voices; glide; Pure tuning. Not heard on device: checklist 22.
 
+## Slice 2, part seven (6.9.9.9.6): gated hits and ratchets in the chord rhythm
+
+**What was chosen, and why.** A gated hit (a hit with a length in steps; every ratchet's re-strikes but the last are gated, the last takes the cell's
+own length) is the chord held with no decay, then let go of at the end of the gate: the page plays it as `playChord(..., sustain)` (`dur` null: no
+decay envelope, and with Strum on the settle ramp to 0.7 of the level) followed by `_releaseChordAt(id, atTime + lenSec)` (`_webChordReleaseAt`: for
+every voice hold the gain at the later of that moment and its start plus the attack plus 20 ms, fall to nothing over the Release knob, stop the
+sources a little after). So the held chord is a second recording of each pitch in the bank (`buildChordNote(voice, pitch, true)`, bank part 4, same
+fitted slots as the decaying one but with no length slots), which also holds the release as edits: the page's own release is run once on the
+recording, under the recorder's clock, at three moments and two levels (they must agree, as the stop of the chord before does), and the entry stores
+its records with times relative to the moment of release plus `relMin`, the earliest it may act after the voice's start (read off the release sent
+before the attack ends). `chordplay.h` sends each voice its own release after beginning it, at `max(onset + gate, voice start + relMin)` (the strum
+puts the voices at different starts, the sub at the chord's own); the edits aimed at the half a voice silenced are left out as for the stop
+(`cutWithout`). `chordcore.h` marks a hit held when its length is above 0. `_crNativeScore` no longer refuses a gated hit; `_nsChord.prepare` records
+the held chord of each pitch when the rhythm has gated hits and the plain one when it has plain ones (a ratchet needs both).
+
+**Measured.** `tests/seq/chordline.test.js` now also plays six chords held for 0.02 to 0.9 s (shorter than the attack, a gate, past the next chord,
+which then cuts it) through the page and through the engine's player and nulls them: sine, sawtooth, piano and pad, Strum off and on with Width,
+29 voices and 25 releases each, 157.9 to 163.9 dB (the decaying runs are unchanged at 156 to 163). It fails without the release (to -0.6 to 19 dB) and
+without the attack's minimum (to -29 to 19 dB). `tests/seq/chordrhythm.test.js` has a drawn rhythm with holds, ratchets of 2, 3 and 4 and a held
+ratchet: 72 hits (54 held) identical to the page's, and when the page lets go of each one, to 1e-5 of a frame (a gate 1% long fails it). The host test
+has a gated first hit: 3 releases for every held chord and none late. The 960 chords of `chordbank.test.js`, the bass and drum tests and the host
+tests are unchanged; `xcodebuild` builds.
+
+**Not done.** The song's comping and the tap (slice 4); the page's re-voicing per hit (Vary); sampled chord voices; glide; Pure tuning. A hit whose gate
+runs into the next hit is cut by it, as on the page (the stop of the chord before). Not heard on device: checklist 22.4.

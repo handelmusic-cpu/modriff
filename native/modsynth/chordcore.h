@@ -4,8 +4,10 @@
 // the hit's offset plus the swing. What each hit sounds is the chord player's (chordplay.h): the chord is the one the page voiced, handed over
 // with the rhythm.
 //
-// Not in it, said plainly (the page's score refuses what it cannot do and says so): a gated hit, which the page holds and lets go of at the end
-// of its length (a different program, sustained, and a release edit); the song's own comping (slice 4); the tap that started the rhythm (the page
+// A gated hit (a hit with a length in steps, and so every ratchet's re-strikes) is held and let go of at the end of its length: the chord player plays
+// the held program (bank part 4) and sends each voice the release edits the bank holds.
+//
+// Not in it, said plainly (the page's score refuses what it cannot do and says so): the song's own comping (slice 4); the tap that started the rhythm (the page
 // skips a re-strike within 60 ms of the finger, which the engine, started by a command, has not got); the voicing, which the page does
 // (smartVoiceLead and Vary) and the engine plays as given.
 #pragma once
@@ -80,6 +82,8 @@ class ChordSequencer {
           ChordEvent e = score_.chord;
           e.onsetExact = next_ + (h.p - k) * sd + sw;
           e.vel = std::max(0.0, std::min(1.0, score_.velBase * h.v));
+          // A gated hit (len in steps) is held and let go of at the end of its gate (rhyStrike: lenSec = len * stepSec).
+          if (h.len > 0) { e.hold = true; e.holdSec = h.len * sd / sr_; }
           emit(e);
         }
       }

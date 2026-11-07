@@ -2,7 +2,7 @@
 // page's scheduleChordRhythm.
 //   chordtool <cases.f64>
 // cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, startStep, nSteps, then the score (chordcore.h)]
-// Output per case: "CASE i", "H frameExact vel durSec nNotes notes... subNote" per hit, "END i steps".
+// Output per case: "CASE i", "H frameExact vel durSec hold holdSec nNotes notes... subNote" per hit (hold 1: a gated hit, let go of holdSec after), "END i steps".
 #include <cstdio>
 #include <vector>
 #include "chordcore.h"
@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     printf("CASE %d\n", c);
     int fired = 0;
     while (fired < nsteps) fired += q.run(q.nextFrame() + 1, [](const modsynth::ChordEvent &e) {
-      printf("H %.17g %.17g %.17g %zu", e.onsetExact, e.vel, e.durSec, e.notes.size());
+      printf("H %.17g %.17g %.17g %d %.17g %zu", e.onsetExact, e.vel, e.durSec, e.hold ? 1 : 0, e.holdSec, e.notes.size());
       for (int n : e.notes) printf(" %d", n);
       printf(" %d\n", e.subNote);
     });

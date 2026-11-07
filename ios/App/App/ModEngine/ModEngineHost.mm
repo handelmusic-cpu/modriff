@@ -763,7 +763,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                       @"lateStarts": @((double)q.lateStarts), @"bank": @((double)q.bank.size()),
                       @"cuts": @((double)q.cuts), @"cutEdits": @((double)q.cutEdits),
                       @"chord": @{@"running": @(q.cseq.running()), @"nextStep": @(q.cseq.step()), @"steps": @((double)q.chordSteps), @"hits": @((double)q.chordHits),
-                                  @"chords": @((double)q.cplay.chords), @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops),
+                                  @"chords": @((double)q.cplay.chords), @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases),
                                   @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused), @"firstFrame": @((double)q.chordFirst)},
                       @"bass": @{@"running": @(q.bseq.running()), @"nextStep": @(q.bseq.step()), @"steps": @((double)q.bassSteps), @"notes": @((double)q.bassNotes),
                                  @"hits": @((double)q.bplay.hits), @"misses": @((double)q.bplay.misses), @"refused": @((double)q.bplay.refused),

@@ -405,7 +405,7 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 | 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
 | 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
 
-## 22. The chord comp in the engine (6.9.9.9.4 and 6.9.9.9.5; audible through a developer entry only)
+## 22. The chord comp in the engine (6.9.9.9.4 to 6.9.9.9.6; audible through a developer entry only)
 
 The engine composes a chord from a bank of one-note chords, stops the chord before it, and from 6.9.9.9.5 the host runs a chord rhythm on its own thread. The page has no button for it, only `_nsChord` in the web inspector (like `_nsDrum` and `_nsBass`, sections 18 and 19).
 
@@ -413,4 +413,5 @@ The engine composes a chord from a bank of one-note chords, stops the chord befo
 |---|---|---|
 | 22.1 | Native sound **ON**, a synthesized chord voice (not a sampled one), Chords on, a chord tapped on the pads and a built-in rhythm (Strum) selected; in the inspector console: `_nsDrum.start()` then `_nsChord.start()` (the page's own transport stays stopped) | both answer `{ok:true}`; **the drums and the chord rhythm play from the engine alone**, on the same bar line, at the tempo field; each hit is the chord you tapped, with the Strum and Width settings you have; `_nsChord.mirror()` shows `hits` climbing, `misses` 0, `refused` 0, `stops` climbing |
 | 22.2 | While it plays: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | the chord rhythm does not stutter or stop |
-| 22.3 | Compare against the page's own: `_nsChord.stop()`, play the same rhythm on the page | same chord, same hits, levels and swing. You may hear: the same voicing on every hit (the page re-voices with Vary); a rhythm with gated or ratcheted hits says it cannot be played (`{ok:false, why}`); a sampled chord voice likewise |
+| 22.3 | Compare against the page's own: `_nsChord.stop()`, play the same rhythm on the page | same chord, same hits, levels and swing. You may hear: the same voicing on every hit (the page re-voices with Vary); a sampled chord voice says it cannot be played (`{ok:false, why}`) |
+| 22.4 | (6.9.9.9.6) Draw a rhythm on the chord roll with a held step (Hold) and a ratcheted step (Ratchet), `_nsChord.stop()`, `_nsChord.start()` | it starts (it said it could not before); the held step rings its full length and lets go on the Release knob without a click, the ratchet's strikes are short and the last one rings out; the same as the page's own for this rhythm. Watch `_nsChord.mirror()`: `releases` climbs with the held strikes, `misses` 0, `refused` 0 |

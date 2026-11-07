@@ -2,7 +2,7 @@
 
    The page's scheduler runs in the real page on a clock of its own (the way bassgrid.test.js and drumgrid.test.js do), with the chord and the
    rhythm set, and every chord it sends (kind 'chord') is kept. native/modsynth/chordtool runs the same score. The two lists must be the same hit
-   for hit: when (to 1e-5 of a frame), the level, the length, the chord. The chord is the one the page sent for its first hit (the voicing is
+   for hit: when (to 1e-5 of a frame), the level, the length, the chord, and for a gated hit (a hold, and every ratchet's re-strikes) when the page lets go of it. The chord is the one the page sent for its first hit (the voicing is
    the page's; the engine plays it as given), and every later hit of the page must be that same chord, which is also checked.
 
    Run: make -C native/modsynth chordtool && node tests/seq/chordrhythm.test.js        Env: CHROMIUM, PLAYWRIGHT */
@@ -28,6 +28,7 @@ const CONFIGS = [
   { name: 'the built-in strum rhythm, C major, 120 BPM', key: 'strum', bpm: 120, chord: [60, [0, 4, 7]], swing: 0, swing8: true, bars: 6 },
   { name: 'the same with the Feel swing at 40 on the eighths, 100 BPM', key: 'strum', bpm: 100, chord: [60, [0, 4, 7]], swing: 40, swing8: true, bars: 6 },
   { name: 'a drawn rhythm with soft, plain and accented hits, its own swing', def: { cells: { 0: { on: 1, acc: 1 }, 3: { on: 1, soft: 1 }, 6: { on: 1 }, 8: { on: 1, acc: 1 }, 11: { on: 1, soft: 1 }, 14: { on: 1 } }, swing: 30 }, bpm: 110, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
+  { name: 'a drawn rhythm with held hits, ratchets of 2, 3 and 4 and a held ratchet, its own swing', def: { cells: { 0: { on: 1, len: 3 }, 4: { on: 1, rat: 3 }, 6: { on: 1, rat: 2, soft: 1 }, 8: { on: 1, acc: 1, rat: 4, len: 2 }, 12: { on: 1, soft: 1, len: 4 }, 15: { on: 1 } }, swing: 20 }, bpm: 120, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
   { name: 'a drawn 12-step rhythm, the Feel swing on the sixteenths, a slash chord', def: { steps: 12, cells: { 0: { on: 1 }, 4: { on: 1, acc: 1 }, 7: { on: 1 }, 10: { on: 1, soft: 1 } } }, bpm: 130, chord: [60, [0, 4, 7, -8]], swing: 55, swing8: false, bars: 8 },
 ];
 
@@ -47,9 +48,10 @@ const CONFIGS = [
     const ctxProxy = new Proxy(off, { get: (t, p) => p === 'currentTime' ? fake.currentTime : (typeof t[p] === 'function' ? t[p].bind(t) : t[p]) });
     clearTimeout(clockTimer);
     const realCtx = getCtx, realAudio = audioCtx;
-    const sent = [];
+    const sent = [], released = {};
     const E = window.modEngine, keep = { send: E.send, now: E.now, ready: E.ready };
-    E.send = m => { if (m.kind === 'chord') sent.push(Object.assign({}, m)); };
+    // a gated hit is a chord sent without a length (dur null) and a release of its id at the end of the gate
+    E.send = m => { if (m.kind === 'chord') sent.push(Object.assign({}, m)); else if (m.kind === 'release' && m.part === 'chord' && m.at != null) released[m.id] = m.at; };
     E.now = () => fake.currentTime; E.ready = () => true;
     window.getCtx = () => ctxProxy; audioCtx = ctxProxy;
     const LA = LOOK_AHEAD, FIRSTs = 1.0;
@@ -62,7 +64,7 @@ const CONFIGS = [
       else { CR.key = c.key; CR.def = null; }
       const pat = crPattern();
       const stepSec = 60 / c.bpm / 4, tEnd = FIRSTs + c.bars * pat.steps * stepSec;
-      sent.length = 0;
+      sent.length = 0; for (const k in released) delete released[k];
       fake.currentTime = 0.0013;
       CR.run = true; CR.nextT = FIRSTs; CR.step = 0;
       for (let guard = 0; guard < 100000; guard++) {
@@ -71,14 +73,14 @@ const CONFIGS = [
         if (CR.nextT >= tEnd) break;
       }
       CR.run = false;
-      const hits = sent.filter(m => m.at < tEnd - 1e-6).map(m => ({ at: m.at, vel: m.vel, dur: m.dur, notes: m.notes, bass: m.bass, root: m.root }));
+      const hits = sent.filter(m => m.at < tEnd - 1e-6).map(m => ({ at: m.at, vel: m.vel, dur: m.dur, hold: m.dur == null ? released[m.id] - m.at : null, notes: m.notes, bass: m.bass, root: m.root }));
       const first = sent[0];
       const sc = window._crNativeScore({ notes: (first.bass != null ? [first.bass] : []).concat(first.notes), root: first.root, bass: first.bass });
       out.push({ name: c.name, hits, tEnd, score: sc.score, ok: sc.ok, why: sc.why, bpm: c.bpm, steps: pat.steps });
     }
-    // what the engine's score refuses: a gated hit
-    { CR.key = 'u:test'; const d = rhyBlank(16); d.cells[0].on = 1; d.cells[0].len = 2; d.name = 'test'; CR.def = rhyNorm(d); extra.refused = window._crNativeScore({ notes: [60, 64, 67], root: 60, bass: null }).why.join(',');
-      const r = rhyBlank(16); r.cells[0].on = 1; r.cells[0].rat = 3; r.name = 'test'; CR.def = rhyNorm(r); extra.refusedRatchet = window._crNativeScore({ notes: [60, 64, 67], root: 60, bass: null }).why.join(','); }
+    // a gated hit and a ratchet are in the score, not refused
+    { CR.key = 'u:test'; const d = rhyBlank(16); d.cells[0].on = 1; d.cells[0].len = 2; d.name = 'test'; CR.def = rhyNorm(d); const a = window._crNativeScore({ notes: [60, 64, 67], root: 60, bass: null }); extra.gated = a.ok;
+      const r = rhyBlank(16); r.cells[0].on = 1; r.cells[0].rat = 3; r.name = 'test'; CR.def = rhyNorm(r); const b = window._crNativeScore({ notes: [60, 64, 67], root: 60, bass: null }); extra.ratchet = b.ok; extra.why = a.why.concat(b.why).join(','); }
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready;
     return { list: out, extra };
   }, { configs: CONFIGS });
@@ -98,7 +100,7 @@ const CONFIGS = [
   run.stdout.split('\n').forEach(l => {
     const f = l.split(' ');
     if (f[0] === 'CASE') { cur = []; native.push(cur); }
-    else if (f[0] === 'H') { const nn = +f[4]; cur.push({ fx: +f[1], vel: +f[2], dur: +f[3], notes: f.slice(5, 5 + nn).map(Number), sub: +f[5 + nn] }); }
+    else if (f[0] === 'H') { const nn = +f[6]; cur.push({ fx: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], notes: f.slice(7, 7 + nn).map(Number), sub: +f[7 + nn] }); }
   });
   console.log('\nhit lists, the engine against the page (frames to 1e-5):');
   all.forEach((c, i) => {
@@ -110,12 +112,16 @@ const CONFIGS = [
       worstT = Math.max(worstT, dt);
       if (dt > 1e-5) { same = false; why = `hit ${k} at ${p.at * SR} frames on the page, ${n.fx} native`; }
       else if (Math.abs(p.vel - n.vel) > 1e-12) { same = false; why = `hit ${k}: level ${p.vel} on the page, ${n.vel} native`; }
-      else if (Math.abs(p.dur - n.dur) > 1e-12) { same = false; why = `hit ${k}: length ${p.dur}, ${n.dur} native`; }
+      else if ((p.hold != null) !== (n.hold === 1)) { same = false; why = `hit ${k}: the page ${p.hold != null ? 'holds' : 'does not hold'} it, the engine ${n.hold ? 'holds' : 'does not'}`; }
+      else if (p.hold != null && Math.abs(p.hold - n.holdSec) * SR > 1e-5) { same = false; why = `hit ${k}: let go of after ${p.hold} s on the page, ${n.holdSec} native`; }
+      else if (p.hold == null && Math.abs(p.dur - n.dur) > 1e-12) { same = false; why = `hit ${k}: length ${p.dur}, ${n.dur} native`; }
       else if (chordOf(p) !== chordOf(first) || n.notes.join('.') !== chordOf(first)) { same = false; why = `hit ${k}: the chord is ${chordOf(p)} on the page and ${n.notes.join('.')} native (the first was ${chordOf(first)})`; }
     }
-    ok(same && c.ok, c.name + ': ' + pg.length + ' hits identical (worst timing ' + worstT.toExponential(1) + ' frames)', why);
+    const nHeld = pg.filter(h => h.hold != null).length;
+    ok(same && c.ok, c.name + ': ' + pg.length + ' hits identical, ' + nHeld + ' of them held (worst timing ' + worstT.toExponential(1) + ' frames)', why + ' ' + (c.why || []).join(','));
+    if (c.name.indexOf('held hits') >= 0) ok(nHeld >= 12 && nHeld < pg.length, 'that rhythm has held and plain hits (' + nHeld + ' of ' + pg.length + ' held)', String(nHeld));
   });
-  ok(/gated/.test(result.extra.refused || '') && /gated/.test(result.extra.refusedRatchet || ''), 'a gated hit, and a ratchet (which is gated), are refused with their reason (' + result.extra.refused + ')', JSON.stringify(result.extra));
+  ok(result.extra.gated && result.extra.ratchet, 'a gated hit, and a ratchet (which is gated), are in the score and not refused', JSON.stringify(result.extra));
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(2); });
