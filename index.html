@@ -7421,9 +7421,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    take no pointer events, so the tap always lands on the locked element and a
    <select> or <label> inside cannot open or focus. The padlock is drawn, not
    typed: a mask, so it takes the control's own colour. */
-.tier-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
+.tier-locked, .ps-pad.ps-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
 .tier-locked * { pointer-events:none; }
-.tier-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
+.tier-locked::after, .ps-pad.ps-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
   background:currentColor; pointer-events:none;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat;
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat; }
@@ -9134,7 +9134,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.4</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.5</span></div>
  </div>
 </div>
 
@@ -10566,7 +10566,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.4</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.5</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11757,7 +11757,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.4';
+const MODRIFF_VERSION = '6.9.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18768,6 +18768,11 @@ window.psStopAll = psStopAll;
 // have no finger to acknowledge, so they do not draw the waiting mark (tapWait).
 function psStart(key, t, notATap){
  var ctx = psCtx(); if(!ctx) return null;
+ // The sampler is the Sampler Engine's: a pad that arrives by a saved pattern,
+ // a MIDI note or Caps Lock stays silent on a free install, as other locked
+ // content does. The only sound a free install gets from a pad is psPreviewPlay,
+ // which does not come through here.
+ if(!modHas('sampler')) return null;
  var slot = SMP_SLOTS[key];
  if(!slot || !slot.id || !SMP_BUF[slot.id]) return null;
  var ps = slot.ps || psDefaults();
@@ -18847,6 +18852,10 @@ function psStart(key, t, notATap){
 
 // Finger down / finger up. The four modes differ only here.
 function psPress(i){
+ // Locked: a tap plays the sample softly, twice per pad, and says what the
+ // pad is part of. Nothing below runs, so nothing is struck, recorded into a
+ // pattern or selected.
+ if(!modHas('sampler')){ psPreviewTap(i); return; }
  var key = psCurKey(i);
  PS.sel = i;
  psHoldEnd(key, true);
@@ -18870,6 +18879,47 @@ function psPress(i){
   if(mode==='oneshot') psHoldArm(i, key);
  }
  psRenderDeck();
+}
+// The pad's sample, once, quietly, for a free install (6.9.9.9.5). It is not a
+// strike: no clip message, no PS_LIVE entry, no psRecEv, no pattern, no part
+// bus. The audio goes from its own source to the context's destination, past
+// the master tap the bounce and the stems read, so a preview that is still
+// sounding when a take starts cannot reach the file either (and psPreviewTap
+// does not start one during a take). At -6 dB, and cut at three seconds.
+var PS_PREV = null;
+function psPreviewStop(){
+ var v = PS_PREV; PS_PREV = null; if(!v) return;
+ try{ v.g.gain.cancelScheduledValues(0); v.g.gain.value = 0; v.src.stop(); }catch(e){}
+}
+function psPreviewPlay(key){
+ var ctx = psCtx(); if(!ctx) return false;
+ var slot = SMP_SLOTS[key], buf = (slot && slot.id) ? SMP_BUF[slot.id] : null;
+ if(!buf) return false;
+ var a = Math.max(0, Math.min(0.999, +slot.start||0));
+ var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
+ var dur = Math.min((b-a)*buf.duration, 3);
+ if(!(dur > 0.002)) return false;
+ var lvl = 0.5 * Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id));
+ if(!(lvl > 0)) return false;
+ psPreviewStop();
+ var t = ctx.currentTime, FD = Math.min(0.004, dur/4);
+ var src = ctx.createBufferSource(); src.buffer = buf;
+ var g = ctx.createGain();
+ g.gain.setValueAtTime(0, t);
+ g.gain.linearRampToValueAtTime(lvl, t+FD);
+ g.gain.setValueAtTime(lvl, Math.max(t+FD, t+dur-0.03));
+ g.gain.linearRampToValueAtTime(0, t+dur);
+ src.connect(g); g.connect(ctx.destination);
+ var v = {src:src, g:g};
+ src.onended = function(){ try{ g.disconnect(); }catch(e){} if(PS_PREV===v) PS_PREV = null; };
+ src.start(t, a*buf.duration, dur);
+ src.stop(t+dur+0.02);
+ PS_PREV = v;
+ return true;
+}
+function psPreviewTap(i){
+ var bank = PS_BANKS[PS.bank], key = psCurKey(i);
+ freePreview('pad', bank+(i+1), 'The sampler', 'sampler', function(){ return psPreviewPlay(key); });
 }
 function psRelease(i){
  var key = psCurKey(i), slot = SMP_SLOTS[key], v = PS_LIVE[key];
@@ -18906,15 +18956,21 @@ function psSubPress(){
 }
 function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
 
-// Free plays the four preset banks, nine pads of each. The user banks are where
-// your own recordings live, which is the Pro part. These two are view prefs
+// Free sees the first preset bank's nine pads, locked (it may tap them to hear
+// a sample, see psPreviewTap). These two are view prefs
 // (which bank is showing, how many pads are on screen), so putting them back
 // inside the line rewrites nothing of anyone's: the pads and what is on them
 // are untouched. Returns true when it moved something.
 function psTierClamp(){
  if(modHas('sampler')) return false;
  var moved=false;
- if(!freeAllowsPad(PS_BANKS[PS.bank],0)){ PS.bank = Math.max(4, PS_BANKS.findIndex(function(b){ return freeAllowsPad(b,0); })); moved=true; }
+ // With no bank playable (free, since 6.9.9.9.5) the first preset bank is the one
+ // on show: its pads are what a free install previews. Moved only when it
+ // changes, or freeApplyLimits would repaint the pads every time it runs.
+ if(!freeAllowsPad(PS_BANKS[PS.bank],0)){
+  var to = Math.max(4, PS_BANKS.findIndex(function(b){ return freeAllowsPad(b,0); }));
+  if(PS.bank!==to){ PS.bank = to; moved=true; }
+ }
  if(PS.liveN>FREE_NUMBERS.padCount){ PS.liveN = FREE_NUMBERS.padCount; moved=true; }
  return moved;
 }
@@ -20660,6 +20716,9 @@ function psRender(){
   var clip=s&&s.id?smpClip(s.id):null, ps=(s&&s.ps)||psDefaults();
   var armed=!!(s&&s.id&&SMP_BUF[s.id]);
   p.classList.toggle('empty', !(s&&s.id));
+  // Locked (free): drawn dimmed with the padlock like any locked control, but not
+  // .tier-locked itself, which swallows the pointerdown a preview needs.
+  p.classList.toggle('ps-locked', !modHas('sampler'));
   p.classList.toggle('armed', armed);
   p.classList.toggle('sel', i===PS.sel);
   p.classList.toggle('live', !!PS_LIVE[key]);
@@ -20677,7 +20736,7 @@ function psRender(){
    if(clip.key==null && s.rootAuto && s.root!=null) tags.push('♪'+psNoteName(s.root));
   }
   p.querySelector('.ps-tags').textContent = tags.join(' · ');
-  p.setAttribute('aria-label', 'Pad '+psPadName(i)+(clip?' — '+clip.name:' — empty, tap to load'));
+  p.setAttribute('aria-label', 'Pad '+psPadName(i)+(clip?' — '+clip.name:' — empty, tap to load')+(modHas('sampler')?'':' — locked, part of the Sampler Engine; tap to hear it'));
  }
  var pre=psOnPreset();
  document.querySelectorAll('#ps-panel [data-psside]').forEach(function(b){ b.classList.toggle('active', (b.dataset.psside==='preset')===pre); });
@@ -47448,7 +47507,7 @@ Clarinet and flute currently show the correctly transposed written note without 
  },
  'sampler': {
   title: 'Sampler',
-  body: `<span class="tip-pro">Sampler Engine</span> Recording, resampling and importing your own clips, the four User banks and the preset banks PC and PD are the Sampler Engine's. The preset banks PA and PB, and the first nine pads of each, are free to play.<br><br>
+  body: `<span class="tip-pro">Sampler Engine</span> The pads are the Sampler Engine's: all eight banks, recording, resampling and importing your own clips. Free shows the pads locked and plays each one's sample softly, twice, so you can hear what is there.<br><br>
 <strong>Your own sounds, anywhere.</strong> The <strong>◈</strong> beside any voice, and on every drum lane, puts one of your clips on that part. The mõdFX pad has one too — see below.<br><br>
 <strong>Getting a sound in.</strong> <strong>● Record</strong> takes the microphone. <strong>◉ Resample</strong> records whatever mõdRïff itself is playing — a chord you liked, a fill, the whole mix — and puts it straight back in the library. <strong>⤓ Import</strong> takes files and <strong>🗀 Folder</strong> takes all of them at once, in name order; pick several and you are offered to lay them straight across the drum lanes. Record and Resample are also in the transport sheet, beside <strong>◈ Clips</strong>, so you can grab a sound without leaving what you are playing.<br><br>
 <strong>Trimming.</strong> Drag the ends of the waveform to set where the clip starts and stops. <strong>⇥ Silence</strong> moves the handles in past the quiet at each end for you, and <strong>Whole</strong> puts them back to the full clip — neither touches the audio. <strong>✂ Trim</strong> is the one that commits: it makes a <em>new</em> clip out of what is between the handles and leaves the original alone.<br><br>
@@ -70328,7 +70387,7 @@ const MODULE_COPY = {
  sounds:   { name:'Sounds Pack', line:'Tonewheel organ, e-piano, pads, vibes, bass',
   bullets:['Tonewheel organ','Electric piano','Synth piano','Synth pad','Vibraphone','Vintage violin bass and 60s soul bass'] },
  sampler:  { name:'Sampler Engine', line:'Pro sampler: your samples, kits, loop slicing',
-  bullets:['Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
+  bullets:['Play the pads: every bank, all 16','Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Wavetable power synth + the full mõdFX rack',
   bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
@@ -70402,10 +70461,11 @@ const FREE_LIMITS = {
   // Three meters, and the step counts are derived from them: a whole number of
   // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
   meters:       ['4/4','3/4','12/8'],
-  // The sampler's first two preset banks (PA Mix, PB Drums) and the first nine
-  // pads of each. PC, PD and the four user banks, which hold your own
-  // recordings, are the Sampler Engine's.
-  padBanks:     ['PA','PB']
+  // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
+  // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
+  // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
+  // never played into a song. The row stays so FEATURE_MODULE can name it.
+  padBanks:     []
 };
 // Which module owns each row above. Every row has exactly one; the test fails
 // on a row with none, which would be a lock nothing could ever open.
@@ -70446,9 +70506,10 @@ const FREE_NUMBERS = {
   audioExportSeconds: 30,
   audioExportFadeSeconds: 2, // the last of those 30 s fades to silence, so the cut is not a click
   midiExportBars:     4,
-  padCount:           9
+  padCount:           9,    // pads SHOWN (locked) on a free install: a 3x3
+  previewsPerItem:    2     // taps that sound on a locked pad or voice; then a tap only opens the sheet
 };
-const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', audioExportFadeSeconds:'studio', midiExportBars:'studio', padCount:'sampler' };
+const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', audioExportFadeSeconds:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
 
 // Ownership. `_modOwned` is {module:true|false}, built by _applyTier from what
 // the provider says is bought; `_modFull` is any of the four Full Studio
@@ -70968,6 +71029,35 @@ function modPartOf(what, module){
  const m = module && MODULE_COPY[module];
  return what+(_modPlural(what)?' are':' is')+' part of '+(m ? 'the '+m.name : 'a paid pack');
 }
+// Hearing a locked thing before buying it (6.9.9.9.5): a pad's sample, a Sounds
+// Pack voice. `play` sounds it and answers whether it did; the tap that did is
+// counted per item (kind:id) in ONE key, modo-previews, and after
+// FREE_NUMBERS.previewsPerItem of them a tap only opens the sheet. Never during
+// a take: a locked item opens the sheet and plays nothing, so no preview can be
+// in a bounce, and it is never an excuse for the sheet to open on its own (it is
+// the user's tap). Storage that throws costs nothing: the preview plays, and the
+// count is kept in memory for the session. var: read from far away (CLAUDE.md).
+var _prevSeen = null;
+function _prevLoad(){
+ if(_prevSeen) return _prevSeen;
+ _prevSeen = {};
+ try{ var o = JSON.parse(modStore.getItem('modo-previews')||'null'); if(o && typeof o==='object') Object.keys(o).forEach(function(k){ var n=+o[k]; if(n>0) _prevSeen[k]=n|0; }); }catch(e){}
+ return _prevSeen;
+}
+function freePreviewCount(kind, id){ return _prevLoad()[kind+':'+id] || 0; }
+function freePreview(kind, id, what, module, play){
+ if(typeof _isRecording!=='undefined' && _isRecording){ proSheet(what, module); return false; }
+ var seen = _prevLoad(), k = kind+':'+id;
+ if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem){ proSheet(what, module); return false; }
+ var played = false;
+ try{ played = !!play(); }catch(e){ played = false; }
+ if(played){
+  seen[k] = (seen[k]||0)+1;
+  try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){}
+ }
+ freeBlocked(what, module);
+ return played;
+}
 function freeBlocked(what, module){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
@@ -71083,7 +71173,10 @@ function proSheet(what, module){
  }
  ov._render=render;
  ov._set=function(s){ cur=s; render(); };
- ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+ // Not for the first moment: a pad opens this on pointerdown (a third preview tap), and on a
+ // phone the click that ends the same touch lands on the backdrop that has just appeared.
+ const born=Date.now();
+ ov.addEventListener('click', function(e){ if(e.target===ov && Date.now()-born>400) close(); });
  document.addEventListener('keydown', onKey, true);
  render();
  if(typeof track==='function') track('pro_sheet', {what:cur.what, module:cur.module||''});

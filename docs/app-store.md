@@ -316,6 +316,11 @@ like hidden purchases:
 > Pack, then tap any other locked control — the sheet now shows "Complete Your Studio" with
 > the line "Unlock everything for $… more." Restore Purchases is on that sheet, on the store
 > screen and in Settings > About.
+>
+> A locked thing can usually be tried before it is bought. For example the sampler: on a free
+> install its pads are drawn locked (dimmed, with a padlock). Tapping one plays that pad's
+> sample once, quietly, up to twice per pad; after that, a tap opens the sheet. The preview is
+> never part of a song or a recording.
 
 **Testing in Xcode, no store account needed:**
 

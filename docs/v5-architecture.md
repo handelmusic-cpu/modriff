@@ -2529,7 +2529,7 @@ never opens it on its own.
 | Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
 | Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
 | Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
-| Sampler pads | preset banks PA Mix and PB Drums, 9 pads each | **Sampler**: PC and PD, the four user banks, all 16 pads, your own clips |
+| Sampler pads | none to play; the first 9 pads of PA are shown locked and each plays its sample softly twice (`modo-previews`) | **Sampler**: every bank, all 16 pads, your own clips |
 | Slice a clip onto pads | — | **Sampler** (`smpSliceToPads`): Hits, or 4, 8, 16 equal parts, from the sampler editor of a pad |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
 | Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |

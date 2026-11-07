@@ -62,8 +62,11 @@ eq(T.FREE_NUMBERS.padCount, 9, 'sampler pads');
 eq(T.EMBED_LIMITS, { sampleSeconds: 12, sampleBytes: 2 * 1024 * 1024, fileBytes: 15 * 1024 * 1024 }, 'embed caps');
 eq([['4','4'],['3','4'],['12','8'],['6','8'],['5','4'],['7','8'],['2','4']].map(m => T.freeAllowsMeter(+m[0], +m[1])),
    [true,true,true,false,false,false,false], 'meters');
-eq(['PA','PB','PC','PD','A','B','C','D'].map(b => T.freeAllowsPad(b, 0)), [true,true,false,false,false,false,false,false], 'pad banks: the first two presets');
-eq([0,8,9,15].map(i => T.freeAllowsPad('PA', i)), [true,true,false,false], 'pads 1-9 only');
+eq(['PA','PB','PC','PD','A','B','C','D'].map(b => T.freeAllowsPad(b, 0)), [false,false,false,false,false,false,false,false], 'pad banks: none, the whole sampler is locked (previews only)');
+eq(T.FREE_LIMITS.padBanks, [], 'no free pad banks');
+eq(T.FREE_NUMBERS.padCount, 9, 'pads shown locked on a free install');
+eq(T.FREE_NUMBERS.previewsPerItem, 2, 'previews per pad or voice');
+eq([0,8,9,15].map(i => T.freeAllowsPad('PA', i)), [false,false,false,false], 'no pad is free to play');
 
 // ── 5. content (nothing owned)
 eq(['808','606','LIN','JAZZ','MOD','PERC','909','ACU'].map(T.freeAllowsKit), [true,false,true,false,false,false,false,false], 'kits: Linn and 808');
