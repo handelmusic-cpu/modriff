@@ -55,11 +55,13 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
   if (!need(4)) return false;
   refPitch = d[k++]; refDur = d[k++]; refFrom = d[k++];
   c = d[k++];
-  if (!(c >= 0 && c <= (double)n) || !need((size_t)c * 5 + 1)) return false;
+  if (!(c >= 0 && c <= (double)n)) return false;
   for (size_t j = 0; j < (size_t)c; j++) {
-    DurSlot s{(int)d[k], d[k + 1], d[k + 2], (int)d[k + 3], d[k + 4]}; k += 5;
-    if (s.i < 0 || (size_t)s.i >= n || s.mode < 0 || s.mode > 2) return false;
-    dur.push_back(s);
+    if (!need(4)) return false;
+    DurSlot s{(int)d[k], d[k + 1], d[k + 2], {}}; const double nh = d[k + 3]; k += 4;
+    if (s.i < 0 || (size_t)s.i >= n || !(nh >= 0 && nh <= 8) || !need((size_t)nh * 2)) return false;
+    for (size_t h = 0; h < (size_t)nh; h++) { s.hinges.push_back({d[k], d[k + 1]}); k += 2; }
+    dur.push_back(std::move(s));
   }
   c = d[k++];
   if (!(c >= 0 && c <= (double)n) || !need((size_t)c * 3)) return false;
@@ -74,6 +76,40 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
   c = d[k++];
   if (!(c >= 0 && c <= 600) || std::fmod(c, 6) != 0 || !need((size_t)c)) return false;
   cutOps.assign(d + k, d + k + (size_t)c); k += (size_t)c;
+  isChord = false; toneLevel.clear(); toneTime.clear(); panSlot = -1; subStops.clear(); toneStops.clear();
+  if (k >= total) return true;
+  auto list = [&](std::vector<int> &out) {
+    if (!need(1)) return false;
+    const double m = d[k++];
+    if (!(m >= 0 && m <= (double)n) || !need((size_t)m)) return false;
+    for (size_t j = 0; j < (size_t)m; j++) { const int i = (int)d[k++]; if (i < 0 || (size_t)i >= n) return false; out.push_back(i); }
+    return true;
+  };
+  auto pairs = [&](std::vector<Src> &out) {
+    if (!need(1)) return false;
+    const double m = d[k++];
+    if (!(m >= 0 && m <= 64) || !need((size_t)m * 3)) return false;
+    for (size_t j = 0; j < (size_t)m; j++) { const int a = (int)d[k], b = (int)d[k + 1], nd = (int)d[k + 2]; k += 3; if (a < 0 || b < 0 || nd < 0 || (size_t)a >= n || (size_t)b >= n) return false; out.push_back({a, b, nd}); }
+    return true;
+  };
+  if (!list(toneLevel) || !list(toneTime) || !need(1)) return false;
+  panSlot = (int)d[k++];
+  if (panSlot >= (int)n) return false;
+  if (!pairs(subStops) || !pairs(toneStops)) return false;
+  velCurve.clear();
+  if (k < total) {
+    if (!need(1)) return false;
+    const double m = d[k++];
+    if (!(m >= 0 && m <= (double)n)) return false;
+    for (size_t j = 0; j < (size_t)m; j++) {
+      if (!need(4)) return false;
+      DurSlot c{(int)d[k], d[k + 1], d[k + 2], {}}; const double nh = d[k + 3]; k += 4;
+      if (c.i < 0 || (size_t)c.i >= n || !(nh >= 0 && nh <= 8) || !need((size_t)nh * 2)) return false;
+      for (size_t h = 0; h < (size_t)nh; h++) { c.hinges.push_back({d[k], d[k + 1]}); k += 2; }
+      velCurve.push_back(std::move(c));
+    }
+  }
+  isChord = true;
   return true;
 }
 

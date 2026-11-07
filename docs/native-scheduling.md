@@ -730,3 +730,15 @@ less than half a beat. They matter for a hand-played chord and a song that stops
 **Not done.** Locked phrases (a line frozen per chord; the page's walk plays the lock's four sixteenths in the beat), which the score
 still refuses; `tune`; the chord comp; the song loop. The walk's state is not reset when the chart is replaced while it plays (the page
 resets it on a hand-played chord). Not heard on device: checklist 19.5.
+
+## Slice 2, part five (6.9.9.9.4): the chord comp's voice
+
+The chord is composed in the engine from a bank of one-note chords (`window._nsBank.buildChordNote`, one entry per pitch; `chordcomp.h`): each note's
+program with the sub silenced, its tone's level times the note's factor, its times moved by the strum offset, its panner set, plus the sub from the
+root's program with the tone silenced. `chordplay.h` stops the chord before with the edits the bank holds (hold, 22 ms fade, stop the sources),
+leaving alone the sources it silenced (a stop sent to them would revive them: the first version was 2x too loud). The prober also learned lengths and
+velocities that are piecewise lines (`_fitLen`), a filter that sits on its ceiling at the reference level, and kinks (the piano).
+Measured: `tests/seq/chordbank.test.js` 960 of 960 chords exact (sine, triangle, sawtooth, square, piano, pad; Strum on/off, Width on/off, 1 to 6
+notes, slash chord, inversion; worst 143.8 dB); `tests/seq/chordline.test.js` six-chord runs with the stop of the chord before, eight runs, all
+exact (worst 100 ms 148 dB). Bass 504 of 504 still bit-identical. Not done: the chord comp's scheduler (rhythm patterns, `rhyStrike`), voicing, the
+host thread, the page's developer entry, sampled voices, glide. The version is a fifth part (6.9.9.9.4) because main had already moved there.

@@ -404,3 +404,8 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 | 22.5 | Tap the name in a right half | the style list, as before |
 | 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
 | 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
+
+## 22. The chord comp's voice in the engine (6.9.9.9.4; nothing audible)
+
+The engine composes a chord from a bank of one-note chords and stops the chord before it, tested on a Mac against the page's own chord (docs/native-scheduling.md, part five). Nothing in the app calls it and the host does not run it yet, so there is nothing to check on a phone from this batch.
+
