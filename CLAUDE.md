@@ -1,8 +1,8 @@
 # mõdRïff — working notes
 
 The product is the **iPhone app** (App Store): C++ DSP under a Swift/AVAudioEngine
-host, the UI still `index.html` inside Capacitor 8. The Vercel web build keeps
-deploying but nothing is designed around it. Current phase: **launch** — device
+host, the UI still `index.html` inside Capacitor 8. The Vercel project now builds the
+**free web page** (modriff.com/play: no packs, no recordings; `docs/web-play.md`). Current phase: **launch** — device
 verification, App Store Connect, screenshots. New features wait unless asked.
 
 ## Reading the docs (they are big — search, don't read whole)
@@ -18,6 +18,7 @@ verification, App Store Connect, screenshots. New features wait unless asked.
 | Dynamic Island light | `docs/dynamic-island.md` |
 | plan, native steps, open problems | `docs/v5-architecture.md` (keep current when a step lands or a decision changes) |
 | background audio: moving the sequencers to the engine | `docs/native-scheduling.md` |
+| the free web page at modriff.com/play: build, what is off, wiring | `docs/web-play.md` |
 
 ## Shipping
 
