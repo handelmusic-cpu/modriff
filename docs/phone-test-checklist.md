@@ -398,12 +398,14 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 
 | # | do | you should see |
 |---|---|---|
-| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
+| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Chords, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
 | 22.2 | Tap the small **›** on a row's right-hand half, then its **‹** | the style steps as it always did (and switches the part on) |
 | 22.3 | Tap the small **›** on the left half of Bass, then **‹** | the sound steps to the next / previous in the same type (Bass patches stay Bass patches), and the name follows. Drums and Aux step their own kit, skipping locked ones |
 | 22.4 | Tap the **name** in a left half | Drums and Aux: the kit list (Aux opens on Percussion & world). Bass and Melody: the sound browser, Samples first. A pick shuts it and the row shows the name |
 | 22.5 | Tap the name in a right half | the style list, as before |
 | 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
+| 22.8 | (6.9.9.9.9a) The Styles widget's **Chords** row (between Bass and Melody): tap **›** on the right half, then **‹** twice; tap the right-hand name | the pattern steps Off, Once a bar, Beats 1 & 3 … and any rhythm you saved; the first step arms the chord rhythm (the Rhythm bar under the Chords widget names the same one), **Off** disarms it; the name opens the same list as Rhythm |
+| 22.9 | The same row, **›** on the left half, then the name | the chord voice steps (Piano, Electric Piano …) and the Chords heading's sound picker follows; the name opens the sound browser, Samples first |
 | 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
 
 ## 22. The chord comp in the engine (6.9.9.9.4 to 6.9.9.9.6; audible through a developer entry only)
