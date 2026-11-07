@@ -46,6 +46,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassChords", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassPending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassTempo", returnType: CAPPluginReturnPromise),
@@ -741,6 +742,16 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetBassChords(data)])
+    }
+
+    /// A line written ahead, `pending` base64 float64 (window._blNativePending(sr)): frames from the line's start. Resolves `ok`.
+    @objc func seqBassPending(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("pending"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqBassPending needs pending")
+            return
+        }
+        call.resolve(["ok": host.seqSetBassPending(data)])
     }
 
     /// Starts the bass line. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the voice.

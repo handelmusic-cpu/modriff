@@ -166,6 +166,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   modsynth::BassPlayer bplay;
   bool hasBass = false;
   std::vector<double> bassChords;
+  std::vector<double> bassPendingRaw;     // a line written ahead, as the page sent it (frames from the line's start); placed on the clock when it arrives and at the start
   double bassOrigin = 0;
   uint64_t bassSteps = 0, bassNotes = 0, bassFirst = 0;
   // The chord comp (chordcore.h, chordplay.h): the rhythm's clock and the chord it strikes, on the same thread, bank and pool.
@@ -180,6 +181,11 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     if (bassChords.empty()) { bseq.timeline().clear(); return; }
     bseq.timeline().setSampleRate(sr);
     bseq.timeline().fromDoubles(bassChords.data(), bassChords.size(), nullptr, bassOrigin);
+  }
+  void placePending() {
+    if (bassPendingRaw.empty()) return;
+    modsynth::BassPending p;
+    if (p.fromDoubles(bassPendingRaw.data(), bassPendingRaw.size(), bassOrigin)) bseq.setPending(p);
   }
   ~HostSeq() { quit.store(true); if (th.joinable()) th.join(); }
 
@@ -634,6 +640,20 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   return YES;
 }
 
+// A line written ahead (window._blNativePending), frames from the line's start. It replaces the one waiting, if any.
+- (BOOL)seqSetBassPending:(NSData *)pending {
+  const size_t n = pending.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), pending.bytes, n * sizeof(double));
+  modsynth::BassPending probe;
+  if (!n || !probe.fromDoubles(d.data(), n)) return NO;
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->bassPendingRaw = d;
+  _hostSeq->placePending();
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return YES;
+}
+
 // Starts the line at step 0: with the drums' downbeat if they are running (so the two share a bar line), otherwise `leadMs` from
 // now. `kit` is the bank's code for the bass voice that is on. NO without a score.
 - (BOOL)seqBassStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed {
@@ -649,6 +669,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.bassSteps = q.bassNotes = 0; q.bassFirst = (uint64_t)first; q.bassOrigin = first;
   q.placeChords();
   q.bseq.start(first);
+  q.placePending();            // a line sent before the start waits for its moment from here (start clears what was waiting)
   os_unfair_lock_unlock(&q.lock);
   q.startThread();
   return YES;

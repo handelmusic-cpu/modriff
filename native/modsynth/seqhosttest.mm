@@ -260,6 +260,12 @@ int main() {
       std::vector<double> chCut(chl.begin(), chl.end() - 4);
       CHECK(![g seqSetBassChords:bytes(chCut)], "a lock table cut short is refused");
       CHECK([g seqSetBassChords:bytes(ch)], "the chord windows are taken");
+      // A line written ahead: [1, hasAt, at, steps, cells]. Taken, cleared by a first double that is not 1, refused when cut short or empty.
+      std::vector<double> pl = {1, 1, 96000, 2,  1, 5, 3, 1, 0, 0, 0, 0, 0,  0, 0, 3, 1, 0, 0, 0, 0, 0};
+      CHECK([g seqSetBassPending:bytes(pl)], "a line written ahead is taken");
+      CHECK([g seqSetBassPending:bytes(std::vector<double>{0})], "and cleared");
+      CHECK(![g seqSetBassPending:bytes(std::vector<double>(pl.begin(), pl.end() - 5))], "one cut short is refused");
+      CHECK(![g seqSetBassPending:[NSData data]], "an empty one is refused");
       [g seqSetDrumScore:bytes(score())];
       [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
       CHECK([g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:7 seed:3], "the bass starts");
