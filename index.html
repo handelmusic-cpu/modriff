@@ -2760,6 +2760,21 @@ body.seq-taught .pr-hint { display:none !important; }
   .sq-insp .sq-insp-tup { order:9; flex:1 1 100%; flex-wrap:wrap; }
   .sq-insp .pr-insp-vel { flex:1 1 70px; min-width:60px; max-width:120px; }
 }
+/* The tab row, folded away while a phone on its side scrolls down (6.9.9.9.9.1a). Sideways the tabs (and, on Chords, the
+   instrument tabs beside them) and the transport take 112 pt of 390, and the grids and editors that are scrolled to are
+   the detailed work. Scrolling down puts the tab row away and leaves the transport; scrolling up, reaching the top, or the
+   pull tab brings it back. Only here: upright and on a big screen the bars are as they were. The hide is a display:none on
+   the stack, so the page-clearance script (it measures the stack) gives the room to the page by itself. */
+#nav-pull { display:none; }
+@media (orientation:landscape) and (max-height:520px){
+  body.land-nav-hide .top-stack { display:none; }
+  body.land-nav-hide #nav-pull { display:flex; position:fixed; z-index:530; bottom:var(--perfh, 56px);
+    right:calc(12px + env(safe-area-inset-right, 0px)); min-width:56px; height:22px; padding:0 12px; align-items:center; justify-content:center;
+    border:1px solid var(--border2); border-bottom:0; border-radius:10px 10px 0 0; background:#07080f; color:var(--muted); cursor:pointer;
+    touch-action:manipulation; }
+  body.land-nav-hide #nav-pull::before { content:''; position:absolute; left:-10px; right:-10px; top:-14px; bottom:0; }
+  body.land-nav-hide #nav-pull svg { width:18px; height:12px; }
+}
 .pr-insp-what {
  font-family:'Outfit',sans-serif; font-size:.5rem; font-weight:600;
  letter-spacing:.06em; color:var(--text); white-space:nowrap;
@@ -9154,7 +9169,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.1a</span></div>
  </div>
 </div>
 
@@ -10586,7 +10601,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.1</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.1a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11783,7 +11798,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.1';
+const MODRIFF_VERSION = '6.9.9.9.9.1a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -67578,6 +67593,38 @@ function _ftMoreOutsideClick(e){
   if(m) _ftSheetShut(m);
   document.removeEventListener('pointerdown', _ftMoreOutsideClick);
 }
+
+// ── The tab row folds away while a phone on its side scrolls down (6.9.9.9.9.1a) ──
+// See #nav-pull in the CSS. Down by 40 pt hides it, up by 24 pt (or the top of the page, or the pull tab) shows it. The page
+// grows when the stack goes, so the browser clamps its scroll position and fires a scroll of its own; for half a second after
+// a change the scrolls are not read, or the bar would flap with every hide.
+(function(){
+  var mq = window.matchMedia ? window.matchMedia('(orientation:landscape) and (max-height:520px)') : null;
+  if(!mq) return;
+  var last = new WeakMap(), acc = 0, quiet = 0;
+  var pull = document.createElement('button');
+  pull.type = 'button'; pull.id = 'nav-pull'; pull.setAttribute('aria-label', 'Show the tabs');
+  pull.innerHTML = '<svg viewBox="0 0 24 14" aria-hidden="true"><path d="M3 11l9-8 9 8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function set(hide){
+    if(document.body.classList.contains('land-nav-hide') === hide) return;
+    document.body.classList.toggle('land-nav-hide', hide);
+    quiet = performance.now() + 500; acc = 0;
+  }
+  pull.addEventListener('click', function(){ set(false); });
+  document.body.appendChild(pull);
+  document.addEventListener('scroll', function(e){
+    if(!mq.matches){ set(false); return; }
+    var t = e.target === document ? document.scrollingElement : e.target;
+    if(!t || !t.classList || !t.classList.contains('tab-page') && t !== document.scrollingElement) return;
+    var y = t.scrollTop, d = y - (last.get(t) || 0); last.set(t, y);
+    if(performance.now() < quiet) return;
+    acc = (d > 0) === (acc > 0) ? acc + d : d;
+    if(y < 30 || acc < -24) set(false);
+    else if(acc > 40 && y > 60) set(true);
+  }, true);
+  var change = function(){ set(false); };
+  if(mq.addEventListener) mq.addEventListener('change', change); else if(mq.addListener) mq.addListener(change);
+})();
 
 // ── Keep the page clear of both fixed bars. Each wraps to more rows on
 // narrow screens, so fixed padding values would let them cover content. The
