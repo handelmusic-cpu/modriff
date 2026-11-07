@@ -109,6 +109,14 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
       velCurve.push_back(std::move(c));
     }
   }
+  relMin = 0; releaseOps.clear();
+  if (k < total) {
+    if (!need(2)) return false;
+    relMin = d[k++];
+    const double m = d[k++];
+    if (!(m >= 0 && m <= 600) || std::fmod(m, 6) != 0 || !need((size_t)m)) return false;
+    releaseOps.assign(d + k, d + k + (size_t)m); k += (size_t)m;
+  }
   isChord = true;
   return true;
 }

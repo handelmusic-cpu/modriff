@@ -75,6 +75,11 @@ struct BankEntry {
   struct Src { int stop, start, node; };   // a source's stop and start slots and its node: setting the stop to the start silences it
   std::vector<Src> subStops, toneStops;
   std::vector<double> cutOps;      // what a note that starts inside this one's tail does to it: six doubles an edit, times seconds after that note's start
+  // A held chord (part 4: the voice as a gated hit plays it, with no decay of its own) is let go of by the page's release: hold the gains, fall on
+  // the Release knob, stop the sources. Six doubles an edit, times seconds after the moment of release; that moment is never earlier than
+  // `relMin` seconds after the voice began (the attack and 20 ms).
+  double relMin = 0;
+  std::vector<double> releaseOps;
   std::vector<Held> held;          // pitch slots held to [lo, hi] (a playback rate that follows the note inside the roll, not past its ends)
 
   // The flat layout (all doubles), written by the page (window._nsBank):
@@ -84,7 +89,8 @@ struct BankEntry {
   //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`,
   //   then (optional, only after the chokes) `count, (index, floor) x count`,
   //   then (optional, the bass: only after the floors) `refPitch, refDur, refFrom, count, (index, a, b, nKinks, (k, c) x nKinks) x count, count, (index, b, basis) x count, count, (index, lo, hi) x count, nDoubles, cutOps,
-  //   then (optional, the chord voice: only after the cut) `nLevel, index x n, nTime, index x n, panSlot, nSub, (stop, start, node) x n, nTone, (stop, start, node) x n, nVelCurve, (index, a, b, lo, hi) x n`.
+  //   then (optional, the chord voice: only after the cut) `nLevel, index x n, nTime, index x n, panSlot, nSub, (stop, start, node) x n, nTone, (stop, start, node) x n, nVelCurve, (index, a, b, lo, hi) x n`,
+  //   then (optional, the held chord, part 4: only after the velocity curves) `relMin, nDoubles, releaseOps`.
   bool fromDoubles(const double *d, size_t n);
 };
 

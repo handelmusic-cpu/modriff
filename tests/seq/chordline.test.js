@@ -6,7 +6,11 @@
    engine's player (chordplay.h): each composed from the bank's one-note chords (the page's prober, window._nsBank.buildChordNote), begun in a pool,
    and the previous chord's voices stopped by the edits the bank holds for them. Both pools' buses are summed and nulled.
 
-   Run: make -C native/modsynth chordseqtest && node tests/seq/chordline.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90), VOICES */
+   The same with held chords (MODE=hold, run as well by default): a gated rhythm hit is the chord held (no decay) and let go of at the end of its gate
+   by the page's release (_webChordReleaseAt), which the bank holds as edits (bank part 4) and the player sends each voice at the later of the end of
+   the gate and the attack after that voice began. The gates run from shorter than the attack to longer than the chord is left alone for.
+
+   Run: make -C native/modsynth chordseqtest && node tests/seq/chordline.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90), VOICES, MODES (decay,hold) */
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { spawnSync } = require('child_process');
@@ -17,6 +21,9 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
 const VOICES = (process.env.VOICES || 'sine,sawtooth,piano,pad').split(',');
+const MODES = (process.env.MODES || 'decay,hold').split(',');
+// seconds each chord is held for in the hold run (0: the chord decays, as a plain hit does): shorter than the attack, a gate, past the next chord
+const HOLDS = [0, 0.3, 0.02, 0.9, 0.12, 0.4];
 let fail = 0;
 const ok = (c, label, detail) => { if (!c) fail++; console.log((c ? 'ok   ' : 'FAIL ') + label + (c ? '' : '  -> ' + detail)); };
 function serve() {
@@ -64,45 +71,55 @@ const SETTINGS = [
     window._test = { BUFS };
   });
   const NEED = [...new Set(PROG.flatMap(([r, ns, b]) => [...ns, ...(b != null ? [b] : []), b != null ? b : r]))].sort((a, b) => a - b);
-  for (const voice of VOICES) for (const S of SETTINGS) {
-    const out = await page.evaluate(async ({ voice, S, PROG, NEED }) => {
+  for (const voice of VOICES) for (const S of SETTINGS) for (const MODE of MODES) {
+    const holds = PROG.map((_, i) => MODE === 'hold' ? HOLDS[i] : 0);
+    const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds }) => {
       const sr = 48000;
       wave = voice; strumMode = S.strum; fxWidth = S.width; chordSubOn = true;
       document.getElementById('strum-spread').value = S.spread;
       const entries = [], why = {};
-      for (const p of NEED) { const r = await window._nsBank.buildChordNote(voice, p); if (r.ok) entries.push(Array.from(r.entry)); else why[p] = r.why; }
+      for (const p of NEED) {
+        const r = await window._nsBank.buildChordNote(voice, p); if (r.ok) entries.push(Array.from(r.entry)); else why[p] = r.why;
+        if (holds.some(h => h > 0)) { const q = await window._nsBank.buildChordNote(voice, p, true); if (q.ok) entries.push(Array.from(q.entry)); else why['hold ' + p] = q.why; }
+      }
       if (Object.keys(why).length) return { refused: why };
       const kit = window._nsKitCode('chord:' + voice), chords = [];
       window._nsBank.constRandom = true; window._chokeReset(); window._nsBank.keepRecs = true; window._nsBank.recs = [];
       let k = 0;
       for (const [rootN, notes, bass, vel] of PROG) {
-        const onset = 2304 + 128 * 400 + 24000 * k + [0, 77, 5, 31, 101, 12][k], dur = 1.4;
-        const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, root: rootN, notes, bass, vel, dur, at: (onset - 1e-6) / sr });
-        chords.push({ notes: (bass != null ? [bass] : []).concat(notes), subNote: bass != null ? bass : rootN, vel, dur, onset, prog: Array.from(r.prog) });
+        const onset = 2304 + 128 * 400 + 24000 * k + [0, 77, 5, 31, 101, 12][k], dur = 1.4, hold = holds[k];
+        const at = (onset - 1e-6) / sr;
+        const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, root: rootN, notes, bass, vel, dur: hold > 0 ? null : dur, at });
+        if (hold > 0) {
+          // rhyStrike: the chord is held and let go of atTime + the gate; the recorder's clock reads zero while a release is sent, as for a recording
+          MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
+          try { window.modEngine.send({ v: 1, kind: 'release', part: 'chord', id: 1, at: at + hold }); } finally { MODGRAPH.capture = null; MODGRAPH.captureClock = null; }
+        }
+        chords.push({ notes: (bass != null ? [bass] : []).concat(notes), subNote: bass != null ? bass : rootN, vel, dur, hold, onset, prog: Array.from(r.prog) });
         k++;
       }
       await Promise.resolve(); await Promise.resolve();
       window._nsBank.recs.forEach((rec, i) => { chords[i].edits = (rec.capturedInc || []).slice(); });
       window._nsBank.keepRecs = false; window._nsBank.constRandom = false;
       return { entries, kit, chords, bufs: Array.from(window._test.BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })) };
-    }, { voice, S, PROG, NEED });
-    if (out.refused) { ok(false, voice + ' / ' + S.name + ': the chord voice is banked', JSON.stringify(out.refused).slice(0, 200)); continue; }
+    }, { voice, S, PROG, NEED, holds });
+    if (out.refused) { ok(false, voice + ' / ' + S.name + ' / ' + MODE + ': the chord voice is banked', JSON.stringify(out.refused).slice(0, +process.env.WHY_LEN || 200)); continue; }
     if (process.env.EDITS_DEBUG) { for (const c of out.chords.slice(0, 2)) { const e = []; for (let i = 0; i < c.edits.length; i += 6) e.push(c.edits.slice(i, i + 6).map(x => +x.toFixed(5)).join(',')); console.log('edits of chord at ' + c.onset + ' (' + c.notes + '): ' + e.join(' | ')); } }
     const buf = [];
     buf.push(out.bufs.length); out.bufs.forEach(b => { buf.push(b.id, b.sr, b.ch.length, b.ch[0].length); b.ch.forEach(c => c.forEach(x => buf.push(x))); });
     buf.push(out.entries.length); out.entries.forEach(e => { buf.push(e.length); e.forEach(x => buf.push(x)); });
     buf.push(out.kit, out.chords.length);
-    out.chords.forEach(c => { buf.push(c.notes.length, ...c.notes, c.subNote, c.vel, c.dur, c.onset, S.strum ? 1 : 0, S.spread, S.width, 1, c.prog.length); c.prog.forEach(x => buf.push(x)); buf.push(c.edits.length); c.edits.forEach(x => buf.push(x)); });
+    out.chords.forEach(c => { buf.push(c.notes.length, ...c.notes, c.subNote, c.vel, c.dur, c.onset, S.strum ? 1 : 0, S.spread, S.width, 1, c.hold > 0 ? 1 : 0, c.hold, c.prog.length); c.prog.forEach(x => buf.push(x)); buf.push(c.edits.length); c.edits.forEach(x => buf.push(x)); });
     fs.writeFileSync(path.join(tmp, 'seq.f64'), Buffer.from(Float64Array.from(buf).buffer));
     const run = spawnSync(bin, [path.join(tmp, 'seq.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
     if (run.status !== 0) { console.error(run.stderr); process.exit(2); }
     if (process.env.SCORE_DEBUG) console.log(run.stdout);
     const line = run.stdout.split('\n').find(l => l.startsWith('SEQ ')).split(' ').slice(1).map(Number);
-    const [depth, peak, nCh, nV, nStops, nRef, nMiss] = line;
+    const [depth, peak, nCh, nV, nStops, nRef, nMiss, nRel] = line;
     const worst = run.stdout.split('\n').find(l => l.startsWith('WORST ')).split(' ').slice(1).map(Number);
     const paged = out.chords.filter(c => c.edits.length).length;
-    ok(depth >= PASS_DB && peak > 0.01 && nRef === 0 && nMiss === 0 && nCh === PROG.length && nStops > 0,
-       voice + ' / ' + S.name + ': ' + nCh + ' chords (' + nV + ' voices, ' + nStops + ' stops of the chord before; the page stopped ' + paged + ' of ' + PROG.length + '): ' + (depth >= 999 ? 'bit-identical' : depth.toFixed(1) + ' dB') + ', worst 100 ms ' + (worst[1] >= 999 ? 'bit-identical' : worst[1].toFixed(1) + ' dB'),
+    ok(depth >= PASS_DB && peak > 0.01 && nRef === 0 && nMiss === 0 && nCh === PROG.length && nStops > 0 && (MODE !== 'hold' || nRel > 0),
+       voice + ' / ' + S.name + (MODE === 'hold' ? ' / held' : '') + ': ' + nCh + ' chords (' + nV + ' voices, ' + nStops + ' stops of the chord before' + (MODE === 'hold' ? ', ' + nRel + ' releases' : '') + '; the page stopped ' + paged + ' of ' + PROG.length + '): ' + (depth >= 999 ? 'bit-identical' : depth.toFixed(1) + ' dB') + ', worst 100 ms ' + (worst[1] >= 999 ? 'bit-identical' : worst[1].toFixed(1) + ' dB'),
        JSON.stringify({ depth, nRef, nMiss, nStops }));
   }
   await browser.close(); srv.close();

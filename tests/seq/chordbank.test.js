@@ -157,11 +157,16 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
     const entry = { ok: started.ok, sent: sent.length, score: calls.score, kit: calls.start && calls.start.kit, want: window._nsKitCode('chord:sine'), align: calls.start && calls.start.align };
     MODGRAPH.on = false; const off = await window._nsChord.start(); MODGRAPH.on = true;
     const d = rhyBlank(16); d.cells[0].on = 1; d.cells[0].len = 2; d.name = 'gate'; CR.key = 'u:gate'; CR.def = rhyNorm(d);
-    const gated = await window._nsChord.start(); CR.key = 'strum'; CR.def = null;
-    return { entry, off: off.why, gated: gated.why };
+    const before = sent.length, scored = calls.score;
+    const gated = await window._nsChord.start();
+    // a rhythm of one held hit needs the held recording of each pitch (3), not the plain ones the first start already sent
+    const held = { ok: gated.ok, sent: sent.length - before, scored: calls.score - scored };
+    const r = rhyBlank(16); r.cells[0].on = 1; r.cells[0].rat = 2; r.name = 'rat'; CR.key = 'u:rat'; CR.def = rhyNorm(r); window._nsBank.have = {};
+    const mixed = await window._nsChord.start(); CR.key = 'strum'; CR.def = null;
+    return { entry, off: off.why, held, mixedOk: mixed.ok, mixedSent: sent.length - before - held.sent };
   });
-  ok(ent.entry.ok === true && ent.entry.sent >= 3 && ent.entry.score === 1 && ent.entry.kit === ent.entry.want && ent.entry.align === true && /Native sound is off/.test(ent.off || '') && /gated/.test(ent.gated || ''),
-     '_nsChord.start(): records the chord\'s pitches (and the sub\'s), sends the rhythm once, starts it on the drums\' downbeat with the voice\'s code; says so with Native sound off; refuses a gated rhythm', JSON.stringify(ent));
+  ok(ent.entry.ok === true && ent.entry.sent >= 3 && ent.entry.score === 1 && ent.entry.kit === ent.entry.want && ent.entry.align === true && /Native sound is off/.test(ent.off || '') && ent.held.ok === true && ent.held.sent === 3 && ent.held.scored === 1 && ent.mixedOk === true && ent.mixedSent === 6,
+     '_nsChord.start(): records the chord\'s pitches (and the sub\'s), sends the rhythm once, starts it on the drums\' downbeat with the voice\'s code; says so with Native sound off; a gated rhythm records the held chord of each pitch (3) and plays; a ratchet (plain last strike, gated others) records both (6)', JSON.stringify(ent));
   ok(sig.a.built === 3 && sig.b.built === 1 && sig.b.kept === 3 && sig.changed && sig.c.built === 1 && sig.sent === 5, 'ensureChord: records the pitches a chord needs once (3, then 1 more, the rest kept), and again when the Width changes the signature', JSON.stringify(sig));
   await browser.close(); srv.close();
   ok(total.ok === total.n && total.n > 0, total.ok + ' of ' + total.n + ' chords are exact (' + total.exact + ' bit-identical, worst ' + total.worst.toFixed(1) + ' dB)', (total.n - total.ok) + ' below ' + PASS_DB + ' dB');

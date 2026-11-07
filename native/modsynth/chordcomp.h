@@ -31,15 +31,22 @@ struct ComposedVoice {
   bool sub = false;
   int note = -1;           // the pitch, or -1 for the sub
   std::vector<double> cutOps;   // what the next chord does to this voice (the bank's, for the pitch it was made from)
+  // A held chord's voice (hold in compose): where it begins in frames (the strum moves it), and what letting go of it does -- the bank's edits for
+  // the pitch, less those aimed at the half this voice silenced, and the earliest moment they may act, seconds after it begins.
+  double exact = 0, relMin = 0;
+  std::vector<double> releaseOps;
 };
 
 class ChordComposer {
  public:
   // `notes` ascending, the slash bass first if there is one; `root` the MIDI note the root sounds at (the sub sits an octave under it,
   // or under the slash bass); `onsetExact` the chord's moment in frames. Returns false (and leaves `out` partial) if the bank lacks a pitch.
+  // `hold`: the chord a gated hit plays (bank part 4: no decay, let go of by a release) in place of the decaying one (part 3); `durSec` is then unused.
   static bool compose(const DrumBank &bank, int kit, const std::vector<int> &notes, int rootNote, double vel, double durSec,
-                      double onsetExact, const ChordSettings &cs, double sampleRate, uint64_t notBefore, std::vector<ComposedVoice> &out) {
+                      double onsetExact, const ChordSettings &cs, double sampleRate, uint64_t notBefore, std::vector<ComposedVoice> &out,
+                      bool hold = false) {
     out.clear();
+    const int part = hold ? 4 : 3;
     const int n = (int)notes.size();
     if (n < 1) return false;
     std::vector<double> offs((size_t)n, 0.0);
@@ -47,17 +54,18 @@ class ChordComposer {
     const double lead = n > 1 ? offs[(size_t)n - 1] * 0.4 : 0;
     if (cs.sub) {
       // the sub is under the slash bass when there is one, else the root; the bank's entry for that pitch carries the sub of its own note
-      const BankEntry *e = bank.find(3, kit, rootNote);
+      const BankEntry *e = bank.find(part, kit, rootNote);
       if (!e) return false;
       ComposedVoice c; c.sub = true;
       bank.patch(*e, vel, false, (double)rootNote, (int64_t)std::floor(onsetExact), sampleRate, notBefore, c.v, durSec);
       addResidual(c.v, e->time, onsetExact - std::floor(onsetExact), sampleRate);
       for (const auto &s : e->toneStops) c.v.prog[(size_t)s.stop] = c.v.prog[(size_t)s.start];
       c.cutOps = cutWithout(e->cutOps, e->toneStops);
+      c.exact = onsetExact; c.relMin = e->relMin; c.releaseOps = cutWithout(e->releaseOps, e->toneStops);
       out.push_back(std::move(c));
     }
     for (int i = 0; i < n; i++) {
-      const BankEntry *e = bank.find(3, kit, notes[(size_t)i]);
+      const BankEntry *e = bank.find(part, kit, notes[(size_t)i]);
       if (!e) return false;
       const double exact = onsetExact + (-lead + offs[(size_t)i]) * sampleRate;
       const int64_t base = (int64_t)std::floor(exact);
@@ -74,6 +82,7 @@ class ChordComposer {
       }
       for (const auto &s : e->subStops) c.v.prog[(size_t)s.stop] = c.v.prog[(size_t)s.start];
       c.cutOps = cutWithout(e->cutOps, e->subStops);
+      c.exact = exact; c.relMin = e->relMin; c.releaseOps = cutWithout(e->releaseOps, e->subStops);
       out.push_back(std::move(c));
     }
     return true;
