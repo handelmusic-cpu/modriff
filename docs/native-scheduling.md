@@ -742,3 +742,25 @@ Measured: `tests/seq/chordbank.test.js` 960 of 960 chords exact (sine, triangle,
 notes, slash chord, inversion; worst 143.8 dB); `tests/seq/chordline.test.js` six-chord runs with the stop of the chord before, eight runs, all
 exact (worst 100 ms 148 dB). Bass 504 of 504 still bit-identical. Not done: the chord comp's scheduler (rhythm patterns, `rhyStrike`), voicing, the
 host thread, the page's developer entry, sampled voices, glide. The version is a fifth part (6.9.9.9.4) because main had already moved there.
+
+## Slice 2, part six (6.9.9.9.5): the chord comp on the host thread, and `_nsChord`
+
+**What was chosen, and why.** The chord rhythm's scheduler (`chordcore.h`, a port of `scheduleChordRhythm`) is a third sequencer on the thread the drums
+and bass use, with the chord player of part five and the same bank, pool and lock. A rhythm is a loop of sixteenths with hits at positions that can sit
+between sixteenths, each with a strength; each pass fires the hits of its sixteenth at the step's time plus the hit's offset plus the swing (the
+rhythm's own, else the Feel's). The chord comes from the page already voiced: smartVoiceLead and Vary are the page's, and the engine plays the voicing
+it is given, once. Like the drums and bass it starts on the drums' downbeat when they run.
+
+**Measured.** `make -C native/modsynth chordtool && node tests/seq/chordrhythm.test.js`: the page's scheduler runs on a clock of its own and the
+engine runs the same score; hit lists identical (when to 1e-5 of a frame, level, length, chord) for the built-in strum rhythm, with the Feel swing
+on the eighths, a drawn rhythm with soft, plain and accented hits and its own swing, and a drawn 12-step rhythm with a slash chord and the Feel swing
+on the sixteenths. Without the swing in the engine it fails (3). `seqhosttest` (the host with its thread, no page): the chord rhythm steps on its own,
+shares the drums' downbeat, composes three voices from the bank for each hit (2 hits, 6 voices, 0 missed, 0 refused), the second chord stops the first
+(3 stops), no late edit; stop stops it. `chordbank.test.js` runs `_nsChord.start()` against a stand-in plugin: the pitches (and the sub's) recorded,
+the rhythm sent once, started with the voice's code on the drums' downbeat; refused with Native sound off, and for a gated rhythm. The 960-chord and
+eight-run tests of part five and everything else still pass; `xcodebuild` builds.
+
+**Not done, said plainly.** A gated hit and so a ratchet (the page holds the chord and lets it go at the end of the hit's length: a sustained program and
+a release edit), refused with its reason; the song's own comping through chord windows and the tap that starts a rhythm (the page skips a re-strike within
+60 ms of the finger); the page's per-hit re-voicing (Vary); sampled chord voices; glide; Pure tuning. Not heard on device: checklist 22.
+

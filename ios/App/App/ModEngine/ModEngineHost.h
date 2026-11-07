@@ -116,6 +116,17 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqBassStop;
 - (void)seqBassSetTempo:(double)bpm rate:(double)rate;
 
+// ── The chord comp (native/modsynth/chordcore.h, chordplay.h; slice 2) ──
+// The chord rhythm on the same thread and bank. The mirror's `chord` has running, nextStep, steps, hits (struck), chords (composed), voices, stops
+// (the chord before stopped), misses (a pitch missing from the bank), refused.
+
+/// The chord rhythm and its chord, float64s as `window._crNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetChordScore:(NSData *)score;
+/// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's code for the chord voice.
+- (BOOL)seqChordStartWithBpm:(double)bpm leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit;
+- (void)seqChordStop;
+- (void)seqChordSetTempo:(double)bpm;
+
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is
 /// what a message's `at` is measured against.
