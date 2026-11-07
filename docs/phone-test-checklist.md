@@ -209,6 +209,8 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.13 | Studio, Chords: pick **Every beat**, then play a song with a long chord and a quick change | the long chord is struck on every beat for its whole length, the quick one is cut where the next chord starts; with the rhythm **Rhythm off**, each chord is struck once a bar as before |
 | 9.14 | Studio, Chords: **More chords** in the Play it line | the Borrowed & Modal and Secondary Dominants rows are shown; one touch hides both, another shows them; the choice is there after a restart; Live is unchanged |
 | 9.13 | Song > Build, a chord > Rhythm > **Draw…**, **Save**, play the song | that chord plays your rhythm; the others carry on as they were |
+| 9.15 | (6.9.9.9.9b) Studio > Drums, **phone held sideways**: scroll the grid so a lower row is on screen, tap an empty step | the step lights and its editor (Vel, Ratchet, Pitch, Prob, Ornament, Accent, Tuplet) is **pinned above the tab bar** in three short rows, however the grid is scrolled; tap more steps: it stays put and the grid does not jump |
+| 9.16 | The same upright, with the grid scrolled so the editor would be under the tab bar and transport | the first tap on an empty step scrolls the page just far enough to bring the editor into view; later taps do not scroll |
 | 9.14 | Saved patterns (Open): save a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
 
 ## 10. Native sound: the dress rehearsal for the flip

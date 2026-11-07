@@ -2748,6 +2748,18 @@ body.light-mode .subnav-btn.active { color:#1d1f33; background:rgba(0,0,0,.06); 
 body.seq-taught .pr-hint { display:none !important; }
 .sq-insp-hint { display:block; margin-top:6px; }
 .sq-insp.open ~ .sq-insp-hint { display:none; }
+/* The kit's step editor, sideways on a phone. The inspector sat under a grid that is already taller than the screen
+   (the tab bar and the transport take 112 pt of 390), so placing a step opened an editor nobody could see, and the only
+   way to find it was to scroll for it. Here it is pinned to the foot of the page: it stays on screen however the grid is
+   scrolled, and the width this orientation has is used, so it is three short rows (the hit's level, ratchet, pitch and
+   chance; its ornament and accent; the tuplets) instead of four or five. Pinned, not scrolled-to: a scroll on every tap would move the grid under the finger that is laying a beat. */
+@media (orientation:landscape) and (max-height:520px){
+  .sq-insp.open { position:sticky; bottom:0; z-index:6; gap:4px 10px; padding:5px 8px 6px; background:var(--bg);
+    border-top:1px solid var(--border2); box-shadow:0 -6px 14px rgba(0,0,0,.45); }
+  .sq-insp .pr-insp-del { order:5; }
+  .sq-insp .sq-insp-tup { order:9; flex:1 1 100%; flex-wrap:wrap; }
+  .sq-insp .pr-insp-vel { flex:1 1 70px; min-width:60px; max-width:120px; }
+}
 .pr-insp-what {
  font-family:'Outfit',sans-serif; font-size:.5rem; font-weight:600;
  letter-spacing:.06em; color:var(--text); white-space:nowrap;
@@ -9142,7 +9154,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9b</span></div>
  </div>
 </div>
 
@@ -10574,7 +10586,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11771,7 +11783,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9a';
+const MODRIFF_VERSION = '6.9.9.9.9b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -59268,7 +59280,7 @@ function sqSyncInsp(){
   // grid is straight sixteenths, so a triplet is something that has to cross
   // steps; leave the steps it covers empty (or let them play over it). Aux has
   // the same, which is how a triplet figure goes over a straight kit.
-  var tg=_prGroup('Tuplet');
+  var tg=_prGroup('Tuplet'); tg.classList.add('sq-insp-tup');
   // hits : steps. Each is `r` even hits spread across `rs` steps starting here.
   var TUP=[[1,1,'—','No tuplet'],
    [3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
@@ -59352,6 +59364,26 @@ function sqSyncInsp(){
   _prKeepFocus(host, _focus);
 }
 
+// Placing a step opens its editor, which has to be on the screen when it does: under the grid it is behind the tab bar and
+// the transport on a phone, so a step could be placed, edited in the dark, and the editor "not appear". Scrolls the page by
+// just what hides it (never to centre it: the grid would jump under every tap while a beat is laid down), and not at all when
+// it is already in view, which is every tap after the first one.
+function sqRevealInsp(){
+  try{
+    var e=document.getElementById('sq-insp'); if(!e || !e.classList.contains('open')) return;
+    var sc=e.parentNode; while(sc && sc!==document.body){ var oy=getComputedStyle(sc).overflowY; if(oy==='auto'||oy==='scroll') break; sc=sc.parentNode; }
+    if(!sc || sc===document.body) return;
+    // Whatever is fixed along the foot of the screen (the tab bar, the transport): which element that is depends on the
+    // orientation, so take every candidate that sits in the lower half and the highest of them.
+    var vis=Math.min(sc.getBoundingClientRect().bottom, window.innerHeight);
+    ['.top-stack','.perf-bar','.tab-bar'].forEach(function(q){
+      var b=document.querySelector(q); if(!b) return;
+      var t=b.getBoundingClientRect().top; if(t>window.innerHeight/2 && t<vis) vis=t;
+    });
+    var over=e.getBoundingClientRect().bottom-vis;
+    if(over>2) sc.scrollBy({top:over+8, behavior:'smooth'});
+  }catch(err){}
+}
 function sqAttachStep(el,ti,s,track){
   // held: the press already opened the step menu, so lifting the finger must
   // not also toggle the step. Without it a long press did both — the menu
@@ -59423,6 +59455,7 @@ function sqAttachStep(el,ti,s,track){
     }
     sqRefreshStepEl(el,cell,track.c);
     sqMarkSel(); sqSyncInsp(); sqAuxSwitchSync();
+    if(sqSelTi>=0) sqRevealInsp();
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
