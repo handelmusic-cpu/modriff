@@ -2748,6 +2748,18 @@ body.light-mode .subnav-btn.active { color:#1d1f33; background:rgba(0,0,0,.06); 
 body.seq-taught .pr-hint { display:none !important; }
 .sq-insp-hint { display:block; margin-top:6px; }
 .sq-insp.open ~ .sq-insp-hint { display:none; }
+/* The kit's step editor, sideways on a phone. The inspector sat under a grid that is already taller than the screen
+   (the tab bar and the transport take 112 pt of 390), so placing a step opened an editor nobody could see, and the only
+   way to find it was to scroll for it. Here it is pinned to the foot of the page: it stays on screen however the grid is
+   scrolled, and the width this orientation has is used, so it is three short rows (the hit's level, ratchet, pitch and
+   chance; its ornament and accent; the tuplets) instead of four or five. Pinned, not scrolled-to: a scroll on every tap would move the grid under the finger that is laying a beat. */
+@media (orientation:landscape) and (max-height:520px){
+  .sq-insp.open { position:sticky; bottom:0; z-index:6; gap:4px 10px; padding:5px 8px 6px; background:var(--bg);
+    border-top:1px solid var(--border2); box-shadow:0 -6px 14px rgba(0,0,0,.45); }
+  .sq-insp .pr-insp-del { order:5; }
+  .sq-insp .sq-insp-tup { order:9; flex:1 1 100%; flex-wrap:wrap; }
+  .sq-insp .pr-insp-vel { flex:1 1 70px; min-width:60px; max-width:120px; }
+}
 .pr-insp-what {
  font-family:'Outfit',sans-serif; font-size:.5rem; font-weight:600;
  letter-spacing:.06em; color:var(--text); white-space:nowrap;
@@ -9142,7 +9154,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.8a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9b</span></div>
  </div>
 </div>
 
@@ -10574,7 +10586,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.8a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11771,7 +11783,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.8a';
+const MODRIFF_VERSION = '6.9.9.9.9b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -28558,7 +28570,14 @@ function toggleMelMono(){
  else if(melMono===true) setMelMono(false);
  else setMelMono(true, true);
 }
-function toggleMelGlide(){ melGlideOn = !melGlideOn; syncMelMonoUI(); modParamsFlush(); }
+// In Poly the button reads off and a slide has no meaning, so a tap used to flip melGlideOn
+// behind a button that did not move (two taps, nothing seen, and Mono came back with Glide
+// in whichever state the last tap left it). A tap on an off-looking Glide has to turn it on:
+// Poly goes back to Auto, the mode where Glide exists.
+function toggleMelGlide(){
+ if(melMono!==true){ melGlideOn = true; setMelMono(true, true); return; }
+ melGlideOn = !melGlideOn; syncMelMonoUI(); modParamsFlush();
+}
 function setMelMono(v, auto){
  melMono = (v===null) ? null : !!v;
  melAuto = (v===true) && (auto!==false);
@@ -37401,6 +37420,15 @@ function _ppDefine(){
    browse:part, host:vhost,
    current:function(){ return _ppPatchCur(vhost, part); } };
  });
+ // The Chords row on Live (6.9.9.9.9a): the chord voice, from the same Voices select every other surface goes through.
+ // `host` is the chord's row of the Voices panel, which is where the ◈ sampler badge the list's last line reaches for lives.
+ PP_SPECS['chord-patch'] = { floating:true, cap:'Voice', color:function(){ return _ppPartColor('chord'); },
+  browse:'chord', host:'voices-grid .voice-row[data-part="chord"]',
+  current:function(){
+   var sel = document.getElementById('vsel-chord'), o = sel && sel.options[sel.selectedIndex], where = '';
+   try{ where = pbWhere('chord'); }catch(e){}
+   return { name: o ? o.textContent.replace(/\s*[\u25c6\u25c8]$/, '') : '\u2014', note: where };
+  } };
  // The Live Styles rows (6.9.9.9.3): the main kit and the Aux kit, each its own list whatever layer the drum page is on
  // (the Kit box above follows the focused layer; a row on Live does not get to). Floating: no box of their own, opened
  // by the row's button through ppOpenAt.
@@ -37437,7 +37465,7 @@ function starterVoiceStep(part, dir){
   seq.forEach(function(it, i){ if(it.active) at = i; });
   pick = function(it){ it.pick(); };
  } else {
-  var m = pbModel(part === 'bass' ? 'bass' : 'melgen'); if(!m || !m.tiers.length) return;
+  var m = pbModel(part === 'bass' ? 'bass' : part === 'chord' ? 'chord' : 'melgen'); if(!m || !m.tiers.length) return;
   var t = m.cur ? m.cur.tier : m.tiers[0];
   var cats = (m.cur && !t.inline) ? [m.cur.cat] : t.cats;
   cats.forEach(function(c){ c.secs.forEach(function(sc){ sc.items.forEach(function(it){ if(!it.locked) seq.push(it); }); }); });
@@ -49809,6 +49837,7 @@ function crSyncUI(){
  }
  if(lt){ lt.textContent = CR.latch ? 'Keep playing' : 'Stop on lift'; lt.classList.toggle('on', CR.latch); lt.setAttribute('aria-pressed', CR.latch ? 'true' : 'false'); }
  try{ if(typeof crhRender==='function') crhRender(); }catch(e){}
+ try{ if(typeof starterWidgetSync==='function') starterWidgetSync(); }catch(e){}   // the Live Styles row names the rhythm
 }
 // Switched on: with a chord already tapped it starts at once, on the grid; otherwise it waits for the next tap
 // ("Armed"). Switched off it stops.
@@ -54631,13 +54660,13 @@ var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook', aux:'PERC|
  }catch(e){}
 })();
 function starterSave(){ try{ modStore.setItem('modo-starters', JSON.stringify(STARTERS)); }catch(e){} }
-var STARTER_PART = { drums:'Drums', aux:'Aux', bass:'Bass', mel:'Melody' };
+var STARTER_PART = { drums:'Drums', aux:'Aux', bass:'Bass', chord:'Chords', mel:'Melody' };
 // The colour each part wears everywhere else in the app (PARTS). The colours are
 // read when the widget is built, with the same values as a fallback: PARTS is a const further down and the Live page
 // is mounted during boot.
-var STARTER_COLOR_FALLBACK = { drums:'#ff5a5f', aux:'#ff9a3c', bass:'#ffd23f', mel:'#5fdc6a' };
+var STARTER_COLOR_FALLBACK = { drums:'#ff5a5f', aux:'#ff9a3c', bass:'#ffd23f', chord:'#b46bff', mel:'#5fdc6a' };
 function starterColor(part){
- var id = part==='drums' ? 'drum' : part==='aux' ? 'auxperc' : part==='bass' ? 'bass' : 'melgen';
+ var id = part==='drums' ? 'drum' : part==='aux' ? 'auxperc' : part==='bass' ? 'bass' : part==='chord' ? 'chord' : 'melgen';
  try{ var p = PARTS.find(function(q){ return q.id===id; }); if(p && p.color) return p.color; }catch(e){}
  return STARTER_COLOR_FALLBACK[part];
 }
@@ -54739,6 +54768,14 @@ var AUX_CUSTOM = {
 };
 function starterList(part){
  var out = [];
+ // The chord pads' pattern is the Rhythm bar's: Off (the pads play the chord), the built-in rhythms, then the ones kept
+ // in the bank. Its Pattern half on Live is this list, the same one Rhythm opens (crPickOpen).
+ if(part==='chord'){
+  out.push({id:'off', label:'Off'});
+  Object.keys(CR_NOTES).forEach(function(k){ if(COMP_PATTERNS[k]) out.push({id:k, label:COMP_PATTERNS[k].label}); });
+  try{ rhyBankList('chord').forEach(function(e){ out.push({id:'bank:'+e.id, label:e.name}); }); }catch(e){}
+  return out;
+ }
  if(part==='aux'){
   AUX_STYLES.forEach(function(x){
    var kl = typeof window._sqKitLabel==='function' ? window._sqKitLabel(x[0]) : null; if(!kl) return;
@@ -54772,6 +54809,15 @@ function starterLabel(part, id){
 // The style the part is on right now. Drums can be on a groove that is not in the
 // list (a pattern drawn by hand), which reads as Custom and rotates from the start.
 function starterCurrent(part){
+ // A kept rhythm is named for as long as it is still what the pads play (it is not in BANK_LOADED: bankLoad leaves chords out).
+ if(part==='chord'){
+  if(!CR.on) return 'off';
+  if(CR.key && CR.key.charAt(0)==='u' && CR.key.charAt(1)===':'){
+   var ke = rhyBankList('chord').filter(function(e){ return rhyId(e.data)===CR.key; })[0];
+   return ke ? 'bank:'+ke.id : null;
+  }
+  return COMP_PATTERNS[CR.key] ? CR.key : null;
+ }
  // A kept pattern is named for as long as it is still what is on the part.
  try{
   var L = BANK_LOADED[part];
@@ -54790,6 +54836,7 @@ function starterCurrent(part){
  return (typeof window._mlGenStyle==='function') ? window._mlGenStyle() : null;
 }
 function starterHasPattern(part){
+ if(part==='chord') return !!CR.on;
  if(part==='drums') return typeof window._sqKitHasHits==='function' && window._sqKitHasHits();
  if(part==='aux') return typeof window._sqAuxHasPart==='function' && window._sqAuxHasPart();
  if(part==='bass') return typeof window._blHasNotes==='function' && window._blHasNotes();
@@ -54799,6 +54846,15 @@ function starterHasPattern(part){
 // beat is running, as a groove always has); Bass and Mel set the style and
 // generate over the last chord, which a running part takes at its next loop.
 function starterLoad(part, id){
+ if(part==='chord'){
+  if(id==='off'){ CR.on = false; crStop(); crSave(); crSyncUI(); return true; }
+  if(String(id).indexOf('bank:')===0){
+   var ce = rhyBankGet(String(id).slice(5)); if(!ce) return false;
+   crSetRhythm(rhyId(ce.data), Object.assign({}, ce.data, {name:ce.name})); return true;
+  }
+  if(!COMP_PATTERNS[id]) return false;
+  crSetRhythm(id, null); return true;
+ }
  if(String(id).indexOf('bank:')===0){ var be = rhyBankGet(String(id).slice(5)); return !!(be && bankLoad(be)); }
  if(part==='aux'){
   var kp = String(id).split('|'), kit = kp[0], gname = kp[1];
@@ -54875,7 +54931,7 @@ function starterWidgetNode(){
  var cols = document.createElement('div'); cols.className = 'st-cols'; cols.setAttribute('aria-hidden', 'true');
  ['', 'Voice', 'Pattern'].forEach(function(t){ var c = document.createElement('span'); c.textContent = t; cols.appendChild(c); });
  box.appendChild(cols);
- ['drums','aux','bass','mel'].forEach(function(part){
+ ['drums','aux','bass','chord','mel'].forEach(function(part){
   var row = document.createElement('div'); row.className = 'st-row'; row.dataset.part = part;
   row.style.setProperty('--pc', starterColor(part));
   var head = document.createElement('div'); head.className = 'st-head';
@@ -54894,7 +54950,7 @@ function starterWidgetNode(){
   vnext.addEventListener('click', function(){ starterVoiceStep(part, +1); });
   vname.addEventListener('click', function(e){
    e.stopPropagation();
-   if(typeof ppOpenAt === 'function') ppOpenAt(part==='drums' ? 'live-drums-kit' : part==='aux' ? 'live-aux-kit' : part==='bass' ? 'bass-patch' : 'melody-patch', vname);
+   if(typeof ppOpenAt === 'function') ppOpenAt(part==='drums' ? 'live-drums-kit' : part==='aux' ? 'live-aux-kit' : part==='bass' ? 'bass-patch' : part==='chord' ? 'chord-patch' : 'melody-patch', vname);
   });
   vpick.appendChild(vprev); vpick.appendChild(vname); vpick.appendChild(vnext);
   var pick = document.createElement('div'); pick.className = 'st-pick';
@@ -54938,7 +54994,7 @@ function starterWidgetSync(){
    var part = row.dataset.part, cur = starterCurrent(part);
    var nm = row.querySelector('.st-name');
    nm.textContent = cur ? starterLabel(part, cur) : 'Custom';
-   var on = part==='drums' ? !!drumsEnabled : part==='aux' ? (typeof window._sqLayerOn==='function' && window._sqLayerOn(1) && starterHasPattern('aux')) : part==='bass' ? !!blEnabled : !!mlEnabled;
+   var on = part==='drums' ? !!drumsEnabled : part==='aux' ? (typeof window._sqLayerOn==='function' && window._sqLayerOn(1) && starterHasPattern('aux')) : part==='bass' ? !!blEnabled : part==='chord' ? (function(){ try{ return !!chordsEnabled; }catch(e){ return true; } })() : !!mlEnabled;   // let: may still be in its dead zone
    row.classList.toggle('off', !on);
    // The voice half: what the part sounds like now.
    var vn = row.querySelector('.st-vname');
@@ -54946,7 +55002,7 @@ function starterWidgetSync(){
     var vt = '';
     try{
      if(part==='drums' || part==='aux') vt = PP_SPECS['live-'+part+'-kit'].current().name;
-     else vt = PP_SPECS[part==='bass' ? 'bass-patch' : 'melody-patch'].current().name;
+     else vt = PP_SPECS[part==='bass' ? 'bass-patch' : part==='chord' ? 'chord-patch' : 'melody-patch'].current().name;
     }catch(e2){}
     if(vt && vn.textContent !== vt) vn.textContent = vt;
    }
@@ -59224,7 +59280,7 @@ function sqSyncInsp(){
   // grid is straight sixteenths, so a triplet is something that has to cross
   // steps; leave the steps it covers empty (or let them play over it). Aux has
   // the same, which is how a triplet figure goes over a straight kit.
-  var tg=_prGroup('Tuplet');
+  var tg=_prGroup('Tuplet'); tg.classList.add('sq-insp-tup');
   // hits : steps. Each is `r` even hits spread across `rs` steps starting here.
   var TUP=[[1,1,'—','No tuplet'],
    [3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
@@ -59308,6 +59364,26 @@ function sqSyncInsp(){
   _prKeepFocus(host, _focus);
 }
 
+// Placing a step opens its editor, which has to be on the screen when it does: under the grid it is behind the tab bar and
+// the transport on a phone, so a step could be placed, edited in the dark, and the editor "not appear". Scrolls the page by
+// just what hides it (never to centre it: the grid would jump under every tap while a beat is laid down), and not at all when
+// it is already in view, which is every tap after the first one.
+function sqRevealInsp(){
+  try{
+    var e=document.getElementById('sq-insp'); if(!e || !e.classList.contains('open')) return;
+    var sc=e.parentNode; while(sc && sc!==document.body){ var oy=getComputedStyle(sc).overflowY; if(oy==='auto'||oy==='scroll') break; sc=sc.parentNode; }
+    if(!sc || sc===document.body) return;
+    // Whatever is fixed along the foot of the screen (the tab bar, the transport): which element that is depends on the
+    // orientation, so take every candidate that sits in the lower half and the highest of them.
+    var vis=Math.min(sc.getBoundingClientRect().bottom, window.innerHeight);
+    ['.top-stack','.perf-bar','.tab-bar'].forEach(function(q){
+      var b=document.querySelector(q); if(!b) return;
+      var t=b.getBoundingClientRect().top; if(t>window.innerHeight/2 && t<vis) vis=t;
+    });
+    var over=e.getBoundingClientRect().bottom-vis;
+    if(over>2) sc.scrollBy({top:over+8, behavior:'smooth'});
+  }catch(err){}
+}
 function sqAttachStep(el,ti,s,track){
   // held: the press already opened the step menu, so lifting the finger must
   // not also toggle the step. Without it a long press did both — the menu
@@ -59379,6 +59455,7 @@ function sqAttachStep(el,ti,s,track){
     }
     sqRefreshStepEl(el,cell,track.c);
     sqMarkSel(); sqSyncInsp(); sqAuxSwitchSync();
+    if(sqSelTi>=0) sqRevealInsp();
     // Auditioning a step goes through the Drums channel like every other hit,
     // so a muted or turned-down kit stays muted when you tap the grid.
     // _cmx('drum') used to be applied here and nowhere else; sqHitTrack does
