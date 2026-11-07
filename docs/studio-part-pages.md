@@ -6,7 +6,11 @@ each one stands. It is the spec for the order of a page and the sizes of what is
 ## The order of a page, top to bottom
 
 1. **Title** — the part's name in its colour.
-2. **Pick** — two boxes, 66 pt: what it plays (Groove / Bass line / Melody line / Arp pattern) and what it plays it with (Kit / Patch).
+2. **Pick** — one framed widget, 66 pt, two halves (6.9.9.9.1): **left is the sound** (Kit / Voice), **right is the pattern** (Groove / Bass line /
+   Melody line / Arp pattern). Same side on all four pages. Each half opens its own list.
+   The sound half opens the **sound browser** (6.9.9.9.2; `pbModel` / `pbRender` in `index.html`): tiers (Samples, mõdSynth, Free voices),
+   then sound types, then the sound. It reads the part's Voices select and picks through it, so locks, the sampler hand-off and saved patches
+   behave as before. The Play page's Chords and Melody voice buttons open the same browser. Test: `tests/soundbrowser/probe.js`.
 3. **Write** — how it gets written: Generate | Arrange | Play in, one segmented control, and that mode's own buttons under it
    (Generate and Clr; Follow and Feel). One primary action per page, 15 pt.
 4. **Surface** — the roll or the grid, with Fit | Large. The thing the page is about.
@@ -37,3 +41,10 @@ Before 6.0y the same controls came out at eleven font sizes (11 to 15 px) and ei
 - **Arp** (6.2) — conforms as far as it can. Pick (Arp pattern, Patch) with the eight pattern buttons kept hidden as the owners of the handlers, the
   switch and status, the preview strip as its surface (it is generated from the chords, so there is no roll to draw on), then Range, Timing and Rate
   motion directly under it, then Dynamics and Feel, then Sound and mõdFX.
+
+## The Live Styles rows
+
+Since 6.9.9.9.3 the Live page's Styles widget is the same Voice | Pattern pair, one row per part (Drums, Aux, Bass, Melody): left is the voice
+(kit on Drums and Aux, the sound on Bass and Melody), right is the style. Each half is a name that opens its list (the sound browser, the kit
+list, the style sheet) with a small ‹ › either side that steps. The lists are the Studio pages' own (`ppOpenAt` opens any `PP_SPECS` list under
+any button; `live-drums-kit` and `live-aux-kit` are floating specs). The standard Live layout no longer holds the four rolls.

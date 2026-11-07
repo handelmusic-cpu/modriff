@@ -731,7 +731,7 @@ less than half a beat. They matter for a hand-played chord and a song that stops
 still refuses; `tune`; the chord comp; the song loop. The walk's state is not reset when the chart is replaced while it plays (the page
 resets it on a hand-played chord). Not heard on device: checklist 19.5.
 
-## Slice 2, part five (6.9.9.9a): the chord comp's voice (branch `claude/native-chord-comp`, not merged)
+## Slice 2, part five (6.9.9.9.4): the chord comp's voice
 
 The chord is composed in the engine from a bank of one-note chords (`window._nsBank.buildChordNote`, one entry per pitch; `chordcomp.h`): each note's
 program with the sub silenced, its tone's level times the note's factor, its times moved by the strum offset, its panner set, plus the sub from the
@@ -741,5 +741,4 @@ velocities that are piecewise lines (`_fitLen`), a filter that sits on its ceili
 Measured: `tests/seq/chordbank.test.js` 960 of 960 chords exact (sine, triangle, sawtooth, square, piano, pad; Strum on/off, Width on/off, 1 to 6
 notes, slash chord, inversion; worst 143.8 dB); `tests/seq/chordline.test.js` six-chord runs with the stop of the chord before, eight runs, all
 exact (worst 100 ms 148 dB). Bass 504 of 504 still bit-identical. Not done: the chord comp's scheduler (rhythm patterns, `rhyStrike`), voicing, the
-host thread, the page's developer entry, sampled voices, glide. Version label `6.9.9.9a` because a new batch after 6.9.9.9 would be a fifth part,
-which is the owner's call.
+host thread, the page's developer entry, sampled voices, glide. The version is a fifth part (6.9.9.9.4) because main had already moved there.

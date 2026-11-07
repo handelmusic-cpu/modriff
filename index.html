@@ -2227,28 +2227,41 @@ body.light-mode .arp-knob .ak-val { color:#14162a; }
 .chordpick-pop, .snd-pick-pop { max-width:calc(100vw - 16px); box-sizing:border-box; }
 
 /* ── The part pickers (4.9.9) ─────────────────────────────────────────────
-   Groove / Kit on Drums, Line / Patch on Bass and Melody: the two choices
-   that decide what a part is, as the two biggest things on its page. Each
-   trigger wears its part's colour (--pc, from PARTS) — except the kit, which
-   wears the key's colour (--kh/--ks/--kl, set by mhApply), so it changes as
-   the key does. The list is the scale list's: families under headings, two
-   to a row. */
-.pp-bar { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:2px 0 4px; }
+   Voice | Pattern, as ONE widget (6.9.9.9.1): on every part page the left half
+   is what the part sounds like (Kit on Drums, Patch on Bass, Melody Seq and
+   Arp) and the right half is what it plays (Groove, Bass line, Melody line,
+   Arp pattern). They were two separate 66 pt boxes, pattern first, so the
+   sound was the second thing you reached for and the pair read as two
+   unrelated dropdowns rather than one decision (what it plays, and what it
+   plays it with). Now the sound is always on the left and the pattern always
+   on the right, the same on all four pages.
+   The frame wears the part's colour (--wc, from PARTS, set by partPickSync).
+   Each half still wears its own (--pc) for its caption and caret — except the
+   kit, which wears the key's colour (--kh/--ks/--kl, set by mhApply), so it
+   changes as the key does. Each half opens its own list: the scale list's
+   families under headings for patterns, the tiered browser for sounds. */
+.pp-bar {
+ --wc:var(--accent);
+ display:grid; grid-template-columns:1fr 1fr; margin:2px 0 4px; box-sizing:border-box;
+ border:2px solid var(--wc); border-radius:12px; overflow:hidden;
+ background:linear-gradient(180deg, color-mix(in srgb, var(--wc) 24%, var(--surf)), color-mix(in srgb, var(--wc) 9%, var(--surf)));
+ box-shadow:0 4px 18px color-mix(in srgb, var(--wc) 30%, transparent), inset 0 1px 0 rgba(255,255,255,.08);
+ transition:border-color .3s, box-shadow .3s;
+}
 .bl-page-wrap > .pp-bar { margin-bottom:12px; }
 .pp-cell { min-width:0; }
+.pp-cell + .pp-cell { border-left:1.5px solid color-mix(in srgb, var(--wc) 55%, transparent); }
 .pp-btn {
  --pc:var(--accent);
  width:100%; min-height:66px; box-sizing:border-box;
  display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto auto;
  align-items:center; column-gap:6px; text-align:left;
- padding:8px 10px 8px 12px; border-radius:12px; cursor:pointer;
- border:2px solid var(--pc); color:var(--text); font-family:'Outfit',sans-serif;
- background:linear-gradient(180deg, color-mix(in srgb, var(--pc) 24%, var(--surf)), color-mix(in srgb, var(--pc) 9%, var(--surf)));
- box-shadow:0 4px 18px color-mix(in srgb, var(--pc) 30%, transparent), inset 0 1px 0 rgba(255,255,255,.08);
- touch-action:manipulation; transition:filter .12s, transform .12s, border-color .3s, box-shadow .3s;
+ padding:8px 10px 8px 12px; border-radius:0; cursor:pointer;
+ border:0; color:var(--text); font-family:'Outfit',sans-serif; background:transparent;
+ touch-action:manipulation; transition:background .12s;
 }
-.pp-btn:active { transform:scale(.98); }
-.pp-btn:hover, .pp-btn:focus-visible, .pp-btn[aria-expanded="true"] { filter:brightness(1.15); }
+.pp-btn:active { background:color-mix(in srgb, var(--pc) 26%, transparent); }
+.pp-btn:hover, .pp-btn:focus-visible, .pp-btn[aria-expanded="true"] { background:color-mix(in srgb, var(--pc) 15%, transparent); outline:none; }
 .pp-btn.pp-key { --pc:hsl(var(--kh), var(--ks), var(--kl)); }
 .pp-cap { grid-column:1; font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--pc); line-height:1.2; }
 .pp-cur { grid-column:1; font-size:18px; font-weight:700; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -2256,7 +2269,7 @@ body.light-mode .arp-knob .ak-val { color:#14162a; }
 .pp-note:empty { display:none; }
 .pp-btn.queued .pp-note { color:var(--pc); }
 .pp-caret { grid-column:2; grid-row:1 / span 3; font-size:20px; color:var(--pc); line-height:1; }
-body.light-mode .pp-btn { box-shadow:0 3px 12px color-mix(in srgb, var(--pc) 26%, transparent); }
+body.light-mode .pp-bar { box-shadow:0 3px 12px color-mix(in srgb, var(--wc) 26%, transparent); }
 /* The list. Wider than the chord and scale lists: kit and groove names are
    longer, and these entries are what you came to the page to change. */
 .chordpick-pop.pp-pop.open { width:min(380px, calc(100vw - 16px)); max-width:none; z-index:8001; }
@@ -2270,6 +2283,34 @@ body.light-mode .pp-btn { box-shadow:0 3px 12px color-mix(in srgb, var(--pc) 26%
 .pp-pop .cp-item.queued { box-shadow:inset 3px 0 0 var(--pc); color:var(--pc); }
 .pp-pop .cp-item.locked { opacity:.45; }
 .pp-pop .pp-foot { margin-top:6px; border-top:1px solid var(--border); padding-top:6px; }
+/* ── The sound browser (6.9.9.9.2): tiers, then types, then the sound ──
+   Lives in the part pages' Voice list and in the Play page's sound pickers (.snd-pick-pop.pb-on hides the flat list it
+   replaces). --pc is the part's colour, set by whoever hosts it. */
+/* --pc comes from whoever hosts it: the part list sets it on the popover, the Play pickers on the root. */
+.snd-pick-pop { --pc:var(--accent); }
+.pb-root { min-width:0; }
+.snd-pick-pop .pb-root { width:min(330px, calc(100vw - 32px)); }
+.snd-pick-pop.pb-on > .snd-pick-menu { display:none; }
+.pb-root .cp-sect { color:var(--pc); }
+.pb-root .cp-item { min-height:40px; font-size:15px; }
+.pb-root .cp-item.active { background:color-mix(in srgb, var(--pc) 24%, transparent); color:var(--text); font-weight:700; box-shadow:inset 3px 0 0 var(--pc); }
+.pb-root .cp-item.locked { opacity:.45; }
+.pb-row { display:flex; align-items:center; gap:10px; width:100%; min-height:56px; box-sizing:border-box; padding:8px 12px; margin:0 0 2px;
+ background:none; border:0; border-radius:var(--r-sm); color:var(--text); cursor:pointer; text-align:left; font-family:'Outfit',sans-serif; touch-action:manipulation; }
+.pb-row:hover, .pb-row:focus-visible { background:rgba(255,255,255,.06); outline:none; }
+body.light-mode .pb-row:hover, body.light-mode .pb-row:focus-visible { background:rgba(20,24,50,.06); }
+.pb-row.active { background:color-mix(in srgb, var(--pc) 18%, transparent); box-shadow:inset 3px 0 0 var(--pc); }
+.pb-tx { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 1 auto; }
+.pb-name { font-size:17px; font-weight:700; line-height:1.2; }
+.pb-sub { font-size:11px; color:var(--muted); line-height:1.25; }
+.pb-row.locked .pb-name { opacity:.75; }
+.pb-n { flex:none; font-size:11px; padding:1px 6px; border-radius:8px; background:rgba(255,255,255,.07); color:var(--muted); }
+body.light-mode .pb-n { background:rgba(20,24,50,.07); }
+.pb-go { flex:none; font-size:22px; line-height:1; color:var(--pc); }
+.pb-nav { display:flex; align-items:center; gap:10px; width:100%; min-height:44px; box-sizing:border-box; padding:4px 8px; margin:0 0 4px;
+ background:none; border:0; border-bottom:1px solid var(--border2); border-radius:0; color:var(--text); cursor:pointer; text-align:left; font-family:'Outfit',sans-serif; touch-action:manipulation; }
+.pb-back { flex:none; font-size:14px; font-weight:600; color:var(--pc); }
+.pb-title { flex:1 1 auto; min-width:0; font-size:16px; font-weight:700; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* What the pickers replace, kept on the page for their handlers (see the
    markup), and off the screen. */
 #sq-groove-presets, .sq-song[data-acrow="kit"],
@@ -4793,6 +4834,8 @@ body.light-mode .ft-sheet-items > .ft-btn.ur, body.light-mode #ft-find-btn.ft-fi
    .modal-overlay (voice, find, share, randomise, shortcuts, sampler, the libraries) or the
    More sheet, so those two rules are all of them. inset:0 with auto margins centres the
    More sheet without a transform, which its own slide-in animation already owns. */
+/* The free web page (npm run build:web) carries no recordings, and the pads are recordings: no entrance to them. */
+html.web-free #pf-pads-btn { display:none; }
 html.mac-app .modal-overlay { align-items:center; padding:24px; }
 html.mac-app .modal-sheet { border-radius:var(--r-lg); padding-bottom:22px; max-height:calc(100vh - 48px); overflow-y:auto; box-shadow:0 12px 48px rgba(0,0,0,.6); }
 html.mac-app .ft-more-menu { inset:0; margin:auto; height:fit-content; width:min(640px, calc(100vw - 48px)); max-height:calc(100vh - 48px);
@@ -7397,6 +7440,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 #_pro-sheet button { width:100%; padding:9px 14px; border-radius:9px; font-family:'Outfit',sans-serif;
   font-size:.58rem; font-weight:700; cursor:pointer; touch-action:manipulation; margin-top:6px; }
 #_pro-sheet .pro-buy { border:none; background:var(--pg); color:#07080f; }
+/* The free web build's way out: a link, not a button, so it opens the store in a new tab. */
+#_pro-sheet a.pro-buy { display:block; box-sizing:border-box; width:100%; padding:9px 14px; border-radius:9px; margin-top:6px;
+  font-family:'Outfit',sans-serif; font-size:.58rem; font-weight:700; text-align:center; text-decoration:none; touch-action:manipulation; }
 #_pro-sheet .pro-sec { border:1px solid var(--pg); background:transparent; color:var(--text); font-weight:600; }
 #_pro-sheet button:disabled { opacity:.5; cursor:default; }
 #_pro-sheet .pro-sub { font-size:.5rem; color:var(--muted); line-height:1.6; margin-bottom:6px; }
@@ -7978,10 +8024,23 @@ body.mode-basic .ft-extras-row { display:flex; }
    Saved patterns row under the three). The same elements and handlers; only where they sit
    changes, and .st-head dissolves so its child can join the row. */
 .st-widget { gap:4px; margin:0 0 2px; }
-.st-row { flex-direction:row; align-items:center; gap:4px; min-height:46px; padding:1px 3px 1px 8px; border-radius:var(--r-sm); }
-.st-head { display:contents; }
-.st-part { flex:0 0 54px; font-size:max(.46rem,10.5px); letter-spacing:.08em; }
-.st-pick { order:1; flex:1 1 auto; min-width:0; gap:4px; min-height:44px; }
+/* Voice | Pattern in one frame (6.9.9.9.3): the part's name, then two halves split by a hairline in the part's colour. Each half
+   is a name that opens its list and a small caret either side that steps. The carets are 24 pt wide to look, 44 pt wide to
+   touch (the ::before pad, as .tips-btn does); the pads of two neighbours meet, they do not overlap the names much. */
+.st-row { display:grid; grid-template-columns:48px minmax(0,1fr) minmax(0,1fr); align-items:stretch; gap:0; min-height:46px; padding:1px 3px 1px 8px; border-radius:var(--r-sm); }
+.st-head { display:flex; align-items:center; min-width:0; }
+.st-part { flex:none; font-size:max(.46rem,10.5px); letter-spacing:.08em; }
+.st-vpick, .st-pick { display:flex; align-items:stretch; min-width:0; gap:0; min-height:44px; }
+.st-pick { border-left:1px solid color-mix(in srgb, var(--pc) 45%, var(--border2)); }
+.st-row .st-step, .st-row .st-vstep { position:relative; flex:0 0 24px; padding:0; border:0; border-radius:0; background:none; color:var(--pc);
+ font:400 1.25rem/1 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+.st-row .st-step::before, .st-row .st-vstep::before { content:''; position:absolute; top:0; bottom:0; left:-10px; right:-10px; }
+.st-row .st-name, .st-row .st-vname { flex:1 1 auto; min-width:0; padding:0 2px; border:0; border-radius:0; background:none; color:var(--text);
+ font:600 .6rem 'Outfit',sans-serif; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; touch-action:manipulation; }
+.st-row .st-vname::after { content:' \25BE'; color:var(--pc); }
+.st-row .st-step:active, .st-row .st-vstep:active, .st-row .st-name:active, .st-row .st-vname:active { background:color-mix(in srgb, var(--pc) 20%, transparent); }
+.st-cols { display:grid; grid-template-columns:48px minmax(0,1fr) minmax(0,1fr); padding:0 4px 0 13px; }
+.st-cols span { font:700 max(.42rem,10px) 'Outfit',sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); text-align:center; }
 
 /* ── Live headings stay on one line (5.6a) ──
    Chords' heading now carries a title caret, a record dot, Sub, the More chip, the sound
@@ -9080,7 +9139,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -10512,7 +10571,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11000,8 +11059,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
      locks, and the dice, the tutorials and MIDI still find them — and each
      pick here clicks the real button. Filled by partPickInit. -->
 <div class="pp-bar" id="pp-bar-drums" data-acrow="pick">
-  <div class="pp-cell" id="pp-cell-groove"></div>
   <div class="pp-cell" id="pp-cell-kit"></div>
+  <div class="pp-cell" id="pp-cell-groove"></div>
 </div>
 <div class="sq-song sq-layer-host" style="margin-bottom:0" data-acrow="voice">
   <!-- Two layers, one grid. Focus decides which layer the grid below edits;
@@ -11163,8 +11222,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
        queue-for-next-loop, the tier locks and the sampler hand-off are the
        ones that were always there. Filled by partPickInit. -->
   <div class="pp-bar" id="pp-bar-bass" data-acrow="pick">
-   <div class="pp-cell" id="pp-cell-bass-line"></div>
    <div class="pp-cell" id="pp-cell-bass-patch"></div>
+   <div class="pp-cell" id="pp-cell-bass-line"></div>
   </div>
   <!-- Steps / Rate / Oct. Ordered to sit directly above the roll, because the
        step count describes the grid you are looking at — see the accomp order
@@ -11324,8 +11383,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
        queue-for-next-loop, the tier locks and the sampler hand-off are the
        ones that were always there. Filled by partPickInit. -->
   <div class="pp-bar" id="pp-bar-melody" data-acrow="pick">
-   <div class="pp-cell" id="pp-cell-melody-line"></div>
    <div class="pp-cell" id="pp-cell-melody-patch"></div>
+   <div class="pp-cell" id="pp-cell-melody-line"></div>
   </div>
   <!-- Steps / Rate / Oct. Ordered to sit directly above the roll, because the
        step count describes the grid you are looking at — see the accomp order
@@ -11459,8 +11518,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
       page, hidden, because they own the handlers (setArpPat, the dice, setups and the tutorials reach them by id); each
       pick clicks the real button, as the groove and kit boxes on Drums do. -->
  <div class="pp-bar" id="pp-bar-arp" data-acrow="pick" style="width:100%;max-width:700px;margin:0 auto 8px;box-sizing:border-box">
-  <div class="pp-cell" id="pp-cell-arp-pattern"></div>
   <div class="pp-cell" id="pp-cell-arp-patch"></div>
+  <div class="pp-cell" id="pp-cell-arp-pattern"></div>
  </div>
 
  <!-- The arp page used to be one panel of unlabelled rows — "1♪ 2♪ 3♪" for
@@ -11703,7 +11762,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9a';
+const MODRIFF_VERSION = '6.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16013,6 +16072,80 @@ function playSampleVoice(ctx, key, midi, gainNode, t0, dur){
  return src;
 }
 
+// Where a one-shot DRUM hit really begins. _sampleOnset above does this for
+// pitched notes at play time; drum buffers were started at sample 0, so any
+// silence ahead of the transient came out as a hit that landed late:
+//   - the Rock and Hip-Hop files carry a 5.0 ms pad from the chain that built
+//     them (measured on all 16: the kick's first audible sample is at 5.0 ms),
+//   - a handful of others open 6-9 ms late (Beatbox kick 3 and tom 4, Studio
+//     snare 0b, Rock 2 snares 0b/1b), and
+//   - an mp3 opens with the encoder's 1105 samples (25 ms) wherever the
+//     decoder does not remove them (see _psLoopTrim) — the same kick then
+//     lands 30 ms late, which is the groove sitting audibly behind the hats.
+// Trimming the buffer once, as it is decoded, fixes all three whatever the
+// decoder did, and every consumer (the step sequencer, the Sampler's factory
+// pads, the beats rendered from these one-shots) gets it without being told.
+//
+// Where the hit starts is found two ways, because the files come two ways:
+//   - an EDGE: the first sample past 7.5% of the peak (-22 dB), if within 1 ms
+//     the signal reaches 15% (-16 dB) and is twice the loudest of the floor
+//     before it. A ghost note or a swell does not reach that, and falls through.
+//     The Hip-Hop hat, rim, shaker and tamb and the Rock ride sit on a -33 to
+//     -40 dB noise floor for their 5 ms pad and then jump 25 dB; a plain
+//     threshold reads that floor as the sound, leaves them 5 ms late, and
+//     with the kick and snare cut would put the kick 4 ms AHEAD of the hats.
+//   - otherwise (a swell, a shaker rising from nothing) the first sample over
+//     -40 dB of the peak, well under what a mix can show and above the mp3's
+//     own noise (-50 dB on the Hip-Hop kick). This is also the limit: the edge
+//     may move the cut at most 6 ms past it.
+// 1 ms of lead is kept so a soft attack is not clipped. Not applied to loops,
+// where silence ahead of the first hit is the groove, nor to pitched notes
+// (that is _sampleOnset's job), nor to a recording of the user's.
+function _hitLeadSamples(buf){
+ const sr=buf.sampleRate, n=buf.length, nc=buf.numberOfChannels;
+ let pk=0, c, d, i, a;
+ for(c=0;c<nc;c++){ d=buf.getChannelData(c); for(i=0;i<n;i++){ a=d[i]<0?-d[i]:d[i]; if(a>pk) pk=a; } }
+ if(!(pk>0)) return 0;
+ // Only the first 60 ms are searched. Further in than that is not a pad or a
+ // codec delay but something the sample's maker meant; leave it alone.
+ const cap=Math.min(n, Math.round(sr*0.06));
+ let first=cap, m, e, f;
+ for(c=0;c<nc;c++){
+  d=buf.getChannelData(c);
+  e=-1; m=0;
+  for(i=0;i<cap;i++){
+   a=d[i]<0?-d[i]:d[i];
+   if(a>pk*0.075){
+    // Out of a quiet floor? Then does it reach -16 dB within 1 ms (an edge),
+    // or creep up (a swell, which the -40 dB rule below handles)?
+    if(m<pk*0.08){
+     let hi=a; for(let j=i+1;j<cap && j<i+Math.round(sr*0.001);j++){ const b=d[j]<0?-d[j]:d[j]; if(b>hi) hi=b; }
+     if(hi>pk*0.15 && hi>2*m) e=i;
+    }
+    break;
+   }
+   if(a>m) m=a;
+  }
+  // f: the first sample over -40 dB. The edge may overrule it by a pad's worth
+  // (6 ms) and no more: a zill, a pedal chick or a rattle has a real quiet
+  // ring-in before its loud part, and cutting 20-35 ms of that changes the
+  // instrument rather than fixing its timing.
+  f=-1; for(i=0;i<cap;i++){ a=d[i]<0?-d[i]:d[i]; if(a>pk*0.01){ f=i; break; } }
+  if(f<0) continue;
+  if(!(e>=0 && e-f<=Math.round(sr*0.006))) e=f;
+  if(e<first) first=e;
+ }
+ if(first>=cap) return 0;
+ return Math.max(0, first-Math.round(sr*0.001));
+}
+function _hitTrimmed(ctx, buf){
+ const lead=_hitLeadSamples(buf);
+ if(lead<16) return buf;   // under 0.4 ms: already on the beat, keep the file's own samples
+ const out=ctx.createBuffer(buf.numberOfChannels, buf.length-lead, buf.sampleRate);
+ for(let c=0;c<buf.numberOfChannels;c++) out.copyToChannel(buf.getChannelData(c).subarray(lead), c);
+ return out;
+}
+
 // ═══════════════════════════════════════
 // SAMPLER — your own sounds, in any part of the app
 // ═══════════════════════════════════════
@@ -16837,7 +16970,8 @@ function smpLoadLibrary(){
   // in samples/user/manifest.json and they turn up in everybody's library,
   // cached offline by the service worker like every other sample. A missing
   // manifest is the normal case and must stay silent.
-  fetch('samples/user/manifest.json').then(function(r){ return _assetOK(r)?r.json():null; })
+  // The free web build ships no samples/ at all, so there is nothing to ask for.
+  (window.__modFreeWeb===true ? Promise.resolve(null) : fetch('samples/user/manifest.json').then(function(r){ return _assetOK(r)?r.json():null; }))
    .then(function(m){
     var list = (m && (m.clips||m.samples)) || [];
     list.forEach(function(e){
@@ -19547,6 +19681,8 @@ window.psWarpPrime = psWarpPrime;
 var PS_FACTORY_BPM = 100;
 var _psFactory = null;     // the render, once started — a promise
 function _psFetch(ctx, url){
+ // The free web build has no recordings to fetch (build.mjs leaves samples/ out).
+ if(window.__modFreeWeb===true) return Promise.reject(0);
  return fetch(url).then(function(r){ if(!_assetOK(r)) throw 0; return r.arrayBuffer(); })
   .then(function(b){ return ctx.decodeAudioData(b); });
 }
@@ -20040,6 +20176,9 @@ function psFactoryEnsure(full){
  return full ? psFactoryEnsure(true) : _psFactory;
 }
 function _psFactoryBuild(list){
+ // The factory pad clips are recordings (two synthesized sounds do not make a bank), and the free
+ // web page plays none: the Sampler is a lock tile there, so nothing asks for these.
+ if(window.__modFreeWeb===true) return Promise.resolve(false);
  var ctx = psCtx(); if(!ctx) return Promise.resolve(false);
  var files = {};
  list.forEach(function(k){
@@ -20051,8 +20190,12 @@ function _psFactoryBuild(list){
   });
  });
  var bufs = {};
+ // Only the drum one-shots lose their lead-in (see _hitLeadSamples): a loop's
+ // opening rest is the groove, and a phrase's notes are placed by _psRenderPhrase.
+ var isDrum = {};
+ Object.keys(PS_DRUM).forEach(function(k){ isDrum[PS_DRUM[k]] = 1; });
  return Promise.all(Object.keys(files).map(function(u){
-  return _psFetch(ctx, u).then(function(b){ bufs[u]=b; }).catch(function(){});
+  return _psFetch(ctx, u).then(function(b){ bufs[u] = isDrum[u] ? _hitTrimmed(ctx, b) : b; }).catch(function(){});
  })).then(function(){
   return Promise.all(list.map(function(k){
    var job = k.drum ? Promise.resolve(bufs[PS_DRUM[k.drum]] || null)
@@ -21326,13 +21469,16 @@ var LV_NAME = {chords:'Chords', melody:'Melody', pads:'Sampler', fx:'mõdFX',
 // the three grids, and Endings last, under the thumb at the end of a song. Four at
 // a time was a choice the player made for them: the part they wanted was the one
 // that was not on the page. A layout somebody chose themselves is left as it is.
-var LV_STD = ['chords','melody','styles','pads','fx','drums','aux','bass','melseq','endings'];
+// 6.9.9.9.3: the four rolls (Drum, Aux, Bass and Melody grids) are not in it: a phone's first Live page was a wall of grids
+// under the surfaces. They are one tap away under "Add / reorder widgets", and a layout somebody saved is left as it is.
+var LV_STD = ['chords','melody','styles','pads','fx','endings'];
 // The standards before that. A layout saved as exactly one of these was the
 // standard layout, not a choice, so it follows the standard; any other saved
 // order is somebody's own and is left alone. (The Key widget went in the same
 // release; it is filtered out of a saved layout before this comparison, so
 // these are listed without it.)
 var LV_STD_OLD = [['chords','melody','pads','fx'], ['chords','melody','fx','pads'], ['chords','melody'],
+                  ['chords','melody','styles','pads','fx','drums','aux','bass','melseq','endings'],
                   ['chords','melody','styles','pads','fx','drums','bass','melseq','endings']];
 // Nothing gated by instrument any more: the sampler's preset banks and the
 // mõdFX pad are both free (a few patches, nine pads), so both can be on the Live
@@ -21371,7 +21517,12 @@ function lvShows(m){ return lvHas(m) && lvAllowed(m); }
 function lvCount(s){ return (s||LV.slots).length; }
 function lvClamp(s){ return s.slice(0, LV_MAX); }
 function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
-function lvAllowed(m){ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g); }
+function lvAllowed(m){
+ // The Sampler's pads are recordings, which the free web page does not carry at all. Everywhere else
+ // the free pads are a free feature; here the widget is a lock tile that points at the app.
+ if(m==='pads' && window.__modFreeWeb===true) return false;
+ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g);
+}
 function lvActive(){
  var pg = document.getElementById('page-perform');
  return document.body.classList.contains('mode-basic') && !!pg && pg.classList.contains('active');
@@ -21455,7 +21606,7 @@ function lvContainer(){
 // A pack's widget for a free install: one tile, in its place in the layout, that says what it is and which pack it
 // belongs to and opens the pack's sheet. The instrument itself stays on its Studio page, untouched.
 function lvLockTile(m){
- var module = (typeof modFor==='function' && modFor(LV_GATE[m])) || '';
+ var module = (typeof modFor==='function' && modFor(LV_GATE[m])) || (m==='pads' ? 'sampler' : '');
  var t = document.createElement('section');
  t.className = 'lv-slot lv-locked'; t.dataset.mod = m; t.setAttribute('aria-label', LV_NAME[m]+', part of a pack');
  var b = document.createElement('button'); b.type = 'button'; b.className = 'lv-lock-tile';
@@ -31999,10 +32150,12 @@ function renderChordDiagram(){
 // recorded, sample-based instrument or kit; ◈ = the sampler — a clip, or a
 // place to load one. Nothing else borrows either (Setups and mõdSynth did).
 const MS_SHARED_VOICES=[
- // Three groups, in this order everywhere a voice is chosen (voiceGroupOf says
- // which is which): what every install has, then mõdSynth, then the recorded
- // instruments. It used to be the recordings first, so the voices a free
- // install can actually pick were at the bottom of a list that opened on locks.
+ // Three groups everywhere a voice is chosen (voiceGroupOf says which is which),
+ // listed in VOICE_GROUP_ORDER. It was free voices, mõdSynth, recordings (4.9.x),
+ // because a list that opened on locks buried what a free install can pick; but
+ // the recordings are the Sampler Engine, the pack the app leads with, and
+ // buried at the foot of a long list nobody saw them. They are first again
+ // (6.9.9.9.2), and the tiered browser gives each group its own screen.
  ['piano','Piano (synth)'],['rhodes','Electric Piano'],['organ','Organ'],['pad','Pad'],
  ['sine','Sine'],['sawtooth','Saw'],['square','Square'],['triangle','Tri'],['supersaw','SuperSaw'],
  ['modsynth','mõdSynth'],
@@ -32014,6 +32167,10 @@ const MS_SHARED_VOICES=[
  // sampler to put a clip in it.
  ['sampler','Sampler ◈']];
 const VOICE_GROUP_LABELS=['Free voices','mõdSynth','Samples'];
+// The order they are LISTED in (6.9.9.9.2), by index into the labels: Samples first. They are the Sampler Engine, the
+// pack the app leads with, and a free install sees the lock on them before it reaches the voices it already has.
+// Indexes stay as they were (0 free, 1 mõdSynth, 2 samples) because _vpOpen, voiceGroupOf and the tier gate key on them.
+const VOICE_GROUP_ORDER=[2,1,0];
 // 0 free voices (synthesised, nothing to download), 1 mõdSynth, 2 samples — the
 // recorded instruments, the bass's recorded basses and your own Sampler clips.
 // Read from the tables that decide what is sampled (the tier gate uses the same
@@ -32026,9 +32183,9 @@ function voiceGroupOf(v){
 }
 window.voiceGroupOf=voiceGroupOf;
 // Which groups are unfolded, shared by every picker so folding Samples in one
-// folds it in all. Samples starts folded: it is the long one, and the group you
-// are in opens itself (vpOpenActive).
-var _vpOpen=[true,true,false];
+// folds it in all. All start open since 6.9.9.9.2: Samples lead the list now, and a folded
+// heading at the top of it hid the thing the order is there to show.
+var _vpOpen=[true,true,true];
 function _vpSyncHeads(){
  document.querySelectorAll('.vp-head').forEach(function(h){
   h.setAttribute('aria-expanded', _vpOpen[+h.dataset.g] ? 'true' : 'false');
@@ -32041,7 +32198,8 @@ function vpFill(host, entries, mk, part){
  host.innerHTML='';
  const groups=[[],[],[]];
  entries.forEach(function(e){ groups[voiceGroupOf(e[0])].push(e); });
- groups.forEach(function(g,i){
+ VOICE_GROUP_ORDER.forEach(function(i){
+  const g=groups[i];
   if(!g.length) return;
   const head=document.createElement('button');
   head.type='button'; head.className='cp-sect cp-fold vp-head'; head.dataset.g=i;
@@ -32074,7 +32232,8 @@ function vpOpenActive(root){
 function vpOptGroups(sel, opts){
  const groups=[[],[],[]];
  opts.forEach(function(o){ groups[voiceGroupOf(o[0])].push(o); });
- groups.forEach(function(g,i){
+ VOICE_GROUP_ORDER.forEach(function(i){
+  const g=groups[i];
   if(!g.length) return;
   const og=document.createElement('optgroup'); og.label=VOICE_GROUP_LABELS[i];
   g.forEach(function(o){ const e=document.createElement('option'); e.value=o[0]; e.textContent=o[1]; og.appendChild(e); });
@@ -35254,7 +35413,7 @@ function vpSelPatches(sel){
   g.names.forEach(n=>{ const o=document.createElement('option'); o.value='msx:'+(g.saved?'U|':'L|')+n; o.textContent=n; og.appendChild(o); });
   frag.appendChild(og);
  });
- // After the mõdSynth voice group, before the recorded instruments (VOICE_GROUP_LABELS order).
+ // After the mõdSynth voice group, before the free voices (VOICE_GROUP_ORDER).
  const after=[...sel.querySelectorAll('optgroup')].find(og=>og.label===VOICE_GROUP_LABELS[1]);
  if(after && after.nextSibling) sel.insertBefore(frag, after.nextSibling); else sel.appendChild(frag);
  sel._msxDone=true;
@@ -35274,6 +35433,9 @@ function vpPatchSyncAll(){
  document.querySelectorAll('.vp-patch-sel').forEach(sel=>{ if(sel._filled){ sel.value=vpPatchCurrent(sel.dataset.part); if(sel.value!==vpPatchCurrent(sel.dataset.part)) sel.value=''; } });
  document.querySelectorAll('.voice-sel').forEach(sel=>{ if(sel._msxPart) vpSelSync(sel); });
  if(typeof window._lvSynthSync==='function') window._lvSynthSync();
+ // The part pages' Voice halves name the patch. A pick lands asynchronously (the engine is prepared first), so the
+ // half read the OLD patch off the select when the pick fired its change and nothing told it again.
+ try{ if(typeof partPickSync==='function') partPickSync(); }catch(e){}
 }
 // Saved patches changed (saved, deleted): the lists rebuild.
 window.vpPatchesChanged=function(){
@@ -35297,6 +35459,25 @@ function sndPickSyncAll(){
  document.querySelectorAll('.snd-pick').forEach(function(w){ if(w._pop) sndPickSyncLabel(w); });
 }
 window.sndPickSyncAll = sndPickSyncAll;
+
+// The sound browser in place of the flat voice list. The list (host) stays in the popover, hidden, because the
+// builders own its buttons and the label follows their classes; the browser reads the part's Voices select.
+// Without that select (it is built a little after this) the flat list shows, as it always did.
+function pbMount(wrap, pop, host, part){
+ const root = document.createElement('div');
+ root.className = 'pb-root';
+ const col = (typeof _ppPartColor === 'function') ? _ppPartColor(part) : '';
+ if(col) root.style.setProperty('--pc', col);
+ pop.insertBefore(root, host);
+ let st = { tier:null, cat:null };
+ const draw = function(){
+  if(!pbSelectFor(part)){ pop.classList.remove('pb-on'); return; }
+  pop.classList.add('pb-on');
+  pbRender(root, part, st, { again:function(){ sndPickPlace(wrap); }, picked:function(){ sndPickClose(); }, foot:null });
+ };
+ pop._pbOpen = function(){ st = { tier:null, cat:null }; draw(); };
+ pop._pbRefresh = draw;
+}
 
 function sndPickInit(){
  SND_PICK_HOSTS.forEach(spec=>{
@@ -35329,7 +35510,9 @@ function sndPickInit(){
     pop.classList.add('open');
     btn.setAttribute('aria-expanded','true');
     vpOpenActive(pop);
-    vpPatchesEnsure();
+    // The tiered browser opens on its tiers; the synth library, if it is not in yet, redraws it when it arrives.
+    if(pop._pbOpen) pop._pbOpen();
+    vpPatchesEnsure().then(function(){ if(pop._pbRefresh && wrap.classList.contains('open')){ pop._pbRefresh(); sndPickPlace(wrap); } });
     _sndPickOpen = wrap;
     sndPickPlace(wrap);
     setTimeout(()=>document.addEventListener('pointerdown', _sndPickOutside), 0);
@@ -35344,6 +35527,7 @@ function sndPickInit(){
    wrap.appendChild(btn);
    pop.appendChild(host);
    host.classList.add('snd-pick-menu');
+   if(spec.part) pbMount(wrap, pop, host, spec.part);
    // Picking a voice is the whole point of opening this, so it shuts on a
    // choice. Scoped to the preset row rather than to .tb, because the tone
    // drawer below has toggles of its own that must not close it. Delegated,
@@ -36826,9 +37010,244 @@ window._partDiceGroove = function(el){
 setTimeout(partDiceMount, 0);
 
 // ═══════════════════════════════════════
-// PART PICKERS (4.9.9) — Groove / Kit, Line / Patch
+// THE SOUND BROWSER (6.9.9.9.2) — tiers, then types, then the sound
 // ═══════════════════════════════════════
-// Two big dropdowns at the head of the Drums, Bass and Melody pages, built the
+// Choosing a part's sound used to be one list: the three or four dozen voices
+// and then, once the synth library was in, three hundred and forty patches
+// after them, in a scroll with nothing to steer by. The recorded instruments
+// — the Sampler Engine, the thing the app sells hardest — were a heading in
+// the middle of it.
+//
+// Now it is three steps, in the order of what is worth reaching for:
+//   Samples       the recorded instruments, by family (inline: there are about fifteen)
+//   mõdSynth      its patches, by sound type — Bass, Lead, Keys, Pad … — with the
+//                 Modern bank and the Classic library merged under each type
+//   Free voices   the synthesised voices every install has
+// Samples lead even on a free install: the locked rows are the ad.
+//
+// It holds no state of its own and owns no behaviour. The model is read off the
+// part's Voices select (the one control every other surface already goes
+// through), so a pick sets that select and fires its change — the same path
+// the Voices panel, the tier locks, the sampler hand-off and a saved patch
+// took before there was a browser. Rebuilt on every open and every change, so
+// it cannot disagree with the select.
+var PB_SAMPLE_FAMS = [
+ ['Keys', ['pianoreal2']],
+ ['Mallets', ['vibes','marimba','xylo','kalimba']],
+ ['Guitars', ['jazzgtr','nylongtr']],
+ ['Winds & strings', ['tenorsax','mutetpt','clarinet','flute','violin']],
+ ['Basses', ['upright_real','upright2','bass_picked','bass_motown','bass_hofner']],
+ ['Your own', ['sampler']]
+];
+// Sound types in the order they are listed; a type not named here still appears, after these, A to Z.
+var PB_TYPE_ORDER = ['Bass','Lead','Keys','Pad','Pluck','Strings','Brass','Organ','Chord','Texture','Ambient','Motion','Perc','World','FX','Vintage','Analog','Digital','Modern'];
+// What each part most likely wants first. Bass opens on Bass, not on whatever sorts first.
+var PB_TYPE_FRONT = { bass:['Bass'], chord:['Keys','Pad','Chord','Strings'], mel:['Lead','Keys','Pluck'], melgen:['Lead','Pluck','Keys'], arp:['Pluck','Lead','Keys'] };
+function pbSelectFor(part){
+ var ids = { bass:['vsel-bass-acb'], melgen:['vsel-melgen-acm'], arp:['vsel-arp-aca'] }[part] || [];
+ ids = ids.concat(['vsel-' + part]);
+ for(var i = 0; i < ids.length; i++){ var s = document.getElementById(ids[i]); if(s) return s; }
+ return null;
+}
+function _pbSampleFam(v){
+ for(var i = 0; i < PB_SAMPLE_FAMS.length; i++) if(PB_SAMPLE_FAMS[i][1].indexOf(v) >= 0) return PB_SAMPLE_FAMS[i][0];
+ return 'More';
+}
+// {tiers:[{id, label, sub, inline, cats:[{label, secs:[{label, items}], n}], n, locked}], cur:{tier, cat, item}}
+function pbModel(part){
+ var sel = pbSelectFor(part); if(!sel) return null;
+ var own = {};
+ if(part === 'bass'){
+  try{ VOICE_PARTS.find(function(p){ return p.k === 'bass'; }).opts.slice(0, 12).forEach(function(o){ own[o[0]] = 1; }); }catch(e){}
+ }
+ var samples = {}, famOrder = [], bare = null, free = { Bass:[], 'Synth & keys':[] }, saved = [], types = {};
+ var all = [];
+ var add = function(o, group){
+  if(o.hidden || o.value === '') return;
+  var name = (o.dataset && o.dataset.l) ? o.dataset.l : o.textContent;
+  var it = { label:name, value:o.value, locked:!!o.disabled, active:o.value === sel.value, sel:sel };
+  all.push(it);
+  if(group === VOICE_GROUP_LABELS[2]){
+   var f = _pbSampleFam(o.value);
+   if(!samples[f]){ samples[f] = []; famOrder.push(f); }
+   samples[f].push(it);
+  } else if(group === VOICE_GROUP_LABELS[1]){
+   bare = it;
+  } else if(/^mõdSynth · /.test(group)){
+   var g = group.replace(/^mõdSynth · /, '');
+   if(g === 'Saved'){ saved.push(it); return; }
+   var bank = /^Classic /.test(g) ? 'Classic' : 'Modern', ty = g.replace(/^Classic /, '');
+   var t = types[ty] || (types[ty] = { Modern:[], Classic:[] });
+   t[bank].push(it);
+  } else {
+   (own[o.value] ? free.Bass : free['Synth & keys']).push(it);
+  }
+ };
+ Array.prototype.forEach.call(sel.children, function(ch){
+  if(ch.tagName === 'OPTGROUP') Array.prototype.forEach.call(ch.children, function(o){ add(o, ch.label); });
+  else add(ch, '');
+ });
+ var cat = function(label, secs){
+  secs = secs.filter(function(s){ return s.items.length; });
+  var n = 0; secs.forEach(function(s){ n += s.items.length; });
+  return { label:label, secs:secs, n:n };
+ };
+ var tiers = [];
+ // Samples: by family, in the table's order, anything unlisted under More.
+ var sc = [];
+ PB_SAMPLE_FAMS.map(function(f){ return f[0]; }).concat(['More']).forEach(function(f){
+  if(samples[f]) sc.push(cat(f, [{ label:null, items:samples[f] }]));
+ });
+ if(sc.length) tiers.push({ id:'samples', label:'Samples', inline:true, cats:sc,
+  what:'recorded instrument' });
+ // mõdSynth: Saved, then each type. Before the library is in (or on a free install) there is only the bare voice.
+ var yc = [];
+ var typeNames = Object.keys(types);
+ var front = PB_TYPE_FRONT[part] || [];
+ typeNames.sort(function(a, b){
+  var fa = front.indexOf(a), fb = front.indexOf(b);
+  if(fa >= 0 || fb >= 0) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+  var oa = PB_TYPE_ORDER.indexOf(a), ob = PB_TYPE_ORDER.indexOf(b);
+  if(oa >= 0 || ob >= 0) return (oa < 0 ? 99 : oa) - (ob < 0 ? 99 : ob);
+  return a < b ? -1 : 1;
+ });
+ if(saved.length) yc.push(cat('Saved', [{ label:null, items:saved }]));
+ typeNames.forEach(function(ty){
+  var t = types[ty], both = t.Modern.length && t.Classic.length;
+  yc.push(cat(ty, [{ label:both ? 'Modern' : null, items:t.Modern }, { label:both ? 'Classic' : null, items:t.Classic }]));
+ });
+ var patchy = yc.length > 0;
+ // A part on a patch that is not in the lists (the Arp category is left out of them) is still on mõdSynth.
+ if(patchy && bare && bare.active){
+  try{ bare.label = _msxPatchLabel(part) || bare.label; }catch(e){}
+  yc.unshift(cat('Current', [{ label:null, items:[bare] }]));
+ }
+ if(!patchy && bare) yc.push(cat(null, [{ label:null, items:[bare] }]));
+ if(yc.length) tiers.push({ id:'synth', label:'mõdSynth', inline:!patchy, cats:yc, what:'patch' });
+ // Free voices. Bass splits its own bank from the shared synth voices.
+ var fc = [];
+ if(free.Bass.length) fc.push(cat('Bass', [{ label:null, items:free.Bass }]));
+ fc.push(cat(free.Bass.length ? 'Synth & keys' : null, [{ label:null, items:free['Synth & keys'] }]));
+ fc = fc.filter(function(c){ return c.n; });
+ if(fc.length) tiers.push({ id:'free', label:'Free voices', inline:true, cats:fc, what:'voice' });
+ var cur = null;
+ tiers.forEach(function(t){
+  var n = 0, lockedN = 0, mods = {};
+  t.cats.forEach(function(c){ c.secs.forEach(function(s){ s.items.forEach(function(it){
+   n++;
+   if(it.locked){ lockedN++; var m = null; try{ m = voiceModule(it.value); }catch(e){} if(m) mods[m] = 1; }
+   if(it.active) cur = { tier:t, cat:c, item:it };
+  }); }); });
+  t.n = n; t.locked = n > 0 && lockedN === n;
+  var mk = Object.keys(mods);
+  t.pack = (t.locked && mk.length === 1 && typeof MODULE_COPY !== 'undefined' && MODULE_COPY[mk[0]]) ? MODULE_COPY[mk[0]].name : '';
+  var typeLbl = t.cats.filter(function(c){ return c.label; }).slice(0, 3).map(function(c){ return c.label; }).join(', ');
+  // The library is only fetched for owners, so a free install knows there is a synth but not how big; it says so in round numbers.
+  t.sub = (t.id === 'synth' && !patchy ? 'Over 300 patches' : n + ' ' + (n === 1 ? t.what : t.what === 'patch' ? 'patches' : t.what + 's'))
+        + (t.id === 'synth' && patchy ? ' · ' + typeLbl + '…' : '')
+        + (t.id === 'free' ? ' in every install' : '')
+        + (t.pack ? ' · ' + t.pack : '');
+ });
+ return { tiers:tiers, cur:cur, sel:sel, part:part };
+}
+// The short line under the trigger: where the current sound lives.
+function pbWhere(part){
+ var m = pbModel(part); if(!m || !m.cur) return '';
+ return m.cur.tier.label + (m.cur.tier.id === 'synth' && m.cur.cat.label ? ' · ' + m.cur.cat.label : '');
+}
+function _pbEl(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+function pbPick(it){
+ if(it.locked){
+  if(typeof proSheet === 'function'){ var m = null; try{ m = voiceModule(it.value); }catch(e){} proSheet(it.label.replace(/\s*[◆◈]$/, ''), m); }
+  return;
+ }
+ it.sel.value = it.value;
+ it.sel.dispatchEvent(new Event('change', { bubbles:true }));
+}
+// Draws one view into root. st = {tier, cat} ids/labels (null = a level up). hooks:
+//   again()      the view changed; re-measure the list that holds it
+//   picked()     a sound was chosen; shut the list
+//   foot         optional {label, pick} line at the foot of the home view
+function pbRender(root, part, st, hooks){
+ root.innerHTML = '';
+ var m = pbModel(part);
+ if(!m || !m.tiers.length){ root.appendChild(_pbEl('div', 'cp-empty', 'No sounds to list yet.')); return; }
+ var go = function(tier, cat){ st.tier = tier; st.cat = cat; pbRender(root, part, st, hooks); var p = root.closest('.pp-pop, .snd-pick-pop'); if(p) p.scrollTop = 0; hooks.again(); };
+ var tier = st.tier && m.tiers.filter(function(t){ return t.id === st.tier; })[0] || null;
+ var cat = tier && st.cat != null && tier.cats.filter(function(c){ return c.label === st.cat; })[0] || null;
+ var nav = function(back, title, onBack){
+  var b = _pbEl('button', 'pb-nav'); b.type = 'button';
+  b.appendChild(_pbEl('span', 'pb-back', '‹ ' + back));
+  b.appendChild(_pbEl('span', 'pb-title', title));
+  b.addEventListener('click', function(e){ e.stopPropagation(); onBack(); });
+  root.appendChild(b);
+ };
+ var items = function(c){
+  c.secs.forEach(function(s){
+   if(s.label){ root.appendChild(_pbEl('div', 'cp-sect', s.label)); }
+   var g = _pbEl('div', 'md-fam');
+   s.items.forEach(function(it){
+    var b = _pbEl('button', 'cp-item' + (it.active ? ' active' : '') + (it.locked ? ' locked' : ''), it.label + (it.locked ? ' 🔒' : ''));
+    b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', it.active ? 'true' : 'false');
+    b.addEventListener('click', function(e){ e.stopPropagation(); hooks.picked(); pbPick(it); });
+    g.appendChild(b);
+   });
+   root.appendChild(g);
+  });
+ };
+ if(tier && cat && !tier.inline){
+  nav(tier.label, cat.label, function(){ go(tier.id, null); });
+  items(cat);
+ } else if(tier){
+  nav('Sounds', tier.label, function(){ go(null, null); });
+  if(tier.inline){
+   tier.cats.forEach(function(c){
+    if(c.label) root.appendChild(_pbEl('div', 'cp-sect', c.label));
+    items({ secs:c.secs });
+   });
+  } else {
+   tier.cats.forEach(function(c){
+    var on = m.cur && m.cur.cat === c;
+    var r = _pbEl('button', 'pb-row' + (on ? ' active' : '')); r.type = 'button';
+    var tx = _pbEl('span', 'pb-tx'); tx.appendChild(_pbEl('span', 'pb-name', c.label));
+    if(on) tx.appendChild(_pbEl('span', 'pb-sub', 'Now: ' + m.cur.item.label));
+    r.appendChild(tx); r.appendChild(_pbEl('span', 'pb-n', String(c.n))); r.appendChild(_pbEl('span', 'pb-go', '›'));
+    r.addEventListener('click', function(e){ e.stopPropagation(); go(tier.id, c.label); });
+    root.appendChild(r);
+   });
+  }
+ } else {
+  var now = _pbEl('div', 'cp-now');
+  now.appendChild(_pbEl('b', null, m.cur ? m.cur.item.label.replace(/\s*[◆◈]$/, '') : 'Choose a sound'));
+  now.appendChild(_pbEl('span', null, m.cur ? 'Now playing · ' + pbWhere(part) : 'Pick a tier, then a type'));
+  root.appendChild(now);
+  m.tiers.forEach(function(t){
+   var on = m.cur && m.cur.tier === t;
+   var r = _pbEl('button', 'pb-row pb-tier' + (on ? ' active' : '') + (t.locked ? ' locked' : '')); r.type = 'button';
+   var tx = _pbEl('span', 'pb-tx');
+   tx.appendChild(_pbEl('span', 'pb-name', t.label + (t.locked ? ' 🔒' : '')));
+   tx.appendChild(_pbEl('span', 'pb-sub', t.sub));
+   r.appendChild(tx); r.appendChild(_pbEl('span', 'pb-go', '›'));
+   r.addEventListener('click', function(e){
+    e.stopPropagation();
+    // A tier that is one locked row (mõdSynth on a free install) has nothing to browse: say what it is.
+    if(t.locked && t.n === 1){ hooks.picked(); pbPick(t.cats[0].secs[0].items[0]); return; }
+    go(t.id, null);
+   });
+   root.appendChild(r);
+  });
+  if(hooks.foot){
+   var f = _pbEl('button', 'cp-item pp-foot', hooks.foot.label); f.type = 'button';
+   f.addEventListener('click', function(e){ e.stopPropagation(); hooks.picked(); hooks.foot.pick(); });
+   root.appendChild(f);
+  }
+ }
+}
+
+// ═══════════════════════════════════════
+// PART PICKERS (4.9.9) — Kit | Groove, Voice | Line (one widget since 6.9.9.9.1)
+// ═══════════════════════════════════════
+// Two big dropdowns, one frame, at the head of the Drums, Bass, Melody and Arp pages, built the
 // way the scale list is: a trigger naming what is chosen, and a list grouped
 // under headings, two to a row. They hold no state of their own. Every list is
 // built when it opens, from the controls that already own the behaviour — the
@@ -36886,39 +37305,13 @@ function _ppStyleCur(hostId, attr){
           queued: !!(a && a.classList.contains('gen-queued')) };
 }
 function _ppPatchSel(hostId){ return document.querySelector('#'+hostId+' select.voice-sel'); }
-function _ppPatchItems(hostId, partKey){
- var sel = _ppPatchSel(hostId); if(!sel) return [];
- // The bass bank leads its own list; everything else is grouped by whether it
- // is a recording (◆) or made here.
- var own = {};
- if(partKey === 'bass'){
-  try{ VOICE_PARTS.find(function(p){ return p.k === 'bass'; }).opts.slice(0,12).forEach(function(o){ own[o[0]] = 1; }); }catch(e){}
- }
- // A voice free cannot pick is a disabled option (freeApplyLimits), and this
- // list used to drop every disabled option, so on free the Bass and Melody Seq
- // Patch dropdowns simply did not have the recorded voices or mõdSynth at all.
- // They are listed now, locked, and tapping one opens the Pro sheet. hidden is
- // still dropped: that is an option that is not for this part.
- var items = Array.prototype.filter.call(sel.options, function(o){ return !o.hidden; }).map(function(o){
-  var lockedByTier = !!o.disabled;
-  var name = (o.dataset && o.dataset.l) ? o.dataset.l : o.textContent;   // without the " (Pro)"
-  return { sect: own[o.value] ? 'Bass' : (/◆/.test(name) ? 'Recorded' : 'Synth & sampler'),
-           label: name, active: o.value === sel.value, locked: lockedByTier,
-           pick: lockedByTier
-             ? function(){ if(typeof proSheet==='function') proSheet(name.replace(/\s*◆$/,''), voiceModule(o.value)); }
-             : function(){ sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles:true})); } };
- });
- var secs = _ppSections(['Bass','Recorded','Synth & sampler'], items);
- // The ◈ on the Voices row is the way into this part's sampler; the row is
- // hidden now, so the way in is the last line of the list.
- var smp = document.querySelector('#'+hostId+' .smp-badge[data-smpkey]');
- if(smp) secs.foot = { label:'◈ Load or record your own sample', pick:function(){ smp.click(); } };
- return secs;
-}
-function _ppPatchCur(hostId){
+function _ppPatchCur(hostId, partKey){
  var sel = _ppPatchSel(hostId);
  var o = sel && sel.options[sel.selectedIndex];
- return { name: o ? o.textContent : '—', note:'' };
+ var nm = o ? o.textContent : '\u2014';
+ // Under the name: which tier and type it came from (Samples; mõdSynth \u00b7 Bass), so the half reads as a place in the browser.
+ var where = ''; try{ where = pbWhere(partKey); }catch(e){}
+ return { name: nm.replace(/\s*[\u25c6\u25c8]$/, ''), note: where };
 }
 function _ppDefine(){
  PP_SPECS.groove = { cell:'pp-cell-groove', cap:'Groove', color:function(){ return _ppPartColor('drum'); },
@@ -36984,34 +37377,100 @@ function _ppDefine(){
    var a = document.querySelector('#arp-pattern-opts > .arp-opt.active');
    return { name: a ? a.textContent.trim() : 'Choose a pattern', note:'' };
   } };
- PP_SPECS['arp-patch'] = { cell:'pp-cell-arp-patch', cap:'Patch', color:function(){ return _ppPartColor('arp'); },
-  items:function(){ return _ppPatchItems('voices-one-arp', 'arp'); },
-  current:function(){ return _ppPatchCur('voices-one-arp'); } };
+ PP_SPECS['arp-patch'] = { cell:'pp-cell-arp-patch', cap:'Voice', color:function(){ return _ppPartColor('arp'); },
+  browse:'arp', host:'voices-one-arp',
+  current:function(){ return _ppPatchCur('voices-one-arp', 'arp'); } };
  [['bass','bl','data-blstyle','voices-one-bass','bass'],['melody','ml','data-mlstyle','voices-one-melgen','melgen']].forEach(function(x){
   var page = x[0], host = x[1] + '-gen-style', attr = x[2], vhost = x[3], part = x[4];
   PP_SPECS[page+'-line'] = { cell:'pp-cell-'+page+'-line', cap: page === 'bass' ? 'Bass line' : 'Melody line',
    color:function(){ return _ppPartColor(part === 'bass' ? 'bass' : 'melgen'); },
    items:function(){ return _ppStyleItems(host, attr); },
    current:function(){ return _ppStyleCur(host, attr); } };
-  PP_SPECS[page+'-patch'] = { cell:'pp-cell-'+page+'-patch', cap:'Patch',
+  PP_SPECS[page+'-patch'] = { cell:'pp-cell-'+page+'-patch', cap:'Voice',
    color:function(){ return _ppPartColor(part === 'bass' ? 'bass' : 'melgen'); },
-   items:function(){ return _ppPatchItems(vhost, part); },
-   current:function(){ return _ppPatchCur(vhost); } };
+   browse:part, host:vhost,
+   current:function(){ return _ppPatchCur(vhost, part); } };
+ });
+ // The Live Styles rows (6.9.9.9.3): the main kit and the Aux kit, each its own list whatever layer the drum page is on
+ // (the Kit box above follows the focused layer; a row on Live does not get to). Floating: no box of their own, opened
+ // by the row's button through ppOpenAt.
+ ['drums', 'aux'].forEach(function(part){
+  var aux = part === 'aux';
+  var now = function(){ try{ return aux ? window._sqAuxKit() : window._sqDrumKit(); }catch(e){ return null; } };
+  PP_SPECS['live-' + part + '-kit'] = { floating:true, cap: aux ? 'Aux kit' : 'Kit', color:function(){ return _ppPartColor(aux ? 'auxperc' : 'drum'); },
+   items:function(){
+    var M = window._sqMachines(), cur = now(), famOf = {};
+    PP_KIT_FAMS.forEach(function(f){ f[1].forEach(function(k){ famOf[k] = f[0]; }); });
+    var list = Object.keys(M).map(function(k){
+     return { sect: famOf[k] || 'More', label: window._sqKitLabel(k) || k, active: k === cur,
+              locked: typeof freeAllowsKit === 'function' && !freeAllowsKit(k),
+              pick: function(){ (aux ? window._sqPickAuxKit : window._sqPickDrumKit)(k); } };
+    });
+    // The Aux layer is the percussion layer: its list opens on Percussion & world, as the Kit box does when Aux is focused.
+    var order = PP_KIT_FAMS.map(function(f){ return f[0]; });
+    if(aux) order = ['Percussion & world'].concat(order.filter(function(n){ return n !== 'Percussion & world'; }));
+    return _ppSections(order, list);
+   },
+   current:function(){ var k = now(); return { name: (k && window._sqKitLabel(k)) || '\u2014', note:'' }; } };
  });
 }
+// Opens a spec's list under any button. id: a PP_SPECS key ('bass-patch', 'melody-patch', 'live-drums-kit', 'live-aux-kit').
+window.ppOpenAt = function(id, anchor){ if(PP_SPECS[id] && PP_SPECS[id]._w) _ppToggle(id, anchor); };
+// The voice a Styles row is on, and one step to the next or previous (6.9.9.9.3).
+//   kits    in the Kit list's own order (families, then the order within them), skipping what the install cannot use
+//   sounds  inside the tier or type the sound is in now (the Bass patches stay Bass patches), skipping locked rows
+function starterVoiceStep(part, dir){
+ var seq = [], at = -1, pick = null;
+ if(part === 'drums' || part === 'aux'){
+  var sp = PP_SPECS['live-' + part + '-kit']; if(!sp) return;
+  sp.items().forEach(function(sec){ sec.list.forEach(function(it){ if(!it.locked) seq.push(it); }); });
+  seq.forEach(function(it, i){ if(it.active) at = i; });
+  pick = function(it){ it.pick(); };
+ } else {
+  var m = pbModel(part === 'bass' ? 'bass' : 'melgen'); if(!m || !m.tiers.length) return;
+  var t = m.cur ? m.cur.tier : m.tiers[0];
+  var cats = (m.cur && !t.inline) ? [m.cur.cat] : t.cats;
+  cats.forEach(function(c){ c.secs.forEach(function(sc){ sc.items.forEach(function(it){ if(!it.locked) seq.push(it); }); }); });
+  seq.forEach(function(it, i){ if(it.active) at = i; });
+  pick = pbPick;
+ }
+ if(!seq.length) return;
+ pick(seq[at < 0 ? (dir > 0 ? 0 : seq.length - 1) : (at + dir + seq.length) % seq.length]);
+}
+window.starterVoiceStep = starterVoiceStep;
+// A list can be opened from a button that is not its own (the Live Styles rows open the Bass and Melody sound lists
+// and the two kit lists): w.anchor is that button while it is open, and everything that measures or hit-tests uses it.
+function _ppAnchor(w){ return w.anchor || w.btn; }
 function ppClose(){
  if(!_ppOpen) return;
  var w = _ppOpen; _ppOpen = null;
  w.pop.classList.remove('open');
  w.btn.setAttribute('aria-expanded', 'false');
+ if(w.anchor){ w.anchor.setAttribute('aria-expanded', 'false'); w.anchor = null; }
  document.removeEventListener('pointerdown', _ppOutside);
  window.removeEventListener('scroll', _ppReflow, true);
  window.removeEventListener('resize', _ppReflow);
 }
-function _ppOutside(e){ if(_ppOpen && !_ppOpen.btn.contains(e.target) && !_ppOpen.pop.contains(e.target)) ppClose(); }
-function _ppReflow(e){ if(_ppOpen && !_popOwnScroll(e, _ppOpen.pop)) popPlace(_ppOpen.btn, _ppOpen.pop); }
+function _ppOutside(e){ if(_ppOpen && !_ppAnchor(_ppOpen).contains(e.target) && !_ppOpen.pop.contains(e.target)) ppClose(); }
+function _ppReflow(e){ if(_ppOpen && !_popOwnScroll(e, _ppOpen.pop)) popPlace(_ppAnchor(_ppOpen), _ppOpen.pop); }
 function _ppFill(id){
  var sp = PP_SPECS[id], w = sp._w, pop = w.pop;
+ // The sound halves open the tiered browser (pbRender); w.pbSt is where it is, kept across re-fills while it is open.
+ if(sp.browse){
+  if(!w.pbSt) w.pbSt = { tier:null, cat:null };
+  // ◈ on the Voices row is the way into this part's sampler; the row is hidden, so the way in is the last line of the list.
+  var smp = document.querySelector('#' + sp.host + ' .smp-badge[data-smpkey]');
+  // Drawn into a child, never into the popover itself: the popover is display:none until .open, and a class of the
+  // browser's on it put it on the page for good (6.9.9.9.2 shipped that, and the voice list sat under the Live page).
+  var bh = w.pbHost;
+  if(!bh){ bh = w.pbHost = document.createElement('div'); bh.className = 'pb-root'; pop.appendChild(bh); }
+  pbRender(bh, sp.browse, w.pbSt, {
+   again:function(){ if(_ppOpen === w) popPlace(_ppAnchor(w), pop); },
+   picked:function(){ ppClose(); },
+   foot: smp ? { label:'\u25c8 Load or record your own sample', pick:function(){ smp.click(); } } : null
+  });
+  return;
+ }
  pop.innerHTML = '';
  var secs = sp.items();
  secs.forEach(function(sec){
@@ -37036,19 +37495,25 @@ function _ppFill(id){
   pop.appendChild(f);
  }
 }
-function _ppToggle(id){
+function _ppToggle(id, anchor){
  var sp = PP_SPECS[id], w = sp._w;
- var was = _ppOpen === w;
+ var was = _ppOpen === w && _ppAnchor(w) === (anchor || w.btn);
  ppClose();
  if(was) return;
  if(typeof cpClose === 'function') cpClose();
  if(typeof sndPickClose === 'function') sndPickClose();
+ // Always opens on the tiers; the owner's synth library comes in behind it if it has not yet.
+ w.pbSt = null;
  _ppFill(id);
- w.pop.style.setProperty('--pc', getComputedStyle(w.btn).getPropertyValue('--pc'));
+ if(sp.browse && typeof vpPatchesEnsure === 'function') vpPatchesEnsure().then(function(){ if(_ppOpen === w){ _ppFill(id); popPlace(_ppAnchor(w), w.pop); } });
+ w.anchor = anchor || null;
+ var at = _ppAnchor(w);
+ w.pop.style.setProperty('--pc', getComputedStyle(anchor || w.btn).getPropertyValue('--pc') || getComputedStyle(w.btn).getPropertyValue('--pc'));
  w.pop.classList.add('open');
  w.btn.setAttribute('aria-expanded', 'true');
+ if(anchor) anchor.setAttribute('aria-expanded', 'true');
  _ppOpen = w;
- popPlace(w.btn, w.pop);
+ popPlace(at, w.pop);
  // Open on what is chosen, not at the top: the groove list is three screens
  // long on a phone, and the one you have is the one you compare against.
  var act = w.pop.querySelector('.cp-item.active');
@@ -37065,15 +37530,25 @@ function partPickSync(){
   w.cap.textContent = cap; w.cur.textContent = c.name; w.note.textContent = c.note || '';
   w.btn.classList.toggle('queued', !!c.queued);
   w.btn.setAttribute('aria-label', cap + ': ' + c.name + (c.note ? ', ' + c.note : '') + ' — choose');
-  if(sp.color){ var col = sp.color(); if(col) w.btn.style.setProperty('--pc', col); }
+  if(sp.color){
+   var col = sp.color();
+   if(col){
+    w.btn.style.setProperty('--pc', col);
+    // The frame is the part's colour; the kit half has no sp.color (it wears the key's), so it never overrides it.
+    var bar = w.btn.closest('.pp-bar'); if(bar) bar.style.setProperty('--wc', col);
+   }
+  }
   if(_ppOpen === w) _ppFill(id);
  });
+ // The Live Styles rows name the same sounds.
+ try{ if(typeof starterWidgetSync === 'function') starterWidgetSync(); }catch(e){}
 }
 function partPickInit(){
  _ppDefine();
  Object.keys(PP_SPECS).forEach(function(id){
-  var sp = PP_SPECS[id], cell = document.getElementById(sp.cell);
-  if(!cell || sp._w) return;
+  var sp = PP_SPECS[id], cell = sp.cell ? document.getElementById(sp.cell) : null;
+  // A floating spec has no box of its own: it is a list another control opens (the Live Styles rows' kit lists).
+  if((!cell && !sp.floating) || sp._w) return;
   var btn = document.createElement('button');
   btn.type = 'button'; btn.className = 'pp-btn' + (sp.keyColor ? ' pp-key' : ''); btn.id = 'pp-' + id;
   btn.setAttribute('aria-haspopup', 'listbox'); btn.setAttribute('aria-expanded', 'false');
@@ -37082,7 +37557,7 @@ function partPickInit(){
   var note = document.createElement('span'); note.className = 'pp-note';
   var car = document.createElement('span'); car.className = 'pp-caret'; car.setAttribute('aria-hidden', 'true'); car.textContent = '▾';
   btn.appendChild(cap); btn.appendChild(cur); btn.appendChild(note); btn.appendChild(car);
-  cell.appendChild(btn);
+  if(cell) cell.appendChild(btn);
   var pop = document.createElement('div');
   pop.className = 'chordpick-pop pp-pop'; pop.id = 'pp-' + id + '-pop'; pop.setAttribute('role', 'listbox');
   document.body.appendChild(pop);
@@ -54349,19 +54824,41 @@ function starterApply(part, next){
  try{ sayToast(STARTER_PART[part]+': '+next.label); }catch(e){}
  starterWidgetSync();
 }
-// What the Live page shows: one row per part, ‹ name ›. The row is made once and
-// kept; Settings and the transport repaint it by name through starterWidgetSync.
+// What the Live page shows: one row per part, Voice | Pattern in one frame (6.9.9.9.3). The left half is what the part
+// sounds like (the kit on Drums and Aux, the sound on Bass and Melody), the right half is what it plays (its style);
+// each is a name that opens its list, with a small ‹ › either side that steps to the previous or next. Same order on
+// every row, as on the Studio pages. It was the style alone, and the sound was a different widget somewhere else.
+// The row is made once and kept; Settings and the transport repaint it by name through starterWidgetSync.
 var _starterNode = null;
 function starterWidgetNode(){
  if(_starterNode) return _starterNode;
  var box = document.createElement('div');
  box.className = 'st-widget lv-made'; box.id = 'st-widget';
+ var cols = document.createElement('div'); cols.className = 'st-cols'; cols.setAttribute('aria-hidden', 'true');
+ ['', 'Voice', 'Pattern'].forEach(function(t){ var c = document.createElement('span'); c.textContent = t; cols.appendChild(c); });
+ box.appendChild(cols);
  ['drums','aux','bass','mel'].forEach(function(part){
   var row = document.createElement('div'); row.className = 'st-row'; row.dataset.part = part;
   row.style.setProperty('--pc', starterColor(part));
   var head = document.createElement('div'); head.className = 'st-head';
   var lbl = document.createElement('span'); lbl.className = 'st-part'; lbl.textContent = STARTER_PART[part];
   head.appendChild(lbl);
+  // The voice half. .st-vstep / .st-vname, not .st-step / .st-name: the style half keeps those (tests, the queued marker and
+  // the tutorials reach it by them), and they must stay the first of their kind in the row.
+  var vpick = document.createElement('div'); vpick.className = 'st-vpick';
+  var vprev = document.createElement('button'); vprev.type = 'button'; vprev.className = 'st-vstep';
+  vprev.textContent = '\u2039'; vprev.setAttribute('aria-label', 'Previous '+STARTER_PART[part]+' voice');
+  var vname = document.createElement('button'); vname.type = 'button'; vname.className = 'st-vname';
+  vname.title = 'Choose the '+STARTER_PART[part].toLowerCase()+' voice from a list'; vname.setAttribute('aria-haspopup', 'listbox'); vname.setAttribute('aria-expanded', 'false');
+  var vnext = document.createElement('button'); vnext.type = 'button'; vnext.className = 'st-vstep';
+  vnext.textContent = '\u203a'; vnext.setAttribute('aria-label', 'Next '+STARTER_PART[part]+' voice');
+  vprev.addEventListener('click', function(){ starterVoiceStep(part, -1); });
+  vnext.addEventListener('click', function(){ starterVoiceStep(part, +1); });
+  vname.addEventListener('click', function(e){
+   e.stopPropagation();
+   if(typeof ppOpenAt === 'function') ppOpenAt(part==='drums' ? 'live-drums-kit' : part==='aux' ? 'live-aux-kit' : part==='bass' ? 'bass-patch' : 'melody-patch', vname);
+  });
+  vpick.appendChild(vprev); vpick.appendChild(vname); vpick.appendChild(vnext);
   var pick = document.createElement('div'); pick.className = 'st-pick';
   var prev = document.createElement('button'); prev.type = 'button'; prev.className = 'st-step';
   prev.textContent = '‹'; prev.setAttribute('aria-label', 'Previous '+STARTER_PART[part]+' style');
@@ -54373,7 +54870,7 @@ function starterWidgetNode(){
   next.addEventListener('click', function(){ starterRotate(part, +1); });
   name.addEventListener('click', function(){ starterPickOpen(part); });
   pick.appendChild(prev); pick.appendChild(name); pick.appendChild(next);
-  row.appendChild(head); row.appendChild(pick);
+  row.appendChild(head); row.appendChild(vpick); row.appendChild(pick);
   box.appendChild(row);
  });
  // One row for keeping and getting back what you made (6.0w). Each of the three style rows had its own Save, a tray
@@ -54405,6 +54902,16 @@ function starterWidgetSync(){
    nm.textContent = cur ? starterLabel(part, cur) : 'Custom';
    var on = part==='drums' ? !!drumsEnabled : part==='aux' ? (typeof window._sqLayerOn==='function' && window._sqLayerOn(1) && starterHasPattern('aux')) : part==='bass' ? !!blEnabled : !!mlEnabled;
    row.classList.toggle('off', !on);
+   // The voice half: what the part sounds like now.
+   var vn = row.querySelector('.st-vname');
+   if(vn){
+    var vt = '';
+    try{
+     if(part==='drums' || part==='aux') vt = PP_SPECS['live-'+part+'-kit'].current().name;
+     else vt = PP_SPECS[part==='bass' ? 'bass-patch' : 'melody-patch'].current().name;
+    }catch(e2){}
+    if(vt && vn.textContent !== vt) vn.textContent = vt;
+   }
   });
  }catch(e){}
 }
@@ -55430,7 +55937,7 @@ function _drumLoadOne(name){
  fetch(DRUM_SAMPLES_LAZY[name])
   .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+name); return r.arrayBuffer(); })
   .then(a=>ctx.decodeAudioData(a))
-  .then(buf=>{ DRUM_BUFFERS[name]=buf; })
+  .then(buf=>{ DRUM_BUFFERS[name]=_hitTrimmed(ctx, buf); })
   .catch(()=>{ delete _drumLazyPending[name]; });
 }
 function sqPreloadKit(mach){
@@ -55448,7 +55955,7 @@ function preloadDrumSamples(){
   fetch(DRUM_SAMPLES[k])
    .then(r=>{ if(!_assetOK(r)) throw new Error('drum fetch '+k); return r.arrayBuffer(); })
    .then(a=>ctx.decodeAudioData(a))
-   .then(buf=>{ DRUM_BUFFERS[k]=buf; })
+   .then(buf=>{ DRUM_BUFFERS[k]=_hitTrimmed(ctx, buf); })
    .catch(()=>{}));   // one missing cymbal must not sink the kit
  Promise.all(jobs).then(()=>{
   _drumLoadState = Object.keys(DRUM_BUFFERS).length ? 'ready' : 'error';
@@ -70172,6 +70679,23 @@ function modProducts(){
   try{ return (window.modBilling && window.modBilling.products && window.modBilling.products()) || {}; }
   catch(e){ return {}; }
 }
+
+// The free web build (modriff.com/play) sells nothing. What it does at a locked
+// thing is send people to the app, which is where the packs are. One Apple app
+// record covers iPhone, iPad and Mac, so one apps.apple.com link opens the
+// right store on each. appleId is empty until the app has a number (App Store
+// Connect > App Information > Apple ID); until then every device goes to the
+// landing page, which has the same buttons. Chromebooks and Windows have no
+// store to go to, so they get the landing page either way.
+var WEB_STORE = { appleId:'', landing:'https://modriff.com' };
+function webStoreInfo(){
+ var ua = String(navigator.userAgent||'');
+ var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);
+ var mac = !ios && /Macintosh/.test(ua);
+ if((ios||mac) && WEB_STORE.appleId)
+  return { url:'https://apps.apple.com/app/id'+WEB_STORE.appleId, label: ios ? 'Get it on the App Store' : 'Get it on the Mac App Store' };
+ return { url:WEB_STORE.landing, label: (ios||mac) ? 'Get the app' : 'Get the app for iPhone, iPad and Mac' };
+}
 function modBundleOffer(){ return bundleOfferFor(_modOwned, _modFull, modProducts()); }
 function _modNames(list){ return list.map(function(m){ return MODULE_COPY[m].name; }); }
 function _modJoin(a){ return a.length<2 ? a.join('') : a.length===2 ? a.join(' and ') : a.slice(0,-1).join(', ')+', and '+a[a.length-1]; }
@@ -70368,7 +70892,15 @@ if(!window.modBilling){
   // persisted: the point of this rewrite is that nothing on the device
   // decides this. setModOwned(['theory']) in the console to see that build.
   _dev: null,
-  owned: function(){ return this._dev == null ? MODULE_ORDER.concat(['fullstudio']) : this._dev; },
+  // The free web build (npm run build:web, served at modriff.com/play) sets
+  // window.__modFreeWeb before anything else runs. It holds nothing, and the
+  // override above does not exist there: a stray modo-dev-tier key or a
+  // console call must not turn the free page into the whole app. Every other
+  // browser load (a local checkout, the tests) is unchanged and holds everything.
+  owned: function(){
+    if(window.__modFreeWeb===true) return [];
+    return this._dev == null ? MODULE_ORDER.concat(['fullstudio']) : this._dev;
+  },
   products: function(){ return {}; },
   refresh: function(){ return Promise.resolve(this.owned()); },
   purchase: function(){
@@ -70428,7 +70960,7 @@ window.modBillingChanged = function(){
 // override rather than writing anything anybody could forge. The web provider
 // always takes it; the iOS one only in a debug build.
 function setModOwned(keys){
-  try{ if(window.modBilling.provider==='web' || window.__modDebug===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
+  try{ if((window.modBilling.provider==='web' && window.__modFreeWeb!==true) || window.__modDebug===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
   _applyTier();
 }
 function setModTier(t){ setModOwned(t==='free' ? [] : ['fullstudio']); }
@@ -70718,6 +71250,22 @@ function proSheet(what, module){
   box.appendChild(btn('All packs', 'pro-sec', function(){ cur={ what:'', module:null, view:'store' }; render(); }));
   box.appendChild(btn('Not now', 'pro-sec', close));
  }
+ // The free web build: the same sheet, with the way to buy swapped for the way
+ // to the app. Nothing here can start a purchase, restore one, or show a price.
+ function webView(){
+  const m = cur.module && MODULE_COPY[cur.module];
+  const st = webStoreInfo();
+  box.appendChild(mk('div','pro-hd', 'Get the full mõdRïff'));
+  box.appendChild(mk('div','pro-what', cur.what ? modPartOf(cur.what, cur.module)+', and it is in the app.' : 'You are using the free version. The app has all of it.'));
+  if(m){ box.appendChild(mk('div','pro-bname', m.name)); box.appendChild(bullets(m.bullets)); }
+  else {
+   STORE_ORDER.forEach(function(id){ const c=MODULE_COPY[id]; box.appendChild(mk('div','pro-bname', c.name)); box.appendChild(mk('div','pro-sub', c.line)); });
+  }
+  box.appendChild(mk('div','pro-sub','The app is free to download.'));
+  const a=mk('a','pro-buy', st.label); a.href=st.url; a.target='_blank'; a.rel='noopener'; a.setAttribute('data-web-store','1');
+  box.appendChild(a);
+  box.appendChild(btn('Not now', 'pro-sec', close));
+ }
  function storeView(){
   box.appendChild(mk('div','pro-hd','mõdRïff packs'));
   if(_modFull){
@@ -70744,7 +71292,8 @@ function proSheet(what, module){
  function render(){
   const keep=box.scrollTop;
   while(box.firstChild) box.removeChild(box.firstChild);
-  if(cur.view==='store') storeView(); else featureView();
+  if(window.__modFreeWeb===true) webView();
+  else if(cur.view==='store') storeView(); else featureView();
   box.scrollTop=keep;
  }
  ov._render=render;
@@ -71043,6 +71592,11 @@ function proSyncRow(){
   }
  }
  const row=document.getElementById('pro-row'); if(!row) return;
+ if(window.__modFreeWeb===true){
+  // Nothing is sold here, so no Restore; the one button goes to the app.
+  row.querySelectorAll('button').forEach(function(b){ b.style.display = b.id==='pro-upgrade' ? '' : 'none'; });
+  const up=document.getElementById('pro-upgrade'); if(up) up.textContent='Get the app';
+ }
  const web = window.modBilling && window.modBilling.provider==='web';
  const all = modHasAll();
  // The browser build grants everything and cannot sell anything, so there is
