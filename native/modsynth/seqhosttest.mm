@@ -286,6 +286,54 @@ int main() {
       [g seqStop];
     }
 
+    // The chord comp through the host: the same thread and bank, no page. A synthetic one-note chord for each of three pitches (part 3: a tone
+    // that is one oscillator and a gain, no sub), a rhythm of two hits a bar, the C major chord. Each hit composes three voices and stops the
+    // chord before it; started with the drums running, it shares their downbeat.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      CHECK(![g seqChordStartWithBpm:120 leadMs:100 alignToDrums:YES kit:9], "no chord score, no chord start");
+      CHECK(![g seqSetChordScore:[NSData dataWithBytes:"junk" length:8]], "a chord score that does not parse is refused");
+      auto chordNote = [&](int pitch) {
+        std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+        const double stop = 0.048 + 1.5, amp = 0.5;
+        p.insert(p.end(), {8, 5, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+        size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+        std::vector<double> e = {1, 3, 9, (double)pitch, 1, 0.048, 0.048, 0.8, (double)p.size()};
+        e.insert(e.end(), p.begin(), p.end());
+        e.insert(e.end(), {1, (double)amp_i, amp / 0.8, 0, 0, 0, 1, (double)stop_i, 0});       // velocity, accent, pitch; time; mul
+        e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
+        e.insert(e.end(), {(double)pitch, 1.5, 0, 0, 0, 0});                                  // refPitch, refDur, refFrom, no length, glide or held slots
+        e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.022, 0});                     // the stop of the chord before: hold the gain, fade it
+        e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
+        e.insert(e.end(), {0});                                                               // no velocity curve
+        return e;
+      };
+      for (int pitch : {60, 64, 67}) [g seqPutBankEntry:bytes(chordNote(pitch))];
+      std::vector<double> cs = {1, 16, -1, 0, 1, 1, 1, 0.3, 0, 0, 0, 0, 60, 3, 60, 64, 67, 2, 0, 1, 0, 8, 1, 0};
+      CHECK([g seqSetChordScore:bytes(cs)], "the chord rhythm is taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqChordStartWithBpm:120 leadMs:100 alignToDrums:YES kit:9], "the chord rhythm starts");
+      std::vector<float> l(240), r(240); float peak = 0;
+      for (int t = 0; t < 1800; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        usleep(5000);
+      }
+      NSDictionary *m = [g seqMirror], *c = m[@"chord"];
+      CHECK([c[@"running"] boolValue] && [c[@"steps"] intValue] > 8, "the chord rhythm steps with no page: %d steps", [c[@"steps"] intValue]);
+      CHECK([c[@"firstFrame"] doubleValue] == [m[@"firstFrame"] doubleValue], "and it shares the drums' downbeat (frame %.0f)", [c[@"firstFrame"] doubleValue]);
+      CHECK([c[@"hits"] intValue] >= 2 && [c[@"chords"] intValue] == [c[@"hits"] intValue] && [c[@"voices"] intValue] == 3 * [c[@"chords"] intValue] && [c[@"misses"] intValue] == 0 && [c[@"refused"] intValue] == 0,
+            "each hit composes three voices from the bank: %d hits, %d chords, %d voices, %d missed, %d refused", [c[@"hits"] intValue], [c[@"chords"] intValue], [c[@"voices"] intValue], [c[@"misses"] intValue], [c[@"refused"] intValue]);
+      CHECK([c[@"stops"] intValue] >= 3 && peak > 0.02f, "the second chord stops the first (%d stops), and it sounds: peak %.3f", [c[@"stops"] intValue], peak);
+      CHECK([[g graphStats][@"lateEdits"] intValue] == 0 && [m[@"late"] intValue] == 0, "no late edit, no late step");
+      [g seqChordStop]; [g seqStop];
+      const int hits = [[g seqMirror][@"chord"][@"hits"] intValue];
+      run(g, 300);
+      CHECK([[g seqMirror][@"chord"][@"hits"] intValue] == hits && ![[g seqMirror][@"chord"][@"running"] boolValue], "stopped: still %d hits", hits);
+    }
+
     // Stop: nothing more even when the clock runs.
     [h seqStop];
     const int s0 = [[h seqMirror][@"steps"] intValue];

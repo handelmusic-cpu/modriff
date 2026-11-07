@@ -9139,7 +9139,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.4</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.5</span></div>
  </div>
 </div>
 
@@ -10571,7 +10571,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.4</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.5</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11762,7 +11762,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.4';
+const MODRIFF_VERSION = '6.9.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12809,6 +12809,7 @@ function modNativePlugin(){
                      seqTempo:call('seqTempo'), seqMirror:call('seqMirror'),
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
+                     seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
@@ -49239,6 +49240,34 @@ function crLabel(){
  p = COMP_PATTERNS[CR.key];
  return p ? p.label : 'Rhythm';
 }
+// The engine's copy of the chord rhythm (docs/native-scheduling.md, slice 2; native/modsynth/chordcore.h reads this layout). {ok, why[], score[]}.
+// `voiced` is the chord as the page sent it, {notes (a slash bass first), root, bass}: given by a test that watched the page's own hit; left out, it
+// is made the way rhyStrike makes it, which advances the page's voice-leading and Vary state like a hit would.
+// ok is false, and why says, for what the engine cannot yet play: a gated hit (held and let go of at the end of its length).
+function _crNativeScore(voiced){
+ var why = [], pat = crPattern(), chord = CR.chord;
+ if(!pat) return {ok:false, why:['no rhythm is selected'], score:[]};
+ if(!chord) return {ok:false, why:['no chord has been tapped'], score:[]};
+ if(pat.ev.some(function(e){ return e.len > 0; })) why.push('a gated hit (the chord is held and let go of at the end of its length)');
+ var v = voiced;
+ if(!v){
+  var uppers = chord.intvs.filter(function(d){ return d >= 0; }), lows = chord.intvs.filter(function(d){ return d < 0; });
+  var bass = lows.length ? chord.root + Math.min.apply(null, lows) : null;
+  var vo = autoInvOn ? smartVoiceLead(chord.root, uppers, bass) : uppers;
+  var ivs = chordVoicing(chord.root, vo);
+  var m = chordEngineEvent({root: chord.root, ivs: ivs, bass: bass != null ? bass : null}, chord.root, {part: 'chord', ivs: ivs, vel: 1, at: 0, dur: 1});
+  v = {notes: (m.bass != null ? [m.bass] : []).concat(m.notes), root: m.root, bass: m.bass};
+ }
+ var decRaw = parseFloat(document.getElementById('decay').value) || 2.0;
+ var dec = chordBeats > 0 ? Math.min(decRaw, chordBeats * beatSec()) : decRaw;
+ if(strumMode && !(chordBeats > 0)) dec = Math.min(dec, 0.7);
+ var d = [1, pat.steps, pat.swing != null ? pat.swing : -1, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, chordsEnabled ? 1 : 0, velScale(0), dec,
+          strumMode ? 1 : 0, _wp('chord.strumSpread') || 0, _wp('fx.width') || 0, _webChordSubOn() ? 1 : 0, v.bass != null ? v.bass : v.root, v.notes.length];
+ v.notes.forEach(function(n){ d.push(n); });
+ d.push(pat.ev.length); pat.ev.forEach(function(e){ d.push(e.p, e.v, e.len); });
+ return {ok: !why.length, why: why, score: d};
+}
+window._crNativeScore = _crNativeScore;
 function crSongOn(){ return typeof songLoopActive!=='undefined' && songLoopActive; }
 // Line the grid up: the next sixteenth the master clock has, counted in the pattern from the bar line (the drums'
 // own bar when they are running, the clock's when they are not).
@@ -60461,6 +60490,38 @@ window._nsBass = {
  stop: function(){ var P = this.plugin(); return P ? P.seqBassStop() : Promise.resolve(); },
  tempo: function(){ var P = this.plugin(); return P ? P.seqBassTempo({bpm: parseFloat(document.getElementById('bpm').value) || 120, rate: (typeof blRateMul !== 'undefined' ? blRateMul : 1)}) : Promise.resolve(); },
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.bass; }) : Promise.resolve(null); }
+};
+
+// The developer entry to the engine's own chord comp (docs/native-scheduling.md slice 2), beside window._nsDrum and window._nsBass: records the
+// pitches of the chord you last tapped (and its sub) into the engine's bank, hands over the chord rhythm that is selected and starts it on the host's
+// thread, with the drums' downbeat when they are running (start _nsDrum first). Tap a chord first (it sets what the rhythm plays), pick a rhythm
+// without gated hits. Nothing in the app calls it. Needs Native sound on. The chord is voiced the way a hit would voice it, once: later hits play
+// that voicing (the page re-voices with its Vary mode on each hit; the engine does not).
+window._nsChord = {
+ plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqChordScore ? P : null; },
+ prepare: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(!MODGRAPH.on || !MODGRAPH.parts.chord) return Promise.resolve({ok: false, why: 'Native sound is off'});
+  var sc = window._crNativeScore();
+  if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this yet: ' + sc.why.join(', ')});
+  var nN = sc.score[13], notes = sc.score.slice(14, 14 + nN), sub = sc.score[12];
+  var pitches = notes.concat([sub]).filter(function(x, i, a){ return a.indexOf(x) === i; });
+  return window._nsBank.ensureChord(pitches).then(function(rep){
+   if(rep.failed.length) return {ok: false, why: rep.failed[0].why, bank: rep};
+   return P.seqChordScore({score: _mgB64(Float64Array.from(sc.score))}).then(function(r){ r.bank = rep; return r; });
+  });
+ },
+ start: function(leadMs){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  return this.prepare().then(function(rep){
+   if(rep.ok === false) return rep;
+   var bpm = parseFloat(document.getElementById('bpm').value) || 120;
+   return P.seqChordStart({bpm: bpm, leadMs: leadMs || 250, align: true, kit: window._nsKitCode('chord:' + _wp('chord.voice'))}).then(function(r){ r.bank = rep.bank; return r; });
+  });
+ },
+ stop: function(){ var P = this.plugin(); return P ? P.seqChordStop() : Promise.resolve(); },
+ tempo: function(){ var P = this.plugin(); return P ? P.seqChordTempo({bpm: parseFloat(document.getElementById('bpm').value) || 120}) : Promise.resolve(); },
+ mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.chord; }) : Promise.resolve(null); }
 };
 
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local

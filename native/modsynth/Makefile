@@ -57,7 +57,7 @@ seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
 clean:
-	rm -f banktest chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
@@ -83,6 +83,9 @@ bassscoretest: bassscoretest.cpp bassplay.h basscore.cpp basscore.h seqcore.cpp 
 
 chordseqtest: chordseqtest.cpp chordplay.h chordcomp.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ chordseqtest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
+
+chordtool: chordtool.cpp chordcore.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
+	$(CXX) $(CXXFLAGS) -o $@ chordtool.cpp voicebank.cpp
 
 chordtest: chordtest.cpp chordcomp.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ chordtest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc

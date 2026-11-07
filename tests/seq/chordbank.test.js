@@ -146,6 +146,22 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
     const c = await window._nsBank.ensureChord([60]);
     return { a, b, c, changed: s0 !== s1, sent: sent.length };
   });
+  const ent = await page.evaluate(async () => {
+    const sent = [], calls = {};
+    const stub = { graphBuf() {}, graphBegin() {}, graphEdit() {}, seqScore: () => Promise.resolve({}), seqBank: o => { sent.push(1); return Promise.resolve({ ok: true }); },
+      seqChordScore: o => { calls.score = (calls.score || 0) + 1; return Promise.resolve({ ok: true }); }, seqChordStart: o => { calls.start = o; return Promise.resolve({ ok: true }); }, seqChordStop: () => Promise.resolve(), seqChordTempo: () => Promise.resolve() };
+    window.modNativePlugin = () => stub;
+    wave = 'sine'; strumMode = false; fxWidth = 0; chordSubOn = true; window._nsBank.have = {}; window._nsBank.bad = {};
+    chordsEnabled = true; CR.chord = { root: 60, intvs: [0, 4, 7] }; CR.key = 'strum'; CR.def = null; CR.preview = null;
+    const started = await window._nsChord.start(250);
+    const entry = { ok: started.ok, sent: sent.length, score: calls.score, kit: calls.start && calls.start.kit, want: window._nsKitCode('chord:sine'), align: calls.start && calls.start.align };
+    MODGRAPH.on = false; const off = await window._nsChord.start(); MODGRAPH.on = true;
+    const d = rhyBlank(16); d.cells[0].on = 1; d.cells[0].len = 2; d.name = 'gate'; CR.key = 'u:gate'; CR.def = rhyNorm(d);
+    const gated = await window._nsChord.start(); CR.key = 'strum'; CR.def = null;
+    return { entry, off: off.why, gated: gated.why };
+  });
+  ok(ent.entry.ok === true && ent.entry.sent >= 3 && ent.entry.score === 1 && ent.entry.kit === ent.entry.want && ent.entry.align === true && /Native sound is off/.test(ent.off || '') && /gated/.test(ent.gated || ''),
+     '_nsChord.start(): records the chord\'s pitches (and the sub\'s), sends the rhythm once, starts it on the drums\' downbeat with the voice\'s code; says so with Native sound off; refuses a gated rhythm', JSON.stringify(ent));
   ok(sig.a.built === 3 && sig.b.built === 1 && sig.b.kept === 3 && sig.changed && sig.c.built === 1 && sig.sent === 5, 'ensureChord: records the pitches a chord needs once (3, then 1 more, the rest kept), and again when the Width changes the signature', JSON.stringify(sig));
   await browser.close(); srv.close();
   ok(total.ok === total.n && total.n > 0, total.ok + ' of ' + total.n + ' chords are exact (' + total.exact + ' bit-identical, worst ' + total.worst.toFixed(1) + ' dB)', (total.n - total.ok) + ' below ' + PASS_DB + ' dB');
