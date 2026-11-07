@@ -118,6 +118,12 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const og = await page.evaluate(() => [...document.querySelectorAll('#vsel-chord optgroup')].map(g => g.label).filter(l => !/^mõdSynth · /.test(l)));
   check(og.join('|') === 'Samples|mõdSynth|Free voices', 'Voices dropdown: Samples first', og.join('|'));
 
+  // Shut lists take no room on the page: 6.9.9.9.2 left every part page's Voice list displayed under the content.
+  const shown = await page.evaluate(() => [...document.querySelectorAll('.pp-pop, .snd-pick-pop')].filter(p => !p.classList.contains('open') && getComputedStyle(p).display !== 'none').map(p => p.id));
+  check(shown.length === 0, 'every shut list is display:none', shown.join(','));
+  const pbOnPop = await page.evaluate(() => document.querySelectorAll('.pp-pop.pb-root, .snd-pick-pop.pb-root').length);
+  check(pbOnPop === 0, 'the browser is drawn inside a list, not as the list');
+
   check(errs.length === 0, 'no page errors', errs.join(' ; ').slice(0, 300));
   await browser.close();
   console.log(fails ? fails + ' FAILED' : 'ALL PASS');
