@@ -4834,6 +4834,8 @@ body.light-mode .ft-sheet-items > .ft-btn.ur, body.light-mode #ft-find-btn.ft-fi
    .modal-overlay (voice, find, share, randomise, shortcuts, sampler, the libraries) or the
    More sheet, so those two rules are all of them. inset:0 with auto margins centres the
    More sheet without a transform, which its own slide-in animation already owns. */
+/* The free web page (npm run build:web) carries no recordings, and the pads are recordings: no entrance to them. */
+html.web-free #pf-pads-btn { display:none; }
 html.mac-app .modal-overlay { align-items:center; padding:24px; }
 html.mac-app .modal-sheet { border-radius:var(--r-lg); padding-bottom:22px; max-height:calc(100vh - 48px); overflow-y:auto; box-shadow:0 12px 48px rgba(0,0,0,.6); }
 html.mac-app .ft-more-menu { inset:0; margin:auto; height:fit-content; width:min(640px, calc(100vw - 48px)); max-height:calc(100vh - 48px);
@@ -7438,6 +7440,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
 #_pro-sheet button { width:100%; padding:9px 14px; border-radius:9px; font-family:'Outfit',sans-serif;
   font-size:.58rem; font-weight:700; cursor:pointer; touch-action:manipulation; margin-top:6px; }
 #_pro-sheet .pro-buy { border:none; background:var(--pg); color:#07080f; }
+/* The free web build's way out: a link, not a button, so it opens the store in a new tab. */
+#_pro-sheet a.pro-buy { display:block; box-sizing:border-box; width:100%; padding:9px 14px; border-radius:9px; margin-top:6px;
+  font-family:'Outfit',sans-serif; font-size:.58rem; font-weight:700; text-align:center; text-decoration:none; touch-action:manipulation; }
 #_pro-sheet .pro-sec { border:1px solid var(--pg); background:transparent; color:var(--text); font-weight:600; }
 #_pro-sheet button:disabled { opacity:.5; cursor:default; }
 #_pro-sheet .pro-sub { font-size:.5rem; color:var(--muted); line-height:1.6; margin-bottom:6px; }
@@ -16965,7 +16970,8 @@ function smpLoadLibrary(){
   // in samples/user/manifest.json and they turn up in everybody's library,
   // cached offline by the service worker like every other sample. A missing
   // manifest is the normal case and must stay silent.
-  fetch('samples/user/manifest.json').then(function(r){ return _assetOK(r)?r.json():null; })
+  // The free web build ships no samples/ at all, so there is nothing to ask for.
+  (window.__modFreeWeb===true ? Promise.resolve(null) : fetch('samples/user/manifest.json').then(function(r){ return _assetOK(r)?r.json():null; }))
    .then(function(m){
     var list = (m && (m.clips||m.samples)) || [];
     list.forEach(function(e){
@@ -19675,6 +19681,8 @@ window.psWarpPrime = psWarpPrime;
 var PS_FACTORY_BPM = 100;
 var _psFactory = null;     // the render, once started — a promise
 function _psFetch(ctx, url){
+ // The free web build has no recordings to fetch (build.mjs leaves samples/ out).
+ if(window.__modFreeWeb===true) return Promise.reject(0);
  return fetch(url).then(function(r){ if(!_assetOK(r)) throw 0; return r.arrayBuffer(); })
   .then(function(b){ return ctx.decodeAudioData(b); });
 }
@@ -20168,6 +20176,9 @@ function psFactoryEnsure(full){
  return full ? psFactoryEnsure(true) : _psFactory;
 }
 function _psFactoryBuild(list){
+ // The factory pad clips are recordings (two synthesized sounds do not make a bank), and the free
+ // web page plays none: the Sampler is a lock tile there, so nothing asks for these.
+ if(window.__modFreeWeb===true) return Promise.resolve(false);
  var ctx = psCtx(); if(!ctx) return Promise.resolve(false);
  var files = {};
  list.forEach(function(k){
@@ -21506,7 +21517,12 @@ function lvShows(m){ return lvHas(m) && lvAllowed(m); }
 function lvCount(s){ return (s||LV.slots).length; }
 function lvClamp(s){ return s.slice(0, LV_MAX); }
 function lvHas(m){ return LV.slots.indexOf(m) >= 0; }
-function lvAllowed(m){ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g); }
+function lvAllowed(m){
+ // The Sampler's pads are recordings, which the free web page does not carry at all. Everywhere else
+ // the free pads are a free feature; here the widget is a lock tile that points at the app.
+ if(m==='pads' && window.__modFreeWeb===true) return false;
+ var g=LV_GATE[m]; return !g || typeof modAllows!=='function' || modAllows(g);
+}
 function lvActive(){
  var pg = document.getElementById('page-perform');
  return document.body.classList.contains('mode-basic') && !!pg && pg.classList.contains('active');
@@ -21590,7 +21606,7 @@ function lvContainer(){
 // A pack's widget for a free install: one tile, in its place in the layout, that says what it is and which pack it
 // belongs to and opens the pack's sheet. The instrument itself stays on its Studio page, untouched.
 function lvLockTile(m){
- var module = (typeof modFor==='function' && modFor(LV_GATE[m])) || '';
+ var module = (typeof modFor==='function' && modFor(LV_GATE[m])) || (m==='pads' ? 'sampler' : '');
  var t = document.createElement('section');
  t.className = 'lv-slot lv-locked'; t.dataset.mod = m; t.setAttribute('aria-label', LV_NAME[m]+', part of a pack');
  var b = document.createElement('button'); b.type = 'button'; b.className = 'lv-lock-tile';
@@ -70480,6 +70496,23 @@ function modProducts(){
   try{ return (window.modBilling && window.modBilling.products && window.modBilling.products()) || {}; }
   catch(e){ return {}; }
 }
+
+// The free web build (modriff.com/play) sells nothing. What it does at a locked
+// thing is send people to the app, which is where the packs are. One Apple app
+// record covers iPhone, iPad and Mac, so one apps.apple.com link opens the
+// right store on each. appleId is empty until the app has a number (App Store
+// Connect > App Information > Apple ID); until then every device goes to the
+// landing page, which has the same buttons. Chromebooks and Windows have no
+// store to go to, so they get the landing page either way.
+var WEB_STORE = { appleId:'', landing:'https://modriff.com' };
+function webStoreInfo(){
+ var ua = String(navigator.userAgent||'');
+ var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);
+ var mac = !ios && /Macintosh/.test(ua);
+ if((ios||mac) && WEB_STORE.appleId)
+  return { url:'https://apps.apple.com/app/id'+WEB_STORE.appleId, label: ios ? 'Get it on the App Store' : 'Get it on the Mac App Store' };
+ return { url:WEB_STORE.landing, label: (ios||mac) ? 'Get the app' : 'Get the app for iPhone, iPad and Mac' };
+}
 function modBundleOffer(){ return bundleOfferFor(_modOwned, _modFull, modProducts()); }
 function _modNames(list){ return list.map(function(m){ return MODULE_COPY[m].name; }); }
 function _modJoin(a){ return a.length<2 ? a.join('') : a.length===2 ? a.join(' and ') : a.slice(0,-1).join(', ')+', and '+a[a.length-1]; }
@@ -70676,7 +70709,15 @@ if(!window.modBilling){
   // persisted: the point of this rewrite is that nothing on the device
   // decides this. setModOwned(['theory']) in the console to see that build.
   _dev: null,
-  owned: function(){ return this._dev == null ? MODULE_ORDER.concat(['fullstudio']) : this._dev; },
+  // The free web build (npm run build:web, served at modriff.com/play) sets
+  // window.__modFreeWeb before anything else runs. It holds nothing, and the
+  // override above does not exist there: a stray modo-dev-tier key or a
+  // console call must not turn the free page into the whole app. Every other
+  // browser load (a local checkout, the tests) is unchanged and holds everything.
+  owned: function(){
+    if(window.__modFreeWeb===true) return [];
+    return this._dev == null ? MODULE_ORDER.concat(['fullstudio']) : this._dev;
+  },
   products: function(){ return {}; },
   refresh: function(){ return Promise.resolve(this.owned()); },
   purchase: function(){
@@ -70736,7 +70777,7 @@ window.modBillingChanged = function(){
 // override rather than writing anything anybody could forge. The web provider
 // always takes it; the iOS one only in a debug build.
 function setModOwned(keys){
-  try{ if(window.modBilling.provider==='web' || window.__modDebug===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
+  try{ if((window.modBilling.provider==='web' && window.__modFreeWeb!==true) || window.__modDebug===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
   _applyTier();
 }
 function setModTier(t){ setModOwned(t==='free' ? [] : ['fullstudio']); }
@@ -71026,6 +71067,22 @@ function proSheet(what, module){
   box.appendChild(btn('All packs', 'pro-sec', function(){ cur={ what:'', module:null, view:'store' }; render(); }));
   box.appendChild(btn('Not now', 'pro-sec', close));
  }
+ // The free web build: the same sheet, with the way to buy swapped for the way
+ // to the app. Nothing here can start a purchase, restore one, or show a price.
+ function webView(){
+  const m = cur.module && MODULE_COPY[cur.module];
+  const st = webStoreInfo();
+  box.appendChild(mk('div','pro-hd', 'Get the full mõdRïff'));
+  box.appendChild(mk('div','pro-what', cur.what ? modPartOf(cur.what, cur.module)+', and it is in the app.' : 'You are using the free version. The app has all of it.'));
+  if(m){ box.appendChild(mk('div','pro-bname', m.name)); box.appendChild(bullets(m.bullets)); }
+  else {
+   STORE_ORDER.forEach(function(id){ const c=MODULE_COPY[id]; box.appendChild(mk('div','pro-bname', c.name)); box.appendChild(mk('div','pro-sub', c.line)); });
+  }
+  box.appendChild(mk('div','pro-sub','The app is free to download.'));
+  const a=mk('a','pro-buy', st.label); a.href=st.url; a.target='_blank'; a.rel='noopener'; a.setAttribute('data-web-store','1');
+  box.appendChild(a);
+  box.appendChild(btn('Not now', 'pro-sec', close));
+ }
  function storeView(){
   box.appendChild(mk('div','pro-hd','mõdRïff packs'));
   if(_modFull){
@@ -71052,7 +71109,8 @@ function proSheet(what, module){
  function render(){
   const keep=box.scrollTop;
   while(box.firstChild) box.removeChild(box.firstChild);
-  if(cur.view==='store') storeView(); else featureView();
+  if(window.__modFreeWeb===true) webView();
+  else if(cur.view==='store') storeView(); else featureView();
   box.scrollTop=keep;
  }
  ov._render=render;
@@ -71351,6 +71409,11 @@ function proSyncRow(){
   }
  }
  const row=document.getElementById('pro-row'); if(!row) return;
+ if(window.__modFreeWeb===true){
+  // Nothing is sold here, so no Restore; the one button goes to the app.
+  row.querySelectorAll('button').forEach(function(b){ b.style.display = b.id==='pro-upgrade' ? '' : 'none'; });
+  const up=document.getElementById('pro-upgrade'); if(up) up.textContent='Get the app';
+ }
  const web = window.modBilling && window.modBilling.provider==='web';
  const all = modHasAll();
  // The browser build grants everything and cannot sell anything, so there is
