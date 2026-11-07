@@ -198,7 +198,7 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.2 | Play, two fingers on two chord pads or two melody keys at once | a chord, not a page zoom; pinching bare text or the page background still zooms |
 | 9.3 | Studio > Drums, load a six-sound kit onto the pads, then switch the sampler to a preset bank | six pads for the kit, twelve for the bank; each pad keeps its own sound and number |
 | 9.4 | Live > Melody (mode on the Voice sheet says **Auto**): play single notes one after another, then two keys at once, then up to eight | single notes slide into each other (a bigger leap slides longer); two or more keys play together without a slide; a ninth key lets the oldest go |
-| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody |
+| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody. With Mode on **Poly**, tap Glide: it lights **and the Mode goes back to Auto** (it used to change a hidden setting and show nothing) |
 | 9.6 | Studio > Melody, tap a second row on a lit step of the roll | the step becomes a chord; tap a chord note to take it away; Play: the chord sounds together |
 | 9.7 | Switch **Bass**, **Mel** and **Drums** (off then on) on the transport over empty parts | a funk bass line, a pop hook, a 4/4 beat. Settings > Starter patterns changes which |
 | 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last;  |
@@ -209,6 +209,8 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.13 | Studio, Chords: pick **Every beat**, then play a song with a long chord and a quick change | the long chord is struck on every beat for its whole length, the quick one is cut where the next chord starts; with the rhythm **Rhythm off**, each chord is struck once a bar as before |
 | 9.14 | Studio, Chords: **More chords** in the Play it line | the Borrowed & Modal and Secondary Dominants rows are shown; one touch hides both, another shows them; the choice is there after a restart; Live is unchanged |
 | 9.13 | Song > Build, a chord > Rhythm > **Draw…**, **Save**, play the song | that chord plays your rhythm; the others carry on as they were |
+| 9.15 | (6.9.9.9.9b) Studio > Drums, **phone held sideways**: scroll the grid so a lower row is on screen, tap an empty step | the step lights and its editor (Vel, Ratchet, Pitch, Prob, Ornament, Accent, Tuplet) is **pinned above the tab bar** in three short rows, however the grid is scrolled; tap more steps: it stays put and the grid does not jump |
+| 9.16 | The same upright, with the grid scrolled so the editor would be under the tab bar and transport | the first tap on an empty step scrolls the page just far enough to bring the editor into view; later taps do not scroll |
 | 9.14 | Saved patterns (Open): save a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
 
 ## 10. Native sound: the dress rehearsal for the flip
@@ -399,12 +401,14 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 
 | # | do | you should see |
 |---|---|---|
-| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
+| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Chords, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
 | 22.2 | Tap the small **›** on a row's right-hand half, then its **‹** | the style steps as it always did (and switches the part on) |
 | 22.3 | Tap the small **›** on the left half of Bass, then **‹** | the sound steps to the next / previous in the same type (Bass patches stay Bass patches), and the name follows. Drums and Aux step their own kit, skipping locked ones |
 | 22.4 | Tap the **name** in a left half | Drums and Aux: the kit list (Aux opens on Percussion & world). Bass and Melody: the sound browser, Samples first. A pick shuts it and the row shows the name |
 | 22.5 | Tap the name in a right half | the style list, as before |
 | 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
+| 22.8 | (6.9.9.9.9a) The Styles widget's **Chords** row (between Bass and Melody): tap **›** on the right half, then **‹** twice; tap the right-hand name | the pattern steps Off, Once a bar, Beats 1 & 3 … and any rhythm you saved; the first step arms the chord rhythm (the Rhythm bar under the Chords widget names the same one), **Off** disarms it; the name opens the same list as Rhythm |
+| 22.9 | The same row, **›** on the left half, then the name | the chord voice steps (Piano, Electric Piano …) and the Chords heading's sound picker follows; the name opens the sound browser, Samples first |
 | 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
 
 ## 22. The chord comp in the engine (6.9.9.9.4 to 6.9.9.9.6; audible through a developer entry only)

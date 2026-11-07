@@ -817,7 +817,7 @@ that names a lock the table does not have, and a table cut short.
 **Not done.** A line written ahead for the next chord (`_blPregen`, still refused with its reason); Pure tuning's cents; a lock edited while it plays
 (the chart is sent when `start` is called); the page's melody locks (not in the engine at all). Not heard on device: checklist 19.6.
 
-## Slice 2, part nine (6.9.9.9.8): lines written ahead
+## Slice 2, part nine (6.9.9.9.9.1): lines written ahead
 
 **What the page does.** With Follow off and Sync on, the page writes each chord's bass line while the chord before it sounds (`_blPregen`) and holds it,
 as `_blPendingGrid`, for the first step of that chord (`_blPendingAt`); a plain regenerate while the pattern plays (`blGenerate`) is held for the top of
