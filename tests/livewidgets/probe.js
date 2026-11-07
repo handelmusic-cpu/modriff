@@ -35,15 +35,20 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
-  const boot = async (tier) => {
-    await page.goto(URL); await page.evaluate(() => { localStorage.clear(); }); await page.goto(URL); await page.waitForTimeout(1500);
+  const boot = async (tier, slots) => {
+    await page.goto(URL); await page.evaluate(s => { localStorage.clear(); if (s) localStorage.setItem('modo-live-slots', JSON.stringify(s)); }, slots || null); await page.goto(URL); await page.waitForTimeout(1500);
     await page.evaluate(() => { const b = document.querySelector('#unlock-choices button'); if (b) b.click(); }); await page.waitForTimeout(900);
     await page.evaluate(t => { setModTier(t); setViewMode('basic'); switchTab('perform'); }, tier); await page.waitForTimeout(700);
   };
   const toastShown = () => page.evaluate(() => { const t = document.getElementById('_toast'); return t && parseFloat(getComputedStyle(t).opacity) > 0.5 ? t.textContent : ''; });
 
-  // ── Free
+  // ── The standard layout has no rolls (6.9.9.9.3), for a free install and for an owner
   await boot('free');
+  const std = await page.evaluate(() => [...document.querySelectorAll('#lv-slots > .lv-slot')].map(s => s.dataset.mod));
+  check(std.join() === 'chords,melody,styles,pads,fx,endings', 'the standard Live layout has no drum, aux, bass or melody rolls', std.join());
+
+  // ── Free, with the rolls added (a layout somebody saved)
+  await boot('free', ['chords', 'melody', 'styles', 'pads', 'fx', 'bass', 'melseq', 'drums', 'aux', 'endings']);
   const f = await page.evaluate(() => ({ slots: [...document.querySelectorAll('#lv-slots > .lv-slot')].map(s => s.dataset.mod + (s.classList.contains('lv-locked') ? ':locked' : '')),
     packs: [...document.querySelectorAll('.lv-lock-tile .lv-lock-p')].map(e => e.textContent) }));
   check(f.slots.includes('bass:locked') && f.slots.includes('melseq:locked'), 'free: the Bass and Melody roll widgets are lock tiles', f.slots.join(' '));

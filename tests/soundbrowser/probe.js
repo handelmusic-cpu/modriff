@@ -114,6 +114,48 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   st = await page.evaluate(() => ({ wave: wave, open: document.getElementById('sndpop-bw-voices').classList.contains('open'), lbl: document.querySelector('#sndpick-bw-voices .snd-pick-cur').textContent }));
   check(st.wave === 'vibes' && !st.open && /Vibes/.test(st.lbl), 'Play: a pick reaches the chord voice, shuts the list and the trigger follows', JSON.stringify(st));
 
+  // ── The Live Styles rows (6.9.9.9.3): Voice | Pattern in one frame ──
+  await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); }); await page.waitForTimeout(900);
+  const rowsInfo = await page.evaluate(() => [...document.querySelectorAll('#st-widget .st-row')].map(r => {
+    const v = r.querySelector('.st-vname').getBoundingClientRect(), n = r.querySelector('.st-name').getBoundingClientRect();
+    return { part: r.dataset.part, voiceLeft: v.right <= n.left + 1, vsteps: r.querySelectorAll('.st-vstep').length, steps: r.querySelectorAll('.st-step').length, voice: r.querySelector('.st-vname').textContent };
+  }));
+  check(rowsInfo.map(r => r.part).join() === 'drums,aux,bass,mel' && rowsInfo.every(r => r.voiceLeft && r.vsteps === 2 && r.steps === 2), 'Live Styles: every row is Voice on the left, Pattern on the right, a caret either side of each', JSON.stringify(rowsInfo.map(r => r.part + ':' + r.voiceLeft)));
+  const cols = await page.evaluate(() => [...document.querySelectorAll('#st-widget .st-cols span')].map(e => e.textContent).join('|'));
+  check(cols === '|Voice|Pattern', 'Live Styles: the columns are captioned', cols);
+  const pad = await page.evaluate(() => [...document.querySelectorAll('#st-widget .st-vstep, #st-widget .st-step')].map(b => { const r = b.getBoundingClientRect(), a = getComputedStyle(b, '::before'); return Math.round(r.width + parseFloat(a.left || 0) * -1 + parseFloat(a.right || 0) * -1); }));
+  check(pad.length === 16 && pad.every(w => w >= 44), 'Live Styles: every caret is 44 pt wide to touch', pad.join());
+  // Bass voice list: the browser, anchored to the row.
+  await page.evaluate(() => document.querySelector('#st-widget .st-row[data-part="bass"] .st-vname').click()); await page.waitForTimeout(500);
+  rows = await rowsOf('pp-bass-patch-pop');
+  const anch = await page.evaluate(() => { const p = document.getElementById('pp-bass-patch-pop').getBoundingClientRect(), a = document.querySelector('#st-widget .st-row[data-part="bass"] .st-vname').getBoundingClientRect(); return { open: document.getElementById('pp-bass-patch-pop').classList.contains('open'), under: Math.abs(p.top - (a.bottom + 4)) < 3 || p.bottom <= a.top }; });
+  check(anch.open && anch.under && rows.join('|') === 'Samples|mõdSynth|Free voices', 'Live Styles: the Bass voice name opens the sound browser under the row', JSON.stringify(anch) + ' ' + rows.join('|'));
+  await clickIn('pp-bass-patch-pop', '.pb-row', 'mõdSynth'); await page.waitForTimeout(300);
+  await clickIn('pp-bass-patch-pop', '.pb-row', 'Bass'); await page.waitForTimeout(300);
+  await clickIn('pp-bass-patch-pop', '.cp-item', 'Deep Sub'); await page.waitForTimeout(1200);
+  let v1 = await page.evaluate(() => ({ name: document.querySelector('#st-widget .st-row[data-part="bass"] .st-vname').textContent, open: document.getElementById('pp-bass-patch-pop').classList.contains('open') }));
+  check(/Deep Sub/.test(v1.name) && !v1.open, 'Live Styles: a pick shuts the list and the row names it', JSON.stringify(v1));
+  // The caret steps inside the same type, and the name follows.
+  await page.evaluate(() => document.querySelectorAll('#st-widget .st-row[data-part="bass"] .st-vstep')[1].click()); await page.waitForTimeout(1200);
+  const v2 = await page.evaluate(() => ({ name: document.querySelector('#st-widget .st-row[data-part="bass"] .st-vname').textContent, patch: vpPatchCurrent('bass') }));
+  const inBass = await page.evaluate(n => { const m = pbModel('bass'); return !!(m.cur && m.cur.cat.label === 'Bass'); }, v2.name);
+  check(v2.name !== v1.name && inBass && /^L\|/.test(v2.patch), 'Live Styles: the next caret goes to the next Bass patch', v1.name + ' > ' + v2.name);
+  await page.evaluate(() => document.querySelectorAll('#st-widget .st-row[data-part="bass"] .st-vstep')[0].click()); await page.waitForTimeout(1200);
+  const v3 = await page.evaluate(() => document.querySelector('#st-widget .st-row[data-part="bass"] .st-vname').textContent);
+  check(v3 === v1.name, 'and the previous caret comes back', v3);
+  // Kits: Drums and Aux are each their own list and their own caret.
+  const k0 = await page.evaluate(() => ({ d: window._sqDrumKit(), a: window._sqAuxKit() }));
+  await page.evaluate(() => document.querySelectorAll('#st-widget .st-row[data-part="drums"] .st-vstep')[1].click()); await page.waitForTimeout(600);
+  const k1 = await page.evaluate(() => ({ d: window._sqDrumKit(), a: window._sqAuxKit(), n: document.querySelector('#st-widget .st-row[data-part="drums"] .st-vname').textContent }));
+  check(k1.d !== k0.d && k1.a === k0.a, 'Live Styles: the Drums caret changes the drum kit and leaves the Aux kit', JSON.stringify([k0, k1]));
+  await page.evaluate(() => document.querySelector('#st-widget .st-row[data-part="aux"] .st-vname').click()); await page.waitForTimeout(400);
+  const auxList = await page.evaluate(() => { const p = document.getElementById('pp-live-aux-kit-pop'); return { open: p.classList.contains('open'), first: p.querySelector('.cp-sect') && p.querySelector('.cp-sect').textContent }; });
+  check(auxList.open && auxList.first === 'Percussion & world', 'Live Styles: the Aux voice opens the kit list on Percussion & world', JSON.stringify(auxList));
+  await clickIn('pp-live-aux-kit-pop', '.cp-item', 'Latin'); await page.waitForTimeout(600);
+  const k2 = await page.evaluate(() => ({ d: window._sqDrumKit(), a: window._sqAuxKit(), n: document.querySelector('#st-widget .st-row[data-part="aux"] .st-vname').textContent }));
+  check(k2.a === 'LATIN' && k2.d === k1.d && /Latin/.test(k2.n), 'Live Styles: picking an Aux kit sets the Aux kit only, and the row names it', JSON.stringify(k2));
+  await page.evaluate(() => ppClose());
+
   // ── The Voices dropdowns ──
   const og = await page.evaluate(() => [...document.querySelectorAll('#vsel-chord optgroup')].map(g => g.label).filter(l => !/^mõdSynth · /.test(l)));
   check(og.join('|') === 'Samples|mõdSynth|Free voices', 'Voices dropdown: Samples first', og.join('|'));

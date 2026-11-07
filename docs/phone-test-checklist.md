@@ -392,3 +392,15 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 | 21.6 | The Play (Live) page: the Chords voice button, and the Melody one | the same browser; Keys first for Chords, Lead first for Melody. A pick shuts it and the button names the voice |
 | 21.7 | Settings > Sound > Voices, and any dropdown that lists voices | Samples is the first group, then mõdSynth, then Free voices |
 | 21.8 | Open the list, tap into a type, then tap outside it and scroll the page | it closes on the outside tap, and a long type (Vintage, Modern) scrolls inside the list without moving the page behind |
+
+## 22. Live: Voice | Pattern rows, and no rolls by default (6.9.9.9.3; looked at in a browser at 360 and 390 pt wide, not tried with a thumb)
+
+| # | do | you should see |
+|---|---|---|
+| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
+| 22.2 | Tap the small **›** on a row's right-hand half, then its **‹** | the style steps as it always did (and switches the part on) |
+| 22.3 | Tap the small **›** on the left half of Bass, then **‹** | the sound steps to the next / previous in the same type (Bass patches stay Bass patches), and the name follows. Drums and Aux step their own kit, skipping locked ones |
+| 22.4 | Tap the **name** in a left half | Drums and Aux: the kit list (Aux opens on Percussion & world). Bass and Melody: the sound browser, Samples first. A pick shuts it and the row shows the name |
+| 22.5 | Tap the name in a right half | the style list, as before |
+| 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
+| 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
