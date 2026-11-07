@@ -15,9 +15,29 @@ bool ChordTimeline::fromDoubles(const double *d, size_t n, size_t *used, double 
     const double np = d[k + 6]; k += 7;
     if (!(np >= 0 && np <= 16) || k + (size_t)np > n) return false;
     for (size_t j = 0; j < (size_t)np; j++) w.pcs.push_back((int)d[k++]);
+    if (k >= n) return false;
+    w.lock = (int)d[k++];
     out.push_back(std::move(w));
   }
+  if (k >= n) return false;
+  const double nl = d[k++];
+  if (!(nl >= 0 && nl <= 64)) return false;
+  std::vector<PhraseLock> locks;
+  for (size_t i = 0; i < (size_t)nl; i++) {
+    if (k + 2 > n) return false;
+    PhraseLock l; l.steps = (int)d[k]; l.rootPc = (int)d[k + 1]; k += 2;
+    if (l.steps < 1 || l.steps > 256 || k + (size_t)l.steps * 9 > n) return false;
+    for (int j = 0; j < l.steps; j++) {
+      BassCell b;
+      b.v = d[k]; b.note = d[k + 1]; b.oct = d[k + 2]; b.len = d[k + 3]; b.slide = d[k + 4] != 0; b.accent = d[k + 5] != 0; b.fix = d[k + 6] != 0;
+      b.vel = d[k + 7]; b.pr = d[k + 8]; k += 9;
+      l.cells.push_back(b);
+    }
+    locks.push_back(std::move(l));
+  }
+  for (const ChordWindow &w : out) if (w.lock >= (int)locks.size()) return false;
   w_ = std::move(out);
+  locks_ = std::move(locks);
   if (used) *used = k;
   return true;
 }

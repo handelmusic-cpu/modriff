@@ -9139,7 +9139,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.7</span></div>
  </div>
 </div>
 
@@ -10571,7 +10571,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11762,7 +11762,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.6';
+const MODRIFF_VERSION = '6.9.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -60503,7 +60503,7 @@ window._nsBass = {
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
   var sc = window._blNativeScore();
   if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
-  var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0];
+  var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0, 0];
   return P.seqBassScore({score: _mgB64(Float64Array.from(sc.score))}).then(function(){
    return P.seqBassChords({chords: _mgB64(Float64Array.from(wins))});
   });
@@ -63202,12 +63202,11 @@ window._blGenStyle = function(){ return blGenStyle; };
 
 // The engine's copy of the bass line (docs/native-scheduling.md, slice 2; native/modsynth/basscore.h reads this layout).
 // {ok, why[], score[]}: `ok` is false, and `why` names what, when the engine cannot yet play this line as the page would --
-// the walking line, a locked phrase on a chord that is coming, a line written ahead for the next chord -- so a caller
-// never starts the engine on a line it would get wrong. (The walking line -- Jazz style with Follow on -- is in it since 6.9.9.9: the
-// score carries the style and the feel, and the engine walks when there is a chart to follow, as this scheduler does.)
+// a line written ahead for the next chord -- so a caller never starts the engine on a line it would get wrong. (The walking line -- Jazz
+// style with Follow on -- is in it since 6.9.9.9: the score carries the style and the feel, and the engine walks when there is a chart to
+// follow, as this scheduler does. A chord's locked phrase rides with the chart, window._blNativeChords, since 6.9.9.9.7.)
 window._blNativeScore = function(){
   var why = [], hs = window._humanState();
-  if(blFollow) for(var i = 0; i < _blChordWin.length; i++) if(!_blChordWin[i].rest && _blLockFor(_blChordWin[i])){ why.push('a locked phrase'); break; }
   if(_blPendingAt != null) why.push('a line written ahead for the next chord');
   var scale = _blScalePcs();
   var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
@@ -63223,11 +63222,27 @@ window._blNativeScore = function(){
 };
 // The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`, counted
 // from `origin` (seconds; the line's start -- the engine puts that where its own clock has the start).
+// Each window carries the index of its chord's phrase lock (_blLockFor, so none with Follow off or in a rest), and the locks follow the windows: one
+// per chord identity, its steps and the root it was written over, then its cells as the score sends the grid's.
 window._blNativeChords = function(sr, origin){
-  var d = [_blChordWin.length], o = origin || 0;
+  var d = [_blChordWin.length], o = origin || 0, locks = [], byKey = {};
   _blChordWin.forEach(function(w){
+    var lk = w.rest ? null : _blLockFor(w), idx = -1;
+    if(lk){
+      if(byKey[w.lockKey] == null){ byKey[w.lockKey] = locks.length; locks.push(lk); }
+      idx = byKey[w.lockKey];
+    }
     d.push((w.t - o) * sr, (w.end - o) * sr, w.rest ? 1 : 0, w.rootPc, w.bassPc == null ? -1 : w.bassPc, w.nextPc == null ? -1 : w.nextPc, w.pcs.length);
     w.pcs.forEach(function(x){ d.push(x); });
+    d.push(idx);
+  });
+  d.push(locks.length);
+  locks.forEach(function(lk){
+    d.push(lk.steps, lk.rootPc);
+    for(var s = 0; s < lk.steps; s++){
+      var c = lk.grid[s] || {};
+      d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
+    }
   });
   return d;
 };
