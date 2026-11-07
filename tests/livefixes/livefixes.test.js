@@ -87,6 +87,26 @@ function serve() {
     ok(m.open && m.sel && m.top >= 0 && m.bottom <= m.bar + 1, name + ': one tap on an empty step places it and its editor is fully on screen', m);
     await page.close();
   }
+  // ── Landscape: the tab row folds away on a scroll down and comes back on a scroll up or the pull tab ──
+  page = await open({ width: 844, height: 390 }, true);
+  await page.evaluate(() => partOpen('drums')); await page.waitForTimeout(700);
+  const nav = () => page.evaluate(() => ({ hide: document.body.classList.contains('land-nav-hide'), top: getComputedStyle(document.getElementById('top-stack')).display, h: Math.round(document.getElementById('page-accomp').getBoundingClientRect().height) }));
+  const n0 = await nav();
+  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 150); await page.waitForTimeout(250); }
+  await page.waitForTimeout(700);
+  const n1 = await nav();
+  ok(!n0.hide && n1.hide && n1.top === 'none' && n1.h > n0.h + 40, 'landscape: scrolling down folds the tab row away and the page gets its room', [n0, n1]);
+  await page.evaluate(() => document.getElementById('nav-pull').click()); await page.waitForTimeout(400);
+  const n2 = await nav();
+  ok(!n2.hide && n2.top !== 'none' && n2.h === n0.h, 'the pull tab brings it back', n2);
+  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 150); await page.waitForTimeout(250); }
+  await page.waitForTimeout(700);
+  for (let i = 0; i < 2; i++) { await page.mouse.wheel(0, -40); await page.waitForTimeout(250); }
+  await page.waitForTimeout(500);
+  ok(!(await nav()).hide, 'a scroll up brings it back', await nav());
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(500);
+  ok(!(await nav()).hide, 'upright the bars are never folded', await nav());
+  await page.close();
   ok(errs.length === 0, 'no page errors', errs);
   await browser.close(); srv.close();
   console.log(fail ? fail + ' FAILED' : 'all passed'); process.exit(fail ? 1 : 0);
