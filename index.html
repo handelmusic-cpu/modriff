@@ -9139,7 +9139,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.8</span></div>
  </div>
 </div>
 
@@ -10571,7 +10571,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.8</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11762,7 +11762,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.7';
+const MODRIFF_VERSION = '6.9.9.9.8';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12807,7 +12807,7 @@ function modNativePlugin(){
                      // The engine's own sequencer (window._nsDrum, a developer entry); an older binary has none of these.
                      seqScore:call('seqScore'), seqBank:call('seqBank'), seqStart:call('seqStart'), seqStop:call('seqStop'),
                      seqTempo:call('seqTempo'), seqMirror:call('seqMirror'),
-                     seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassStart:call('seqBassStart'),
+                     seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
@@ -60504,8 +60504,14 @@ window._nsBass = {
   var sc = window._blNativeScore();
   if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
   var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0, 0];
+  var first = (typeof _blChordWin !== 'undefined' && _blChordWin.length) ? _blChordWin[0].t : 0;
   return P.seqBassScore({score: _mgB64(Float64Array.from(sc.score))}).then(function(){
    return P.seqBassChords({chords: _mgB64(Float64Array.from(wins))});
+  }).then(function(r){
+   // the line waiting to take over, if any, counted from the same first chord as the chart
+   // (an older binary has no such call)
+   if(!P.seqBassPending) return r;
+   return P.seqBassPending({pending: _mgB64(Float64Array.from(window._blNativePending(48000, first)))}).then(function(){ return r; });
   });
  },
  start: function(leadMs){
@@ -63202,12 +63208,12 @@ window._blGenStyle = function(){ return blGenStyle; };
 
 // The engine's copy of the bass line (docs/native-scheduling.md, slice 2; native/modsynth/basscore.h reads this layout).
 // {ok, why[], score[]}: `ok` is false, and `why` names what, when the engine cannot yet play this line as the page would --
-// a line written ahead for the next chord -- so a caller never starts the engine on a line it would get wrong. (The walking line -- Jazz
+// nothing at present -- so a caller never starts the engine on a line it would get wrong. (A line written ahead for the next chord rides
+// beside the score, window._blNativePending, since 6.9.9.9.8. The walking line -- Jazz
 // style with Follow on -- is in it since 6.9.9.9: the score carries the style and the feel, and the engine walks when there is a chart to
 // follow, as this scheduler does. A chord's locked phrase rides with the chart, window._blNativeChords, since 6.9.9.9.7.)
 window._blNativeScore = function(){
   var why = [], hs = window._humanState();
-  if(_blPendingAt != null) why.push('a line written ahead for the next chord');
   var scale = _blScalePcs();
   var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
   _blGridIntvs.forEach(function(x){ d.push(x); });
@@ -63219,6 +63225,18 @@ window._blNativeScore = function(){
     d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
   }
   return {ok: !why.length, why: why, score: d};
+};
+// The line waiting to take over (_blPendingGrid, _blPendingAt) as the engine reads it (BassPending::fromDoubles), the page's seconds turned into
+// engine frames at `sr` counted from `origin`; [0] when there is none, which clears whatever the engine holds. The page writes these lines (the
+// generator is its own, with its dice); the engine only swaps them in: at the moment given, a chord's start, or at the top of the loop.
+window._blNativePending = function(sr, origin){
+  if(!_blPendingGrid) return [0];
+  var o = origin || 0, n = blSteps, d = [1, _blPendingAt != null ? 1 : 0, _blPendingAt != null ? (_blPendingAt - o) * sr : 0, n];
+  for(var s = 0; s < n; s++){
+    var c = _blPendingGrid[s] || {};
+    d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
+  }
+  return d;
 };
 // The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`, counted
 // from `origin` (seconds; the line's start -- the engine puts that where its own clock has the start).

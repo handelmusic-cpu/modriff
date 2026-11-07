@@ -817,3 +817,32 @@ that names a lock the table does not have, and a table cut short.
 **Not done.** A line written ahead for the next chord (`_blPregen`, still refused with its reason); Pure tuning's cents; a lock edited while it plays
 (the chart is sent when `start` is called); the page's melody locks (not in the engine at all). Not heard on device: checklist 19.6.
 
+## Slice 2, part nine (6.9.9.9.8): lines written ahead
+
+**What the page does.** With Follow off and Sync on, the page writes each chord's bass line while the chord before it sounds (`_blPregen`) and holds it,
+as `_blPendingGrid`, for the first step of that chord (`_blPendingAt`); a plain regenerate while the pattern plays (`blGenerate`) is held for the top of
+the loop; `_blLand` puts a waiting line in at once. The scheduler takes a held line over at the top of a step when `blNextT >= _blPendingAt - 2 ms`,
+and at every wrap (`_blApplyPending`) unless its moment is still ahead of the clock; a line is replaced by a later one, and a plain regenerate clears
+the moment the earlier one was held for.
+
+**What the engine does.** The generator, its dice and its timers stay the page's: the engine is handed the line and the moment, and swaps it in.
+`BassPending` (`basscore.h`) is the cells and either a moment in frames or none; `BassSequencer::setPending` holds one (a later one replaces it), the
+grid scheduler swaps it in at the top of the first step at or after the moment (less the same 2 ms) and at every wrap unless the moment is ahead of the
+render clock and has not been reached, and the walking line's step clock takes it at the wrap too. The page sends `window._blNativePending(sr, origin)`
+beside the score (the score's own part that the generator changes at once, the grid's root and tones, still goes with the score, as it did); `[0]`
+clears. Host: `seqSetBassPending`, `seqBassPending` in the plugin; frames are from the line's start, placed on the clock when it arrives and again at
+the start. `_nsBass.sync` sends it. `_blNativeScore` no longer refuses a waiting line.
+
+**Measured.** `tests/seq/basspending.test.js`: the page's scheduler on a clock of its own, with the player's events between two ticks (a line written a
+chord ahead three times in a row, a plain regenerate, a regenerate that replaces a line held for a chord, with Follow on and the chart, a moment already
+behind the clock, `_blLand`, a line written four chords ahead and held through the wraps, and a 12-step line at rate 2 with swing, slash chords and a
+rest), against `basstool` handed the same ticks with the score and pending line the page would send at each event: 8 cases, 477 notes identical in time
+(1e-5 of a frame), pitch, length, level, accent, slide and glide source. It fails with the pending line ignored (all 8), without the swap at the chord's
+start (3), with every held line landing at the first wrap (5) and with the swap 0.1 s late (2). The walking and lock tests are unchanged (the tick format
+gained a score and a pending slot); the host test takes a pending line, clears it, and refuses a short or empty one.
+
+**Not done.** The guard for a scheduler that has fallen behind the clock (a held moment already passed when the wrap comes) is in, but no test reaches it:
+the page clamps the notes of a starved scheduler to the clock, the engine does not, so the two lists differ for another reason. The page's timers that
+decide when to write a line (`_syncRegenAt`, `_syncPregenNext`, the song loop) are slice 4; for now a person calls `_nsBass.sync()` after a line is
+written. Pure tuning's cents. Not heard on device: checklist 19.7.
+

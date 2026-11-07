@@ -110,6 +110,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)seqSetBassScore:(NSData *)score;
 /// The chord windows, float64s as `window._blNativeChords(sr)` makes them: frames from the line's start. Empty clears them.
 - (BOOL)seqSetBassChords:(NSData *)chords;
+/// A line written ahead for the next chord, float64s as `window._blNativePending(sr)` makes them: frames from the line's start. It takes over at its
+/// moment (or at the top of the loop when it has none). A first double that is not 1 clears it. NO if it does not parse.
+- (BOOL)seqSetBassPending:(NSData *)pending;
 /// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's
 /// code for the bass voice. NO without a score.
 - (BOOL)seqBassStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;

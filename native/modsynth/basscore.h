@@ -10,8 +10,8 @@
 // A phrase lock (a line the player froze for one chord: window._blLockFor) replaces the bar for that chord's windows, in both branches.
 //
 // What it is not, said plainly (the score refuses what it cannot yet do, and names it):
-//  - a line written ahead for the next chord (_blPregen / _blApplyPending), which
-//    the page swaps in at the wrap: here a new score replaces the old one when it arrives;
+//  - the page's generator and its timers: a line written ahead for the next chord (_blPregen) or while the pattern plays (blGenerate) is
+//    written by the page, and handed over as a pending line (setPending) with the moment it takes over; the swap is the engine's;
 //  - Pure tuning's cents (`tune`);
 //  - the voice: who plays each BassEvent is the host's voice bank (not built yet).
 //
@@ -115,6 +115,36 @@ struct BassScore {
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 };
 
+// A line waiting to take over (the page's _blPendingGrid and _blPendingAt): the cells, and either the moment it takes over (a chord's start,
+// _blPregen) or none, in which case it waits for the top of the loop.
+struct BassPending {
+  bool have = false;
+  bool hasAt = false;
+  double at = 0;               // engine frames
+  int steps = 16;
+  std::vector<BassCell> cells;
+
+  // [1, hasAt, at, steps, per cell: v, note, oct, len, slide, accent, fix, vel, pr]; a first double that is not 1 clears (have = false).
+  // `offset` is added to `at`: the page sends frames from the line's start.
+  bool fromDoubles(const double *d, size_t n, double offset = 0) {
+    BassPending p;
+    if (n < 1) return false;
+    if (d[0] != 1) { *this = p; return true; }
+    if (n < 4) return false;
+    p.have = true; p.hasAt = d[1] != 0; p.at = d[2] + offset; p.steps = (int)d[3];
+    if (p.steps < 1 || p.steps > 256 || n < 4 + (size_t)p.steps * 9) return false;
+    size_t k = 4;
+    for (int i = 0; i < p.steps; i++) {
+      BassCell b;
+      b.v = d[k]; b.note = d[k + 1]; b.oct = d[k + 2]; b.len = d[k + 3]; b.slide = d[k + 4] != 0; b.accent = d[k + 5] != 0; b.fix = d[k + 6] != 0;
+      b.vel = d[k + 7]; b.pr = d[k + 8]; k += 9;
+      p.cells.push_back(b);
+    }
+    *this = std::move(p);
+    return true;
+  }
+};
+
 // One note the bass plays: the fields of the page's modSend({kind:'note', part:'bass', ...}), with the time in frames.
 struct BassEvent {
   double frameExact = 0;
@@ -135,6 +165,10 @@ class BassSequencer {
   explicit BassSequencer(double sampleRate = 48000.0) : sr_(sampleRate), timeline_(sampleRate) {}
 
   void setScore(const BassScore &s) { score_ = s; if (step_ >= score_.steps) step_ = 0; }
+  // A line written ahead: it takes over when the scheduler reaches its moment (the first step at or after it, within the page's 2 ms), or at the
+  // top of the loop when it has none. A later one replaces it, as the page's does.
+  void setPending(const BassPending &p) { pend_ = p; }
+  const BassPending &pending() const { return pend_; }
   const BassScore &score() const { return score_; }
   ChordTimeline &timeline() { return timeline_; }
   const ChordTimeline &timeline() const { return timeline_; }
@@ -144,7 +178,7 @@ class BassSequencer {
   double stepFrames() const { return (60.0 / bpm_ / 4.0 * rate_) * sr_; }
 
   // Begin with `step` landing on `firstFrame` (the page joins a running band at its bar line: seqEntryTime).
-  void start(double firstFrame, int step = 0) { next_ = firstFrame; step_ = step; running_ = true; prevSlide_ = false; prevMidi_ = -1; walkPrev_ = 0; walkNextT_ = 0; walkLastT_ = 0; walkHave_ = false; }
+  void start(double firstFrame, int step = 0) { pend_ = BassPending(); next_ = firstFrame; step_ = step; running_ = true; prevSlide_ = false; prevMidi_ = -1; walkPrev_ = 0; walkNextT_ = 0; walkLastT_ = 0; walkHave_ = false; }
   void stop() { running_ = false; }
   bool running() const { return running_; }
   int step() const { return step_; }
@@ -162,22 +196,24 @@ class BassSequencer {
   int run(double now, double horizon, double drumBar, Emit &&emit) {
     const bool following = score_.follow && !timeline_.empty();
     if (following && score_.jazz) return runWalk(now, horizon, drumBar, emit);
-    return runGrid(horizon, following, emit);
+    return runGrid(now, horizon, following, emit);
   }
   template <class Emit>
   int run(double horizon, Emit &&emit) { return run(-1e18, horizon, -1.0, emit); }
 
  private:
   template <class Emit>
-  int runGrid(double horizon, bool following, Emit &emit) {
+  int runGrid(double now, double horizon, bool following, Emit &emit) {
     int fired = 0;
     const double sd = stepFrames();
     while (running_ && next_ < horizon) {
+      // A line written ahead for a chord takes over as the first step of that chord is reached, not at the next top of the loop.
+      if (pend_.have && pend_.hasAt && next_ >= pend_.at - 0.002 * sr_) applyPending();
       fireStep(step_, next_, sd, following, emit);
       fired++;
       next_ += sd;
       step_++;
-      if (step_ >= score_.steps) wrap();
+      if (step_ >= score_.steps) wrap(now);
     }
     return fired;
   }
@@ -329,11 +365,24 @@ class BassSequencer {
     }
     // Keep the step clock running so the playhead still sweeps the grid.
     int fired = 0;
-    while (running_ && next_ < horizon) { next_ += sd; step_++; fired++; if (step_ >= score_.steps) wrap(); }
+    while (running_ && next_ < horizon) { next_ += sd; step_++; fired++; if (step_ >= score_.steps) wrap(now); }
     return fired;
   }
 
-  void wrap() { step_ = 0; prevSlide_ = false; prevMidi_ = -1; }
+  // The top of the loop: the slide ends, and a waiting line lands -- unless it is held for a chord's start that has not come and is still ahead of
+  // the clock (_blApplyPending: a target already behind the clock is stale and lands at once).
+  void wrap(double now) {
+    step_ = 0; prevSlide_ = false; prevMidi_ = -1;
+    if (!pend_.have) return;
+    if (pend_.hasAt && next_ < pend_.at - 0.002 * sr_ && pend_.at > now) return;
+    applyPending();
+  }
+  // _blApplyPending: the waiting cells become the line.
+  void applyPending() {
+    score_.cells = pend_.cells; score_.steps = pend_.steps;
+    if (step_ >= score_.steps) step_ = 0;
+    pend_ = BassPending();
+  }
 
   // _sqSwingOffset, in frames.
   double swingOffset(int s, double sd) const {
@@ -435,6 +484,7 @@ class BassSequencer {
   }
 
   BassScore score_;
+  BassPending pend_;
   ChordTimeline timeline_;
   Rng rng_;
   double sr_;

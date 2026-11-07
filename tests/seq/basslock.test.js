@@ -124,7 +124,7 @@ function lockGrid(seed, steps) {
         fake.currentTime += 0.0371; _schedHorizon = fake.currentTime + LA;
         commit(fake.currentTime);
         const nb = window._sqNextBar();
-        ticks.push([fake.currentTime * sr, _schedHorizon * sr, nb ? nb.t * sr : -1].concat(window._blNativeChords(sr)));
+        ticks.push([fake.currentTime * sr, _schedHorizon * sr, nb ? nb.t * sr : -1].concat(window._blNativeChords(sr), [0, 0]));
         Math.random = () => { const v = orig.call(Math); tape.push(v); return v; };
         try { window._blScheduler(); } finally { Math.random = orig; }
         _schedHorizon = null;
