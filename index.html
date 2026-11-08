@@ -9169,7 +9169,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.7</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9</span></div>
  </div>
 </div>
 
@@ -10601,7 +10601,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.7</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11798,7 +11798,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.7';
+const MODRIFF_VERSION = '6.9.9.9.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -50963,7 +50963,8 @@ function _songPeekNextSlot(){
 // `ok` is false, and `why` names what, when the engine cannot yet step the song as this loop would -- the practice loop and trainer, an armed ending.
 // The chart's chords are sent as they are stored (the key the song was written in) with the live capo beside them; a chord's phrase lock rides in the
 // score's own table (the same one the chord windows use), found the way the bass finds it (_blLockFor).
-// With opts.chords the score also says how the chords SOUND (piece 3: the voicing, the comp's hold or decay, the knobs playChord reads); `chords` is then
+// With opts.chords the score also says how the chords SOUND (piece 3: the voicing, the comp's hold or decay, the knobs playChord reads; piece 4: the comp's
+// rhythms, whose re-strikes the engine plays); `chords` is then
 // true when the engine can do that, and `chordWhy` names what it cannot yet (a sampled chord voice, glide, Pure tuning) when it is false. Without it the
 // engine only steps the song and hands the bass its chords, as before.
 window._songNativeScore = function(opts){
@@ -50978,7 +50979,7 @@ window._songNativeScore = function(opts){
   try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
   try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
  }
- var locks = [], byKey = {}, secs = [sections.length];
+ var locks = [], byKey = {}, secs = [sections.length], patIdx = {}, pats = [], nPats = 0;
  sections.forEach(function(sec){
   var slots = (sec && sec.slots) || [];
   secs.push(secPlays(sec), (sec && sec.follow === 'next') ? 1 : 0, slots.length);
@@ -50990,12 +50991,26 @@ window._songNativeScore = function(opts){
    var comp = sl.isRest ? null : _slotComp(sl), played = comp === 'played';
    var hold = (comp === 'sustain' || (played && sl.ring !== 0)) ? 1 : 0, ring = (played && sl.ring > 0) ? sl.ring : 0;
    var vi = sl.voicing ? VOICING_CYCLE.indexOf(sl.voicing) : -1;
-   secs.push(sl.bars || 0, sl.beats || 0, sl.eighths || 0, sl.isRest ? 1 : 0, sl.rootM, sl.bassNote != null ? sl.bassNote : -1, idx, vi, hold, ring, ivs.length);
+   // Its rhythm's re-strikes (_scheduleCompHits): the pattern goes in the table once, by its name.
+   var pi = -1, pat = sl.isRest ? null : COMP_PATTERNS[comp];
+   if(pat && pat.hits){
+    if(patIdx[comp] == null){
+     patIdx[comp] = nPats;
+     var ev = [];
+     if(pat.custom) pat.ev.forEach(function(e){ ev.push(e.p, e.v, e.len); });
+     else pat.hits.forEach(function(h){ ev.push(h, 1, 0); });
+     pats.push(pat.custom ? 1 : 0, pat.custom ? pat.steps : 0, (pat.custom && pat.swing != null) ? pat.swing : -1, ev.length / 3);
+     ev.forEach(function(x){ pats.push(x); });
+     nPats++;
+    }
+    pi = patIdx[comp];
+   }
+   secs.push(sl.bars || 0, sl.beats || 0, sl.eighths || 0, sl.isRest ? 1 : 0, sl.rootM, sl.bassNote != null ? sl.bassNote : -1, idx, vi, hold, ring, pi, ivs.length);
    ivs.forEach(function(x){ secs.push(x); });
   });
  });
  var capo = (typeof _songBaseRoot !== 'undefined' && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
- var d = [2, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
+ var d = [3, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
  window._blPushLocks(d, locks);
  var tail = [0], chords = !!(opts && opts.chords) && !chordWhy.length;
  if(chords){
@@ -51003,7 +51018,8 @@ window._songNativeScore = function(opts){
   tail = [1, window._nsKitCode('chord:' + voice), chordsEnabled ? 1 : 0, wetDry >= .99 ? 1 : 0, vo < 0 ? 0 : vo, voiceVary ? 1 : 0, autoInvOn ? 1 : 0,
           (((root - capo) % 12) + 12) % 12, steps.length].concat(steps,
           [parseFloat(document.getElementById('decay').value) || 2.0, chordBeats, strumMode ? 1 : 0, _wp('chord.strumSpread') || 0, _wp('fx.width') || 0,
-           _webChordSubOn() ? 1 : 0, velScale(0)]);
+           _webChordSubOn() ? 1 : 0, velScale(0), (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0,
+           (typeof window._sqSwing8 === 'function' && window._sqSwing8()) ? 1 : 0, nPats], pats);
  }
  return {ok: !why.length, why: why, score: d.concat(secs, tail), chords: chords, chordWhy: chordWhy};
 };
@@ -51022,8 +51038,10 @@ window._songChordPitches = function(capoArg){
   ((sec && sec.slots) || []).forEach(function(sl){
    if(sl.isRest) return;
    if(styled(sl.voicing)) all = true;
-   var comp = _slotComp(sl);
+   var comp = _slotComp(sl), cp = COMP_PATTERNS[comp];
    if(comp === 'sustain' || (comp === 'played' && sl.ring !== 0) || wetDry >= .99) held = true; else plain = true;
+   // a rhythm's hits ring (the plain recording) or are gated (the held one)
+   if(cp && cp.hits) cp.hits.forEach(function(h, i){ var g = cp.custom && cp.ev[i] && cp.ev[i].len > 0; if(g) held = true; else plain = true; });
    var r = sl.rootM + capo;
    slotIvs(sl).forEach(function(i){ pcs[pc(r + i)] = 1; });
    if(sl.bassNote != null){ pcs[pc(sl.bassNote + capo)] = 1; subs['pc' + pc(sl.bassNote + capo)] = 1; }

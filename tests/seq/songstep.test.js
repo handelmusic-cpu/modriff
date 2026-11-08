@@ -110,6 +110,43 @@ CONFIGS.push(
   vcfg('120 random chords, Vary on from Drop 2 (laps through every type)', { vary: true, voicing: 'drop2' }, { sections: randomSong(71, 120), secs: 250 }),
 );
 
+// The comp's rhythms: the re-strikes after a chord's first strike. Drawn rhythms: cells {on, acc, rat (ratchet), len (gate in steps)}.
+const cells = (n, spec) => Array.from({ length: n }, (_, i) => Object.assign({ on: 0, acc: 0, rat: 1, len: 0 }, spec[i] ? Object.assign({ on: 1 }, spec[i]) : {}));
+const PUMP = { name: 'Pump', steps: 16, swing: null, cells: cells(16, { 0: { acc: 1 }, 3: { len: 2 }, 6: { rat: 2 }, 8: { acc: 1 }, 11: { rat: 3 }, 14: { len: 4 } }) };
+const SWUNG = { name: 'Swung', steps: 16, swing: 55, cells: cells(16, { 0: {}, 2: {}, 4: { acc: 1 }, 6: {}, 8: {}, 10: { len: 1 }, 12: { acc: 1 }, 14: {} }) };
+const RATSW = { name: 'Ratswing', steps: 16, swing: 70, cells: cells(16, { 0: { acc: 1 }, 2: { rat: 3 }, 3: {}, 6: { rat: 2 }, 7: { len: 1 }, 10: { rat: 4 }, 11: {} }) };
+const TWELVE = { name: 'Twelve', steps: 12, swing: null, cells: cells(12, { 0: { acc: 1 }, 4: {}, 7: { rat: 2 }, 9: { len: 3 } }) };
+const TRIPLET = { name: 'Triplet', grid: { n: 12, len: 16, follow: false }, swing: null, cells: Array.from({ length: 12 }, (_, i) => ({ on: [0, 2, 3, 6, 8, 9, 11].includes(i) ? 1 : 0, acc: i === 0 ? 1 : 0, soft: i === 3 ? 1 : 0, rat: i === 8 ? 2 : 1, len: i === 11 ? 2 : 0 })) };
+// A song for the comp: chords of two bars, a bar, a half bar, beats and eighths, a rest, a slash chord
+const CSONG = [
+  { plays: 2, slots: [[48, MAJ, 2], [57, M7, 1], [53, MAJ7, 0, 2], [55, X7, 1, 0, 0, 59], [50, M7, 0, 0, 3], [60, MAJ, 1, 0, 0, null, true], [52, X7, 1, 2], [55, MAJ, 1]] },
+];
+const ccfg = (name, voice, extra) => Object.assign({ name: 'comp: ' + name, bpm: 120, drums: true, clocked: true, secs: 90, sections: VSONG, voice, comps: true }, extra || {});
+CONFIGS.push(
+  ccfg('Every beat, one-bar chords', { comp: 'strum' }),
+  ccfg('Bossa over chords of two bars, a bar, half a bar, beats and eighths', { comp: 'bossa' }, { sections: CSONG, secs: 100 }),
+  ccfg('Gallop (sixteenths between the eighths) and Beats 1 and 3, chord by chord', { comps: ['gallop', 'backbeat', null, 'clave', 'push'], comp: 'strum' }, { sections: CSONG, secs: 100 }),
+  ccfg('Eighths with Strum on and Length 2 beats, Spread', { comp: 'eighths', strum: true, chordBeats: 2, voicing: 'open' }),
+  ccfg('Every beat, Drop 2 (a hit keeps its chord\'s grip)', { comp: 'strum', voicing: 'drop2' }),
+  ccfg('Every beat, Vary on from Close', { comp: 'strum', vary: true }, { secs: 160 }),
+  ccfg('Every beat, Vary on from Drop 3', { comp: 'skank', vary: true, voicing: 'drop3' }, { secs: 160 }),
+  ccfg('a drawn rhythm: accents, ratchets and gates', { comp: PUMP }, { sections: CSONG, secs: 100 }),
+  ccfg('a drawn rhythm of twelve sixteenths', { comp: TWELVE }, { sections: CSONG, secs: 100 }),
+  ccfg('a drawn rhythm with a swing of its own, the Feel at 20', { comp: SWUNG }, { sections: CSONG, secs: 100, swing: 20 }),
+  ccfg('a drawn rhythm that follows the Feel (swing 45)', { comp: PUMP }, { sections: CSONG, secs: 100, swing: 45 }),
+  ccfg('a triplet grid rhythm with soft hits, a ratchet and a gate', { comp: TRIPLET }, { sections: CSONG, secs: 100 }),
+  ccfg('drawn and built-in rhythms chord by chord, slash chords, as played and a hold between', { comps: [PUMP, 'strum', 'played', TWELVE, 'sustain', SWUNG, 'bossa'], plays: [1, null, 0] }, { sections: CSONG, secs: 100, swing: 30 }),
+  ccfg('at 90 BPM with Length 1 beat', { comp: PUMP, chordBeats: 1, decay: 3 }, { bpm: 90, sections: CSONG, secs: 100 }),
+  ccfg('3/4 bars of twelve sixteenths: a position past the end of the short bar is not played', { comp: 'strum' }, { meter: [3, 4], sections: CSONG, secs: 100 }),
+  ccfg('the Feel swinging the sixteenths instead of the eighths', { comp: PUMP }, { sections: CSONG, secs: 100, swing: 40, sw16: true }),
+  ccfg('a ratchet on a swung step with a hit on the next one (their order swaps)', { comp: RATSW }, { sections: CSONG, secs: 100 }),
+  ccfg('Wet/dry at the top: only the slash chord\'s bass is struck again', { comp: 'strum', wet: 1 }),
+  ccfg('Chords off: the hits only stop', { comp: 'strum', chordsOff: true }),
+  ccfg('a key change while the hits play (Soul, every beat)', { comp: 'strum', voicing: 'rnb' }, { capo: [{ at: 9.3, by: 2 }, { at: 31.3, by: 5 }] }),
+  ccfg('no drums: the hits ride the chord\'s own clock', { comp: 'strum' }, { drums: false, sections: CSONG, secs: 100 }),
+  ccfg('50 random chords with a rhythm from the list on each', { comps: ['strum', PUMP, 'bossa', null, TRIPLET, 'eighths', 'push', SWUNG, 'gallop', TWELVE], comp: 'backbeat', voicing: 'neosoul' }, { sections: randomSong(97, 50), secs: 120, swing: 25 }),
+);
+
 (async () => {
   const srv = await serve();
   const chrome = process.env.CHROMIUM || (fs.existsSync('/Applications/Google Chrome.app') ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/opt/pw-browsers/chromium');
@@ -138,6 +175,14 @@ CONFIGS.push(
     const runTimers = () => { for (let g = 0; g < 1000; g++) { timers.sort((a, b) => a.t - b.t || a.id - b.id); const x = timers[0]; if (!x || x.t > fake.currentTime + 1e-12) break; timers.shift(); try { x.fn(); } catch (e) { } } };
     const LA = LOOK_AHEAD, T0 = 1.0, DT = 0.0371;
     const origOnChord = window._blOnChord;
+    // The page's tick drains the comp's waiting re-strikes AFTER the drums have announced a bar line, so a hit in the last tick before a chord change is thrown
+    // away with the rest when the chord changes (and one at or after the change never plays). The engine plays every hit before the next chord and none at or
+    // after it, so the page is held to that: the hits due before a chord starts go out as it starts, and the later ones are cleared with it, as they are.
+    const origPlayLoopSlot = _playLoopSlot;
+    _playLoopSlot = function (atTime) {
+      if (atTime != null) _compPending.filter(e => !e.done && e.hitT < atTime).sort((a, b) => a.hitT - b.hitT).forEach(e => { e.done = true; try { _compRestrike(e.slot, e.hitT, e.opt); } catch (err) { } });
+      return origPlayLoopSlot.apply(this, arguments);
+    };
     for (const c of configs) {
       document.getElementById('bpm').value = c.bpm; const bpm = parseFloat(document.getElementById('bpm').value);
       fake.currentTime = 0.0013; timers = [];
@@ -147,6 +192,8 @@ CONFIGS.push(
       window._blRestoreState({ steps: 16, grid: Array.from({ length: 16 }, () => ({ note: 0, oct: 2, len: 1, slide: false, accent: false, v: 0, usr: 0 })), follow: true, genStyle: 'funk', gridRootPc: 0, gridIntvs: [0, 4, 7] });
       _bassAutoSync = false; songCompStyle = 'sustain';
       snapMode = c.clocked ? 'bar' : 'off'; rhythmOn = false;
+      METER.beats = c.meter ? c.meter[0] : 4; METER.unit = c.meter ? c.meter[1] : 4;
+      window._sqSetSwing8(!c.sw16);
       // how the chords are voiced and struck, and the memory the voicing leads from
       const V = c.voice || {};
       voicing = V.voicing || 'close'; voiceVary = !!V.vary; autoInvOn = V.autoInv !== false; strumMode = !!V.strum; chordBeats = V.chordBeats || 0;
@@ -158,12 +205,19 @@ CONFIGS.push(
       window._sqPlaying = () => !!c.drums;
       const mk = a => { const s = { rootM: a[0] + (c.shift || 0), ivs: a[1].slice(), bars: a[2] || 0, beats: a[3] || 0, eighths: a[4] || 0, isRest: !!a[6], label: 'x' }; if (a[5] != null) s.bassNote = a[5] + (c.shift || 0); return s; };
       sections = c.sections.map((s, i) => ({ name: 'S' + i, slots: s.slots.map(mk), plays: s.plays, follow: s.follow }));
-      songCompStyle = V.comp || 'sustain';
-      let n = 0;
+      songCompStyle = (V.comp && typeof V.comp === 'object') ? rhyRegister(V.comp) : (V.comp || 'sustain');
+      let n = 0, nc = 0;
       sections.forEach(sec => sec.slots.forEach(sl => {
         if (V.own && !sl.isRest && n % 3 === 1) sl.voicing = V.own[Math.floor(n / 3) % V.own.length];
         if (V.plays && !sl.isRest) { const r = V.plays[n % V.plays.length]; sl.ring = r; }
         n++;
+      }));
+      // a comp of its own for some of the chords (a built-in's name, a drawn rhythm, or null: the song's)
+      if (V.comps) sections.forEach(sec => sec.slots.forEach(sl => {
+        if (sl.isRest) return;
+        const v = V.comps[nc++ % V.comps.length];
+        if (v == null) return;
+        if (typeof v === 'string') sl.comp = v; else sbSetComp(sl, 'x', v);
       }));
       PHRASE_LOCKS.bass = {};
       (c.locks || []).forEach(([si, ci], n) => {
@@ -200,8 +254,9 @@ CONFIGS.push(
         if (fake.currentTime > T0 + c.secs) break;
       }
       stopSongLoop();
-      out.push({ name: c.name, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
+      out.push({ name: c.name, comps: !!c.comps, minHits: c.minHits, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
     }
+    _playLoopSlot = origPlayLoopSlot; METER.beats = 4; METER.unit = 4; window._sqSetSwing8(true);
     window._blOnChord = origOnChord; window.setTimeout = realSetTimeout; window.clearTimeout = realClearTimeout; window._sqPlaying = realSq;
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready; PHRASE_LOCKS.bass = {};
     return out;
@@ -217,13 +272,15 @@ CONFIGS.push(
     const cases = [1, SR, c.bpm, c.first, c.section, c.slot, 0, c.ticks.length].concat(...c.ticks, c.score);
     fs.writeFileSync(path.join(tmp, 'song.f64'), Buffer.from(Float64Array.from(cases).buffer));
     const r = spawnSync(bin, [path.join(tmp, 'song.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
-    if (r.status !== 0) { console.error(r.stderr); process.exit(2); }
-    const nat = [];
+    if (r.status !== 0) { console.error(c.name + ': ' + r.stderr); if (process.env.SONG_DUMP) fs.copyFileSync(path.join(tmp, 'song.f64'), process.env.SONG_DUMP); process.exit(2); }
+    const nat = [], natHits = [];
     r.stdout.split('\n').forEach(l => {
       const f = l.split(' ');
       if (l.startsWith('W ')) { const np = +f[11]; nat.push({ t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }); }
       else if (l.startsWith('V ')) { const nn = +f[7]; nat[nat.length - 1].act = { kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }; }
       else if (l.startsWith('S ')) nat[nat.length - 1].act = { kind: 'S', onset: +f[1] };
+      else if (l.startsWith('H ')) { const nn = +f[7]; natHits.push({ after: nat.length, kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }); }
+      else if (l.startsWith('T ')) natHits.push({ after: nat.length, kind: 'S', onset: +f[1] });
     });
     const pg = c.recs;
     if (process.env.SONG_DEBUG) { console.log(c.name); console.log('page  ', pg.slice(-4).map(p => (p.t).toFixed(3) + '/' + p.section + '.' + p.slot).join(' ')); console.log('native', nat.slice(-4).map(n => (n.t / SR).toFixed(3) + '/' + n.section + '.' + n.slot).join(' ')); }
@@ -243,10 +300,24 @@ CONFIGS.push(
 
     // What each chord sounds like: the page's messages for it against the engine's action.
     if (process.env.SONG_DEBUG && /voicing/.test(c.name)) console.log(c.name + '\n  ' + nat.slice(0, 9).map(n => n.act && n.act.notes ? n.act.notes.join('.') : '-').join('  '));
+    // The page's strike (its chord message and the release that goes with it) against the engine's action: '' when they are the same.
+    const diff = (cm, rel, act, who) => {
+      const notes = (cm.bass != null ? [cm.bass] : []).concat(cm.notes), sub = cm.bass != null ? cm.bass : cm.root;
+      if (notes.join() !== act.notes.join()) return `${who}: notes ${notes.join()} on the page, ${act.notes.join()} native`;
+      if (sub !== act.sub) return `${who}: sub ${sub} on the page, ${act.sub} native`;
+      if (Math.abs(cm.vel - act.vel) > 1e-12) return `${who}: level ${cm.vel} on the page, ${act.vel} native`;
+      if (Math.abs(cm.at * SR - act.onset) > 1e-5) return `${who}: struck at ${cm.at * SR} on the page, ${act.onset} native`;
+      if ((cm.dur == null) !== !!act.hold) return `${who}: ${cm.dur == null ? 'held' : 'decaying'} on the page, ${act.hold ? 'held' : 'decaying'} native`;
+      if (cm.dur != null && Math.abs(cm.dur - act.dur) > 1e-12) return `${who}: decays ${cm.dur} s on the page, ${act.dur} native`;
+      if (cm.dur == null && !!rel !== (act.holdSec >= 0)) return `${who}: ${rel ? 'let go of' : 'held into the next chord'} on the page, holdSec ${act.holdSec} native`;
+      if (rel && Math.abs((rel.at - cm.at) - act.holdSec) > 1e-9) return `${who}: let go ${rel.at - cm.at} s after on the page, ${act.holdSec} native`;
+      return null;
+    };
     let vbad = null, nChord = 0, nStop = 0, nRel = 0, nHold = 0, worstS = 0;
     for (let k = 0; k < Math.min(pg.length, nat.length) && !vbad; k++) {
       const t = pg[k].t, act = nat[k].act;
-      const cm = c.sounds.find(m => m.kind === 'chord' && Math.abs(m.at - t) < 1e-9);
+      // (a re-strike of the chord before that falls on this very moment was sent first, and is the same instant: the strike is the last)
+      const cm = c.sounds.filter(m => m.kind === 'chord' && Math.abs(m.at - t) < 1e-9).pop();
       const rel = cm && c.sounds.find(m => m.kind === 'release' && m.id === cm.id);
       const st = c.sounds.find(m => m.kind === 'stop' && Math.abs(m.at - t) < 1e-9);
       if (!act) { vbad = `chord ${k}: the engine did nothing`; break; }
@@ -257,19 +328,42 @@ CONFIGS.push(
       }
       if (!cm) { vbad = `chord ${k}: the page struck nothing at ${t}`; break; }
       if (act.kind !== 'V') { vbad = `chord ${k}: the engine only stopped`; break; }
-      const notes = (cm.bass != null ? [cm.bass] : []).concat(cm.notes), sub = cm.bass != null ? cm.bass : cm.root;
-      if (notes.join() !== act.notes.join()) vbad = `chord ${k}: notes ${notes.join()} on the page, ${act.notes.join()} native`;
-      else if (sub !== act.sub) vbad = `chord ${k}: sub ${sub} on the page, ${act.sub} native`;
-      else if (Math.abs(cm.vel - act.vel) > 1e-12) vbad = `chord ${k}: level ${cm.vel} on the page, ${act.vel} native`;
-      else if (Math.abs(cm.at * SR - act.onset) > 1e-5) vbad = `chord ${k}: struck at ${cm.at * SR} on the page, ${act.onset} native`;
-      else if ((cm.dur == null) !== !!act.hold) vbad = `chord ${k}: ${cm.dur == null ? 'held' : 'decaying'} on the page, ${act.hold ? 'held' : 'decaying'} native`;
-      else if (cm.dur != null && Math.abs(cm.dur - act.dur) > 1e-12) vbad = `chord ${k}: decays ${cm.dur} s on the page, ${act.dur} native`;
-      else if (cm.dur == null && !!rel !== (act.holdSec >= 0)) vbad = `chord ${k}: ${rel ? 'let go of' : 'held into the next chord'} on the page, holdSec ${act.holdSec} native`;
-      else if (rel && Math.abs((rel.at - cm.at) - act.holdSec) > 1e-9) vbad = `chord ${k}: let go ${rel.at - cm.at} s after on the page, ${act.holdSec} native`;
+      vbad = diff(cm, rel, act, 'chord ' + k);
       if (!vbad) { nChord++; if (rel) nRel++; if (cm.dur == null) nHold++; worstS = Math.max(worstS, Math.abs(cm.at * SR - act.onset)); }
     }
     ok(!vbad && nChord + nStop > 6 && c.chordsOk, '    ...and sounds the same: ' + nChord + ' chords struck (' + nHold + ' held, ' + nRel + ' let go of), ' + nStop + ' stops, worst ' + worstS.toExponential(1) + ' frames',
        (vbad || '') + ' ' + (c.chordWhy || []).join(','));
+    // The comp's re-strikes: the page's chord messages that are not a chord's first strike, in time order, against the engine's hits.
+    if (c.comps) {
+      const starts = pg.map(p => p.t);
+      // A re-strike of the chord before that falls on the very frame the next chord starts is replaced by that chord's strike, whichever side of the frame its rounding
+      // put it: left out of both.
+      const onStart = f => starts.some(t => Math.abs(f - t * SR) < 1);
+      const pgHits = c.sounds.filter(m => m.kind === 'chord' && !onStart(m.at * SR)).map((m, i) => ({ m, i })).sort((a, b) => a.m.at - b.m.at || a.i - b.i).map(x => x.m);
+      // (the engine's own are those printed before the chord they land on: the last re-strikes of the chord before. One printed after it is the chord's own first
+      // position struck again, which the page never does, and stays in to be found)
+      const natHits2 = natHits.filter(h => { const j = starts.findIndex(t => Math.abs(h.onset - t * SR) < 1); return j < 0 || h.after > j; });
+      natHits.length = 0; natHits2.forEach(h => natHits.push(h));
+      let hbad = null, nH = 0, nHRel = 0, nHStop = 0;
+      for (let k = 0; k < pgHits.length && !hbad; k++) {
+        const cm = pgHits[k], act = natHits[k];
+        if (!act) { hbad = `hit ${k}: the engine has ${natHits.length} hits, the page ${pgHits.length}`; break; }
+        if (c.chordsOff) { if (act.kind !== 'S' || Math.abs(act.onset - cm.at * SR) > 1e-5) hbad = `hit ${k}: should only stop, at ${cm.at * SR}`; else nHStop++; continue; }
+        if (act.kind !== 'V') { hbad = `hit ${k}: the engine only stopped`; break; }
+        const rel = c.sounds.find(m => m.kind === 'release' && m.id === cm.id);
+        hbad = diff(cm, rel, act, 'hit ' + k);
+        if (!hbad) { nH++; if (rel) nHRel++; }
+      }
+      if (hbad && process.env.SONG_DEBUG) {
+        const k0 = Math.max(0, +(hbad.match(/hit (\d+)/) || [0, 0])[1] - 4);
+        for (let k = k0; k < k0 + 9; k++) console.log('  hit ' + k + ': page ' + (pgHits[k] ? (pgHits[k].at * SR).toFixed(2) + ' ' + pgHits[k].notes + (pgHits[k].bass != null ? '/' + pgHits[k].bass : '') : '-') + '   native ' + (natHits[k] ? natHits[k].onset.toFixed(2) + ' ' + natHits[k].notes : '-'));
+        console.log('  chord starts: ' + pg.slice(0, 14).map(p => (p.t * SR).toFixed(0)).join(' '));
+      }
+      // the engine plays hits a look-ahead further than the page's run lasts, never fewer, and none out of time order
+      if (!hbad && natHits.length < pgHits.length) hbad = `${natHits.length} hits native, ${pgHits.length} on the page`;
+      for (let k = 1; k < natHits.length && !hbad; k++) if (natHits[k].onset < natHits[k - 1].onset) hbad = `hit ${k} is earlier than the one before`;
+      ok(!hbad && nH + nHStop > (c.minHits || 6), '    ...and its rhythm re-strikes the same: ' + nH + ' hits (' + nHRel + ' gated, let go of)' + (nHStop ? ', ' + nHStop + ' stops' : ''), (hbad || '') + ' (page ' + pgHits.length + ', engine ' + natHits.length + ')');
+    }
   });
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');
   process.exit(fail ? 1 : 0);

@@ -176,7 +176,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   modsynth::SongSequencer sseq;
   modsynth::SongVoicer svoice;            // the chord of each slot (songvoice.h): voiced and struck by cplay below, when the score says how the chords sound
   bool hasSong = false;
-  uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0;
+  uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0, songHits = 0;
   // The chord comp (chordcore.h, chordplay.h): the rhythm's clock and the chord it strikes, on the same thread, bank and pool.
   modsynth::ChordSequencer cseq;
   modsynth::ChordPlayer cplay;
@@ -187,7 +187,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // it by itself (a ramp). Under `lock`.
   modsynth::TempoMap tmap;
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
-  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), sseq(rate), tmap(rate) {
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), sseq(rate), svoice(rate), tmap(rate) {
     sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank;
     seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap);
   }
@@ -228,14 +228,19 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     }
     if (sseq.running() && hasSong) {
       const double now = (double)frames->load(std::memory_order_relaxed);
+      // What a chord does to the sound: strike it, or stop the one that rings (a rest, Chords off). Hits are the re-strikes of the comp's rhythm.
+      auto act = [&](const modsynth::VoiceAction &a, bool isHit) {
+        if (a.play) { if (isHit) songHits++; else songVoiced++; cplay.play(a.e, now); }
+        else if (a.stop) { if (!isHit) songRests++; cplay.stopAt(a.onset); }
+      };
+      auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.score().capo, tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
       sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
         bseq.timeline().push(c.w); songChords++;
-        const modsynth::SongVoiceCfg &vc = sseq.score().voice;
-        if (!vc.on) return;
-        const modsynth::VoiceAction a = svoice.chord(c, vc, tmap);
-        if (a.play) { songVoiced++; cplay.play(a.e, now); }
-        else if (a.stop) { songRests++; cplay.stopAt(a.onset); }
+        if (!sseq.score().voice.on) return;
+        hits(c.w.t);                                  // the chord before plays its last re-strikes first: the player takes them in time order
+        act(svoice.chord(c, sseq.score(), tmap), false);
       });
+      if (sseq.score().voice.on) hits(now + lookahead);
       bseq.timeline().prune(now);
     }
     if (bseq.running() && hasBass) {
@@ -747,7 +752,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.bseq.timeline().setSampleRate(_sampleRate);
   q.bseq.timeline().setLocks(q.sseq.score().locks);
   const BOOL ok = q.sseq.start(first, section, slot, pass);
-  q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = 0;
+  q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = q.songHits = 0;
   // The chords the song sounds itself: a fresh run of voice leading, the chord player on the song's voice, nothing left ringing from before.
   q.svoice.reset();
   if (q.sseq.score().voice.on) { q.cplay.reset(); q.cplay.kit = q.sseq.score().voice.kit; }
@@ -760,7 +765,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->sseq.stop();
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
-  if (_hostSeq->sseq.score().voice.on) _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed));
+  if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -891,7 +896,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"voiced": @((double)q.songVoiced), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
+                                 @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
   os_unfair_lock_unlock(&q.lock);

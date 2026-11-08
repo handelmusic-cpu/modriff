@@ -384,11 +384,11 @@ int main() {
       ModEngineHost *g = fresh();
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "no song, no song start");
       CHECK(![g seqSetSong:[NSData dataWithBytes:"junk" length:8]], "a song that does not parse is refused");
-      //  [2, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots,
-      //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs, then the voice: on]
-      std::vector<double> song = {2, 16, 0, 0, 1, 0,  0,  2,
-        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 3, 0, 4, 7,
-        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, 4, 0, 4, 7, 10,
+      //  [3, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots,
+      //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs, then the voice: on]
+      std::vector<double> song = {3, 16, 0, 0, 1, 0,  0,  2,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, -1, 4, 0, 4, 7, 10,
         0};
       CHECK([g seqSetSong:bytes(song)], "the song is taken");
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:5 slot:0 pass:0], "a place that is not in the song is refused");
@@ -419,12 +419,13 @@ int main() {
       ModEngineHost *g = fresh();
       [g ensureGraphPart:5];
       for (int pitch = 24; pitch <= 91; pitch++) { [g seqPutBankEntry:bytes(chordNoteEntry(pitch, false, 6))]; [g seqPutBankEntry:bytes(chordNoteEntry(pitch, true, 6))]; }
-      //  per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs; then the voice: on, kit, play, pedal, style, vary, autoInv, keyRoot,
-      //  nSteps, steps, decRaw, chordBeats, strum, spread, width, sub, velBase
-      std::vector<double> song = {2, 16, 0, 0, 1, 0,  0,  2,
-        0, 0, 3,   1, 0, 0, 0, 60, -1, -1, -1, 1, 2, 3, 0, 4, 7,   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 3, 0, 4, 7,
-        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 1, 0, 4, 0, 4, 7, 10,
-        1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1};
+      //  per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs; then the voice: on, kit, play, pedal, style, vary, autoInv, keyRoot,
+      //  nSteps, steps, decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8, nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len)...
+      //  The F chord over A (a bar) has the comp "every beat": hits at the 2nd, 3rd and 4th beat (eighths 2, 4, 6) after its first strike.
+      std::vector<double> song = {3, 16, 0, 0, 1, 0,  0,  2,
+        0, 0, 3,   1, 0, 0, 0, 60, -1, -1, -1, 1, 2, -1, 3, 0, 4, 7,   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 0, 3, 0, 4, 7,
+        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 1, 0, -1, 4, 0, 4, 7, 10,
+        1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1,  0, 1,  1,  0, 0, -1, 4,  0, 1, 0,  2, 1, 0,  4, 1, 0,  6, 1, 0};
       CHECK([g seqSetSong:bytes(song)], "the song, with its voice, is taken");
       [g seqSetDrumScore:bytes(score())];
       [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
@@ -439,7 +440,8 @@ int main() {
       NSDictionary *sg = [g seqMirror][@"song"];
       const int chords = [sg[@"chords"] intValue], voiced = [sg[@"voiced"] intValue], rests = [sg[@"rests"] intValue];
       CHECK(chords >= 4 && rests >= 1 && voiced + rests == chords, "each chord is voiced or a rest: %d chords, %d voiced, %d rests", chords, voiced, rests);
-      CHECK([sg[@"voices"] intValue] >= 3 * voiced - 1 && [sg[@"misses"] intValue] == 0 && [sg[@"refused"] intValue] == 0, "three voices a triad from the bank, none missing: %d voices, %d missed, %d refused", [sg[@"voices"] intValue], [sg[@"misses"] intValue], [sg[@"refused"] intValue]);
+      CHECK([sg[@"hits"] intValue] >= 3, "the comp re-strikes the chord after its first strike: %d hits", [sg[@"hits"] intValue]);
+      CHECK([sg[@"voices"] intValue] >= 3 * (voiced + [sg[@"hits"] intValue]) - 1 && [sg[@"misses"] intValue] == 0 && [sg[@"refused"] intValue] == 0, "three voices a triad from the bank, none missing: %d voices, %d missed, %d refused", [sg[@"voices"] intValue], [sg[@"misses"] intValue], [sg[@"refused"] intValue]);
       CHECK([sg[@"stops"] intValue] >= 3 && peak > 0.02f, "a rest and the next chord stop what rings (%d stops), and it sounds: peak %.3f", [sg[@"stops"] intValue], peak);
       CHECK([sg[@"releases"] intValue] >= 3, "the chord with a ring lets go of its voices: %d releases", [sg[@"releases"] intValue]);
       CHECK([[g graphStats][@"lateEdits"] intValue] == 0, "no late edit");

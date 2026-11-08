@@ -462,3 +462,17 @@ The engine now voices and strikes each chord of the song itself (the voicing, th
 | 25.8 | Freeze the page for 3 s | chords, bass and drums keep going |
 | 25.9 | Pick a sampled chord voice (Vibes, Jazz Gtr, Nylon) or turn on Pure tuning or Glide, then `_nsSong.start()` | the result's `chordWhy` names it and the engine only steps; the chords stay the page's |
 
+## 26. The engine plays the song's comping (6.9.9.9.9.9; audible through a developer entry only)
+
+The engine now re-strikes each chord on its rhythm as well as striking it, so a song's comping (Bossa, Every beat, a drawn rhythm) no longer needs the page.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 26.1 | As 25.1, with the song's comp set to Every beat, then Bossa, then a drawn rhythm with a ratchet and a gate | the chords are struck on the rhythm and sound like the page's own for the same song; `_nsSong.mirror()` shows `hits` climbing, `misses` and `refused` 0 |
+| 26.2 | Chords of two bars, a half bar, a few beats | the rhythm repeats every bar of a long chord and stops where a short chord ends |
+| 26.3 | Swing set to 40 with a drawn rhythm that has no swing of its own | the off-beat hits are late as on the page |
+| 26.4 | A chord with Hold or As played in a song of rhythms | that chord is struck once and held, the others play their rhythm |
+| 26.5 | `_nsSong.capo(2)` during a rhythm | the next hits are two semitones up with no gap |
+| 26.6 | Freeze the page for 3 s | the rhythm does not drop a hit |
+| 26.7 | `_nsSong.stop()` in the middle of a bar | the chord is cut and no hit follows |
+

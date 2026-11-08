@@ -876,7 +876,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
 3. *The chord of a slot. Done (6.9.9.9.9.7), see the end of this file.* A port of `smartVoiceLead` (deterministic, with its state) and the slot's chord event into `ChordPlayer` (the voice exists since
    6.9.9.9.4), `stopAll` on a rest, `ring`. Vary's dice are the engine's (not the page's: the owner accepted that, 6.9.4). Test: voicings identical over
    a progression, and the 960-chord null test fed from the song.
-4. *The song's comping.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
+4. *The song's comping. Done (6.9.9.9.9.9), see the end of this file.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
    rhythms, swing, the no-re-strike-of-the-first-hit rule, gated hits already done). Test: hit lists per slot against the page.
 5. *Asking the page for a line.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
    the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
@@ -1010,3 +1010,42 @@ same figure comes from the engine as it was before this piece, so it is the comp
 The arp's chord (slice 3), glide, Pure tuning and sampled chord voices (refused with their reasons), a chord tapped by hand, the key change adding pitches the bank does not hold
 (`_nsSong.capo` tops it up; a capo the page sends later counts misses, and the miss leaves a gap, not a wrong chord). The chord voice's recording is per pitch, 40 to 70 recordings for a
 song (plain, and held when any chord holds): `_nsSong.start()` takes that long the first time. Not heard on device: checklist 25.
+
+## Slice 4, piece 4 (6.9.9.9.9.9): the song's comping
+
+**What was built.** The re-strikes of a chord's rhythm, after its first strike, now come from the engine. `SongVoicer` (`songvoice.h`) plans them when a chord starts (a port of
+`_scheduleCompHits`) and plays them as they fall due (`flush`; the page's `_drainCompPending` and `_compRestrike`). A built-in rhythm lists its hits in eighths of a bar: every
+bar of the slot, none that is the first strike, none past the end of a short bar, none within 10 ms of the slot's end. A drawn one is a loop of `steps` sixteenths from the
+chord's start with a strength and a gate on each hit, ratchets between the sixteenths, its own swing or else the Feel's (on the eighths or the sixteenths, as the player set
+it); its gate is held and let go of at the end of its length. Each hit is the chord struck again: voice-led from where it is (the same voicing, since its own is the nearest
+and Vary only moves on a new chord), the live capo read when the hit plays, at the hit's level, decaying or gated; with Wet/dry at the top only a slash chord's bass is
+struck again. A hit with Chords off only stops. Hits of the chord before are played before the next chord starts and the ones that would fall at or after it are dropped
+(`_clearCompTimers`). The tempo map gives the positions, so a hit follows a ritardando; the page measures them in seconds at the tempo of the chord's start.
+
+**Page and host.** The song score (`window._songNativeScore({chords:true})`, format 3) carries the table of rhythms the song uses (a built-in's hit positions, a drawn one's
+loop, strengths, gates and swing), each chord's index into it, and the Feel's swing and which note value it falls on; `_songChordPitches` adds the held recording when a
+rhythm has a gated hit. Host: the song's emit plays the previous chord's due hits, then the new chord, and after the song's run the hits due before the look-ahead; the mirror's
+`song` block counts `hits`. Nothing else changed in the dev entry: `_nsSong.start()` now plays the comping too.
+
+**Measured.** `tests/seq/songstep.test.js` runs the page's own `_scheduleCompHits` and `_compRestrike` inside its real loop, keeps every chord message it sends, and holds the
+engine's hits to them one by one, in time order: notes (slash bass first), sub, level, moment (1e-5 of a frame), decay or hold, release at exactly the gate. 22 comp
+cases: every beat, Bossa, Gallop with Beats 1 and 3 and Clave and Push chord by chord, Eighths with Strum on and Length 2 beats, with Drop 2 and with Vary from Close and from
+Drop 3 (a hit keeps its chord's grip), drawn rhythms with accents, ratchets and gates, of twelve sixteenths, with a swing of its own, following the Feel at 20 and at 45 (and
+on the sixteenths), a triplet grid rhythm, a ratchet on a swung step followed by a hit on the next (their order swaps), drawn and built-in rhythms chord by chord with as played
+and a hold between, 90 BPM with Length 1 beat, 3/4 bars, the pedal, Chords off, two key changes during Soul, no drums, 50 random chords with a rhythm from the list on each; chords
+of two bars, one, half, beats and eighths, rests and slash chords. Mutation checks (19 changes to the port, each rebuilt): the test fails with the first position struck twice, a short
+bar's late positions played, the bars counted down not up, the slot's last 10 ms not cut, the swing's own value ignored, the swing on the wrong note value, a gate half as long, a gate
+ignored, a hit's level ignored, the pedal struck for every chord and not the slash ones, hits out of time order, the chord before's hits kept when the next starts, a position moved
+by 0.0001 beat, and the voice leading not run for a hit; 15 caught. Not caught: the 10 ms cut, a hit exactly at the look-ahead, the loop's own 10 ms margin, and a slash bass an octave
+off in a hit (the bass is brought under the lowest tone whatever its octave): none changes anything the page's songs reach. The host test plays a song whose chord has the rhythm
+"every beat": three hits after its first strike, voiced from the bank with none missing.
+
+**A page habit not kept.** The page drains the waiting hits at the END of its tick, after the drums have announced a bar line, so a hit that falls in the last tick before a chord
+change is thrown away with the rest when the chord changes, and a hit at the very moment of the change is played or not by rounding. The engine plays every hit before the next chord
+and none at or after it; the test holds the page to that (it plays the hits due before a chord starts as it starts) and leaves out of both lists a hit on the very frame a chord
+starts. A hit lost in the last tick is audible only as a missing re-strike a few milliseconds before a chord change.
+
+**Not done.** The arp's chord (slice 3), a chord tapped by hand, glide, Pure tuning, sampled voices, the practice loop and trainer, endings (piece 7). A chord whose rhythm
+changes while it plays (the chart edited) keeps the hits it was planned with until the next chord. The hits are planned with the tempo of the moment the chord starts, as the page
+does, except that a ramp in the tempo map moves them. Not heard on device: checklist 26.
+
