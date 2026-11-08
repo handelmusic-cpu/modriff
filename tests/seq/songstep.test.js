@@ -110,6 +110,23 @@ CONFIGS.push(
   vcfg('120 random chords, Vary on from Drop 2 (laps through every type)', { vary: true, voicing: 'drop2' }, { sections: randomSong(71, 120), secs: 250 }),
 );
 
+// The practice trainer: a loop of bars, the tempo step and the key step each chorus
+const pcfg = (name, prac, extra) => Object.assign({ name: 'trainer: ' + name, bpm: 100, drums: true, clocked: true, secs: 90, prac }, extra || {});
+CONFIGS.push(
+  pcfg('loop chords 2 to 3 of a four-chord section, each pass a chorus, the tempo up 6 a chorus to 130', { loop: [0, 1, 2], ramp: { step: 6, every: 1, max: 130 } },
+       { sections: [{ plays: 2, slots: [[48, MAJ, 1], [57, M7, 1], [53, MAJ7, 1], [55, DOM, 1]] }, { plays: 1, slots: [[50, M7, 1]] }] }),
+  pcfg('the key up a fifth every second chorus and the tempo every chorus, a chart with two sections (a chorus is the last section\'s final pass)', { ramp: { step: 4, every: 1, max: 140 }, key: { every: 2, by: 7 } },
+       { secs: 200, sections: [{ plays: 2, slots: [[48, MAJ, 1], [57, M7, 1]] }, { plays: 1, slots: [[53, MAJ7, 1], [55, DOM, 1]] }] }),
+  pcfg('a chart of one section: every pass is a chorus; the key by a fourth every chorus, all twelve keys', { key: { every: 1, by: 5 }, min: 11 },
+       { secs: 400, sections: [{ plays: 1, slots: [[48, MAJ, 1], [57, MIN, 1]] }] }),
+  pcfg('a last section that loops for ever: each of its passes counts', { ramp: { step: 5, every: 2, max: 125 }, key: { every: 3, by: 1 } },
+       { secs: 220, sections: [{ plays: 1, slots: [[48, MAJ, 1], [57, M7, 1]] }, { plays: 0, slots: [[53, MAJ7, 1], [55, DOM, 1]] }] }),
+  pcfg('a Next tapped in a loop: the loop lets the pass finish, then the section moves on', { loop: [0, 0, 1], ramp: { step: 4, every: 1, max: 130 }, min: 2 },
+       { moves: [{ at: 20.4, delta: 1 }], sections: [{ plays: 2, slots: [[48, MAJ, 1], [57, M7, 1], [53, MAJ7, 1]] }, { plays: 0, slots: [[55, DOM, 1], [50, M7, 1]] }] }),
+  pcfg('a one-chord loop (the same chord again), the tempo to its ceiling and holding there', { loop: [0, 2, 2], ramp: { step: 30, every: 1, max: 150 } },
+       { sections: [{ plays: 1, slots: [[48, MAJ, 1], [57, M7, 1], [53, MAJ7, 1], [55, DOM, 1]] }] }),
+);
+
 // The comp's rhythms: the re-strikes after a chord's first strike. Drawn rhythms: cells {on, acc, rat (ratchet), len (gate in steps)}.
 const cells = (n, spec) => Array.from({ length: n }, (_, i) => Object.assign({ on: 0, acc: 0, rat: 1, len: 0 }, spec[i] ? Object.assign({ on: 1 }, spec[i]) : {}));
 const PUMP = { name: 'Pump', steps: 16, swing: null, cells: cells(16, { 0: { acc: 1 }, 3: { len: 2 }, 6: { rat: 2 }, 8: { acc: 1 }, 11: { rat: 3 }, 14: { len: 4 } }) };
@@ -239,6 +256,16 @@ CONFIGS.push(
       let announced = 0;
       window._barAnnouncedT = 0;      // the last run's bar lines must not make this start look announced already
       sounds = [];
+      // the practice trainer: a loop of bars, a tempo step and a key step per chorus; what each chorus ended with is kept
+      const P = c.prac || {};
+      prac.ramp.on = !!P.ramp; if (P.ramp) Object.assign(prac.ramp, P.ramp);
+      prac.key.on = !!P.key; if (P.key) Object.assign(prac.key, P.key);
+      pracLoop = P.loop ? { sel: 3, si: P.loop[0], a: P.loop[1], b: P.loop[2] } : { sel: 0, si: -1, a: -1, b: -1 };
+      const chorusEvs = [], cur = { bpm: 0, d: 0 };
+      const realGliss = _setBpmGliss, realTrans = transposeSong, realDone = _pracChorusDone;
+      _setBpmGliss = function (v) { const r = realGliss.apply(this, arguments); cur.bpm = r; return r; };
+      transposeSong = function (d) { cur.d += d; return realTrans.apply(this, arguments); };
+      _pracChorusDone = function () { cur.bpm = 0; cur.d = 0; realDone.apply(this, arguments); chorusEvs.push({ n: _pracRun.chorus, bpm: cur.bpm, d: cur.d }); };
       startSongLoop(false, T0);
       const sc = window._songNativeScore({ chords: true });
       const ticks = [], moves = (c.moves || []).map(m => Object.assign({ done: false }, m)), capos = (c.capo || []).map(m => Object.assign({ done: false }, m));
@@ -254,7 +281,9 @@ CONFIGS.push(
         if (fake.currentTime > T0 + c.secs) break;
       }
       stopSongLoop();
-      out.push({ name: c.name, comps: !!c.comps, minHits: c.minHits, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
+      _setBpmGliss = realGliss; transposeSong = realTrans; _pracChorusDone = realDone;
+      prac.ramp.on = false; prac.key.on = false; pracLoop = { sel: 0, si: -1, a: -1, b: -1 };
+      out.push({ chorusEvs, prac: c.prac || null, name: c.name, comps: !!c.comps, minHits: c.minHits, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
     }
     _playLoopSlot = origPlayLoopSlot; METER.beats = 4; METER.unit = 4; window._sqSetSwing8(true);
     window._blOnChord = origOnChord; window.setTimeout = realSetTimeout; window.clearTimeout = realClearTimeout; window._sqPlaying = realSq;
@@ -273,13 +302,14 @@ CONFIGS.push(
     fs.writeFileSync(path.join(tmp, 'song.f64'), Buffer.from(Float64Array.from(cases).buffer));
     const r = spawnSync(bin, [path.join(tmp, 'song.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
     if (r.status !== 0) { console.error(c.name + ': ' + r.stderr); if (process.env.SONG_DUMP) fs.copyFileSync(path.join(tmp, 'song.f64'), process.env.SONG_DUMP); process.exit(2); }
-    const nat = [], natHits = [];
+    const nat = [], natHits = [], natChoruses = [];
     r.stdout.split('\n').forEach(l => {
       const f = l.split(' ');
       if (l.startsWith('W ')) { const np = +f[11]; nat.push({ t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }); }
       else if (l.startsWith('V ')) { const nn = +f[7]; nat[nat.length - 1].act = { kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }; }
       else if (l.startsWith('S ')) nat[nat.length - 1].act = { kind: 'S', onset: +f[1] };
       else if (l.startsWith('H ')) { const nn = +f[7]; natHits.push({ after: nat.length, kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }); }
+      else if (l.startsWith('C ')) natChoruses.push({ frame: +f[1], n: +f[2], bpm: +f[3], d: +f[4] });
       else if (l.startsWith('T ')) natHits.push({ after: nat.length, kind: 'S', onset: +f[1] });
     });
     const pg = c.recs;
@@ -298,6 +328,19 @@ CONFIGS.push(
     const same = !bad && pg.length > 6, why = bad || '';
     ok(same && c.ok && (!c.locks || nat.filter(n => n.lock).length > 0), c.name + ': ' + pg.length + ' chords identical (worst timing ' + worstT.toExponential(1) + ' frames)', why + ' ' + (c.why || []).join(','));
 
+    if (c.prac) {
+      // each chorus' effects, in order: the tempo it stepped to (0: none) and the key it stepped by
+      let cbad = null;
+      const pc = c.chorusEvs, nc = natChoruses;
+      for (let k = 0; k < pc.length && !cbad; k++) {
+        const p = pc[k], n = nc[k];
+        if (!n) cbad = `chorus ${k + 1}: the page ended one, the engine has ${nc.length}`;
+        else if (p.n !== n.n || p.bpm !== n.bpm || p.d !== n.d) cbad = `chorus ${k + 1}: tempo ${p.bpm} key ${p.d} on the page, tempo ${n.bpm} key ${n.d} native`;
+      }
+      if (!cbad && nc.length < pc.length) cbad = pc.length + ' choruses on the page, ' + nc.length + ' native';
+      const tempi = pc.filter(e => e.bpm).map(e => e.bpm).join('>'), keys = pc.filter(e => e.d).length;
+      ok(!cbad && pc.length >= (c.prac.min || 3) && (!c.prac.ramp || tempi) && (!c.prac.key || keys), '    ...and the trainer steps the same: ' + pc.length + ' choruses, tempo ' + (tempi || 'unchanged') + ', ' + keys + ' key steps', cbad || '');
+    }
     // What each chord sounds like: the page's messages for it against the engine's action.
     if (process.env.SONG_DEBUG && /voicing/.test(c.name)) console.log(c.name + '\n  ' + nat.slice(0, 9).map(n => n.act && n.act.notes ? n.act.notes.join('.') : '-').join('  '));
     // The page's strike (its chord message and the release that goes with it) against the engine's action: '' when they are the same.

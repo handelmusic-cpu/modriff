@@ -84,6 +84,16 @@ struct SongSection {
   bool follow = false;         // the old "go to the next section" flag, which the page's peek still reads
 };
 
+// The practice trainer (the page's prac and pracLoop): the bars to loop in one section, and what each chorus changes -- the tempo a step up to a ceiling, the key by an interval.
+struct SongTrainer {
+  bool loopOn = false; int loopSection = -1, loopA = -1, loopB = -1;      // chords a..b of one section play over and over; each pass is a chorus
+  bool rampOn = false; int rampStep = 4, rampEvery = 2, rampMax = 140;
+  bool keyOn = false; int keyEvery = 2, keyBy = 7;
+};
+// A chorus ended (the last section's final pass, or a pass of the loop): the frame the next one begins on, how many have gone, the tempo it steps to (0: unchanged), the key
+// it steps by (semitones, 0: unchanged).
+struct ChorusEvent { double frame = 0; int chorus = 0; double bpm = 0; int keyDelta = 0; };
+
 struct SongScore {
   int barSteps = 16;           // sixteenths in a bar (meterStepsPerBar)
   bool swingOn = false;        // Chart 8ths are swung
@@ -92,11 +102,12 @@ struct SongScore {
   int capo = 0;                // the live key change, semitones
   std::vector<PhraseLock> locks;
   std::vector<SongSection> sections;
+  SongTrainer trainer;
   SongVoiceCfg voice;
 
-  // [3, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
+  // [4, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
   //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs...,
-  //  then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
+  //  then the trainer: loopOn, loopSection, a, b, rampOn, step, every, max, keyOn, every, by; then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
   //  nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len) x nEv]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 
@@ -124,6 +135,7 @@ class SongSequencer {
   const SongScore &score() const { return score_; }
   void setTempoMap(const TempoMap *m) { tmap_ = m; }
   void setCapo(int c) { score_.capo = c; }
+  int capoNow() const { return score_.capo + keyShift_; }       // the player's key change and the trainer's
   // _moveToSection's queue (songPendingSectionDelta): applied at the end of the pass.
   void queueMove(int delta) { pending_ = delta; }
   int queuedMove() const { return pending_; }
@@ -133,11 +145,21 @@ class SongSequencer {
     if (!score_.playable((size_t)std::max(section, 0))) return false;
     section_ = section; slot_ = slot; pass_ = pass; pending_ = 0;
     curStart_ = firstFrame; began_ = false; haveNext_ = false; marks_.clear();
+    chorus_ = 0; keysDone_ = 0; keyShift_ = 0; lastSetBpm_ = 0; startBpm_ = tmap_ ? tmap_->bpmAt(firstFrame) : 120.0;
     running_ = true;
     return true;
   }
   void stop() { running_ = false; marks_.clear(); }
   bool running() const { return running_; }
+  int chorus() const { return chorus_; }
+  int keyShift() const { return keyShift_; }
+  // _pracRestore, at a stop: the tempo goes back to where the run began, but only if it is still the one the trainer set (a tempo the player moved is theirs); the key
+  // goes back (the shift is dropped). Returns the tempo to put back, or 0.
+  double restore(double bpmNow) {
+    const double back = (lastSetBpm_ > 0 && std::round(bpmNow) == lastSetBpm_ && startBpm_ > 0) ? startBpm_ : 0;
+    lastSetBpm_ = 0; chorus_ = 0; keysDone_ = 0; keyShift_ = 0;
+    return back;
+  }
   int section() const { return section_; }
   int slot() const { return slot_; }
   int pass() const { return pass_; }
@@ -153,7 +175,11 @@ class SongSequencer {
   // Fire every chord that starts before `horizon`, in order, handing each to emit(const SongChord&). `drums`: the drums are playing, so there is a
   // bar clock to count. Returns the number of chords started.
   template <class Emit>
-  int run(double horizon, bool drums, Emit &&emit) {
+  int run(double horizon, bool drums, Emit &&emit) { return run(horizon, drums, emit, [](const ChorusEvent &) {}); }
+  // As above; `chorus` is called (with the new chorus's first bar line) when a chorus has ended, before that chorus's first chord is handed out, so the
+  // caller can step the tempo in time for the chord's length.
+  template <class Emit, class Chorus>
+  int run(double horizon, bool drums, Emit &&emit, Chorus &&chorus) {
     int fired = 0, guard = 0;
     while (running_ && guard++ < 4096) {
       const SongSection *sec = score_.playable((size_t)section_) ? &score_.sections[(size_t)section_] : nullptr;
@@ -185,6 +211,7 @@ class SongSequencer {
       }
       if (!haveNext_ || next_ >= horizon) break;
       advance();
+      if (chorusEv_) { chorusEv_ = false; chorus(lastChorus_); }
       // The lines that fell inside a chord that ran by time belong to no one's count.
       while (!marks_.empty() && marks_.front() <= next_ + 1e-6) marks_.pop_front();
       curStart_ = next_; began_ = false; haveNext_ = false;
@@ -202,15 +229,15 @@ class SongSequencer {
     w.t = curStart_;
     w.end = advanceBeats(curStart_, score_.slotBeats(sl));
     w.rest = sl.rest;
-    w.rootPc = mod12(sl.rootM + score_.capo);
-    w.bassPc = sl.bassM >= 0 ? mod12(sl.bassM + score_.capo) : -1;
+    w.rootPc = mod12(sl.rootM + capoNow());
+    w.bassPc = sl.bassM >= 0 ? mod12(sl.bassM + capoNow()) : -1;
     if (sl.ivs.empty()) { w.pcs = {w.rootPc, mod12(w.rootPc + 4), mod12(w.rootPc + 7)}; }
-    else for (int d : sl.ivs) w.pcs.push_back(mod12(sl.rootM + score_.capo + d));
+    else for (int d : sl.ivs) w.pcs.push_back(mod12(sl.rootM + capoNow() + d));
     const SongSlot *nx = peekNext();
-    if (nx && !nx->rest) w.nextPc = nx->bassM >= 0 ? mod12(nx->bassM + score_.capo) : mod12(nx->rootM + score_.capo);
+    if (nx && !nx->rest) w.nextPc = nx->bassM >= 0 ? mod12(nx->bassM + capoNow()) : mod12(nx->rootM + capoNow());
     w.lock = sl.rest ? -1 : sl.lock;
     c.section = section_; c.slot = slot_; c.pass = pass_;
-    c.s = sl; c.capo = score_.capo;
+    c.s = sl; c.capo = capoNow();
     return c;
   }
 
@@ -238,18 +265,48 @@ class SongSequencer {
     return i;
   }
 
-  // _advanceLoopSlot (the loop of a practice section and the endings are not here): the next chord; at the end of a pass a queued move, or the
-  // pass counted and the section left when it has had its plays.
+  // _advanceLoopSlot (the endings are not here): the next chord; past the last chord of a practice loop back to its first (a pass of the loop is a chorus); at the
+  // end of a pass a queued move, or the pass counted and the section left when it has had its plays, and a chorus when that was the last section's final pass.
   void advance() {
     const SongSection &sec = score_.sections[(size_t)section_];
+    const SongTrainer &tr = score_.trainer;
     slot_++;
+    if (tr.loopOn && section_ == tr.loopSection && loopValid() && slot_ > tr.loopB && pending_ == 0) { slot_ = tr.loopA; chorusDone(); return; }
     if (slot_ < (int)sec.slots.size()) return;
     slot_ = 0;
     if (pending_ != 0) { moveToSection(pending_); pending_ = 0; return; }
-    int playable = 0; for (size_t i = 0; i < score_.sections.size(); i++) if (score_.playable(i)) playable++;
+    int playable = 0, last = -1;
+    for (size_t i = 0; i < score_.sections.size(); i++) if (score_.playable(i)) { playable++; last = (int)i; }
+    const bool wasLast = section_ == last;
     pass_++;
     const bool leaving = sec.plays > 0 && pass_ >= sec.plays && playable > 1;
     if (leaving) moveToSection(1);
+    // The last section's final pass is the end of the chorus. A last section on "for ever" or a one-section chart never leaves, so each of its passes counts.
+    if (wasLast && (leaving || sec.plays == 0 || playable == 1)) chorusDone();
+  }
+  // pracLoopValid: the bars to loop exist.
+  bool loopValid() const {
+    const SongTrainer &tr = score_.trainer;
+    return tr.loopSection >= 0 && (size_t)tr.loopSection < score_.sections.size() && tr.loopA >= 0 && tr.loopA <= tr.loopB &&
+           (size_t)tr.loopB < score_.sections[(size_t)tr.loopSection].slots.size();
+  }
+  // _pracChorusDone: a chorus is over; step what is on (the tempo up by a step to its ceiling every few choruses, the key by an interval, twelve keys in all).
+  void chorusDone() {
+    const SongTrainer &tr = score_.trainer;
+    ChorusEvent ev; ev.frame = next_; ev.chorus = ++chorus_;
+    const int n = chorus_;
+    if (tr.rampOn && n % std::max(1, tr.rampEvery) == 0) {
+      const double cur = (tmap_ ? tmap_ : &own_)->bpmAt(next_), nxt = std::min((double)tr.rampMax, cur + tr.rampStep);
+      if (nxt > cur) { ev.bpm = std::max(40.0, std::min(220.0, std::round(nxt))); lastSetBpm_ = ev.bpm; }
+    }
+    if (tr.keyOn && n % std::max(1, tr.keyEvery) == 0 && keysDone_ < 11) {
+      keysDone_++;
+      int k = (keysDone_ * tr.keyBy) % 12;
+      if (k > 6) k -= 12;
+      ev.keyDelta = k - keyShift_;
+      keyShift_ = k;
+    }
+    lastChorus_ = ev; chorusEv_ = true;
   }
   void moveToSection(int delta) {
     section_ = stepTo(section_, delta);
@@ -271,6 +328,10 @@ class SongSequencer {
   bool haveNext_ = false;
   double next_ = 0;
   std::deque<double> marks_;
+  int chorus_ = 0, keysDone_ = 0, keyShift_ = 0;       // the trainer's run: choruses gone, keys stepped to, the distance from the start key
+  double lastSetBpm_ = 0, startBpm_ = 120;           // the tempo it last set, and the one the run began at
+  bool chorusEv_ = false;
+  ChorusEvent lastChorus_;
 };
 
 }  // namespace modsynth

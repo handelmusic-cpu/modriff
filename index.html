@@ -9182,7 +9182,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.5a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.6a</span></div>
  </div>
 </div>
 
@@ -10614,7 +10614,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.5a</span> <span class="ft-ver" id="ft-build" title="The commit this app was built from" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.6a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11811,7 +11811,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.5a';
+const MODRIFF_VERSION = '6.9.9.9.9.9.6a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -51086,8 +51086,6 @@ function _songPeekNextSlot(){
 // engine only steps the song and hands the bass its chords, as before.
 window._songNativeScore = function(opts){
  var why = [], chordWhy = [];
- try{ if(pracLoop.sel) why.push('a practice loop'); }catch(e){}
- try{ if(prac.ramp.on || prac.key.on) why.push('the practice trainer'); }catch(e){}
  try{ if(songEnding || _endQueued || _endingRunning) why.push('an ending'); }catch(e){}
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
@@ -51127,8 +51125,12 @@ window._songNativeScore = function(opts){
   });
  });
  var capo = (typeof _songBaseRoot !== 'undefined' && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
- var d = [3, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
+ var d = [4, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
  window._blPushLocks(d, locks);
+ // The practice trainer (a loop of bars, the tempo step, the key step), after the sections.
+ var lv = false; try{ lv = pracLoopValid(); }catch(e){}
+ var trainer = [lv ? 1 : 0, lv ? pracLoop.si : -1, lv ? pracLoop.a : -1, lv ? pracLoop.b : -1,
+                prac.ramp.on ? 1 : 0, prac.ramp.step, prac.ramp.every, prac.ramp.max, prac.key.on ? 1 : 0, prac.key.every, prac.key.by];
  var tail = [0], chords = !!(opts && opts.chords) && !chordWhy.length;
  if(chords){
   var vo = VOICING_CYCLE.indexOf(voicing), steps = ((MODES[mode] && MODES[mode].steps) || []);
@@ -51138,7 +51140,7 @@ window._songNativeScore = function(opts){
            _webChordSubOn() ? 1 : 0, velScale(0), (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0,
            (typeof window._sqSwing8 === 'function' && window._sqSwing8()) ? 1 : 0, nPats], pats);
  }
- return {ok: !why.length, why: why, score: d.concat(secs, tail), chords: chords, chordWhy: chordWhy};
+ return {ok: !why.length, why: why, score: d.concat(secs, trainer, tail), chords: chords, chordWhy: chordWhy};
 };
 
 // The pitches the engine's chords can need from the bank, for a song: the recording of a chord is one pitch at a time, and what a voicing picks depends on
@@ -60975,7 +60977,7 @@ window._songAnswer = function(ask, bassFirst, sr, pre){
 // window gives the moment to light it) and sets that state and calls the same functions the page's loop calls when it starts a chord (_highlightLoopSlot, which waits
 // out the lead as _playLoopSlot does), so the screens cannot tell the two loops apart. end() is the screens' half of stopSongLoop.
 window._songMirror = {
- seen: 0, live: false, cmdAt: 0,
+ seen: 0, live: false, cmdAt: 0, chorusSeen: 0,
  apply: function(m){
   var s = m && m.song; if(!s) return;
   var me = this, sr = m.sampleRate || 48000;
@@ -60984,6 +60986,10 @@ window._songMirror = {
   if(ask && ask[0] && ask[0] !== me.seen){
    me.seen = ask[0]; me.live = true;
    var count = ask[0], si = ask[1], ci = ask[2];
+   // A chorus ended on the bar line this chord begins: the page does what its own loop does then (_pracChorusDone: the displayed tempo and key step the way the engine's
+   // sound did), once for each the engine has counted.
+   var ch = s.chorus | 0;
+   while(me.chorusSeen < ch){ me.chorusSeen++; try{ _pracChorusDone(); }catch(e){} }
    songLoopActive = true; songLoopSection = si; songLoopSlot = ci; songSectionPass = ask[3];
    _updateSectionPassUI();     // "Pass 2 of 3" changes when the loop counts the pass, a look-ahead before the chord sounds, as the page's does
    var lead = Math.max(0, (ask[4] - m.frame) / sr * 1000);
@@ -60999,7 +61005,7 @@ window._songMirror = {
  },
  // The song stopped (the engine's or the player's): what stopSongLoop leaves on the screens.
  end: function(){
-  this.live = false; this.seen = 0;
+  this.live = false; this.seen = 0; this.chorusSeen = 0;
   songLoopActive = false; _songRunSounded = false; songPendingSectionDelta = 0;
   try{ songPlayheadClear(); }catch(e){}
   if(typeof applySongPlayingHighlights === 'function') applySongPlayingHighlights(false);
@@ -61044,7 +61050,7 @@ window._nsSong = {
   return this.sync().then(function(r){
    if(r.ok === false) return r;
    return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){
-    window._nsSong.driving = true; window._songMirror.seen = 0; window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
+    window._nsSong.driving = true; window._songMirror.seen = 0; window._songMirror.chorusSeen = 0; try{ _pracReset(); }catch(e){} window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
   });
  },
  // Answers the engine's asks (window._songAnswer) while the song runs: polls the mirror, and each time it has started a chord, writes the bass's line for the

@@ -386,9 +386,10 @@ int main() {
       CHECK(![g seqSetSong:[NSData dataWithBytes:"junk" length:8]], "a song that does not parse is refused");
       //  [3, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots,
       //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs, then the voice: on]
-      std::vector<double> song = {3, 16, 0, 0, 1, 0,  0,  2,
+      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  2,
         0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, -1, 3, 0, 4, 7,
         0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, -1, 4, 0, 4, 7, 10,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,    // the trainer: no loop, no tempo step, no key step
         0};
       CHECK([g seqSetSong:bytes(song)], "the song is taken");
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:5 slot:0 pass:0], "a place that is not in the song is refused");
@@ -428,9 +429,10 @@ int main() {
       //  per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs; then the voice: on, kit, play, pedal, style, vary, autoInv, keyRoot,
       //  nSteps, steps, decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8, nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len)...
       //  The F chord over A (a bar) has the comp "every beat": hits at the 2nd, 3rd and 4th beat (eighths 2, 4, 6) after its first strike.
-      std::vector<double> song = {3, 16, 0, 0, 1, 0,  0,  2,
+      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  2,
         0, 0, 3,   1, 0, 0, 0, 60, -1, -1, -1, 1, 2, -1, 3, 0, 4, 7,   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 0, 3, 0, 4, 7,
         0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 1, 0, -1, 4, 0, 4, 7, 10,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
         1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1,  0, 1,  1,  0, 0, -1, 4,  0, 1, 0,  2, 1, 0,  4, 1, 0,  6, 1, 0};
       CHECK([g seqSetSong:bytes(song)], "the song, with its voice, is taken");
       [g seqSetDrumScore:bytes(score())];
@@ -461,6 +463,29 @@ int main() {
             "a hold freezes the song (%d chords, no more hits) and leaves the chord ringing (stops %d, was %d)", [hs[@"chords"] intValue], [hs[@"stops"] intValue], stops);
       [g seqSongStop];
       CHECK([[g seqMirror][@"song"][@"stops"] intValue] > stops, "stopping the song stops the chord that rings");
+      [g seqStop];
+    }
+
+    // The practice trainer through the host: a one-section song of two whole-bar chords at 120 with the drums running, the tempo stepped up 10 at the end of each chorus (a
+    // chorus is the section's pass, four seconds), a key step of a fifth every chorus. After two choruses the tempo has moved and the key has shifted; stopping puts the tempo
+    // back where the run began.
+    {
+      ModEngineHost *g = fresh();
+      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  1,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, -1, -1, -1, 1, 10, 1, 140, 1, 1, 7,
+        0};
+      CHECK([g seqSetSong:bytes(song)], "a song with the trainer on is taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "it starts");
+      run(g, 9500);
+      NSDictionary *m = [g seqMirror], *sg = m[@"song"];
+      CHECK([sg[@"chorus"] intValue] >= 2 && [m[@"tempo"] doubleValue] >= 140 - 1e-9 && [sg[@"keyShift"] intValue] != 0,
+            "after %d choruses the tempo has stepped to %.0f and the key by %d semitones", [sg[@"chorus"] intValue], [m[@"tempo"] doubleValue], [sg[@"keyShift"] intValue]);
+      [g seqSongStop];
+      NSDictionary *m2 = [g seqMirror];
+      CHECK(fabs([m2[@"tempo"] doubleValue] - 120) < 1e-9 && [m2[@"song"][@"keyShift"] intValue] == 0, "stopping puts the tempo back to %.0f and drops the key shift", [m2[@"tempo"] doubleValue]);
       [g seqStop];
     }
 

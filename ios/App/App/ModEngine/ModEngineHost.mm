@@ -236,7 +236,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         if (a.play) { if (isHit) songHits++; else songVoiced++; cplay.play(a.e, now); }
         else if (a.stop) { if (!isHit) songRests++; cplay.stopAt(a.onset); }
       };
-      auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.score().capo, tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
+      auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.capoNow(), tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
       sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
         bseq.timeline().push(c.w); songChords++;
         { int ns = 0, nl = 0; sseq.nextPlace(ns, nl);
@@ -245,6 +245,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         if (!sseq.score().voice.on) return;
         hits(c.w.t);                                  // the chord before plays its last re-strikes first: the player takes them in time order
         act(svoice.chord(c, sseq.score(), tmap), false);
+      }, [&](const modsynth::ChorusEvent &ev) {
+        // The practice trainer stepped the tempo at a chorus's first bar line. The drums have already laid their steps out to their look-ahead at the old tempo, and the
+        // other parts follow the same map, so it takes effect at the first step the drums have not laid out, never before the bar line.
+        if (ev.bpm > 0) tmap.jump(std::max(ev.frame, seq.running() ? seq.nextFrame() : ev.frame), ev.bpm);
       });
       if (sseq.score().voice.on) hits(now + lookahead);
       bseq.timeline().prune(now);
@@ -772,6 +776,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   _hostSeq->sseq.stop();
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
   if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
+  // _pracRestore: the trainer's tempo goes back to where the run began (if the player has not moved it since), and its key shift is dropped.
+  { const double now = (double)_frames.load(std::memory_order_relaxed), back = _hostSeq->sseq.restore(_hostSeq->tmap.bpmAt(now)); if (back > 0) _hostSeq->setTempoNow(back); }
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -911,7 +917,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"pending": @(q.sseq.queuedMove()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
+                                 @"pending": @(q.sseq.queuedMove()), @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
