@@ -495,7 +495,7 @@
     'fx.crush.on': 1, 'fx.crush.bits': 10, 'fx.crush.rate': 0.7, 'fx.crush.mix': 0.4,
     'fx.eq.high': -5, 'fx.eq.low': 3, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3,
   }, [['lfo1', 'pitch', 0.03]]);
-  p('Rhodes Bell', 'Keys', 'keys,rhodes,fm,bell', {
+  p('Tine Bell', 'Keys', 'keys,rhodes,fm,bell', {
     'osc1.wave': 'classic', 'osc1.shape': 0, 'osc2.on': 1, 'osc2.ratio': 1, 'osc2.semi': 14,
     'osc2.level': 0, 'mix.fm': 0.32,
     'flt1.model': 'svfLP', 'flt1.cutoff': 9000,
