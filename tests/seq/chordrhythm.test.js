@@ -29,6 +29,8 @@ const CONFIGS = [
   { name: 'the same with the Feel swing at 40 on the eighths, 100 BPM', key: 'strum', bpm: 100, chord: [60, [0, 4, 7]], swing: 40, swing8: true, bars: 6 },
   { name: 'a drawn rhythm with soft, plain and accented hits, its own swing', def: { cells: { 0: { on: 1, acc: 1 }, 3: { on: 1, soft: 1 }, 6: { on: 1 }, 8: { on: 1, acc: 1 }, 11: { on: 1, soft: 1 }, 14: { on: 1 } }, swing: 30 }, bpm: 110, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
   { name: 'a drawn rhythm with held hits, ratchets of 2, 3 and 4 and a held ratchet, its own swing', def: { cells: { 0: { on: 1, len: 3 }, 4: { on: 1, rat: 3 }, 6: { on: 1, rat: 2, soft: 1 }, 8: { on: 1, acc: 1, rat: 4, len: 2 }, 12: { on: 1, soft: 1, len: 4 }, 15: { on: 1 } }, swing: 20 }, bpm: 120, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
+  { name: 'the built-in strum rhythm with the tempo changed twice while it plays (120, 90, 150), swing on the eighths', key: 'strum', bpm: 120, chord: [60, [0, 4, 7]], swing: 30, swing8: true, bars: 6, tempo: [{ tick: 40, bpm: 90 }, { tick: 110, bpm: 150 }] },
+  { name: 'a drawn rhythm with held hits and ratchets, tempo 100 then 160 then 70', def: { cells: { 0: { on: 1, len: 3 }, 4: { on: 1, rat: 3 }, 8: { on: 1, acc: 1, rat: 2, len: 2 }, 12: { on: 1, soft: 1 } }, swing: 20 }, bpm: 100, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6, tempo: [{ tick: 30, bpm: 160 }, { tick: 120, bpm: 70 }] },
   { name: 'a drawn 12-step rhythm, the Feel swing on the sixteenths, a slash chord', def: { steps: 12, cells: { 0: { on: 1 }, 4: { on: 1, acc: 1 }, 7: { on: 1 }, 10: { on: 1, soft: 1 } } }, bpm: 130, chord: [60, [0, 4, 7, -8]], swing: 55, swing8: false, bars: 8 },
 ];
 
@@ -67,8 +69,11 @@ const CONFIGS = [
       sent.length = 0; for (const k in released) delete released[k];
       fake.currentTime = 0.0013;
       CR.run = true; CR.nextT = FIRSTs; CR.step = 0;
+      const jumps = [];
       for (let guard = 0; guard < 100000; guard++) {
         fake.currentTime += 0.0371; _schedHorizon = fake.currentTime + LA;
+        // a tempo the player sets between two ticks: the step the scheduler is about to place is the first to have it
+        (c.tempo || []).forEach(t => { if (t.tick === guard) { document.getElementById('bpm').value = t.bpm; jumps.push(CR.nextT * sr, t.bpm); } });
         scheduleChordRhythm(); _schedHorizon = null;
         if (CR.nextT >= tEnd) break;
       }
@@ -76,7 +81,8 @@ const CONFIGS = [
       const hits = sent.filter(m => m.at < tEnd - 1e-6).map(m => ({ at: m.at, vel: m.vel, dur: m.dur, hold: m.dur == null ? released[m.id] - m.at : null, notes: m.notes, bass: m.bass, root: m.root }));
       const first = sent[0];
       const sc = window._crNativeScore({ notes: (first.bass != null ? [first.bass] : []).concat(first.notes), root: first.root, bass: first.bass });
-      out.push({ name: c.name, hits, tEnd, score: sc.score, ok: sc.ok, why: sc.why, bpm: c.bpm, steps: pat.steps });
+      out.push({ name: c.name, hits, tEnd, score: sc.score, ok: sc.ok, why: sc.why, bpm: c.bpm, steps: pat.steps, jumps });
+      document.getElementById('bpm').value = c.bpm;
     }
     // a gated hit and a ratchet are in the score, not refused
     { CR.key = 'u:test'; const d = rhyBlank(16); d.cells[0].on = 1; d.cells[0].len = 2; d.name = 'test'; CR.def = rhyNorm(d); const a = window._crNativeScore({ notes: [60, 64, 67], root: 60, bass: null }); extra.gated = a.ok;
@@ -90,7 +96,7 @@ const CONFIGS = [
   const SR = 48000, tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chordrhythm-'));
   const all = result.list;
   const cases = [all.length];
-  all.forEach(c => { cases.push(SR, c.bpm, 1.0 * SR, 0, Math.ceil((c.tEnd - 1) / (60 / c.bpm / 4) - 1e-9)); c.score.forEach(x => cases.push(x)); });
+  all.forEach(c => { cases.push(SR, c.bpm, 1.0 * SR, 0, 4 * Math.ceil((c.tEnd - 1) / (60 / c.bpm / 4) - 1e-9), c.jumps.length / 2); c.jumps.forEach(x => cases.push(x)); c.score.forEach(x => cases.push(x)); });
   fs.writeFileSync(path.join(tmp, 'cr.f64'), Buffer.from(Float64Array.from(cases).buffer));
   const bin = path.join(root, 'native', 'modsynth', 'chordtool');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth chordtool'); process.exit(2); }

@@ -31,7 +31,7 @@ packages and which is untouched):
   The web billing provider then holds nothing and ignores the dev override, so no
   stored `modo-dev-tier` key, console call or purchase call unlocks anything.
 - `samples/` is not shipped (3 MB instead of 19). The free tier already plays
-  synthesized voices and the Linn/808 kits are synthesized. The one free thing that
+  synthesized voices and the Digital 1 and Analog 1 kits are synthesized. The one free thing that
   was recorded was the Sampler's pad banks, so on the web the Sampler widget is a
   lock tile (`lvAllowed`), its sub-nav button is hidden, and `_psFactoryBuild` /
   `_psFetch` never run.

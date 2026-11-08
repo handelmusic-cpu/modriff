@@ -85,7 +85,7 @@
     ['m2', 'fx.drive.amount', 0.6], ['m3', 'osc1.shape', 0.6], ['m4', 'fx.crush.mix', 0.85, 1],
   ], ['Wub', 'Fold', 'Talk', 'Crush']);
 
-  p('808 Distorted', 'Bass', '808, trap, sub, distorted', Object.assign({}, MONO, {
+  p('Sub Distorted', 'Bass', '808, trap, sub, distorted', Object.assign({}, MONO, {
     'voice.glide': 0.07, 'voice.glideAuto': 1,
     'osc1.wave': 'classic', 'osc1.shape': 0.0, 'osc1.level': 1,
     'flt1.model': 'ladder2', 'flt1.cutoff': 2600, 'flt1.res': 0.05, 'flt1.drive': 0.35,
@@ -115,7 +115,7 @@
     ['m4', 'flt2.cutoff', -0.45],
   ], ['Talk', 'FM', 'Bite', 'Dark'], [lane(i => [0.8, -0.4, 0.2, -0.9, 0.6, -0.2, 0.9, -0.6][i % 8])]);
 
-  p('Acid Squelch', 'Bass', 'acid, 303, squelch, house', Object.assign({}, MONO, {
+  p('Acid Squelch', 'Bass', 'acid, squelch, house', Object.assign({}, MONO, {
     'voice.glide': 0.05, 'voice.glideAuto': 1,
     'osc1.wave': 'classic', 'osc1.shape': 0.66, 'osc1.level': 0.9,
     'flt1.model': 'diode', 'flt1.cutoff': 320, 'flt1.res': 0.72, 'flt1.drive': 0.45, 'flt1.env': 0.55, 'flt1.vel': 0.4,
@@ -291,7 +291,7 @@
     ['m4', 'mix.noise', 0.2],
   ], ['Still', 'Bark', 'Tape', 'Dust']);
 
-  p('Neo Rhodes', 'Keys', 'rhodes, neo soul, tremolo, smooth', {
+  p('Neo Tine', 'Keys', 'rhodes, neo soul, tremolo, smooth', {
     'voice.poly': 8,
     'osc1.wave': 'harmonic', 'osc1.shape': 0.25, 'osc1.level': 0.8,
     'osc2.on': 1, 'osc2.wave': 'bell', 'osc2.oct': 1, 'osc2.level': 0.18,
@@ -575,7 +575,7 @@
 
   // A 3→2→1 chain: osc 3 (×4) modulates osc 2 (×1.5), which modulates osc 1.
   // The classic inharmonic bell algorithm, with the clang decaying first.
-  p('DX Bell Stack', 'Keys', 'fm, bell, dx, three operator, metallic', {
+  p('FM Bell Stack', 'Keys', 'fm, bell, dx, three operator, metallic', {
     'voice.poly': 8,
     'osc1.wave': 'classic', 'osc1.shape': 0, 'osc1.level': 0.75,
     'osc2.wave': 'classic', 'osc2.shape': 0, 'osc2.ratio': 1, 'osc2.semi': 7,
@@ -700,7 +700,7 @@
   const CAL = {
     'Reese Grit': 0.67,
     'Wobble 1/8': 1.2,
-    '808 Distorted': 0.42,
+    'Sub Distorted': 0.42,
     'Neuro Growl': 0.39,
     'Acid Squelch': 1.4,
     'Fold Bass': 0.77,
@@ -714,7 +714,7 @@
     'Glass Pluck': 0.87,
     'Lo-fi Pluck': 0.46,
     'Dusty Keys': 0.42,
-    'Neo Rhodes': 0.37,
+    'Neo Tine': 0.37,
     'Organ Grit': 0.36,
     'Stab Keys': 0.91,
     'Halo Pad': 0.57,
@@ -735,7 +735,7 @@
     'Rasp Bass': 1.4,
     'Wide Saws': 1.05,
     '3-Op E.Piano': 0.5,
-    'DX Bell Stack': 0.44,
+    'FM Bell Stack': 0.44,
     'Chaos Drift Pad': 0.58,
     'Wheel Wobble': 1.25,
     'Growl Operator': 1.12,

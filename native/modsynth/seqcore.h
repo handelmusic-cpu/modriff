@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "tempomap.h"
+
 namespace modsynth {
 
 // A grid cell, field for field the page's {v, vel, p, r, rs, orn, pr}. v is 0 (off), 1 (hit) or 2 (accent).
@@ -155,12 +157,17 @@ class DrumSequencer {
   // Tempo, quarter-note BPM (the page's #bpm). Takes effect from the next step, as the page's does: a
   // step that has been fired keeps the length it was given.
   void setTempo(double bpm) { bpm_ = bpm; }
+  // A tempo map (tempomap.h) shared with the other sequencers replaces the constant tempo: a step is the span of 0.25 beats * rate that starts
+  // at the frame it is fired on, so a tempo the engine moves lands in the same place for all of them. Null: the constant `bpm_`, as before.
+  void setTempoMap(const TempoMap *m) { tmap_ = m; }
   // The drum rate multiplier (sqRateMul): 2 is twice as fast.
   void setRate(double mul) { rate_ = mul; }
   double tempo() const { return bpm_; }
 
   // sqSd() in frames: a sixteenth, at the tempo and rate.
   double stepFrames() const { return (60.0 / bpm_ / 4.0 * rate_) * sr_; }
+  // ...the one that starts at `frame`.
+  double stepAt(double frame) const { return tmap_ ? tmap_->span(frame, 0.25 * rate_) : stepFrames(); }
 
   // Begin at pattern step 0, bar 0, with step 0 landing on `firstFrame`.
   void start(double firstFrame) { next_ = firstFrame; step_ = 0; bar_ = 0; running_ = true; }
@@ -174,7 +181,7 @@ class DrumSequencer {
     int bar = score_.barSteps;
     if (!(bar > 0) || score_.steps % bar != 0) bar = score_.steps;
     const int toBar = ((bar - step_ % bar) % bar + bar) % bar;
-    return next_ + toBar * stepFrames();
+    return tmap_ ? next_ + tmap_->span(next_, toBar * 0.25 * rate_) : next_ + toBar * stepFrames();
   }
 
   // Where the clock is: the step the next call to run will fire, when it is due, and the bar it is in.
@@ -191,7 +198,7 @@ class DrumSequencer {
   int run(double horizon, Emit &&emit, Bar &&bar, Stepped &&stepped) {
     int fired = 0;
     while (running_ && next_ < horizon) {
-      const double sd = stepFrames();
+      const double sd = stepAt(next_);
       stepped(step_, bar_, next_);
       fireStep(step_, next_, sd, emit);
       fired++;
@@ -299,6 +306,7 @@ class DrumSequencer {
   Rng rng_;
   double sr_;
   double bpm_ = 120, rate_ = 1;
+  const TempoMap *tmap_ = nullptr;
   double next_ = 0;
   int step_ = 0, bar_ = 0;
   bool running_ = false;

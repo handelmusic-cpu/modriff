@@ -846,3 +846,167 @@ the page clamps the notes of a starved scheduler to the clock, the engine does n
 decide when to write a line (`_syncRegenAt`, `_syncPregenNext`, the song loop) are slice 4; for now a person calls `_nsBass.sync()` after a line is
 written. Pure tuning's cents. Not heard on device: checklist 19.7.
 
+## Slice 4 plan: the song loop in the engine (written after 6.9.9.9.9.1; nothing built yet)
+
+**What the page's song loop is today** (found by reading, `index.html`): `startSongLoop` picks the section and chord to start on (a held place, the chart's
+cue, a tapped chord) and waits for a bar line or starts at once; `_playLoopSlot` plays one chord (`playChartSlot2`: the live capo, `smartVoiceLead` and Vary,
+`stopAll`, `playChord`/`playSlashChord`, `setArpChord`, the logic highlight, a regenerate of the bass and melody), publishes the chord's window to the bass and
+melody (`_blOnChord`), and schedules the chord's own comp hits (`_scheduleCompHits`, built-in and drawn rhythms, from the slot's `comp`); `tickSongLoop` counts
+the bar lines the clock announces (the drums' wrap, or the click) and calls `_advanceLoopSlot`, while a slot of beats or eighths advances on its own
+`setTimeout`; `_advanceLoopSlot` walks the section, counts passes (`secPlays`), applies a queued Next/Prev, leaves a section, closes a chorus for the practice
+trainer, and hands an armed ending to `_runEnding`. Around it: tempo moves (the trainer's jump each chorus, a ritardando as a stream of `_setBpmGliss`),
+endings (cold, finish, fade, tag, ritard), a live key change (`transposeSong`, the capo), edits to the chart while it plays, and the page's timers that decide
+when the bass and melody write a line for the next chord (`_syncRegenAt`, `_syncPregenNext`). About 2,000 lines, a third of them endings and the trainer.
+
+**What the engine already has, and what it lacks.** Has: a clock in frames, the drums' bar line, the chord timeline (`ChordTimeline`) the bass reads, the chord
+rhythm and the held/decaying chord voice, locks, lines written ahead. Lacks: (1) a tempo that can move while it runs (every sequencer steps by one constant
+`stepFrames()`; the trainer's jump, a ritardando and a tempo change in the song all need a tempo map); (2) the song itself (sections, chords, passes, queues);
+(3) the page's voicing (`smartVoiceLead`, Vary) as the engine's; (4) the song's comping; (5) a way to tell the page "write the next chord's line now", since the
+generators stay JS; (6) the mirror the page draws the highlight from.
+
+**The pieces, in the order I would build them, each verified against the page the way slice 2 was** (the page's code on a clock of its own against a C++ tool,
+lists identical; mutation checks that the test can fail; audio nulls where sound is composed; the host thread; a developer entry; a checklist line):
+1. *A tempo map. Done (6.9.9.9.9.2), see the end of this file.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
+   trainer's jump against the engine's step times, drums, bass and chord rhythm together. Everything else needs it, and it is useful alone.
+2. *Song stepping. Done (6.9.9.9.9.4), see the end of this file.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
+   starts where the page would, advances on the bar lines of the drums' clock (and on its own clock for sub-bar chords), counts passes, leaves sections, applies a
+   queued Next/Prev at the end of the pass, and emits the chord windows the bass already reads (so the page stops calling `_blOnChord`). Test: the page's
+   `startSongLoop` / `tickSongLoop` / `_advanceLoopSlot` on a fake clock, with bar lines announced the way the drums announce them; the lists of (time, section,
+   chord, window) identical for loops, repeats, endings-free songs, sub-bar chords, snap modes, aligned and waiting starts.
+3. *The chord of a slot. Done (6.9.9.9.9.7), see the end of this file.* A port of `smartVoiceLead` (deterministic, with its state) and the slot's chord event into `ChordPlayer` (the voice exists since
+   6.9.9.9.4), `stopAll` on a rest, `ring`. Vary's dice are the engine's (not the page's: the owner accepted that, 6.9.4). Test: voicings identical over
+   a progression, and the 960-chord null test fed from the song.
+4. *The song's comping.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
+   rhythms, swing, the no-re-strike-of-the-first-hit rule, gated hits already done). Test: hit lists per slot against the page.
+5. *Asking the page for a line.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
+   the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
+6. *Mirror.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
+   Test: the mirror against what the page's highlight shows on the same run.
+7. *Endings and the practice trainer.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
+   ritard (a ramp in the tempo map), the trainer's loop `a..b`, speed-up and next-key per chorus. These are the last and the most separable: if the owner
+   prefers, they stay page-driven (the page sends the commands at the wrap) and are simply not available while the app is away.
+Slice 3 (the arp and the melody generator) sits beside this: both follow the chord stream, so piece 2 should come before them, not after.
+
+**Decisions that are the owner's.**
+- While the app is in the background there is no page to run the generators, so a Follow-off line that is rewritten for every chord stops being rewritten
+  (the last line keeps playing); Follow on, locks and everything else carry on. Accept this for v1, or port the generator (large)?
+- Endings and the trainer in the engine for v1 (piece 7), or page-driven and off in the background?
+- A chart edited while it plays: the page sends the changed song; the engine takes it at the next chord boundary (my proposal), or at the end of the pass?
+
+**Not in scope** (4.3 and the earlier decision): the song editor, MIDI out/in and external clock stay on the page.
+
+## Slice 4, piece 1 (6.9.9.9.9.2): the tempo map
+
+**What was built, and why.** `native/modsynth/tempomap.h`. Until now each sequencer held its own constant tempo and added one step length to its clock per
+step, so a tempo the engine would move by itself (the trainer's jump at the end of a chorus, a ritardando, a tempo written in the song) had no single
+place to live, and three accumulators reading a changing tempo at different moments would walk apart. The tempo is now a piecewise function of the frame:
+a jump is a new segment, a ramp is a segment whose tempo changes linearly in time and then holds. A step is "the span of 0.25 beats (times the rate) that
+starts here" asked of the map, so the drums, the bass at any rate and the chord rhythm stay on the same grid through a change, wherever each of them
+happens to read it. Beats are the integral of tempo, a quadratic in the frame inside a segment, and `frameAt` is its stable root.
+
+The ramp is linear in time because the page's ritardando is: it steps the tempo so that its square falls linearly with the beats (`_runEnding`,
+'ritard'), and bpm squared linear in beats is bpm linear in time. For a stretch of constant tempo `span` is exactly the old expression, bit for bit,
+so nothing changes until a tempo moves. A sequencer with no map keeps its own constant tempo (the tools and tests that never set one).
+
+**Host.** One `TempoMap` shared by the three sequencers. Every tempo call the page makes (`seqSetTempo`, `seqBassSetTempo`, `seqChordSetTempo`, and the
+tempo given at each start) is a jump at the render clock, and the same tempo again is not a new segment; `seqTempoRampTo:overMs:` (plugin
+`seqTempoRamp`, page `_nsDrum.tempoRamp(bpm, ms)`) starts a ramp from the tempo now; `seqMirror` says the tempo at the clock as `tempo`. The walking line's
+beat is the tempo at the moment it is scheduled (a ramp moves it a little inside one call).
+
+**Measured.** `make -C native/modsynth tempotest && native/modsynth/tempotest`: a constant stretch is the old step length exactly (140 of 140 cases);
+frames and beats are each other's inverse to 1e-10 frames through two jumps and two ramps, and beats agree with a numerical integral of the tempo; through
+a ramp bpm squared is linear in the beats and bpm is linear in time; a step across a jump is exactly a quarter note; with a constant map the drums, the
+bass and the chord rhythm step to the very same frames as without one (1244 of 1244); through a jump, a ritardando (120 to 66) and another jump, 440
+steps of the drums, the bass at twice the speed and the chord rhythm are on one grid (worst 6.6e-8 frames) and every step is the map's own quarter beat.
+Against the page: `tests/seq/chordrhythm.test.js` now changes `#bpm` while the page's scheduler runs (120, 90, 150 with swing; 100, 160, 70 with held
+hits and ratchets) and gives the engine a jump at the first step the page scheduled after each change: 66 hits identical in time to 1e-5 of a frame, level,
+length and hold (the jumps ignored fails both). The host test ramps 60 to 120 over 1.2 s: the steps close in monotonically from 12000 to 6000 frames,
+the mirror says 60 then 120, no late edit. All the earlier drum, bass and chord tests are unchanged.
+
+**Not done.** The page does not call the ramp (nothing in the app moves the tempo through the engine yet; the song loop will). A ramp is exact in the
+engine, not the page's integer-rounded steps twice a beat, so the two ritardandi differ by those roundings. Not heard on device: checklist 23.
+
+## Slice 4, piece 2 (6.9.9.9.9.4): song stepping
+
+**What was built.** `native/modsynth/songcore.h` (+ `.cpp`): `SongScore` (sections of chords: bars, beats, eighths, rest, root, slash bass, tones, phrase lock; passes
+and the follow flag per section; the meter's bar, swung Chart 8ths, snap, the capo) and `SongSequencer`, a port of the page's stepping: `_playLoopSlot` (a chord
+starts: its window for the bass, `_blOnChord`, with `_songPeekNextSlot`'s next chord), `tickSongLoop` (the drums' bar lines counted against a chord's bars),
+the timer path (a chord of beats or eighths, a chord with no drums to count, or snap off, ends one length after it began) and `_advanceLoopSlot` (the next chord;
+at the end of a pass a queued Next/Prev, or the pass counted and the section left after its plays). It emits what the page hands the bass for each chord, a
+`ChordWindow` (start, nominal end, rest, root, slash bass, next root, tones, lock) with where in the song it is, and the host pushes it into the bass sequencer's
+timeline: the page stops calling `_blOnChord`. A chord's length is in beats on the tempo map (piece 1), so it follows a ritardando; the page measures it in
+milliseconds at the tempo of the moment it starts (the same at a constant tempo).
+
+**Two quirks of the page are kept, one is not.** The peek at the end of a section reads the section's old `follow` flag, not its pass count, so `nextPc` there can name
+a chord the loop will not go to; the engine does the same, because the bass aims its approach note at it. A chord that began mid-bar (after chords of beats) is back on the
+bar grid at the first line the drums announce, as a whole-bar chord counts lines after its own start. Not kept: with snap off and the drums playing, the page
+advances twice a chord (its timer and the drums' lines both advance it: measured, a bar-long chord lasting half a second); the engine ends a chord by time there.
+That is a page bug, left alone here, to be gone with the cutover.
+
+**Page and host.** `window._songNativeScore()` exports the song (and refuses, with its reason, a practice loop, the trainer and an armed ending); a chord's lock is
+found the way the bass finds it (`_blLockFor`, now also on `window`). Host: `seqSetSong`, `seqSongStartWithLeadMs:` (on the drums' next bar line when they run),
+`seqSongStop`, `seqSongMove:`, `seqSongSetCapo:`, a `song` block in the mirror; the plugin and `window._nsSong` (`start(section, slot)`, `stop`, `move(1)`, `capo(n)`,
+`mirror`). The song runs after the drums and before the bass on the host thread, which is how the bar lines reach it in the same pass. `songcore.cpp` is in the Xcode project.
+
+**Measured.** `tests/seq/songstep.test.js` runs the page's own `startSongLoop`, `_playLoopSlot`, `tickSongLoop` and `_advanceLoopSlot` on a fake clock (its timers run
+when the fake time reaches them, the drums are a stand-in announcing a bar line when it falls inside the look-ahead, Next/Prev and a key change arrive between
+ticks) and `songtool` on the same song and ticks: 6 cases, 231 chords identical, each in start and window end (1e-5 of a frame), rest, root, slash bass, next root, tones,
+lock and place in the song: whole-bar chords across two sections with passes and the peek quirk; chords of bars, beats, eighths, a bar and two beats, rests and a slash chord
+with the drums; no drums with swung eighths; a queued Next and Prev around an empty section and a section that holds; starting at section 1 chord 2 with two key changes;
+phrase locks. It fails with the peek reading plays instead of the flag, with a queued move ignored by the peek, with the chord's own start line counted, with a pass too many,
+with swung eighths straight, without the capo on the root and without the locks. The host test steps a two-section song with the drums, takes a queued Next at the end
+of the pass, gives the bass its windows and stops.
+
+**Not done.** The chord itself (piece 3) and its comping (4): the engine steps the song and the bass follows it, but the chords still sound from the page. A chord tapped by
+hand (a jump), the practice loop and trainer, the endings (piece 7). Marks the page ignores because its two clocks fire in the other order, within 0.12 s after a timed chord
+ends, are counted by the engine. Not heard on device: checklist 24.
+
+## Slice 4, piece 3 (6.9.9.9.9.7): the chord of a slot
+
+**What was built.** The engine sounds the chords it steps. `native/modsynth/voicing.h` is a line-for-line port of how the page voices a chord: `smartVoiceLead`
+(the voice leading, with its memory of the last chord), `chordVoicing` (the voicing the player chose: Close, Spread, Drop 2, Drop 3, Soul/R&B, Neo-soul, and Vary's
+lap through them with its per-chord counts), `styledVoicing` and `jazzVoicing` (which ask the key's own tones: the mode's steps from the key, which moves with the capo),
+`voiceIntervals` and `chordEngineEvent` (the notes, a slash chord's bass directly under the lowest tone). `songvoice.h` is `_playChartSlot2` + `playChord`: a rest
+stops the chord that sounds (`stopAll`); any other chord is shifted by the live capo, voice-led (a slash chord's bass is the floor), voiced (the slot may carry its own
+voicing), turned into notes and struck once, held or decaying: the comp "sustain" holds it flat for the whole slot, "as played" holds it and lets go of it `ring` beats
+later (the Release knob) or, with no ring, into the next chord, every other style lets it decay by the Decay knob (cut by the Length buttons, and to 0.7 s with Strum
+on and no length; the beat is the tempo map's at the chord's moment). With Wet/dry at the top it is the held pedal under the arp (the page's other branch). Chords
+off: only the stop. The voice leading starts empty with the song, as the page's does after a key change. The song score carries all of this (a chord's voicing, hold and
+ring; the song's voicing, Vary, VoiceLead, mode, knobs; the chord voice's kit) and `SongVoiceCfg.on` says whether the engine plays the chords or only steps.
+
+**Chord player.** `ChordPlayer::stopAt(onset)` is `stopAll(atTime)` (a rest, Chords off, stopping the song); a negative `holdSec` is a held chord never let go of (the next
+stop ends it); and a chord the bank cannot make still stops the one before, as the page does (it used to return first and leave two chords sounding).
+
+**Page and host.** `window._songNativeScore({chords:true})` adds the above and refuses, with its reason in `chordWhy`, what the engine cannot sound yet: a sampled chord
+voice (the guitar voices among them: their grips are not ported), a mõdSynth chord voice, chord glide, Pure tuning. `window._songChordPitches()` is the bank's
+share: the recording of a chord is one pitch at a time and what a voicing picks depends on the chord before it, so it is a superset (every octave of every pitch class the
+song uses, C1 to G6; with a styled voicing or Vary every pitch class, since they add tones the chart does not name; the sub's pitch; the held recording too when any chord
+holds). `_nsSong.start()` records them (it reports `bank`), sends the score and starts; `_nsSong.chords = false` leaves the chords to the page; `_nsSong.capo(n)`
+tops the bank up first. Host: the song's emit calls the voicer and the chord player (the same one the chord rhythm uses), the mirror's `song` block gains `voiced`, `rests`,
+`voices`, `stops`, `releases`, `misses`, `refused`; starting the song resets the voice leading and points the player at the song's voice; stopping it stops the chord.
+`voicing.h` and `songvoice.h` are in the Xcode project.
+
+**Measured.** `tests/seq/songstep.test.js` now also runs the page's real `playChartSlot2` for every chord of the real loop and keeps its messages for the chord part
+(stop, chord, release); the engine's action for the same chord (`songtool` prints it) must be the same: the notes with the slash bass first, the sub's note, the level,
+the moment (1e-5 of a frame), decay (the length to 1e-12) or hold, and a release at exactly `ring` beats on. 36 cases (the 6 stepping ones and 30 voicing ones),
+1,716 chords struck and 98 stops: Close; Spread with Strum on; Drop 2; Drop 3; Soul; Neo-soul in C minor, D dorian and G major; Vary on from Close, Drop 2 and Soul over 200 to 260
+seconds (every type, then the next shape); VoiceLead off; As played with a ring, held on and tapped; chords with a voicing of their own in a Close song; two key changes
+during Neo-soul; the pedal; Chords off; the song moved up and down by 3, 5, 7, 9, 12 and 24 semitones; a song with half-diminished, diminished and augmented chords,
+major triads off the key, a chord twice running and slash chords with a high bass; and 7 songs of 48 to 120 random chords. Mutation checks (28, each by changing the port
+and rebuilding the tool; 23 are caught): the test fails with the pull toward the centre changed, ties going to the last candidate, the first-chord shifts cut short, the half-diminished
+ninth missing, the drop on the wrong voice, Vary's history one long, Vary's fresh flag gone (here and in the voicer), the lap length wrong, the slash bass not under the lowest
+tone, Spread's seventh, the capo not moving the key, the 0.7 s cap, the ring in the wrong beat, the floor of a slash chord, the sub's note, the dominant's seventh and the
+jazz ranking weights. Not caught, and why: a slash bass an octave off in the pedal branch (the bass is brought under the lowest tone whatever its octave: the same
+chord), the top of the styled register at exactly 84 (the centre pull never chooses a placement that high), two octave shifts of equal cost in the styled register,
+a span of exactly two octaves in the voice leading, and the level (`velScale(0)` is 1 for ever). The jazz weights were first missed by the hand-picked songs and are caught by
+the seven random ones. `songvoice` through the host: `seqhosttest` plays a two-section song with a ring, a rest and a slash chord with no page and the
+bank's chords: every chord voiced or a rest, 3 voices a triad, none missing, the rest and the next chord stop what rings, the ring lets go of its voices, stopping the song
+stops the chord. The audio follows from the page's messages: `tests/seq/chordline.test.js` takes `SONG=drop2` (or `rnb`, `neosoul`, `open`) and builds its chord list
+from the page's own `playChartSlot2` over six chords with two slash chords, then nulls the engine's chords against the page's recorded ones: 154 to 160 dB, Strum on and off,
+decaying and held, worst 100 ms 147 to 152 dB, except one 100 ms window in the release tail of a held slash chord with a bass at MIDI 35 (a sub at 23): 65.7 dB there. The
+same figure comes from the engine as it was before this piece, so it is the composer and not this change; the level in that window is far below the chord's.
+
+**Not done.** The song's comping (piece 4): a chord struck by a rhythm is struck once, at its start; the rhythm's re-strikes and the page's per-hit re-voicing are not here.
+The arp's chord (slice 3), glide, Pure tuning and sampled chord voices (refused with their reasons), a chord tapped by hand, the key change adding pitches the bank does not hold
+(`_nsSong.capo` tops it up; a capo the page sends later counts misses, and the miss leaves a gap, not a wrong chord). The chord voice's recording is per pitch, 40 to 70 recordings for a
+song (plain, and held when any chord holds): `_nsSong.start()` takes that long the first time. Not heard on device: checklist 25.

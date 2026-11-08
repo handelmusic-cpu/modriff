@@ -1,0 +1,69 @@
+// Runs the native song loop on a score and a list of ticks a test hands it and prints the chord windows it emits, one per line, for
+// tests/seq/songstep.test.js to hold against the page's own loop.
+//   songtool <cases.f64>
+// cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, section, slot, pass, nTicks, then nTicks x (now, horizon, drumsPlaying, nMarks,
+//   marks..., queuedMove, capo (1e9: none)), then the score (songcore.h)]. A tick is one call of the scheduler: the bar lines the drums announced since the last
+//   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
+// Output per case: "CASE i", "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
+// (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), "END i n".
+#include <cstdio>
+#include <vector>
+#include "songcore.h"
+#include "songvoice.h"
+
+int main(int argc, char **argv) {
+  if (argc < 2) { fprintf(stderr, "usage: songtool cases.f64\n"); return 2; }
+  FILE *f = fopen(argv[1], "rb");
+  if (!f) { perror("cases"); return 2; }
+  std::vector<double> d; double x;
+  while (fread(&x, sizeof x, 1, f) == 1) d.push_back(x);
+  fclose(f);
+  size_t k = 0;
+  const int nc = (int)d[k++];
+  for (int c = 0; c < nc; c++) {
+    const double sr = d[k++], bpm = d[k++], first = d[k++];
+    const int section = (int)d[k++], slot = (int)d[k++], pass = (int)d[k++];
+    const int nTicks = (int)d[k++];
+    struct Tick { double now, horizon; bool drums; std::vector<double> marks; int move; double capo; };
+    std::vector<Tick> ticks;
+    for (int i = 0; i < nTicks; i++) {
+      Tick t; t.now = d[k++]; t.horizon = d[k++]; t.drums = d[k++] != 0;
+      const int nm = (int)d[k++];
+      for (int j = 0; j < nm; j++) t.marks.push_back(d[k++]);
+      t.move = (int)d[k++];
+      t.capo = d[k++];
+      ticks.push_back(std::move(t));
+    }
+    modsynth::SongScore sc; size_t used = 0;
+    if (!sc.fromDoubles(d.data() + k, d.size() - k, &used)) { fprintf(stderr, "case %d: bad score\n", c); return 2; }
+    k += used;
+    modsynth::TempoMap tm(sr, bpm);
+    modsynth::SongSequencer q(sr);
+    modsynth::SongVoicer voicer;
+    q.setScore(sc); q.setTempoMap(&tm);
+    if (!q.start(first, section, slot, pass)) { fprintf(stderr, "case %d: cannot start\n", c); return 2; }
+    printf("CASE %d\n", c);
+    int fired = 0;
+    for (const Tick &t : ticks) {
+      for (double m : t.marks) q.noteBar(m);
+      if (t.move) q.queueMove(t.move);
+      if (t.capo < 1e8) q.setCapo((int)t.capo);
+      fired += q.run(t.horizon, t.drums, [&](const modsynth::SongChord &ch) {
+        const modsynth::ChordWindow &w = ch.w;
+        printf("W %.17g %.17g %d %d %d %d %d %d %d %d %zu", w.t, w.end, w.rest ? 1 : 0, w.rootPc, w.bassPc, w.nextPc, w.lock, ch.section, ch.slot, ch.pass, w.pcs.size());
+        for (int p : w.pcs) printf(" %d", p);
+        printf("\n");
+        if (q.score().voice.on) {
+          const modsynth::VoiceAction a = voicer.chord(ch, q.score().voice, tm);
+          if (a.play) {
+            printf("V %.17g %.17g %.17g %d %.17g %d %zu", a.onset, a.e.vel, a.e.durSec, a.e.hold ? 1 : 0, a.e.holdSec, a.e.subNote, a.e.notes.size());
+            for (int n : a.e.notes) printf(" %d", n);
+            printf("\n");
+          } else if (a.stop) printf("S %.17g\n", a.onset);
+        }
+      });
+    }
+    printf("END %d %d\n", c, fired);
+  }
+  return 0;
+}
