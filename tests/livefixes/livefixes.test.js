@@ -116,7 +116,10 @@ function serve() {
     document.getElementById('pf-pads-btn').click(); o.pads = document.getElementById('pf-pads-panel').style.display !== 'none';
     document.getElementById('pf-fx-btn').click(); return o;
   });
-  ok(!sr.inDock && sr.shown && sr.pos === 'static' && sr.dockH === 0 && sr.pads, 'Studio: the instrument row is in the page (not sticky, not docked) and still switches', sr);
+  ok(!sr.inDock && sr.shown && sr.pos === 'relative' && sr.dockH === 0 && sr.pads, 'Studio: the instrument row is in the page (not sticky, not docked) and still switches', sr);
+  // Its gradient (.subnav::before) must stay inside the row: once it covered the whole page and took every touch, so nothing scrolled.
+  const cover = await page.evaluate(() => { setPerformMode('chords'); const e = document.elementFromPoint(195, 520); return e && (e.id || e.className).toString().slice(0, 30); });
+  ok(cover !== 'pf-subnav', 'Studio: a touch in the middle of the page reaches the page, not the instrument row', cover);
   await page.close();
 
   // ── Live: All controls opens what Basic hides, and it starts shut ──
