@@ -175,7 +175,14 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   bool hasChord = false;
   uint64_t chordSteps = 0, chordHits = 0, chordFirst = 0;
 
-  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate) { sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; }
+  // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
+  // it by itself (a ramp). Under `lock`.
+  modsynth::TempoMap tmap;
+  void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), tmap(rate) {
+    sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank;
+    seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap);
+  }
   // The page's chord windows, shifted onto the clock. Under `lock`.
   void placeChords() {
     if (bassChords.empty()) { bseq.timeline().clear(); return; }
@@ -191,6 +198,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
   void tick() {
     os_unfair_lock_lock(&lock);
+    tmap.prune((double)frames->load(std::memory_order_relaxed) - sr);     // the clock never goes back; keep a second
     if (seq.running() && hasScore) {
       const double now = (double)frames->load(std::memory_order_relaxed);
       seq.run(now + lookahead,
@@ -582,6 +590,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&q.lock);
   if (!q.hasScore) { os_unfair_lock_unlock(&q.lock); return NO; }
   q.seq.setTempo(bpm > 0 ? bpm : 120);
+  q.setTempoNow(bpm > 0 ? bpm : 120);
   q.seq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.seq.seed((uint64_t)seed);
   const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
@@ -661,6 +670,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&q.lock);
   if (!q.hasBass) { os_unfair_lock_unlock(&q.lock); return NO; }
   q.bseq.setTempo(bpm > 0 ? bpm : 120);
+  q.setTempoNow(bpm > 0 ? bpm : 120);
   q.bseq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.bseq.seed((uint64_t)seed);
   double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
@@ -683,7 +693,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqBassSetTempo:(double)bpm rate:(double)rate {
   os_unfair_lock_lock(&_hostSeq->lock);
-  if (bpm > 0) _hostSeq->bseq.setTempo(bpm);
+  if (bpm > 0) { _hostSeq->bseq.setTempo(bpm); _hostSeq->setTempoNow(bpm); }
   if (rate > 0) _hostSeq->bseq.setRate(rate);
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -711,6 +721,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&q.lock);
   if (!q.hasChord) { os_unfair_lock_unlock(&q.lock); return NO; }
   q.cseq.setTempo(bpm > 0 ? bpm : 120);
+  q.setTempoNow(bpm > 0 ? bpm : 120);
   double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
   if (align && q.seq.running() && q.seq.nextFrame() > (double)_frames.load(std::memory_order_relaxed)) first = q.seq.nextFrame();
   q.cplay.reset(); q.cplay.kit = kit;
@@ -729,7 +740,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqChordSetTempo:(double)bpm {
   os_unfair_lock_lock(&_hostSeq->lock);
-  if (bpm > 0) _hostSeq->cseq.setTempo(bpm);
+  if (bpm > 0) { _hostSeq->cseq.setTempo(bpm); _hostSeq->setTempoNow(bpm); }
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -741,8 +752,16 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqSetTempo:(double)bpm rate:(double)rate {
   os_unfair_lock_lock(&_hostSeq->lock);
-  if (bpm > 0) _hostSeq->seq.setTempo(bpm);
+  if (bpm > 0) { _hostSeq->seq.setTempo(bpm); _hostSeq->setTempoNow(bpm); }
   if (rate > 0) _hostSeq->seq.setRate(rate);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// The tempo moves in a straight line (in time) from what it is now to `bpm` over `ms`, then holds it: a ritardando, or a tempo the engine moves by
+// itself. All three sequencers follow it on one grid.
+- (void)seqTempoRampTo:(double)bpm overMs:(double)ms {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  if (bpm > 0) _hostSeq->tmap.ramp((double)_frames.load(std::memory_order_relaxed), bpm, ms > 0 ? ms * _sampleRate / 1000.0 : 0);
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -776,7 +795,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     const HostSeq::Fired &f = q.ring[(q.ringN - 1 - k) % HostSeq::kRing];
     if (f.frame <= now) { step = f.step; bar = f.bar; break; }
   }
-  NSDictionary *r = @{@"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now),
+  NSDictionary *r = @{@"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
                       @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
                       @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),
                       @"recDropped": @((double)q.recDropped),

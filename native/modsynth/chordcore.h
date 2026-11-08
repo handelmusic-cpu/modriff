@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "chordplay.h"
+#include "tempomap.h"
 
 namespace modsynth {
 
@@ -61,6 +62,9 @@ class ChordSequencer {
   void setTempo(double bpm) { bpm_ = bpm; }
   // clockStepSec(): the chord rhythm does not take the drums' rate multiplier.
   double stepFrames() const { return (60.0 / bpm_ / 4.0) * sr_; }
+  // The tempo map shared with the other sequencers (tempomap.h); null: the constant tempo.
+  void setTempoMap(const TempoMap *m) { tmap_ = m; }
+  double stepAt(double frame) const { return tmap_ ? tmap_->span(frame, 0.25) : stepFrames(); }
   void start(double firstFrame, int step = 0) { next_ = firstFrame; step_ = step; running_ = true; }
   void stop() { running_ = false; }
   bool running() const { return running_; }
@@ -72,7 +76,7 @@ class ChordSequencer {
   int run(double horizon, Emit &&emit) {
     int fired = 0;
     while (running_ && next_ < horizon) {
-      const double sd = stepFrames();
+      const double sd = stepAt(next_);
       const int k = step_ % score_.steps;
       if (score_.play) {
         const double amt = score_.swing >= 0 ? score_.swing : score_.feelSwing;
@@ -102,6 +106,7 @@ class ChordSequencer {
     return (amt / 100.0) * sd * ((double)unit / 4.0);
   }
 
+  const TempoMap *tmap_ = nullptr;
   ChordScore score_;
   double sr_;
   double bpm_ = 120;

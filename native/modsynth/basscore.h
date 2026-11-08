@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "seqcore.h"
+#include "tempomap.h"
 
 namespace modsynth {
 
@@ -176,6 +177,9 @@ class BassSequencer {
   void setTempo(double bpm) { bpm_ = bpm; }
   void setRate(double mul) { rate_ = mul; }    // blRateMul
   double stepFrames() const { return (60.0 / bpm_ / 4.0 * rate_) * sr_; }
+  // The tempo map shared with the other sequencers (tempomap.h); null: the constant tempo.
+  void setTempoMap(const TempoMap *m) { tmap_ = m; }
+  double stepAt(double frame) const { return tmap_ ? tmap_->span(frame, 0.25 * rate_) : stepFrames(); }
 
   // Begin with `step` landing on `firstFrame` (the page joins a running band at its bar line: seqEntryTime).
   void start(double firstFrame, int step = 0) { pend_ = BassPending(); next_ = firstFrame; step_ = step; running_ = true; prevSlide_ = false; prevMidi_ = -1; walkPrev_ = 0; walkNextT_ = 0; walkLastT_ = 0; walkHave_ = false; }
@@ -205,8 +209,8 @@ class BassSequencer {
   template <class Emit>
   int runGrid(double now, double horizon, bool following, Emit &emit) {
     int fired = 0;
-    const double sd = stepFrames();
     while (running_ && next_ < horizon) {
+      const double sd = stepAt(next_);
       // A line written ahead for a chord takes over as the first step of that chord is reached, not at the next top of the loop.
       if (pend_.have && pend_.hasAt && next_ >= pend_.at - 0.002 * sr_) applyPending();
       fireStep(step_, next_, sd, following, emit);
@@ -279,7 +283,9 @@ class BassSequencer {
   // run (never back: a rewind would re-fire committed notes).
   template <class Emit>
   int runWalk(double now, double horizon, double drumBar, Emit &emit) {
-    const double sd = stepFrames();
+    // A walking line's beat is the tempo of the moment it is scheduled in (a ramp moves it a little inside one call, and the snap onto the
+    // drums' bar line takes the difference up on the next beat).
+    const double sd = stepAt(std::max(next_, now));
     const double beat = sd * 4;
     auto snap = [&](double t, double anchor, bool haveAnchor) {
       const bool useBar = drumBar >= 0;
@@ -365,7 +371,7 @@ class BassSequencer {
     }
     // Keep the step clock running so the playhead still sweeps the grid.
     int fired = 0;
-    while (running_ && next_ < horizon) { next_ += sd; step_++; fired++; if (step_ >= score_.steps) wrap(now); }
+    while (running_ && next_ < horizon) { next_ += stepAt(next_); step_++; fired++; if (step_ >= score_.steps) wrap(now); }
     return fired;
   }
 
@@ -483,6 +489,7 @@ class BassSequencer {
     } else prevSlide_ = false;
   }
 
+  const TempoMap *tmap_ = nullptr;
   BassScore score_;
   BassPending pend_;
   ChordTimeline timeline_;

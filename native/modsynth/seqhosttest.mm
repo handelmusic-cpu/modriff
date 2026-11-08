@@ -94,6 +94,27 @@ int main() {
     double gap = 0; for (size_t i = 1; i < n2; i++) if (e2[i * 13 + 11] != e2[(i - 1) * 13 + 11]) { gap = e2[i * 13] - e2[(i - 1) * 13]; break; }
     CHECK(n2 > 0 && std::fabs(gap - 12000) < 1e-6, "after tempo 60 the steps are %.0f frames apart", gap);
 
+    // A ramp: the tempo goes from 60 up to 120 over 1.2 s and holds; the steps get closer, from 12000 frames apart to 6000, and the mirror says the tempo.
+    {
+      [h seqSetTempo:60 rate:0];
+      run(h, 300);
+      [h seqTakeEvents];
+      NSDictionary *m0 = [h seqMirror];
+      CHECK(std::fabs([m0[@"tempo"] doubleValue] - 60) < 1e-9, "the mirror says the tempo: %.2f", [m0[@"tempo"] doubleValue]);
+      [h seqTempoRampTo:120 overMs:1200];
+      run(h, 2000);
+      NSData *evr = [h seqTakeEvents];
+      const size_t nr = evr.length / sizeof(double) / 13; const double *er = (const double *)evr.bytes;
+      std::vector<double> gaps;
+      for (size_t i = 1; i < nr; i++) if (er[i * 13 + 11] != er[(i - 1) * 13 + 11]) gaps.push_back(er[i * 13] - er[(i - 1) * 13]);
+      bool mono = gaps.size() > 8; double lo = 1e18, hi = 0;
+      for (size_t i = 0; i < gaps.size(); i++) { if (i && gaps[i] > gaps[i - 1] + 1e-6) mono = false; lo = std::min(lo, gaps[i]); hi = std::max(hi, gaps[i]); }
+      // events of one step share a frame; steps with no event leave no gap, so only the extremes are held to the numbers
+      CHECK(mono && hi > 8000 && std::fabs(lo - 6000) < 1e-6, "through the ramp the steps close in monotonically (%zu gaps, from about %.0f to %.0f frames)", gaps.size(), hi, lo);
+      CHECK(std::fabs([[h seqMirror][@"tempo"] doubleValue] - 120) < 1e-9, "and it holds 120");
+      CHECK([[h graphStats][@"lateEdits"] intValue] == 0, "no late edit");
+    }
+
     // The render clock stops: so does the sequencer (no new steps while nothing renders).
     usleep(150000);
     const int before = [[h seqMirror][@"steps"] intValue];

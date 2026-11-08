@@ -43,6 +43,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassChords", returnType: CAPPluginReturnPromise),
@@ -714,6 +715,13 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqStop(_ call: CAPPluginCall) {
         host?.seqStop()
         call.resolve()
+    }
+
+    /// The tempo moves in a straight line to `bpm` over `ms` milliseconds, then holds it. Resolves `ok`.
+    @objc func seqTempoRamp(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqTempoRamp(to: call.getDouble("bpm") ?? 0, overMs: call.getDouble("ms") ?? 0)
+        call.resolve(["ok": true])
     }
 
     @objc func seqTempo(_ call: CAPPluginCall) {
