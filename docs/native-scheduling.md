@@ -988,17 +988,18 @@ tops the bank up first. Host: the song's emit calls the voicer and the chord pla
 
 **Measured.** `tests/seq/songstep.test.js` now also runs the page's real `playChartSlot2` for every chord of the real loop and keeps its messages for the chord part
 (stop, chord, release); the engine's action for the same chord (`songtool` prints it) must be the same: the notes with the slash bass first, the sub's note, the level,
-the moment (1e-5 of a frame), decay (the length to 1e-12) or hold, and a release at exactly `ring` beats on. 43 cases (the 6 stepping ones and 37 voicing ones), about
-1,500 chords struck: Close; Spread with Strum on; Drop 2; Drop 3; Soul; Neo-soul in C minor, D dorian and G major; Vary on from Close, Drop 2 and Soul over 200 to 260
+the moment (1e-5 of a frame), decay (the length to 1e-12) or hold, and a release at exactly `ring` beats on. 36 cases (the 6 stepping ones and 30 voicing ones),
+1,716 chords struck and 98 stops: Close; Spread with Strum on; Drop 2; Drop 3; Soul; Neo-soul in C minor, D dorian and G major; Vary on from Close, Drop 2 and Soul over 200 to 260
 seconds (every type, then the next shape); VoiceLead off; As played with a ring, held on and tapped; chords with a voicing of their own in a Close song; two key changes
 during Neo-soul; the pedal; Chords off; the song moved up and down by 3, 5, 7, 9, 12 and 24 semitones; a song with half-diminished, diminished and augmented chords,
-major triads off the key, a chord twice running and slash chords with a high bass; and 7 songs of 48 to 120 random chords. Mutation checks (25, each by changing the port
-and rebuilding the tool): the test fails with the pull toward the centre changed, ties going to the last candidate, the first-chord shifts cut short, the half-diminished
+major triads off the key, a chord twice running and slash chords with a high bass; and 7 songs of 48 to 120 random chords. Mutation checks (28, each by changing the port
+and rebuilding the tool; 23 are caught): the test fails with the pull toward the centre changed, ties going to the last candidate, the first-chord shifts cut short, the half-diminished
 ninth missing, the drop on the wrong voice, Vary's history one long, Vary's fresh flag gone (here and in the voicer), the lap length wrong, the slash bass not under the lowest
 tone, Spread's seventh, the capo not moving the key, the 0.7 s cap, the ring in the wrong beat, the floor of a slash chord, the sub's note, the dominant's seventh and the
 jazz ranking weights. Not caught, and why: a slash bass an octave off in the pedal branch (the bass is brought under the lowest tone whatever its octave: the same
-chord), the top of the styled register at exactly 84 (the centre pull never chooses a placement that high), a span of exactly two octaves in the voice leading, and the
-level (`velScale(0)` is 1 for ever). `songvoice` through the host: `seqhosttest` plays a two-section song with a ring, a rest and a slash chord with no page and the
+chord), the top of the styled register at exactly 84 (the centre pull never chooses a placement that high), two octave shifts of equal cost in the styled register,
+a span of exactly two octaves in the voice leading, and the level (`velScale(0)` is 1 for ever). The jazz weights were first missed by the hand-picked songs and are caught by
+the seven random ones. `songvoice` through the host: `seqhosttest` plays a two-section song with a ring, a rest and a slash chord with no page and the
 bank's chords: every chord voiced or a rest, 3 voices a triad, none missing, the rest and the next chord stop what rings, the ring lets go of its voices, stopping the song
 stops the chord. The audio follows from the page's messages: `tests/seq/chordline.test.js` takes `SONG=drop2` (or `rnb`, `neosoul`, `open`) and builds its chord list
 from the page's own `playChartSlot2` over six chords with two slash chords, then nulls the engine's chords against the page's recorded ones: 154 to 160 dB, Strum on and off,
