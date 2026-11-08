@@ -846,3 +846,52 @@ the page clamps the notes of a starved scheduler to the clock, the engine does n
 decide when to write a line (`_syncRegenAt`, `_syncPregenNext`, the song loop) are slice 4; for now a person calls `_nsBass.sync()` after a line is
 written. Pure tuning's cents. Not heard on device: checklist 19.7.
 
+## Slice 4 plan: the song loop in the engine (written after 6.9.9.9.9.1; nothing built yet)
+
+**What the page's song loop is today** (found by reading, `index.html`): `startSongLoop` picks the section and chord to start on (a held place, the chart's
+cue, a tapped chord) and waits for a bar line or starts at once; `_playLoopSlot` plays one chord (`playChartSlot2`: the live capo, `smartVoiceLead` and Vary,
+`stopAll`, `playChord`/`playSlashChord`, `setArpChord`, the logic highlight, a regenerate of the bass and melody), publishes the chord's window to the bass and
+melody (`_blOnChord`), and schedules the chord's own comp hits (`_scheduleCompHits`, built-in and drawn rhythms, from the slot's `comp`); `tickSongLoop` counts
+the bar lines the clock announces (the drums' wrap, or the click) and calls `_advanceLoopSlot`, while a slot of beats or eighths advances on its own
+`setTimeout`; `_advanceLoopSlot` walks the section, counts passes (`secPlays`), applies a queued Next/Prev, leaves a section, closes a chorus for the practice
+trainer, and hands an armed ending to `_runEnding`. Around it: tempo moves (the trainer's jump each chorus, a ritardando as a stream of `_setBpmGliss`),
+endings (cold, finish, fade, tag, ritard), a live key change (`transposeSong`, the capo), edits to the chart while it plays, and the page's timers that decide
+when the bass and melody write a line for the next chord (`_syncRegenAt`, `_syncPregenNext`). About 2,000 lines, a third of them endings and the trainer.
+
+**What the engine already has, and what it lacks.** Has: a clock in frames, the drums' bar line, the chord timeline (`ChordTimeline`) the bass reads, the chord
+rhythm and the held/decaying chord voice, locks, lines written ahead. Lacks: (1) a tempo that can move while it runs (every sequencer steps by one constant
+`stepFrames()`; the trainer's jump, a ritardando and a tempo change in the song all need a tempo map); (2) the song itself (sections, chords, passes, queues);
+(3) the page's voicing (`smartVoiceLead`, Vary) as the engine's; (4) the song's comping; (5) a way to tell the page "write the next chord's line now", since the
+generators stay JS; (6) the mirror the page draws the highlight from.
+
+**The pieces, in the order I would build them, each verified against the page the way slice 2 was** (the page's code on a clock of its own against a C++ tool,
+lists identical; mutation checks that the test can fail; audio nulls where sound is composed; the host thread; a developer entry; a checklist line):
+1. *A tempo map.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
+   trainer's jump against the engine's step times, drums, bass and chord rhythm together. Everything else needs it, and it is useful alone.
+2. *Song stepping.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
+   starts where the page would, advances on the bar lines of the drums' clock (and on its own clock for sub-bar chords), counts passes, leaves sections, applies a
+   queued Next/Prev at the end of the pass, and emits the chord windows the bass already reads (so the page stops calling `_blOnChord`). Test: the page's
+   `startSongLoop` / `tickSongLoop` / `_advanceLoopSlot` on a fake clock, with bar lines announced the way the drums announce them; the lists of (time, section,
+   chord, window) identical for loops, repeats, endings-free songs, sub-bar chords, snap modes, aligned and waiting starts.
+3. *The chord of a slot.* A port of `smartVoiceLead` (deterministic, with its state) and the slot's chord event into `ChordPlayer` (the voice exists since
+   6.9.9.9.4), `stopAll` on a rest, `ring`. Vary's dice are the engine's (not the page's: the owner accepted that, 6.9.4). Test: voicings identical over
+   a progression, and the 960-chord null test fed from the song.
+4. *The song's comping.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
+   rhythms, swing, the no-re-strike-of-the-first-hit rule, gated hits already done). Test: hit lists per slot against the page.
+5. *Asking the page for a line.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
+   the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
+6. *Mirror.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
+   Test: the mirror against what the page's highlight shows on the same run.
+7. *Endings and the practice trainer.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
+   ritard (a ramp in the tempo map), the trainer's loop `a..b`, speed-up and next-key per chorus. These are the last and the most separable: if the owner
+   prefers, they stay page-driven (the page sends the commands at the wrap) and are simply not available while the app is away.
+Slice 3 (the arp and the melody generator) sits beside this: both follow the chord stream, so piece 2 should come before them, not after.
+
+**Decisions that are the owner's.**
+- While the app is in the background there is no page to run the generators, so a Follow-off line that is rewritten for every chord stops being rewritten
+  (the last line keeps playing); Follow on, locks and everything else carry on. Accept this for v1, or port the generator (large)?
+- Endings and the trainer in the engine for v1 (piece 7), or page-driven and off in the background?
+- A chart edited while it plays: the page sends the changed song; the engine takes it at the next chord boundary (my proposal), or at the end of the pass?
+
+**Not in scope** (4.3 and the earlier decision): the song editor, MIDI out/in and external clock stay on the page.
+
