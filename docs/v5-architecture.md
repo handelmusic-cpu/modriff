@@ -2529,7 +2529,7 @@ never opens it on its own.
 | Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
 | Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
 | Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
-| Sampler pads | preset banks PA Mix and PB Drums, 9 pads each | **Sampler**: PC and PD, the four user banks, all 16 pads, your own clips |
+| Sampler pads | none to play; the first 9 pads of PA are shown locked and each plays its sample softly twice (`modo-previews`) | **Sampler**: every bank, all 16 pads, your own clips |
 | Slice a clip onto pads | — | **Sampler** (`smpSliceToPads`): Hits, or 4, 8, 16 equal parts, from the sampler editor of a pad |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
 | Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |
@@ -2537,7 +2537,7 @@ never opens it on its own.
 | Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest, and Arrange |
 | Meters, steps | 4/4, 3/4, 12/8; 12, 16 or 24 (one bar of 12/8) | **Groove**: any meter, up to 64, a step length per part |
 | Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
-| Audio / MIDI export | first 90 s / first 4 bars | **Studio**: the whole take; stems |
+| Audio / MIDI export | first 30 s (fading out) / first 4 bars | **Studio**: the whole take; stems |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
 | Practice trainer (Songs > Perform) | a visible row; a tap opens the pack sheet | **Practice**: Speed up, Next key, Loop bars (`practiceTrainer`) |

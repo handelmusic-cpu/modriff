@@ -34,6 +34,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "fileDelete", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "wavFinish", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pcmFade", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphProbe", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
@@ -1167,6 +1168,41 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.resolve()
         } catch {
             call.reject("could not add to \(name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Fades the last `frames` frames of a finished 16-bit stereo .wav to
+    /// silence, starting at the byte `offset` of the first of them. A free export
+    /// is cut at 30 seconds and the cut used to be a click; the page calls this
+    /// after the host's capture has been laid on (pcmAdd), so the tail it fades
+    /// is the whole mix. The curve is a raised cosine, 0 on the final frame, and
+    /// is the same one the page applies in memory (_exportFadeGain): change both
+    /// together.
+    @objc func pcmFade(_ call: CAPPluginCall) {
+        guard let name = call.getString("name"), let off = call.getInt("offset"), off >= 0,
+              let frames = call.getInt("frames"), frames > 0 else {
+            call.reject("pcmFade needs name, offset and frames")
+            return
+        }
+        do {
+            let h = try FileHandle(forUpdating: dirURL(call).appendingPathComponent((name as NSString).lastPathComponent))
+            defer { try? h.close() }
+            try h.seek(toOffset: UInt64(off))
+            let raw = try h.read(upToCount: frames * 4) ?? Data()
+            let n = raw.count / 4
+            if n == 0 { call.resolve(); return }
+            var s = [Int16](repeating: 0, count: n * 2)
+            s.withUnsafeMutableBytes { _ = raw.copyBytes(to: $0, count: n * 4) }
+            for i in 0..<n {
+                let g = 0.5 * (1 + cos(Double.pi * Double(i + 1) / Double(frames)))
+                s[i * 2] = Int16((Double(s[i * 2]) * g).rounded())
+                s[i * 2 + 1] = Int16((Double(s[i * 2 + 1]) * g).rounded())
+            }
+            try h.seek(toOffset: UInt64(off))
+            try h.write(contentsOf: s.withUnsafeBytes { Data($0) })
+            call.resolve()
+        } catch {
+            call.reject("could not fade \(name): \(error.localizedDescription)")
         }
     }
 

@@ -61,7 +61,7 @@ groovebox,chord,drum machine,synth,sequencer,music theory,midi,sampler,beat make
 (97.) Do not repeat words already in the name or subtitle ("key", "every"), do not use the category
 name, and do not use another product's name: an `iReal` keyword would be a trademark rejection.
 
-**Description** (2030 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
+**Description** (2055 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
 break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
 (no iReal, 808 or Linn: those are trademarks) and no price (prices are per storefront). It does not promise
 playback with the screen locked: background scheduling is still being moved to the engine
@@ -96,7 +96,7 @@ PLAYS WELL WITH OTHERS
 - Map its knobs and pads to anything on the screen
 
 FREE TO START, PACKS WHEN YOU WANT MORE
-mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits and five saved songs are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
+mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs and 30-second audio exports are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
 
 PRIVATE BY DESIGN
 No account. No ads. No analytics. No tracking. Works offline. Your songs, patterns and recordings stay on your device.
@@ -315,6 +315,19 @@ like hidden purchases:
 > Pack, then tap any other locked control — the sheet now shows "Complete Your Studio" with
 > the line "Unlock everything for $… more." Restore Purchases is on that sheet, on the store
 > screen and in Settings > About.
+>
+> A locked thing can usually be tried before it is bought. For example the sampler: on a free
+> install its pads are drawn locked (dimmed, with a padlock). Tapping one plays that pad's
+> sample once, quietly, up to twice per pad; after that, a tap opens the sheet. The preview is
+> never part of a song or a recording.
+>
+> Locked drum kits and grooves are tried in the pack sheet: tap one, then **Hear it** plays a short
+> fixed demo of the Groove Pack (the song is paused and comes back as it was). **Stop** or closing the
+> sheet ends it.
+>
+> Locked Sounds Pack voices (organ, electric piano, pad, piano, vibes, the two vintage basses) are tried
+> from the voice list: a tap plays the current chord once, quietly, up to twice per voice; after that, a
+> tap opens the sheet. The voice a part is on never changes.
 
 **Testing in Xcode, no store account needed:**
 

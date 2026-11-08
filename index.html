@@ -7459,9 +7459,9 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
    take no pointer events, so the tap always lands on the locked element and a
    <select> or <label> inside cannot open or focus. The padlock is drawn, not
    typed: a mask, so it takes the control's own colour. */
-.tier-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
+.tier-locked, .ps-pad.ps-locked { opacity:.5; position:relative; filter:grayscale(.6); cursor:pointer; }
 .tier-locked * { pointer-events:none; }
-.tier-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
+.tier-locked::after, .ps-pad.ps-locked::after { content:''; position:absolute; top:2px; right:2px; width:9px; height:9px;
   background:currentColor; pointer-events:none;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat;
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11' fill='none' stroke='%23000' stroke-width='2.6'/%3E%3Crect x='4.5' y='11' width='15' height='10' rx='2'/%3E%3C/svg%3E") center/contain no-repeat; }
@@ -9178,7 +9178,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.2</span></div>
  </div>
 </div>
 
@@ -10610,7 +10610,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.1</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.2</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11807,7 +11807,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.1';
+const MODRIFF_VERSION = '6.9.9.9.9.9.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -18821,6 +18821,11 @@ window.psStopAll = psStopAll;
 // have no finger to acknowledge, so they do not draw the waiting mark (tapWait).
 function psStart(key, t, notATap){
  var ctx = psCtx(); if(!ctx) return null;
+ // The sampler is the Sampler Engine's: a pad that arrives by a saved pattern,
+ // a MIDI note or Caps Lock stays silent on a free install, as other locked
+ // content does. The only sound a free install gets from a pad is psPreviewPlay,
+ // which does not come through here.
+ if(!modHas('sampler')) return null;
  var slot = SMP_SLOTS[key];
  if(!slot || !slot.id || !SMP_BUF[slot.id]) return null;
  var ps = slot.ps || psDefaults();
@@ -18900,6 +18905,10 @@ function psStart(key, t, notATap){
 
 // Finger down / finger up. The four modes differ only here.
 function psPress(i){
+ // Locked: a tap plays the sample softly, twice per pad, and says what the
+ // pad is part of. Nothing below runs, so nothing is struck, recorded into a
+ // pattern or selected.
+ if(!modHas('sampler')){ psPreviewTap(i); return; }
  var key = psCurKey(i);
  PS.sel = i;
  psHoldEnd(key, true);
@@ -18923,6 +18932,48 @@ function psPress(i){
   if(mode==='oneshot') psHoldArm(i, key);
  }
  psRenderDeck();
+}
+// The pad's sample, once, quietly, for a free install (6.9.9.9.5). It is not a
+// strike: no clip message, no PS_LIVE entry, no psRecEv, no pattern, no part
+// bus. The audio goes from its own source to the context's destination, past
+// the master tap the bounce and the stems read, so a preview that is still
+// sounding when a take starts cannot reach the file either (and psPreviewTap
+// does not start one during a take). At -6 dB, and cut at three seconds.
+var PS_PREV = null;
+function psPreviewStop(){
+ var v = PS_PREV; PS_PREV = null; if(!v) return;
+ try{ v.g.gain.cancelScheduledValues(0); v.g.gain.value = 0; v.src.stop(); }catch(e){}
+}
+function psPreviewPlay(key){
+ var ctx = psCtx(); if(!ctx) return false;
+ var slot = SMP_SLOTS[key], buf = (slot && slot.id) ? SMP_BUF[slot.id] : null;
+ if(!buf) return false;
+ var a = Math.max(0, Math.min(0.999, +slot.start||0));
+ var b = Math.max(a+0.0005, Math.min(1, slot.end==null?1:+slot.end));
+ var dur = Math.min((b-a)*buf.duration, 3);
+ if(!(dur > 0.002)) return false;
+ var lvl = 0.5 * Math.max(0, slot.gain==null?1:+slot.gain) * smpNorm(smpClip(slot.id));
+ if(!(lvl > 0)) return false;
+ psPreviewStop();
+ try{ voicePreviewStop(); }catch(e){}
+ var t = ctx.currentTime, FD = Math.min(0.004, dur/4);
+ var src = ctx.createBufferSource(); src.buffer = buf;
+ var g = ctx.createGain();
+ g.gain.setValueAtTime(0, t);
+ g.gain.linearRampToValueAtTime(lvl, t+FD);
+ g.gain.setValueAtTime(lvl, Math.max(t+FD, t+dur-0.03));
+ g.gain.linearRampToValueAtTime(0, t+dur);
+ src.connect(g); g.connect(ctx.destination);
+ var v = {src:src, g:g};
+ src.onended = function(){ try{ g.disconnect(); }catch(e){} if(PS_PREV===v) PS_PREV = null; };
+ src.start(t, a*buf.duration, dur);
+ src.stop(t+dur+0.02);
+ PS_PREV = v;
+ return true;
+}
+function psPreviewTap(i){
+ var bank = PS_BANKS[PS.bank], key = psCurKey(i);
+ freePreview('pad', bank+(i+1), 'The sampler', 'sampler', function(){ return psPreviewPlay(key); });
 }
 function psRelease(i){
  var key = psCurKey(i), slot = SMP_SLOTS[key], v = PS_LIVE[key];
@@ -18959,15 +19010,21 @@ function psSubPress(){
 }
 function psRollStop(){ if(_psRoll){ clearInterval(_psRoll); _psRoll=null; } }
 
-// Free plays the four preset banks, nine pads of each. The user banks are where
-// your own recordings live, which is the Pro part. These two are view prefs
+// Free sees the first preset bank's nine pads, locked (it may tap them to hear
+// a sample, see psPreviewTap). These two are view prefs
 // (which bank is showing, how many pads are on screen), so putting them back
 // inside the line rewrites nothing of anyone's: the pads and what is on them
 // are untouched. Returns true when it moved something.
 function psTierClamp(){
  if(modHas('sampler')) return false;
  var moved=false;
- if(!freeAllowsPad(PS_BANKS[PS.bank],0)){ PS.bank = Math.max(4, PS_BANKS.findIndex(function(b){ return freeAllowsPad(b,0); })); moved=true; }
+ // With no bank playable (free, since 6.9.9.9.5) the first preset bank is the one
+ // on show: its pads are what a free install previews. Moved only when it
+ // changes, or freeApplyLimits would repaint the pads every time it runs.
+ if(!freeAllowsPad(PS_BANKS[PS.bank],0)){
+  var to = Math.max(4, PS_BANKS.findIndex(function(b){ return freeAllowsPad(b,0); }));
+  if(PS.bank!==to){ PS.bank = to; moved=true; }
+ }
  if(PS.liveN>FREE_NUMBERS.padCount){ PS.liveN = FREE_NUMBERS.padCount; moved=true; }
  return moved;
 }
@@ -20718,6 +20775,9 @@ function psRender(){
   var clip=s&&s.id?smpClip(s.id):null, ps=(s&&s.ps)||psDefaults();
   var armed=!!(s&&s.id&&SMP_BUF[s.id]);
   p.classList.toggle('empty', !(s&&s.id));
+  // Locked (free): drawn dimmed with the padlock like any locked control, but not
+  // .tier-locked itself, which swallows the pointerdown a preview needs.
+  p.classList.toggle('ps-locked', !modHas('sampler'));
   p.classList.toggle('armed', armed);
   p.classList.toggle('sel', i===PS.sel);
   p.classList.toggle('live', !!PS_LIVE[key]);
@@ -20735,7 +20795,7 @@ function psRender(){
    if(clip.key==null && s.rootAuto && s.root!=null) tags.push('♪'+psNoteName(s.root));
   }
   p.querySelector('.ps-tags').textContent = tags.join(' · ');
-  p.setAttribute('aria-label', 'Pad '+psPadName(i)+(clip?' — '+clip.name:' — empty, tap to load'));
+  p.setAttribute('aria-label', 'Pad '+psPadName(i)+(clip?' — '+clip.name:' — empty, tap to load')+(modHas('sampler')?'':' — locked, part of the Sampler Engine; tap to hear it'));
  }
  var pre=psOnPreset();
  document.querySelectorAll('#ps-panel [data-psside]').forEach(function(b){ b.classList.toggle('active', (b.dataset.psside==='preset')===pre); });
@@ -37251,8 +37311,14 @@ function pbWhere(part){
  return m.cur.tier.label + (m.cur.tier.id === 'synth' && m.cur.cat.label ? ' · ' + m.cur.cat.label : '');
 }
 function _pbEl(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
-function pbPick(it){
+function pbPick(it, hooks){
  if(it.locked){
+  if(typeof voiceHearable==='function' && voiceHearable(it.value)){
+   voiceHearTap(it.value, it.label.replace(/\s*[◆◈]$/, ''));
+   // The list stays open for the next voice, until the sheet takes the screen.
+   if(hooks && document.getElementById('_pro-sheet')) hooks.picked();
+   return;
+  }
   if(typeof proSheet === 'function'){ var m = null; try{ m = voiceModule(it.value); }catch(e){} proSheet(it.label.replace(/\s*[◆◈]$/, ''), m); }
   return;
  }
@@ -37284,7 +37350,7 @@ function pbRender(root, part, st, hooks){
    s.items.forEach(function(it){
     var b = _pbEl('button', 'cp-item' + (it.active ? ' active' : '') + (it.locked ? ' locked' : ''), it.label + (it.locked ? ' 🔒' : ''));
     b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', it.active ? 'true' : 'false');
-    b.addEventListener('click', function(e){ e.stopPropagation(); hooks.picked(); pbPick(it); });
+    b.addEventListener('click', function(e){ e.stopPropagation(); if(it.locked && voiceHearable(it.value)){ pbPick(it, hooks); return; } hooks.picked(); pbPick(it); });
     g.appendChild(b);
    });
    root.appendChild(g);
@@ -39223,7 +39289,7 @@ var TUT_LIST = [
   {t:'Autosave', x:'Your session keeps itself. The splash picks up where you left off.', el:'#ft-setups-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'export', name:'Export & stems', steps:[
-  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free keeps the first 90 seconds; the Studio Pack the whole take.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
+  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free keeps the first 30 seconds, fading out; the Studio Pack the whole take.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
   {t:'Stems', x:'Adds one .wav per part.', el:'#ft-stems-btn', pro:'studio'},
   {t:'Project files', x:'File: New, Open and Save a whole project as one file — chart, parts, patches and mixer.', el:'#ft-sheet-file', go:function(){ _tutSheet(true); }},
   {t:'Capture', x:'Turns what you just played into chart, melody or pattern.', el:'#ft-rec-btn'}
@@ -47570,7 +47636,7 @@ Clarinet and flute currently show the correctly transposed written note without 
  },
  'sampler': {
   title: 'Sampler',
-  body: `<span class="tip-pro">Sampler Engine</span> Recording, resampling and importing your own clips, the four User banks and the preset banks PC and PD are the Sampler Engine's. The preset banks PA and PB, and the first nine pads of each, are free to play.<br><br>
+  body: `<span class="tip-pro">Sampler Engine</span> The pads are the Sampler Engine's: all eight banks, recording, resampling and importing your own clips. Free shows the pads locked and plays each one's sample softly, twice, so you can hear what is there.<br><br>
 <strong>Your own sounds, anywhere.</strong> The <strong>◈</strong> beside any voice, and on every drum lane, puts one of your clips on that part. The mõdFX pad has one too — see below.<br><br>
 <strong>Getting a sound in.</strong> <strong>● Record</strong> takes the microphone. <strong>◉ Resample</strong> records whatever mõdRïff itself is playing — a chord you liked, a fill, the whole mix — and puts it straight back in the library. <strong>⤓ Import</strong> takes files and <strong>🗀 Folder</strong> takes all of them at once, in name order; pick several and you are offered to lay them straight across the drum lanes. Record and Resample are also in the transport sheet, beside <strong>◈ Clips</strong>, so you can grab a sound without leaving what you are playing.<br><br>
 <strong>Trimming.</strong> Drag the ends of the waveform to set where the clip starts and stops. <strong>⇥ Silence</strong> moves the handles in past the quiet at each end for you, and <strong>Whole</strong> puts them back to the full clip — neither touches the audio. <strong>✂ Trim</strong> is the one that commits: it makes a <em>new</em> clip out of what is between the handles and leaves the original alone.<br><br>
@@ -47654,7 +47720,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  'export': {
   title: 'Export — audio, MIDI & stems',
   body: `<strong>Bounce</strong> — on the transport, and on this panel — captures a <strong>.wav</strong> of everything you hear — post master bus, including Master Vol — plus a <strong>.mid</strong> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.<br><br>
-<span class="tip-pro">Studio Pack</span> Free keeps the first 90 seconds of the audio and the first four bars of the .mid, and says so when it stops; the Studio Pack keeps the whole take.<br><br>
+<span class="tip-pro">Studio Pack</span> Free keeps the first 30 seconds of the audio, fading out over the last two, and the first four bars of the .mid, and says so when it stops; the Studio Pack keeps the whole take.<br><br>
 In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>as it records</em>, so a long take cannot run the app out of memory, and it is kept in ${window.__modMacApp?'<strong>Downloads › mõdRïff › Bounces</strong> — in the Finder —':'<strong>Documents › Bounces</strong> — in the Files app —'} as well as offered to the share sheet, so a cancelled share loses nothing.<br><br>
 <span class="tip-pro">Studio Pack</span> <strong>Stems</strong> adds one <strong>.wav</strong> per part next to the mix: Chords, Melody, Drums, Aux Perc, Bass, Melody Seq and Arp. They are <strong>dry</strong> — tapped at each part's own bus, before the reverb send and the master limiter — so you can put your own space on them in a DAW. A part that never sounded is skipped rather than written as silence.<br><br>
 <strong class="rnd-keep">Not the same as ◉ Capture in the transport</strong>, which writes what you play into something editable that stays inside the app — chords into a Song section, and the melody, the bass and the sampler pads into their own grids. Use that one to build a chart; use this one to get files out.<br><br>
@@ -53036,6 +53102,8 @@ function toggleRecording(){
   else _startRecording();
 }
 function _startRecording(){
+  // The pack sheet's demo plays through the drum engine the take listens to.
+  try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
   _withAudio(ctx);
   buildReverb();
@@ -53390,6 +53458,18 @@ function _riffInfoChunk(tags){
   });
   return new Uint8Array(buf);
 }
+// The fade at the end of a free export: a raised cosine over the last
+// `FREE_NUMBERS.audioExportFadeSeconds`, exactly 0 on the final sample. The native
+// host's pcmFade (ModEngine.swift) is the same curve; change both together.
+function _exportFadeFrames(nOut, sr){
+  return Math.min(nOut, Math.round(FREE_NUMBERS.audioExportFadeSeconds*sr));
+}
+function _exportFadeGain(i, n){ return 0.5*(1+Math.cos(Math.PI*(i+1)/n)); }
+function _fadeOutTail(L, R, n){
+  if(!(n>0)) return;
+  var from=L.length-n;
+  for(var i=0;i<n;i++){ var g=_exportFadeGain(i,n); L[from+i]*=g; R[from+i]*=g; }
+}
 function _floatsToWavBlob(left,right,sampleRate,tags){
   var numFrames=left.length,numChannels=2,bytesPerSample=2;
   var blockAlign=numChannels*bytesPerSample,dataSize=numFrames*blockAlign;
@@ -53501,7 +53581,7 @@ function _wavHeaderBytes(numFrames, sampleRate, tags){
 }
 // The mix: the streamed web taps, with the host's own capture (when it had
 // anything to say) added on at its place in the timeline.
-async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
+async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder, fadeN){
   var pl=modNativePlugin(), hdr=_wavHeaderBytes(nOut, sr, tags), name=_dlName(base+'.wav');
   await sink.drain();
   await pl.wavFinish({ pcm:sink.name, name:name, header:modPlatform.b64Of(hdr), folder:folder,
@@ -53519,6 +53599,12 @@ async function _finishSinkMix(sink, natMix, span, nOut, base, sr, tags, folder){
       }
       await pl.pcmAdd({ name:name, folder:folder, offset:hdr.length+at*4, data:modPlatform.b64Of(new Uint8Array(pcm.buffer)) });
     }
+  }
+  // After the host's capture is laid on, or its tail would come back at full level.
+  // An older host without pcmFade writes the file with the hard cut it always had.
+  if(fadeN>0 && pl.pcmFade){
+    try{ await pl.pcmFade({ name:name, folder:folder, offset:hdr.length+(nOut-fadeN)*4, frames:fadeN }); }
+    catch(e){ try{ console.warn('[rec] fading the end failed', e); }catch(_){} }
   }
   return { name:base+'.wav', native:true };
 }
@@ -53663,15 +53749,17 @@ function _stopRecording(){
     var _sr=getCtx().sampleRate;
     var base=base0;
     var tags=_bounceInfoTags();
-    // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so; the
-    // take itself is whole in memory, only the file is shorter.
+    // Free stops the mix at FREE_NUMBERS.audioExportSeconds and says so, fading
+    // the last FREE_NUMBERS.audioExportFadeSeconds out (a hard cut was a click
+    // and a song that ends mid-note); the take itself is whole in memory, only
+    // the file is shorter. A take under the cap is left alone, with no fade.
     var _audioCut=false, _capN=Infinity, files;
     if(typeof modAllows==='function' && !modAllows('fullAudioExport')){
       _capN=Math.round(FREE_NUMBERS.audioExportSeconds*_sr);
     }
     if(sink){
       var _nOut=Math.min(span.n,_capN); _audioCut=span.n>_capN;
-      try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder) ]; }
+      try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder, _audioCut ? _exportFadeFrames(_nOut,_sr) : 0) ]; }
       catch(e){
         sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
         showToast('Could not write the bounce to disk — nothing was saved');
@@ -53680,7 +53768,12 @@ function _stopRecording(){
       }
     } else {
       var _wavL=fullL, _wavR=fullR;
-      if(fullL.length>_capN){ _wavL=fullL.subarray(0,_capN); _wavR=fullR.subarray(0,_capN); _audioCut=true; }
+      if(fullL.length>_capN){
+        // Copies, not subarrays: the fade must not write into the take, which
+        // the stems below are still read against.
+        _wavL=fullL.slice(0,_capN); _wavR=fullR.slice(0,_capN); _audioCut=true;
+        _fadeOutTail(_wavL,_wavR,_exportFadeFrames(_capN,_sr));
+      }
       files=[{ name:base+'.wav', blob:_floatsToWavBlob(_wavL,_wavR,_sr,tags) }];
     }
     // Native parts' stems, from the host's capture, written with the web ones.
@@ -53715,7 +53808,7 @@ function _stopRecording(){
     if(folder) done = 'Saved to '+(window.__modMacApp?'Downloads > mõdRïff > Bounces':'Files > mõdRïff > Bounces')+': mix' + (parts.length ? ' + '+parts.join(' + ') : '');
     _hap('bounce','system');
     // What Pro would have given, said once, with what was kept: the first
-    // minute and a half, not a refusal.
+    // half minute, not a refusal.
     var _cutWhat=[];
     if(_audioCut) _cutWhat.push('the first '+FREE_NUMBERS.audioExportSeconds+' seconds of audio');
     if(midiFile && midiFile.cut) _cutWhat.push('the first '+FREE_NUMBERS.midiExportBars+' bars of MIDI');
@@ -55350,7 +55443,7 @@ window._sqClearPendGroove = function(){
 function sqLoadGroove(idx, opts){
   // A saved setup, a shared link and the dice reach this without a button.
   if(typeof freeAllowsGroove==='function' && RHYTHMS[idx] && !freeAllowsGroove(RHYTHMS[idx].name)){
-    if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove','groove');
+    if(typeof freeBlocked==='function') freeBlocked(RHYTHMS[idx].name+' groove','groove',{groove:RHYTHMS[idx].name});
     return;
   }
   // Picking a groove to hear it (autostart: the groove list, the dice) is asking for the drums; with the kit off
@@ -58076,7 +58169,7 @@ function sqSwitchMach(key){
 window._sqDrumKit = function(){ return sqFocus===0 ? sqMach : (sqLayers[0] && sqLayers[0].mach); };
 window._sqPickDrumKit = function(k){
   if(!SQM[k]) return;
-  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove'); return; }
+  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
   if(sqFocus!==0) sqSetFocus(0);
   sqSwitchMach(k);
 };
@@ -58086,7 +58179,7 @@ window._sqPickDrumKit = function(k){
 window._sqAuxKit = function(){ return sqFocus===1 ? sqMach : (sqLayers[1] && sqLayers[1].mach); };
 window._sqPickAuxKit = function(k){
   if(!SQM[k]) return;
-  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove'); return; }
+  if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
   if(sqFocus!==1) sqSetFocus(1);
   sqSwitchMach(k);
 };
@@ -58931,7 +59024,7 @@ function sqRenderMachines(){
       b.style.color=m.color;
     }
     b.addEventListener('click',function(){
-      if(typeof freeAllowsKit==='function' && !freeAllowsKit(key)) return freeBlocked('This drum kit','groove');
+      if(typeof freeAllowsKit==='function' && !freeAllowsKit(key)) return freeBlocked('This drum kit','groove',{kit:key});
       sqSwitchMach(key);
     });
     row.appendChild(b);
@@ -71049,7 +71142,7 @@ const MODULE_COPY = {
  sounds:   { name:'Sounds Pack', line:'Tonewheel organ, e-piano, pads, vibes, bass',
   bullets:['Tonewheel organ','Electric piano','Synth piano','Synth pad','Vibraphone','Vintage violin bass and 60s soul bass'] },
  sampler:  { name:'Sampler Engine', line:'Pro sampler: your samples, kits, loop slicing',
-  bullets:['Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
+  bullets:['Play the pads: every bank, all 16','Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Wavetable power synth + the full mõdFX rack',
   bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
@@ -71123,10 +71216,11 @@ const FREE_LIMITS = {
   // Three meters, and the step counts are derived from them: a whole number of
   // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
   meters:       ['4/4','3/4','12/8'],
-  // The sampler's first two preset banks (PA Mix, PB Drums) and the first nine
-  // pads of each. PC, PD and the four user banks, which hold your own
-  // recordings, are the Sampler Engine's.
-  padBanks:     ['PA','PB']
+  // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
+  // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
+  // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
+  // never played into a song. The row stays so FEATURE_MODULE can name it.
+  padBanks:     []
 };
 // Which module owns each row above. Every row has exactly one; the test fails
 // on a row with none, which would be a lock nothing could ever open.
@@ -71164,11 +71258,35 @@ const EMBED_LIMITS = {
 const FREE_NUMBERS = {
   stepMax:            16,   // the app's own maximum is 64
   saveSlots:          5,    // setlist songs, and iReal charts without the Practice Pack; Setups are not counted
-  audioExportSeconds: 90,
+  audioExportSeconds: 30,
+  audioExportFadeSeconds: 2, // the last of those 30 s fades to silence, so the cut is not a click
   midiExportBars:     4,
-  padCount:           9
+  padCount:           9,    // pads SHOWN (locked) on a free install: a 3x3
+  previewsPerItem:    2     // taps that sound on a locked pad or voice; then a tap only opens the sheet
 };
-const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', midiExportBars:'studio', padCount:'sampler' };
+const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', audioExportSeconds:'studio', audioExportFadeSeconds:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
+
+// The "Hear it" demo in a pack's sheet (6.9.9.9.6), as data so it can be changed
+// here and nowhere else. A locked kit or groove never plays under the user's own
+// song; this plays instead, from the sheet, on its own tempo, and puts the song
+// back after. Every kit is an SQM key and every groove a RHYTHMS name, and none
+// is free (tests/tier/registry.test.js says so): it is the pack's own content.
+// A part is `bars` bars of `groove` on `kit` at `bpm` (a quarter note); `meter`
+// cuts the groove to another bar (7/8 is fourteen sixteenths), which is how an odd
+// meter is heard without a groove written for it. If the sheet was opened from a
+// locked kit or groove, the part with it plays first (or one is made for it).
+// Only `groove` is filled in; PACK_DEMO_PLAY below is where another pack's goes.
+const PACK_DEMO = {
+  groove: {
+    bpm: 110,       // for a part made up for a tapped groove that is not in the list
+    parts: [
+      { kit:'909',    groove:'Techno',     bars:2, bpm:128 },
+      { kit:'AFRICA', groove:'Afro 6/8',   bars:2, bpm:96  },
+      { kit:'JAZZ',   groove:'Jazz Waltz', bars:2, bpm:150 },
+      { kit:'ROCK',   groove:'Punk Skank', bars:2, bpm:150, meter:'7/8' }
+    ]
+  }
+};
 
 // Ownership. `_modOwned` is {module:true|false}, built by _applyTier from what
 // the provider says is bought; `_modFull` is any of the four Full Studio
@@ -71713,11 +71831,125 @@ function modPartOf(what, module){
  const m = module && MODULE_COPY[module];
  return what+(_modPlural(what)?' are':' is')+' part of '+(m ? 'the '+m.name : 'a paid pack');
 }
-function freeBlocked(what, module){
+// Hearing a locked thing before buying it (6.9.9.9.5): a pad's sample, a Sounds
+// Pack voice. `play` sounds it and answers whether it did; the tap that did is
+// counted per item (kind:id) in ONE key, modo-previews, and after
+// FREE_NUMBERS.previewsPerItem of them a tap only opens the sheet. Never during
+// a take: a locked item opens the sheet and plays nothing, so no preview can be
+// in a bounce, and it is never an excuse for the sheet to open on its own (it is
+// the user's tap). Storage that throws costs nothing: the preview plays, and the
+// count is kept in memory for the session. var: read from far away (CLAUDE.md).
+var _prevSeen = null;
+function _prevLoad(){
+ if(_prevSeen) return _prevSeen;
+ _prevSeen = {};
+ try{ var o = JSON.parse(modStore.getItem('modo-previews')||'null'); if(o && typeof o==='object') Object.keys(o).forEach(function(k){ var n=+o[k]; if(n>0) _prevSeen[k]=n|0; }); }catch(e){}
+ return _prevSeen;
+}
+function freePreviewCount(kind, id){ return _prevLoad()[kind+':'+id] || 0; }
+function freePreview(kind, id, what, module, play){
+ if(typeof _isRecording!=='undefined' && _isRecording){ proSheet(what, module); return false; }
+ var seen = _prevLoad(), k = kind+':'+id;
+ if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem){ proSheet(what, module); return false; }
+ const save=function(){ try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){} };
+ let r=null;
+ try{ r = play(); }catch(e){ r = false; }
+ if(r && typeof r.then==='function'){
+  // A preview that has to be rendered first (a voice): counted now, so a quick
+  // second tap cannot slip a third sound in, and given back if it never sounds.
+  seen[k] = (seen[k]||0)+1; save();
+  r.then(function(ok){ if(!ok){ seen[k]=Math.max(0,(seen[k]||1)-1); save(); } }, function(){ seen[k]=Math.max(0,(seen[k]||1)-1); save(); });
+  freeBlocked(what, module);
+  return true;
+ }
+ if(r){ seen[k] = (seen[k]||0)+1; save(); }
+ freeBlocked(what, module);
+ return !!r;
+}
+// A Sounds Pack voice, heard before it is bought (6.9.9.9.7): the CURRENT chord
+// (a vintage bass, its root: a chord on a bass is mud) in that voice, once,
+// through the same gate as a pad (freePreview, two per voice). The chord is
+// rendered offline from the voice's own builder (makeVoice, or the recorded bass's
+// sample player), scaled to one fixed level (-6 dB, as a pad) and played from its
+// own source straight to the destination: no part bus, so not the meter, mõdFX, a
+// bounce or a stem; and nothing is selected, so the voice the part is on does not
+// change and nothing is saved. A recorded voice that is not loaded yet is fetched
+// first (preloadSampleInstrument); the tap that asked still sounds when it is in.
+var _vpCache = {}, _vpNow = null;
+function voiceHearable(w){ return SOUNDS_VOICES.indexOf(w)>=0 && !modHas('sounds'); }
+function _vpWhenReady(key, ms){
+ return new Promise(function(res){
+  if(!key || SAMPLE_STATE[key]==='ready'){ res(true); return; }
+  if(SAMPLE_STATE[key]==='error'){ res(false); return; }
+  preloadSampleInstrument(key);
+  let n=0; const iv=setInterval(function(){
+   if(SAMPLE_STATE[key]==='ready'){ clearInterval(iv); res(true); }
+   else if(SAMPLE_STATE[key]==='error' || ++n>ms/100){ clearInterval(iv); res(false); }
+  }, 100);
+ });
+}
+function _vpNotes(w){
+ let rootM=60, rel=[0,4,7];
+ try{ rootM=lastChordRoot; rel=lastChordIntvs; }catch(e){}
+ if(BASS_SAMPLED[w]) return [36+(((rootM%12)+12)%12)];
+ let iv=rel; try{ iv=chordVoicing(rootM, rel); }catch(e){}
+ return iv.map(function(x){ return rootM+x; }).slice(0,6);
+}
+function _vpRender(w, notes){
+ const ck=w+'|'+notes.join(',');
+ if(_vpCache[ck]) return Promise.resolve(_vpCache[ck]);
+ const ctx=getCtx(), OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+ if(!ctx || !OAC) return Promise.resolve(null);
+ const sr=ctx.sampleRate, atk=0.03, dec=1.5, len=Math.ceil((0.02+atk+dec+0.3)*sr);
+ const oc=new OAC(2, len, sr), bass=BASS_SAMPLED[w], key=bass ? bass.lib : SAMPLED_WAVES[w];
+ const g=oc.createGain(); g.connect(oc.destination);
+ g.gain.setValueAtTime(0,0.01); g.gain.linearRampToValueAtTime(1/Math.max(1,notes.length),0.01+atk); g.gain.exponentialRampToValueAtTime(0.0001,0.01+atk+dec);
+ notes.forEach(function(m){
+  try{
+   if(bass){ const sv=playSampleVoice(oc, key, m, g, 0.01, atk+dec); if(!sv) throw 0; }
+   else makeVoice(oc, m, g, 0.01, atk+dec, w, 'chord');
+  }catch(e){}
+ });
+ return oc.startRendering().then(function(buf){
+  let pk=0; const ch=[buf.getChannelData(0), buf.numberOfChannels>1 ? buf.getChannelData(1) : null];
+  ch.forEach(function(d){ if(d) for(let i=0;i<d.length;i++){ const a=d[i]<0?-d[i]:d[i]; if(a>pk) pk=a; } });
+  if(!(pk>0.0005)) return null;
+  const k=0.45/pk, fade=Math.floor(0.03*sr);
+  ch.forEach(function(d){ if(d){ for(let i=0;i<d.length;i++) d[i]*=k; for(let i=0;i<fade;i++) d[d.length-1-i]*=i/fade; } });
+  return (_vpCache[ck]=buf);
+ }, function(){ return null; });
+}
+function voicePreviewStop(){
+ const v=_vpNow; _vpNow=null; if(!v) return;
+ try{ v.g.gain.cancelScheduledValues(0); v.g.gain.value=0; v.src.stop(); }catch(e){}
+}
+function voicePreviewPlay(w){
+ if(!getCtx()) return Promise.resolve(false);
+ const bass=BASS_SAMPLED[w], key=bass ? bass.lib : SAMPLED_WAVES[w];
+ return _vpWhenReady(key, 3000).then(function(ok){
+  if(!ok) return null;
+  return _vpRender(w, _vpNotes(w));
+ }).then(function(buf){
+  // A take may have started while it rendered or loaded.
+  if(!buf || (typeof _isRecording!=='undefined' && _isRecording)) return false;
+  const ctx=getCtx(); if(!ctx) return false;
+  voicePreviewStop(); psPreviewStop();
+  const src=ctx.createBufferSource(), g=ctx.createGain(), v={src:src, g:g};
+  src.buffer=buf; src.connect(g); g.connect(ctx.destination);
+  src.onended=function(){ try{ g.disconnect(); }catch(e){} if(_vpNow===v) _vpNow=null; };
+  _vpNow=v; src.start();
+  return true;
+ }).catch(function(){ return false; });
+}
+// The tap on a locked Sounds Pack voice (the sound list, the voice buttons).
+function voiceHearTap(w, label){
+ return freePreview('voice', w, label, 'sounds', function(){ return voicePreviewPlay(w); });
+}
+function freeBlocked(what, module, hint){
  const now=Date.now();
  if(now-_freeToastAt>2500){          // one nudge per gesture, not per control
   _freeToastAt=now;
-  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module); }});
+  majorToast(modPartOf(what, module), {actionLabel:'See pack', onAction:function(){ proSheet(what, module, hint); }});
  }
  return false;
 }
@@ -71736,10 +71968,91 @@ function freeBlocked(what, module){
 // Prices are the store's strings, never ours: modProducts() is whatever App
 // Store Connect has in this storefront, in the user's currency. Until it
 // arrives the button just says Unlock.
+// ── "Hear it" (6.9.9.9.6) ─────────────────────────────────────────
+// A pack whose content cannot be tried under the user's own song (a locked kit
+// or groove would have to be loaded to be heard, which a free install may not do)
+// plays a fixed demo from its sheet instead. What it does to the song: pauses the
+// transport if it was running and starts it again after, and nothing else. The
+// demo is not played through the sequencer, so no grid, tempo, kit, groove, undo
+// step, saved setup or recording sees it: its hits go to the drum engine as they
+// are, from here. Not while a take is running (and a take that starts stops it),
+// so it cannot be in a file. No count limit: nothing it plays can be kept.
+// Its own hit ids, far above the sequencer's counter (inside its closure) so they cannot meet.
+var _packDemo = null, _packDemoLog = [], _packDemoSeq = 1e9;
+function packDemoBlocked(){
+ return !!((typeof _isRecording!=='undefined' && _isRecording) || (typeof _midiRecOn!=='undefined' && _midiRecOn));
+}
+// The groove pack's plan: the table's parts (the tapped one first), each built
+// into the hits of its bars. t is seconds from the start.
+function _demoGroovePlan(hint){
+ const d=PACK_DEMO.groove;
+ // The kits live inside the sequencer's closure; this is its way out.
+ const SQM=(typeof window._sqMachines==='function') ? window._sqMachines() : null; if(!SQM) return null;
+ const findR=function(n){ for(let i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===n) return RHYTHMS[i]; return null; };
+ let parts=d.parts.filter(function(p){ return SQM[p.kit] && findR(p.groove); });
+ if(!parts.length || typeof window._sqGrooveGrid!=='function') return null;
+ const hk=hint && hint.kit && SQM[hint.kit] ? hint.kit : null, hg=hint && hint.groove && findR(hint.groove) ? hint.groove : null;
+ if(hk || hg){
+  const i=parts.findIndex(function(p){ return (hk && p.kit===hk) || (!hk && hg && p.groove===hg); });
+  if(i>0) parts.unshift(parts.splice(i,1)[0]);
+  else if(i<0){ const b=parts[0]; parts.unshift({ kit:hk||b.kit, groove:hg||b.groove, bars:b.bars, bpm:hg && !hk ? d.bpm : b.bpm }); parts.pop(); }
+ }
+ const events=[], marks=[]; let at=0;
+ parts.forEach(function(p,pi){
+  const r=findR(p.groove), sg=/^(\d+)\/(\d+)$/.exec(p.meter||r.sig||'4/4')||['','4','4'], beats=+sg[1], unit=+sg[2];
+  const steps=p.meter ? beats*Math.round(16/unit) : r.pat.length;
+  const stepSec=beats*4/unit*60/p.bpm/steps, grid=window._sqGrooveGrid(p.kit, r, steps, false), tracks=SQM[p.kit].tracks;
+  marks.push({ i:events.length, kit:p.kit, groove:p.groove, bpm:p.bpm, bars:p.bars });
+  for(let b=0;b<p.bars;b++) for(let s=0;s<steps;s++){
+   const t=at+(b*steps+s)*stepSec;
+   for(let ti=0;ti<tracks.length;ti++){
+    const c=grid[ti] && grid[ti][s]; if(!c || !(c.v>0)) continue;
+    events.push({ t:t, kit:p.kit, lane:ti, vel:0.85*(c.vel||100)/100, accent:c.v===2 });
+   }
+  }
+  at+=p.bars*steps*stepSec;
+ });
+ return events.length ? { events:events, marks:marks, total:at+0.8 } : null;
+}
+const PACK_DEMO_PLAY = { groove: _demoGroovePlan };
+function packDemoStart(module, hint){
+ if(_packDemo) packDemoStop();
+ if(!PACK_DEMO[module] || !PACK_DEMO_PLAY[module] || packDemoBlocked()) return false;
+ const ctx=getCtx(); if(!ctx || !window.modEngine.ready('drum')){ showToast('Start audio first'); return false; }
+ const plan=PACK_DEMO_PLAY[module](hint); if(!plan) return false;
+ const st={ module:module, plan:plan, i:0, m:0, cur:null, t0:ctx.currentTime+0.15, timer:null,
+            wasPlaying:isAnythingPlaying() };
+ // The song's engines would play under it; stopped, and started again below.
+ if(st.wasPlaying){ try{ stopEverything(); syncFixedTransport(); }catch(e){} }
+ _packDemo=st; _packDemoLog=[];
+ const ev=plan.events;
+ st.timer=setInterval(function(){
+  const c=getCtx(); if(!c){ packDemoStop(); return; }
+  const horizon=c.currentTime+0.15;
+  while(st.i<ev.length && st.t0+ev[st.i].t<horizon){
+   const e=ev[st.i];
+   while(st.m<plan.marks.length && plan.marks[st.m].i<=st.i){
+    st.cur=plan.marks[st.m]; _packDemoLog.push({ kit:st.cur.kit, groove:st.cur.groove, bpm:st.cur.bpm }); st.m++; proSheetRefresh();
+   }
+   modSend({ v:1, kind:'hit', part:'drum', id:++_packDemoSeq, kit:e.kit, lane:e.lane, vel:e.vel, accent:e.accent, pitch:0, dyn:null, at:st.t0+e.t });
+   st.i++;
+  }
+  if(c.currentTime>st.t0+plan.total) packDemoStop();
+ }, 25);
+ return true;
+}
+function packDemoStop(){
+ const st=_packDemo; if(!st) return;
+ _packDemo=null; clearInterval(st.timer);
+ // Back as it was: running if it was running (from the top, as undo and a loaded
+ // setup do), stopped if it was stopped. Nothing else was touched.
+ if(st.wasPlaying){ try{ startEverything(); syncFixedTransport(); }catch(e){} }
+ proSheetRefresh();
+}
 function proSheetRefresh(){ const o=document.getElementById('_pro-sheet'); if(o && o._render) o._render(); }
-function proSheet(what, module){
+function proSheet(what, module, hint){
  if(module && !MODULE_COPY[module]) module=null;
- const next = { what:what||'', module:module||null };
+ const next = { what:what||'', module:module||null, hint:hint||null };
  next.view = (next.what || next.module) ? 'feature' : 'store';
  const old=document.getElementById('_pro-sheet');
  if(old){ old._set(next); return; }
@@ -71750,7 +72063,7 @@ function proSheet(what, module){
  let cur=next, busy=false;
  const mk=function(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!==undefined) e.textContent=text; return e; };
  const price=function(key){ const p=modProducts()[key]; return (p && p.price) ? String(p.price) : null; };
- const close=function(){ ov.remove(); document.removeEventListener('keydown', onKey, true); };
+ const close=function(){ packDemoStop(); ov.remove(); document.removeEventListener('keydown', onKey, true); };
  const onKey=function(e){ if(e.key==='Escape'){ e.preventDefault(); close(); } };
  const lock=function(on){ box.querySelectorAll('button').forEach(function(b){ b.disabled=on; }); };
  function btn(label, cls, fn){ const b=mk('button', cls, label); b.type='button'; b.onclick=fn; return b; }
@@ -71788,6 +72101,17 @@ function proSheet(what, module){
   box.appendChild(mk('div','pro-what', cur.what ? modPartOf(cur.what, cur.module)+'.' : (m ? m.line : 'Packs for mõdRïff')));
   if(m){
    box.appendChild(bullets(m.bullets));
+   if(PACK_DEMO[cur.module] && !modHas(cur.module)){
+    const busy=packDemoBlocked();
+    const hb=btn(_packDemo ? 'Stop' : 'Hear it', 'pro-sec', function(){
+     if(_packDemo) packDemoStop(); else { packDemoStart(cur.module, cur.hint); render(); }
+    });
+    if(busy && !_packDemo){ hb.disabled=true; }
+    box.appendChild(hb);
+    box.appendChild(mk('div','pro-sub', busy && !_packDemo ? 'Not while recording.'
+      : _packDemo && _packDemo.cur ? 'Playing '+(window._sqKitLabel ? (window._sqKitLabel(_packDemo.cur.kit)||_packDemo.cur.kit) : _packDemo.cur.kit)+' · '+_packDemo.cur.groove+'. Your song is paused.'
+      : 'A short demo of what is in it. Your song is paused while it plays.'));
+   }
    if(modHas(cur.module)) box.appendChild(mk('div','pro-price','✔ Owned'));
    else { const p=price(cur.module); box.appendChild(btn('Unlock '+m.name+(p ? ' — '+p : ''), 'pro-buy', function(){ buy(cur.module); })); }
   }
@@ -71845,7 +72169,10 @@ function proSheet(what, module){
  }
  ov._render=render;
  ov._set=function(s){ cur=s; render(); };
- ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+ // Not for the first moment: a pad opens this on pointerdown (a third preview tap), and on a
+ // phone the click that ends the same touch lands on the backdrop that has just appeared.
+ const born=Date.now();
+ ov.addEventListener('click', function(e){ if(e.target===ov && Date.now()-born>400) close(); });
  document.addEventListener('keydown', onKey, true);
  render();
  if(typeof track==='function') track('pro_sheet', {what:cur.what, module:cur.module||''});
@@ -72178,7 +72505,10 @@ function proSyncRow(){
  document.addEventListener('click', function(e){
   const el=locked(e); if(!el) return;
   e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  proSheet(nameOf(el), el.getAttribute('data-mod')||'');
+  // A Sounds Pack voice button plays the chord instead (two per voice).
+  const vw=el.dataset.wave||el.dataset.arpwave||el.dataset.melwave||el.dataset.mlwave||((/setBlWave\('([^']+)'\)/.exec(el.getAttribute('onclick')||''))||[])[1];
+  if(vw && voiceHearable(vw)){ voiceHearTap(vw, nameOf(el)); return; }
+  proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
 

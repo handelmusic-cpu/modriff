@@ -42,7 +42,7 @@ const stub = (perm, withMic) => `
     },
     micStop: () => { window.__calls.push('micStop'); return Promise.resolve(); },` : ''}
   };
-  ['start','stop','ensurePart','post','stats','meters','shareFile','fileAppend','shareFiles','fileDelete','wavFinish','pcmAdd','captureStart','captureRead','captureStop'].forEach(m => P[m] = () => Promise.resolve({ sampleRate: 48000 }));
+  ['start','stop','ensurePart','post','stats','meters','shareFile','fileAppend','shareFiles','fileDelete','wavFinish','pcmAdd','pcmFade','captureStart','captureRead','captureStop'].forEach(m => P[m] = () => Promise.resolve({ sampleRate: 48000 }));
   window.Capacitor = { isNativePlatform: () => true, Plugins: { ModEngine: P } };
   window.__gum = 0;
   Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: () => { window.__gum++; return Promise.reject(Object.assign(new Error('x'), { name: 'InvalidStateError' })); } }, configurable: true });

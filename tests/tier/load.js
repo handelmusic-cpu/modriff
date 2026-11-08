@@ -26,7 +26,7 @@ module.exports = function load(){
     fn('_slCount') + fn('_slUsed') + fn('slCanAdd') + fn('devTierAvailable') + fn('devOwnedFromString') +
     fn('_modPlural') + fn('modPartOf') +
     '\n;({ MODULE_ORDER, BUNDLE_KEYS, STORE_ORDER, MODULE_COPY, BUNDLE_COPY, FREE_LIMITS, FEATURE_MODULE, NUMBER_MODULE,' +
-    ' SOUNDS_VOICES, FREE_VOICE_FALLBACK, FREE_NUMBERS, EMBED_LIMITS,' +
+    ' SOUNDS_VOICES, FREE_VOICE_FALLBACK, FREE_NUMBERS, EMBED_LIMITS, PACK_DEMO,' +
     ' modHas, modHasAll, modOwnedCount, modFor, modAllows, bundleOfferFor, modBundleOffer, voiceModule, modNameOf,' +
     ' freeAllowsKit, freeAllowsStyle, freeAllowsSteps, freeClampSteps, freeAllowsMeter, freeAllowsGroove,' +
     ' freeAllowsFxPatch, freeAllowsPad, freeAllowsMode, freeAllowsVoice, freeAllowsVoicing, freeAllowsArpRate,' +

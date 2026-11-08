@@ -55,14 +55,18 @@ const songs = n => Array.from({ length: n }, (_, i) => ({ id: i }));
 eq([4,5,6].map(n => T.slCanAdd(songs(n))), [true,false,false], 'a 5th song fits, a 6th does not');
 eq(T.slCanAdd(songs(5).concat([{ id: 'd', isDemo: true }])), false, 'the demo song is not one of the five');
 eq(T.slCanAdd(songs(4).concat([{ id: 'd', isDemo: true }])), true, 'demo plus four still has room');
-eq(T.FREE_NUMBERS.audioExportSeconds, 90, 'audio export seconds');
+eq(T.FREE_NUMBERS.audioExportSeconds, 30, 'audio export seconds');
+eq(T.FREE_NUMBERS.audioExportFadeSeconds, 2, 'audio export fade seconds');
 eq(T.FREE_NUMBERS.midiExportBars, 4, 'MIDI export bars');
 eq(T.FREE_NUMBERS.padCount, 9, 'sampler pads');
 eq(T.EMBED_LIMITS, { sampleSeconds: 12, sampleBytes: 2 * 1024 * 1024, fileBytes: 15 * 1024 * 1024 }, 'embed caps');
 eq([['4','4'],['3','4'],['12','8'],['6','8'],['5','4'],['7','8'],['2','4']].map(m => T.freeAllowsMeter(+m[0], +m[1])),
    [true,true,true,false,false,false,false], 'meters');
-eq(['PA','PB','PC','PD','A','B','C','D'].map(b => T.freeAllowsPad(b, 0)), [true,true,false,false,false,false,false,false], 'pad banks: the first two presets');
-eq([0,8,9,15].map(i => T.freeAllowsPad('PA', i)), [true,true,false,false], 'pads 1-9 only');
+eq(['PA','PB','PC','PD','A','B','C','D'].map(b => T.freeAllowsPad(b, 0)), [false,false,false,false,false,false,false,false], 'pad banks: none, the whole sampler is locked (previews only)');
+eq(T.FREE_LIMITS.padBanks, [], 'no free pad banks');
+eq(T.FREE_NUMBERS.padCount, 9, 'pads shown locked on a free install');
+eq(T.FREE_NUMBERS.previewsPerItem, 2, 'previews per pad or voice');
+eq([0,8,9,15].map(i => T.freeAllowsPad('PA', i)), [false,false,false,false], 'no pad is free to play');
 
 // ── 5. content (nothing owned)
 eq(['808','606','LIN','JAZZ','MOD','PERC','909','ACU'].map(T.freeAllowsKit), [true,false,true,false,false,false,false,false], 'kits: Linn and 808');
@@ -185,6 +189,20 @@ T.FREE_LIMITS.fxPatches.forEach(p => has(new RegExp("\\{name:'" + p + "',"), 'm�
 T.FREE_LIMITS.freeModes.forEach(m => has(new RegExp("\\n ?" + m + ": \\{|\\n ?'?" + m + "'?:\\s*\\{|id:'" + m + "'"), 'scale ' + m + ' exists'));
 T.FREE_LIMITS.padBanks.forEach(b => has(new RegExp("PS_BANKS = \\[[^\\]]*'" + b + "'"), 'pad bank ' + b + ' is in PS_BANKS'));
 T.FREE_LIMITS.voicings.forEach(v => has(new RegExp('data-voicing="' + v + '"'), 'voicing ' + v + ' has a button'));
+// the "Hear it" demo (PACK_DEMO) is the pack's own content: real kits and grooves, none of them free
+Object.keys(T.PACK_DEMO).forEach(m => ok(m in T.MODULE_COPY, 'PACK_DEMO.' + m + ' names a module'));
+T.PACK_DEMO.groove.parts.forEach(p => {
+  has(new RegExp("\\n  '" + p.kit + "':\\{label:"), 'demo kit ' + p.kit + ' is defined in SQM');
+  has(new RegExp("name:'" + p.groove.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + "'"), 'demo groove "' + p.groove + '" is in RHYTHMS');
+  T.setOwned([]);
+  ok(!T.freeAllowsKit(p.kit), 'demo kit ' + p.kit + ' is not free');
+  ok(!T.freeAllowsGroove(p.groove), 'demo groove "' + p.groove + '" is not free');
+  ok(p.bars > 0 && p.bpm > 0, 'demo part ' + p.kit + ' has bars and a tempo');
+});
+ok(T.PACK_DEMO.groove.parts.reduce((a, p) => a + p.bars, 0) >= 6 && T.PACK_DEMO.groove.parts.reduce((a, p) => a + p.bars, 0) <= 10, 'the groove demo is about 8 bars');
+ok(T.PACK_DEMO.groove.parts.filter(p => p.kit !== '').length >= 3, 'the groove demo uses about three kits');
+ok(T.PACK_DEMO.groove.parts.some(p => /^(7\/8|5\/4|7\/4|5\/8|9\/8)$/.test(p.meter || '')), 'the groove demo has an odd meter');
+ok(T.PACK_DEMO.groove.parts.some(p => /Afro|Samba|Teental|Keherwa|Kuku|Maqsum|Cumbia|Reggae|Son Clave/.test(p.groove)), 'the groove demo has a world groove');
 // fresh-start defaults: the bass and drum defaults are free ones; the chord voice is not (see FREE_VOICE_FALLBACK)
 has(/var blWave = 'upright';/, 'the default bass voice is Upright (the synth one)');
 has(/var sqSwing=0, sqMach='LIN'/, 'the default drum kit is the Linn');
