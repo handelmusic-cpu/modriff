@@ -880,7 +880,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
    rhythms, swing, the no-re-strike-of-the-first-hit rule, gated hits already done). Test: hit lists per slot against the page.
 5. *Asking the page for a line. Done (6.9.9.9.9.9.1), see the end of this file.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
    the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
-6. *Mirror.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
+6. *Mirror. Done (6.9.9.9.9.9.4), see the end of this file.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
    Test: the mirror against what the page's highlight shows on the same run.
 7. *Endings and the practice trainer.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
    ritard (a ramp in the tempo map), the trainer's loop `a..b`, speed-up and next-key per chorus. These are the last and the most separable: if the owner
@@ -1076,4 +1076,28 @@ for a two-section song and its sample rate.
 **Not done, said plainly.** The melody's line (slice 3). In the background there is no page to answer, so a Follow-off line stops being rewritten and the last one goes on (the owner's
 decision of 6.9.4, pending in the plan's list). A chart edited while the song plays answers over the page's new chart while the engine steps its old one. The melody's pregeneration,
 `_syncLastChordToKey` after a key change by hand, and the chord tapped by hand are the page's. Not heard on device: checklist 27.
+
+## Slice 4, piece 6 (6.9.9.9.9.9.4): the engine's song on the page's screens
+
+**What was built.** While the engine plays the song the page's own loop is stopped, but the song screens (the lit chord and its playhead, "Pass 2 of 3", the pulsing Next/Prev, the
+transport's song button, the Stage view) draw from the loop's state: `songLoopActive`, `songLoopSection`, `songLoopSlot`, `songSectionPass`, `songPendingSectionDelta`. `window._songMirror.apply`
+takes the engine's mirror (`song.running`, `song.pending`, the new queued-move field, and `song.ask`, whose window gives the moment) and sets that state and calls the functions the page's loop
+calls when it starts a chord: the pass line when the pass is counted (a look-ahead early, as the page's is), `_highlightLoopSlot` at the chord's start (it waits out the lead as
+`_playLoopSlot` does), and `_updateSectionNavUI` when the queued move changes (the engine's word, except for 200 ms after the player's own tap, which it has not heard yet).
+`end()` is the screens' half of `stopSongLoop`. Commands go the other way while `_nsSong.driving`: the page's `songGotoSection` (the queued Next/Prev) also tells the engine
+(`move`), `holdSongLoop` freezes the engine's song and leaves its chord ringing (`seqSongHold`: the host stops stepping, clears the comp's waiting hits and the bass's chart, and does not
+stop the chord), `stopSongLoop` stops it. A hold remembers the place (`_songHeldAt`), and `_nsSong.start()` with no place resumes from it. `_nsSong.watch` polls the mirror every 40 ms and drives
+both this and the answers of piece 5.
+
+**Measured.** `tests/seq/songmirror.test.js` runs the page's own loop for real on a clock of its own (3 songs: passes and a section that loops for ever; a Next and a Prev tapped mid-pass around an
+empty section; chords of beats and eighths with a rest) and records what it lights (`_highlightLoopSlot`: chord, the pass, the queued move, the loop's place, the pass line's text); `songtool` runs
+the engine on the same score and ticks and prints what the host's mirror holds each tick; `_songMirror.apply` is given those mirrors with a clock of the same kind. Same chords in the same
+order with the same pass, queued move, loop place and pass line, lit within 0 ms of the page's loop (the same tick); the Next/Prev light takes the same values in order (0,1,0,-1,0,1,0); stopping leaves
+the screens as `stopSongLoop` does (nothing playing, nothing queued, the highlight cleared). The page's Next, Hold and Stop reach the engine while it drives. 11 deliberate breaks, all caught (the pass
+off by one, the place off by one, the moment from the chord's end, no pass line, no queued move, no clearing at the end, no highlight clearing, the three commands not sent, no wait for the lead). The host
+test shows the Next waiting in the mirror and gone after the section moves, and a hold that freezes the song and leaves the chord.
+
+**One difference.** The page's loop first writes "Pass 1 of 2" when it counts the first pass; on its very first chord the line is empty. The mirror writes it at once (the count only means something if you
+can see it counting). **Not done:** the endings and the practice trainer's screens (piece 7); the capo (the page's `_songBaseRoot`) is not mirrored, so a key change made on the page is told to the engine by
+`_nsSong.capo`; a chord tapped on the chart while the engine drives does not move the engine's place. Not heard or seen on device: checklist 28.
 

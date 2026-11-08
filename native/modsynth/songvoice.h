@@ -76,6 +76,7 @@ class SongVoicer {
     for (; i < hits_.size() && hits_[i].t < horizon; i++) emit(hit(hits_[i], cfg, capo, tm));
     hits_.erase(hits_.begin(), hits_.begin() + (long)i);
   }
+  void clearHits() { hits_.clear(); }       // a hold: the chord stays, its rhythm does not go on (holdSongLoop clears the comp timers)
   size_t pending() const { return hits_.size(); }
   double nextHit() const { return hits_.empty() ? INFINITY : hits_.front().t; }
 

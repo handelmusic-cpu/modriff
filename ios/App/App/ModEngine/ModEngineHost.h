@@ -99,6 +99,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// chord windows it makes. NO without a song or with no chord there.
 - (BOOL)seqSongStartWithLeadMs:(double)leadMs alignToDrums:(BOOL)align section:(int)section slot:(int)slot pass:(int)pass;
 - (void)seqSongStop;
+- (void)seqSongHold;
 /// A Next (+1) or Prev (-1) queued by the player: taken at the end of the pass.
 - (void)seqSongMove:(int)delta;
 /// The live key change, in semitones.

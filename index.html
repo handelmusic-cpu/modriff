@@ -9180,7 +9180,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -10612,7 +10612,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11809,7 +11809,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.3';
+const MODRIFF_VERSION = '6.9.9.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -48961,6 +48961,7 @@ function holdSongLoop(){
  if(typeof window._blClearChords==='function') window._blClearChords();
  if(!songLoopActive){ _songHeldAt = null; return; }
  _songHeldAt = { section: songLoopSection, slot: songLoopSlot };
+ if(window._nsSong && window._nsSong.driving) window._nsSong.hold();     // the engine's song freezes and its chord stays
  songLoopActive = false;
  _songRunSounded = false;
  songWaitingForBar = false;
@@ -48977,6 +48978,7 @@ function holdSongLoop(){
 }
 
 function stopSongLoop(){
+ if(window._nsSong && window._nsSong.driving) window._nsSong.stopFromPage();     // the engine's song stops with it
  // First, while the loop is still marked active: putting the tempo back is the
  // only thing that must see the run's state before it is cleared.
  if(typeof _pracRestore==='function') _pracRestore();
@@ -51613,6 +51615,7 @@ function songGotoSection(delta){
  if(!sections.length) return;
  if(songLoopActive){
  songPendingSectionDelta = delta;
+ if(window._nsSong && window._nsSong.driving) window._nsSong.move(delta);     // the engine is playing: it takes the move at the end of the pass
  _updateSectionNavUI();
  } else {
  // Not auto-looping (e.g. Auto is off) — nothing to finish, jump now.
@@ -60955,6 +60958,44 @@ window._songAnswer = function(ask, bassFirst, sr, pre){
  return out;
 };
 
+// The engine's song shown on the page's song screens (docs/native-scheduling.md, slice 4, piece 6). While the engine plays, the page's own loop is stopped, but
+// the screens read its state (songLoopActive, songLoopSection, songLoopSlot, songSectionPass, songPendingSectionDelta) and draw from it: the lit chord and the
+// playhead, "Pass 2 of 3", the pulsing Next/Prev, the transport's song button. apply() takes the engine's mirror (song.running, song.pending and song.ask, whose chord
+// window gives the moment to light it) and sets that state and calls the same functions the page's loop calls when it starts a chord (_highlightLoopSlot, which waits
+// out the lead as _playLoopSlot does), so the screens cannot tell the two loops apart. end() is the screens' half of stopSongLoop.
+window._songMirror = {
+ seen: 0, live: false, cmdAt: 0,
+ apply: function(m){
+  var s = m && m.song; if(!s) return;
+  var me = this, sr = m.sampleRate || 48000;
+  if(!s.running){ if(me.live) me.end(); return; }
+  var ask = s.ask;
+  if(ask && ask[0] && ask[0] !== me.seen){
+   me.seen = ask[0]; me.live = true;
+   var count = ask[0], si = ask[1], ci = ask[2];
+   songLoopActive = true; songLoopSection = si; songLoopSlot = ci; songSectionPass = ask[3];
+   _updateSectionPassUI();     // "Pass 2 of 3" changes when the loop counts the pass, a look-ahead before the chord sounds, as the page's does
+   var lead = Math.max(0, (ask[4] - m.frame) / sr * 1000);
+   var show = function(){
+    if(me.seen !== count || !me.live) return;
+    _highlightLoopSlot(si, ci);
+   };
+   if(lead > 12) setTimeout(show, lead); else show();
+  }
+  // The queued Next/Prev: the engine's word, except for the moment after the player's own tap, which it has not heard yet.
+  var pend = s.pending | 0;
+  if(me.live && pend !== songPendingSectionDelta && !(performance.now() - me.cmdAt < 200)){ songPendingSectionDelta = pend; _updateSectionNavUI(); }
+ },
+ // The song stopped (the engine's or the player's): what stopSongLoop leaves on the screens.
+ end: function(){
+  this.live = false; this.seen = 0;
+  songLoopActive = false; _songRunSounded = false; songPendingSectionDelta = 0;
+  try{ songPlayheadClear(); }catch(e){}
+  if(typeof applySongPlayingHighlights === 'function') applySongPlayingHighlights(false);
+  _updateSectionNavUI();
+ }
+};
+
 // The developer entry to the engine's own song loop (docs/native-scheduling.md slice 4), beside window._nsDrum and window._nsBass: hands the engine the song as
 // it stands (window._songNativeScore) and starts it on the host's thread, on the drums' next bar line when they are running (start _nsDrum first). It steps
 // the chart by the drums' bar lines, gives the bass its chord windows (start _nsBass for them to be heard) and, with Native sound on, sounds each chord
@@ -60987,15 +61028,17 @@ window._nsSong = {
  },
  start: function(section, slot, leadMs){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(section == null && _songHeldAt && sections[_songHeldAt.section] && sections[_songHeldAt.section].slots.length){ section = _songHeldAt.section; slot = _songHeldAt.slot; _songHeldAt = null; }     // where a hold froze it
   if(section == null){ section = sections.findIndex(function(x){ return x && x.slots && x.slots.length; }); slot = 0; if(section < 0) return Promise.resolve({ok: false, why: 'the song has no chords'}); }
   return this.sync().then(function(r){
    if(r.ok === false) return r;
    return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){
-    if(window._nsSong.answering) window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
+    window._nsSong.driving = true; window._songMirror.seen = 0; window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
   });
  },
  // Answers the engine's asks (window._songAnswer) while the song runs: polls the mirror, and each time it has started a chord, writes the bass's line for the
  // next one and sends it. The engine takes it at the moment that chord starts. `answering: false` leaves the bass on the one line it has.
+ driving: false,
  answering: true, _timer: null, _seen: 0, _pre: null, asked: 0, lastMs: 0,
  watch: function(on){
   var me = this, P = this.plugin();
@@ -61004,8 +61047,9 @@ window._nsSong = {
   me._seen = 0; me._pre = null; me.asked = 0;
   me._timer = setInterval(function(){
    P.seqMirror().then(function(m){
+    try{ window._songMirror.apply(m); }catch(e){}
     var s = m && m.song, ask = s && s.ask;
-    if(!s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
+    if(!me.answering || !s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
     me._seen = ask[0];
     var t0 = performance.now();
     var r = window._songAnswer(ask, (m.bass && m.bass.firstFrame) || 0, m.sampleRate || 48000, me._pre);
@@ -61016,8 +61060,12 @@ window._nsSong = {
    });
   }, 40);
  },
- stop: function(){ var P = this.plugin(); this.watch(false); return P ? P.seqSongStop() : Promise.resolve(); },
- move: function(delta){ var P = this.plugin(); return P ? P.seqSongMove({delta: delta}) : Promise.resolve(); },
+ stop: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.end(); return P ? P.seqSongStop() : Promise.resolve(); },
+ // The page's own Stop and Hold (and Next/Prev) come here while the engine drives the song (stopSongLoop, holdSongLoop and songGotoSection call them); the page
+ // has done the screens' half itself.
+ stopFromPage: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.live = false; if(P) P.seqSongStop(); },
+ hold: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.live = false; if(P) P.seqSongHold(); },
+ move: function(delta){ var P = this.plugin(); window._songMirror.cmdAt = performance.now(); return P ? P.seqSongMove({delta: delta}) : Promise.resolve(); },
  // A key change: the chords sound a different set of pitches, so the bank is topped up first.
  capo: function(semis){
   var P = this.plugin(); if(!P) return Promise.resolve();
