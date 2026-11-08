@@ -17,6 +17,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import * as esbuild from 'esbuild';
+import { gitState, pageHash } from './stamp.mjs';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 // `--web` builds the free page for modriff.com/play instead of the app bundle:
@@ -128,6 +129,13 @@ if (!/^\d+(\.\d+)*[a-z]?$/.test(ver[1])) throw new Error(`MODRIFF_VERSION "${ver
 for (const id of ['ft-ver', 'unlock-ver']) {
   const m = new RegExp(`id="${id}"[^>]*>v([^<]*)<`).exec(out);
   if (!m || m[1] !== ver[1]) throw new Error(`#${id} says "${m ? m[1] : 'nothing'}" but MODRIFF_VERSION is "${ver[1]}"`);
+}
+
+// The app bundle says what it was built from (build/stamp.mjs). Not the web build: that one is
+// copied into another repo, where a file that changes on every build is only churn.
+if (!WEB) {
+  const info = { version: ver[1], ...gitState(ROOT), page: pageHash(path.join(OUT, 'index.html')), builtAt: new Date().toISOString() };
+  fs.writeFileSync(path.join(OUT, 'build-info.json'), JSON.stringify(info, null, 2) + '\n');
 }
 
 const kb = n => Math.round(n / 1024) + ' KB';
