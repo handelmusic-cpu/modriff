@@ -256,7 +256,7 @@ product is deleted, so check each one before creating it.
 | `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Speed trainer, loop bars, Stage, timeline | $3.99 |
 | `Handel.modRiff.studio` | Studio Pack | Studio Pack | Stems, full audio and MIDI export, no limits | $4.99 |
 | `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Tonewheel organ, e-piano, pads, vibes, bass | $1.99 |
-| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, plus every future pack, free | $12.99 |
+| `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, in one purchase | $12.99 |
 | `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Finish the set: every pack you don’t own yet | $10.99 |
 | `Handel.modRiff.fullstudio.from2` | Full Studio Upgrade 2 Modules | Complete Your Studio | Finish the set: every pack you don’t own yet | $6.99 |
 | `Handel.modRiff.fullstudio.from3plus` | Full Studio Upgrade 3+ Modules | Complete Your Studio | Finish the set: every pack you don’t own yet | $3.99 |
