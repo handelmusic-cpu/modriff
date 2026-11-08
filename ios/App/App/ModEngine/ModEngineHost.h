@@ -93,6 +93,19 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqStop;
 /// Takes effect from the next step. A value of 0 or less leaves that one alone.
 - (void)seqSetTempo:(double)bpm rate:(double)rate;
+/// The song for the engine's own loop, float64s as `window._songNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetSong:(NSData *)score;
+/// Starts the song at chord `slot` of `section`, `pass` passes in, on the drums' next bar line (`align`, drums running) or `leadMs` from now. The bass reads the
+/// chord windows it makes. NO without a song or with no chord there.
+- (BOOL)seqSongStartWithLeadMs:(double)leadMs alignToDrums:(BOOL)align section:(int)section slot:(int)slot pass:(int)pass;
+- (void)seqSongStop;
+/// A Next (+1) or Prev (-1) queued by the player: taken at the end of the pass.
+- (void)seqSongMove:(int)delta;
+/// The live key change, in semitones.
+- (void)seqSongSetCapo:(int)capo;
+/// The tempo moves in a straight line in time from what it is now to `bpm` over `ms`, then holds it (a ritardando; the engine's own tempo changes).
+/// The drums, the bass and the chord rhythm follow it on one grid. `seqMirror` says the tempo at the render clock as `tempo`.
+- (void)seqTempoRampTo:(double)bpm overMs:(double)ms;
 /// For tests: keep what is expanded (13 float64s an event, see HostSeq), up to `capacity` events.
 - (void)seqRecord:(BOOL)on capacity:(int)capacity;
 - (NSData *)seqTakeEvents;
@@ -110,11 +123,25 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)seqSetBassScore:(NSData *)score;
 /// The chord windows, float64s as `window._blNativeChords(sr)` makes them: frames from the line's start. Empty clears them.
 - (BOOL)seqSetBassChords:(NSData *)chords;
+/// A line written ahead for the next chord, float64s as `window._blNativePending(sr)` makes them: frames from the line's start. It takes over at its
+/// moment (or at the top of the loop when it has none). A first double that is not 1 clears it. NO if it does not parse.
+- (BOOL)seqSetBassPending:(NSData *)pending;
 /// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's
 /// code for the bass voice. NO without a score.
 - (BOOL)seqBassStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
 - (void)seqBassStop;
 - (void)seqBassSetTempo:(double)bpm rate:(double)rate;
+
+// ── The chord comp (native/modsynth/chordcore.h, chordplay.h; slice 2) ──
+// The chord rhythm on the same thread and bank. The mirror's `chord` has running, nextStep, steps, hits (struck), chords (composed), voices, stops
+// (the chord before stopped), misses (a pitch missing from the bank), refused.
+
+/// The chord rhythm and its chord, float64s as `window._crNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetChordScore:(NSData *)score;
+/// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's code for the chord voice.
+- (BOOL)seqChordStartWithBpm:(double)bpm leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit;
+- (void)seqChordStop;
+- (void)seqChordSetTempo:(double)bpm;
 
 @property (nonatomic, readonly) double sampleRate;
 /// Frames rendered since the engine started — the engine's clock, which is

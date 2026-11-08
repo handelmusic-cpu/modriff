@@ -165,7 +165,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   o = await offerFor(['sounds', 'studio']);
   check(o.buttons.includes('Complete Your Studio — $6.99'), '2 owned: $6.99');
   o = await offerFor(['sounds', 'studio', 'groove']);
-  check(o.buttons.includes('Complete Your Studio — $3.99') && /You’ll get: .*every future pack\./.test(o.text), '3 owned: $3.99, and it lists what you get and every future pack', o.text.slice(0, 160));
+  check(o.buttons.includes('Complete Your Studio — $3.99') && /You’ll get: [^.]+\./.test(o.text) && !/future/i.test(o.text), '3 owned: $3.99, and it lists what you get, with no promise about future packs', o.text.slice(0, 160));
   o = await offerFor(['sounds', 'studio', 'groove', 'theory', 'practice', 'synth']);
   check(o.buttons.includes('Complete Your Studio — $3.99') && o.buttons[0] === 'Unlock Sampler Engine — $5.99', '6 owned, only the $5.99 Sampler left: the $3.99 upgrade is cheaper, so it IS offered', o.buttons.join(' | '));
   o = await offerFor(['sampler', 'studio', 'groove', 'theory', 'practice', 'synth']);

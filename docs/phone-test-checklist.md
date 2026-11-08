@@ -131,8 +131,8 @@ without it.
 
 | # | do | you should see |
 |---|---|---|
-| 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Linn and 808, steps over 16, extended chords, the Aux switch |
-| 6.2 | Free: a fresh start | chords on **Saw**, drums on the Linn, bass on Upright, the Aux off, none of them locked |
+| 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Digital 1 and Analog 1, steps over 16, extended chords, the Aux switch |
+| 6.2 | Free: a fresh start | chords on **Saw**, drums on Digital 1, bass on Upright, the Aux off, none of them locked |
 | 6.3 | Free: tap a locked drum kit | one sheet: "… is part of the Groove Pack." with **Unlock Groove Pack** at the store's price, **Full Studio** under it, Restore Purchases, All packs |
 | 6.4 | Free: export a 40 s song as audio | the file is 30 s, the last 2 s fade out with no click, and a message says so; a song under 30 s is unchanged, with no fade |
 | 6.4a | Free: tap a sampler pad three times | the pad is dimmed with a padlock; it plays its sample softly the first two times (each with the "Sampler" toast), the third only opens the sheet; with a Bounce running, a pad plays nothing and opens the sheet, and the take has no pad in it |
@@ -201,7 +201,7 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.2 | Play, two fingers on two chord pads or two melody keys at once | a chord, not a page zoom; pinching bare text or the page background still zooms |
 | 9.3 | Studio > Drums, load a six-sound kit onto the pads, then switch the sampler to a preset bank | six pads for the kit, twelve for the bank; each pad keeps its own sound and number |
 | 9.4 | Live > Melody (mode on the Voice sheet says **Auto**): play single notes one after another, then two keys at once, then up to eight | single notes slide into each other (a bigger leap slides longer); two or more keys play together without a slide; a ninth key lets the oldest go |
-| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody |
+| 9.5 | **Glide** on the strip's row | slides stop and start; it is dimmed in Poly. The same switch is on Studio > Melody. With Mode on **Poly**, tap Glide: it lights **and the Mode goes back to Auto** (it used to change a hidden setting and show nothing) |
 | 9.6 | Studio > Melody, tap a second row on a lit step of the roll | the step becomes a chord; tap a chord note to take it away; Play: the chord sounds together |
 | 9.7 | Switch **Bass**, **Mel** and **Drums** (off then on) on the transport over empty parts | a funk bass line, a pop hook, a 4/4 beat. Settings > Starter patterns changes which |
 | 9.8 | Play (Live): scroll down | Chords, Melody, Styles, Sampler, mõdFX, Drum grid, **Aux grid**, Bass grid, Melody grid, Endings, each under the last;  |
@@ -212,6 +212,11 @@ desktop browser cannot judge. These were built at 4.9.9.9.9.9.6 to 6m; the foote
 | 9.13 | Studio, Chords: pick **Every beat**, then play a song with a long chord and a quick change | the long chord is struck on every beat for its whole length, the quick one is cut where the next chord starts; with the rhythm **Rhythm off**, each chord is struck once a bar as before |
 | 9.14 | Studio, Chords: **More chords** in the Play it line | the Borrowed & Modal and Secondary Dominants rows are shown; one touch hides both, another shows them; the choice is there after a restart; Live is unchanged |
 | 9.13 | Song > Build, a chord > Rhythm > **Draw…**, **Save**, play the song | that chord plays your rhythm; the others carry on as they were |
+| 9.15 | (6.9.9.9.9b) Studio > Drums, **phone held sideways**: scroll the grid so a lower row is on screen, tap an empty step | the step lights and its editor (Vel, Ratchet, Pitch, Prob, Ornament, Accent, Tuplet) is **pinned above the tab bar** in three short rows, however the grid is scrolled; tap more steps: it stays put and the grid does not jump |
+| 9.16 | The same upright, with the grid scrolled so the editor would be under the tab bar and transport | the first tap on an empty step scrolls the page just far enough to bring the editor into view; later taps do not scroll |
+| 9.17 | (6.9.9.9.9.1a) Phone **held sideways**, any Studio page (Drums, Bass, Melody, Chords): scroll the page down | the row of tabs (Live, Studio, Song, Sound, Settings, and on Chords the instrument tabs beside them) folds away and the page gets its height; the transport stays. Scroll up a little, reach the top, or tap the small **^** tab above the transport: the tabs come back. Upright, the bars never fold |
+| 9.18 | (6.9.9.9.9.8) Studio > Chords, upright and sideways | **Chords | Melody | Sampler | FX** is the first line of the page and scrolls away with it; nothing sits above the transport but the five tabs (sideways they have the whole width); each of the four still switches the page |
+| 9.19 | (6.9.9.9.9.8) Live, foot of Chords, Melody, Sampler and mõdFX: the **All … controls** line | shut, Live is as it was; pressed, the widget opens every control its Studio page has: Chords the variants, More chords, Rhythm builder and the Chord Voice panel (with its **octave**); Melody Touch Mod's four modes, depth and speed; Sampler the pad editor (trim, clear, undo, pattern length, pitch, play modes, mute groups, sends); mõdFX the part routing and the per-part readouts. The choice is there after a restart. Sound shaping is in the **Voice** picker's menu as before |
 | 9.14 | Saved patterns (Open): save a drum, bass and melody pattern, change them, load them back | each comes back exactly; the sound and the Aux layer do not change |
 
 ## 10. Native sound: the dress rehearsal for the flip
@@ -347,7 +352,7 @@ The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgr
 |---|---|---|
 | 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.9**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
 | 18.2 | Connect the phone to Safari's web inspector (or use the simulator), play nothing, and in the console run `_nsDrum.start()` then `_nsDrum.mirror()` a few times a second apart | `steps` and `events` climb, `step` cycles 0 to 15, `late` stays 0; nothing is heard. Then freeze the page: `var t=Date.now(); while(Date.now()-t<3000){}`, and `_nsDrum.mirror()` straight after: `steps` rose by about 12 (4 a second at 120 BPM) while the page was frozen, `late` still 0. `_nsDrum.stop()` ends it. (Leaving the app is not part of this: the engine is silenced on leaving, section 14, until the cutover turns background play on.) |
-| 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (808 or 909), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
+| 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (Analog 1 or Analog 2), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
 | 18.4 | While it plays: change a cell on the grid, then run `_nsDrum.sync()`; move the Drums fader, then run `_nsDrum.prepare()` | the change is heard at the next step; after the fader move the level is the new one (the lanes are recorded again) |
 | 18.5 | Freeze the page for 3 s as in 18.2 while it plays | the beat does not stutter or stop; it was the engine playing |
 | 18.6 | Compare against the page's own drums: stop `_nsDrum`, start the page's Play with the same pattern | same sounds, same levels and accents, same pitch of tuned lanes |
@@ -368,6 +373,8 @@ page's own bass, because the measurement points at it:
 | 19.3 | While they play: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | neither the beat nor the bass stutters or stops |
 | 19.4 | Compare against the page's own bass: `_nsBass.stop()`, play the page's Bass with the same line | the same notes at the same moments, the same levels, accents and slides (the glide into the next note), the same length. Differences you may hear: no bump at the start of notes (19.1) and no randomness in the voice's detune. A sampled voice (Upright 1/2, Picked, Motown, Höfner...) says it cannot be played: `_nsBass.start()` resolves `{ok:false, why}` |
 | 19.5 | Bass style **Jazz** with Follow on and a chord chart (the song page, a few chords of a standard) on the clock, drums on; `_nsDrum.start()` then `_nsBass.start()` as in 19.2 | a walking line: a quarter note on every beat (half notes on 1 and 3 in the two-feel), beat 1 of each chord on the chord's root (the slash note over a slash chord), the beat before a change leading into the next root, landing on the drums' beat. Not the same notes as the page's walk (it picks at random), but the same kind of line. `_nsBass.mirror()`: `hits` climbing, `misses` 0 |
+| 19.6 | (6.9.9.9.7) A chart with a chord that has a locked bass phrase (freeze the bass over one chord in the chart's chord editor), Follow on, then 19.2 and again with Jazz as in 19.5 | `_nsBass.start()` answers `{ok:true}` (it used to say it could not play a locked phrase); over that chord the bass plays the frozen figure from the chord's downbeat, the same pitches as the page's, in the capo's key if you transposed the song; the other chords play the bar re-rooted (or the walk). Under Jazz the locked chord plays its figure, not the walk, even in the two-feel |
+| 19.7 | (6.9.9.9.9.1) Bass **Follow off**, Sync on, a chart of a few chords on the clock with the drums, the bass engine running (19.2). Then in the console, as the first chord plays: `_blPregen(7, [0,4,7], <the second chord's start>)` is what the page does itself; with a person: press Generate on the Bass page while it plays and call `_nsBass.sync()` right after | `sync` answers; the new line does not cut in mid-bar: it takes over at the top of the loop (Generate) or on the chord's first step (a line written ahead), and the old line plays until then. `_nsBass.mirror()` keeps counting; nothing stutters |
 
 ## 20. Drum hits start on the beat (6.9.9.9a, not heard on device)
 
@@ -400,10 +407,90 @@ whether Safari's decoder was adding the 25 ms, which is the part this checklist 
 
 | # | do | you should see |
 |---|---|---|
-| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
+| 22.1 | Live (Basic) on a fresh install, scroll to **Styles** | the rows Drums, Aux, Bass, Chords, Melody, each **Voice on the left, Pattern on the right** in one frame, under the captions Voice and Pattern. The page under it is Sampler and mõdFX; **no drum, aux, bass or melody grids** unless you add them |
 | 22.2 | Tap the small **›** on a row's right-hand half, then its **‹** | the style steps as it always did (and switches the part on) |
 | 22.3 | Tap the small **›** on the left half of Bass, then **‹** | the sound steps to the next / previous in the same type (Bass patches stay Bass patches), and the name follows. Drums and Aux step their own kit, skipping locked ones |
 | 22.4 | Tap the **name** in a left half | Drums and Aux: the kit list (Aux opens on Percussion & world). Bass and Melody: the sound browser, Samples first. A pick shuts it and the row shows the name |
 | 22.5 | Tap the name in a right half | the style list, as before |
 | 22.6 | Each caret with a thumb | hits first time: they look 24 pt wide but are 44 pt to touch; the name is still easy to hit between them |
+| 22.8 | (6.9.9.9.9a) The Styles widget's **Chords** row (between Bass and Melody): tap **›** on the right half, then **‹** twice; tap the right-hand name | the pattern steps Off, Once a bar, Beats 1 & 3 … and any rhythm you saved; the first step arms the chord rhythm (the Rhythm bar under the Chords widget names the same one), **Off** disarms it; the name opens the same list as Rhythm |
+| 22.9 | The same row, **›** on the left half, then the name | the chord voice steps (Piano, Electric Piano …) and the Chords heading's sound picker follows; the name opens the sound browser, Samples first |
 | 22.7 | Add / reorder widgets > Drum grid, Bass grid | they can be added and stay there after a relaunch. A layout you saved before this version is not touched |
+
+## 22. The chord comp in the engine (6.9.9.9.4 to 6.9.9.9.6; audible through a developer entry only)
+
+The engine composes a chord from a bank of one-note chords, stops the chord before it, and from 6.9.9.9.5 the host runs a chord rhythm on its own thread. The page has no button for it, only `_nsChord` in the web inspector (like `_nsDrum` and `_nsBass`, sections 18 and 19).
+
+| # | do | you should see |
+|---|---|---|
+| 22.1 | Native sound **ON**, a synthesized chord voice (not a sampled one), Chords on, a chord tapped on the pads and a built-in rhythm (Strum) selected; in the inspector console: `_nsDrum.start()` then `_nsChord.start()` (the page's own transport stays stopped) | both answer `{ok:true}`; **the drums and the chord rhythm play from the engine alone**, on the same bar line, at the tempo field; each hit is the chord you tapped, with the Strum and Width settings you have; `_nsChord.mirror()` shows `hits` climbing, `misses` 0, `refused` 0, `stops` climbing |
+| 22.2 | While it plays: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | the chord rhythm does not stutter or stop |
+| 22.3 | Compare against the page's own: `_nsChord.stop()`, play the same rhythm on the page | same chord, same hits, levels and swing. You may hear: the same voicing on every hit (the page re-voices with Vary); a sampled chord voice says it cannot be played (`{ok:false, why}`) |
+| 22.4 | (6.9.9.9.6) Draw a rhythm on the chord roll with a held step (Hold) and a ratcheted step (Ratchet), `_nsChord.stop()`, `_nsChord.start()` | it starts (it said it could not before); the held step rings its full length and lets go on the Release knob without a click, the ratchet's strikes are short and the last one rings out; the same as the page's own for this rhythm. Watch `_nsChord.mirror()`: `releases` climbs with the held strikes, `misses` 0, `refused` 0 |
+
+## 23. The engine's tempo map (6.9.9.9.9.2; audible through a developer entry only)
+
+The drums, the bass and the chord rhythm of the engine now read one tempo map, and the engine can move the tempo itself. The page has no button for the ramp, only `_nsDrum.tempoRamp(bpm, ms)` in the web inspector.
+
+| # | do | you should see |
+|---|---|---|
+| 23.1 | Native sound **ON**, a drum pattern, a bass line and a chord rhythm as in 18.x, 19.2 and 22.1; `_nsDrum.start()`, `_nsBass.start()`, `_nsChord.start()` | all three play from the engine on the same bar line |
+| 23.2 | While they play, `_nsDrum.tempoRamp(70, 8000)` | all three slow together over eight seconds and settle at 70; they stay on the same bar line the whole way (no flam between the bass and the drums, no drift); `_nsDrum.mirror()` shows `tempo` falling |
+| 23.3 | Then `_nsDrum.tempoRamp(130, 4000)`, and a jump: change the tempo field | the same, speeding up; a jump from the field lands on the next step with no hiccup |
+| 23.4 | Freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) during a ramp | the ramp carries on, the three stay together |
+
+## 24. The engine steps the song (6.9.9.9.9.4; audible through a developer entry only)
+
+The engine now walks the song's chords by the drums' bar lines and gives the bass its chord windows. The chords themselves still sound from the page (piece 3 moves them), so what you hear from the engine is the drums and the bass following the engine's chart.
+
+| # | do | you should see |
+|---|---|---|
+| 24.1 | Native sound **ON**, a song of a few chords on the Songs page, the bass on Follow (Jazz walks, others re-root), the page's Song transport stopped. Console: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` | all answer `{ok:true}`; the bass changes chord on the drums' bar line, through the whole chart and round again; `_nsSong.mirror()` shows `chords` climbing, `section` and `slot` moving |
+| 24.2 | A chart with chords of different lengths (a bar, two beats, an eighth or two) | the bass follows each chord for its length; after a half-bar chord the next chord starts on the next bar line |
+| 24.3 | While it plays: `_nsSong.move(1)` | the section changes at the end of the pass, not at once |
+| 24.4 | Freeze the page for 3 s during it | the bass keeps changing chord on the bar lines |
+| 24.5 | `_nsSong.capo(2)` | from the next chord the bass plays two semitones up |
+
+## 25. The engine plays the song's chords (6.9.9.9.9.7; audible through a developer entry only)
+
+The engine now voices and strikes each chord of the song itself (the voicing, the capo, held or decaying), as well as stepping it. The comp's re-strikes are still the page's (piece 4), so a chord with a rhythm sounds once, at its start.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 25.1 | Native sound **ON**, chord voice a synthesised one (not a sampled or mõdSynth one), a song of a few chords on the Songs page, comp "Hold" (sustain), the page's Song transport stopped. Console: `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` | `{ok:true}` and a `bank` report (`built`, `failed: []`); the chords change on the drums' bar lines and sound like the page's own for the same song (same notes, same top voice); `_nsSong.mirror()` shows `voiced` climbing, `misses` and `refused` 0 |
+| 25.2 | A rest in the song | the chord is cut at the rest, drums and bass go on |
+| 25.3 | Voicing set to Drop 2, Soul, Neo-soul, Spread, then Vary on, and `_nsSong.start()` again each time | the chords voice that way; with Vary the same chord comes back in a different grip each pass |
+| 25.4 | A slash chord (C/E) | the E is the lowest note of the chord, as on the page |
+| 25.5 | A chord set to "As played" with a ring of two beats, and one with a tap | the first is held for two beats and fades on the Release knob; the second rings out and decays |
+| 25.6 | `_nsSong.capo(2)` | from the next chord everything is two semitones up, and there is no gap (the bank was topped up first) |
+| 25.7 | `_nsSong.stop()` while a chord is held | the chord is cut within a few tens of milliseconds |
+| 25.8 | Freeze the page for 3 s | chords, bass and drums keep going |
+| 25.9 | Pick a sampled chord voice (Vibes, Jazz Gtr, Nylon) or turn on Pure tuning or Glide, then `_nsSong.start()` | the result's `chordWhy` names it and the engine only steps; the chords stay the page's |
+
+## 26. The engine plays the song's comping (6.9.9.9.9.9; audible through a developer entry only)
+
+The engine now re-strikes each chord on its rhythm as well as striking it, so a song's comping (Bossa, Every beat, a drawn rhythm) no longer needs the page.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 26.1 | As 25.1, with the song's comp set to Every beat, then Bossa, then a drawn rhythm with a ratchet and a gate | the chords are struck on the rhythm and sound like the page's own for the same song; `_nsSong.mirror()` shows `hits` climbing, `misses` and `refused` 0 |
+| 26.2 | Chords of two bars, a half bar, a few beats | the rhythm repeats every bar of a long chord and stops where a short chord ends |
+| 26.3 | Swing set to 40 with a drawn rhythm that has no swing of its own | the off-beat hits are late as on the page |
+| 26.4 | A chord with Hold or As played in a song of rhythms | that chord is struck once and held, the others play their rhythm |
+| 26.5 | `_nsSong.capo(2)` during a rhythm | the next hits are two semitones up with no gap |
+| 26.6 | Freeze the page for 3 s | the rhythm does not drop a hit |
+| 26.7 | `_nsSong.stop()` in the middle of a bar | the chord is cut and no hit follows |
+
+## 27. The page writes the engine's bass lines (6.9.9.9.9.9.1; audible through a developer entry only)
+
+While the engine plays a song, the page still writes the bass's line for each chord that follows (Follow off, Bass+Mel Sync on) and hands it over.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 27.1 | Bass on Follow **off**, a generated style (Funk), Sync on, a song of four chords; `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` | each chord has its own bass line from its first beat, not the line of the chord before; `_nsSong.asked` climbs, `_nsSong.lastMs` is a few ms |
+| 27.2 | The same on Follow **on** | the bass transposes one line over the chords; `_nsSong.asked` stays 0 |
+| 27.3 | `_nsSong.move(1)` near the end of a pass | the first chord after the section change has a line for it a moment late at worst (the peek is wrong there) |
+| 27.4 | Freeze the page for 3 s | the last line keeps playing under the changing chords (no new lines until the page is back) |
+| 27.5 | A song with a half-bar chord | the short chord still gets its own line |
+| 27.6 | `_nsSong.answering = false`, restart | the bass plays the one line it was given |
+

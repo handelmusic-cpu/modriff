@@ -19,29 +19,60 @@ import os from 'node:os';
 import * as esbuild from 'esbuild';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const OUT  = path.join(ROOT, 'dist');
+// `--web` builds the free page for modriff.com/play instead of the app bundle:
+//   dist-web/play/   the app, free tier only, no recorded samples
+// It is copied into the modriff-site repo (GitHub Pages) as play/ by
+// build/publish-web.mjs. No host-specific files: the site is plain static pages.
+// Everything else about the build is the same, so the two cannot drift. The
+// default build (dist/) is still what Capacitor packages and is untouched.
+const WEB  = process.argv.includes('--web');
+const ROOT_OUT = path.join(ROOT, WEB ? 'dist-web' : 'dist');
+const OUT  = WEB ? path.join(ROOT_OUT, 'play') : ROOT_OUT;
 // Repo furniture, never served.
 // .claude is where Claude Code keeps launch.json and its session worktrees (each
 // a full checkout with its own node_modules). It was being copied into dist/,
 // and from there into the app: 300 MB, and iOS refused to install it because
 // node_modules/.bin holds absolute symlinks ("absolute symlinks are
 // forbidden"). .DS_Store is Finder's, and the same kind of stray.
-const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'build', 'dist', 'node_modules',
+const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'build', 'dist', 'dist-web', 'node_modules',
   'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
   'tests', 'docs', 'ios', 'capacitor.config.json',
   // The C++ engine is compiled into the native app, not served to the web one.
   'native']);
+// The free web page plays synthesized voices only (the free tier already does:
+// FREE_LIMITS.samples is false), so the recordings are not shipped at all. That
+// is 16 MB off the site, and it means a recorded sound cannot reach a visitor
+// by some path the tier table missed: the file is not there to fetch.
+if (WEB) SKIP.add('samples');
 
 // macOS drops a .DS_Store into dist/ while it is being emptied, and rm then fails
 // with ENOTEMPTY about one run in four. Retrying lets it finish.
-fs.rmSync(OUT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-fs.mkdirSync(OUT);
+fs.rmSync(ROOT_OUT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+fs.mkdirSync(OUT, { recursive: true });
 for (const name of fs.readdirSync(ROOT)) {
   if (SKIP.has(name) || name === 'index.html') continue;
   fs.cpSync(path.join(ROOT, name), path.join(OUT, name), { recursive: true });
 }
 
-const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+let src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+if (WEB) {
+  // First thing in <head>, before any script that asks what is owned: the web
+  // billing provider reads this flag to hold nothing (see window.modBilling).
+  if (!/<head>/.test(src)) throw new Error('index.html has no <head> to flag as the free web build');
+  src = src.replace('<head>', '<head>\n<script>window.__modFreeWeb=true;document.documentElement.classList.add("web-free");</script>');
+  // og:image is root-relative so it follows the app to any domain, but here the
+  // app lives under /play/ and the card is beside it, not at the site root.
+  const og = src.split('content="/og-card-3.png"').length - 1;
+  if (og !== 2) throw new Error(`expected 2 root-relative og-card-3.png tags, found ${og}`);
+  src = src.split('content="/og-card-3.png"').join('content="/play/og-card-3.png"');
+  // Vercel's analytics (two stubs and two scripts at /_vercel/...). modriff.com is GitHub Pages, where
+  // they 404, and the site's privacy page promises no third-party code and no analytics.
+  const va = /<script>\s*window\.(?:va|si) = [^<]*<\/script>\s*<script defer src="\/_vercel\/[a-z-]+\/script\.js"><\/script>\s*/g;
+  const nva = (src.match(va) || []).length;
+  if (nva !== 2) throw new Error(`expected 2 Vercel analytics blocks, found ${nva}`);
+  src = src.replace(va, '');
+  if (/_vercel/.test(src)) throw new Error('a _vercel reference is left in the web build');
+}
 // One left-to-right pass, so a "<script>" written inside an HTML comment, or
 // "<!--" written inside a script's string, is never mistaken for the other.
 const re = /<!--[\s\S]*?-->|<(script|style)([^>]*)>([\s\S]*?)<\/\1>/g;
@@ -67,6 +98,14 @@ out += src.slice(last);
 // it updates itself. So the one line it reads goes back to single quotes.
 out = out.replace(/(MODRIFF_VERSION\s*=\s*)"([^"']+)"/, "$1'$2'");
 fs.writeFileSync(path.join(OUT, 'index.html'), out);
+if (WEB) {
+  // The install identity is the URL path: left as "/" it would claim the whole
+  // of modriff.com, which is the landing page's, not this app's.
+  const mf = path.join(OUT, 'manifest.webmanifest');
+  const man = JSON.parse(fs.readFileSync(mf, 'utf8'));
+  man.id = '/play/';
+  fs.writeFileSync(mf, JSON.stringify(man, null, 2) + '\n');
+}
 
 // Same guarantee check.sh gives the source: every script still parses. A
 // broken build fails here rather than as a blank page on everyone's phone.

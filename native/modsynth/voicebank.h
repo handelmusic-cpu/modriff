@@ -28,9 +28,13 @@ namespace modsynth {
 
 struct BankSlot { int i; double b; int basis; };
 
-// A slot that follows the note's length: value = a + b * dur, held at `cap` from above (mode 1, min) or from below (mode 2, max),
-// or not held at all (mode 0). The bass voice's envelope times are these (the page's `Math.min(0.09, dur * 0.35)` is mode 1).
-struct DurSlot { int i; double a, b; int mode; double cap; double at(double d) const { const double v = a + b * d; return mode == 1 ? (v < cap ? v : cap) : mode == 2 ? (v > cap ? v : cap) : v; } };
+// A slot that follows one quantity (the note's length, a chord's velocity) as a continuous piecewise line: value = a + b * x + the sum of
+// c * max(0, x - k) over its kinks. The bass voice's envelope times are these (the page's `Math.min(0.09, dur * 0.35)` is a line with one
+// kink where it reaches its cap), and so are the chord's.
+struct DurSlot {
+  int i; double a, b; std::vector<std::pair<double, double>> hinges;
+  double at(double x) const { double v = a + b * x; for (const auto &h : hinges) if (x > h.first) v += h.second * (x - h.first); return v; }
+};
 
 // What a choke does to one of a lane's voices (the page's _chokeRegister: a gain, its source, and the moment the voice
 // would have finished anyway). `ops` are the page recorder's own edit records, six doubles each [node, param, op, v, t, tc],
@@ -61,7 +65,21 @@ struct BankEntry {
   std::vector<DurSlot> dur;
   std::vector<BankSlot> from;      // linear in 2^(from/12) (basis 0) or in the note number (basis 1)
   struct Held { int i; double lo, hi; };
+  // The chord voice for one note (chordcomp.h): which slots are the tone's level (proportional to the velocity) and its times, where its
+  // panner is, and the (stop, start) slots of the sources of each half -- setting a stop to its start silences that half.
+  bool isChord = false;
+  std::vector<int> toneLevel, toneTime;
+  std::vector<DurSlot> velCurve;   // slots that follow the velocity as a line held to a floor or a cap (a filter that opens up to its ceiling): replace the value
+
+  int panSlot = -1;
+  struct Src { int stop, start, node; };   // a source's stop and start slots and its node: setting the stop to the start silences it
+  std::vector<Src> subStops, toneStops;
   std::vector<double> cutOps;      // what a note that starts inside this one's tail does to it: six doubles an edit, times seconds after that note's start
+  // A held chord (part 4: the voice as a gated hit plays it, with no decay of its own) is let go of by the page's release: hold the gains, fall on
+  // the Release knob, stop the sources. Six doubles an edit, times seconds after the moment of release; that moment is never earlier than
+  // `relMin` seconds after the voice began (the attack and 20 ms).
+  double relMin = 0;
+  std::vector<double> releaseOps;
   std::vector<Held> held;          // pitch slots held to [lo, hi] (a playback rate that follows the note inside the roll, not past its ends)
 
   // The flat layout (all doubles), written by the page (window._nsBank):
@@ -70,7 +88,9 @@ struct BankEntry {
   //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply,
   //   then (optional, an entry without it has no chokes) `count, (until, nOps, ops x 6 x nOps) x count`,
   //   then (optional, only after the chokes) `count, (index, floor) x count`,
-  //   then (optional, the bass: only after the floors) `refPitch, refDur, refFrom, count, (index, a, b, mode, cap) x count, count, (index, b, basis) x count, count, (index, lo, hi) x count, nDoubles, cutOps`.
+  //   then (optional, the bass: only after the floors) `refPitch, refDur, refFrom, count, (index, a, b, nKinks, (k, c) x nKinks) x count, count, (index, b, basis) x count, count, (index, lo, hi) x count, nDoubles, cutOps,
+  //   then (optional, the chord voice: only after the cut) `nLevel, index x n, nTime, index x n, panSlot, nSub, (stop, start, node) x n, nTone, (stop, start, node) x n, nVelCurve, (index, a, b, lo, hi) x n`,
+  //   then (optional, the held chord, part 4: only after the velocity curves) `relMin, nDoubles, releaseOps`.
   bool fromDoubles(const double *d, size_t n);
 };
 
@@ -174,6 +194,7 @@ class DrumBank {
     pitchSemis -= e.refPitch;
     apply(e.pitch, std::pow(2.0, pitchSemis / 12.0), 1.0, pitchSemis, 0.0);
     if (!e.from.empty() && fromMidi >= 0) apply(e.from, std::pow(2.0, fromMidi / 12.0), std::pow(2.0, e.refFrom / 12.0), fromMidi, e.refFrom);
+    for (const DurSlot &c : e.velCurve) if (c.i >= 0 && (size_t)c.i < n) out.prog[(size_t)c.i] = c.at(vel);
     for (const auto &h : e.held) out.prog[(size_t)h.i] = std::min(std::max(out.prog[(size_t)h.i], h.lo), h.hi);
     if (!e.dur.empty() && durSec >= 0) for (const DurSlot &d : e.dur) if (d.i >= 0 && (size_t)d.i < n) out.prog[(size_t)d.i] = d.at(durSec);
     // Begin on the grid, a lead before the onset; the few frames the grid cannot reach go into the time slots.

@@ -44,12 +44,23 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongMove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongCapo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassChords", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqBassPending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassTempo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqChordScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqChordStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqChordStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqChordTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micPermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
@@ -712,6 +723,50 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve()
     }
 
+    /// The song for the engine's own loop, `score` base64 float64 (window._songNativeScore().score). Resolves `ok`.
+    @objc func seqSong(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqSong needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetSong(data)])
+    }
+
+    /// Starts the song. `align` takes the drums' next bar line when they run; `section`, `slot` and `pass` say where. Resolves `ok`.
+    @objc func seqSongStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqSongStart(withLeadMs: call.getDouble("leadMs") ?? 250, alignToDrums: call.getBool("align") ?? true,
+                                   section: Int32(call.getInt("section") ?? 0), slot: Int32(call.getInt("slot") ?? 0), pass: Int32(call.getInt("pass") ?? 0))
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqSongStop(_ call: CAPPluginCall) {
+        host?.seqSongStop()
+        call.resolve()
+    }
+
+    /// A Next (1) or Prev (-1) queued by the player, taken at the end of the pass.
+    @objc func seqSongMove(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqSongMove(Int32(call.getInt("delta") ?? 0))
+        call.resolve(["ok": true])
+    }
+
+    /// The live key change in semitones.
+    @objc func seqSongCapo(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqSongSetCapo(Int32(call.getInt("capo") ?? 0))
+        call.resolve(["ok": true])
+    }
+
+    /// The tempo moves in a straight line to `bpm` over `ms` milliseconds, then holds it. Resolves `ok`.
+    @objc func seqTempoRamp(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqTempoRamp(to: call.getDouble("bpm") ?? 0, overMs: call.getDouble("ms") ?? 0)
+        call.resolve(["ok": true])
+    }
+
     @objc func seqTempo(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         host.seqSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
@@ -740,6 +795,16 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["ok": host.seqSetBassChords(data)])
     }
 
+    /// A line written ahead, `pending` base64 float64 (window._blNativePending(sr)): frames from the line's start. Resolves `ok`.
+    @objc func seqBassPending(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("pending"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqBassPending needs pending")
+            return
+        }
+        call.resolve(["ok": host.seqSetBassPending(data)])
+    }
+
     /// Starts the bass line. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the voice.
     @objc func seqBassStart(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
@@ -757,6 +822,37 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqBassTempo(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         host.seqBassSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
+        call.resolve()
+    }
+
+    // The chord comp, on the same thread and bank (slice 2).
+
+    /// The chord rhythm and its chord, `score` base64 float64 (window._crNativeScore().score). Resolves `ok`.
+    @objc func seqChordScore(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqChordScore needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetChordScore(data)])
+    }
+
+    /// Starts the chord rhythm. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the chord voice.
+    @objc func seqChordStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqChordStart(withBpm: call.getDouble("bpm") ?? 120, leadMs: call.getDouble("leadMs") ?? 120,
+                                    alignToDrums: call.getBool("align") ?? true, kit: Int32(call.getInt("kit") ?? 0))
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqChordStop(_ call: CAPPluginCall) {
+        host?.seqChordStop()
+        call.resolve()
+    }
+
+    @objc func seqChordTempo(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqChordSetTempo(call.getDouble("bpm") ?? 0)
         call.resolve()
     }
 

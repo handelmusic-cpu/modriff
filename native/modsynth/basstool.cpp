@@ -6,7 +6,9 @@
 //   windows are all present from the start (the page's song commits them ahead of the bass) and `nSteps` steps are fired one after the
 //   other (the grid). With ticks, the scheduler is called once per tick as the page's clock calls it (the walking line depends on
 //   when: it skips a beat whose moment has passed), each tick is (now, horizon, drumBar, the windows the song had committed at that
-//   moment in ChordTimeline::fromDoubles form), and the tape is the walking line's random draws (the page's own, in order).
+//   moment in ChordTimeline::fromDoubles form, then `nScore` and that many doubles of a new score (0: the score stands), then `nPend` and that
+//   many doubles of a pending line (BassPending::fromDoubles; 0: nothing new, a first double that is not 1: clear it)), and the tape is the
+//   walking line's random draws (the page's own, in order).
 // Output per case: "CASE i", "N frameExact frame midi durFrames vel accent slide from step" for each note, "END i steps".
 #include <cstdio>
 #include <vector>
@@ -32,6 +34,8 @@ int main(int argc, char **argv) {
       modsynth::ChordTimeline probe; size_t u = 0;
       if (!probe.fromDoubles(d.data() + k, d.size() - k, &u)) { fprintf(stderr, "case %d: bad windows in tick %d\n", c, i); return 2; }
       k += u;
+      const size_t ns = (size_t)d[k++]; k += ns;
+      const size_t np = (size_t)d[k++]; k += np;
     }
     std::vector<double> tape(d.begin() + (long)k, d.begin() + (long)k + nTape); k += (size_t)nTape;
     modsynth::BassScore sc; size_t used = 0;
@@ -51,7 +55,13 @@ int main(int argc, char **argv) {
     if (nTicks) {
       for (int i = 0; i < nTicks; i++) {
         const size_t at = tickAt[(size_t)i];
-        q.timeline().fromDoubles(d.data() + at + 3, d.size() - at - 3);
+        size_t u = 0;
+        q.timeline().fromDoubles(d.data() + at + 3, d.size() - at - 3, &u);
+        size_t j = at + 3 + u;
+        const size_t ns = (size_t)d[j++];
+        if (ns) { modsynth::BassScore ns2; if (!ns2.fromDoubles(d.data() + j, ns)) { fprintf(stderr, "case %d tick %d: bad score\n", c, i); return 2; } q.setScore(ns2); j += ns; }
+        const size_t np = (size_t)d[j++];
+        if (np) { modsynth::BassPending p; if (!p.fromDoubles(d.data() + j, np)) { fprintf(stderr, "case %d tick %d: bad pending line\n", c, i); return 2; } q.setPending(p); j += np; }
         fired += q.run(d[at], d[at + 1], d[at + 2], out);
       }
     } else {
