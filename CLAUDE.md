@@ -137,6 +137,14 @@ form iOS falls back to; those code points are claimed by
 `fonts/dejavu-symbols-text.woff2` (see the top-of-CSS @font-face note). A new
 symbol with an emoji form goes into that subset's unicode-range or stays out.
 
+## No other companies' product names
+
+None in anything a user or App Review sees: kit, voice, patch, filter and effect names,
+help text, listing, screenshots. Describe the sound instead (`Analog 1`, `Ladder`,
+`Chorus Bass`). Internal ids (`'808'`, `'LIN'`, `acid303`, `samples/808/`) stay as they are:
+songs save them. A renamed factory patch goes in `MSX_RENAMED` so old songs still load.
+The one place a maker is named is the sample credit in About, where the licence asks for it.
+
 ## Comments
 
 Explain *why*, wherever the reason isn't obvious — usually by naming the bug the

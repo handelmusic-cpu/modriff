@@ -131,8 +131,8 @@ without it.
 
 | # | do | you should see |
 |---|---|---|
-| 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Linn and 808, steps over 16, extended chords, the Aux switch |
-| 6.2 | Free: a fresh start | chords on **Saw**, drums on the Linn, bass on Upright, the Aux off, none of them locked |
+| 6.1 | Test as **Free** | locks appear: the recorded voices, the other scales, kits past Digital 1 and Analog 1, steps over 16, extended chords, the Aux switch |
+| 6.2 | Free: a fresh start | chords on **Saw**, drums on Digital 1, bass on Upright, the Aux off, none of them locked |
 | 6.3 | Free: tap a locked drum kit | one sheet: "… is part of the Groove Pack." with **Unlock Groove Pack** at the store's price, **Full Studio** under it, Restore Purchases, All packs |
 | 6.4 | Free: export audio longer than 90 s | the file stops at 90 s and a message says so |
 | 6.5 | Free: open a `.modriff.json` made with several packs | it opens, plays stand-ins, and one banner names the packs; saving again keeps the originals |
@@ -347,7 +347,7 @@ The native drum-grid core is proven on a Mac against the page (`tests/seq/drumgr
 |---|---|---|
 | 18.1 | Settings > Help & about, then play a beat with the drums, bass and chords on | it says **v6.9.9.9**, and everything sounds and times exactly as it did at 6.9.6 (the only app change is functions that nothing calls) |
 | 18.2 | Connect the phone to Safari's web inspector (or use the simulator), play nothing, and in the console run `_nsDrum.start()` then `_nsDrum.mirror()` a few times a second apart | `steps` and `events` climb, `step` cycles 0 to 15, `late` stays 0; nothing is heard. Then freeze the page: `var t=Date.now(); while(Date.now()-t<3000){}`, and `_nsDrum.mirror()` straight after: `steps` rose by about 12 (4 a second at 120 BPM) while the page was frozen, `late` still 0. `_nsDrum.stop()` ends it. (Leaving the app is not part of this: the engine is silenced on leaving, section 14, until the cutover turns background play on.) |
-| 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (808 or 909), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
+| 18.3 | Settings > Native sound **ON**, a drum pattern with kick, snare and hats on the Drums page (Analog 1 or Analog 2), Drums fader up, and in the inspector console: `_nsDrum.start()` (let the page's own transport stay stopped) | it answers `{ok:true, bank:{built:8+...}}`; **the drums play from the engine alone**, on the beat of the tempo field, with the pattern you see; `_nsDrum.mirror()` shows `hits` climbing, `misses` 0, `late` 0, `lateStarts` 0 |
 | 18.4 | While it plays: change a cell on the grid, then run `_nsDrum.sync()`; move the Drums fader, then run `_nsDrum.prepare()` | the change is heard at the next step; after the fader move the level is the new one (the lanes are recorded again) |
 | 18.5 | Freeze the page for 3 s as in 18.2 while it plays | the beat does not stutter or stop; it was the engine playing |
 | 18.6 | Compare against the page's own drums: stop `_nsDrum`, start the page's Play with the same pattern | same sounds, same levels and accents, same pitch of tuned lanes |
