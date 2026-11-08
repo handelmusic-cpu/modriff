@@ -140,7 +140,7 @@ If any of that changes, for example an analytics SDK or a sign-in, this answer,
 
 `privacy.html` was brought up to date on 2026-11-06 (site PR 3): it now names the camera (chord-sheet photo, read on the
 device), the optional iCloud sync, the app's folder in Files, the one-time packs, and iPad; and says the only network use is
-Apple's (App Store, and iCloud when on). The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`. Still
+Apple's (App Store, and iCloud when on). The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`; the open, wide shot was removed (it showed the old Linn kit name), so retake it from Xcode before the site keeps that state. Still
 open: the site says "for iPhone, iPad and Mac" and has a Mac tab, but there is no Mac build (see Screenshots above).
 
 ## App Review notes
@@ -215,7 +215,7 @@ and the Sound mixer strips wrap (Mute, Solo and EQ stack; the knobs scatter). To
 looked at on this device.
 
 Those five are the closed Duo **before** 6.9.5 (bottom stack, no right rail). The Duo has three states and the layout
-differs in each, so `docs/app-store/screenshots/v6.9.6/` holds one Live shot per state, saved by the owner from the Duo
+differs in each, so `docs/app-store/screenshots/v6.9.6/` holds one Live shot per state (the open, wide one is removed), saved by the owner from the Duo
 in Xcode (not shot with `simctl`: it cannot capture the open Duo's 2007 x 2853 screen, and the Duo's fold is a control in
 Xcode that `simctl` does not have). They were taken on main at 6.9.6 (the version is not in the pictures) with the real
 clock, 7:43, not the pinned 9:41, so they are for checking the layout, not for upload:
@@ -224,7 +224,6 @@ clock, 7:43, not the pinned 9:41, so they are for checking the layout, not for u
 |---|---|---|---|
 | closed | 1398 x 2034 | `iphone-duo-closed-live` | the right rail (6.9.5): key, tempo, play, 1/16 and the part buttons down the right edge under the clock and pill; the Live column beside it; tab bar along the bottom. The Chords voice picker still shows "S…" |
 | open, upright | 2007 x 2853 | `iphone-duo-open-upright-live` | the old bottom stack on a wider screen: transport and part buttons above the tab bar, every picker spelled out (VOICE Saw, VOICE Sine), the keyboard runs C4 to A5 |
-| open, wide | 2853 x 2007 | `iphone-duo-open-wide-live-drums` | the 6.9.6 layout: tab rail down the left, part buttons at its foot, the transport across the top, Live beside the Drums page; the clock and pill sit right of the part tabs and cover nothing |
 
 Looked at, not measured, and only the Live tab: Studio, Song and Sound were not re-shot at 6.9.5 or 6.9.6, so the
 cramped Song title and Sound mixer notes above may or may not still hold on the closed Duo. The recording that came with
@@ -269,9 +268,9 @@ The descriptions are written to sell, within 45 characters, and each says what t
 not what it is called. Two words are kept out of every field the store shows, because they are
 other companies' trademarks: **iReal** (the Practice & Perform line used to end "iReal batch",
 now "chart import") and **Rhodes** (the Sounds line says "electric piano", as the pack's own list
-does). The pack's list inside the app still says "Import whole iReal playlists at once": that is
-the sheet, shown to the person who owns the playlists, and only App Review sees it in a screenshot.
-If that bullet should go too, it is one line in `MODULE_COPY.practice`.
+does). The pack's list inside the app says "Chart import: a whole playlist at once" (6.9.9.9.9.5), so no
+trademark is named in the sheet either. The `iap/Handel.modRiff.practice.png` review shot was taken before
+that and still shows the old "iReal" bullet: retake it before upload (the line is `MODULE_COPY.practice`).
 
 - **Family Sharing: on for all eleven** (it cannot be turned off once a product is live, and
   mixing on and off is how a family ends up owning half a bundle).
