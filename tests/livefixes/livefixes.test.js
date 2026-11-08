@@ -107,6 +107,35 @@ function serve() {
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(500);
   ok(!(await nav()).hide, 'upright the bars are never folded', await nav());
   await page.close();
+  // ── Studio: the Chords | Melody | Sampler | FX row is in the page, not the bar above the transport ──
+  page = await open({ width: 390, height: 844 });
+  const sr = await page.evaluate(() => {
+    studioTab(); setPerformMode('chords');
+    const sn = document.getElementById('pf-subnav'), dock = document.getElementById('subnav-dock');
+    const o = { inDock: dock.contains(sn), shown: sn.offsetParent !== null, pos: getComputedStyle(sn).position, dockH: dock.getBoundingClientRect().height };
+    document.getElementById('pf-pads-btn').click(); o.pads = document.getElementById('pf-pads-panel').style.display !== 'none';
+    document.getElementById('pf-fx-btn').click(); return o;
+  });
+  ok(!sr.inDock && sr.shown && sr.pos === 'static' && sr.dockH === 0 && sr.pads, 'Studio: the instrument row is in the page (not sticky, not docked) and still switches', sr);
+  await page.close();
+
+  // ── Live: All controls opens what Basic hides, and it starts shut ──
+  page = await open({ width: 430, height: 932 });
+  const lv = await page.evaluate(() => {
+    const shown = q => { const e = document.querySelector(q); return !!(e && e.getBoundingClientRect().width > 0 && getComputedStyle(e).display !== 'none'); };
+    const probes = { chords: ['#crh', '#oct-disp', '#var-head'], melody: ['#tmod-dests'], pads: ['#ps-trim', '#ps-moderow', '#ps-deck'], fx: ['#fx-targets'] };
+    const o = { before: {}, after: {} }; LV_OPEN = { pads: true, fx: true }; lvMount();
+    for (const m in probes) o.before[m] = probes[m].map(shown);
+    for (const m in probes) { const b = document.querySelector('.lv-more[data-mod="' + m + '"]'); if (b) b.click(); }
+    for (const m in probes) o.after[m] = probes[m].map(shown);
+    o.saved = modStore.getItem('modo-live-adv');
+    return o;
+  });
+  const flat = a => [].concat(...Object.values(a));
+  ok(flat(lv.before).every(x => !x), 'Live: every Studio-only control is hidden until All controls is pressed', lv.before);
+  ok(flat(lv.after).every(x => x), 'Live: All controls shows the Rhythm builder, chord octave, variants, Touch Mod, sample editor and mõdFX routing', lv.after);
+  ok(/"chords":1/.test(lv.saved || ''), 'and the choice is kept', lv.saved);
+  await page.close();
   ok(errs.length === 0, 'no page errors', errs);
   await browser.close(); srv.close();
   console.log(fail ? fail + ' FAILED' : 'all passed'); process.exit(fail ? 1 : 0);
