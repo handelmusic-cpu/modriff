@@ -4,7 +4,7 @@
 // cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, section, slot, pass, nTicks, then nTicks x (now, horizon, drumsPlaying, nMarks,
 //   marks..., queuedMove, capo (1e9: none)), then the score (songcore.h)]. A tick is one call of the scheduler: the bar lines the drums announced since the last
 //   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
-// Output per case: "CASE i", "A section chord pass t end nextSection nextChord capo queuedMove" for each chord the song starts (what the host's mirror asks the page about), "P now queuedMove" after each tick (what the mirror shows), "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
+// Output per case: "CASE i", "A section chord pass t end nextSection nextChord capo queuedMove" for each chord the song starts (what the host's mirror asks the page about), "C frame chorus bpm keyDelta" when a practice chorus ends, "P now queuedMove" after each tick (what the mirror shows), "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
 // (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), and the
 // re-strikes of its comp as "H" lines of the same shape (or "T onset" for one that only stops), in the order the engine plays them, "END i n".
 #include <cstdio>
@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
           printf("\n");
         } else if (a.stop) printf("%s %.17g\n", stopTag, a.onset);
       };
-      auto hits = [&](double horizon) { voicer.flush(horizon, q.score(), q.score().capo, tm, [&](const modsynth::VoiceAction &a) { show("H", "T", a); }); };
+      auto hits = [&](double horizon) { voicer.flush(horizon, q.score(), q.capoNow(), tm, [&](const modsynth::VoiceAction &a) { show("H", "T", a); }); };
       fired += q.run(t.horizon, t.drums, [&](const modsynth::SongChord &ch) {
         const modsynth::ChordWindow &w = ch.w;
         { int ns = 0, nl = 0; q.nextPlace(ns, nl); printf("A %d %d %d %.17g %.17g %d %d %d %d\n", ch.section, ch.slot, ch.pass, w.t, w.end, ns, nl, ch.capo, q.queuedMove()); }
@@ -65,6 +65,10 @@ int main(int argc, char **argv) {
         for (int p : w.pcs) printf(" %d", p);
         printf("\n");
         if (q.score().voice.on) show("V", "S", voicer.chord(ch, q.score(), tm));
+      }, [&](const modsynth::ChorusEvent &ev) {
+        // the practice trainer stepped: the tempo is stepped on the bar line the new chorus begins on (the host puts it after the drums' expanded steps)
+        if (ev.bpm > 0) tm.jump(ev.frame, ev.bpm);
+        printf("C %.17g %d %.17g %d\n", ev.frame, ev.chorus, ev.bpm, ev.keyDelta);
       });
       if (q.score().voice.on) hits(t.horizon);
       printf("P %.17g %d\n", t.now, q.queuedMove());          // the host's mirror after this tick: the Next/Prev still waiting
