@@ -9178,7 +9178,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.1</span></div>
  </div>
 </div>
 
@@ -10610,7 +10610,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11807,7 +11807,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9';
+const MODRIFF_VERSION = '6.9.9.9.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -60825,6 +60825,41 @@ window._nsChord = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.chord; }) : Promise.resolve(null); }
 };
 
+// The page's half of the engine's song loop (docs/native-scheduling.md, slice 4, piece 5). The generators (the bass line's, with its dice) stay here, so while
+// the engine plays the song it ASKS: each time it starts a chord its mirror says which chord that is, when it ends and which chord follows (song.ask:
+// [count, section, chord, pass, start, end, next section, next chord, key change], frames). This is what _syncRegenAt and _syncPregenNext do when the page's own
+// loop starts a chord, with the same generator, rules and order, and the answer goes back as the bass's score and a line waiting for the next chord.
+//   - Bass+Mel Sync on and the bass on Follow off (Follow transposes the line itself, from the windows the engine makes: nothing to ask), else nothing;
+//   - the line for the NEXT chord, unless it is a rest, written now and held for the moment this chord ends (window._blPregenFor, then the waiting line);
+//   - the line for THIS chord when nothing wrote it ahead (the first of a run, or the peek was wrong): written for now and put into the bass's score.
+// `pre` is the place a line was last written ahead for ({sec, slot} or null). `bassFirst` is the frame the bass line started on (the waiting line's moment is
+// counted from it). Returns {score, pending, pre, wrote}: the bass score and/or waiting line to send (page arrays), and the place written ahead for.
+window._songAnswer = function(ask, bassFirst, sr, pre){
+ var out = {score: null, pending: null, pre: pre || null, wrote: []};
+ if(typeof _bassAutoSync === 'undefined' || !_bassAutoSync) return out;
+ var cs = sections[ask[1]], cur = cs && cs.slots[ask[2]], ns = sections[ask[6]], next = ns && ns.slots[ask[7]];
+ if(!cur) return out;
+ if(typeof window.blIsFollowOn === 'function' && window.blIsFollowOn()) return out;
+ var capo = ask[8], place = function(sl){
+  var rootM = sl.rootM + capo, iv = slotIvs(sl);
+  if(sl.bassNote != null) iv = [sl.bassNote + capo - rootM].concat(iv);   // a slash chord's bass note leads the list, as the generators read it
+  return {rootM: rootM, iv: iv};
+ };
+ var wrotePre = pre && pre.sec === ask[1] && pre.slot === ask[2];
+ if(!wrotePre && !cur.isRest && typeof window._blPregenFor === 'function'){
+  var c = place(cur);
+  if(window._blPregenFor(c.rootM, c.iv, null)){ window._blLand(); out.score = window._blNativeScore().score; out.wrote.push('now'); }
+ }
+ out.pre = null;
+ if(next && !next.isRest && typeof window._blPregenFor === 'function'){
+  var n = place(next);
+  if(window._blPregenFor(n.rootM, n.iv, (ask[5] - bassFirst) / sr)){
+   out.pending = window._blNativePendingTake(sr, 0); out.pre = {sec: ask[6], slot: ask[7]}; out.wrote.push('next');
+  }
+ }
+ return out;
+};
+
 // The developer entry to the engine's own song loop (docs/native-scheduling.md slice 4), beside window._nsDrum and window._nsBass: hands the engine the song as
 // it stands (window._songNativeScore) and starts it on the host's thread, on the drums' next bar line when they are running (start _nsDrum first). It steps
 // the chart by the drums' bar lines, gives the bass its chord windows (start _nsBass for them to be heard) and, with Native sound on, sounds each chord
@@ -60860,10 +60895,33 @@ window._nsSong = {
   if(section == null){ section = sections.findIndex(function(x){ return x && x.slots && x.slots.length; }); slot = 0; if(section < 0) return Promise.resolve({ok: false, why: 'the song has no chords'}); }
   return this.sync().then(function(r){
    if(r.ok === false) return r;
-   return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){ if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
+   return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){
+    if(window._nsSong.answering) window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; } return s; });
   });
  },
- stop: function(){ var P = this.plugin(); return P ? P.seqSongStop() : Promise.resolve(); },
+ // Answers the engine's asks (window._songAnswer) while the song runs: polls the mirror, and each time it has started a chord, writes the bass's line for the
+ // next one and sends it. The engine takes it at the moment that chord starts. `answering: false` leaves the bass on the one line it has.
+ answering: true, _timer: null, _seen: 0, _pre: null, asked: 0, lastMs: 0,
+ watch: function(on){
+  var me = this, P = this.plugin();
+  if(me._timer){ clearInterval(me._timer); me._timer = null; }
+  if(!on || !P) return;
+  me._seen = 0; me._pre = null; me.asked = 0;
+  me._timer = setInterval(function(){
+   P.seqMirror().then(function(m){
+    var s = m && m.song, ask = s && s.ask;
+    if(!s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
+    me._seen = ask[0];
+    var t0 = performance.now();
+    var r = window._songAnswer(ask, (m.bass && m.bass.firstFrame) || 0, m.sampleRate || 48000, me._pre);
+    me._pre = r.pre; me.asked++;
+    if(r.score && P.seqBassScore) P.seqBassScore({score: _mgB64(Float64Array.from(r.score))});
+    if(r.pending && P.seqBassPending) P.seqBassPending({pending: _mgB64(Float64Array.from(r.pending))});
+    me.lastMs = performance.now() - t0;
+   });
+  }, 40);
+ },
+ stop: function(){ var P = this.plugin(); this.watch(false); return P ? P.seqSongStop() : Promise.resolve(); },
  move: function(delta){ var P = this.plugin(); return P ? P.seqSongMove({delta: delta}) : Promise.resolve(); },
  // A key change: the chords sound a different set of pitches, so the bank is topped up first.
  capo: function(semis){
@@ -63344,6 +63402,12 @@ window._blPregen = function(rootM, intvs, applyAt){
  return true;
 };
 window._blLand = function(){ _blApplyPending(true); };
+// The same as _blPregen for a player that is not this page's scheduler: the engine plays the bass, so the page's bass transport may be stopped, but the generator
+// still has to write into the pending buffer (and leave the grid on screen and its pins alone). blPlaying is borrowed for the call, which is what routes the line there.
+window._blPregenFor = function(rootM, intvs, applyAt){
+ var was = blPlaying; blPlaying = true;
+ try{ return window._blPregen(rootM, intvs, applyAt); } finally{ blPlaying = was; }
+};
 window._blLineFor = function(rootM, intvs){
  var saveGrid = blGrid, saveRoot = _blGridRootPc, saveIntvs = _blGridIntvs;
  var saveLCR = lastChordRoot, saveLCI = lastChordIntvs;
@@ -63542,6 +63606,13 @@ window._blNativePending = function(sr, origin){
     var c = _blPendingGrid[s] || {};
     d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
   }
+  return d;
+};
+// The waiting line for the engine, and the page's own copy of it dropped: nothing of the page's is going to play it, and a copy left behind would be swapped into
+// the grid on screen by the next stop.
+window._blNativePendingTake = function(sr, origin){
+  var d = window._blNativePending(sr, origin);
+  _blPendingGrid = null; _blPendingAt = null;
   return d;
 };
 // The chord timeline as the engine reads it (ChordTimeline::fromDoubles), the page's seconds turned into engine frames at `sr`, counted

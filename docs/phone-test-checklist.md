@@ -478,3 +478,16 @@ The engine now re-strikes each chord on its rhythm as well as striking it, so a 
 | 26.6 | Freeze the page for 3 s | the rhythm does not drop a hit |
 | 26.7 | `_nsSong.stop()` in the middle of a bar | the chord is cut and no hit follows |
 
+## 27. The page writes the engine's bass lines (6.9.9.9.9.9.1; audible through a developer entry only)
+
+While the engine plays a song, the page still writes the bass's line for each chord that follows (Follow off, Bass+Mel Sync on) and hands it over.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 27.1 | Bass on Follow **off**, a generated style (Funk), Sync on, a song of four chords; `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` | each chord has its own bass line from its first beat, not the line of the chord before; `_nsSong.asked` climbs, `_nsSong.lastMs` is a few ms |
+| 27.2 | The same on Follow **on** | the bass transposes one line over the chords; `_nsSong.asked` stays 0 |
+| 27.3 | `_nsSong.move(1)` near the end of a pass | the first chord after the section change has a line for it a moment late at worst (the peek is wrong there) |
+| 27.4 | Freeze the page for 3 s | the last line keeps playing under the changing chords (no new lines until the page is back) |
+| 27.5 | A song with a half-bar chord | the short chord still gets its own line |
+| 27.6 | `_nsSong.answering = false`, restart | the bass plays the one line it was given |
+

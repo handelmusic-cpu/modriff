@@ -145,6 +145,10 @@ class SongSequencer {
   // The drums announced a bar line at `frame` (a BarMark's frameExact). Kept until the chord that counts it is the current one.
   void noteBar(double frame) { if (running_) marks_.push_back(frame); }
 
+  // Where the song will be one chord from now, without moving it (what the window's next root is made from), for the chord run() is handing out:
+  // the page writes the bass's line for that chord while this one sounds.
+  void nextPlace(int &sec, int &slot) const { peekPlace(sec, slot); }
+
   // Fire every chord that starts before `horizon`, in order, handing each to emit(const SongChord&). `drums`: the drums are playing, so there is a
   // bar clock to count. Returns the number of chords started.
   template <class Emit>
@@ -212,14 +216,19 @@ class SongSequencer {
   // _songPeekNextSlot: where the song will be one chord from now, without moving it. A queued move outranks the section's own follow flag; the
   // flag, not the pass count, is what the page's peek reads.
   const SongSlot *peekNext() const {
+    int sec, slot;
+    peekPlace(sec, slot);
+    return &score_.sections[(size_t)sec].slots[(size_t)slot];
+  }
+  // The place itself.
+  void peekPlace(int &outSec, int &outSlot) const {
     const SongSection &sec = score_.sections[(size_t)section_];
-    if (slot_ + 1 < (int)sec.slots.size()) return &sec.slots[(size_t)slot_ + 1];
+    if (slot_ + 1 < (int)sec.slots.size()) { outSec = section_; outSlot = slot_ + 1; return; }
     int playable = 0; for (size_t i = 0; i < score_.sections.size(); i++) if (score_.playable(i)) playable++;
     int idx = section_;
     if (pending_ != 0) idx = stepTo(idx, pending_);
     else if (sec.follow && playable > 1) idx = stepTo(idx, 1);
-    const SongSection &ns = score_.sections[(size_t)idx];
-    return !ns.slots.empty() ? &ns.slots[0] : &sec.slots[0];
+    if (!score_.sections[(size_t)idx].slots.empty()) { outSec = idx; outSlot = 0; } else { outSec = section_; outSlot = 0; }
   }
   int stepTo(int idx, int delta) const {
     const int n = (int)score_.sections.size();
