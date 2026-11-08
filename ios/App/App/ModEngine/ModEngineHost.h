@@ -93,6 +93,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqStop;
 /// Takes effect from the next step. A value of 0 or less leaves that one alone.
 - (void)seqSetTempo:(double)bpm rate:(double)rate;
+/// The song for the engine's own loop, float64s as `window._songNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetSong:(NSData *)score;
+/// Starts the song at chord `slot` of `section`, `pass` passes in, on the drums' next bar line (`align`, drums running) or `leadMs` from now. The bass reads the
+/// chord windows it makes. NO without a song or with no chord there.
+- (BOOL)seqSongStartWithLeadMs:(double)leadMs alignToDrums:(BOOL)align section:(int)section slot:(int)slot pass:(int)pass;
+- (void)seqSongStop;
+/// A Next (+1) or Prev (-1) queued by the player: taken at the end of the pass.
+- (void)seqSongMove:(int)delta;
+/// The live key change, in semitones.
+- (void)seqSongSetCapo:(int)capo;
 /// The tempo moves in a straight line in time from what it is now to `bpm` over `ms`, then holds it (a ritardando; the engine's own tempo changes).
 /// The drums, the bass and the chord rhythm follow it on one grid. `seqMirror` says the tempo at the render clock as `tempo`.
 - (void)seqTempoRampTo:(double)bpm overMs:(double)ms;

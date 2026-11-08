@@ -42,6 +42,9 @@ struct PhraseLock {
   std::vector<BassCell> cells;
 };
 
+// Reads a lock table from d[k...] (see basscore.cpp); k moves past it. False if it is cut short or absurd.
+bool readLocks(const double *d, size_t n, size_t &k, std::vector<PhraseLock> &out);
+
 // A chord the song has committed to the clock (_blOnChord): when it starts and ends, and what it is.
 struct ChordWindow {
   double t = 0, end = 0;      // engine frames
@@ -62,6 +65,8 @@ class ChordTimeline {
   bool empty() const { return w_.empty(); }
   size_t size() const { return w_.size(); }
   const std::vector<ChordWindow> &windows() const { return w_; }
+  // The song sequencer (songcore.h) feeds the timeline window by window, with its own lock table.
+  void setLocks(const std::vector<PhraseLock> &l) { locks_ = l; }
   const PhraseLock *lockFor(const ChordWindow &w) const { return (w.lock >= 0 && (size_t)w.lock < locks_.size()) ? &locks_[(size_t)w.lock] : nullptr; }
 
   void push(const ChordWindow &w) { w_.push_back(w); if (w_.size() > 64) w_.erase(w_.begin(), w_.begin() + (long)(w_.size() - 64)); }

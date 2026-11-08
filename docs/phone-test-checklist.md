@@ -434,3 +434,15 @@ The drums, the bass and the chord rhythm of the engine now read one tempo map, a
 | 23.3 | Then `_nsDrum.tempoRamp(130, 4000)`, and a jump: change the tempo field | the same, speeding up; a jump from the field lands on the next step with no hiccup |
 | 23.4 | Freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) during a ramp | the ramp carries on, the three stay together |
 
+## 24. The engine steps the song (6.9.9.9.9.3; audible through a developer entry only)
+
+The engine now walks the song's chords by the drums' bar lines and gives the bass its chord windows. The chords themselves still sound from the page (piece 3 moves them), so what you hear from the engine is the drums and the bass following the engine's chart.
+
+| # | do | you should see |
+|---|---|---|
+| 24.1 | Native sound **ON**, a song of a few chords on the Songs page, the bass on Follow (Jazz walks, others re-root), the page's Song transport stopped. Console: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` | all answer `{ok:true}`; the bass changes chord on the drums' bar line, through the whole chart and round again; `_nsSong.mirror()` shows `chords` climbing, `section` and `slot` moving |
+| 24.2 | A chart with chords of different lengths (a bar, two beats, an eighth or two) | the bass follows each chord for its length; after a half-bar chord the next chord starts on the next bar line |
+| 24.3 | While it plays: `_nsSong.move(1)` | the section changes at the end of the pass, not at once |
+| 24.4 | Freeze the page for 3 s during it | the bass keeps changing chord on the bar lines |
+| 24.5 | `_nsSong.capo(2)` | from the next chord the bass plays two semitones up |
+

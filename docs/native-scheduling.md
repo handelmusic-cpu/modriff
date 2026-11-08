@@ -868,7 +868,7 @@ generators stay JS; (6) the mirror the page draws the highlight from.
 lists identical; mutation checks that the test can fail; audio nulls where sound is composed; the host thread; a developer entry; a checklist line):
 1. *A tempo map. Done (6.9.9.9.9.2), see the end of this file.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
    trainer's jump against the engine's step times, drums, bass and chord rhythm together. Everything else needs it, and it is useful alone.
-2. *Song stepping.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
+2. *Song stepping. Done (6.9.9.9.9.3), see the end of this file.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
    starts where the page would, advances on the bar lines of the drums' clock (and on its own clock for sub-bar chords), counts passes, leaves sections, applies a
    queued Next/Prev at the end of the pass, and emits the chord windows the bass already reads (so the page stops calling `_blOnChord`). Test: the page's
    `startSongLoop` / `tickSongLoop` / `_advanceLoopSlot` on a fake clock, with bar lines announced the way the drums announce them; the lists of (time, section,
@@ -925,4 +925,39 @@ the mirror says 60 then 120, no late edit. All the earlier drum, bass and chord 
 
 **Not done.** The page does not call the ramp (nothing in the app moves the tempo through the engine yet; the song loop will). A ramp is exact in the
 engine, not the page's integer-rounded steps twice a beat, so the two ritardandi differ by those roundings. Not heard on device: checklist 23.
+
+## Slice 4, piece 2 (6.9.9.9.9.3): song stepping
+
+**What was built.** `native/modsynth/songcore.h` (+ `.cpp`): `SongScore` (sections of chords: bars, beats, eighths, rest, root, slash bass, tones, phrase lock; passes
+and the follow flag per section; the meter's bar, swung Chart 8ths, snap, the capo) and `SongSequencer`, a port of the page's stepping: `_playLoopSlot` (a chord
+starts: its window for the bass, `_blOnChord`, with `_songPeekNextSlot`'s next chord), `tickSongLoop` (the drums' bar lines counted against a chord's bars),
+the timer path (a chord of beats or eighths, a chord with no drums to count, or snap off, ends one length after it began) and `_advanceLoopSlot` (the next chord;
+at the end of a pass a queued Next/Prev, or the pass counted and the section left after its plays). It emits what the page hands the bass for each chord, a
+`ChordWindow` (start, nominal end, rest, root, slash bass, next root, tones, lock) with where in the song it is, and the host pushes it into the bass sequencer's
+timeline: the page stops calling `_blOnChord`. A chord's length is in beats on the tempo map (piece 1), so it follows a ritardando; the page measures it in
+milliseconds at the tempo of the moment it starts (the same at a constant tempo).
+
+**Two quirks of the page are kept, one is not.** The peek at the end of a section reads the section's old `follow` flag, not its pass count, so `nextPc` there can name
+a chord the loop will not go to; the engine does the same, because the bass aims its approach note at it. A chord that began mid-bar (after chords of beats) is back on the
+bar grid at the first line the drums announce, as a whole-bar chord counts lines after its own start. Not kept: with snap off and the drums playing, the page
+advances twice a chord (its timer and the drums' lines both advance it: measured, a bar-long chord lasting half a second); the engine ends a chord by time there.
+That is a page bug, left alone here, to be gone with the cutover.
+
+**Page and host.** `window._songNativeScore()` exports the song (and refuses, with its reason, a practice loop, the trainer and an armed ending); a chord's lock is
+found the way the bass finds it (`_blLockFor`, now also on `window`). Host: `seqSetSong`, `seqSongStartWithLeadMs:` (on the drums' next bar line when they run),
+`seqSongStop`, `seqSongMove:`, `seqSongSetCapo:`, a `song` block in the mirror; the plugin and `window._nsSong` (`start(section, slot)`, `stop`, `move(1)`, `capo(n)`,
+`mirror`). The song runs after the drums and before the bass on the host thread, which is how the bar lines reach it in the same pass. `songcore.cpp` is in the Xcode project.
+
+**Measured.** `tests/seq/songstep.test.js` runs the page's own `startSongLoop`, `_playLoopSlot`, `tickSongLoop` and `_advanceLoopSlot` on a fake clock (its timers run
+when the fake time reaches them, the drums are a stand-in announcing a bar line when it falls inside the look-ahead, Next/Prev and a key change arrive between
+ticks) and `songtool` on the same song and ticks: 6 cases, 231 chords identical, each in start and window end (1e-5 of a frame), rest, root, slash bass, next root, tones,
+lock and place in the song: whole-bar chords across two sections with passes and the peek quirk; chords of bars, beats, eighths, a bar and two beats, rests and a slash chord
+with the drums; no drums with swung eighths; a queued Next and Prev around an empty section and a section that holds; starting at section 1 chord 2 with two key changes;
+phrase locks. It fails with the peek reading plays instead of the flag, with a queued move ignored by the peek, with the chord's own start line counted, with a pass too many,
+with swung eighths straight, without the capo on the root and without the locks. The host test steps a two-section song with the drums, takes a queued Next at the end
+of the pass, gives the bass its windows and stops.
+
+**Not done.** The chord itself (piece 3) and its comping (4): the engine steps the song and the bass follows it, but the chords still sound from the page. A chord tapped by
+hand (a jump), the practice loop and trainer, the endings (piece 7). Marks the page ignores because its two clocks fire in the other order, within 0.12 s after a timed chord
+ends, are counted by the engine. Not heard on device: checklist 24.
 

@@ -45,6 +45,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongMove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongCapo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassChords", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassPending", returnType: CAPPluginReturnPromise),
@@ -715,6 +720,43 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqStop(_ call: CAPPluginCall) {
         host?.seqStop()
         call.resolve()
+    }
+
+    /// The song for the engine's own loop, `score` base64 float64 (window._songNativeScore().score). Resolves `ok`.
+    @objc func seqSong(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqSong needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetSong(data)])
+    }
+
+    /// Starts the song. `align` takes the drums' next bar line when they run; `section`, `slot` and `pass` say where. Resolves `ok`.
+    @objc func seqSongStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqSongStart(withLeadMs: call.getDouble("leadMs") ?? 250, alignToDrums: call.getBool("align") ?? true,
+                                   section: Int32(call.getInt("section") ?? 0), slot: Int32(call.getInt("slot") ?? 0), pass: Int32(call.getInt("pass") ?? 0))
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqSongStop(_ call: CAPPluginCall) {
+        host?.seqSongStop()
+        call.resolve()
+    }
+
+    /// A Next (1) or Prev (-1) queued by the player, taken at the end of the pass.
+    @objc func seqSongMove(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqSongMove(Int32(call.getInt("delta") ?? 0))
+        call.resolve(["ok": true])
+    }
+
+    /// The live key change in semitones.
+    @objc func seqSongCapo(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqSongSetCapo(Int32(call.getInt("capo") ?? 0))
+        call.resolve(["ok": true])
     }
 
     /// The tempo moves in a straight line to `bpm` over `ms` milliseconds, then holds it. Resolves `ok`.
