@@ -40,6 +40,14 @@ Never wait for a person to say "merge", and never wait for a bigger batch.
   (`docs/phone-test-checklist.md`), one line per change, so the owner checks the
   whole batch in one pass. `npm run ios:device` installs on the paired iPhone.
 
+**Is Xcode building main?** `ios/App/App/public` is generated and gitignored, so it is only as new
+as the last `npm run ios`, and the checkout may lag `origin/main` after other sessions merge. Every app
+build stamps `build-info.json` (commit, dirty, page hash; `build/stamp.mjs`) and About shows
+`build <commit>` beside the version. `npm run ios:check` prints origin/main, the checkout and the
+bundle and exits 1 on any mismatch; `ios` and `ios:device` run it first and refuse a checkout that is
+off `main` or behind (`MODRIFF_IOS_ANY=1` to build a feature branch on purpose). Check the phone against
+the first line it prints.
+
 ### Version numbers
 
 Dotted numbers + an optional lowercase letter: `6.9`, `6.9a`, `6.9.1`, `6.9.1a`. It
