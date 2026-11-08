@@ -373,6 +373,38 @@ int main() {
       CHECK([[g seqMirror][@"chord"][@"hits"] intValue] == hits && ![[g seqMirror][@"chord"][@"running"] boolValue], "stopped: still %d hits", hits);
     }
 
+    // The song loop through the host: the same thread, no page. A song of one section of two whole-bar chords (C, then F; the second also a slash chord over
+    // A) and a second section, the drums running at 120 (a bar is two seconds). Started on the drums' bar line, it steps by their bar lines, hands the
+    // bass one window a chord, and a queued Next takes the second section at the end of the pass.
+    {
+      ModEngineHost *g = fresh();
+      CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "no song, no song start");
+      CHECK(![g seqSetSong:[NSData dataWithBytes:"junk" length:8]], "a song that does not parse is refused");
+      //  [1, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, nIvs, ivs]
+      std::vector<double> song = {1, 16, 0, 0, 1, 0,  0,  2,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, 3, 0, 4, 7,
+        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, 4, 0, 4, 7, 10};
+      CHECK([g seqSetSong:bytes(song)], "the song is taken");
+      CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:5 slot:0 pass:0], "a place that is not in the song is refused");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "the song starts");
+      CHECK([[g seqMirror][@"song"][@"firstFrame"] doubleValue] >= [[g seqMirror][@"firstFrame"] doubleValue], "on a bar line of the drums");
+      run(g, 1500);
+      [g seqSongMove:1];
+      run(g, 6000);
+      NSDictionary *m = [g seqMirror], *sg = m[@"song"];
+      CHECK([sg[@"running"] boolValue] && [sg[@"chords"] intValue] >= 4, "the song steps with no page: %d chords", [sg[@"chords"] intValue]);
+      CHECK([sg[@"section"] intValue] == 1 && [sg[@"slot"] intValue] == 0, "the queued Next was taken at the end of the pass (now in section %d)", [sg[@"section"] intValue]);
+      CHECK([m[@"bass"][@"windows"] intValue] >= 2, "and the bass has its chord windows: %d", [m[@"bass"][@"windows"] intValue]);
+      [g seqSongSetCapo:2];
+      [g seqSongStop];
+      const int chords = [[g seqMirror][@"song"][@"chords"] intValue];
+      run(g, 500);
+      CHECK([[g seqMirror][@"song"][@"chords"] intValue] == chords && ![[g seqMirror][@"song"][@"running"] boolValue], "stopped: still %d chords", chords);
+      [g seqStop];
+    }
+
     // Stop: nothing more even when the clock runs.
     [h seqStop];
     const int s0 = [[h seqMirror][@"steps"] intValue];

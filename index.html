@@ -9169,7 +9169,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -10601,7 +10601,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11798,7 +11798,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.3';
+const MODRIFF_VERSION = '6.9.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12843,6 +12843,7 @@ function modNativePlugin(){
                      // The engine's own sequencer (window._nsDrum, a developer entry); an older binary has none of these.
                      seqScore:call('seqScore'), seqBank:call('seqBank'), seqStart:call('seqStart'), seqStop:call('seqStop'),
                      seqTempo:call('seqTempo'), seqTempoRamp:call('seqTempoRamp'), seqMirror:call('seqMirror'),
+                     seqSong:call('seqSong'), seqSongStart:call('seqSongStart'), seqSongStop:call('seqSongStop'), seqSongMove:call('seqSongMove'), seqSongCapo:call('seqSongCapo'),
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
@@ -50958,6 +50959,33 @@ function _songPeekNextSlot(){
  return (nsec && nsec.slots.length) ? nsec.slots[0] : sec.slots[0];
 }
 
+// The engine's copy of the song (docs/native-scheduling.md, slice 4; native/modsynth/songcore.h reads this layout). {ok, why[], score[]}: `ok` is
+// false, and `why` names what, when the engine cannot yet step the song as this loop would -- the practice loop and trainer, an armed ending.
+// The chart's chords are sent as they are stored (the key the song was written in) with the live capo beside them; a chord's phrase lock rides in the
+// score's own table (the same one the chord windows use), found the way the bass finds it (_blLockFor).
+window._songNativeScore = function(){
+ var why = [];
+ try{ if(pracLoop.sel) why.push('a practice loop'); }catch(e){}
+ try{ if(prac.ramp.on || prac.key.on) why.push('the practice trainer'); }catch(e){}
+ try{ if(songEnding || _endQueued || _endingRunning) why.push('an ending'); }catch(e){}
+ var locks = [], byKey = {}, secs = [sections.length];
+ sections.forEach(function(sec){
+  var slots = (sec && sec.slots) || [];
+  secs.push(secPlays(sec), (sec && sec.follow === 'next') ? 1 : 0, slots.length);
+  slots.forEach(function(sl){
+   var key = window.phraseKey ? window.phraseKey(sl) : null, lk = (!sl.isRest && key) ? window._blLockFor({lockKey: key}) : null, idx = -1;
+   if(lk){ if(byKey[key] == null){ byKey[key] = locks.length; locks.push(lk); } idx = byKey[key]; }
+   var ivs = slotIvs(sl) || [0, 4, 7];
+   secs.push(sl.bars || 0, sl.beats || 0, sl.eighths || 0, sl.isRest ? 1 : 0, sl.rootM, sl.bassNote != null ? sl.bassNote : -1, idx, ivs.length);
+   ivs.forEach(function(x){ secs.push(x); });
+  });
+ });
+ var capo = (typeof _songBaseRoot !== 'undefined' && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
+ var d = [1, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
+ window._blPushLocks(d, locks);
+ return {ok: !why.length, why: why, score: d.concat(secs)};
+};
+
 function _playLoopSlot(atTime){
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
@@ -60680,6 +60708,32 @@ window._nsChord = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.chord; }) : Promise.resolve(null); }
 };
 
+// The developer entry to the engine's own song loop (docs/native-scheduling.md slice 4), beside window._nsDrum and window._nsBass: hands the engine the song as
+// it stands (window._songNativeScore) and starts it on the host's thread, on the drums' next bar line when they are running (start _nsDrum first). It steps
+// the chart by the drums' bar lines and gives the bass its chord windows (start _nsBass for them to be heard); the page's own song loop stays stopped.
+// Nothing in the app calls it. `start(section, slot)` takes the first chord of the first section by default; `move(1)` is Next, taken at the end of the pass.
+window._nsSong = {
+ plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqSong ? P : null; },
+ sync: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var sc = window._songNativeScore();
+  if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot step this song yet: ' + sc.why.join(', ')});
+  return P.seqSong({score: _mgB64(Float64Array.from(sc.score))});
+ },
+ start: function(section, slot, leadMs){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(section == null){ section = sections.findIndex(function(x){ return x && x.slots && x.slots.length; }); slot = 0; if(section < 0) return Promise.resolve({ok: false, why: 'the song has no chords'}); }
+  return this.sync().then(function(r){
+   if(r.ok === false) return r;
+   return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0});
+  });
+ },
+ stop: function(){ var P = this.plugin(); return P ? P.seqSongStop() : Promise.resolve(); },
+ move: function(delta){ var P = this.plugin(); return P ? P.seqSongMove({delta: delta}) : Promise.resolve(); },
+ capo: function(semis){ var P = this.plugin(); return P ? P.seqSongCapo({capo: semis}) : Promise.resolve(); },
+ mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.song; }) : Promise.resolve(null); }
+};
+
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
 // to this IIFE, not global, so the save/restore code outside it can't touch
 // them directly)
@@ -61905,6 +61959,8 @@ function _blLockFor(w){
   var lk = window.phraseLockGet('bass', w.lockKey);
   return (lk && lk.grid && lk.steps) ? lk : null;
 }
+// Out of the closure for the song's native score (window._songNativeScore), which asks it for each chord of the chart.
+window._blLockFor = _blLockFor;
 
 function _blWindowAt(t){
   // Windows overlap whenever a chord is cut short: stepping by hand with Play's
@@ -63364,6 +63420,11 @@ window._blNativeChords = function(sr, origin){
     w.pcs.forEach(function(x){ d.push(x); });
     d.push(idx);
   });
+  window._blPushLocks(d, locks);
+  return d;
+};
+// A lock table as the engine reads it (readLocks): [n, per lock: steps, rootPc, per cell the grid's nine numbers].
+window._blPushLocks = function(d, locks){
   d.push(locks.length);
   locks.forEach(function(lk){
     d.push(lk.steps, lk.rootPc);
@@ -63372,7 +63433,6 @@ window._blNativeChords = function(sr, origin){
       d.push(c.v || 0, c.note || 0, c.oct == null ? 3 : c.oct, c.len || 1, c.slide ? 1 : 0, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
     }
   });
-  return d;
 };
 // The chart counted from its first window, which is where the engine starts the line (window._nsBass).
 window._blNativeChordsFromFirst = function(sr){ return window._blNativeChords(sr, _blChordWin.length ? _blChordWin[0].t : 0); };
