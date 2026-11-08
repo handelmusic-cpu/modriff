@@ -1029,7 +1029,7 @@ rhythm has a gated hit. Host: the song's emit plays the previous chord's due hit
 
 **Measured.** `tests/seq/songstep.test.js` runs the page's own `_scheduleCompHits` and `_compRestrike` inside its real loop, keeps every chord message it sends, and holds the
 engine's hits to them one by one, in time order: notes (slash bass first), sub, level, moment (1e-5 of a frame), decay or hold, release at exactly the gate. 22 comp
-cases: every beat, Bossa, Gallop with Beats 1 and 3 and Clave and Push chord by chord, Eighths with Strum on and Length 2 beats, with Drop 2 and with Vary from Close and from
+cases and 5,256 hits (1,446 gated): every beat, Bossa, Gallop with Beats 1 and 3 and Clave and Push chord by chord, Eighths with Strum on and Length 2 beats, with Drop 2 and with Vary from Close and from
 Drop 3 (a hit keeps its chord's grip), drawn rhythms with accents, ratchets and gates, of twelve sixteenths, with a swing of its own, following the Feel at 20 and at 45 (and
 on the sixteenths), a triplet grid rhythm, a ratchet on a swung step followed by a hit on the next (their order swaps), drawn and built-in rhythms chord by chord with as played
 and a hold between, 90 BPM with Length 1 beat, 3/4 bars, the pedal, Chords off, two key changes during Soul, no drums, 50 random chords with a rhythm from the list on each; chords
