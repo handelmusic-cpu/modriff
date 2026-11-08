@@ -5,7 +5,8 @@
 //   marks..., queuedMove, capo (1e9: none)), then the score (songcore.h)]. A tick is one call of the scheduler: the bar lines the drums announced since the last
 //   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
 // Output per case: "CASE i", "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
-// (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), "END i n".
+// (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), and the
+// re-strikes of its comp as "H" lines of the same shape (or "T onset" for one that only stops), in the order the engine plays them, "END i n".
 #include <cstdio>
 #include <vector>
 #include "songcore.h"
@@ -39,7 +40,7 @@ int main(int argc, char **argv) {
     k += used;
     modsynth::TempoMap tm(sr, bpm);
     modsynth::SongSequencer q(sr);
-    modsynth::SongVoicer voicer;
+    modsynth::SongVoicer voicer(sr);
     q.setScore(sc); q.setTempoMap(&tm);
     if (!q.start(first, section, slot, pass)) { fprintf(stderr, "case %d: cannot start\n", c); return 2; }
     printf("CASE %d\n", c);
@@ -48,20 +49,23 @@ int main(int argc, char **argv) {
       for (double m : t.marks) q.noteBar(m);
       if (t.move) q.queueMove(t.move);
       if (t.capo < 1e8) q.setCapo((int)t.capo);
+      auto show = [](const char *tag, const char *stopTag, const modsynth::VoiceAction &a) {
+        if (a.play) {
+          printf("%s %.17g %.17g %.17g %d %.17g %d %zu", tag, a.onset, a.e.vel, a.e.durSec, a.e.hold ? 1 : 0, a.e.holdSec, a.e.subNote, a.e.notes.size());
+          for (int n : a.e.notes) printf(" %d", n);
+          printf("\n");
+        } else if (a.stop) printf("%s %.17g\n", stopTag, a.onset);
+      };
+      auto hits = [&](double horizon) { voicer.flush(horizon, q.score(), q.score().capo, tm, [&](const modsynth::VoiceAction &a) { show("H", "T", a); }); };
       fired += q.run(t.horizon, t.drums, [&](const modsynth::SongChord &ch) {
         const modsynth::ChordWindow &w = ch.w;
+        if (q.score().voice.on) hits(w.t);
         printf("W %.17g %.17g %d %d %d %d %d %d %d %d %zu", w.t, w.end, w.rest ? 1 : 0, w.rootPc, w.bassPc, w.nextPc, w.lock, ch.section, ch.slot, ch.pass, w.pcs.size());
         for (int p : w.pcs) printf(" %d", p);
         printf("\n");
-        if (q.score().voice.on) {
-          const modsynth::VoiceAction a = voicer.chord(ch, q.score().voice, tm);
-          if (a.play) {
-            printf("V %.17g %.17g %.17g %d %.17g %d %zu", a.onset, a.e.vel, a.e.durSec, a.e.hold ? 1 : 0, a.e.holdSec, a.e.subNote, a.e.notes.size());
-            for (int n : a.e.notes) printf(" %d", n);
-            printf("\n");
-          } else if (a.stop) printf("S %.17g\n", a.onset);
-        }
+        if (q.score().voice.on) show("V", "S", voicer.chord(ch, q.score(), tm));
       });
+      if (q.score().voice.on) hits(t.horizon);
     }
     printf("END %d %d\n", c, fired);
   }

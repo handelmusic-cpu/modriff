@@ -46,6 +46,18 @@ struct SongSlot {
   int voicing = -1;            // the voicing the chord carries (VoicingStyle), or -1: the song's
   bool hold = false;           // struck held (comp "sustain", or "as played" with a ring) instead of decaying
   double ring = 0;             // "as played": beats the held chord rings before it is let go of (0: it is held into the next chord)
+  int pat = -1;                // its comp rhythm in the voice's table, or -1: the chord is struck once and held or left to decay
+};
+
+// A comp rhythm (the page's COMP_PATTERNS entry with hits): the re-strikes of a chord after its first strike. A built-in lists its hits in eighths of a bar
+// (p), all at full strength and ringing; a drawn one lays them over a loop of `steps` sixteenths (p, fractional for a ratchet), with a strength v and a gate
+// `len` in steps (0: the hit rings and decays), and may carry a swing of its own.
+struct CompHitDef { double p = 0, v = 1, len = 0; };
+struct CompPattern {
+  bool drawn = false;
+  int steps = 16;
+  double swing = -1;           // percent, or -1: the app's Feel
+  std::vector<CompHitDef> ev;
 };
 
 // How the engine sounds the chords it steps (the page's playChartSlot2/playChord settings, read once): off, the engine only steps and hands the bass its windows.
@@ -61,6 +73,9 @@ struct SongVoiceCfg {
   double spread = 0, width = 0;
   bool sub = true;
   double velBase = 1;          // velScale(0)
+  double feelSwing = 0;        // the app's swing, percent (the drawn rhythms' fallback)
+  bool swing8 = true;          // the swing falls on the eighths (else the sixteenths)
+  std::vector<CompPattern> patterns;
 };
 
 struct SongSection {
@@ -79,9 +94,10 @@ struct SongScore {
   std::vector<SongSection> sections;
   SongVoiceCfg voice;
 
-  // [2, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
-  //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs...,
-  //  then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase]
+  // [3, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
+  //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs...,
+  //  then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
+  //  nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len) x nEv]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 
   // slotTotalMs, in beats: the chord's own length, or one bar when it says none.
