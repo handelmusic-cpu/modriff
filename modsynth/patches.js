@@ -108,26 +108,26 @@
     'env2.a': 0.002, 'env2.d': 0.4, 'env2.s': 0.25, 'env2.r': 0.3,
     'voice.drift': 0.28, 'master.vol': 0.85,
   };
-  p('Mini Lead', 'Vintage', 'lead,mono,classic,moog', ext(mini, {
+  p('Mini Lead', 'Vintage', 'lead,mono,classic,ladder', ext(mini, {
     'voice.mode': 'mono', 'voice.glide': 0.045, 'mix.sub': 0.35,
     'flt1.cutoff': 2400, 'flt1.res': 0.42, 'osc2.semi': 7,
   }), [['lfo1', 'pitch', 0.02], ['mw', 'lfo1.depth', 1]]);
-  p('Mini Bass', 'Vintage', 'bass,mono,fat,moog', ext(mini, {
+  p('Mini Bass', 'Vintage', 'bass,mono,fat,ladder', ext(mini, {
     'voice.mode': 'mono', 'voice.glide': 0.03, 'osc2.oct': -1, 'mix.sub': 0.7,
     'flt1.cutoff': 620, 'flt1.res': 0.35, 'flt1.env': 0.62, 'flt1.drive': 0.5,
     'env1.d': 0.35, 'env1.s': 0.6, 'env2.d': 0.22, 'env2.s': 0.1,
   }));
-  p('Fat Mini', 'Vintage', 'bass,unison,huge,moog', ext(mini, {
+  p('Fat Mini', 'Vintage', 'bass,unison,huge,ladder', ext(mini, {
     'voice.mode': 'unison', 'voice.poly': 4, 'voice.spread': 0.5,
     'osc1.uni': 3, 'osc1.detune': 13, 'mix.sub': 0.8,
     'flt1.cutoff': 900, 'flt1.drive': 0.6, 'fx.drive.on': 1, 'fx.drive.type': 'tube', 'fx.drive.amount': 0.3,
   }));
-  p('Mini Flute', 'Vintage', 'lead,soft,mono,moog', ext(mini, {
+  p('Mini Flute', 'Vintage', 'lead,soft,mono,ladder', ext(mini, {
     'osc1.wave': 'classic', 'osc1.shape': 0.34, 'osc2.on': 0, 'voice.mode': 'legato', 'voice.glide': 0.06,
     'flt1.cutoff': 1100, 'flt1.res': 0.12, 'flt1.env': 0.2, 'mix.noise': 0.07,
     'env1.a': 0.09, 'env1.r': 0.18, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.22,
   }));
-  p('Mini Brass', 'Vintage', 'brass,lead,classic,moog', ext(mini, {
+  p('Mini Brass', 'Vintage', 'brass,lead,classic,ladder', ext(mini, {
     'flt1.cutoff': 700, 'flt1.env': 0.78, 'flt1.res': 0.28,
     'env2.a': 0.055, 'env2.d': 0.5, 'env2.s': 0.45,
     'env1.a': 0.03, 'osc2.fine': -12, 'mix.sub': 0.3,
@@ -141,27 +141,27 @@
     'env2.a': 0.01, 'env2.d': 0.7, 'env2.s': 0.3, 'env2.r': 0.5,
     'voice.drift': 0.22,
   };
-  p('Prophet Brass', 'Vintage', 'brass,poly,classic,prophet', ext(prophet, {
+  p('Stack Brass', 'Vintage', 'brass,poly,classic,stack', ext(prophet, {
     'flt1.cutoff': 900, 'flt1.env': 0.8, 'env2.a': 0.04, 'env2.d': 0.6, 'env2.s': 0.5, 'env1.a': 0.025,
   }));
-  p('Prophet Strings', 'Vintage', 'strings,pad,poly,prophet', ext(prophet, {
+  p('Stack Strings', 'Vintage', 'strings,pad,poly,stack', ext(prophet, {
     'osc1.uni': 4, 'osc1.detune': 16, 'osc1.width': 0.9,
     'env1.a': 0.35, 'env1.d': 1.5, 'env1.s': 0.85, 'env1.r': 1.2,
     'flt1.cutoff': 3200, 'flt1.res': 0.1,
     'fx.chorus.on': 1, 'fx.chorus.mix': 0.4, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3, 'fx.reverb.size': 0.7,
   }), [['lfo1', 'flt1.cutoff', 0.12], ['lfo1', 'pitch', 0.006]]);
-  p('Prophet Pad', 'Vintage', 'pad,warm,poly,prophet', ext(prophet, {
+  p('Stack Pad', 'Vintage', 'pad,warm,poly,stack', ext(prophet, {
     'osc1.uni': 3, 'osc1.detune': 12, 'osc2.pw': 0.3,
     'env1.a': 0.8, 'env1.d': 2, 'env1.s': 0.9, 'env1.r': 2,
     'flt1.cutoff': 1700, 'lfo1.rate': 0.22, 'lfo2.rate': 0.14,
     'fx.reverb.on': 1, 'fx.reverb.mix': 0.35, 'fx.reverb.size': 0.8,
   }), [['lfo1', 'osc2.pw', 0.28], ['lfo2', 'flt1.cutoff', 0.14]]);
-  p('P5 Sync Lead', 'Vintage', 'lead,sync,aggressive,prophet', ext(prophet, {
+  p('Sync Poly Lead', 'Vintage', 'lead,sync,aggressive,stack', ext(prophet, {
     'osc2.sync': 1, 'osc2.semi': 5, 'osc2.level': 0.85, 'osc1.level': 0.4,
     'voice.mode': 'mono', 'flt1.cutoff': 3400, 'flt1.res': 0.2,
     'env1.a': 0.006, 'env1.s': 0.8,
   }), [['env3', 'osc2.fine', 0.35], ['mw', 'osc2.fine', 0.4], ['m3', 'osc2.fine', 0.6]]);
-  p('P5 Poly Stab', 'Vintage', 'stab,poly,short,prophet', ext(prophet, {
+  p('Poly Stab', 'Vintage', 'stab,poly,short,stack', ext(prophet, {
     'env1.a': 0.002, 'env1.d': 0.22, 'env1.s': 0, 'env1.r': 0.2,
     'env2.a': 0.001, 'env2.d': 0.14, 'env2.s': 0, 'flt1.env': 0.85, 'flt1.cutoff': 500, 'flt1.res': 0.45,
   }));
@@ -174,18 +174,18 @@
     'env2.a': 0.15, 'env2.d': 1.2, 'env2.s': 0.5, 'env2.r': 0.9,
     'voice.drift': 0.3, 'fx.chorus.on': 1, 'fx.chorus.mix': 0.42, 'fx.chorus.rate': 0.5,
   };
-  p('Jupiter Strings', 'Vintage', 'strings,pad,lush,roland', ext(jupiter, {
+  p('Wide Poly Strings', 'Vintage', 'strings,pad,lush,poly', ext(jupiter, {
     'fx.reverb.on': 1, 'fx.reverb.mix': 0.32, 'fx.reverb.size': 0.75,
   }), [['lfo1', 'pitch', 0.008], ['lfo2', 'flt1.cutoff', 0.1]]);
-  p('Jupiter Brass', 'Vintage', 'brass,poly,roland', ext(jupiter, {
+  p('Wide Poly Brass', 'Vintage', 'brass,poly,poly', ext(jupiter, {
     'env1.a': 0.04, 'env1.d': 0.8, 'env1.s': 0.75, 'env1.r': 0.4,
     'env2.a': 0.06, 'env2.d': 0.5, 'env2.s': 0.4, 'flt1.cutoff': 1100, 'flt1.env': 0.75,
   }));
-  p('Jupiter Pad', 'Vintage', 'pad,wide,warm,roland', ext(jupiter, {
+  p('Wide Poly Pad', 'Vintage', 'pad,wide,warm,poly', ext(jupiter, {
     'osc1.uni': 5, 'osc1.detune': 22, 'env1.a': 1.2, 'env1.r': 2.4,
     'flt1.cutoff': 2200, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.42, 'fx.reverb.size': 0.9,
   }), [['lfo2', 'flt1.cutoff', 0.16], ['lfo2', 'pan', 0.25]]);
-  p('JP Bell Pad', 'Vintage', 'pad,bell,shimmer,roland', ext(jupiter, {
+  p('Wide Bell Pad', 'Vintage', 'pad,bell,shimmer,poly', ext(jupiter, {
     'osc2.wave': 'bell', 'osc2.shape': 0.35, 'osc2.oct': 1, 'osc2.level': 0.42,
     'flt1.cutoff': 5200, 'env1.a': 0.5, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.4,
   }));
@@ -199,22 +199,22 @@
     'lfo1.rate': 0.4, 'voice.drift': 0.2,
     'fx.chorus.on': 1, 'fx.chorus.mix': 0.5, 'fx.chorus.rate': 0.7, 'fx.chorus.depth': 0.45,
   };
-  p('Juno Chorus Pad', 'Vintage', 'pad,chorus,classic,roland', ext(juno, {
+  p('Chorus Pad', 'Vintage', 'pad,chorus,classic,poly', ext(juno, {
     'env1.a': 0.55, 'env1.r': 1.6, 'flt1.cutoff': 1900,
   }), [['lfo1', 'osc1.pw', 0.3]]);
-  p('Juno Bass', 'Vintage', 'bass,punchy,roland', ext(juno, {
+  p('Chorus Bass', 'Vintage', 'bass,punchy,poly', ext(juno, {
     'voice.mode': 'mono', 'mix.sub': 0.8, 'flt1.cutoff': 560, 'flt1.env': 0.6, 'flt1.res': 0.28,
     'env1.d': 0.3, 'env1.s': 0.55, 'env2.d': 0.2, 'env2.s': 0.05, 'fx.chorus.mix': 0.18,
   }));
-  p('Juno Organ', 'Vintage', 'organ,keys,roland', ext(juno, {
+  p('Chorus Organ', 'Vintage', 'organ,keys,poly', ext(juno, {
     'osc1.pw': 0.5, 'mix.sub': 0.6, 'flt1.cutoff': 5200, 'flt1.env': 0,
     'env1.a': 0.003, 'env1.d': 0.05, 'env1.s': 1, 'env1.r': 0.06, 'flt1.keytrack': 0.6,
   }));
-  p('Juno Stab', 'Vintage', 'stab,house,short,roland', ext(juno, {
+  p('Chorus Stab', 'Vintage', 'stab,house,short,poly', ext(juno, {
     'env1.a': 0.002, 'env1.d': 0.24, 'env1.s': 0, 'env1.r': 0.22,
     'env2.d': 0.16, 'env2.s': 0, 'flt1.cutoff': 700, 'flt1.env': 0.8, 'flt1.res': 0.4,
   }));
-  p('Juno Strings', 'Vintage', 'strings,pad,roland', ext(juno, {
+  p('Chorus Strings', 'Vintage', 'strings,pad,poly', ext(juno, {
     'osc1.pw': 0.36, 'env1.a': 0.42, 'env1.r': 1.3, 'flt1.cutoff': 3200, 'fx.chorus.mix': 0.6,
   }), [['lfo1', 'osc1.pw', 0.35]]);
 
@@ -225,12 +225,12 @@
     'env1.a': 0.03, 'env1.d': 1, 'env1.s': 0.78, 'env1.r': 0.6,
     'env2.a': 0.02, 'env2.d': 0.7, 'env2.s': 0.35, 'voice.drift': 0.25,
   };
-  p('OB Brass', 'Vintage', 'brass,poly,oberheim', ext(ob, { 'flt1.cutoff': 1000, 'flt1.env': 0.82, 'env2.a': 0.05 }));
-  p('OB Pad', 'Vintage', 'pad,wide,oberheim', ext(ob, {
+  p('Broad Brass', 'Vintage', 'brass,poly,broad', ext(ob, { 'flt1.cutoff': 1000, 'flt1.env': 0.82, 'env2.a': 0.05 }));
+  p('Broad Pad', 'Vintage', 'pad,wide,broad', ext(ob, {
     'osc1.uni': 4, 'osc1.detune': 18, 'env1.a': 0.9, 'env1.r': 2,
     'fx.reverb.on': 1, 'fx.reverb.mix': 0.35, 'fx.chorus.on': 1, 'fx.chorus.mix': 0.3,
   }));
-  p('Matrix Sweep', 'Vintage', 'pad,sweep,motion,oberheim', ext(ob, {
+  p('Matrix Sweep', 'Vintage', 'pad,sweep,motion,broad', ext(ob, {
     'flt1.res': 0.55, 'flt1.cutoff': 700, 'lfo1.rate': 0.16, 'lfo1.shape': 'tri',
     'env1.a': 0.6, 'env1.r': 1.8, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3,
   }), [['lfo1', 'flt1.cutoff', 0.55], ['m2', 'lfo1.rate', 0.6]]);
@@ -260,13 +260,13 @@
     'env2.a': 0.04, 'env2.d': 0.9, 'env2.s': 0.45,
     'voice.drift': 0.35, 'voice.velAmt': 0.7,
   };
-  p('CS Brass', 'Vintage', 'brass,expressive,yamaha', ext(cs80, { 'flt1.cutoff': 1100, 'flt1.env': 0.8, 'flt1.vel': 0.5 }),
+  p('Swell Brass', 'Vintage', 'brass,expressive,swell', ext(cs80, { 'flt1.cutoff': 1100, 'flt1.env': 0.8, 'flt1.vel': 0.5 }),
     [['at', 'flt1.cutoff', 0.4], ['at', 'lfo1.depth', 0.6]]);
-  p('CS Strings', 'Vintage', 'strings,pad,expressive,yamaha', ext(cs80, {
+  p('Swell Strings', 'Vintage', 'strings,pad,expressive,swell', ext(cs80, {
     'osc1.uni': 4, 'osc1.detune': 17, 'env1.a': 0.5, 'env1.r': 1.6,
     'fx.chorus.on': 1, 'fx.chorus.mix': 0.35, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3,
   }));
-  p('CS Ring Lead', 'Vintage', 'lead,ring,metallic,yamaha', ext(cs80, {
+  p('Swell Ring Lead', 'Vintage', 'lead,ring,metallic,swell', ext(cs80, {
     'mix.ring': 0.45, 'osc2.semi': 7, 'voice.mode': 'legato', 'voice.glide': 0.05, 'flt1.cutoff': 3000,
   }), [['at', 'mix.ring', 0.5]]);
 
@@ -277,13 +277,13 @@
     'env2.a': 0.001, 'env2.d': 0.25, 'env2.s': 0.05,
     'voice.mode': 'mono', 'voice.drift': 0.34,
   };
-  p('MS Acid', 'Vintage', 'bass,acid,squelch,korg', ext(ms20, { 'voice.glide': 0.035, 'flt1.res': 0.72 }),
+  p('Scream Acid', 'Vintage', 'bass,acid,squelch,screamer', ext(ms20, { 'voice.glide': 0.035, 'flt1.res': 0.72 }),
     [['env2', 'flt1.cutoff', 0.5], ['m1', 'flt1.res', 0.35]]);
-  p('MS Screamer', 'Vintage', 'lead,harsh,korg', ext(ms20, {
+  p('Scream Lead', 'Vintage', 'lead,harsh,screamer', ext(ms20, {
     'flt1.cutoff': 1800, 'flt1.res': 0.85, 'flt1.drive': 0.75, 'mix.noise': 0.12,
     'fx.drive.on': 1, 'fx.drive.type': 'diode', 'fx.drive.amount': 0.4,
   }));
-  p('MS Percussion', 'Vintage', 'perc,pluck,korg', ext(ms20, {
+  p('Scream Perc', 'Vintage', 'perc,pluck,screamer', ext(ms20, {
     'env1.d': 0.11, 'env1.s': 0, 'env1.r': 0.1, 'env2.d': 0.07, 'flt1.res': 0.8, 'mix.noise': 0.3,
   }));
 
@@ -295,12 +295,12 @@
     'env2.a': 0.001, 'env2.d': 0.22, 'env2.s': 0.05,
     'voice.mode': 'mono', 'voice.drift': 0.24,
   };
-  p('101 Bass', 'Vintage', 'bass,mono,punchy,roland', sh101);
-  p('101 Arp', 'Vintage', 'arp,bass,sequence,roland', ext(sh101, {
+  p('101 Bass', 'Vintage', 'bass,mono,punchy,poly', sh101);
+  p('Mono Arp', 'Vintage', 'arp,bass,sequence,poly', ext(sh101, {
     'arp.on': 1, 'arp.pattern': 'up', 'arp.div': '1_16', 'arp.oct': 2, 'arp.gate': 0.45,
     'fx.delay.on': 1, 'fx.delay.div': '1_8d', 'fx.delay.mix': 0.2, 'fx.delay.fb': 0.35,
   }));
-  p('101 Squelch', 'Vintage', 'bass,acid,resonant,roland', ext(sh101, {
+  p('101 Squelch', 'Vintage', 'bass,acid,resonant,poly', ext(sh101, {
     'flt1.res': 0.78, 'flt1.env': 0.85, 'flt1.drive': 0.5, 'voice.glide': 0.04,
     'fx.drive.on': 1, 'fx.drive.type': 'tube', 'fx.drive.amount': 0.32,
   }));
@@ -313,7 +313,7 @@
     'fx.chorus.on': 1, 'fx.chorus.mix': 0.62, 'fx.chorus.voices': 3, 'fx.chorus.rate': 0.9, 'fx.chorus.depth': 0.55,
     'fx.reverb.on': 1, 'fx.reverb.mix': 0.28,
   });
-  p('Mellotron Flutes', 'Vintage', 'tape,flute,pad,lofi', {
+  p('Tape Flutes', 'Vintage', 'tape,flute,pad,lofi', {
     'osc1.wave': 'reed', 'osc1.shape': 0.55, 'osc1.uni': 2, 'osc1.detune': 6,
     'mix.noise': 0.06, 'mix.noiseType': 'pink', 'mix.noiseFlt': 0.35,
     'flt1.model': 'svfLP', 'flt1.cutoff': 3000, 'flt1.res': 0.08,
@@ -321,14 +321,14 @@
     'voice.drift': 0.45, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3,
     'fx.eq.high': -3, 'fx.eq.low': 2,
   }, [['lfo1', 'pitch', 0.02], ['lfo2', 'flt1.cutoff', 0.08]]);
-  p('Mellotron Strings', 'Vintage', 'tape,strings,pad,lofi', {
+  p('Tape Strings', 'Vintage', 'tape,strings,pad,lofi', {
     'osc1.wave': 'string', 'osc1.shape': 0.65, 'osc1.uni': 3, 'osc1.detune': 15,
     'mix.noise': 0.05, 'mix.noiseType': 'pink',
     'flt1.model': 'svfLP', 'flt1.cutoff': 2600,
     'env1.a': 0.16, 'env1.d': 1.6, 'env1.s': 0.82, 'env1.r': 0.8,
     'voice.drift': 0.5, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.34, 'fx.eq.high': -4,
   }, [['lfo1', 'pitch', 0.024]]);
-  p('Clavinet', 'Vintage', 'keys,funk,pluck', {
+  p('Funk Clav', 'Vintage', 'keys,funk,pluck', {
     'osc1.wave': 'pulse', 'osc1.pw': 0.16, 'osc1.level': 0.85,
     'flt1.model': 'svfBP', 'flt1.cutoff': 1900, 'flt1.res': 0.35, 'flt1.env': 0.4, 'flt1.keytrack': 0.7,
     'flt2.model': 'svfHP', 'flt2.cutoff': 320,
@@ -362,7 +362,7 @@
     'env1.a': 0.1, 'env1.d': 1.2, 'env1.s': 0.75, 'env1.r': 0.8,
     'lfo2.rate': 0.18, 'fx.chorus.on': 1, 'fx.chorus.mix': 0.3,
   }, [['lfo2', 'osc1.shape', 0.4], ['m3', 'osc1.shape', 0.7]]);
-  p('Polymoog Vox', 'Vintage', 'strings,vox,pad', {
+  p('Poly Vox', 'Vintage', 'strings,vox,pad', {
     'osc1.wave': 'vocal', 'osc1.shape': 0.2, 'osc1.uni': 4, 'osc1.detune': 13,
     'flt1.model': 'svfLP', 'flt1.cutoff': 3600, 'flt2.model': 'svfHP', 'flt2.cutoff': 200,
     'env1.a': 0.18, 'env1.d': 1.4, 'env1.s': 0.88, 'env1.r': 0.9,
@@ -507,7 +507,7 @@
     'mix.ring': 0.55, 'osc2.semi': 7, 'osc2.wave': 'bell', 'osc2.shape': 0.4,
     'flt1.model': 'comb', 'flt1.cutoff': 320, 'flt1.res': 0.55,
   }));
-  p('808 Sub', 'Modern', 'bass,808,trap,sub', {
+  p('Sub Weight', 'Modern', 'bass,808,trap,sub', {
     'osc1.wave': 'classic', 'osc1.shape': 0, 'osc1.level': 0.9,
     'mix.sub': 0.5, 'mix.subWave': 'sine',
     'flt1.model': 'svfLP', 'flt1.cutoff': 200, 'flt1.res': 0,
@@ -516,7 +516,7 @@
     'voice.mode': 'mono', 'voice.glide': 0.045, 'voice.poly': 1,
     'fx.comp.on': 1, 'fx.comp.thresh': -14, 'fx.comp.ratio': 8, 'fx.comp.makeup': 3,
   }, [['env3', 'pitch', 0.2]]);
-  p('Distorted 808', 'Modern', 'bass,808,trap,dirty', {
+  p('Distorted Sub', 'Modern', 'bass,808,trap,dirty', {
     'osc1.wave': 'classic', 'osc1.shape': 0.33, 'mix.sub': 0.6,
     'flt1.model': 'ladder4', 'flt1.cutoff': 420, 'flt1.drive': 0.6,
     'env1.a': 0.002, 'env1.d': 2, 'env1.s': 0.2, 'env1.r': 0.4,
@@ -546,7 +546,7 @@
     'voice.mode': 'mono', 'fx.reverb.on': 1, 'fx.reverb.mix': 0.3, 'fx.reverb.size': 0.85,
     'fx.comp.on': 1, 'fx.comp.thresh': -20, 'fx.comp.ratio': 6,
   });
-  p('Acid Line', 'Modern', 'bass,acid,303,resonant', {
+  p('Acid Line', 'Modern', 'bass,acid,resonant', {
     'osc1.wave': 'vintage', 'osc1.shape': 0.05, 'osc1.level': 0.9,
     'flt1.model': 'diode', 'flt1.cutoff': 480, 'flt1.res': 0.78, 'flt1.env': 0.85, 'flt1.drive': 0.5,
     'env1.a': 0.002, 'env1.d': 0.4, 'env1.s': 0.3, 'env1.r': 0.12,
@@ -664,25 +664,25 @@
     'env3.a': 0.001, 'env3.d': 0.7, 'env3.s': 0.1, 'env3.r': 0.4,
     'voice.velAmt': 0.7,
   };
-  p('DX Electric Piano', 'Digital', 'keys,fm,epiano,classic', ext(fmBase, {
+  p('FM Electric Piano', 'Digital', 'keys,fm,epiano,classic', ext(fmBase, {
     'osc2.semi': 12, 'mix.fm': 0.36, 'env1.d': 1.8, 'env1.s': 0.18, 'env1.r': 0.6,
     'fx.chorus.on': 1, 'fx.chorus.mix': 0.3, 'fx.reverb.on': 1, 'fx.reverb.mix': 0.22,
   }), [['env3', 'mix.fm', 0.5], ['vel', 'mix.fm', 0.35]]);
-  p('DX Bells', 'Digital', 'bell,fm,bright', ext(fmBase, {
+  p('FM Bells', 'Digital', 'bell,fm,bright', ext(fmBase, {
     'osc2.semi': 19, 'mix.fm': 0.5, 'env1.d': 2.4, 'env1.s': 0.05, 'env1.r': 1.5,
     'fx.reverb.on': 1, 'fx.reverb.mix': 0.35, 'fx.reverb.size': 0.8,
   }), [['env3', 'mix.fm', 0.6]]);
-  p('DX Marimba', 'Digital', 'mallet,fm,perc', ext(fmBase, {
+  p('FM Marimba', 'Digital', 'mallet,fm,perc', ext(fmBase, {
     'osc2.semi': 24, 'mix.fm': 0.3, 'env1.a': 0.001, 'env1.d': 0.5, 'env1.s': 0, 'env1.r': 0.35,
     'env3.d': 0.1, 'env3.s': 0,
   }), [['env3', 'mix.fm', 0.55]]);
-  p('DX Bass', 'Digital', 'bass,fm,punchy', ext(fmBase, {
+  p('FM Bass', 'Digital', 'bass,fm,punchy', ext(fmBase, {
     'osc2.semi': 12, 'mix.fm': 0.42, 'voice.mode': 'mono',
     'env1.a': 0.001, 'env1.d': 0.5, 'env1.s': 0.35, 'env1.r': 0.15,
     'env3.d': 0.09, 'env3.s': 0, 'mix.sub': 0.35,
     'flt1.model': 'ladder4', 'flt1.cutoff': 2200,
   }), [['env3', 'mix.fm', 0.6]]);
-  p('DX Brass', 'Digital', 'brass,fm,bright', ext(fmBase, {
+  p('FM Brass', 'Digital', 'brass,fm,bright', ext(fmBase, {
     'osc2.semi': 0, 'mix.fm': 0.35, 'env1.a': 0.03, 'env1.d': 0.7, 'env1.s': 0.7, 'env1.r': 0.3,
     'env3.a': 0.04, 'env3.d': 0.5, 'env3.s': 0.4,
   }), [['env3', 'mix.fm', 0.45], ['at', 'mix.fm', 0.3]]);
@@ -891,11 +891,11 @@
     'osc1.wave': 'string', 'osc1.shape': 0.3, 'voice.mode': 'legato', 'voice.glide': 0.06,
     'env1.a': 0.12, 'env1.s': 0.8, 'env1.r': 0.3, 'flt1.env': 0.3, 'flt1.cutoff': 1100,
   }));
-  p('Dirty DX Bass', 'Bass', 'bass,fm,dirty,aggressive', ext(bassBase, {
+  p('Dirty FM Bass', 'Bass', 'bass,fm,dirty,aggressive', ext(bassBase, {
     'osc2.on': 1, 'osc2.ratio': 1, 'osc2.semi': 7, 'osc2.level': 0, 'mix.fm': 0.55,
     'flt1.drive': 0.7, 'fx.drive.on': 1, 'fx.drive.type': 'diode', 'fx.drive.amount': 0.45,
   }), [['env3', 'mix.fm', 0.5]]);
-  p('Moog Octave Bass', 'Bass', 'bass,octave,fat', ext(bassBase, {
+  p('Octave Bass', 'Bass', 'bass,octave,fat', ext(bassBase, {
     'osc2.on': 1, 'osc2.wave': 'vintage', 'osc2.shape': 0.05, 'osc2.oct': -1, 'osc2.level': 0.75,
     'flt1.cutoff': 620, 'flt1.drive': 0.4, 'voice.drift': 0.3,
   }));
@@ -1196,7 +1196,7 @@
     'env1.d': 0.6, 'env1.r': 0.5, 'arp.gate': 0.3,
     'fx.delay.mix': 0.3, 'fx.reverb.mix': 0.35,
   }));
-  p('Acid Arp', 'Arp', 'arp,acid,303', ext(arpBase, {
+  p('Acid Arp', 'Arp', 'arp,acid', ext(arpBase, {
     'osc1.wave': 'vintage', 'osc1.shape': 0.05,
     'flt1.model': 'diode', 'flt1.cutoff': 500, 'flt1.res': 0.78, 'flt1.env': 0.85, 'flt1.drive': 0.5,
     'arp.gate': 0.45, 'voice.mode': 'mono', 'voice.glide': 0.02,

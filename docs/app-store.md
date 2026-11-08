@@ -312,7 +312,7 @@ like hidden purchases:
 > bought the bundle is offered as "Full Studio" ($12.99); after buying one pack it is
 > offered as "Complete Your Studio" at the one-pack upgrade price, after two at the
 > two-pack price, and after three or more at the three-pack price. To see one in the
-> sandbox: tap any locked drum kit (the free kits are the Linn and 808), buy the Groove
+> sandbox: tap any locked drum kit (the free kits are Digital 1 and Analog 1), buy the Groove
 > Pack, then tap any other locked control — the sheet now shows "Complete Your Studio" with
 > the line "Unlock everything for $… more." Restore Purchases is on that sheet, on the store
 > screen and in Settings > About.
