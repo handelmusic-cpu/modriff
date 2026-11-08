@@ -413,7 +413,7 @@ into soft and hard layers by their raw level. Files are named
 | **Maracatu ◆** (`maracatu/`) | sassaby, pack 28352 | Alfaia (2 strengths) and its rim; caixa and tarol (2), their rims and the samba rimshot; gonguê (the pack's agogo); shekere. |
 | **Salsa ◆** (`salsa/`) | sassaby, pack 28352 | Timbales macho, hembra and rimshot; mambo bell (body soft, mouth hard); cha-cha bell; wood block; conga, quinto and tumba with their slaps. Not used: electrokick, electro cymbal, china trash cymbal, the caixa with reverb, the side stick, mele and white conga E. |
 | **Medieval ◆** (`medieval/`) | "medieval perc" by **menegass** — [pack 5824](https://freesound.org/people/menegass/packs/5824/) | Tabor (the pack's "adrum", 2 strengths) and Tabor Open; hand drum (its "conga") and slap; tambourine skin and jingles; clappers; seeds; seed pod; shaker; rattle. The seedm and lyre-hit takes are not used. |
-| **Clay Drums ◆** (`clay/`) | udu by **iyankc** (Freesound 479245–479253, single files, CC0 per the owner); darbuka made by the owner on the owner's HandSonic V (`Darbuka_01`–`06.wav`) | Udu Bass, Udu, Udu Tap (2 strengths); Darbuka Doum (3), Tek (2), Ka. |
+| **Clay Drums ◆** (`clay/`) | udu by **iyankc** (Freesound 479245–479253, single files, CC0 per the owner); darbuka, the owner's own performance on a HandSonic V (`Darbuka_01`–`06.wav`) | Udu Bass, Udu, Udu Tap (2 strengths); Darbuka Doum (3), Tek (2), Ka. |
 
 Which file is which take:
 
@@ -535,7 +535,7 @@ surdo-f ← x-surdo-4bar-f ([36110](https://freesound.org/s/36110/)) · caixeta-
 
 **World Loops** (`loops/world/`, 396 KB, stereo) — the owner's files
 `DrumSet_Groove`, `Electro_Hi_Drums`, `Weirdo_Drums`,
-`Woodblock_and_stuff_sfx` and `Udu_Groovoo`: made by the owner on the owner's
+`Woodblock_and_stuff_sfx` and `Udu_Groovoo`: the owner's own performance on a
 HandSonic V. The first two are exact whole-bar exports (8 beats at 130.01, 16 at
 137.00) and are used whole. The other three were performances, so the beat
 grid was fitted to their onsets (least squares; 9.1, 5.6 and 7.5 ms RMS
