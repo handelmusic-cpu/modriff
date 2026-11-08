@@ -882,7 +882,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
    the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
 6. *Mirror. Done (6.9.9.9.9.9.4), see the end of this file.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
    Test: the mirror against what the page's highlight shows on the same run.
-7. *Endings and the practice trainer. The trainer is done (6.9.9.9.9.9.5), see the end of this file; the endings stay the page's, with the reasons there.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
+7. *Endings and the practice trainer. The trainer is done (6.9.9.9.9.9.6), see the end of this file; the endings stay the page's, with the reasons there.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
    ritard (a ramp in the tempo map), the trainer's loop `a..b`, speed-up and next-key per chorus. These are the last and the most separable: if the owner
    prefers, they stay page-driven (the page sends the commands at the wrap) and are simply not available while the app is away.
 Slice 3 (the arp and the melody generator) sits beside this: both follow the chord stream, so piece 2 should come before them, not after.
@@ -1101,7 +1101,7 @@ test shows the Next waiting in the mirror and gone after the section moves, and 
 can see it counting). **Not done:** the endings and the practice trainer's screens (piece 7); the capo (the page's `_songBaseRoot`) is not mirrored, so a key change made on the page is told to the engine by
 `_nsSong.capo`; a chord tapped on the chart while the engine drives does not move the engine's place. Not heard or seen on device: checklist 28.
 
-## Slice 4, piece 7 (6.9.9.9.9.9.5): the practice trainer; the endings stay the page's
+## Slice 4, piece 7 (6.9.9.9.9.9.6): the practice trainer; the endings stay the page's
 
 **The trainer, in the engine.** `SongSequencer` now does what `_advanceLoopSlot` does for the practice trainer. The practice loop (chords a to b of one section): past chord b the song goes back to a without
 the pass ending, unless a Next/Prev is queued (it takes effect at the end of the pass, and a loop that never ended one would hold it off for ever), and each such pass is a chorus. Otherwise a chorus is

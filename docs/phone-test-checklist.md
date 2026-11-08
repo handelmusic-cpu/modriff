@@ -508,7 +508,7 @@ While the engine plays the song, the Songs page, the transport's song button and
 | 28.6 | Open Stage during it | the playing line is kept a third of the way down and follows the engine |
 | 28.7 | Freeze the page for 3 s and wake it | the screens catch up to the engine's chord (they were not lit while frozen) |
 
-## 29. The practice trainer in the engine (6.9.9.9.9.9.5; audible through a developer entry only)
+## 29. The practice trainer in the engine (6.9.9.9.9.9.6; audible through a developer entry only)
 
 The engine now loops the bars you picked, counts choruses, steps the tempo and the key itself. The endings are still the page's.
 
