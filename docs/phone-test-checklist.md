@@ -434,7 +434,7 @@ The drums, the bass and the chord rhythm of the engine now read one tempo map, a
 | 23.3 | Then `_nsDrum.tempoRamp(130, 4000)`, and a jump: change the tempo field | the same, speeding up; a jump from the field lands on the next step with no hiccup |
 | 23.4 | Freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) during a ramp | the ramp carries on, the three stay together |
 
-## 24. The engine steps the song (6.9.9.9.9.3; audible through a developer entry only)
+## 24. The engine steps the song (6.9.9.9.9.4; audible through a developer entry only)
 
 The engine now walks the song's chords by the drums' bar lines and gives the bass its chord windows. The chords themselves still sound from the page (piece 3 moves them), so what you hear from the engine is the drums and the bass following the engine's chart.
 

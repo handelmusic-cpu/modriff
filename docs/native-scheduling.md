@@ -868,7 +868,7 @@ generators stay JS; (6) the mirror the page draws the highlight from.
 lists identical; mutation checks that the test can fail; audio nulls where sound is composed; the host thread; a developer entry; a checklist line):
 1. *A tempo map. Done (6.9.9.9.9.2), see the end of this file.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
    trainer's jump against the engine's step times, drums, bass and chord rhythm together. Everything else needs it, and it is useful alone.
-2. *Song stepping. Done (6.9.9.9.9.3), see the end of this file.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
+2. *Song stepping. Done (6.9.9.9.9.4), see the end of this file.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
    starts where the page would, advances on the bar lines of the drums' clock (and on its own clock for sub-bar chords), counts passes, leaves sections, applies a
    queued Next/Prev at the end of the pass, and emits the chord windows the bass already reads (so the page stops calling `_blOnChord`). Test: the page's
    `startSongLoop` / `tickSongLoop` / `_advanceLoopSlot` on a fake clock, with bar lines announced the way the drums announce them; the lists of (time, section,
@@ -926,7 +926,7 @@ the mirror says 60 then 120, no late edit. All the earlier drum, bass and chord 
 **Not done.** The page does not call the ramp (nothing in the app moves the tempo through the engine yet; the song loop will). A ramp is exact in the
 engine, not the page's integer-rounded steps twice a beat, so the two ritardandi differ by those roundings. Not heard on device: checklist 23.
 
-## Slice 4, piece 2 (6.9.9.9.9.3): song stepping
+## Slice 4, piece 2 (6.9.9.9.9.4): song stepping
 
 **What was built.** `native/modsynth/songcore.h` (+ `.cpp`): `SongScore` (sections of chords: bars, beats, eighths, rest, root, slash bass, tones, phrase lock; passes
 and the follow flag per section; the meter's bar, swung Chart 8ths, snap, the capo) and `SongSequencer`, a port of the page's stepping: `_playLoopSlot` (a chord
