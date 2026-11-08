@@ -878,7 +878,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
    a progression, and the 960-chord null test fed from the song.
 4. *The song's comping. Done (6.9.9.9.9.9), see the end of this file.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
    rhythms, swing, the no-re-strike-of-the-first-hit rule, gated hits already done). Test: hit lists per slot against the page.
-5. *Asking the page for a line.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
+5. *Asking the page for a line. Done (6.9.9.9.9.9.1), see the end of this file.* The engine publishes "the chord that follows is X, it starts at T" a chord ahead (what `_syncPregenNext` computes today) and
    the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
 6. *Mirror.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
    Test: the mirror against what the page's highlight shows on the same run.
@@ -1048,4 +1048,32 @@ starts. A hit lost in the last tick is audible only as a missing re-strike a few
 **Not done.** The arp's chord (slice 3), a chord tapped by hand, glide, Pure tuning, sampled voices, the practice loop and trainer, endings (piece 7). A chord whose rhythm
 changes while it plays (the chart edited) keeps the hits it was planned with until the next chord. The hits are planned with the tempo of the moment the chord starts, as the page
 does, except that a ramp in the tempo map moves them. Not heard on device: checklist 26.
+
+## Slice 4, piece 5 (6.9.9.9.9.9.1): the engine asks the page for a line
+
+**What was built.** The generators (the bass line's, with its dice) stay in the page, so while the engine plays the song it asks. Each time it starts a chord the host's mirror
+(`song.ask`, with the top-level `sampleRate`) holds `[count, section, chord, pass, start, end, next section, next chord, key change]`, in frames: which chord sounds, its window
+and where the song goes next (`SongSequencer::nextPlace`, the same peek the bass's next-root is made from). `window._songAnswer(ask, bassFirst, sr, pre)` is what the page's loop
+does when it starts a chord (`_syncRegenAt`, `_syncPregenNext`), with the same generator, rules and order: with Bass+Mel Sync on and the bass on Follow off (Follow transposes the line
+itself from the windows the engine makes; Free and a chord with nothing written ahead are the others) it (1) writes the line for the NEXT chord, unless that is a rest, over what will
+sound (the live key change, a slash chord's bass leading), and holds it for the moment this chord ends (`_blPregenFor`, the page's `_blPregen` for a player that is not its own scheduler:
+it borrows `blPlaying` for the call so the line goes to the pending buffer and the grid on screen and its pins are left alone); and (2) writes the line for THIS chord when nothing wrote it
+ahead (the first of a run, or the peek was wrong: a queued move taken at the end of a pass), lands it, and returns the bass's score. The waiting line goes to the engine as
+`seqBassPending` (6.9.9.9.9.1) with its moment counted from the bass line's first frame, and the page's own copy is dropped (`_blNativePendingTake`). The melody's line is slice 3.
+`_nsSong.start()` now polls the mirror every 40 ms and answers (`answering: false` to leave the bass on its one line; `watch(on)`); stopping the song stops the polling.
+
+**Measured.** `tests/seq/songask.test.js` runs `songtool` on a song and the bar lines the drums would announce (it prints the ask for every chord) and, for each ask, the page's own
+two steps on the same state with the same dice (`Math.random` is seeded per chord): `_syncPregenNext` for the next chord's line and the line `_syncRegenAt` lands for a chord nothing
+wrote ahead, against `_songAnswer`: the waiting line cell for cell and the frame it is held for, the bass score's grid. 6 songs: bar chords across two sections with passes, a rest and a slash
+chord (29 asks, 24 lines written ahead, 5 for the chord itself); chords of half a bar and beats (28 asks); a queued Next whose peek says one place and the loop goes another (36 asks,
+15 lines for the chord itself); Follow on and Free (nothing asked, 21 asks each); a key change of 3 (26 asks). Identical in every one. Mutation checks (12, in the page's answer): the moment
+taken from the chord's start, no key change, always rewriting the chord's own line, no slash bass, a rest written for, the wrong place remembered, the Follow gate and the Sync gate gone, the
+next chord taken from the current section, no landing, the borrowed `blPlaying` gone, the page's copy kept: all caught. Time: an answer takes 0.5 to 2 ms (measured in Chrome); the ask is in
+the mirror a look-ahead (0.15 s) before the chord sounds and the poll is 40 ms, so the line is in the engine's hands 2.1 s before the next chord of a bar at 120 BPM and 0.71 s before the
+next chord of a one-beat chord at 100 BPM; a chord shorter than about 0.2 s would not leave time (the page's own writing has the same limit). The host test (no page) checks the mirror's ask
+for a two-section song and its sample rate.
+
+**Not done, said plainly.** The melody's line (slice 3). In the background there is no page to answer, so a Follow-off line stops being rewritten and the last one goes on (the owner's
+decision of 6.9.4, pending in the plan's list). A chart edited while the song plays answers over the page's new chart while the engine steps its old one. The melody's pregeneration,
+`_syncLastChordToKey` after a key change by hand, and the chord tapped by hand are the page's. Not heard on device: checklist 27.
 

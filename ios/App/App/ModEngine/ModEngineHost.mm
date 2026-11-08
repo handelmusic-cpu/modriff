@@ -177,6 +177,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   modsynth::SongVoicer svoice;            // the chord of each slot (songvoice.h): voiced and struck by cplay below, when the score says how the chords sound
   bool hasSong = false;
   uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0, songHits = 0;
+  // The chord the song last started and the one it will go to (the page writes the bass's line for that one while this sounds): the count of chords started,
+  // where it is in the song, its window in frames, where next, and the live key change. Read by the mirror.
+  double ask[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   // The chord comp (chordcore.h, chordplay.h): the rhythm's clock and the chord it strikes, on the same thread, bank and pool.
   modsynth::ChordSequencer cseq;
   modsynth::ChordPlayer cplay;
@@ -236,6 +239,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.score().capo, tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
       sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
         bseq.timeline().push(c.w); songChords++;
+        { int ns = 0, nl = 0; sseq.nextPlace(ns, nl);
+          const double a9[9] = {(double)songChords, (double)c.section, (double)c.slot, (double)c.pass, c.w.t, c.w.end, (double)ns, (double)nl, (double)c.capo};
+          std::memcpy(ask, a9, sizeof ask); }
         if (!sseq.score().voice.on) return;
         hits(c.w.t);                                  // the chord before plays its last re-strikes first: the player takes them in time order
         act(svoice.chord(c, sseq.score(), tmap), false);
@@ -752,7 +758,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.bseq.timeline().setSampleRate(_sampleRate);
   q.bseq.timeline().setLocks(q.sseq.score().locks);
   const BOOL ok = q.sseq.start(first, section, slot, pass);
-  q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = q.songHits = 0;
+  q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = q.songHits = 0; std::memset(q.ask, 0, sizeof q.ask);
   // The chords the song sounds itself: a fresh run of voice leading, the chord player on the song's voice, nothing left ringing from before.
   q.svoice.reset();
   if (q.sseq.score().voice.on) { q.cplay.reset(); q.cplay.kit = q.sseq.score().voice.kit; }
@@ -880,7 +886,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     const HostSeq::Fired &f = q.ring[(q.ringN - 1 - k) % HostSeq::kRing];
     if (f.frame <= now) { step = f.step; bar = f.bar; break; }
   }
-  NSDictionary *r = @{@"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
+  NSDictionary *r = @{@"sampleRate": @(_sampleRate), @"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
                       @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
                       @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),
                       @"recDropped": @((double)q.recDropped),
@@ -896,6 +902,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
+                                 @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};

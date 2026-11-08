@@ -403,6 +403,10 @@ int main() {
       CHECK([sg[@"running"] boolValue] && [sg[@"chords"] intValue] >= 4, "the song steps with no page: %d chords", [sg[@"chords"] intValue]);
       CHECK([sg[@"section"] intValue] == 1 && [sg[@"slot"] intValue] == 0, "the queued Next was taken at the end of the pass (now in section %d)", [sg[@"section"] intValue]);
       CHECK([m[@"bass"][@"windows"] intValue] >= 2, "and the bass has its chord windows: %d", [m[@"bass"][@"windows"] intValue]);
+      NSArray *ask = sg[@"ask"];
+      CHECK(ask.count == 9 && [ask[0] intValue] == [sg[@"chords"] intValue] && [ask[5] doubleValue] > [ask[4] doubleValue] && [ask[6] intValue] >= 0 && [ask[6] intValue] <= 1 && [ask[7] intValue] >= 0,
+            "the mirror asks the page about the chord that follows: chord %d now (section %d chord %d), %d/%d next, ends %.0f frames after it began", [ask[0] intValue], [ask[1] intValue], [ask[2] intValue], [ask[6] intValue], [ask[7] intValue], [ask[5] doubleValue] - [ask[4] doubleValue]);
+      CHECK([m[@"sampleRate"] doubleValue] == SR, "and says its sample rate (%.0f)", [m[@"sampleRate"] doubleValue]);
       [g seqSongSetCapo:2];
       [g seqSongStop];
       const int chords = [[g seqMirror][@"song"][@"chords"] intValue];
