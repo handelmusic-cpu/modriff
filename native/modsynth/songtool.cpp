@@ -4,10 +4,12 @@
 // cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, section, slot, pass, nTicks, then nTicks x (now, horizon, drumsPlaying, nMarks,
 //   marks..., queuedMove, capo (1e9: none)), then the score (songcore.h)]. A tick is one call of the scheduler: the bar lines the drums announced since the last
 //   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
-// Output per case: "CASE i", "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, "END i n".
+// Output per case: "CASE i", "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
+// (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), "END i n".
 #include <cstdio>
 #include <vector>
 #include "songcore.h"
+#include "songvoice.h"
 
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "usage: songtool cases.f64\n"); return 2; }
@@ -37,6 +39,7 @@ int main(int argc, char **argv) {
     k += used;
     modsynth::TempoMap tm(sr, bpm);
     modsynth::SongSequencer q(sr);
+    modsynth::SongVoicer voicer;
     q.setScore(sc); q.setTempoMap(&tm);
     if (!q.start(first, section, slot, pass)) { fprintf(stderr, "case %d: cannot start\n", c); return 2; }
     printf("CASE %d\n", c);
@@ -45,11 +48,19 @@ int main(int argc, char **argv) {
       for (double m : t.marks) q.noteBar(m);
       if (t.move) q.queueMove(t.move);
       if (t.capo < 1e8) q.setCapo((int)t.capo);
-      fired += q.run(t.horizon, t.drums, [](const modsynth::SongChord &ch) {
+      fired += q.run(t.horizon, t.drums, [&](const modsynth::SongChord &ch) {
         const modsynth::ChordWindow &w = ch.w;
         printf("W %.17g %.17g %d %d %d %d %d %d %d %d %zu", w.t, w.end, w.rest ? 1 : 0, w.rootPc, w.bassPc, w.nextPc, w.lock, ch.section, ch.slot, ch.pass, w.pcs.size());
         for (int p : w.pcs) printf(" %d", p);
         printf("\n");
+        if (q.score().voice.on) {
+          const modsynth::VoiceAction a = voicer.chord(ch, q.score().voice, tm);
+          if (a.play) {
+            printf("V %.17g %.17g %.17g %d %.17g %d %zu", a.onset, a.e.vel, a.e.durSec, a.e.hold ? 1 : 0, a.e.holdSec, a.e.subNote, a.e.notes.size());
+            for (int n : a.e.notes) printf(" %d", n);
+            printf("\n");
+          } else if (a.stop) printf("S %.17g\n", a.onset);
+        }
       });
     }
     printf("END %d %d\n", c, fired);

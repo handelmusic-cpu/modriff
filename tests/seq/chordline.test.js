@@ -10,7 +10,11 @@
    by the page's release (_webChordReleaseAt), which the bank holds as edits (bank part 4) and the player sends each voice at the later of the end of
    the gate and the attack after that voice began. The gates run from shorter than the attack to longer than the chord is left alone for.
 
-   Run: make -C native/modsynth chordseqtest && node tests/seq/chordline.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90), VOICES, MODES (decay,hold) */
+   The chords can be the song's (SONG=drop2, rnb, neosoul, open, close): six chords of a progression with a slash chord, voiced by the page's own
+   playChartSlot2 (VoiceLead and the chosen voicing), whose messages become the list. tests/seq/songstep.test.js holds the engine's voicing to those messages;
+   this holds the sound that follows from them to the page's, so a song's chords are checked from the chart to the audio.
+
+   Run: make -C native/modsynth chordseqtest && node tests/seq/chordline.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90), VOICES, MODES (decay,hold), SONG, PROG_JSON, CHORDSEQ (another build of the tool) */
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { spawnSync } = require('child_process');
@@ -38,6 +42,7 @@ function serve() {
 let PROG_ALL = [[60, [60, 64, 67], null, 0.8], [57, [57, 60, 64], null, 0.5], [53, [53, 57, 60, 64], null, 0.9], [55, [55, 59, 62, 65], null, 0.7], [60, [64, 67, 72], null, 0.6], [62, [62, 65, 69, 72, 76], 50, 0.8]];
 if (process.env.SINGLE) { PROG_ALL[0] = [60, [60], null, 0.8]; PROG_ALL[1] = [57, [57], null, 0.5]; }
 const PROG = PROG_ALL.slice(0, parseInt(process.env.CHORDS || '6'));
+if (process.env.PROG_JSON) { PROG.length = 0; JSON.parse(process.env.PROG_JSON).forEach(c => PROG.push(c)); }   // [[root, notes, bass or null, vel], ...] to try a progression
 const SETTINGS = [
   { name: 'Strum off, Width off', strum: false, spread: 0, width: 0 },
   { name: 'Strum on (150 ms), Width 0.4', strum: true, spread: 0.15, width: 0.4 },
@@ -51,8 +56,27 @@ const SETTINGS = [
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
   await page.goto('http://127.0.0.1:' + srv.address().port + '/index.html'); await page.waitForTimeout(1200);
   await page.getByText('Start', { exact: true }).first().click(); await page.waitForTimeout(1500);
+  if (process.env.SONG) {
+    // the progression as the page voices it: C, Am7, F/A, G9, Dm7, G7 over B
+    const song = await page.evaluate(v => {
+      const sent = [], E = window.modEngine, keep = E.send;
+      E.send = m => { if (m && m.part === 'chord' && m.kind === 'chord') sent.push(m); };
+      try {
+        voicing = v; voiceVary = false; autoInvOn = true; wetDry = 0.5; chordsEnabled = true;
+        _prevVoices = []; _styledPrevTop = null; _jazzPrev = null; _vvCount = {}; _vvHist = {}; _vvLastId = null;
+        root = 0; mode = 'major'; songLoopActive = false;
+        const sl = (r, ivs, bass) => ({ rootM: r, ivs, bassNote: bass, label: 'x', bars: 1 });
+        sections = [{ name: 'A', slots: [sl(48, [0, 4, 7]), sl(57, [0, 3, 7, 10]), sl(53, [0, 4, 7], 57), sl(55, [0, 4, 7, 10, 14]), sl(50, [0, 3, 7, 10]), sl(55, [0, 4, 7, 10], 59)] }];
+        for (let i = 0; i < 6; i++) playChartSlot2(0, i, 1 + i * 0.5);
+      } finally { E.send = keep; }
+      return sent.map(m => [m.root, m.notes, m.bass, m.vel]);
+    }, process.env.SONG);
+    if (song.length !== 6) { console.error('the page struck ' + song.length + ' chords, not 6'); process.exit(2); }
+    PROG.length = 0; song.forEach(c => PROG.push(c));
+    console.log('the song, voiced by the page (' + process.env.SONG + '): ' + song.map(c => (c[2] != null ? c[2] + '/' : '') + c[1].join('.')).join('  '));
+  }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chordline-'));
-  const bin = path.join(root, 'native', 'modsynth', 'chordseqtest');
+  const bin = process.env.CHORDSEQ || path.join(root, 'native', 'modsynth', 'chordseqtest');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth chordseqtest'); process.exit(2); }
 
   await page.evaluate(() => {

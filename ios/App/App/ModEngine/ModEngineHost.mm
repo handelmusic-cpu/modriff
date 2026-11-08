@@ -22,6 +22,7 @@
 #include "bassplay.h"
 #include "chordcore.h"
 #include "songcore.h"
+#include "songvoice.h"
 #include "voicebank.h"
 #include <functional>
 #include <thread>
@@ -173,8 +174,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // The song loop (songcore.h): which chord of which section sounds and when it changes; it hands the bass its chord windows, in place of the page's
   // _blOnChord. It counts the bar lines the drums announce.
   modsynth::SongSequencer sseq;
+  modsynth::SongVoicer svoice;            // the chord of each slot (songvoice.h): voiced and struck by cplay below, when the score says how the chords sound
   bool hasSong = false;
-  uint64_t songChords = 0, songFirst = 0;
+  uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0;
   // The chord comp (chordcore.h, chordplay.h): the rhythm's clock and the chord it strikes, on the same thread, bank and pool.
   modsynth::ChordSequencer cseq;
   modsynth::ChordPlayer cplay;
@@ -226,7 +228,14 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     }
     if (sseq.running() && hasSong) {
       const double now = (double)frames->load(std::memory_order_relaxed);
-      sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) { bseq.timeline().push(c.w); songChords++; });
+      sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
+        bseq.timeline().push(c.w); songChords++;
+        const modsynth::SongVoiceCfg &vc = sseq.score().voice;
+        if (!vc.on) return;
+        const modsynth::VoiceAction a = svoice.chord(c, vc, tmap);
+        if (a.play) { songVoiced++; cplay.play(a.e, now); }
+        else if (a.stop) { songRests++; cplay.stopAt(a.onset); }
+      });
       bseq.timeline().prune(now);
     }
     if (bseq.running() && hasBass) {
@@ -738,7 +747,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.bseq.timeline().setSampleRate(_sampleRate);
   q.bseq.timeline().setLocks(q.sseq.score().locks);
   const BOOL ok = q.sseq.start(first, section, slot, pass);
-  q.songChords = 0; q.songFirst = (uint64_t)first;
+  q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = 0;
+  // The chords the song sounds itself: a fresh run of voice leading, the chord player on the song's voice, nothing left ringing from before.
+  q.svoice.reset();
+  if (q.sseq.score().voice.on) { q.cplay.reset(); q.cplay.kit = q.sseq.score().voice.kit; }
   os_unfair_lock_unlock(&q.lock);
   if (ok) q.startThread();
   return ok;
@@ -747,6 +759,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqSongStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->sseq.stop();
+  // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
+  if (_hostSeq->sseq.score().voice.on) _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed));
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -876,7 +890,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"cuts": @((double)q.bplay.cuts), @"lateStarts": @((double)q.bplay.lateStarts), @"firstFrame": @((double)q.bassFirst),
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
-                                 @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart())},
+                                 @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
+                                 @"voiced": @((double)q.songVoiced), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
+                                 @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
   os_unfair_lock_unlock(&q.lock);
   return r;

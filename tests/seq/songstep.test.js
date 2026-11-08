@@ -8,7 +8,13 @@
    chord for chord: when it starts (to 1e-5 of a frame), when its window ends, rest, root, slash bass, the next chord's root, the chord's tones,
    whether it has a phrase lock, and where in the song it is (section, chord, pass).
 
-   Run: make -C native/modsynth songtool && node tests/seq/songstep.test.js        Env: CHROMIUM, PLAYWRIGHT */
+   Piece 3 (native/modsynth/songvoice.h, voicing.h) adds what each chord SOUNDS like: the page's playChartSlot2 is run for real, its modEngine messages for
+   the chord part are kept (stop, chord, release), and the engine's action for the same chord must be the same: the notes with the slash bass first, the
+   sub's note, the level, the moment, and either a decay (how long) or a hold (never let go of, or let go of that many seconds on). The voicing is the
+   page's own: VoiceLead, Close, Spread, Drop 2 and 3, Soul, Neo-soul, Vary's lap through them, a chord's own voicing, the key change, the pedal, the
+   comp's hold and ring. The page's voicing memory is reset before each run and so is the engine's.
+
+   Run: make -C native/modsynth songtool && node tests/seq/songstep.test.js        Env: CHROMIUM, PLAYWRIGHT, SONGTOOL (another build of the tool), SONG_DEBUG */
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { spawnSync } = require('child_process');
@@ -46,6 +52,64 @@ const CONFIGS = [
     sections: [{ plays: 2, slots: [[0, MAJ, 1], [9, MIN, 1], [5, MAJ, 2], [7, DOM, 1]] }] },
 ];
 
+// The voicing tests: one song (real MIDI roots: the voice leading lives in C3..G5), many ways to voice and strike it.
+// A slot is [rootM, ivs, bars, beats, eighths, bass note, rest, lock, extra]; extra: {comp, ring, voicing}
+const X7 = [0, 4, 7, 10], X9 = [0, 4, 7, 10, 14], M9 = [0, 3, 7, 10, 14], SUS = [0, 5, 7], MAJ13 = [0, 4, 7, 11, 14, 21], HALF = [0, 3, 6, 10], DIM7 = [0, 3, 6, 9], AUG = [0, 4, 8];
+const VSONG = [
+  { plays: 2, slots: [[48, MAJ, 1], [57, M7, 1], [53, MAJ7, 1], [55, X9, 1]] },
+  { plays: 1, slots: [[50, M9, 1], [55, X7, 1, 0, 0, 59], [48, MAJ13, 1], [60, MAJ, 1, 0, 0, null, true], [52, X7, 1], [57, MIN, 1], [53, SUS, 1],
+                      // half-diminished, augmented and diminished chords; plain major triads off the key (D, B flat); the same chord twice running;
+                      // slash chords whose bass sits high enough to raise the floor the voicing keeps above it
+                      [59, HALF, 1], [51, AUG, 1], [56, DIM7, 1], [50, MAJ, 1], [58, MAJ, 1], [48, MAJ, 1], [48, MAJ, 1], [55, X7, 1, 0, 0, 65], [53, MAJ, 1, 0, 0, 64]] },
+];
+// A song of random chords (a fixed seed): any root in C2..F4, any of the qualities, a slash bass now and then. Long runs through the voicing find the near-ties
+// (two grips of almost the same cost) that a handful of hand-picked chords does not.
+const QUAL = [MAJ, MIN, X7, M7, MAJ7, X9, M9, HALF, DIM7, AUG, SUS, MAJ13, [0, 4, 7, 9], [0, 3, 7, 9], [0, 4, 7, 10, 13, 20]];
+function randomSong(seed, n) {
+  let a = seed >>> 0;
+  const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const slots = [];
+  for (let i = 0; i < n; i++) {
+    const r = 36 + Math.floor(rnd() * 30), q = QUAL[Math.floor(rnd() * QUAL.length)], slash = rnd() < 0.2 ? r + 3 + Math.floor(rnd() * 12) : null;
+    slots.push([r, q, 1, 0, 0, slash]);
+  }
+  return [{ plays: 0, slots }];
+}
+// shift: the whole song moved by that many semitones (the voice leading sits in a fixed register, so where the roots lie decides what it does)
+const vcfg = (name, voice, extra) => Object.assign({ name: 'voicing: ' + name, bpm: 120, drums: true, clocked: true, secs: 80, sections: VSONG, voice }, extra || {});
+CONFIGS.push(
+  vcfg('Close, VoiceLead, the comp holds the chord flat', {}),
+  vcfg('Spread, once a bar (decaying), Strum on caps the decay', { voicing: 'open', comp: 'bars', strum: true, decay: 1.6 }),
+  vcfg('Drop 2', { voicing: 'drop2' }),
+  vcfg('Drop 3, decaying', { voicing: 'drop3', comp: 'bars', decay: 2.4 }),
+  vcfg('Soul / R&B', { voicing: 'rnb' }),
+  vcfg('Neo-soul in C minor', { voicing: 'neosoul', mode: 'minor', root: 0 }),
+  vcfg('Neo-soul in D dorian', { voicing: 'neosoul', mode: 'dorian', root: 2 }),
+  vcfg('Vary on, from Close (a lap through all six types, then the next shape)', { vary: true }, { secs: 200 }),
+  vcfg('Vary on, from Drop 2, Length 1 beat at 100 BPM (the decay is a beat)', { vary: true, voicing: 'drop2', comp: 'bars', strum: false, chordBeats: 1, decay: 3 }, { bpm: 100, secs: 260 }),
+  vcfg('VoiceLead off, Close', { autoInv: false }),
+  vcfg('VoiceLead off, Soul', { autoInv: false, voicing: 'rnb' }),
+  vcfg('As played: held 2 beats, held into the next chord, tapped', { comp: 'played', plays: [2, null, 0] }, { bpm: 90 }),
+  vcfg('chords that carry their own voicing (Soul, Drop 3, Spread) in a Close song', { own: ['rnb', 'drop3', 'open', 'neosoul'] }),
+  vcfg('a key change while it plays with Neo-soul (the key the voicing asks moves with it)', { voicing: 'neosoul' }, { capo: [{ at: 9.3, by: 2 }, { at: 31.3, by: 5 }] }),
+  vcfg('Wet/dry at the top: a held pedal under the arp', { wet: 1 }),
+  vcfg('Chords off: only the stop', { chordsOff: true }),
+  vcfg('Soul, the song an octave down', { voicing: 'rnb' }, { shift: -12 }),
+  vcfg('Drop 2, five semitones up', { voicing: 'drop2' }, { shift: 5 }),
+  vcfg('Drop 3, seven semitones down', { voicing: 'drop3' }, { shift: -7 }),
+  vcfg('Neo-soul, nine semitones up', { voicing: 'neosoul' }, { shift: 9 }),
+  vcfg('Spread, five semitones down, Strum on', { voicing: 'open', strum: true }, { shift: -5 }),
+  vcfg('Close, two octaves down (the first chord is centred from a shift of 36)', {}, { shift: -24 }),
+  vcfg('Vary on from Soul, the song three semitones up', { vary: true, voicing: 'rnb' }, { shift: 3, secs: 200 }),
+  vcfg('48 random chords, Drop 2', { voicing: 'drop2' }, { sections: randomSong(11, 48), secs: 110 }),
+  vcfg('48 random chords, Drop 3', { voicing: 'drop3' }, { sections: randomSong(23, 48), secs: 110 }),
+  vcfg('48 random chords, Soul', { voicing: 'rnb' }, { sections: randomSong(37, 48), secs: 110 }),
+  vcfg('48 random chords, Neo-soul in G major', { voicing: 'neosoul', root: 7 }, { sections: randomSong(41, 48), secs: 110 }),
+  vcfg('48 random chords, Close', {}, { sections: randomSong(53, 48), secs: 110 }),
+  vcfg('48 random chords, Spread, VoiceLead off', { voicing: 'open', autoInv: false }, { sections: randomSong(67, 48), secs: 110 }),
+  vcfg('120 random chords, Vary on from Drop 2 (laps through every type)', { vary: true, voicing: 'drop2' }, { sections: randomSong(71, 120), secs: 250 }),
+);
+
 (async () => {
   const srv = await serve();
   const chrome = process.env.CHROMIUM || (fs.existsSync('/Applications/Google Chrome.app') ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/opt/pw-browsers/chromium');
@@ -63,7 +127,9 @@ const CONFIGS = [
     clearTimeout(clockTimer);
     const realCtx = getCtx, realAudio = audioCtx, realSq = window._sqPlaying, realSetTimeout = window.setTimeout, realClearTimeout = window.clearTimeout;
     const E = window.modEngine, keep = { send: E.send, now: E.now, ready: E.ready };
-    E.send = () => {}; E.now = () => fake.currentTime; E.ready = () => true;
+    let sounds = [], nowRecs = () => 0;
+    E.send = m => { if (m && m.part === 'chord' && (m.kind === 'chord' || m.kind === 'stop' || m.kind === 'release')) sounds.push(Object.assign({ ci: nowRecs() }, m)); };
+    E.now = () => fake.currentTime; E.ready = () => true;
     window.getCtx = () => ctxProxy; audioCtx = ctxProxy;
     // The page's timers run when the fake time reaches them.
     let timers = [], tid = 1;
@@ -81,10 +147,24 @@ const CONFIGS = [
       window._blRestoreState({ steps: 16, grid: Array.from({ length: 16 }, () => ({ note: 0, oct: 2, len: 1, slide: false, accent: false, v: 0, usr: 0 })), follow: true, genStyle: 'funk', gridRootPc: 0, gridIntvs: [0, 4, 7] });
       _bassAutoSync = false; songCompStyle = 'sustain';
       snapMode = c.clocked ? 'bar' : 'off'; rhythmOn = false;
+      // how the chords are voiced and struck, and the memory the voicing leads from
+      const V = c.voice || {};
+      voicing = V.voicing || 'close'; voiceVary = !!V.vary; autoInvOn = V.autoInv !== false; strumMode = !!V.strum; chordBeats = V.chordBeats || 0;
+      wetDry = V.wet != null ? V.wet : 0.5; chordsEnabled = !V.chordsOff; document.getElementById('decay').value = V.decay || 2;
+      if (V.mode) { mode = V.mode; }
+      if (V.root != null) root = V.root;
+      _prevVoices = []; _styledPrevTop = null; _jazzPrev = null; _vvCount = {}; _vvHist = {}; _vvLastId = null; _vvFresh = false; _vvNew = false;
       songSwingOn = !!c.swingOn; if (c.swing != null) window._sqSetSwing(c.swing); else window._sqSetSwing(0);
       window._sqPlaying = () => !!c.drums;
-      const mk = a => { const s = { rootM: a[0], ivs: a[1].slice(), bars: a[2] || 0, beats: a[3] || 0, eighths: a[4] || 0, isRest: !!a[6], label: 'x' }; if (a[5] != null) s.bassNote = a[5]; return s; };
+      const mk = a => { const s = { rootM: a[0] + (c.shift || 0), ivs: a[1].slice(), bars: a[2] || 0, beats: a[3] || 0, eighths: a[4] || 0, isRest: !!a[6], label: 'x' }; if (a[5] != null) s.bassNote = a[5] + (c.shift || 0); return s; };
       sections = c.sections.map((s, i) => ({ name: 'S' + i, slots: s.slots.map(mk), plays: s.plays, follow: s.follow }));
+      songCompStyle = V.comp || 'sustain';
+      let n = 0;
+      sections.forEach(sec => sec.slots.forEach(sl => {
+        if (V.own && !sl.isRest && n % 3 === 1) sl.voicing = V.own[Math.floor(n / 3) % V.own.length];
+        if (V.plays && !sl.isRest) { const r = V.plays[n % V.plays.length]; sl.ring = r; }
+        n++;
+      }));
       PHRASE_LOCKS.bass = {};
       (c.locks || []).forEach(([si, ci], n) => {
         const sl = sections[si].slots[ci];
@@ -93,6 +173,7 @@ const CONFIGS = [
       const st = c.start || { section: 0, slot: 0 };
       songCurrentSection = st.section; songCurrentSlot = st.slot; _songHeldAt = null; songSectionPass = 0; songPendingSectionDelta = 0; songWaitingForBar = false;
       const recs = [];
+      nowRecs = () => recs.length;
       window._blOnChord = function (slot, atTime, durSec, nextSlot, capoOverride) {
         origOnChord.apply(this, arguments);
         const w = window._blPeekLast();
@@ -103,8 +184,9 @@ const CONFIGS = [
       const marks = []; for (let m = T0; m < T0 + c.secs + 10; m += barSec) marks.push(m);
       let announced = 0;
       window._barAnnouncedT = 0;      // the last run's bar lines must not make this start look announced already
+      sounds = [];
       startSongLoop(false, T0);
-      const sc = window._songNativeScore();
+      const sc = window._songNativeScore({ chords: true });
       const ticks = [], moves = (c.moves || []).map(m => Object.assign({ done: false }, m)), capos = (c.capo || []).map(m => Object.assign({ done: false }, m));
       for (let guard = 0; guard < 200000; guard++) {
         fake.currentTime += DT;
@@ -118,7 +200,7 @@ const CONFIGS = [
         if (fake.currentTime > T0 + c.secs) break;
       }
       stopSongLoop();
-      out.push({ name: c.name, recs, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
+      out.push({ name: c.name, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
     }
     window._blOnChord = origOnChord; window.setTimeout = realSetTimeout; window.clearTimeout = realClearTimeout; window._sqPlaying = realSq;
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready; PHRASE_LOCKS.bass = {};
@@ -128,7 +210,7 @@ const CONFIGS = [
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
 
   const SR = 48000, tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'song-'));
-  const bin = path.join(root, 'native', 'modsynth', 'songtool');
+  const bin = process.env.SONGTOOL || path.join(root, 'native', 'modsynth', 'songtool');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth songtool'); process.exit(2); }
   console.log('\nthe song loop, the engine against the page, chord for chord:');
   result.forEach(c => {
@@ -136,7 +218,13 @@ const CONFIGS = [
     fs.writeFileSync(path.join(tmp, 'song.f64'), Buffer.from(Float64Array.from(cases).buffer));
     const r = spawnSync(bin, [path.join(tmp, 'song.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
     if (r.status !== 0) { console.error(r.stderr); process.exit(2); }
-    const nat = r.stdout.split('\n').filter(l => l.startsWith('W ')).map(l => { const f = l.split(' '); const np = +f[11]; return { t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }; });
+    const nat = [];
+    r.stdout.split('\n').forEach(l => {
+      const f = l.split(' ');
+      if (l.startsWith('W ')) { const np = +f[11]; nat.push({ t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }); }
+      else if (l.startsWith('V ')) { const nn = +f[7]; nat[nat.length - 1].act = { kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }; }
+      else if (l.startsWith('S ')) nat[nat.length - 1].act = { kind: 'S', onset: +f[1] };
+    });
     const pg = c.recs;
     if (process.env.SONG_DEBUG) { console.log(c.name); console.log('page  ', pg.slice(-4).map(p => (p.t).toFixed(3) + '/' + p.section + '.' + p.slot).join(' ')); console.log('native', nat.slice(-4).map(n => (n.t / SR).toFixed(3) + '/' + n.section + '.' + n.slot).join(' ')); }
     // The engine runs a look-ahead ahead of the page's timers, so it may hold a chord or two more at the end of the run: the page's list is the prefix.
@@ -152,6 +240,36 @@ const CONFIGS = [
     if (!bad && nat.length < pg.length) bad = nat.length + ' chords native, ' + pg.length + ' on the page';
     const same = !bad && pg.length > 6, why = bad || '';
     ok(same && c.ok && (!c.locks || nat.filter(n => n.lock).length > 0), c.name + ': ' + pg.length + ' chords identical (worst timing ' + worstT.toExponential(1) + ' frames)', why + ' ' + (c.why || []).join(','));
+
+    // What each chord sounds like: the page's messages for it against the engine's action.
+    if (process.env.SONG_DEBUG && /voicing/.test(c.name)) console.log(c.name + '\n  ' + nat.slice(0, 9).map(n => n.act && n.act.notes ? n.act.notes.join('.') : '-').join('  '));
+    let vbad = null, nChord = 0, nStop = 0, nRel = 0, nHold = 0, worstS = 0;
+    for (let k = 0; k < Math.min(pg.length, nat.length) && !vbad; k++) {
+      const t = pg[k].t, act = nat[k].act;
+      const cm = c.sounds.find(m => m.kind === 'chord' && Math.abs(m.at - t) < 1e-9);
+      const rel = cm && c.sounds.find(m => m.kind === 'release' && m.id === cm.id);
+      const st = c.sounds.find(m => m.kind === 'stop' && Math.abs(m.at - t) < 1e-9);
+      if (!act) { vbad = `chord ${k}: the engine did nothing`; break; }
+      if (pg[k].rest || c.chordsOff) {
+        if (act.kind !== 'S' || !st) vbad = `chord ${k}: should only stop (page ${st ? 'stopped' : 'did not stop'}, engine ${act.kind})`;
+        else { nStop++; worstS = Math.max(worstS, Math.abs(act.onset - st.at * SR)); if (Math.abs(act.onset - st.at * SR) > 1e-5) vbad = `chord ${k}: stop at ${st.at * SR} on the page, ${act.onset}`; }
+        continue;
+      }
+      if (!cm) { vbad = `chord ${k}: the page struck nothing at ${t}`; break; }
+      if (act.kind !== 'V') { vbad = `chord ${k}: the engine only stopped`; break; }
+      const notes = (cm.bass != null ? [cm.bass] : []).concat(cm.notes), sub = cm.bass != null ? cm.bass : cm.root;
+      if (notes.join() !== act.notes.join()) vbad = `chord ${k}: notes ${notes.join()} on the page, ${act.notes.join()} native`;
+      else if (sub !== act.sub) vbad = `chord ${k}: sub ${sub} on the page, ${act.sub} native`;
+      else if (Math.abs(cm.vel - act.vel) > 1e-12) vbad = `chord ${k}: level ${cm.vel} on the page, ${act.vel} native`;
+      else if (Math.abs(cm.at * SR - act.onset) > 1e-5) vbad = `chord ${k}: struck at ${cm.at * SR} on the page, ${act.onset} native`;
+      else if ((cm.dur == null) !== !!act.hold) vbad = `chord ${k}: ${cm.dur == null ? 'held' : 'decaying'} on the page, ${act.hold ? 'held' : 'decaying'} native`;
+      else if (cm.dur != null && Math.abs(cm.dur - act.dur) > 1e-12) vbad = `chord ${k}: decays ${cm.dur} s on the page, ${act.dur} native`;
+      else if (cm.dur == null && !!rel !== (act.holdSec >= 0)) vbad = `chord ${k}: ${rel ? 'let go of' : 'held into the next chord'} on the page, holdSec ${act.holdSec} native`;
+      else if (rel && Math.abs((rel.at - cm.at) - act.holdSec) > 1e-9) vbad = `chord ${k}: let go ${rel.at - cm.at} s after on the page, ${act.holdSec} native`;
+      if (!vbad) { nChord++; if (rel) nRel++; if (cm.dur == null) nHold++; worstS = Math.max(worstS, Math.abs(cm.at * SR - act.onset)); }
+    }
+    ok(!vbad && nChord + nStop > 6 && c.chordsOk, '    ...and sounds the same: ' + nChord + ' chords struck (' + nHold + ' held, ' + nRel + ' let go of), ' + nStop + ' stops, worst ' + worstS.toExponential(1) + ' frames',
+       (vbad || '') + ' ' + (c.chordWhy || []).join(','));
   });
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');
   process.exit(fail ? 1 : 0);
