@@ -53,7 +53,7 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 # The sequencer's thread in the real host: steps on the render clock with no page, mirror, tempo, stop (macOS only).
-seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
 clean:
@@ -94,8 +94,8 @@ banktest: banktest.cpp voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph
 	$(CXX) $(CXXFLAGS) -o $@ banktest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
 # The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
-songtool: songtool.cpp songcore.cpp songcore.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h
-	$(CXX) $(CXXFLAGS) -o $@ songtool.cpp songcore.cpp basscore.cpp seqcore.cpp
+songtool: songtool.cpp songcore.cpp songcore.h songvoice.h voicing.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
+	$(CXX) $(CXXFLAGS) -o $@ songtool.cpp songcore.cpp basscore.cpp seqcore.cpp voicebank.cpp
 
 tempotest: tempotest.cpp tempomap.h basscore.cpp basscore.h seqcore.cpp seqcore.h chordcore.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
 	$(CXX) $(CXXFLAGS) -o $@ tempotest.cpp basscore.cpp seqcore.cpp voicebank.cpp

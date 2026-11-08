@@ -873,7 +873,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
    queued Next/Prev at the end of the pass, and emits the chord windows the bass already reads (so the page stops calling `_blOnChord`). Test: the page's
    `startSongLoop` / `tickSongLoop` / `_advanceLoopSlot` on a fake clock, with bar lines announced the way the drums announce them; the lists of (time, section,
    chord, window) identical for loops, repeats, endings-free songs, sub-bar chords, snap modes, aligned and waiting starts.
-3. *The chord of a slot.* A port of `smartVoiceLead` (deterministic, with its state) and the slot's chord event into `ChordPlayer` (the voice exists since
+3. *The chord of a slot. Done (6.9.9.9.9.7), see the end of this file.* A port of `smartVoiceLead` (deterministic, with its state) and the slot's chord event into `ChordPlayer` (the voice exists since
    6.9.9.9.4), `stopAll` on a rest, `ring`. Vary's dice are the engine's (not the page's: the owner accepted that, 6.9.4). Test: voicings identical over
    a progression, and the 960-chord null test fed from the song.
 4. *The song's comping.* `_scheduleCompHits` as the chord rhythm of `chordcore.h` restarted at each chord and bounded by the slot (built-ins and drawn
@@ -961,3 +961,52 @@ of the pass, gives the bass its windows and stops.
 hand (a jump), the practice loop and trainer, the endings (piece 7). Marks the page ignores because its two clocks fire in the other order, within 0.12 s after a timed chord
 ends, are counted by the engine. Not heard on device: checklist 24.
 
+## Slice 4, piece 3 (6.9.9.9.9.7): the chord of a slot
+
+**What was built.** The engine sounds the chords it steps. `native/modsynth/voicing.h` is a line-for-line port of how the page voices a chord: `smartVoiceLead`
+(the voice leading, with its memory of the last chord), `chordVoicing` (the voicing the player chose: Close, Spread, Drop 2, Drop 3, Soul/R&B, Neo-soul, and Vary's
+lap through them with its per-chord counts), `styledVoicing` and `jazzVoicing` (which ask the key's own tones: the mode's steps from the key, which moves with the capo),
+`voiceIntervals` and `chordEngineEvent` (the notes, a slash chord's bass directly under the lowest tone). `songvoice.h` is `_playChartSlot2` + `playChord`: a rest
+stops the chord that sounds (`stopAll`); any other chord is shifted by the live capo, voice-led (a slash chord's bass is the floor), voiced (the slot may carry its own
+voicing), turned into notes and struck once, held or decaying: the comp "sustain" holds it flat for the whole slot, "as played" holds it and lets go of it `ring` beats
+later (the Release knob) or, with no ring, into the next chord, every other style lets it decay by the Decay knob (cut by the Length buttons, and to 0.7 s with Strum
+on and no length; the beat is the tempo map's at the chord's moment). With Wet/dry at the top it is the held pedal under the arp (the page's other branch). Chords
+off: only the stop. The voice leading starts empty with the song, as the page's does after a key change. The song score carries all of this (a chord's voicing, hold and
+ring; the song's voicing, Vary, VoiceLead, mode, knobs; the chord voice's kit) and `SongVoiceCfg.on` says whether the engine plays the chords or only steps.
+
+**Chord player.** `ChordPlayer::stopAt(onset)` is `stopAll(atTime)` (a rest, Chords off, stopping the song); a negative `holdSec` is a held chord never let go of (the next
+stop ends it); and a chord the bank cannot make still stops the one before, as the page does (it used to return first and leave two chords sounding).
+
+**Page and host.** `window._songNativeScore({chords:true})` adds the above and refuses, with its reason in `chordWhy`, what the engine cannot sound yet: a sampled chord
+voice (the guitar voices among them: their grips are not ported), a mõdSynth chord voice, chord glide, Pure tuning. `window._songChordPitches()` is the bank's
+share: the recording of a chord is one pitch at a time and what a voicing picks depends on the chord before it, so it is a superset (every octave of every pitch class the
+song uses, C1 to G6; with a styled voicing or Vary every pitch class, since they add tones the chart does not name; the sub's pitch; the held recording too when any chord
+holds). `_nsSong.start()` records them (it reports `bank`), sends the score and starts; `_nsSong.chords = false` leaves the chords to the page; `_nsSong.capo(n)`
+tops the bank up first. Host: the song's emit calls the voicer and the chord player (the same one the chord rhythm uses), the mirror's `song` block gains `voiced`, `rests`,
+`voices`, `stops`, `releases`, `misses`, `refused`; starting the song resets the voice leading and points the player at the song's voice; stopping it stops the chord.
+`voicing.h` and `songvoice.h` are in the Xcode project.
+
+**Measured.** `tests/seq/songstep.test.js` now also runs the page's real `playChartSlot2` for every chord of the real loop and keeps its messages for the chord part
+(stop, chord, release); the engine's action for the same chord (`songtool` prints it) must be the same: the notes with the slash bass first, the sub's note, the level,
+the moment (1e-5 of a frame), decay (the length to 1e-12) or hold, and a release at exactly `ring` beats on. 36 cases (the 6 stepping ones and 30 voicing ones),
+1,716 chords struck and 98 stops: Close; Spread with Strum on; Drop 2; Drop 3; Soul; Neo-soul in C minor, D dorian and G major; Vary on from Close, Drop 2 and Soul over 200 to 260
+seconds (every type, then the next shape); VoiceLead off; As played with a ring, held on and tapped; chords with a voicing of their own in a Close song; two key changes
+during Neo-soul; the pedal; Chords off; the song moved up and down by 3, 5, 7, 9, 12 and 24 semitones; a song with half-diminished, diminished and augmented chords,
+major triads off the key, a chord twice running and slash chords with a high bass; and 7 songs of 48 to 120 random chords. Mutation checks (28, each by changing the port
+and rebuilding the tool; 23 are caught): the test fails with the pull toward the centre changed, ties going to the last candidate, the first-chord shifts cut short, the half-diminished
+ninth missing, the drop on the wrong voice, Vary's history one long, Vary's fresh flag gone (here and in the voicer), the lap length wrong, the slash bass not under the lowest
+tone, Spread's seventh, the capo not moving the key, the 0.7 s cap, the ring in the wrong beat, the floor of a slash chord, the sub's note, the dominant's seventh and the
+jazz ranking weights. Not caught, and why: a slash bass an octave off in the pedal branch (the bass is brought under the lowest tone whatever its octave: the same
+chord), the top of the styled register at exactly 84 (the centre pull never chooses a placement that high), two octave shifts of equal cost in the styled register,
+a span of exactly two octaves in the voice leading, and the level (`velScale(0)` is 1 for ever). The jazz weights were first missed by the hand-picked songs and are caught by
+the seven random ones. `songvoice` through the host: `seqhosttest` plays a two-section song with a ring, a rest and a slash chord with no page and the
+bank's chords: every chord voiced or a rest, 3 voices a triad, none missing, the rest and the next chord stop what rings, the ring lets go of its voices, stopping the song
+stops the chord. The audio follows from the page's messages: `tests/seq/chordline.test.js` takes `SONG=drop2` (or `rnb`, `neosoul`, `open`) and builds its chord list
+from the page's own `playChartSlot2` over six chords with two slash chords, then nulls the engine's chords against the page's recorded ones: 154 to 160 dB, Strum on and off,
+decaying and held, worst 100 ms 147 to 152 dB, except one 100 ms window in the release tail of a held slash chord with a bass at MIDI 35 (a sub at 23): 65.7 dB there. The
+same figure comes from the engine as it was before this piece, so it is the composer and not this change; the level in that window is far below the chord's.
+
+**Not done.** The song's comping (piece 4): a chord struck by a rhythm is struck once, at its start; the rhythm's re-strikes and the page's per-hit re-voicing are not here.
+The arp's chord (slice 3), glide, Pure tuning and sampled chord voices (refused with their reasons), a chord tapped by hand, the key change adding pitches the bank does not hold
+(`_nsSong.capo` tops it up; a capo the page sends later counts misses, and the miss leaves a gap, not a wrong chord). The chord voice's recording is per pitch, 40 to 70 recordings for a
+song (plain, and held when any chord holds): `_nsSong.start()` takes that long the first time. Not heard on device: checklist 25.

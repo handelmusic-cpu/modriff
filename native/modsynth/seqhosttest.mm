@@ -29,6 +29,26 @@ static std::vector<double> score() {
 }
 static NSData *bytes(const std::vector<double> &d) { return [NSData dataWithBytes:d.data() length:d.size() * sizeof(double)]; }
 
+// A synthetic one-note chord for a pitch (part 3: a tone that is one oscillator and a gain, no sub; part 4, the same held, with its release).
+// `life`: seconds the voice would sound if nothing stopped it.
+static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.5) {
+  std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+  const double stop = 0.048 + life, amp = 0.5;
+  p.insert(p.end(), {8, 5, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+  size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+  std::vector<double> e = {1, hold ? 4.0 : 3.0, 9, (double)pitch, 1, 0.048, 0.048, 0.8, (double)p.size()};
+  e.insert(e.end(), p.begin(), p.end());
+  e.insert(e.end(), {1, (double)amp_i, amp / 0.8, 0, 0, 0, 1, (double)stop_i, 0});       // velocity, accent, pitch; time; mul
+  e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
+  e.insert(e.end(), {(double)pitch, life, 0, 0, 0, 0});                                  // refPitch, refDur, refFrom, no length, glide or held slots
+  e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.022, 0});                     // the stop of the chord before: hold the gain, fade it
+  e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
+  e.insert(e.end(), {0});                                                               // no velocity curve
+  // the release of a held chord: no sooner than 45 ms after the voice began; hold the gain, fall in 100 ms
+  if (hold) e.insert(e.end(), {0.045, 12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.1, 0});
+  return e;
+}
+
 static ModEngineHost *fresh() { return [[ModEngineHost alloc] initWithSampleRate:SR maxFrames:4096]; }
 
 // Renders `ms` of silence paced like a real callback.
@@ -330,23 +350,7 @@ int main() {
       [g ensureGraphPart:5];
       CHECK(![g seqChordStartWithBpm:120 leadMs:100 alignToDrums:YES kit:9], "no chord score, no chord start");
       CHECK(![g seqSetChordScore:[NSData dataWithBytes:"junk" length:8]], "a chord score that does not parse is refused");
-      auto chordNote = [&](int pitch, bool hold) {
-        std::vector<double> p = {0x6d6f6467, SR, 3, 0};
-        const double stop = 0.048 + 1.5, amp = 0.5;
-        p.insert(p.end(), {8, 5, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
-        size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
-        std::vector<double> e = {1, hold ? 4.0 : 3.0, 9, (double)pitch, 1, 0.048, 0.048, 0.8, (double)p.size()};
-        e.insert(e.end(), p.begin(), p.end());
-        e.insert(e.end(), {1, (double)amp_i, amp / 0.8, 0, 0, 0, 1, (double)stop_i, 0});       // velocity, accent, pitch; time; mul
-        e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
-        e.insert(e.end(), {(double)pitch, 1.5, 0, 0, 0, 0});                                  // refPitch, refDur, refFrom, no length, glide or held slots
-        e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.022, 0});                     // the stop of the chord before: hold the gain, fade it
-        e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
-        e.insert(e.end(), {0});                                                               // no velocity curve
-        // the release of a held chord: no sooner than 45 ms after the voice began; hold the gain, fall in 100 ms
-        if (hold) e.insert(e.end(), {0.045, 12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.1, 0});
-        return e;
-      };
+      auto chordNote = [&](int pitch, bool hold) { return chordNoteEntry(pitch, hold); };
       for (int pitch : {60, 64, 67}) { [g seqPutBankEntry:bytes(chordNote(pitch, false))]; [g seqPutBankEntry:bytes(chordNote(pitch, true))]; }
       std::vector<double> cs = {1, 16, -1, 0, 1, 1, 1, 0.3, 0, 0, 0, 0, 60, 3, 60, 64, 67, 2, 0, 1, 3, 8, 1, 0};
       CHECK([g seqSetChordScore:bytes(cs)], "the chord rhythm is taken");
@@ -380,10 +384,12 @@ int main() {
       ModEngineHost *g = fresh();
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "no song, no song start");
       CHECK(![g seqSetSong:[NSData dataWithBytes:"junk" length:8]], "a song that does not parse is refused");
-      //  [1, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, nIvs, ivs]
-      std::vector<double> song = {1, 16, 0, 0, 1, 0,  0,  2,
-        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, 3, 0, 4, 7,
-        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, 4, 0, 4, 7, 10};
+      //  [2, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots,
+      //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs, then the voice: on]
+      std::vector<double> song = {2, 16, 0, 0, 1, 0,  0,  2,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 3, 0, 4, 7,
+        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, 4, 0, 4, 7, 10,
+        0};
       CHECK([g seqSetSong:bytes(song)], "the song is taken");
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:5 slot:0 pass:0], "a place that is not in the song is refused");
       [g seqSetDrumScore:bytes(score())];
@@ -402,6 +408,44 @@ int main() {
       const int chords = [[g seqMirror][@"song"][@"chords"] intValue];
       run(g, 500);
       CHECK([[g seqMirror][@"song"][@"chords"] intValue] == chords && ![[g seqMirror][@"song"][@"running"] boolValue], "stopped: still %d chords", chords);
+      [g seqStop];
+    }
+
+    // The chords of the song through the host: the same song loop, now sounding each chord itself (songvoice.h). One section of three chords, the drums
+    // running at 120: C held and let go of after 2 beats (the comp "as played" with a ring), a rest, F over A decaying; then a second section with a chord
+    // held into the next. The bank holds a one-note chord for every pitch the voicing can reach. Each chord that sounds is voiced from the bank (3 voices
+    // for the triads, none missing), the rest and the next chord stop what rings, the held one lets go of its voices, and stopping the song stops the chord.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      for (int pitch = 24; pitch <= 91; pitch++) { [g seqPutBankEntry:bytes(chordNoteEntry(pitch, false, 6))]; [g seqPutBankEntry:bytes(chordNoteEntry(pitch, true, 6))]; }
+      //  per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs; then the voice: on, kit, play, pedal, style, vary, autoInv, keyRoot,
+      //  nSteps, steps, decRaw, chordBeats, strum, spread, width, sub, velBase
+      std::vector<double> song = {2, 16, 0, 0, 1, 0,  0,  2,
+        0, 0, 3,   1, 0, 0, 0, 60, -1, -1, -1, 1, 2, 3, 0, 4, 7,   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 3, 0, 4, 7,
+        0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 1, 0, 4, 0, 4, 7, 10,
+        1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1};
+      CHECK([g seqSetSong:bytes(song)], "the song, with its voice, is taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "the song starts");
+      std::vector<float> l(240), r(240); float peak = 0;
+      for (int t = 0; t < 7000; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        usleep(5000);
+        if (t == 5000) [g seqSongMove:1];
+      }
+      NSDictionary *sg = [g seqMirror][@"song"];
+      const int chords = [sg[@"chords"] intValue], voiced = [sg[@"voiced"] intValue], rests = [sg[@"rests"] intValue];
+      CHECK(chords >= 4 && rests >= 1 && voiced + rests == chords, "each chord is voiced or a rest: %d chords, %d voiced, %d rests", chords, voiced, rests);
+      CHECK([sg[@"voices"] intValue] >= 3 * voiced - 1 && [sg[@"misses"] intValue] == 0 && [sg[@"refused"] intValue] == 0, "three voices a triad from the bank, none missing: %d voices, %d missed, %d refused", [sg[@"voices"] intValue], [sg[@"misses"] intValue], [sg[@"refused"] intValue]);
+      CHECK([sg[@"stops"] intValue] >= 3 && peak > 0.02f, "a rest and the next chord stop what rings (%d stops), and it sounds: peak %.3f", [sg[@"stops"] intValue], peak);
+      CHECK([sg[@"releases"] intValue] >= 3, "the chord with a ring lets go of its voices: %d releases", [sg[@"releases"] intValue]);
+      CHECK([[g graphStats][@"lateEdits"] intValue] == 0, "no late edit");
+      const int stops = [sg[@"stops"] intValue];
+      [g seqSongStop];
+      CHECK([[g seqMirror][@"song"][@"stops"] intValue] > stops, "stopping the song stops the chord that rings");
       [g seqStop];
     }
 

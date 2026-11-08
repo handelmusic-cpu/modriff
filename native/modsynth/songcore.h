@@ -32,6 +32,7 @@
 
 #include "basscore.h"
 #include "tempomap.h"
+#include "voicing.h"
 
 namespace modsynth {
 
@@ -42,6 +43,24 @@ struct SongSlot {
   int bassM = -1;              // a slash chord's bass, MIDI, or -1
   int lock = -1;               // its phrase lock in the score's table, or -1
   std::vector<int> ivs;        // the chord's tones, semitones above the root
+  int voicing = -1;            // the voicing the chord carries (VoicingStyle), or -1: the song's
+  bool hold = false;           // struck held (comp "sustain", or "as played" with a ring) instead of decaying
+  double ring = 0;             // "as played": beats the held chord rings before it is let go of (0: it is held into the next chord)
+};
+
+// How the engine sounds the chords it steps (the page's playChartSlot2/playChord settings, read once): off, the engine only steps and hands the bass its windows.
+struct SongVoiceCfg {
+  bool on = false;
+  int kit = 0;                 // the bank's code for the chord voice
+  bool play = true;            // Chords are on (off: the chord before is stopped and nothing new sounds)
+  bool pedal = false;          // Wet/dry at the top: the chord is a held pedal under the arp (wetDry >= .99)
+  VoicingConfig vc;            // the voicing set in Settings, Vary, VoiceLead, and the key (without the capo)
+  double decRaw = 2;           // the Decay knob, seconds
+  double chordBeats = 0;       // the Length buttons: 0 = by the knob
+  bool strum = false;
+  double spread = 0, width = 0;
+  bool sub = true;
+  double velBase = 1;          // velScale(0)
 };
 
 struct SongSection {
@@ -58,9 +77,11 @@ struct SongScore {
   int capo = 0;                // the live key change, semitones
   std::vector<PhraseLock> locks;
   std::vector<SongSection> sections;
+  SongVoiceCfg voice;
 
-  // [1, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
-  //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, nIvs, ivs...]
+  // [2, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
+  //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, nIvs, ivs...,
+  //  then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 
   // slotTotalMs, in beats: the chord's own length, or one bar when it says none.
@@ -76,6 +97,8 @@ struct SongScore {
 struct SongChord {
   ChordWindow w;
   int section = 0, slot = 0, pass = 0;
+  SongSlot s;                  // the chord as written (the key it was written in), and
+  int capo = 0;                // the live key change to add to it
 };
 
 class SongSequencer {
@@ -166,6 +189,7 @@ class SongSequencer {
     if (nx && !nx->rest) w.nextPc = nx->bassM >= 0 ? mod12(nx->bassM + score_.capo) : mod12(nx->rootM + score_.capo);
     w.lock = sl.rest ? -1 : sl.lock;
     c.section = section_; c.slot = slot_; c.pass = pass_;
+    c.s = sl; c.capo = score_.capo;
     return c;
   }
 

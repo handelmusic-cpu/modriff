@@ -446,3 +446,19 @@ The engine now walks the song's chords by the drums' bar lines and gives the bas
 | 24.4 | Freeze the page for 3 s during it | the bass keeps changing chord on the bar lines |
 | 24.5 | `_nsSong.capo(2)` | from the next chord the bass plays two semitones up |
 
+## 25. The engine plays the song's chords (6.9.9.9.9.7; audible through a developer entry only)
+
+The engine now voices and strikes each chord of the song itself (the voicing, the capo, held or decaying), as well as stepping it. The comp's re-strikes are still the page's (piece 4), so a chord with a rhythm sounds once, at its start.
+
+| # | do | you should see / hear |
+|---|---|---|
+| 25.1 | Native sound **ON**, chord voice a synthesised one (not a sampled or mõdSynth one), a song of a few chords on the Songs page, comp "Hold" (sustain), the page's Song transport stopped. Console: `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` | `{ok:true}` and a `bank` report (`built`, `failed: []`); the chords change on the drums' bar lines and sound like the page's own for the same song (same notes, same top voice); `_nsSong.mirror()` shows `voiced` climbing, `misses` and `refused` 0 |
+| 25.2 | A rest in the song | the chord is cut at the rest, drums and bass go on |
+| 25.3 | Voicing set to Drop 2, Soul, Neo-soul, Spread, then Vary on, and `_nsSong.start()` again each time | the chords voice that way; with Vary the same chord comes back in a different grip each pass |
+| 25.4 | A slash chord (C/E) | the E is the lowest note of the chord, as on the page |
+| 25.5 | A chord set to "As played" with a ring of two beats, and one with a tap | the first is held for two beats and fades on the Release knob; the second rings out and decays |
+| 25.6 | `_nsSong.capo(2)` | from the next chord everything is two semitones up, and there is no gap (the bank was topped up first) |
+| 25.7 | `_nsSong.stop()` while a chord is held | the chord is cut within a few tens of milliseconds |
+| 25.8 | Freeze the page for 3 s | chords, bass and drums keep going |
+| 25.9 | Pick a sampled chord voice (Vibes, Jazz Gtr, Nylon) or turn on Pure tuning or Glide, then `_nsSong.start()` | the result's `chordWhy` names it and the engine only steps; the chords stay the page's |
+
