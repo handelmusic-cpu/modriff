@@ -398,7 +398,9 @@ int main() {
       CHECK([[g seqMirror][@"song"][@"firstFrame"] doubleValue] >= [[g seqMirror][@"firstFrame"] doubleValue], "on a bar line of the drums");
       run(g, 1500);
       [g seqSongMove:1];
+      CHECK([[g seqMirror][@"song"][@"pending"] intValue] == 1, "the mirror shows the Next that is waiting for the end of the pass");
       run(g, 6000);
+      CHECK([[g seqMirror][@"song"][@"pending"] intValue] == 0, "and it is gone once the section has moved");
       NSDictionary *m = [g seqMirror], *sg = m[@"song"];
       CHECK([sg[@"running"] boolValue] && [sg[@"chords"] intValue] >= 4, "the song steps with no page: %d chords", [sg[@"chords"] intValue]);
       CHECK([sg[@"section"] intValue] == 1 && [sg[@"slot"] intValue] == 0, "the queued Next was taken at the end of the pass (now in section %d)", [sg[@"section"] intValue]);
@@ -450,6 +452,13 @@ int main() {
       CHECK([sg[@"releases"] intValue] >= 3, "the chord with a ring lets go of its voices: %d releases", [sg[@"releases"] intValue]);
       CHECK([[g graphStats][@"lateEdits"] intValue] == 0, "no late edit");
       const int stops = [sg[@"stops"] intValue];
+      // holdSongLoop: the progression freezes and the chord that sounds stays
+      [g seqSongHold];
+      const int heldChords = [[g seqMirror][@"song"][@"chords"] intValue], heldHits = [[g seqMirror][@"song"][@"hits"] intValue];
+      run(g, 2500);
+      NSDictionary *hs = [g seqMirror][@"song"];
+      CHECK(![hs[@"running"] boolValue] && [hs[@"chords"] intValue] == heldChords && [hs[@"stops"] intValue] == stops && [hs[@"hits"] intValue] == heldHits,
+            "a hold freezes the song (%d chords, no more hits) and leaves the chord ringing (stops %d, was %d)", [hs[@"chords"] intValue], [hs[@"stops"] intValue], stops);
       [g seqSongStop];
       CHECK([[g seqMirror][@"song"][@"stops"] intValue] > stops, "stopping the song stops the chord that rings");
       [g seqStop];

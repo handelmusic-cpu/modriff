@@ -49,6 +49,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongHold", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongMove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongCapo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
@@ -743,6 +744,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
 
     @objc func seqSongStop(_ call: CAPPluginCall) {
         host?.seqSongStop()
+        call.resolve()
+    }
+
+    /// Freezes the progression and leaves the chord that sounds (the page's hold).
+    @objc func seqSongHold(_ call: CAPPluginCall) {
+        host?.seqSongHold()
         call.resolve()
     }
 

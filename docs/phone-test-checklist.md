@@ -494,3 +494,17 @@ While the engine plays a song, the page still writes the bass's line for each ch
 | 27.5 | A song with a half-bar chord | the short chord still gets its own line |
 | 27.6 | `_nsSong.answering = false`, restart | the bass plays the one line it was given |
 
+## 28. The song screens follow the engine (6.9.9.9.9.9.4; seen through a developer entry only)
+
+While the engine plays the song, the Songs page, the transport's song button and Stage show where it is, and the page's Next, Prev, Hold and Stop drive it.
+
+| # | do | you should see |
+|---|---|---|
+| 28.1 | Songs > Perform with a song of two sections; `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` | the playing chord is lit as it sounds and its playhead moves across it, chord by chord, through the section and into the next; the transport's song button names the section |
+| 28.2 | A section set to play 3 times, with Build open on it | the pass line counts "Pass 1 of 3", "Pass 2 of 3", "Pass 3 of 3" |
+| 28.3 | Tap the transport's Next while a section plays | Next pulses until the pass ends, then the section changes and the pulse stops |
+| 28.4 | Tap Hold (switch Song off) | the chord that sounds keeps sounding, the lit chord stays; the progression stops; switching Song on again picks up from that chord |
+| 28.5 | Tap Stop | the chord is cut, nothing stays lit, nothing is queued |
+| 28.6 | Open Stage during it | the playing line is kept a third of the way down and follows the engine |
+| 28.7 | Freeze the page for 3 s and wake it | the screens catch up to the engine's chord (they were not lit while frozen) |
+

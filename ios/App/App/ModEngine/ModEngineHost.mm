@@ -775,6 +775,15 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
+// holdSongLoop: the progression freezes and the chord that sounds stays (its rhythm and the bass's chart end; the stop would cut the chord).
+- (void)seqSongHold {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->sseq.stop();
+  _hostSeq->svoice.clearHits();
+  _hostSeq->bseq.timeline().clear();
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
 /// A Next (+1) or Prev (-1) the player queued: taken at the end of the pass.
 - (void)seqSongMove:(int)delta {
   os_unfair_lock_lock(&_hostSeq->lock);
@@ -902,7 +911,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
+                                 @"pending": @(q.sseq.queuedMove()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};

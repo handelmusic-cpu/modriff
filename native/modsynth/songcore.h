@@ -126,6 +126,7 @@ class SongSequencer {
   void setCapo(int c) { score_.capo = c; }
   // _moveToSection's queue (songPendingSectionDelta): applied at the end of the pass.
   void queueMove(int delta) { pending_ = delta; }
+  int queuedMove() const { return pending_; }
 
   // Chord `slot` of `section` starts at `firstFrame`; `pass` is how many passes of the section have gone (songSectionPass).
   bool start(double firstFrame, int section, int slot, int pass = 0) {
