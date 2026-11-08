@@ -508,3 +508,17 @@ While the engine plays the song, the Songs page, the transport's song button and
 | 28.6 | Open Stage during it | the playing line is kept a third of the way down and follows the engine |
 | 28.7 | Freeze the page for 3 s and wake it | the screens catch up to the engine's chord (they were not lit while frozen) |
 
+## 29. The practice trainer in the engine (6.9.9.9.9.9.5; audible through a developer entry only)
+
+The engine now loops the bars you picked, counts choruses, steps the tempo and the key itself. The endings are still the page's.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 29.1 | Practice: Loop bars on chords 2 to 3 of a section, Speed up on (+4 every chorus to 140); `_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()` at that chord | the two chords repeat; the tempo steps up a notch on the bar line each pass, together in the drums, bass and chords; the status line counts "Loop pass 2 ..." and the tempo |
+| 29.2 | Next key on (every 2 choruses, a fifth) with no loop, over two sections | after the last section's final pass twice, everything is a fifth up, at the bar line; the status line says the key |
+| 29.3 | `_nsSong.stop()` | the tempo goes back to where the run began (if you had not moved it yourself); nothing stays transposed |
+| 29.4 | Tap Next while a loop plays | the loop finishes its pass, then the song moves to the next section |
+| 29.5 | A last section on "for ever" with Speed up | each of its passes steps the tempo |
+| 29.6 | Freeze the page for 3 s during a loop | the loop and the steps go on without it |
+| 29.7 | Arm an ending (Cold, Finish...) and `_nsSong.start()` | the result says the engine cannot step this song yet (an ending); the page's own loop plays it |
+

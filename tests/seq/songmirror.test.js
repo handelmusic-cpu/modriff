@@ -175,6 +175,18 @@ const CASES = [
   });
   ok(cmds.sent.join() === 'move 1,hold,stop' && cmds.afterNext === 1 && cmds.held === '0/1' && !cmds.drivingAfterHold && !cmds.drivingAfterStop,
      'the page\'s Next, Hold and Stop reach the engine while it drives (' + cmds.sent.join(', ') + '), the hold remembers chord ' + cmds.held, JSON.stringify(cmds));
+  // the trainer's choruses: the page does what its own loop does at the end of one (_pracChorusDone), once for each the engine has counted
+  const chor = await page.evaluate(() => {
+    let calls = 0; const real = _pracChorusDone; _pracChorusDone = function () { calls++; };
+    sections = [{ name: 'A', slots: [{ rootM: 48, ivs: [0, 4, 7], bars: 1, label: 'C' }], plays: 1 }];
+    window._songMirror.end(); window._songMirror.chorusSeen = 0;
+    const mk = (n, c) => ({ sampleRate: 48000, frame: 0, song: { running: true, pending: 0, chorus: c, ask: [n, 0, 0, 0, 0, 96000, 0, 0, 0] } });
+    window._songMirror.apply(mk(1, 0)); window._songMirror.apply(mk(2, 1)); window._songMirror.apply(mk(3, 1)); window._songMirror.apply(mk(4, 3));
+    const out = { calls, seen: window._songMirror.chorusSeen };
+    _pracChorusDone = real; window._songMirror.end();
+    return out;
+  });
+  ok(chor.calls === 3 && chor.seen === 3, 'the page steps its own tempo and key display once for each chorus the engine counts (' + chor.calls + ' calls for choruses 0, 1, 1, 3)', JSON.stringify(chor));
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');

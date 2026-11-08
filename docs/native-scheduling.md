@@ -882,7 +882,7 @@ lists identical; mutation checks that the test can fail; audio nulls where sound
    the page answers with `_blNativePending` (6.9.9.9.9.1). Test: the page's reply path with a stand-in plugin; the timing margin measured.
 6. *Mirror. Done (6.9.9.9.9.9.4), see the end of this file.* Section, chord, pass and bar published to the page for the highlight and the section buttons; `_moveToSection`, hold and stop as commands.
    Test: the mirror against what the page's highlight shows on the same run.
-7. *Endings and the practice trainer.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
+7. *Endings and the practice trainer. The trainer is done (6.9.9.9.9.9.5), see the end of this file; the endings stay the page's, with the reasons there.* Cold and finish (a landing chord and a band hit on the downbeat), fade (a master ramp), tag (repeat the last two chords),
    ritard (a ramp in the tempo map), the trainer's loop `a..b`, speed-up and next-key per chorus. These are the last and the most separable: if the owner
    prefers, they stay page-driven (the page sends the commands at the wrap) and are simply not available while the app is away.
 Slice 3 (the arp and the melody generator) sits beside this: both follow the chord stream, so piece 2 should come before them, not after.
@@ -1100,4 +1100,33 @@ test shows the Next waiting in the mirror and gone after the section moves, and 
 **One difference.** The page's loop first writes "Pass 1 of 2" when it counts the first pass; on its very first chord the line is empty. The mirror writes it at once (the count only means something if you
 can see it counting). **Not done:** the endings and the practice trainer's screens (piece 7); the capo (the page's `_songBaseRoot`) is not mirrored, so a key change made on the page is told to the engine by
 `_nsSong.capo`; a chord tapped on the chart while the engine drives does not move the engine's place. Not heard or seen on device: checklist 28.
+
+## Slice 4, piece 7 (6.9.9.9.9.9.5): the practice trainer; the endings stay the page's
+
+**The trainer, in the engine.** `SongSequencer` now does what `_advanceLoopSlot` does for the practice trainer. The practice loop (chords a to b of one section): past chord b the song goes back to a without
+the pass ending, unless a Next/Prev is queued (it takes effect at the end of the pass, and a loop that never ended one would hold it off for ever), and each such pass is a chorus. Otherwise a chorus is
+the last playable section's final pass (a last section on "for ever", or a chart of one section, counts every pass). At a chorus (`_pracChorusDone`) the tempo steps up by a step every few choruses to its
+ceiling (rounded, clamped to 40..220, only when it is higher) and the key steps by an interval every few choruses (`k = n*by mod 12`, folded to -5..6, twelve keys in all, then it stays), as a distance from
+the start key that adds to the player's key change (`capoNow()`: the chord windows, the voicing's key and the bass's roots all use it). The song score (format 4) carries the loop and the two steps;
+`_songNativeScore` no longer refuses them. The host steps the tempo on the tempo map at the first step the drums have not laid out (never before the bar line the chorus begins on: the drums lay their
+steps out a look-ahead early, and the other parts follow the same map), and stopping puts the tempo back to where the run began, but only if it is still the one the trainer set, and drops the key shift
+(`_pracRestore`). The mirror shows `chorus` and `keyShift`; `_songMirror.apply` calls the page's own `_pracChorusDone` once for each chorus the engine has counted, so the tempo and key the screens
+show step as the sound did, and `_nsSong.start()` calls `_pracReset`.
+
+**Measured.** `tests/seq/songstep.test.js`: the page's real loop with the trainer on, on a clock of its own, against `songtool` on the same ticks: 6 cases and 457 chords with every window identical (the
+chords' keys moved by the trainer included), and what each chorus ended with held to what the page's `_pracChorusDone` did, in order: the tempo it set (`_setBpmGliss`) and the key it stepped by
+(`transposeSong`). A loop of two chords over a four-chord section with the tempo up 6 a chorus to 130 (18 choruses); the key up a fifth every second chorus with the tempo every chorus over two sections
+(13 choruses, 6 key steps); one section with the key up a fourth every chorus (83 choruses, all twelve keys); a last section that loops for ever (44 choruses); a Next tapped inside a loop (it lets the
+pass finish, then the section moves); a one-chord loop with the tempo to its ceiling. 15 deliberate breaks of the engine, 13 caught (the other two change nothing a page can ask for: the tempo clamp, which the trainer's own limits keep inside, and a loop whose first chord is after its last). The host test: a song with the trainer on, after two
+choruses the tempo is 140 and the key is two semitones up, and stopping puts the tempo back to 120 and drops the shift. The mirror test: the page's `_pracChorusDone` once for each chorus counted.
+The engine puts the tempo step on the first step the drums have not laid out, up to a look-ahead (0.15 s) after the bar line the chorus begins on; the page changes its tempo a look-ahead before the bar line
+(when the pass is counted). The test applies the step at the bar line in both.
+
+**The endings, left to the page, and why.** The endings (cold, finish, fade, tag, ritardando) are driven by the page's wall-clock timers and are mostly sound design that is not the song's stepping: the band's
+landing (a kick, a cymbal found in the drum kit by name, the bass's last note), the master fader ridden down in decibels, the toast, the tonic chord's release. What the engine could take is the part that
+is the song's: the tag (back up two chords and play them again, then the finish), the ritardando's tempo curve (a ramp on the tempo map, the page's curve is the square of the tempo falling linearly with the
+beats, which the map's ramp is: `tempo.ramp` exists) and the landing on the next bar line. The rest stays in the page with the engine as the sound: the page, in the foreground, sends `seqTempoRamp`, a jump
+to a chord and a stop. It is the owner's call whether to build those (they only matter with the page awake, and an ending is rare) and `_songNativeScore` still refuses an armed ending, with its reason.
+
+**Not done.** The endings in the engine (above), and the trainer's status line in the background. Not heard on device: checklist 29.
 

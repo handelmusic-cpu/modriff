@@ -5,7 +5,7 @@ namespace modsynth {
 bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
   size_t k = 0;
   auto need = [&](size_t m) { return k + m <= n; };
-  if (!need(6) || d[0] != 3) return false;
+  if (!need(6) || d[0] != 4) return false;
   k = 1;
   SongScore s;
   s.barSteps = (int)d[k++]; s.swingOn = d[k++] != 0; s.swing = d[k++]; s.clocked = d[k++] != 0; s.capo = (int)d[k++];
@@ -31,6 +31,15 @@ bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
       sec.slots.push_back(std::move(sl));
     }
     s.sections.push_back(std::move(sec));
+  }
+  // the practice trainer
+  if (!need(11)) return false;
+  {
+    SongTrainer &t = s.trainer;
+    t.loopOn = d[k] != 0; t.loopSection = (int)d[k + 1]; t.loopA = (int)d[k + 2]; t.loopB = (int)d[k + 3];
+    t.rampOn = d[k + 4] != 0; t.rampStep = (int)d[k + 5]; t.rampEvery = (int)d[k + 6]; t.rampMax = (int)d[k + 7];
+    t.keyOn = d[k + 8] != 0; t.keyEvery = (int)d[k + 9]; t.keyBy = (int)d[k + 10];
+    k += 11;
   }
   // how the chords sound
   if (!need(1)) return false;
