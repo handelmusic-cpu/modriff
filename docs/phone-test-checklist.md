@@ -422,3 +422,15 @@ The engine composes a chord from a bank of one-note chords, stops the chord befo
 | 22.2 | While it plays: freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) | the chord rhythm does not stutter or stop |
 | 22.3 | Compare against the page's own: `_nsChord.stop()`, play the same rhythm on the page | same chord, same hits, levels and swing. You may hear: the same voicing on every hit (the page re-voices with Vary); a sampled chord voice says it cannot be played (`{ok:false, why}`) |
 | 22.4 | (6.9.9.9.6) Draw a rhythm on the chord roll with a held step (Hold) and a ratcheted step (Ratchet), `_nsChord.stop()`, `_nsChord.start()` | it starts (it said it could not before); the held step rings its full length and lets go on the Release knob without a click, the ratchet's strikes are short and the last one rings out; the same as the page's own for this rhythm. Watch `_nsChord.mirror()`: `releases` climbs with the held strikes, `misses` 0, `refused` 0 |
+
+## 23. The engine's tempo map (6.9.9.9.9.2; audible through a developer entry only)
+
+The drums, the bass and the chord rhythm of the engine now read one tempo map, and the engine can move the tempo itself. The page has no button for the ramp, only `_nsDrum.tempoRamp(bpm, ms)` in the web inspector.
+
+| # | do | you should see |
+|---|---|---|
+| 23.1 | Native sound **ON**, a drum pattern, a bass line and a chord rhythm as in 18.x, 19.2 and 22.1; `_nsDrum.start()`, `_nsBass.start()`, `_nsChord.start()` | all three play from the engine on the same bar line |
+| 23.2 | While they play, `_nsDrum.tempoRamp(70, 8000)` | all three slow together over eight seconds and settle at 70; they stay on the same bar line the whole way (no flam between the bass and the drums, no drift); `_nsDrum.mirror()` shows `tempo` falling |
+| 23.3 | Then `_nsDrum.tempoRamp(130, 4000)`, and a jump: change the tempo field | the same, speeding up; a jump from the field lands on the next step with no hiccup |
+| 23.4 | Freeze the page for 3 s (`var t=Date.now(); while(Date.now()-t<3000){}`) during a ramp | the ramp carries on, the three stay together |
+

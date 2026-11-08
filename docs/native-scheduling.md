@@ -866,7 +866,7 @@ generators stay JS; (6) the mirror the page draws the highlight from.
 
 **The pieces, in the order I would build them, each verified against the page the way slice 2 was** (the page's code on a clock of its own against a C++ tool,
 lists identical; mutation checks that the test can fail; audio nulls where sound is composed; the host thread; a developer entry; a checklist line):
-1. *A tempo map.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
+1. *A tempo map. Done (6.9.9.9.9.2), see the end of this file.* The sequencers step by a tempo that is a function of the frame (piecewise: a jump, or a ramp). Test: the page's `_setBpmGliss` and the
    trainer's jump against the engine's step times, drums, bass and chord rhythm together. Everything else needs it, and it is useful alone.
 2. *Song stepping.* `SongScore` (sections, chords with their lengths in bars, beats and eighths, rests, `follow`, passes, the capo) and a `SongSequencer` that
    starts where the page would, advances on the bar lines of the drums' clock (and on its own clock for sub-bar chords), counts passes, leaves sections, applies a
@@ -894,4 +894,35 @@ Slice 3 (the arp and the melody generator) sits beside this: both follow the cho
 - A chart edited while it plays: the page sends the changed song; the engine takes it at the next chord boundary (my proposal), or at the end of the pass?
 
 **Not in scope** (4.3 and the earlier decision): the song editor, MIDI out/in and external clock stay on the page.
+
+## Slice 4, piece 1 (6.9.9.9.9.2): the tempo map
+
+**What was built, and why.** `native/modsynth/tempomap.h`. Until now each sequencer held its own constant tempo and added one step length to its clock per
+step, so a tempo the engine would move by itself (the trainer's jump at the end of a chorus, a ritardando, a tempo written in the song) had no single
+place to live, and three accumulators reading a changing tempo at different moments would walk apart. The tempo is now a piecewise function of the frame:
+a jump is a new segment, a ramp is a segment whose tempo changes linearly in time and then holds. A step is "the span of 0.25 beats (times the rate) that
+starts here" asked of the map, so the drums, the bass at any rate and the chord rhythm stay on the same grid through a change, wherever each of them
+happens to read it. Beats are the integral of tempo, a quadratic in the frame inside a segment, and `frameAt` is its stable root.
+
+The ramp is linear in time because the page's ritardando is: it steps the tempo so that its square falls linearly with the beats (`_runEnding`,
+'ritard'), and bpm squared linear in beats is bpm linear in time. For a stretch of constant tempo `span` is exactly the old expression, bit for bit,
+so nothing changes until a tempo moves. A sequencer with no map keeps its own constant tempo (the tools and tests that never set one).
+
+**Host.** One `TempoMap` shared by the three sequencers. Every tempo call the page makes (`seqSetTempo`, `seqBassSetTempo`, `seqChordSetTempo`, and the
+tempo given at each start) is a jump at the render clock, and the same tempo again is not a new segment; `seqTempoRampTo:overMs:` (plugin
+`seqTempoRamp`, page `_nsDrum.tempoRamp(bpm, ms)`) starts a ramp from the tempo now; `seqMirror` says the tempo at the clock as `tempo`. The walking line's
+beat is the tempo at the moment it is scheduled (a ramp moves it a little inside one call).
+
+**Measured.** `make -C native/modsynth tempotest && native/modsynth/tempotest`: a constant stretch is the old step length exactly (140 of 140 cases);
+frames and beats are each other's inverse to 1e-10 frames through two jumps and two ramps, and beats agree with a numerical integral of the tempo; through
+a ramp bpm squared is linear in the beats and bpm is linear in time; a step across a jump is exactly a quarter note; with a constant map the drums, the
+bass and the chord rhythm step to the very same frames as without one (1244 of 1244); through a jump, a ritardando (120 to 66) and another jump, 440
+steps of the drums, the bass at twice the speed and the chord rhythm are on one grid (worst 6.6e-8 frames) and every step is the map's own quarter beat.
+Against the page: `tests/seq/chordrhythm.test.js` now changes `#bpm` while the page's scheduler runs (120, 90, 150 with swing; 100, 160, 70 with held
+hits and ratchets) and gives the engine a jump at the first step the page scheduled after each change: 66 hits identical in time to 1e-5 of a frame, level,
+length and hold (the jumps ignored fails both). The host test ramps 60 to 120 over 1.2 s: the steps close in monotonically from 12000 to 6000 frames,
+the mirror says 60 then 120, no late edit. All the earlier drum, bass and chord tests are unchanged.
+
+**Not done.** The page does not call the ramp (nothing in the app moves the tempo through the engine yet; the song loop will). A ramp is exact in the
+engine, not the page's integer-rounded steps twice a beat, so the two ritardandi differ by those roundings. Not heard on device: checklist 23.
 

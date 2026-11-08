@@ -93,6 +93,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqStop;
 /// Takes effect from the next step. A value of 0 or less leaves that one alone.
 - (void)seqSetTempo:(double)bpm rate:(double)rate;
+/// The tempo moves in a straight line in time from what it is now to `bpm` over `ms`, then holds it (a ritardando; the engine's own tempo changes).
+/// The drums, the bass and the chord rhythm follow it on one grid. `seqMirror` says the tempo at the render clock as `tempo`.
+- (void)seqTempoRampTo:(double)bpm overMs:(double)ms;
 /// For tests: keep what is expanded (13 float64s an event, see HostSeq), up to `capacity` events.
 - (void)seqRecord:(BOOL)on capacity:(int)capacity;
 - (NSData *)seqTakeEvents;
