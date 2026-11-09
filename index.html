@@ -3938,6 +3938,19 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 }
 .ci-headbtns button:hover { border-color:var(--accent); color:var(--accent); }
 .ci-headbtns .ci-del:hover { border-color:var(--dom); color:var(--dom); }
+/* Folding the chord editor (_ciFoldWire). The caret is the header's first button and turns over when the editor is shut; a
+   row's caret sits in the inspector's own padding, left of its label, so the label column keeps its width. The label's
+   tap area is taller than its text: it is a 10 pt line to hit with a thumb. */
+.ci-headbtns .ci-caret { display:flex; align-items:center; justify-content:center; }
+.ci-headbtns .ci-caret svg { transition:transform .12s; }
+.chart-inspector.ci-shut .ci-caret svg { transform:rotate(-90deg); }
+.chart-inspector.ci-shut .ci-body { display:none; }
+.ci-fold-lbl { position:relative; cursor:pointer; touch-action:manipulation; padding:10px 0; margin:-10px 0; -webkit-tap-highlight-color:transparent; }
+.ci-fold-lbl::before { content:'\203A'; position:absolute; left:-10px; top:50%; transform:translateY(-50%) rotate(90deg); color:var(--muted); font-size:.8rem; transition:transform .12s; }
+.ci-rshut .ci-fold-lbl::before { transform:translateY(-50%) rotate(0deg); }
+.ci-row .ci-sum { display:none; flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--accent); font-size:.6rem; }
+.ci-row.ci-rshut .ci-sum { display:block; }
+.ci-row.ci-rshut > :not(.ci-lbl):not(.ci-sum) { display:none !important; }
 .ci-sfx { font-size:.62em; opacity:.75; margin-left:1px; }
 .ci-fine {
  flex:0 0 auto; background:none; border:none; cursor:pointer;
@@ -8200,6 +8213,14 @@ body.stage-open { overflow:hidden; }
 .tl-col.active .tl-strip { background-color:var(--pg); }
 .tl-col.prac-in { outline:2px solid var(--pg); outline-offset:-2px; }
 .tl-meta { font-size:max(.4rem,10.5px); letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-top:2px; }
+/* The bar count is a measure of the whole card, not of the chords on it: a line of 5 bars of chords sits in an 8 bar card
+   and only fills part of it. A bracket the width of the card (tick, the count, a rule, tick) shows what "8 bars" covers,
+   empty end included. The row above is the chords' share of it. */
+.tl-card > .tl-meta { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.tl-card > .tl-meta::before, .tl-card > .tl-meta::after { content:''; flex:none; height:9px; border:0 solid color-mix(in srgb, var(--muted) 70%, transparent); }
+.tl-card > .tl-meta::before { width:0; border-left-width:1px; }
+.tl-card > .tl-meta::after { flex:1 1 auto; border-right-width:1px;
+ background:linear-gradient(color-mix(in srgb, var(--muted) 70%, transparent), color-mix(in srgb, var(--muted) 70%, transparent)) center / 100% 1px no-repeat; }
 body.light-mode .tl-col { background:#12152a; outline-color:#252c48; color:#eef0ff; }
 body.light-mode .tl-col.active { background:var(--pg); color:#fff; }
 
@@ -8440,7 +8461,9 @@ body.bt-timeline .sb-seccard > .bt-row { order:0; }
 body.bt-timeline .sb-seccard > #chart-timeline { order:1; }
 body.bt-timeline .sb-seccard > #tl-panel { order:2; }
 body.bt-timeline .sb-seccard > #sec-plays-bar { order:3; margin-top:10px; }
-body.bt-timeline .sb-seccard > .sec-plays-hint { order:4; }
+/* flex:0 0 auto: the hint is `flex:1 1 130px` for the wrapping header row, and in this column that basis is a HEIGHT, so
+   one line of text was a 130 pt block of nothing between the loop row and the chord editor. */
+body.bt-timeline .sb-seccard > .sec-plays-hint { order:4; flex:0 0 auto; }
 body.bt-timeline .sb-seccard > #chart-inspector { order:5; }
 .tl-secl { display:flex; align-items:baseline; justify-content:space-between; width:100%; min-height:44px; padding:0 2px; margin:6px 0 2px; background:none; border:0;
  color:#9b6dff; font-family:'Orbitron',sans-serif; font-size:.52rem; letter-spacing:.14em; text-transform:uppercase; cursor:pointer; touch-action:manipulation; align-items:center; }
@@ -41255,6 +41278,58 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
  body.appendChild(rrow);
 
  ins.appendChild(body);
+ _ciFoldWire(ins, tools, body);
+}
+// The chord editor is nine rows tall (Chord, Words, Type, Length, Rhythm, Voicing, Bass, Plays) and fills a phone, with the
+// progression above it scrolled out of sight; nobody changes all of it at once. A caret in the header shuts the whole
+// editor to its one line, and the label of each row shuts that row to what it is set to. Remembered across chords and
+// launches (modo-ci-fold): someone who keeps Voicing shut does not want it open again on the next chord. var, not let:
+// read from the editor, far from here (CLAUDE.md, "Temporal dead zone").
+var _ciFold = null;
+function _ciFoldGet(){
+ if(!_ciFold){
+  var v=null; try{ v=JSON.parse(modStore.getItem('modo-ci-fold')||'null'); }catch(e){}
+  _ciFold=(v && typeof v==='object') ? v : {};
+  if(!_ciFold.rows || typeof _ciFold.rows!=='object') _ciFold.rows={};
+ }
+ return _ciFold;
+}
+function _ciFoldSave(){ try{ modStore.setItem('modo-ci-fold', JSON.stringify(_ciFold)); }catch(e){} }
+function _ciFoldWire(ins, tools, body){
+ var F=_ciFoldGet();
+ var cb=document.createElement('button'); cb.type='button'; cb.className='ci-caret';
+ cb.innerHTML='<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><polyline points="2,4 6,8 10,4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+ var paintAll=function(){
+  var shut=!!F.all;
+  ins.classList.toggle('ci-shut', shut);
+  cb.setAttribute('aria-expanded', shut?'false':'true');
+  cb.title=shut ? 'Show the chord controls' : 'Hide the chord controls'; cb.setAttribute('aria-label', cb.title);
+ };
+ cb.addEventListener('click', function(){ F.all=!F.all; _ciFoldSave(); paintAll(); });
+ tools.insertBefore(cb, tools.firstChild);
+ paintAll();
+ [].slice.call(body.children).forEach(function(row){
+  if(!row.classList.contains('ci-row')) return;
+  var lb=row.querySelector('.ci-lbl'); if(!lb) return;
+  var key=lb.textContent;
+  lb.classList.add('ci-fold-lbl'); lb.setAttribute('role','button'); lb.tabIndex=0;
+  var sum=document.createElement('span'); sum.className='ci-sum';
+  row.appendChild(sum);
+  var paintRow=function(){
+   var shut=!!F.rows[key];
+   row.classList.toggle('ci-rshut', shut);
+   lb.setAttribute('aria-expanded', shut?'false':'true');
+   lb.title=(shut?'Show ':'Hide ')+key.toLowerCase();
+   if(shut){
+    var on=row.querySelector('.ci-seg .on'), inp=row.querySelector('input');
+    sum.textContent = on ? on.textContent : (inp ? inp.value : '');
+   }
+  };
+  var flip=function(){ if(F.rows[key]) delete F.rows[key]; else F.rows[key]=1; _ciFoldSave(); paintRow(); };
+  lb.addEventListener('click', flip);
+  lb.addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); flip(); } });
+  paintRow();
+ });
 }
 // Charleston, Bossa and "follow the song" — the three the Rhythm row does not
 // have space for.
@@ -46733,7 +46808,9 @@ function renderSongTimeline(chart, opts){
    }
    card.appendChild(row);
    var meta=document.createElement('div'); meta.className='tl-meta';
-   meta.textContent=bars+(bars===1?' bar':' bars');
+   // "5.5 of 8 bars" when the chords stop short of the card, so a half-empty card is said, not left to look like a mistake.
+   var used=Math.round(ln.beats/per*4)/4;
+   meta.textContent=(Math.abs(used-bars)>0.01 && used<bars ? used+' of '+bars : bars)+(bars===1?' bar':' bars');
    card.appendChild(meta);
    block.appendChild(card);
   });
