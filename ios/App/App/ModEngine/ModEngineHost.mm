@@ -23,6 +23,7 @@
 #include "chordcore.h"
 #include "songcore.h"
 #include "songvoice.h"
+#include "songend.h"
 #include "voicebank.h"
 #include <functional>
 #include <thread>
@@ -175,6 +176,15 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // _blOnChord. It counts the bar lines the drums announce.
   modsynth::SongSequencer sseq;
   modsynth::SongVoicer svoice;            // the chord of each slot (songvoice.h): voiced and struck by cplay below, when the score says how the chords sound
+  // The endings (songcore.h EndingEvent): what is waiting for a render-clock moment (the tempo put back, the master brought back up, the stop of a landing chord), the fade in
+  // progress, and what the mirror reports.
+  struct EndTimed { double frame; int what; double v; };      // what: 0 tempo (v = bpm), 1 master gain (v), 2 stop the chord
+  std::vector<EndTimed> endTimers;
+  std::function<bool(uint32_t, uint64_t, int)> kill;          // GraphPool::killParts under the pool's lock
+  std::atomic<float> *endGain = nullptr;                      // the master's multiplier an ending's fade rides
+  bool fading = false; double fadeT0 = 0, fadeDur = 0; int fadeSteps = 0, fadeDone = 0;
+  double endRestoreBpm = 0;                                   // a ritardando's starting tempo, put back when the landing is over
+  int endPhase = 0; double endAt = 0; uint64_t endLands = 0;   // 0 none, 1 a fade or ritardando is running, 2 landed
   bool hasSong = false;
   uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0, songHits = 0;
   // The chord the song last started and the one it will go to (the page writes the bass's line for that one while this sounds): the count of chords started,
@@ -207,6 +217,32 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   }
   ~HostSeq() { quit.store(true); if (th.joinable()) th.join(); }
 
+  // stopEverything at `frame` (the end of a fade): what the band had committed is faded out there, the sequencers and the song stop, the chord is stopped.
+  void landStop(double frame) {
+    if (kill) kill(0x7u, (uint64_t)frame, 1056);           // the drums, the Aux layer and the bass: the parts hardKillAll names that the engine plays
+    seq.stop(); bseq.stop(); cseq.stop(); sseq.stop(); svoice.reset();
+    cplay.stopAt(frame);
+  }
+  // An ending's landing (_endingLand): everything the band had committed rings into the downbeat and is faded out there; on it, the whole band at once -- the kit's kick, its
+  // biggest cymbal and (for most endings) its snare, the key's tonic chord with its root an octave under, and the bass's last note on the tonic -- then, after the hold, the
+  // chord is let go of (or choked), and a moment later everything is stopped and the tempo the ending borrowed is put back.
+  void landing(const modsynth::EndingEvent &ev, double now) {
+    const double L = ev.frame;
+    const modsynth::SongScore &sc = sseq.score();
+    const bool band = seq.running(), bassOn = bseq.running();
+    endPhase = 2; endAt = L; endLands++;
+    // stopSongLoopIfActive: the trainer's run is over (its tempo and key go back); the band is faded out at the downbeat
+    { const double back = sseq.restore(tmap.bpmAt(now)); if (back > 0) setTempoNow(back); }
+    if (kill) kill(0x7u, (uint64_t)L, 1056);
+    seq.stop(); bseq.stop(); cseq.stop(); sseq.stop(); svoice.reset();
+    const modsynth::LandingPlan plan = modsynth::planLanding(sc, ev, svoice, tmap, &seq.score(), band, bassOn, sr);
+    for (const modsynth::DrumEvent &e : plan.hits) play(e, now);
+    if (plan.chord.play) { cplay.play(plan.chord.e, now); songVoiced++; } else if (plan.chord.stop) cplay.stopAt(L);
+    if (plan.bass) bplay.play(plan.bassNote, now);
+    // After the hold the chord is let go of (a sustained one: its own release was queued with it) or choked; the ending is finished once it has died away
+    endTimers.push_back({plan.finishAt, 2, 0});
+    if (endRestoreBpm > 0) { endTimers.push_back({plan.finishAt, 0, endRestoreBpm}); endRestoreBpm = 0; }
+  }
   void tick() {
     os_unfair_lock_lock(&lock);
     tmap.prune((double)frames->load(std::memory_order_relaxed) - sr);     // the clock never goes back; keep a second
@@ -229,6 +265,26 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
           ring[ringN % kRing] = {frame, step, bar}; ringN++;
         });
     }
+    {
+      // Ending timers and the fade, by the render clock.
+      const double now = (double)frames->load(std::memory_order_relaxed);
+      if (fading && endGain) {
+        while (fadeDone < fadeSteps && now >= fadeT0 + fadeDur * (fadeDone + 1) / fadeSteps) {
+          fadeDone++;
+          // even in decibels, not in gain: a fader is ridden on a dB scale; the last step is silence
+          endGain->store(fadeDone >= fadeSteps ? 0.f : (float)std::pow(10.0, (-48.0 * fadeDone / fadeSteps) / 20.0), std::memory_order_relaxed);
+        }
+        if (fadeDone >= fadeSteps) fading = false;
+      }
+      for (size_t i = 0; i < endTimers.size();) {
+        const EndTimed t = endTimers[i];
+        if (now < t.frame) { i++; continue; }
+        endTimers.erase(endTimers.begin() + (long)i);
+        if (t.what == 0) setTempoNow(t.v);
+        else if (t.what == 1 && endGain) endGain->store((float)t.v, std::memory_order_relaxed);
+        else if (t.what == 2) cplay.stopAt(t.frame);
+      }
+    }
     if (sseq.running() && hasSong) {
       const double now = (double)frames->load(std::memory_order_relaxed);
       // What a chord does to the sound: strike it, or stop the one that rings (a rest, Chords off). Hits are the re-strikes of the comp's rhythm.
@@ -249,6 +305,22 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         // The practice trainer stepped the tempo at a chorus's first bar line. The drums have already laid their steps out to their look-ahead at the old tempo, and the
         // other parts follow the same map, so it takes effect at the first step the drums have not laid out, never before the bar line.
         if (ev.bpm > 0) tmap.jump(std::max(ev.frame, seq.running() ? seq.nextFrame() : ev.frame), ev.bpm);
+      }, [&](const modsynth::EndingEvent &ev) {
+        using EE = modsynth::EndingEvent;
+        if (ev.type == EE::Ritard) {
+          // the slowdown: the tempo steps the page's way, at the first step the drums have not laid out
+          endPhase = 1; endAt = ev.frame; endRestoreBpm = std::round(ev.fromBpm);
+          for (const auto &st : ev.tempoSteps) tmap.jump(std::max(st.first, seq.running() ? seq.nextFrame() : st.first), st.second);
+        } else if (ev.type == EE::FadeStart) {
+          endPhase = 1; endAt = ev.frame; fading = true; fadeT0 = ev.frame; fadeDur = ev.durFrames; fadeSteps = ev.fadeSteps; fadeDone = 0;
+        } else if (ev.type == EE::FadeEnd) {
+          // stopEverything: the band, the chord and the song stop; the master comes back up a moment later
+          endPhase = 2; endAt = ev.frame; endLands++;
+          landStop(ev.frame);
+          if (endGain) endTimers.push_back({ev.frame + 0.6 * sr, 1, 1.0});
+        } else {
+          landing(ev, now);
+        }
       });
       if (sseq.score().voice.on) hits(now + lookahead);
       bseq.timeline().prune(now);
@@ -344,6 +416,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // control thread: the one that receives the page's calls); render() belongs
   // to the render thread, which never takes the lock.
   modsynth::GraphPool _graphs;
+  std::atomic<float> _endGain;            // an ending's fade rides this multiplier on the master (the sequencer thread sets it, the render callback ramps to it)
+  float _endGainPrev;
   os_unfair_lock _graphLock;
   std::map<int, int> _gidHandle;          // the page's voice id -> the pool's handle
   // A part played as graphs: it has a strip and mõdFX (and a capture ring) but
@@ -394,6 +468,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     // buildReverb impulse, noise falling as (1-t)^2.5 over chord.reverbSize (1.8 s).
     for (int k = 0; k < 2; k++) { _roomRack[k] = std::make_unique<modsynth::FxRack>(sampleRate); _roomRack[k]->setSendReverb(1.8, 2.5); _roomTail[k] = 0; }
     _gbus.assign((size_t)modsynth::GraphPool::kBuses * 2 * (size_t)_maxFrames, 0.0f);
+    _endGain.store(1.0f); _endGainPrev = 1.0f;
     _hostSeq = std::make_unique<HostSeq>(&_frames, sampleRate);
     {
       // The sequencer thread begins voices the way the page's graphBegin does, under the same lock. Raw pointers: the
@@ -411,6 +486,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         os_unfair_lock_unlock(lk);
         return ok;
       };
+      _hostSeq->kill = [pool, lk](uint32_t mask, uint64_t at, int fade) {
+        os_unfair_lock_lock(lk);
+        const bool ok = pool->killParts(mask, at, fade);
+        os_unfair_lock_unlock(lk);
+        return ok;
+      };
+      _hostSeq->endGain = &_endGain;
       _hostSeq->bplay.begin = _hostSeq->begin;
       _hostSeq->bplay.edit = _hostSeq->edit;
       _hostSeq->cplay.begin = _hostSeq->begin;
@@ -763,6 +845,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.bseq.timeline().setLocks(q.sseq.score().locks);
   const BOOL ok = q.sseq.start(first, section, slot, pass);
   q.songChords = 0; q.songFirst = (uint64_t)first; q.songVoiced = q.songRests = q.songHits = 0; std::memset(q.ask, 0, sizeof q.ask);
+  q.endTimers.clear(); q.fading = false; q.endPhase = 0; q.endRestoreBpm = 0; if (q.endGain) q.endGain->store(1.0f, std::memory_order_relaxed);
   // The chords the song sounds itself: a fresh run of voice leading, the chord player on the song's voice, nothing left ringing from before.
   q.svoice.reset();
   if (q.sseq.score().voice.on) { q.cplay.reset(); q.cplay.kit = q.sseq.score().voice.kit; }
@@ -776,8 +859,16 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   _hostSeq->sseq.stop();
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
   if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
+  _hostSeq->endTimers.clear(); _hostSeq->fading = false; _hostSeq->endPhase = 0; if (_hostSeq->endGain) _hostSeq->endGain->store(1.0f, std::memory_order_relaxed);
   // _pracRestore: the trainer's tempo goes back to where the run began (if the player has not moved it since), and its key shift is dropped.
   { const double now = (double)_frames.load(std::memory_order_relaxed), back = _hostSeq->sseq.restore(_hostSeq->tmap.bpmAt(now)); if (back > 0) _hostSeq->setTempoNow(back); }
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// The ending the player armed for the end of this pass (1 cold, 2 finish, 3 fade, 4 tag, 5 ritard; 0 disarms).
+- (void)seqSongArm:(int)kind {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->sseq.arm(kind);
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -917,7 +1008,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"pending": @(q.sseq.queuedMove()), @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
+                                 @"pending": @(q.sseq.queuedMove()), @"ending": @{@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
@@ -1248,6 +1339,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // The master: drive, bus room, glue compressor, limiter, volume. What the
   // web's buildMasterBus does for the parts the web plays, for these.
   _master->process(left, right, _roomL.data(), _roomR.data(), frames);
+  // An ending's fade, after the master: a ramp across the block to where the sequencer thread has put it, so the steps of the fade are never heard as steps.
+  { const float g = _endGain.load(std::memory_order_relaxed);
+    if (g != 1.0f || _endGainPrev != 1.0f) {
+      const float g0 = _endGainPrev, d = (g - g0) / (float)frames;
+      for (int i = 0; i < frames; i++) { const float m = g0 + d * (float)(i + 1); left[i] *= m; right[i] *= m; }
+      _endGainPrev = g;
+    } }
 
   // What leaves for the speaker: the web's _masterOut, for the part of the mix
   // that is not Web Audio.

@@ -161,7 +161,7 @@ const CASES = [
   }
   // the page's own buttons reach the engine while it drives the song
   const cmds = await page.evaluate(() => {
-    const sent = [], P = { seqSongMove: a => { sent.push('move ' + a.delta); return Promise.resolve(); }, seqSongStop: () => { sent.push('stop'); return Promise.resolve(); }, seqSongHold: () => { sent.push('hold'); return Promise.resolve(); } };
+    const sent = [], P = { seqSongMove: a => { sent.push('move ' + a.delta); return Promise.resolve(); }, seqSongStop: () => { sent.push('stop'); return Promise.resolve(); }, seqSongHold: () => { sent.push('hold'); return Promise.resolve(); }, seqSongArm: a => { sent.push('arm ' + a.kind); return Promise.resolve(); } };
     const keep = window._nsSong.plugin; window._nsSong.plugin = () => P;
     sections = [{ name: 'A', slots: [{ rootM: 48, ivs: [0, 4, 7], bars: 1, label: 'C' }, { rootM: 55, ivs: [0, 4, 7], bars: 1, label: 'G' }], plays: 2 }, { name: 'B', slots: [{ rootM: 50, ivs: [0, 3, 7], bars: 1, label: 'Dm' }], plays: 1 }];
     const out = {};
@@ -170,11 +170,23 @@ const CASES = [
     holdSongLoop(); out.held = _songHeldAt && (_songHeldAt.section + '/' + _songHeldAt.slot); out.drivingAfterHold = window._nsSong.driving;
     window._nsSong.driving = true; songLoopActive = true;
     stopSongLoop(); out.drivingAfterStop = window._nsSong.driving;
+    songEnding = null; _endingRunning = false; songLoopActive = true; window._nsSong.driving = true; armEnding('ritard'); out.armed = songEnding; armEnding('ritard'); out.disarmed = songEnding; armEnding('fade');
     window._nsSong.plugin = keep; window._nsSong.driving = false; songLoopActive = false; _songHeldAt = null; songPendingSectionDelta = 0;
     out.sent = sent; return out;
   });
-  ok(cmds.sent.join() === 'move 1,hold,stop' && cmds.afterNext === 1 && cmds.held === '0/1' && !cmds.drivingAfterHold && !cmds.drivingAfterStop,
-     'the page\'s Next, Hold and Stop reach the engine while it drives (' + cmds.sent.join(', ') + '), the hold remembers chord ' + cmds.held, JSON.stringify(cmds));
+  ok(cmds.sent.join() === 'move 1,hold,stop,arm 5,arm 0,arm 3' && cmds.armed === 'ritard' && cmds.disarmed === null && cmds.afterNext === 1 && cmds.held === '0/1' && !cmds.drivingAfterHold && !cmds.drivingAfterStop,
+     'the page\'s Next, Hold, Stop and the endings it arms and disarms reach the engine while it drives (' + cmds.sent.join(', ') + '), the hold remembers chord ' + cmds.held, JSON.stringify(cmds));
+  // an ending the engine has taken over: the armed light goes out, as _runEnding clears songEnding, and a stop clears what it left
+  const endUi = await page.evaluate(() => {
+    songEnding = 'fade'; window._songMirror.live = false; window._songMirror.seen = 0;
+    sections = [{ name: 'A', slots: [{ rootM: 48, ivs: [0, 4, 7], bars: 1, label: 'C' }], plays: 1 }];
+    window._songMirror.apply({ sampleRate: 48000, frame: 0, song: { running: true, pending: 0, ending: { armed: 0, phase: 1 }, ask: [1, 0, 0, 0, 0, 96000, 0, 0, 0] } });
+    const out = { lit: songEnding, running: _endingRunning };
+    window._songMirror.apply({ sampleRate: 48000, frame: 0, song: { running: false } });
+    out.after = { running: _endingRunning, active: songLoopActive };
+    return out;
+  });
+  ok(endUi.lit === null && endUi.running === true && endUi.after.running === false && endUi.after.active === false, 'the armed light goes out when the engine runs the ending, and a stop clears what it left', JSON.stringify(endUi));
   // the trainer's choruses: the page does what its own loop does at the end of one (_pracChorusDone), once for each the engine has counted
   const chor = await page.evaluate(() => {
     let calls = 0; const real = _pracChorusDone; _pracChorusDone = function () { calls++; };

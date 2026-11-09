@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <utility>
 #include <vector>
 
 #include "basscore.h"
@@ -94,6 +95,38 @@ struct SongTrainer {
 // it steps by (semitones, 0: unchanged).
 struct ChorusEvent { double frame = 0; int chorus = 0; double bpm = 0; int keyDelta = 0; };
 
+// An ending (the page's ENDINGS: cold, finish, fade, tag, ritard). It is armed during the song and takes effect at the end of the pass, on the downbeat.
+enum EndKind { kEndNone = 0, kEndCold, kEndFinish, kEndFade, kEndTag, kEndRitard };
+struct EndingCfg {
+  double barBeats = 4;         // meterBeatCount(): the beats of a bar
+  double beatMul = 1;          // a beat's length against 60/bpm in the meter (_endBeatAt: 4/unit, 1.5 in compound time)
+  double lookaheadSec = 0.15;  // how far ahead of a bar line the page hears of it (a ritardando lands on the first line announced after its curve is done)
+  int armed = 0;               // an ending already armed when the song starts
+};
+// What the band lands on (the page's _endingLand): the drum lanes of the kit's kick, biggest cymbal and snare (-1: the kit has none), the tonic chord's root (the key
+// without the live key change, MIDI) and tones, and the octave the bass's last note is in.
+struct EndLanding {
+  bool on = false;
+  int kickLane = -1, cymLane = -1, snareLane = -1;
+  int root = 60;
+  std::vector<int> ivs;
+  int bassOct = 2;
+};
+// What an ending asks of the host, in the order it happens.
+//  Land: the band lands on the tonic together at `frame` (everything committed is faded out there, the hit and the chord and the bass note begin) and the song is over.
+//  FadeStart: the master comes down in decibels over `durFrames` in `steps` equal steps from `frame`, the chart playing on; FadeEnd stops everything.
+//  Ritard: the tempo steps through `steps` (frame, bpm) pairs, the chart playing on; the Land follows on a bar line.
+struct EndingEvent {
+  enum Type { Land, FadeStart, FadeEnd, Ritard } type = Land;
+  double frame = 0;
+  int kind = 0;                // the ending that was armed
+  bool sustain = true, snare = false, soft = false;      // Land: the chord rings (else it is choked after the hold), the snare joins the hit, the hit is soft
+  double holdSec = 0;          // Land: how long the landing holds before it is released (or choked)
+  double durFrames = 0; int fadeSteps = 0;               // FadeStart
+  double fromBpm = 0;          // Ritard: the tempo it began from (put back at the end)
+  std::vector<std::pair<double, double>> tempoSteps;     // Ritard: (frame, bpm)
+};
+
 struct SongScore {
   int barSteps = 16;           // sixteenths in a bar (meterStepsPerBar)
   bool swingOn = false;        // Chart 8ths are swung
@@ -103,11 +136,13 @@ struct SongScore {
   std::vector<PhraseLock> locks;
   std::vector<SongSection> sections;
   SongTrainer trainer;
+  EndingCfg ending;
+  EndLanding landing;
   SongVoiceCfg voice;
 
-  // [4, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
+  // [5, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
   //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs...,
-  //  then the trainer: loopOn, loopSection, a, b, rampOn, step, every, max, keyOn, every, by; then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
+  //  then the trainer: loopOn, loopSection, a, b, rampOn, step, every, max, keyOn, every, by; then the ending: barBeats, beatMul, lookaheadSec, armed; the landing: on, kick, cymbal, snare lanes, root, bass octave, nIvs, ivs...; then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
   //  nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len) x nEv]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 
@@ -145,6 +180,7 @@ class SongSequencer {
     if (!score_.playable((size_t)std::max(section, 0))) return false;
     section_ = section; slot_ = slot; pass_ = pass; pending_ = 0;
     curStart_ = firstFrame; began_ = false; haveNext_ = false; marks_.clear();
+    armed_ = score_.ending.armed; queued_ = 0; endingRunning_ = false; landPending_ = false; fadeEnd_ = 0; endQ_.clear();
     chorus_ = 0; keysDone_ = 0; keyShift_ = 0; lastSetBpm_ = 0; startBpm_ = tmap_ ? tmap_->bpmAt(firstFrame) : 120.0;
     running_ = true;
     return true;
@@ -152,6 +188,10 @@ class SongSequencer {
   void stop() { running_ = false; marks_.clear(); }
   bool running() const { return running_; }
   int chorus() const { return chorus_; }
+  // The ending armed for the end of this pass (0: none): the page's songEnding. A queued one (a tag's finish) is the sequencer's own.
+  void arm(int kind) { armed_ = kind; }
+  int armedEnding() const { return armed_ ? armed_ : queued_; }
+  bool endingRunning() const { return endingRunning_ || landPending_; }
   int keyShift() const { return keyShift_; }
   // _pracRestore, at a stop: the tempo goes back to where the run began, but only if it is still the one the trainer set (a tempo the player moved is theirs); the key
   // goes back (the shift is dropped). Returns the tempo to put back, or 0.
@@ -175,13 +215,31 @@ class SongSequencer {
   // Fire every chord that starts before `horizon`, in order, handing each to emit(const SongChord&). `drums`: the drums are playing, so there is a
   // bar clock to count. Returns the number of chords started.
   template <class Emit>
-  int run(double horizon, bool drums, Emit &&emit) { return run(horizon, drums, emit, [](const ChorusEvent &) {}); }
+  int run(double horizon, bool drums, Emit &&emit) { return run(horizon, drums, emit, [](const ChorusEvent &) {}, [](const EndingEvent &) {}); }
+  template <class Emit, class Chorus>
+  int run(double horizon, bool drums, Emit &&emit, Chorus &&chorus) { return run(horizon, drums, emit, chorus, [](const EndingEvent &) {}); }
   // As above; `chorus` is called (with the new chorus's first bar line) when a chorus has ended, before that chorus's first chord is handed out, so the
   // caller can step the tempo in time for the chord's length.
-  template <class Emit, class Chorus>
-  int run(double horizon, bool drums, Emit &&emit, Chorus &&chorus) {
+  template <class Emit, class Chorus, class Ending>
+  int run(double horizon, bool drums, Emit &&emit, Chorus &&chorus, Ending &&ending) {
     int fired = 0, guard = 0;
     while (running_ && guard++ < 4096) {
+      // An ending's own moments come between the chords: the fade's end, and a ritardando's landing on the first bar line announced after its curve.
+      {
+        const double boundary = began_ ? (haveNext_ ? next_ : INFINITY) : curStart_;
+        if (landPending_) {
+          for (double m : marks_) if (m >= landAfter_ - 1e-6) {
+            if (m <= boundary + 1e-6) { landPending_ = false; endingRunning_ = false; running_ = false; ending(land(m, kEndRitard)); }
+            break;
+          }
+          if (!running_) break;
+        }
+        if (fadeEnd_ > 0 && fadeEnd_ < horizon && fadeEnd_ <= boundary) {
+          EndingEvent ev; ev.type = EndingEvent::FadeEnd; ev.frame = fadeEnd_; ev.kind = kEndFade;
+          fadeEnd_ = 0; endingRunning_ = false; running_ = false; ending(ev);
+          break;
+        }
+      }
       const SongSection *sec = score_.playable((size_t)section_) ? &score_.sections[(size_t)section_] : nullptr;
       if (!sec) { running_ = false; break; }
       if (slot_ >= (int)sec->slots.size()) slot_ = 0;
@@ -212,6 +270,9 @@ class SongSequencer {
       if (!haveNext_ || next_ >= horizon) break;
       advance();
       if (chorusEv_) { chorusEv_ = false; chorus(lastChorus_); }
+      for (const EndingEvent &ev : endQ_) ending(ev);
+      endQ_.clear();
+      if (!running_) break;
       // The lines that fell inside a chord that ran by time belong to no one's count.
       while (!marks_.empty() && marks_.front() <= next_ + 1e-6) marks_.pop_front();
       curStart_ = next_; began_ = false; haveNext_ = false;
@@ -271,9 +332,19 @@ class SongSequencer {
     const SongSection &sec = score_.sections[(size_t)section_];
     const SongTrainer &tr = score_.trainer;
     slot_++;
-    if (tr.loopOn && section_ == tr.loopSection && loopValid() && slot_ > tr.loopB && pending_ == 0) { slot_ = tr.loopA; chorusDone(); return; }
+    if (tr.loopOn && section_ == tr.loopSection && loopValid() && slot_ > tr.loopB && pending_ == 0 && !armed_ && !queued_ && !endingRunning_ && !landPending_) { slot_ = tr.loopA; chorusDone(); return; }
     if (slot_ < (int)sec.slots.size()) return;
     slot_ = 0;
+    // An armed ending lands here, on the downbeat, rather than wherever the player hit stop. Most take the song over and it ends; a fade, a tag and a ritardando keep
+    // the chart going and own which part of it plays ('hold': the section again from `slot_`, the pass not counted).
+    if (armed_ || queued_) {
+      const int kind = armed_ ? armed_ : queued_;
+      armed_ = 0; queued_ = 0;
+      if (runEnding(kind)) return;
+      running_ = false;
+      return;
+    }
+    if (endingRunning_ || landPending_) return;      // the chart goes round; no pass is counted and nothing moves while it fades or slows
     if (pending_ != 0) { moveToSection(pending_); pending_ = 0; return; }
     int playable = 0, last = -1;
     for (size_t i = 0; i < score_.sections.size(); i++) if (score_.playable(i)) { playable++; last = (int)i; }
@@ -283,6 +354,54 @@ class SongSequencer {
     if (leaving) moveToSection(1);
     // The last section's final pass is the end of the chorus. A last section on "for ever" or a one-section chart never leaves, so each of its passes counts.
     if (wasLast && (leaving || sec.plays == 0 || playable == 1)) chorusDone();
+  }
+  double beatSecAt(double frame) const { return 60.0 / std::max(1.0, bpmAtFrame(frame)) * score_.ending.beatMul; }
+  double bpmAtFrame(double frame) const { return (tmap_ ? tmap_ : &own_)->bpmAt(frame); }
+  EndingEvent land(double frame, int kind) const {
+    EndingEvent ev; ev.type = EndingEvent::Land; ev.frame = frame; ev.kind = kind;
+    const double beat = beatSecAt(frame);
+    if (kind == kEndCold) { ev.sustain = false; ev.snare = true; ev.holdSec = beat * 0.5; }
+    else if (kind == kEndFinish) { ev.sustain = true; ev.snare = true; ev.holdSec = beat * score_.ending.barBeats; }
+    else { ev.sustain = true; ev.soft = true; ev.holdSec = beat * 2.0; }     // a ritardando's landing: a soft hit, held two beats
+    return ev;
+  }
+  // _runEnding, at the pass boundary next_. True when the chart goes on (the caller replays the section from slot_), false when the song is over.
+  bool runEnding(int kind) {
+    const double L = next_;
+    const double sr = sr_;
+    if (kind == kEndCold || kind == kEndFinish) { endQ_.push_back(land(L, kind)); return false; }
+    if (kind == kEndFade) {
+      endingRunning_ = true;
+      EndingEvent ev; ev.type = EndingEvent::FadeStart; ev.frame = L; ev.kind = kind;
+      ev.durFrames = beatSecAt(L) * score_.ending.barBeats * 4.0 * sr; ev.fadeSteps = 56;     // four bars, in 56 steps
+      fadeEnd_ = L + ev.durFrames + 0.14 * sr;
+      endQ_.push_back(ev);
+      return true;
+    }
+    if (kind == kEndTag) {
+      const SongSection &sec = score_.sections[(size_t)section_];
+      const int n = (int)sec.slots.size();
+      if (n >= 2) { slot_ = std::max(0, n - 2); queued_ = kEndFinish; endingRunning_ = false; return true; }
+      endingRunning_ = false;
+      return runEnding(kEndFinish);
+    }
+    if (kind == kEndRitard) {
+      endingRunning_ = true;
+      const double from = bpmAtFrame(L), w = 0.55;
+      const int N = std::max(4, (int)std::lround(2.0 * score_.ending.barBeats * 2.0) - 2);
+      EndingEvent ev; ev.type = EndingEvent::Ritard; ev.frame = L; ev.kind = kind; ev.fromBpm = from;
+      // the page walks the curve a step every half beat of the tempo it has just set: the square of the tempo falls in a straight line over the steps
+      double t = L + 0.5 * 60.0 / std::max(1.0, from) * score_.ending.beatMul * sr;
+      for (int i = 1; i <= N; i++) {
+        const double bpm = from * std::sqrt(1.0 + (w * w - 1.0) * std::min(1.0, (double)i / N));
+        ev.tempoSteps.push_back({t, std::max(40.0, std::min(220.0, std::round(bpm)))});
+        if (i < N) t += 0.5 * 60.0 / std::max(1.0, bpm) * score_.ending.beatMul * sr;
+      }
+      landPending_ = true; landAfter_ = t + score_.ending.lookaheadSec * sr;     // the first bar line announced after the curve is done
+      endQ_.push_back(ev);
+      return true;
+    }
+    return false;
   }
   // pracLoopValid: the bars to loop exist.
   bool loopValid() const {
@@ -332,6 +451,10 @@ class SongSequencer {
   double lastSetBpm_ = 0, startBpm_ = 120;           // the tempo it last set, and the one the run began at
   bool chorusEv_ = false;
   ChorusEvent lastChorus_;
+  int armed_ = 0, queued_ = 0;                       // the ending armed for the end of the pass, and one queued for the pass after (a tag's finish)
+  bool endingRunning_ = false, landPending_ = false;  // a fade or a ritardando is playing the chart; a ritardando's landing is waiting for a bar line
+  double landAfter_ = 0, fadeEnd_ = 0;
+  std::vector<EndingEvent> endQ_;
 };
 
 }  // namespace modsynth

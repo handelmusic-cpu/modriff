@@ -9182,7 +9182,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.6a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.7</span></div>
  </div>
 </div>
 
@@ -10614,7 +10614,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.6a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11811,7 +11811,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.6a';
+const MODRIFF_VERSION = '6.9.9.9.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -32784,6 +32784,7 @@ function armEnding(id){
  // Tapping the armed ending again disarms it — no way to get stuck.
  songEnding = (songEnding===id) ? null : id;
  _updateEndingUI();
+ if(window._nsSong && window._nsSong.driving) window._nsSong.arm(window._songEndingCode(songEnding));     // the engine is playing the song: it lands the ending at the end of the pass
  if(songEnding){
   const looping=!(typeof songLoopActive==='undefined'||!songLoopActive);
   const barred=!looping && typeof window._sqNextBar==='function' && !!window._sqNextBar();
@@ -51084,9 +51085,22 @@ function _songPeekNextSlot(){
 // rhythms, whose re-strikes the engine plays); `chords` is then
 // true when the engine can do that, and `chordWhy` names what it cannot yet (a sampled chord voice, glide, Pure tuning) when it is false. Without it the
 // engine only steps the song and hands the bass its chords, as before.
+// The lanes an ending's band hit plays on, as _endingBandHit finds them in the kit that is on: the kick, the first cymbal of ride/crash/open hat/tambourine/..., the snare.
+window._songEndLanes = function(){
+ var tr = (typeof window._sqTracks === 'function' && window._sqTracks()) || [], at = function(s){ for(var i = 0; i < tr.length; i++) if(tr[i] && tr[i].s === s) return i; return -1; };
+ var cym = -1; for(var k = 0; k < _END_CYMBALS.length && cym < 0; k++) cym = at(_END_CYMBALS[k]);
+ var sn = at('SD'); if(sn < 0) sn = at('SN');
+ return {kick: at('BD'), cym: cym, snare: sn};
+};
+// The landing as the engine reads it (EndLanding): [on, kick, cymbal, snare, root, bass octave, nTones, tones...]; the root is the key's tonic with the live key change taken off.
+window._songLanding = function(capo){
+ var L = window._songEndLanes(), ivs = [0, 4, 7]; try{ ivs = _endTonicIntvs(); }catch(e){}
+ return [1, L.kick, L.cym, L.snare, rootMidi() - capo, (typeof window._blEndOct === 'function' ? window._blEndOct() : 2), ivs.length].concat(ivs);
+};
+// The engine's number for an ending (EndKind in songcore.h).
+window._songEndingCode = function(id){ return {cold: 1, finish: 2, fade: 3, tag: 4, ritard: 5}[id] || 0; };
 window._songNativeScore = function(opts){
  var why = [], chordWhy = [];
- try{ if(songEnding || _endQueued || _endingRunning) why.push('an ending'); }catch(e){}
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
   try{ if(SAMPLED_WAVES[voice] || voice === 'sampler') chordWhy.push('a sampled chord voice'); }catch(e){}
@@ -51125,12 +51139,17 @@ window._songNativeScore = function(opts){
   });
  });
  var capo = (typeof _songBaseRoot !== 'undefined' && _songBaseRoot >= 0) ? (root - _songBaseRoot) : 0;
- var d = [4, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
+ var d = [5, _songBarSteps(), songSwingOn ? 1 : 0, (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0, snapMode !== 'off' ? 1 : 0, capo];
  window._blPushLocks(d, locks);
  // The practice trainer (a loop of bars, the tempo step, the key step), after the sections.
  var lv = false; try{ lv = pracLoopValid(); }catch(e){}
  var trainer = [lv ? 1 : 0, lv ? pracLoop.si : -1, lv ? pracLoop.a : -1, lv ? pracLoop.b : -1,
                 prac.ramp.on ? 1 : 0, prac.ramp.step, prac.ramp.every, prac.ramp.max, prac.key.on ? 1 : 0, prac.key.every, prac.key.by];
+ // The endings: the meter's bar and beat, how far ahead a bar line is announced, and the ending already armed (ENDING_KINDS: 1 cold .. 5 ritard).
+ var endBeat = 1; try{ endBeat = meterIsCompound() ? 1.5 : 4 / METER.unit; }catch(e){}
+ var ending = [_endBarBeats(), endBeat, (typeof LOOK_AHEAD === 'number' ? LOOK_AHEAD : 0.15), window._songEndingCode(songEnding || _endQueued)];
+ // What the band lands on: the kit's kick, biggest cymbal and snare (lane numbers), the tonic's root without the live key change, its triad and the bass's octave.
+ var land = window._songLanding(capo);
  var tail = [0], chords = !!(opts && opts.chords) && !chordWhy.length;
  if(chords){
   var vo = VOICING_CYCLE.indexOf(voicing), steps = ((MODES[mode] && MODES[mode].steps) || []);
@@ -51140,7 +51159,7 @@ window._songNativeScore = function(opts){
            _webChordSubOn() ? 1 : 0, velScale(0), (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0,
            (typeof window._sqSwing8 === 'function' && window._sqSwing8()) ? 1 : 0, nPats], pats);
  }
- return {ok: !why.length, why: why, score: d.concat(secs, trainer, tail), chords: chords, chordWhy: chordWhy};
+ return {ok: !why.length, why: why, score: d.concat(secs, trainer, ending, land, tail), chords: chords, chordWhy: chordWhy};
 };
 
 // The pitches the engine's chords can need from the bank, for a song: the recording of a chord is one pitch at a time, and what a voicing picks depends on
@@ -60794,6 +60813,23 @@ window._nsBank = {
  signature: function(part, kit, lane){
   return JSON.stringify([_wp('mix.' + part), _webShapeOf(kit, lane, part)]);
  },
+ // The lanes an ending's landing hits (the kit's kick, cymbal and snare), which the score may not play: recorded and sent like the score's own (layer 0, the kit).
+ ensureLanes: async function(lanes){
+  var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
+  if(!P) return rep;
+  sqStashFocused();
+  var L = sqLayers[0], M = SQM[L.mach], part = SQ_LAYER_CH[0];
+  if(!M) return rep;
+  for(var i = 0; i < lanes.length; i++){
+   var ti = lanes[i]; if(ti < 0 || !M.tracks[ti] || !M.tracks[ti].play) continue;
+   var key = '0:' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
+   if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+   var r = await this.build(part, L.mach, ti);
+   if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+  }
+  return rep;
+ },
  // Every lane the score plays, recorded and sent if the host does not hold it under the current signature.
  ensure: async function(){
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
@@ -61000,12 +61036,17 @@ window._songMirror = {
    if(lead > 12) setTimeout(show, lead); else show();
   }
   // The queued Next/Prev: the engine's word, except for the moment after the player's own tap, which it has not heard yet.
+  // An ending the engine has taken over: the page's armed light goes out when it runs, as _runEnding clears songEnding.
+  var en = s.ending;
+  if(en && en.phase > 0 && songEnding){ songEnding = null; _updateEndingUI(); }
+  if(en && en.phase === 1) _endingRunning = true;
   var pend = s.pending | 0;
   if(me.live && pend !== songPendingSectionDelta && !(performance.now() - me.cmdAt < 200)){ songPendingSectionDelta = pend; _updateSectionNavUI(); }
  },
  // The song stopped (the engine's or the player's): what stopSongLoop leaves on the screens.
  end: function(){
   this.live = false; this.seen = 0; this.chorusSeen = 0;
+  _endingRunning = false; _endQueued = null; songEnding = null; try{ _updateEndingUI(); }catch(e){}
   songLoopActive = false; _songRunSounded = false; songPendingSectionDelta = 0;
   try{ songPlayheadClear(); }catch(e){}
   if(typeof applySongPlayingHighlights === 'function') applySongPlayingHighlights(false);
@@ -61037,7 +61078,8 @@ window._nsSong = {
  sync: function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
   var me = this, want = this.chords && !!(MODGRAPH.on && MODGRAPH.parts.chord);
-  return (want ? me.prepareChords() : Promise.resolve(null)).then(function(rep){
+  var endL = window._songEndLanes(), landing = (MODGRAPH.on && MODGRAPH.parts.drum) ? window._nsBank.ensureLanes([endL.kick, endL.cym, endL.snare]) : Promise.resolve(null);     // the lanes the landing hits
+  return landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
    var sc = window._songNativeScore({chords: want && (!rep || !rep.failed.length)});
    if(!sc.ok) return {ok: false, why: 'the engine cannot step this song yet: ' + sc.why.join(', ')};
    return P.seqSong({score: _mgB64(Float64Array.from(sc.score))}).then(function(r){ if(r && typeof r === 'object'){ r.bank = rep; r.chordWhy = sc.chordWhy; r.chords = sc.chords; } return r; });
@@ -61080,6 +61122,7 @@ window._nsSong = {
  stop: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.end(); return P ? P.seqSongStop() : Promise.resolve(); },
  // The page's own Stop and Hold (and Next/Prev) come here while the engine drives the song (stopSongLoop, holdSongLoop and songGotoSection call them); the page
  // has done the screens' half itself.
+ arm: function(kind){ var P = this.plugin(); return P && P.seqSongArm ? P.seqSongArm({kind: kind}) : Promise.resolve(); },
  stopFromPage: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.live = false; if(P) P.seqSongStop(); },
  hold: function(){ var P = this.plugin(); this.driving = false; this.watch(false); window._songMirror.live = false; if(P) P.seqSongHold(); },
  move: function(delta){ var P = this.plugin(); window._songMirror.cmdAt = performance.now(); return P ? P.seqSongMove({delta: delta}) : Promise.resolve(); },
@@ -61636,6 +61679,7 @@ window._blLiveOff = function(midi){
 // song that finished on an ending ended with the bass player gone and the
 // bottom of the last chord played by a synth pad. Nothing here when the bass
 // was not playing: that would add a part nobody had switched on.
+window._blEndOct = function(){ return blOct; };
 window._blEndNote = function(rootPc, at, durSec){
   var ctx = blCtx(); if(!ctx) return;
   var pc = ((rootPc % 12) + 12) % 12;

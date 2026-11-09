@@ -522,3 +522,18 @@ The engine now loops the bars you picked, counts choruses, steps the tempo and t
 | 29.6 | Freeze the page for 3 s during a loop | the loop and the steps go on without it |
 | 29.7 | Arm an ending (Cold, Finish...) and `_nsSong.start()` | the result says the engine cannot step this song yet (an ending); the page's own loop plays it |
 
+## 30. The endings in the engine (6.9.9.9.9.9.7; audible through a developer entry only)
+
+Arm an ending while the engine plays the song (`_nsDrum.start()`, `_nsBass.start()`, `_nsSong.start()`): it takes effect at the end of the pass, on the downbeat.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 30.1 | Arm **Big Fin** | at the end of the pass the whole band lands together: kick, cymbal and snare, the tonic chord with its root an octave down, the bass's last note; the chord rings and is let go of after a bar; then silence. The groove does not play a beat of the next pass; the armed light goes out |
+| 30.2 | Arm **Cold** | the final bar plays in full and everything stops dead on the downbeat after it: the hit and the chord are choked half a beat later |
+| 30.3 | Arm **Tag** | the last two chords play again, then the Big Fin lands a pass later |
+| 30.4 | Arm **Ritard** | the whole band slows over about two bars (stepping down to about half tempo) and lands on the next bar line with a soft hit; the tempo comes back to where it was after the stop |
+| 30.5 | Arm **Fade** | the mix comes down smoothly over four bars while the changes keep going, then everything stops; the volume is back up half a second later |
+| 30.6 | Arm an ending and tap it again before the pass ends | it is cancelled; the song carries on |
+| 30.7 | Freeze the page for 3 s with an ending armed | the ending still lands on the downbeat |
+| 30.8 | Practice trainer on (Speed up, Next key), then an ending | the landing is in the key the song started in, and the tempo is back |
+

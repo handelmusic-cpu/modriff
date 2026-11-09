@@ -385,11 +385,12 @@ int main() {
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "no song, no song start");
       CHECK(![g seqSetSong:[NSData dataWithBytes:"junk" length:8]], "a song that does not parse is refused");
       //  [3, barSteps, swingOn, swing, clocked, capo, nLocks, nSections, per section: plays, follow, nSlots,
-      //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs, then the voice: on]
-      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  2,
+      //   per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs, then the trainer, the ending, the landing, the voice: on]
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  2,
         0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, -1, 3, 0, 4, 7,
         0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, -1, 4, 0, 4, 7, 10,
         0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,    // the trainer: no loop, no tempo step, no key step
+        4, 1, 0.15, 0,  0,                        // the ending (bar, beat, look-ahead, nothing armed), no landing
         0};
       CHECK([g seqSetSong:bytes(song)], "the song is taken");
       CHECK(![g seqSongStartWithLeadMs:100 alignToDrums:YES section:5 slot:0 pass:0], "a place that is not in the song is refused");
@@ -429,10 +430,11 @@ int main() {
       //  per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs; then the voice: on, kit, play, pedal, style, vary, autoInv, keyRoot,
       //  nSteps, steps, decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8, nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len)...
       //  The F chord over A (a bar) has the comp "every beat": hits at the 2nd, 3rd and 4th beat (eighths 2, 4, 6) after its first strike.
-      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  2,
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  2,
         0, 0, 3,   1, 0, 0, 0, 60, -1, -1, -1, 1, 2, -1, 3, 0, 4, 7,   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, 57, -1, -1, 0, 0, 0, 3, 0, 4, 7,
         0, 0, 1,   1, 0, 0, 0, 67, -1, -1, -1, 1, 0, -1, 4, 0, 4, 7, 10,
         0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+        4, 1, 0.15, 0,  0,
         1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1,  0, 1,  1,  0, 0, -1, 4,  0, 1, 0,  2, 1, 0,  4, 1, 0,  6, 1, 0};
       CHECK([g seqSetSong:bytes(song)], "the song, with its voice, is taken");
       [g seqSetDrumScore:bytes(score())];
@@ -471,9 +473,10 @@ int main() {
     // back where the run began.
     {
       ModEngineHost *g = fresh();
-      std::vector<double> song = {4, 16, 0, 0, 1, 0,  0,  1,
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
         0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
         0, -1, -1, -1, 1, 10, 1, 140, 1, 1, 7,
+        4, 1, 0.15, 0,  0,
         0};
       CHECK([g seqSetSong:bytes(song)], "a song with the trainer on is taken");
       [g seqSetDrumScore:bytes(score())];
@@ -486,6 +489,62 @@ int main() {
       [g seqSongStop];
       NSDictionary *m2 = [g seqMirror];
       CHECK(fabs([m2[@"tempo"] doubleValue] - 120) < 1e-9 && [m2[@"song"][@"keyShift"] intValue] == 0, "stopping puts the tempo back to %.0f and drops the key shift", [m2[@"tempo"] doubleValue]);
+      [g seqStop];
+    }
+
+    // The endings through the host. A one-section song of two whole-bar chords at 240 (a bar is a second) with the drums and the bass running, the voice on and a landing on the
+    // kit's lanes 0 (kick) and 1 (cymbal). A finish armed during the first pass lands at its end: the song is over, the band hit and the chord and the bass note began from the
+    // bank, the chord is let go of and stopped after its hold. Then a fade: the master comes down in decibels through four bars and back up after the stop.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      for (int pitch = 24; pitch <= 91; pitch++) { [g seqPutBankEntry:bytes(chordNoteEntry(pitch, false, 6))]; [g seqPutBankEntry:bytes(chordNoteEntry(pitch, true, 6))]; }
+      auto song = [&](int armed) {
+        return std::vector<double>{5, 16, 0, 0, 1, 0,  0,  1,
+          0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+          0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+          4, 1, 0.15, (double)armed,
+          1, 0, 1, -1, 60, 2, 3, 0, 4, 7,                       // the landing: kick lane 0, cymbal lane 1, no snare; C major; the bass in octave 2
+          1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1,  0, 1,  0};
+      };
+      CHECK([g seqSetSong:bytes(song(2))], "a song with a finish armed and a landing is taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "it starts");
+      run(g, 5500);
+      NSDictionary *m = [g seqMirror], *sg = m[@"song"], *en = sg[@"ending"];
+      CHECK(![sg[@"running"] boolValue] && [en[@"phase"] intValue] == 2 && [en[@"lands"] intValue] == 1, "the finish landed at the end of the pass (phase %d, %d landings) and the song is over", [en[@"phase"] intValue], [en[@"lands"] intValue]);
+      CHECK(![m[@"running"] boolValue] && ![m[@"bass"][@"running"] boolValue] && ![m[@"chord"][@"running"] boolValue], "the drums, the bass and the chord rhythm stopped with it");
+      CHECK([sg[@"voiced"] intValue] >= 3 && [sg[@"misses"] intValue] == 0, "the chords sounded, the landing's among them: %d voiced, %d missed", [sg[@"voiced"] intValue], [sg[@"misses"] intValue]);
+      CHECK([sg[@"releases"] intValue] >= 3, "the landing chord is let go of after its hold (%d releases)", [sg[@"releases"] intValue]);
+      CHECK([[g graphStats][@"lateEdits"] intValue] == 0, "no late edit");
+      [g seqStop];
+    }
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:5];
+      for (int pitch = 24; pitch <= 91; pitch++) { [g seqPutBankEntry:bytes(chordNoteEntry(pitch, false, 6))]; [g seqPutBankEntry:bytes(chordNoteEntry(pitch, true, 6))]; }
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
+          0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+          0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+          4, 1, 0.15, 3,                                        // a fade armed from the start
+          0,
+          1, 9, 1, 0, 0, 0, 1, 0, 7, 0, 2, 4, 5, 7, 9, 11,  0.3, 0, 0, 0, 0, 0, 1,  0, 1,  0};
+      CHECK([g seqSetSong:bytes(song)], "a song with a fade armed is taken");
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "it starts");
+      float lowest = 1.f; bool playedOn = false; int chordsAtFade = 0;
+      for (int t = 0; t < 9500; t += 500) {
+        run(g, 500);
+        NSDictionary *sg = [g seqMirror][@"song"], *en = sg[@"ending"];
+        lowest = std::min(lowest, [en[@"gain"] floatValue]);
+        if ([en[@"phase"] intValue] == 1) { if (!chordsAtFade) chordsAtFade = [sg[@"chords"] intValue]; else if ([sg[@"chords"] intValue] > chordsAtFade) playedOn = true; }
+      }
+      NSDictionary *sg = [g seqMirror][@"song"], *en = sg[@"ending"];
+      CHECK(playedOn, "the chart plays on through the fade");
+      CHECK(lowest < 0.1f && [en[@"phase"] intValue] == 2 && ![sg[@"running"] boolValue], "the master came down to %.3f and the song stopped at the end of the fade", lowest);
+      CHECK(fabs([en[@"gain"] floatValue] - 1.0) < 1e-6, "and it was brought back up afterwards (gain %.3f)", [en[@"gain"] floatValue]);
       [g seqStop];
     }
 

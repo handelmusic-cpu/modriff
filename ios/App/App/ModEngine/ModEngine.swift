@@ -50,6 +50,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongHold", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongArm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongMove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongCapo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
@@ -745,6 +746,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqSongStop(_ call: CAPPluginCall) {
         host?.seqSongStop()
         call.resolve()
+    }
+
+    /// The ending armed for the end of this pass: 1 cold, 2 finish, 3 fade, 4 tag, 5 ritard, 0 none.
+    @objc func seqSongArm(_ call: CAPPluginCall) {
+        host?.seqSongArm(Int32(call.getInt("kind") ?? 0))
+        call.resolve(["ok": true])
     }
 
     /// Freezes the progression and leaves the chord that sounds (the page's hold).

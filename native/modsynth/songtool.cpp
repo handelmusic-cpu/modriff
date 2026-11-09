@@ -4,13 +4,14 @@
 // cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, section, slot, pass, nTicks, then nTicks x (now, horizon, drumsPlaying, nMarks,
 //   marks..., queuedMove, capo (1e9: none)), then the score (songcore.h)]. A tick is one call of the scheduler: the bar lines the drums announced since the last
 //   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
-// Output per case: "CASE i", "A section chord pass t end nextSection nextChord capo queuedMove" for each chord the song starts (what the host's mirror asks the page about), "C frame chorus bpm keyDelta" when a practice chorus ends, "P now queuedMove" after each tick (what the mirror shows), "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
+// Output per case: "CASE i", "A section chord pass t end nextSection nextChord capo queuedMove" for each chord the song starts (what the host's mirror asks the page about), "C frame chorus bpm keyDelta" when a practice chorus ends, "E type frame kind sustain snare soft holdSec durFrames fadeSteps fromBpm nSteps (frame bpm)..." for an ending (type 0 land, 1 fade start, 2 fade end, 3 ritard), "P now queuedMove" after each tick (what the mirror shows), "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
 // (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), and the
 // re-strikes of its comp as "H" lines of the same shape (or "T onset" for one that only stops), in the order the engine plays them, "END i n".
 #include <cstdio>
 #include <vector>
 #include "songcore.h"
 #include "songvoice.h"
+#include "songend.h"
 
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "usage: songtool cases.f64\n"); return 2; }
@@ -47,7 +48,8 @@ int main(int argc, char **argv) {
     int fired = 0;
     for (const Tick &t : ticks) {
       for (double m : t.marks) q.noteBar(m);
-      if (t.move) q.queueMove(t.move);
+      if (t.move >= 10) q.arm(t.move - 10);             // 10 + the ending the player armed (1 cold, 2 finish, 3 fade, 4 tag, 5 ritard)
+      else if (t.move) q.queueMove(t.move);
       if (t.capo < 1e8) q.setCapo((int)t.capo);
       auto show = [](const char *tag, const char *stopTag, const modsynth::VoiceAction &a) {
         if (a.play) {
@@ -69,6 +71,25 @@ int main(int argc, char **argv) {
         // the practice trainer stepped: the tempo is stepped on the bar line the new chorus begins on (the host puts it after the drums' expanded steps)
         if (ev.bpm > 0) tm.jump(ev.frame, ev.bpm);
         printf("C %.17g %d %.17g %d\n", ev.frame, ev.chorus, ev.bpm, ev.keyDelta);
+      }, [&](const modsynth::EndingEvent &ev) {
+        // an ending: a ritardando steps the tempo map, the rest are the host's business and are only printed
+        if (ev.type == modsynth::EndingEvent::Ritard) for (const auto &st : ev.tempoSteps) tm.jump(st.first, st.second);
+        printf("E %d %.17g %d %d %d %d %.17g %.17g %d %.17g %zu", (int)ev.type, ev.frame, ev.kind, ev.sustain ? 1 : 0, ev.snare ? 1 : 0, ev.soft ? 1 : 0, ev.holdSec, ev.durFrames,
+               ev.fadeSteps, ev.fromBpm, ev.tempoSteps.size());
+        for (const auto &st : ev.tempoSteps) printf(" %.17g %.17g", st.first, st.second);
+        printf("\n");
+        if (ev.type == modsynth::EndingEvent::Land) {
+          // the landing the host would play: the band hit, the chord, the bass note, when it is all stopped (the drums and the bass are taken to be playing)
+          const modsynth::LandingPlan lp = modsynth::planLanding(q.score(), ev, voicer, tm, nullptr, true, true, sr);
+          for (const modsynth::DrumEvent &h : lp.hits) printf("D %.17g %d %.17g %d\n", h.frameExact, h.lane, h.vel, h.accent ? 1 : 0);
+          if (lp.chord.play) {
+            printf("K %.17g %.17g %.17g %d %.17g %d %zu", lp.chord.onset, lp.chord.e.vel, lp.chord.e.durSec, lp.chord.e.hold ? 1 : 0, lp.chord.e.holdSec, lp.chord.e.subNote, lp.chord.e.notes.size());
+            for (int n : lp.chord.e.notes) printf(" %d", n);
+            printf("\n");
+          } else if (lp.chord.stop) printf("K stop %.17g\n", lp.chord.onset);
+          if (lp.bass) printf("B %.17g %d %.17g %.17g %d\n", lp.bassNote.frameExact, lp.bassNote.midi, lp.bassNote.durFrames, lp.bassNote.vel, lp.bassNote.accent ? 1 : 0);
+          printf("F %.17g\n", lp.finishAt);
+        }
       });
       if (q.score().voice.on) hits(t.horizon);
       printf("P %.17g %d\n", t.now, q.queuedMove());          // the host's mirror after this tick: the Next/Prev still waiting

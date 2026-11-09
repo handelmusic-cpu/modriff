@@ -5,7 +5,7 @@ namespace modsynth {
 bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
   size_t k = 0;
   auto need = [&](size_t m) { return k + m <= n; };
-  if (!need(6) || d[0] != 4) return false;
+  if (!need(6) || d[0] != 5) return false;
   k = 1;
   SongScore s;
   s.barSteps = (int)d[k++]; s.swingOn = d[k++] != 0; s.swing = d[k++]; s.clocked = d[k++] != 0; s.capo = (int)d[k++];
@@ -40,6 +40,19 @@ bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
     t.rampOn = d[k + 4] != 0; t.rampStep = (int)d[k + 5]; t.rampEvery = (int)d[k + 6]; t.rampMax = (int)d[k + 7];
     t.keyOn = d[k + 8] != 0; t.keyEvery = (int)d[k + 9]; t.keyBy = (int)d[k + 10];
     k += 11;
+  }
+  // the ending
+  if (!need(4)) return false;
+  { EndingCfg &e = s.ending; e.barBeats = d[k]; e.beatMul = d[k + 1]; e.lookaheadSec = d[k + 2]; e.armed = (int)d[k + 3]; k += 4; if (e.armed < 0 || e.armed > kEndRitard) return false; }
+  // the landing
+  if (!need(1)) return false;
+  if (d[k++] != 0) {
+    if (!need(6)) return false;
+    EndLanding &l = s.landing;
+    l.on = true; l.kickLane = (int)d[k]; l.cymLane = (int)d[k + 1]; l.snareLane = (int)d[k + 2]; l.root = (int)d[k + 3]; l.bassOct = (int)d[k + 4];
+    const double ni = d[k + 5]; k += 6;
+    if (!(ni >= 1 && ni <= 12) || !need((size_t)ni)) return false;
+    for (size_t q = 0; q < (size_t)ni; q++) l.ivs.push_back((int)d[k++]);
   }
   // how the chords sound
   if (!need(1)) return false;
