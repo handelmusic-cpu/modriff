@@ -1122,11 +1122,47 @@ choruses the tempo is 140 and the key is two semitones up, and stopping puts the
 The engine puts the tempo step on the first step the drums have not laid out, up to a look-ahead (0.15 s) after the bar line the chorus begins on; the page changes its tempo a look-ahead before the bar line
 (when the pass is counted). The test applies the step at the bar line in both.
 
-**The endings, left to the page, and why.** The endings (cold, finish, fade, tag, ritardando) are driven by the page's wall-clock timers and are mostly sound design that is not the song's stepping: the band's
+**The endings (left to the page here, built in piece 7b below).** The endings (cold, finish, fade, tag, ritardando) are driven by the page's wall-clock timers and are mostly sound design that is not the song's stepping: the band's
 landing (a kick, a cymbal found in the drum kit by name, the bass's last note), the master fader ridden down in decibels, the toast, the tonic chord's release. What the engine could take is the part that
 is the song's: the tag (back up two chords and play them again, then the finish), the ritardando's tempo curve (a ramp on the tempo map, the page's curve is the square of the tempo falling linearly with the
 beats, which the map's ramp is: `tempo.ramp` exists) and the landing on the next bar line. The rest stays in the page with the engine as the sound: the page, in the foreground, sends `seqTempoRamp`, a jump
 to a chord and a stop. It is the owner's call whether to build those (they only matter with the page awake, and an ending is rare) and `_songNativeScore` still refuses an armed ending, with its reason.
 
 **Not done.** The endings in the engine (above), and the trainer's status line in the background. Not heard on device: checklist 29.
+
+## Slice 4, piece 7b (6.9.9.9.9.9.7): the endings in the engine
+
+**What was built.** The five endings (cold, finish, fade, tag, ritardando) run in the engine's song loop. The player arms one (`armEnding` tells the engine, `seqSongArm`) and it takes effect at
+the end of the pass, on the downbeat, as `_advanceLoopSlot` and `_runEnding` do:
+- **Cold and finish** land: the song is over. At the downbeat everything the band had committed is faded out (the new pool call `GraphPool::killParts`, the page's `hardKillAll(at)`: the voices of the
+  parts named that were begun before the call fade over 22 ms from the frame given, one not yet started by then never does, and the landing's own voices, begun after the call, are left alone), the
+  drums, the bass and the chord rhythm stop, and on the downbeat the whole band plays at once (`songend.h`, the page's `_endingLand`): the kit's kick (0.92), its first cymbal of ride, crash, open hat,
+  tambourine... (0.92, 0.58 after a ritardando), and for cold and finish its snare (0.8); the tonic triad of the key with its root an octave under it (voiced as the player chose, not voice-led; a
+  sustained chord, or a stab for cold); and the bass's last note on the tonic in the bass's octave (0.9, accented, held as long as the chord and 0.4 s over when it rings). After the hold (a half beat for
+  cold, the bar for finish, two beats after a ritardando, at the tempo of the moment) the chord is let go of and, once it has died away (the Release and Decay settings), everything is stopped
+  and the tempo the ending borrowed is put back. The landing is in the key the song was started in (the practice trainer's run is over first, as `stopSongLoopIfActive` does).
+- **Tag** backs the chart up over the last two chords, plays them again with the pass uncounted, and queues a finish for the end of that pass; a section of one chord has nothing to repeat and finishes.
+- **Ritardando** steps the tempo down through the page's curve (the square of the tempo falls in a straight line over `2 * beats of a bar * 2 - 2` steps, one every half beat of the tempo just set, to 0.55 of
+  where it began; every value rounded as the page's `_setBpmGliss` does) with the chart playing on, and lands on the first bar line the page would hear of after the curve is done (a look-ahead
+  later than the curve's end), with the soft hit.
+- **Fade** brings the master down 48 dB in 56 equal steps over four bars (even in decibels, the last step silence) with the chart playing on, and stops everything 140 ms after (`SongSequencer`
+  emits the events; the host rides a multiplier on the master, `_endGain`, ramped across each render block, and puts it back up 0.6 s after the stop).
+While a fade or a ritardando runs, the chart goes round without counting passes or moving sections; the practice loop does not take a pass that has an ending armed.
+
+**Page and host.** `_songNativeScore` no longer refuses an armed ending: the score (format 5) carries the meter's bar and beat, how far ahead a bar line is announced, the ending armed, and the landing (the
+kit's three lanes, the tonic's root and tones, the bass's octave); `_nsBank.ensureLanes` records the landing's lanes in the bank when the score does not play them. `armEnding` (and the ritardando and tag
+the page queues) also tell the engine while `_nsSong` drives; the mirror shows `ending {armed, phase, at, lands, gain}`; `_songMirror.apply` puts the armed light out when the engine runs the ending and clears
+the page's ending state when it stops. The Xcode project is unchanged (`songend.h` is a header).
+
+**Measured.** `tests/seq/songend.test.js` runs the page's real `armEnding` and `_runEnding` on a clock of its own with everything it sends the sound engine kept, and `songtool` on the same ticks (the player's
+tap is a tick). 19 cases: finish, cold, finish in minor at 90 BPM armed late, cold and finish in 3/4, finish in D, tag over four chords and over one, a tag with a cold armed during it, a ritardando at 80, 100, 110, 120 and 140 BPM, in 2/4 at 150 (the bar line that falls just after the curve ends is too soon to have been heard of, so it lands on the next) and over two sections, fades over one section and over two. Held to the
+page's: the chords of the whole run (the landing's last: struck at the same frame, the same notes with the slash bass, held or decaying for the same length); the landing's frame; the band hit's lanes,
+levels and accent; the bass note and its length; the release and the stop (the page's timers wake from the announcement, a look-ahead before the downbeat, so compared within that); the ritardando's tempo
+steps (every value, the spacing of the steps, the first step's moment) and its landing bar; the fade's 56 gains and the stop. 24 deliberate breaks of the engine, all caught. `graphpooltest` holds `killParts` to exact: another part untouched, a voice begun after the request untouched, one not yet started never starts, in awkward block sizes. The host test: a finish
+armed during the first pass lands at its end (the song over, the sequencers stopped, the chords and the landing chord sounded, no miss, the chord let go of), and a fade comes down to silence with the chart
+playing and is back up afterwards.
+
+**Not done.** The page's wall-clock details that the engine does better or differently: the ritardando's tempo steps are the page's (audible as steps; a ramp on the map would be smooth), the landing is by the
+render clock where the page's is by timers, a landing with the chords left to the page has no chord (the page's `_endingLandChord`), the toast texts, and an ending armed with no song looping (the page's own
+`_endAtBar`). Not heard on device: checklist 30.
 

@@ -94,7 +94,7 @@ banktest: banktest.cpp voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph
 	$(CXX) $(CXXFLAGS) -o $@ banktest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
 # The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
-songtool: songtool.cpp songcore.cpp songcore.h songvoice.h voicing.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
+songtool: songtool.cpp songcore.cpp songcore.h songvoice.h songend.h voicing.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
 	$(CXX) $(CXXFLAGS) -o $@ songtool.cpp songcore.cpp basscore.cpp seqcore.cpp voicebank.cpp
 
 tempotest: tempotest.cpp tempomap.h basscore.cpp basscore.h seqcore.cpp seqcore.h chordcore.h chordplay.h chordcomp.h voicebank.cpp voicebank.h

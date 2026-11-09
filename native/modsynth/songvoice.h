@@ -67,6 +67,35 @@ class SongVoicer {
     return a;
   }
 
+  // The chord an ending lands on (_endingLandChord): the key's tonic triad on its root with the root an octave under it, struck at `frame`, ringing for `holdSec` and then
+  // let go of (sustain), or struck to decay and choked by the caller at the end of the hold (a stab). Voiced as the player chose but not voice-led (playSlashChord).
+  VoiceAction landing(double frame, bool sustain, double holdSec, const SongScore &sc, int capo, const TempoMap &tm) {
+    const SongVoiceCfg &cfg = sc.voice;
+    VoiceAction a; a.onset = frame;
+    const int root = sc.landing.root + capo;
+    VoicingConfig vc = cfg.vc;
+    vc.keyRoot = ((cfg.vc.keyRoot + capo) % 12 + 12) % 12;
+    slot_ = SongSlot();
+    const std::vector<int> ivs = lead_.chordVoicing(root, sc.landing.ivs, cfg.vc.style, vc);
+    if (!cfg.play) { a.stop = true; return a; }
+    const VoicedChord vch = engineChord(root, ivs, root - 12);
+    ChordEvent &e = a.e;
+    if (vch.bass >= 0) e.notes.push_back(vch.bass);
+    for (int n : vch.notes) e.notes.push_back(n);
+    e.subNote = vch.bass >= 0 ? vch.bass : vch.root;
+    e.vel = std::max(0.0, std::min(1.0, cfg.velBase));
+    e.onsetExact = frame;
+    e.settings.strum = cfg.strum; e.settings.spread = cfg.spread; e.settings.width = cfg.width; e.settings.sub = cfg.sub;
+    e.hold = sustain; e.holdSec = sustain ? holdSec : -1;
+    if (!sustain) {
+      double dec = cfg.chordBeats > 0 ? std::min(cfg.decRaw, cfg.chordBeats * (60.0 / tm.bpmAt(frame))) : cfg.decRaw;
+      if (cfg.strum && !(cfg.chordBeats > 0)) dec = std::min(dec, 0.7);
+      e.durSec = dec;
+    }
+    a.play = true;
+    return a;
+  }
+
   // The re-strikes of the chord that began (the page's _drainCompPending): every hit due before `horizon`, in order, each to emit(VoiceAction). `capo` is the
   // live key change, read when the hit is played, as the page reads it.
   template <class Emit>

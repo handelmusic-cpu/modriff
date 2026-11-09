@@ -100,6 +100,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)seqSongStartWithLeadMs:(double)leadMs alignToDrums:(BOOL)align section:(int)section slot:(int)slot pass:(int)pass;
 - (void)seqSongStop;
 - (void)seqSongHold;
+- (void)seqSongArm:(int)kind;
 /// A Next (+1) or Prev (-1) queued by the player: taken at the end of the pass.
 - (void)seqSongMove:(int)delta;
 /// The live key change, in semitones.

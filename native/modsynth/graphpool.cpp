@@ -24,6 +24,8 @@ struct GraphPool::Slot {
   // fade-out, 0 when the voice is not being stolen.
   float level = 0;
   int fade = 0;
+  // Kill (killParts): the frame this voice starts fading out at and how long it takes; the order it was begun in, which a kill request compares with to leave later voices alone.
+  uint64_t killAt = UINT64_MAX; int killLen = 0; uint64_t seq = 0;
   // Edits: single producer (control), single consumer (render).
   double edits[kEditCap * 6];
   std::atomic<uint32_t> wr{0}, rd{0};
@@ -49,7 +51,8 @@ int GraphPool::begin(const double *prog, size_t len, double timeBase, uint64_t s
     s.timeBase = timeBase;
     s.rd.store(0, std::memory_order_relaxed);
     s.wr.store(0, std::memory_order_relaxed);
-    s.level = 1.f; s.fade = 0;
+    s.level = 1.f; s.fade = 0; s.killAt = UINT64_MAX; s.killLen = 0;
+    s.seq = beginSeq_.fetch_add(1, std::memory_order_relaxed) + 1;
     const uint32_t gen = s.gen.fetch_add(1, std::memory_order_relaxed) + 1;
     s.state.store(READY, std::memory_order_release);
     return (int)((gen << 8) | (uint32_t)i);
@@ -57,6 +60,14 @@ int GraphPool::begin(const double *prog, size_t len, double timeBase, uint64_t s
   dropped_.fetch_add(1, std::memory_order_relaxed);
   droppedBusy_.fetch_add(1, std::memory_order_relaxed);
   return -1;
+}
+
+bool GraphPool::killParts(uint32_t mask, uint64_t atFrame, int fadeFrames) {
+  const uint32_t w = killWr_.load(std::memory_order_relaxed), r = killRd_.load(std::memory_order_acquire);
+  if (w - r >= kKillCap) return false;
+  kills_[w % kKillCap] = {mask, atFrame, std::max(1, fadeFrames), beginSeq_.load(std::memory_order_relaxed)};
+  killWr_.store(w + 1, std::memory_order_release);
+  return true;
 }
 
 bool GraphPool::edit(int handle, const double *inc, size_t len) {
@@ -85,6 +96,19 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
   // Chosen here, on the render thread, because only this thread may touch a
   // playing slot: begin() on the control side just parks the new note in a spare
   // slot and this decides who makes way for it.
+  // Kill requests first: they mark the voices begun before them (READY and PLAYING slots are this thread's to touch).
+  for (uint32_t kr = killRd_.load(std::memory_order_relaxed), kw = killWr_.load(std::memory_order_acquire); kr != kw; kr++) {
+    const Kill &k = kills_[kr % kKillCap];
+    for (int i = 0; i < kSlots; i++) {
+      Slot &s = slots_[i];
+      const int st = s.state.load(std::memory_order_acquire);
+      if ((st != READY && st != PLAYING) || s.seq > k.limit) continue;
+      bool hit = false;
+      for (int e = 0, ne = s.g.extCount(); e < ne && !hit; e++) { const int code = s.g.extId(e); if (code >= 0 && code < 32 && ((k.mask >> code) & 1u)) hit = true; }
+      if (hit && k.at < s.killAt) { s.killAt = k.at; s.killLen = k.fade; }
+    }
+    killRd_.store(kr + 1, std::memory_order_release);
+  }
   int sounding = 0, due = 0;
   for (int i = 0; i < kSlots; i++) {
     Slot &s = slots_[i];
@@ -125,6 +149,7 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
     int st = s.state.load(std::memory_order_acquire);
     bool first = false;
     if (st == READY) {
+      if (s.killAt != UINT64_MAX && s.startFrame >= s.killAt) { s.state.store(FREE, std::memory_order_release); continue; }   // killed before it began
       if (s.startFrame >= frame0 + (uint64_t)frames) continue;   // not yet
       if (room <= 0) continue;           // nobody could be faded (all are young and fading): wait a block
       room--;
@@ -169,8 +194,16 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
       // kFadeFrames, so the step between samples is never more than the voice's
       // own plus amplitude/kFadeFrames. Computed once per quantum for all its buses.
       float fg[Graph::kQuantum];
-      const bool fading = s.fade > 0;
-      if (fading) for (int k = 0; k < n; k++) fg[k] = s.fade > k ? (float)(s.fade - k) / (float)kFadeFrames : 0.f;
+      const bool stealing = s.fade > 0, killing = s.killAt != UINT64_MAX;
+      const bool fading = stealing || killing;
+      if (fading) for (int k = 0; k < n; k++) fg[k] = stealing ? (s.fade > k ? (float)(s.fade - k) / (float)kFadeFrames : 0.f) : 1.f;
+      if (killing) {
+        const uint64_t abs0 = frame0 + (uint64_t)off;
+        for (int k = 0; k < n; k++) {
+          const uint64_t f = abs0 + (uint64_t)k;
+          if (f >= s.killAt) fg[k] *= f >= s.killAt + (uint64_t)s.killLen ? 0.f : 1.f - (float)(f - s.killAt) / (float)s.killLen;
+        }
+      }
       for (int e = 0; e < ne; e++) {
         const int code = s.g.extId(e);
         if (code < 0 || code >= kBuses || !busL[code]) continue;
@@ -181,13 +214,15 @@ void GraphPool::render(uint64_t frame0, int frames, float *const *busL, float *c
         else for (int k = 0; k < n; k++) { bl[k] += l[k]; br[k] += rr[k]; }
         for (int k = 0; k < n; k++) pk = std::max(pk, std::max(std::fabs(l[k]), std::fabs(rr[k])));
       }
-      if (fading) s.fade = std::max(0, s.fade - n);
+      if (stealing) s.fade = std::max(0, s.fade - n);
       off += n; left -= n;
-      if (fading && s.fade == 0) break;
+      if (stealing && s.fade == 0) break;
     }
     s.level = pk;
     if (wasFading && s.fade == 0) {
       s.state.store(FREE, std::memory_order_release);
+    } else if (s.killAt != UINT64_MAX && frame0 + (uint64_t)frames >= s.killAt + (uint64_t)s.killLen) {
+      s.state.store(FREE, std::memory_order_release);          // faded out by a kill
     } else if (s.g.finished()) {
       s.state.store(FREE, std::memory_order_release);
     }

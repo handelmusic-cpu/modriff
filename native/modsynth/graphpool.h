@@ -67,6 +67,11 @@ class GraphPool {
   // (the voice finished) or the voice's queue is full.
   bool edit(int handle, const double *inc, size_t len);
 
+  // Control thread. The page's hardKillAll(at): every voice begun so far (not the ones begun after this call) that plays into one of the part buses in `mask` (bit
+  // n = bus n) is faded to nothing over `fadeFrames` from engine frame `atFrame`, and one that has not started by then never does. How an ending's landing silences
+  // what the band had committed while its own hit, begun just after, is left alone. False if the request queue is full.
+  bool killParts(uint32_t mask, uint64_t atFrame, int fadeFrames = 1056);
+
   // Render thread. Adds `frames` of every playing voice into busL[code] /
   // busR[code], starting at the block's engine frame `frame0`. A bus pointer
   // may be null (that bus's voices are skipped). `touched[code]`, if given, is
@@ -94,6 +99,11 @@ class GraphPool {
   std::unique_ptr<Slot[]> slots_;
   BufferStore store_;
   std::atomic<int> unknownBuf_{-1};
+  struct Kill { uint32_t mask; uint64_t at; int fade; uint64_t limit; };
+  static constexpr uint32_t kKillCap = 8;
+  Kill kills_[kKillCap];
+  std::atomic<uint32_t> killWr_{0}, killRd_{0};
+  std::atomic<uint64_t> beginSeq_{0};
   std::atomic<uint64_t> dropped_{0}, lateEdits_{0}, droppedBusy_{0}, droppedRefused_{0}, stolen_{0};
   std::atomic<int> peak_{0};
 };
