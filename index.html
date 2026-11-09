@@ -2758,7 +2758,10 @@ body.seq-taught .pr-hint { display:none !important; }
    scrolled, and the width this orientation has is used, so it is three short rows (the hit's level, ratchet, pitch and
    chance; its ornament and accent; the tuplets) instead of four or five. Pinned, not scrolled-to: a scroll on every tap would move the grid under the finger that is laying a beat. */
 @media (orientation:landscape) and (max-height:520px){
-  .sq-insp.open { position:sticky; bottom:0; z-index:6; gap:4px 10px; padding:5px 8px 6px; background:var(--bg);
+  /* bottom is minus the page's own foot padding (.tab-page, 96 pt + the inset): a sticky box pins to the scrollport's
+     padding edge pulled in by that padding, so at bottom:0 the editor floated 96 pt above the transport, over the middle
+     of the grid and on top of the very row being edited. */
+  .sq-insp.open { position:sticky; bottom:calc(-96px - env(safe-area-inset-bottom,0px)); z-index:6; gap:4px 10px; padding:5px 8px 6px; background:var(--bg);
     border-top:1px solid var(--border2); box-shadow:0 -6px 14px rgba(0,0,0,.45); }
   .sq-insp .pr-insp-del { order:5; }
   .sq-insp .sq-insp-tup { order:9; flex:1 1 100%; flex-wrap:wrap; }
@@ -59665,7 +59668,13 @@ function sqRevealInsp(){
       var t=b.getBoundingClientRect().top; if(t>window.innerHeight/2 && t<vis) vis=t;
     });
     var over=e.getBoundingClientRect().bottom-vis;
-    if(over>2) sc.scrollBy({top:over+8, behavior:'smooth'});
+    if(over>2){ sc.scrollBy({top:over+8, behavior:'smooth'}); return; }
+    // Pinned over the grid (a phone on its side): the step being edited must not be under the editor that edits it.
+    var st=document.querySelector('#sq-gInner .sq-step.sel');
+    if(st && getComputedStyle(e).position==='sticky'){
+      var under=st.getBoundingClientRect().bottom-e.getBoundingClientRect().top;
+      if(under>-4) sc.scrollBy({top:under+12, behavior:'smooth'});
+    }
   }catch(err){}
 }
 function sqAttachStep(el,ti,s,track){
