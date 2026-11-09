@@ -151,6 +151,34 @@ int main() {
     CHECK(t[5] && !t[0] && !t[1] && !t[2] && !t[3] && !t[4] && !t[6] && !t[7], "only part 5 is touched");
   }
 
+  // 1c. killParts (an ending's landing, the page's hardKillAll): the voices of the named parts begun so far fade to nothing from the frame given, over the time given, whatever
+  // block it falls in; a voice of those parts that has not started by then never does; a voice of another part, and one begun after the request, are left alone.
+  {
+    for (const std::vector<int> &blocks : {odd, std::vector<int>{240}, std::vector<int>{4096}}) {
+      GraphPool pool; Bus b(N);
+      V a0 = sine(440, 0.0, 10.0, 0.5, 0), a2 = sine(330, 0.0, 10.0, 0.5, 2), late = sine(550, 0.0, 10.0, 0.5, 0), after = sine(660, 0.0, 10.0, 0.5, 0);
+      pool.begin(a0.data(), a0.size(), 0.0, 0);                  // part 0, sounding
+      pool.begin(a2.data(), a2.size(), 0.0, 0);                  // part 2, sounding
+      pool.begin(late.data(), late.size(), 0.0, 9000);           // part 0, due after the kill frame: never starts
+      const uint64_t K = 6001; const int FADE = 1056;
+      CHECK(pool.killParts(1u << 0, K, FADE), "the kill is queued");
+      pool.begin(after.data(), after.size(), 0.0, K);            // part 0, begun after the request: left alone
+      run(pool, b, N, blocks);
+      auto r0 = alone(a0, {}, N), r2 = alone(a2, {}, N), ra = alone(after, {}, N);
+      int bad = 0, badFade = 0, badAfter = 0, badOther = 0;
+      for (int i = 0; i < N; i++) {
+        float g = 1.f; if (i >= (int)K) g = i >= (int)K + FADE ? 0.f : 1.f - (float)(i - K) / (float)FADE;
+        const float want = r0[i] * g + (i >= (int)K ? ra[i - K] : 0.f);
+        if (std::fabs(b.l[0][i] - want) > 1e-5f) bad++;
+        if (std::fabs(b.l[2][i] - r2[i]) > 0) badOther++;
+      }
+      (void)badFade; (void)badAfter;
+      CHECK(bad == 0, "blocks %d: the part's earlier voices fade from %d over %d frames and the later one is untouched (%d samples differ)", blocks[0], (int)K, FADE, bad);
+      CHECK(badOther == 0, "blocks %d: another part is not touched (%d samples differ)", blocks[0], badOther);
+      CHECK(pool.active() == 2, "blocks %d: the faded voices and the one that never started are retired (%d active: the other part and the later one)", blocks[0], pool.active());
+    }
+  }
+
   // 2. two voices in one part sum.
   {
     GraphPool pool; Bus b(N);
