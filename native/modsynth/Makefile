@@ -57,7 +57,7 @@ seqhosttest: seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
 clean:
-	rm -f songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f arptool songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
@@ -94,6 +94,9 @@ banktest: banktest.cpp voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph
 	$(CXX) $(CXXFLAGS) -o $@ banktest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
 # The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
+arptool: arptool.cpp arpcore.h seqcore.h tempomap.h
+	$(CXX) $(CXXFLAGS) -o $@ arptool.cpp
+
 songtool: songtool.cpp songcore.cpp songcore.h songvoice.h songend.h voicing.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h chordplay.h chordcomp.h voicebank.cpp voicebank.h
 	$(CXX) $(CXXFLAGS) -o $@ songtool.cpp songcore.cpp basscore.cpp seqcore.cpp voicebank.cpp
 

@@ -98,7 +98,12 @@ class Rng {
   explicit Rng(uint64_t seed = 0x9E3779B97F4A7C15ull) { seed_(seed); }
   void seed(uint64_t s) { seed_(s); }
   // [0, 1), 53 bits: the same range as Math.random().
-  double next() { return (double)(next64() >> 11) * (1.0 / 9007199254740992.0); }
+  // A test can hand it the page's own Math.random draws, which are then used first, in order (the arp's lists are compared note for note that way).
+  void setTape(std::vector<double> t) { tape_ = std::move(t); tapePos_ = 0; }
+  double next() {
+    if (tapePos_ < tape_.size()) return tape_[tapePos_++];
+    return (double)(next64() >> 11) * (1.0 / 9007199254740992.0);
+  }
   uint64_t next64() {   // xoshiro256**
     const uint64_t r = rotl(s_[1] * 5, 7) * 9;
     const uint64_t t = s_[1] << 17;
@@ -117,6 +122,7 @@ class Rng {
     }
   }
   uint64_t s_[4];
+  std::vector<double> tape_; size_t tapePos_ = 0;
 };
 
 
