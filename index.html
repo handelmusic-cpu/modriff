@@ -42538,10 +42538,11 @@ function saveToSetlist(){
  const titleInput=document.getElementById('chart-title');
  const title=titleInput.value.trim()||'Untitled';
  if(!sections.some(s=>s.slots.length)){ showToast('Nothing to save yet — add some chords to the chart first'); return; }
- setlistData=loadSLData();
+ const songs=loadSLData();
+ let savedIdx=curSetlistIdx;
  // Block saving under a name another song already has — re-saving the song
  // that's currently loaded (same slot) is fine, that's an update, not a dupe.
- const dupIdx=setlistData.findIndex((s,i)=>i!==curSetlistIdx && (s.title||'').trim().toLowerCase()===title.toLowerCase());
+ const dupIdx=songs.findIndex((s,i)=>i!==curSetlistIdx && (s.title||'').trim().toLowerCase()===title.toLowerCase());
  if(dupIdx>=0){
   showDuplicateNameModal(title);
   return;
@@ -42572,24 +42573,31 @@ function saveToSetlist(){
  // (a song from before the switch keeps your sounds). Saving a recalling song refreshes what it
  // brings; saving one that keeps yours leaves what it already held, so flipping back loses nothing.
  {
-  const _old = (curSetlistIdx>=0 && setlistData[curSetlistIdx]) ? setlistData[curSetlistIdx] : null;
+  const _old = (curSetlistIdx>=0 && songs[curSetlistIdx]) ? songs[curSetlistIdx] : null;
   song.soundsMode = _old ? (_old.soundsMode==='recall' ? 'recall' : 'keep') : 'recall';
   if(song.soundsMode==='recall') song.sounds = captureSounds();
   else if(_old && _old.sounds) song.sounds = _old.sounds;
  }
- if(curSetlistIdx>=0 && setlistData[curSetlistIdx]){
+ if(curSetlistIdx>=0 && songs[curSetlistIdx]){
   // Currently-loaded song — update it in place instead of adding a duplicate entry
-  song.id=setlistData[curSetlistIdx].id;
+  song.id=songs[curSetlistIdx].id;
   // A free build that swapped a Pro scale or sound for a stand-in must not save
   // the stand-in over the original.
   if(typeof proKeepSongApply==='function') proKeepSongApply(song, song.id);
-  setlistData[curSetlistIdx]=song;
+  songs[curSetlistIdx]=song;
  } else {
-  if(!slCanAdd(setlistData)){ freeBlocked('More than '+FREE_NUMBERS.saveSlots+' saved songs','studio'); return; }
-  setlistData.push(song);
-  curSetlistIdx=setlistData.length-1;
+  if(!slCanAdd(songs)){ freeBlocked('More than '+FREE_NUMBERS.saveSlots+' saved songs','studio'); return; }
+  songs.push(song);
+  savedIdx=songs.length-1;
  }
- saveSLData(setlistData);
+ // Publish the new list and selected slot only after storage accepts them. A failed
+ // write must leave both the last saved song and the dirty editor available to retry.
+ if(!saveSLData(songs)){
+  showToast('Could not save this song — your edits are still here. Try Save again before closing the app.', {major:true, ms:20000});
+  return;
+ }
+ setlistData=songs;
+ curSetlistIdx=savedIdx;
  // What is on screen now IS what is stored, so the banner stops saying
  // otherwise. Taken after the write, not before, so a save that threw does
  // not leave the song looking clean.
@@ -42722,7 +42730,10 @@ function _slUsed(list){
  if(!modHas('practice')){ try{ charts=_irealList().length; }catch(e){ charts=0; } }
  return _slCount(list)+charts;
 }
-function saveSLData(d){ try{ modStore.setItem('prism-sl',JSON.stringify(d)); }catch(e){} }
+function saveSLData(d){
+ try{ modStore.setItem('prism-sl',JSON.stringify(d)); return true; }
+ catch(e){ return false; }
+}
 
 // ── Preloaded demo song (Song Builder) ──
 // A short, self-contained ii–V–I turnaround in C so a first-time visitor can
@@ -43149,7 +43160,18 @@ function importSetlist(e){
    d=d.filter(function(s){ if(s && s.isDemo) return true; return (kept++)<FREE_NUMBERS.saveSlots; });
    left=all-d.length;
   }
-  saveSLData(d); setlistData=d; renderSetlist(); renderSetlistNav();
+  if(!saveSLData(d)){
+   showToast('Could not import the setlist — your saved songs are unchanged. Try again before closing the app.', {major:true, ms:20000});
+   return;
+  }
+  // The editor still holds the previous chart. Its index belongs to the old list:
+  // keeping it would make the next Save overwrite an unrelated imported song.
+  curSetlistIdx=-1;
+  setlistData=d;
+  slSelectMode=false; slPicked={};
+  _slRedraw();
+  if(typeof updateFtSongBtn==='function') updateFtSongBtn();
+  if(typeof syncFixedTransport==='function') syncFixedTransport();
   showToast('Imported '+d.length+' song'+(d.length===1?'':'s')+' from “'+file.name+'”'
    +(left?'. Free holds '+FREE_NUMBERS.saveSlots+'; '+left+' more are in the file for the Studio Pack.':''));
  };
@@ -62006,11 +62028,15 @@ window._sqCaptureState = function(){
 // nothing; a loaded song's saved drum pattern never actually came back.
 window._sqRestoreState = function(st){
  if(!st) return;
+ sqStashFocused();
+ // A song that keeps the player's sounds omits kit IDs. Use each layer's
+ // current kit; an absent Aux ID used to discard its pattern and mute it.
+ var auxMach = st.aux && (st.aux.mach == null ? sqLayers[1].mach : st.aux.mach);
  // A retired or unknown machine id must not reach sqTc()/sqRenderGrid(), which
  // read SQM[sqMach].tracks — on an undefined entry that throws and fails the
  // whole restore. The 20s last-session autosave means any tab left on the
  // TB-303 carries mach:'303' across this release, so coerce rather than trust.
- if(st.mach!=null) sqMach = SQM[st.mach] ? st.mach : '808';
+ sqMach = st.mach!=null ? (SQM[st.mach] ? st.mach : '808') : sqLayers[0].mach;
  if(st.steps!=null) sqSteps = st.steps;
  if(st.swing!=null) sqSwing = st.swing;
  if(st.swing8!=null) sqSwing8 = !!st.swing8;
@@ -62039,15 +62065,15 @@ window._sqRestoreState = function(st){
  // is a coercion to an empty Aux Perc layer, not a migration.
  sqFocus = 0;
  sqLayers[0] = { mach: sqMach, grid: sqGrid, on: st.kitOn !== false };
- sqLayers[1] = (st.aux && SQM[st.aux.mach])
-   ? { mach: st.aux.mach,
+ sqLayers[1] = (st.aux && SQM[auxMach])
+   ? { mach: auxMach,
        grid: st.aux.grid ? JSON.parse(JSON.stringify(st.aux.grid)) : {},
        on: st.aux.on !== false }
    : { mach:'PERC', grid:{}, on:false };
  sqPreloadKit(sqLayers[0].mach); sqPreloadKit(sqLayers[1].mach);
- if(st.aux && SQM[st.aux.mach]){
-  if(st.aux.vols) sqVols[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
-  if(st.aux.pitches) sqPitches[sqLK(st.aux.mach,1)] = JSON.parse(JSON.stringify(st.aux.pitches));
+ if(st.aux && SQM[auxMach]){
+  if(st.aux.vols) sqVols[sqLK(auxMach,1)] = JSON.parse(JSON.stringify(st.aux.vols));
+  if(st.aux.pitches) sqPitches[sqLK(auxMach,1)] = JSON.parse(JSON.stringify(st.aux.pitches));
  }
  // Absent: the bank is left as it is, so loading an older rig does not empty patterns made since.
  if(Array.isArray(st.auxPats)){
