@@ -148,6 +148,21 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)seqArpStartWithBpm:(double)bpm leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
 - (void)seqArpStop;
 
+// ── The melody generator (native/modsynth/melcore.h, melplay.h; slice 3 part three) ──
+// On the same thread and with the same bank as the drums (part 6). In a song it is handed the song's chord windows (and its own phrase locks). The mirror's `mel` has running, nextStep,
+// steps, notes (struck), slides (notes that slid in), voices (begun), misses (no voice in the bank: lastMissLane), refused, lateStarts, windows, armed, bySong.
+
+/// The melody generator's line, float64s as `window._mlNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetMelScore:(NSData *)score;
+/// The chord windows with the melody's phrase locks, float64s as `window._mlNativeChords(sr)` makes them: frames from the line's start. For a start by hand; empty clears them.
+- (BOOL)seqSetMelChords:(NSData *)chords;
+/// Whether a song, when it starts, brings the melody in on its bar line (following its chords). `kit` is the bank's code for the voice, `rate` the melody's rate multiplier.
+- (void)seqMelArm:(BOOL)on kit:(int)kit rate:(double)rate;
+/// Starts the melody by itself: with the drums' bar line when they run and `align` is set, else `leadMs` from now. NO without a score.
+- (BOOL)seqMelStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
+- (void)seqMelStop;
+- (void)seqMelSetTempo:(double)bpm rate:(double)rate;
+
 // ── The chord comp (native/modsynth/chordcore.h, chordplay.h; slice 2) ──
 // The chord rhythm on the same thread and bank. The mirror's `chord` has running, nextStep, steps, hits (struck), chords (composed), voices, stops
 // (the chord before stopped), misses (a pitch missing from the bank), refused.

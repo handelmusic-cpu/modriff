@@ -570,3 +570,21 @@ With Native sound on, the arp on a synthesized voice (Sine, Sawtooth, Square, Su
 | 32.9 | Arm Big Fin, Cold or Fade over the song | at the landing the arp's last notes fade out with the rest of the band and it stops; nothing keeps ringing under the final hit |
 | 32.10 | Piano or Organ as the arp voice | `_nsArp.start()` says why it cannot (the program changes with the note); nothing starts |
 
+## 33. The engine plays the melody generator (6.9.9.9.9.9.9.2; audible through a developer entry only)
+
+With Native sound on, the melody generator (Bass/Melody tab, the step line) playing on a synthesized voice (Sine, Triangle, Square, Sawtooth, Supersaw, Pad, Rhodes), the page's own melody switched off while the
+engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it arms the melody and the arp when they are on; the engine brings them in on the song's bar line), or `_nsMel.start()` by itself.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 33.1 | `_nsMel.start()` with a line drawn on the roll | the line plays on the drums' bar line, the same notes and rhythm as the page's own |
+| 33.2 | Same, Follow on, over a chart (`_nsSong.start()`) | the line moves onto each chord as the page does; slash chords, rests and chords that change mid-bar |
+| 33.3 | A step with a chord on it, Mono Auto and then Mono (explicit) | the chord sounds, each note quieter than a single one; in explicit Mono only its first note |
+| 33.4 | Portamento on, off, a long Glide time | single notes slide in from the one before and a note after a chord does not; the slide is as long as the page's |
+| 33.5 | Swing, a slower and a faster Rate, a 24-step line | the feel and the length of the loop as the page's |
+| 33.6 | A locked phrase on one chord (with a chord in it) | that chord plays the lock and the others the line, moved with the key change |
+| 33.7 | Humanize up | the notes are loose in time and level as the page's |
+| 33.8 | Freeze the page for 3 s | the melody keeps its time and its notes |
+| 33.9 | Big Fin / Cold / Fade | the melody's last notes fade with the band at the landing and it stops; nothing rings under the final hit |
+| 33.10 | Piano or Organ as the melody voice | `_nsMel.start()` says why it cannot; nothing starts |
+

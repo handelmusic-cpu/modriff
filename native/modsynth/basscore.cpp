@@ -43,8 +43,19 @@ bool ChordTimeline::fromDoubles(const double *d, size_t n, size_t *used, double 
   std::vector<PhraseLock> locks;
   if (!readLocks(d, n, k, locks)) return false;
   for (const ChordWindow &w : out) if (w.lock >= (int)locks.size()) return false;
+  // The melody generator's locks are optional: a timeline written for the bass alone ends here.
+  std::vector<MelLock> mlocks;
+  // (Marked by a -7, because what follows a timeline in a test's buffer is other data, not the end of it.)
+  if (k < n && d[k] == -7) {
+    k++;
+    if (k + out.size() > n) return false;
+    for (ChordWindow &w : out) w.melLock = (int)d[k++];
+    if (!readMelLocks(d, n, k, mlocks)) return false;
+    for (const ChordWindow &w : out) if (w.melLock >= (int)mlocks.size()) return false;
+  }
   w_ = std::move(out);
   locks_ = std::move(locks);
+  melLocks_ = std::move(mlocks);
   if (used) *used = k;
   return true;
 }

@@ -48,7 +48,7 @@ const CONFIGS = [
   { name: 'starting part-way (section 1, chord 2), a key change while it plays (the capo)', bpm: 130, drums: true, clocked: true, secs: 60, start: { section: 1, slot: 2 },
     sections: [{ plays: 1, slots: [[0, MAJ, 1], [5, MAJ, 1]] }, { plays: 2, slots: [[2, M7, 1], [7, DOM, 1], [0, MAJ7, 1], [9, MIN, 1]] }],
     capo: [{ at: 7.3, by: 2 }, { at: 24.3, by: 5 }] },
-  { name: 'phrase locks on two chords (the lock rides in the score, whichever chord asks)', bpm: 120, drums: true, clocked: true, secs: 50, locks: [[0, 0], [0, 2]],
+  { name: 'phrase locks on two chords (the lock rides in the score, whichever chord asks), and melody locks on two others', bpm: 120, drums: true, clocked: true, secs: 50, locks: [[0, 0], [0, 2]], mlocks: [[0, 1], [0, 2]],
     sections: [{ plays: 2, slots: [[0, MAJ, 1], [9, MIN, 1], [5, MAJ, 2], [7, DOM, 1]] }] },
 ];
 
@@ -247,7 +247,12 @@ CONFIGS.push(
         if (v == null) return;
         if (typeof v === 'string') sl.comp = v; else sbSetComp(sl, 'x', v);
       }));
-      PHRASE_LOCKS.bass = {};
+      PHRASE_LOCKS.bass = {}; PHRASE_LOCKS.mel = {};
+      // the melody generator's locks, with chords in some of their steps
+      (c.mlocks || []).forEach(([si, ci]) => {
+        const sl = sections[si].slots[ci];
+        PHRASE_LOCKS.mel[window.phraseKey(sl)] = { grid: Array.from({ length: 16 }, (_, i) => ({ v: i % 2 === 0 ? 1 : 0, note: (i * 5) % 12, oct: 4, len: 1, accent: false, vel: 0, pr: 0, more: i % 4 === 0 ? [{ note: (i + 4) % 12, oct: 4 }] : undefined })), steps: 16, rootPc: sl.rootM % 12 };
+      });
       (c.locks || []).forEach(([si, ci], n) => {
         const sl = sections[si].slots[ci];
         PHRASE_LOCKS.bass[window.phraseKey(sl)] = { grid: Array.from({ length: 16 }, (_, i) => ({ v: i % 3 === 0 ? 1 : 0, note: i % 12, oct: 2, len: 1, slide: false, accent: false, vel: 0, pr: 0 })), steps: 16, rootPc: sl.rootM % 12 };
@@ -261,7 +266,7 @@ CONFIGS.push(
         origOnChord.apply(this, arguments);
         const w = window._blPeekLast();
         recs.push({ t: w.t, end: w.end, rest: w.rest ? 1 : 0, rootPc: w.rootPc, bassPc: w.bassPc == null ? -1 : w.bassPc, nextPc: w.nextPc == null ? -1 : w.nextPc, pcs: w.pcs.slice(),
-                    lock: window._blLockFor(w) ? 1 : 0, section: songLoopSection, slot: songLoopSlot, pass: songSectionPass });
+                    lock: window._blLockFor(w) ? 1 : 0, melLock: window._mlLockFor(w) ? [window._mlLockFor(w).rootPc, window._mlLockFor(w).steps].join() : '', section: songLoopSection, slot: songLoopSlot, pass: songSectionPass });
       };
       const barSec = _songBarSteps() * 60 / bpm / 4;
       const marks = []; for (let m = T0; m < T0 + c.secs + 10; m += barSec) marks.push(m);
@@ -300,7 +305,7 @@ CONFIGS.push(
     _playLoopSlot = origPlayLoopSlot; METER.beats = 4; METER.unit = 4; window._sqSetSwing8(true);
     window.playChartSlot2 = origPCS; arpOcts = 1;
     window._blOnChord = origOnChord; window.setTimeout = realSetTimeout; window.clearTimeout = realClearTimeout; window._sqPlaying = realSq;
-    window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready; PHRASE_LOCKS.bass = {};
+    window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready; PHRASE_LOCKS.bass = {}; PHRASE_LOCKS.mel = {};
     return out;
   }, { configs: CONFIGS });
   await browser.close(); srv.close();
@@ -319,6 +324,7 @@ CONFIGS.push(
     r.stdout.split('\n').forEach(l => {
       const f = l.split(' ');
       if (l.startsWith('W ')) { const np = +f[11]; nat.push({ t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }); }
+      else if (l.startsWith('L ')) nat[nat.length - 1].melLock = +f[1] ? f[2] + ',' + f[3] : '';
       else if (l.startsWith('Q ')) nat[nat.length - 1].arp = f[1] === 'rest' ? null : f.slice(2, 2 + +f[1]).map(Number);
       else if (l.startsWith('V ')) { const nn = +f[7]; nat[nat.length - 1].act = { kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }; }
       else if (l.startsWith('S ')) nat[nat.length - 1].act = { kind: 'S', onset: +f[1] };
@@ -336,7 +342,7 @@ CONFIGS.push(
       worstT = Math.max(worstT, dt);
       if (dt > 1e-5) bad = `chord ${k}: window ${p.t * SR}..${p.end * SR} on the page, ${n.t}..${n.end} native`;
       else if (p.section !== n.section || p.slot !== n.slot || p.pass !== n.pass) bad = `chord ${k}: at section ${p.section} chord ${p.slot} pass ${p.pass} on the page, ${n.section}/${n.slot}/${n.pass} native`;
-      else if (p.rest !== n.rest || p.rootPc !== n.rootPc || p.bassPc !== n.bassPc || p.nextPc !== n.nextPc || p.lock !== n.lock || p.pcs.join() !== n.pcs.join()) bad = `chord ${k}: ${JSON.stringify(p)} on the page, ${JSON.stringify(n)} native`;
+      else if (p.rest !== n.rest || p.rootPc !== n.rootPc || p.bassPc !== n.bassPc || p.nextPc !== n.nextPc || p.lock !== n.lock || p.melLock !== n.melLock || p.pcs.join() !== n.pcs.join()) bad = `chord ${k}: ${JSON.stringify(p)} on the page, ${JSON.stringify(n)} native`;
     }
     if (!bad && nat.length < pg.length) bad = nat.length + ' chords native, ' + pg.length + ' on the page';
     const same = !bad && pg.length > 6, why = bad || '';

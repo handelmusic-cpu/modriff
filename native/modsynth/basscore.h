@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "melcell.h"
 #include "seqcore.h"
 #include "tempomap.h"
 
@@ -54,6 +55,7 @@ struct ChordWindow {
   int nextPc = -1;            // the next chord's bass or root, or -1
   std::vector<int> pcs;       // the chord's tones, root first
   int lock = -1;              // the index of its phrase lock in the timeline's table, or -1 (the page's _blLockFor, decided when it sent the chart)
+  int melLock = -1;           // ...and of the melody generator's (the page's _mlLockFor), in the timeline's melody table
 };
 
 // The page's _blChordWin: time-ordered windows, and the two lookups the bass and the melody share.
@@ -68,6 +70,8 @@ class ChordTimeline {
   // The song sequencer (songcore.h) feeds the timeline window by window, with its own lock table.
   void setLocks(const std::vector<PhraseLock> &l) { locks_ = l; }
   const PhraseLock *lockFor(const ChordWindow &w) const { return (w.lock >= 0 && (size_t)w.lock < locks_.size()) ? &locks_[(size_t)w.lock] : nullptr; }
+  void setMelLocks(const std::vector<MelLock> &l) { melLocks_ = l; }
+  const MelLock *melLockFor(const ChordWindow &w) const { return (w.melLock >= 0 && (size_t)w.melLock < melLocks_.size()) ? &melLocks_[(size_t)w.melLock] : nullptr; }
 
   void push(const ChordWindow &w) { w_.push_back(w); if (w_.size() > 64) w_.erase(w_.begin(), w_.begin() + (long)(w_.size() - 64)); }
   // _blOnChord drops windows already behind the clock, but keeps one so a step scheduled a hair before the next chord still
@@ -91,7 +95,8 @@ class ChordTimeline {
   }
 
   // The windows as the page sends them, in doubles: [n, per window: t, end, rest, rootPc, bassPc, nextPc, nPcs, pcs..., lock,
-  //  nLocks, per lock: steps, rootPc, per cell: v, note, oct, len, slide, accent, fix, vel, pr]. Replaces the timeline.
+  //  nLocks, per lock: steps, rootPc, per cell: v, note, oct, len, slide, accent, fix, vel, pr ; and optionally, for the melody generator, after a -7: per window its melody lock index,
+  //  then nMelLocks, per lock: steps, rootPc, per cell: v, note, oct, len, accent, fix, vel, pr, nMore, (note, oct) x nMore]. Replaces the timeline.
   // `offset` is added to every window's start and end: the page sends them as frames from the line's start, and the engine puts the
   // start where its clock has it.
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr, double offset = 0);
@@ -100,6 +105,7 @@ class ChordTimeline {
   double sr_;
   std::vector<ChordWindow> w_;
   std::vector<PhraseLock> locks_;
+  std::vector<MelLock> melLocks_;
 };
 
 struct BassScore {

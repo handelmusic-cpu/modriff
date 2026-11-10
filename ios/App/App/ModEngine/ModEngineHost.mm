@@ -21,6 +21,7 @@
 #include "seqplay.h"
 #include "bassplay.h"
 #include "arpplay.h"
+#include "melplay.h"
 #include "chordcore.h"
 #include "songcore.h"
 #include "songvoice.h"
@@ -203,20 +204,36 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   bool hasArp = false, arpArmed = false, arpBySong = false;
   int arpKit = 0;
   uint64_t arpSteps = 0, arpNotesN = 0, arpFirst = 0, arpChords = 0;
+  // The melody generator (melcore.h, melplay.h): its line and its copy of the chord timeline (with its own locks), on the same thread and bank (part 6). In a song it is handed the
+  // song's chord windows as the bass is and, when armed, starts with the song on the drums' bar line.
+  modsynth::MelSequencer mseq;
+  modsynth::MelPlayer mplay;
+  bool hasMel = false, melArmed = false, melBySong = false;
+  int melKit = 0;
+  double melRate = 1, melOrigin = 0;
+  std::vector<double> melChords;           // the page's windows for a start by hand (frames from the line's start); placed on the clock at the start and when they arrive
+  uint64_t melSteps = 0, melNotesN = 0, melFirst = 0;
+  int melLastMidi = -1;                    // the last note struck, for the mirror
 
   // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
   // it by itself (a ramp). Under `lock`.
   modsynth::TempoMap tmap;
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
-  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), sseq(rate), svoice(rate), tmap(rate) {
-    sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank;
-    seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap);
+  HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
+    sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
+    seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap); mseq.setTempoMap(&tmap);
   }
   // The page's chord windows, shifted onto the clock. Under `lock`.
   void placeChords() {
     if (bassChords.empty()) { bseq.timeline().clear(); return; }
     bseq.timeline().setSampleRate(sr);
     bseq.timeline().fromDoubles(bassChords.data(), bassChords.size(), nullptr, bassOrigin);
+  }
+  // The page's chord windows for a melody started by hand, shifted onto the clock. Under `lock`.
+  void placeMelChords() {
+    if (melChords.empty()) { mseq.timeline().clear(); return; }
+    mseq.timeline().setSampleRate(sr);
+    mseq.timeline().fromDoubles(melChords.data(), melChords.size(), nullptr, melOrigin);
   }
   void placePending() {
     if (bassPendingRaw.empty()) return;
@@ -227,13 +244,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
   // hardKillAll names the arp, the bass, the melody generator, the drums and the Aux layer. The pool's mask is over the HOST's part slots (the page's MODGRAPH.CODE: bass 3,
   // arp 4, drum 5, aux 6), which are not the bank's part codes (drum 0, aux 1, bass 2): the mask used to be 0x7, which named the chord, the melody and the generator -- no
-  // voice of the band at all. The engine plays the arp, the bass, the drums and the Aux layer; the melody generator (slot 2) joins them with its own scheduler.
-  static constexpr uint32_t kKillParts = (1u << 3) | (1u << 4) | (1u << 5) | (1u << 6);
+  // voice of the band at all. The engine plays the melody generator (slot 2), the bass, the arp, the drums and the Aux layer.
+  static constexpr uint32_t kKillParts = (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5) | (1u << 6);
 
   // stopEverything at `frame` (the end of a fade): what the band had committed is faded out there, the sequencers and the song stop, the chord is stopped.
   void landStop(double frame) {
     if (kill) kill(kKillParts, (uint64_t)frame, 1056);
-    seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; sseq.stop(); svoice.reset();
+    seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; mseq.stop(); melBySong = false; sseq.stop(); svoice.reset();
     cplay.stopAt(frame);
   }
   // An ending's landing (_endingLand): everything the band had committed rings into the downbeat and is faded out there; on it, the whole band at once -- the kit's kick, its
@@ -247,7 +264,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     // stopSongLoopIfActive: the trainer's run is over (its tempo and key go back); the band is faded out at the downbeat
     { const double back = sseq.restore(tmap.bpmAt(now)); if (back > 0) setTempoNow(back); }
     if (kill) kill(kKillParts, (uint64_t)L, 1056);
-    seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; sseq.stop(); svoice.reset();
+    seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; mseq.stop(); melBySong = false; sseq.stop(); svoice.reset();
     const modsynth::LandingPlan plan = modsynth::planLanding(sc, ev, svoice, tmap, &seq.score(), band, bassOn, sr);
     for (const modsynth::DrumEvent &e : plan.hits) play(e, now);
     if (plan.chord.play) { cplay.play(plan.chord.e, now); songVoiced++; } else if (plan.chord.stop) cplay.stopAt(L);
@@ -308,6 +325,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.capoNow(), tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
       sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
         bseq.timeline().push(c.w); songChords++;
+        if (hasMel) mseq.timeline().push(c.w);
         if (aseq.running() && hasArp) {
           // setArpChord in _playChartSlot2: the arp's tones are the chord's (a slash chord's bass first, the octaves above), from the moment the chord begins; the steps before it
           // are the chord before's. A rest does not change the chord: it starts the pattern again.
@@ -345,6 +363,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       });
       if (sseq.score().voice.on) hits(now + lookahead);
       bseq.timeline().prune(now);
+      if (hasMel) mseq.timeline().prune(now);
     }
     if (bseq.running() && hasBass) {
       const double now = (double)frames->load(std::memory_order_relaxed);
@@ -358,6 +377,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     if (aseq.running() && hasArp) {
       const double now = (double)frames->load(std::memory_order_relaxed);
       arpSteps += (uint64_t)aseq.run(now + lookahead, [&](const modsynth::ArpEvent &e) { arpNotesN++; aplay.play(e, now); });
+    }
+    if (mseq.running() && hasMel) {
+      const double now = (double)frames->load(std::memory_order_relaxed);
+      melSteps += (uint64_t)mseq.run(now + lookahead, [&](const modsynth::MelEvent &e) { melNotesN++; melLastMidi = e.midi; mplay.play(e, now); });
     }
     os_unfair_lock_unlock(&lock);
   }
@@ -523,6 +546,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       _hostSeq->cplay.begin = _hostSeq->begin;
       _hostSeq->cplay.edit = _hostSeq->edit;
       _hostSeq->aplay.begin = _hostSeq->begin;
+      _hostSeq->mplay.begin = _hostSeq->begin;
     }
     _capLock = OS_UNFAIR_LOCK_INIT;
     _clkOrigin.store(1e300); _clkReset.store(false);
@@ -902,6 +926,76 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
+// ── The melody generator (slice 3, part three): the same thread, the same bank ─────────────
+
+// The melody generator's line (window._mlNativeScore().score). NO if it does not parse.
+- (BOOL)seqSetMelScore:(NSData *)score {
+  const size_t n = score.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), score.bytes, n * sizeof(double));
+  modsynth::MelScore s;
+  if (!s.fromDoubles(d.data(), n)) return NO;
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->mseq.setScore(s);
+  _hostSeq->hasMel = true;
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return YES;
+}
+
+// The chord windows with the melody's locks (window._mlNativeChords), frames from the line's start, for a start by hand (a song makes its own). Empty clears them.
+- (BOOL)seqSetMelChords:(NSData *)chords {
+  const size_t n = chords.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), chords.bytes, n * sizeof(double));
+  modsynth::ChordTimeline probe;
+  if (n && !probe.fromDoubles(d.data(), n)) return NO;
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->melChords = d;
+  _hostSeq->placeMelChords();
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return YES;
+}
+
+// The melody starts with the song (on its bar line, following its chords) whenever one is started, until disarmed. `kit` is the bank's code for the voice; `rate` the melody's rate multiplier.
+- (void)seqMelArm:(BOOL)on kit:(int)kit rate:(double)rate {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->melArmed = on; _hostSeq->melKit = kit; _hostSeq->melRate = rate > 0 ? rate : 1;
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// Starts the melody by itself: with the drums' bar line when they are running and `align` is set, else `leadMs` from now. NO without a score.
+- (BOOL)seqMelStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed {
+  HostSeq &q = *_hostSeq;
+  os_unfair_lock_lock(&q.lock);
+  if (!q.hasMel) { os_unfair_lock_unlock(&q.lock); return NO; }
+  q.mseq.setTempo(bpm > 0 ? bpm : 120);
+  q.setTempoNow(bpm > 0 ? bpm : 120);
+  q.mseq.setRate(rate > 0 ? rate : 1);
+  if (seed != 0) q.mseq.seed((uint64_t)seed);
+  double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
+  if (align && q.seq.running() && q.seq.nextFrame() > (double)_frames.load(std::memory_order_relaxed)) first = q.seq.nextBarFrame() > (double)_frames.load(std::memory_order_relaxed) ? q.seq.nextBarFrame() : q.seq.nextFrame();
+  q.mplay.reset(); q.mplay.kit = kit;
+  q.melSteps = q.melNotesN = 0; q.melFirst = (uint64_t)first; q.melOrigin = first; q.melBySong = false;
+  q.placeMelChords();
+  q.mseq.start(first);
+  os_unfair_lock_unlock(&q.lock);
+  q.startThread();
+  return YES;
+}
+
+- (void)seqMelStop {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->mseq.stop(); _hostSeq->melBySong = false;
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+- (void)seqMelSetTempo:(double)bpm rate:(double)rate {
+  os_unfair_lock_lock(&_hostSeq->lock);
+  if (bpm > 0) { _hostSeq->mseq.setTempo(bpm); _hostSeq->setTempoNow(bpm); }
+  if (rate > 0) _hostSeq->mseq.setRate(rate);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
 // ── The song loop (slice 4): the chords of the chart, stepped by the engine ──
 
 // The song (window._songNativeScore().score). NO if it does not parse.
@@ -936,6 +1030,14 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // The chords the song sounds itself: a fresh run of voice leading, the chord player on the song's voice, nothing left ringing from before.
   q.svoice.reset();
   if (q.sseq.score().voice.on) { q.cplay.reset(); q.cplay.kit = q.sseq.score().voice.kit; }
+  // The melody generator, when it is armed: the same windows as the bass, its own locks, on the same bar line.
+  q.mseq.timeline().clear(); q.mseq.timeline().setSampleRate(_sampleRate); q.mseq.timeline().setMelLocks(q.sseq.score().melLocks);
+  if (ok && q.hasMel && q.melArmed) {
+    q.mplay.reset(); q.mplay.kit = q.melKit; q.melSteps = q.melNotesN = 0; q.melFirst = (uint64_t)first;
+    q.mseq.setTempo(q.tmap.bpmAt(first)); q.mseq.setRate(q.melRate);
+    q.mseq.start(first);
+    q.melBySong = true;
+  }
   // The arp, when it is armed: on the same bar line, following the song's chords from the first.
   if (ok && q.hasArp && q.arpArmed) {
     q.aplay.reset(); q.aplay.kit = q.arpKit; q.arpSteps = q.arpNotesN = q.arpChords = 0; q.arpFirst = (uint64_t)first;
@@ -950,7 +1052,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqSongStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->sseq.stop();
-  if (_hostSeq->arpBySong) { _hostSeq->aseq.stop(); _hostSeq->arpBySong = false; }       // the arp the song brought in goes with it
+  if (_hostSeq->arpBySong) { _hostSeq->aseq.stop(); _hostSeq->arpBySong = false; }
+  if (_hostSeq->melBySong) { _hostSeq->mseq.stop(); _hostSeq->melBySong = false; }       // the arp the song brought in goes with it
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
   if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
   _hostSeq->endTimers.clear(); _hostSeq->fading = false; _hostSeq->endPhase = 0; if (_hostSeq->endGain) _hostSeq->endGain->store(1.0f, std::memory_order_relaxed);
@@ -1105,6 +1208,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                 @"firstFrame": @((double)q.arpFirst), @"nextFrame": @(q.aseq.nextFrame()), @"lastMissLane": @(q.aplay.lastMissLane), @"chords": @((double)q.arpChords),
                                 @"armed": @(q.arpArmed), @"bySong": @(q.arpBySong),
                                 @"tones": ({ NSMutableArray *t = [NSMutableArray array]; for (int n : q.aseq.notes()) [t addObject:@(n)]; t; })},
+                      @"mel": @{@"running": @(q.mseq.running()), @"nextStep": @(q.mseq.step()), @"steps": @((double)q.melSteps), @"notes": @((double)q.mplay.notes), @"slides": @((double)q.mplay.slides),
+                                @"voices": @((double)q.mplay.voices), @"misses": @((double)q.mplay.misses), @"refused": @((double)q.mplay.refused), @"lateStarts": @((double)q.mplay.lateStarts),
+                                @"firstFrame": @((double)q.melFirst), @"nextFrame": @(q.mseq.nextFrame()), @"lastMissLane": @(q.mplay.lastMissLane), @"windows": @((double)q.mseq.timeline().size()),
+                                @"armed": @(q.melArmed), @"bySong": @(q.melBySong), @"lastMidi": @(q.melLastMidi)},
                       @"song": @{@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
                                  @"pending": @(q.sseq.queuedMove()), @"ending": @{@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8])],

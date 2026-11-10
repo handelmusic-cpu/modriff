@@ -1252,3 +1252,44 @@ A host test with long arp voices shows it: after a finish the level falls to the
 takes it, nothing calls it from the page's pads yet), the arp following the pads in the background, the page's `arpOn` toggling the engine's arp while a song plays (`_nsArp.armForSong` is read at the song's start), the melody
 generator (`_mlScheduler`, `mlGenerate`: part three). A note shorter than the regimes' boundary is chosen by length alone: the page's float noise on an exactly-equal length can put it either side. Not heard on device:
 checklist 32.
+
+## Slice 3, part three (6.9.9.9.9.9.9.2): the melody generator in the engine
+
+**What it is.** The melody generator (`window._mlScheduler`, the step line on the Bass/Melody tab; the part `melgen`, not the melody strip) is the bass's grid branch with four differences, and it is
+ported the same way: `native/modsynth/melcore.h` (+ `meltool.cpp`), `melplay.h`, a voice in the bank (`_nsBank.buildMel`, bank part 6), and a place on the host thread.
+- *A step can hold a chord* (the cell's note and `more`): every note sounds at once, none slides, each turned down by the square root of how many (up to 8); explicit Mono plays the first only.
+- *Portamento in Mono:* a single note slides from the note before it when that one ended no earlier than a step ago (`_mlPrev`), over `melGlideFor`'s time (what an octave costs, scaled by the leap, never
+  more than 0.8 of the note), and a chord ends the slide.
+- *Follow re-roots by the chord's root* (the bass uses the slash bass) into G3..C6 widened to C3..C7 round the note as written (`_followRange`); a pinned step stays.
+- *A locked phrase* (`PHRASE_LOCKS.mel`) replaces the bar for its chord, indexed from the chord's downbeat, moved by the capo and folded into G3..C6, with its chords.
+The chord timeline (`basscore.h`) carries the melody's lock table beside the bass's (`ChordWindow::melLock`; an optional section after a `-7`, so buffers written for the bass alone are untouched), and the song
+score gained the same optional tail (each slot's melody lock and the table). Pure tuning, a mõdSynth voice and a sampled voice are refused (`_mlNativeScore().why`).
+
+**The voice.** Recorded like the arp's (regimes of length found by the prober, `durMax`), with the bass's accent and slide source and a new quantity, the slide's **time** (`BankEntry::gtime`).
+The page applies the slide as a detune ramp on the voice's oscillators from `(from - note)` hundred cents down to nothing, and not at all for a leap of more than 24 semitones (`_melGlideApply`): the
+player plays such a note plain. The sliding voice is its own set of lanes (16 and up); its register is checked with the slide 6 semitones below each note (a first cut that checked only to a note 80 left
+the Pad's sliding voice unfitted for a note 85 -- one of 19 random cases at 15 dB). Banked: Sine, Triangle, Square, Sawtooth, Supersaw, Pad, Rhodes. Refused with a reason: Piano and Organ (the program
+changes size with the note), sampled voices, a mõdSynth patch.
+
+**The host** (`ModEngineHost.mm`): a `MelSequencer` and a `MelPlayer` beside the bass; `seqMelScore`, `seqMelChords` (the chart for a start by hand), `seqMelArm`, `seqMelStart`, `seqMelStop`, `seqMelTempo`,
+the mirror's `mel`; in a song the melody's timeline is pushed the song's windows and given the song's melody locks, and the melody starts and stops with the song when armed. The landing's kill mask now has
+the melody generator's slot and stops it. `window._nsMel` is the developer entry (`prepare`, `chords`, `start`, `stop`, `armForSong`, `mirror`); `_nsSong.start()` arms the melody when it is playing and the
+engine can play its voice, and says so in `mel` of its result. The plugin map and the Xcode project have the new methods and headers.
+
+**Measured.**
+- `tests/seq/melgrid.test.js`: the page's real `_mlScheduler` on a clock of its own with the chord windows a song would have committed, 28 cases, 2,725 notes identical to `meltool`'s in time (1e-5 of a frame), pitch, length,
+  level, accent, slide source and slide time: Follow off and on over a progression, a line written over a minor seventh, slash chords, a rest, chords off the beat, pinned steps, chords on a step (and explicit Mono),
+  the portamento (on, off, two glide times, Poly), swing on the eighths and sixteenths, the speed multiplier, a 24-step line, step probability and the humanize on the page's own draws, and locked phrases
+  (the capo, folded, chords in them, three lengths, Follow off). Each lock case is also run without its locks to show they change the line.
+- `tests/seq/melbank.test.js`: 399 notes (every register, velocities 0.03 to 1.1, accents, lengths from 12 ms to 4 s, 19 slides per voice from other notes over other times) patched from the bank the way the
+  player picks them against the page's fresh voice: all at 152 dB or better (99 bit-identical); the refusals, the signature and `_nsMel` against a stand-in plugin.
+- `tests/seq/melline.test.js`: the page's real scheduler and its programs for what it sent against `meltool`'s scheduler into the player and a pool (`melseqtest`): 7 cases x 3 voices (Follow, a line of slides, chords on a
+  step, notes of 29 ms, swing, locks with chords, probability), 160 dB or better in every 100 ms window.
+- `tests/seq/songstep.test.js`: the song's chords carry the melody's lock (its root and steps) for the chords that have one (a config with melody locks on two chords).
+- Host test: the melody steps with no page, a step with a chord begins three voices, shares the drums' bar line; in a song it starts with the song, plays C and then F with Follow on and stays as written with it off,
+  and stops with the song; a finish fades its voices.
+- Mutation checks: 23 of 23 breaks caught, plus the kill-mask break. Two survived at first: re-rooting by the slash bass instead of the chord root, and applying swing in the chord lookup. Three added `melgrid` cases now catch them: two dense lines over slash chords with the bass far from the root, and strong sixteenth-note swing over chords that change off the beat.
+
+**Not done.** The page's generator: a line written for the next chord (`_mlPregen`, `_mlApplyPending`, the `_songAnswer` for the melody), so in a song with Follow off the melody keeps the line it was started with
+(Follow on re-roots it onto each chord, which is what most songs use); Piano, Organ and the sampled melody voices (per-pitch recordings); Pure tuning's cents; the melody strip (part `mel`, the keyboard strip) and
+mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlayNote` feeds and the engine does not. Not heard on device: checklist 33.

@@ -9257,7 +9257,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.1a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.2</span></div>
  </div>
 </div>
 
@@ -10704,7 +10704,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.1a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.2</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11904,7 +11904,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.1a';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -12961,6 +12961,7 @@ function modNativePlugin(){
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
                      seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
+                     seqMelScore:call('seqMelScore'), seqMelChords:call('seqMelChords'), seqMelArm:call('seqMelArm'), seqMelStart:call('seqMelStart'), seqMelStop:call('seqMelStop'), seqMelTempo:call('seqMelTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
@@ -51333,13 +51334,17 @@ window._songNativeScore = function(opts){
   try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
   try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
  }
- var locks = [], byKey = {}, secs = [sections.length], patIdx = {}, pats = [], nPats = 0;
+ var locks = [], byKey = {}, secs = [sections.length], patIdx = {}, pats = [], nPats = 0, mlocks = [], mlByKey = {}, mlIdx = [];
  sections.forEach(function(sec){
   var slots = (sec && sec.slots) || [];
   secs.push(secPlays(sec), (sec && sec.follow === 'next') ? 1 : 0, slots.length);
   slots.forEach(function(sl){
    var key = window.phraseKey ? window.phraseKey(sl) : null, lk = (!sl.isRest && key) ? window._blLockFor({lockKey: key}) : null, idx = -1;
    if(lk){ if(byKey[key] == null){ byKey[key] = locks.length; locks.push(lk); } idx = byKey[key]; }
+   // ...and the melody generator's lock for it (_mlLockFor), in a table of its own
+   var mlk = (!sl.isRest && key && typeof window._mlLockFor === 'function') ? window._mlLockFor({lockKey: key}) : null, mi = -1;
+   if(mlk){ if(mlByKey[key] == null){ mlByKey[key] = mlocks.length; mlocks.push(mlk); } mi = mlByKey[key]; }
+   mlIdx.push(mi);
    var ivs = slotIvs(sl) || [0, 4, 7];
    // How it is struck (_playChartSlot2): the comp "sustain" holds it flat; "as played" holds it unless it is tapped (ring 0), and lets go after `ring` beats.
    var comp = sl.isRest ? null : _slotComp(sl), played = comp === 'played';
@@ -51384,7 +51389,14 @@ window._songNativeScore = function(opts){
            _webChordSubOn() ? 1 : 0, velScale(0), (typeof window._sqSwingVal === 'function') ? window._sqSwingVal() : 0,
            (typeof window._sqSwing8 === 'function' && window._sqSwing8()) ? 1 : 0, nPats], pats);
  }
- return {ok: !why.length, why: why, score: d.concat(secs, trainer, ending, land, tail), chords: chords, chordWhy: chordWhy};
+ // The melody generator's locks, when there are any (a score without them is byte for byte what it was): after a -7, each slot's index and the table.
+ var melTail = [];
+ if(mlocks.length){
+  melTail.push(-7); mlIdx.forEach(function(x){ melTail.push(x); });
+  melTail.push(mlocks.length);
+  mlocks.forEach(function(lk){ melTail.push(lk.steps, lk.rootPc); for(var s2 = 0; s2 < lk.steps; s2++) window._mlPushCell(melTail, lk.grid[s2] || {}); });
+ }
+ return {ok: !why.length, why: why, score: d.concat(secs, trainer, ending, land, tail, melTail), chords: chords, chordWhy: chordWhy};
 };
 
 // The pitches the engine's chords can need from the bank, for a song: the recording of a chord is one pitch at a time, and what a voicing picks depends on
@@ -61077,6 +61089,216 @@ window._nsBank = {
   }
   return {ok: true, entries: entries};
  },
+ // The melody generator's voice (docs/native-scheduling.md, slice 3 part three), recorded the way the arp's is (regimes of length found by the prober, each an entry valid up to its `durMax`)
+ // and the bass's (the accent, and the note it slides from). Bank part 6. Two kinds: the note, and the note that slides from the one before (_webMelgenNote: a detune ramp on the
+ // voice's oscillators from (from - note) cents*100 down to nothing over `glideTime`; none at all for a leap of more than 24 semitones, so the player uses the plain voice there).
+ // vel is the level; accent multiplies the gain by 1.25 against 0.85. The glide's lanes are 16 and up.
+ buildMel: async function(voice){
+  var keep = this.constRandom;
+  try { return await this._buildMel(voice); } finally { this.constRandom = keep; }
+ },
+ _buildMel: async function(voice){
+  if(!MODGRAPH.on || !MODGRAPH.parts.melgen) return {ok: false, why: 'the melody generator part is not on the graph path (Native sound)'};
+  var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD;
+  var REFN = 66, REFV = 0.5, REFFROM = 60, REFGT = 0.06;
+  if(voice === 'sampler' || (typeof SAMPLED_WAVES !== 'undefined' && SAMPLED_WAVES[voice])) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  if(voice === 'modsynth') return {ok: false, why: 'a mõdSynth voice (the Processor plays it, not a graph)'};
+  var entries = [], x2 = function(p){ return Math.pow(2, p / 12); };
+  var DMAX = 4.5, MAXREG = 8;
+  for(var kind = 0; kind < 2; kind++){
+   var glides = kind === 1, who = glides ? ' (sliding note)' : ' (note)';
+   // The notes the register is checked at; a sliding note is checked with its slide from 6 semitones below it (the slide only exists within 24), as the reference is.
+   var NOTES = [36, 48, 55, 60, 66, 72, 79, 84, 91, 100], PN1 = glides ? 52 : 48, PN2 = glides ? 76 : 72;
+   var mk = function(o){
+    var m = Object.assign({kind: 'note', part: 'melgen', id: 1, note: REFN, vel: REFV, accent: false, at: AT0, tune: 0}, o);
+    if(glides){ if(m.glideFrom == null) m.glideFrom = REFFROM; if(m.glideTime == null) m.glideTime = REFGT; }
+    return m;
+   };
+   var R = async function(o){ window._chokeReset(); return self.record(mk(o)); };
+   // 1. The ladder of lengths: where does the order of the envelope's events change?
+   var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= 1.19; }
+   var gp = [], size = 0;
+   await R({dur: 0.2});
+   for(var gi = 0; gi < grid.length; gi++){
+    var rg = await R({dur: grid[gi]});
+    if(!rg) return {ok: false, why: 'makes no voice (the Melody Gen fader is down?)' + who};
+    if(rg.edits) return {ok: false, why: 'edits itself after it starts' + who};
+    if(!size) size = rg.prog.length;
+    if(rg.prog.length !== size) return {ok: false, why: 'the program changes size with length ' + grid[gi].toFixed(4) + who};
+    gp.push(rg.prog);
+   }
+   var small = function(x){ return x >= 0 && x <= 9 && x === Math.floor(x); };
+   var disc = [];
+   for(var si0 = 0; si0 < size; si0++){
+    var allSmall = true, moves = false;
+    for(var gk = 0; gk < gp.length; gk++){ if(!small(gp[gk][si0])) { allSmall = false; break; } if(gp[gk][si0] !== gp[0][si0]) moves = true; }
+    if(allSmall && moves) disc.push(si0);
+   }
+   var sig = function(p){ return disc.map(function(i){ return p[i]; }).join(','); };
+   var bounds = [];
+   for(var gj = 1; gj < gp.length; gj++){
+    if(sig(gp[gj]) === sig(gp[gj - 1])) continue;
+    var lo = grid[gj - 1], hi = grid[gj], sl = sig(gp[gj - 1]);
+    while(hi - lo > 1e-5){
+     var mid = (lo + hi) / 2, rm = await R({dur: mid});
+     if(!rm || rm.prog.length !== size) return {ok: false, why: 'the program changes size with length ' + mid.toFixed(5) + who};
+     if(sig(rm.prog) === sl) lo = mid; else hi = mid;
+    }
+    bounds.push((lo + hi) / 2);
+   }
+   var regs = [], prevEnd = 0;
+   bounds.concat([1e9]).forEach(function(b){ if(b - prevEnd < 1e-4 && regs.length){ regs[regs.length - 1].max = b; } else regs.push({min: prevEnd, max: b}); prevEnd = b; });
+   if(regs.length > MAXREG) return {ok: false, why: regs.length + ' regimes of length' + who};
+   // 2. Each regime on its own.
+   for(var ri = 0; ri < regs.length; ri++){
+    var reg = regs[ri], top = Math.min(reg.max, DMAX), bot = reg.min, wid = top - bot, m = Math.min(1e-4, wid * 0.05);
+    var tag = who + ', regime ' + ri + ' of ' + regs.length + ' (' + bot.toFixed(4) + ' to ' + (reg.max > 1e8 ? 'any' : reg.max.toFixed(4)) + ' s)';
+    var dset = grid.filter(function(x){ return x > bot + m && x < top - m; });
+    var fillN = wid < 0.05 ? 6 : 3;
+    for(var fi = 0; fi < fillN; fi++){ var fx = bot + m + (top - bot - 2 * m) * (fi + 0.5) / fillN; dset.push(fx); }
+    dset = dset.sort(function(a, b){ return a - b; }).filter(function(x, i, a){ return !i || x - a[i - 1] > 2e-5; });
+    var REFD = dset[Math.floor(dset.length / 2)], durs = dset.filter(function(x){ return x !== REFD; });
+    await R({dur: REFD});
+    var ref = await R({dur: REFD});
+    if(!ref) return {ok: false, why: 'makes no voice' + tag};
+    if(ref.edits) return {ok: false, why: 'edits itself after it starts' + tag};
+    var P0 = ref.prog, n = P0.length;
+    var rec = async function(o){ var r = await R(Object.assign({dur: REFD}, o)); return r && r.prog.length === n && !r.edits ? r.prog : null; };
+    var must = async function(o, what){ var p = await rec(o); if(!p) throw new Error('the program changes size with ' + what + tag); return p; };
+    var vx = [0.03, 0.06, 0.1, 0.15, 0.25, 0.35, 0.7, 0.9, 1.2], vy = [], ac, mp = {}, p1, p2, t1, t2, dp = [], f1, f2, g1, g2;
+    try {
+     for(var vi = 0; vi < vx.length; vi++) vy.push(await must({vel: vx[vi]}, 'velocity ' + vx[vi]));
+     ac = await must({accent: true}, 'accent');
+     for(var mi = 0; mi < NOTES.length; mi++) mp[NOTES[mi]] = await must(glides ? {note: NOTES[mi], glideFrom: NOTES[mi] - (REFN - REFFROM)} : {note: NOTES[mi]}, 'note ' + NOTES[mi]);
+     p1 = await must({note: PN1}, 'note ' + PN1); p2 = await must({note: PN2}, 'note ' + PN2);
+     t1 = await must({at: AT0 + 0.02}, 'start time +20 ms'); t2 = await must({at: AT0 + 0.05}, 'start time +50 ms');
+     for(var di = 0; di < durs.length; di++) dp.push(await must({dur: durs[di]}, 'length ' + durs[di].toFixed(4)));
+     if(glides){
+      f1 = await must({glideFrom: 50}, 'slide from 50'); f2 = await must({glideFrom: 72}, 'slide from 72');
+      g1 = await must({glideTime: 0.03}, 'slide time 0.03'); g2 = await must({glideTime: 0.1}, 'slide time 0.1');
+     }
+    } catch(e){ return {ok: false, why: String(e.message || e)}; }
+    // The velocity: a line, or a line held to a floor (the gain is max(0.0001, ...)).
+    var fvl = this._fitLen([REFV].concat(vx), [P0].concat(vy), n);
+    if(fvl.bad) return {ok: false, why: fvl.bad + ' velocity slots are neither a line nor a line held at its ends' + tag};
+    var fv = fvl.slots.filter(function(q){ return !q[3].length; }).map(function(q){ return [q[0], q[2], 0]; }), velCurve = fvl.slots.filter(function(q){ return q[3].length; });
+    var fa = []; for(var ai = 0; ai < n; ai++) if(ac[ai] !== P0[ai]) fa.push([ai, ac[ai] - P0[ai], 0]);
+    var fp = this._fit(P0, 1, p1, x2(PN1 - REFN), p2, x2(PN2 - REFN)), fpl = fp.slots.map(function(q){ return [q[0], q[1], 0]; });
+    if(fp.bad.length){
+     var fq = this._fit(P0, 0, p1, PN1 - REFN, p2, PN2 - REFN), okq = {}; fq.slots.forEach(function(q){ okq[q[0]] = q[1]; });
+     var rest = fp.bad.filter(function(i){ return okq[i] === undefined; });
+     if(rest.length) return {ok: false, why: rest.length + ' pitch slots follow neither frequency nor note number' + tag};
+     fp.bad.forEach(function(i){ fpl.push([i, okq[i], 1]); });
+    }
+    // The slide: the note it comes from (a frequency or a note number, as the pitch), and how long it takes.
+    var ffit = [], fgt = [];
+    if(glides){
+     var gf = this._fit(P0, x2(REFFROM), f1, x2(50), f2, x2(72)), gl = gf.slots.map(function(q){ return [q[0], q[1], 0]; });
+     if(gf.bad.length){
+      var gq = this._fit(P0, REFFROM, f1, 50, f2, 72), okg = {}; gq.slots.forEach(function(q){ okg[q[0]] = q[1]; });
+      var rg2 = gf.bad.filter(function(i){ return okg[i] === undefined; });
+      if(rg2.length) return {ok: false, why: rg2.length + ' slide slots follow neither frequency nor note number' + tag};
+      gf.bad.forEach(function(i){ gl.push([i, okg[i], 1]); });
+     }
+     ffit = gl;
+     var gt = this._fit(P0, REFGT, g1, 0.03, g2, 0.1);
+     if(gt.bad.length) return {ok: false, why: gt.bad.length + ' slide-time slots are not linear' + tag};
+     fgt = gt.slots.map(function(q){ return [q[0], q[1], 0]; });
+    }
+    // The register: a slot can follow the note in the middle of the roll and be held at both ends of it.
+    var pclamp = {}, inPitch = {}, inFrom = {};
+    fpl.forEach(function(q){ inPitch[q[0]] = q; });
+    ffit.forEach(function(q){ inFrom[q[0]] = q; });
+    for(var mk1 in mp){
+     var mnote = +mk1, mP = mp[mk1];
+     for(var i = 0; i < n; i++){
+      var q = inPitch[i], pred = P0[i];
+      if(q) pred = P0[i] + q[1] * ((q[2] ? mnote - REFN : x2(mnote - REFN)) - (q[2] ? 0 : 1));
+      if(glides && inFrom[i]){ var gq0 = inFrom[i], gfrom = mnote - (REFN - REFFROM); pred += gq0[1] * (gq0[2] ? gfrom - REFFROM : x2(gfrom) - x2(REFFROM)); }
+      if(Math.abs(pred - mP[i]) <= 1e-9 * Math.max(1, Math.abs(mP[i]))) continue;
+      if(!q) return {ok: false, why: 'slot ' + i + ' changes only at the extremes of the roll (note ' + mnote + ')' + tag};
+      var c = pclamp[i] = pclamp[i] || {lo: -1e300, hi: 1e300};
+      if(mP[i] > pred){ if(c.lo !== -1e300 && c.lo !== mP[i]) return {ok: false, why: 'slot ' + i + ' is held at two different lower bounds' + tag}; c.lo = mP[i]; }
+      else { if(c.hi !== 1e300 && c.hi !== mP[i]) return {ok: false, why: 'slot ' + i + ' is held at two different upper bounds' + tag}; c.hi = mP[i]; }
+     }
+    }
+    for(var mk2 in mp){
+     var mn2 = +mk2;
+     for(var sj in pclamp){
+      var q2 = inPitch[sj], pr2 = P0[sj] + q2[1] * ((q2[2] ? mn2 - REFN : x2(mn2 - REFN)) - (q2[2] ? 0 : 1));
+      if(glides && inFrom[sj]){ var gq1 = inFrom[sj], gf1 = mn2 - (REFN - REFFROM); pr2 += gq1[1] * (gq1[2] ? gf1 - REFFROM : x2(gf1) - x2(REFFROM)); }
+      pr2 = Math.min(Math.max(pr2, pclamp[sj].lo), pclamp[sj].hi);
+      if(Math.abs(pr2 - mp[mk2][sj]) > 1e-9 * Math.max(1, Math.abs(mp[mk2][sj]))) return {ok: false, why: 'slot ' + sj + ' is not a line held at its ends (note ' + mn2 + ')' + tag};
+     }
+    }
+    var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
+    if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time' + tag};
+    if(ft.slots.some(function(q){ return Math.abs(q[1] - 1) > 1e-9; })) return {ok: false, why: 'a time slot that does not move 1:1' + tag};
+    var fd = this._fitLen([REFD].concat(durs), [P0].concat(dp), n), dslots = fd.slots;
+    if(fd.bad) return {ok: false, why: fd.bad + ' length slots are neither a line nor a line held at its ends' + tag};
+    var movers = {}; [fv, fa, fpl, ffit, fgt].forEach(function(l){ l.forEach(function(q){ movers[q[0]] = 1; }); });
+    var shared = dslots.filter(function(q){ return movers[q[0]]; }).concat(velCurve.filter(function(q){ return movers[q[0]]; }));
+    if(shared.length) return {ok: false, why: shared.length + ' slots follow the length or a clamped velocity curve and another quantity' + tag};
+    if(velCurve.some(function(q){ return dslots.some(function(r){ return r[0] === q[0]; }); })) return {ok: false, why: 'a slot follows both the length and the velocity' + tag};
+    // Slots two quantities move: add or multiply, from one joint recording.
+    var jn = await rec(glides ? {vel: 0.3, accent: true, note: 72, glideFrom: 55, glideTime: 0.09} : {vel: 0.3, accent: true, note: 72});
+    if(!jn) return {ok: false, why: 'the joint recording changes size' + tag};
+    var touch = {};
+    var tally = function(list, x0, x){ list.forEach(function(q){ (touch[q[0]] = touch[q[0]] || []).push([q[1], x0, x]); }); };
+    tally(fv, REFV, 0.3); tally(fa, 0, 1);
+    tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(72 - REFN)); tally(fpl.filter(function(q){ return q[2]; }), 0, 72 - REFN);
+    if(glides){ tally(ffit.filter(function(q){ return !q[2]; }), x2(REFFROM), x2(55)); tally(ffit.filter(function(q){ return q[2]; }), REFFROM, 55); tally(fgt, REFGT, 0.09); }
+    var mul = [];
+    for(var ck in pclamp) if((touch[ck] || []).length > 1) return {ok: false, why: 'slot ' + ck + ' is held at the ends of the roll and also follows another quantity' + tag};
+    for(var key in touch){
+     var L = touch[key]; if(L.length < 2) continue;
+     var add = P0[key], mu = P0[key];
+     L.forEach(function(c){ add += c[0] * (c[2] - c[1]); mu *= P0[key] !== 0 ? ((P0[key] - c[0] * c[1]) + c[0] * c[2]) / P0[key] : 1; });
+     var near = function(v){ return Math.abs(v - jn[key]) <= 1e-9 * Math.max(1, Math.abs(jn[key])); };
+     if(near(add)) continue;
+     if(near(mu)) mul.push(+key); else return {ok: false, why: 'slot ' + key + ' follows several quantities in a way that is neither a sum nor a product' + tag};
+    }
+    if(velCurve.some(function(q){ return (touch[q[0]] || []).length; })) return {ok: false, why: 'a clamped velocity curve is also moved by another quantity' + tag};
+    var d = [1, 6, window._nsKitCode('mel:' + voice), glides ? 16 + ri : ri, ++this.gen, AT0, LEAD, REFV, n];
+    for(var j = 0; j < n; j++) d.push(P0[j]);
+    var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
+    put(fv); put(fa); put(fpl);
+    d.push(ft.slots.length); ft.slots.forEach(function(q){ d.push(q[0]); });
+    d.push(mul.length); mul.forEach(function(q){ d.push(q); });
+    d.push(0);                                                    // no chokes
+    d.push(0);                                                    // no floors (the velocity curve holds them)
+    d.push(REFN, REFD, glides ? REFFROM : 0, dslots.length); dslots.forEach(function(q){ d.push(q[0], q[1], q[2], q[3].length); q[3].forEach(function(h){ d.push(h[0], h[1]); }); });
+    put(ffit);
+    var pk = Object.keys(pclamp); d.push(pk.length); pk.forEach(function(i){ d.push(+i, pclamp[i].lo, pclamp[i].hi); });
+    d.push(0);                                                    // no cut of the note before: the voices overlap
+    d.push(0, 0, -1, 0, 0);                                       // the chord voice's lists: none
+    d.push(velCurve.length); velCurve.forEach(function(q){ d.push(q[0], q[1], q[2], q[3].length); q[3].forEach(function(h){ d.push(h[0], h[1]); }); });
+    d.push(0, 0);                                                 // no release
+    d.push(1, 0);                                                 // refLevel, no level slots
+    d.push(reg.max);
+    d.push(0, 0);                                                 // refPan, no pan slots
+    d.push(REFGT, fgt.length); fgt.forEach(function(q){ d.push(q[0], q[1], 0); });
+    entries.push(Float64Array.from(d));
+   }
+  }
+  return {ok: true, entries: entries};
+ },
+ // The melody generator voice's signature: what a recording of it bakes in -- the voice, the part's fader, the trim, the drift, and the tuning.
+ signatureMel: function(){
+  return JSON.stringify([_wp('melgen.voice'), _wp('mix.melgen'), _wp('fx.trim'), _wp('fx.drift'), _wp('master.tune')]);
+ },
+ // The voice, recorded and sent if the host does not hold it under the current signature. Resolves {built, kept, failed}.
+ ensureMel: async function(){
+  var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
+  if(!P) return rep;
+  if(typeof modParamsSync==='function') modParamsSync();
+  var voice = _wp('melgen.voice'), sig = this.signatureMel(), key = 'mel:' + voice;
+  if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; return rep; }
+  var r = await this.buildMel(voice);
+  if(r.ok){ for(var i = 0; i < r.entries.length; i++) await P.seqBank({entry: _mgB64(r.entries[i])}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+  else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, why: r.why}); }
+  return rep;
+ },
  // The chord voice for ONE note (the engine's chord comp, docs/native-scheduling.md slice 2): a chord is a sub oscillator under the root
  // and one independent block per note, and the notes share only formulas of the note count (a level factor, a pan, a strum offset). So the
  // engine plays any chord from a bank of one-note chords, one per pitch, patched into its place: the page records the pitch alone as a
@@ -61559,6 +61781,55 @@ window._nsArp = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.arp; }) : Promise.resolve(null); }
 };
 
+// The developer entry to the engine's own melody generator (docs/native-scheduling.md slice 3, part three), beside window._nsBass and window._nsArp: records the melody voice (the plain
+// note and the note that slides in, in the regimes of length it needs) into the engine's bank, hands over the line as it stands and the chord windows with the melody's locks, and
+// starts it on the host's thread, on the drums' next bar line when they are running (start _nsDrum first). In a song the engine hands the melody the song's chords by itself:
+// `_nsSong.start()` arms it (`armForSong`) when the melody is playing and the engine can play its voice. Nothing in the app calls it. Needs Native sound on. Turn the page's own
+// melody generator off while this plays, or the two sound together.
+window._nsMel = {
+ plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqMelScore ? P : null; },
+ prepare: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(!MODGRAPH.on || !MODGRAPH.parts.melgen) return Promise.resolve({ok: false, why: 'Native sound is off'});
+  var sc = window._mlNativeScore();
+  if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
+  return window._nsBank.ensureMel().then(function(rep){
+   if(rep.failed.length) return {ok: false, why: rep.failed[0].why, bank: rep};
+   return P.seqMelScore({score: _mgB64(Float64Array.from(sc.score))}).then(function(r){ r = r || {}; r.bank = rep; return r; });
+  });
+ },
+ // The chart as it stands, with the melody's locks, counted from its first window (which is where the line starts).
+ chords: function(){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var has = (typeof window._songHasChordWindows === 'function') && window._songHasChordWindows() && window._blChordWindows().length;
+  var wins = has ? window._mlNativeChords(48000, window._blChordWindows()[0].t) : [];
+  return P.seqMelChords({chords: _mgB64(Float64Array.from(wins))});
+ },
+ start: function(leadMs){
+  var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var me = this;
+  return me.prepare().then(function(rep){
+   if(rep.ok === false) return rep;
+   return me.chords().then(function(){
+    var bpm = parseFloat(document.getElementById('bpm').value) || 120;
+    return P.seqMelStart({bpm: bpm, rate: (typeof mlRateMul !== 'undefined' ? mlRateMul : 1), leadMs: leadMs || 250, align: true, kit: window._nsKitCode('mel:' + _wp('melgen.voice'))}).then(function(r){ r.bank = rep.bank; return r; });
+   });
+  });
+ },
+ stop: function(){ var P = this.plugin(); return P ? P.seqMelStop() : Promise.resolve(); },
+ // For a song: with the melody playing, record it and arm the engine to start it with the song; otherwise (or when the engine cannot play it) disarm. Resolves {armed, why}.
+ armForSong: function(){
+  var P = this.plugin(); if(!P || !P.seqMelArm) return Promise.resolve({armed: false, why: 'no engine'});
+  var off = function(why){ return P.seqMelArm({on: false, kit: 0, rate: 1}).then(function(){ return {armed: false, why: why}; }); };
+  if(typeof window._mlPlaying !== 'function' || !window._mlPlaying()) return off('the melody generator is not playing');
+  return this.prepare().then(function(r){
+   if(r.ok === false) return off(r.why);
+   return P.seqMelArm({on: true, kit: window._nsKitCode('mel:' + _wp('melgen.voice')), rate: (typeof mlRateMul !== 'undefined' ? mlRateMul : 1)}).then(function(){ return {armed: true, bank: r.bank}; });
+  });
+ },
+ mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.mel; }) : Promise.resolve(null); }
+};
+
 // The page's half of the engine's song loop (docs/native-scheduling.md, slice 4, piece 5). The generators (the bass line's, with its dice) stay here, so while
 // the engine plays the song it ASKS: each time it starts a chord its mirror says which chord that is, when it ends and which chord follows (song.ask:
 // [count, section, chord, pass, start, end, next section, next chord, key change], frames). This is what _syncRegenAt and _syncPregenNext do when the page's own
@@ -61678,10 +61949,12 @@ window._nsSong = {
   if(section == null){ section = sections.findIndex(function(x){ return x && x.slots && x.slots.length; }); slot = 0; if(section < 0) return Promise.resolve({ok: false, why: 'the song has no chords'}); }
   return this.sync().then(function(r){
    if(r.ok === false) return r;
-   // With the arp on, the engine plays it too: recorded, and armed to start on the song's bar line and follow its chords (`arp` in the result says whether it did).
+   // With the arp on, the engine plays it too: recorded, and armed to start on the song's bar line and follow its chords (`arp` in the result says whether it did); likewise the melody generator (`mel`).
    return window._nsArp.armForSong().then(function(ar){
-    return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){
-     window._nsSong.driving = true; window._songMirror.seen = 0; window._songMirror.chorusSeen = 0; try{ _pracReset(); }catch(e){} window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; s.arp = ar; } return s; });
+    return window._nsMel.armForSong().then(function(ml){
+     return P.seqSongStart({leadMs: leadMs || 250, align: true, section: section, slot: slot || 0, pass: 0}).then(function(s){
+      window._nsSong.driving = true; window._songMirror.seen = 0; window._songMirror.chorusSeen = 0; try{ _pracReset(); }catch(e){} window._nsSong.watch(true); if(s && typeof s === 'object'){ s.bank = r.bank; s.chords = r.chords; s.chordWhy = r.chordWhy; s.arp = ar; s.mel = ml; } return s; });
+    });
    });
   });
  },
@@ -62928,6 +63201,8 @@ window._blOnLiveChord = function(slot){
   window._blOnChord(slot, ctx.currentTime, 3600, null, 0);
 };
 window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
+// The committed windows themselves, for the melody generator's copy of the chart (window._mlNativeChords).
+window._blChordWindows = function(){ return _blChordWin; };
 // The chord timeline is not bass-specific — the melody generator needs exactly
 // the same "which chord covers this scheduled time" lookup to follow the
 // changes. Exported rather than duplicated so both engines can never disagree
@@ -64919,6 +65194,7 @@ function _mlLockFor(w){
   var lk = window.phraseLockGet('mel', w.lockKey);
   return (lk && lk.grid && lk.steps) ? lk : null;
 }
+window._mlLockFor = _mlLockFor;
 
 // The melody generator's counterpart to _blDisplayWindow — see that for why.
 function _mlDisplayWindow(x, hyp){
@@ -65832,6 +66108,50 @@ window._mlRestoreState = function(s){
  if(typeof mlSyncFollowUI==='function') mlSyncFollowUI();
  mlEnsureGrid(); mlRenderGrid();
 };
+
+// The engine's copy of the melody generator's line (docs/native-scheduling.md, slice 3, part three; native/modsynth/melcore.h reads this layout). {ok, why[], score[]}: `ok` is false, and
+// `why` names what, when the engine cannot play this line as the page would (a sampled or mõdSynth voice, Pure tuning's cents). A cell is its nine numbers and the rest of the notes of a chord.
+function _mlPushCell(d, c){
+ d.push(c.v || 0, c.note || 0, c.oct == null ? 5 : c.oct, c.len || 1, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
+ var xs = (c.v && c.more && c.more.length) ? c.more : [];
+ d.push(xs.length); xs.forEach(function(e){ d.push(e.note, e.oct); });
+}
+window._mlPushCell = _mlPushCell;
+window._mlNativeScore = function(){
+ var why = [], hs = window._humanState();
+ try{ var mv = _wp('melgen.voice'); if(mv === 'sampler' || SAMPLED_WAVES[mv]) why.push('a sampled melody voice'); else if(mv === 'modsynth') why.push('a mõdSynth melody voice'); }catch(e){}
+ try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
+ var scale = (typeof window._songScalePcs==='function') ? (window._songScalePcs() || []) : [];
+ var d = [1, mlSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, mlFollow ? 1 : 0, _mlGridRootPc, _mlGridIntvs.length];
+ _mlGridIntvs.forEach(function(x){ d.push(x); });
+ d.push(scale.length); scale.forEach(function(x){ d.push(x); });
+ d.push(mlVol, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('melgen') >= 0 ? 1 : 0,
+        (melGlideOn && melMono !== false) ? 1 : 0, melGlideTime, mlPolyAllowed() ? 1 : 0, mlSteps);
+ for(var s = 0; s < mlSteps; s++) _mlPushCell(d, mlGrid[s] || {});
+ return {ok: !why.length, why: why, score: d};
+};
+// The chord timeline as the engine reads it (ChordTimeline::fromDoubles) with this part's phrase locks: the page's seconds turned into engine frames at `sr`, counted from `origin`
+// (seconds). The bass's lock table is empty here (the melody has its own timeline); each window carries the index of its chord's melody lock (_mlLockFor).
+window._mlNativeChords = function(sr, origin){
+ var win = (typeof window._blChordWindows === 'function') ? window._blChordWindows() : [];
+ var d = [win.length], o = origin || 0, locks = [], byKey = {}, idxs = [];
+ win.forEach(function(w){
+  var lk = w.rest ? null : _mlLockFor(w), idx = -1;
+  if(lk){ if(byKey[w.lockKey] == null){ byKey[w.lockKey] = locks.length; locks.push(lk); } idx = byKey[w.lockKey]; }
+  idxs.push(idx);
+  d.push((w.t - o) * sr, (w.end - o) * sr, w.rest ? 1 : 0, w.rootPc, w.bassPc == null ? -1 : w.bassPc, w.nextPc == null ? -1 : w.nextPc, w.pcs.length);
+  w.pcs.forEach(function(x){ d.push(x); });
+  d.push(-1);
+ });
+ d.push(0);                                   // the bass's lock table: none
+ d.push(-7); idxs.forEach(function(x){ d.push(x); });
+ d.push(locks.length);
+ locks.forEach(function(lk){ d.push(lk.steps, lk.rootPc); for(var s = 0; s < lk.steps; s++) _mlPushCell(d, lk.grid[s] || {}); });
+ return d;
+};
+// Where the step clock is, and a way to put it somewhere: for the tests that run this scheduler on a clock of their own.
+window._mlClock = function(){ return {t: mlNextT, step: mlSeqStep, playing: mlPlaying}; };
+window._mlSetClock = function(t, step, playing){ mlNextT = t; mlSeqStep = step || 0; mlPlaying = !!playing; _mlPrev = null; };
 
 mlSyncFollowUI();
 

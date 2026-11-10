@@ -69,6 +69,8 @@ int main(int argc, char **argv) {
         printf("W %.17g %.17g %d %d %d %d %d %d %d %d %zu", w.t, w.end, w.rest ? 1 : 0, w.rootPc, w.bassPc, w.nextPc, w.lock, ch.section, ch.slot, ch.pass, w.pcs.size());
         for (int p : w.pcs) printf(" %d", p);
         printf("\n");
+        if (w.melLock >= 0) printf("L 1 %d %d\n", q.score().melLocks[(size_t)w.melLock].rootPc, q.score().melLocks[(size_t)w.melLock].steps);   // the melody generator's locked phrase for it: the root it was written over, its steps
+        else printf("L 0 0 0\n");
         // the arp's chord (setArpChord in _playChartSlot2): a rest leaves it as it was and starts the pattern again; else the tones, with the slash bass first and the octaves above
         { const char *oc = getenv("ARP_OCTS"); const int octs = oc ? atoi(oc) : 1;
           if (ch.s.rest) printf("Q rest\n");
