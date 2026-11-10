@@ -1,7 +1,7 @@
 // Runs the native arpeggiator on scores a test hands it and prints the events, one per line, for tests/seq/arpgrid.test.js to hold against the page's scheduleArp.
 //   arptool <cases.f64>
 // cases.f64: [nCases, per case: sampleRate, bpm, firstFrame, epochFrame, endFrame, nTape, tape..., nChords, per chord: atFrame, nNotes, notes..., then the score (arpcore.h)]
-// A chord is the arp's chord from `atFrame` on (setArpChord: the pattern starts again). Output per case: "CASE i", "N frame midi durSec vel level pan gateIdx" per note,
+// A chord is the arp's chord from `atFrame` on (setArpChord: the pattern starts again); with nNotes -1 it is a rest in the song (the chord stays, the pattern starts again). Output per case: "CASE i", "N frame midi durSec vel level pan gateIdx" per note,
 // "B frame durSec n notes..." per block, "END i steps".
 #include <cstdio>
 #include <vector>
@@ -22,9 +22,9 @@ int main(int argc, char **argv) {
     const int nt = (int)d[k++];
     std::vector<double> tape(d.begin() + (long)k, d.begin() + (long)k + nt); k += (size_t)nt;
     const int nch = (int)d[k++];
-    struct Ch { double at; std::vector<int> notes; };
+    struct Ch { double at; bool rest = false; std::vector<int> notes; };
     std::vector<Ch> chords;
-    for (int i = 0; i < nch; i++) { Ch ch; ch.at = d[k++]; const int nn = (int)d[k++]; for (int j = 0; j < nn; j++) ch.notes.push_back((int)d[k++]); chords.push_back(ch); }
+    for (int i = 0; i < nch; i++) { Ch ch; ch.at = d[k++]; const int nn = (int)d[k++]; ch.rest = nn < 0; for (int j = 0; j < nn; j++) ch.notes.push_back((int)d[k++]); chords.push_back(ch); }
     modsynth::ArpScore sc; size_t used = 0;
     if (!sc.fromDoubles(d.data() + k, d.size() - k, &used)) { fprintf(stderr, "case %d: bad score\n", c); return 2; }
     k += used;
@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
       else { printf("B %.17g %.17g %zu", e.frameExact, e.durSec, e.notes.size()); for (int n : e.notes) printf(" %d", n); printf("\n"); }
     };
     // a chord takes over at its moment: the steps due before it are the old chord's, the rest the new one's
-    for (const Ch &ch : chords) { fired += q.run(ch.at, emit); q.setNotes(ch.notes); }
+    for (const Ch &ch : chords) { fired += q.run(ch.at, emit); if (ch.rest) q.restart(); else q.setNotes(ch.notes); }
     fired += q.run(endFrame, emit);
     printf("END %d %d\n", c, fired);
   }

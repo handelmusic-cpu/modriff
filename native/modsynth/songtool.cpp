@@ -6,9 +6,12 @@
 //   one (frames), a Next/Prev the player queued before it (+1, -1, or 0), and the horizon it fires chords up to.
 // Output per case: "CASE i", "A section chord pass t end nextSection nextChord capo queuedMove" for each chord the song starts (what the host's mirror asks the page about), "C frame chorus bpm keyDelta" when a practice chorus ends, "E type frame kind sustain snare soft holdSec durFrames fadeSteps fromBpm nSteps (frame bpm)..." for an ending (type 0 land, 1 fade start, 2 fade end, 3 ritard), "P now queuedMove" after each tick (what the mirror shows), "W t end rest rootPc bassPc nextPc lock section slot pass nPcs pcs..." per chord, and when the score says how the chords sound
 // (songvoice.h) the action that follows it: "S onset" (stop the chord that sounds) or "V onset vel dur hold holdSec subNote nNotes notes..." (strike it), and the
-// re-strikes of its comp as "H" lines of the same shape (or "T onset" for one that only stops), in the order the engine plays them, "END i n".
+// re-strikes of its comp as "H" lines of the same shape (or "T onset" for one that only stops), in the order the engine plays them, "END i n", and after each chord's "W" line the
+// arp's chord as "Q nNotes notes..." (or "Q rest": the chord stays and the pattern starts again), with the Octaves control from the environment ARP_OCTS (1 to 3).
 #include <cstdio>
 #include <vector>
+#include <cstdlib>
+#include "arpcore.h"
 #include "songcore.h"
 #include "songvoice.h"
 #include "songend.h"
@@ -66,6 +69,11 @@ int main(int argc, char **argv) {
         printf("W %.17g %.17g %d %d %d %d %d %d %d %d %zu", w.t, w.end, w.rest ? 1 : 0, w.rootPc, w.bassPc, w.nextPc, w.lock, ch.section, ch.slot, ch.pass, w.pcs.size());
         for (int p : w.pcs) printf(" %d", p);
         printf("\n");
+        // the arp's chord (setArpChord in _playChartSlot2): a rest leaves it as it was and starts the pattern again; else the tones, with the slash bass first and the octaves above
+        { const char *oc = getenv("ARP_OCTS"); const int octs = oc ? atoi(oc) : 1;
+          if (ch.s.rest) printf("Q rest\n");
+          else { const std::vector<int> an = modsynth::arpChordNotes(ch.s.rootM + ch.capo, ch.s.bassM >= 0 ? ch.s.bassM + ch.capo : -1, ch.s.ivs, octs);
+                 printf("Q %zu", an.size()); for (int n : an) printf(" %d", n); printf("\n"); } }
         if (q.score().voice.on) show("V", "S", voicer.chord(ch, q.score(), tm));
       }, [&](const modsynth::ChorusEvent &ev) {
         // the practice trainer stepped: the tempo is stepped on the bar line the new chorus begins on (the host puts it after the drums' expanded steps)

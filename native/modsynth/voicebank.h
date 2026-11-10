@@ -81,6 +81,12 @@ struct BankEntry {
   double relMin = 0;
   std::vector<double> releaseOps;
   std::vector<Held> held;          // pitch slots held to [lo, hi] (a playback rate that follows the note inside the roll, not past its ends)
+  // The arp voice (part 5): a quantity of its own besides the velocity -- the pattern's dynamic level, which only scales the gain (the page's `level`
+  // beside `vel`, which also opens the filter). Linear like the velocity; refLevel is the level the recording was made at.
+  // The envelope's events come in an order that depends on the note's length against the attack, so the arp voice has an entry per regime of length;
+  // an entry is valid for notes shorter than `durMax` seconds (the player takes the first that holds).
+  double refLevel = 1, durMax = 1e9, refPan = 0;
+  std::vector<BankSlot> level, pan;      // the dynamic level and the left-right pan the step is struck with
 
   // The flat layout (all doubles), written by the page (window._nsBank):
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
@@ -90,7 +96,8 @@ struct BankEntry {
   //   then (optional, only after the chokes) `count, (index, floor) x count`,
   //   then (optional, the bass: only after the floors) `refPitch, refDur, refFrom, count, (index, a, b, nKinks, (k, c) x nKinks) x count, count, (index, b, basis) x count, count, (index, lo, hi) x count, nDoubles, cutOps,
   //   then (optional, the chord voice: only after the cut) `nLevel, index x n, nTime, index x n, panSlot, nSub, (stop, start, node) x n, nTone, (stop, start, node) x n, nVelCurve, (index, a, b, lo, hi) x n`,
-  //   then (optional, the held chord, part 4: only after the velocity curves) `relMin, nDoubles, releaseOps`.
+  //   then (optional, the held chord, part 4: only after the velocity curves) `relMin, nDoubles, releaseOps`,
+  //   then (optional, the arp, part 5: only after the release) `refLevel, count, (index, b, basis) x count, durMax, refPan, count, (index, b, basis) x count`.
   bool fromDoubles(const double *d, size_t n);
 };
 
@@ -170,12 +177,13 @@ class DrumBank {
   // `onsetFrame` is the frame the note should sound on; `notBefore` the earliest frame a voice can still be begun at
   // (a hit that is already late starts there).
   // `durSec` and `fromMidi` are the bass's length and the note it glides from; the drums leave them out.
+  // `level` is the arp's dynamic level and `pan` where it is struck in the field (part 5 only; the others have no slots for them).
   bool patch(const BankEntry &e, double vel, bool accent, double pitchSemis, int64_t onsetFrame, double sampleRate,
-             uint64_t notBefore, PatchedVoice &out, double durSec = -1, double fromMidi = -1) const {
+             uint64_t notBefore, PatchedVoice &out, double durSec = -1, double fromMidi = -1, double level = 1, double pan = 0) const {
     const size_t n = e.prog.size();
     out.prog = e.prog;
     std::vector<unsigned char> cnt(n, 0);
-    for (const auto *l : {&e.vel, &e.accent, &e.pitch, &e.from}) for (const BankSlot &s : *l) if (s.i >= 0 && (size_t)s.i < n) cnt[(size_t)s.i]++;
+    for (const auto *l : {&e.vel, &e.accent, &e.pitch, &e.from, &e.level, &e.pan}) for (const BankSlot &s : *l) if (s.i >= 0 && (size_t)s.i < n) cnt[(size_t)s.i]++;
     // Each parameter has one or two bases (a slot is linear in either): the value now and the reference's, per basis.
     auto apply = [&](const std::vector<BankSlot> &l, double xA, double x0A, double xB, double x0B) {
       for (const BankSlot &s : l) {
@@ -193,6 +201,8 @@ class DrumBank {
     apply(e.accent, accent ? 1.0 : 0.0, 0.0, accent ? 1.0 : 0.0, 0.0);
     pitchSemis -= e.refPitch;
     apply(e.pitch, std::pow(2.0, pitchSemis / 12.0), 1.0, pitchSemis, 0.0);
+    if (!e.level.empty()) apply(e.level, level, e.refLevel, level, e.refLevel);
+    if (!e.pan.empty()) apply(e.pan, pan, e.refPan, pan, e.refPan);
     if (!e.from.empty() && fromMidi >= 0) apply(e.from, std::pow(2.0, fromMidi / 12.0), std::pow(2.0, e.refFrom / 12.0), fromMidi, e.refFrom);
     for (const DurSlot &c : e.velCurve) if (c.i >= 0 && (size_t)c.i < n) out.prog[(size_t)c.i] = c.at(vel);
     for (const auto &h : e.held) out.prog[(size_t)h.i] = std::min(std::max(out.prog[(size_t)h.i], h.lo), h.hi);

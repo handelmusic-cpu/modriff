@@ -134,6 +134,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqBassStop;
 - (void)seqBassSetTempo:(double)bpm rate:(double)rate;
 
+// ── The arpeggiator (native/modsynth/arpcore.h, arpplay.h; slice 3) ──
+// On the same thread and with the same bank as the drums (part 5). In a song it follows the song's chords. The mirror's `arp` has running, steps (the clock's),
+// notes (struck as notes), blocks, voices (begun), misses (no voice in the bank: lastMissLane), refused, lateStarts, chords (taken from the song), armed, bySong, tones.
+
+/// The arp's settings, float64s as `window._arpNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetArpScore:(NSData *)score;
+/// The chord the arp is on: float64 MIDI notes with the octaves already added (`window._arpNativeNotes()`); the pattern starts again. Empty: none. NO for a note out of range.
+- (BOOL)seqSetArpNotes:(NSData *)notes;
+/// Whether a song, when it starts, brings the arp in on its bar line (following the song's chords). `kit` is the bank's code for the arp voice.
+- (void)seqArpArm:(BOOL)on kit:(int)kit;
+/// Starts the arp by itself: with the drums' bar line when they run and `align` is set, else `leadMs` from now, on the chord it was given. NO without a score.
+- (BOOL)seqArpStartWithBpm:(double)bpm leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
+- (void)seqArpStop;
+
 // ── The chord comp (native/modsynth/chordcore.h, chordplay.h; slice 2) ──
 // The chord rhythm on the same thread and bank. The mirror's `chord` has running, nextStep, steps, hits (struck), chords (composed), voices, stops
 // (the chord before stopped), misses (a pitch missing from the bank), refused.

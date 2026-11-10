@@ -551,3 +551,22 @@ Arm an ending while the engine plays the song (`_nsDrum.start()`, `_nsBass.start
 | 31.8 | Settings > Recording > **Always bounce stems** on, then Bounce | one .wav per part next to the mix, without touching Stems first; with it on, Stems cannot be switched off before a take |
 | 31.9 | Live > Styles: tap a Pattern name (Drums, Aux, Bass, Chords, Melody) | the list opens in groups under the name, not one long column; a pick still loads it and switches the part on |
 | 31.10 | Open Add / reorder widgets | there is no Voices widget; Record is there, above Endings in the standard layout |
+
+## 32. The engine plays the arp (6.9.9.9.9.9.9.1; audible through a developer entry only)
+
+With Native sound on, the arp on a synthesized voice (Sine, Sawtooth, Square, Supersaw, Rhodes, Pad), the page's own arp switched off while the engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()`
+(it arms the arp and the engine brings it in on the song's bar line), or `_nsArp.start()` by itself after tapping a chord.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 32.1 | `_nsArp.start()` after tapping a chord, Up at 1/16 | the arp plays that chord on the drums' bar line, evenly; the same notes as the page's own arp played them |
+| 32.2 | `_nsSong.start()` with the arp on | the arp comes in with the song's first chord and changes with every chord, including the slash chord's bass note first, on the beat |
+| 32.3 | Octaves 1, 2, 3, then start again | the pattern reaches one, two and three octaves up the chord |
+| 32.4 | A rest in the song | the chord part goes quiet; the arp goes on with the same chord, starting its pattern again from the bottom |
+| 32.5 | Block pattern | the chord is struck whole, the tones a hair apart low to high, as the page does |
+| 32.6 | Fast arp (1/32) with a short Gate, and Attack at its default and at a long setting | each note is a short blip; none is a click, louder or quieter than the page's would be |
+| 32.7 | Accent gate pattern, Cresc / Hill / Valley, Bounce | the accents and the swell of the notes are as the page's |
+| 32.8 | Freeze the page for 3 s (web inspector breakpoint, or leave the app on speaker) | the arp keeps its time and its notes |
+| 32.9 | Arm Big Fin, Cold or Fade over the song | at the landing the arp's last notes fade out with the rest of the band and it stops; nothing keeps ringing under the final hit |
+| 32.10 | Piano or Organ as the arp voice | `_nsArp.start()` says why it cannot (the program changes with the note); nothing starts |
+
