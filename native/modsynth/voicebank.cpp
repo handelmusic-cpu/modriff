@@ -117,6 +117,22 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
     if (!(m >= 0 && m <= 600) || std::fmod(m, 6) != 0 || !need((size_t)m)) return false;
     releaseOps.assign(d + k, d + k + (size_t)m); k += (size_t)m;
   }
+  refLevel = 1; durMax = 1e9; refPan = 0; level.clear(); pan.clear();
+  if (k < total) {
+    if (!need(2)) return false;
+    refLevel = d[k++];
+    const double m = d[k++];
+    if (!(m >= 0 && m <= (double)n) || !need((size_t)m * 3)) return false;
+    for (size_t j = 0; j < (size_t)m; j++) { BankSlot s{(int)d[k], d[k + 1], (int)d[k + 2]}; k += 3; if (s.i < 0 || (size_t)s.i >= n) return false; level.push_back(s); }
+    if (k < total) durMax = d[k++];
+    if (k < total) {
+      if (!need(2)) return false;
+      refPan = d[k++];
+      const double mp = d[k++];
+      if (!(mp >= 0 && mp <= (double)n) || !need((size_t)mp * 3)) return false;
+      for (size_t j = 0; j < (size_t)mp; j++) { BankSlot s{(int)d[k], d[k + 1], (int)d[k + 2]}; k += 3; if (s.i < 0 || (size_t)s.i >= n) return false; pan.push_back(s); }
+    }
+  }
   isChord = true;
   return true;
 }

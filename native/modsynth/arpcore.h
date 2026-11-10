@@ -39,9 +39,10 @@ struct ArpScore {
   std::vector<double> motion;    // the rungs' multipliers of the rate, in order; fewer than 2: no motion
   double motionHold = 2;         // beats a rung lasts
   Humanize hum;                  // the arp is humanized as the part "arp": partOff[0]
+  int octaves = 1;               // the Octaves control (arpOcts): the chord's tones are repeated one and two octaves up (setArpChord)
 
   // [1, pattern, div, free, freeSec, gate, maxDur, swing, swing8, velShape, nGates, gates..., nAccents, accents..., nMotion, motion..., motionHold,
-  //  hum.amt, timeMul, velMul, driftMul, maxMs, maxVel, maxDriftMs, arpOff]
+  //  hum.amt, timeMul, velMul, driftMul, maxMs, maxVel, maxDriftMs, arpOff, octaves]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr) {
     size_t k = 0;
     if (n < 12 || d[0] != 1) return false;
@@ -57,11 +58,12 @@ struct ArpScore {
       return true;
     };
     if (!list(&s.gates, nullptr, 64) || !list(&s.accents, nullptr, 64) || !list(nullptr, &s.motion, 16)) return false;
-    if (s.gates.empty() || k + 9 > n) return false;
+    if (s.gates.empty() || k + 10 > n) return false;
     s.motionHold = d[k++];
     s.hum.amt = d[k]; s.hum.timeMul = d[k + 1]; s.hum.velMul = d[k + 2]; s.hum.driftMul = d[k + 3]; s.hum.maxMs = d[k + 4]; s.hum.maxVel = d[k + 5]; s.hum.maxDriftMs = d[k + 6];
     s.hum.partOff[0] = d[k + 7] != 0;
-    k += 8;
+    s.octaves = std::max(1, std::min(3, (int)d[k + 8]));
+    k += 9;
     *this = std::move(s);
     if (used) *used = k;
     return true;
@@ -79,6 +81,19 @@ struct ArpEvent {
   int gateIdx = 0;               // where in the gate pattern it was
 };
 
+// setArpChord: the chord the arp plays, from the root (MIDI, the live key change already added), a slash chord's bass (MIDI, or -1) and the chord's intervals: the bass note's
+// interval leads the list, and the tones are repeated an octave and two octaves up with the Octaves control at 2 and 3.
+inline std::vector<int> arpChordNotes(int rootM, int bassM, const std::vector<int> &ivs, int octaves) {
+  std::vector<int> iv;
+  if (bassM >= 0) iv.push_back(bassM - rootM);
+  iv.insert(iv.end(), ivs.begin(), ivs.end());
+  std::vector<int> out;
+  for (int i : iv) out.push_back(rootM + i);
+  if (octaves >= 2) for (int i : iv) out.push_back(rootM + i + 12);
+  if (octaves >= 3) for (int i : iv) out.push_back(rootM + i + 24);
+  return out;
+}
+
 class ArpSequencer {
  public:
   explicit ArpSequencer(double sampleRate = 48000.0) : sr_(sampleRate), own_(sampleRate) {}
@@ -92,6 +107,8 @@ class ArpSequencer {
   // The chord the arp is on (setArpChord): its tones with the octaves already added. The pattern starts again from the first.
   void setNotes(std::vector<int> notes) { notes_ = std::move(notes); idx_ = 0; dir_ = 1; gateIdx_ = 0; }
   const std::vector<int> &notes() const { return notes_; }
+  // A rest in the song (_playChartSlot2): the pattern starts again from the first tone and the first gate step; the chord is the same (the page's rest stops the chord part, not the arp).
+  void restart() { idx_ = 0; dir_ = 1; gateIdx_ = 0; }
 
   // Begin with a step landing on `firstFrame`; `epoch` is the clock's beat 1 (the drums' downbeat), which the swing and the rate motion count from.
   void start(double firstFrame, double epoch) { next_ = firstFrame; epoch_ = epoch; running_ = true; idx_ = 0; dir_ = 1; gateIdx_ = 0; }

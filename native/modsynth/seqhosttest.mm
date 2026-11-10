@@ -49,6 +49,30 @@ static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.
   return e;
 }
 
+
+// A synthetic arp voice (bank part 5): a sine on the arp bus (code 4) that sounds `life` seconds from a lead of 0.048, with a level slot that follows the velocity.
+// lane 0 is the note's first regime of length (any length), lane 16 the block's tone. The layout is voicebank.h's, with the arp's tail: refLevel, no level slots, durMax, refPan, no pan slots.
+static std::vector<double> arpEntry(int kit, int lane, double life) {
+  std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+  const double stop = 0.048 + life, amp = 0.5;
+  p.insert(p.end(), {8, 4, 2, 0, 0, stop, 330, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+  size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+  std::vector<double> e = {1, 5, (double)kit, (double)lane, 1, 0.048, 0.048, 0.8, (double)p.size()};
+  e.insert(e.end(), p.begin(), p.end());
+  e.insert(e.end(), {1, (double)amp_i, amp / 0.8, 0, 0, 0, 1, (double)stop_i, 0});       // velocity, accent, pitch; time; mul
+  e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
+  e.insert(e.end(), {60, life, 0, 0, 0, 0});                                             // refPitch, refDur, refFrom, no length, glide or held slots
+  e.insert(e.end(), {0});                                                               // no cut of the note before
+  e.insert(e.end(), {0, 0, -1, 0, 0, 0});                                               // the chord block's lists (none), no velocity curve
+  e.insert(e.end(), {0, 0});                                                            // no release
+  e.insert(e.end(), {1, 0, 1e9, 0, 0});                                                 // refLevel, no level slots, durMax, refPan, no pan slots
+  return e;
+}
+// The arp's score (arpcore.h): `pattern` 0 up .. 6 block, a sixteenth rate, an even gate, no motion, no humanize, `octaves`.
+static std::vector<double> arpScore(int pattern, int octaves) {
+  return {1, (double)pattern, 4, 0, 0.15, 0.5, 2, 0, 1, 0,  1, 1,  1, 0,  0,  2,  0, 0, 0, 0, 0, 0, 0, 0, (double)octaves};
+}
+
 static ModEngineHost *fresh() { return [[ModEngineHost alloc] initWithSampleRate:SR maxFrames:4096]; }
 
 // Renders `ms` of silence paced like a real callback.
@@ -545,6 +569,126 @@ int main() {
       CHECK(playedOn, "the chart plays on through the fade");
       CHECK(lowest < 0.1f && [en[@"phase"] intValue] == 2 && ![sg[@"running"] boolValue], "the master came down to %.3f and the song stopped at the end of the fade", lowest);
       CHECK(fabs([en[@"gain"] floatValue] - 1.0) < 1e-6, "and it was brought back up afterwards (gain %.3f)", [en[@"gain"] floatValue]);
+      [g seqStop];
+    }
+
+
+    // The arpeggiator through the host: the same thread and bank, no page. A synthetic arp voice (part 5: a note and a block's tone), the chord C major over two octaves,
+    // started with the drums' bar line. Up: a note a sixteenth, each begun from the bank; Block: three voices a step. Then in a song: armed, it starts with the song on the same
+    // bar line and takes each chord's tones (a slash chord's bass first, the octaves above), and a rest starts the pattern again on the chord that was. A finish fades its voices.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:4]; [g ensureGraphPart:5];
+      CHECK(![g seqArpStartWithBpm:120 leadMs:100 alignToDrums:YES kit:3 seed:1], "no arp score, no arp start");
+      CHECK(![g seqSetArpScore:[NSData dataWithBytes:"junk" length:8]], "an arp score that does not parse is refused");
+      CHECK([g seqSetArpScore:bytes(arpScore(0, 1))], "the arp score is taken");
+      CHECK(![g seqSetArpNotes:bytes(std::vector<double>{60, 300})], "a chord with a note out of range is refused");
+      CHECK([g seqSetArpNotes:bytes(std::vector<double>{60, 64, 67, 72, 76, 79})], "the chord is taken");
+      [g seqPutBankEntry:bytes(arpEntry(3, 0, 0.3))];
+      [g seqPutBankEntry:bytes(arpEntry(3, 16, 0.3))];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqArpStartWithBpm:120 leadMs:100 alignToDrums:YES kit:3 seed:3], "the arp starts");
+      std::vector<float> l(240), r(240); float peak = 0;
+      for (int t = 0; t < 1500; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        usleep(5000);
+      }
+      NSDictionary *m = [g seqMirror], *a = m[@"arp"];
+      CHECK([a[@"running"] boolValue] && [a[@"steps"] intValue] > 8 && [a[@"notes"] intValue] == [a[@"steps"] intValue], "the arp steps with no page: %d steps, %d notes", [a[@"steps"] intValue], [a[@"notes"] intValue]);
+      CHECK([a[@"firstFrame"] doubleValue] == [m[@"firstFrame"] doubleValue], "and it shares the drums' downbeat (frame %.0f)", [a[@"firstFrame"] doubleValue]);
+      CHECK([a[@"voices"] intValue] == [a[@"notes"] intValue] && [a[@"misses"] intValue] == 0 && [a[@"refused"] intValue] == 0, "each note is begun from the bank: %d voices, %d misses, %d refused", [a[@"voices"] intValue], [a[@"misses"] intValue], [a[@"refused"] intValue]);
+      CHECK([a[@"lateStarts"] intValue] == 0 && [[g graphStats][@"lateEdits"] intValue] == 0 && peak > 0.02f, "none began late, and it sounds: peak %.3f", peak);
+      [g seqArpStop];
+      const int notes = [[g seqMirror][@"arp"][@"notes"] intValue];
+      run(g, 300);
+      CHECK([[g seqMirror][@"arp"][@"notes"] intValue] == notes && ![[g seqMirror][@"arp"][@"running"] boolValue], "stopped: still %d notes", notes);
+      // Block: every tone of the chord is a voice, the three of a C major triad (twelve milliseconds apart in the strum).
+      [g seqSetArpScore:bytes(arpScore(6, 1))];
+      [g seqSetArpNotes:bytes(std::vector<double>{60, 64, 67})];
+      CHECK([g seqArpStartWithBpm:120 leadMs:100 alignToDrums:YES kit:3 seed:3], "the block pattern starts");
+      run(g, 1200);
+      NSDictionary *b = [g seqMirror][@"arp"];
+      CHECK([b[@"blocks"] intValue] >= 3 && [b[@"voices"] intValue] == 3 * [b[@"blocks"] intValue] && [b[@"misses"] intValue] == 0, "a block is a voice for each tone: %d blocks, %d voices", [b[@"blocks"] intValue], [b[@"voices"] intValue]);
+      [g seqArpStop]; [g seqStop];
+    }
+    {
+      // In a song: C for a bar, F over C (a slash chord) for a bar, a rest for a bar, G for a bar. The arp is armed, the Octaves control is 2.
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:4]; [g ensureGraphPart:5];
+      [g seqPutBankEntry:bytes(arpEntry(3, 0, 0.3))];
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
+        0, 0, 4,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+                   1, 0, 0, 0, 65,  48, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+                   1, 0, 0, 1, 60, -1, -1, -1, 0, 0, -1, 0,
+                   1, 0, 0, 0, 67, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+        4, 1, 0.15, 0,
+        0,
+        0};
+      CHECK([g seqSetSong:bytes(song)], "a song with a slash chord and a rest is taken");
+      CHECK([g seqSetArpScore:bytes(arpScore(0, 2))], "the arp score is taken (two octaves)");
+      [g seqArpArm:YES kit:3];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "the song starts");
+      std::vector<std::vector<int>> seen;
+      bool sawRestAgain = false;
+      int lastChords = -1, lastNotes = 0;
+      for (int t = 0; t < 3600; t += 20) {
+        run(g, 20);
+        NSDictionary *a = [g seqMirror][@"arp"];
+        if ([a[@"chords"] intValue] != lastChords) {
+          lastChords = [a[@"chords"] intValue];
+          std::vector<int> tones; for (NSNumber *n in a[@"tones"]) tones.push_back([n intValue]);
+          seen.push_back(tones);
+        }
+        lastNotes = [a[@"notes"] intValue];
+      }
+      NSDictionary *a = [g seqMirror][@"arp"], *sg = [g seqMirror][@"song"];
+      CHECK([a[@"running"] boolValue] && [a[@"bySong"] boolValue] && [a[@"firstFrame"] doubleValue] == [sg[@"firstFrame"] doubleValue], "the arp started with the song, on its bar line (frame %.0f)", [a[@"firstFrame"] doubleValue]);
+      CHECK(seen.size() >= 4, "it was handed each chord (%zu)", seen.size());
+      if (seen.size() >= 4) {
+        CHECK((seen[0] == std::vector<int>{60, 64, 67, 72, 76, 79}), "C major over two octaves: the triad and the triad an octave up");
+        CHECK((seen[1] == std::vector<int>{48, 65, 69, 72, 60, 77, 81, 84}), "F over C: the slash bass first, then the chord, and an octave up of each");
+        CHECK(seen[2] == seen[1], "a rest leaves the chord as it was (the page's rest stops the chord part, not the arp)");
+        CHECK((seen[3] == std::vector<int>{67, 71, 74, 79, 83, 86}), "G major");
+      }
+      CHECK([a[@"voices"] intValue] == lastNotes && [a[@"misses"] intValue] == 0 && lastNotes > 20, "its notes began from the bank: %d voices for %d notes, %d misses", [a[@"voices"] intValue], lastNotes, [a[@"misses"] intValue]);
+      [g seqSongStop];
+      CHECK(![[g seqMirror][@"arp"][@"running"] boolValue], "stopping the song stops the arp it brought in");
+      [g seqStop];
+    }
+    {
+      // A finish fades what the band had committed: arp voices that would ring for six seconds are gone a moment after the landing (nothing else sounds: no kit voices, no chord).
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:4]; [g ensureGraphPart:5];
+      [g seqPutBankEntry:bytes(arpEntry(3, 0, 6))];
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+        4, 1, 0.15, 2,
+        1, 0, 1, -1, 60, 2, 3, 0, 4, 7,
+        0};
+      CHECK([g seqSetSong:bytes(song)], "a song with a finish armed is taken");
+      [g seqSetArpScore:bytes(arpScore(0, 1))];
+      [g seqArpArm:YES kit:3];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "it starts");
+      std::vector<float> l(240), r(240); float before = 0, after = 0; double landed = 0;     // the mirror shows the landing a look-ahead before it sounds
+      for (int t = 0; t < 7000; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240]; usleep(5000);
+        NSDictionary *m = [g seqMirror], *en = m[@"song"][@"ending"];
+        float pk = 0; for (int i = 0; i < 240; i++) pk = std::max(pk, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        if ([en[@"lands"] intValue] == 0) before = std::max(before, pk);
+        else { if (!landed) landed = [m[@"frame"] doubleValue]; if (getenv("DBGKILL")) printf("  t+%.0f ms peak %.4f\n", ([m[@"frame"] doubleValue] - landed) / SR * 1000, pk); if ([m[@"frame"] doubleValue] > landed + 0.3 * SR) after = std::max(after, pk); }
+      }
+      NSDictionary *a = [g seqMirror][@"arp"];
+      CHECK(landed > 0 && before > 0.02f, "the arp sounded until the landing (peak %.3f)", before);
+      // what is left a moment on is the master chain's own tail (the strip, the bus room), a few per cent of the level; the voices alone would ring at it for six seconds
+      CHECK(after < 0.1f * before && ![a[@"running"] boolValue], "and it is quiet after it (peak %.4f against %.4f before: only the chain's tail), though its voices would ring for six seconds, and the arp has stopped", after, before);
       [g seqStop];
     }
 

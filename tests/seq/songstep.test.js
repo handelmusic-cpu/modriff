@@ -182,6 +182,15 @@ CONFIGS.push(
     const realCtx = getCtx, realAudio = audioCtx, realSq = window._sqPlaying, realSetTimeout = window.setTimeout, realClearTimeout = window.clearTimeout;
     const E = window.modEngine, keep = { send: E.send, now: E.now, ready: E.ready };
     let sounds = [], nowRecs = () => 0;
+    // what the arp is handed for each chord (setArpChord, through the page's own playChartSlot2): the tones after it, or a rest
+    let arpCalls = [];
+    const origPCS = window.playChartSlot2;
+    window.playChartSlot2 = function (si, ci, atTime) {
+      const r = origPCS.apply(this, arguments);
+      const sl = sections[si] && sections[si].slots[ci];
+      arpCalls.push({ at: atTime, rest: !!(sl && sl.isRest), notes: sl && !sl.isRest ? arpNotes.slice() : null });
+      return r;
+    };
     E.send = m => { if (m && m.part === 'chord' && (m.kind === 'chord' || m.kind === 'stop' || m.kind === 'release')) sounds.push(Object.assign({ ci: nowRecs() }, m)); };
     E.now = () => fake.currentTime; E.ready = () => true;
     window.getCtx = () => ctxProxy; audioCtx = ctxProxy;
@@ -200,7 +209,9 @@ CONFIGS.push(
       if (atTime != null) _compPending.filter(e => !e.done && e.hitT < atTime).sort((a, b) => a.hitT - b.hitT).forEach(e => { e.done = true; try { _compRestrike(e.slot, e.hitT, e.opt); } catch (err) { } });
       return origPlayLoopSlot.apply(this, arguments);
     };
+    let cfgIdx = -1;
     for (const c of configs) {
+      cfgIdx++;
       document.getElementById('bpm').value = c.bpm; const bpm = parseFloat(document.getElementById('bpm').value);
       fake.currentTime = 0.0013; timers = [];
       stopSongLoop();
@@ -245,6 +256,7 @@ CONFIGS.push(
       songCurrentSection = st.section; songCurrentSlot = st.slot; _songHeldAt = null; songSectionPass = 0; songPendingSectionDelta = 0; songWaitingForBar = false;
       const recs = [];
       nowRecs = () => recs.length;
+      arpCalls = []; arpOcts = 1 + (cfgIdx % 3);
       window._blOnChord = function (slot, atTime, durSec, nextSlot, capoOverride) {
         origOnChord.apply(this, arguments);
         const w = window._blPeekLast();
@@ -283,9 +295,10 @@ CONFIGS.push(
       stopSongLoop();
       _setBpmGliss = realGliss; transposeSong = realTrans; _pracChorusDone = realDone;
       prac.ramp.on = false; prac.key.on = false; pracLoop = { sel: 0, si: -1, a: -1, b: -1 };
-      out.push({ chorusEvs, prac: c.prac || null, name: c.name, comps: !!c.comps, minHits: c.minHits, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
+      out.push({ arpCalls, arpOcts, chorusEvs, prac: c.prac || null, name: c.name, comps: !!c.comps, minHits: c.minHits, recs, sounds, chordsOk: sc.chords, chordWhy: sc.chordWhy, chordsOff: !!V.chordsOff, ticks, score: sc.score, ok: sc.ok, why: sc.why, bpm, first: T0 * sr, section: st.section, slot: st.slot, locks: (c.locks || []).length });
     }
     _playLoopSlot = origPlayLoopSlot; METER.beats = 4; METER.unit = 4; window._sqSetSwing8(true);
+    window.playChartSlot2 = origPCS; arpOcts = 1;
     window._blOnChord = origOnChord; window.setTimeout = realSetTimeout; window.clearTimeout = realClearTimeout; window._sqPlaying = realSq;
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready; PHRASE_LOCKS.bass = {};
     return out;
@@ -300,12 +313,13 @@ CONFIGS.push(
   result.forEach(c => {
     const cases = [1, SR, c.bpm, c.first, c.section, c.slot, 0, c.ticks.length].concat(...c.ticks, c.score);
     fs.writeFileSync(path.join(tmp, 'song.f64'), Buffer.from(Float64Array.from(cases).buffer));
-    const r = spawnSync(bin, [path.join(tmp, 'song.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
+    const r = spawnSync(bin, [path.join(tmp, 'song.f64')], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { ARP_OCTS: String(c.arpOcts) }) });
     if (r.status !== 0) { console.error(c.name + ': ' + r.stderr); if (process.env.SONG_DUMP) fs.copyFileSync(path.join(tmp, 'song.f64'), process.env.SONG_DUMP); process.exit(2); }
     const nat = [], natHits = [], natChoruses = [];
     r.stdout.split('\n').forEach(l => {
       const f = l.split(' ');
       if (l.startsWith('W ')) { const np = +f[11]; nat.push({ t: +f[1], end: +f[2], rest: +f[3], rootPc: +f[4], bassPc: +f[5], nextPc: +f[6], lock: +f[7] >= 0 ? 1 : 0, section: +f[8], slot: +f[9], pass: +f[10], pcs: f.slice(12, 12 + np).map(Number) }); }
+      else if (l.startsWith('Q ')) nat[nat.length - 1].arp = f[1] === 'rest' ? null : f.slice(2, 2 + +f[1]).map(Number);
       else if (l.startsWith('V ')) { const nn = +f[7]; nat[nat.length - 1].act = { kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }; }
       else if (l.startsWith('S ')) nat[nat.length - 1].act = { kind: 'S', onset: +f[1] };
       else if (l.startsWith('H ')) { const nn = +f[7]; natHits.push({ after: nat.length, kind: 'V', onset: +f[1], vel: +f[2], dur: +f[3], hold: +f[4], holdSec: +f[5], sub: +f[6], notes: f.slice(8, 8 + nn).map(Number) }); }
@@ -340,6 +354,19 @@ CONFIGS.push(
       if (!cbad && nc.length < pc.length) cbad = pc.length + ' choruses on the page, ' + nc.length + ' native';
       const tempi = pc.filter(e => e.bpm).map(e => e.bpm).join('>'), keys = pc.filter(e => e.d).length;
       ok(!cbad && pc.length >= (c.prac.min || 3) && (!c.prac.ramp || tempi) && (!c.prac.key || keys), '    ...and the trainer steps the same: ' + pc.length + ' choruses, tempo ' + (tempi || 'unchanged') + ', ' + keys + ' key steps', cbad || '');
+    }
+    // The arp's chord for each chord: what the page's setArpChord left in arpNotes (or a rest, which leaves it alone) against the engine's.
+    {
+      let abad = null, nA = 0, nR = 0;
+      for (let k = 0; k < Math.min(pg.length, nat.length) && !abad; k++) {
+        const call = c.arpCalls.find(a => Math.abs(a.at - pg[k].t) < 1e-9);
+        if (!call) { abad = `chord ${k}: the page never handed it to the arp (at ${pg[k].t})`; break; }
+        if (call.rest !== (nat[k].arp === null)) { abad = `chord ${k}: ${call.rest ? 'a rest' : 'a chord'} on the page, ${nat[k].arp === null ? 'a rest' : 'a chord'} native`; break; }
+        if (call.rest) { nR++; continue; }
+        if (call.notes.join() !== nat[k].arp.join()) abad = `chord ${k}: the arp is on ${call.notes.join()} on the page, ${nat[k].arp.join()} native`;
+        else nA++;
+      }
+      ok(!abad && nA + nR > 4, '    ...and the arp is handed the same tones (Octaves ' + c.arpOcts + '): ' + nA + ' chords, ' + nR + ' rests', abad || '');
     }
     // What each chord sounds like: the page's messages for it against the engine's action.
     if (process.env.SONG_DEBUG && /voicing/.test(c.name)) console.log(c.name + '\n  ' + nat.slice(0, 9).map(n => n.act && n.act.notes ? n.act.notes.join('.') : '-').join('  '));

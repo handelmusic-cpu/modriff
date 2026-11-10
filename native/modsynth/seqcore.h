@@ -176,7 +176,9 @@ class DrumSequencer {
   double stepAt(double frame) const { return tmap_ ? tmap_->span(frame, 0.25 * rate_) : stepFrames(); }
 
   // Begin at pattern step 0, bar 0, with step 0 landing on `firstFrame`.
-  void start(double firstFrame) { next_ = firstFrame; step_ = 0; bar_ = 0; running_ = true; }
+  void start(double firstFrame) { next_ = firstFrame; epoch_ = firstFrame; step_ = 0; bar_ = 0; running_ = true; }
+  // The frame the pattern began on (the clock's epoch: the arp's rate lattice and swing count from it).
+  double epochFrame() const { return epoch_; }
   void stop() { running_ = false; }
   bool running() const { return running_; }
 
@@ -313,7 +315,7 @@ class DrumSequencer {
   double sr_;
   double bpm_ = 120, rate_ = 1;
   const TempoMap *tmap_ = nullptr;
-  double next_ = 0;
+  double next_ = 0, epoch_ = 0;
   int step_ = 0, bar_ = 0;
   bool running_ = false;
 };

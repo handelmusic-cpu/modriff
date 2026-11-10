@@ -59,6 +59,8 @@ const CASES = [
   { name: 'Up with humanize on (time and velocity), Accent gate pattern', pat: 'up', rate: 11, gatePat: 3, human: 1, chords: CH, secs: 10, draws: true },
   { name: 'Random with humanize and rate motion at 87 BPM', pat: 'rand', rate: 8, human: 0.6, motion: 'up', motionN: 3, motionHold: 2, bpm: 87, chords: CH, secs: 12, draws: true },
   { name: 'Walk with humanize, the arp switched out of it (Settings > Humanize): no draws for the feel', pat: 'walk', rate: 11, human: 1, humanOffArp: true, chords: CH, secs: 6, draws: true },
+  { name: 'Up with the Accent gate pattern and a rest in the song (the page starts the pattern again; the chord stays)', pat: 'up', octs: 2, rate: 11, gatePat: 3, shape: 'cresc', chords: [{ at: 0, root: 60, ivs: [0, 4, 7] }, { at: 2.37, rest: true }, { at: 4.1, root: 65, ivs: [0, 3, 7, 10] }, { at: 5.3, rest: true }], secs: 8 },
+  { name: 'Bounce with a rest (its direction starts again going up)', pat: 'bounce', octs: 2, rate: 8, chords: [{ at: 0, root: 60, ivs: [0, 4, 7] }, { at: 1.9, rest: true }, { at: 3.3, rest: true }], secs: 6 },
   { name: 'Up at 97 BPM, gate 0.3, decay 0.03 (the Decay caps the note)', pat: 'up', rate: 11, gate: 0.9, decay: 0.03, bpm: 97, chords: CH, secs: 8 },
 ];
 
@@ -97,7 +99,11 @@ const CASES = [
       if (isOff()) window.toggleHumanPart('arp');
       if (c.humanOffArp) window.toggleHumanPart('arp');
       const out = { chords: [], tape: [] };
-      const setChord = ch => { setArpChord(ch.root, ch.ivs.slice()); out.chords.push({ at: ch.at, notes: arpNotes.slice() }); };
+      // a rest is the page's own: _playChartSlot2 on a rest slot stops the chord and starts the arp's pattern again, and leaves arpNotes as they were
+      const setChord = ch => {
+        if (ch.rest) { sections = [{ name: 'R', slots: [{ rootM: 0, ivs: [0], isRest: true, label: 'x' }] }]; _playChartSlot2(0, 0, T0 + ch.at); out.chords.push({ at: ch.at, rest: true }); }
+        else { setArpChord(ch.root, ch.ivs.slice()); out.chords.push({ at: ch.at, notes: arpNotes.slice() }); }
+      };
       arpNextBeat = T0 + (c.firstOff || 0) * (60 / bpm / 4);
       setChord(c.chords[0]);
       const horizon = h => { _schedHorizon = T0 + h; };
@@ -114,7 +120,7 @@ const CASES = [
     }, { c });
 
     const buf = [1, SR, run.bpm, run.first, run.epoch, run.end, c.draws ? run.tape.length : 0].concat(c.draws ? run.tape : [], [run.chords.length]);
-    run.chords.forEach(ch => buf.push(run.epoch + ch.at * SR, ch.notes.length, ...ch.notes));
+    run.chords.forEach(ch => buf.push(run.epoch + ch.at * SR, ch.rest ? -1 : ch.notes.length, ...(ch.rest ? [] : ch.notes)));
     fs.writeFileSync(path.join(tmp, 'arp.f64'), Buffer.from(Float64Array.from(buf.concat(run.score)).buffer));
     const r = spawnSync(bin, [path.join(tmp, 'arp.f64')], { encoding: 'utf8', maxBuffer: 1 << 26 });
     if (r.status !== 0) { console.error(c.name + ': ' + r.stderr); process.exit(2); }

@@ -2,9 +2,10 @@
 // (recorded at that hit's time, begun at frame 0 as the app sends it today) and the bank's patched program for the same
 // hit (begun on the grid, a lead before the onset) are played through a GraphPool each and nulled. The patching is the
 // engine's C++, the reference programs come from the page (window._nsBank), so what is held is both halves together.
-//   banktest <cases.f64> [bass]
+//   banktest <cases.f64> [bass|arp]
 // With `bass`, each case also carries the note's length and the note it glides from (and the pitch is the MIDI note):
 //   part, kit, lane, vel, accent, note, dur, from (-1 for none), onsetFrame, len, program.
+// With `arp`, each case carries the note's length and the arp's dynamic level instead of the glide: part, kit, lane, vel, accent, note, dur, level, onsetFrame, len, program.
 // cases.f64: [nBuffers, per buffer: id, sampleRate, nch, len, ch0..., ch1... ; nEntries, per entry: len, entry doubles (voicebank.h) ; nCases, per case: part, kit, lane, vel, accent,
 //   pitch, onsetFrame, len, the page's fresh program (times absolute, onset at onsetFrame / 48000 s)]
 // After the cases, the choke cases (the closing hat shutting an open one): [nChoke, per case: part, kit, lane, vel, accent, pitch,
@@ -18,6 +19,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "arpplay.h"
 #include "graphpool.h"
 #include "voicebank.h"
 
@@ -46,6 +48,7 @@ static bool render(modsynth::GraphPool &pool, long total, std::vector<float> &ou
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "usage: banktest cases.f64\n"); return 2; }
   const bool bass = argc > 2 && std::string(argv[2]) == "bass";
+  const bool arp = argc > 2 && std::string(argv[2]) == "arp";
   FILE *f = fopen(argv[1], "rb");
   if (!f) { perror("cases"); return 2; }
   std::vector<double> d; double x;
@@ -71,20 +74,29 @@ int main(int argc, char **argv) {
   for (int c = 0; c < nc; c++) {
     const int part = (int)d[k++], kit = (int)d[k++], lane = (int)d[k++];
     const double vel = d[k++]; const bool acc = d[k++] != 0; const double pitch = d[k++];
-    const double durSec = bass ? d[k++] : -1, fromMidi = bass ? d[k++] : -1;
+    const double durSec = (bass || arp) ? d[k++] : -1, second = (bass || arp) ? d[k++] : -1;   // the bass's glide source, the arp's level
+    const double fromMidi = bass ? second : -1, level = arp ? second : 1, pan = arp ? (lane == 1 ? 0.75 : -0.75) : 0;
+    // The arp's block is several tones struck 12 ms (576 frames) apart; a note is one.
+    std::vector<double> tones; if (arp) { const int nt = (int)d[k++]; for (int t = 0; t < nt; t++) tones.push_back(d[k++]); }
     const long onset = (long)d[k++];
     const size_t len = (size_t)d[k++];
     std::vector<double> fresh(d.begin() + k, d.begin() + k + len); k += len;
-    const modsynth::BankEntry *e = bank.find(part, kit, lane);
+    // The arp's lane is chosen by its length as the player does: the case says 0 left, 1 right, 2 block.
+    const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec) : bank.find(part, kit, lane);
     if (!e) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::PatchedVoice pv;
-    bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi);
-    const long total = onset + (long)(1.5 * SR);
+    bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi, level, pan);
+    const long total = onset + (long)(1.5 * SR) + (long)tones.size() * 576;
     modsynth::GraphPool a, b;
     for (auto &bf : bufs) for (auto *p : {&a, &b}) p->buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
     const int ha = a.begin(fresh.data(), fresh.size(), 0.0, 0);
     if (ha < 0) { printf("%d refused-fresh(%d) 0 0 0 0\n", c, ha); continue; }
-    const int hb = b.begin(pv.prog.data(), pv.prog.size(), pv.timeBase, pv.startFrame);
+    int hb = b.begin(pv.prog.data(), pv.prog.size(), pv.timeBase, pv.startFrame);
+    for (size_t t = 1; hb >= 0 && t < tones.size(); t++) {
+      modsynth::PatchedVoice pt;
+      bank.patch(*e, vel, acc, tones[t], onset + (long)t * 576, SR, 0, pt, durSec, fromMidi, level, pan);
+      hb = b.begin(pt.prog.data(), pt.prog.size(), pt.timeBase, pt.startFrame);
+    }
     if (hb < 0) { printf("%d refused-patched(%d) 0 0 0 0\n", c, hb); continue; }
     std::vector<float> ra, rb;
     render(a, total, ra); render(b, total, rb);

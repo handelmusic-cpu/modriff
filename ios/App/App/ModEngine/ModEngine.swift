@@ -59,6 +59,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqBassStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassTempo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqArpScore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqArpNotes", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqArpArm", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqArpStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqArpStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqChordScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqChordStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqChordStop", returnType: CAPPluginReturnPromise),
@@ -836,6 +841,48 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     @objc func seqBassTempo(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         host.seqBassSetTempo(call.getDouble("bpm") ?? 0, rate: call.getDouble("rate") ?? 0)
+        call.resolve()
+    }
+
+    // The arpeggiator, on the same thread and bank (slice 3).
+
+    /// The arp's settings, `score` base64 float64 (window._arpNativeScore().score). Resolves `ok`.
+    @objc func seqArpScore(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqArpScore needs score")
+            return
+        }
+        call.resolve(["ok": host.seqSetArpScore(data)])
+    }
+
+    /// The chord the arp is on, `notes` base64 float64 MIDI notes with the octaves added (window._arpNativeNotes()). Empty clears it. Resolves `ok`.
+    @objc func seqArpNotes(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("notes"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqArpNotes needs notes")
+            return
+        }
+        call.resolve(["ok": host.seqSetArpNotes(data)])
+    }
+
+    /// Whether a song, when it starts, brings the arp in on its bar line and follows its chords. `kit` is the bank's code for the voice.
+    @objc func seqArpArm(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        host.seqArpArm(call.getBool("on") ?? true, kit: Int32(call.getInt("kit") ?? 0))
+        call.resolve()
+    }
+
+    /// Starts the arp by itself. `align` shares the drums' bar line when they run; `kit` is the bank's code for the voice.
+    @objc func seqArpStart(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let ok = host.seqArpStart(withBpm: call.getDouble("bpm") ?? 0, leadMs: call.getDouble("leadMs") ?? 120, alignToDrums: call.getBool("align") ?? true,
+                                  kit: Int32(call.getInt("kit") ?? 0), seed: call.getDouble("seed") ?? 0)
+        call.resolve(["ok": ok])
+    }
+
+    @objc func seqArpStop(_ call: CAPPluginCall) {
+        host?.seqArpStop()
         call.resolve()
     }
 
