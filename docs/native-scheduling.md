@@ -1188,8 +1188,67 @@ swung note's shortening), how hard (the accent, the humanize), the dynamic shape
 the page's draws as the tape (the order of the draws is held too: 80 to 240 draws a case). 29 deliberate breaks of the port, 26 caught; the three that remain change nothing a page can reach (a
 triplet rate is never on a swung step; the block's pattern position, which a block never reads; the epsilon that keeps an exactly-on-the-beat rung from rounding down).
 
-**Not done.** The sound (the arp's voice in the bank: a recording of the arp voice per note and for a block, `buildArp` in the page's bank), the host thread and the chord stream (the arp follows
+**Not done (part one; part two below does most of it).** The sound (the arp's voice in the bank: a recording of the arp voice per note and for a block, `buildArp` in the page's bank), the host thread and the chord stream (the arp follows
 `setArpChord` from the song's chord and the pads), and the arp voices that are sampled. Humanize's drift is read at the step's own time where the page reads the clock when it schedules, a look-ahead
 earlier (a sub-millisecond difference at the default amount; the tests set the drift to nothing). The page clamps a note to at least 5 ms ahead of now; the engine, scheduling ahead of the render clock, has no such
 case. Nothing here is audible: no checklist entry.
 
+## Slice 3, part two (6.9.9.9.9.9.9.1): the arp's sound, on the host thread, following the song
+
+**The voice in the bank** (`_nsBank.buildArp`, bank part 5, `voicebank.h`). Recorded the way the bass is: the page's own voice (`_webArpNote`, and `_webArpBlock` for one tone of a block) once, and which numbers in
+the program follow the velocity (a line, or a line held to a ceiling: the mõdFX filter opens with the velocity, `_fitLen` with kinks, kept as `velCurve`), the arp's **level** (the pattern's dynamic shape, which only
+scales the gain: a quantity of its own, `BankEntry::level`, so a slot that the velocity and the level both move is a product, as the bass's accent and velocity are), the **pan** (+-0.75, alternating: `BankEntry::pan`), the
+pitch (frequency, note number, or held at the ends of the roll), the start time (1:1) and the length. A block is the engine's one tone of it patched for each place in the strum (12 ms apart, low to high as given,
+`ArpPlayer`), because the page builds each tone as its own voice and gain. The block's voice is recorded with every random draw at 0.5 (a tone recorded alone would otherwise draw other detunes and phases than the same tone
+in a chord; the chord voice has the same rule); the note's keeps the recorder's fixed stream, as the bass's does.
+*Regimes of length.* The envelope's events are sorted by time, so the order they come in the program depends on the note's length against the attack (a note shorter than the attack ends its decay before its rise is
+over; one that ends in the 5 ms after the attack lands between the rise and the hold), and a voice with a second envelope (Rhodes) has its own such boundary. The slots mean different things in each, and no line fits across
+them: the first fit failed on exactly that (a step in an op code read as a slope). So the prober records a ladder of lengths (3 ms to 4.5 s, 19% apart, and the attack's own boundaries), watches the small whole numbers in the
+program (the op codes) change, bisects to the length where they do (to 10 microseconds), and banks one entry per regime (`durMax`: the entry holds for notes shorter than it); the player takes the first regime that holds. With the
+default attack a voice has three regimes of length for the note and two for the block; the Rhodes has more. A regime too narrow to play (under 0.1 ms) is folded into the one before; more than eight is refused. The
+lanes: the note's regimes are lanes 0 to 7, the block's 16 to 23.
+*Banked:* Sine, Sawtooth, Square, Supersaw, Rhodes, Pad. *Refused, with their reason:* Piano and Organ (their program changes size with the note: a recording per pitch, as the chord voice does, is not done),
+sampled voices (`SAMPLED_WAVES`, the Sampler: the program names a recording per note), a mõdSynth arp patch, Pure tuning (the score says so in `why`). Glide is the chord's only (the arp voice does not read it).
+The signature that decides whether a recording is still good is the voice, the Arp fader, the chord attack and reverb it shares, the trim, the macro's cutoff, envelope, resonance, width and drift, and the master tune.
+
+**The player** (`arpplay.h`, `ArpPlayer`): an `ArpEvent` becomes a patched bank voice begun in the pool (`DrumBank::patch` gained `level` and `pan`). The arp is polyphonic (its steps overlap and nothing cuts the note
+before), so there is no history. **The host** (`ModEngineHost.mm`): an `ArpSequencer` and an `ArpPlayer` in `HostSeq::tick`, beside the bass; `seqArpScore`, `seqArpNotes` (a chord handed by hand), `seqArpArm` (start with the
+song), `seqArpStart` (on its own, on the drums' bar line and epoch), `seqArpStop`, the mirror's `arp` block; `ModEngine.swift` and `ModEngineHost.h` declare them. `arpcore.h`/`arpplay.h` are in the Xcode project.
+
+**The chord stream.** In a song the engine makes the arp's tones from each chord it steps, as `setArpChord` does in `_playChartSlot2`: the slash chord's bass interval first, then the chord's intervals, repeated an octave and
+two octaves up with the Octaves control (`arpChordNotes`, from `ArpScore::octaves`; the page's `_arpNativeScore` now carries `arpOcts`). It takes effect at the chord's own moment (the steps before it are the old chord's),
+where the page's call is made a look-ahead early and its scheduler may already have taken the new tones for the last steps of the chord before: the engine's is the exact one. **A rest** does what the page's
+`_playChartSlot2` does for one -- the chord part is stopped and the pattern starts again (`arpIdx`, `arpDir`, `arpGateIdx` to zero) -- and nothing else: the arp keeps the chord it was on and goes on playing it. (This is
+the page's behaviour, not "the rest stops the arp"; `ArpSequencer::restart`.) The arp starts with the song when armed (`seqArpArm`, set by `_nsSong.start()` when the arp is on and the engine can play its voice) on the song's
+bar line, and stops with it.
+
+**The endings.** The landing's `killParts` mask was `0x7` -- but the pool's mask is over the host's part slots (the page's `MODGRAPH.CODE`: chord 0, mel 1, melgen 2, bass 3, arp 4, drum 5, aux 6), not the bank's part codes
+(drum 0, aux 1, bass 2), so it named the chord, the melody and the generator: **no voice of the band was faded at a landing** (what had been committed to the pool kept ringing under the hit; only the landing chord's
+own stop and the master's fade in the Fade ending worked). It is now the bass, the arp, the drums and the Aux layer (`HostSeq::kKillParts`, with the reason), and the arp stops with the band (`landStop`, `landing`).
+A host test with long arp voices shows it: after a finish the level falls to the master chain's own tail (6 % of what it was) where the old mask left it at 98 %. The melody generator (slot 2) joins the mask with its scheduler.
+
+**Page.** `window._nsArp` beside `_nsBass`/`_nsChord`: `prepare` (record the voice, send the settings), `notes`, `start`, `stop`, `armForSong`, `mirror`; `_nsSong.start()` arms the arp when it is on and says in
+`arp` of its result whether it did (and why not). `window._arpNativeNotes()` is the chord the arp is on. Nothing in the app calls them; the page's own arp must be off while the engine's plays.
+
+**Measured.**
+- `tests/seq/arpbank.test.js`: in the page on an OfflineAudioContext, `buildArp` banks six synthesized voices and refuses Piano, Organ, the sampled voices and the mõdSynth patch with their reasons; for notes of every register (24
+  to 108), velocities 0.05 to 1.3, levels 0.3 to 1, lengths from 12 ms to 4 s (in every regime) and every phase of the 128-frame grid, and for blocks of 2 to 6 tones, `banktest` (its `arp` mode) patches the entry
+  the way the player picks it and nulls it against the page's fresh voice: 774 steps over the default macro and the macro's filter, envelope and width, every one at 159 dB or better (52 of them bit-identical); the dev entry (`_nsArp.start`,
+  `armForSong`, the refusals), the signature and the once-only recording.
+- `tests/seq/arpline.test.js`: the page's real `scheduleArp` on a clock of its own (nine cases: Up with the Accent pattern and Cresc over two octaves with the chord changing, Down on triplets, Bounce, Block on eighths,
+  1/32 with notes a hair over the attack and shorter than it, Free timing at 40 ms, the Decay cap, Random on the page's draws) is recorded as the page's programs, and `arpseqtest` runs the engine's scheduler into the player and
+  the pool: 3 voices x 9 cases, 15 to 35 events each, nulled at 146 dB or better (worst 100 ms window 143 dB), the short-note and plain cases far below the float noise.
+- `tests/seq/arpgrid.test.js` gained two cases for a rest (the page's real `_playChartSlot2` on a rest slot) and the Octaves control now travels in the score: 29 cases.
+- `tests/seq/songstep.test.js` now also holds the arp's tones: for every chord of the 64 configurations (Octaves 1, 2, 3 in turn) the page's `setArpChord` (through its real `playChartSlot2`) leaves the same tones, slash bass first,
+  as the engine's, and a rest is a rest.
+- Mutation checks (each by changing the port and rebuilding the tool; 22 breaks, 21 caught): the strum 1 ms wrong, the level, the pan, the velocity or the length left out of the patch, the note a frame late, always the
+  first regime, a block tone's pitch or lane wrong (`arpline`); the level, the pan, the regime bound, the products of level/pan/velocity and the pan's reference wrong in the bank (`arpbank`); a rest that keeps the gate step or
+  the tone (`arpgrid`); three octaves not added, an octave of 11, the slash bass not first, the capo not added to the arp's root (`songstep`); and the old kill mask (`seqhosttest`). The one that survives is a rest that keeps
+  the Bounce direction: at the first tone a downward direction turns upward at once, so nothing can show it.
+- The host test: the arp steps with no page (13 notes in 1.5 s), shares the drums' bar line, each note and each tone of a block begun from the bank (27 voices for 9 blocks of 3), none late; in a song it starts with the song on
+  its bar line, is handed C over two octaves, F over C with the bass first, the same F through a rest, and G, and stops with the song; and the finish.
+
+**Not done.** The sound of Piano, Organ and the sampled arp voices (per-pitch recordings, as the chord does), Pure tuning's cents, a chord handed to the arp by a pad or the keyboard while the song is not driving (`seqArpNotes`
+takes it, nothing calls it from the page's pads yet), the arp following the pads in the background, the page's `arpOn` toggling the engine's arp while a song plays (`_nsArp.armForSong` is read at the song's start), the melody
+generator (`_mlScheduler`, `mlGenerate`: part three). A note shorter than the regimes' boundary is chosen by length alone: the page's float noise on an exactly-equal length can put it either side. Not heard on device:
+checklist 32.
