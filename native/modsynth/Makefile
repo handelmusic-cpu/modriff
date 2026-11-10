@@ -53,11 +53,11 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 # The sequencer's thread in the real host: steps on the render clock with no page, mirror, tempo, stop (macOS only).
-seqhosttest: seqhosttest.mm arpcore.h arpplay.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+seqhosttest: seqhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
 clean:
-	rm -f meltool arpseqtest arptool songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
+	rm -f melseqtest meltool arpseqtest arptool songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean
 
 # The graph interpreter (graph.h): plays a Web Audio graph the page recorded.
@@ -90,10 +90,13 @@ chordtool: chordtool.cpp chordcore.h chordplay.h chordcomp.h voicebank.cpp voice
 chordtest: chordtest.cpp chordcomp.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ chordtest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
-banktest: banktest.cpp arpplay.h arpcore.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
+banktest: banktest.cpp arpplay.h arpcore.h melplay.h melcore.h melcell.h basscore.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ banktest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 
 # The native sequencer core (seqcore.h): tests/seq/drumgrid.test.js holds its event lists to the page's own scheduler.
+melseqtest: melseqtest.cpp melplay.h melcore.h melcell.h basscore.cpp basscore.h seqcore.cpp seqcore.h tempomap.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
+	$(CXX) $(CXXFLAGS) -o $@ melseqtest.cpp basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
+
 arpseqtest: arpseqtest.cpp arpplay.h arpcore.h seqcore.h tempomap.h voicebank.cpp voicebank.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ arpseqtest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 

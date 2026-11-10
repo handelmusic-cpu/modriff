@@ -6,6 +6,7 @@
 #import <Foundation/Foundation.h>
 #import "ModEngineHost.h"
 #include <cmath>
+#include <set>
 #include <vector>
 #include <unistd.h>
 #include "seqcore.h"
@@ -71,6 +72,36 @@ static std::vector<double> arpEntry(int kit, int lane, double life) {
 // The arp's score (arpcore.h): `pattern` 0 up .. 6 block, a sixteenth rate, an even gate, no motion, no humanize, `octaves`.
 static std::vector<double> arpScore(int pattern, int octaves) {
   return {1, (double)pattern, 4, 0, 0.15, 0.5, 2, 0, 1, 0,  1, 1,  1, 0,  0,  2,  0, 0, 0, 0, 0, 0, 0, 0, (double)octaves};
+}
+
+// A synthetic melody voice (bank part 6): a sine on the melody generator's bus (code 2) that sounds `life` seconds from a lead of 0.048, with a level slot that follows the velocity.
+// lane 0 is the plain note's first regime of length (any length). The layout is voicebank.h's, with the arp's tail and the melody's: refLevel, no level slots, durMax, refPan, no pan
+// slots, refGtime, no slide-time slots.
+static std::vector<double> melEntry(int kit, int lane, double life) {
+  std::vector<double> p = {0x6d6f6467, SR, 3, 0};
+  const double stop = 0.048 + life, amp = 0.5;
+  p.insert(p.end(), {8, 2, 2, 0, 0, stop, 440, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+  size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
+  std::vector<double> e = {1, 6, (double)kit, (double)lane, 1, 0.048, 0.048, 0.5, (double)p.size()};
+  e.insert(e.end(), p.begin(), p.end());
+  e.insert(e.end(), {1, (double)amp_i, amp / 0.5, 0, 0, 0, 1, (double)stop_i, 0});       // velocity, accent, pitch; time; mul
+  e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
+  e.insert(e.end(), {66, life, 0, 0, 0, 0});                                             // refPitch, refDur, refFrom, no length, glide or held slots
+  e.insert(e.end(), {0});                                                               // no cut of the note before
+  e.insert(e.end(), {0, 0, -1, 0, 0, 0});                                               // the chord block's lists (none), no velocity curve
+  e.insert(e.end(), {0, 0});                                                            // no release
+  e.insert(e.end(), {1, 0, 1e9, 0, 0, 0.06, 0});                                        // refLevel, no level slots, durMax, refPan, no pan slots, refGtime, no slide-time slots
+  return e;
+}
+// The melody generator's line (melcore.h): `cells` are {v, note, oct, len, more...}; Follow, written over a major triad on C in C major, 70 % level, no humanize, glide on.
+struct MelCellSpec { int v, note, oct, len; std::vector<std::pair<int, int>> more; };
+static std::vector<double> melScore(bool follow, const std::vector<MelCellSpec> &cells) {
+  std::vector<double> d = {1, (double)cells.size(), 0, 1, follow ? 1.0 : 0.0, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7,  0, 1, 1, 1, 14, 0.28, 18, 0,  1, 0.12, 1, (double)cells.size()};
+  for (const MelCellSpec &c : cells) {
+    d.insert(d.end(), {(double)c.v, (double)c.note, (double)c.oct, (double)c.len, 0, 0, 0, 0, (double)c.more.size()});
+    for (const auto &m : c.more) { d.push_back(m.first); d.push_back(m.second); }
+  }
+  return d;
 }
 
 static ModEngineHost *fresh() { return [[ModEngineHost alloc] initWithSampleRate:SR maxFrames:4096]; }
@@ -689,6 +720,110 @@ int main() {
       CHECK(landed > 0 && before > 0.02f, "the arp sounded until the landing (peak %.3f)", before);
       // what is left a moment on is the master chain's own tail (the strip, the bus room), a few per cent of the level; the voices alone would ring at it for six seconds
       CHECK(after < 0.1f * before && ![a[@"running"] boolValue], "and it is quiet after it (peak %.4f against %.4f before: only the chain's tail), though its voices would ring for six seconds, and the arp has stopped", after, before);
+      [g seqStop];
+    }
+
+
+    // The melody generator through the host: the same thread and bank, no page. A synthetic melody voice (part 6), a line of a note every step with a chord on the first, started with the
+    // drums' bar line. Then in a song: armed, it starts with the song on the same bar line and, with Follow on, plays each chord's tones (the line is written over C: over F it is F) and
+    // with Follow off stays as written; stopping the song stops it. A finish fades its voices.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:2]; [g ensureGraphPart:5];
+      CHECK(![g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:4 seed:1], "no melody score, no melody start");
+      CHECK(![g seqSetMelScore:[NSData dataWithBytes:"junk" length:8]], "a melody score that does not parse is refused");
+      CHECK(![g seqSetMelChords:[NSData dataWithBytes:"junk" length:8]], "chord windows that do not parse are refused");
+      std::vector<MelCellSpec> cells(16, MelCellSpec{1, 0, 5, 1, {}});
+      cells[0].more = {{4, 5}, {7, 5}};
+      CHECK([g seqSetMelScore:bytes(melScore(false, cells))], "the melody line is taken");
+      [g seqPutBankEntry:bytes(melEntry(4, 0, 0.3))];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
+      CHECK([g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:4 seed:3], "the melody starts");
+      std::vector<float> l(240), r(240); float peak = 0;
+      for (int t = 0; t < 1500; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240];
+        for (int i = 0; i < 240; i++) peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        usleep(5000);
+      }
+      NSDictionary *m = [g seqMirror], *a = m[@"mel"];
+      CHECK([a[@"running"] boolValue] && [a[@"steps"] intValue] > 8, "the melody steps with no page: %d steps", [a[@"steps"] intValue]);
+      CHECK([a[@"firstFrame"] doubleValue] == [m[@"firstFrame"] doubleValue], "and it shares the drums' downbeat (frame %.0f)", [a[@"firstFrame"] doubleValue]);
+      CHECK([a[@"notes"] intValue] >= [a[@"steps"] intValue] + 2 && [a[@"voices"] intValue] == [a[@"notes"] intValue] && [a[@"misses"] intValue] == 0 && [a[@"refused"] intValue] == 0,
+            "each note is begun from the bank, the step with a chord as three: %d steps, %d notes, %d voices, %d misses", [a[@"steps"] intValue], [a[@"notes"] intValue], [a[@"voices"] intValue], [a[@"misses"] intValue]);
+      CHECK([a[@"lateStarts"] intValue] == 0 && [[g graphStats][@"lateEdits"] intValue] == 0 && peak > 0.02f, "none began late, and it sounds: peak %.3f", peak);
+      [g seqMelStop];
+      const int notes = [[g seqMirror][@"mel"][@"notes"] intValue];
+      run(g, 300);
+      CHECK([[g seqMirror][@"mel"][@"notes"] intValue] == notes && ![[g seqMirror][@"mel"][@"running"] boolValue], "stopped: still %d notes", notes);
+      [g seqStop];
+    }
+    for (int follow = 0; follow < 2; follow++) {
+      // In a song: C for a bar, F for a bar, at 240 (a bar is a second). The melody is armed; its line is a note on every fourth step, a C.
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:2]; [g ensureGraphPart:5];
+      [g seqPutBankEntry:bytes(melEntry(4, 0, 0.3))];
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+                   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+        4, 1, 0.15, 0,
+        0,
+        0};
+      std::vector<MelCellSpec> cells(16, MelCellSpec{0, 0, 5, 1, {}});
+      for (int i = 0; i < 16; i += 4) cells[(size_t)i] = MelCellSpec{1, 0, 5, 1, {}};
+      CHECK([g seqSetSong:bytes(song)], "a two-chord song is taken");
+      CHECK([g seqSetMelScore:bytes(melScore(follow != 0, cells))], "the melody line is taken (Follow %s)", follow ? "on" : "off");
+      [g seqMelArm:YES kit:4 rate:1];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "the song starts");
+      std::set<int> pcs; int sawFirst = 0, sawSecond = 0;
+      for (int t = 0; t < 2600; t += 10) {
+        run(g, 10);
+        NSDictionary *mm = [g seqMirror], *ml = mm[@"mel"];
+        const int last = [ml[@"lastMidi"] intValue];
+        if (last >= 0) { pcs.insert(last % 12); if ([mm[@"song"][@"chords"] intValue] == 1) sawFirst++; else sawSecond++; }
+      }
+      NSDictionary *m = [g seqMirror], *a = m[@"mel"], *sg = m[@"song"];
+      CHECK([a[@"running"] boolValue] && [a[@"bySong"] boolValue] && [a[@"firstFrame"] doubleValue] == [sg[@"firstFrame"] doubleValue], "the melody started with the song, on its bar line (frame %.0f)", [a[@"firstFrame"] doubleValue]);
+      CHECK([a[@"windows"] intValue] >= 1 && [a[@"voices"] intValue] == [a[@"notes"] intValue] && [a[@"notes"] intValue] >= 6 && [a[@"misses"] intValue] == 0, "it was handed the song's chords and its notes began from the bank: %d notes, %d windows, %d misses", [a[@"notes"] intValue], [a[@"windows"] intValue], [a[@"misses"] intValue]);
+      if (follow) CHECK(pcs.count(0) && pcs.count(5), "Follow on: it plays the C chord's root and then the F chord's (pitch classes seen:%s%s)", pcs.count(0) ? " C" : "", pcs.count(5) ? " F" : "");
+      else CHECK(pcs.size() == 1 && pcs.count(0), "Follow off: it stays as written, a C, over both chords (%zu pitch classes)", pcs.size());
+      [g seqSongStop];
+      CHECK(![[g seqMirror][@"mel"][@"running"] boolValue], "stopping the song stops the melody it brought in");
+      [g seqStop];
+    }
+    {
+      // A finish fades what the band had committed: melody voices that would ring for six seconds are gone a moment after the landing (nothing else sounds).
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:2]; [g ensureGraphPart:5];
+      [g seqPutBankEntry:bytes(melEntry(4, 0, 6))];
+      std::vector<double> song = {5, 16, 0, 0, 1, 0,  0,  1,
+        0, 0, 2,   1, 0, 0, 0, 60, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,   1, 0, 0, 0, 65, -1, -1, -1, 0, 0, -1, 3, 0, 4, 7,
+        0, -1, -1, -1, 0, 4, 2, 140, 0, 2, 7,
+        4, 1, 0.15, 2,
+        1, 0, 1, -1, 60, 2, 3, 0, 4, 7,
+        0};
+      std::vector<MelCellSpec> cells(16, MelCellSpec{0, 0, 5, 1, {}});
+      for (int i = 0; i < 16; i += 4) cells[(size_t)i] = MelCellSpec{1, 0, 5, 1, {}};
+      CHECK([g seqSetSong:bytes(song)], "a song with a finish armed is taken");
+      [g seqSetMelScore:bytes(melScore(true, cells))];
+      [g seqMelArm:YES kit:4 rate:1];
+      [g seqSetDrumScore:bytes(score())];
+      [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+      CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "it starts");
+      std::vector<float> l(240), r(240); float before = 0, after = 0; double landed = 0;
+      for (int t = 0; t < 7000; t += 5) {
+        [g renderInto:l.data() right:r.data() frames:240]; usleep(5000);
+        NSDictionary *m = [g seqMirror], *en = m[@"song"][@"ending"];
+        float pk = 0; for (int i = 0; i < 240; i++) pk = std::max(pk, std::max(std::fabs(l[i]), std::fabs(r[i])));
+        if ([en[@"lands"] intValue] == 0) before = std::max(before, pk);
+        else { if (!landed) landed = [m[@"frame"] doubleValue]; if ([m[@"frame"] doubleValue] > landed + 0.3 * SR) after = std::max(after, pk); }
+      }
+      NSDictionary *a = [g seqMirror][@"mel"];
+      CHECK(landed > 0 && before > 0.02f, "the melody sounded until the landing (peak %.3f)", before);
+      CHECK(after < 0.1f * before && ![a[@"running"] boolValue], "and it is quiet after it (peak %.4f against %.4f before), though its voices would ring for six seconds, and the melody has stopped", after, before);
       [g seqStop];
     }
 

@@ -78,6 +78,18 @@ bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
     }
     for (const SongSection &sec : s.sections) for (const SongSlot &sl : sec.slots) if (sl.pat >= (int)v.patterns.size()) return false;
   }
+  // The melody generator's locks are optional, after a -7: a score written for the bass alone ends above.
+  if (k < n && d[k] == -7) {
+    k++;
+    size_t total = 0;
+    for (const SongSection &sec : s.sections) total += sec.slots.size();
+    if (!need(total)) return false;
+    std::vector<int> idx;
+    for (size_t i = 0; i < total; i++) idx.push_back((int)d[k++]);
+    if (!readMelLocks(d, n, k, s.melLocks)) return false;
+    size_t q = 0;
+    for (SongSection &sec : s.sections) for (SongSlot &sl : sec.slots) { sl.melLock = idx[q++]; if (sl.melLock >= (int)s.melLocks.size()) return false; }
+  }
   *this = std::move(s);
   if (used) *used = k;
   return true;

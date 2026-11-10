@@ -6,7 +6,7 @@
    the same ticks. The two lists must be the same, note for note: when each is struck (to 1e-5 of a frame), which note, how long, how loud, the accent, the note it slides from and how long the
    slide takes. The cases: Follow off and on over a progression (re-rooted by the chord's root into G3..C6 widened to C3..C7 round the note as written), slash chords, a rest, chords that start off the beat;
    pinned steps; chords on a step (every note, each turned down by the square root of how many; explicit Mono plays the first only); the portamento in Mono (on and off, two glide times, a single
-   note after a chord); swing on the eighths and sixteenths; the drums' rate; step probability and the humanize; phrase locks (moved by the capo, folded into G3..C6, with chords in them); a line written
+   note after a chord); swing on the eighths and sixteenths; the speed multiplier; step probability and the humanize; phrase locks (moved by the capo, folded into G3..C6, with chords in them); a line written
    over a minor seventh chord. Each lock case is also run without its locks, to show they change the line.
 
    Run: make -C native/modsynth meltool && node tests/seq/melgrid.test.js        Env: CHROMIUM, PLAYWRIGHT, MELTOOL */
@@ -71,8 +71,8 @@ const CONFIGS = [
   { name: 'portamento switched off', song: 'I-vi-IV-V', bpm: 120, bars: 6, glideOn: false, grid: { seed: 13, density: 0.85 } },
   { name: 'Poly (Mono false): no portamento, chords play', song: 'I-vi-IV-V', bpm: 120, bars: 6, mono: false, grid: { seed: 14, density: 0.85, chords: 0.3 } },
   { name: 'swing on the eighths (45%)', song: 'I-vi-IV-V', bpm: 120, bars: 8, swing: 45, grid: { seed: 15, density: 0.8 } },
-  { name: 'swing on the sixteenths (60%), the drums at twice the rate', song: 'I-vi-IV-V', bpm: 100, bars: 10, rate: 2, swing: 60, swing8: false, grid: { seed: 16, density: 0.8 } },
-  { name: 'a 24-step line at half the rate', song: 'slash chords and a rest', bpm: 120, bars: 8, rate: 0.5, steps: 24, grid: { seed: 17 } },
+  { name: 'swing on the sixteenths (60%), the melody at half the speed', song: 'I-vi-IV-V', bpm: 100, bars: 10, rate: 2, swing: 60, swing8: false, grid: { seed: 16, density: 0.8 } },
+  { name: 'a 24-step line at twice the speed', song: 'slash chords and a rest', bpm: 120, bars: 8, rate: 0.5, steps: 24, grid: { seed: 17 } },
   { name: 'probability on some steps (the page\'s draws as the tape)', song: 'I-vi-IV-V', bpm: 120, bars: 8, grid: { seed: 18, pr: 1 } },
   { name: 'the humanize on (time and velocity) with probability', song: 'I-vi-IV-V', bpm: 120, bars: 8, human: 1, grid: { seed: 19, pr: 1, density: 0.8 } },
   { name: 'the melody generator left tight in Settings > Humanize', song: 'I-vi-IV-V', bpm: 120, bars: 6, human: 1, humanOff: true, grid: { seed: 20, pr: 1 } },

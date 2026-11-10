@@ -43,6 +43,7 @@ struct SongSlot {
   int rootM = 0;               // the root, MIDI note, in the key the song was written in (the capo is added)
   int bassM = -1;              // a slash chord's bass, MIDI, or -1
   int lock = -1;               // its phrase lock in the score's table, or -1
+  int melLock = -1;            // ...and its melody generator lock in the score's melody table, or -1
   std::vector<int> ivs;        // the chord's tones, semitones above the root
   int voicing = -1;            // the voicing the chord carries (VoicingStyle), or -1: the song's
   bool hold = false;           // struck held (comp "sustain", or "as played" with a ring) instead of decaying
@@ -134,6 +135,7 @@ struct SongScore {
   bool clocked = true;         // snap is on: a chord of whole bars counts the drums' bar lines
   int capo = 0;                // the live key change, semitones
   std::vector<PhraseLock> locks;
+  std::vector<MelLock> melLocks;   // the melody generator's locks, which the slots name by melLock
   std::vector<SongSection> sections;
   SongTrainer trainer;
   EndingCfg ending;
@@ -143,7 +145,7 @@ struct SongScore {
   // [5, barSteps, swingOn, swing, clocked, capo, <lock table: readLocks>, nSections,
   //  per section: plays, follow, nSlots, per slot: bars, beats, eighths, rest, rootM, bassM, lock, voicing, hold, ring, pat, nIvs, ivs...,
   //  then the trainer: loopOn, loopSection, a, b, rampOn, step, every, max, keyOn, every, by; then the ending: barBeats, beatMul, lookaheadSec, armed; the landing: on, kick, cymbal, snare lanes, root, bass octave, nIvs, ivs...; then the voice: on, and when on: kit, play, pedal, style, vary, autoInv, keyRoot, nSteps, steps..., decRaw, chordBeats, strum, spread, width, sub, velBase, feelSwing, swing8,
-  //  nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len) x nEv]
+  //  nPatterns, per pattern: drawn, steps, swing, nEv, (p, v, len) x nEv ; and optionally, after a -7: per slot of every section in order its melody lock index, then the melody lock table: readMelLocks]
   bool fromDoubles(const double *d, size_t n, size_t *used = nullptr);
 
   // slotTotalMs, in beats: the chord's own length, or one bar when it says none.
@@ -297,6 +299,7 @@ class SongSequencer {
     const SongSlot *nx = peekNext();
     if (nx && !nx->rest) w.nextPc = nx->bassM >= 0 ? mod12(nx->bassM + capoNow()) : mod12(nx->rootM + capoNow());
     w.lock = sl.rest ? -1 : sl.lock;
+    w.melLock = sl.rest ? -1 : sl.melLock;
     c.section = section_; c.slot = slot_; c.pass = pass_;
     c.s = sl; c.capo = capoNow();
     return c;
