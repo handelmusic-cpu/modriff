@@ -12,6 +12,16 @@ in front the island shows nothing of ours (ActivityKit's rule), so the page draw
 12pt disc in the record red `#e5384f` just left of the island, shown only on an island phone held upright. The owner
 confirmed it looks right. The Home-screen and lock-screen Live Activity (checks 3, 5 to 9) is not yet confirmed.
 
+## 6.9.9.9.9.9.9: why the light was faint, and the clock
+
+The light in the island was drawn at 45% opacity for the whole bounce. `RedLight` animated `opacity` from 1 to 0.45 with
+`repeatForever`, started in `onAppear`; a Live Activity is a snapshot the system renders, it does not run a view's repeating
+animations, so the view sat at the animation's end state. It is a solid, fully opaque disc now (12 pt compact and minimal, with a
+glow) and nothing in the extension depends on animation: the system-run clock beside it is what shows the bounce is alive.
+The compact right half is that clock (`Text(startedAt, style: .timer)`, 46 pt, scaled down for an hour-long take).
+While the app is in front the page draws its own light and, since this release, its own clock to the right of the island
+(`#bounce-clock`, mirrored on `#bounce-dot`, same rules: island phone, upright, only while a take runs). Compiles; **not seen on a phone.**
+
 ## What it is
 
 A bounce records for as long as you play, often with the app in the background or the phone locked. While one runs, a

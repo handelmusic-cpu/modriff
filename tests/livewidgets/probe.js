@@ -1,11 +1,10 @@
-/* The Live page's pack widgets (6.9): Voices, Mixer, mõdSynth, and the Bass / Melody rolls, gated on Live only.
+/* The Live page's pack widgets (6.9): Mixer, mõdSynth, and the Bass / Melody rolls, gated on Live only.
 
    Free install:
      - the Bass and Melody roll widgets are lock tiles where they sit, naming their pack, and a tap says why;
      - the Mixer and mõdSynth widgets cannot be added (lvPick refuses, naming their pack);
      - the same instruments on their Studio pages are untouched (the Bass roll is there and not locked).
    Owner:
-     - Voices: seven rows; choosing a voice in one sets the part;
      - Mixer: a strip per part, mute works, a fader moves the part's level, its meters run on Live and stop on Studio;
      - mõdSynth: a chip per part; a part not on mõdSynth offers "Play ... on mõdSynth"; once on it the patch list and the macros
        the patch routes appear; a macro slider writes macro.N of the part's state; picking a patch changes it;
@@ -45,7 +44,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   // ── The standard layout has no rolls (6.9.9.9.3), for a free install and for an owner
   await boot('free');
   const std = await page.evaluate(() => [...document.querySelectorAll('#lv-slots > .lv-slot')].map(s => s.dataset.mod));
-  check(std.join() === 'chords,melody,styles,pads,fx,endings', 'the standard Live layout has no drum, aux, bass or melody rolls', std.join());
+  check(std.join() === 'chords,melody,styles,pads,fx,rec,endings', 'the standard Live layout has no drum, aux, bass or melody rolls (and the Record widget above Endings)', std.join());
 
   // ── Free, with the rolls added (a layout somebody saved)
   await boot('free', ['chords', 'melody', 'styles', 'pads', 'fx', 'bass', 'melseq', 'drums', 'aux', 'endings']);
@@ -77,20 +76,13 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── Owner
   await boot('pro');
-  await page.evaluate(() => { lvSet(LV_STD.concat(['voices', 'mixer', 'synth'])); }); await page.waitForTimeout(1500);
-  const o = await page.evaluate(() => ({ locked: document.querySelectorAll('.lv-locked').length, voices: document.querySelectorAll('#lv-slots #voices-grid-live .voice-row').length,
+  await page.evaluate(() => { lvSet(LV_STD.concat(['mixer', 'synth'])); }); await page.waitForTimeout(1500);
+  const o = await page.evaluate(() => ({ locked: document.querySelectorAll('.lv-locked').length, voices: document.querySelectorAll('#voices-grid-live').length, inLayout: LV_ORDER.indexOf('voices'),
     strips: document.querySelectorAll('#lv-slots #lv-mixer-host .mix-strip:not(.mix-master)').length, chips: document.querySelectorAll('#lv-slots .lv-syn-part').length }));
   check(o.locked === 0, 'owner: no lock tiles', o.locked);
-  check(o.voices >= 7, 'owner: the Voices widget has its rows', o.voices);
+  check(o.voices === 0 && o.inLayout < 0, 'owner: there is no Voices widget (Styles carries the Voice column); it is not one of the widgets Live offers', JSON.stringify(o));
   check(o.strips >= 8, 'owner: the Mixer widget has a strip per part', o.strips);
   check(o.chips === 5, 'owner: the mõdSynth widget has a chip per part', o.chips);
-
-  // Voices
-  const v0 = await page.evaluate(() => wave);
-  await page.evaluate(() => { const s = document.querySelector('#lv-slots #vsel-chord-live'); s.value = 'organ'; s.dispatchEvent(new Event('change', { bubbles: true })); });
-  await page.waitForTimeout(300);
-  const v1 = await page.evaluate(() => ({ wave, mirror: document.getElementById('vsel-chord-mix').value }));
-  check(v0 !== 'organ' && v1.wave === 'organ' && v1.mirror === 'organ', 'Voices: choosing a voice on Live sets the part, and the Sound tab follows', v0 + ' -> ' + JSON.stringify(v1));
 
   // Mixer
   await page.evaluate(() => { document.querySelector('#lv-mixer-host [data-mixmute="chord"]').click(); });

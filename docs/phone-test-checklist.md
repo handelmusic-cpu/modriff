@@ -275,7 +275,7 @@ a complete answer.
 | 12.3 | Studio › Chords › the rhythm roll: Tap › Length, then tap a lit step | the step holds through the next 2, 3, 4… steps; Swing › Own with the slider; Start from › a built-in rhythm; Clear |
 | 12.4 | Sampler: hold ✕ Clear with a pattern that has hits on one pad | that pad is red, pads with only a sample are amber, empty pads dim |
 
-## 13. The Dynamic Island light while bouncing (6.8, unbuilt)
+## 13. The Dynamic Island light while bouncing (6.8, unbuilt; the light and clock changed in 6.9.9.9.9.9.9, see section 31)
 
 Needs the widget extension added once in Xcode: `docs/dynamic-island.md` has the steps and the nine checks.
 
@@ -537,3 +537,17 @@ Arm an ending while the engine plays the song (`_nsDrum.start()`, `_nsBass.start
 | 30.7 | Freeze the page for 3 s with an ending armed | the ending still lands on the downbeat |
 | 30.8 | Practice trainer on (Speed up, Next key), then an ending | the landing is in the key the song started in, and the tempo is back |
 
+## 31. More, the record ring, the Record widget, grouped styles (6.9.9.9.9.9.9, not seen on a phone)
+
+| # | do | you should hear / see |
+|---|---|---|
+| 31.1 | Look at the tab row | the fifth tab says **More** with three dots; tapping it opens the same sheet (Settings is its first tile) |
+| 31.2 | Look at the transport at your phone's width, with and without a song loaded | a red ring right of the 1/16 chip, nothing overlapping, nothing cut off, the key still says "Maj" whole |
+| 31.3 | Tap the ring with the band playing | it goes solid red with a square and glows; a take is running |
+| 31.4 | Tap it again | the files are delivered as Bounce always did (a .wav and a .mid); the ring is a ring again |
+| 31.5 | Scroll Live to the **Record** widget during a take | its clock counts; tap its ring to stop |
+| 31.6 | While a take runs, look at the status bar of an island phone held upright | a solid red dot left of the island and a clock to its right |
+| 31.7 | Start a take and go to the Home Screen | the island shows a **bright, solid** red dot on its left and a running clock on its right (it was a faint dot); long-press opens "Bouncing" and the clock |
+| 31.8 | Settings > Recording > **Always bounce stems** on, then Bounce | one .wav per part next to the mix, without touching Stems first; with it on, Stems cannot be switched off before a take |
+| 31.9 | Live > Styles: tap a Pattern name (Drums, Aux, Bass, Chords, Melody) | the list opens in groups under the name, not one long column; a pick still loads it and switches the part on |
+| 31.10 | Open Add / reorder widgets | there is no Voices widget; Record is there, above Endings in the standard layout |
