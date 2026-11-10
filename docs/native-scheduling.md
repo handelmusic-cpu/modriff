@@ -1166,3 +1166,30 @@ playing and is back up afterwards.
 render clock where the page's is by timers, a landing with the chords left to the page has no chord (the page's `_endingLandChord`), the toast texts, and an ending armed with no song looping (the page's own
 `_endAtBar`). Not heard on device: checklist 30.
 
+## Slice 3, part one (6.9.9.9.9.9.9): the arp's scheduler
+
+**What was built.** `native/modsynth/arpcore.h` (+ `arptool.cpp`): the arpeggiator's scheduler as plain C++, a port of the page's `scheduleArp`, `nextArpNote`, `scheduleArpNote`,
+`scheduleArpBlock`, `_arpSwingOffset` and `arpMotionAt`. Given the chord the arp is on (its tones with the octaves already added) and its settings it produces `ArpEvent`s: a note (the pattern's next tone) or,
+for the Block pattern, the whole chord at once. The patterns are Up, Down, Bounce (also the page's "ud"), Random, Weighted, Pedal, Walk and Block; the rate is a division of the beat (or milliseconds in Free
+timing) on the clock's grid, anchored to the epoch (the drums' downbeat) so a triplet arp is on the triplet lattice from the beat; a step is a number of beats on the tempo map, so a tempo that moves
+moves the arp with the drums. The gate pattern (16 steps of play or rest with accents), the velocity shape (Cresc, Decrsc, Hill, Valley), Bounce's own level, the left-right pan and the Decay cap on a note's
+length are the page's numbers. The Feel's swing displaces only the note (never the grid) and only on an eighth or sixteenth rate and on a step that is on the sixteenth lattice; a pushed note is
+shortened so it cannot run into the next. Rate motion (Accelerate, Decelerate, Swell) climbs the ladder the page writes out (`_arpMotionSeq`), a rung lasting a whole number of beats from the epoch, the
+last step of a rung ending on its beat. Humanize is the drum grid's and the bass's (`Feel::humanT`/`humanV`; the arp is the part "arp" in Settings > Humanize). A new chord starts the pattern again
+(`setNotes`). `Rng` gained a tape (`setTape`): the draws of Random, Weighted, Walk and the humanize come from a native generator (the owner accepted that), and a test can hand it the page's own, in order.
+
+**Page.** `window._arpNativeScore()` writes the arp's settings and the tables it keeps (the gate pattern, the rungs of the ladder) for the engine, so the engine holds none. The chord goes in separately
+(`setNotes`, from `arpNotes`).
+
+**Measured.** `tests/seq/arpgrid.test.js` runs the page's real `scheduleArp` on a clock of its own with everything it sends for the part "arp" kept (a `note` or a `chord` message), the chord changed
+mid-run (`setArpChord`), and `arptool` on the same settings: 27 cases, 1,663 events, identical in when each is struck (1e-5 of a frame), which tone or block, how long (the gate, the Decay cap, a
+swung note's shortening), how hard (the accent, the humanize), the dynamic shape and the pan. The patterns over one to three octaves, every gate pattern, all four velocity shapes, Block, swing on the eighths and on the sixteenths
+(and not on a triplet, a dotted rate or a step off the lattice), the three rate motions (a dotted eighth that runs over its rung), Free timing, a tempo of 87 and 97, and the drawing patterns and the humanize with
+the page's draws as the tape (the order of the draws is held too: 80 to 240 draws a case). 29 deliberate breaks of the port, 26 caught; the three that remain change nothing a page can reach (a
+triplet rate is never on a swung step; the block's pattern position, which a block never reads; the epsilon that keeps an exactly-on-the-beat rung from rounding down).
+
+**Not done.** The sound (the arp's voice in the bank: a recording of the arp voice per note and for a block, `buildArp` in the page's bank), the host thread and the chord stream (the arp follows
+`setArpChord` from the song's chord and the pads), and the arp voices that are sampled. Humanize's drift is read at the step's own time where the page reads the clock when it schedules, a look-ahead
+earlier (a sub-millisecond difference at the default amount; the tests set the drift to nothing). The page clamps a note to at least 5 ms ahead of now; the engine, scheduling ahead of the render clock, has no such
+case. Nothing here is audible: no checklist entry.
+
