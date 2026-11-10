@@ -1215,9 +1215,10 @@ and are the same renderer turned on its side.
   sheet) and cannot add one (`lvPick`). The same instruments on their Studio and Sound pages are untouched (`tests/livewidgets`).
   The Drum and Aux grids, Chords, Melody, Styles, Sampler, mõdFX and Endings stay free on Live. The standard layout is unchanged:
   the three new widgets are in `LV_ORDER` but not in `LV_STD`, so they arrive by Add / reorder widgets (a Studio Pack action).
-- **Voices.** The Voices panel's own rows, as one more host (`voices-grid-live` in `VOICE_HOSTS`, suffix `-live`), so every dropdown
-  has the mõdSynth patches from 6.7b and every other host follows it. Its home is the hidden `#lv-home`, which holds the made
-  widgets' hosts while they are off the page.
+- **Voices. Removed in 6.9.9.9.9.9.9.** It was the Voices panel's rows as one more host (`voices-grid-live`), and the Styles widget
+  already carries the Voice column for Drums, Aux, Bass, Chords and Melody, so the two were the same pickers twice. The host,
+  `LV_NAME`/`LV_ORDER` entries and CSS are gone; a saved layout that names `voices` loses it in the `LV_NAME` filter. Sound > Voices
+  is still the whole list, including the parts Styles has no row for. `#lv-home` still holds the Mixer and mõdSynth hosts.
 - **Mixer.** `buildMixChannelsInto` into the page, with pan, sends, EQ and the master hidden by CSS: a level, mute and solo for each
   part. Rebuilt on each mount so its faders read the levels as they are; its meters run only while it is on Live (`_lvMixerOn`,
   and `switchTab` no longer stops them there).
@@ -1269,3 +1270,29 @@ which is wider or taller, keep what they had). It publishes `--wide`, which the 
 - **Known limit.** Live's optional Bass and Melody roll widgets borrow the Accomp grids while they are on (`lvMount`), and a grid
   cannot be in two places: with one of those widgets on, that part's page in the right pane is the part without its grid.
   Sampler and FX pages are Play pages, not Accomp pages, so they are in Studio only, not beside Live.
+
+### 6.9.9.9.9.9.9: More, the record ring, the Record widget, grouped styles
+
+- **The fifth tab is More, not Settings.** It had a gear and the word Settings over a sheet whose first row is Settings and whose other
+  six groups are Held notes, Project, Capture, Sampler, Export and Tools. People looked for Bounce and Export under a preferences name.
+  Three dots now; the sheet is unchanged. Settings is still its first row.
+- **Record ring** (`#ft-rec-ring`, first child of `.ft-top-r`): Bounce in one tap, the same recorder as the sheet's Bounce tile and the
+  Record widget. A red ring while idle, a solid red disc with a stop square and a glow while a take runs. `_updateRecBtn` paints every
+  `[data-recring]` from the one fact. The sheet keeps Bounce, Stems and MIDI as they were.
+  **Width, measured at 375, 390, 402, 430 and 440 (`tests/record/probe.js`):** the rate chip is now always beside Play
+  (`ftRateClamp` adds `rate-by-play` unconditionally; before, only when it would collide), which is what leaves the gap to its right.
+  The right cell's minimum is 84 pt (chip 48 + ring 36, it was 52), so a long key name gives way before the ring runs off a 375 pt
+  screen. With a song loaded: at 431-460 the right cell is 190 pt (was 166) and the key's steppers and the section arrows each lose a few
+  points so "Maj" still shows whole; at 430 and under the song's strip is its own row and the ring takes the chip's 48 pt as a margin.
+  Under 370 pt the ring is 30 pt. A phone on its side, the Duo and the rail lay it out as one more item.
+- **Record widget** (`rec`, `LV_STD` above Endings, `LV_STD_OLD` gained the previous standard so standard layouts get it): one 56 pt row
+  with a 40 pt ring, the word Bounce or Recording, the take's clock and a Stems switch (`data-stemtoggle`, so `_updateStemBtn` drives it).
+- **Always bounce stems** (Settings > Recording, `modo-stems-always`): Stems comes on at the start of every take (`_alwaysStemsApply`).
+  With it on, the Stems switch cannot be turned off before a take (it would be put back as the take starts); mid-take still can.
+- **The clock** is `_recFmt` of `Date.now() - _recT0`, one 250 ms timer while a take runs, painted into every `[data-recclock]`: the
+  widget, and `#bounce-clock`, the page's copy to the right of the island (the dot is on the left). While the app is in front ActivityKit
+  draws nothing, so the page draws both; in the background the Live Activity's compact trailing text is the system's own `.timer`.
+- **Styles lists are grouped.** The Pattern half opens a floating `PP_SPECS['live-<part>-style']` list under the name (the same popover the Kit
+  and Voice halves use) instead of a flat sheet: Drums by groove family (`RHYTHMS[].fam`), Aux by the kit each line is written for, Bass
+  and Melody by Genre and Shape, Chords by Plain and Rhythmic (`ST_CHORD_PLAIN`), then Saved by you. A pick still goes through `starterApply`.
+  `starterPickSheet` is the old flat list, kept for an opener with no anchor.
