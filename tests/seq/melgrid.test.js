@@ -34,6 +34,7 @@ const SONGS = {
   'I-vi-IV-V': [[0, [0, 4, 7], null, 4], [9, [0, 3, 7], null, 4], [5, [0, 4, 7], null, 4], [7, [0, 4, 7, 10], null, 4]],
   'slash chords and a rest': [[2, [0, 3, 7, 10], null, 4], [7, [0, 4, 7, 10], 11, 4], [0, [0, 4, 7, 11], null, 2], [0, [0, 4, 7], null, 2, true], [9, [0, 3, 7, 10], null, 4]],
   'odd lengths, chords a little after a beat': [[0, [0, 4, 7], null, 3.1], [5, [0, 4, 7, 10], null, 2.9], [7, [0, 4, 7], null, 4.2], [9, [0, 3, 7], null, 3.35]],
+  'slash chords all round (the bass a long way from the root)': [[0, [0, 4, 7], 6, 2], [5, [0, 4, 7], 2, 2], [7, [0, 4, 7, 10], 1, 2], [9, [0, 3, 7], 5, 2], [2, [0, 3, 7, 10], 8, 2], [3, [0, 4, 7], 9, 2]],
   'changes every beat or two': [[0, [0, 4, 7], null, 1], [3, [0, 3, 7], null, 2], [5, [0, 4, 7], null, 1], [10, [0, 4, 7, 10], null, 3], [7, [0, 4, 7], null, 5]],
 };
 // A busy melody: notes across the roll (C3 to C7) so the register logic has work, lengths, accents, levels, pins, probability and chords on some steps.
@@ -60,7 +61,10 @@ const CONFIGS = [
   { name: 'Follow on over I-vi-IV-V: re-rooted onto each chord, notes across the roll', song: 'I-vi-IV-V', bpm: 120, bars: 8, grid: { seed: 2 } },
   { name: 'Follow on over a line written over a minor seventh (Dm7), tones of its own', song: 'I-vi-IV-V', bpm: 110, bars: 8, grid: { seed: 3 }, gridRoot: 2, gridIntvs: [0, 3, 7, 10] },
   { name: 'slash chords and a rest in the chart', song: 'slash chords and a rest', bpm: 100, bars: 10, grid: { seed: 4 } },
+  { name: 'slash chords all round, a dense line (the register is chosen by the root, not by the bass under it)', song: 'slash chords all round (the bass a long way from the root)', bpm: 120, bars: 9, grid: { seed: 41, density: 0.95 } },
+  { name: 'slash chords all round, another line across the roll', song: 'slash chords all round (the bass a long way from the root)', bpm: 120, bars: 9, grid: { seed: 42, density: 0.95 } },
   { name: 'chords that start a little after a beat', song: 'odd lengths, chords a little after a beat', bpm: 120, bars: 10, grid: { seed: 5 } },
+  { name: 'strong swing on the sixteenths over chords that start off the beat (a swung step can land in the next chord)', song: 'odd lengths, chords a little after a beat', bpm: 120, bars: 12, swing: 75, swing8: false, grid: { seed: 43, density: 0.95 } },
   { name: 'chords that change every beat or two', song: 'changes every beat or two', bpm: 130, bars: 8, grid: { seed: 6 }, swing: 25 },
   { name: 'pinned steps stay where they were written', song: 'I-vi-IV-V', bpm: 120, bars: 8, grid: { seed: 7, fix: 0.5 } },
   { name: 'chords on a step: every note sounds, turned down by the root of how many', song: 'I-vi-IV-V', bpm: 120, bars: 8, grid: { seed: 8, chords: 0.5, maxMore: 5 } },
