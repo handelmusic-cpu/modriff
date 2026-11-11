@@ -608,3 +608,9 @@ engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it
 - Bounce with long notes, reverb and delay; stop using Bounce, then repeat using transport Stop: Finishing stays visible for eight seconds, and mix/stems include the release and effects tail. Repeat with Native sound on.
 - Import the bounce MIDI into a sequencer: Drums and Aux are separate tracks, each with its own hits (both use General MIDI channel 10).
 - Save a bass pattern repeatedly while playing, name it, then reopen it after restart. Browser: 25 consecutive saves passed. The reported app crash has not reproduced; collect a crash report if it recurs. Failed storage writes retain the name dialog for retry and do not claim Saved.
+
+## 36. Melody key width and audio-session activation (6.9.9.9.9.9.9.6; not heard on device)
+
+- Melody keys: "Key width" cycles Auto, 26, 44, 64, 96 px in Mono, Poly and Auto; the width sticks when the voice mode changes. In Poly and Auto, two fingers on the strip play two notes (a chord), never a zoom; in Mono, two fingers still zoom.
+- The strip's edge arrows move the keys by exactly one note per tap. The Glide button reads Glide: ON or Glide: OFF, and the glide-time knob dims when Glide is off or the mode is not Mono.
+- Cold launch with headphones, a Bluetooth speaker and the speaker alone: the app opens without a pause, sound starts on the first note, and nothing stays silent until the app is backgrounded and returned to.
