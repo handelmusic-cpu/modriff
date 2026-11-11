@@ -45,7 +45,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // and hearing it. 5 ms is a request, not a promise: iOS rounds it to what
             // the hardware does, and the Native sound line in Settings shows what it gave.
             try session.setPreferredIOBufferDuration(0.005)
-            try session.setActive(true)
+            // Activation can wait on audio hardware; never block the launch thread.
+            if #available(iOS 27.0, *) {
+                Task {
+                    do {
+                        let activated = try await session.activate()
+                        if !activated {
+                            NSLog("[ModRiff] audio session: activation did not succeed")
+                        }
+                    } catch {
+                        NSLog("[ModRiff] audio session: %@", error.localizedDescription)
+                    }
+                }
+            } else {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try session.setActive(true)
+                    } catch {
+                        NSLog("[ModRiff] audio session: %@", error.localizedDescription)
+                    }
+                }
+            }
         } catch {
             NSLog("[ModRiff] audio session: %@", error.localizedDescription)
         }
