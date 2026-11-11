@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
     const size_t len = (size_t)d[k++];
     std::vector<double> fresh(d.begin() + k, d.begin() + k + len); k += len;
     // The arp's lane is chosen by its length as the player does: the case says 0 left, 1 right, 2 block.
-    const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec) : (mel ? modsynth::MelPlayer::pick(bank, kit, lane == 1, durSec) : bank.find(part, kit, lane));
+    const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec) : (mel ? modsynth::MelPlayer::pick(bank, kit, lane == 1, durSec, (int)pitch) : bank.find(part, kit, lane));
     if (!e) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::PatchedVoice pv;
     bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi, level, pan, gtime);

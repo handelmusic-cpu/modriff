@@ -1290,7 +1290,7 @@ engine can play its voice, and says so in `mel` of its result. The plugin map an
   and stops with the song; a finish fades its voices.
 - Mutation checks: 23 of 23 breaks caught, plus the kill-mask break. Two survived at first: re-rooting by the slash bass instead of the chord root, and applying swing in the chord lookup. Three added `melgrid` cases now catch them: two dense lines over slash chords with the bass far from the root, and strong sixteenth-note swing over chords that change off the beat.
 
-**Not done.** Piano, Organ and the sampled melody voices (per-pitch recordings); Pure tuning's cents; the melody strip (part `mel`, the keyboard strip) and
+**Not done.** Piano, Organ and factory sampled melody voices are addressed in Migration B1 below. Remaining: custom sampler clips; Pure tuning's cents; the melody strip (part `mel`, the keyboard strip) and
 mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlayNote` feeds and the engine does not. Not heard on device: checklist 33.
 
 
@@ -1301,3 +1301,12 @@ mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlay
 **Measured.** `melgrid.test.js` adds two generated-line cases crossing chord changes, including polyphonic cells: 42 notes each, identical timing, pitch, length, velocity and slides against the real page scheduler. Existing Follow-on and lock cases still pass. `songask.test.js` adds 16 comparisons with the page's own `_syncPregenNext`: independent Follow settings, rests and capo; pending arrays agree and no page copy remains. Two scratch copies deliberately disable pending adoption or land it 250 ms early; both fail both new event cases. The host test sends a pending line through the Objective-C++ method and checks the resulting MIDI pitch.
 
 **Not done.** Not heard on device (checklist 34). Voice expansion, observers and the automatic scheduler cutover remain separate migration items; these developer entries still require the page scheduler to be stopped.
+
+
+## Migration B1 (6.9.9.9.9.9.9.7): pitch-specific melody voices
+
+**Built.** The melody bank now records Piano, Organ and factory sampled instruments separately for each MIDI pitch. Lanes `256 + note * 32` hold the plain note's length regimes; offset 16 holds its sliding regimes. `MelPlayer` selects by pitch before length, preserving existing banks for pitch-independent voices. The piano probes extend to 16 seconds so its low-register body and partial decay caps are fitted. The prober resets and restores sample round-robin history: discovering a voice cannot consume the live player's takes. These banked voices use a repeatable take. Factory recordings must be ready before banking; loading returns a reason, never a bank of the temporary stand-in. Buffer uploads complete before a bank entry is sent. A cached refusal remains a failed preparation, rather than being reported as a valid cached voice.
+
+**Measured.** `melbank.test.js`: 741 notes and slides over 13 voices (the original seven plus Piano, Organ, recorded piano, Vibes, Flute and Violin), all at 152.3 dB or better; 124 bit-identical. Per-pitch tests include the roll's extremes, quiet and accented notes, 12 ms to 4 s lengths and slides. iOS Simulator build succeeded. Mutation: selecting the next pitch's entry instead of the requested pitch breaks the audio comparison (scratch build; exact count in the PR).
+
+**Not done.** Not heard on device (checklist 37). The public app still uses the page's scheduler. Custom sampler clips are refused until their slot, slice and asset invalidation are represented. Native synth patches, Pure tuning and the keyboard strip remain separate items. Sample round-robin variation is a fixed repeatable take in this bank; the page's live path keeps its normal variation.

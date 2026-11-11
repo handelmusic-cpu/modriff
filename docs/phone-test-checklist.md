@@ -586,7 +586,7 @@ engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it
 | 33.7 | Humanize up | the notes are loose in time and level as the page's |
 | 33.8 | Freeze the page for 3 s | the melody keeps its time and its notes |
 | 33.9 | Big Fin / Cold / Fade | the melody's last notes fade with the band at the landing and it stops; nothing rings under the final hit |
-| 33.10 | Piano or Organ as the melody voice | `_nsMel.start()` says why it cannot; nothing starts |
+| 33.10 | Piano or Organ as the melody voice | from Migration B1, both play; see section 37 |
 
 
 
@@ -614,3 +614,15 @@ engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it
 - Melody keys: "Key width" cycles Auto, 26, 44, 64, 96 px in Mono, Poly and Auto; the width sticks when the voice mode changes. In Poly and Auto, two fingers on the strip play two notes (a chord), never a zoom; in Mono, two fingers still zoom.
 - The strip's edge arrows move the keys by exactly one note per tap. The Glide button reads Glide: ON or Glide: OFF, and the glide-time knob dims when Glide is off or the mode is not Mono.
 - Cold launch with headphones, a Bluetooth speaker and the speaker alone: the app opens without a pause, sound starts on the first note, and nothing stays silent until the app is backgrounded and returned to.
+
+
+## 37. Pitch-specific native melody voices (6.9.9.9.9.9.9.7; not heard on device)
+
+These checks use the developer entries with the page scheduler stopped.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 37.1 | Draw low and high notes, choose Piano then Organ, run `_nsMel.start()` | every note sounds at its own pitch; `misses` and `refused` stay zero |
+| 37.2 | Load recorded piano, Vibes, Flute or Violin, wait for its recordings, start the native melody | the selected recorded instrument plays, with no temporary synth voice |
+| 37.3 | Run the native melody over a multi-chord song, Follow on then off, with slides and chords on steps | the same figure, articulation and chord following as the page |
+| 37.4 | Stop, change the melody fader, restart | the bank rebuilds at the new level; no old level remains |
