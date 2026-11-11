@@ -5845,7 +5845,8 @@ body.light-mode .bl-empty-hint {
 /* A style chip is too narrow for the words without covering its own name; the
    dashed edge and the fill carry it there, and Generate beside it says it. */
 .bl-gen-style .gen-queued::after, .groove-btn.gen-queued::after,
-.sq-pslot.gen-queued::after, .sq-mbtn.gen-queued::after { content:none; }
+.sq-pslot.gen-queued::after, .sq-mbtn.gen-queued::after, .st-name.gen-queued::after,
+.st-vname.gen-queued::after, .pp-btn.gen-queued::after { content:none; }
 /* Accomp's small controls — the step, rate and octave steppers, the linked
    locks, the grooves, the kits, the pattern slots, Play in and CLR — were
    18–30px tall and hard to hit on a phone mid-song. A finger's worth now,
@@ -12146,7 +12147,7 @@ window.modCapPlugin = function(name, methods){
 // far through the current loop the playhead is, 0..1; null clears it.
 window._genQueuePaint = function(part, frac, landed){
  var attr = part==='bl' ? 'data-blstyle' : 'data-mlstyle';
- var els = [document.getElementById(part+'-gen-go')];
+ var els = [document.getElementById(part+'-gen-go'), document.getElementById('pp-'+(part==='bl'?'bass':'melody')+'-line')];
  document.querySelectorAll('['+attr+'].active').forEach(function(e){ els.push(e); });
  // The Live page's Styles widget names the same style on its row; the fill goes on it too (6.9).
  var _sn = document.querySelector('.st-row[data-part="'+(part==='bl'?'bass':'mel')+'"] .st-name'); if(_sn) els.push(_sn);
@@ -37823,7 +37824,7 @@ function _ppDefine(){
     if(aux) order = ['Percussion & world'].concat(order.filter(function(n){ return n !== 'Percussion & world'; }));
     return _ppSections(order, list);
    },
-   current:function(){ var k = now(); return { name: (k && window._sqKitLabel(k)) || '\u2014', note:'' }; } };
+   current:function(){ var k = now(), q = !aux && window._sqPendingKit ? window._sqPendingKit() : null; return { name: (q && window._sqKitLabel(q)) || (k && window._sqKitLabel(k)) || '\u2014', note:q ? 'Next loop' : '', queued:!!q }; } };
  });
  // The Live Styles rows' Pattern half (6.9.9.9.9.9.9): the same grouped list the Voice half and the Kit lists open, not a flat
  // run of every groove, line or rhythm the part has. starterGroups does the grouping; a pick goes through starterApply, so it
@@ -55700,7 +55701,9 @@ function starterWidgetSync(){
   _starterNode.querySelectorAll('.st-row').forEach(function(row){
    var part = row.dataset.part, cur = starterCurrent(part);
    var nm = row.querySelector('.st-name');
-   nm.textContent = cur ? starterLabel(part, cur) : 'Custom';
+   var q = part==='drums' && sqPendGroove!=null ? RHYTHMS[sqPendGroove] : null;
+   nm.textContent = q ? q.name : cur ? starterLabel(part, cur) : 'Custom';
+   nm.title = q ? 'Next loop: '+q.name : 'Choose a style';
    var on = part==='drums' ? !!drumsEnabled : part==='aux' ? (typeof window._sqLayerOn==='function' && window._sqLayerOn(1) && starterHasPattern('aux')) : part==='bass' ? !!blEnabled : part==='chord' ? (function(){ try{ return !!chordsEnabled; }catch(e){ return true; } })() : !!mlEnabled;   // let: may still be in its dead zone
    row.classList.toggle('off', !on);
    // The voice half: what the part sounds like now.
@@ -55708,7 +55711,10 @@ function starterWidgetSync(){
    if(vn){
     var vt = '';
     try{
-     if(part==='drums' || part==='aux') vt = PP_SPECS['live-'+part+'-kit'].current().name;
+     if(part==='drums' || part==='aux'){
+      var vc = PP_SPECS['live-'+part+'-kit'].current(); vt = vc.name;
+      vn.classList.toggle('queued', !!vc.queued); vn.title = vc.queued ? 'Next loop: '+vt : 'Choose a voice';
+     }
      else vt = PP_SPECS[part==='bass' ? 'bass-patch' : part==='chord' ? 'chord-patch' : 'melody-patch'].current().name;
     }catch(e2){}
     if(vt && vn.textContent !== vt) vn.textContent = vt;
@@ -58057,6 +58063,7 @@ window._sqSetAuxKit = function(nk){
   if(sqFocus===1){ sqMach = nk; sqEnsureGrid(); }
   sqRender(); return true;
 };
+window._sqPendingKit = function(){ return sqPendMach; };
 window._sqKitLabel = function(k){ return SQM[k] ? String(SQM[k].label).replace(/\s*\u25C6\s*$/,'') : null; };
 function sqAuxNextKit(dir){
   var keys=Object.keys(SQM).filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); });
@@ -59230,7 +59237,7 @@ var _sqLandAt=null;
 // (window._genQueuePaint): a dashed edge and a fill that is how much of this
 // loop is left. Kept in one place so grooves, kits and pattern slots, which
 // each used to show "waiting" differently or not at all, read the same.
-var _SQ_Q={groove:['.groove-btn.queued','.groove-btn.active'], kit:['.sq-mbtn.queued','.sq-mbtn.active'], pat:['.sq-pslot.nextup','.sq-pslot.playing']};
+var _SQ_Q={groove:['.groove-btn.queued, #pp-groove, .st-row[data-part=drums] .st-name','.groove-btn.active, #pp-groove, .st-row[data-part=drums] .st-name'], kit:['.sq-mbtn.queued, #pp-kit, .st-row[data-part=drums] .st-vname','.sq-mbtn.active, #pp-kit, .st-row[data-part=drums] .st-vname'], pat:['.sq-pslot.nextup','.sq-pslot.playing']};
 function _sqQueuePaint(sels, frac, landed){
   document.querySelectorAll('.sq-qpaint').forEach(function(e){
     if(sels.some(function(q){ return e.matches(q); })) return;
