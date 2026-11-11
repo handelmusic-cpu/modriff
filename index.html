@@ -46675,7 +46675,7 @@ function accPatternSave(){
  var a=ACC_PATTERNS[bassMelMode]; if(!a) return;
  var d=bankCapture(a[0]);
  if(!d || !bankHasNotes(a[0], d)){ showToast('Nothing there to save yet'); return; }
- bankAsk(BANK_SAVE_LABEL[a[0]], '', 'Save', function(v){ bankSave(a[0], v); });
+ bankAsk(BANK_SAVE_LABEL[a[0]], '', 'Save', function(v){ return !!bankSave(a[0], v); });
 }
 function accPatternOpen(){ var a=ACC_PATTERNS[bassMelMode]; if(a) rhyBankOpen(a[0]); }
 window.accPatternSave = accPatternSave; window.accPatternOpen = accPatternOpen;
@@ -49669,7 +49669,12 @@ function rhyBankList(kind){ return RHY_BANK.filter(function(e){ return !kind || 
 function rhyBankGet(id){ for(var i=0;i<RHY_BANK.length;i++) if(RHY_BANK[i].id===id) return RHY_BANK[i]; return null; }
 function rhyBankAdd(kind, name, data){
  var e = {id:'b'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36), kind:kind, name:String(name||'').slice(0, 28) || 'Untitled', data:data, t:Date.now()};
- RHY_BANK.push(e); rhyBankSave();
+ // Persist the next bank before publishing it in memory. A full disk used
+ // to leave an entry visible with a Saved toast that vanished after restart.
+ var next = RHY_BANK.concat([e]);
+ try{ modStore.setItem(RHY_BANK_KEY, JSON.stringify(next)); }
+ catch(err){ showToast('Could not save the pattern — free some storage and try again'); return null; }
+ RHY_BANK = next;
  return e;
 }
 function rhyBankRename(id, name){ var e = rhyBankGet(id); if(!e) return; e.name = String(name||'').slice(0, 28) || e.name; rhyBankSave(); }
@@ -50205,6 +50210,7 @@ function bankSave(kind, name){
  var nm = String(name||'').trim() || (kind==='chord' ? (d.name || crLabel()) : BANK_PART_NAME[kind]+' '+(rhyBankList(kind).length+1));
  if(kind==='chord') d.name = nm;
  var e = rhyBankAdd(kind, nm, d);
+ if(!e) return null;
  try{ starterSettingsRebuild(); starterWidgetSync(); }catch(x){}
  showToast('Saved '+nm);
  return e;
@@ -50221,7 +50227,14 @@ function bankAsk(title, value, ok, cb){
  inp.placeholder = 'Name it'; inp.style.width = '100%'; inp.setAttribute('aria-label', title);
  box.body.appendChild(inp);
  var go = document.createElement('button'); go.type = 'button'; go.className = 'rhy-btn rhy-primary'; go.textContent = ok; go.style.width = '100%'; go.style.marginTop = '10px';
- go.addEventListener('click', function(){ var v = inp.value; box.close(); cb(v); });
+ go.addEventListener('click', function(){
+  if(go.disabled) return;
+  go.disabled = true;
+  // Leave the name available for retry when storage refuses a pattern.
+  try{ if(cb(inp.value) === false){ go.disabled = false; return; } }
+  catch(err){ go.disabled = false; showToast('Could not save — try again'); return; }
+  box.close();
+ });
  inp.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); go.click(); } });
  box.body.appendChild(go);
  box.addCancel('Cancel');
@@ -55357,7 +55370,7 @@ function starterSaveOpen(){
   if(!has) b.disabled = true;
   b.addEventListener('click', function(){
    box.close();
-   bankAsk(BANK_SAVE_LABEL[kind], '', 'Save', function(v){ bankSave(kind, v); });
+   bankAsk(BANK_SAVE_LABEL[kind], '', 'Save', function(v){ return !!bankSave(kind, v); });
   });
   wrap.appendChild(b);
  });
