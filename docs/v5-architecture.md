@@ -18,6 +18,8 @@ are cheaper to make before code than after.
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
+**Mac Live (6.9.9.9.9.9.9.4).** In the Catalyst app at window widths of 1000px and up, Live uses two independently scrolling work areas: Chords, Melody and mõdFX on the left; Styles, Sampler, recording and the remaining widgets on the right. The existing widgets are moved once, not duplicated; Studio restores their original hosts. Playing targets, style labels and transport switches are larger. Expanded chord controls keep Chord Forms below the pads, so the reference no longer squeezes the grid sideways. Narrow Mac windows return to one column in the saved widget order; the iPhone layout is unchanged. `tests/mac-layout/live.cjs` drives the built page at 820–1920px and checks expanding, independent scrolling, Live/Studio remounting, a chord click and the phone layout.
+
 **Versioning, as decided:** the numbering restarts at 5.0 with the first build
 after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
 follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is
