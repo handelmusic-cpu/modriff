@@ -2435,6 +2435,18 @@ hit is not late. The web fallback is `navigator.vibrate` where it exists
 
 ### Bounce: streamed to disk, kept in Documents/Bounces (4.9.9.9.9.9.4d)
 
+Update 6.9.9.9.9.9.9.5a: Stop closes MIDI and stops transport scheduling, then
+keeps the web mix, stems and native capture open for eight seconds before the
+final buffer flush. Sustained chords release and sequenced notes finish instead
+of being choked by the transport's panic kill. Bounce shows Finishing and cannot
+start a second take while that one is being written. This is a fixed tail;
+effects lasting longer than eight seconds can still reach the file boundary.
+Drums and Aux now have separate MIDI tracks (both retain General MIDI channel
+10). Mac Catalyst presents a document export picker for single and multi-file
+saves; iOS keeps the share sheet. Both native targets compile. Browser regression
+measures the decoded WAV and parses MIDI tracks; native sound and the Finder
+save interaction remain to be checked on device.
+
 A bounce held the mix and every stem in the page as 32-bit floats until Stop
 (about 2.7 MB a second with stems), so a ten-minute take passed a gigabyte and
 iOS ended the web content process: the app came back at its start screen with
