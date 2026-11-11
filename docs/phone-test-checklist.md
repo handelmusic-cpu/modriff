@@ -598,3 +598,13 @@ engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it
 | 34.2 | Melody Follow on | the original figure follows the chords without being regenerated |
 | 34.3 | Freeze the page for 3 s, then return | the last supplied line repeats without silence, and generation resumes on subsequent chord asks |
 | 34.4 | Use a rest, slash chord, capo and a queued section change | lines agree with the page's progression; no doubled melody notes |
+
+
+## 35. Navigation, selection feedback and saving (6.9.9.9.9.9.9.5a; not heard on device)
+
+- Hardware keyboard, Live: Left/Right change key, Up/Down change scale; Tab and Shift+Tab cycle main tabs even with the tab bar focused. Inputs retain their keys.
+- While playing, choose another drum feel and voice on Live: the selected name appears immediately with a dashed progress fill, then lands at the loop boundary. Check Bass and Melody style feedback too.
+- On Mac, save one file and a bounce with stems: a Finder destination dialog opens; save and cancel both work, and the original bounce remains in Downloads > mõdRïff > Bounces.
+- Bounce with long notes, reverb and delay; stop using Bounce, then repeat using transport Stop: Finishing stays visible for eight seconds, and mix/stems include the release and effects tail. Repeat with Native sound on.
+- Import the bounce MIDI into a sequencer: Drums and Aux are separate tracks, each with its own hits (both use General MIDI channel 10).
+- Save a bass pattern repeatedly while playing, name it, then reopen it after restart. Browser: 25 consecutive saves passed. The reported app crash has not reproduced; collect a crash report if it recurs. Failed storage writes retain the name dialog for retry and do not claim Saved.
