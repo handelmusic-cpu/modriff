@@ -64,6 +64,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqArpArm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqArpStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqArpStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqMelPending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelChords", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelArm", returnType: CAPPluginReturnPromise),
@@ -895,6 +896,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     // The melody generator, on the same thread and bank (slice 3, part three).
 
     /// The melody generator's line, `score` base64 float64 (window._mlNativeScore().score). Resolves `ok`.
+    @objc func seqMelPending(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("pending"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqMelPending needs pending")
+            return
+        }
+        call.resolve(["ok": host.seqSetMelPending(data)])
+    }
+
     @objc func seqMelScore(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {

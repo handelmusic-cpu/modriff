@@ -153,6 +153,7 @@ NS_ASSUME_NONNULL_BEGIN
 // steps, notes (struck), slides (notes that slid in), voices (begun), misses (no voice in the bank: lastMissLane), refused, lateStarts, windows, armed, bySong.
 
 /// The melody generator's line, float64s as `window._mlNativeScore().score` makes them. NO if it does not parse.
+- (BOOL)seqSetMelPending:(NSData *)pending;
 - (BOOL)seqSetMelScore:(NSData *)score;
 /// The chord windows with the melody's phrase locks, float64s as `window._mlNativeChords(sr)` makes them: frames from the line's start. For a start by hand; empty clears them.
 - (BOOL)seqSetMelChords:(NSData *)chords;

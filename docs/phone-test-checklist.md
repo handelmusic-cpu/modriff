@@ -588,3 +588,13 @@ engine's plays: `_nsDrum.start()`, `_nsBass.start()`, then `_nsSong.start()` (it
 | 33.9 | Big Fin / Cold / Fade | the melody's last notes fade with the band at the landing and it stops; nothing rings under the final hit |
 | 33.10 | Piano or Organ as the melody voice | `_nsMel.start()` says why it cannot; nothing starts |
 
+
+
+## 34. Melody lines written ahead (6.9.9.9.9.9.9.3; not heard on device)
+
+| # | do | you should hear / see |
+|---|---|---|
+| 34.1 | Sync on, Melody Follow off, a multi-chord song through `_nsSong.start()` with melody armed | each chord receives its generated line at the boundary; try Bass Follow both on and off |
+| 34.2 | Melody Follow on | the original figure follows the chords without being regenerated |
+| 34.3 | Freeze the page for 3 s, then return | the last supplied line repeats without silence, and generation resumes on subsequent chord asks |
+| 34.4 | Use a rest, slash chord, capo and a queued section change | lines agree with the page's progression; no doubled melody notes |
