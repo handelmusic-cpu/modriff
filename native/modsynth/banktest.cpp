@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include "arpplay.h"
+#include "bassplay.h"
 #include "melplay.h"
 #include "graphpool.h"
 #include "voicebank.h"
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
     const size_t len = (size_t)d[k++];
     std::vector<double> fresh(d.begin() + k, d.begin() + k + len); k += len;
     // The arp's lane is chosen by its length as the player does: the case says 0 left, 1 right, 2 block.
-    const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec) : (mel ? modsynth::MelPlayer::pick(bank, kit, lane == 1, durSec, (int)pitch) : bank.find(part, kit, lane));
+    const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec, (int)pitch) : (mel ? modsynth::MelPlayer::pick(bank, kit, lane == 1, durSec, (int)pitch) : (bass ? modsynth::BassPlayer::pick(bank, kit, (int)pitch, lane) : bank.find(part, kit, lane)));
     if (!e) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::PatchedVoice pv;
     bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi, level, pan, gtime);
@@ -99,7 +100,9 @@ int main(int argc, char **argv) {
     int hb = b.begin(pv.prog.data(), pv.prog.size(), pv.timeBase, pv.startFrame);
     for (size_t t = 1; hb >= 0 && t < tones.size(); t++) {
       modsynth::PatchedVoice pt;
-      bank.patch(*e, vel, acc, tones[t], onset + (long)t * 576, SR, 0, pt, durSec, fromMidi, level, pan);
+      const auto *te = modsynth::ArpPlayer::pick(bank, kit, true, durSec, (int)tones[t]);
+      if (!te) { hb = -1; break; }
+      bank.patch(*te, vel, acc, tones[t], onset + (long)t * 576, SR, 0, pt, durSec, fromMidi, level, pan);
       hb = b.begin(pt.prog.data(), pt.prog.size(), pt.timeBase, pt.startFrame);
     }
     if (hb < 0) { printf("%d refused-patched(%d) 0 0 0 0\n", c, hb); continue; }

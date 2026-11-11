@@ -31,7 +31,17 @@ function serve() {
   });
 }
 function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric', 'upright'];
+const VOICES = (process.env.VOICES || 'sine,triangle,square,sawtooth,acid303,electric,upright,upright_real,upright2,bass_motown,bass_hofner,bass_picked,pianoreal2,flute').split(',');
+// Returning all five decoded libraries in one browser message exceeds the
+// transport's string limit. Each group still runs the real prober and null.
+if(!process.env.VOICES){
+  let failed = false;
+  for(const voices of ['sine,triangle,square,sawtooth,acid303,electric,upright', 'upright_real', 'upright2', 'bass_motown', 'bass_hofner', 'bass_picked', 'pianoreal2,flute']){
+    const run = spawnSync(process.execPath, [__filename], {env: {...process.env, VOICES: voices}, stdio: 'inherit'});
+    if(run.status !== 0) failed = true;
+  }
+  process.exit(failed ? 1 : 0);
+}
 
 (async () => {
   const srv = await serve();
@@ -78,6 +88,12 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
     const report = {}, fresh = [];
     for (const voice of voices) {
       window.setBlWave(voice);
+      const lib = BASS_SAMPLED[voice] ? BASS_SAMPLED[voice].lib : SAMPLED_WAVES[voice];
+      if(lib){
+        preloadSampleInstrument(lib);
+        const until = performance.now() + 30000;
+        while(SAMPLE_STATE[lib] === 'loading' && performance.now() < until) await new Promise(r => setTimeout(r, 10));
+      }
       window._nsBank.have = {}; window._nsBank.bad = {};
       const before = entries.length;
       report[voice] = await window._nsBank.ensureBass();
@@ -111,15 +127,20 @@ const VOICES = ['sine', 'triangle', 'square', 'sawtooth', 'acid303', 'electric',
     window._blRestoreState({ genStyle: 'jazz', follow: true });
     const walk = await window._nsBass.sync(); window._blRestoreState({ genStyle: 'funk', follow: true });
     const rb = await window._nsBank.buildBass('upright_real');
-    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.ok, sentOnce: b2 - b1, kept, sampled: rb.ok ? 'ok' : rb.why };
+    const wasTuning = tuningOn;
+    let pure;
+    try{ tuningOn = () => true; pure = await window._nsBass.sync(); }
+    finally{ tuningOn = wasTuning; }
+    return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.ok, sentOnce: b2 - b1, kept, pure, sampled: rb.ok ? 'ok' : rb.why };
   }, { voices: VOICES, plain: [...ctl, ...rndCases], glide: slideCases });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
 
   console.log('\nwhat the prober banked:');
-  VOICES.forEach(v => { const r = out.report[v]; console.log('  ' + v.padEnd(10) + (r.built ? 'banked (' + r.entries + ' entries)' : 'REFUSED ' + JSON.stringify(r.failed))); });
-  ok(VOICES.every(v => out.report[v].built === 1 && out.report[v].entries === 4), 'every synthesized bass voice is banked, in four variants (the note slides, glides, both, neither)', JSON.stringify(out.report));
-  ok(/sampled/.test(out.sampled), 'a sampled voice is refused: ' + out.sampled, out.sampled);
+  VOICES.forEach(v => { const r = out.report[v]; console.log('  ' + v.padEnd(10) + (r.built ? 'banked (' + r.entries + ' entries) ' + JSON.stringify(r.failed) : 'REFUSED ' + JSON.stringify(r.failed))); });
+  ok(VOICES.every(v => out.report[v].built >= 1 && out.report[v].entries >= 4 && !out.report[v].failed.length), 'every selected bass voice is banked, in four variants (the note slides, glides, both, neither)', JSON.stringify(out.report));
+  ok(/sampled/.test(out.sampled), 'a sample probe without its required pitch explains why: ' + out.sampled, out.sampled);
+  ok(out.pure.ok === false && /Pure tuning/.test(out.pure.why), 'unsupported Pure tuning cannot silently start the bass in Equal', JSON.stringify(out.pure));
 
   const buf = [];
   buf.push(out.bufs.length); out.bufs.forEach(b => { buf.push(b.id, b.sr, b.ch.length, b.ch[0].length); b.ch.forEach(c => c.forEach(x => buf.push(x))); });

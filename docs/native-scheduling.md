@@ -1,6 +1,6 @@
 # Native scheduling: the sequencers move to the engine
 
-Design, written at 6.9.4, with the slice-0 spike's results (section 5). Slice 1 is half built (6.9.7: the clock and the drum-grid expander, in C++, held to the page; section "Slice 1, first half" at the end). The engine does not schedule anything yet. It is the "then the clock" of step 7 in
+Design written at 6.9.4, followed by the verified implementation log. The engine now schedules drums, bass, chord rhythm, songs, arp and melody through developer entries. Migration A supplies generated melody lines; B1 and B2 add per-pitch factory voices. The public app still uses the page scheduler. See the current checkpoint at the end before beginning the cutover. It is the "then the clock" of step 7 in
 `docs/v5-architecture.md`, and the reason is background play: every part already *plays* on the
 native engine, but *when* a note plays is still decided by page JavaScript on a `setTimeout` chain, so
 the music lasts only as long as the web view runs and the look-ahead reaches. Read the section
@@ -659,7 +659,7 @@ on when the page schedules relative to the previous note. Worth listening for on
 
 **Not done, said plainly.**
 - (The host did not run the bass at 6.9.9.7; it does from 6.9.9.8, next section.)
-- The sampled voices (they name a recording per note), locks, Pure tuning's cents (`tune`). (The walking line: 6.9.9.9, below.)
+- Factory sampled voices are now covered by Migration B2 (custom clips remain); locks and Pure tuning's cents (`tune`) were pending at this step. (The walking line: 6.9.9.9, below.)
 - A voice that sits on a mõdSynth patch (`_blStopMsx`).
 - The chord comp, and its choke of the previous chord.
 
@@ -762,7 +762,7 @@ eight-run tests of part five and everything else still pass; `xcodebuild` builds
 
 **Not done, said plainly.** A gated hit and so a ratchet (the page holds the chord and lets it go at the end of the hit's length: a sustained program and
 a release edit), refused with its reason; the song's own comping through chord windows and the tap that starts a rhythm (the page skips a re-strike within
-60 ms of the finger); the page's per-hit re-voicing (Vary); sampled chord voices; glide; Pure tuning. Not heard on device: checklist 22.
+60 ms of the finger); the page's per-hit re-voicing (Vary); factory sampled chord voices are covered by Migration B2 (custom clips remain); glide; Pure tuning. Not heard on device: checklist 22.
 
 ## Slice 2, part seven (6.9.9.9.6): gated hits and ratchets in the chord rhythm
 
@@ -787,7 +787,7 @@ ratchet: 72 hits (54 held) identical to the page's, and when the page lets go of
 has a gated first hit: 3 releases for every held chord and none late. The 960 chords of `chordbank.test.js`, the bass and drum tests and the host
 tests are unchanged; `xcodebuild` builds.
 
-**Not done.** The song's comping and the tap (slice 4); the page's re-voicing per hit (Vary); sampled chord voices; glide; Pure tuning. A hit whose gate
+**Not done.** The song's comping and the tap (slice 4); the page's re-voicing per hit (Vary); factory sampled chord voices are now covered by Migration B2 (custom clips remain); glide; Pure tuning. A hit whose gate
 runs into the next hit is cut by it, as on the page (the stop of the chord before). Not heard on device: checklist 22.4.
 
 ## Slice 2, part eight (6.9.9.9.7): locked phrases in the bass line
@@ -1007,7 +1007,7 @@ decaying and held, worst 100 ms 147 to 152 dB, except one 100 ms window in the r
 same figure comes from the engine as it was before this piece, so it is the composer and not this change; the level in that window is far below the chord's.
 
 **Not done.** The song's comping (piece 4): a chord struck by a rhythm is struck once, at its start; the rhythm's re-strikes and the page's per-hit re-voicing are not here.
-The arp's chord (slice 3), glide, Pure tuning and sampled chord voices (refused with their reasons), a chord tapped by hand, the key change adding pitches the bank does not hold
+The arp's chord (slice 3), glide, Pure tuning and custom sampler chord voices (factory recordings are covered by Migration B2), a chord tapped by hand, the key change adding pitches the bank does not hold
 (`_nsSong.capo` tops it up; a capo the page sends later counts misses, and the miss leaves a gap, not a wrong chord). The chord voice's recording is per pitch, 40 to 70 recordings for a
 song (plain, and held when any chord holds): `_nsSong.start()` takes that long the first time. Not heard on device: checklist 25.
 
@@ -1045,7 +1045,7 @@ change is thrown away with the rest when the chord changes, and a hit at the ver
 and none at or after it; the test holds the page to that (it plays the hits due before a chord starts as it starts) and leaves out of both lists a hit on the very frame a chord
 starts. A hit lost in the last tick is audible only as a missing re-strike a few milliseconds before a chord change.
 
-**Not done.** The arp's chord (slice 3), a chord tapped by hand, glide, Pure tuning, sampled voices, the practice loop and trainer, endings (piece 7). A chord whose rhythm
+**Not done.** The arp's chord (slice 3), a chord tapped by hand, glide, Pure tuning, custom sampler clips (factory recordings are covered by Migration B2), the practice loop and trainer, endings (piece 7). A chord whose rhythm
 changes while it plays (the chart edited) keeps the hits it was planned with until the next chord. The hits are planned with the tempo of the moment the chord starts, as the page
 does, except that a ramp in the tempo map moves them. Not heard on device: checklist 26.
 
@@ -1248,7 +1248,7 @@ A host test with long arp voices shows it: after a finish the level falls to the
 - The host test: the arp steps with no page (13 notes in 1.5 s), shares the drums' bar line, each note and each tone of a block begun from the bank (27 voices for 9 blocks of 3), none late; in a song it starts with the song on
   its bar line, is handed C over two octaves, F over C with the bass first, the same F through a rest, and G, and stops with the song; and the finish.
 
-**Not done.** The sound of Piano, Organ and the sampled arp voices (per-pitch recordings, as the chord does), Pure tuning's cents, a chord handed to the arp by a pad or the keyboard while the song is not driving (`seqArpNotes`
+**Not done.** Piano, Organ and factory sampled arp voices are addressed in Migration B2 below. Remaining: custom sampler clips, Pure tuning's cents, a chord handed to the arp by a pad or the keyboard while the song is not driving (`seqArpNotes`
 takes it, nothing calls it from the page's pads yet), the arp following the pads in the background, the page's `arpOn` toggling the engine's arp while a song plays (`_nsArp.armForSong` is read at the song's start), the melody
 generator (`_mlScheduler`, `mlGenerate`: part three). A note shorter than the regimes' boundary is chosen by length alone: the page's float noise on an exactly-equal length can put it either side. Not heard on device:
 checklist 32.
@@ -1307,6 +1307,27 @@ mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlay
 
 **Built.** The melody bank now records Piano, Organ and factory sampled instruments separately for each MIDI pitch. Lanes `256 + note * 32` hold the plain note's length regimes; offset 16 holds its sliding regimes. `MelPlayer` selects by pitch before length, preserving existing banks for pitch-independent voices. The piano probes extend to 16 seconds so its low-register body and partial decay caps are fitted. The prober resets and restores sample round-robin history: discovering a voice cannot consume the live player's takes. These banked voices use a repeatable take. Factory recordings must be ready before banking; loading returns a reason, never a bank of the temporary stand-in. Buffer uploads complete before a bank entry is sent. A cached refusal remains a failed preparation, rather than being reported as a valid cached voice.
 
-**Measured.** `melbank.test.js`: 741 notes and slides over 13 voices (the original seven plus Piano, Organ, recorded piano, Vibes, Flute and Violin), all at 152.3 dB or better; 124 bit-identical. Per-pitch tests include the roll's extremes, quiet and accented notes, 12 ms to 4 s lengths and slides. iOS Simulator build succeeded. Mutation: selecting the next pitch's entry instead of the requested pitch breaks the audio comparison (scratch build; exact count in the PR).
+**Measured.** `melbank.test.js`: 741 notes and slides over 13 voices (the original seven plus Piano, Organ, recorded piano, Vibes, Flute and Violin), all at 152.3 dB or better; 124 bit-identical. Per-pitch tests include the roll's extremes, quiet and accented notes, 12 ms to 4 s lengths and slides. iOS Simulator build succeeded. Mutation: selecting the next pitch's entry instead of the requested pitch breaks the audio comparison (scratch build; 342 of 741 cases).
 
 **Not done.** Not heard on device (checklist 37). The public app still uses the page's scheduler. Custom sampler clips are refused until their slot, slice and asset invalidation are represented. Native synth patches, Pure tuning and the keyboard strip remain separate items. Sample round-robin variation is a fixed repeatable take in this bank; the page's live path keeps its normal variation.
+
+
+## Migration B2 (6.9.9.9.9.9.9.7a): factory recordings on bass, arp and chords
+
+**Built.** The arp uses pitch-specific banks for Piano, Organ and factory sampled voices, with independent note and block-tone length regimes. Every tone of a block selects its own pitch entry. Bass records its dedicated sampled basses and the shared factory sampled instruments per pitch, in all four slide/glide variants. The chord composer already records per pitch; factory sampled chord voices now pass through that path, including held notes, gates, strums and slash chords. A factory instrument whose recordings are still loading is refused rather than banking its temporary synth stand-in. Each signature includes the library's loading state. Cached refusals stay failures on drums, chords, bass, arp and melody.
+
+**Measured.** The production preparation path banks all 128 pitches for Piano and Organ in melody and arp, and for the sampled bass tests. `arpbank` compares note, pan, dynamic level, velocity, length and strummed blocks, including Piano, Organ, recorded piano, Vibes, Flute and Violin; it also retains the filter/envelope/width macro checks. `bassbank` covers every dedicated sampled bass plus recorded piano and Flute on the shared palette, across four slide/glide variants. `chordbank` covers recorded piano, guitar and Flute over the existing strum/width/velocity/length cases. `chordline` nulls six-chord runs, both decaying and held, including their cut and release: the sampled runs reach 152.6 dB overall or better (148.3 dB in the worst 100 ms window). Full-pitch suites run one instrument group per browser process so decoded libraries and probe graphs do not accumulate until the browser crashes. The cached-refusal integration check proves a start cannot silently accept a missing entry. Mutation checks select the neighbouring pitch in scratch builds of the arp and bass players, and restore the old cached-refusal bug: wrong-pitch selection breaks 172 of 258 arp cases and 128 of 144 bass cases, and the cached-refusal integration assertion fails as intended. Final bank runs pass 1,083 melody, 1,806 arp and 1,008 bass comparisons, including control repeats. All 23 sequencer suites and the native pool, tempo and host checks pass; both builds and the built-page smoke check pass. Bass now also refuses unsupported Pure tuning before preparation, rather than silently playing Equal.
+
+**Not done.** Not heard on device (checklist 38). These are still developer entries; no automatic scheduler ownership changed. Sample round-robin uses a repeatable banked take, as in B1. Custom sampler clips retain a refusal because their slot, slice and asset edits need explicit invalidation. Synth patches, Pure tuning, chord glide, live chord-timeline updates and the MIDI observer path remain below.
+
+## Current migration checkpoint
+
+- **A:** done, including both Follow settings and last-line repetition when no page answer arrives.
+- **B1 / B2:** Piano, Organ and factory recorded instruments are banked as above. Custom clips are deliberately refused until slot/slice/asset invalidation is represented.
+- **B3:** pending. Synth patches use the native Processor rather than graph programs; the sequencer needs a Processor-backed bank entry and the correct note, release and choke routing, including a chord's separate sub voice. Treating them as graph programs loses notes.
+- **B4:** pending. Pure tuning and chord glide remain explicit refusals; the event data and parameter maps do not yet carry those cents/ramps.
+- **B5:** pending. A hand chord still needs to update the engine's bass/melody windows and arp tones at its actual engine frame.
+- **C:** pending. Interactive strip voices already use the native graph path, and native buses already feed meters, effects and stems. Sequenced MIDI output/recording still needs a retained native event stream and a recording-clock mapping; polling the last note alone loses events.
+- **D:** repeating the last supplied line is already implemented. The chosen chart-edit policy is the next bar line; staging the changed score there remains to be built.
+- **E:** pending. The public transport still uses the page timers. Do not turn background scheduling on before the unsupported voices, observers, edits, fallback and one-flag transport ownership are verified. The web page must retain its JavaScript schedulers. The original slice-5 phone prerequisite still applies.
+- **F:** the implementation log and phone checks are current for the verified changes above.

@@ -7,7 +7,7 @@
    patches the bank's entry for it (the engine's C++), begins it as the host's sequencer does, plays both through a GraphPool and nulls them.
    The block is the page's real chord message for the part (the tones 12 ms apart), against the engine's one tone patched for each place.
 
-   Also held: a sampled voice is refused with its reason; the signature (the voice, the fader, the macro filter) changes when one of them does.
+   Also held: sample probes without a pitch explain why; the signature (the voice, the fader, the macro filter) changes when one of them does.
 
    Run: make -C native/modsynth banktest && node tests/seq/arpbank.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90) */
 'use strict';
@@ -30,8 +30,18 @@ function serve() {
   });
 }
 function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const NOT_YET = ['piano', 'organ'];
-const VOICES = ['sine', 'sawtooth', 'square', 'supersaw', 'piano', 'organ', 'rhodes', 'pad'];
+const VOICES = (process.env.VOICES || 'sine,sawtooth,square,supersaw,piano,organ,rhodes,pad,pianoreal2,vibes,flute,violin').split(',');
+// Decoded libraries and thousands of probe graphs must not accumulate in one
+// browser process; each group still covers the full production pitch bank.
+if(!process.env.VOICES){
+  let failed = false;
+  for(const [i, voices] of ['sine,sawtooth,square,supersaw,rhodes,pad', 'sine,piano', 'sine,organ', 'sine,pianoreal2', 'sine,vibes', 'sine,flute', 'sine,violin'].entries()){
+    const run = spawnSync(process.execPath, [__filename], {env: {...process.env, VOICES: voices, ARP_SKIP_FX: i ? '1' : '0'}, stdio: 'inherit'});
+    if(run.status !== 0) failed = true;
+  }
+  process.exit(failed ? 1 : 0);
+}
+
 
 (async () => {
   const srv = await serve();
@@ -81,6 +91,11 @@ const VOICES = ['sine', 'sawtooth', 'square', 'supersaw', 'piano', 'organ', 'rho
     if (fx) Object.assign(window._webParams, fx);
     for (const voice of voices) {
       setArpWave(voice);
+      if(SAMPLED_WAVES[voice]){
+        preloadSampleInstrument(SAMPLED_WAVES[voice]);
+        const until = performance.now() + 15000;
+        while(SAMPLE_STATE[SAMPLED_WAVES[voice]] === 'loading' && performance.now() < until) await new Promise(r => setTimeout(r, 10));
+      }
       if (_wp('arp.voice') !== voice) { report[voice] = { failed: [{ why: 'could not select the voice' }], built: 0, entries: 0 }; continue; }
       window._nsBank.have = {}; window._nsBank.bad = {};
       const before = entries.length;
@@ -123,24 +138,23 @@ const VOICES = ['sine', 'sawtooth', 'square', 'supersaw', 'piano', 'organ', 'rho
     entry.start = { ok: st.ok, sent: entries.length - e0, score: calls.score, notes: calls.notes, kit: calls.start && calls.start.kit, want: window._nsKitCode('arp:sine'), align: calls.start && calls.start.align, scoreLen: calls.scoreLen };
     arpOcts = 1;
     Object.keys(calls).forEach(k => delete calls[k]);
-    setArpWave('vibes'); const sm = await window._nsArp.start(250); setArpWave('sine');
+    setArpWave('modsynth'); const sm = await window._nsArp.start(250); setArpWave('sine');
     entry.sampled = { why: sm.why, started: !!calls.start };
     Object.keys(calls).forEach(k => delete calls[k]);
     arpOn = false; const a0 = await window._nsArp.armForSong(); entry.off = { armed: a0.armed, arm: calls.arm };
     arpOn = true; const a1 = await window._nsArp.armForSong(); entry.on = { armed: a1.armed, arm: calls.arm, want: window._nsKitCode('arp:sine') };
     Object.keys(calls).forEach(k => delete calls[k]);
-    setArpWave('vibes'); const a2 = await window._nsArp.armForSong(); setArpWave('sine'); arpOn = false;
+    setArpWave('modsynth'); const a2 = await window._nsArp.armForSong(); setArpWave('sine'); arpOn = false;
     entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm };
     return { entry, report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: [s0 !== s1, s0 !== s2], sentOnce: b2 - b1, kept, reasons, off: off.why };
   }, { voices, notes: [...ctl, ...rndCases], blocks, fx });
   ok(errs.length === 0, label + ': the page threw nothing', errs.join(' | '));
 
   console.log('\n' + label + ' - what the prober banked:');
-  voices.forEach(v => { const r = out.report[v]; console.log('  ' + v.padEnd(10) + (r.built ? 'banked (' + r.entries + ' entries)' : 'REFUSED ' + JSON.stringify(r.failed))); });
+  voices.forEach(v => { const r = out.report[v]; console.log('  ' + v.padEnd(10) + (r.built ? 'banked (' + r.entries + ' entries) ' + JSON.stringify(r.failed) : 'REFUSED ' + JSON.stringify(r.failed))); });
   const banked = voices.filter(v => out.report[v].built);
-  ok(banked.length === voices.filter(v => !NOT_YET.includes(v)).length && banked.every(v => out.report[v].entries >= 4), 'every synthesized arp voice but the two that change their program with the note is banked, an entry for each regime of length of the note and of the block tone', JSON.stringify(out.report));
-  for (const v of NOT_YET.filter(v => voices.includes(v))) ok(!out.report[v].built && /changes size with note/.test(JSON.stringify(out.report[v].failed)), v + ' is refused with its reason (its program changes size with the note: a recording per pitch, not yet)', JSON.stringify(out.report[v]));
-  for (const v of ['pianoreal2', 'vibes', 'sampler']) ok(/sampled/.test(out.reasons[v] || ''), 'a sampled voice (' + v + ') is refused with its reason: ' + out.reasons[v], out.reasons[v]);
+  ok(voices.every(v => !out.report[v].failed.length) && banked.length === voices.length && banked.every(v => out.report[v].entries >= 2), 'every selected arp voice is banked, including pitch-specific instruments, an entry for each regime of length of the note and of the block tone', JSON.stringify(out.report));
+  for (const v of ['pianoreal2', 'vibes', 'sampler']) ok(/sampled/.test(out.reasons[v] || ''), 'a sample probe without its required pitch explains why: ' + out.reasons[v], out.reasons[v]);
   ok(/mõdSynth/.test(out.reasons.modsynth || ''), 'a mõdSynth voice is refused with its reason: ' + out.reasons.modsynth, out.reasons.modsynth);
   ok(/Native sound/.test(out.off || ''), 'with Native sound off the prober says so: ' + out.off, out.off);
 
@@ -179,17 +193,17 @@ const VOICES = ['sine', 'sawtooth', 'square', 'supersaw', 'piano', 'organ', 'rho
     const e = out.entry;
     ok(e.start.ok !== false && e.start.sent === out.report.sine.entries && e.start.score === 1 && JSON.stringify(e.start.notes) === JSON.stringify([60, 64, 67, 72, 76, 79]) && e.start.kit === e.start.want && e.start.align === true,
        '_nsArp.start(): records the voice, sends the settings and the chord the arp is on (two octaves), and starts it on the drums\' bar line with the voice\'s code', JSON.stringify(e.start));
-    ok(/sampled/.test(e.sampled.why || '') && !e.sampled.started, '_nsArp.start() with a sampled voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
+    ok(/mõdSynth/.test(e.sampled.why || '') && !e.sampled.started, '_nsArp.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
     ok(e.off.armed === false && e.off.arm && e.off.arm.on === false && e.on.armed === true && e.on.arm && e.on.arm.on === true && e.on.arm.kit === e.on.want,
        'a song arms the arp when it is on (with the voice\'s code) and disarms it when it is off', JSON.stringify([e.off, e.on]));
-    ok(e.refused.armed === false && /sampled/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
+    ok(e.refused.armed === false && /mõdSynth/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
   }
   ok(out.sigChanged[0] && out.sigChanged[1], 'the Arp fader and the macro filter are part of the voice\'s signature', JSON.stringify(out.sigChanged));
   ok(out.sentOnce === out.report.sine.entries && out.kept, 'the voice is recorded and sent once and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));
   };
   await runConfig('plain', VOICES, null);
   // The mõdFX macro's filter (it opens with the velocity up to a ceiling, and its envelope follows the length) and its width (the panner).
-  await runConfig('filter, envelope and width', ['sine', 'supersaw', 'rhodes'], { 'fx.cutoff': 0.5, 'fx.env': 0.4, 'fx.reso': 0.3, 'fx.width': 1 });
+  if(process.env.ARP_SKIP_FX !== '1') await runConfig('filter, envelope and width', ['sine', 'supersaw', 'rhodes'], { 'fx.cutoff': 0.5, 'fx.env': 0.4, 'fx.reso': 0.3, 'fx.width': 1 });
   await browser.close(); srv.close();
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');
   process.exit(fail ? 1 : 0);

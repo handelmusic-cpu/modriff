@@ -626,3 +626,17 @@ These checks use the developer entries with the page scheduler stopped.
 | 37.2 | Load recorded piano, Vibes, Flute or Violin, wait for its recordings, start the native melody | the selected recorded instrument plays, with no temporary synth voice |
 | 37.3 | Run the native melody over a multi-chord song, Follow on then off, with slides and chords on steps | the same figure, articulation and chord following as the page |
 | 37.4 | Stop, change the melody fader, restart | the bank rebuilds at the new level; no old level remains |
+
+
+## 38. Factory recordings on native bass, arp and chords (6.9.9.9.9.9.9.7a; not heard on device)
+
+Use developer entries with the corresponding page scheduler stopped. The public Play button still follows the page path.
+
+| # | do | you should hear / see |
+|---|---|---|
+| 38.1 | Select Piano or Organ for arp; run `_nsArp.start()` on notes, then Block | every tone sounds at its own pitch, with the expected pan and strum; no misses or refusals |
+| 38.2 | Load a dedicated recorded bass or a shared recorded instrument, then `_nsBass.start()` | the right instrument plays across the line, with accents and both slide variants; no missing notes |
+| 38.3 | Load recorded piano, guitar or Flute for chords; `_nsSong.start()` over slash chords and rests | the sampled chords, sub and strum follow the song; no doubled or stale chord |
+| 38.4 | Use Sustain, a gated rhythm and ratchets with the sampled chord voice | each gate releases; the next chord cuts the previous one cleanly |
+| 38.5 | Prepare an instrument before its recordings finish, then retry once loaded | the first attempt explains that it is loading; the retry records the actual instrument, with no cached silent start |
+| 38.6 | Try the native bass with Pure tuning enabled | preparation gives the unsupported-tuning reason; it does not silently start in Equal |
