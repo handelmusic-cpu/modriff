@@ -9254,7 +9254,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
      <button type="button" class="ft-btn ft-plain sh-tile" onclick="ftGo(function(){ smpOpenLibrary(); })" aria-label="Browse and load samples" title="Your clips, and where each one plays"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z"/></svg><em>Library</em></button>
     </div></div>
    <div class="sh-g2 "><div class="sh-t">Export</div><div class="sh-row" id="ft-sheet-export">
-     <button type="button" class="ft-btn ft-plain sh-tile" id="ft-midi-btn" data-midiexport onclick="exportMidi()" aria-label="Write the chart's chords out as a MIDI file" title="Write just the chart's chords out as a .mid file. To export everything you played (melody, bass, drums, arp and the roll, each on its own track) use Bounce."><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 17V6.2 M19.4 15V4"/><path d="M9.4 4.6L19.4 2.2v3.6L9.4 8.2z" fill="currentColor"/><ellipse cx="6.6" cy="17.4" rx="3.1" ry="2.3" transform="rotate(-20 6.6 17.4)" fill="currentColor" stroke="none"/><ellipse cx="16.6" cy="15.4" rx="3.1" ry="2.3" transform="rotate(-20 16.6 15.4)" fill="currentColor" stroke="none"/></svg><em>MIDI</em></button>
+     <button type="button" class="ft-btn ft-plain sh-tile" id="ft-midi-btn" data-midiexport onclick="exportMidi()" aria-label="Write the chart's chords out as a MIDI file" title="Write just the chart's chords out as a .mid file. To export everything you played (melody, bass, drums, Aux, arp and the roll, each on its own track) use Bounce."><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 17V6.2 M19.4 15V4"/><path d="M9.4 4.6L19.4 2.2v3.6L9.4 8.2z" fill="currentColor"/><ellipse cx="6.6" cy="17.4" rx="3.1" ry="2.3" transform="rotate(-20 6.6 17.4)" fill="currentColor" stroke="none"/><ellipse cx="16.6" cy="15.4" rx="3.1" ry="2.3" transform="rotate(-20 16.6 15.4)" fill="currentColor" stroke="none"/></svg><em>MIDI</em></button>
     </div></div>
    <div class="sh-g2 "><div class="sh-t">Tools</div><div class="sh-row">
      <button type="button" class="ft-btn ur off sh-tile" id="ft-undo-btn" onclick="ftGo(undoSettings)" title="Undo: steps back through everything: notes, patterns, the chart, the mix and every sound setting (Ctrl/⌘+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
@@ -10865,7 +10865,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
     <button type="button" onclick="sbDo(saveToSetlist)" title="Save this song to your setlist">Save</button>
     <button type="button" onclick="sbDo(shareProgression)">Share a link</button>
     <button type="button" data-midiexport onclick="sbDo(exportMidi)"
-      title="Write just the chart's chords out as a .mid file. To export everything you played — melody, bass, drums, arp and the roll, each on its own track — use Bounce.">Chart chords → .mid</button>
+      title="Write just the chart's chords out as a .mid file. To export everything you played — melody, bass, drums, Aux, arp and the roll, each on its own track — use Bounce.">Chart chords → .mid</button>
     <button type="button" onclick="sbDo(printChart)">Print / Save PDF</button>
     <button type="button" onclick="sbDo(openChordSheetImport)"
       title="Paste a chord sheet and the chart is built from it — sections, chords and repeats, in order">Import a chord sheet…</button>
@@ -54516,15 +54516,16 @@ window._midiRecLogBass=function(note,oct,t,dur,vol,accent){
   }catch(e){}
   try{ return (typeof moSilences==='function') && moSilences('bass'); }catch(e){ return false; }
 };
-window._midiRecLogDrum=function(trackName,t,vol,accent){
+window._midiRecLogDrum=function(trackName,t,vol,accent,part){
+  var lane=part==='auxperc' ? 'auxperc' : 'drum';
   var note=GM_DRUM_MAP[trackName]||39;
   var vel=Math.max(1,Math.min(127,Math.round((vol||0.6)*100)+(accent?15:0)));
-  try{ if(typeof moHit==='function') moHit('drum',note,vel,t,60); }catch(e){}
+  try{ if(typeof moHit==='function') moHit(lane,note,vel,t,60); }catch(e){}
   if(_midiRecOn) try{
     var tOn=_midiCtxNow(t);
-    _midiRecNotes.push({lane:'drum',note:note,vel:vel,tOn:tOn,tOff:tOn+60});
+    _midiRecNotes.push({lane:lane,note:note,vel:vel,tOn:tOn,tOff:tOn+60});
   }catch(e){}
-  try{ return (typeof moSilences==='function') && moSilences('drum'); }catch(e){ return false; }
+  try{ return (typeof moSilences==='function') && moSilences(lane); }catch(e){ return false; }
 };
 // ═══════════════════════════════════════
 // MIDI OUT — playing something else with mõdRïff
@@ -54543,13 +54544,14 @@ var MIDI_LANES=[
   {key:'bass',  name:'Bassline',  ch:2},
   {key:'arp',   name:'Arpeggio',  ch:3},
   {key:'melgen',name:'Melody Seq', ch:4},
-  {key:'drum',  name:'Percussion',ch:9}
+  {key:'drum',  name:'Drums',     ch:9},
+  {key:'auxperc',name:'Aux',      ch:9}
 ];
 // Read from the wrap layer below, from the five mute gates thousands of lines
 // above, and from the settings pane — all of which run long before this point
 // in the file. `var`, not `let`: see the temporal dead zone note in CLAUDE.md.
 var _moPort=null;                                                  // chosen MIDIOutput, or null for off
-var _moLanes={melody:true,chord:true,bass:true,arp:true,drum:true}; // which lanes go out
+var _moLanes={melody:true,chord:true,bass:true,arp:true,drum:true,auxperc:true}; // which lanes go out
 var _moLocal=true;                                                  // does mõdRïff still sound what it sends?
 var _moHeld={};                                                     // 'ch:note' -> 1, for the panic that matters
 var _moHeldChord=[];                                                // notes of the chord currently sustaining
@@ -58981,7 +58983,7 @@ function sqHitTrack(track,t,vol,ac,ps,ch){
   var part = (ch==='auxperc') ? 'auxperc' : 'drum';
   if(!window.modEngine.ready(part)||!track||!track.play)return;
   var _moTookDrum = (typeof window._midiRecLogDrum==='function')
-    ? (window._midiRecLogDrum(track.n,t,vol,ac)===true) : false;
+    ? (window._midiRecLogDrum(track.n,t,vol,ac,part)===true) : false;
   // An external synth playing the lane with local sound off has it instead.
   if(_moTookDrum) return;
   var where = _sqTrackWhere(track);
