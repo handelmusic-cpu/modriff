@@ -4,7 +4,8 @@ The same `index.html` as the app, built for the browser with **no packs and no
 recordings**. Its job is a try-it page: anyone can open it, school tablets and
 Chromebooks included, and every locked thing points at the App Store.
 
-It is **not** deployed from this repo and has nothing to do with Vercel. modriff.com
+The custom domain is **not** deployed from this repo. Vercel previews build the
+same free `/play/` page (`dist-web`), rather than exposing the full app bundle. modriff.com
 is the `modriff-site` repo (plain static pages on GitHub Pages); the built page lives
 there as `play/` and is published by committing it.
 
@@ -69,3 +70,11 @@ node tests/webplay/probe.js
 Asserts the build contents, that nothing unlocks it, zero requests to `samples/`
 across Start, 21 Random rolls, every tab and playback, that the speakers still get
 signal, and the sheet and lock tile.
+
+## Desktop layout
+
+Mouse/trackpad browsers share the Mac app’s centered dialogs and two independently
+scrolling Live work areas at 1000px and wider. Narrow windows return to a single
+column. Touch devices keep their existing layout; desktop styling does not enable
+native host features or unlock packs. Publish from current `origin/main` so the
+web page includes the latest navigation, saving and export fixes.
