@@ -9981,8 +9981,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
  <div class="mel-keys-wrap">
  <div class="mel-keys" id="melody-keys"></div>
  </div>
- <button type="button" class="mel-edge mel-edge-l" aria-label="Scroll the keys down" onclick="melEdgeScroll(-1)"><span aria-hidden="true">‹</span></button>
- <button type="button" class="mel-edge mel-edge-r" aria-label="Scroll the keys up" onclick="melEdgeScroll(1)"><span aria-hidden="true">›</span></button>
+ <button type="button" class="mel-edge mel-edge-l" aria-label="Scroll down one note" onclick="melEdgeScroll(-1)"><span aria-hidden="true">‹</span></button>
+ <button type="button" class="mel-edge mel-edge-r" aria-label="Scroll up one note" onclick="melEdgeScroll(1)"><span aria-hidden="true">›</span></button>
  </div>
  <div class="bend-strip-wrap" id="bend-strip-wrap">
  <div class="bend-strip" id="bend-strip">
@@ -10072,6 +10072,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <div class="sg"><div class="sl">Glide time</div><input type="range" id="mel-glide-time" data-melglidetime min="0" max="1000" step="10" value="120" disabled oninput="setMelGlideTime(this.value)"><div class="sv" id="mel-glide-val" data-melglideval>120ms</div></div>
   </div>
   <div class="row" style="margin-top:4px">
+   <button class="tb" type="button" id="mel-key-width" onclick="cycleMelKeyW()" title="Cycle key width: Auto, 26, 44, 64 or 96 pixels. Works in every voice mode.">Key width: Auto</button>
    <button class="tb" id="solfeige-btn" onclick="toggleSolfege()">Do Re Mi Labels: OFF</button>
   </div>
   </div>
@@ -28833,7 +28834,7 @@ function setMelMono(v, auto){
  melAuto = (v===true) && (auto!==false);
  _melPolyEp = false; _melDown = {}; _melOrder = [];
  _melHeld = []; _melHeldInfo = {}; _melSounding = null;
- try{ melApplyKeyW(); syncMelScrollCue(); }catch(e){}   // Poly: the default width; Mono: the player's own
+ try{ melApplyKeyW(); syncMelScrollCue(); }catch(e){}   // Keep width and scroll cues in sync
  syncMelMonoUI(); modParamsFlush();
 }
 function setMelGlideTime(ms){
@@ -28848,11 +28849,12 @@ function syncMelMonoUI(){
  });
  document.querySelectorAll('[data-melglide]').forEach(function(gb){
   var on = melGlideOn && melMono===true;
-  gb.classList.toggle('active', on); gb.classList.toggle('on', on); gb.setAttribute('aria-pressed', on?'true':'false'); gb.textContent='Glide';
+  gb.classList.toggle('active', on); gb.classList.toggle('on', on); gb.setAttribute('aria-pressed', on?'true':'false'); gb.textContent=on?'Glide: ON':'Glide: OFF';
  });
  // The slider under the keys and the one on the Melody Seq page: one state, two homes.
  document.querySelectorAll('[data-melglidetime]').forEach(function(sl){
   sl.value=Math.round(melGlideTime*1000); sl.disabled=melMono!==true || !melGlideOn;
+  if(sl._kb){ sl._kb.setAttribute('aria-disabled', String(sl.disabled)); sl._kb.style.opacity=sl.disabled?'0.4':''; }
  });
  document.querySelectorAll('[data-melglideval]').forEach(function(lv){ lv.textContent=Math.round(melGlideTime*1000)+'ms'; });
 }
@@ -38377,14 +38379,24 @@ function melAutoKeyW(){
 }
 function melApplyKeyW(){
  const k=document.getElementById('melody-keys'); if(!k) return;
- // The player's own width only counts in Mono. In Poly two fingers are two notes, so
- // the keys sit at the default width (the one that fits an octave) and the pinch
- // below is off: a chord played on the strip was being read as a zoom, which let the
- // first note go and resized the keys under the second.
- k.style.setProperty('--mel-kw', ((_melPinchOK() && _melKw!=null) ? _melKw : melAutoKeyW())+'px');
+ // Width is independent of voicing; only the pinch gesture is Mono-only.
+ k.style.setProperty('--mel-kw', (_melKw!=null ? _melKw : melAutoKeyW())+'px');
+ const control=document.getElementById('mel-key-width');
+ if(control) control.textContent='Key width: '+(_melKw==null ? 'Auto' : Math.round(_melKw)+'px');
  try{ invalidateMelScrollMax(); }catch(e){}
 }
-window.addEventListener('resize', function(){ if(_melKw==null || !_melPinchOK()) melApplyKeyW(); });
+// Explicit sizing leaves two-finger chords available in Poly and Auto.
+function cycleMelKeyW(){
+ const widths=[26,44,64,96];
+ _melKw=_melKw==null ? widths[0] : (widths.find(w=>w>_melKw+0.5) ?? null);
+ try{
+  if(_melKw==null) modStore.removeItem('modo-mel-kw');
+  else modStore.setItem('modo-mel-kw', String(_melKw));
+ }catch(_){}
+ melApplyKeyW();
+ syncMelScrollCue();
+}
+window.addEventListener('resize', function(){ if(_melKw==null) melApplyKeyW(); });
 window.addEventListener('load', melApplyKeyW);
 // Two fingers on the strip. Capture phase on the scroller, so the second finger
 // is taken before any key sees it, and the first finger's note is let go.
@@ -38510,10 +38522,13 @@ function syncMelScrollCue(){
   host.classList.toggle('scroll-r', wrap.scrollLeft<max-slack);
  }
 }
-// A tap on an edge arrow: most of a screenful of keys, in that direction.
+// A tap on an edge arrow reveals one more note.
 function melEdgeScroll(dir){
  const wrap=document.querySelector('.mel-keys-wrap'); if(!wrap) return;
- wrap.scrollBy({left:dir*Math.round(wrap.clientWidth*0.6), behavior:'smooth'});
+ const keys=wrap.querySelectorAll('.mel-key');
+ if(keys.length<2) return;
+ const step=keys[1].getBoundingClientRect().left-keys[0].getBoundingClientRect().left;
+ wrap.scrollBy({left:dir*step, behavior:'instant'});
 }
 (function(){
  // Bound once to the scroller, which outlives every rebuild of the keys
@@ -56171,6 +56186,7 @@ function knobify(inp){
  host.insertBefore(wrap, inp);
  wrap.appendChild(cv); wrap.appendChild(tip); wrap.appendChild(inp);
  inp.classList.add('kb-src'); inp.tabIndex = -1; inp._kb = wrap;
+ if(inp.hasAttribute('data-melglidetime')){ wrap.setAttribute('aria-disabled', String(inp.disabled)); wrap.style.opacity=inp.disabled?'0.4':''; }
  var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
  var natGet = d.get, natSet = d.set;
  function num(k, dflt){ var v = parseFloat(inp.getAttribute(k)); return isFinite(v) ? v : dflt; }

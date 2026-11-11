@@ -175,7 +175,7 @@ function serve() {
   ok(r.ui.btn === 'Mode: Mono' && r.ui.sl === '350' && !r.ui.dis && r.uiPoly.btn === 'Mode: Poly' && r.uiPoly.dis, 'the button and the glide slider follow the mode', JSON.stringify([r.ui, r.uiPoly]));
   ok(!r.webErr && r.web && r.web.built && r.webReleased, 'the real web voice builds when a slide is asked for, and the short release takes it down', r.webErr || JSON.stringify([r.web, r.webReleased]));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
-  // The strip's two-finger zoom: Mono only. In Poly the keys keep the default width and
+  // The strip's two-finger zoom: Mono only. In Poly the keys keep the chosen width and
   // a second finger reaches its key (a chord), instead of being read as a pinch.
   const z = await page.evaluate(() => {
     const wrap = document.querySelector('.mel-keys-wrap'), kk = document.getElementById('melody-keys');
@@ -203,12 +203,29 @@ function serve() {
     _melKw = null; melApplyKeyW();
     return o;
   });
-  ok(z.polyWithSaved === z.auto && z.polyAfter === z.auto, 'Poly keeps the default key width even with a saved zoom', JSON.stringify(z));
-  ok(z.poly.w === z.auto && z.poly.reached === 2, 'Poly: two fingers are two key presses, not a pinch', JSON.stringify(z.poly));
+  ok(z.polyWithSaved === 70 && z.polyAfter === 70, 'Poly keeps the saved key width', JSON.stringify(z));
+  ok(z.poly.w === 70 && z.poly.reached === 2, 'Poly: two fingers are two key presses, not a pinch', JSON.stringify(z.poly));
   ok(z.monoSaved === 70, 'Mono brings the player\'s own width back', JSON.stringify(z));
   ok(z.mono.w > z.auto && z.mono.reached === 1, 'Mono: two fingers zoom the strip', JSON.stringify(z.mono));
-  ok(z.autoSaved === z.auto && z.autoPinch.w === z.auto && z.autoPinch.reached === 2, 'Auto: two fingers are a chord, not a pinch, and the width is the default', JSON.stringify([z.autoSaved, z.autoPinch]));
-  ok(z.back === z.auto, 'and back in Poly the width is the default again', JSON.stringify(z));
+  ok(z.autoSaved === 70 && z.autoPinch.w === z.auto && z.autoPinch.reached === 2, 'Auto: two fingers are a chord, not a pinch, and saved sizing is respected', JSON.stringify([z.autoSaved, z.autoPinch]));
+  ok(z.back === z.mono.w, 'switching back to Poly retains the resized width', JSON.stringify(z));
+  const sizing = await page.evaluate(() => {
+    setMelMono(false); _melKw=null;
+    const widths=[];
+    for(let i=0;i<5;i++){ document.getElementById('mel-key-width').click(); widths.push(_melKw); }
+    return {widths, saved:modStore.getItem('modo-mel-kw')};
+  });
+  ok(JSON.stringify(sizing.widths)==='[26,44,64,96,null]' && sizing.saved===null, 'width control cycles sizes and restores automatic sizing in Poly', JSON.stringify(sizing));
+  const scroll = await page.evaluate(() => {
+    const wrap=document.querySelector('.mel-keys-wrap');
+    const original=wrap.scrollBy; const moves=[];
+    wrap.scrollBy=options=>moves.push(options.left);
+    const keys=wrap.querySelectorAll('.mel-key');
+    const step=keys[1].getBoundingClientRect().left-keys[0].getBoundingClientRect().left;
+    melEdgeScroll(1); melEdgeScroll(-1); wrap.scrollBy=original;
+    return {moves,step};
+  });
+  ok(scroll.moves[0]===scroll.step && scroll.moves[1]===-scroll.step, 'edge arrows move by one key in either direction', JSON.stringify(scroll));
   await browser.close(); srv.close();
   process.exit(fail ? 1 : 0);
 })();
