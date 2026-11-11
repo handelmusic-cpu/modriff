@@ -14,6 +14,28 @@ import UIKit
 /// the audio session and the engine graph.
 @objc(ModEngine)
 public class ModEngine: CAPPlugin, CAPBridgedPlugin {
+    #if targetEnvironment(macCatalyst)
+    private var fileExportDelegate: ModFileExportDelegate?
+
+    // Catalyst turns the document exporter into the Mac save dialog, where
+    // the destination can be chosen in Finder. Keep the source until it closes.
+    private func presentMacExport(_ urls: [URL], from vc: UIViewController,
+                                  cleanup: @escaping () -> Void, call: CAPPluginCall) {
+        guard fileExportDelegate == nil else {
+            call.reject("another save dialog is open")
+            return
+        }
+        let delegate = ModFileExportDelegate { [weak self] in
+            cleanup()
+            self?.fileExportDelegate = nil
+        }
+        fileExportDelegate = delegate
+        let picker = UIDocumentPickerViewController(forExporting: urls, asCopy: true)
+        picker.delegate = delegate
+        vc.present(picker, animated: true) { call.resolve() }
+    }
+    #endif
+
     public let identifier = "ModEngine"
     public let jsName = "ModEngine"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -64,6 +86,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqArpArm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqArpStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqArpStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqMelPending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelChords", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMelArm", returnType: CAPPluginReturnPromise),
@@ -895,6 +918,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     // The melody generator, on the same thread and bank (slice 3, part three).
 
     /// The melody generator's line, `score` base64 float64 (window._mlNativeScore().score). Resolves `ok`.
+    @objc func seqMelPending(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("pending"), let data = Data(base64Encoded: b64) else {
+            call.reject("seqMelPending needs pending")
+            return
+        }
+        call.resolve(["ok": host.seqSetMelPending(data)])
+    }
+
     @objc func seqMelScore(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         guard let b64 = call.getString("score"), let data = Data(base64Encoded: b64) else {
@@ -1077,6 +1109,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 call.reject("no view controller to present from")
                 return
             }
+            #if targetEnvironment(macCatalyst)
+            self?.presentMacExport([url], from: vc, cleanup: {
+                try? FileManager.default.removeItem(at: url)
+            }, call: call)
+            #else
             let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
             // iPad requires an anchor for the popover.
             sheet.popoverPresentationController?.sourceView = vc.view
@@ -1086,6 +1123,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 try? FileManager.default.removeItem(at: url)
             }
             vc.present(sheet, animated: true) { call.resolve() }
+            #endif
         }
     }
 
@@ -1140,6 +1178,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 call.reject("no view controller to present from")
                 return
             }
+            #if targetEnvironment(macCatalyst)
+            self?.presentMacExport(urls, from: vc, cleanup: {
+                if !kept { urls.forEach { try? FileManager.default.removeItem(at: $0) } }
+            }, call: call)
+            #else
             let sheet = UIActivityViewController(activityItems: urls, applicationActivities: nil)
             sheet.popoverPresentationController?.sourceView = vc.view
             sheet.popoverPresentationController?.sourceRect =
@@ -1150,6 +1193,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 if !kept { urls.forEach { try? FileManager.default.removeItem(at: $0) } }
             }
             vc.present(sheet, animated: true) { call.resolve() }
+            #endif
         }
     }
 
@@ -1475,3 +1519,13 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve(out)
     }
 }
+
+#if targetEnvironment(macCatalyst)
+private final class ModFileExportDelegate: NSObject, UIDocumentPickerDelegate {
+    private var finish: (() -> Void)?
+    init(finish: @escaping () -> Void) { self.finish = finish }
+    private func complete() { let action = finish; finish = nil; action?() }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { complete() }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { complete() }
+}
+#endif

@@ -21,10 +21,13 @@ int main(int argc, char **argv) {
   for (int c = 0; c < nc; c++) {
     const double sr = d[k++], bpm = d[k++], rate = d[k++], first = d[k++], seed = d[k++];
     const int nsteps = (int)d[k++];
-    const int nTicks = (int)d[k++], nTape = (int)d[k++];
+    const int tickCount = (int)d[k++], nTape = (int)d[k++];
+    const bool pendingTicks = tickCount < 0;
+    const int nTicks = std::abs(tickCount);
     std::vector<size_t> tickAt;
     for (int i = 0; i < nTicks; i++) {
       tickAt.push_back(k); k += 1;
+      if (pendingTicks) { const size_t n = (size_t)d[k++]; k += n; }
       modsynth::ChordTimeline probe; size_t u = 0;
       if (!probe.fromDoubles(d.data() + k, d.size() - k, &u)) { fprintf(stderr, "case %d: bad windows in tick %d\n", c, i); return 2; }
       k += u;
@@ -46,7 +49,17 @@ int main(int argc, char **argv) {
     if (nTicks) {
       for (int i = 0; i < nTicks; i++) {
         const size_t at = tickAt[(size_t)i];
-        q.timeline().fromDoubles(d.data() + at + 1, d.size() - at - 1);
+        size_t start = at + 1;
+        if (pendingTicks) {
+          const size_t n = (size_t)d[start++];
+          if (n) {
+            modsynth::MelPending p;
+            if (!p.fromDoubles(d.data() + start, n)) return 2;
+            q.setPending(p);
+          }
+          start += n;
+        }
+        q.timeline().fromDoubles(d.data() + start, d.size() - start);
         fired += q.run(d[at], out);
       }
     } else {

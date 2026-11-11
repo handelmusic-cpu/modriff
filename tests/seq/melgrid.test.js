@@ -57,6 +57,8 @@ function melGrid(seed, steps, o) {
   return g;
 }
 const CONFIGS = [
+  { name: 'generated lines land across chords with Follow off', song: 'I-vi-IV-V', bpm: 120, bars: 6, follow: false, pending: true, grid: { seed: 71 } },
+  { name: 'generated polyphonic lines retain slide history', song: 'changes every beat or two', bpm: 120, bars: 6, follow: false, pending: true, grid: { seed: 72, chords: 0.5 } },
   { name: 'Follow off: the line as written on every chord, no chart', song: 'I-vi-IV-V', bpm: 120, bars: 6, follow: false, grid: { seed: 1 } },
   { name: 'Follow on over I-vi-IV-V: re-rooted onto each chord, notes across the roll', song: 'I-vi-IV-V', bpm: 120, bars: 8, grid: { seed: 2 } },
   { name: 'Follow on over a line written over a minor seventh (Dm7), tones of its own', song: 'I-vi-IV-V', bpm: 110, bars: 8, grid: { seed: 3 }, gridRoot: 2, gridIntvs: [0, 3, 7, 10] },
@@ -139,19 +141,27 @@ const CONFIGS = [
       sent.length = 0;
       commit();
       window._mlSetClock(FIRSTs, 0, true);
+      const initialScore = window._mlNativeScore();
       const ticks = [], tape = [], orig = Math.random;
+      let pendingIndex = 1;
       for (let guard = 0; guard < 100000; guard++) {
         fake.currentTime += 0.0371; _schedHorizon = fake.currentTime + LA;
-        ticks.push([_schedHorizon * sr].concat(window._mlNativeChords(sr)));
+        let pending = [];
+        if(c.pending && pendingIndex < plan.length && fake.currentTime + 0.5 >= plan[pendingIndex].t){
+          const target = plan[pendingIndex++], sl = slot(target.i);
+          window._mlPregen(sl.rootM, sl.ivs, target.t);
+          pending = window._mlNativePending(sr, 0);
+        }
+        ticks.push([_schedHorizon * sr].concat(c.pending ? [pending.length].concat(pending) : [], window._mlNativeChords(sr)));
         Math.random = () => { const v = orig.call(Math); tape.push(v); return v; };
         try { window._mlScheduler(); } finally { Math.random = orig; }
         _schedHorizon = null;
         if (fake.currentTime + LA >= tEnd) break;
       }
       window._mlSetClock(0, 0, false);
-      const sc = window._mlNativeScore();
+      const sc = c.pending ? initialScore : window._mlNativeScore();
       return { notes: sent.map(m => ({ at: m.at, note: m.note, dur: m.dur, vel: m.vel, accent: m.accent, glideFrom: m.glideFrom, glideTime: m.glideTime })), tEnd, ticks, tape,
-               score: sc.score, ok: sc.ok, why: sc.why, chords: window._mlNativeChords(sr), bpm, rate: c.rate || 1 };
+               pending: !!c.pending, score: sc.score, ok: sc.ok, why: sc.why, chords: window._mlNativeChords(sr), bpm, rate: c.rate || 1 };
     };
     for (const c of configs) {
       const a = runOne(c, true), b = c.locks ? runOne(c, false) : null;
@@ -172,7 +182,7 @@ const CONFIGS = [
   const bin = process.env.MELTOOL || path.join(root, 'native', 'modsynth', 'meltool');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth meltool'); process.exit(2); }
   const run = c => {
-    const cases = [1, SR, c.bpm, c.rate, 1.0 * SR, 5, 0, c.ticks.length, c.tape.length].concat(...c.ticks, c.tape, c.score, c.chords);
+    const cases = [1, SR, c.bpm, c.rate, 1.0 * SR, 5, 0, (c.pending ? -1 : 1) * c.ticks.length, c.tape.length].concat(...c.ticks, c.tape, c.score, c.chords);
     fs.writeFileSync(path.join(tmp, 'mel.f64'), Buffer.from(Float64Array.from(cases).buffer));
     const r = spawnSync(bin, [path.join(tmp, 'mel.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
     if (r.status !== 0) { console.error(r.stderr); process.exit(2); }

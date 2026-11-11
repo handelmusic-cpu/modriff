@@ -380,7 +380,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     }
     if (mseq.running() && hasMel) {
       const double now = (double)frames->load(std::memory_order_relaxed);
-      melSteps += (uint64_t)mseq.run(now + lookahead, [&](const modsynth::MelEvent &e) { melNotesN++; melLastMidi = e.midi; mplay.play(e, now); });
+      melSteps += (uint64_t)mseq.run(now + lookahead, [&](const modsynth::MelEvent &e) { melNotesN++; melLastMidi = e.midi; mplay.play(e, now); }, now);
     }
     os_unfair_lock_unlock(&lock);
   }
@@ -929,6 +929,18 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 // ── The melody generator (slice 3, part three): the same thread, the same bank ─────────────
 
 // The melody generator's line (window._mlNativeScore().score). NO if it does not parse.
+- (BOOL)seqSetMelPending:(NSData *)pending {
+  const size_t n = pending.length / sizeof(double);
+  std::vector<double> d(n);
+  if (n) std::memcpy(d.data(), pending.bytes, n * sizeof(double));
+  modsynth::MelPending line;
+  os_unfair_lock_lock(&_hostSeq->lock);
+  const bool ok = line.fromDoubles(d.data(), n, _hostSeq->melFirst);
+  if (ok) _hostSeq->mseq.setPending(line);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return ok;
+}
+
 - (BOOL)seqSetMelScore:(NSData *)score {
   const size_t n = score.length / sizeof(double);
   std::vector<double> d(n);

@@ -18,6 +18,8 @@ are cheaper to make before code than after.
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
+**Mac Live (6.9.9.9.9.9.9.4).** In the Catalyst app at window widths of 1000px and up, Live uses two independently scrolling work areas: Chords, Melody and mõdFX on the left; Styles, Sampler, recording and the remaining widgets on the right. The existing widgets are moved once, not duplicated; Studio restores their original hosts. Playing targets, style labels and transport switches are larger. Expanded chord controls keep Chord Forms below the pads, so the reference no longer squeezes the grid sideways. Narrow Mac windows return to one column in the saved widget order; the iPhone layout is unchanged. `tests/mac-layout/live.cjs` drives the built page at 820–1920px and checks expanding, independent scrolling, Live/Studio remounting, a chord click and the phone layout.
+
 **Versioning, as decided:** the numbering restarts at 5.0 with the first build
 after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
 follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is
@@ -2433,6 +2435,18 @@ hit is not late. The web fallback is `navigator.vibrate` where it exists
 
 ### Bounce: streamed to disk, kept in Documents/Bounces (4.9.9.9.9.9.4d)
 
+Update 6.9.9.9.9.9.9.5a: Stop closes MIDI and stops transport scheduling, then
+keeps the web mix, stems and native capture open for eight seconds before the
+final buffer flush. Sustained chords release and sequenced notes finish instead
+of being choked by the transport's panic kill. Bounce shows Finishing and cannot
+start a second take while that one is being written. This is a fixed tail;
+effects lasting longer than eight seconds can still reach the file boundary.
+Drums and Aux now have separate MIDI tracks (both retain General MIDI channel
+10). Mac Catalyst presents a document export picker for single and multi-file
+saves; iOS keeps the share sheet. Both native targets compile. Browser regression
+measures the decoded WAV and parses MIDI tracks; native sound and the Finder
+save interaction remain to be checked on device.
+
 A bounce held the mix and every stem in the page as 32-bit floats until Stop
 (about 2.7 MB a second with stems), so a ten-minute take passed a gigabyte and
 iOS ended the web content process: the app came back at its start screen with
@@ -2556,6 +2570,16 @@ vocabulary beyond the plain sevenths is Theory (it was already locked); the free
 the first two preset banks; free steps are one bar of any free meter, up to 16, with 12/8's
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
 Triangle and the two stock basses are named by no pack, so they are free.
+
+**Independent sequencer timing (6.9.9.9.9.9.9.5).** Drums, bass and melody start with
+step count and rate linked. A direct rate or step-count edit asks to unlink that
+setting and change only the selected part; Cancel preserves both locks and all
+parts. Programmatic restores keep the existing linked setters. Counts can be typed
+or adjusted beside each grid without unfolding Pattern tools. Rate labels describe
+speed (½× / 1× / 2×), while stored multipliers still describe step duration. Native
+rate edits send the selected sequencer its new rate during playback. Independent
+step lengths retain the Groove Pack entitlement. Browser checks against `dist/`:
+`node tests/seq/independent-timing.cjs`; device listening remains required.
 
 **Step chance, roll velocity and the Euclidean fill (4.9.9.9.9.9.9e), free.** A step can carry
 `pr`, the percentage chance that it sounds (absent means 100, so nothing migrates), and a roll note
