@@ -6,7 +6,7 @@
 //  - a locked phrase (PHRASE_LOCKS.mel) replaces the bar for its chord, and is moved by the capo, folded into G3..C6, and not re-rooted.
 // It reads the same chord timeline as the bass (the song hands both the same windows), kept as a copy of its own so the two lock tables stay apart.
 //
-// Not in it, said plainly: the generator and its timers (a line written ahead for the next chord, _mlPregen, which the engine will be handed as a pending line in a later part),
+// Not in it, said plainly: the generator itself (the page supplies its pending lines),
 // Pure tuning's cents, a mõdSynth voice (the Processor plays it), and the voice itself (melplay.h).
 //
 // Time is counted in frames, as doubles (see seqcore.h).
@@ -68,6 +68,30 @@ struct MelScore {
   }
 };
 
+// A generated line waits for its chord boundary without resetting the step or slide history.
+struct MelPending {
+  bool have = false, hasAt = false;
+  double at = 0;
+  int steps = 16;
+  std::vector<MelCell> cells;
+
+  bool fromDoubles(const double *d, size_t n, double offset = 0) {
+    MelPending p;
+    if (!n) return false;
+    if (d[0] != 1) { *this = p; return true; }
+    if (n < 4 || !std::isfinite(d[2]) || !(d[3] >= 1 && d[3] <= 256)) return false;
+    p.have = true; p.hasAt = d[1] != 0; p.at = d[2] + offset; p.steps = (int)d[3];
+    size_t k = 4;
+    for (int i = 0; i < p.steps; i++) {
+      MelCell c;
+      if (!readMelCell(d, n, k, c)) return false;
+      p.cells.push_back(std::move(c));
+    }
+    *this = std::move(p);
+    return true;
+  }
+};
+
 // One note the melody generator plays: the fields of the page's modSend({kind:'note', part:'melgen', ...}), with the time in frames.
 struct MelEvent {
   double frameExact = 0;
@@ -90,6 +114,7 @@ class MelSequencer {
   explicit MelSequencer(double sampleRate = 48000.0) : sr_(sampleRate), timeline_(sampleRate) {}
 
   void setScore(const MelScore &s) { score_ = s; if (step_ >= score_.steps) step_ = 0; }
+  void setPending(const MelPending &p) { pending_ = p; }
   const MelScore &score() const { return score_; }
   ChordTimeline &timeline() { return timeline_; }
   const ChordTimeline &timeline() const { return timeline_; }
@@ -102,7 +127,7 @@ class MelSequencer {
   void setTempoMap(const TempoMap *m) { tmap_ = m; }
   double stepAt(double frame) const { return tmap_ ? tmap_->span(frame, 0.25 * rate_) : stepFrames(); }
 
-  void start(double firstFrame, int step = 0) { next_ = firstFrame; step_ = step; running_ = true; prevHave_ = false; }
+  void start(double firstFrame, int step = 0) { pending_ = MelPending(); next_ = firstFrame; step_ = step; running_ = true; prevHave_ = false; }
   void stop() { running_ = false; }
   bool running() const { return running_; }
   int step() const { return step_; }
@@ -110,21 +135,30 @@ class MelSequencer {
 
   // window._mlScheduler: fire everything due before `horizon`, in order. `following` is read once per call, as the page reads it.
   template <class Emit>
-  int run(double horizon, Emit &&emit) {
+  int run(double horizon, Emit &&emit, double now = 0) {
     const bool following = score_.follow && !timeline_.empty();
     int fired = 0;
     while (running_ && next_ < horizon) {
+      if (pending_.have && pending_.hasAt && next_ >= pending_.at - 0.002 * sr_) applyPending();
       const double sd = stepAt(next_);
       fireStep(step_, next_, sd, following, emit);
       fired++;
       next_ += sd;
       step_++;
-      if (step_ >= score_.steps) step_ = 0;
+      if (step_ >= score_.steps) {
+        step_ = 0;
+        if (pending_.have && (!pending_.hasAt || next_ >= pending_.at - 0.002 * sr_ || pending_.at <= now)) applyPending();
+      }
     }
     return fired;
   }
 
  private:
+  void applyPending() {
+    score_.cells = std::move(pending_.cells);
+    score_.steps = pending_.steps;
+    pending_ = MelPending();
+  }
   static int mod12(int x) { return ((x % 12) + 12) % 12; }
   // window.phraseFold(note, oct, shift, ML_GEN_LO, ML_GEN_HI): move by `shift` semitones and back into the register by one octave at most.
   static void foldNote(int &note, int &oct, int shift) {
@@ -237,6 +271,7 @@ class MelSequencer {
 
   const TempoMap *tmap_ = nullptr;
   MelScore score_;
+  MelPending pending_;
   ChordTimeline timeline_;
   Rng rng_;
   double sr_;

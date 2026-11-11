@@ -169,6 +169,33 @@ const CASES = [
     ok(!bad && res.rows.length > 6 && (c.none ? nNext === 0 && nNow === 0 : nNext > 3), c.name + ': ' + res.rows.length + ' asks, ' + nNext + ' lines written ahead identical (held to the same frame), ' + nNow + ' lines for the chord itself identical', (bad || '') + ' ' + JSON.stringify({ ok: setup.ok }));
     if (!c.none) ok(minMargin > 0.05, '    ...and in time: the answer takes at most ' + maxMs.toFixed(1) + ' ms; with a 40 ms poll the shortest chord leaves ' + (minMargin * 1000).toFixed(0) + ' ms before it is needed', 'margin ' + minMargin);
   }
+  const melodyAnswers = await page.evaluate(() => {
+    const rows = [], sr = 48000, realRandom = Math.random;
+    const seed = () => { let a = 91; Math.random = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; };
+    const grid = Array.from({length: 16}, () => ({note: 0, oct: 4, len: 1, v: 1}));
+    for(const bassFollow of [false, true]) for(const follow of [false, true]) for(const rest of [false, true]) for(const capo of [0, 3]) {
+      const setup = () => {
+        _bassAutoSync = true; root = capo; mode = 'major'; _songBaseRoot = 0;
+        _lastChordKey = {root: capo, mode: 'major'};
+        sections = [{slots: [{rootM:48, ivs:[0,4,7], bars:1}, {rootM:55, ivs:[0,4,7,10], bars:1, bassNote:59, isRest:rest}]}];
+        window._blRestoreState({steps:16, grid, follow:bassFollow, genStyle:'funk', gridRootPc:0, gridIntvs:[0,4,7]});
+        window._mlRestoreState({steps:16, grid, follow, genStyle:'chord', gridRootPc:0, gridIntvs:[0,4,7]});
+        window._mlSetClock(1, 0, true);
+        window._mlNativePendingTake(sr, 0);
+        seed();
+      };
+      setup();
+      _syncPregenNext(sections[0].slots[0], 1, sections[0].slots[1]);
+      const expected = window._mlNativePendingTake(sr, 0);
+      setup();
+      const answer = window._songAnswer([1,0,0,0,sr,3*sr,0,1,capo], 0, sr, {sec:0,slot:0}, 0, {sec:0,slot:0});
+      rows.push({bassFollow,follow,rest,capo, expected, actual:answer.mel.pending || [0], left:window._mlNativePendingTake(sr,0)});
+    }
+    Math.random = realRandom; window._mlSetClock(0,0,false);
+    return rows;
+  });
+  for(const r of melodyAnswers) ok(JSON.stringify(r.expected) === JSON.stringify(r.actual) && r.left[0] === 0,
+    'melody handshake ' + JSON.stringify({bassFollow:r.bassFollow, follow:r.follow, rest:r.rest, capo:r.capo}), JSON.stringify(r));
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   console.log(fail ? '\n' + fail + ' FAILED' : '\nall passed');

@@ -1290,6 +1290,14 @@ engine can play its voice, and says so in `mel` of its result. The plugin map an
   and stops with the song; a finish fades its voices.
 - Mutation checks: 23 of 23 breaks caught, plus the kill-mask break. Two survived at first: re-rooting by the slash bass instead of the chord root, and applying swing in the chord lookup. Three added `melgrid` cases now catch them: two dense lines over slash chords with the bass far from the root, and strong sixteenth-note swing over chords that change off the beat.
 
-**Not done.** The page's generator: a line written for the next chord (`_mlPregen`, `_mlApplyPending`, the `_songAnswer` for the melody), so in a song with Follow off the melody keeps the line it was started with
-(Follow on re-roots it onto each chord, which is what most songs use); Piano, Organ and the sampled melody voices (per-pitch recordings); Pure tuning's cents; the melody strip (part `mel`, the keyboard strip) and
+**Not done.** Piano, Organ and the sampled melody voices (per-pitch recordings); Pure tuning's cents; the melody strip (part `mel`, the keyboard strip) and
 mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlayNote` feeds and the engine does not. Not heard on device: checklist 33.
+
+
+## Migration A (6.9.9.9.9.9.9.3): melody lines written ahead
+
+**Built.** The song answer supplies melody independently of Bass Follow. Both current lines are generated before both next lines, preserving the page's random draw order. Follow leaves the written melody alone; with Follow off and Sync on, `_mlPregen` supplies the next chord's line. Rests, slash chords and capo use the same inputs as `_syncPregenNext`. Sending a line clears the page's pending copy. `seqMelPending` passes cells (including chords) to `MelSequencer`, relative to the melody's own first frame. A line lands at its target with the page's 2 ms tolerance, or at the loop boundary when untimed, without resetting slide history or step position. With no new answer the last line repeats.
+
+**Measured.** `melgrid.test.js` adds two generated-line cases crossing chord changes, including polyphonic cells: 42 notes each, identical timing, pitch, length, velocity and slides against the real page scheduler. Existing Follow-on and lock cases still pass. `songask.test.js` adds 16 comparisons with the page's own `_syncPregenNext`: independent Follow settings, rests and capo; pending arrays agree and no page copy remains. Two scratch copies deliberately disable pending adoption or land it 250 ms early; both fail both new event cases. The host test sends a pending line through the Objective-C++ method and checks the resulting MIDI pitch.
+
+**Not done.** Not heard on device (checklist 34). Voice expansion, observers and the automatic scheduler cutover remain separate migration items; these developer entries still require the page scheduler to be stopped.

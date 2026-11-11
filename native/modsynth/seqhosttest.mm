@@ -740,6 +740,9 @@ int main() {
       [g seqSetDrumScore:bytes(score())];
       [g seqStartWithBpm:120 rate:1 leadMs:100 seed:3];
       CHECK([g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:YES kit:4 seed:3], "the melody starts");
+      std::vector<double> pending = {1, 1, 48000 * 0.75, 16};
+      for (int i = 0; i < 16; i++) pending.insert(pending.end(), {1, 5, 5, 1, 0, 0, 0, 0, 0});
+      CHECK([g seqSetMelPending:bytes(pending)], "a melody line written ahead is accepted");
       std::vector<float> l(240), r(240); float peak = 0;
       for (int t = 0; t < 1500; t += 5) {
         [g renderInto:l.data() right:r.data() frames:240];
@@ -747,6 +750,7 @@ int main() {
         usleep(5000);
       }
       NSDictionary *m = [g seqMirror], *a = m[@"mel"];
+      CHECK([a[@"lastMidi"] intValue] == 77, "the pending melody lands on its target chord (MIDI %d)", [a[@"lastMidi"] intValue]);
       CHECK([a[@"running"] boolValue] && [a[@"steps"] intValue] > 8, "the melody steps with no page: %d steps", [a[@"steps"] intValue]);
       CHECK([a[@"firstFrame"] doubleValue] == [m[@"firstFrame"] doubleValue], "and it shares the drums' downbeat (frame %.0f)", [a[@"firstFrame"] doubleValue]);
       CHECK([a[@"notes"] intValue] >= [a[@"steps"] intValue] + 2 && [a[@"voices"] intValue] == [a[@"notes"] intValue] && [a[@"misses"] intValue] == 0 && [a[@"refused"] intValue] == 0,
