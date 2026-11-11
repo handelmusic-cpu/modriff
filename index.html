@@ -52295,14 +52295,15 @@ function stopEverything(){
  // The chord rhythm is a transport layer too: Stop ends it (it is armed still, and a chord tap starts it again).
  try{ crPreviewStop(); crStop(); }catch(e){}
  clearTimeout(clockTimer);
- if(_isRecording) _stopRecording();
+ if(_isRecording) _stopRecording(true);
  Object.keys(_melLive).forEach(m=>releaseMelNote(+m));
- stopAll();
+ if(_recFinishing) releaseSustainedChord(_chordLiveId);
+ else stopAll();
  // Silences whatever the arp, bass and melody generator had already
  // committed into the next look-ahead's worth of the audio graph — see the
  // comment on hardKillAll() for why activeOscs/stopAll() alone can't reach
  // them. This is what stops a stray note from sounding after an ending.
- if(typeof hardKillAll==='function') hardKillAll();
+ if(!_recFinishing && typeof hardKillAll==='function') hardKillAll();
  setNowPlayingPad(-1,null);
  syncFixedTransport();
 }
@@ -53479,10 +53480,12 @@ async function _deliverFiles(list, opts){
 }
 
 function toggleRecording(){
+  if(_recFinishing) return;
   if(_isRecording) _stopRecording();
   else _startRecording();
 }
 function _startRecording(){
+  if(_recFinishing) return;
   // The pack sheet's demo plays through the drum engine the take listens to.
   try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
@@ -54014,8 +54017,20 @@ async function _finishSinkTaps(written, taps, base, sr, tags, span, folder){
   }
   if(drop.length){ try{ pl.fileDelete({names:drop}); }catch(e){} }
 }
-function _stopRecording(){
+// Keep mix, stem and native taps open after the transport stops. The old
+// 150 ms flush captured buffers already rendered, never the remaining sound.
+var _recFinishing=false;
+var REC_TAIL_MS=8000;
+function _stopRecording(transportStopped){
+  if(!_isRecording || _recFinishing) return;
+  _recFinishing=true;
   var midiFile=_stopMidiRecording();
+  if(!transportStopped) stopEverything();
+  _updateRecBtn();
+  showToast('Finishing notes and effects…');
+  setTimeout(function(){ _finishRecording(midiFile); }, REC_TAIL_MS);
+}
+function _finishRecording(midiFile){
   // Taken now, not 150ms from now: a take started inside that window sets its own.
   var sink=_recSink; _recSink=null;
   var tap=_recTap;
@@ -54036,7 +54051,7 @@ function _stopRecording(){
       // The stem taps were made for this take; leaving them connected would keep
       // eight worklets running into the destination for no reason.
       _abandonStemTaps();
-      showToast('Nothing captured');_isRecording=false;_updateRecBtn();return;
+      showToast('Nothing captured');_isRecording=false;_recFinishing=false;_updateRecBtn();return;
     }
     var base0=await _exportName('modriff-session','bounce');
     var totalLen, span=null, fullL=null, fullR=null;
@@ -54046,7 +54061,7 @@ function _stopRecording(){
       // whether it held any sound are needed here.
       try{ await sink.drain(); }catch(e){ sink.failed=sink.failed||e; }
       if(sink.failed){
-        sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
+        sink.discard(); _abandonStemTaps(); _isRecording=false;_recFinishing=false;_updateRecBtn();
         showToast('Could not write the bounce to disk — nothing was saved');
         try{ console.warn('[rec] stream failed', sink.failed); }catch(e){}
         return;
@@ -54061,7 +54076,7 @@ function _stopRecording(){
       var _natLive=_natCapLive(natMix, 64);
       if(sink.live<64 && _natLive<64){
         sink.discard();
-        _isRecording=false;_updateRecBtn();
+        _isRecording=false;_recFinishing=false;_updateRecBtn();
         _abandonStemTaps();
         // A host capture that failed (its sample rate or clock) leaves a take
         // played by the engine looking exactly like a dead tap; name it.
@@ -54118,7 +54133,7 @@ function _stopRecording(){
       if(_a>=0.0005 && ++_live>=64) break;
     }
     if(_live < 64){
-      _isRecording=false;_updateRecBtn();
+      _isRecording=false;_recFinishing=false;_updateRecBtn();
       // Tear the stem taps down without running them through the file writer;
       // if the mix came back empty the stems are not worth writing either.
       _abandonStemTaps();
@@ -54144,7 +54159,7 @@ function _stopRecording(){
       var _nOut=Math.min(span.n,_capN); _audioCut=span.n>_capN;
       try{ files=[ await _finishSinkMix(sink, natMix, span, _nOut, base, _sr, tags, folder, _audioCut ? _exportFadeFrames(_nOut,_sr) : 0) ]; }
       catch(e){
-        sink.discard(); _abandonStemTaps(); _isRecording=false;_updateRecBtn();
+        sink.discard(); _abandonStemTaps(); _isRecording=false;_recFinishing=false;_updateRecBtn();
         showToast('Could not write the bounce to disk — nothing was saved');
         try{ console.warn('[rec] finishing the mix failed', e); }catch(_){}
         return;
@@ -54179,7 +54194,7 @@ function _stopRecording(){
     // 'modo-performance-live.mid'. The mix's base wins; the .mid keeps only
     // its -live suffix, which is what distinguishes it.
     if(midiFile) files.push({ name:base+'-live.mid', blob:midiFile.blob });
-    _isRecording=false;_updateRecBtn();
+    _isRecording=false;_recFinishing=false;_updateRecBtn();
     // Said before handing over, not after: the share sheet takes the screen,
     // and a toast nobody can see is a toast nobody reads.
     var parts=[];
@@ -54234,7 +54249,8 @@ window._recFmt=_recFmt;
 function _updateRecBtn(){
   var b=document.getElementById('rec-btn');
   if(b){
-    b.textContent=_isRecording?'■ Stop & save files':'⬤ Bounce — audio + MIDI';
+    b.textContent=_recFinishing?'Finishing…':_isRecording?'■ Stop & save files':'⬤ Bounce — audio + MIDI';
+    b.disabled=!!_recFinishing;
     b.style.color=_isRecording?'#ff4444':'var(--pr)';
     b.classList.toggle('active',_isRecording);
   }
@@ -54244,7 +54260,8 @@ function _updateRecBtn(){
   var tb=document.getElementById('ft-bounce-btn');
   if(tb){
     tb.classList.toggle('off',!_isRecording);
-    tb.innerHTML=_ftTile('bounce', _isRecording?'Stop':'Bounce');
+    tb.innerHTML=_ftTile('bounce', _recFinishing?'Finishing…':_isRecording?'Stop':'Bounce');
+    tb.disabled=!!_recFinishing;
     tb.title=_isRecording
       ? ('Bouncing — tap to stop and download the .wav'+(exportStems?', the stems':'')+' and .mid')
       : ('Bounce — records what you hear to a .wav and your performance to a .mid, both downloaded when you stop.'
@@ -54254,14 +54271,14 @@ function _updateRecBtn(){
   document.querySelectorAll('[data-recring]').forEach(function(r){
     r.classList.toggle('on',!!_isRecording);
     r.setAttribute('aria-pressed',_isRecording?'true':'false');
-    r.setAttribute('aria-label',_isRecording?'Stop the bounce and save the files':'Bounce: record what you play to audio and MIDI');
+    r.setAttribute('aria-label',_recFinishing?'Finishing notes and effects':_isRecording?'Stop the bounce and save the files':'Bounce: record what you play to audio and MIDI');
   });
   var rw=document.getElementById('rec-w');
   if(rw){
     rw.classList.toggle('on',!!_isRecording);
     var rwa=rw.querySelector('.rec-w-what'), rws=rw.querySelector('.rec-w-sub');
-    if(rwa) rwa.textContent=_isRecording?'Recording':'Bounce';
-    if(rws) rws.textContent=_isRecording?'Tap to stop and save':'Audio and MIDI';
+    if(rwa) rwa.textContent=_recFinishing?'Finishing…':_isRecording?'Recording':'Bounce';
+    if(rws) rws.textContent=_recFinishing?'Letting notes and effects finish':_isRecording?'Tap to stop and save':'Audio and MIDI';
   }
   _recClockSync();
   var led=document.getElementById('exp-led');
