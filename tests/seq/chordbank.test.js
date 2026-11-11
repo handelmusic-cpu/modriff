@@ -20,7 +20,7 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
-const VOICES = (process.env.VOICES || 'sine,triangle,sawtooth,square,piano,pad').split(',');
+const VOICES = (process.env.VOICES || 'sine,triangle,sawtooth,square,piano,pad,pianoreal2,jazzgtr,flute').split(',');
 let fail = 0;
 const ok = (c, label, detail) => { if (!c) fail++; console.log((c ? 'ok   ' : 'FAIL ') + label + (c ? '' : '  -> ' + detail)); };
 function serve() {
@@ -81,7 +81,13 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
     for (const S of SETTINGS) {
       const out = await page.evaluate(async ({ voice, S, CHORDS, LEVELS, ONSETS, NEED }) => {
         const sr = 48000;
-        wave = voice; strumMode = S.strum; fxWidth = S.width; chordSubOn = true;
+        wave = voice;
+        if(SAMPLED_WAVES[voice]){
+          preloadSampleInstrument(SAMPLED_WAVES[voice]);
+          const until = performance.now() + 15000;
+          while(SAMPLE_STATE[SAMPLED_WAVES[voice]] === 'loading' && performance.now() < until) await new Promise(r => setTimeout(r, 10));
+        }
+        strumMode = S.strum; fxWidth = S.width; chordSubOn = true;
         document.getElementById('strum-spread').value = S.spread;
         window.modParamsSync && window.modParamsSync();
         const entries = [], why = {};

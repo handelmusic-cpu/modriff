@@ -30,9 +30,12 @@ struct MelPlayer {
   void reset() { notes = slides = voices = misses = refused = lateStarts = 0; }
 
   // The entry for a note: the regime of length that holds `durSec` (ordered by regime, shortest first, each valid up to its durMax).
-  static const BankEntry *pick(const DrumBank &bank, int kit, bool slide, double durSec) {
+  static const BankEntry *pick(const DrumBank &bank, int kit, bool slide, double durSec, int midi = -1) {
+    // Piano harmonics and sampled instruments change graphs at note boundaries.
+    // A pitch-specific bank must never reuse a neighbouring note's graph.
+    const int base = midi >= 0 && bank.find(kPart, kit, 256 + midi * 32) ? 256 + midi * 32 : 0;
     for (int r = 0; r < kRegimes; r++) {
-      const BankEntry *e = bank.find(kPart, kit, (slide ? kGlideLane : 0) + r);
+      const BankEntry *e = bank.find(kPart, kit, base + (slide ? kGlideLane : 0) + r);
       if (!e) return nullptr;
       if (durSec < e->durMax) return e;
     }
@@ -44,9 +47,9 @@ struct MelPlayer {
     bool slide = e.glideFrom >= 0 && std::abs(e.glideFrom - e.midi) <= 24;
     notes++;
     const double durSec = e.durFrames / sr;
-    const BankEntry *en = pick(*bank, kit, slide, durSec);
+    const BankEntry *en = pick(*bank, kit, slide, durSec, e.midi);
     // A bank with no sliding voice plays the plain one rather than nothing (the slide is a nicety; a missing note is a hole).
-    if (!en && slide) en = pick(*bank, kit, false, durSec);
+    if (!en && slide) en = pick(*bank, kit, false, durSec, e.midi);
     if (!en) { misses++; lastMissLane = slide ? kGlideLane : 0; return; }
     if (slide && en->from.empty()) slide = false;
     if (slide) slides++;

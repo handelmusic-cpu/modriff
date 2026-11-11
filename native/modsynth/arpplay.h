@@ -29,9 +29,12 @@ struct ArpPlayer {
   void reset() { notes = blocks = voices = misses = refused = lateStarts = 0; }
 
   // The entry for a step: the regime of length that holds `durSec` (the entries are ordered by regime, shortest first, each valid up to its durMax).
-  static const BankEntry *pick(const DrumBank &bank, int kit, bool block, double durSec) {
+  static const BankEntry *pick(const DrumBank &bank, int kit, bool block, double durSec, int midi = -1) {
+    // Recorded instruments and harmonic-count changes need the graph for this
+    // exact note before the envelope's length regime can be selected.
+    const int base = midi >= 0 && bank.find(kPart, kit, 256 + midi * 32) ? 256 + midi * 32 : 0;
     for (int r = 0; r < kRegimes; r++) {
-      const BankEntry *e = bank.find(kPart, kit, (block ? kBlockLane : 0) + r);
+      const BankEntry *e = bank.find(kPart, kit, base + (block ? kBlockLane : 0) + r);
       if (!e) return nullptr;
       if (durSec < e->durMax) return e;
     }
@@ -44,9 +47,9 @@ struct ArpPlayer {
     if (block) blocks++; else notes++;
     const size_t n = block ? e.notes.size() : 1;
     for (size_t i = 0; i < n; i++) {
-      const BankEntry *en = pick(*bank, kit, block, e.durSec);
-      if (!en) { misses++; lastMissLane = block ? kBlockLane : 0; continue; }
       const int tone = block ? e.notes[i] : e.midi;
+      const BankEntry *en = pick(*bank, kit, block, e.durSec, tone);
+      if (!en) { misses++; lastMissLane = block ? kBlockLane : 0; continue; }
       const int64_t frame = block ? (int64_t)std::llround(e.frameExact + (double)i * kStrumSec * sr) : e.frame;
       PatchedVoice v;
       bank->patch(*en, block ? 1.0 : e.vel, false, (double)tone, frame, sr, (uint64_t)now, v, e.durSec, -1, block ? 1.0 : e.level, block ? 0.0 : e.pan);

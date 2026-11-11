@@ -9307,7 +9307,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7a</span></div>
  </div>
 </div>
 
@@ -10754,7 +10754,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11954,7 +11954,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.6';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -33971,8 +33971,8 @@ window._arpNativeScore = function(){
  var d = [1, pat, safeRate(arpRateIdx).div, arpFree ? 1 : 0, arpFreeMs / 1000, parseFloat(document.getElementById('arp-gate').value), parseFloat(document.getElementById('decay').value),
           window._sqSwingVal(), window._sqSwing8() ? 1 : 0, shapes[arpVelShape] || 0, gp.gates.length].concat(gp.gates, [gp.accents.length], gp.accents, [motion.length], motion,
           [arpMotionHold, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('arp') >= 0 ? 1 : 0, arpOcts]);
- // What the engine cannot sound yet, with its reason (the bass and the chord refuse the same): a sampled voice, a mõdSynth patch, Pure tuning's cents.
- try{ var av = _wp('arp.voice'); if(av === 'sampler' || SAMPLED_WAVES[av]) why.push('a sampled arp voice'); else if(av === 'modsynth') why.push('a mõdSynth arp voice'); }catch(e){}
+ // Custom sampler slots, synth patches and Pure tuning still need native equivalents; factory recordings have per-pitch banks.
+ try{ var av = _wp('arp.voice'); if(av === 'sampler') why.push('a custom sampler arp voice'); else if(av === 'modsynth') why.push('a mõdSynth arp voice'); }catch(e){}
  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  return {ok: !why.length, why: why, score: d};
 };
@@ -51457,7 +51457,7 @@ window._songNativeScore = function(opts){
  var why = [], chordWhy = [];
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
-  try{ if(SAMPLED_WAVES[voice] || voice === 'sampler') chordWhy.push('a sampled chord voice'); }catch(e){}
+  try{ if(voice === 'sampler') chordWhy.push('a custom sampler chord voice'); }catch(e){}
   try{ if(voice === 'modsynth') chordWhy.push('a mõdSynth chord voice'); }catch(e){}
   try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
   try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
@@ -60726,17 +60726,21 @@ window._nsBank = {
  // random stream every time, or the random detunes and phases would read as slots that move.
  record: async function(msg, chokeAt, perVoice){
   if(typeof modParamsSync==='function') modParamsSync();
-  var keep = Math.random; Math.random = this.constRandom ? function(){ return 0.5; } : this._rng();
+  var keep = Math.random, rr = _rrLast;
+  // Probes must record the same take, and must not consume the live player's
+  // round-robin history while discovering a voice's parameter slots.
+  _rrLast = {};
+  Math.random = this.constRandom ? function(){ return 0.5; } : this._rng();
   // The recorder's clock reads zero for the length of a recording, whatever the context's is: a voice is recorded the way
   // the spike did it (a note at 0.048 s on a clock at 0), so its program is small numbers with the onset a lead in, and a
   // replay moves it by a few frames rather than subtracting a long running clock (whose rounding moved onsets a frame).
   var cap = MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
   try{ window.modEngine.send(Object.assign({v: 1}, msg)); }
-  finally{ MODGRAPH.capture = null; MODGRAPH.captureClock = null; Math.random = keep; }
+  finally{ MODGRAPH.capture = null; MODGRAPH.captureClock = null; Math.random = keep; _rrLast = rr; }
   await Promise.resolve(); await Promise.resolve();
   if(cap.length !== 1) return null;
   var rec = cap[0], bufs = rec.takeNewBuffers();
-  if(bufs.length && MODGRAPH.plugin && MODGRAPH.plugin.graphBuf) bufs.forEach(function(b){ MODGRAPH.plugin.graphBuf({id: b.id, sampleRate: b.sampleRate, channels: b.channels.map(_mgB64)}); });
+  if(bufs.length && MODGRAPH.plugin && MODGRAPH.plugin.graphBuf) await Promise.all(bufs.map(function(b){ return MODGRAPH.plugin.graphBuf({id: b.id, sampleRate: b.sampleRate, channels: b.channels.map(_mgB64)}); }));
   var out = {prog: rec.program(), edits: rec.capturedEdits || 0};
   if(this.keepRecs) this.recs.push(rec);   // a whole-score test keeps the recorders, to take the edits the page's chokes make on them (tests/seq/score.test.js)
   // What a choke does to this voice. The program is sent, so from here the recorder writes every change down as an edit
@@ -60863,19 +60867,21 @@ window._nsBank = {
  // lane is -- velocity, accent, pitch (the note), the start time, the soft-hit floors -- and also the LENGTH, whose slots clamp
  // (a plucked envelope's `min(0.09, dur * 0.35)`), and the glide: a note that slides from the previous one has its own program (the
  // frequency ramp), so it is a second entry with the note it glides from as one more quantity. Returns {ok, entries:[Float64Array]}
- // (plain, then glide) or {ok:false, why}. Voices that are samples are refused: their program names a recording per note.
- buildBass: async function(voice){
+ // (plain, then glide) or {ok:false, why}. Sampled voices require a separate recording at each pitch.
+ buildBass: async function(voice, pitch){
   if(!MODGRAPH.on || !MODGRAPH.parts.bass) return {ok: false, why: 'the bass part is not on the graph path (Native sound)'};
+  if(voice === 'modsynth') return {ok: false, why: 'a mõdSynth voice (the Processor plays it, not a graph)'};
+  if(voice === 'sampler') return {ok: false, why: 'a custom sampler voice (slot and slice invalidation is not banked yet)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD;
-  var REFN = 41, REFD = 0.25, REFV = 0.7, REFFROM = 36;
-  if(typeof BASS_SAMPLED !== 'undefined' && BASS_SAMPLED[voice]) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  var fixed = Number.isInteger(pitch), REFN = fixed ? pitch : 41, REFD = 0.25, REFV = 0.7, REFFROM = REFN - 5;
+  if(!fixed && typeof BASS_SAMPLED !== 'undefined' && BASS_SAMPLED[voice]) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
   // Four programs: the note's own `slide` (it runs into the next one: a longer tail) and `from` (it starts gliding from the last) are
   // independent, and each changes the voice. Lane = slide * 2 + glide.
   var entries = [];
   for(var variant = 0; variant < 4; variant++){
    var glides = (variant & 1) === 1;
    var base = {kind: 'note', part: 'bass', id: 1, note: REFN, vel: REFV, accent: false, slide: (variant & 2) === 2, from: glides ? REFFROM : null, at: AT0, dur: REFD, tune: 0};
-   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o)); };
+   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o, fixed ? {note: REFN} : {})); };
    var tag = ['', ' (gliding)', ' (sliding)', ' (sliding and gliding)'][variant];
    await R({});
    var ref = await R({});
@@ -60888,7 +60894,7 @@ window._nsBank = {
     var v1 = await must({vel: 0.35}, 'velocity 0.35'), v2 = await must({vel: 0.5}, 'velocity 0.5'), ac = await must({accent: true}, 'accent');
     // The note: sizes across the roll's whole range first (the Triangle drum lane taught that a program can change size at a pitch).
     var mp = {};
-    for(var mi = 0, ms = [28, 33, 47, 59, 64, 70, 76]; mi < ms.length; mi++) mp[ms[mi]] = await must({note: ms[mi]}, 'note ' + ms[mi]);
+    for(var mi = 0, ms = fixed ? [REFN] : [28, 33, 47, 59, 64, 70, 76]; mi < ms.length; mi++) mp[ms[mi]] = await must({note: ms[mi]}, 'note ' + ms[mi]);
     var p1 = await must({note: 30}, 'note 30'), p2 = await must({note: 52}, 'note 52');
     var t1 = await must({at: AT0 + 0.02}, 'start time +20 ms'), t2 = await must({at: AT0 + 0.05}, 'start time +50 ms');
     var durs = [0.05, 0.1, 0.18, 0.4, 0.8, 1.6, 3.2], dp = [];
@@ -60984,7 +60990,7 @@ window._nsBank = {
     if(near(add)) continue;
     if(near(mu)) mul.push(+key); else return {ok: false, why: 'slot ' + key + ' follows several quantities in a way that is neither a sum nor a product' + tag};
    }
-   var d = [1, 2, window._nsKitCode('bass:' + voice), variant, ++this.gen, AT0, LEAD, REFV, n];
+   var d = [1, 2, window._nsKitCode('bass:' + voice), (fixed ? 256 + pitch * 8 : 0) + variant, ++this.gen, AT0, LEAD, REFV, n];
    for(var j = 0; j < n; j++) d.push(P0[j]);
    var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
    put(fv.slots.map(function(q){ return [q[0], q[1], 0]; })); put(fa.map(function(q){ return [q[0], q[1], 0]; })); put(fpl);
@@ -61039,23 +61045,24 @@ window._nsBank = {
  // voice with a second envelope, against that one's): a note shorter than the attack ends its decay before its rise is over. The voice is therefore banked
  // in REGIMES of length, found here by recording a ladder of lengths and watching the small whole numbers in the program (the op codes) change, then
  // bisecting to the length where they do. Each regime is an entry of its own, valid for notes shorter than its `durMax`; the player takes the first that holds.
- buildArp: async function(voice){
+ buildArp: async function(voice, pitch){
   var keep = this.constRandom;
-  try { return await this._buildArp(voice); } finally { this.constRandom = keep; }
+  try { return await this._buildArp(voice, pitch); } finally { this.constRandom = keep; }
  },
- _buildArp: async function(voice){
+ _buildArp: async function(voice, pitch){
   if(!MODGRAPH.on || !MODGRAPH.parts.arp) return {ok: false, why: 'the arp part is not on the graph path (Native sound)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD;
-  var REFN = 60, REFV = 0.8, REFL = 0.8, REFP = -0.75;
-  if(voice === 'sampler' || (typeof SAMPLED_WAVES !== 'undefined' && SAMPLED_WAVES[voice])) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  var fixed = Number.isInteger(pitch), REFN = fixed ? pitch : 60, REFV = 0.8, REFL = 0.8, REFP = -0.75;
+  if(!fixed && (voice === 'sampler' || (typeof SAMPLED_WAVES !== 'undefined' && SAMPLED_WAVES[voice]))) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
   if(voice === 'modsynth') return {ok: false, why: 'a mõdSynth voice (the Processor plays it, not a graph)'};
   var atk = _smpAtk(voice, _wp('chord.attack'));
-  var entries = [], NOTES = [24, 36, 48, 59, 66, 72, 84, 96, 108], x2 = function(p){ return Math.pow(2, p / 12); };
-  var DMAX = 4.5, MAXREG = 8;
+  var entries = [], NOTES = fixed ? [REFN] : [24, 36, 48, 59, 66, 72, 84, 96, 108], x2 = function(p){ return Math.pow(2, p / 12); };
+  var DMAX = fixed ? 16 : 4.5, MAXREG = 8;
   for(var kind = 0; kind < 2; kind++){
    var blk = kind === 1, who = blk ? ' (block)' : ' (note)';
    // The message the page sends for the arp; `o` overrides one field of it.
    var mk = function(o){
+    if(fixed) o = Object.assign({}, o, {note: REFN});
     if(blk) return {kind: 'chord', part: 'arp', id: 1, root: null, notes: [o.note != null ? o.note : REFN], bass: null, vel: 1, at: o.at != null ? o.at : AT0, dur: o.dur, tunes: [0]};
     return Object.assign({kind: 'note', part: 'arp', id: 1, note: REFN, vel: REFV, level: REFL, pan: REFP, at: AT0, tune: 0}, o);
    };
@@ -61063,7 +61070,7 @@ window._nsBank = {
    // same tone in a chord (the chord voice has the same rule); a note draws from the same stream every time and needs no such thing.
    var R = async function(o){ window._chokeReset(); self.constRandom = blk; return self.record(mk(o)); };
    // 1. The ladder of lengths: where does the order of the envelope's events change?
-   var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= 1.19; }
+   var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= fixed ? 1.09 : 1.19; }
    [atk, atk + 0.005].forEach(function(b){ [-0.0004, 0.0004].forEach(function(e){ if(b + e > 0.001) grid.push(b + e); }); });
    grid.sort(function(a, b){ return a - b; });
    var gp = [], size = 0;
@@ -61198,7 +61205,7 @@ window._nsBank = {
     }
     // The curve slots are replaced outright by the velocity; a level or pitch that moves one of them would be lost.
     if(velCurve.some(function(q){ return (touch[q[0]] || []).length; })) return {ok: false, why: 'a clamped velocity curve is also moved by another quantity' + tag};
-    var d = [1, 5, window._nsKitCode('arp:' + voice), blk ? 16 + ri : ri, ++this.gen, AT0, LEAD, REFV, n];
+    var d = [1, 5, window._nsKitCode('arp:' + voice), (fixed ? 256 + pitch * 32 : 0) + (blk ? 16 + ri : ri), ++this.gen, AT0, LEAD, REFV, n];
     for(var j = 0; j < n; j++) d.push(P0[j]);
     var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
     put(fv); put([]); put(fpl);
@@ -61225,30 +61232,33 @@ window._nsBank = {
  // and the bass's (the accent, and the note it slides from). Bank part 6. Two kinds: the note, and the note that slides from the one before (_webMelgenNote: a detune ramp on the
  // voice's oscillators from (from - note) cents*100 down to nothing over `glideTime`; none at all for a leap of more than 24 semitones, so the player uses the plain voice there).
  // vel is the level; accent multiplies the gain by 1.25 against 0.85. The glide's lanes are 16 and up.
- buildMel: async function(voice){
+ buildMel: async function(voice, pitch){
   var keep = this.constRandom;
-  try { return await this._buildMel(voice); } finally { this.constRandom = keep; }
+  try { return await this._buildMel(voice, pitch); } finally { this.constRandom = keep; }
  },
- _buildMel: async function(voice){
+ _buildMel: async function(voice, pitch){
   if(!MODGRAPH.on || !MODGRAPH.parts.melgen) return {ok: false, why: 'the melody generator part is not on the graph path (Native sound)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD;
-  var REFN = 66, REFV = 0.5, REFFROM = 60, REFGT = 0.06;
-  if(voice === 'sampler' || (typeof SAMPLED_WAVES !== 'undefined' && SAMPLED_WAVES[voice])) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  var fixed = Number.isInteger(pitch), REFN = fixed ? pitch : 66, REFV = 0.5, REFFROM = REFN - 6, REFGT = 0.06;
+  if(!fixed && (voice === 'sampler' || (typeof SAMPLED_WAVES !== 'undefined' && SAMPLED_WAVES[voice]))) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
   if(voice === 'modsynth') return {ok: false, why: 'a mõdSynth voice (the Processor plays it, not a graph)'};
   var entries = [], x2 = function(p){ return Math.pow(2, p / 12); };
-  var DMAX = 4.5, MAXREG = 8;
+  // A low piano's body reaches its cap after four seconds. Fitting only below
+  // that cap mistakes its last bend for a slope that continues forever.
+  var DMAX = fixed ? 16 : 4.5, MAXREG = 8;
   for(var kind = 0; kind < 2; kind++){
    var glides = kind === 1, who = glides ? ' (sliding note)' : ' (note)';
    // The notes the register is checked at; a sliding note is checked with its slide from 6 semitones below it (the slide only exists within 24), as the reference is.
-   var NOTES = [36, 48, 55, 60, 66, 72, 79, 84, 91, 100], PN1 = glides ? 52 : 48, PN2 = glides ? 76 : 72;
+   var NOTES = fixed ? [REFN] : [36, 48, 55, 60, 66, 72, 79, 84, 91, 100], PN1 = glides ? 52 : 48, PN2 = glides ? 76 : 72;
    var mk = function(o){
     var m = Object.assign({kind: 'note', part: 'melgen', id: 1, note: REFN, vel: REFV, accent: false, at: AT0, tune: 0}, o);
+    if(fixed) m.note = REFN;
     if(glides){ if(m.glideFrom == null) m.glideFrom = REFFROM; if(m.glideTime == null) m.glideTime = REFGT; }
     return m;
    };
    var R = async function(o){ window._chokeReset(); return self.record(mk(o)); };
    // 1. The ladder of lengths: where does the order of the envelope's events change?
-   var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= 1.19; }
+   var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= fixed ? 1.09 : 1.19; }
    var gp = [], size = 0;
    await R({dur: 0.2});
    for(var gi = 0; gi < grid.length; gi++){
@@ -61306,7 +61316,7 @@ window._nsBank = {
      t1 = await must({at: AT0 + 0.02}, 'start time +20 ms'); t2 = await must({at: AT0 + 0.05}, 'start time +50 ms');
      for(var di = 0; di < durs.length; di++) dp.push(await must({dur: durs[di]}, 'length ' + durs[di].toFixed(4)));
      if(glides){
-      f1 = await must({glideFrom: 50}, 'slide from 50'); f2 = await must({glideFrom: 72}, 'slide from 72');
+      f1 = await must({glideFrom: fixed ? REFFROM - 4 : 50}, 'slide from 50'); f2 = await must({glideFrom: fixed ? REFFROM + 4 : 72}, 'slide from 72');
       g1 = await must({glideTime: 0.03}, 'slide time 0.03'); g2 = await must({glideTime: 0.1}, 'slide time 0.1');
      }
     } catch(e){ return {ok: false, why: String(e.message || e)}; }
@@ -61325,9 +61335,9 @@ window._nsBank = {
     // The slide: the note it comes from (a frequency or a note number, as the pitch), and how long it takes.
     var ffit = [], fgt = [];
     if(glides){
-     var gf = this._fit(P0, x2(REFFROM), f1, x2(50), f2, x2(72)), gl = gf.slots.map(function(q){ return [q[0], q[1], 0]; });
+     var gf = this._fit(P0, x2(REFFROM), f1, x2(fixed ? REFFROM - 4 : 50), f2, x2(fixed ? REFFROM + 4 : 72)), gl = gf.slots.map(function(q){ return [q[0], q[1], 0]; });
      if(gf.bad.length){
-      var gq = this._fit(P0, REFFROM, f1, 50, f2, 72), okg = {}; gq.slots.forEach(function(q){ okg[q[0]] = q[1]; });
+      var gq = this._fit(P0, REFFROM, f1, fixed ? REFFROM - 4 : 50, f2, fixed ? REFFROM + 4 : 72), okg = {}; gq.slots.forEach(function(q){ okg[q[0]] = q[1]; });
       var rg2 = gf.bad.filter(function(i){ return okg[i] === undefined; });
       if(rg2.length) return {ok: false, why: rg2.length + ' slide slots follow neither frequency nor note number' + tag};
       gf.bad.forEach(function(i){ gl.push([i, okg[i], 1]); });
@@ -61373,13 +61383,13 @@ window._nsBank = {
     if(shared.length) return {ok: false, why: shared.length + ' slots follow the length or a clamped velocity curve and another quantity' + tag};
     if(velCurve.some(function(q){ return dslots.some(function(r){ return r[0] === q[0]; }); })) return {ok: false, why: 'a slot follows both the length and the velocity' + tag};
     // Slots two quantities move: add or multiply, from one joint recording.
-    var jn = await rec(glides ? {vel: 0.3, accent: true, note: 72, glideFrom: 55, glideTime: 0.09} : {vel: 0.3, accent: true, note: 72});
+    var jn = await rec(glides ? {vel: 0.3, accent: true, note: 72, glideFrom: fixed ? REFFROM + 2 : 55, glideTime: 0.09} : {vel: 0.3, accent: true, note: 72});
     if(!jn) return {ok: false, why: 'the joint recording changes size' + tag};
     var touch = {};
     var tally = function(list, x0, x){ list.forEach(function(q){ (touch[q[0]] = touch[q[0]] || []).push([q[1], x0, x]); }); };
     tally(fv, REFV, 0.3); tally(fa, 0, 1);
     tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(72 - REFN)); tally(fpl.filter(function(q){ return q[2]; }), 0, 72 - REFN);
-    if(glides){ tally(ffit.filter(function(q){ return !q[2]; }), x2(REFFROM), x2(55)); tally(ffit.filter(function(q){ return q[2]; }), REFFROM, 55); tally(fgt, REFGT, 0.09); }
+    if(glides){ tally(ffit.filter(function(q){ return !q[2]; }), x2(REFFROM), x2(fixed ? REFFROM + 2 : 55)); tally(ffit.filter(function(q){ return q[2]; }), REFFROM, fixed ? REFFROM + 2 : 55); tally(fgt, REFGT, 0.09); }
     var mul = [];
     for(var ck in pclamp) if((touch[ck] || []).length > 1) return {ok: false, why: 'slot ' + ck + ' is held at the ends of the roll and also follows another quantity' + tag};
     for(var key in touch){
@@ -61391,7 +61401,7 @@ window._nsBank = {
      if(near(mu)) mul.push(+key); else return {ok: false, why: 'slot ' + key + ' follows several quantities in a way that is neither a sum nor a product' + tag};
     }
     if(velCurve.some(function(q){ return (touch[q[0]] || []).length; })) return {ok: false, why: 'a clamped velocity curve is also moved by another quantity' + tag};
-    var d = [1, 6, window._nsKitCode('mel:' + voice), glides ? 16 + ri : ri, ++this.gen, AT0, LEAD, REFV, n];
+    var d = [1, 6, window._nsKitCode('mel:' + voice), (fixed ? 256 + pitch * 32 : 0) + (glides ? 16 + ri : ri), ++this.gen, AT0, LEAD, REFV, n];
     for(var j = 0; j < n; j++) d.push(P0[j]);
     var put = function(list){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], q[2] || 0); }); };
     put(fv); put(fa); put(fpl);
@@ -61417,18 +61427,35 @@ window._nsBank = {
  },
  // The melody generator voice's signature: what a recording of it bakes in -- the voice, the part's fader, the trim, the drift, and the tuning.
  signatureMel: function(){
-  return JSON.stringify([_wp('melgen.voice'), _wp('mix.melgen'), _wp('fx.trim'), _wp('fx.drift'), _wp('master.tune')]);
+  var voice = _wp('melgen.voice');
+  return JSON.stringify([voice, _wp('mix.melgen'), _wp('fx.trim'), _wp('fx.drift'), _wp('master.tune'),
+                         SAMPLED_WAVES[voice] ? SAMPLE_STATE[SAMPLED_WAVES[voice]] : null]);
  },
  // The voice, recorded and sent if the host does not hold it under the current signature. Resolves {built, kept, failed}.
- ensureMel: async function(){
+ ensureMel: async function(pitches){
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
-  var voice = _wp('melgen.voice'), sig = this.signatureMel(), key = 'mel:' + voice;
-  if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; return rep; }
-  var r = await this.buildMel(voice);
-  if(r.ok){ for(var i = 0; i < r.entries.length; i++) await P.seqBank({entry: _mgB64(r.entries[i])}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-  else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, why: r.why}); }
+  var voice = _wp('melgen.voice'), sig = this.signatureMel();
+  var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
+  if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready'){
+   _preloadIfSampled(voice);
+   rep.failed.push({voice: voice, why: 'the instrument recordings are still loading'}); return rep;
+  }
+  var notes = perPitch ? (pitches || Array.from({length:128}, function(_, n){ return n; })) : [null];
+  for(var ni = 0; ni < notes.length; ni++){
+   var note = notes[ni], key = 'mel:' + voice + (perPitch ? ':' + note : '');
+   if(this.have[key] === sig){ rep.kept++; continue; }
+   // A cached refusal is still a refusal: reporting it as kept could start a silent part.
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   var r = await this.buildMel(voice, note);
+   if(r.ok){ for(var i = 0; i < r.entries.length; i++){
+    var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
+    if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
+   } }
+   if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+  }
   return rep;
  },
  // The chord voice for ONE note (the engine's chord comp, docs/native-scheduling.md slice 2): a chord is a sub oscillator under the root
@@ -61532,7 +61559,8 @@ window._nsBank = {
  buildChordNote: async function(voice, pitch, hold){
   if(!MODGRAPH.on || !MODGRAPH.parts.chord) return {ok: false, why: 'the chord part is not on the graph path (Native sound)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD, REFV = 0.8, REFD = 1.0;
-  if(typeof SAMPLED_WAVES !== 'undefined' && (voice === 'sampler' || SAMPLED_WAVES[voice])) return {ok: false, why: 'a sampled voice (its program names a recording per note)'};
+  if(voice === 'sampler') return {ok: false, why: 'a custom sampler voice (slot and slice invalidation is not banked yet)'};
+  if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready') return {ok: false, why: 'the instrument recordings are still loading'};
   var base = {kind: 'chord', part: 'chord', id: 1, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
   var keep = this.constRandom; this.constRandom = true;
   try {
@@ -61649,7 +61677,7 @@ window._nsBank = {
  // wave, the part's fader and trim, the Width panner, and the tuning.
  signatureChord: function(){
   return JSON.stringify([_wp('chord.voice'), _wp('chord.attack'), _wp('chord.release'), _wp('chord.reverb'), _wp('chord.sub'), _wp('chord.subLevel'),
-                         _wp('chord.subWave'), _wp('mix.chord'), _wp('fx.trim'), _wp('fx.width'), _wp('master.tune')]);
+                         _wp('chord.subWave'), _wp('mix.chord'), _wp('fx.trim'), _wp('fx.width'), _wp('master.tune'), SAMPLE_STATE[SAMPLED_WAVES[_wp('chord.voice')]]]);
  },
  // The pitches a set of chords needs, recorded and sent if the host does not hold them under the current signature. Resolves {built, kept, failed}.
  // hold: the held chord a gated hit plays (bank part 4), which is its own recording of each pitch.
@@ -61660,7 +61688,8 @@ window._nsBank = {
   var voice = _wp('chord.voice'), sig = this.signatureChord();
   for(var i = 0; i < pitches.length; i++){
    var key = 'chord:' + voice + ':' + pitches[i] + (hold ? ':hold' : '');
-   if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+   if(this.have[key] === sig){ rep.kept++; continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
    var r = await this.buildChordNote(voice, pitches[i], hold);
    if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
@@ -61669,36 +61698,69 @@ window._nsBank = {
  },
  // The bass voice's signature: what a recording of it bakes in -- the voice, the part's level, the filter, the mixer fader.
  signatureBass: function(){
-  return JSON.stringify([_wp('bass.voice'), _wp('bass.level'), _wp('bass.cutoff'), _wp('bass.resonance'), _wp('mix.bass')]);
+  var v = _wp('bass.voice');
+  var lib = BASS_SAMPLED[v] ? BASS_SAMPLED[v].lib : SAMPLED_WAVES[v];
+  return JSON.stringify([v, _wp('bass.level'), _wp('bass.cutoff'), _wp('bass.resonance'), _wp('mix.bass'), lib ? SAMPLE_STATE[lib] : null]);
  },
  // The bass voice, recorded and sent if the host does not hold it under the current signature. Resolves {built, kept, failed}.
- ensureBass: async function(){
+ ensureBass: async function(pitches){
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
-  var voice = _wp('bass.voice'), sig = this.signatureBass(), key = 'bass:' + voice;
-  if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; return rep; }
-  var r = await this.buildBass(voice);
-  if(r.ok){ for(var i = 0; i < r.entries.length; i++) await P.seqBank({entry: _mgB64(r.entries[i])}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-  else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, why: r.why}); }
+  var voice = _wp('bass.voice'), sig = this.signatureBass();
+  var lib = BASS_SAMPLED[voice] ? BASS_SAMPLED[voice].lib : SAMPLED_WAVES[voice];
+  var perPitch = !!lib;
+  if(lib && SAMPLE_STATE[lib] !== 'ready'){
+   preloadSampleInstrument(lib);
+   rep.failed.push({voice: voice, why: 'the instrument recordings are still loading'}); return rep;
+  }
+  var notes = perPitch ? (pitches || Array.from({length:128}, function(_, n){ return n; })) : [null];
+  for(var ni = 0; ni < notes.length; ni++){
+   var note = notes[ni], key = 'bass:' + voice + (perPitch ? ':' + note : '');
+   if(this.have[key] === sig){ rep.kept++; continue; }
+   // A cached refusal is still a refusal: reporting it as kept could start a silent part.
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   var r = await this.buildBass(voice, note);
+   if(r.ok){ for(var i = 0; i < r.entries.length; i++){
+    var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
+    if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
+   } }
+   if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+  }
   return rep;
  },
  // The arp voice's signature: what a recording of it bakes in -- the voice, the Arp fader, the chord attack and reverb it shares, the trim, and the mõdFX
  // macro's filter and width (the voice's filter opens with the velocity; the width pans the step).
  signatureArp: function(){
   return JSON.stringify([_wp('arp.voice'), _wp('mix.arp'), _wp('chord.attack'), _wp('chord.reverb'), _wp('fx.trim'), _wp('fx.cutoff'), _wp('fx.env'), _wp('fx.reso'),
-                         _wp('fx.width'), _wp('fx.drift'), _wp('master.tune')]);
+                         _wp('fx.width'), _wp('fx.drift'), _wp('master.tune'), SAMPLE_STATE[SAMPLED_WAVES[_wp('arp.voice')]]]);
  },
  // The arp voice, recorded and sent if the host does not hold it under the current signature. Resolves {built, kept, failed}.
- ensureArp: async function(){
+ ensureArp: async function(pitches){
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
-  var voice = _wp('arp.voice'), sig = this.signatureArp(), key = 'arp:' + voice;
-  if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; return rep; }
-  var r = await this.buildArp(voice);
-  if(r.ok){ for(var i = 0; i < r.entries.length; i++) await P.seqBank({entry: _mgB64(r.entries[i])}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-  else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, why: r.why}); }
+  var voice = _wp('arp.voice'), sig = this.signatureArp();
+  var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
+  if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready'){
+   _preloadIfSampled(voice);
+   rep.failed.push({voice: voice, why: 'the instrument recordings are still loading'}); return rep;
+  }
+  var notes = perPitch ? (pitches || Array.from({length:128}, function(_, n){ return n; })) : [null];
+  for(var ni = 0; ni < notes.length; ni++){
+   var note = notes[ni], key = 'arp:' + voice + (perPitch ? ':' + note : '');
+   if(this.have[key] === sig){ rep.kept++; continue; }
+   // A cached refusal is still a refusal: reporting it as kept could start a silent part.
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   var r = await this.buildArp(voice, note);
+   if(r.ok){ for(var i = 0; i < r.entries.length; i++){
+    var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
+    if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
+   } }
+   if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+  }
   return rep;
  },
  // What a recording of this lane has baked in: the Drums (or Aux) fader, and the lane's Shape. The same lane recorded under
@@ -61716,7 +61778,8 @@ window._nsBank = {
   for(var i = 0; i < lanes.length; i++){
    var ti = lanes[i]; if(ti < 0 || !M.tracks[ti] || !M.tracks[ti].play) continue;
    var key = '0:' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
-   if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+   if(this.have[key] === sig){ rep.kept++; continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
    var r = await this.build(part, L.mach, ti);
    if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
@@ -61734,7 +61797,8 @@ window._nsBank = {
    for(var ti = 0; ti < M.tracks.length; ti++){
     var row = L.grid[ti]; if(!M.tracks[ti].play || !row || !row.some(function(c){ return c && c.v > 0; })) continue;
     var key = i + ':' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
-    if(this.have[key] === sig || this.bad[key] === sig){ rep.kept++; continue; }
+    if(this.have[key] === sig){ rep.kept++; continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
     var r = await this.build(part, L.mach, ti);
     if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
     else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
@@ -61788,6 +61852,8 @@ window._nsBass = {
  prepare: function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
   if(!MODGRAPH.on || !MODGRAPH.parts.bass) return Promise.resolve({ok: false, why: 'Native sound is off'});
+  var score = window._blNativeScore();
+  if(!score.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + score.why.join(', ')});
   var me = this;
   return window._nsBank.ensureBass().then(function(rep){
    if(rep.failed.length) return {ok: false, why: rep.failed[0].why, bank: rep};
@@ -64796,6 +64862,7 @@ window._blGenStyle = function(){ return blGenStyle; };
 // follow, as this scheduler does. A chord's locked phrase rides with the chart, window._blNativeChords, since 6.9.9.9.7.)
 window._blNativeScore = function(){
   var why = [], hs = window._humanState();
+  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
   var scale = _blScalePcs();
   var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
   _blGridIntvs.forEach(function(x){ d.push(x); });
@@ -66258,7 +66325,7 @@ function _mlPushCell(d, c){
 window._mlPushCell = _mlPushCell;
 window._mlNativeScore = function(){
  var why = [], hs = window._humanState();
- try{ var mv = _wp('melgen.voice'); if(mv === 'sampler' || SAMPLED_WAVES[mv]) why.push('a sampled melody voice'); else if(mv === 'modsynth') why.push('a mõdSynth melody voice'); }catch(e){}
+ try{ var mv = _wp('melgen.voice'); if(mv === 'sampler') why.push('a custom sampler melody voice'); else if(mv === 'modsynth') why.push('a mõdSynth melody voice'); }catch(e){}
  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  var scale = (typeof window._songScalePcs==='function') ? (window._songScalePcs() || []) : [];
  var d = [1, mlSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, mlFollow ? 1 : 0, _mlGridRootPc, _mlGridIntvs.length];

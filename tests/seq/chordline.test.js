@@ -24,7 +24,7 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
-const VOICES = (process.env.VOICES || 'sine,sawtooth,piano,pad').split(',');
+const VOICES = (process.env.VOICES || 'sine,sawtooth,piano,pad,pianoreal2,jazzgtr,flute').split(',');
 const MODES = (process.env.MODES || 'decay,hold').split(',');
 // seconds each chord is held for in the hold run (0: the chord decays, as a plain hit does): shorter than the attack, a gate, past the next chord
 const HOLDS = [0, 0.3, 0.02, 0.9, 0.12, 0.4];
@@ -99,7 +99,13 @@ const SETTINGS = [
     const holds = PROG.map((_, i) => MODE === 'hold' ? HOLDS[i] : 0);
     const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds }) => {
       const sr = 48000;
-      wave = voice; strumMode = S.strum; fxWidth = S.width; chordSubOn = true;
+      wave = voice;
+      if(SAMPLED_WAVES[voice]){
+        preloadSampleInstrument(SAMPLED_WAVES[voice]);
+        const until = performance.now() + 15000;
+        while(SAMPLE_STATE[SAMPLED_WAVES[voice]] === 'loading' && performance.now() < until) await new Promise(r => setTimeout(r, 10));
+      }
+      strumMode = S.strum; fxWidth = S.width; chordSubOn = true;
       document.getElementById('strum-spread').value = S.spread;
       const entries = [], why = {};
       for (const p of NEED) {

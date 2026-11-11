@@ -25,10 +25,16 @@ struct BassPlayer {
 
   void reset() { hits = misses = refused = lateStarts = cuts = 0; prev_.valid = false; }
 
+  static const BankEntry *pick(const DrumBank &bank, int kit, int midi, int lane) {
+    // Reusing the neighbouring note can select another recording or root rate.
+    const int base = bank.find(2, kit, 256 + midi * 8) ? 256 + midi * 8 : 0;
+    return bank.find(2, kit, base + lane);
+  }
+
   void play(const BassEvent &e, double now) {
     if (!begin || !bank) return;
     const int lane = (e.slide ? 2 : 0) + (e.from >= 0 ? 1 : 0);
-    const BankEntry *en = bank->find(2, kit, lane);
+    const BankEntry *en = pick(*bank, kit, e.midi, lane);
     if (!en) { misses++; lastMissLane = lane; return; }
     // The cut goes first: the new voice is not the one it is aimed at.
     if (prev_.valid && e.frameExact < prev_.endExact && edit && !prev_.cutOps.empty()) {
