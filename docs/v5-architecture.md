@@ -2559,6 +2559,16 @@ the first two preset banks; free steps are one bar of any free meter, up to 16, 
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
 Triangle and the two stock basses are named by no pack, so they are free.
 
+**Independent sequencer timing (6.9.9.9.9.9.9.5).** Drums, bass and melody start with
+step count and rate linked. A direct rate or step-count edit asks to unlink that
+setting and change only the selected part; Cancel preserves both locks and all
+parts. Programmatic restores keep the existing linked setters. Counts can be typed
+or adjusted beside each grid without unfolding Pattern tools. Rate labels describe
+speed (½× / 1× / 2×), while stored multipliers still describe step duration. Native
+rate edits send the selected sequencer its new rate during playback. Independent
+step lengths retain the Groove Pack entitlement. Browser checks against `dist/`:
+`node tests/seq/independent-timing.cjs`; device listening remains required.
+
 **Step chance, roll velocity and the Euclidean fill (4.9.9.9.9.9.9e), free.** A step can carry
 `pr`, the percentage chance that it sounds (absent means 100, so nothing migrates), and a roll note
 can carry `vel`, its level as a percentage (the drum grid has had its own `vel` all along). The
