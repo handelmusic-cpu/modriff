@@ -3,7 +3,8 @@
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
 const assert = require('node:assert/strict');
-const root = path.resolve(__dirname, '../../dist');
+const web = process.env.WEB === '1';
+const root = path.resolve(__dirname, web ? '../../dist-web/play' : '../../dist');
 (async () => {
  const server = http.createServer((q,r) => {
   const file = path.join(root, decodeURIComponent(q.url.split('?')[0] === '/' ? '/index.html' : q.url.split('?')[0]));
@@ -13,7 +14,7 @@ const root = path.resolve(__dirname, '../../dist');
  const browser = await chromium.launch({headless:true, ...(process.env.CHROMIUM ? {executablePath:process.env.CHROMIUM} : {})});
  try {
   const page = await browser.newPage({viewport:{width:1460,height:810}});
-  await page.addInitScript(()=>{ window.__modMacApp=true; localStorage.setItem('modo-view-mode','basic'); });
+  await page.addInitScript(web=>{ if(!web) window.__modMacApp=true; localStorage.setItem('modo-view-mode','basic'); }, web);
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.locator('.unlock-btn').first().click();
   await page.waitForTimeout(700);
@@ -57,6 +58,7 @@ const root = path.resolve(__dirname, '../../dist');
   if(process.env.SCREENSHOT) await page.screenshot({path:process.env.SCREENSHOT});
   const phone=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   await phone.goto(`http://127.0.0.1:${server.address().port}`);
+  await phone.locator('.unlock-btn').first().click();
   assert.equal(await phone.locator('.mac-live-lane').count(),0);
   assert.equal(await phone.locator('#lv-slots > .lv-slot').count(),7);
   assert(await phone.locator('#lv-slots').evaluate(e=>e.offsetWidth<=390));

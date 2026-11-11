@@ -36,7 +36,7 @@ const OUT  = WEB ? path.join(ROOT_OUT, 'play') : ROOT_OUT;
 // node_modules/.bin holds absolute symlinks ("absolute symlinks are
 // forbidden"). .DS_Store is Finder's, and the same kind of stray.
 const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'build', 'dist', 'dist-web', 'node_modules',
-  'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', '.gitignore',
+  'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', 'AGENTS.md', '.gitignore',
   'tests', 'docs', 'ios', 'capacitor.config.json',
   // The C++ engine is compiled into the native app, not served to the web one.
   'native']);
