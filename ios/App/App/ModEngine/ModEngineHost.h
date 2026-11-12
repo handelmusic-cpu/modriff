@@ -119,6 +119,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// which), silent ones at a velocity of nothing, refused ones the pool would not take. step and bar are the last
 /// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
 - (NSDictionary *)seqMirror;
+/// Whole-band start/stop with a monotonic cancellation token.
+- (BOOL)seqTransportStart:(NSData *)options token:(double)token;
+- (BOOL)seqTransportStop:(double)token;
 
 /// The page's cents table and chord glide controls. Root is the standalone
 /// arp's current chord root, or -1; songs use their native chord windows.

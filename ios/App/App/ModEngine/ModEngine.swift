@@ -69,6 +69,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqIntonation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTransportStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTransportStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqObserve", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqObserverRoutes", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
@@ -835,6 +837,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetBassScore(data, revision:call.getDouble("revision") ?? -1)])
+    }
+
+    @objc func seqTransportStart(_ call: CAPPluginCall) {
+        guard let host = host, let b64 = call.getString("options"), let options = Data(base64Encoded:b64), let token = call.getDouble("token") else { call.reject("transport options required"); return }
+        call.resolve(["ok":host.seqTransportStart(options, token:token)])
+    }
+    @objc func seqTransportStop(_ call: CAPPluginCall) {
+        guard let host = host, let token = call.getDouble("token") else { call.reject("transport token required"); return }
+        call.resolve(["ok":host.seqTransportStop(token)])
     }
 
     @objc func seqObserve(_ call: CAPPluginCall) {

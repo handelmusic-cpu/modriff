@@ -700,3 +700,15 @@ Use native developer sequencers with page clocks stopped.
 - Edit at a normal slot boundary, with Next/Prev queued and with a practice key/tempo step due. The place/pass and queued command survive without repeating a slot.
 - Change/delete sections and phrase locks around a boundary. Test humanized notes and a generated-line answer arriving late; no old line replaces the edited chart.
 - Arm an ending and edit at its landing bar: no extra chord and no shortened landing. Stage an edit then Hold/Stop/restart; the old queued edit does not return.
+
+
+## 45. Whole-band ownership and background gate (6.9.9.9.9.9.9.7h; not heard on device)
+
+First verify the About build stamp against `npm run ios:check`. Finish checks 41–44 in the same pass. Keep the production default until this section is heard and signed off.
+
+- In the paired phone inspector set `localStorage.setItem('modo-bgtest','1')`. Use Native sound on, a synthesized kit, ordinary bass/arp/melody voices and a song. Press Play: Copy diagnostics must show `nativeTransport.state: native`. Check the first downbeat and all parts' positions, then repeat with all four patch parts, factory recordings, Pure and chord glide.
+- Stop during preparation, immediately after Play and just before a queued note. Repeat rapid Play/Stop; no late note, stuck note or second clock. Test independent layers, a live hand chord, chart edits, Next/Prev, Hold, key/rate changes and all endings. Check startup waiting and control response are acceptable.
+- Leave the app, lock/unlock, open another app and return. All supported native parts continue together; no catch-up burst. Bounce the run and check audio, MIDI and stems. Test an interruption and route change.
+- Enable each fallback case: custom sampler voice, sampler pattern, metronome, simple rhythm, standalone chord rhythm, queued/chained drum patterns, practice key/tempo automation. The whole band must show page ownership, retain its usual behavior and pause cleanly on leaving. No partial native/background claim.
+- Test native engine restart and an unsupported/older binary: stale bank/cursor state cannot yield a silent native-owned run. Test chart-position jumps and a voice/kit edit during preparation/playback. Copy diagnostics must show the fallback reason when it declines.
+- Remove the test latch afterward: `localStorage.removeItem('modo-bgtest')`. Decide whether the listed fallback coverage is acceptable before enabling a production default; supporting every configuration in the background requires further native coverage.

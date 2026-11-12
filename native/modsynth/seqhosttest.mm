@@ -274,6 +274,31 @@ static std::vector<double> editSong(int root) {
   return {5,16,0,0,0,0,0,1, 0,0,1, 4,0,0,0,(double)root,-1,-1,-1,0,0,-1,3,0,4,7,
     0,-1,-1,-1,0,4,2,140,0,2,7, 4,1,.15,0,0,0};
 }
+static void testTransportOwnership() {
+  ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
+  std::vector<double> bs={1,1,0,1,0,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+  [h seqSetDrumScore:bytes(score())];[h seqSetBassScore:bytes(bs)];[h seqSetArpScore:bytes(arpScore(0,1))];[h seqSetArpNotes:bytes({60,64,67})];[h seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{}}}))];[h seqSetSong:bytes(editSong(60))];
+  const std::vector<double> opts={1,120,1,1,1,1,1,1,0,1,7,7,7,0,0,0};
+  CHECK([h seqTransportStart:bytes(opts) token:100],"whole-band native transport starts after validation");
+  NSDictionary *m=[h seqMirror];const double first=[m[@"firstFrame"] doubleValue];
+  CHECK([m[@"transport"][@"owned"] boolValue] && first==[m[@"bass"][@"firstFrame"] doubleValue] && first==[m[@"arp"][@"firstFrame"] doubleValue] && first==[m[@"mel"][@"firstFrame"] doubleValue] && first==[m[@"song"][@"firstFrame"] doubleValue],"drums, bass, arp, melody and song share one uncommitted first bar");
+  CHECK([h seqTransportStart:bytes(opts) token:100] && [[h seqMirror][@"firstFrame"] doubleValue]==first,"retrying the same native claim cannot restart its epoch");
+  CHECK(![h seqTransportStop:99] && [[h seqMirror][@"transport"][@"owned"] boolValue],"a stale Stop cannot silence a newer owner");
+  run(h,650);CHECK([h seqTransportStop:101],"Stop takes the entire native band");
+  NSDictionary *stopped=[h seqMirror];run(h,250);NSDictionary *later=[h seqMirror];
+  CHECK(![later[@"running"] boolValue] && ![later[@"bass"][@"running"] boolValue] && ![later[@"arp"][@"running"] boolValue] && ![later[@"mel"][@"running"] boolValue] && ![later[@"song"][@"running"] boolValue] && ![later[@"transport"][@"owned"] boolValue] && [later[@"events"] intValue]==[stopped[@"events"] intValue],"all native clocks stop and no new drum event appears afterward");
+  CHECK(![h seqTransportStart:bytes(opts) token:100],"a cancelled start cannot revive after its Stop");
+  CHECK([h seqTransportStop:200] && ![h seqTransportStart:bytes(opts) token:199],"Stop arriving before a delayed Start cancels it too");
+  auto bad=opts;bad[15]=99;CHECK(![h seqTransportStart:bytes(bad) token:201] && ![[h seqMirror][@"running"] boolValue],"invalid song place refuses the whole claim without partially starting drums");
+  CHECK(![h seqTransportStart:bytes({1}) token:201] && ![h seqTransportStop:NAN],"malformed transport commands are rejected");
+  // A note committed into the lookahead must still be cancellable before its
+  // onset: counting only stopped clocks would miss this stray-note regression.
+  ModEngineHost *g=fresh();[g ensureGraphPart:4];[g seqSetDrumScore:bytes(score())];[g seqSetObserverRoutes:bytes({}) localMask:(1<<5)];[g seqPutBankEntry:bytes(arpEntry(7,0,.3))];[g seqSetArpScore:bytes(arpScore(0,1))];[g seqSetArpNotes:bytes({60})];
+  [g seqTransportStart:bytes({1,120,1,1,1,0,1,0,0,0,0,7,0,0,0,0}) token:1];run(g,400);const int queued=[[g seqMirror][@"arp"][@"voices"] intValue];[g seqTransportStop:2];
+  float peak=0;std::vector<float> l(240),r(240);for(int t=0;t<700;t+=5){[g renderInto:l.data() right:r.data() frames:240];for(int j=0;j<240;j++)peak=std::max(peak,std::max(std::abs(l[j]),std::abs(r[j])));usleep(5000);}
+  CHECK(queued>0 && peak<1e-7,"Stop cancels committed future graph notes (peak %.9g)",peak);
+}
+
 static void testChartEdits() {
   for(bool drums:{false,true}) {
     ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
@@ -358,6 +383,8 @@ static void testIntonation() {
 
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_TRANSPORT_ONLY")) { testTransportOwnership(); return failed ? 1 : 0; }
+    testTransportOwnership();
     if (getenv("MODRIFF_CHART_EDIT_ONLY")) { testChartEdits(); return failed ? 1 : 0; }
     testChartEdits();
     if (getenv("MODRIFF_OBSERVER_ONLY")) { testObservers(); return failed ? 1 : 0; }

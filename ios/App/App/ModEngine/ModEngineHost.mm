@@ -8,6 +8,7 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "modsynth.h"
@@ -190,6 +191,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   bool fading = false; double fadeT0 = 0, fadeDur = 0; int fadeSteps = 0, fadeDone = 0;
   double endRestoreBpm = 0;                                   // a ritardando's starting tempo, put back when the landing is over
   int endPhase = 0; double endAt = 0; uint64_t endLands = 0;   // 0 none, 1 a fade or ritardando is running, 2 landed
+  NSString *instance=[[NSUUID UUID] UUIDString];
+  uint64_t bankEpoch=0;
+  uint64_t transportToken=0;
+  bool transportOwned=false;
   bool hasSong = false;
   std::unique_ptr<modsynth::SongScore> pendingSong;
   double pendingSongBeat=0,songEpochBeat=0;
@@ -592,6 +597,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // The block-start offset of the wall clock from the engine's frames (ms), as
   // _curOff, for the control thread to turn a voice's stamp into a frame the way
   // applyMessage does for a note. NaN until a block has run.
+  std::mutex _transportControl;
   std::atomic<double> _curOffPub;
   std::vector<float> _gbus;               // kBuses pairs of scratch buffers, _maxFrames each
   // Last, so it is destroyed first: its thread reads _frames and must be joined before that goes.
@@ -926,7 +932,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqClearBank {
   os_unfair_lock_lock(&_hostSeq->lock);
-  _hostSeq->bank.clear();
+  _hostSeq->bank.clear(); _hostSeq->bankEpoch++;
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -1412,6 +1418,49 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
+// A whole-band claim has one token. Serialize the short control transaction,
+// including Stop, so a cancelled asynchronous page start cannot revive a run.
+- (BOOL)seqTransportStart:(NSData *)options token:(double)token {
+  if(options.length!=16*sizeof(double) || !std::isfinite(token) || token<1 || token>9007199254740991. || token!=std::floor(token)) return NO;
+  double d[16];std::memcpy(d,options.bytes,sizeof d);
+  for(double x:d) if(!std::isfinite(x)) return NO;
+  if(d[0]!=1 || d[1]<20 || d[1]>400) return NO;
+  for(int i=2;i<=4;i++) if(d[i]<=0 || d[i]>16) return NO;
+  for(int i=5;i<=9;i++) if(d[i]!=0 && d[i]!=1) return NO;
+  for(int i=10;i<16;i++) if(d[i]<0 || d[i]>0xffffff || d[i]!=std::floor(d[i])) return NO;
+  std::lock_guard<std::mutex> control(_transportControl);HostSeq &q=*_hostSeq;
+  os_unfair_lock_lock(&q.lock);
+  if((uint64_t)token==q.transportToken && q.transportOwned) {os_unfair_lock_unlock(&q.lock);return YES;}
+  const bool valid=(uint64_t)token>q.transportToken && !q.seq.running() && !q.bseq.running() && !q.aseq.running() && !q.mseq.running() && !q.cseq.running() && !q.sseq.running()
+    && q.hasScore && (!d[5] || q.hasBass) && (!d[6] || q.hasArp) && (!d[7] || q.hasMel) && (!d[8] || q.hasChord) && (!d[9] || (q.hasSong && q.sseq.score().playable((size_t)d[14]) && d[15]<q.sseq.score().sections[(size_t)d[14]].slots.size()));
+  if(!valid) {os_unfair_lock_unlock(&q.lock);return NO;}
+  q.transportToken=(uint64_t)token;q.transportOwned=true;
+  q.arpArmed=d[6]!=0;q.arpKit=(int)d[11];q.melArmed=d[7]!=0;q.melKit=(int)d[12];q.melRate=d[4];
+  os_unfair_lock_unlock(&q.lock);
+  // More than the scheduling horizon: every aligned start sees the same still
+  // uncommitted first bar. No page/bridge round trip lies inside this claim.
+  bool ok=[self seqStartWithBpm:d[1] rate:d[2] leadMs:500 seed:0];
+  if(d[5]) ok=[self seqBassStartWithBpm:d[1] rate:d[3] leadMs:500 alignToDrums:YES kit:(int)d[10] seed:0] && ok;
+  if(d[9]) ok=[self seqSongStartWithLeadMs:500 alignToDrums:YES section:(int)d[14] slot:(int)d[15] pass:0] && ok;
+  else {
+    if(d[6]) ok=[self seqArpStartWithBpm:d[1] leadMs:500 alignToDrums:YES kit:(int)d[11] seed:0] && ok;
+    if(d[7]) ok=[self seqMelStartWithBpm:d[1] rate:d[4] leadMs:500 alignToDrums:YES kit:(int)d[12] seed:0] && ok;
+    if(d[8]) ok=[self seqChordStartWithBpm:d[1] leadMs:500 alignToDrums:YES kit:(int)d[13]] && ok;
+  }
+  if(!ok) {os_unfair_lock_lock(&q.lock);q.landStop((double)_frames.load(std::memory_order_relaxed));q.transportOwned=false;os_unfair_lock_unlock(&q.lock);}
+  return ok;
+}
+- (BOOL)seqTransportStop:(double)token {
+  if(!std::isfinite(token) || token<1 || token>9007199254740991. || token!=std::floor(token)) return NO;
+  std::lock_guard<std::mutex> control(_transportControl);HostSeq &q=*_hostSeq;
+  os_unfair_lock_lock(&q.lock);
+  if((uint64_t)token<q.transportToken) {os_unfair_lock_unlock(&q.lock);return NO;}
+  q.transportToken=(uint64_t)token;q.transportOwned=false;
+  const double now=(double)_frames.load(std::memory_order_relaxed),back=q.sseq.restore(q.tmap.bpmAt(now));if(back>0)q.setTempoNow(back);
+  q.landStop(now);q.songRevision++;q.endTimers.clear();q.fading=false;q.endPhase=0;if(q.endGain)q.endGain->store(1.f,std::memory_order_relaxed);
+  os_unfair_lock_unlock(&q.lock);return YES;
+}
+
 // Independent, retained readers. A retry with the same cursor returns the same
 // events; a lag beyond capacity reports the exact loss instead of plausible MIDI.
 - (NSDictionary *)seqObserveAfter:(double)after limit:(int)limit {
@@ -1469,10 +1518,11 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     const HostSeq::Fired &f = q.ring[(q.ringN - 1 - k) % HostSeq::kRing];
     if (f.frame <= now) { step = f.step; bar = f.bar; break; }
   }
-  NSDictionary *r = @{@"sampleRate": @(_sampleRate), @"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
+  NSDictionary *r = @{@"instance":q.instance,@"bankEpoch":@((double)q.bankEpoch),@"sampleRate": @(_sampleRate), @"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
                       @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
-                      @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),
+                      @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),@"nextStep":@(q.seq.step()),
                       @"recDropped": @((double)q.recDropped),
+                      @"transport":@{@"owned":@(q.transportOwned),@"token":@((double)q.transportToken)},
                       @"live": @{@"changes": @((double)q.liveChanges), @"pending": @(q.liveChords.size()), @"frame": @(q.liveFrame)},
                       @"hits": @((double)q.hits), @"misses": @((double)q.misses), @"silent": @((double)q.silent), @"refused": @((double)q.refused),
                       @"lateStarts": @((double)q.lateStarts), @"bank": @((double)q.bank.size()),
@@ -1483,7 +1533,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                       @"bass": @{@"running": @(q.bseq.running()), @"nextStep": @(q.bseq.step()), @"steps": @((double)q.bassSteps), @"notes": @((double)q.bassNotes),
                                  @"hits": @((double)q.bplay.hits), @"misses": @((double)q.bplay.misses), @"refused": @((double)q.bplay.refused),
                                  @"cuts": @((double)q.bplay.cuts), @"lateStarts": @((double)q.bplay.lateStarts), @"firstFrame": @((double)q.bassFirst),
-                                 @"lastMidi": @(q.bassLastMidi), @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
+                                 @"nextFrame":@(q.bseq.nextFrame()),@"lastMidi": @(q.bassLastMidi), @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
                       @"arp": @{@"scheduled":@((double)q.arpNotesN),@"running": @(q.aseq.running()), @"steps": @((double)q.arpSteps), @"notes": @((double)q.aplay.notes), @"blocks": @((double)q.aplay.blocks),
                                 @"voices": @((double)q.aplay.voices), @"misses": @((double)q.aplay.misses), @"refused": @((double)q.aplay.refused), @"lateStarts": @((double)q.aplay.lateStarts),
                                 @"firstFrame": @((double)q.arpFirst), @"nextFrame": @(q.aseq.nextFrame()), @"lastMissLane": @(q.aplay.lastMissLane), @"chords": @((double)q.arpChords),
@@ -1495,7 +1545,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                 @"armed": @(q.melArmed), @"bySong": @(q.melBySong), @"lastMidi": @(q.melLastMidi)},
                       @"song": @{@"revision":@((double)q.songRevision),@"chartEdits":@((double)q.chartEdits),@"editPending":@(q.pendingSong!=nullptr),@"editFrame":@(q.pendingSong?q.tmap.frameAt(q.pendingSongBeat):-1),@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"pending": @(q.sseq.queuedMove()), @"ending": @{@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8]), @((double)q.songRevision)],
+                                 @"pending": @(q.sseq.queuedMove()), @"ending": @{@"timers":@(q.endTimers.size()),@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8]), @((double)q.songRevision)],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
