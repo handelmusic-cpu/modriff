@@ -640,3 +640,14 @@ Use developer entries with the corresponding page scheduler stopped. The public 
 | 38.4 | Use Sustain, a gated rhythm and ratchets with the sampled chord voice | each gate releases; the next chord cuts the previous one cleanly |
 | 38.5 | Prepare an instrument before its recordings finish, then retry once loaded | the first attempt explains that it is loading; the retry records the actual instrument, with no cached silent start |
 | 38.6 | Try the native bass with Pure tuning enabled | preparation gives the unsupported-tuning reason; it does not silently start in Equal |
+
+
+## 39. Live chords for native followers (6.9.9.9.9.9.9.7b; not heard on device)
+
+Use the developer entries with the page schedulers stopped; public transport still uses the page clock. Native sound must be on. Start `_nsBass`, `_nsMel` and `_nsArp` with supported banked voices; put bass and melody Follow on. Inspect `_nsLiveChord.last` and the native mirror's `live` for the last mapped frame and applied count.
+
+- Play C, F/C and D from pads, keyboard chords and chart taps: bass and melody follow each chord, the arp uses its slash bass and Octaves setting, and each tap counts once. Notes already committed within the look-ahead retain their old pitches.
+- Choose a different song capo, then play a hand chord: it sounds at the played pitch with no second transpose. Lock different bass and melody phrases for the chord: each part plays its own phrase, including melody chords.
+- Walking bass, four and two feel: tap chords just after beats, with and without drums. The new phrase follows the chord without doubled beats. Tap ten chords quickly; the final chord remains current and no follower stops.
+- Start a native song, then tap pads: its timeline keeps driving the three parts. Stop the followers, tap a chord, and restart: no queued old hand chord plays. The native mirror's `live.pending` clears on Stop.
+- Leave the app with the native developer sequencers running and return: their last supplied chord continues; a new tap updates all three. This checks the developer path only; automatic public background scheduling remains pending.

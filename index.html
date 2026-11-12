@@ -9307,7 +9307,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7b</span></div>
  </div>
 </div>
 
@@ -10754,7 +10754,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7b</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11954,7 +11954,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7a';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7b';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13010,7 +13010,7 @@ function modNativePlugin(){
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
-                     seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
+                     seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
                      seqMelPending:call('seqMelPending'), seqMelScore:call('seqMelScore'), seqMelChords:call('seqMelChords'), seqMelArm:call('seqMelArm'), seqMelStart:call('seqMelStart'), seqMelStop:call('seqMelStop'), seqMelTempo:call('seqMelTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
@@ -61842,6 +61842,29 @@ window._nsDrum = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
 };
 
+// Hand chords are changes, not another clock. The host ignores them unless a
+// native follower is running; the public page transport retains its scheduler.
+window._nsLiveChord = {
+ last: null,
+ send: function(slot, at){
+  var P = (typeof modNativePlugin === 'function') ? modNativePlugin() : null;
+  if(!MODGRAPH.on || !P || !P.seqLiveChord || (typeof songLoopActive !== 'undefined' && songLoopActive)) return Promise.resolve(null);
+  var ctx = getCtx(); if(!ctx || !slot || slot.isRest) return Promise.resolve(null);
+  var iv = slotIvs(slot) || [0,4,7], tones = iv.map(function(x){ return slot.rootM + x; });
+  if(slot.bassNote != null) tones.unshift(slot.bassNote);
+  var base = tones.slice();
+  if(arpOcts >= 2) tones = tones.concat(base.map(function(n){ return n + 12; }));
+  if(arpOcts >= 3) tones = tones.concat(base.map(function(n){ return n + 24; }));
+  // Graph voices stamp their opening with Date.now(); express the chord's
+  // AudioContext time on that same wall clock before crossing the bridge.
+  var me = this, ts = Date.now() + (at - ctx.currentTime) * 1000;
+  return P.seqLiveChord({bass: _mgB64(Float64Array.from(window._blNativeChords(1, at))),
+                        mel: _mgB64(Float64Array.from(window._mlNativeChords(1, at))),
+                        notes: _mgB64(Float64Array.from(tones)), ts: ts}).then(function(r){ me.last = r; return r; },
+                        function(e){ me.last = {ok: false, why: String(e)}; return me.last; });
+ }
+};
+
 // The developer entry to the engine's own bass line (docs/native-scheduling.md slice 2), beside window._nsDrum: records the bass voice
 // into the engine's bank, hands over the bass line and the chart as it stands, and starts it on the host's thread, with the drums'
 // downbeat when they are running (start _nsDrum first). Nothing in the app calls it. Needs Native sound on. The chart is the
@@ -63403,7 +63426,11 @@ window._blOnLiveChord = function(slot){
   var ctx = blCtx(); if(!ctx) return;
   _blChordWin = [];
   _blWalkPrev = 0; _blWalkNextT = 0; _blWalkWin = null;
-  window._blOnChord(slot, ctx.currentTime, 3600, null, 0);
+  var at = ctx.currentTime;
+  window._blOnChord(slot, at, 3600, null, 0);
+  // The same chord drives all native followers. A native song protects its
+  // own windows too: a late bridge call from a tap cannot erase the chart.
+  if(window._nsLiveChord) window._nsLiveChord.send(slot, at);
 };
 window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
 // The committed windows themselves, for the melody generator's copy of the chart (window._mlNativeChords).

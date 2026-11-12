@@ -112,8 +112,75 @@ static void run(ModEngineHost *h, int ms) {
   for (int t = 0; t < ms; t += 5) { [h renderInto:l.data() right:r.data() frames:240]; usleep(5000); }
 }
 
+static void testLiveChords() {
+    // Hand chords are timestamped changes on the shared engine clock. Queue a
+    // slash chord ahead, then a second chord; none of the followers may take it
+    // early. The already committed steps keep their previous pitches.
+    {
+      ModEngineHost *g = fresh();
+      [g ensureGraphPart:2]; [g ensureGraphPart:3]; [g ensureGraphPart:4];
+      [g seqPutBankEntry:bytes(melEntry(4, 0, 0.3))];
+      [g seqPutBankEntry:bytes(arpEntry(3, 0, 0.3))];
+      std::vector<double> bs = {1, 16, 0, 1, 1, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0, 0, 16};
+      for (int j = 0; j < 16; j++) bs.insert(bs.end(), {1, 0, 2, 1, 0, 0, 0, 0, 0});
+      [g seqSetBassScore:bytes(bs)];
+      [g seqSetMelScore:bytes(melScore(true, {{1, 4, 4, 1, {}}}))];
+      [g seqSetArpScore:bytes(arpScore(0, 2))];
+      auto chord = [](int root, int bass) {
+        return std::vector<double>{1, 0, 3600, 0, (double)root, (double)bass, -1, 3,
+          (double)root, (double)((root + 4) % 12), (double)((root + 7) % 12), -1, 0};
+      };
+      auto c = chord(0, -1), f = chord(5, 0), d = chord(2, -1);
+      auto tones = [](std::initializer_list<double> n) { return bytes(std::vector<double>(n)); };
+      CHECK(![[g seqLiveChord:bytes(c) melody:bytes(c) notes:tones({60,64,67}) timestampMs:0][@"ok"] boolValue], "idle hand chords do not seed a later native run");
+      [g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:3];
+      [g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:4 seed:3];
+      [g seqArpStartWithBpm:120 leadMs:100 alignToDrums:NO kit:3 seed:3];
+      CHECK([[g seqLiveChord:bytes(c) melody:bytes(c) notes:tones({60,64,67}) timestampMs:0][@"ok"] boolValue], "a hand chord is queued for all three running followers");
+      run(g, 250);
+      NSDictionary *before = [g seqMirror];
+      CHECK([before[@"bass"][@"lastMidi"] intValue] % 12 == 0 && [before[@"mel"][@"lastMidi"] intValue] == 64, "bass and melody follow the first C chord");
+      const double stamp = [NSDate date].timeIntervalSince1970 * 1000.0;
+      NSDictionary *accepted = [g seqLiveChord:bytes(f) melody:bytes(f) notes:tones({48,65,69,72,60,77,81,84}) timestampMs:stamp + 500];
+      CHECK([accepted[@"ok"] boolValue], "F over C is accepted with its future wall-clock stamp");
+      [g seqLiveChord:bytes(d) melody:bytes(d) notes:tones({62,66,69,74,78,81}) timestampMs:stamp + 950];
+      run(g, 200);
+      NSDictionary *early = [g seqMirror];
+      CHECK([early[@"live"][@"changes"] intValue] == 1 && [early[@"live"][@"pending"] intValue] == 2 && [early[@"mel"][@"lastMidi"] intValue] == 64, "future chords leave all committed C steps and the arp's tones intact");
+      run(g, 280);
+      NSDictionary *slash = [g seqMirror];
+      CHECK([slash[@"live"][@"changes"] intValue] == 2 && std::fabs([slash[@"live"][@"frame"] doubleValue] - [accepted[@"frame"] doubleValue]) < 0.001, "the slash chord lands at the mapped engine frame %.3f", [accepted[@"frame"] doubleValue]);
+      CHECK(([slash[@"bass"][@"lastMidi"] intValue] % 12 == 0 && [slash[@"mel"][@"lastMidi"] intValue] == 69 && [slash[@"arp"][@"tones"] isEqual:@[@48,@65,@69,@72,@60,@77,@81,@84]]), "bass follows the slash bass, melody the chord third, arp all tones and octaves (MIDI %d / %d)", [slash[@"bass"][@"lastMidi"] intValue], [slash[@"mel"][@"lastMidi"] intValue]);
+      run(g, 500);
+      NSDictionary *after = [g seqMirror];
+      CHECK([after[@"live"][@"changes"] intValue] == 3 && [after[@"live"][@"pending"] intValue] == 0 && [after[@"bass"][@"lastMidi"] intValue] % 12 == 2 && [after[@"mel"][@"lastMidi"] intValue] == 66, "the next hand chord reaches bass and melody without a page clock");
+      CHECK([after[@"bass"][@"notes"] intValue] > [before[@"bass"][@"notes"] intValue] && [after[@"mel"][@"notes"] intValue] > [before[@"mel"][@"notes"] intValue] && [after[@"arp"][@"notes"] intValue] > [before[@"arp"][@"notes"] intValue], "all three clocks continue: bass %d, melody %d, arp %d notes", [after[@"bass"][@"notes"] intValue], [after[@"mel"][@"notes"] intValue], [after[@"arp"][@"notes"] intValue]);
+      auto lockedBass = f; lockedBass[lockedBass.size() - 2] = 0; lockedBass.back() = 1;
+      lockedBass.insert(lockedBass.end(), {1, 5, 1, 7, 2, 1, 0, 1, 0, 0, 0});
+      auto lockedMel = f;
+      lockedMel.insert(lockedMel.end(), {-7, 0, 1, 1, 5, 1, 11, 4, 1, 0, 0, 0, 0, 1, 2, 5});
+      CHECK([[g seqLiveChord:bytes(lockedBass) melody:bytes(lockedMel) notes:tones({65,69,72}) timestampMs:0][@"ok"] boolValue], "a live chord carries independent bass and polyphonic melody phrase locks");
+      run(g, 300);
+      NSDictionary *locked = [g seqMirror];
+      CHECK([locked[@"bass"][@"lastMidi"] intValue] == 43 && [locked[@"mel"][@"lastMidi"] intValue] == 74, "both live locks are played from their own tables: MIDI %d / %d", [locked[@"bass"][@"lastMidi"] intValue], [locked[@"mel"][@"lastMidi"] intValue]);
+      const int changes = [locked[@"live"][@"changes"] intValue];
+      CHECK(![[g seqLiveChord:bytes(f) melody:bytes(f) notes:tones({-1}) timestampMs:0][@"ok"] boolValue], "out-of-range arp tones are rejected atomically");
+      auto cut = f; cut.pop_back();
+      CHECK(![[g seqLiveChord:bytes(f) melody:bytes(cut) notes:tones({60}) timestampMs:0][@"ok"] boolValue], "a cut-short melody table cannot partly replace the bass timeline");
+      run(g, 30);
+      CHECK([[g seqMirror][@"live"][@"changes"] intValue] == changes, "invalid changes never reach a follower");
+      [g seqLiveChord:bytes(c) melody:bytes(c) notes:tones({60,64,67}) timestampMs:[NSDate date].timeIntervalSince1970 * 1000 + 800];
+      [g seqBassStop]; [g seqMelStop]; [g seqArpStop];
+      CHECK([[g seqMirror][@"live"][@"pending"] intValue] == 0, "stopping all followers immediately discards a future hand chord");
+      run(g, 30);
+      CHECK(![[g seqLiveChord:bytes(f) melody:bytes(f) notes:tones({65}) timestampMs:0][@"ok"] boolValue], "stopped followers ignore hand chords");
+    }
+
+}
+
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_LIVE_ONLY")) { testLiveChords(); return failed ? 1 : 0; }
     ModEngineHost *h = fresh();
     CHECK(![h seqStartWithBpm:120 rate:1 leadMs:100 seed:1], "no score, no start");
     CHECK(![h seqSetDrumScore:[NSData dataWithBytes:"junk" length:4]], "a score that does not parse is refused");
@@ -664,6 +731,9 @@ int main() {
       [g seqSetDrumScore:bytes(score())];
       [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
       CHECK([g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0], "the song starts");
+      const auto live = std::vector<double>{1, 0, 3600, 0, 2, -1, -1, 3, 2, 6, 9, -1, 0};
+      CHECK(![[g seqLiveChord:bytes(live) melody:bytes(live) notes:bytes(std::vector<double>{62,66,69}) timestampMs:0][@"ok"] boolValue], "a hand chord cannot replace the native song's timeline");
+
       std::vector<std::vector<int>> seen;
       bool sawRestAgain = false;
       int lastChords = -1, lastNotes = 0;
@@ -723,6 +793,8 @@ int main() {
       [g seqStop];
     }
 
+
+    testLiveChords();
 
     // The melody generator through the host: the same thread and bank, no page. A synthetic melody voice (part 6), a line of a note every step with a chord on the first, started with the
     // drums' bar line. Then in a song: armed, it starts with the song on the same bar line and, with Follow on, plays each chord's tones (the line is written over C: over F it is F) and

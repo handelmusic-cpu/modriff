@@ -183,6 +183,13 @@ class BassSequencer {
   const BassPending &pending() const { return pend_; }
   const BassScore &score() const { return score_; }
   ChordTimeline &timeline() { return timeline_; }
+  // _blOnLiveChord starts a new walking phrase without rewinding the grid or
+  // its slide memory. Keep walkLastT_: already committed beats must not repeat.
+  void setLiveTimeline(ChordTimeline timeline) {
+    timeline_ = std::move(timeline);
+    walkPrev_ = 0; walkNextT_ = 0; walkHave_ = false;
+  }
+
   const ChordTimeline &timeline() const { return timeline_; }
   void seed(uint64_t s) { rng_.seed(s); }
   void setTempo(double bpm) { bpm_ = bpm; }

@@ -1,6 +1,6 @@
 // Runs the native bass line on scores and chord windows a test hands it and prints the notes, one per line, for
 // tests/seq/bassgrid.test.js to hold against the page's own scheduler.
-//   basstool <cases.f64>
+//   basstool <cases.f64> [--live-chords]
 // cases.f64: [nCases, per case: sampleRate, bpm, rate, firstFrame, seed, nSteps, nTicks, nTape, then nTicks x (now, horizon, drumBar, windows),
 //   then nTape random draws, then the score (basscore.cpp), then the chord windows (ChordTimeline::fromDoubles)]. Without ticks the
 //   windows are all present from the start (the page's song commits them ahead of the bass) and `nSteps` steps are fired one after the
@@ -11,6 +11,7 @@
 //   walking line's random draws (the page's own, in order).
 // Output per case: "CASE i", "N frameExact frame midi durFrames vel accent slide from step" for each note, "END i steps".
 #include <cstdio>
+#include <cstring>
 #include <vector>
 #include "basscore.h"
 
@@ -56,7 +57,14 @@ int main(int argc, char **argv) {
       for (int i = 0; i < nTicks; i++) {
         const size_t at = tickAt[(size_t)i];
         size_t u = 0;
-        q.timeline().fromDoubles(d.data() + at + 3, d.size() - at - 3, &u);
+        modsynth::ChordTimeline next(sr);
+        next.fromDoubles(d.data() + at + 3, d.size() - at - 3, &u);
+        // Live taps reset the walk once per new open window; ordinary song
+        // ticks keep their walking memory while more windows are committed.
+        if (argc > 2 && std::strcmp(argv[2], "--live-chords") == 0 && !next.empty() &&
+            (q.timeline().empty() || next.windows().back().t != q.timeline().windows().back().t))
+          q.setLiveTimeline(std::move(next));
+        else q.timeline() = std::move(next);
         size_t j = at + 3 + u;
         const size_t ns = (size_t)d[j++];
         if (ns) { modsynth::BassScore ns2; if (!ns2.fromDoubles(d.data() + j, ns)) { fprintf(stderr, "case %d tick %d: bad score\n", c, i); return 2; } q.setScore(ns2); j += ns; }
