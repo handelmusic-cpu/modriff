@@ -35,6 +35,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       for(const name of ['seqIntonation','seqScore','seqBassScore','seqBassChords','seqBassPending','seqMelChords','seqMelScore','seqMelPending','seqArpScore','seqArpNotes','seqArpArm','seqMelArm','seqTempo','seqBassTempo','seqMelTempo'])P[name]=async o=>{calls.push([name,o]);return {ok:true};};
       P.seqTransportStart=async o=>{calls.push(['start',Array.from(new Float64Array(Uint8Array.from(atob(o.options),c=>c.charCodeAt(0)).buffer)),o.token]);m.transport={owned:true,token:o.token};m.running=m.bass.running=m.arp.running=m.mel.running=true;return {ok:true};};
       P.seqTransportStop=async o=>{calls.push(['stop',o.token]);m.transport={owned:false,token:o.token};m.running=m.bass.running=m.arp.running=m.mel.running=false;return {ok:true};};
+      P.graphKillAll=async()=>{calls.push(['graphKill']);return {ok:true};};
       window.modNativePlugin=()=>P;
       const ready=()=>Promise.resolve({ok:true,built:0,kept:0,failed:[]});
       window._nsBank.ensure=window._nsBank.ensureBass=window._nsBank.ensureMel=window._nsBank.ensureArp=ready;
@@ -60,14 +61,22 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       window._nsBank.ensure=async()=>({ok:false,why:'unsupported fixture'});
       Object.keys(counts).forEach(k=>counts[k]=0);startEverything();await sleep(250);
       const fallback={state:me.state,last:me.last,pageNotes:Object.values(counts).reduce((a,b)=>a+b,0),starts:calls.filter(c=>c[0]==='start').length,bg:_bgKeepPlaying()};
-      stopEverything();await sleep(100);if(window._nsEvents.timer)clearInterval(window._nsEvents.timer);
-      return {web,native,suppressed,stopped,cancelled,lateResponse,fallback,before,calls};
+      stopEverything();await sleep(100);
+      m.transport={owned:true,token:me.token+10};m.running=true;await _engineLetGo(true);
+      const orphanStopped=!m.transport.owned&&!m.running;
+      const realMirror=P.seqMirror;let delayed;P.seqMirror=()=>new Promise(r=>delayed=r);
+      const stops=calls.filter(c=>c[0]==='stop').length,kills=calls.filter(c=>c[0]==='graphKill').length;
+      const cleaning=_engineLetGo(true);me.generation++;delayed({...m,transport:{owned:true,token:me.token+20}});await cleaning;P.seqMirror=realMirror;
+      const startupRace=stops===calls.filter(c=>c[0]==='stop').length&&kills===calls.filter(c=>c[0]==='graphKill').length;
+      if(window._nsEvents.timer)clearInterval(window._nsEvents.timer);
+      return {web,native,suppressed,stopped,cancelled,lateResponse,fallback,before,orphanStopped,startupRace,calls};
     });
     ok(out.web,'the ordinary web page never claims native scheduling',out);
     ok(out.native.state==='native' && out.native.starts.length===1 && out.native.starts[0][1].slice(5,8).every(x=>x===1),'one native claim starts the enabled bass, arp and melody with the drum clock',out.native);
     ok(out.suppressed && out.native.bg,'native ownership suppresses every page scheduler and grants background permission',out.native);
     ok(out.stopped && out.cancelled && out.lateResponse,'Stop clears ownership and cancels a delayed preparation before it can start',out);
     ok(out.fallback.state==='page' && out.fallback.pageNotes>0 && out.fallback.starts===out.before && !out.fallback.bg,'failed readiness resumes the whole page band without a native start or background grant',out.fallback);
+    ok(out.orphanStopped&&out.startupRace,'startup clears orphaned native clocks without a late reply killing a new Play',out);
     ok(errors.length === 0, 'the real page throws no errors', errors);
   } finally { await browser.close(); server.close(); }
   console.log(failed ? failed + ' FAILED' : 'all passed'); process.exitCode = failed ? 1 : 0;

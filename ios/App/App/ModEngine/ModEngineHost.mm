@@ -860,6 +860,21 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   return @{@"handle": @(h), @"unknownBuffer": @(unknown)};
 }
 
+- (BOOL)killGraphVoices:(uint32_t)mask fadeMs:(double)fadeMs {
+  const int fade = (int)std::max(1.0, fadeMs * _sampleRate / 1000.0);
+  // The patch chord's sub bypasses Processor trim on its own bus; Panic must
+  // still treat it as part of the chord, or a held sub survives for an hour.
+  if(mask & 1u) mask |= 1u << modsynth::GraphPool::kChordSubBus;
+  const uint64_t now=_frames.load(std::memory_order_relaxed);
+  os_unfair_lock_lock(&_hostSeq->lock);
+  for(const auto &part:std::vector<std::pair<int,int>>{{0,3},{2,6},{3,2},{4,5}}) if(mask & (1u<<part.first)) _hostSeq->observer.cut(part.second,(double)now);
+  os_unfair_lock_lock(&_graphLock);
+  const bool ok = _graphs.killParts(mask, now, fade);
+  os_unfair_lock_unlock(&_graphLock);
+  os_unfair_lock_unlock(&_hostSeq->lock);
+  return ok;
+}
+
 // Later changes to a voice that has begun (release, choke, glide, a stop). NO if
 // the voice has already finished: the handle is dropped and the edit is moot.
 - (BOOL)editGraph:(int)gid increments:(NSData *)increments {

@@ -265,8 +265,12 @@ static void testChordPatch() {
   }
   CHECK(peak > 0.01 && error < 1e-7, "the sub bypasses patch calibration before chord effects/meters (peak %.4f, trim comparison error %.9f)", peak,error);
   CHECK([[a seqMirror][@"chord"][@"voices"] intValue] == 4 && a.notesOn == 3, "one graph sub and three Processor tones start together, with no missing tone bank");
+  CHECK([a killGraphVoices:0x1f fadeMs:22],"melodic Panic accepts the chord and its separate sub");
+  double cutPeak=0,controlPeak=0;
+  for(int t=0;t<200;t+=5){[a renderInto:al.data() right:ar.data() frames:240];[b renderInto:bl.data() right:br.data() frames:240];if(t>=100)for(int j=0;j<240;j++){cutPeak=std::max(cutPeak,(double)std::abs(al[j]));controlPeak=std::max(controlPeak,(double)std::abs(bl[j]));}usleep(5000);}
+  CHECK(cutPeak<1e-6 && controlPeak>.01,"Panic cuts a sounding native sub while the uncut control still sounds (%.9g / %.4f)",cutPeak,controlPeak);
   [a seqChordStop]; [b seqChordStop]; run(a,500); run(b,500);
-  CHECK([[a seqMirror][@"chord"][@"stops"] intValue] >= 1 && [a renderOfflinePeakForPart:0 frames:4096] < 0.00001,
+  CHECK([[b seqMirror][@"chord"][@"stops"] intValue] >= 1 && [a renderOfflinePeakForPart:0 frames:4096] < 0.00001,
     "chord Stop cuts its graph sub and cancels/releases the patch voices");
 }
 

@@ -1,5 +1,5 @@
-/* The page half of the background-play test switch (6.9.4): off unless `modo-bgtest` is set inside the app with the
-   native sound on, tells the engine, and logs the page while the app is away. See inpage.js for the checks.
+/* Background playback follows a completed native transport owner; a page fallback cannot grant it.
+   Verifies the host permission and page diagnostics while the app is away. See inpage.js for the checks.
 
    Run (repo served; Chromium available; see CLAUDE.md):
      python3 -m http.server 8777 --bind 127.0.0.1 &

@@ -56,11 +56,13 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "fileDelete", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "wavFinish", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pcmAdd", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pcmAddFile", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pcmFade", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphProbe", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBuf", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphBegin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "graphEdit", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "graphKillAll", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqScore", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBank", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqStart", returnType: CAPPluginReturnPromise),
@@ -729,6 +731,19 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["ok": host.editGraph(Int32(gid), increments: inc)])
     }
 
+    /// Lets go of everything the engine is holding for the melodic parts (chord, melody, melody seq, bass, arp): every
+    /// graph voice on their buses fades out over `fadeMs` (default 60), and the mõdSynth parts get a panic. Panic calls
+    /// it, and so does the page when it starts: a web view that was ended for memory and reloaded leaves its held
+    /// voices sounding in the engine with nobody left who knows their ids, which is a chord ringing "for eternity"
+    /// that a Panic from the new page could not reach. Drums, Aux and the sampler are left alone.
+    @objc func graphKillAll(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let fade = call.getDouble("fadeMs") ?? 60
+        let ok = host.killGraphVoices(0x1F, fadeMs: fade)
+        for part in 0..<5 { _ = host.post(["t": "panic", "part": part]) }
+        call.resolve(["ok": ok])
+    }
+
     // ── The native sequencer (docs/native-scheduling.md, slice 1) ────────────
     // The page hands over the drum score and says start; the engine's own thread does the stepping from there,
     // counted in the render clock, so it goes on when the web view's timers are throttled. Nothing sounds from it yet.
@@ -1376,6 +1391,58 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             try h.seek(toOffset: UInt64(off))
             try h.write(contentsOf: mix.withUnsafeBytes { Data($0) })
             call.resolve()
+        } catch {
+            call.reject("could not add to \(name): \(error.localizedDescription)")
+        }
+    }
+
+    /// pcmAdd for a temporary PCM file instead of a string: the host's own capture
+    /// of the native engine is streamed to disk while the take runs (fileAppend),
+    /// then added onto the web mix from there, a megabyte at a time. Holding that
+    /// capture in the page (8 bytes a frame, the master and every stem) is what
+    /// ended the web content process on a long bounce: the take was saved, then
+    /// the app came back at its start screen. `skipBytes` drops the head of the
+    /// source (it began before the mix did); `bytes` is how much of it lands, at
+    /// byte `offset` of `name`.
+    @objc func pcmAddFile(_ call: CAPPluginCall) {
+        guard let name = call.getString("name"), let pcm = call.getString("pcm"),
+              let off = call.getInt("offset"), off >= 0, let total = call.getInt("bytes"), total >= 0 else {
+            call.reject("pcmAddFile needs name, pcm, offset and bytes")
+            return
+        }
+        let skip = max(0, call.getInt("skipBytes") ?? 0)
+        do {
+            let dst = try FileHandle(forUpdating: dirURL(call).appendingPathComponent((name as NSString).lastPathComponent))
+            defer { try? dst.close() }
+            guard let src = try? FileHandle(forReadingFrom: tmpURL(pcm)) else { call.resolve(["bytes": 0]); return }
+            defer { try? src.close() }
+            try src.seek(toOffset: UInt64(skip))
+            var left = total - (total % 4)
+            var at = off
+            while left > 0 {
+                // Whole frames only, so a chunk never starts in the middle of a sample.
+                let a = try src.read(upToCount: min(left, 1 << 20)) ?? Data()
+                if a.isEmpty { break }
+                let n = a.count / 2
+                if n == 0 { break }
+                try dst.seek(toOffset: UInt64(at))
+                let cur = try dst.read(upToCount: n * 2) ?? Data()
+                var mix = [Int16](repeating: 0, count: n)
+                mix.withUnsafeMutableBytes { _ = a.copyBytes(to: $0, count: n * 2) }
+                let have = cur.count / 2
+                if have > 0 {
+                    var base = [Int16](repeating: 0, count: have)
+                    base.withUnsafeMutableBytes { _ = cur.copyBytes(to: $0, count: have * 2) }
+                    for i in 0..<min(have, n) {
+                        mix[i] = Int16(max(-32768, min(32767, Int32(base[i]) + Int32(mix[i]))))
+                    }
+                }
+                try dst.seek(toOffset: UInt64(at))
+                try dst.write(contentsOf: mix.withUnsafeBytes { Data($0) })
+                at += n * 2
+                left -= n * 2
+            }
+            call.resolve(["bytes": at - off])
         } catch {
             call.reject("could not add to \(name): \(error.localizedDescription)")
         }

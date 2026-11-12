@@ -77,6 +77,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)editGraph:(int)gid increments:(NSData *)increments;
 /// {voices, dropped, lateEdits}: what the pool is playing and what it refused.
 - (NSDictionary *)graphStats;
+/// Fades every graph voice that plays into one of the part buses in `mask` (bit n = bus n) to nothing over
+/// `fadeMs`, starting now. The page's Panic, and the page's start-up: a web view that was ended and reloaded
+/// leaves the voices it was holding sounding in the engine with nobody left to release them.
+- (BOOL)killGraphVoices:(uint32_t)mask fadeMs:(double)fadeMs;
 
 // ── The native sequencer (native/modsynth/seqcore.h; docs/native-scheduling.md slice 1) ──
 // The clock and the drum grid, on a thread of the host's own, counted in the render thread's frames. So far it
