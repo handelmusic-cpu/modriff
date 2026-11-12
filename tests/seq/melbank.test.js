@@ -130,13 +130,13 @@ if(!process.env.VOICES){
     const st = await window._nsMel.start(250);
     entry.start = { ok: st.ok, sent: entries.length - e0, score: calls.score, chords: calls.chords, kit: calls.start && calls.start.kit, want: window._nsKitCode('mel:sine'), align: calls.start && calls.start.align };
     Object.keys(calls).forEach(k => delete calls[k]);
-    setMlWave('modsynth'); const sm = await window._nsMel.start(250); setMlWave('sine');
+    setMlWave('sampler'); const sm = await window._nsMel.start(250); setMlWave('sine');
     entry.sampled = { why: sm.why, started: !!calls.start };
     Object.keys(calls).forEach(k => delete calls[k]);
     window._mlSetClock(0, 0, false); const a0 = await window._nsMel.armForSong(); entry.off = { armed: a0.armed, arm: calls.arm };
     window._mlSetClock(0, 0, true); const a1 = await window._nsMel.armForSong(); entry.on = { armed: a1.armed, arm: calls.arm, want: window._nsKitCode('mel:sine') };
     Object.keys(calls).forEach(k => delete calls[k]);
-    setMlWave('modsynth'); const a2 = await window._nsMel.armForSong(); setMlWave('sine'); window._mlSetClock(0, 0, false);
+    setMlWave('sampler'); const a2 = await window._nsMel.armForSong(); setMlWave('sine'); window._mlSetClock(0, 0, false);
     entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm };
     delete window._nsBank.have['mel:sine'];
     window._nsBank.bad['mel:sine'] = window._nsBank.signatureMel();
@@ -190,10 +190,10 @@ if(!process.env.VOICES){
     const e = out.entry;
     ok(e.start.ok !== false && e.start.sent === out.report.sine.entries && e.start.score === 1 && e.start.chords === 1 && e.start.kit === e.start.want && e.start.align === true,
        '_nsMel.start(): records the voice, sends the line and the chart, and starts it on the drums\' bar line with the voice\'s code', JSON.stringify(e.start));
-    ok(/mõdSynth/.test(e.sampled.why || '') && !e.sampled.started, '_nsMel.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
+    ok(/sampler/.test(e.sampled.why || '') && !e.sampled.started, '_nsMel.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
     ok(e.off.armed === false && e.off.arm && e.off.arm.on === false && e.on.armed === true && e.on.arm && e.on.arm.on === true && e.on.arm.kit === e.on.want,
        'a song arms the melody when it is playing (with the voice\'s code) and disarms it when it is not', JSON.stringify([e.off, e.on]));
-    ok(e.refused.armed === false && /mõdSynth/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
+    ok(e.refused.armed === false && /sampler/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
     ok(e.cachedRefused.ok === false && !e.cachedRefused.started && /refused/.test(e.cachedRefused.why), 'a cached refusal cannot start a part with no valid bank entry', JSON.stringify(e.cachedRefused));
   }
   ok(out.sigChanged, 'the Melody Gen fader is part of the voice\'s signature');

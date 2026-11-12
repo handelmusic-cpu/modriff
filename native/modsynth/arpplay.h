@@ -11,6 +11,7 @@
 
 #include "arpcore.h"
 #include "voicebank.h"
+#include "synthseq.h"
 
 namespace modsynth {
 
@@ -20,13 +21,14 @@ struct ArpPlayer {
   static constexpr int kRegimes = 8;
   static constexpr double kStrumSec = 0.012;
   double sr = 48000;
+  SynthLane synth;
   DrumBank *bank = nullptr;     // shared with the drum player: one bank
   int kit = 0;                  // the bank's code for the arp voice that is on
   std::function<int(const double *, size_t, double, uint64_t)> begin;
   uint64_t notes = 0, blocks = 0, voices = 0, misses = 0, refused = 0, lateStarts = 0;
   int lastMissLane = -1;
 
-  void reset() { notes = blocks = voices = misses = refused = lateStarts = 0; }
+  void reset() { synth.reset(); notes = blocks = voices = misses = refused = lateStarts = 0; }
 
   // The entry for a step: the regime of length that holds `durSec` (the entries are ordered by regime, shortest first, each valid up to its durMax).
   static const BankEntry *pick(const DrumBank &bank, int kit, bool block, double durSec, int midi = -1) {
@@ -42,6 +44,17 @@ struct ArpPlayer {
   }
 
   void play(const ArpEvent &e, double now) {
+    if (bank) if (const BankEntry *p = bank->find(kPart, kit, -1); p && p->processor) {
+      const bool block = e.midi < 0;
+      if (block) blocks++; else notes++;
+      const size_t count = block ? e.notes.size() : 1;
+      for (size_t i = 0; i < count; i++) {
+        const double at = block ? e.frameExact + i * kStrumSec * sr : e.frameExact;
+        const double dur = block ? e.durSec * 0.85 : e.durSec;
+        if (synth.play(block ? e.notes[i] : e.midi, at, dur, now)) voices++; else refused++;
+      }
+      return;
+    }
     if (!begin || !bank) return;
     const bool block = e.midi < 0;
     if (block) blocks++; else notes++;

@@ -9307,7 +9307,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7c</span></div>
  </div>
 </div>
 
@@ -10754,7 +10754,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11954,7 +11954,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7b';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -33971,8 +33971,8 @@ window._arpNativeScore = function(){
  var d = [1, pat, safeRate(arpRateIdx).div, arpFree ? 1 : 0, arpFreeMs / 1000, parseFloat(document.getElementById('arp-gate').value), parseFloat(document.getElementById('decay').value),
           window._sqSwingVal(), window._sqSwing8() ? 1 : 0, shapes[arpVelShape] || 0, gp.gates.length].concat(gp.gates, [gp.accents.length], gp.accents, [motion.length], motion,
           [arpMotionHold, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('arp') >= 0 ? 1 : 0, arpOcts]);
- // Custom sampler slots, synth patches and Pure tuning still need native equivalents; factory recordings have per-pitch banks.
- try{ var av = _wp('arp.voice'); if(av === 'sampler') why.push('a custom sampler arp voice'); else if(av === 'modsynth') why.push('a mõdSynth arp voice'); }catch(e){}
+ // Custom sampler slots and Pure tuning still need native equivalents; patches use the live Processor and factory recordings have per-pitch banks.
+ try{ var av = _wp('arp.voice'); if(av === 'sampler') why.push('a custom sampler arp voice'); }catch(e){}
  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  return {ok: !why.length, why: why, score: d};
 };
@@ -61437,6 +61437,7 @@ window._nsBank = {
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
   var voice = _wp('melgen.voice'), sig = this.signatureMel();
+  if(voice === 'modsynth') return this.ensureSynth('melgen');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
   if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready'){
    _preloadIfSampled(voice);
@@ -61696,6 +61697,29 @@ window._nsBank = {
   }
   return rep;
  },
+ // A patch uses the existing part Processor, not a recording of its silent
+ // oscillator handle. Await attachment before accepting the descriptor; an
+ // older binary refuses v2 instead of reporting a silent prepared voice.
+ ensureSynth: async function(part){
+  var rep = {built: 0, kept: 0, failed: []}, P = window._nsDrum.plugin();
+  var codes = {bass:2, arp:5, melgen:6}, key = 'processor:' + part;
+  var fail = function(why){ rep.failed.push({voice:'modsynth', why:why}); return rep; };
+  if(!P || codes[part] == null) return fail('no native Processor bank');
+  try {
+   if(!await modNativeStart()) return fail('the native engine could not start');
+   var eng = await msxEnsure(part);
+   if(!eng || !eng.ready || !await _modNativeEnsureProc(part)) return fail('the patch Processor is not ready');
+   _modNativeAttach(part, eng); msxApply(part); _modNativeStripSync(part); _modNativeFlush();
+   var sig = 'processor-v2';
+   // The descriptor refers to the live patch. Knobs, matrix, motion, effects,
+   // fader and tuning keep their existing native message path while it runs.
+   if(this.have[key] === sig){ rep.kept++; return rep; }
+   var entry = Float64Array.from([2, codes[part], window._nsKitCode((part === 'melgen' ? 'mel' : part) + ':modsynth'), -1, 1]);
+   var r = await P.seqBank({entry: _mgB64(entry)});
+   if(!r || r.ok !== true) return fail('the engine does not support Processor bank entries');
+   this.have[key] = sig; rep.built++; return rep;
+  } catch(e){ return fail(String(e && e.message || e)); }
+ },
  // The bass voice's signature: what a recording of it bakes in -- the voice, the part's level, the filter, the mixer fader.
  signatureBass: function(){
   var v = _wp('bass.voice');
@@ -61709,6 +61733,7 @@ window._nsBank = {
   if(typeof modParamsSync==='function') modParamsSync();
   var voice = _wp('bass.voice'), sig = this.signatureBass();
   var lib = BASS_SAMPLED[voice] ? BASS_SAMPLED[voice].lib : SAMPLED_WAVES[voice];
+  if(voice === 'modsynth') return this.ensureSynth('bass');
   var perPitch = !!lib;
   if(lib && SAMPLE_STATE[lib] !== 'ready'){
    preloadSampleInstrument(lib);
@@ -61742,6 +61767,7 @@ window._nsBank = {
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
   var voice = _wp('arp.voice'), sig = this.signatureArp();
+  if(voice === 'modsynth') return this.ensureSynth('arp');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
   if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready'){
    _preloadIfSampled(voice);
@@ -66343,7 +66369,7 @@ window._mlRestoreState = function(s){
 };
 
 // The engine's copy of the melody generator's line (docs/native-scheduling.md, slice 3, part three; native/modsynth/melcore.h reads this layout). {ok, why[], score[]}: `ok` is false, and
-// `why` names what, when the engine cannot play this line as the page would (a sampled or mõdSynth voice, Pure tuning's cents). A cell is its nine numbers and the rest of the notes of a chord.
+// `why` names what, when the engine cannot play this line as the page would (a custom sampler voice or Pure tuning's cents). A cell is its nine numbers and the rest of the notes of a chord.
 function _mlPushCell(d, c){
  d.push(c.v || 0, c.note || 0, c.oct == null ? 5 : c.oct, c.len || 1, c.accent ? 1 : 0, c.fix ? 1 : 0, c.vel || 0, c.pr || 0);
  var xs = (c.v && c.more && c.more.length) ? c.more : [];
@@ -66352,7 +66378,7 @@ function _mlPushCell(d, c){
 window._mlPushCell = _mlPushCell;
 window._mlNativeScore = function(){
  var why = [], hs = window._humanState();
- try{ var mv = _wp('melgen.voice'); if(mv === 'sampler') why.push('a custom sampler melody voice'); else if(mv === 'modsynth') why.push('a mõdSynth melody voice'); }catch(e){}
+ try{ var mv = _wp('melgen.voice'); if(mv === 'sampler') why.push('a custom sampler melody voice'); }catch(e){}
  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  var scale = (typeof window._songScalePcs==='function') ? (window._songScalePcs() || []) : [];
  var d = [1, mlSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, mlFollow ? 1 : 0, _mlGridRootPc, _mlGridIntvs.length];

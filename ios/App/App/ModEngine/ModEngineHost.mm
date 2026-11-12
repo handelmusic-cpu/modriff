@@ -61,7 +61,7 @@ constexpr int kMaxMatrixRows = 32;
 constexpr int kQueueSlots = 1024;
 
 enum class MsgType : uint8_t {
-  Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
+  SeqNote, SeqRelease, SeqChoke, SeqStop, Param, ParamAll, NoteOn, NoteOff, Choke, Panic, AllOff,
   Mw, Bend, Aftertouch, CC, Sustain, Macro, Cap, Matrix, Motion, Tempo, Fx, Strip, Mfx, Master
 };
 
@@ -85,6 +85,7 @@ struct Msg {
   double note, vel, at, id, beat;
   double uni, poly;    // cap
   union {
+    double seqIds[128];  // packed (note, id) pairs for a sequencer Stop
     float params[modsynth::PARAM_COUNT];
     double matrix[kMaxMatrixRows][5];
     float motion[modsynth::MOTION_MAX];
@@ -228,9 +229,10 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
   // it by itself (a ramp). Under `lock`.
   modsynth::TempoMap tmap;
+  std::function<void(double)> synthTempo;
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
   HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
-    sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
+    sr = rate; bplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
     seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap); mseq.setTempoMap(&tmap);
   }
   // The page's chord windows, shifted onto the clock. Under `lock`.
@@ -260,6 +262,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // stopEverything at `frame` (the end of a fade): what the band had committed is faded out there, the sequencers and the song stop, the chord is stopped.
   void landStop(double frame) {
     liveChords.clear();
+    bplay.synth.stop(frame, true); aplay.synth.stop(frame, true); mplay.synth.stop(frame, true);
     if (kill) kill(kKillParts, (uint64_t)frame, 1056);
     seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; mseq.stop(); melBySong = false; sseq.stop(); svoice.reset();
     cplay.stopAt(frame);
@@ -269,6 +272,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // chord is let go of (or choked), and a moment later everything is stopped and the tempo the ending borrowed is put back.
   void landing(const modsynth::EndingEvent &ev, double now) {
     const double L = ev.frame;
+    bplay.synth.stop(L, true); aplay.synth.stop(L, true); mplay.synth.stop(L, true);
     const modsynth::SongScore &sc = sseq.score();
     const bool band = seq.running(), bassOn = bseq.running();
     endPhase = 2; endAt = L; endLands++;
@@ -314,6 +318,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   }
   void tick() {
     os_unfair_lock_lock(&lock);
+    if (synthTempo && (seq.running() || bseq.running() || aseq.running() || mseq.running() || sseq.running() || cseq.running())) synthTempo(tmap.bpmAt((double)frames->load(std::memory_order_relaxed)));
     tmap.prune((double)frames->load(std::memory_order_relaxed) - sr);     // the clock never goes back; keep a second
     if (seq.running() && hasScore) {
       const double now = (double)frames->load(std::memory_order_relaxed);
@@ -551,6 +556,33 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       // The sequencer thread begins voices the way the page's graphBegin does, under the same lock. Raw pointers: the
       // members outlive the thread (it is joined first, see _hostSeq).
       modsynth::GraphPool *pool = &_graphs; os_unfair_lock *lk = &_graphLock;
+      Queue *queue = &_queue; os_unfair_lock *push = &_pushLock;
+      auto *live = _live; auto *dropped = &_dropped;
+      auto synthSink = [queue, push, live, dropped](int part) {
+        return [queue, push, live, dropped, part](const modsynth::SynthEvent &e) {
+          if (!live[part].load(std::memory_order_acquire)) return false;
+          Msg m{}; m.type = e.kind == modsynth::SynthEvent::Note ? MsgType::SeqNote : e.kind == modsynth::SynthEvent::Release ? MsgType::SeqRelease : e.kind == modsynth::SynthEvent::Choke ? MsgType::SeqChoke : MsgType::SeqStop;
+          if (m.type == MsgType::SeqStop) {
+            m.flag = e.kind == modsynth::SynthEvent::StopChoke; m.i = e.count;
+            std::memcpy(m.payload.seqIds, e.group, (size_t)e.count * 2 * sizeof(double));
+          }
+          m.part = (uint8_t)part; m.id = e.id; m.note = e.note; m.at = e.frame; m.v = e.end; m.vel = e.vel;
+          os_unfair_lock_lock(push); const bool ok = queue->push(m); os_unfair_lock_unlock(push);
+          if (!ok) dropped->fetch_add(1, std::memory_order_relaxed);
+          return ok;
+        };
+      };
+      _hostSeq->bplay.synth.send = synthSink(3);
+      _hostSeq->aplay.synth.send = synthSink(4);
+      _hostSeq->mplay.synth.send = synthSink(2);
+      _hostSeq->synthTempo = [queue, push, live, last = std::vector<double>(5, 0.0)](double bpm) mutable {
+        for (int part = 0; part < 5; part++) {
+          if (!live[part].load(std::memory_order_acquire) || last[part] == bpm) continue;
+          Msg m{}; m.type = MsgType::Tempo; m.part = (uint8_t)part; m.v = bpm;
+          os_unfair_lock_lock(push); const bool ok = queue->push(m); os_unfair_lock_unlock(push);
+          if (ok) last[part] = bpm;
+        }
+      };
       _hostSeq->begin = [pool, lk](const double *prog, size_t n, double base, uint64_t start) {
         os_unfair_lock_lock(lk);
         const int h = pool->begin(prog, n, base, start);
@@ -803,6 +835,12 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   const size_t n = entry.length / sizeof(double);
   std::vector<double> d(n);
   if (n) std::memcpy(d.data(), entry.bytes, n * sizeof(double));
+  if (n && d[0] == 2) {
+    modsynth::BankEntry probe;
+    if (!probe.fromDoubles(d.data(), n)) return NO;
+    const int slot = probe.part == 2 ? 3 : probe.part == 5 ? 4 : 2;
+    if (!_live[slot].load(std::memory_order_acquire)) return NO;
+  }
   os_unfair_lock_lock(&_hostSeq->lock);
   const bool ok = _hostSeq->bank.put(d.data(), n);
   os_unfair_lock_unlock(&_hostSeq->lock);
@@ -930,6 +968,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqBassStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->bseq.stop();
+  _hostSeq->bplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -999,6 +1038,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqArpStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->aseq.stop(); _hostSeq->arpBySong = false;
+  _hostSeq->aplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -1075,6 +1115,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqMelStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->mseq.stop(); _hostSeq->melBySong = false;
+  _hostSeq->mplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -1143,8 +1184,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqSongStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->sseq.stop();
-  if (_hostSeq->arpBySong) { _hostSeq->aseq.stop(); _hostSeq->arpBySong = false; }
-  if (_hostSeq->melBySong) { _hostSeq->mseq.stop(); _hostSeq->melBySong = false; }       // the arp the song brought in goes with it
+  if (_hostSeq->arpBySong) { _hostSeq->aplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false); _hostSeq->aseq.stop(); _hostSeq->arpBySong = false; }
+  if (_hostSeq->melBySong) { _hostSeq->mplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false); _hostSeq->mseq.stop(); _hostSeq->melBySong = false; }       // the arp the song brought in goes with it
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
   if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
   _hostSeq->endTimers.clear(); _hostSeq->fading = false; _hostSeq->endPhase = 0; if (_hostSeq->endGain) _hostSeq->endGain->store(1.0f, std::memory_order_relaxed);
@@ -1454,6 +1495,31 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   }
   const Msg &r = mm;
   switch (r.type) {
+    case MsgType::SeqNote: {
+      const double offset = (double)_partFrames[r.part] - (double)_frames.load(std::memory_order_relaxed);
+      const auto id = modsynth::NoteId::num(r.id);
+      p->noteOnMsg(r.note, r.vel, id, true, r.at + offset);
+      p->noteOffMsg(r.note, id, true, r.v + offset);
+      _notesOn.fetch_add(1, std::memory_order_relaxed);
+      break;
+    }
+    case MsgType::SeqStop: {
+      const double at = r.at + (double)_partFrames[r.part] - (double)_frames.load(std::memory_order_relaxed);
+      const double *pairs = r.payload.seqIds;
+      for (int i = 0; i < r.i; i++) {
+        const auto id = modsynth::NoteId::num(pairs[i * 2 + 1]);
+        if (r.flag) p->chokeMsg(pairs[i * 2], id, true, at);
+        else p->noteOffMsg(pairs[i * 2], id, true, at);
+      }
+      break;
+    }
+    case MsgType::SeqRelease:
+    case MsgType::SeqChoke: {
+      const double at = r.at + (double)_partFrames[r.part] - (double)_frames.load(std::memory_order_relaxed);
+      if (r.type == MsgType::SeqChoke) p->chokeMsg(r.note, modsynth::NoteId::num(r.id), true, at);
+      else p->noteOffMsg(r.note, modsynth::NoteId::num(r.id), true, at);
+      break;
+    }
     case MsgType::Param:       p->setParam(r.i, r.v); break;
     case MsgType::ParamAll:    p->setAllParams(r.payload.params, r.i); break;
     case MsgType::NoteOn:      _notesOn.fetch_add(1, std::memory_order_relaxed);

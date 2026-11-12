@@ -4,6 +4,14 @@
 namespace modsynth {
 
 bool BankEntry::fromDoubles(const double *d, size_t total) {
+  if (total && d[0] == 2) {
+    if (total != 5) return false;
+    for (size_t i = 0; i < total; i++) if (!std::isfinite(d[i])) return false;
+    if ((d[1] != 2 && d[1] != 5 && d[1] != 6) || d[2] < 0 || d[2] > 0xffffff || d[2] != std::floor(d[2]) || d[3] != -1) return false;
+    processor = true; part = (int)d[1]; kit = (int)d[2]; lane = -1; generation = d[4];
+    return true;
+  }
+  processor = false;
   size_t k = 0;
   auto need = [&](size_t m) { return k + m <= total; };
   if (!need(9) || d[0] != 1) return false;

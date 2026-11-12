@@ -651,3 +651,14 @@ Use the developer entries with the page schedulers stopped; public transport sti
 - Walking bass, four and two feel: tap chords just after beats, with and without drums. The new phrase follows the chord without doubled beats. Tap ten chords quickly; the final chord remains current and no follower stops.
 - Start a native song, then tap pads: its timeline keeps driving the three parts. Stop the followers, tap a chord, and restart: no queued old hand chord plays. The native mirror's `live.pending` clears on Stop.
 - Leave the app with the native developer sequencers running and return: their last supplied chord continues; a new tap updates all three. This checks the developer path only; automatic public background scheduling remains pending.
+
+
+## 40. Native sequencer patch voices (6.9.9.9.9.9.9.7c; not heard on device)
+
+Use the developer entries with the corresponding page schedulers stopped and Native sound on. This covers bass, arp and the melody generator; chord patches remain refused.
+
+- Pick a patch on Bass, then start `_nsBass`: notes and overlaps sound, Follow tracks live chords, and Stop releases the held note. Repeat after the native engine has been running for several seconds, to check a Processor created late.
+- Pick an arp patch and start `_nsArp`: test a note pattern and Block; every tone of a block plays with its strum. Change tempo and a native tempo ramp: synced patch motion/effects follow. Stop and restart repeatedly without stuck notes.
+- Pick a melody-generator patch and start `_nsMel`: single notes and polyphonic steps play; switch patches, turn macros and move the channel fader while it runs. Repeat after another native part has already advanced the engine clock.
+- Run a native song with these patch parts and a supported graph chord voice: Finish/Cold landings cut the previous patch notes, the tonic bass landing sounds, Fade reaches silence, and Stop leaves no queued start sounding afterward.
+- Return to the ordinary page transport after stopping developer sequencers: its tempo and sound controls still work. Check the free web page continues to use its worklet and page clock.

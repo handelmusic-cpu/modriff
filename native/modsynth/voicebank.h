@@ -46,6 +46,7 @@ struct BankChoke {
 };   // basis 0: linear in the quantity, 1: linear in the semitones (pitch only)
 
 struct BankEntry {
+  bool processor = false;     // v2 descriptor: the part's live Processor, never a graph
   int part = 0, kit = 0, lane = 0;
   double generation = 0;     // the page's counter: which settings this voice was recorded under
   double refAt = 0;          // the context time the note's onset had in the recorded program (seconds)
@@ -92,6 +93,8 @@ struct BankEntry {
   std::vector<BankSlot> gtime;
 
   // The flat layout (all doubles), written by the page (window._nsBank):
+  //   Version 2 is [2, part (2 bass, 5 arp, 6 melody), kit, -1, generation].
+  //   It refers to the live Processor; patch controls keep their existing path.
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
   //   [9 .. 9+n) the program, then three lists (vel, accent, pitch) each `count, (index, b, basis) x count`,
   //   then `count, index x count` for the time slots, then `count, index x count` for the slots that multiply,
