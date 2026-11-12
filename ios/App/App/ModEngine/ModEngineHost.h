@@ -111,6 +111,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// For tests: keep what is expanded (13 float64s an event, see HostSeq), up to `capacity` events.
 - (void)seqRecord:(BOOL)on capacity:(int)capacity;
 - (NSData *)seqTakeEvents;
+/// Retained seven-double musical events and native frame/wall-clock mapping.
+- (NSDictionary *)seqObserveAfter:(double)after limit:(int)limit;
+- (BOOL)seqSetObserverRoutes:(NSData *)routes localMask:(int)mask;
 /// {running, step, bar, frame, steps, events, late, firstFrame, nextFrame, recDropped, hits, misses, silent, refused,
 /// lateStarts, bank, lastMiss}: hits are events begun as voices, misses ones with no voice in the bank (lastMiss says
 /// which), silent ones at a velocity of nothing, refused ones the pool would not take. step and bar are the last

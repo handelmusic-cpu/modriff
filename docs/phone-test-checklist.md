@@ -682,3 +682,13 @@ Use native developer entries with the matching page clocks stopped.
 - Test chord glide with held/decaying chords, different note counts and Strum. Test zero/short/long glide, a leap beyond two octaves and a chord after six seconds of silence.
 - Toggle Pure/glide, change controls and prepare again. Check the first live chord after banking has the expected history. Repeat with patch voices: their internal glide retains its existing behavior.
 - Leave the app during a native song and return: tuning and glide continue; Stop and restart do not reuse old native chord history.
+
+
+## 43. Native MIDI observers and takes (6.9.9.9.9.9.9.7f; not heard on device)
+
+Use native developer sequencers with page clocks stopped.
+
+- Bounce a native song with Kit/Aux, bass, polyphonic melody, arp blocks and sustained/slash chords. Import its MIDI: all lanes and notes appear, chord gates/cuts line up and recording Stop clips future notes.
+- Leave the app during the take and return: native MIDI notes keep their spacing in the exported file. Check a take started mid-chord and a take stopped just before a queued note.
+- In the foreground select a MIDI destination and turn local sound off for a lane: it plays externally once, with no local duplicate. Restore local sound, change lanes/ports, Stop and restart; no stuck notes or queued onset after Stop.
+- Leave the app with MIDI out enabled: external notes stop. Return: expired notes do not burst out. Background external MIDI/clock are outside v1.

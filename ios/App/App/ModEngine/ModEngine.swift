@@ -69,6 +69,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqIntonation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqObserve", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqObserverRoutes", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
@@ -833,6 +835,18 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetBassScore(data)])
+    }
+
+    @objc func seqObserve(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let after = call.getDouble("after") ?? -1
+        guard after.isFinite else { call.reject("invalid observer cursor"); return }
+        call.resolve(host.seqObserve(after:after, limit:Int32(max(1,min(4096,call.getInt("limit") ?? 4096)))) as? [String:Any] ?? [:])
+    }
+    @objc func seqObserverRoutes(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("routes"), let data = Data(base64Encoded:b64) else { call.reject("observer routes required"); return }
+        call.resolve(["ok":host.seqSetObserverRoutes(data, localMask:Int32(max(0,min(127,call.getInt("localMask") ?? 127))))])
     }
 
     @objc func seqIntonation(_ call: CAPPluginCall) {

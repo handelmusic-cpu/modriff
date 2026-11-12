@@ -270,6 +270,53 @@ static void testChordPatch() {
     "chord Stop cuts its graph sub and cancels/releases the patch voices");
 }
 
+static void testObservers() {
+  ModEngineHost *h=fresh(); [h ensureGraphPart:4];
+  CHECK([h seqSetObserverRoutes:bytes({0,0,36}) localMask:0], "observer routes and external-only mask accepted");
+  CHECK(![h seqSetObserverRoutes:bytes({0,0,NAN}) localMask:127], "invalid drum MIDI routes refused atomically");
+  [h seqPutBankEntry:bytes(arpEntry(7,0,.3))];
+  [h seqSetArpScore:bytes(arpScore(0,2))];
+  [h seqSetArpNotes:bytes({60,64,67})];
+  [h seqArpStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  run(h,600);
+  NSDictionary *a=[h seqObserveAfter:0 limit:2],*again=[h seqObserveAfter:0 limit:2];
+  CHECK([a[@"events"] isEqual:again[@"events"]] && [a[@"cursor"] intValue]==2, "native observer pages can be retried without destructive reads");
+  CHECK([a[@"clockReady"] boolValue] && std::isfinite([a[@"clockOffsetMs"] doubleValue]), "observer includes the render frame / wall-clock mapping");
+  CHECK([[h seqMirror][@"arp"][@"voices"] intValue]==0 && [a[@"latest"] intValue]>=2, "external-only arp still emits every musical event without local voices");
+  [h seqSetObserverRoutes:bytes({0,0,36}) localMask:127]; run(h,300);
+  CHECK([[h seqMirror][@"arp"][@"voices"] intValue]>0,"restoring local sound starts native voices again");
+  [h seqArpStop];
+  NSDictionary *all=[h seqObserveAfter:0 limit:4096];
+  NSData *data=[[NSData alloc] initWithBase64EncodedString:all[@"events"] options:0];
+  const double *d=(const double *)data.bytes; const size_t n=data.length/sizeof(double);
+  CHECK(n>=7 && d[n-6]==2 && d[n-5]==5,"Stop appends the arp cut after its retained notes");
+  CHECK([all[@"lost"] intValue]==0 && [all[@"cursor"] isEqual:all[@"latest"]],"observer drain reaches the latest event without loss");
+  [h seqRecord:YES capacity:1]; CHECK([[h seqObserveAfter:0 limit:4096][@"events"] isEqual:all[@"events"]],"diagnostic recording cannot clear musical events");
+  ModEngineHost *g=fresh(); [g seqSetObserverRoutes:bytes({0,0,36,0,1,42}) localMask:0];
+  [g seqSetDrumScore:bytes(score())];
+  std::vector<double> bs={1,1,0,1,0,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+  [g seqSetBassScore:bytes(bs)]; [g seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{{7,4}}}}))];
+  [g seqSetArpScore:bytes(arpScore(6,1))];[g seqSetArpNotes:bytes({60,64,67})];
+  [g seqSetChordScore:bytes({1,16,-1,0,1,1,.8,.3,0,0,0,0,60,3,60,64,67,1,0,1,0,-8,60})];
+  [g seqStartWithBpm:120 rate:1 leadMs:100 seed:1];
+  [g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqArpStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqChordStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7];run(g,600);
+  NSDictionary *band=[g seqObserveAfter:0 limit:4096],*mirror=[g seqMirror];
+  NSData *raw=[[NSData alloc] initWithBase64EncodedString:band[@"events"] options:0]; const double *ev=(const double *)raw.bytes;
+  int counts[7]={}; bool gm=true,arpGate=true;
+  for(size_t i=0;i<raw.length/sizeof(double);i+=7) if(ev[i+1]==1) {
+    const int p=(int)ev[i+2]; counts[p]++;
+    if(p==0) gm=gm && (ev[i+3]==36 || ev[i+3]==42);
+    if(p==5) arpGate=arpGate && ev[i+4]==85 && ev[i+6]>ev[i+5];
+  }
+  CHECK(counts[0]==[mirror[@"events"] intValue] && counts[2]==[mirror[@"bass"][@"notes"] intValue] && counts[6]==[mirror[@"mel"][@"scheduled"] intValue] && counts[5]==3*[mirror[@"arp"][@"scheduled"] intValue] && counts[3]==4 && counts[2]>0 && counts[6]>0,
+    "all native sources retained: drums %d, bass %d, poly melody %d, block arp %d, chord+root %d",counts[0],counts[2],counts[6],counts[5],counts[3]);
+  CHECK(gm && arpGate,"native events retain configured GM notes and block velocities/gates");
+
+}
+
 static void testIntonation() {
   ModEngineHost *h=fresh(); std::vector<double> table(12,0); table[4]=-13.69;
   CHECK([h seqSetIntonation:bytes(table) pure:YES glide:YES glideTime:0 root:5], "Pure table and zero-duration glide accepted");
@@ -281,6 +328,8 @@ static void testIntonation() {
 
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_OBSERVER_ONLY")) { testObservers(); return failed ? 1 : 0; }
+    testObservers();
     if (getenv("MODRIFF_INTONATION_ONLY")) { testIntonation(); return failed ? 1 : 0; }
     testIntonation();
     if (getenv("MODRIFF_CHORD_PATCH_ONLY")) { testChordPatch(); return failed ? 1 : 0; }

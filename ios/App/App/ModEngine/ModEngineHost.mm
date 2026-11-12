@@ -18,6 +18,7 @@
 #include "capture.h"
 #include "graphpool.h"
 #include "seqcore.h"
+#include "seqobserve.h"
 #include "seqplay.h"
 #include "bassplay.h"
 #include "arpplay.h"
@@ -229,6 +230,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
   // it by itself (a ramp). Under `lock`.
   modsynth::TempoMap tmap;
+  modsynth::SeqObserver observer;
+  std::map<std::pair<int,int>,int> midiDrums;
+  uint32_t localMask = 0x7f;
   modsynth::Tuning tuning;
   int arpTuneRoot = -1;
   std::function<void(double)> synthTempo;
@@ -244,6 +248,39 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     };
     seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap); mseq.setTempoMap(&tmap);
   }
+  static int midiVelocity(double v,bool accent=false,double fallback=.7) { return std::clamp((int)std::floor((v?v:fallback)*100+.5)+(accent?15:0),1,127); }
+  void play(const modsynth::DrumEvent &e,double now) {
+    auto it=midiDrums.find({e.kit,e.lane});
+    observer.note(e.part,it==midiDrums.end()?39:it->second,midiVelocity(e.vel,e.accent,.6),e.frameExact,e.frameExact+.06*sr);
+    if(localMask & (1u<<e.part)) modsynth::DrumPlayer::play(e,now);
+  }
+  void playBass(const modsynth::BassEvent &e,double now) {
+    observer.note(2,e.midi,midiVelocity(e.vel,e.accent,.6),e.frameExact,e.frameExact+std::max(.03*sr,e.durFrames*.92));
+    if(localMask & (1u<<2)) bplay.play(e,now);
+  }
+  void playMel(const modsynth::MelEvent &e,double now) {
+    observer.note(6,e.midi,midiVelocity(e.vel,e.accent),e.frameExact,e.frameExact+std::max(.03*sr,e.durFrames*.9));
+    if(localMask & (1u<<6)) mplay.play(e,now);
+  }
+  void playArp(const modsynth::ArpEvent &e,double now) {
+    const bool block=e.midi<0; const size_t n=block?e.notes.size():1;
+    for(size_t i=0;i<n;i++) { const double at=e.frameExact+(block?i*.012*sr:0);
+      observer.note(5,block?e.notes[i]:e.midi,block?85:90,at,at+std::max(.03,e.durSec*(block?.85:.9))*sr);
+    }
+    if(localMask & (1u<<5)) aplay.play(e,now);
+  }
+  void stopChord(double at) { observer.cut(3,at); cplay.stopAt(at); }
+  void playChord(const modsynth::ChordEvent &e,double now) {
+    observer.cut(3,e.onsetExact);
+    const double end=e.onsetExact+(e.hold ? (e.holdSec>=0 ? std::max(.02,e.holdSec) : 3600.) : std::max(.15,e.durSec))*sr;
+    const int vel=std::clamp((int)std::floor((e.vel?e.vel:.8)*100+.5)+20,1,127);
+    for(int n:e.notes) observer.note(3,n,vel,e.onsetExact,end);
+    // Slash basses are already in the voiced list; ordinary chords also log
+    // the root an octave below, as the page's shared MIDI chord tap does.
+    if(e.rootNote!=INT_MIN && e.subNote==e.rootNote) observer.note(3,e.rootNote-12,vel,e.onsetExact,end);
+    if(localMask & (1u<<3)) cplay.play(e,now);
+  }
+  void cutFollowers(double at) { for(int p:{0,1,2,5,6}) observer.cut(p,at); }
   // The page's chord windows, shifted onto the clock. Under `lock`.
   void placeChords() {
     if (bassChords.empty()) { bseq.timeline().clear(); return; }
@@ -271,16 +308,18 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // stopEverything at `frame` (the end of a fade): what the band had committed is faded out there, the sequencers and the song stop, the chord is stopped.
   void landStop(double frame) {
     liveChords.clear();
+    cutFollowers(frame);
     bplay.synth.stop(frame, true); aplay.synth.stop(frame, true); mplay.synth.stop(frame, true);
     if (kill) kill(kKillParts, (uint64_t)frame, 1056);
     seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; mseq.stop(); melBySong = false; sseq.stop(); svoice.reset();
-    cplay.stopAt(frame);
+    stopChord(frame);
   }
   // An ending's landing (_endingLand): everything the band had committed rings into the downbeat and is faded out there; on it, the whole band at once -- the kit's kick, its
   // biggest cymbal and (for most endings) its snare, the key's tonic chord with its root an octave under, and the bass's last note on the tonic -- then, after the hold, the
   // chord is let go of (or choked), and a moment later everything is stopped and the tempo the ending borrowed is put back.
   void landing(const modsynth::EndingEvent &ev, double now) {
     const double L = ev.frame;
+    cutFollowers(L);
     bplay.synth.stop(L, true); aplay.synth.stop(L, true); mplay.synth.stop(L, true);
     const modsynth::SongScore &sc = sseq.score();
     const bool band = seq.running(), bassOn = bseq.running();
@@ -291,8 +330,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     seq.stop(); bseq.stop(); cseq.stop(); aseq.stop(); arpBySong = false; mseq.stop(); melBySong = false; sseq.stop(); svoice.reset();
     const modsynth::LandingPlan plan = modsynth::planLanding(sc, ev, svoice, tmap, &seq.score(), band, bassOn, sr);
     for (const modsynth::DrumEvent &e : plan.hits) play(e, now);
-    if (plan.chord.play) { cplay.play(plan.chord.e, now); songVoiced++; } else if (plan.chord.stop) cplay.stopAt(L);
-    if (plan.bass) bplay.play(plan.bassNote, now);
+    if (plan.chord.play) { playChord(plan.chord.e, now); songVoiced++; } else if (plan.chord.stop) stopChord(L);
+    if (plan.bass) playBass(plan.bassNote, now);
     // After the hold the chord is let go of (a sustained one: its own release was queued with it) or choked; the ending is finished once it has died away
     endTimers.push_back({plan.finishAt, 2, 0});
     if (endRestoreBpm > 0) { endTimers.push_back({plan.finishAt, 0, endRestoreBpm}); endRestoreBpm = 0; }
@@ -303,11 +342,11 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   void followUntil(double now, double horizon) {
     // The walking line snaps to the drums' next bar after that grid ran.
     if (bseq.running() && hasBass)
-      bassSteps += (uint64_t)bseq.run(now, horizon, seq.nextBarFrame(), [&](const modsynth::BassEvent &e) { bassNotes++; bassLastMidi = e.midi; bplay.play(e, now); });
+      bassSteps += (uint64_t)bseq.run(now, horizon, seq.nextBarFrame(), [&](const modsynth::BassEvent &e) { bassNotes++; bassLastMidi = e.midi; playBass(e, now); });
     if (aseq.running() && hasArp)
-      arpSteps += (uint64_t)aseq.run(horizon, [&](const modsynth::ArpEvent &e) { arpNotesN++; aplay.play(e, now); });
+      arpSteps += (uint64_t)aseq.run(horizon, [&](const modsynth::ArpEvent &e) { arpNotesN++; playArp(e, now); });
     if (mseq.running() && hasMel)
-      melSteps += (uint64_t)mseq.run(horizon, [&](const modsynth::MelEvent &e) { melNotesN++; melLastMidi = e.midi; mplay.play(e, now); }, now);
+      melSteps += (uint64_t)mseq.run(horizon, [&](const modsynth::MelEvent &e) { melNotesN++; melLastMidi = e.midi; playMel(e, now); }, now);
   }
   void discardIdleLiveChords() {
     if (!bseq.running() && !mseq.running() && !aseq.running()) liveChords.clear();
@@ -366,15 +405,15 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         endTimers.erase(endTimers.begin() + (long)i);
         if (t.what == 0) setTempoNow(t.v);
         else if (t.what == 1 && endGain) endGain->store((float)t.v, std::memory_order_relaxed);
-        else if (t.what == 2) cplay.stopAt(t.frame);
+        else if (t.what == 2) stopChord(t.frame);
       }
     }
     if (sseq.running() && hasSong) {
       const double now = (double)frames->load(std::memory_order_relaxed);
       // What a chord does to the sound: strike it, or stop the one that rings (a rest, Chords off). Hits are the re-strikes of the comp's rhythm.
       auto act = [&](const modsynth::VoiceAction &a, bool isHit) {
-        if (a.play) { if (isHit) songHits++; else songVoiced++; cplay.play(a.e, now); }
-        else if (a.stop) { if (!isHit) songRests++; cplay.stopAt(a.onset); }
+        if (a.play) { if (isHit) songHits++; else songVoiced++; playChord(a.e, now); }
+        else if (a.stop) { if (!isHit) songRests++; stopChord(a.onset); }
       };
       auto hits = [&](double horizon) { svoice.flush(horizon, sseq.score(), sseq.capoNow(), tmap, [&](const modsynth::VoiceAction &a) { act(a, true); }); };
       sseq.run(now + lookahead, seq.running(), [&](const modsynth::SongChord &c) {
@@ -383,7 +422,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         if (aseq.running() && hasArp) {
           // setArpChord in _playChartSlot2: the arp's tones are the chord's (a slash chord's bass first, the octaves above), from the moment the chord begins; the steps before it
           // are the chord before's. A rest does not change the chord: it starts the pattern again.
-          arpSteps += (uint64_t)aseq.run(c.w.t, [&](const modsynth::ArpEvent &e) { arpNotesN++; aplay.play(e, now); });
+          arpSteps += (uint64_t)aseq.run(c.w.t, [&](const modsynth::ArpEvent &e) { arpNotesN++; playArp(e, now); });
           if (c.s.rest) aseq.restart();
           else aseq.setNotes(modsynth::arpChordNotes(c.s.rootM + c.capo, c.s.bassM >= 0 ? c.s.bassM + c.capo : -1, c.s.ivs, aseq.score().octaves));
           arpChords++;
@@ -424,7 +463,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     followUntil(followNow, followNow + lookahead);
     if (cseq.running() && hasChord) {
       const double now = (double)frames->load(std::memory_order_relaxed);
-      chordSteps += (uint64_t)cseq.run(now + lookahead, [&](const modsynth::ChordEvent &e) { chordHits++; cplay.play(e, now); });
+      chordSteps += (uint64_t)cseq.run(now + lookahead, [&](const modsynth::ChordEvent &e) { chordHits++; playChord(e, now); });
     }
     os_unfair_lock_unlock(&lock);
   }
@@ -989,6 +1028,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqBassStop {
   os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->observer.cut(2,(double)_frames.load(std::memory_order_relaxed));
   _hostSeq->bseq.stop();
   _hostSeq->bplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
@@ -1059,6 +1099,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqArpStop {
   os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->observer.cut(5,(double)_frames.load(std::memory_order_relaxed));
   _hostSeq->aseq.stop(); _hostSeq->arpBySong = false;
   _hostSeq->aplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
@@ -1136,6 +1177,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqMelStop {
   os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->observer.cut(6,(double)_frames.load(std::memory_order_relaxed));
   _hostSeq->mseq.stop(); _hostSeq->melBySong = false;
   _hostSeq->mplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false);
   _hostSeq->discardIdleLiveChords();
@@ -1206,10 +1248,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqSongStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->sseq.stop();
+  const double stopFrame=(double)_frames.load(std::memory_order_relaxed);
+  if (_hostSeq->arpBySong) _hostSeq->observer.cut(5,stopFrame);
+  if (_hostSeq->melBySong) _hostSeq->observer.cut(6,stopFrame);
   if (_hostSeq->arpBySong) { _hostSeq->aplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false); _hostSeq->aseq.stop(); _hostSeq->arpBySong = false; }
   if (_hostSeq->melBySong) { _hostSeq->mplay.synth.stop((double)_frames.load(std::memory_order_relaxed), false); _hostSeq->mseq.stop(); _hostSeq->melBySong = false; }       // the arp the song brought in goes with it
   // The page's stopSongLoop stops the chord: a held chord (the comp "sustain") would ring for ever otherwise.
-  if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed)); }
+  if (_hostSeq->sseq.score().voice.on) { _hostSeq->svoice.reset(); _hostSeq->stopChord((double)_frames.load(std::memory_order_relaxed)); }
   _hostSeq->endTimers.clear(); _hostSeq->fading = false; _hostSeq->endPhase = 0; if (_hostSeq->endGain) _hostSeq->endGain->store(1.0f, std::memory_order_relaxed);
   // _pracRestore: the trainer's tempo goes back to where the run began (if the player has not moved it since), and its key shift is dropped.
   { const double now = (double)_frames.load(std::memory_order_relaxed), back = _hostSeq->sseq.restore(_hostSeq->tmap.bpmAt(now)); if (back > 0) _hostSeq->setTempoNow(back); }
@@ -1283,7 +1328,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqChordStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->cseq.stop();
-  _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed));
+  _hostSeq->stopChord((double)_frames.load(std::memory_order_relaxed));
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -1295,6 +1340,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 - (void)seqStop {
   os_unfair_lock_lock(&_hostSeq->lock);
+  _hostSeq->observer.cut(0,(double)_frames.load(std::memory_order_relaxed));
+  _hostSeq->observer.cut(1,(double)_frames.load(std::memory_order_relaxed));
   _hostSeq->seq.stop();
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -1312,6 +1359,33 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&_hostSeq->lock);
   if (bpm > 0) _hostSeq->tmap.ramp((double)_frames.load(std::memory_order_relaxed), bpm, ms > 0 ? ms * _sampleRate / 1000.0 : 0);
   os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// Independent, retained readers. A retry with the same cursor returns the same
+// events; a lag beyond capacity reports the exact loss instead of plausible MIDI.
+- (NSDictionary *)seqObserveAfter:(double)after limit:(int)limit {
+  if(!std::isfinite(after)) return @{@"ok":@NO,@"why":@"invalid observer cursor"};
+  HostSeq &q=*_hostSeq; os_unfair_lock_lock(&q.lock);
+  uint64_t cursor=0,lost=0;
+  const uint64_t from=after<0 ? q.observer.cursor() : (uint64_t)std::max(0.,std::min(after,(double)q.observer.cursor()));
+  const auto ev=q.observer.read(from,(size_t)std::clamp(limit,1,4096),cursor,lost);
+  const double now=(double)_frames.load(std::memory_order_relaxed),off=_curOffPub.load(std::memory_order_relaxed);
+  NSDictionary *r=@{@"ok":@YES,@"cursor":@((double)cursor),@"latest":@((double)q.observer.cursor()),@"lost":@((double)lost),
+    @"events":[[NSData dataWithBytes:ev.data() length:ev.size()*sizeof(double)] base64EncodedStringWithOptions:0],
+    @"sampleRate":@(_sampleRate),@"frame":@(now),@"clockReady":@(std::isfinite(off)),@"clockOffsetMs":@(std::isfinite(off)?off:0)};
+  os_unfair_lock_unlock(&q.lock); return r;
+}
+- (BOOL)seqSetObserverRoutes:(NSData *)routes localMask:(int)mask {
+  if(routes.length % (3*sizeof(double)) || routes.length>4096*3*sizeof(double) || mask<0 || mask>127) return NO;
+  std::map<std::pair<int,int>,int> map; const double *d=(const double *)routes.bytes;
+  for(size_t k=0;k<routes.length/sizeof(double);k+=3) {
+    for(int j=0;j<3;j++) if(!std::isfinite(d[k+j]) || d[k+j]!=std::floor(d[k+j])) return NO;
+    if(d[k]<0 || d[k]>0xffffff || d[k+1]<0 || d[k+1]>127 || d[k+2]<0 || d[k+2]>127) return NO;
+    map[{(int)d[k],(int)d[k+1]}]=(int)d[k+2];
+  }
+  HostSeq &q=*_hostSeq; os_unfair_lock_lock(&q.lock);
+  q.midiDrums=std::move(map); q.localMask=(uint32_t)mask;
+  os_unfair_lock_unlock(&q.lock); return YES;
 }
 
 // Keep (up to `capacity` events) what the sequencer expands, for a test to read with seqTakeEvents.
@@ -1359,12 +1433,12 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"hits": @((double)q.bplay.hits), @"misses": @((double)q.bplay.misses), @"refused": @((double)q.bplay.refused),
                                  @"cuts": @((double)q.bplay.cuts), @"lateStarts": @((double)q.bplay.lateStarts), @"firstFrame": @((double)q.bassFirst),
                                  @"lastMidi": @(q.bassLastMidi), @"lastMissLane": @(q.bplay.lastMissLane), @"windows": @((double)q.bseq.timeline().size())},
-                      @"arp": @{@"running": @(q.aseq.running()), @"steps": @((double)q.arpSteps), @"notes": @((double)q.aplay.notes), @"blocks": @((double)q.aplay.blocks),
+                      @"arp": @{@"scheduled":@((double)q.arpNotesN),@"running": @(q.aseq.running()), @"steps": @((double)q.arpSteps), @"notes": @((double)q.aplay.notes), @"blocks": @((double)q.aplay.blocks),
                                 @"voices": @((double)q.aplay.voices), @"misses": @((double)q.aplay.misses), @"refused": @((double)q.aplay.refused), @"lateStarts": @((double)q.aplay.lateStarts),
                                 @"firstFrame": @((double)q.arpFirst), @"nextFrame": @(q.aseq.nextFrame()), @"lastMissLane": @(q.aplay.lastMissLane), @"chords": @((double)q.arpChords),
                                 @"armed": @(q.arpArmed), @"bySong": @(q.arpBySong),
                                 @"tones": ({ NSMutableArray *t = [NSMutableArray array]; for (int n : q.aseq.notes()) [t addObject:@(n)]; t; })},
-                      @"mel": @{@"running": @(q.mseq.running()), @"nextStep": @(q.mseq.step()), @"steps": @((double)q.melSteps), @"notes": @((double)q.mplay.notes), @"slides": @((double)q.mplay.slides),
+                      @"mel": @{@"scheduled":@((double)q.melNotesN),@"running": @(q.mseq.running()), @"nextStep": @(q.mseq.step()), @"steps": @((double)q.melSteps), @"notes": @((double)q.mplay.notes), @"slides": @((double)q.mplay.slides),
                                 @"voices": @((double)q.mplay.voices), @"misses": @((double)q.mplay.misses), @"refused": @((double)q.mplay.refused), @"lateStarts": @((double)q.mplay.lateStarts),
                                 @"firstFrame": @((double)q.melFirst), @"nextFrame": @(q.mseq.nextFrame()), @"lastMissLane": @(q.mplay.lastMissLane), @"windows": @((double)q.mseq.timeline().size()),
                                 @"armed": @(q.melArmed), @"bySong": @(q.melBySong), @"lastMidi": @(q.melLastMidi)},

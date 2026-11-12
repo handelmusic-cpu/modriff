@@ -9327,7 +9327,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7e</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7f</span></div>
  </div>
 </div>
 
@@ -10774,7 +10774,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7e</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7f</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11974,7 +11974,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7e';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7f';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13030,7 +13030,7 @@ function modNativePlugin(){
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
-                     seqIntonation:call('seqIntonation'), seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
+                     seqObserve:call('seqObserve'), seqObserverRoutes:call('seqObserverRoutes'), seqIntonation:call('seqIntonation'), seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
                      seqMelPending:call('seqMelPending'), seqMelScore:call('seqMelScore'), seqMelChords:call('seqMelChords'), seqMelArm:call('seqMelArm'), seqMelStart:call('seqMelStart'), seqMelStop:call('seqMelStop'), seqMelTempo:call('seqMelTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
@@ -54099,9 +54099,11 @@ async function _finishSinkTaps(written, taps, base, sr, tags, span, folder){
 // 150 ms flush captured buffers already rendered, never the remaining sound.
 var _recFinishing=false;
 var REC_TAIL_MS=8000;
-function _stopRecording(transportStopped){
+async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
   _recFinishing=true;
+  var midiStopWall=Date.now();
+  if(window._nsEvents) try{ await window._nsEvents.flushRecording(midiStopWall); }catch(e){ _midiRecNativeCut=true; }
   var midiFile=_stopMidiRecording();
   if(!transportStopped) stopEverything();
   _updateRecBtn();
@@ -54287,6 +54289,7 @@ function _finishRecording(midiFile){
     // half minute, not a refusal.
     var _cutWhat=[];
     if(_audioCut) _cutWhat.push('the first '+FREE_NUMBERS.audioExportSeconds+' seconds of audio');
+    if(midiFile && midiFile.incomplete) done += '. MIDI is incomplete: the native event buffer overflowed';
     if(midiFile && midiFile.cut) _cutWhat.push('the first '+FREE_NUMBERS.midiExportBars+' bars of MIDI');
     if(_cutWhat.length) done += '. Free saves '+_cutWhat.join(' and ')+'; the Studio Pack saves the whole take';
     // Stems were on (or came on mid-take) but some did not make it: say which,
@@ -54373,6 +54376,7 @@ function _updateRecBtn(){
 // never risks changing actual audio behavior. Sources living inside their
 // own IIFEs (bass, drums) can't be wrapped from out here, so they instead
 // call a small window._midiRecLog* hook — see blPlayNote/sqHitTrack.
+var _midiRecWallStart=0, _midiRecNativeCut=false;
 var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0, _midiRecCtxEpoch=0;
 var _midiRecPendingChord=null, _midiRecActiveMel={};
 // General MIDI percussion note per track name. Every track in every machine
@@ -54483,10 +54487,11 @@ function _midiNow(){
 function _midiCtxNow(t){ return (t-_midiRecCtxEpoch)*1000; } // AudioContext time -> ms since rec start
 function _startMidiRecording(){
   _midiRecNotes=[]; _midiRecPendingChord=null; _midiRecActiveMel={};
-  _midiRecStart=performance.now();
+  _midiRecStart=performance.now(); _midiRecWallStart=Date.now(); _midiRecNativeCut=false;
   var ctx=getCtx();
   _midiRecCtxEpoch=ctx?ctx.currentTime:0;
   _midiRecOn=true;
+  if(window._nsEvents) window._nsEvents.beginRecording();
 }
 function _closePendingChord(now){
   if(!_midiRecPendingChord) return;
@@ -54609,7 +54614,7 @@ function _buildMidiRecording(){
     var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
     return { name:(document.getElementById('chart-title')?.value||'modriff-performance')+'-live.mid',
-             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut };
+             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut, incomplete:!!_midiRecNativeCut };
   }catch(e){ console.error('MIDI recording export error',e); return null; }
 }
 // Global hooks called from inside the bass/drum IIFEs (their state isn't
@@ -60763,6 +60768,12 @@ window._sqNativeScore = function(){
  }
  return {score: d, kits: window._nsKitCodes.slice()};
 };
+window._nsDrumMidiRoutes = function(){
+ var out=[];
+ Object.keys(SQM).forEach(function(name){ var kit=window._nsKitCode(name);
+  (SQM[name].tracks||[]).forEach(function(t,lane){ out.push(kit,lane,GM_DRUM_MAP[t.n]||39); });
+ }); return out;
+};
 // A kit's number in the native sequencer's score and bank: the order the kits were first named in this session, so
 // a bank entry and a score made at different moments mean the same kit by the same number.
 window._nsKitCodes = [];
@@ -61945,8 +61956,9 @@ window._nsBank = {
 // stepping and sounding.
 window._nsDrum = {
  plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqScore ? P : null; },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(P.seqObserve) { var obs=await window._nsEvents.prepare(); if(!obs.ok) return obs; }
   return P.seqScore({score: _mgB64(Float64Array.from(window._sqNativeScore().score))});
  },
  // Records what the score plays that the host does not hold yet, and re-sends the score. Resolves the bank report.
@@ -61971,12 +61983,96 @@ window._nsDrum = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
 };
 
+// Musical observers read retained native events, never a last-note mirror.
+// The native block clock maps frames to wall time. Hold that mapping through
+// a take: AudioContext time can freeze while native audio keeps rendering.
+window._nsEvents = {
+ cursor:null, timer:null, pending:null, offset:null, last:null, lost:0, routesSig:'', busy:null,
+ lanes:{0:'drum',1:'auxperc',2:'bass',3:'chord',5:'arp',6:'melgen'},
+ routes: async function(){
+  var P=window._nsDrum.plugin(); if(!P || !P.seqObserverRoutes) return {ok:false,why:'native MIDI observers unavailable'};
+  var d=window._nsDrumMidiRoutes(), mask=127, me=this;
+  Object.keys(me.lanes).forEach(function(p){ if(moSilences(me.lanes[p])) mask &= ~(1<<(+p)); });
+  var sig=mask+':'+d.join(','); if(sig===me.routesSig) return {ok:true};
+  var r=await P.seqObserverRoutes({routes:_mgB64(Float64Array.from(d)),localMask:mask});
+  if(r && r.ok) me.routesSig=sig; return r;
+ },
+ prepare: async function(){
+  var P=window._nsDrum.plugin(),me=this;
+  if(!P || !P.seqObserve || !P.seqObserverRoutes) return {ok:false,why:'native MIDI observers unavailable'};
+  var r=await me.routes(); if(!r || !r.ok) return r || {ok:false};
+  if(me.cursor===null){ var head=await P.seqObserve({after:-1,limit:1}); if(!head || !head.ok || !isFinite(head.cursor)) return {ok:false,why:'native MIDI observer refused initialization'}; me.cursor=head.cursor; me.pending=new Map(); }
+  if(!me.timer) me.timer=setInterval(function(){ me.poll().catch(function(e){me.last={ok:false,why:String(e)};}); },40);
+  return {ok:true};
+ },
+ consume: function(r){
+  var me=this; if(!r || !r.ok || !r.clockReady) return;
+  if(me.offset===null || !_midiRecOn) me.offset=r.clockOffsetMs;
+  if(r.lost){ me.lost+=r.lost; _midiRecNativeCut=true; me.suspendOutput(); me.pending.clear(); me.last={ok:false,why:'native MIDI event buffer overflow',lost:r.lost}; }
+  var d=new Float64Array(Uint8Array.from(atob(r.events||''),function(c){return c.charCodeAt(0);}).buffer);
+  for(var i=0;i+6<d.length;i+=7){
+   if(d[i]<=me.cursor) continue;
+   var id=d[i],kind=d[i+1],part=d[i+2],lane=me.lanes[part],at=me.offset+d[i+5]*1000/r.sampleRate;
+   if(!lane) continue;
+   if(kind===2){
+    me.pending.forEach(function(n,key){ if(n.part!==part) return;
+     if(n.at>=at){ me.cancel(n); if(n.on) moNoteOff(n.lane,n.note,0); if(n.rec){ var j=_midiRecNotes.indexOf(n.rec); if(j>=0) _midiRecNotes.splice(j,1); } me.pending.delete(key); }
+     else { if(n.offTimer){clearTimeout(n.offTimer);n.offTimer=null;} n.end=Math.min(n.end,at); if(n.rec) n.rec.tOff=Math.min(n.rec.tOff,at-_midiRecWallStart); }
+    });
+   } else if(kind===1){
+    var n={id:id,part:part,lane:lane,note:d[i+3],vel:d[i+4],at:at,end:me.offset+d[i+6]*1000/r.sampleRate,on:false};
+    if(_midiRecOn && at>=_midiRecWallStart){ n.rec={lane:lane,note:n.note,vel:n.vel,tOn:at-_midiRecWallStart,tOff:n.end-_midiRecWallStart,_native:true}; _midiRecNotes.push(n.rec); }
+    me.pending.set(id,n);
+   }
+  }
+  me.cursor=r.cursor;
+  var wall=Date.now(), ctx=getCtx(), current=ctx ? ctx.currentTime : 0;
+  me.pending.forEach(function(n,key){
+   // Background MIDI output is outside this transition. Retained notes still
+   // reach the take; expired notes are never replayed on foreground return.
+   if(!n.on && !n.onTimer && n.at<=wall+60 && n.end>wall && !document.hidden){
+    n.onTimer=setTimeout(function(){n.onTimer=null; if(!document.hidden && me.pending.has(key) && n.end>Date.now()){moNoteOn(n.lane,n.note,n.vel,0);n.on=true;}},Math.max(0,n.at-wall));
+   }
+   if(n.end<=wall+60 && !n.offTimer){
+    n.offTimer=setTimeout(function(){n.offTimer=null; if(n.on) moNoteOff(n.lane,n.note,0); me.cancel(n); me.pending.delete(key);},Math.max(0,n.end-wall));
+   }
+   if(n.end<=wall && !n.on){me.cancel(n);me.pending.delete(key);}
+  });
+ },
+ cancel: function(n){ if(n.onTimer) clearTimeout(n.onTimer); if(n.offTimer) clearTimeout(n.offTimer); n.onTimer=n.offTimer=null; },
+ suspendOutput: function(){ var me=this; if(me.pending) me.pending.forEach(function(n){me.cancel(n);n.on=false;}); moAllOff(); },
+ poll: function(){
+  var me=this; if(me.busy) return me.busy;
+  var P=window._nsDrum.plugin(); if(me.cursor===null || !P || !P.seqObserve) return Promise.resolve();
+  me.busy=(async function(){
+   await me.routes();
+   var r; do { r=await P.seqObserve({after:me.cursor,limit:4096}); me.consume(r); }
+   while(r && r.clockReady && r.cursor<r.latest);
+   return r;
+  })().finally(function(){me.busy=null;}); return me.busy;
+ },
+ beginRecording: function(){
+  var start=_midiRecWallStart;
+  if(this.pending) this.pending.forEach(function(n){ if(n.end<=start) return;
+   n.rec={lane:n.lane,note:n.note,vel:n.vel,tOn:Math.max(0,n.at-start),tOff:n.end-start,_native:true}; _midiRecNotes.push(n.rec);
+  });
+ },
+ flushRecording: async function(stopWall){
+  if(this.cursor!==null) await this.poll();
+  var end=(stopWall || Date.now())-_midiRecWallStart;
+  _midiRecNotes=_midiRecNotes.filter(function(n){ if(!n._native) return true; if(n.tOn>=end) return false; n.tOff=Math.max(n.tOn+1,Math.min(n.tOff,end)); return true; });
+ }
+};
+document.addEventListener('visibilitychange',function(){ if(document.hidden && window._nsEvents && window._nsEvents.timer) window._nsEvents.suspendOutput(); });
+
 // The page is the source of truth for Pure's table and chord glide controls.
 // A host missing this API may still play Equal without glide, but must refuse
 // enabled features instead of silently dropping their cents or ramps.
 window._nsIntonation = {
- sync: function(){
-  var P = window._nsDrum.plugin(), pure = tuningOn(), glide = !!_wp('chord.glide');
+ sync: async function(){
+  var P = window._nsDrum.plugin();
+  if(P && P.seqObserve) { var obs=await window._nsEvents.prepare(); if(!obs.ok) return obs; }
+  var pure = tuningOn(), glide = !!_wp('chord.glide');
   if(!P || !P.seqIntonation) return Promise.resolve(pure || glide ? {ok:false,why:'Pure tuning or chord glide needs a newer native engine'} : {ok:true});
   var w = window._blPeekLast ? window._blPeekLast() : null, time = +_wp('chord.glideTime');
   return P.seqIntonation({table:_mgB64(Float64Array.from(TUNING_JI5)),pure:pure,glide:glide,
