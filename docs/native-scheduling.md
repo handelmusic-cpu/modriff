@@ -1328,7 +1328,7 @@ mõdSynth voices; the MIDI out and the `.mid` recorder, which the page's `mlPlay
 - **B4:** implemented (6.9.9.9.9.9.9.7e). The page supplies Pure's table; tuned bank metadata and authored chord roots drive graph notes and chord glide. Phone check 42 remains not heard on device.
 - **B5:** implemented for hand chords with native followers running (6.9.9.9.9.9.9.7b), measured below. Public transport ownership remains pending; phone check 39 is not heard on device.
 - **C:** implemented (6.9.9.9.9.9.9.7f). Retained native note/cut events feed foreground MIDI and the recorder with native frame timing. Interactive strip voices/buses already use the native path. Phone check 43 remains not heard on device.
-- **D:** repeating the last supplied line is already implemented. The chosen chart-edit policy is the next bar line; staging the changed score there remains to be built.
+- **D:** implemented (6.9.9.9.9.9.9.7g). Live chart revisions wait for the next uncommitted bar; followers flush the old prefix first and late generated-line replies carry revision guards. Phone check 44 remains not heard on device.
 - **E:** pending. The public transport still uses the page timers. Do not turn background scheduling on before the unsupported voices, observers, edits, fallback and one-flag transport ownership are verified. The web page must retain its JavaScript schedulers. The original slice-5 phone prerequisite still applies.
 - **F:** the implementation log and phone checks are current for the verified changes above.
 
@@ -1392,3 +1392,16 @@ The page sends its real GM routes and existing `moSilences` policy as a local-pa
 **Measured.** The retained-ring test checks fractional frames, paged retries, cuts, exact overflow and empty-tail reads. The real host verifies independent retries, render-clock mapping, zero local voices with external-only arp, restored voices, Stop cuts, diagnostic isolation and retained counts across drums/bass/polyphonic melody/block arp/chords. Real-page tests recover seven notes exactly once after a delayed poll with AudioContext frozen, close held chords at the native cut frame, cancel a future MIDI onset, surface overflow, and verify the production GM map/local mask. Swift bridge/plugin mapping and iOS Simulator build pass.
 
 **Not done.** Not heard on device (checklist 43). Bar-line chart edits, custom sampler invalidation and automatic transport ownership remain next. Public page schedulers are still active.
+
+
+## Migration D (6.9.9.9.9.9.9.7g): chart revisions on the next bar
+
+**Built.** A running `seqSetSong` stages the new chart at the next bar beyond committed look-ahead. Further edits replace the payload at the same boundary. The tempo map carries the target in beats; running drums retain their actual bar phase through tempo changes. An idle song still replaces immediately. Stop/Hold/start discard queued revisions.
+
+The host runs the old song, comp hits and followers up to the boundary first. At a natural slot boundary it advances the old place before revising, preserving queued Next/Prev, pass/trainer state and armed endings. A mid-slot edit begins the revised slot on that bar. A removed place chooses a valid place; an empty chart stops the chord. A terminal ending wins without an extra edited chord or an early cut of its landing. Existing chord windows keep compacted copies of their bass/melody phrase locks, so a humanized note just before the new window cannot read its lock indices against the new chart's table.
+
+The mirror publishes `revision`, `editPending`, `editFrame` and `chartEdits`. Its ask includes the revision; bass/melody score and pending-line replies are validated under the same native lock as the revision switch. The page suspends answers during chart preparation/pending edits and clears both generated-line caches when the revision changes. Late replies are rejected, including a melody pending reply delayed behind an older score call.
+
+**Measured.** Core cases cover mid-slot/natural-boundary edits, queued Next, an armed Cold ending, trainer key/chorus state and distinct old/new phrase locks after 1,000 revisions. The real host stages repeated edits once, retains the old root before the bar and switches every retained bass event at the exact target frame, with and without drums; pass count survives, Stop drops the queue, and old score/pending replies are refused. The real-page observer test checks preparation/pending guards, cache resets and all four revision-tagged replies. Existing song event-list/voice/answer tests and the integrated iOS Simulator build pass.
+
+**Not done.** Not heard on device (checklist 44). Automatic ownership and custom sampler invalidation remain next. Public page schedulers remain active until the ownership cutover and its phone prerequisite.

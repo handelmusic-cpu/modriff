@@ -9327,7 +9327,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7f</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7g</span></div>
  </div>
 </div>
 
@@ -10774,7 +10774,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7f</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7g</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11974,7 +11974,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7f';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7g';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -62401,13 +62401,14 @@ window._nsSong = {
  sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
   var intonation = await window._nsIntonation.sync(); if(intonation.ok === false) return intonation;
+  this.syncing=(this.syncing||0)+1;
   var me = this, want = this.chords && !!(MODGRAPH.on && MODGRAPH.parts.chord);
   var endL = window._songEndLanes(), landing = (MODGRAPH.on && MODGRAPH.parts.drum) ? window._nsBank.ensureLanes([endL.kick, endL.cym, endL.snare]) : Promise.resolve(null);     // the lanes the landing hits
-  return landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
+  try { return await landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
    var sc = window._songNativeScore({chords: want && (!rep || !rep.failed.length)});
    if(!sc.ok) return {ok: false, why: 'the engine cannot step this song yet: ' + sc.why.join(', ')};
    return P.seqSong({score: _mgB64(Float64Array.from(sc.score))}).then(function(r){ if(r && typeof r === 'object'){ r.bank = rep; r.chordWhy = sc.chordWhy; r.chords = sc.chords; } return r; });
-  });
+  }); } finally { this.syncing--; }
  },
  start: function(section, slot, leadMs){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
@@ -62427,25 +62428,26 @@ window._nsSong = {
  // Answers the engine's asks (window._songAnswer) while the song runs: polls the mirror, and each time it has started a chord, writes the bass's line for the
  // next one and sends it. The engine takes it at the moment that chord starts. `answering: false` leaves the bass on the one line it has.
  driving: false,
- answering: true, _timer: null, _seen: 0, _pre: null, _melPre: null, asked: 0, lastMs: 0,
+ answering: true, syncing:0, _revision:null, _timer: null, _seen: 0, _pre: null, _melPre: null, asked: 0, lastMs: 0,
  watch: function(on){
   var me = this, P = this.plugin();
   if(me._timer){ clearInterval(me._timer); me._timer = null; }
   if(!on || !P) return;
-  me._seen = 0; me._pre = null; me._melPre = null; me.asked = 0;
+  me._seen = 0; me._revision=null; me._pre = null; me._melPre = null; me.asked = 0;
   me._timer = setInterval(function(){
    P.seqMirror().then(function(m){
     try{ window._songMirror.apply(m); }catch(e){}
     var s = m && m.song, ask = s && s.ask;
-    if(!me.answering || !s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
+    if(s && s.revision!==me._revision){ me._revision=s.revision; me._pre=null; me._melPre=null; me._seen=0; }
+    if(me.syncing || (s && s.editPending) || !me.answering || !s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
     me._seen = ask[0];
     var t0 = performance.now();
     var r = window._songAnswer(ask, (m.bass && m.bass.firstFrame) || 0, m.sampleRate || 48000, me._pre, (m.mel && m.mel.firstFrame) || 0, me._melPre);
     me._pre = r.pre; me._melPre = r.mel.pre; me.asked++;
-    var melSent = r.mel.score && P.seqMelScore ? P.seqMelScore({score: _mgB64(Float64Array.from(r.mel.score))}) : Promise.resolve();
-    melSent.then(function(){ if(r.mel.pending && P.seqMelPending) return P.seqMelPending({pending: _mgB64(Float64Array.from(r.mel.pending))}); });
-    if(r.score && P.seqBassScore) P.seqBassScore({score: _mgB64(Float64Array.from(r.score))});
-    if(r.pending && P.seqBassPending) P.seqBassPending({pending: _mgB64(Float64Array.from(r.pending))});
+    var melSent = r.mel.score && P.seqMelScore ? P.seqMelScore({score: _mgB64(Float64Array.from(r.mel.score)),revision:ask[9]}) : Promise.resolve();
+    melSent.then(function(){ if(r.mel.pending && P.seqMelPending) return P.seqMelPending({pending: _mgB64(Float64Array.from(r.mel.pending)),revision:ask[9]}); });
+    if(r.score && P.seqBassScore) P.seqBassScore({score: _mgB64(Float64Array.from(r.score)),revision:ask[9]});
+    if(r.pending && P.seqBassPending) P.seqBassPending({pending: _mgB64(Float64Array.from(r.pending)),revision:ask[9]});
     me.lastMs = performance.now() - t0;
    });
   }, 40);

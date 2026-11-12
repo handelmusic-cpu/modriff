@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <utility>
 
 #include "melcell.h"
 #include "seqcore.h"
@@ -74,6 +75,22 @@ class ChordTimeline {
   const MelLock *melLockFor(const ChordWindow &w) const { return (w.melLock >= 0 && (size_t)w.melLock < melLocks_.size()) ? &melLocks_[(size_t)w.melLock] : nullptr; }
 
   void push(const ChordWindow &w) { w_.push_back(w); if (w_.size() > 64) w_.erase(w_.begin(), w_.begin() + (long)(w_.size() - 64)); }
+  // Keep the old windows' locks while rebasing a new chart's indices. A
+  // humanized note just before the edit still belongs to the previous chord.
+  // Compact retained locks each time so repeated edits cannot grow forever.
+  std::pair<int,int> reviseLocks(const std::vector<PhraseLock> &bass,const std::vector<MelLock> &mel) {
+    std::vector<PhraseLock> oldBass; std::vector<MelLock> oldMel;
+    std::vector<int> bi(locks_.size(),-1),mi(melLocks_.size(),-1);
+    for(auto &w:w_) {
+      if(w.lock>=0 && (size_t)w.lock<locks_.size()) { auto &idx=bi[(size_t)w.lock]; if(idx<0){idx=(int)oldBass.size();oldBass.push_back(locks_[(size_t)w.lock]);} w.lock=idx; }
+      else w.lock=-1;
+      if(w.melLock>=0 && (size_t)w.melLock<melLocks_.size()) { auto &idx=mi[(size_t)w.melLock]; if(idx<0){idx=(int)oldMel.size();oldMel.push_back(melLocks_[(size_t)w.melLock]);} w.melLock=idx; }
+      else w.melLock=-1;
+    }
+    const std::pair<int,int> base={(int)oldBass.size(),(int)oldMel.size()};
+    oldBass.insert(oldBass.end(),bass.begin(),bass.end());oldMel.insert(oldMel.end(),mel.begin(),mel.end());
+    locks_=std::move(oldBass);melLocks_=std::move(oldMel);return base;
+  }
   // _blOnChord drops windows already behind the clock, but keeps one so a step scheduled a hair before the next chord still
   // finds its chord.
   void prune(double nowFrame) { while (w_.size() > 2 && w_[1].end < nowFrame) w_.erase(w_.begin()); }

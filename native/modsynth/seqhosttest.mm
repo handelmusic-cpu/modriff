@@ -270,6 +270,36 @@ static void testChordPatch() {
     "chord Stop cuts its graph sub and cancels/releases the patch voices");
 }
 
+static std::vector<double> editSong(int root) {
+  return {5,16,0,0,0,0,0,1, 0,0,1, 4,0,0,0,(double)root,-1,-1,-1,0,0,-1,3,0,4,7,
+    0,-1,-1,-1,0,4,2,140,0,2,7, 4,1,.15,0,0,0};
+}
+static void testChartEdits() {
+  for(bool drums:{false,true}) {
+    ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
+    std::vector<double> bs={1,1,0,1,1,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+    [h seqSetBassScore:bytes(bs)]; [h seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+    if(drums){[h seqSetDrumScore:bytes(score())];[h seqStartWithBpm:120 rate:1 leadMs:100 seed:1];}
+    [h seqSetSong:bytes(editSong(60))];[h seqSongStartWithLeadMs:100 alignToDrums:drums section:0 slot:0 pass:3];run(h,250);
+    const double revision=[[h seqMirror][@"song"][@"revision"] doubleValue];
+    CHECK([h seqSetSong:bytes(editSong(65))],"running chart edit accepted");
+    NSDictionary *pending=[h seqMirror][@"song"]; const double at=[pending[@"editFrame"] doubleValue];
+    [h seqSetSong:bytes(editSong(67))];
+    CHECK([pending[@"editPending"] boolValue] && [[h seqMirror][@"song"][@"editFrame"] doubleValue]==at,"repeated edits retain their original next-bar boundary");
+    run(h,800);NSDictionary *early=[h seqMirror];
+    CHECK([early[@"song"][@"revision"] doubleValue]==revision && [early[@"bass"][@"lastMidi"] intValue]%12==0,"old chord remains current before the staged bar");
+    run(h,1400);NSDictionary *after=[h seqMirror];
+    CHECK(![after[@"song"][@"editPending"] boolValue] && [after[@"song"][@"chartEdits"] intValue]==1 && [after[@"song"][@"revision"] doubleValue]==revision+1 && [after[@"song"][@"pass"] intValue]==3 && [after[@"bass"][@"lastMidi"] intValue]%12==7,"latest edit applies once at the bar, preserving pass and native followers");
+    NSDictionary *stream=[h seqObserveAfter:0 limit:4096];NSData *data=[[NSData alloc] initWithBase64EncodedString:stream[@"events"] options:0];const double *d=(const double *)data.bytes;bool exact=true;int old=0,newN=0;
+    for(size_t i=0;i<data.length/sizeof(double);i+=7) if(d[i+1]==1 && d[i+2]==2){if(d[i+5]<at){old++;exact=exact && ((int)d[i+3]%12==0);}else{newN++;exact=exact && ((int)d[i+3]%12==7);}}
+    CHECK(exact && old>0 && newN>0,"retained bass events switch roots at the exact staged frame with%s drums",drums?"":"out");
+    CHECK(![h seqSetBassScore:bytes(bs) revision:revision] && ![h seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{}}})) revision:revision],"late generated score replies from the old chart are refused atomically");
+    CHECK(![h seqSetBassPending:bytes({0}) revision:revision] && ![h seqSetMelPending:bytes({0}) revision:revision],"late pending-line replies are refused too");
+    [h seqSetSong:bytes(editSong(62))];[h seqSongStop];
+    CHECK(![[h seqMirror][@"song"][@"editPending"] boolValue],"Stop discards a queued chart edit");
+  }
+}
+
 static void testObservers() {
   ModEngineHost *h=fresh(); [h ensureGraphPart:4];
   CHECK([h seqSetObserverRoutes:bytes({0,0,36}) localMask:0], "observer routes and external-only mask accepted");
@@ -328,6 +358,8 @@ static void testIntonation() {
 
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_CHART_EDIT_ONLY")) { testChartEdits(); return failed ? 1 : 0; }
+    testChartEdits();
     if (getenv("MODRIFF_OBSERVER_ONLY")) { testObservers(); return failed ? 1 : 0; }
     testObservers();
     if (getenv("MODRIFF_INTONATION_ONLY")) { testIntonation(); return failed ? 1 : 0; }
@@ -684,7 +716,7 @@ int main() {
       CHECK([sg[@"section"] intValue] == 1 && [sg[@"slot"] intValue] == 0, "the queued Next was taken at the end of the pass (now in section %d)", [sg[@"section"] intValue]);
       CHECK([m[@"bass"][@"windows"] intValue] >= 2, "and the bass has its chord windows: %d", [m[@"bass"][@"windows"] intValue]);
       NSArray *ask = sg[@"ask"];
-      CHECK(ask.count == 9 && [ask[0] intValue] == [sg[@"chords"] intValue] && [ask[5] doubleValue] > [ask[4] doubleValue] && [ask[6] intValue] >= 0 && [ask[6] intValue] <= 1 && [ask[7] intValue] >= 0,
+      CHECK(ask.count == 10 && [ask[0] intValue] == [sg[@"chords"] intValue] && [ask[5] doubleValue] > [ask[4] doubleValue] && [ask[6] intValue] >= 0 && [ask[6] intValue] <= 1 && [ask[7] intValue] >= 0,
             "the mirror asks the page about the chord that follows: chord %d now (section %d chord %d), %d/%d next, ends %.0f frames after it began", [ask[0] intValue], [ask[1] intValue], [ask[2] intValue], [ask[6] intValue], [ask[7] intValue], [ask[5] doubleValue] - [ask[4] doubleValue]);
       CHECK([m[@"sampleRate"] doubleValue] == SR, "and says its sample rate (%.0f)", [m[@"sampleRate"] doubleValue]);
       [g seqSongSetCapo:2];

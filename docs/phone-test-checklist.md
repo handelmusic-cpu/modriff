@@ -692,3 +692,11 @@ Use native developer sequencers with page clocks stopped.
 - Leave the app during the take and return: native MIDI notes keep their spacing in the exported file. Check a take started mid-chord and a take stopped just before a queued note.
 - In the foreground select a MIDI destination and turn local sound off for a lane: it plays externally once, with no local duplicate. Restore local sound, change lanes/ports, Stop and restart; no stuck notes or queued onset after Stop.
 - Leave the app with MIDI out enabled: external notes stop. Return: expired notes do not burst out. Background external MIDI/clock are outside v1.
+
+
+## 44. Native chart edits (6.9.9.9.9.9.9.7g; not heard on device)
+
+- While a native song plays a long slot, edit its chord repeatedly. The latest edit takes effect once at the next bar; bass, melody, arp and chord comp agree. Repeat without audible drums and in another meter.
+- Edit at a normal slot boundary, with Next/Prev queued and with a practice key/tempo step due. The place/pass and queued command survive without repeating a slot.
+- Change/delete sections and phrase locks around a boundary. Test humanized notes and a generated-line answer arriving late; no old line replaces the edited chart.
+- Arm an ending and edit at its landing bar: no extra chord and no shortened landing. Stage an edit then Hold/Stop/restart; the old queued edit does not return.

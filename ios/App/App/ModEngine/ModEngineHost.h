@@ -136,11 +136,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// The bass score, float64s as `window._blNativeScore().score` makes them. NO if it does not parse.
 - (BOOL)seqSetBassScore:(NSData *)score;
+- (BOOL)seqSetBassScore:(NSData *)score revision:(double)revision;
 /// The chord windows, float64s as `window._blNativeChords(sr)` makes them: frames from the line's start. Empty clears them.
 - (BOOL)seqSetBassChords:(NSData *)chords;
 /// A line written ahead for the next chord, float64s as `window._blNativePending(sr)` makes them: frames from the line's start. It takes over at its
 /// moment (or at the top of the loop when it has none). A first double that is not 1 clears it. NO if it does not parse.
 - (BOOL)seqSetBassPending:(NSData *)pending;
+- (BOOL)seqSetBassPending:(NSData *)pending revision:(double)revision;
 /// Starts at step 0 with the drums' downbeat when they are running and `align` is set, else `leadMs` from now. `kit` is the bank's
 /// code for the bass voice. NO without a score.
 - (BOOL)seqBassStartWithBpm:(double)bpm rate:(double)rate leadMs:(double)leadMs alignToDrums:(BOOL)align kit:(int)kit seed:(double)seed;
@@ -167,7 +169,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// The melody generator's line, float64s as `window._mlNativeScore().score` makes them. NO if it does not parse.
 - (BOOL)seqSetMelPending:(NSData *)pending;
+- (BOOL)seqSetMelPending:(NSData *)pending revision:(double)revision;
 - (BOOL)seqSetMelScore:(NSData *)score;
+- (BOOL)seqSetMelScore:(NSData *)score revision:(double)revision;
 /// The chord windows with the melody's phrase locks, float64s as `window._mlNativeChords(sr)` makes them: frames from the line's start. For a start by hand; empty clears them.
 - (BOOL)seqSetMelChords:(NSData *)chords;
 /// Whether a song, when it starts, brings the melody in on its bar line (following its chords). `kit` is the bank's code for the voice, `rate` the melody's rate multiplier.

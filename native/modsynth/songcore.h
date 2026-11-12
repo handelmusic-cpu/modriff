@@ -169,6 +169,30 @@ class SongSequencer {
  public:
   explicit SongSequencer(double sampleRate = 48000.0) : sr_(sampleRate), own_(sampleRate) {}
   void setScore(const SongScore &s) { score_ = s; }
+  // A live chart edit is a new phrase on the next bar. At a natural chord
+  // boundary, advance the OLD chart first so edits do not repeat its last slot
+  // or swallow a queued move/ending. The trainer and pass count keep running.
+  // Result: 0 preserves an ending already landed; 2 asks the host to stop
+  // the chord because the edited chart became empty. Only 1 re-voices it.
+  template<class Chorus,class Ending>
+  int reviseAt(const SongScore &s,double frame,Chorus &&chorus,Ending &&ending) {
+    if(running_ && began_ && haveNext_ && next_<=frame+1e-6) {
+      advance();
+      if(chorusEv_) {chorusEv_=false;chorus(lastChorus_);}
+      for(const auto &ev:endQ_) ending(ev); endQ_.clear();
+    }
+    score_=s;
+    if(!running_) return 0;
+    if(!score_.playable((size_t)section_)) {
+      section_=0; while(section_<(int)score_.sections.size() && !score_.playable((size_t)section_)) section_++;
+      slot_=0;pass_=0;
+    }
+    if(section_>=(int)score_.sections.size()) {stop();return 2;}
+    if(slot_>=(int)score_.sections[(size_t)section_].slots.size()) slot_=0;
+    curStart_=frame;began_=false;haveNext_=false;counter_=0;
+    while(!marks_.empty() && marks_.front()<=frame+1e-6) marks_.pop_front();
+    return 1;
+  }
   const SongScore &score() const { return score_; }
   void setTempoMap(const TempoMap *m) { tmap_ = m; }
   void setCapo(int c) { score_.capo = c; }

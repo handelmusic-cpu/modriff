@@ -834,7 +834,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqBassScore needs score")
             return
         }
-        call.resolve(["ok": host.seqSetBassScore(data)])
+        call.resolve(["ok": host.seqSetBassScore(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     @objc func seqObserve(_ call: CAPPluginCall) {
@@ -889,7 +889,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqBassPending needs pending")
             return
         }
-        call.resolve(["ok": host.seqSetBassPending(data)])
+        call.resolve(["ok": host.seqSetBassPending(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     /// Starts the bass line. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the voice.
@@ -963,7 +963,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqMelPending needs pending")
             return
         }
-        call.resolve(["ok": host.seqSetMelPending(data)])
+        call.resolve(["ok": host.seqSetMelPending(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     @objc func seqMelScore(_ call: CAPPluginCall) {
@@ -972,7 +972,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqMelScore needs score")
             return
         }
-        call.resolve(["ok": host.seqSetMelScore(data)])
+        call.resolve(["ok": host.seqSetMelScore(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     /// The chord windows with the melody's locks, `chords` base64 float64 (window._mlNativeChords(sr)): frames from the line's start. Resolves `ok`.
