@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include "arpplay.h"
@@ -75,6 +76,7 @@ int main(int argc, char **argv) {
     if (!bank.put(d.data() + k, len)) { fprintf(stderr, "entry %d refused\n", i); return 2; }
     k += len;
   }
+  const double tune = getenv("TUNE_CENTS") ? std::atof(getenv("TUNE_CENTS")) : 0;
   const int nc = (int)d[k++];
   for (int c = 0; c < nc; c++) {
     const int part = (int)d[k++], kit = (int)d[k++], lane = (int)d[k++];
@@ -91,7 +93,7 @@ int main(int argc, char **argv) {
     const modsynth::BankEntry *e = arp ? modsynth::ArpPlayer::pick(bank, kit, lane == 2, durSec, (int)pitch) : (mel ? modsynth::MelPlayer::pick(bank, kit, lane == 1, durSec, (int)pitch) : (bass ? modsynth::BassPlayer::pick(bank, kit, (int)pitch, lane) : bank.find(part, kit, lane)));
     if (!e) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::PatchedVoice pv;
-    bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi, level, pan, gtime);
+    bank.patch(*e, vel, acc, pitch, onset, SR, 0, pv, durSec, fromMidi, level, pan, gtime, tune);
     const long total = onset + (long)(1.5 * SR) + (long)tones.size() * 576;
     modsynth::GraphPool a, b;
     for (auto &bf : bufs) for (auto *p : {&a, &b}) p->buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
@@ -102,7 +104,7 @@ int main(int argc, char **argv) {
       modsynth::PatchedVoice pt;
       const auto *te = modsynth::ArpPlayer::pick(bank, kit, true, durSec, (int)tones[t]);
       if (!te) { hb = -1; break; }
-      bank.patch(*te, vel, acc, tones[t], onset + (long)t * 576, SR, 0, pt, durSec, fromMidi, level, pan);
+      bank.patch(*te, vel, acc, tones[t], onset + (long)t * 576, SR, 0, pt, durSec, fromMidi, level, pan, 0, tune);
       hb = b.begin(pt.prog.data(), pt.prog.size(), pt.timeBase, pt.startFrame);
     }
     if (hb < 0) { printf("%d refused-patched(%d) 0 0 0 0\n", c, hb); continue; }

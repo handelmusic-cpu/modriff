@@ -64,7 +64,7 @@ if(!process.env.VOICES){
   const slideCases = [{ from: 36 }, { from: 28, note: 33 }, { from: 70, note: 45, accent: true }, { from: 41, note: 52, vel: 0.3, dur: 1.2 }, { from: 50, note: 41, dur: 0.07 }].map(base)
     .concat(Array.from({ length: 6 }, (_, i) => base({ from: 28 + Math.floor(rnd() * 49), note: 28 + Math.floor(rnd() * 49), vel: +(0.05 + rnd() * 0.65).toFixed(3), accent: rnd() < 0.3, dur: +(0.03 + rnd() * rnd() * 4).toFixed(3) }, 40 + i)));
 
-  const out = await page.evaluate(async ({ voices, plain, glide }) => {
+  const out = await page.evaluate(async ({ voices, plain, glide, tuneCents }) => {
     const sr = 48000;
     const offline = new OfflineAudioContext(2, sr * 8, sr);
     audioCtx = offline;
@@ -102,7 +102,7 @@ if(!process.env.VOICES){
       for (const variant of [0, 1, 2, 3]) {
         const code = window._nsKitCode('bass:' + voice);
         for (const c of (variant & 1 ? glide : plain)) {
-          const r = await window._nsBank.record({ kind: 'note', part: 'bass', id: 1, note: c.note, vel: c.vel, accent: c.accent, slide: !!(variant & 2), from: variant & 1 ? c.from : null, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: 0 });
+          const r = await window._nsBank.record({ kind: 'note', part: 'bass', id: 1, note: c.note, vel: c.vel, accent: c.accent, slide: !!(variant & 2), from: variant & 1 ? c.from : null, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: tuneCents });
           fresh.push({ voice, kit: code, lane: variant, c, prog: r ? Array.from(r.prog) : null });
         }
       }
@@ -132,7 +132,7 @@ if(!process.env.VOICES){
     try{ tuningOn = () => true; pure = await window._nsBass.sync(); }
     finally{ tuningOn = wasTuning; }
     return { report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, entry, off: off.why, walk: walk.ok, sentOnce: b2 - b1, kept, pure, sampled: rb.ok ? 'ok' : rb.why };
-  }, { voices: VOICES, plain: [...ctl, ...rndCases], glide: slideCases });
+  }, { voices: VOICES, plain: [...ctl, ...rndCases], glide: slideCases, tuneCents:+process.env.TUNE_CENTS || 0 });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
 

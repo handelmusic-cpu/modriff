@@ -672,3 +672,13 @@ Use native developer song/chord entries with page schedulers stopped. Choose a c
 - Turn the separate Sub on/off; change its level and wave. Compare two patches with different patch trims: the sub keeps its intended balance, reaches the chord meter/effects and appears in the chord stem.
 - Run sustained patch chords, then use `_nsChord.stop()`: both patch and sub stop. Test a new chord, a rest and a Finish/Cold ending; none leaves the previous chord ringing.
 - Switch back to a factory recorded chord voice and repeat the rhythm; gates, strums and the sub continue to work. Confirm the free web page keeps its existing chord behavior.
+
+
+## 42. Native Pure tuning and chord glide (6.9.9.9.9.9.9.7e; not heard on device)
+
+Use native developer entries with the matching page clocks stopped.
+
+- Compare Equal/Pure on bass, arp, melody and chord voices, including recorded piano. Change slash chords: tune against the authored root, with the sub retaining its existing pitch.
+- Test chord glide with held/decaying chords, different note counts and Strum. Test zero/short/long glide, a leap beyond two octaves and a chord after six seconds of silence.
+- Toggle Pure/glide, change controls and prepare again. Check the first live chord after banking has the expected history. Repeat with patch voices: their internal glide retains its existing behavior.
+- Leave the app during a native song and return: tuning and glide continue; Stop and restart do not reuse old native chord history.

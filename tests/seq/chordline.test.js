@@ -24,6 +24,8 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
+const TUNING_TEST = process.env.TUNING_TEST === '1';
+const GLIDE_TEST = process.env.GLIDE_TEST === '1';
 const SUB_ONLY = process.env.SUB_ONLY === '1';
 const VOICES = (process.env.VOICES || 'sine,sawtooth,piano,pad,pianoreal2,jazzgtr,flute').split(',');
 const MODES = (process.env.MODES || 'decay,hold').split(',');
@@ -98,9 +100,10 @@ const SETTINGS = [
   const NEED = [...new Set(PROG.flatMap(([r, ns, b]) => [...ns, ...(b != null ? [b] : []), b != null ? b : r]))].sort((a, b) => a - b);
   for (const voice of VOICES) for (const S of SETTINGS) for (const MODE of MODES) {
     const holds = PROG.map((_, i) => MODE === 'hold' ? HOLDS[i] : 0);
-    const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds, subOnly }) => {
+    const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds, subOnly, pure, glide, glideTime }) => {
       const sr = 48000;
-      wave = voice;
+      wave = voice; if(pure) window.tuningOn = () => true;
+      chordGlideOn = glide; chordGlideTime = glideTime;
       if(SAMPLED_WAVES[voice]){
         preloadSampleInstrument(SAMPLED_WAVES[voice]);
         const until = performance.now() + 15000;
@@ -116,6 +119,7 @@ const SETTINGS = [
       if (Object.keys(why).length) return { refused: why };
       const kit = window._nsKitCode('chord:' + voice), chords = [];
       window._nsBank.constRandom = true; window._chokeReset(); window._nsBank.keepRecs = true; window._nsBank.recs = [];
+      _glideNext = null; _glidePrev = null;
       let k = 0;
       for (const [rootN, notes, bass, vel] of PROG) {
         const onset = 2304 + 128 * 400 + 24000 * k + [0, 77, 5, 31, 101, 12][k], dur = 1.4, hold = holds[k];
@@ -126,23 +130,23 @@ const SETTINGS = [
           MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
           try { window.modEngine.send({ v: 1, kind: 'release', part: 'chord', id: 1, at: at + hold }); } finally { MODGRAPH.capture = null; MODGRAPH.captureClock = null; }
         }
-        chords.push({ notes: (bass != null ? [bass] : []).concat(notes), subNote: bass != null ? bass : rootN, vel, dur, hold, onset, prog: Array.from(r.prog) });
+        chords.push({ root:rootN, notes: (bass != null ? [bass] : []).concat(notes), subNote: bass != null ? bass : rootN, vel, dur, hold, onset, prog: Array.from(r.prog) });
         k++;
       }
       await Promise.resolve(); await Promise.resolve();
       window._nsBank.recs.forEach((rec, i) => { chords[i].edits = (rec.capturedInc || []).slice(); });
       window._nsBank.keepRecs = false; window._nsBank.constRandom = false;
-      return { entries, kit, chords, bufs: Array.from(window._test.BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })) };
-    }, { voice, S, PROG, NEED, holds, subOnly: SUB_ONLY });
+      return { entries, kit, chords, table:TUNING_JI5, bufs: Array.from(window._test.BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })) };
+    }, { voice, S, PROG, NEED, holds, subOnly: SUB_ONLY, pure:TUNING_TEST, glide:GLIDE_TEST, glideTime:process.env.GLIDE_TIME == null ? 0.15 : +process.env.GLIDE_TIME });
     if (out.refused) { ok(false, voice + ' / ' + S.name + ' / ' + MODE + ': the chord voice is banked', JSON.stringify(out.refused).slice(0, +process.env.WHY_LEN || 200)); continue; }
     if (process.env.EDITS_DEBUG) { for (const c of out.chords.slice(0, 2)) { const e = []; for (let i = 0; i < c.edits.length; i += 6) e.push(c.edits.slice(i, i + 6).map(x => +x.toFixed(5)).join(',')); console.log('edits of chord at ' + c.onset + ' (' + c.notes + '): ' + e.join(' | ')); } }
     const buf = [];
     buf.push(out.bufs.length); out.bufs.forEach(b => { buf.push(b.id, b.sr, b.ch.length, b.ch[0].length); b.ch.forEach(c => c.forEach(x => buf.push(x))); });
     buf.push(out.entries.length); out.entries.forEach(e => { buf.push(e.length); e.forEach(x => buf.push(x)); });
     buf.push(out.kit, out.chords.length);
-    out.chords.forEach(c => { buf.push(c.notes.length, ...c.notes, c.subNote, c.vel, c.dur, c.onset, S.strum ? 1 : 0, S.spread, S.width, 1, c.hold > 0 ? 1 : 0, c.hold, c.prog.length); c.prog.forEach(x => buf.push(x)); buf.push(c.edits.length); c.edits.forEach(x => buf.push(x)); });
+    out.chords.forEach(c => { buf.push(c.notes.length, ...c.notes, c.subNote, ...(TUNING_TEST ? [c.root] : []), c.vel, c.dur, c.onset, S.strum ? 1 : 0, S.spread, S.width, 1, c.hold > 0 ? 1 : 0, c.hold, c.prog.length); c.prog.forEach(x => buf.push(x)); buf.push(c.edits.length); c.edits.forEach(x => buf.push(x)); });
     fs.writeFileSync(path.join(tmp, 'seq.f64'), Buffer.from(Float64Array.from(buf).buffer));
-    const run = spawnSync(bin, [path.join(tmp, 'seq.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
+    const run = spawnSync(bin, [path.join(tmp, 'seq.f64')], { encoding: 'utf8', maxBuffer: 1 << 28, env:{...process.env,...(TUNING_TEST ? {TUNING_TABLE:out.table.join(',')} : {})} });
     if (run.status !== 0) { console.error(run.stderr); process.exit(2); }
     if (process.env.SCORE_DEBUG) console.log(run.stdout);
     const line = run.stdout.split('\n').find(l => l.startsWith('SEQ ')).split(' ').slice(1).map(Number);

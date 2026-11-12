@@ -65,7 +65,7 @@ if(!process.env.VOICES){
     .map((o, i) => base(o, 60 + i)).concat(Array.from({ length: 12 }, (_, i) => { const note = 50 + Math.floor(rnd() * 40); let from = note + (Math.floor(rnd() * 47) - 23); if (from === note) from += 3; const dur = +(0.03 + rnd() * rnd() * 2).toFixed(3); return base({ note, from, gt: +Math.min(0.025 + rnd() * 0.3, dur * 0.8).toFixed(3), dur, vel: +(0.03 + rnd() * 0.8).toFixed(3), accent: rnd() < 0.3 }, 70 + i); }));
 
   const runConfig = async (label, voices) => {
-  const out = await page.evaluate(async ({ voices, plain, slides }) => {
+  const out = await page.evaluate(async ({ voices, plain, slides, tuneCents }) => {
     const sr = 48000;
     const offline = new OfflineAudioContext(2, sr * 8, sr);
     audioCtx = offline;
@@ -103,11 +103,11 @@ if(!process.env.VOICES){
       if (!report[voice].built) continue;
       const code = window._nsKitCode('mel:' + voice);
       for (const c of plain) {
-        const r = await window._nsBank.record({ kind: 'note', part: 'melgen', id: 1, note: c.note, vel: c.vel, accent: c.accent, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: 0 });
+        const r = await window._nsBank.record({ kind: 'note', part: 'melgen', id: 1, note: c.note, vel: c.vel, accent: c.accent, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: tuneCents });
         fresh.push({ voice, kit: code, lane: 0, c, prog: r ? Array.from(r.prog) : null });
       }
       for (const c of slides) {
-        const r = await window._nsBank.record({ kind: 'note', part: 'melgen', id: 1, note: c.note, vel: c.vel, accent: c.accent, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: 0, glideFrom: c.from, glideTime: c.gt });
+        const r = await window._nsBank.record({ kind: 'note', part: 'melgen', id: 1, note: c.note, vel: c.vel, accent: c.accent, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: tuneCents, glideFrom: c.from, glideTime: c.gt });
         fresh.push({ voice, kit: code, lane: 1, c, prog: r ? Array.from(r.prog) : null });
       }
     }
@@ -144,7 +144,7 @@ if(!process.env.VOICES){
     const cached = await window._nsMel.start(250);
     entry.cachedRefused = {ok: cached.ok, why: cached.why, started: !!calls.start};
     return { entry, report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: s0 !== s1, sentOnce: b2 - b1, kept, reasons, off: off.why };
-  }, { voices, plain: [...ctl, ...rndCases], slides });
+  }, { voices, plain: [...ctl, ...rndCases], slides, tuneCents:+process.env.TUNE_CENTS || 0 });
   ok(errs.length === 0, label + ': the page threw nothing', errs.join(' | '));
 
   console.log('\n' + label + ' - what the prober banked:');

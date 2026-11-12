@@ -65,7 +65,7 @@ if(!process.env.VOICES){
     .concat(Array.from({ length: 4 }, (_, i) => Object.assign(base({ dur: +(0.03 + rnd() * 1.5).toFixed(3) }, 70 + i), { notes: Array.from({ length: 2 + Math.floor(rnd() * 5) }, () => 30 + Math.floor(rnd() * 70)).sort((a, b) => a - b) })));
 
   const runConfig = async (label, voices, fx) => {
-  const out = await page.evaluate(async ({ voices, notes, blocks, fx }) => {
+  const out = await page.evaluate(async ({ voices, notes, blocks, fx, tuneCents }) => {
     const sr = 48000;
     const offline = new OfflineAudioContext(2, sr * 8, sr);
     audioCtx = offline;
@@ -104,12 +104,12 @@ if(!process.env.VOICES){
       if (!report[voice].built) continue;
       const code = window._nsKitCode('arp:' + voice);
       for (const lane of [0, 1]) for (const c of notes) {
-        const r = await window._nsBank.record({ kind: 'note', part: 'arp', id: 1, note: c.note, vel: c.vel, level: c.level, pan: lane ? 0.75 : -0.75, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: 0 });
+        const r = await window._nsBank.record({ kind: 'note', part: 'arp', id: 1, note: c.note, vel: c.vel, level: c.level, pan: lane ? 0.75 : -0.75, at: (c.onset - 1e-6) / sr, dur: c.dur, tune: tuneCents });
         fresh.push({ voice, kit: code, lane, c, tones: [c.note], prog: r ? Array.from(r.prog) : null });
       }
       for (const c of blocks) {
         window._nsBank.constRandom = true;
-        const r = await window._nsBank.record({ kind: 'chord', part: 'arp', id: 1, root: null, notes: c.notes.slice(), bass: null, vel: 1, at: (c.onset - 1e-6) / sr, dur: c.dur, tunes: c.notes.map(() => 0) });
+        const r = await window._nsBank.record({ kind: 'chord', part: 'arp', id: 1, root: null, notes: c.notes.slice(), bass: null, vel: 1, at: (c.onset - 1e-6) / sr, dur: c.dur, tunes: c.notes.map(() => tuneCents) });
         window._nsBank.constRandom = false;
         fresh.push({ voice, kit: code, lane: 2, c: Object.assign({}, c, { vel: 1, level: 1, note: c.notes[0] }), tones: c.notes.slice(), prog: r ? Array.from(r.prog) : null });
       }
@@ -147,7 +147,7 @@ if(!process.env.VOICES){
     setArpWave('sampler'); const a2 = await window._nsArp.armForSong(); setArpWave('sine'); arpOn = false;
     entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm };
     return { entry, report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: [s0 !== s1, s0 !== s2], sentOnce: b2 - b1, kept, reasons, off: off.why };
-  }, { voices, notes: [...ctl, ...rndCases], blocks, fx });
+  }, { voices, notes: [...ctl, ...rndCases], blocks, fx, tuneCents:+process.env.TUNE_CENTS || 0 });
   ok(errs.length === 0, label + ': the page threw nothing', errs.join(' | '));
 
   console.log('\n' + label + ' - what the prober banked:');

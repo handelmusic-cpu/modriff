@@ -270,8 +270,19 @@ static void testChordPatch() {
     "chord Stop cuts its graph sub and cancels/releases the patch voices");
 }
 
+static void testIntonation() {
+  ModEngineHost *h=fresh(); std::vector<double> table(12,0); table[4]=-13.69;
+  CHECK([h seqSetIntonation:bytes(table) pure:YES glide:YES glideTime:0 root:5], "Pure table and zero-duration glide accepted");
+  CHECK(![h seqSetIntonation:bytes({0}) pure:YES glide:NO glideTime:.15 root:0], "truncated Pure table refused");
+  table[2]=NAN; CHECK(![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:.15 root:0], "nonfinite tuning refused"); table[2]=0;
+  CHECK(![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:-1 root:0] && ![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:.15 root:12], "invalid glide and root refused");
+  CHECK([h seqSetIntonation:bytes(table) pure:NO glide:NO glideTime:.15 root:-1], "Equal and no-root reset accepted");
+}
+
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_INTONATION_ONLY")) { testIntonation(); return failed ? 1 : 0; }
+    testIntonation();
     if (getenv("MODRIFF_CHORD_PATCH_ONLY")) { testChordPatch(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_SYNTH_ONLY")) { testSynthSequencers(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_LIVE_ONLY")) { testLiveChords(); return failed ? 1 : 0; }

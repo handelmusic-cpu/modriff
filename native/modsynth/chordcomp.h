@@ -12,10 +12,12 @@
 // Control-side (the sequencer thread): patching allocates.
 #pragma once
 #include <cmath>
+#include <climits>
 #include <cstdint>
 #include <vector>
 
 #include "voicebank.h"
+#include "tuning.h"
 
 namespace modsynth {
 
@@ -29,6 +31,8 @@ struct ChordSettings {
 struct ComposedVoice {
   PatchedVoice v;
   bool sub = false;
+  int toneIndex = -1;
+  std::vector<BankEntry::GlideNode> glide;
   int note = -1;           // the pitch, or -1 for the sub
   std::vector<double> cutOps;   // what the next chord does to this voice (the bank's, for the pitch it was made from)
   // A held chord's voice (hold in compose): where it begins in frames (the strum moves it), and what letting go of it does -- the bank's edits for
@@ -44,7 +48,7 @@ class ChordComposer {
   // `hold`: the chord a gated hit plays (bank part 4: no decay, let go of by a release) in place of the decaying one (part 3); `durSec` is then unused.
   static bool compose(const DrumBank &bank, int kit, const std::vector<int> &notes, int rootNote, double vel, double durSec,
                       double onsetExact, const ChordSettings &cs, double sampleRate, uint64_t notBefore, std::vector<ComposedVoice> &out,
-                      bool hold = false, bool subOnly = false) {
+                      bool hold = false, bool subOnly = false, const Tuning *tuning = nullptr, int tuningRoot = INT_MIN) {
     out.clear();
     const int part = hold ? 4 : 3;
     const int n = (int)notes.size();
@@ -70,8 +74,8 @@ class ChordComposer {
       if (!e) return false;
       const double exact = onsetExact + (-lead + offs[(size_t)i]) * sampleRate;
       const int64_t base = (int64_t)std::floor(exact);
-      ComposedVoice c; c.note = notes[(size_t)i];
-      bank.patch(*e, vel, false, (double)notes[(size_t)i], base, sampleRate, notBefore, c.v, durSec);
+      ComposedVoice c; c.note = notes[(size_t)i]; c.toneIndex = i; c.glide = e->glide;
+      bank.patch(*e, vel, false, (double)notes[(size_t)i], base, sampleRate, notBefore, c.v, durSec, -1, 1, 0, 0, tuning ? tuning->cents(c.note,((tuningRoot != INT_MIN ? tuningRoot : rootNote) % 12 + 12) % 12) : 0);
       // the strum moves the tone's times, by the part of the offset the whole frame we began on does not carry
       const double extra = (exact - (double)base) / sampleRate;
       for (int idx : e->toneTime) c.v.prog[(size_t)idx] += extra;

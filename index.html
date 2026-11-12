@@ -9327,7 +9327,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7e</span></div>
  </div>
 </div>
 
@@ -10774,7 +10774,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7d</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7e</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11974,7 +11974,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7d';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13030,7 +13030,7 @@ function modNativePlugin(){
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
-                     seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
+                     seqIntonation:call('seqIntonation'), seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
                      seqMelPending:call('seqMelPending'), seqMelScore:call('seqMelScore'), seqMelChords:call('seqMelChords'), seqMelArm:call('seqMelArm'), seqMelStart:call('seqMelStart'), seqMelStop:call('seqMelStop'), seqMelTempo:call('seqMelTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
@@ -28245,9 +28245,9 @@ function _webChordOn(msg){
  // always clamped for this reason; the chord, slash, bass and drum paths did
  // not. A note a few milliseconds late is inaudible. The click is not.
  const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + FADE_OUT);
- glideBegin();
+ if(!msg.noGlide) glideBegin();
  const _gOrder = intvs.map((s,i)=>i).sort((a,b)=>intvs[a]-intvs[b]);
- glideRemember(intvs.map(s=>rootM+s), now);
+ if(!msg.noGlide) glideRemember(intvs.map(s=>rootM+s), now);
 
  _webChordStop(atTime); _chordDamp(now, intvs.map(s=>rootM+s));
  // A muted or zeroed Chord channel used to still build every voice — the
@@ -28330,8 +28330,8 @@ function _webChordOn(msg){
  g.connect(fx.head);
  const _rv=feedChordRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,voice,'chord');
- tuningApply(oscs, rootM+s, rootM);
- glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
+ if(msg.tuneProbe != null) tuningShift(oscs,msg.tuneProbe); else tuningApply(oscs, rootM+s, rootM);
+ if(!msg.noGlide) glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec,sustain);
  });
@@ -33996,7 +33996,6 @@ window._arpNativeScore = function(){
           [arpMotionHold, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('arp') >= 0 ? 1 : 0, arpOcts]);
  // Custom sampler slots and Pure tuning still need native equivalents; patches use the live Processor and factory recordings have per-pitch banks.
  try{ var av = _wp('arp.voice'); if(av === 'sampler') why.push('a custom sampler arp voice'); }catch(e){}
- try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  return {ok: !why.length, why: why, score: d};
 };
 // The tones the arp is on now (setArpChord's arpNotes), for the engine's arp when a person hands it a chord.
@@ -49851,6 +49850,7 @@ function _crNativeScore(voiced){
           strumMode ? 1 : 0, _wp('chord.strumSpread') || 0, _wp('fx.width') || 0, _webChordSubOn() ? 1 : 0, v.bass != null ? v.bass : v.root, v.notes.length];
  v.notes.forEach(function(n){ d.push(n); });
  d.push(pat.ev.length); pat.ev.forEach(function(e){ d.push(e.p, e.v, e.len); });
+ d.push(-8,v.root);
  return {ok: !why.length, why: why, score: d};
 }
 window._crNativeScore = _crNativeScore;
@@ -51520,8 +51520,6 @@ window._songNativeScore = function(opts){
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
   try{ if(voice === 'sampler') chordWhy.push('a custom sampler chord voice'); }catch(e){}
-  try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
-  try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
  }
  var locks = [], byKey = {}, secs = [sections.length], patIdx = {}, pats = [], nPats = 0, mlocks = [], mlByKey = {}, mlIdx = [];
  sections.forEach(function(sec){
@@ -60827,6 +60825,27 @@ window._nsBank = {
   }
   return out;
  },
+ // Probe the actual voice's tuning path. Some bass voices tune frequency;
+ // shared/sample voices add cents to detune. Keep the map independent of MIDI
+ // pitch so a per-pitch sample bank can still move by fractional semitones.
+ _tunedEntry: function(d, base, plus, minus){
+  var slots = [], add = {}, ratio = Math.pow(2,31/1200);
+  var close = function(a,b){ return Math.abs(a-b) <= 1e-9 * Math.max(1,Math.abs(a),Math.abs(b)); };
+  for(var i=0;i<base.length;i++) {
+   if(base[i] === plus[i] && base[i] === minus[i]) continue;
+   if(close(plus[i],base[i]+31) && close(minus[i],base[i]-31)){ slots.push([i,0]); add[i]=true; }
+   else if(close(plus[i],base[i]*ratio) && close(minus[i],base[i]/ratio)) slots.push([i,1]);
+   else throw new Error('tuning slot '+i+' is neither cents nor frequency');
+  }
+  var nodes = [];
+  this.parseProgram(base).nodes.forEach(function(n,id){
+   if((n.type === 2 || n.type === 4) && n.params[1] && add[n.params[1][0]]) nodes.push([id,1,n.params[1][0]]);
+  });
+  var out = [3].concat(d.slice(1,9),[slots.length]);
+  slots.forEach(function(t){ out.push(t[0],t[1]); }); out.push(nodes.length);
+  nodes.forEach(function(g){ out.push(g[0],g[1],g[2]); });
+  return Float64Array.from(out.concat(d.slice(9)));
+ },
  // value = a + b*x per slot from two recordings, checked on a third.
  _fit: function(P0, x0, P1, x1, P2, x2){
   var out = {slots: [], bad: []};
@@ -61094,7 +61113,7 @@ window._nsBank = {
    }
    if(!cutOps.length) return {ok: false, why: 'the voice records no cut of the note before it' + tag};
    d.push(cutOps.length); cutOps.forEach(function(x){ d.push(x); });
-   entries.push(Float64Array.from(d));
+   try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
   }
   return {ok: true, entries: entries};
  },
@@ -61124,7 +61143,7 @@ window._nsBank = {
    // The message the page sends for the arp; `o` overrides one field of it.
    var mk = function(o){
     if(fixed) o = Object.assign({}, o, {note: REFN});
-    if(blk) return {kind: 'chord', part: 'arp', id: 1, root: null, notes: [o.note != null ? o.note : REFN], bass: null, vel: 1, at: o.at != null ? o.at : AT0, dur: o.dur, tunes: [0]};
+    if(blk) return {kind: 'chord', part: 'arp', id: 1, root: null, notes: [o.note != null ? o.note : REFN], bass: null, vel: 1, at: o.at != null ? o.at : AT0, dur: o.dur, tunes: [o.tune || 0]};
     return Object.assign({kind: 'note', part: 'arp', id: 1, note: REFN, vel: REFV, level: REFL, pan: REFP, at: AT0, tune: 0}, o);
    };
    // Every random draw is 0.5 while a block records: its tones draw one after the other, so a tone recorded alone would draw other detunes and phases than the
@@ -61284,7 +61303,7 @@ window._nsBank = {
     d.push(REFL, flv.length); flv.forEach(function(q){ d.push(q[0], q[1], 0); });
     d.push(reg.max);
     d.push(REFP, fpv.length); fpv.forEach(function(q){ d.push(q[0], q[1], 0); });
-    entries.push(Float64Array.from(d));
+    try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
    }
   }
   return {ok: true, entries: entries};
@@ -61481,7 +61500,7 @@ window._nsBank = {
     d.push(reg.max);
     d.push(0, 0);                                                 // refPan, no pan slots
     d.push(REFGT, fgt.length); fgt.forEach(function(q){ d.push(q[0], q[1], 0); });
-    entries.push(Float64Array.from(d));
+    try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
    }
   }
   return {ok: true, entries: entries};
@@ -61497,6 +61516,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('melgen.voice'), sig = this.signatureMel();
   if(voice === 'modsynth') return this.ensureSynth('melgen');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
@@ -61624,7 +61645,7 @@ window._nsBank = {
   if(voice === 'sampler') return {ok: false, why: 'a custom sampler voice (slot and slice invalidation is not banked yet)'};
   if(voice === 'modsynth' && !subOnly) return {ok:false, why:'a patch tone uses the Processor; only its separate sub is a graph'};
   if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready') return {ok: false, why: 'the instrument recordings are still loading'};
-  var base = {kind: 'chord', part: 'chord', id: 1, subOnly: !!subOnly, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
+  var base = {kind: 'chord', part: 'chord', id: 1, noGlide:true, subOnly: !!subOnly, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
   var keep = this.constRandom; this.constRandom = true;
   try {
    var R = async function(o){
@@ -61738,7 +61759,7 @@ window._nsBank = {
     if(C.length !== A.length || C.some(function(x, i){ return Math.abs(x - A[i]) > 1e-9; })) return {ok: false, why: 'the release of a held chord is not the same when it is early'};
     d.push(tHold - AT0, A.length); A.forEach(function(x){ d.push(x); });
    }
-   return {ok: true, entry: Float64Array.from(d), info: {size: n, sub: subNodes.length > 0, toneLevel: toneLevel.length, toneTime: toneTime.length, pan: panSlot >= 0, dur: dslots.length}};
+   return {ok: true, entry: this._tunedEntry(d,P0,await must({tuneProbe:31},'tuning +31'),await must({tuneProbe:-31},'tuning -31')), info: {size: n, sub: subNodes.length > 0, toneLevel: toneLevel.length, toneTime: toneTime.length, pan: panSlot >= 0, dur: dslots.length}};
   } catch(e){ return {ok: false, why: String(e.message || e)}; }
   finally { this.constRandom = keep; }
  },
@@ -61754,6 +61775,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('chord.voice'), sig = this.signatureChord();
   if(voice === 'modsynth') {
    rep = await this.ensureSynth('chord');
@@ -61807,6 +61830,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('bass.voice'), sig = this.signatureBass();
   var lib = BASS_SAMPLED[voice] ? BASS_SAMPLED[voice].lib : SAMPLED_WAVES[voice];
   if(voice === 'modsynth') return this.ensureSynth('bass');
@@ -61842,6 +61867,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('arp.voice'), sig = this.signatureArp();
   if(voice === 'modsynth') return this.ensureSynth('arp');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
@@ -61944,6 +61971,19 @@ window._nsDrum = {
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
 };
 
+// The page is the source of truth for Pure's table and chord glide controls.
+// A host missing this API may still play Equal without glide, but must refuse
+// enabled features instead of silently dropping their cents or ramps.
+window._nsIntonation = {
+ sync: function(){
+  var P = window._nsDrum.plugin(), pure = tuningOn(), glide = !!_wp('chord.glide');
+  if(!P || !P.seqIntonation) return Promise.resolve(pure || glide ? {ok:false,why:'Pure tuning or chord glide needs a newer native engine'} : {ok:true});
+  var w = window._blPeekLast ? window._blPeekLast() : null, time = +_wp('chord.glideTime');
+  return P.seqIntonation({table:_mgB64(Float64Array.from(TUNING_JI5)),pure:pure,glide:glide,
+    glideTime:isFinite(time) ? Math.max(0,time) : 0.15,root:w && !w.rest ? w.rootPc : -1});
+ }
+};
+
 // Hand chords are changes, not another clock. The host ignores them unless a
 // native follower is running; the public page transport retains its scheduler.
 window._nsLiveChord = {
@@ -61985,8 +62025,9 @@ window._nsBass = {
    return me.sync().then(function(r){ r.bank = rep; return r; });
   });
  },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var intonation = await window._nsIntonation.sync(); if(intonation.ok === false) return intonation;
   var sc = window._blNativeScore();
   if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
   var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0, 0];
@@ -62261,8 +62302,9 @@ window._nsSong = {
    return need.held ? me.ensureChord(need.pitches, true) : {built: 0, kept: 0, failed: []};
   }).then(function(r){ add(r); return rep; });
  },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var intonation = await window._nsIntonation.sync(); if(intonation.ok === false) return intonation;
   var me = this, want = this.chords && !!(MODGRAPH.on && MODGRAPH.parts.chord);
   var endL = window._songEndLanes(), landing = (MODGRAPH.on && MODGRAPH.parts.drum) ? window._nsBank.ensureLanes([endL.kick, endL.cym, endL.snare]) : Promise.resolve(null);     // the lanes the landing hits
   return landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
@@ -64991,8 +65033,7 @@ window._blGenStyle = function(){ return blGenStyle; };
 // follow, as this scheduler does. A chord's locked phrase rides with the chart, window._blNativeChords, since 6.9.9.9.7.)
 window._blNativeScore = function(){
   var why = [], hs = window._humanState();
-  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
-  var scale = _blScalePcs();
+   var scale = _blScalePcs();
   var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
   _blGridIntvs.forEach(function(x){ d.push(x); });
   d.push(scale.length); scale.forEach(function(x){ d.push(x); });
@@ -66455,7 +66496,6 @@ window._mlPushCell = _mlPushCell;
 window._mlNativeScore = function(){
  var why = [], hs = window._humanState();
  try{ var mv = _wp('melgen.voice'); if(mv === 'sampler') why.push('a custom sampler melody voice'); }catch(e){}
- try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  var scale = (typeof window._songScalePcs==='function') ? (window._songScalePcs() || []) : [];
  var d = [1, mlSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, mlFollow ? 1 : 0, _mlGridRootPc, _mlGridIntvs.length];
  _mlGridIntvs.forEach(function(x){ d.push(x); });

@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <sstream>
 #include <cstring>
 #include <vector>
 #include "chordcomp.h"
@@ -54,18 +56,25 @@ int main(int argc, char **argv) {
     if (!bank.put(d.data() + k, len)) { fprintf(stderr, "entry %d refused\n", i); return 2; }
     k += len;
   }
+  modsynth::Tuning tuning;
+  if (const char *raw = getenv("TUNING_TABLE")) {
+    std::string values(raw); std::replace(values.begin(),values.end(),',',' '); std::istringstream in(values);
+    for (double &c:tuning.table) if (!(in>>c)) return 2;
+    tuning.enabled = true;
+  }
   const int kit = (int)d[k++];
   const int nc = (int)d[k++];
   for (int c = 0; c < nc; c++) {
     std::vector<int> notes; const int nn = (int)d[k++];
     for (int i = 0; i < nn; i++) notes.push_back((int)d[k++]);
     const int subNote = (int)d[k++];
+    const int root = getenv("TUNING_TEST") ? (int)d[k++] : subNote;
     const double vel = d[k++], dur = d[k++]; const long onset = (long)d[k++];
     modsynth::ChordSettings cs; cs.strum = d[k++] != 0; cs.spread = d[k++]; cs.width = d[k++]; cs.sub = d[k++] != 0;
     const size_t len = (size_t)d[k++];
     std::vector<double> truth(d.begin() + (long)k, d.begin() + (long)(k + len)); k += len;
     std::vector<modsynth::ComposedVoice> vs;
-    if (!modsynth::ChordComposer::compose(bank, kit, notes, subNote, vel, dur, (double)onset, cs, SR, 0, vs, false, argc > 2 && std::strcmp(argv[2], "--sub-only") == 0)) { printf("%d miss 0 0 0 0\n", c); continue; }
+    if (!modsynth::ChordComposer::compose(bank, kit, notes, subNote, vel, dur, (double)onset, cs, SR, 0, vs, false, argc > 2 && std::strcmp(argv[2], "--sub-only") == 0, &tuning, root)) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::GraphPool a, b;
     for (auto &bf : bufs) for (auto *p : {&a, &b}) p->buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
     uint64_t minStart = ~0ull, maxStart = 0;

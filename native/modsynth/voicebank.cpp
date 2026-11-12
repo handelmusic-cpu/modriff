@@ -16,14 +16,35 @@ bool BankEntry::fromDoubles(const double *d, size_t total) {
   processor = false;
   size_t k = 0;
   auto need = [&](size_t m) { return k + m <= total; };
-  if (!need(9) || d[0] != 1) return false;
+  if (!need(9) || (d[0] != 1 && d[0] != 3)) return false;
+  const bool tuned = d[0] == 3;
   k = 1;
   part = (int)d[k++]; kit = (int)d[k++]; lane = (int)d[k++]; generation = d[k++];
   refAt = d[k++]; lead = d[k++]; refVel = d[k++];
   const double nn = d[k++];
   if (!(nn >= 1 && nn < 1e6) || !need((size_t)nn)) return false;
   const size_t n = (size_t)nn;
+  tuning.clear(); glide.clear();
+  if (tuned) {
+    if (!need(1)) return false;
+    const double nt = d[k++];
+    if (!(nt >= 0 && nt <= (double)n) || nt != std::floor(nt) || !need((size_t)nt * 2 + 1)) return false;
+    for (size_t i = 0; i < (size_t)nt; i++) {
+      const double slot = d[k++], mode = d[k++];
+      if (!(slot >= 0 && slot < n) || slot != std::floor(slot) || (mode != 0 && mode != 1)) return false;
+      tuning.push_back({(int)slot,(int)mode});
+    }
+    const double ng = d[k++];
+    if (!(ng >= 0 && ng <= 512) || ng != std::floor(ng) || !need((size_t)ng * 3)) return false;
+    for (size_t i = 0; i < (size_t)ng; i++) {
+      const double node = d[k++], param = d[k++], base = d[k++];
+      if (!(node >= 0 && node < 4096) || node != std::floor(node) || param != 1 || !(base >= 0 && base < n) || base != std::floor(base)) return false;
+      glide.push_back({(int)node,(int)param,(int)base});
+    }
+  }
+  if (!need(n)) return false;
   prog.assign(d + k, d + k + n); k += n;
+  for (const auto &g : glide) if (prog.size() < 3 || !std::isfinite(prog[2]) || g.node >= prog[2]) return false;
   mul.assign(n, 0);
   for (std::vector<BankSlot> *l : {&vel, &accent, &pitch}) {
     l->clear();

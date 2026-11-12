@@ -229,10 +229,19 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
   // it by itself (a ramp). Under `lock`.
   modsynth::TempoMap tmap;
+  modsynth::Tuning tuning;
+  int arpTuneRoot = -1;
   std::function<void(double)> synthTempo;
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
   HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
     sr = rate; bplay.synth.sr = cplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
+    cplay.tuning = &tuning;
+    bplay.tuning = [this](int note,double at){ const auto *w=bseq.timeline().windowFor(at); return w && !w->rest ? tuning.cents(note,w->rootPc) : 0; };
+    mplay.tuning = [this](int note,double at){ const auto *w=mseq.timeline().windowFor(at); return w && !w->rest ? tuning.cents(note,w->rootPc) : 0; };
+    aplay.tuning = [this](int note,double at){
+      if(arpBySong) { const auto *w=bseq.timeline().windowFor(at); return w && !w->rest ? tuning.cents(note,w->rootPc) : 0; }
+      return tuning.cents(note,arpTuneRoot);
+    };
     seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap); mseq.setTempoMap(&tmap);
   }
   // The page's chord windows, shifted onto the clock. Under `lock`.
@@ -313,6 +322,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
       bseq.setLiveTimeline(std::move(c.bass));
       mseq.timeline() = std::move(c.mel);
       aseq.setNotes(c.tones);
+      arpTuneRoot = bseq.timeline().windows().back().rest ? -1 : bseq.timeline().windows().back().rootPc;
       liveFrame = c.frame; liveChanges++; arpChords++;
     }
   }
@@ -852,6 +862,17 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->bank.clear();
   os_unfair_lock_unlock(&_hostSeq->lock);
+}
+
+// The page owns this table and these live controls; the native timeline owns
+// which chord covers each note. No tuning constants are duplicated in C++.
+- (BOOL)seqSetIntonation:(NSData *)table pure:(BOOL)pure glide:(BOOL)glide glideTime:(double)time root:(int)root {
+  if (table.length != 12 * sizeof(double) || !std::isfinite(time) || time < 0 || time > 10 || root < -1 || root > 11) return NO;
+  std::array<double,12> cents; std::memcpy(cents.data(),table.bytes,table.length);
+  for(double c:cents) if(!std::isfinite(c) || std::abs(c)>1200) return NO;
+  HostSeq &q = *_hostSeq; os_unfair_lock_lock(&q.lock);
+  q.tuning.table=cents; q.tuning.enabled=pure; q.cplay.glide=glide; q.cplay.glideTime=time; q.arpTuneRoot=root;
+  os_unfair_lock_unlock(&q.lock); return YES;
 }
 
 // One live chord, with times relative to its wall-clock stamp. This uses the

@@ -67,6 +67,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqIntonation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
@@ -832,6 +833,16 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetBassScore(data)])
+    }
+
+    @objc func seqIntonation(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("table"), let table = Data(base64Encoded:b64) else {
+            call.reject("seqIntonation needs table"); return
+        }
+        call.resolve(["ok":host.seqSetIntonation(table, pure:call.getBool("pure") ?? false,
+            glide:call.getBool("glide") ?? false, glideTime:call.getDouble("glideTime") ?? 0.15,
+            root:Int32(call.getInt("root") ?? -1))])
     }
 
     /// Atomically update bass, melody and arp from one hand chord.

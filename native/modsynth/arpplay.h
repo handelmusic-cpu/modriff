@@ -22,6 +22,7 @@ struct ArpPlayer {
   static constexpr double kStrumSec = 0.012;
   double sr = 48000;
   SynthLane synth;
+  std::function<double(int,double)> tuning;
   DrumBank *bank = nullptr;     // shared with the drum player: one bank
   int kit = 0;                  // the bank's code for the arp voice that is on
   std::function<int(const double *, size_t, double, uint64_t)> begin;
@@ -65,7 +66,7 @@ struct ArpPlayer {
       if (!en) { misses++; lastMissLane = block ? kBlockLane : 0; continue; }
       const int64_t frame = block ? (int64_t)std::llround(e.frameExact + (double)i * kStrumSec * sr) : e.frame;
       PatchedVoice v;
-      bank->patch(*en, block ? 1.0 : e.vel, false, (double)tone, frame, sr, (uint64_t)now, v, e.durSec, -1, block ? 1.0 : e.level, block ? 0.0 : e.pan);
+      bank->patch(*en, block ? 1.0 : e.vel, false, (double)tone, frame, sr, (uint64_t)now, v, e.durSec, -1, block ? 1.0 : e.level, block ? 0.0 : e.pan, 0.0, tuning ? tuning(tone,e.frameExact) : 0);
       const int h = begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame);
       if (h < 0) { refused++; continue; }
       voices++;

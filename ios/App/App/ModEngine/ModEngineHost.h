@@ -117,6 +117,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
 - (NSDictionary *)seqMirror;
 
+/// The page's cents table and chord glide controls. Root is the standalone
+/// arp's current chord root, or -1; songs use their native chord windows.
+- (BOOL)seqSetIntonation:(NSData *)table pure:(BOOL)pure glide:(BOOL)glide glideTime:(double)time root:(int)root;
+
 /// A hand chord for the running native followers. One window per timeline,
 /// relative to the stamp in seconds, with each part's phrase locks, and float64 arp tones.
 /// Same timestamp clock as beginGraph. Queued at that frame; committed notes

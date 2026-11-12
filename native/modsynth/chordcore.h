@@ -48,6 +48,10 @@ struct ChordScore {
     const double nh = d[k++];
     if (!(nh >= 0 && nh <= 512) || k + (size_t)nh * 3 > n) return false;
     for (size_t i = 0; i < (size_t)nh; i++) { s.hits.push_back({d[k], d[k + 1], d[k + 2]}); k += 3; }
+    if (k < n && d[k] == -8) {
+      if (k + 2 > n || !std::isfinite(d[k+1])) return false;
+      s.chord.rootNote = (int)d[k+1]; k += 2;
+    }
     *this = std::move(s);
     if (used) *used = k;
     return true;
