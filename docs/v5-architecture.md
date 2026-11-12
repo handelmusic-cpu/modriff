@@ -2277,7 +2277,7 @@ leaving, resumes together on return, same with a sampled voice.
 **Where background play stands (6.9.4).** The sounds are not what stands in the way any more; the
 clock is. Audited from the code, not measured on a phone:
 
-**Migration defaults (6.9.9.9.9.9.9.7a).** When the page cannot supply another generated line, the engine repeats the last supplied line (Migration A). A chart edit is to take effect at the next bar line; staging that edit is still pending. Factory instrument banks are expanded in Migrations B1/B2, but public scheduler ownership and the MIDI observer stream remain pending. The current checkpoint in `docs/native-scheduling.md` lists those prerequisites before the background cutover.
+**Migration defaults (6.9.9.9.9.9.9.7b).** When the page cannot supply another generated line, the engine repeats the last supplied line (Migration A). A chart edit is to take effect at the next bar line; staging that edit is still pending. Factory instrument banks are expanded in Migrations B1/B2. B5 now forwards hand chords to running native bass, melody and arp together at the graph voice clock stamp, with separate phrase locks and song ownership protected. Public scheduler ownership, synth patches, tuning/glide and the MIDI observer stream remain pending. The current checkpoint in `docs/native-scheduling.md` lists those prerequisites before the background cutover.
 
 - *Playing.* All eight parts and the click are on the native engine by default in the app (the graph
   path, 6.1d), recorded voices (piano, violin, flute, upright bass, the jazz kit) and the sampler's

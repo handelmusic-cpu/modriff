@@ -117,6 +117,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// step whose moment the render clock has reached (the playhead), late the steps expanded after their moment.
 - (NSDictionary *)seqMirror;
 
+/// A hand chord for the running native followers. One window per timeline,
+/// relative to the stamp in seconds, with each part's phrase locks, and float64 arp tones.
+/// Same timestamp clock as beginGraph. Queued at that frame; committed notes
+/// remain intact. Refused while a native song owns the timeline or all followers stop.
+- (NSDictionary *)seqLiveChord:(NSData *)bass melody:(NSData *)mel notes:(NSData *)notes timestampMs:(double)ts;
+
 // ── The bass line (native/modsynth/basscore.h, bassplay.h; slice 2) ──
 // On the same thread and with the same bank as the drums. The mirror's `bass` has running, nextStep, steps, notes, hits, misses
 // (no voice in the bank: lastMissLane), refused, cuts (a note cut short by the next), lateStarts, windows.

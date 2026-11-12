@@ -39,6 +39,8 @@ const SONGS = {
   'chords that start a little after a beat': [[0, [0, 4, 7], null, 3.1], [5, [0, 4, 7, 10], null, 2.9], [7, [0, 4, 7], null, 4.2], [9, [0, 3, 7], null, 3.35]],
 };
 const CONFIGS = [
+  { name: 'live hand chords just after beats, no drums', song: 'chords that start a little after a beat', bpm: 120, rate: 1, bars: 8, drums: null, two: false, root: 0, mode: 'major', commitAhead: 0, live: true },
+  { name: 'live slash chords with the drums, two-feel', song: 'odd lengths', bpm: 110, rate: 1, bars: 8, drums: 1, two: true, root: 0, mode: 'major', commitAhead: 0, live: true },
   { name: 'four to the bar over I-vi-IV-V, no drums', song: 'I-vi-IV-V', bpm: 120, rate: 1, bars: 8, drums: null, two: false, root: 0, mode: 'major' },
   { name: 'the same with the drums playing (their bar line three steps off the chart)', song: 'I-vi-IV-V', bpm: 100, rate: 1, bars: 8, drums: 3, two: false, root: 0, mode: 'major' },
   { name: 'two-feel over ii-V-I with slash chords and a rest', song: 'ii-V-I with slash chords and a rest', bpm: 140, rate: 1, bars: 10, drums: null, two: true, root: 0, mode: 'major' },
@@ -90,7 +92,7 @@ const CONFIGS = [
       // The chart: every chord the song will commit, with the moment it is committed (all at once, or just before it starts).
       const plan = []; { let t = FIRSTs, i = 0; while (t < tEnd + 6) { const dur = song[i % song.length][3] * beat; plan.push({ t, dur, i }); t += dur; i++; } }
       let committed = 0;
-      const commit = now => { while (committed < plan.length && (c.commitAhead == null || plan[committed].t <= now + c.commitAhead)) { const p = plan[committed++]; window._blOnChord(slot(p.i), p.t, p.dur, slot(p.i + 1), 0); } };
+      const commit = now => { while (committed < plan.length && (c.commitAhead == null || plan[committed].t <= now + c.commitAhead)) { const p = plan[committed++]; if (c.live) window._blOnLiveChord(slot(p.i)); else window._blOnChord(slot(p.i), p.t, p.dur, slot(p.i + 1), 0); } };
       sent.length = 0;
       fake.currentTime = c.startAt != null ? c.startAt : 0.0013;
       commit(fake.currentTime);
@@ -109,7 +111,7 @@ const CONFIGS = [
       window._blSetClock(0, 0, false);
       const sc = window._blNativeScore();
       out.push({ name: c.name, notes: sent.map(m => ({ at: m.at, note: m.note, dur: m.dur, vel: m.vel, accent: m.accent, slide: m.slide, from: m.from })), tEnd, ticks, tape,
-                 score: sc.score, ok: sc.ok, why: sc.why, chords: window._blNativeChords(sr), bpm: c.bpm, rate: c.rate, two: c.two });
+                 score: sc.score, ok: sc.ok, why: sc.why, chords: window._blNativeChords(sr), bpm: c.bpm, rate: c.rate, two: c.two, live: c.live });
     }
     window._sqNextBar = realNB;
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready;
@@ -124,7 +126,7 @@ const CONFIGS = [
     fs.writeFileSync(path.join(tmp, 'walk.f64'), Buffer.from(Float64Array.from(cases).buffer));
     const bin = path.join(root, 'native', 'modsynth', 'basstool');
     if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth basstool'); process.exit(2); }
-    const r = spawnSync(bin, [path.join(tmp, 'walk.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
+    const r = spawnSync(bin, [path.join(tmp, 'walk.f64'), ...(c.live ? ['--live-chords'] : [])], { encoding: 'utf8', maxBuffer: 1 << 28 });
     if (r.status !== 0) { console.error(r.stderr); process.exit(2); }
     return r.stdout.split('\n').filter(l => l.startsWith('N ')).map(l => { const f = l.split(' '); return { fx: +f[1], frame: +f[2], midi: +f[3], dur: +f[4], vel: +f[5], accent: +f[6] === 1, slide: +f[7] === 1, from: +f[8] }; });
   };

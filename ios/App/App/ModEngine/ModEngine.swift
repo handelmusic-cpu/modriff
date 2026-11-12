@@ -67,6 +67,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
@@ -831,6 +832,19 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             return
         }
         call.resolve(["ok": host.seqSetBassScore(data)])
+    }
+
+    /// Atomically update bass, melody and arp from one hand chord.
+    @objc func seqLiveChord(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b = call.getString("bass"), let bass = Data(base64Encoded: b),
+              let m = call.getString("mel"), let mel = Data(base64Encoded: m),
+              let n = call.getString("notes"), let notes = Data(base64Encoded: n),
+              let ts = call.getDouble("ts") else {
+            call.reject("seqLiveChord needs bass, mel, notes and ts")
+            return
+        }
+        call.resolve(host.seqLiveChord(bass, melody: mel, notes: notes, timestampMs: ts) as? [String: Any] ?? [:])
     }
 
     /// The chord windows, `chords` base64 float64 (window._blNativeChords(sr)): frames from the line's start. Resolves `ok`.
