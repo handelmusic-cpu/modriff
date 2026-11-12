@@ -777,6 +777,14 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   return @{@"handle": @(h), @"unknownBuffer": @(unknown)};
 }
 
+- (BOOL)killGraphVoices:(uint32_t)mask fadeMs:(double)fadeMs {
+  const int fade = (int)std::max(1.0, fadeMs * _sampleRate / 1000.0);
+  os_unfair_lock_lock(&_graphLock);
+  const bool ok = _graphs.killParts(mask, _frames.load(std::memory_order_relaxed), fade);
+  os_unfair_lock_unlock(&_graphLock);
+  return ok;
+}
+
 // Later changes to a voice that has begun (release, choke, glide, a stop). NO if
 // the voice has already finished: the handle is dropped and the edit is moot.
 - (BOOL)editGraph:(int)gid increments:(NSData *)increments {

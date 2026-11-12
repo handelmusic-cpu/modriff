@@ -76,6 +76,13 @@ Since 6.2:
   chart taps move bass, melody and arp once each; leaving the app and returning keeps the chord.
 - [ ] 40. Native sequencer patch voices (6.9.9.9.9.9.9.7c) — developer entry: bass, arp, melody
   patches; Stop releases; the free web page still uses its worklet.
+- [ ] 41. Long bounce (6.9.9.9.9.9.9.7g) — bounce 15+ minutes with Stems and Native sound on: the app stays
+  up after Stop, mix and stems hold the native parts and are the same length.
+- [ ] 42. MIDI with every Bounce (6.9.9.9.9.9.9.7g) — the sheet's MIDI tile is a switch, lit by default; Bounce
+  writes a `-live.mid` with a Pads track, and none when it is off (also Settings > Recording).
+- [ ] 43. Panic reaches the engine (6.9.9.9.9.9.9.7g) — reload the page while a chord rings (or hold one with no
+  finger on it): it fades out at start-up, or on Panic.
+- [ ] 44. Resume keeps Song (6.9.9.9.9.9.9.7g) — Song on, leave, Resume: Song is lit and Play starts the chart.
 
 ## Done
 
