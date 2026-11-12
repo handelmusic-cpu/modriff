@@ -13,6 +13,7 @@
 
 #include "melcore.h"
 #include "voicebank.h"
+#include "synthseq.h"
 
 namespace modsynth {
 
@@ -21,13 +22,14 @@ struct MelPlayer {
   static constexpr int kGlideLane = 16;    // the notes that slide in; the plain notes' regimes of length are lanes 0 to 7
   static constexpr int kRegimes = 8;
   double sr = 48000;
+  SynthLane synth;
   DrumBank *bank = nullptr;     // shared with the drum player: one bank
   int kit = 0;                  // the bank's code for the melody voice that is on
   std::function<int(const double *, size_t, double, uint64_t)> begin;
   uint64_t notes = 0, slides = 0, voices = 0, misses = 0, refused = 0, lateStarts = 0;
   int lastMissLane = -1;
 
-  void reset() { notes = slides = voices = misses = refused = lateStarts = 0; }
+  void reset() { synth.reset(); notes = slides = voices = misses = refused = lateStarts = 0; }
 
   // The entry for a note: the regime of length that holds `durSec` (ordered by regime, shortest first, each valid up to its durMax).
   static const BankEntry *pick(const DrumBank &bank, int kit, bool slide, double durSec, int midi = -1) {
@@ -43,6 +45,13 @@ struct MelPlayer {
   }
 
   void play(const MelEvent &e, double now) {
+    if (bank) if (const BankEntry *p = bank->find(kPart, kit, -1); p && p->processor) {
+      notes++;
+      if (synth.play(e.midi, e.frameExact, e.durFrames / sr, now)) voices++; else refused++;
+      // The page's stand-in detune never reaches a Processor. Its internal
+      // portamento still follows the patch; no external glide is invented here.
+      return;
+    }
     if (!begin || !bank) return;
     bool slide = e.glideFrom >= 0 && std::abs(e.glideFrom - e.midi) <= 24;
     notes++;

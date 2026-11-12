@@ -178,8 +178,73 @@ static void testLiveChords() {
 
 }
 
+static void testSynthSequencers() {
+  // Build each Processor after the global engine clock has already advanced.
+  // Its own clock starts at zero: using global frames directly delays all notes.
+  for (int part : {2, 5, 6}) {
+    ModEngineHost *g = fresh();
+    const int slot = part == 2 ? 3 : part == 5 ? 4 : 2;
+    const std::vector<double> entry = {2, (double)part, 7, -1, 1};
+    CHECK(![g seqPutBankEntry:bytes(entry)], "Processor bank part %d refuses an unbuilt Processor", part);
+    run(g, 300);
+    [g ensurePart:slot];
+    [g post:@{@"t": @"p", @"part": @(slot), @"i": @102, @"v": @0.02}];
+    CHECK([g seqPutBankEntry:bytes(entry)], "Processor bank part %d is accepted after the part is built", part);
+    const double before = [[g seqMirror][@"frame"] doubleValue];
+    if (part == 2) {
+      std::vector<double> bs = {1, 16, 0, 1, 0, 0, 3, 0, 4, 7, 7, 0, 2, 4, 5, 7, 9, 11, 0.7, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0, 0, 16};
+      for (int j = 0; j < 16; j++) bs.insert(bs.end(), {1, (double)(j % 3), 3, 1, 0, 0, 0, 0, 0});
+      [g seqSetBassScore:bytes(bs)];
+      [g seqBassStartWithBpm:120 rate:1 leadMs:500 alignToDrums:NO kit:7 seed:3];
+    } else if (part == 5) {
+      [g seqSetArpScore:bytes(arpScore(6, 1))];
+      [g seqSetArpNotes:bytes(std::vector<double>{60,64,67})];
+      [g seqArpStartWithBpm:120 leadMs:500 alignToDrums:NO kit:7 seed:3];
+    } else {
+      [g seqSetMelScore:bytes(melScore(false, {{1,0,4,1,{{4,4}}}, {1,7,4,1,{}}}))];
+      [g seqMelStartWithBpm:120 rate:1 leadMs:500 alignToDrums:NO kit:7 seed:3];
+    }
+    std::vector<float> l(240), r(240); double first = -1; float peak = 0;
+    for (int t = 0; t < 1050; t += 5) {
+      const double f = [[g seqMirror][@"frame"] doubleValue];
+      [g renderInto:l.data() right:r.data() frames:240];
+      for (int j = 0; j < 240; j++) { float p = std::max(std::fabs(l[j]), std::fabs(r[j])); peak = std::max(peak, p); if (first < 0 && p > 0.0001) first = f + j; }
+      usleep(5000);
+    }
+    NSString *key = part == 2 ? @"bass" : part == 5 ? @"arp" : @"mel";
+    NSDictionary *m = [g seqMirror][key];
+    CHECK(first >= before + 0.5 * SR - 32 && first < before + 0.55 * SR && peak > 0.01, "Processor part %d sounds on the global clock after a late build (first %.0f, expected %.0f, peak %.3f)", part, first, before + 0.5 * SR, peak);
+    CHECK([m[@"misses"] intValue] == 0 && [m[@"refused"] intValue] == 0 && g.notesOn >= 5, "Processor part %d schedules notes without graph voices (on %u)", part, g.notesOn);
+    if (part == 5) CHECK([m[@"voices"] intValue] == 3 * [m[@"blocks"] intValue], "each Processor block starts its three tones");
+    if (part == 2) [g seqBassStop]; else if (part == 5) [g seqArpStop]; else [g seqMelStop];
+    const int notes = [m[@"notes"] intValue];
+    run(g, 600);
+    const float tail = [g renderOfflinePeakForPart:slot frames:4096];
+    CHECK(tail < 0.00001 && [[g seqMirror][key][@"notes"] intValue] == notes, "Processor part %d stops, cancels its queued starts and releases its held notes (tail %.7f)", part, tail);
+  }
+  // A ten-second patch release must still be choked at an ending landing.
+  {
+    ModEngineHost *g = fresh(); [g ensurePart:4];
+    [g post:@{@"t": @"p", @"part": @4, @"i": @102, @"v": @10}];
+    [g seqPutBankEntry:bytes(std::vector<double>{2,5,7,-1,1})];
+    std::vector<double> song = {5,16,0,0,1,0, 0,1,
+      0,0,2, 1,0,0,0,60,-1,-1,-1,0,0,-1,3,0,4,7, 1,0,0,0,65,-1,-1,-1,0,0,-1,3,0,4,7,
+      0,-1,-1,-1,0,4,2,140,0,2,7, 4,1,0.15,2, 1,0,1,-1,60,2,3,0,4,7, 0};
+    CHECK([g seqSetSong:bytes(song)], "a native song with Finish and a patch arp is accepted");
+    [g seqSetArpScore:bytes(arpScore(0,1))]; [g seqArpArm:YES kit:7];
+    [g seqSetDrumScore:bytes(score())]; [g seqStartWithBpm:240 rate:1 leadMs:100 seed:3];
+    [g seqSongStartWithLeadMs:100 alignToDrums:YES section:0 slot:0 pass:0];
+    run(g,2800);
+    NSDictionary *m = [g seqMirror]; const float tail = [g renderOfflinePeakForPart:4 frames:4096];
+    CHECK([m[@"song"][@"ending"][@"lands"] intValue] == 1 && ![m[@"arp"][@"running"] boolValue] && g.notesOn > 8 && tail < 0.00001,
+      "Finish chokes all prior patch voices despite a ten-second release (on %u, tail %.7f)", g.notesOn, tail);
+  }
+
+}
+
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_SYNTH_ONLY")) { testSynthSequencers(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_LIVE_ONLY")) { testLiveChords(); return failed ? 1 : 0; }
     ModEngineHost *h = fresh();
     CHECK(![h seqStartWithBpm:120 rate:1 leadMs:100 seed:1], "no score, no start");
@@ -795,6 +860,7 @@ int main() {
 
 
     testLiveChords();
+    testSynthSequencers();
 
     // The melody generator through the host: the same thread and bank, no page. A synthetic melody voice (part 6), a line of a note every step with a chord on the first, started with the
     // drums' bar line. Then in a song: armed, it starts with the song on the same bar line and, with Follow on, plays each chord's tones (the line is written over C: over F it is F) and

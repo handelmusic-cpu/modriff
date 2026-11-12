@@ -138,13 +138,13 @@ if(!process.env.VOICES){
     entry.start = { ok: st.ok, sent: entries.length - e0, score: calls.score, notes: calls.notes, kit: calls.start && calls.start.kit, want: window._nsKitCode('arp:sine'), align: calls.start && calls.start.align, scoreLen: calls.scoreLen };
     arpOcts = 1;
     Object.keys(calls).forEach(k => delete calls[k]);
-    setArpWave('modsynth'); const sm = await window._nsArp.start(250); setArpWave('sine');
+    setArpWave('sampler'); const sm = await window._nsArp.start(250); setArpWave('sine');
     entry.sampled = { why: sm.why, started: !!calls.start };
     Object.keys(calls).forEach(k => delete calls[k]);
     arpOn = false; const a0 = await window._nsArp.armForSong(); entry.off = { armed: a0.armed, arm: calls.arm };
     arpOn = true; const a1 = await window._nsArp.armForSong(); entry.on = { armed: a1.armed, arm: calls.arm, want: window._nsKitCode('arp:sine') };
     Object.keys(calls).forEach(k => delete calls[k]);
-    setArpWave('modsynth'); const a2 = await window._nsArp.armForSong(); setArpWave('sine'); arpOn = false;
+    setArpWave('sampler'); const a2 = await window._nsArp.armForSong(); setArpWave('sine'); arpOn = false;
     entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm };
     return { entry, report, fresh, held: entries.map(e => Array.from(e)), bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: [s0 !== s1, s0 !== s2], sentOnce: b2 - b1, kept, reasons, off: off.why };
   }, { voices, notes: [...ctl, ...rndCases], blocks, fx });
@@ -193,10 +193,10 @@ if(!process.env.VOICES){
     const e = out.entry;
     ok(e.start.ok !== false && e.start.sent === out.report.sine.entries && e.start.score === 1 && JSON.stringify(e.start.notes) === JSON.stringify([60, 64, 67, 72, 76, 79]) && e.start.kit === e.start.want && e.start.align === true,
        '_nsArp.start(): records the voice, sends the settings and the chord the arp is on (two octaves), and starts it on the drums\' bar line with the voice\'s code', JSON.stringify(e.start));
-    ok(/mõdSynth/.test(e.sampled.why || '') && !e.sampled.started, '_nsArp.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
+    ok(/sampler/.test(e.sampled.why || '') && !e.sampled.started, '_nsArp.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
     ok(e.off.armed === false && e.off.arm && e.off.arm.on === false && e.on.armed === true && e.on.arm && e.on.arm.on === true && e.on.arm.kit === e.on.want,
        'a song arms the arp when it is on (with the voice\'s code) and disarms it when it is off', JSON.stringify([e.off, e.on]));
-    ok(e.refused.armed === false && /mõdSynth/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
+    ok(e.refused.armed === false && /sampler/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
   }
   ok(out.sigChanged[0] && out.sigChanged[1], 'the Arp fader and the macro filter are part of the voice\'s signature', JSON.stringify(out.sigChanged));
   ok(out.sentOnce === out.report.sine.entries && out.kept, 'the voice is recorded and sent once and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));

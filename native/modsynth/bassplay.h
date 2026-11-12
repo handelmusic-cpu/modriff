@@ -11,11 +11,13 @@
 
 #include "basscore.h"
 #include "voicebank.h"
+#include "synthseq.h"
 
 namespace modsynth {
 
 struct BassPlayer {
   double sr = 48000;
+  SynthLane synth;
   DrumBank *bank = nullptr;     // shared with the drum player: one bank, the bass is part 2
   int kit = 0;                  // the bank's code for the bass voice that is on
   std::function<int(const double *, size_t, double, uint64_t)> begin;
@@ -23,7 +25,7 @@ struct BassPlayer {
   uint64_t hits = 0, misses = 0, refused = 0, lateStarts = 0, cuts = 0;
   int lastMissLane = -1;
 
-  void reset() { hits = misses = refused = lateStarts = cuts = 0; prev_.valid = false; }
+  void reset() { synth.reset(); synthPrevId_ = 0; hits = misses = refused = lateStarts = cuts = 0; prev_.valid = false; }
 
   static const BankEntry *pick(const DrumBank &bank, int kit, int midi, int lane) {
     // Reusing the neighbouring note can select another recording or root rate.
@@ -32,6 +34,13 @@ struct BassPlayer {
   }
 
   void play(const BassEvent &e, double now) {
+    if (bank) if (const BankEntry *p = bank->find(2, kit, -1); p && p->processor) {
+      if (synthPrevId_ && e.frameExact < synthPrevEnd_) { if (synth.release(synthPrevNote_, synthPrevId_, e.frameExact + 0.015 * sr)) cuts++; }
+      synthPrevId_ = synth.play(e.midi, e.frameExact, e.durFrames / sr, now);
+      synthPrevNote_ = e.midi; synthPrevEnd_ = e.frameExact + e.durFrames + (e.slide ? 0.15 : 0.06) * sr;
+      if (synthPrevId_) hits++; else refused++;
+      return;
+    }
     if (!begin || !bank) return;
     const int lane = (e.slide ? 2 : 0) + (e.from >= 0 ? 1 : 0);
     const BankEntry *en = pick(*bank, kit, e.midi, lane);
@@ -54,6 +63,7 @@ struct BassPlayer {
   }
 
  private:
+  double synthPrevId_ = 0, synthPrevNote_ = 0, synthPrevEnd_ = 0;
   struct Prev { bool valid = false; int handle = -1; double startFrame = 0, endExact = 0; std::vector<double> cutOps; };
   Prev prev_;
 };
