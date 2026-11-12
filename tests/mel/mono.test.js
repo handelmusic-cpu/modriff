@@ -216,16 +216,14 @@ function serve() {
     return {widths, saved:modStore.getItem('modo-mel-kw')};
   });
   ok(JSON.stringify(sizing.widths)==='[26,44,64,96,null]' && sizing.saved===null, 'width control cycles sizes and restores automatic sizing in Poly', JSON.stringify(sizing));
+  // The strip has no edge arrows (removed in 6.9.9.9.9.9.9.7f): the octave stepper and a swipe are the ways along it.
   const scroll = await page.evaluate(() => {
     const wrap=document.querySelector('.mel-keys-wrap');
-    const original=wrap.scrollBy; const moves=[];
-    wrap.scrollBy=options=>moves.push(options.left);
-    const keys=wrap.querySelectorAll('.mel-key');
-    const step=keys[1].getBoundingClientRect().left-keys[0].getBoundingClientRect().left;
-    melEdgeScroll(1); melEdgeScroll(-1); wrap.scrollBy=original;
-    return {moves,step};
+    wrap.scrollTo({left:0, behavior:'instant'}); const before=wrap.scrollLeft; wrap.scrollTo({left:60, behavior:'instant'});
+    return {arrows:document.querySelectorAll('.mel-edge').length, fn:typeof melEdgeScroll, overflows:wrap.scrollWidth>wrap.clientWidth, moved:wrap.scrollLeft!==before};
   });
-  ok(scroll.moves[0]===scroll.step && scroll.moves[1]===-scroll.step, 'edge arrows move by one key in either direction', JSON.stringify(scroll));
+  ok(scroll.arrows===0 && scroll.fn==='undefined', 'no edge arrows on the melody strip', JSON.stringify(scroll));
+  ok(scroll.overflows ? scroll.moved : true, 'the strip still scrolls by drag', JSON.stringify(scroll));
   await browser.close(); srv.close();
   process.exit(fail ? 1 : 0);
 })();
