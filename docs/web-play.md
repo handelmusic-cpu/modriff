@@ -40,6 +40,9 @@ packages and which is untouched):
   analytics and no third-party code.
 - The manifest `id` is `/play/` (the landing page owns `/`); the share-card tags
   point at `/play/og-card-3.png`.
+- Chords from outside the key are the Theory Pack's (`outsideChords`): the Modal and Secondary Dominant
+  pads (Studio, and Live's More row), their catalog rows, and the song builder's Borrowed grid are
+  locked; the key's own seven are free. `tests/webplay/outside.js` checks it.
 - A locked thing opens the same sheet, but `webView()` replaces the buy buttons:
   the pack's bullets, "The app is free to download", and one link. No price, no
   Restore.

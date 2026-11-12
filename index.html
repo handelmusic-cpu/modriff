@@ -34510,7 +34510,15 @@ function cpResolve(pick, srcs){
  });
  return best ? wear(best) : null;
 }
+function cpOutsideBlocked(chord){
+ if(chord && (chord.src==='borrowed' || chord.src==='secdom') && typeof freeAllowsOutside==='function' && !freeAllowsOutside()){
+  freeBlocked(chord.src==='secdom' ? 'Secondary dominants' : 'Borrowed chords', 'theory');
+  return true;
+ }
+ return false;
+}
 function cpToggle(chord){
+ if(cpOutsideBlocked(chord)) return;
  const srcs=cpSources();
  // Unticking has to remove whichever stored pick is currently showing as this
  // chord, which after a mode change need not be the one that names it.
@@ -34538,6 +34546,7 @@ function cpPickOf(chord){
 // replaces the plain chord, because wanting IVmaj9 on a pad is not a statement
 // about wanting IV gone.
 function cpAddVariant(chord, ext, bass){
+ if(cpOutsideBlocked(chord)) return false;
  const c=Object.assign({}, chord, {ext:ext||null, bass:bass||null});
  const srcs=cpSources(), want=cpVarKey(c);
  const i=cpPicks.findIndex(p=>{ const r=cpResolve(p,srcs); return r && cpVarKey(r)===want; });
@@ -34620,6 +34629,9 @@ function cpChosen(){
  cpPicks.forEach(p=>{
   const c=cpResolve(p,srcs);
   if(!c) return;
+  // A pick from the Modal or Secondary catalog stays saved but is not shown or played
+  // while the Theory Pack is not held, so a setup made with it does not unlock it.
+  if((c.src==='borrowed' || c.src==='secdom') && typeof freeAllowsOutside==='function' && !freeAllowsOutside()) return;
   const k=cpVarKey(c);
   if(seen[k]) return;
   seen[k]=1; out.push(c);
@@ -34924,6 +34936,7 @@ function cpBuild(){
   });
   if(_cpOpen===wrap) cpPlace(wrap);
  });
+ try{ freeSyncOutside(); }catch(e){}
 }
 
 // The chosen chords as real pads — makeOutBtn, the same builder the Advanced
@@ -35141,6 +35154,26 @@ window.cpRenderDegRow = cpRenderDegRow;
 
 function cpRenderAll(){ cpBuild(); cpRenderUserRow(); cpRenderDegRow(); }
 
+// The Modal/Borrowed and Secondary Dominant pads, the catalogs that tick them into My Chords,
+// and the song builder's Borrowed grid are the Theory Pack's. A lock is a class, so it has to be
+// put back every time those are rebuilt (renderChords, cpBuild, buildChartPicker) and when
+// ownership changes (freeApplyLimits).
+function freeSyncOutside(){
+ const lock = typeof freeAllowsOutside==='function' && !freeAllowsOutside();
+ ['chords-borrowed','chords-secdom','sb-borrowed-body'].forEach(function(id){
+  const host=document.getElementById(id); if(!host) return;
+  Array.prototype.forEach.call(host.children, function(b){ modLockEl(b, lock, 'theory'); });
+ });
+ ['cppop-borrowed','cppop-secdom'].forEach(function(id){
+  const pop=document.getElementById(id); if(!pop) return;
+  pop.querySelectorAll('.cp-item,.cp-plus').forEach(function(b){ modLockEl(b, lock, 'theory'); });
+ });
+ modLockEl(document.getElementById('sb-exp-borrowed'), lock, 'theory');
+ if(lock){
+  const body=document.getElementById('sb-borrowed-body');
+  if(body && body.style.display!=='none') sbExpand('borrowed');
+ }
+}
 function renderChords(){
  try{ if(typeof psAcrossFollow==='function') psAcrossFollow(); }catch(e){}
  const md=MODES[mode]||MODES.major;
@@ -35192,6 +35225,7 @@ function renderChords(){
  // The catalogs and My Chords follow key and mode like every other row here.
  if(typeof cpRenderAll==='function') cpRenderAll();
  try{ chordMoreApply(); }catch(e){}
+ try{ freeSyncOutside(); }catch(e){}
 
  // Also update chart picker and mode-aware progression presets
  buildChartPicker();
@@ -40823,6 +40857,7 @@ function buildChartPicker(){
  wrap.appendChild(sevEl); wrap.appendChild(triEl);
  bHost.appendChild(wrap);
  });
+ try{ freeSyncOutside(); }catch(e){}
 }
 
 // The Common progressions list is the library's own now (see _libCommonItems),
@@ -72522,6 +72557,9 @@ const FREE_LIMITS = {
   fullAudioExport: false, // past FREE_NUMBERS.audioExportSeconds
   fullMidiExport:  false, // past FREE_NUMBERS.midiExportBars
   chordExtensions: false,      // 6/9, 11, #11, 13, b9, #9, alt, ... are the Theory Pack's
+  // The chords from outside the key: the Modal/Borrowed shelf and the secondary dominants (V/x),
+  // as pads, in the catalogs, on Live's More row and in the song builder. The key's own seven are free.
+  outsideChords: false,
   voicings:     ['close','open'],
   // The start key is free (rotatable scale colours); the circle-of-fifths
   // ordering is the Theory Pack's. See khAllowsFifths.
@@ -72568,7 +72606,7 @@ const FREE_LIMITS = {
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
   modfx:'synth', fxPatches:'synth', modsynth:'synth',
-  freeModes:'theory', chordExtensions:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
+  freeModes:'theory', chordExtensions:'theory', outsideChords:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullAudioExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
   liveRolls:'groove', liveSynth:'synth',
@@ -72769,6 +72807,7 @@ function freeAllowsMode(m){
  const l=_freeList('freeModes'); if(!l) return true;
  return l.indexOf(String(m))>=0;
 }
+function freeAllowsOutside(){ return modHas('theory'); }
 function freeAllowsVoicing(v){
  if(modHas('theory')) return true;
  return _freeList('voicings').indexOf(String(v))>=0;
@@ -73894,6 +73933,7 @@ function freeApplyLimits(){
   document.querySelectorAll('[data-mlstyle]').forEach(b=>{
    modLockEl(b, !freeAllowsStyle(b.dataset.mlstyle, 'ml'), 'groove');
   });
+  try{ freeSyncOutside(); }catch(e){}
   // Chord voicings beyond Close and Spread, in every place they are offered.
   document.querySelectorAll('[data-voicing]').forEach(b=>{
    modLockEl(b, !freeAllowsVoicing(b.dataset.voicing), 'theory');
